@@ -147,6 +147,14 @@ type Handler struct {
 	articleRead       datahub_capability_port.ArticleReadPort
 	knowledgeBackfill datahub_capability_port.KnowledgeBackfillPort
 
+	// Wave 3 batch 3 (catalog §2.F / §2.G / §2.H). Same rule again: required,
+	// and WithWave3Batch3Capabilities panics on nil. These are the feed list,
+	// the subscription list and the collector's poll-health state machine —
+	// the surfaces a user notices first when they answer nothing.
+	feedLink             datahub_capability_port.FeedLinkPort
+	feedLinkAvailability datahub_capability_port.FeedLinkAvailabilityPort
+	feed                 datahub_capability_port.FeedPort
+
 	logger *slog.Logger
 }
 

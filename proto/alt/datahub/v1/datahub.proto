@@ -1106,6 +1106,411 @@ message ListBackfillSummaryTitlesResponse {
 }
 
 // =============================================================================
+// Feed link types (catalog §2.F / §2.G)
+// =============================================================================
+
+// FeedLink is one RSS subscription URL.
+//
+// Distinct from Feed: feed_links.url is the URL that is polled, feeds.website_url
+// is the site the poll produced entries for. The two were conflated by the
+// column name `link` until ADR-000868 renamed it, and keeping them apart in the
+// wire schema is what stops that conflation coming back over the RPC boundary.
+message FeedLink {
+  string id = 1;
+  string url = 2;
+}
+
+// FeedLinkAvailability is the poll health of one feed link.
+//
+// consecutive_failures resets to zero on the first successful poll, so it
+// counts a run and not a lifetime total; a caller reading it as "how broken is
+// this feed overall" would disable feeds that recovered.
+message FeedLinkAvailability {
+  string feed_link_id = 1;
+  bool is_active = 2;
+  int32 consecutive_failures = 3;
+  // Unset until the link has failed at least once since its last success.
+  google.protobuf.Timestamp last_failure_at = 4;
+  optional string last_failure_reason = 5;
+}
+
+// FeedLinkWithHealth pairs a link with its availability row.
+//
+// availability is absent — not zero-valued — for a link that has never been
+// polled. An admin screen renders "never checked" for the absence and
+// "0 failures, active" for the zero, and those are different facts.
+message FeedLinkWithHealth {
+  FeedLink feed_link = 1;
+  FeedLinkAvailability availability = 2;
+}
+
+// FeedLinkDomain is a host extracted from the subscription set, used to seed
+// the per-publisher scraping policy.
+message FeedLinkDomain {
+  string domain = 1;
+  string scheme = 2;
+}
+
+// FeedLinkExportEntry is one OPML outline row: the subscription URL plus the
+// most recent title seen for it.
+message FeedLinkExportEntry {
+  string url = 1;
+  // Empty when no feed has ever been collected for the link. The caller
+  // substitutes the hostname; doing it here would bake a presentation choice
+  // into the data plane.
+  string title = 2;
+}
+
+// =============================================================================
+// Feed types (catalog §2.H)
+// =============================================================================
+
+// Feed mirrors one row of the feeds table.
+//
+// Named Feed rather than FeedItem on purpose: domain.FeedItem is the RSS-spec
+// shape alt-backend serves to the browser, with a sanitised description and an
+// RFC3339 `published` string. That rendering stays with the caller (ADR-000954
+// D4 — sanitising and formatting are pure functions), so this message carries
+// the columns and nothing else.
+message Feed {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  // The website URL from the RSS <channel><link> element — feeds.website_url,
+  // renamed from `link` by ADR-000868.
+  string website_url = 4;
+  google.protobuf.Timestamp pub_date = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  // Absent when the feed has no undeleted article yet. The list surfaces use
+  // it to link a feed card to the article it should open.
+  optional string article_id = 8;
+  bool is_read = 9;
+  optional string feed_link_id = 10;
+  // Absent both when no image was ever found and when the feed has aged out of
+  // the 7-day copyright retention window — the provider does not distinguish
+  // them, and neither does the placeholder the frontend renders.
+  optional string og_image_url = 11;
+}
+
+// FeedRegistration is one RSS item to upsert into feeds.
+//
+// created_at and updated_at are supplied by the caller rather than defaulted
+// server-side. The collector stamps them once for a whole poll so that every
+// feed from one run sorts together, and letting the provider call now() per
+// row would interleave a slow batch with a fast one.
+message FeedRegistration {
+  string title = 1;
+  string description = 2;
+  string website_url = 3;
+  google.protobuf.Timestamp pub_date = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  optional string feed_link_id = 7;
+  optional string og_image_url = 8;
+}
+
+// FeedRegistrationResult reports one upsert outcome.
+//
+// created distinguishes an insert from an update — the `(xmax = 0)` trick the
+// driver has always used. Callers branch on it to decide whether a
+// registration is worth announcing.
+message FeedRegistrationResult {
+  string feed_id = 1;
+  bool created = 2;
+}
+
+// FeedSummary is the Japanese article summary a feed or article resolves to.
+message FeedSummary {
+  string summary = 1;
+}
+
+// FeedAndArticle joins an article back to the feed it came from.
+message FeedAndArticle {
+  // Empty string when the article has no feed — the LEFT JOIN's NULL, kept as
+  // "" because that is what the search result renderer already handles.
+  string feed_id = 1;
+  string article_id = 2;
+  string url = 3;
+  string feed_title = 4;
+  string article_title = 5;
+}
+
+// InoreaderSummary is one imported Inoreader article body.
+message InoreaderSummary {
+  string article_url = 1;
+  string title = 2;
+  optional string author = 3;
+  string content = 4;
+  string content_type = 5;
+  google.protobuf.Timestamp published_at = 6;
+  google.protobuf.Timestamp fetched_at = 7;
+  string inoreader_id = 8;
+}
+
+// FeedScope selects which slice of a user's feeds a cursor walk returns.
+//
+// An enum rather than four procedures because the four queries differ only in
+// their WHERE clause and share the cursor, the limit and the exclusion list;
+// four procedures would have to repeat all three and could drift apart.
+enum FeedScope {
+  FEED_SCOPE_UNSPECIFIED = 0;
+  // Every feed the user subscribes to, with is_read filled in.
+  FEED_SCOPE_ALL = 1;
+  // Only feeds with no read_status row for the user.
+  FEED_SCOPE_UNREAD = 2;
+  // Only feeds the user has marked read.
+  FEED_SCOPE_READ = 3;
+  // Only feeds in the user's favourites.
+  FEED_SCOPE_FAVORITE = 4;
+}
+
+// =============================================================================
+// Feed link messages (catalog §2.F)
+// =============================================================================
+
+message RegisterFeedLinkRequest {
+  string url = 1;
+}
+
+message RegisterFeedLinkResponse {
+  // True when the URL was already subscribed. Registration is idempotent —
+  // the driver has always swallowed SQLSTATE 23505 and answered success — but
+  // swallowing it silently made "you already have this" indistinguishable from
+  // "added", and the OPML import path had to re-query to tell them apart.
+  bool already_existed = 1;
+}
+
+message BulkRegisterFeedLinksRequest {
+  // Already validated and sanitised by the caller: SSRF checks and tracking
+  // parameter stripping are pure functions and stay there (ADR-000954 D4).
+  repeated string urls = 1;
+}
+
+message BulkRegisterFeedLinksResponse {
+  int32 registered = 1;
+  int32 skipped = 2;
+  // The URLs whose insert failed for a reason other than "already exists".
+  // Per-URL rather than a single error because the import is deliberately not
+  // atomic: one malformed outline in a 500-entry OPML file must not discard
+  // the other 499.
+  repeated string failed_urls = 3;
+}
+
+message ListFeedLinksRequest {}
+
+message ListFeedLinksResponse {
+  repeated FeedLink feed_links = 1;
+}
+
+message ListFeedLinksWithHealthRequest {}
+
+message ListFeedLinksWithHealthResponse {
+  repeated FeedLinkWithHealth feed_links = 1;
+}
+
+message DeleteFeedLinkRequest {
+  string id = 1;
+}
+
+message DeleteFeedLinkResponse {}
+
+message ResolveFeedLinkIDByURLRequest {
+  string feed_url = 1;
+}
+
+message ResolveFeedLinkIDByURLResponse {
+  // Absent when the URL is not subscribed. The registration flow reads the
+  // absence as "this is a new subscription" and continues, so an empty string
+  // here would make every feed look already-known.
+  optional string feed_link_id = 1;
+}
+
+message ListFeedLinkDomainsRequest {}
+
+message ListFeedLinkDomainsResponse {
+  repeated FeedLinkDomain domains = 1;
+}
+
+message ListRSSFeedURLsRequest {}
+
+message ListRSSFeedURLsResponse {
+  // Only links that are active or have never been assessed. A link auto
+  // disabled by RecordFeedLinkFailure disappears from this list, which is the
+  // whole mechanism by which the collector stops polling dead feeds.
+  repeated FeedLink feed_links = 1;
+}
+
+message ListFeedLinksForExportRequest {}
+
+message ListFeedLinksForExportResponse {
+  repeated FeedLinkExportEntry entries = 1;
+}
+
+// =============================================================================
+// Feed link availability messages (catalog §2.G)
+// =============================================================================
+
+message RecordFeedLinkFailureRequest {
+  string feed_url = 1;
+  string reason = 2;
+  // Consecutive failures after which the link is disabled in the same
+  // transaction. Non-positive means never disable — the threshold is the
+  // caller's operational policy (how patient the collector is), while
+  // applying it without a gap is the provider's invariant.
+  int32 disable_after_failures = 3;
+}
+
+message RecordFeedLinkFailureResponse {
+  // The row as it stands after the increment and any disable, so the caller
+  // never has to read back what it just wrote.
+  FeedLinkAvailability availability = 1;
+  // True when this call is the one that flipped is_active to false. Distinct
+  // from `!availability.is_active`, which is also true for every later failure
+  // on an already-disabled link — the caller logs the transition, not the
+  // state, and logging the state would repeat the alert on every poll.
+  bool disabled_now = 2;
+}
+
+message ResetFeedLinkFailuresRequest {
+  string feed_url = 1;
+}
+
+message ResetFeedLinkFailuresResponse {}
+
+// =============================================================================
+// Feed messages (catalog §2.H)
+// =============================================================================
+
+message RegisterFeedsRequest {
+  repeated FeedRegistration feeds = 1;
+}
+
+message RegisterFeedsResponse {
+  // One result per request entry, in request order.
+  repeated FeedRegistrationResult results = 1;
+}
+
+message ListFeedsCursorRequest {
+  FeedScope scope = 1;
+  // The user whose read state and subscriptions scope the walk. Required for
+  // every scope including ALL: "all feeds" means all of one user's feeds.
+  string user_id = 2;
+  // Absent for the first page. Feeds are walked by created_at descending.
+  google.protobuf.Timestamp cursor = 3;
+  int32 limit = 4;
+  // Feed links to leave out — the client-side "hide this source" filter.
+  repeated string exclude_feed_link_ids = 5;
+}
+
+message ListFeedsCursorResponse {
+  repeated Feed feeds = 1;
+}
+
+message ListFeedsPageRequest {
+  int32 page = 1;
+  // When true the page excludes feeds the user has read, and user_id is
+  // required. When false the page is the unscoped feed list and user_id is
+  // ignored — the two are different queries behind one legacy REST route.
+  bool unread_only = 2;
+  string user_id = 3;
+}
+
+message ListFeedsPageResponse {
+  repeated Feed feeds = 1;
+}
+
+message ListFeedsLimitRequest {
+  // Zero means the driver's standing 10000-row ceiling, which is what the
+  // unbounded list has always been. It is not "no limit".
+  int32 limit = 1;
+}
+
+message ListFeedsLimitResponse {
+  repeated Feed feeds = 1;
+}
+
+message GetSingleFeedRequest {}
+
+message GetSingleFeedResponse {
+  // Absent when the feeds table is empty.
+  Feed feed = 1;
+}
+
+message ListFeedsByFeedLinkIDRequest {
+  string feed_link_id = 1;
+}
+
+message ListFeedsByFeedLinkIDResponse {
+  repeated Feed feeds = 1;
+}
+
+message GetFeedSummaryRequest {
+  string feed_url = 1;
+  // Absent for the unscoped lookup used by service-to-service callers, which
+  // is a different query and not a default.
+  optional string user_id = 2;
+}
+
+message GetFeedSummaryResponse {
+  // Absent when no summary has been generated for the URL.
+  FeedSummary summary = 1;
+}
+
+message GetArticleSummaryByArticleIDRequest {
+  string article_id = 1;
+  optional string user_id = 2;
+}
+
+message GetArticleSummaryByArticleIDResponse {
+  FeedSummary summary = 1;
+}
+
+message SearchFeedsByTitleRequest {
+  string query = 1;
+  string user_id = 2;
+}
+
+message SearchFeedsByTitleResponse {
+  repeated Feed feeds = 1;
+}
+
+message GetRandomFeedRequest {}
+
+message GetRandomFeedResponse {
+  // Absent when no feed has any tags yet — the Tag Trail entry point reads
+  // that as "nothing to explore" rather than as an error.
+  Feed feed = 1;
+}
+
+message GetFeedURLsByArticleIDsRequest {
+  repeated string article_ids = 1;
+}
+
+message GetFeedURLsByArticleIDsResponse {
+  repeated FeedAndArticle pairs = 1;
+}
+
+message BatchGetFeedTitlesByIDsRequest {
+  repeated string feed_ids = 1;
+}
+
+message BatchGetFeedTitlesByIDsResponse {
+  // Unknown feed ids are absent rather than mapped to "". The Morning Letter
+  // enrichment defaults the byline itself, and an empty-string entry would
+  // claim the feed exists with no title.
+  map<string, string> titles = 1;
+}
+
+message GetInoreaderSummariesByURLsRequest {
+  repeated string urls = 1;
+}
+
+message GetInoreaderSummariesByURLsResponse {
+  repeated InoreaderSummary summaries = 1;
+}
+
+// =============================================================================
 // DataHubService — every capability backed by alt_db
 // =============================================================================
 
@@ -1424,4 +1829,130 @@ service DataHubService {
   // ListBackfillSummaryTitles walks (summary_version, article) pairs oldest
   // first.
   rpc ListBackfillSummaryTitles(ListBackfillSummaryTitlesRequest) returns (ListBackfillSummaryTitlesResponse);
+
+  // ── Feed links (catalog §2.F) ──
+
+  // RegisterFeedLink subscribes to an RSS URL. Idempotent: an already
+  // subscribed URL answers already_existed rather than an error, which is the
+  // behaviour the driver's SQLSTATE 23505 branch has always had.
+  rpc RegisterFeedLink(RegisterFeedLinkRequest) returns (RegisterFeedLinkResponse);
+
+  // BulkRegisterFeedLinks subscribes to many URLs in one call — the OPML
+  // import.
+  //
+  // One procedure rather than a loop over RegisterFeedLink because the loop
+  // was two queries per URL (exists-check, then insert) and becomes two round
+  // trips per URL once a network sits between them: a 500-entry OPML file
+  // would cost a thousand. The batch is deliberately not one transaction —
+  // partial success is the documented outcome, and the per-URL results say
+  // which part.
+  rpc BulkRegisterFeedLinks(BulkRegisterFeedLinksRequest) returns (BulkRegisterFeedLinksResponse);
+
+  // ListFeedLinks returns every subscription URL.
+  rpc ListFeedLinks(ListFeedLinksRequest) returns (ListFeedLinksResponse);
+
+  // ListFeedLinksWithHealth is the same list joined to poll health, for the
+  // admin screen.
+  rpc ListFeedLinksWithHealth(ListFeedLinksWithHealthRequest) returns (ListFeedLinksWithHealthResponse);
+
+  // DeleteFeedLink unsubscribes. The cascade to feeds and articles is the
+  // database's, and it is the reason this is a capability and not a caller's
+  // DELETE: the blast radius belongs to whoever owns the schema.
+  rpc DeleteFeedLink(DeleteFeedLinkRequest) returns (DeleteFeedLinkResponse);
+
+  // ResolveFeedLinkIDByURL maps a subscription URL to its id.
+  rpc ResolveFeedLinkIDByURL(ResolveFeedLinkIDByURLRequest) returns (ResolveFeedLinkIDByURLResponse);
+
+  // ListFeedLinkDomains returns the distinct publisher hosts across the
+  // subscription set and the scraped og:image URLs — the work list the
+  // scraping policy job seeds itself from.
+  rpc ListFeedLinkDomains(ListFeedLinkDomainsRequest) returns (ListFeedLinkDomainsResponse);
+
+  // ListRSSFeedURLs returns the links the collector should poll: active, or
+  // never assessed.
+  rpc ListRSSFeedURLs(ListRSSFeedURLsRequest) returns (ListRSSFeedURLsResponse);
+
+  // ListFeedLinksForExport returns each subscription with its most recent feed
+  // title, for OPML export.
+  //
+  // A procedure of its own rather than a flag on ListFeedLinks: it is a
+  // different query — a LATERAL join picking the newest title per link — and
+  // folding it in would make the plain list pay for that join on every call.
+  // Its previous life was raw SQL issued through AltDBRepository.GetPool()
+  // from a gateway, the last such caller in the module (catalog §4-7); over
+  // an RPC there is no pool to reach for, so the layering violation cannot be
+  // reconstructed.
+  rpc ListFeedLinksForExport(ListFeedLinksForExportRequest) returns (ListFeedLinksForExportResponse);
+
+  // ── Feed link availability (catalog §2.G) ──
+
+  // RecordFeedLinkFailure increments the consecutive failure count and, in the
+  // same transaction, disables the link once it reaches the caller's
+  // threshold.
+  //
+  // This is one procedure where the catalog listed two (IncrementFeedLinkFailures
+  // and DisableFeedLink, §4-4). Splitting them put a read-modify-write in the
+  // caller: increment, look at the returned count, decide, disable. Two
+  // collectors polling the same feed could each read a count below the
+  // threshold and neither disable it, or both cross it and both write. That
+  // race exists today in-process; over an RPC the window widens from a few
+  // microseconds to a full network round trip, so preserving the split would
+  // have made a known defect materially worse in the commit that moved the
+  // process boundary. The threshold stays the caller's argument because how
+  // patient to be is operational policy; applying it without a gap is the
+  // provider's invariant (ADR-000954 D3).
+  rpc RecordFeedLinkFailure(RecordFeedLinkFailureRequest) returns (RecordFeedLinkFailureResponse);
+
+  // ResetFeedLinkFailures clears the failure run after a successful poll and
+  // re-activates the link.
+  rpc ResetFeedLinkFailures(ResetFeedLinkFailuresRequest) returns (ResetFeedLinkFailuresResponse);
+
+  // ── Feeds (catalog §2.H) ──
+
+  // RegisterFeeds upserts a batch of collected RSS items in one transaction.
+  //
+  // The transaction is the capability: a poll that half-registers a feed's
+  // items leaves the next poll unable to tell which half it already has. The
+  // upsert writes no articles row — that separation is ADR-000953's explicit
+  // contract, and it is why this procedure and ArchiveArticle are not merged.
+  rpc RegisterFeeds(RegisterFeedsRequest) returns (RegisterFeedsResponse);
+
+  // ListFeedsCursor pages one user's feeds newest first, in one of four
+  // scopes.
+  rpc ListFeedsCursor(ListFeedsCursorRequest) returns (ListFeedsCursorResponse);
+
+  // ListFeedsPage is the legacy offset pager still behind two REST routes.
+  rpc ListFeedsPage(ListFeedsPageRequest) returns (ListFeedsPageResponse);
+
+  // ListFeedsLimit returns the newest feeds across all users, unscoped.
+  rpc ListFeedsLimit(ListFeedsLimitRequest) returns (ListFeedsLimitResponse);
+
+  // GetSingleFeed returns the most recently created feed.
+  rpc GetSingleFeed(GetSingleFeedRequest) returns (GetSingleFeedResponse);
+
+  // ListFeedsByFeedLinkID returns the feeds one subscription produced — the
+  // read behind page-cache invalidation after a registration.
+  rpc ListFeedsByFeedLinkID(ListFeedsByFeedLinkIDRequest) returns (ListFeedsByFeedLinkIDResponse);
+
+  // GetFeedSummary returns the generated summary for the article at a URL.
+  rpc GetFeedSummary(GetFeedSummaryRequest) returns (GetFeedSummaryResponse);
+
+  // GetArticleSummaryByArticleID is the same summary looked up by article id.
+  rpc GetArticleSummaryByArticleID(GetArticleSummaryByArticleIDRequest) returns (GetArticleSummaryByArticleIDResponse);
+
+  // SearchFeedsByTitle is the SQL title search, scoped to one tenant.
+  rpc SearchFeedsByTitle(SearchFeedsByTitleRequest) returns (SearchFeedsByTitleResponse);
+
+  // GetRandomFeed returns a random feed that has at least one tag — the Tag
+  // Trail entry point.
+  rpc GetRandomFeed(GetRandomFeedRequest) returns (GetRandomFeedResponse);
+
+  // GetFeedURLsByArticleIDs resolves search hits back to their feeds.
+  rpc GetFeedURLsByArticleIDs(GetFeedURLsByArticleIDsRequest) returns (GetFeedURLsByArticleIDsResponse);
+
+  // BatchGetFeedTitlesByIDs attaches feed bylines to Morning Letter cards.
+  rpc BatchGetFeedTitlesByIDs(BatchGetFeedTitlesByIDsRequest) returns (BatchGetFeedTitlesByIDsResponse);
+
+  // GetInoreaderSummariesByURLs returns imported Inoreader bodies for URLs.
+  rpc GetInoreaderSummariesByURLs(GetInoreaderSummariesByURLsRequest) returns (GetInoreaderSummariesByURLsResponse);
 }

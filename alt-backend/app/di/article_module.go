@@ -148,12 +148,13 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	preprocessorClient := preprocessor_client.NewClient(infra.Config.PreProcessor.URL)
 	preprocessorSummarizeGw := preprocessor_summarize_gateway.NewGateway(preprocessorClient)
 	//
-	// The repository these two take spans two capability groups: the article
-	// read and write come from alt-data-hub (batch 2) while the summary read
-	// and write are still direct. summarize_article_repository is the seam,
-	// the same shape article_repository_gateway had while §2.B was mid-move.
+	// Three sources, and the seam narrows by one with each batch: the article
+	// read and write from batch 2 (catalog §2.B / §2.C), the article-summary
+	// read from batch 3 (catalog §2.H W3-H8), and the summary write still
+	// direct — article_summaries is a later batch.
 	summarizeRepo := summarize_article_repository{
 		ArticleStoreGateway: infra.ArticleStoreGateway,
+		FeedGateway:         infra.FeedGateway,
 		AltDBRepository:     altDB,
 	}
 	summarizeArticleUC := summarize_article_usecase.NewUsecase(summarizeRepo, preprocessorSummarizeGw, fetchArticleGw)
@@ -185,17 +186,25 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 
 // summarize_article_repository satisfies the local ArticleRepository
 // interfaces of summarize_article_usecase and fetch_article_summaries_usecase
-// out of two sources while ADR-000954 Wave 3 migrates alt_db group by group.
+// out of two alt-data-hub gateways.
 //
-// The article read and write cross to alt-data-hub (catalog §2.B / §2.C,
-// batch 2); article_summaries has not moved yet, so it is still a direct
-// driver call. Embedding both is what lets the usecases keep the interfaces
-// they declared: Go promotes each method from whichever embedded type has it,
-// and the two sets are disjoint.
+// The article read and write are catalog §2.B / §2.C (batch 2); the
+// article-summary read is §2.H W3-H8 (batch 3). Embedding both is what lets
+// the usecases keep the interfaces they declared: Go promotes each method from
+// whichever embedded type has it, and the two sets are disjoint.
 //
-// This is a seam, not a destination. When the summary capabilities move, both
-// fields become the same gateway and this type goes away.
+// One direct driver call is left: SaveArticleSummary writes article_summaries,
+// which has not moved. The summary *read* did move in batch 3, so the two now
+// come from different places — and the read resolves to the gateway rather
+// than the driver because Go promotes the shallower method, FeedGateway's at
+// depth one against AltDBRepository's at depth two through FeedRepository.
+// That is load-bearing enough to say out loud: reordering these fields does
+// not change it, but flattening the driver embed would.
+//
+// This is a seam, not a destination. When article_summaries moves, the driver
+// field goes and this type keeps only its two gateways.
 type summarize_article_repository struct {
 	*datahub_gateway.ArticleStoreGateway
+	*datahub_gateway.FeedGateway
 	*alt_db.AltDBRepository
 }

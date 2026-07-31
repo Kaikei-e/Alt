@@ -92,16 +92,17 @@ func newRAGModule(infra *InfraModule, feed *FeedModule) *RAGModule {
 	// Morning Letter v2 read usecase + v3 enrichment ports.
 	//
 	// The article batch read is alt-data-hub's since ADR-000954 Wave 3 batch 2
-	// (catalog §2.C W3-C5); the feed-title batch read is still a direct driver
-	// call, so the two enrichment ports come from different places rather than
-	// from the one repository that used to satisfy both by method promotion.
-	// SearchIndexerDriver provides the related-articles fan-out.
+	// (catalog §2.C W3-C5) and the feed-title batch from the feed gateway
+	// (catalog §2.H W3-H12). The two enrichment ports come from different
+	// gateways rather than from the one repository that used to satisfy both
+	// by method promotion — which is the point: each names the capability it
+	// uses. SearchIndexerDriver provides the related-articles fan-out.
 	morningLetterGw := morning_gateway.NewMorningLetterGateway(infra.ArticleBatchGateway)
 	morningLetterUC := morning_usecase.NewMorningLetterUsecaseWithEnrichment(
 		morningLetterGw,
 		userFeedGw,
 		infra.ArticleBatchGateway,
-		infra.AltDBRepository,
+		infra.FeedGateway,
 		infra.SearchIndexerDriver,
 	)
 

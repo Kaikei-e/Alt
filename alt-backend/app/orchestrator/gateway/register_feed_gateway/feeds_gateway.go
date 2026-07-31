@@ -4,23 +4,30 @@ import (
 	"alt/domain"
 	"alt/orchestrator/driver/models"
 	register_feed_port "alt/orchestrator/port/register_feed_port"
-	"alt/shared/driver/alt_db"
 	"alt/utils"
 	"alt/utils/logger"
 	"context"
-	"errors"
 	"strings"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type RegisterFeedsGateway struct {
-	alt_db *alt_db.AltDBRepository
+// FeedWriteStore is the batch upsert alt-data-hub serves (capability catalog
+// §2.H W3-H1). One method, because the batch is one transaction there: a
+// caller that could register half a poll would leave the next poll unable to
+// tell which half it already has.
+type FeedWriteStore interface {
+	RegisterMultipleFeedsWithState(ctx context.Context, feeds []models.Feed) ([]domain.FeedRegistrationResult, error)
 }
 
-func NewRegisterFeedsGateway(pool *pgxpool.Pool) *RegisterFeedsGateway {
-	return &RegisterFeedsGateway{alt_db: alt_db.NewAltDBRepositoryWithPool(pool)}
+type RegisterFeedsGateway struct {
+	store FeedWriteStore
+}
+
+func NewRegisterFeedsGateway(store FeedWriteStore) *RegisterFeedsGateway {
+	if store == nil {
+		panic("register_feed_gateway: FeedWriteStore is required (see .claude/rules/di-wiring.md)")
+	}
+	return &RegisterFeedsGateway{store: store}
 }
 
 func buildFeedModels(ctx context.Context, feeds []*domain.FeedItem) []models.Feed {
@@ -63,12 +70,9 @@ func buildFeedModels(ctx context.Context, feeds []*domain.FeedItem) []models.Fee
 }
 
 func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]register_feed_port.RegisterFeedResult, error) {
-	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
-	}
 	items := buildFeedModels(ctx, feeds)
 
-	results, err := g.alt_db.RegisterMultipleFeedsWithState(ctx, items)
+	results, err := g.store.RegisterMultipleFeedsWithState(ctx, items)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error registering multiple feeds", "error", err)
 		return nil, err

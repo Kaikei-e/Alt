@@ -862,6 +862,24 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub has articles for the feed",
 			"alt-data-hub has historic articles to replay",
 			"alt-data-hub has summary versions to replay",
+
+			// Wave 3 batch 3 (catalog §2.F / §2.G / §2.H).
+			"alt-data-hub accepts feed link registrations",
+			"alt-data-hub accepts bulk feed link registrations",
+			"alt-data-hub has feed links",
+			"alt-data-hub has a feed link that has never been polled",
+			"alt-data-hub has no feed link for the url",
+			"alt-data-hub has unread feeds for the user",
+			"alt-data-hub has favorite feeds past the og image retention window",
+			"alt-data-hub has feeds",
+			"alt-data-hub has no feeds",
+			"alt-data-hub has feeds for the feed link",
+			"alt-data-hub has no summary for the article",
+			"alt-data-hub has a summary for the article url",
+			"alt-data-hub has feeds matching the title query for the user",
+			"alt-data-hub has no tagged feeds",
+			"alt-data-hub has feeds for the articles",
+			"alt-data-hub has imported inoreader articles for the urls",
 		))
 }
 
@@ -880,6 +898,13 @@ func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
 			"alt-data-hub accepts scraping domain writes",
 			"alt-data-hub has scraping domains",
 			"alt-data-hub has a scraping domain",
+
+			// Wave 3 batch 3 (catalog §2.F / §2.G / §2.H).
+			"alt-data-hub has feed links",
+			"alt-data-hub has pollable feed links",
+			"alt-data-hub has a feed link with failures below the threshold",
+			"alt-data-hub has a feed link at the failure threshold",
+			"alt-data-hub accepts feed registrations",
 		))
 }
 
@@ -1171,6 +1196,212 @@ func mountWave3Batch2Procedures(mux *http.ServeMux) {
 			"tenantId":         stubUserID,
 			"title":            "Example",
 			"generatedAt":      "2026-03-04T05:06:07Z",
+		}},
+	}))
+
+	mountWave3Batch3Procedures(mux)
+}
+
+// mountWave3Batch3Procedures adds the feed and feed-link capabilities
+// ADR-000954 Wave 3 batch 3 moved off the direct alt_db path (catalog §2.F /
+// §2.G / §2.H).
+//
+// Three procedures branch on the request rather than answering one canned
+// body, and each branch is a distinction a consumer acts on:
+//
+//   - RecordFeedLinkFailure answers a still-active row for one URL and a
+//     disabled one for another, so the merged capability (catalog §4-4) is
+//     verified in both of its outcomes. A stub that always reported
+//     disabledNow would let a provider that disabled on the first failure
+//     verify green.
+//   - GetSingleFeed and GetRandomFeed answer {} for the empty table, because
+//     the consumers read that absence as "nothing yet" and render it.
+//
+// The summary reads answer {} for the miss for the same reason: an
+// unsummarised article is not a fault.
+func mountWave3Batch3Procedures(mux *http.ServeMux) {
+	const (
+		stubFeedLinkID  = "a1b2c3d4-1111-4111-8111-111111111111"
+		stubFeedRowID   = "b2c3d4e5-2222-4222-8222-222222222222"
+		stubFeedLinkURL = "https://example.com/feed.xml"
+		stubDeadFeedURL = "https://dead.example.com/feed.xml"
+		// Repeated from the batch 2 mount rather than hoisted to package
+		// scope: these stubs are fixtures for one set of interactions, and a
+		// shared constant would make a later edit for one batch silently
+		// change the other batch's expectations.
+		stubArticleID = "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
+		stubURL       = "https://example.com/post"
+		stubTimestamp = "2026-07-31T00:00:00Z"
+	)
+
+	feedLink := map[string]interface{}{"id": stubFeedLinkID, "url": stubFeedLinkURL}
+	feedRow := map[string]interface{}{
+		"id":          stubFeedRowID,
+		"title":       "Example Post",
+		"description": "body",
+		"websiteUrl":  stubURL,
+		"pubDate":     stubTimestamp,
+		"createdAt":   "2026-07-31T09:00:00Z",
+		"updatedAt":   "2026-07-31T09:00:00Z",
+		"articleId":   stubArticleID,
+		"ogImageUrl":  "https://cdn.example.com/og.png",
+	}
+	// The retired-og-image row omits ogImageUrl and articleId entirely rather
+	// than sending empty strings — the absence is what the placeholder
+	// renderer keys on.
+	agedFeedRow := map[string]interface{}{
+		"id":         stubFeedRowID,
+		"title":      "Older Post",
+		"websiteUrl": "https://example.com/older",
+		"createdAt":  "2026-06-01T09:00:00Z",
+	}
+
+	// ---- §2.F Feed links ---------------------------------------------------
+	dataHubProcedure(mux, "RegisterFeedLink", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "BulkRegisterFeedLinks", jsonPost(map[string]interface{}{
+		"registered": 1,
+		"skipped":    1,
+	}))
+	dataHubProcedure(mux, "ListFeedLinks", jsonPost(map[string]interface{}{
+		"feedLinks": []map[string]interface{}{feedLink},
+	}))
+	dataHubProcedure(mux, "ListFeedLinksWithHealth", jsonPost(map[string]interface{}{
+		// No availability key: this is the never-polled link, which the admin
+		// screen must classify as unknown rather than healthy.
+		"feedLinks": []map[string]interface{}{{"feedLink": feedLink}},
+	}))
+	dataHubProcedure(mux, "DeleteFeedLink", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "ResolveFeedLinkIDByURL", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			FeedURL string `json:"feedUrl"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		if req.FeedURL != stubFeedLinkURL {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"feedLinkId": stubFeedLinkID})
+	})
+	dataHubProcedure(mux, "ListFeedLinkDomains", jsonPost(map[string]interface{}{
+		"domains": []map[string]interface{}{{"domain": "example.com", "scheme": "https"}},
+	}))
+	dataHubProcedure(mux, "ListRSSFeedURLs", jsonPost(map[string]interface{}{
+		"feedLinks": []map[string]interface{}{feedLink},
+	}))
+	dataHubProcedure(mux, "ListFeedLinksForExport", jsonPost(map[string]interface{}{
+		"entries": []map[string]interface{}{{"url": stubFeedLinkURL, "title": "Example Blog"}},
+	}))
+
+	// ---- §2.G Feed link availability ---------------------------------------
+	dataHubProcedure(mux, "RecordFeedLinkFailure", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			FeedURL string `json:"feedUrl"`
+			Reason  string `json:"reason"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		if req.FeedURL == stubDeadFeedURL {
+			// isActive is omitted: false is an absent key under protojson, and
+			// the consumer must read the absence as "disabled".
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"availability": map[string]interface{}{
+					"feedLinkId":          stubFeedLinkID,
+					"consecutiveFailures": 5,
+					"lastFailureReason":   req.Reason,
+				},
+				"disabledNow": true,
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"availability": map[string]interface{}{
+				"feedLinkId":          stubFeedLinkID,
+				"isActive":            true,
+				"consecutiveFailures": 3,
+				"lastFailureAt":       "2026-07-31T10:00:00Z",
+				"lastFailureReason":   req.Reason,
+			},
+		})
+	})
+	dataHubProcedure(mux, "ResetFeedLinkFailures", jsonPost(map[string]interface{}{}))
+
+	// ---- §2.H Feeds --------------------------------------------------------
+	dataHubProcedure(mux, "RegisterFeeds", jsonPost(map[string]interface{}{
+		"results": []map[string]interface{}{{"feedId": stubFeedRowID, "created": true}},
+	}))
+	dataHubProcedure(mux, "ListFeedsCursor", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Scope string `json:"scope"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		row := feedRow
+		if req.Scope == "FEED_SCOPE_FAVORITE" {
+			row = agedFeedRow
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"feeds": []map[string]interface{}{row},
+		})
+	})
+	dataHubProcedure(mux, "ListFeedsPage", jsonPost(map[string]interface{}{
+		"feeds": []map[string]interface{}{feedRow},
+	}))
+	dataHubProcedure(mux, "ListFeedsLimit", jsonPost(map[string]interface{}{
+		"feeds": []map[string]interface{}{feedRow},
+	}))
+	dataHubProcedure(mux, "GetSingleFeed", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "ListFeedsByFeedLinkID", jsonPost(map[string]interface{}{
+		"feeds": []map[string]interface{}{feedRow},
+	}))
+	dataHubProcedure(mux, "GetFeedSummary", jsonPost(map[string]interface{}{
+		"summary": map[string]interface{}{"summary": "要約テキスト"},
+	}))
+	dataHubProcedure(mux, "GetArticleSummaryByArticleID", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "SearchFeedsByTitle", jsonPost(map[string]interface{}{
+		"feeds": []map[string]interface{}{{
+			"title":      "Example Post",
+			"websiteUrl": stubURL,
+			"pubDate":    stubTimestamp,
+		}},
+	}))
+	dataHubProcedure(mux, "GetRandomFeed", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "GetFeedURLsByArticleIDs", jsonPost(map[string]interface{}{
+		"pairs": []map[string]interface{}{{
+			"feedId":       stubFeedRowID,
+			"articleId":    stubArticleID,
+			"url":          stubURL,
+			"feedTitle":    "Example Blog",
+			"articleTitle": "Example Post",
+		}},
+	}))
+	dataHubProcedure(mux, "BatchGetFeedTitlesByIDs", jsonPost(map[string]interface{}{
+		"titles": map[string]interface{}{stubFeedRowID: "Example Blog"},
+	}))
+	dataHubProcedure(mux, "GetInoreaderSummariesByURLs", jsonPost(map[string]interface{}{
+		"summaries": []map[string]interface{}{{
+			"articleUrl":  stubURL,
+			"title":       "Example Post",
+			"content":     "<p>body</p>",
+			"contentType": "html",
+			"publishedAt": stubTimestamp,
+			"fetchedAt":   "2026-07-31T01:00:00Z",
+			"inoreaderId": "tag:google.com,2005:reader/item/0001",
 		}},
 	}))
 }

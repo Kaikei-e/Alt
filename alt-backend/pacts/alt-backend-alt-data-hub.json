@@ -195,6 +195,57 @@
       }
     },
     {
+      "description": "a BatchGetFeedTitlesByIDs request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feeds"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedIds": [
+            "b2c3d4e5-2222-4222-8222-222222222222"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/BatchGetFeedTitlesByIDs"
+      },
+      "response": {
+        "body": {
+          "titles": {
+            "b2c3d4e5-2222-4222-8222-222222222222": "Example Blog"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.titles": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.titles['b2c3d4e5-2222-4222-8222-222222222222']": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a BatchGetOgImageURLs request from alt-backend",
       "providerStates": [
         {
@@ -233,6 +284,57 @@
               ]
             },
             "$.ogImageUrls['6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01']": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a BulkRegisterFeedLinks request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts bulk feed link registrations"
+        }
+      ],
+      "request": {
+        "body": {
+          "urls": [
+            "https://a.example.com/feed.xml",
+            "https://b.example.com/feed.xml"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/BulkRegisterFeedLinks"
+      },
+      "response": {
+        "body": {
+          "registered": 1,
+          "skipped": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.registered": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.skipped": {
               "combine": "AND",
               "matchers": [
                 {
@@ -365,6 +467,31 @@
               ]
             }
           }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a DeleteFeedLink request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feed links"
+        }
+      ],
+      "request": {
+        "body": {
+          "id": "a1b2c3d4-1111-4111-8111-111111111111"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/DeleteFeedLink"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
         },
         "status": 200
       }
@@ -689,6 +816,174 @@
       }
     },
     {
+      "description": "a GetArticleSummaryByArticleID request from alt-backend for an unsummarised article",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no summary for the article"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetArticleSummaryByArticleID"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetFeedSummary request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a summary for the article url"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedUrl": "https://example.com/post",
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetFeedSummary"
+      },
+      "response": {
+        "body": {
+          "summary": {
+            "summary": "要約テキスト"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetFeedURLsByArticleIDs request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feeds for the articles"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleIds": [
+            "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetFeedURLsByArticleIDs"
+      },
+      "response": {
+        "body": {
+          "pairs": [
+            {
+              "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+              "articleTitle": "Example Post",
+              "feedId": "b2c3d4e5-2222-4222-8222-222222222222",
+              "feedTitle": "Example Blog",
+              "url": "https://example.com/post"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.pairs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.pairs[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.pairs[*].articleTitle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pairs[*].feedId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.pairs[*].feedTitle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pairs[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetImageProxyCache request from alt-backend",
       "providerStates": [
         {
@@ -826,6 +1121,114 @@
       }
     },
     {
+      "description": "a GetInoreaderSummariesByURLs request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has imported inoreader articles for the urls"
+        }
+      ],
+      "request": {
+        "body": {
+          "urls": [
+            "https://example.com/post"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetInoreaderSummariesByURLs"
+      },
+      "response": {
+        "body": {
+          "summaries": [
+            {
+              "articleUrl": "https://example.com/post",
+              "content": "<p>body</p>",
+              "contentType": "html",
+              "fetchedAt": "2026-07-31T01:00:00Z",
+              "inoreaderId": "tag:google.com,2005:reader/item/0001",
+              "publishedAt": "2026-07-31T00:00:00Z",
+              "title": "Example Post"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.summaries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.summaries[*].articleUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summaries[*].content": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summaries[*].contentType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summaries[*].fetchedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summaries[*].inoreaderId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summaries[*].publishedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summaries[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetLatestArticleByFeedID request from alt-backend",
       "providerStates": [
         {
@@ -898,6 +1301,29 @@
               ]
             }
           }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetRandomFeed request from alt-backend with nothing tagged",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no tagged feeds"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetRandomFeed"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
         },
         "status": 200
       }
@@ -1098,6 +1524,29 @@
               ]
             }
           }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetSingleFeed request from alt-backend against an empty table",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no feeds"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetSingleFeed"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
         },
         "status": 200
       }
@@ -1481,6 +1930,565 @@
       }
     },
     {
+      "description": "a ListFeedLinks request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feed links"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListFeedLinks"
+      },
+      "response": {
+        "body": {
+          "feedLinks": [
+            {
+              "id": "a1b2c3d4-1111-4111-8111-111111111111",
+              "url": "https://example.com/feed.xml"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feedLinks": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feedLinks[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feedLinks[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListFeedLinksForExport request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feed links"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListFeedLinksForExport"
+      },
+      "response": {
+        "body": {
+          "entries": [
+            {
+              "title": "Example Blog",
+              "url": "https://example.com/feed.xml"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.entries[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListFeedLinksWithHealth request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a feed link that has never been polled"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListFeedLinksWithHealth"
+      },
+      "response": {
+        "body": {
+          "feedLinks": [
+            {
+              "feedLink": {
+                "id": "a1b2c3d4-1111-4111-8111-111111111111",
+                "url": "https://example.com/feed.xml"
+              }
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feedLinks": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feedLinks[*].feedLink": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feedLinks[*].feedLink.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feedLinks[*].feedLink.url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListFeedsByFeedLinkID request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feeds for the feed link"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedLinkId": "a1b2c3d4-1111-4111-8111-111111111111"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListFeedsByFeedLinkID"
+      },
+      "response": {
+        "body": {
+          "feeds": [
+            {
+              "createdAt": "2026-07-31T09:00:00Z",
+              "id": "b2c3d4e5-2222-4222-8222-222222222222",
+              "title": "Example Post",
+              "websiteUrl": "https://example.com/post"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feeds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feeds[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].websiteUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListFeedsCursor request from alt-backend for the favorite scope",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has favorite feeds past the og image retention window"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 20,
+          "scope": "FEED_SCOPE_FAVORITE",
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListFeedsCursor"
+      },
+      "response": {
+        "body": {
+          "feeds": [
+            {
+              "createdAt": "2026-06-01T09:00:00Z",
+              "id": "b2c3d4e5-2222-4222-8222-222222222222",
+              "title": "Older Post",
+              "websiteUrl": "https://example.com/older"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feeds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feeds[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].websiteUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListFeedsCursor request from alt-backend for the unread scope",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has unread feeds for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 20,
+          "scope": "FEED_SCOPE_UNREAD",
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListFeedsCursor"
+      },
+      "response": {
+        "body": {
+          "feeds": [
+            {
+              "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+              "createdAt": "2026-07-31T09:00:00Z",
+              "description": "body",
+              "id": "b2c3d4e5-2222-4222-8222-222222222222",
+              "ogImageUrl": "https://cdn.example.com/og.png",
+              "pubDate": "2026-07-31T00:00:00Z",
+              "title": "Example Post",
+              "updatedAt": "2026-07-31T09:00:00Z",
+              "websiteUrl": "https://example.com/post"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feeds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feeds[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].description": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].ogImageUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].pubDate": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].websiteUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListFeedsLimit request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feeds"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 10
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListFeedsLimit"
+      },
+      "response": {
+        "body": {
+          "feeds": [
+            {
+              "createdAt": "2026-07-31T09:00:00Z",
+              "id": "b2c3d4e5-2222-4222-8222-222222222222",
+              "title": "Example Post",
+              "websiteUrl": "https://example.com/post"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feeds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feeds[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].websiteUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a ListSubscribedUserIDsByFeedLinkID request from alt-backend",
       "providerStates": [
         {
@@ -1655,6 +2663,56 @@
       }
     },
     {
+      "description": "a RegisterFeedLink request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts feed link registrations"
+        }
+      ],
+      "request": {
+        "body": {
+          "url": "https://example.com/feed.xml"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/RegisterFeedLink"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ResolveFeedLinkIDByURL request from alt-backend for an unsubscribed url",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no feed link for the url"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedUrl": "https://unknown.example.com/feed.xml"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ResolveFeedLinkIDByURL"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a SaveArticleHead request from alt-backend",
       "providerStates": [
         {
@@ -1703,6 +2761,77 @@
         "body": {},
         "headers": {
           "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a SearchFeedsByTitle request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feeds matching the title query for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "query": "example",
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/SearchFeedsByTitle"
+      },
+      "response": {
+        "body": {
+          "feeds": [
+            {
+              "pubDate": "2026-07-31T00:00:00Z",
+              "title": "Example Post",
+              "websiteUrl": "https://example.com/post"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feeds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feeds[*].pubDate": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].websiteUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
         },
         "status": 200
       }

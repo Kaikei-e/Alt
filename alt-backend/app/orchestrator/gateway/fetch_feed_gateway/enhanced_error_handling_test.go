@@ -1,7 +1,10 @@
 package fetch_feed_gateway
 
 import (
-	"alt/shared/driver/alt_db"
+	"alt/domain"
+
+	stderrors "errors"
+
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
@@ -12,7 +15,6 @@ import (
 	stdErrors "errors"
 
 	"github.com/google/uuid"
-	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestSingleFeedGateway_EnhancedErrorHandling(t *testing.T) {
@@ -30,7 +32,7 @@ func TestSingleFeedGateway_EnhancedErrorHandling(t *testing.T) {
 			setup: func() *SingleFeedGateway {
 				// Create gateway with nil database to simulate unavailability
 				return &SingleFeedGateway{
-					alt_db:      nil,
+					store:       &pollableFeedLinkStoreStub{err: stderrors.New("data plane unavailable")},
 					rateLimiter: nil,
 				}
 			},
@@ -52,8 +54,13 @@ func TestSingleFeedGateway_EnhancedErrorHandling(t *testing.T) {
 					if appContextErr.Component != "SingleFeedGateway" {
 						t.Errorf("Expected component to be 'SingleFeedGateway', got %s", appContextErr.Component)
 					}
-					if appContextErr.Operation != "FetchSingleFeed" {
-						t.Errorf("Expected operation to be 'FetchSingleFeed', got %s", appContextErr.Operation)
+					// The operation names the call that failed, which since
+					// ADR-000954 Wave 3 batch 3 is the data plane read rather
+					// than the enclosing gateway method. Asserting the
+					// enclosing name would have hidden which of the two steps
+					// broke.
+					if appContextErr.Operation != "FetchRSSFeedURLs" {
+						t.Errorf("Expected operation to be 'FetchRSSFeedURLs', got %s", appContextErr.Operation)
 					}
 				}
 
@@ -95,7 +102,7 @@ func TestSingleFeedGateway_ErrorContextEnrichment(t *testing.T) {
 
 	// Test that errors are properly enriched with context as they bubble up through layers
 	gateway := &SingleFeedGateway{
-		alt_db:      nil, // Simulate database unavailability
+		store:       &pollableFeedLinkStoreStub{err: stderrors.New("data plane unavailable")}, // Simulate database unavailability
 		rateLimiter: nil,
 	}
 
@@ -127,16 +134,6 @@ func TestSingleFeedGateway_RateLimitErrorHandling(t *testing.T) {
 	// Initialize logger for testing to prevent nil pointer dereference
 	logger.InitLogger()
 
-	mockPool, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("failed to create pgxmock pool: %v", err)
-	}
-	defer mockPool.Close()
-
-	mockPool.ExpectQuery("SELECT fl.id, fl.url FROM feed_links fl").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "url"}).
-			AddRow(uuid.New(), "https://example.com/feed.xml"))
-
 	// A real HostRateLimiter, pre-exhausted for this host so the call made
 	// inside FetchSingleFeed is guaranteed to need to wait:
 	//   1. warm-up call consumes the limiter's initial burst token.
@@ -146,11 +143,10 @@ func TestSingleFeedGateway_RateLimitErrorHandling(t *testing.T) {
 	// The gateway's own call is then given a context with only a short
 	// deadline left, far shorter than the 10s backoff, so rate.Limiter's
 	// reservation check ("would exceed context deadline") fails immediately
-	// and deterministically - it never actually sleeps. Crucially the DB
-	// fetch step (which runs first, on the same context) only needs
-	// microseconds against pgxmock, leaving an enormous margin before the
-	// deadline - unlike a pre-cancelled context, which would race the DB
-	// step too.
+	// and deterministically - it never actually sleeps. Crucially the feed
+	// link fetch (which runs first, on the same context) is a stub and returns
+	// instantly, leaving an enormous margin before the deadline - unlike a
+	// pre-cancelled context, which would race that step too.
 	const feedURL = "https://example.com/feed.xml"
 	const feedHost = "example.com"
 	limiter := rate_limiter.NewHostRateLimiter(time.Hour)
@@ -166,11 +162,11 @@ func TestSingleFeedGateway_RateLimitErrorHandling(t *testing.T) {
 	defer cancel()
 
 	gateway := &SingleFeedGateway{
-		alt_db:      alt_db.NewAltDBRepository(mockPool),
+		store:       &pollableFeedLinkStoreStub{links: []domain.FeedLink{{ID: uuid.New(), URL: "https://example.com/feed.xml"}}},
 		rateLimiter: limiter,
 	}
 
-	_, err = gateway.FetchSingleFeed(ctx)
+	_, err := gateway.FetchSingleFeed(ctx)
 	if err == nil {
 		t.Fatal("Expected rate limit error but got none")
 	}
@@ -202,34 +198,22 @@ func TestSingleFeedGateway_RateLimitErrorHandling(t *testing.T) {
 		t.Errorf("Expected HTTP status 429, got %d", appContextErr.HTTPStatusCode())
 	}
 
-	if err := mockPool.ExpectationsWereMet(); err != nil {
-		t.Errorf("unmet pgxmock expectations: %v", err)
-	}
 }
 
 func TestSingleFeedGateway_ExternalAPIErrorHandling(t *testing.T) {
 	// Initialize logger for testing to prevent nil pointer dereference
 	logger.InitLogger()
 
-	mockPool, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("failed to create pgxmock pool: %v", err)
-	}
-	defer mockPool.Close()
-
 	// A URL that resolves but has nothing listening on it: gofeed's parse
 	// will fail with a network/connection error, exercising the same
 	// external-service error path a genuinely unreachable feed host would.
-	mockPool.ExpectQuery("SELECT fl.id, fl.url FROM feed_links fl").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "url"}).
-			AddRow(uuid.New(), "http://127.0.0.1:1/feed.xml"))
 
 	gateway := &SingleFeedGateway{
-		alt_db:      alt_db.NewAltDBRepository(mockPool),
+		store:       &pollableFeedLinkStoreStub{links: []domain.FeedLink{{ID: uuid.New(), URL: "http://127.0.0.1:1/feed.xml"}}},
 		rateLimiter: nil,
 	}
 
-	_, err = gateway.FetchSingleFeed(context.Background())
+	_, err := gateway.FetchSingleFeed(context.Background())
 	if err == nil {
 		t.Fatal("Expected external API error but got none")
 	}
@@ -261,9 +245,6 @@ func TestSingleFeedGateway_ExternalAPIErrorHandling(t *testing.T) {
 		t.Errorf("Expected HTTP status 502, got %d", appContextErr.HTTPStatusCode())
 	}
 
-	if err := mockPool.ExpectationsWereMet(); err != nil {
-		t.Errorf("unmet pgxmock expectations: %v", err)
-	}
 }
 
 func TestErrorContextPreservation(t *testing.T) {

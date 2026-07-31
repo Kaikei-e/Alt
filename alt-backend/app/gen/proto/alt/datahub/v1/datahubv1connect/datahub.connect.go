@@ -246,6 +246,78 @@ const (
 	// DataHubServiceListBackfillSummaryTitlesProcedure is the fully-qualified name of the
 	// DataHubService's ListBackfillSummaryTitles RPC.
 	DataHubServiceListBackfillSummaryTitlesProcedure = "/alt.datahub.v1.DataHubService/ListBackfillSummaryTitles"
+	// DataHubServiceRegisterFeedLinkProcedure is the fully-qualified name of the DataHubService's
+	// RegisterFeedLink RPC.
+	DataHubServiceRegisterFeedLinkProcedure = "/alt.datahub.v1.DataHubService/RegisterFeedLink"
+	// DataHubServiceBulkRegisterFeedLinksProcedure is the fully-qualified name of the DataHubService's
+	// BulkRegisterFeedLinks RPC.
+	DataHubServiceBulkRegisterFeedLinksProcedure = "/alt.datahub.v1.DataHubService/BulkRegisterFeedLinks"
+	// DataHubServiceListFeedLinksProcedure is the fully-qualified name of the DataHubService's
+	// ListFeedLinks RPC.
+	DataHubServiceListFeedLinksProcedure = "/alt.datahub.v1.DataHubService/ListFeedLinks"
+	// DataHubServiceListFeedLinksWithHealthProcedure is the fully-qualified name of the
+	// DataHubService's ListFeedLinksWithHealth RPC.
+	DataHubServiceListFeedLinksWithHealthProcedure = "/alt.datahub.v1.DataHubService/ListFeedLinksWithHealth"
+	// DataHubServiceDeleteFeedLinkProcedure is the fully-qualified name of the DataHubService's
+	// DeleteFeedLink RPC.
+	DataHubServiceDeleteFeedLinkProcedure = "/alt.datahub.v1.DataHubService/DeleteFeedLink"
+	// DataHubServiceResolveFeedLinkIDByURLProcedure is the fully-qualified name of the DataHubService's
+	// ResolveFeedLinkIDByURL RPC.
+	DataHubServiceResolveFeedLinkIDByURLProcedure = "/alt.datahub.v1.DataHubService/ResolveFeedLinkIDByURL"
+	// DataHubServiceListFeedLinkDomainsProcedure is the fully-qualified name of the DataHubService's
+	// ListFeedLinkDomains RPC.
+	DataHubServiceListFeedLinkDomainsProcedure = "/alt.datahub.v1.DataHubService/ListFeedLinkDomains"
+	// DataHubServiceListRSSFeedURLsProcedure is the fully-qualified name of the DataHubService's
+	// ListRSSFeedURLs RPC.
+	DataHubServiceListRSSFeedURLsProcedure = "/alt.datahub.v1.DataHubService/ListRSSFeedURLs"
+	// DataHubServiceListFeedLinksForExportProcedure is the fully-qualified name of the DataHubService's
+	// ListFeedLinksForExport RPC.
+	DataHubServiceListFeedLinksForExportProcedure = "/alt.datahub.v1.DataHubService/ListFeedLinksForExport"
+	// DataHubServiceRecordFeedLinkFailureProcedure is the fully-qualified name of the DataHubService's
+	// RecordFeedLinkFailure RPC.
+	DataHubServiceRecordFeedLinkFailureProcedure = "/alt.datahub.v1.DataHubService/RecordFeedLinkFailure"
+	// DataHubServiceResetFeedLinkFailuresProcedure is the fully-qualified name of the DataHubService's
+	// ResetFeedLinkFailures RPC.
+	DataHubServiceResetFeedLinkFailuresProcedure = "/alt.datahub.v1.DataHubService/ResetFeedLinkFailures"
+	// DataHubServiceRegisterFeedsProcedure is the fully-qualified name of the DataHubService's
+	// RegisterFeeds RPC.
+	DataHubServiceRegisterFeedsProcedure = "/alt.datahub.v1.DataHubService/RegisterFeeds"
+	// DataHubServiceListFeedsCursorProcedure is the fully-qualified name of the DataHubService's
+	// ListFeedsCursor RPC.
+	DataHubServiceListFeedsCursorProcedure = "/alt.datahub.v1.DataHubService/ListFeedsCursor"
+	// DataHubServiceListFeedsPageProcedure is the fully-qualified name of the DataHubService's
+	// ListFeedsPage RPC.
+	DataHubServiceListFeedsPageProcedure = "/alt.datahub.v1.DataHubService/ListFeedsPage"
+	// DataHubServiceListFeedsLimitProcedure is the fully-qualified name of the DataHubService's
+	// ListFeedsLimit RPC.
+	DataHubServiceListFeedsLimitProcedure = "/alt.datahub.v1.DataHubService/ListFeedsLimit"
+	// DataHubServiceGetSingleFeedProcedure is the fully-qualified name of the DataHubService's
+	// GetSingleFeed RPC.
+	DataHubServiceGetSingleFeedProcedure = "/alt.datahub.v1.DataHubService/GetSingleFeed"
+	// DataHubServiceListFeedsByFeedLinkIDProcedure is the fully-qualified name of the DataHubService's
+	// ListFeedsByFeedLinkID RPC.
+	DataHubServiceListFeedsByFeedLinkIDProcedure = "/alt.datahub.v1.DataHubService/ListFeedsByFeedLinkID"
+	// DataHubServiceGetFeedSummaryProcedure is the fully-qualified name of the DataHubService's
+	// GetFeedSummary RPC.
+	DataHubServiceGetFeedSummaryProcedure = "/alt.datahub.v1.DataHubService/GetFeedSummary"
+	// DataHubServiceGetArticleSummaryByArticleIDProcedure is the fully-qualified name of the
+	// DataHubService's GetArticleSummaryByArticleID RPC.
+	DataHubServiceGetArticleSummaryByArticleIDProcedure = "/alt.datahub.v1.DataHubService/GetArticleSummaryByArticleID"
+	// DataHubServiceSearchFeedsByTitleProcedure is the fully-qualified name of the DataHubService's
+	// SearchFeedsByTitle RPC.
+	DataHubServiceSearchFeedsByTitleProcedure = "/alt.datahub.v1.DataHubService/SearchFeedsByTitle"
+	// DataHubServiceGetRandomFeedProcedure is the fully-qualified name of the DataHubService's
+	// GetRandomFeed RPC.
+	DataHubServiceGetRandomFeedProcedure = "/alt.datahub.v1.DataHubService/GetRandomFeed"
+	// DataHubServiceGetFeedURLsByArticleIDsProcedure is the fully-qualified name of the
+	// DataHubService's GetFeedURLsByArticleIDs RPC.
+	DataHubServiceGetFeedURLsByArticleIDsProcedure = "/alt.datahub.v1.DataHubService/GetFeedURLsByArticleIDs"
+	// DataHubServiceBatchGetFeedTitlesByIDsProcedure is the fully-qualified name of the
+	// DataHubService's BatchGetFeedTitlesByIDs RPC.
+	DataHubServiceBatchGetFeedTitlesByIDsProcedure = "/alt.datahub.v1.DataHubService/BatchGetFeedTitlesByIDs"
+	// DataHubServiceGetInoreaderSummariesByURLsProcedure is the fully-qualified name of the
+	// DataHubService's GetInoreaderSummariesByURLs RPC.
+	DataHubServiceGetInoreaderSummariesByURLsProcedure = "/alt.datahub.v1.DataHubService/GetInoreaderSummariesByURLs"
 )
 
 // DataHubServiceClient is a client for the alt.datahub.v1.DataHubService service.
@@ -462,6 +534,102 @@ type DataHubServiceClient interface {
 	// ListBackfillSummaryTitles walks (summary_version, article) pairs oldest
 	// first.
 	ListBackfillSummaryTitles(context.Context, *connect.Request[v1.ListBackfillSummaryTitlesRequest]) (*connect.Response[v1.ListBackfillSummaryTitlesResponse], error)
+	// RegisterFeedLink subscribes to an RSS URL. Idempotent: an already
+	// subscribed URL answers already_existed rather than an error, which is the
+	// behaviour the driver's SQLSTATE 23505 branch has always had.
+	RegisterFeedLink(context.Context, *connect.Request[v1.RegisterFeedLinkRequest]) (*connect.Response[v1.RegisterFeedLinkResponse], error)
+	// BulkRegisterFeedLinks subscribes to many URLs in one call — the OPML
+	// import.
+	//
+	// One procedure rather than a loop over RegisterFeedLink because the loop
+	// was two queries per URL (exists-check, then insert) and becomes two round
+	// trips per URL once a network sits between them: a 500-entry OPML file
+	// would cost a thousand. The batch is deliberately not one transaction —
+	// partial success is the documented outcome, and the per-URL results say
+	// which part.
+	BulkRegisterFeedLinks(context.Context, *connect.Request[v1.BulkRegisterFeedLinksRequest]) (*connect.Response[v1.BulkRegisterFeedLinksResponse], error)
+	// ListFeedLinks returns every subscription URL.
+	ListFeedLinks(context.Context, *connect.Request[v1.ListFeedLinksRequest]) (*connect.Response[v1.ListFeedLinksResponse], error)
+	// ListFeedLinksWithHealth is the same list joined to poll health, for the
+	// admin screen.
+	ListFeedLinksWithHealth(context.Context, *connect.Request[v1.ListFeedLinksWithHealthRequest]) (*connect.Response[v1.ListFeedLinksWithHealthResponse], error)
+	// DeleteFeedLink unsubscribes. The cascade to feeds and articles is the
+	// database's, and it is the reason this is a capability and not a caller's
+	// DELETE: the blast radius belongs to whoever owns the schema.
+	DeleteFeedLink(context.Context, *connect.Request[v1.DeleteFeedLinkRequest]) (*connect.Response[v1.DeleteFeedLinkResponse], error)
+	// ResolveFeedLinkIDByURL maps a subscription URL to its id.
+	ResolveFeedLinkIDByURL(context.Context, *connect.Request[v1.ResolveFeedLinkIDByURLRequest]) (*connect.Response[v1.ResolveFeedLinkIDByURLResponse], error)
+	// ListFeedLinkDomains returns the distinct publisher hosts across the
+	// subscription set and the scraped og:image URLs — the work list the
+	// scraping policy job seeds itself from.
+	ListFeedLinkDomains(context.Context, *connect.Request[v1.ListFeedLinkDomainsRequest]) (*connect.Response[v1.ListFeedLinkDomainsResponse], error)
+	// ListRSSFeedURLs returns the links the collector should poll: active, or
+	// never assessed.
+	ListRSSFeedURLs(context.Context, *connect.Request[v1.ListRSSFeedURLsRequest]) (*connect.Response[v1.ListRSSFeedURLsResponse], error)
+	// ListFeedLinksForExport returns each subscription with its most recent feed
+	// title, for OPML export.
+	//
+	// A procedure of its own rather than a flag on ListFeedLinks: it is a
+	// different query — a LATERAL join picking the newest title per link — and
+	// folding it in would make the plain list pay for that join on every call.
+	// Its previous life was raw SQL issued through AltDBRepository.GetPool()
+	// from a gateway, the last such caller in the module (catalog §4-7); over
+	// an RPC there is no pool to reach for, so the layering violation cannot be
+	// reconstructed.
+	ListFeedLinksForExport(context.Context, *connect.Request[v1.ListFeedLinksForExportRequest]) (*connect.Response[v1.ListFeedLinksForExportResponse], error)
+	// RecordFeedLinkFailure increments the consecutive failure count and, in the
+	// same transaction, disables the link once it reaches the caller's
+	// threshold.
+	//
+	// This is one procedure where the catalog listed two (IncrementFeedLinkFailures
+	// and DisableFeedLink, §4-4). Splitting them put a read-modify-write in the
+	// caller: increment, look at the returned count, decide, disable. Two
+	// collectors polling the same feed could each read a count below the
+	// threshold and neither disable it, or both cross it and both write. That
+	// race exists today in-process; over an RPC the window widens from a few
+	// microseconds to a full network round trip, so preserving the split would
+	// have made a known defect materially worse in the commit that moved the
+	// process boundary. The threshold stays the caller's argument because how
+	// patient to be is operational policy; applying it without a gap is the
+	// provider's invariant (ADR-000954 D3).
+	RecordFeedLinkFailure(context.Context, *connect.Request[v1.RecordFeedLinkFailureRequest]) (*connect.Response[v1.RecordFeedLinkFailureResponse], error)
+	// ResetFeedLinkFailures clears the failure run after a successful poll and
+	// re-activates the link.
+	ResetFeedLinkFailures(context.Context, *connect.Request[v1.ResetFeedLinkFailuresRequest]) (*connect.Response[v1.ResetFeedLinkFailuresResponse], error)
+	// RegisterFeeds upserts a batch of collected RSS items in one transaction.
+	//
+	// The transaction is the capability: a poll that half-registers a feed's
+	// items leaves the next poll unable to tell which half it already has. The
+	// upsert writes no articles row — that separation is ADR-000953's explicit
+	// contract, and it is why this procedure and ArchiveArticle are not merged.
+	RegisterFeeds(context.Context, *connect.Request[v1.RegisterFeedsRequest]) (*connect.Response[v1.RegisterFeedsResponse], error)
+	// ListFeedsCursor pages one user's feeds newest first, in one of four
+	// scopes.
+	ListFeedsCursor(context.Context, *connect.Request[v1.ListFeedsCursorRequest]) (*connect.Response[v1.ListFeedsCursorResponse], error)
+	// ListFeedsPage is the legacy offset pager still behind two REST routes.
+	ListFeedsPage(context.Context, *connect.Request[v1.ListFeedsPageRequest]) (*connect.Response[v1.ListFeedsPageResponse], error)
+	// ListFeedsLimit returns the newest feeds across all users, unscoped.
+	ListFeedsLimit(context.Context, *connect.Request[v1.ListFeedsLimitRequest]) (*connect.Response[v1.ListFeedsLimitResponse], error)
+	// GetSingleFeed returns the most recently created feed.
+	GetSingleFeed(context.Context, *connect.Request[v1.GetSingleFeedRequest]) (*connect.Response[v1.GetSingleFeedResponse], error)
+	// ListFeedsByFeedLinkID returns the feeds one subscription produced — the
+	// read behind page-cache invalidation after a registration.
+	ListFeedsByFeedLinkID(context.Context, *connect.Request[v1.ListFeedsByFeedLinkIDRequest]) (*connect.Response[v1.ListFeedsByFeedLinkIDResponse], error)
+	// GetFeedSummary returns the generated summary for the article at a URL.
+	GetFeedSummary(context.Context, *connect.Request[v1.GetFeedSummaryRequest]) (*connect.Response[v1.GetFeedSummaryResponse], error)
+	// GetArticleSummaryByArticleID is the same summary looked up by article id.
+	GetArticleSummaryByArticleID(context.Context, *connect.Request[v1.GetArticleSummaryByArticleIDRequest]) (*connect.Response[v1.GetArticleSummaryByArticleIDResponse], error)
+	// SearchFeedsByTitle is the SQL title search, scoped to one tenant.
+	SearchFeedsByTitle(context.Context, *connect.Request[v1.SearchFeedsByTitleRequest]) (*connect.Response[v1.SearchFeedsByTitleResponse], error)
+	// GetRandomFeed returns a random feed that has at least one tag — the Tag
+	// Trail entry point.
+	GetRandomFeed(context.Context, *connect.Request[v1.GetRandomFeedRequest]) (*connect.Response[v1.GetRandomFeedResponse], error)
+	// GetFeedURLsByArticleIDs resolves search hits back to their feeds.
+	GetFeedURLsByArticleIDs(context.Context, *connect.Request[v1.GetFeedURLsByArticleIDsRequest]) (*connect.Response[v1.GetFeedURLsByArticleIDsResponse], error)
+	// BatchGetFeedTitlesByIDs attaches feed bylines to Morning Letter cards.
+	BatchGetFeedTitlesByIDs(context.Context, *connect.Request[v1.BatchGetFeedTitlesByIDsRequest]) (*connect.Response[v1.BatchGetFeedTitlesByIDsResponse], error)
+	// GetInoreaderSummariesByURLs returns imported Inoreader bodies for URLs.
+	GetInoreaderSummariesByURLs(context.Context, *connect.Request[v1.GetInoreaderSummariesByURLsRequest]) (*connect.Response[v1.GetInoreaderSummariesByURLsResponse], error)
 }
 
 // NewDataHubServiceClient constructs a client for the alt.datahub.v1.DataHubService service. By
@@ -847,6 +1015,150 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("ListBackfillSummaryTitles")),
 			connect.WithClientOptions(opts...),
 		),
+		registerFeedLink: connect.NewClient[v1.RegisterFeedLinkRequest, v1.RegisterFeedLinkResponse](
+			httpClient,
+			baseURL+DataHubServiceRegisterFeedLinkProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("RegisterFeedLink")),
+			connect.WithClientOptions(opts...),
+		),
+		bulkRegisterFeedLinks: connect.NewClient[v1.BulkRegisterFeedLinksRequest, v1.BulkRegisterFeedLinksResponse](
+			httpClient,
+			baseURL+DataHubServiceBulkRegisterFeedLinksProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("BulkRegisterFeedLinks")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedLinks: connect.NewClient[v1.ListFeedLinksRequest, v1.ListFeedLinksResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedLinksProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedLinks")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedLinksWithHealth: connect.NewClient[v1.ListFeedLinksWithHealthRequest, v1.ListFeedLinksWithHealthResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedLinksWithHealthProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedLinksWithHealth")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteFeedLink: connect.NewClient[v1.DeleteFeedLinkRequest, v1.DeleteFeedLinkResponse](
+			httpClient,
+			baseURL+DataHubServiceDeleteFeedLinkProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("DeleteFeedLink")),
+			connect.WithClientOptions(opts...),
+		),
+		resolveFeedLinkIDByURL: connect.NewClient[v1.ResolveFeedLinkIDByURLRequest, v1.ResolveFeedLinkIDByURLResponse](
+			httpClient,
+			baseURL+DataHubServiceResolveFeedLinkIDByURLProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ResolveFeedLinkIDByURL")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedLinkDomains: connect.NewClient[v1.ListFeedLinkDomainsRequest, v1.ListFeedLinkDomainsResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedLinkDomainsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedLinkDomains")),
+			connect.WithClientOptions(opts...),
+		),
+		listRSSFeedURLs: connect.NewClient[v1.ListRSSFeedURLsRequest, v1.ListRSSFeedURLsResponse](
+			httpClient,
+			baseURL+DataHubServiceListRSSFeedURLsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListRSSFeedURLs")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedLinksForExport: connect.NewClient[v1.ListFeedLinksForExportRequest, v1.ListFeedLinksForExportResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedLinksForExportProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedLinksForExport")),
+			connect.WithClientOptions(opts...),
+		),
+		recordFeedLinkFailure: connect.NewClient[v1.RecordFeedLinkFailureRequest, v1.RecordFeedLinkFailureResponse](
+			httpClient,
+			baseURL+DataHubServiceRecordFeedLinkFailureProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("RecordFeedLinkFailure")),
+			connect.WithClientOptions(opts...),
+		),
+		resetFeedLinkFailures: connect.NewClient[v1.ResetFeedLinkFailuresRequest, v1.ResetFeedLinkFailuresResponse](
+			httpClient,
+			baseURL+DataHubServiceResetFeedLinkFailuresProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ResetFeedLinkFailures")),
+			connect.WithClientOptions(opts...),
+		),
+		registerFeeds: connect.NewClient[v1.RegisterFeedsRequest, v1.RegisterFeedsResponse](
+			httpClient,
+			baseURL+DataHubServiceRegisterFeedsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("RegisterFeeds")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedsCursor: connect.NewClient[v1.ListFeedsCursorRequest, v1.ListFeedsCursorResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedsCursorProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsCursor")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedsPage: connect.NewClient[v1.ListFeedsPageRequest, v1.ListFeedsPageResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedsPageProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsPage")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedsLimit: connect.NewClient[v1.ListFeedsLimitRequest, v1.ListFeedsLimitResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedsLimitProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsLimit")),
+			connect.WithClientOptions(opts...),
+		),
+		getSingleFeed: connect.NewClient[v1.GetSingleFeedRequest, v1.GetSingleFeedResponse](
+			httpClient,
+			baseURL+DataHubServiceGetSingleFeedProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetSingleFeed")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedsByFeedLinkID: connect.NewClient[v1.ListFeedsByFeedLinkIDRequest, v1.ListFeedsByFeedLinkIDResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedsByFeedLinkIDProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsByFeedLinkID")),
+			connect.WithClientOptions(opts...),
+		),
+		getFeedSummary: connect.NewClient[v1.GetFeedSummaryRequest, v1.GetFeedSummaryResponse](
+			httpClient,
+			baseURL+DataHubServiceGetFeedSummaryProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetFeedSummary")),
+			connect.WithClientOptions(opts...),
+		),
+		getArticleSummaryByArticleID: connect.NewClient[v1.GetArticleSummaryByArticleIDRequest, v1.GetArticleSummaryByArticleIDResponse](
+			httpClient,
+			baseURL+DataHubServiceGetArticleSummaryByArticleIDProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetArticleSummaryByArticleID")),
+			connect.WithClientOptions(opts...),
+		),
+		searchFeedsByTitle: connect.NewClient[v1.SearchFeedsByTitleRequest, v1.SearchFeedsByTitleResponse](
+			httpClient,
+			baseURL+DataHubServiceSearchFeedsByTitleProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("SearchFeedsByTitle")),
+			connect.WithClientOptions(opts...),
+		),
+		getRandomFeed: connect.NewClient[v1.GetRandomFeedRequest, v1.GetRandomFeedResponse](
+			httpClient,
+			baseURL+DataHubServiceGetRandomFeedProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetRandomFeed")),
+			connect.WithClientOptions(opts...),
+		),
+		getFeedURLsByArticleIDs: connect.NewClient[v1.GetFeedURLsByArticleIDsRequest, v1.GetFeedURLsByArticleIDsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetFeedURLsByArticleIDsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetFeedURLsByArticleIDs")),
+			connect.WithClientOptions(opts...),
+		),
+		batchGetFeedTitlesByIDs: connect.NewClient[v1.BatchGetFeedTitlesByIDsRequest, v1.BatchGetFeedTitlesByIDsResponse](
+			httpClient,
+			baseURL+DataHubServiceBatchGetFeedTitlesByIDsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("BatchGetFeedTitlesByIDs")),
+			connect.WithClientOptions(opts...),
+		),
+		getInoreaderSummariesByURLs: connect.NewClient[v1.GetInoreaderSummariesByURLsRequest, v1.GetInoreaderSummariesByURLsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetInoreaderSummariesByURLsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetInoreaderSummariesByURLs")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -914,6 +1226,30 @@ type dataHubServiceClient struct {
 	listBackfillArticles              *connect.Client[v1.ListBackfillArticlesRequest, v1.ListBackfillArticlesResponse]
 	countBackfillSummaryTitles        *connect.Client[v1.CountBackfillSummaryTitlesRequest, v1.CountBackfillSummaryTitlesResponse]
 	listBackfillSummaryTitles         *connect.Client[v1.ListBackfillSummaryTitlesRequest, v1.ListBackfillSummaryTitlesResponse]
+	registerFeedLink                  *connect.Client[v1.RegisterFeedLinkRequest, v1.RegisterFeedLinkResponse]
+	bulkRegisterFeedLinks             *connect.Client[v1.BulkRegisterFeedLinksRequest, v1.BulkRegisterFeedLinksResponse]
+	listFeedLinks                     *connect.Client[v1.ListFeedLinksRequest, v1.ListFeedLinksResponse]
+	listFeedLinksWithHealth           *connect.Client[v1.ListFeedLinksWithHealthRequest, v1.ListFeedLinksWithHealthResponse]
+	deleteFeedLink                    *connect.Client[v1.DeleteFeedLinkRequest, v1.DeleteFeedLinkResponse]
+	resolveFeedLinkIDByURL            *connect.Client[v1.ResolveFeedLinkIDByURLRequest, v1.ResolveFeedLinkIDByURLResponse]
+	listFeedLinkDomains               *connect.Client[v1.ListFeedLinkDomainsRequest, v1.ListFeedLinkDomainsResponse]
+	listRSSFeedURLs                   *connect.Client[v1.ListRSSFeedURLsRequest, v1.ListRSSFeedURLsResponse]
+	listFeedLinksForExport            *connect.Client[v1.ListFeedLinksForExportRequest, v1.ListFeedLinksForExportResponse]
+	recordFeedLinkFailure             *connect.Client[v1.RecordFeedLinkFailureRequest, v1.RecordFeedLinkFailureResponse]
+	resetFeedLinkFailures             *connect.Client[v1.ResetFeedLinkFailuresRequest, v1.ResetFeedLinkFailuresResponse]
+	registerFeeds                     *connect.Client[v1.RegisterFeedsRequest, v1.RegisterFeedsResponse]
+	listFeedsCursor                   *connect.Client[v1.ListFeedsCursorRequest, v1.ListFeedsCursorResponse]
+	listFeedsPage                     *connect.Client[v1.ListFeedsPageRequest, v1.ListFeedsPageResponse]
+	listFeedsLimit                    *connect.Client[v1.ListFeedsLimitRequest, v1.ListFeedsLimitResponse]
+	getSingleFeed                     *connect.Client[v1.GetSingleFeedRequest, v1.GetSingleFeedResponse]
+	listFeedsByFeedLinkID             *connect.Client[v1.ListFeedsByFeedLinkIDRequest, v1.ListFeedsByFeedLinkIDResponse]
+	getFeedSummary                    *connect.Client[v1.GetFeedSummaryRequest, v1.GetFeedSummaryResponse]
+	getArticleSummaryByArticleID      *connect.Client[v1.GetArticleSummaryByArticleIDRequest, v1.GetArticleSummaryByArticleIDResponse]
+	searchFeedsByTitle                *connect.Client[v1.SearchFeedsByTitleRequest, v1.SearchFeedsByTitleResponse]
+	getRandomFeed                     *connect.Client[v1.GetRandomFeedRequest, v1.GetRandomFeedResponse]
+	getFeedURLsByArticleIDs           *connect.Client[v1.GetFeedURLsByArticleIDsRequest, v1.GetFeedURLsByArticleIDsResponse]
+	batchGetFeedTitlesByIDs           *connect.Client[v1.BatchGetFeedTitlesByIDsRequest, v1.BatchGetFeedTitlesByIDsResponse]
+	getInoreaderSummariesByURLs       *connect.Client[v1.GetInoreaderSummariesByURLsRequest, v1.GetInoreaderSummariesByURLsResponse]
 }
 
 // ListArticlesWithTags calls alt.datahub.v1.DataHubService.ListArticlesWithTags.
@@ -1228,6 +1564,126 @@ func (c *dataHubServiceClient) ListBackfillSummaryTitles(ctx context.Context, re
 	return c.listBackfillSummaryTitles.CallUnary(ctx, req)
 }
 
+// RegisterFeedLink calls alt.datahub.v1.DataHubService.RegisterFeedLink.
+func (c *dataHubServiceClient) RegisterFeedLink(ctx context.Context, req *connect.Request[v1.RegisterFeedLinkRequest]) (*connect.Response[v1.RegisterFeedLinkResponse], error) {
+	return c.registerFeedLink.CallUnary(ctx, req)
+}
+
+// BulkRegisterFeedLinks calls alt.datahub.v1.DataHubService.BulkRegisterFeedLinks.
+func (c *dataHubServiceClient) BulkRegisterFeedLinks(ctx context.Context, req *connect.Request[v1.BulkRegisterFeedLinksRequest]) (*connect.Response[v1.BulkRegisterFeedLinksResponse], error) {
+	return c.bulkRegisterFeedLinks.CallUnary(ctx, req)
+}
+
+// ListFeedLinks calls alt.datahub.v1.DataHubService.ListFeedLinks.
+func (c *dataHubServiceClient) ListFeedLinks(ctx context.Context, req *connect.Request[v1.ListFeedLinksRequest]) (*connect.Response[v1.ListFeedLinksResponse], error) {
+	return c.listFeedLinks.CallUnary(ctx, req)
+}
+
+// ListFeedLinksWithHealth calls alt.datahub.v1.DataHubService.ListFeedLinksWithHealth.
+func (c *dataHubServiceClient) ListFeedLinksWithHealth(ctx context.Context, req *connect.Request[v1.ListFeedLinksWithHealthRequest]) (*connect.Response[v1.ListFeedLinksWithHealthResponse], error) {
+	return c.listFeedLinksWithHealth.CallUnary(ctx, req)
+}
+
+// DeleteFeedLink calls alt.datahub.v1.DataHubService.DeleteFeedLink.
+func (c *dataHubServiceClient) DeleteFeedLink(ctx context.Context, req *connect.Request[v1.DeleteFeedLinkRequest]) (*connect.Response[v1.DeleteFeedLinkResponse], error) {
+	return c.deleteFeedLink.CallUnary(ctx, req)
+}
+
+// ResolveFeedLinkIDByURL calls alt.datahub.v1.DataHubService.ResolveFeedLinkIDByURL.
+func (c *dataHubServiceClient) ResolveFeedLinkIDByURL(ctx context.Context, req *connect.Request[v1.ResolveFeedLinkIDByURLRequest]) (*connect.Response[v1.ResolveFeedLinkIDByURLResponse], error) {
+	return c.resolveFeedLinkIDByURL.CallUnary(ctx, req)
+}
+
+// ListFeedLinkDomains calls alt.datahub.v1.DataHubService.ListFeedLinkDomains.
+func (c *dataHubServiceClient) ListFeedLinkDomains(ctx context.Context, req *connect.Request[v1.ListFeedLinkDomainsRequest]) (*connect.Response[v1.ListFeedLinkDomainsResponse], error) {
+	return c.listFeedLinkDomains.CallUnary(ctx, req)
+}
+
+// ListRSSFeedURLs calls alt.datahub.v1.DataHubService.ListRSSFeedURLs.
+func (c *dataHubServiceClient) ListRSSFeedURLs(ctx context.Context, req *connect.Request[v1.ListRSSFeedURLsRequest]) (*connect.Response[v1.ListRSSFeedURLsResponse], error) {
+	return c.listRSSFeedURLs.CallUnary(ctx, req)
+}
+
+// ListFeedLinksForExport calls alt.datahub.v1.DataHubService.ListFeedLinksForExport.
+func (c *dataHubServiceClient) ListFeedLinksForExport(ctx context.Context, req *connect.Request[v1.ListFeedLinksForExportRequest]) (*connect.Response[v1.ListFeedLinksForExportResponse], error) {
+	return c.listFeedLinksForExport.CallUnary(ctx, req)
+}
+
+// RecordFeedLinkFailure calls alt.datahub.v1.DataHubService.RecordFeedLinkFailure.
+func (c *dataHubServiceClient) RecordFeedLinkFailure(ctx context.Context, req *connect.Request[v1.RecordFeedLinkFailureRequest]) (*connect.Response[v1.RecordFeedLinkFailureResponse], error) {
+	return c.recordFeedLinkFailure.CallUnary(ctx, req)
+}
+
+// ResetFeedLinkFailures calls alt.datahub.v1.DataHubService.ResetFeedLinkFailures.
+func (c *dataHubServiceClient) ResetFeedLinkFailures(ctx context.Context, req *connect.Request[v1.ResetFeedLinkFailuresRequest]) (*connect.Response[v1.ResetFeedLinkFailuresResponse], error) {
+	return c.resetFeedLinkFailures.CallUnary(ctx, req)
+}
+
+// RegisterFeeds calls alt.datahub.v1.DataHubService.RegisterFeeds.
+func (c *dataHubServiceClient) RegisterFeeds(ctx context.Context, req *connect.Request[v1.RegisterFeedsRequest]) (*connect.Response[v1.RegisterFeedsResponse], error) {
+	return c.registerFeeds.CallUnary(ctx, req)
+}
+
+// ListFeedsCursor calls alt.datahub.v1.DataHubService.ListFeedsCursor.
+func (c *dataHubServiceClient) ListFeedsCursor(ctx context.Context, req *connect.Request[v1.ListFeedsCursorRequest]) (*connect.Response[v1.ListFeedsCursorResponse], error) {
+	return c.listFeedsCursor.CallUnary(ctx, req)
+}
+
+// ListFeedsPage calls alt.datahub.v1.DataHubService.ListFeedsPage.
+func (c *dataHubServiceClient) ListFeedsPage(ctx context.Context, req *connect.Request[v1.ListFeedsPageRequest]) (*connect.Response[v1.ListFeedsPageResponse], error) {
+	return c.listFeedsPage.CallUnary(ctx, req)
+}
+
+// ListFeedsLimit calls alt.datahub.v1.DataHubService.ListFeedsLimit.
+func (c *dataHubServiceClient) ListFeedsLimit(ctx context.Context, req *connect.Request[v1.ListFeedsLimitRequest]) (*connect.Response[v1.ListFeedsLimitResponse], error) {
+	return c.listFeedsLimit.CallUnary(ctx, req)
+}
+
+// GetSingleFeed calls alt.datahub.v1.DataHubService.GetSingleFeed.
+func (c *dataHubServiceClient) GetSingleFeed(ctx context.Context, req *connect.Request[v1.GetSingleFeedRequest]) (*connect.Response[v1.GetSingleFeedResponse], error) {
+	return c.getSingleFeed.CallUnary(ctx, req)
+}
+
+// ListFeedsByFeedLinkID calls alt.datahub.v1.DataHubService.ListFeedsByFeedLinkID.
+func (c *dataHubServiceClient) ListFeedsByFeedLinkID(ctx context.Context, req *connect.Request[v1.ListFeedsByFeedLinkIDRequest]) (*connect.Response[v1.ListFeedsByFeedLinkIDResponse], error) {
+	return c.listFeedsByFeedLinkID.CallUnary(ctx, req)
+}
+
+// GetFeedSummary calls alt.datahub.v1.DataHubService.GetFeedSummary.
+func (c *dataHubServiceClient) GetFeedSummary(ctx context.Context, req *connect.Request[v1.GetFeedSummaryRequest]) (*connect.Response[v1.GetFeedSummaryResponse], error) {
+	return c.getFeedSummary.CallUnary(ctx, req)
+}
+
+// GetArticleSummaryByArticleID calls alt.datahub.v1.DataHubService.GetArticleSummaryByArticleID.
+func (c *dataHubServiceClient) GetArticleSummaryByArticleID(ctx context.Context, req *connect.Request[v1.GetArticleSummaryByArticleIDRequest]) (*connect.Response[v1.GetArticleSummaryByArticleIDResponse], error) {
+	return c.getArticleSummaryByArticleID.CallUnary(ctx, req)
+}
+
+// SearchFeedsByTitle calls alt.datahub.v1.DataHubService.SearchFeedsByTitle.
+func (c *dataHubServiceClient) SearchFeedsByTitle(ctx context.Context, req *connect.Request[v1.SearchFeedsByTitleRequest]) (*connect.Response[v1.SearchFeedsByTitleResponse], error) {
+	return c.searchFeedsByTitle.CallUnary(ctx, req)
+}
+
+// GetRandomFeed calls alt.datahub.v1.DataHubService.GetRandomFeed.
+func (c *dataHubServiceClient) GetRandomFeed(ctx context.Context, req *connect.Request[v1.GetRandomFeedRequest]) (*connect.Response[v1.GetRandomFeedResponse], error) {
+	return c.getRandomFeed.CallUnary(ctx, req)
+}
+
+// GetFeedURLsByArticleIDs calls alt.datahub.v1.DataHubService.GetFeedURLsByArticleIDs.
+func (c *dataHubServiceClient) GetFeedURLsByArticleIDs(ctx context.Context, req *connect.Request[v1.GetFeedURLsByArticleIDsRequest]) (*connect.Response[v1.GetFeedURLsByArticleIDsResponse], error) {
+	return c.getFeedURLsByArticleIDs.CallUnary(ctx, req)
+}
+
+// BatchGetFeedTitlesByIDs calls alt.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs.
+func (c *dataHubServiceClient) BatchGetFeedTitlesByIDs(ctx context.Context, req *connect.Request[v1.BatchGetFeedTitlesByIDsRequest]) (*connect.Response[v1.BatchGetFeedTitlesByIDsResponse], error) {
+	return c.batchGetFeedTitlesByIDs.CallUnary(ctx, req)
+}
+
+// GetInoreaderSummariesByURLs calls alt.datahub.v1.DataHubService.GetInoreaderSummariesByURLs.
+func (c *dataHubServiceClient) GetInoreaderSummariesByURLs(ctx context.Context, req *connect.Request[v1.GetInoreaderSummariesByURLsRequest]) (*connect.Response[v1.GetInoreaderSummariesByURLsResponse], error) {
+	return c.getInoreaderSummariesByURLs.CallUnary(ctx, req)
+}
+
 // DataHubServiceHandler is an implementation of the alt.datahub.v1.DataHubService service.
 type DataHubServiceHandler interface {
 	// ListArticlesWithTags returns articles with tags using backward keyset pagination.
@@ -1442,6 +1898,102 @@ type DataHubServiceHandler interface {
 	// ListBackfillSummaryTitles walks (summary_version, article) pairs oldest
 	// first.
 	ListBackfillSummaryTitles(context.Context, *connect.Request[v1.ListBackfillSummaryTitlesRequest]) (*connect.Response[v1.ListBackfillSummaryTitlesResponse], error)
+	// RegisterFeedLink subscribes to an RSS URL. Idempotent: an already
+	// subscribed URL answers already_existed rather than an error, which is the
+	// behaviour the driver's SQLSTATE 23505 branch has always had.
+	RegisterFeedLink(context.Context, *connect.Request[v1.RegisterFeedLinkRequest]) (*connect.Response[v1.RegisterFeedLinkResponse], error)
+	// BulkRegisterFeedLinks subscribes to many URLs in one call — the OPML
+	// import.
+	//
+	// One procedure rather than a loop over RegisterFeedLink because the loop
+	// was two queries per URL (exists-check, then insert) and becomes two round
+	// trips per URL once a network sits between them: a 500-entry OPML file
+	// would cost a thousand. The batch is deliberately not one transaction —
+	// partial success is the documented outcome, and the per-URL results say
+	// which part.
+	BulkRegisterFeedLinks(context.Context, *connect.Request[v1.BulkRegisterFeedLinksRequest]) (*connect.Response[v1.BulkRegisterFeedLinksResponse], error)
+	// ListFeedLinks returns every subscription URL.
+	ListFeedLinks(context.Context, *connect.Request[v1.ListFeedLinksRequest]) (*connect.Response[v1.ListFeedLinksResponse], error)
+	// ListFeedLinksWithHealth is the same list joined to poll health, for the
+	// admin screen.
+	ListFeedLinksWithHealth(context.Context, *connect.Request[v1.ListFeedLinksWithHealthRequest]) (*connect.Response[v1.ListFeedLinksWithHealthResponse], error)
+	// DeleteFeedLink unsubscribes. The cascade to feeds and articles is the
+	// database's, and it is the reason this is a capability and not a caller's
+	// DELETE: the blast radius belongs to whoever owns the schema.
+	DeleteFeedLink(context.Context, *connect.Request[v1.DeleteFeedLinkRequest]) (*connect.Response[v1.DeleteFeedLinkResponse], error)
+	// ResolveFeedLinkIDByURL maps a subscription URL to its id.
+	ResolveFeedLinkIDByURL(context.Context, *connect.Request[v1.ResolveFeedLinkIDByURLRequest]) (*connect.Response[v1.ResolveFeedLinkIDByURLResponse], error)
+	// ListFeedLinkDomains returns the distinct publisher hosts across the
+	// subscription set and the scraped og:image URLs — the work list the
+	// scraping policy job seeds itself from.
+	ListFeedLinkDomains(context.Context, *connect.Request[v1.ListFeedLinkDomainsRequest]) (*connect.Response[v1.ListFeedLinkDomainsResponse], error)
+	// ListRSSFeedURLs returns the links the collector should poll: active, or
+	// never assessed.
+	ListRSSFeedURLs(context.Context, *connect.Request[v1.ListRSSFeedURLsRequest]) (*connect.Response[v1.ListRSSFeedURLsResponse], error)
+	// ListFeedLinksForExport returns each subscription with its most recent feed
+	// title, for OPML export.
+	//
+	// A procedure of its own rather than a flag on ListFeedLinks: it is a
+	// different query — a LATERAL join picking the newest title per link — and
+	// folding it in would make the plain list pay for that join on every call.
+	// Its previous life was raw SQL issued through AltDBRepository.GetPool()
+	// from a gateway, the last such caller in the module (catalog §4-7); over
+	// an RPC there is no pool to reach for, so the layering violation cannot be
+	// reconstructed.
+	ListFeedLinksForExport(context.Context, *connect.Request[v1.ListFeedLinksForExportRequest]) (*connect.Response[v1.ListFeedLinksForExportResponse], error)
+	// RecordFeedLinkFailure increments the consecutive failure count and, in the
+	// same transaction, disables the link once it reaches the caller's
+	// threshold.
+	//
+	// This is one procedure where the catalog listed two (IncrementFeedLinkFailures
+	// and DisableFeedLink, §4-4). Splitting them put a read-modify-write in the
+	// caller: increment, look at the returned count, decide, disable. Two
+	// collectors polling the same feed could each read a count below the
+	// threshold and neither disable it, or both cross it and both write. That
+	// race exists today in-process; over an RPC the window widens from a few
+	// microseconds to a full network round trip, so preserving the split would
+	// have made a known defect materially worse in the commit that moved the
+	// process boundary. The threshold stays the caller's argument because how
+	// patient to be is operational policy; applying it without a gap is the
+	// provider's invariant (ADR-000954 D3).
+	RecordFeedLinkFailure(context.Context, *connect.Request[v1.RecordFeedLinkFailureRequest]) (*connect.Response[v1.RecordFeedLinkFailureResponse], error)
+	// ResetFeedLinkFailures clears the failure run after a successful poll and
+	// re-activates the link.
+	ResetFeedLinkFailures(context.Context, *connect.Request[v1.ResetFeedLinkFailuresRequest]) (*connect.Response[v1.ResetFeedLinkFailuresResponse], error)
+	// RegisterFeeds upserts a batch of collected RSS items in one transaction.
+	//
+	// The transaction is the capability: a poll that half-registers a feed's
+	// items leaves the next poll unable to tell which half it already has. The
+	// upsert writes no articles row — that separation is ADR-000953's explicit
+	// contract, and it is why this procedure and ArchiveArticle are not merged.
+	RegisterFeeds(context.Context, *connect.Request[v1.RegisterFeedsRequest]) (*connect.Response[v1.RegisterFeedsResponse], error)
+	// ListFeedsCursor pages one user's feeds newest first, in one of four
+	// scopes.
+	ListFeedsCursor(context.Context, *connect.Request[v1.ListFeedsCursorRequest]) (*connect.Response[v1.ListFeedsCursorResponse], error)
+	// ListFeedsPage is the legacy offset pager still behind two REST routes.
+	ListFeedsPage(context.Context, *connect.Request[v1.ListFeedsPageRequest]) (*connect.Response[v1.ListFeedsPageResponse], error)
+	// ListFeedsLimit returns the newest feeds across all users, unscoped.
+	ListFeedsLimit(context.Context, *connect.Request[v1.ListFeedsLimitRequest]) (*connect.Response[v1.ListFeedsLimitResponse], error)
+	// GetSingleFeed returns the most recently created feed.
+	GetSingleFeed(context.Context, *connect.Request[v1.GetSingleFeedRequest]) (*connect.Response[v1.GetSingleFeedResponse], error)
+	// ListFeedsByFeedLinkID returns the feeds one subscription produced — the
+	// read behind page-cache invalidation after a registration.
+	ListFeedsByFeedLinkID(context.Context, *connect.Request[v1.ListFeedsByFeedLinkIDRequest]) (*connect.Response[v1.ListFeedsByFeedLinkIDResponse], error)
+	// GetFeedSummary returns the generated summary for the article at a URL.
+	GetFeedSummary(context.Context, *connect.Request[v1.GetFeedSummaryRequest]) (*connect.Response[v1.GetFeedSummaryResponse], error)
+	// GetArticleSummaryByArticleID is the same summary looked up by article id.
+	GetArticleSummaryByArticleID(context.Context, *connect.Request[v1.GetArticleSummaryByArticleIDRequest]) (*connect.Response[v1.GetArticleSummaryByArticleIDResponse], error)
+	// SearchFeedsByTitle is the SQL title search, scoped to one tenant.
+	SearchFeedsByTitle(context.Context, *connect.Request[v1.SearchFeedsByTitleRequest]) (*connect.Response[v1.SearchFeedsByTitleResponse], error)
+	// GetRandomFeed returns a random feed that has at least one tag — the Tag
+	// Trail entry point.
+	GetRandomFeed(context.Context, *connect.Request[v1.GetRandomFeedRequest]) (*connect.Response[v1.GetRandomFeedResponse], error)
+	// GetFeedURLsByArticleIDs resolves search hits back to their feeds.
+	GetFeedURLsByArticleIDs(context.Context, *connect.Request[v1.GetFeedURLsByArticleIDsRequest]) (*connect.Response[v1.GetFeedURLsByArticleIDsResponse], error)
+	// BatchGetFeedTitlesByIDs attaches feed bylines to Morning Letter cards.
+	BatchGetFeedTitlesByIDs(context.Context, *connect.Request[v1.BatchGetFeedTitlesByIDsRequest]) (*connect.Response[v1.BatchGetFeedTitlesByIDsResponse], error)
+	// GetInoreaderSummariesByURLs returns imported Inoreader bodies for URLs.
+	GetInoreaderSummariesByURLs(context.Context, *connect.Request[v1.GetInoreaderSummariesByURLsRequest]) (*connect.Response[v1.GetInoreaderSummariesByURLsResponse], error)
 }
 
 // NewDataHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1823,6 +2375,150 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("ListBackfillSummaryTitles")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceRegisterFeedLinkHandler := connect.NewUnaryHandler(
+		DataHubServiceRegisterFeedLinkProcedure,
+		svc.RegisterFeedLink,
+		connect.WithSchema(dataHubServiceMethods.ByName("RegisterFeedLink")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceBulkRegisterFeedLinksHandler := connect.NewUnaryHandler(
+		DataHubServiceBulkRegisterFeedLinksProcedure,
+		svc.BulkRegisterFeedLinks,
+		connect.WithSchema(dataHubServiceMethods.ByName("BulkRegisterFeedLinks")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedLinksHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedLinksProcedure,
+		svc.ListFeedLinks,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedLinks")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedLinksWithHealthHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedLinksWithHealthProcedure,
+		svc.ListFeedLinksWithHealth,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedLinksWithHealth")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceDeleteFeedLinkHandler := connect.NewUnaryHandler(
+		DataHubServiceDeleteFeedLinkProcedure,
+		svc.DeleteFeedLink,
+		connect.WithSchema(dataHubServiceMethods.ByName("DeleteFeedLink")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceResolveFeedLinkIDByURLHandler := connect.NewUnaryHandler(
+		DataHubServiceResolveFeedLinkIDByURLProcedure,
+		svc.ResolveFeedLinkIDByURL,
+		connect.WithSchema(dataHubServiceMethods.ByName("ResolveFeedLinkIDByURL")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedLinkDomainsHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedLinkDomainsProcedure,
+		svc.ListFeedLinkDomains,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedLinkDomains")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListRSSFeedURLsHandler := connect.NewUnaryHandler(
+		DataHubServiceListRSSFeedURLsProcedure,
+		svc.ListRSSFeedURLs,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListRSSFeedURLs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedLinksForExportHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedLinksForExportProcedure,
+		svc.ListFeedLinksForExport,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedLinksForExport")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceRecordFeedLinkFailureHandler := connect.NewUnaryHandler(
+		DataHubServiceRecordFeedLinkFailureProcedure,
+		svc.RecordFeedLinkFailure,
+		connect.WithSchema(dataHubServiceMethods.ByName("RecordFeedLinkFailure")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceResetFeedLinkFailuresHandler := connect.NewUnaryHandler(
+		DataHubServiceResetFeedLinkFailuresProcedure,
+		svc.ResetFeedLinkFailures,
+		connect.WithSchema(dataHubServiceMethods.ByName("ResetFeedLinkFailures")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceRegisterFeedsHandler := connect.NewUnaryHandler(
+		DataHubServiceRegisterFeedsProcedure,
+		svc.RegisterFeeds,
+		connect.WithSchema(dataHubServiceMethods.ByName("RegisterFeeds")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedsCursorHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedsCursorProcedure,
+		svc.ListFeedsCursor,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsCursor")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedsPageHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedsPageProcedure,
+		svc.ListFeedsPage,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsPage")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedsLimitHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedsLimitProcedure,
+		svc.ListFeedsLimit,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsLimit")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetSingleFeedHandler := connect.NewUnaryHandler(
+		DataHubServiceGetSingleFeedProcedure,
+		svc.GetSingleFeed,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetSingleFeed")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedsByFeedLinkIDHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedsByFeedLinkIDProcedure,
+		svc.ListFeedsByFeedLinkID,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsByFeedLinkID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetFeedSummaryHandler := connect.NewUnaryHandler(
+		DataHubServiceGetFeedSummaryProcedure,
+		svc.GetFeedSummary,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetFeedSummary")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetArticleSummaryByArticleIDHandler := connect.NewUnaryHandler(
+		DataHubServiceGetArticleSummaryByArticleIDProcedure,
+		svc.GetArticleSummaryByArticleID,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetArticleSummaryByArticleID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceSearchFeedsByTitleHandler := connect.NewUnaryHandler(
+		DataHubServiceSearchFeedsByTitleProcedure,
+		svc.SearchFeedsByTitle,
+		connect.WithSchema(dataHubServiceMethods.ByName("SearchFeedsByTitle")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetRandomFeedHandler := connect.NewUnaryHandler(
+		DataHubServiceGetRandomFeedProcedure,
+		svc.GetRandomFeed,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetRandomFeed")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetFeedURLsByArticleIDsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetFeedURLsByArticleIDsProcedure,
+		svc.GetFeedURLsByArticleIDs,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetFeedURLsByArticleIDs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceBatchGetFeedTitlesByIDsHandler := connect.NewUnaryHandler(
+		DataHubServiceBatchGetFeedTitlesByIDsProcedure,
+		svc.BatchGetFeedTitlesByIDs,
+		connect.WithSchema(dataHubServiceMethods.ByName("BatchGetFeedTitlesByIDs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetInoreaderSummariesByURLsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetInoreaderSummariesByURLsProcedure,
+		svc.GetInoreaderSummariesByURLs,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetInoreaderSummariesByURLs")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.datahub.v1.DataHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataHubServiceListArticlesWithTagsProcedure:
@@ -1949,6 +2645,54 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceCountBackfillSummaryTitlesHandler.ServeHTTP(w, r)
 		case DataHubServiceListBackfillSummaryTitlesProcedure:
 			dataHubServiceListBackfillSummaryTitlesHandler.ServeHTTP(w, r)
+		case DataHubServiceRegisterFeedLinkProcedure:
+			dataHubServiceRegisterFeedLinkHandler.ServeHTTP(w, r)
+		case DataHubServiceBulkRegisterFeedLinksProcedure:
+			dataHubServiceBulkRegisterFeedLinksHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedLinksProcedure:
+			dataHubServiceListFeedLinksHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedLinksWithHealthProcedure:
+			dataHubServiceListFeedLinksWithHealthHandler.ServeHTTP(w, r)
+		case DataHubServiceDeleteFeedLinkProcedure:
+			dataHubServiceDeleteFeedLinkHandler.ServeHTTP(w, r)
+		case DataHubServiceResolveFeedLinkIDByURLProcedure:
+			dataHubServiceResolveFeedLinkIDByURLHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedLinkDomainsProcedure:
+			dataHubServiceListFeedLinkDomainsHandler.ServeHTTP(w, r)
+		case DataHubServiceListRSSFeedURLsProcedure:
+			dataHubServiceListRSSFeedURLsHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedLinksForExportProcedure:
+			dataHubServiceListFeedLinksForExportHandler.ServeHTTP(w, r)
+		case DataHubServiceRecordFeedLinkFailureProcedure:
+			dataHubServiceRecordFeedLinkFailureHandler.ServeHTTP(w, r)
+		case DataHubServiceResetFeedLinkFailuresProcedure:
+			dataHubServiceResetFeedLinkFailuresHandler.ServeHTTP(w, r)
+		case DataHubServiceRegisterFeedsProcedure:
+			dataHubServiceRegisterFeedsHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedsCursorProcedure:
+			dataHubServiceListFeedsCursorHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedsPageProcedure:
+			dataHubServiceListFeedsPageHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedsLimitProcedure:
+			dataHubServiceListFeedsLimitHandler.ServeHTTP(w, r)
+		case DataHubServiceGetSingleFeedProcedure:
+			dataHubServiceGetSingleFeedHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedsByFeedLinkIDProcedure:
+			dataHubServiceListFeedsByFeedLinkIDHandler.ServeHTTP(w, r)
+		case DataHubServiceGetFeedSummaryProcedure:
+			dataHubServiceGetFeedSummaryHandler.ServeHTTP(w, r)
+		case DataHubServiceGetArticleSummaryByArticleIDProcedure:
+			dataHubServiceGetArticleSummaryByArticleIDHandler.ServeHTTP(w, r)
+		case DataHubServiceSearchFeedsByTitleProcedure:
+			dataHubServiceSearchFeedsByTitleHandler.ServeHTTP(w, r)
+		case DataHubServiceGetRandomFeedProcedure:
+			dataHubServiceGetRandomFeedHandler.ServeHTTP(w, r)
+		case DataHubServiceGetFeedURLsByArticleIDsProcedure:
+			dataHubServiceGetFeedURLsByArticleIDsHandler.ServeHTTP(w, r)
+		case DataHubServiceBatchGetFeedTitlesByIDsProcedure:
+			dataHubServiceBatchGetFeedTitlesByIDsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetInoreaderSummariesByURLsProcedure:
+			dataHubServiceGetInoreaderSummariesByURLsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2204,4 +2948,100 @@ func (UnimplementedDataHubServiceHandler) CountBackfillSummaryTitles(context.Con
 
 func (UnimplementedDataHubServiceHandler) ListBackfillSummaryTitles(context.Context, *connect.Request[v1.ListBackfillSummaryTitlesRequest]) (*connect.Response[v1.ListBackfillSummaryTitlesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListBackfillSummaryTitles is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) RegisterFeedLink(context.Context, *connect.Request[v1.RegisterFeedLinkRequest]) (*connect.Response[v1.RegisterFeedLinkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.RegisterFeedLink is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) BulkRegisterFeedLinks(context.Context, *connect.Request[v1.BulkRegisterFeedLinksRequest]) (*connect.Response[v1.BulkRegisterFeedLinksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.BulkRegisterFeedLinks is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedLinks(context.Context, *connect.Request[v1.ListFeedLinksRequest]) (*connect.Response[v1.ListFeedLinksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListFeedLinks is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedLinksWithHealth(context.Context, *connect.Request[v1.ListFeedLinksWithHealthRequest]) (*connect.Response[v1.ListFeedLinksWithHealthResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListFeedLinksWithHealth is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) DeleteFeedLink(context.Context, *connect.Request[v1.DeleteFeedLinkRequest]) (*connect.Response[v1.DeleteFeedLinkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.DeleteFeedLink is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ResolveFeedLinkIDByURL(context.Context, *connect.Request[v1.ResolveFeedLinkIDByURLRequest]) (*connect.Response[v1.ResolveFeedLinkIDByURLResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ResolveFeedLinkIDByURL is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedLinkDomains(context.Context, *connect.Request[v1.ListFeedLinkDomainsRequest]) (*connect.Response[v1.ListFeedLinkDomainsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListFeedLinkDomains is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListRSSFeedURLs(context.Context, *connect.Request[v1.ListRSSFeedURLsRequest]) (*connect.Response[v1.ListRSSFeedURLsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListRSSFeedURLs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedLinksForExport(context.Context, *connect.Request[v1.ListFeedLinksForExportRequest]) (*connect.Response[v1.ListFeedLinksForExportResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListFeedLinksForExport is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) RecordFeedLinkFailure(context.Context, *connect.Request[v1.RecordFeedLinkFailureRequest]) (*connect.Response[v1.RecordFeedLinkFailureResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.RecordFeedLinkFailure is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ResetFeedLinkFailures(context.Context, *connect.Request[v1.ResetFeedLinkFailuresRequest]) (*connect.Response[v1.ResetFeedLinkFailuresResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ResetFeedLinkFailures is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) RegisterFeeds(context.Context, *connect.Request[v1.RegisterFeedsRequest]) (*connect.Response[v1.RegisterFeedsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.RegisterFeeds is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedsCursor(context.Context, *connect.Request[v1.ListFeedsCursorRequest]) (*connect.Response[v1.ListFeedsCursorResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListFeedsCursor is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedsPage(context.Context, *connect.Request[v1.ListFeedsPageRequest]) (*connect.Response[v1.ListFeedsPageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListFeedsPage is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedsLimit(context.Context, *connect.Request[v1.ListFeedsLimitRequest]) (*connect.Response[v1.ListFeedsLimitResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListFeedsLimit is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetSingleFeed(context.Context, *connect.Request[v1.GetSingleFeedRequest]) (*connect.Response[v1.GetSingleFeedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetSingleFeed is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedsByFeedLinkID(context.Context, *connect.Request[v1.ListFeedsByFeedLinkIDRequest]) (*connect.Response[v1.ListFeedsByFeedLinkIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListFeedsByFeedLinkID is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetFeedSummary(context.Context, *connect.Request[v1.GetFeedSummaryRequest]) (*connect.Response[v1.GetFeedSummaryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetFeedSummary is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetArticleSummaryByArticleID(context.Context, *connect.Request[v1.GetArticleSummaryByArticleIDRequest]) (*connect.Response[v1.GetArticleSummaryByArticleIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetArticleSummaryByArticleID is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) SearchFeedsByTitle(context.Context, *connect.Request[v1.SearchFeedsByTitleRequest]) (*connect.Response[v1.SearchFeedsByTitleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.SearchFeedsByTitle is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetRandomFeed(context.Context, *connect.Request[v1.GetRandomFeedRequest]) (*connect.Response[v1.GetRandomFeedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetRandomFeed is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetFeedURLsByArticleIDs(context.Context, *connect.Request[v1.GetFeedURLsByArticleIDsRequest]) (*connect.Response[v1.GetFeedURLsByArticleIDsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetFeedURLsByArticleIDs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) BatchGetFeedTitlesByIDs(context.Context, *connect.Request[v1.BatchGetFeedTitlesByIDsRequest]) (*connect.Response[v1.BatchGetFeedTitlesByIDsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetInoreaderSummariesByURLs(context.Context, *connect.Request[v1.GetInoreaderSummariesByURLsRequest]) (*connect.Response[v1.GetInoreaderSummariesByURLsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetInoreaderSummariesByURLs is not implemented"))
 }

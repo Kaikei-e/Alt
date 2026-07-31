@@ -41,8 +41,11 @@ func newSubscriptionModule(infra *InfraModule) *SubscriptionModule {
 	deleteFeedLinkUC := feed_link_usecase.NewDeleteFeedLinkUsecase(subscriptionGw)
 
 	// OPML
-	opmlExportGw := opml_gateway.NewExportGateway(pool)
-	opmlImportGw := opml_gateway.NewImportGateway(pool)
+	// OPML export used to build its SQL in the gateway and issue it through
+	// AltDBRepository.GetPool(); with the table owned by alt-data-hub there is
+	// no pool to reach for (capability catalog §4-7).
+	opmlExportGw := opml_gateway.NewExportGateway(infra.FeedLinkGateway)
+	opmlImportGw := opml_gateway.NewImportGateway(infra.FeedLinkGateway)
 	exportOPMLUC := opml_usecase.NewExportOPMLUsecase(opmlExportGw)
 	importOPMLUC := opml_usecase.NewImportOPMLUsecase(opmlImportGw)
 

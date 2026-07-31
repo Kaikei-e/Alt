@@ -2,74 +2,49 @@ package opml_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
-	"alt/utils/logger"
 	"context"
-	"errors"
 	"net/url"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// FeedLinkExportStore is the one capability OPML export needs.
+//
+// Its predecessor built the query here and issued it through
+// AltDBRepository.GetPool() — the last gateway in the module reaching past the
+// driver layer for a raw pool (capability catalog §4-7). With alt-data-hub
+// owning alt_db there is no pool to reach for, so the layering violation is
+// not merely fixed but unreachable.
+type FeedLinkExportStore interface {
+	FetchFeedLinksForExport(ctx context.Context) ([]*domain.FeedLinkForExport, error)
+}
 
 // ExportGateway implements opml_port.ExportOPMLPort.
 type ExportGateway struct {
-	altDB *alt_db.AltDBRepository
+	store FeedLinkExportStore
 }
 
-func NewExportGateway(pool *pgxpool.Pool) *ExportGateway {
-	return &ExportGateway{altDB: alt_db.NewAltDBRepositoryWithPool(pool)}
+func NewExportGateway(store FeedLinkExportStore) *ExportGateway {
+	if store == nil {
+		panic("opml_gateway: FeedLinkExportStore is required (see .claude/rules/di-wiring.md)")
+	}
+	return &ExportGateway{store: store}
 }
 
 func (g *ExportGateway) FetchFeedLinksForExport(ctx context.Context) ([]*domain.FeedLinkForExport, error) {
-	if g.altDB == nil {
-		return nil, errors.New("database connection not available")
-	}
-
-	query := `
-		SELECT fl.url,
-		       COALESCE(sub.title, '') AS title
-		FROM feed_links fl
-		LEFT JOIN LATERAL (
-			SELECT DISTINCT ON (feed_link_id) title
-			FROM feeds
-			WHERE feed_link_id = fl.id
-			ORDER BY feed_link_id, created_at DESC
-		) sub ON true
-		ORDER BY fl.url ASC
-	`
-
-	rows, err := g.altDB.GetPool().Query(ctx, query)
+	links, err := g.store.FetchFeedLinksForExport(ctx)
 	if err != nil {
-		logger.SafeErrorContext(ctx, "Error fetching feed links for export", "error", err)
-		return nil, errors.New("error fetching feed links for export")
+		return nil, err
 	}
-	defer rows.Close()
 
-	links := make([]*domain.FeedLinkForExport, 0)
-	for rows.Next() {
-		var feedURL, title string
-		if err := rows.Scan(&feedURL, &title); err != nil {
-			logger.SafeErrorContext(ctx, "Error scanning feed link for export", "error", err)
-			return nil, errors.New("error scanning feed links for export")
+	// The hostname fallback stays here. An empty title means no feed has ever
+	// been collected for the link, and what to show instead is a rendering
+	// decision — the data plane reports the fact and nothing more.
+	for _, link := range links {
+		if link.Title != "" {
+			continue
 		}
-
-		// Fallback: use domain name if title is empty
-		if title == "" {
-			if parsed, parseErr := url.Parse(feedURL); parseErr == nil && parsed.Host != "" {
-				title = parsed.Host
-			}
+		if parsed, parseErr := url.Parse(link.URL); parseErr == nil && parsed.Host != "" {
+			link.Title = parsed.Host
 		}
-
-		links = append(links, &domain.FeedLinkForExport{
-			URL:   feedURL,
-			Title: title,
-		})
 	}
-
-	if err := rows.Err(); err != nil {
-		logger.SafeErrorContext(ctx, "Row iteration error", "error", err)
-		return nil, errors.New("error iterating feed links for export")
-	}
-
 	return links, nil
 }

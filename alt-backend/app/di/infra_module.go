@@ -2,6 +2,7 @@ package di
 
 import (
 	"alt/config"
+	"alt/domain"
 	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
 	"alt/orchestrator/driver/search_indexer_connect"
 	"alt/orchestrator/gateway/config_gateway"
@@ -59,6 +60,15 @@ type InfraModule struct {
 	LatestArticleGateway     *datahub_gateway.LatestArticleGateway
 	ArticleURLLookupGateway  *datahub_gateway.ArticleURLLookupGateway
 	KnowledgeBackfillGateway *datahub_gateway.KnowledgeBackfillGateway
+
+	// Batch 3 (catalog §2.F / §2.G / §2.H). Three gateways for three tables:
+	// the subscription list, its poll health, and what polling produced.
+	// FeedLinkAvailabilityGateway carries the auto-disable threshold, which is
+	// operational policy and therefore lives on this side of the boundary
+	// (catalog §4-4).
+	FeedLinkGateway             *datahub_gateway.FeedLinkGateway
+	FeedLinkAvailabilityGateway *datahub_gateway.FeedLinkAvailabilityGateway
+	FeedGateway                 *datahub_gateway.FeedGateway
 
 	Pool *pgxpool.Pool
 }
@@ -123,6 +133,10 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 		LatestArticleGateway:     datahub_gateway.NewLatestArticleGateway(dataHubClient),
 		ArticleURLLookupGateway:  datahub_gateway.NewArticleURLLookupGateway(dataHubClient),
 		KnowledgeBackfillGateway: datahub_gateway.NewKnowledgeBackfillGateway(dataHubClient),
+
+		FeedLinkGateway:             datahub_gateway.NewFeedLinkGateway(dataHubClient),
+		FeedLinkAvailabilityGateway: datahub_gateway.NewFeedLinkAvailabilityGateway(dataHubClient, domain.DefaultMaxConsecutiveFailures),
+		FeedGateway:                 datahub_gateway.NewFeedGateway(dataHubClient),
 
 		Pool: pool,
 	}

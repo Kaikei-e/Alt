@@ -1,7 +1,8 @@
 package fetch_feed_gateway
 
 import (
-	"alt/shared/driver/alt_db"
+	"alt/domain"
+
 	"alt/utils/logger"
 	"bytes"
 	"compress/gzip"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mmcdole/gofeed"
-	"github.com/pashagolub/pgxmock/v5"
 )
 
 const testRSSFeed = `<?xml version="1.0" encoding="UTF-8"?>
@@ -91,27 +91,18 @@ func TestFetchFeedsGateway_NormalFeed_Fetched(t *testing.T) {
 	}
 }
 
-// newSingleFeedGatewayFor builds a SingleFeedGateway whose only registered feed
-// link is feedURL. SingleFeedGateway builds its own client from the unified HTTP
-// client factory, whose secure dialer refuses private addresses unless the host
-// is operator-allow-listed via FEED_ALLOWED_HOSTS — httptest binds to loopback.
+// newSingleFeedGatewayFor builds a SingleFeedGateway whose only subscription is
+// feedURL. SingleFeedGateway builds its own client from the unified HTTP client
+// factory, whose secure dialer refuses private addresses unless the host is
+// operator-allow-listed via FEED_ALLOWED_HOSTS — httptest binds to loopback.
 func newSingleFeedGatewayFor(t *testing.T, feedURL string) *SingleFeedGateway {
 	t.Helper()
 
 	logger.InitLogger()
 	t.Setenv("FEED_ALLOWED_HOSTS", "127.0.0.1")
 
-	mockPool, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("failed to create pgxmock pool: %v", err)
-	}
-	t.Cleanup(mockPool.Close)
-
-	mockPool.ExpectQuery("SELECT fl.id, fl.url FROM feed_links fl").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "url"}).AddRow(uuid.New(), feedURL))
-
 	return &SingleFeedGateway{
-		alt_db:      alt_db.NewAltDBRepository(mockPool),
+		store:       &pollableFeedLinkStoreStub{links: []domain.FeedLink{{ID: uuid.New(), URL: feedURL}}},
 		rateLimiter: nil,
 	}
 }

@@ -78,6 +78,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		TotalCount:               container.TotalArticlesCountUsecase,
 		TodayUnreadCount:         container.TodayUnreadArticlesCountUsecase,
 		ArticleStore:             container.Infra.ArticleStoreGateway,
+		SummaryStore:             container.Infra.FeedGateway,
 		AltDBRepository:          container.AltDBRepository,
 		PreProcessorClient:       container.PreProcessorConnectClient,
 		CreateSummaryVersion:     container.CreateSummaryVersionUsecase,

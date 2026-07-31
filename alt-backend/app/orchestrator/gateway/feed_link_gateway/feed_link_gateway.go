@@ -2,39 +2,42 @@ package feed_link_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"context"
-	"errors"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type FeedLinkGateway struct {
-	altDB *alt_db.AltDBRepository
+// FeedLinkStore is the slice of alt-data-hub the feed-link management screens
+// use (ADR-000954 Wave 3 batch 3, capability catalog §2.F).
+//
+// An interface rather than a repository handle because this gateway no longer
+// owns a database. Naming the three calls it makes keeps a later edit from
+// reaching a fourth one it has no capability for.
+type FeedLinkStore interface {
+	FetchFeedLinks(ctx context.Context) ([]*domain.FeedLink, error)
+	FetchFeedLinksWithAvailability(ctx context.Context) ([]*domain.FeedLinkWithHealth, error)
+	DeleteFeedLink(ctx context.Context, id uuid.UUID) error
 }
 
-func NewFeedLinkGateway(pool *pgxpool.Pool) *FeedLinkGateway {
-	return &FeedLinkGateway{altDB: alt_db.NewAltDBRepositoryWithPool(pool)}
+type FeedLinkGateway struct {
+	store FeedLinkStore
+}
+
+func NewFeedLinkGateway(store FeedLinkStore) *FeedLinkGateway {
+	if store == nil {
+		panic("feed_link_gateway: FeedLinkStore is required (see .claude/rules/di-wiring.md)")
+	}
+	return &FeedLinkGateway{store: store}
 }
 
 func (g *FeedLinkGateway) ListFeedLinks(ctx context.Context) ([]*domain.FeedLink, error) {
-	if g.altDB == nil {
-		return nil, errors.New("database connection not available")
-	}
-	return g.altDB.FetchFeedLinks(ctx)
+	return g.store.FetchFeedLinks(ctx)
 }
 
 func (g *FeedLinkGateway) ListFeedLinksWithHealth(ctx context.Context) ([]*domain.FeedLinkWithHealth, error) {
-	if g.altDB == nil {
-		return nil, errors.New("database connection not available")
-	}
-	return g.altDB.FetchFeedLinksWithAvailability(ctx)
+	return g.store.FetchFeedLinksWithAvailability(ctx)
 }
 
 func (g *FeedLinkGateway) DeleteFeedLink(ctx context.Context, id uuid.UUID) error {
-	if g.altDB == nil {
-		return errors.New("database connection not available")
-	}
-	return g.altDB.DeleteFeedLink(ctx, id)
+	return g.store.DeleteFeedLink(ctx, id)
 }

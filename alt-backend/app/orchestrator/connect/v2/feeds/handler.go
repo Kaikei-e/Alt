@@ -41,10 +41,12 @@ type FeedHandlerDeps struct {
 	// Feed summary.
 	//
 	// ArticleStore is the article half (catalog §2.B / §2.C), served by
-	// alt-data-hub since ADR-000954 Wave 3 batch 2. AltDBRepository is what is
-	// left: the article_summaries reads and writes, which migrate with their
-	// own capability group.
+	// alt-data-hub since ADR-000954 Wave 3 batch 2. SummaryStore is the
+	// summary *read*, which moved in batch 3 (catalog §2.H W3-H8).
+	// AltDBRepository is what is left: the article_summaries write and the
+	// feed-tag read, each migrating with its own capability group.
 	ArticleStore         ArticleStore
+	SummaryStore         SummaryStore
 	AltDBRepository      *alt_db.AltDBRepository
 	PreProcessorClient   *preprocessor_connect.ConnectPreProcessorClient
 	CreateSummaryVersion *create_summary_version_usecase.CreateSummaryVersionUsecase
@@ -63,6 +65,19 @@ type ArticleStore interface {
 	FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
 	FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error)
 	SaveArticle(ctx context.Context, url, title, content string) (string, error)
+}
+
+// SummaryStore is the cached-summary read StreamSummarize consults before it
+// spends a model call (capability catalog §2.H W3-H8).
+//
+// Named here for the same reason ArticleStore is: the handler used to reach
+// through AltDBRepository for it, which is a Handler → Driver hop, and after
+// the batch there is no database on this side to reach. A miss is
+// (nil, nil) — the driver used to raise pgx.ErrNoRows and this path read the
+// error as "no cached summary, go generate one", which over an RPC would have
+// meant reporting a data plane fault for every unsummarised article.
+type SummaryStore interface {
+	FetchArticleSummaryByArticleID(ctx context.Context, articleID string) (*domain.FeedSummary, error)
 }
 
 // Handler implements the FeedService Connect-RPC service.

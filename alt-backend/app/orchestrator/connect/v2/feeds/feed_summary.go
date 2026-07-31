@@ -79,7 +79,7 @@ func (h *Handler) StreamSummarize(
 	// Check cache for existing summary (skip when force refresh)
 	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
 	if !forceRefresh {
-		existingSummary, err := h.deps.AltDBRepository.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
+		existingSummary, err := h.deps.SummaryStore.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
 		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
 			h.logger.InfoContext(ctx, "returning cached summary", "article_id", resolvedArticleID)
 			// Return cached summary immediately

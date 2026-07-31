@@ -92,6 +92,16 @@ type DataHubComponents struct {
 	ArticleWriteGateway      datahub_capability_port.ArticleWritePort
 	ArticleReadGateway       datahub_capability_port.ArticleReadPort
 	KnowledgeBackfillGateway datahub_capability_port.KnowledgeBackfillPort
+
+	// ADR-000954 Wave 3 batch 3 (catalog §2.F / §2.G / §2.H).
+	//
+	// The availability gateway is where the batch's one merged capability
+	// lands: RecordFeedLinkFailure holds the increment and the auto-disable in
+	// one transaction, which is exactly the read-modify-write the collector
+	// used to run across a process boundary (catalog §4-4).
+	FeedLinkGateway             datahub_capability_port.FeedLinkPort
+	FeedLinkAvailabilityGateway datahub_capability_port.FeedLinkAvailabilityPort
+	FeedGateway                 datahub_capability_port.FeedPort
 }
 
 // NewDataHubComponents is cmd/datahub's composition root.
@@ -182,6 +192,17 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		"procedures", 13,
 		"adr", "ADR-000954 Wave 3 batch 2")
 
+	// ADR-000954 Wave 3 batch 3 capabilities. Same reasoning again: after this
+	// batch neither alt-backend nor alt-harvester has a pool for feed_links,
+	// feed_link_availability or feeds.
+	feedLinkGw := datahub_capability_gateway.NewFeedLinkGateway(altDB)
+	feedLinkAvailabilityGw := datahub_capability_gateway.NewFeedLinkAvailabilityGateway(altDB)
+	feedGw := datahub_capability_gateway.NewFeedGateway(altDB)
+	slog.Info("datahub.wave3_capabilities_enabled",
+		"groups", "feed_link,feed_link_availability,feed",
+		"procedures", 24,
+		"adr", "ADR-000954 Wave 3 batch 3")
+
 	return &DataHubComponents{
 		Config:                      cfg,
 		AltDBRepository:             altDB,
@@ -206,5 +227,9 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		ArticleWriteGateway:      articleWriteGw,
 		ArticleReadGateway:       articleReadGw,
 		KnowledgeBackfillGateway: knowledgeBackfillGw,
+
+		FeedLinkGateway:             feedLinkGw,
+		FeedLinkAvailabilityGateway: feedLinkAvailabilityGw,
+		FeedGateway:                 feedGw,
 	}
 }

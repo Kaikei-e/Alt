@@ -1,8 +1,8 @@
 package feed_page_cache_gateway
 
 import (
+	"alt/domain"
 	"alt/orchestrator/port/feed_page_cache_port"
-	"alt/shared/driver/alt_db"
 	"alt/utils/cache"
 	"alt/utils/sanitize"
 	"context"
@@ -13,7 +13,7 @@ import (
 )
 
 type feedPageDB interface {
-	FetchFeedsByFeedLinkID(ctx context.Context, feedLinkID uuid.UUID) ([]*alt_db.FeedPageRow, error)
+	FetchFeedsByFeedLinkID(ctx context.Context, feedLinkID uuid.UUID) ([]*domain.FeedRow, error)
 }
 
 type Gateway struct {
@@ -21,7 +21,10 @@ type Gateway struct {
 	cache *cache.SharedCache[uuid.UUID, []*feed_page_cache_port.FeedPageEntry]
 }
 
-func NewGateway(db *alt_db.AltDBRepository) *Gateway {
+func NewGateway(db feedPageDB) *Gateway {
+	if db == nil {
+		panic("feed_page_cache_gateway: feed page store is required (see .claude/rules/di-wiring.md)")
+	}
 	g := &Gateway{db: db}
 	g.cache = cache.NewSharedCache(2*time.Minute, time.Minute, g.loadFeedPage)
 	return g
@@ -50,18 +53,22 @@ func (g *Gateway) loadFeedPage(ctx context.Context, feedLinkID uuid.UUID) ([]*fe
 
 	result := make([]*feed_page_cache_port.FeedPageEntry, 0, len(rows))
 	for _, row := range rows {
+		feedID, parseErr := uuid.Parse(row.ID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse feed id %q: %w", row.ID, parseErr)
+		}
 		result = append(result, &feed_page_cache_port.FeedPageEntry{
-			FeedID:               row.FeedID,
+			FeedID:               feedID,
 			Title:                row.Title,
 			Description:          row.Description,
-			Link:                 row.Link,
+			Link:                 row.WebsiteURL,
 			PubDate:              row.PubDate,
 			CreatedAt:            row.CreatedAt,
 			UpdatedAt:            row.UpdatedAt,
 			ArticleID:            row.ArticleID,
 			OgImageURL:           row.OgImageURL,
 			SanitizedDescription: sanitize.SanitizeDescription(row.Description),
-			FeedIDStr:            row.FeedID.String(),
+			FeedIDStr:            row.ID,
 			PublishedStr:         row.CreatedAt.Format(time.RFC3339),
 		})
 	}

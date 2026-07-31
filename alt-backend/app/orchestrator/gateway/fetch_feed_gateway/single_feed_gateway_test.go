@@ -1,15 +1,14 @@
 package fetch_feed_gateway
 
 import (
-	"alt/shared/driver/alt_db"
+	stderrors "errors"
+
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"context"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestSingleFeedGateway_FetchSingleFeed_LoggerNilCase(t *testing.T) {
@@ -30,7 +29,7 @@ func TestSingleFeedGateway_FetchSingleFeed_LoggerNilCase(t *testing.T) {
 
 	// Create gateway with nil database connection to trigger error path
 	gateway := &SingleFeedGateway{
-		alt_db:      nil, // This will trigger database unavailable error
+		store:       &pollableFeedLinkStoreStub{err: stderrors.New("data plane unavailable")}, // This will trigger database unavailable error
 		rateLimiter: nil,
 	}
 
@@ -64,7 +63,7 @@ func TestSingleFeedGateway_FetchSingleFeed_DatabaseNil(t *testing.T) {
 	logger.InitLogger()
 
 	gateway := &SingleFeedGateway{
-		alt_db:      nil, // Simulate nil database connection
+		store:       &pollableFeedLinkStoreStub{err: stderrors.New("data plane unavailable")}, // Simulate nil database connection
 		rateLimiter: nil,
 	}
 
@@ -98,17 +97,11 @@ func TestSingleFeedGateway_FetchSingleFeed_DatabaseNil(t *testing.T) {
 func TestSingleFeedGateway_FetchSingleFeed_NoFeedUrls(t *testing.T) {
 	logger.InitLogger()
 
-	mockPool, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("failed to create pgxmock pool: %v", err)
-	}
-	defer mockPool.Close()
-
-	mockPool.ExpectQuery("SELECT fl.id, fl.url FROM feed_links fl").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "url"}))
-
+	// No subscriptions at all: the gateway answers a placeholder feed rather
+	// than an error, because an account with nothing subscribed is a state the
+	// UI renders.
 	gateway := &SingleFeedGateway{
-		alt_db:      alt_db.NewAltDBRepository(mockPool),
+		store:       &pollableFeedLinkStoreStub{},
 		rateLimiter: nil,
 	}
 
@@ -124,10 +117,6 @@ func TestSingleFeedGateway_FetchSingleFeed_NoFeedUrls(t *testing.T) {
 	}
 	if len(feed.Items) != 0 {
 		t.Errorf("FetchSingleFeed() Items = %v, want empty", feed.Items)
-	}
-
-	if err := mockPool.ExpectationsWereMet(); err != nil {
-		t.Errorf("unmet pgxmock expectations: %v", err)
 	}
 }
 
@@ -145,7 +134,7 @@ func TestSingleFeedGateway_FetchSingleFeed_ProxyIntegration(t *testing.T) {
 		{
 			name: "should_use_proxy_aware_http_client",
 			gateway: &SingleFeedGateway{
-				alt_db:      nil, // Will trigger error, but test focuses on HTTP client creation
+				store:       &pollableFeedLinkStoreStub{err: stderrors.New("data plane unavailable")}, // Will trigger error, but test focuses on HTTP client creation
 				rateLimiter: nil,
 			},
 			wantErr: true, // Expected to fail with database error, but createHTTPClient method should work

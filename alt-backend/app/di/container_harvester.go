@@ -7,6 +7,7 @@ import (
 
 	"alt/adapter/augur_adapter"
 	"alt/config"
+	"alt/domain"
 	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
 	"alt/orchestrator/gateway/feed_link_domain_gateway"
 	"alt/orchestrator/gateway/fetch_article_gateway"
@@ -41,10 +42,9 @@ import (
 type HarvesterComponents struct {
 	Config *config.Config
 
-	// Shared driver. Still present: the feed collector, the feed-link
-	// availability writes and the tag cloud read are not part of ADR-000954
-	// Wave 3 batch 1, so this binary keeps a database pool until the later
-	// batches land.
+	// Shared driver. Still present for the tag cloud read, which is a later
+	// ADR-000954 Wave 3 batch. The feed collector and the feed-link
+	// availability writes moved in batch 3.
 	AltDBRepository *alt_db.AltDBRepository
 
 	// alt-data-hub client and the capability gateways built on it
@@ -54,6 +54,12 @@ type HarvesterComponents struct {
 	OgImageGateway         *datahub_gateway.OgImageGateway
 	ImageProxyCacheGateway *datahub_gateway.ImageProxyCacheGateway
 
+	// hourly-feed-collector (ADR-000954 Wave 3 batch 3, catalog §2.F / §2.G /
+	// §2.H). FeedCollectorGateway bundles the three capabilities the job uses;
+	// the auto-disable threshold is baked into the availability half at
+	// construction because it is this process's operational policy
+	// (catalog §4-4).
+	FeedCollectorGateway *harvesterFeedCollectorGateway
 	// daily-scraping-policy
 	ScrapingDomainUsecase *scraping_domain_usecase.ScrapingDomainUsecase
 
@@ -103,6 +109,12 @@ func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterCo
 	ogImageGw := datahub_gateway.NewOgImageGateway(dataHubClient)
 	imageProxyCacheGw := datahub_gateway.NewImageProxyCacheGateway(dataHubClient)
 	scrapingDomainGw := datahub_gateway.NewScrapingDomainGateway(dataHubClient)
+	feedLinkGw := datahub_gateway.NewFeedLinkGateway(dataHubClient)
+	feedCollectorGw := &harvesterFeedCollectorGateway{
+		FeedLinkGateway:             feedLinkGw,
+		FeedGateway:                 datahub_gateway.NewFeedGateway(dataHubClient),
+		FeedLinkAvailabilityGateway: datahub_gateway.NewFeedLinkAvailabilityGateway(dataHubClient, domain.DefaultMaxConsecutiveFailures),
+	}
 
 	// Shared external-fetch primitives. CLAUDE.md rule 2: this rate limiter is
 	// process-local, so the harvester's effective rate against a publisher is
@@ -114,7 +126,7 @@ func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterCo
 
 	// daily-scraping-policy. The robots.txt fetch stays here (external HTTP,
 	// ADR-000954 D4); only the recorded result crosses to alt-data-hub.
-	feedLinkDomainGw := feed_link_domain_gateway.NewFeedLinkDomainGateway(altDB)
+	feedLinkDomainGw := feed_link_domain_gateway.NewFeedLinkDomainGateway(feedLinkGw)
 	scrapingDomainUC := scraping_domain_usecase.NewScrapingDomainUsecaseWithFeedLinkDomain(
 		scrapingDomainGw, robotsTxtGw, feedLinkDomainGw,
 	)
@@ -152,6 +164,7 @@ func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterCo
 		OutboxGateway:          outboxGw,
 		OgImageGateway:         ogImageGw,
 		ImageProxyCacheGateway: imageProxyCacheGw,
+		FeedCollectorGateway:   feedCollectorGw,
 		ScrapingDomainUsecase:  scrapingDomainUC,
 		FetchArticleGateway:    fetchArticleGw,
 		ImageProxyUsecase:      imageProxyUC,
@@ -215,4 +228,18 @@ func logSovereignWiringState(binary, sovereignURL, appEnv string) bool {
 		panic("SOVEREIGN_URL is required when APP_ENV=production — refusing to start with Knowledge Home silently disabled")
 	}
 	return false
+}
+
+// harvesterFeedCollectorGateway is the hourly collector's whole view of
+// alt-data-hub: the poll work list, the upsert of what polling produced, and
+// the poll-health state machine.
+//
+// Three embedded gateways rather than one wide one, because they are three
+// tables with three different invariants — and because embedding keeps
+// job.FeedCollectorStore satisfied by method promotion without this struct
+// restating a signature that would then have two places to drift.
+type harvesterFeedCollectorGateway struct {
+	*datahub_gateway.FeedLinkGateway
+	*datahub_gateway.FeedGateway
+	*datahub_gateway.FeedLinkAvailabilityGateway
 }

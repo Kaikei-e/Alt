@@ -98,6 +98,16 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.DataHubComponents, c
 			container.ArticleReadGateway,
 			container.KnowledgeBackfillGateway,
 		),
+		// ADR-000954 Wave 3 batch 3, same rule once more: feed_links,
+		// feed_link_availability and feeds. A nil feed port would leave every
+		// user looking at an empty feed list, and a nil availability port
+		// would leave alt-harvester polling dead feeds forever — both while
+		// the process reported healthy.
+		datahubapi.WithWave3Batch3Capabilities(
+			container.FeedLinkGateway,
+			container.FeedLinkAvailabilityGateway,
+			container.FeedGateway,
+		),
 	)
 	datahubPath, datahubServiceHandler := datahubv1connect.NewDataHubServiceHandler(datahubHandler, datahubOpts)
 	mux.Handle(datahubPath, datahubServiceHandler)

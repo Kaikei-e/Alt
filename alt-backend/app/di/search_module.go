@@ -17,8 +17,10 @@ type SearchModule struct {
 // newSearchModule creates the SearchModule and wires all global search components.
 func newSearchModule(infra *InfraModule) *SearchModule {
 	tagRepo := alt_db.NewTagRepository(infra.Pool)
-	feedRepo := alt_db.NewFeedRepository(infra.Pool)
-	urlGW := feed_url_link_gateway.NewFeedURLLinkGateway(feedRepo)
+	// The article-to-feed resolution moved to alt-data-hub in ADR-000954
+	// Wave 3 batch 3 (catalog §2.H W3-H11); the tag prefix search is §2.J and
+	// still direct.
+	urlGW := feed_url_link_gateway.NewFeedURLLinkGateway(infra.FeedGateway)
 
 	articleGW := global_search_gateway.NewArticleSearchGateway(infra.SearchIndexerDriver, urlGW)
 	recapGW := global_search_gateway.NewRecapSearchGateway(infra.SearchIndexerDriver)
