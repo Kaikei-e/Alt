@@ -8,11 +8,11 @@ the operator listener on `:9110` — `/health` for the compose probe,
 `observability/prometheus/prometheus.yml` — and that is not published to the
 host.
 
-**Status: RED.** This suite is written outside-in, ahead of the split. The
-`alt-harvester` compose profile does not exist in
-`compose/compose.staging.yaml` yet, so `run.sh` fails at `compose up`. That
-is the intended starting state — see "What has to exist for this to go
-green".
+**Status: wired.** The `alt-harvester` profile exists in
+`compose/compose.staging.yaml` and the sibling job exists in
+`.github/workflows/e2e-hurl.yml`. The suite was written outside-in ahead of
+the split; the list under "What has to exist for this to go green" is now a
+description of what is there rather than a to-do.
 
 ## The contract this suite exists to hold
 
@@ -73,7 +73,7 @@ polarity is inverted in `_lib/probe-transport-refused.hurl` (which passes on
 exit code **3** — runtime error — so a parse error or an assert failure
 cannot masquerade as a refusal). The alt-data-hub suite uses the same pair.
 
-## What has to exist for this to go green
+## What the suite depends on (all present)
 
 1. An `alt-harvester` service on the `alt-harvester` profile in
    `compose/compose.staging.yaml`, sharing `alt-backend-db` /

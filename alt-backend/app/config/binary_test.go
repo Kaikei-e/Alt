@@ -58,9 +58,12 @@ func TestValidateBackendListeners(t *testing.T) {
 }
 
 // The operator surface (KnowledgeHomeAdminService, AdminMonitorService) has no
-// authentication of its own: reachability is the whole control. A bind address
-// that is not loopback publishes admin RPCs on every interface, so it fails
-// startup rather than being logged and accepted.
+// authentication of its own, so the default stays loopback. An *explicit*
+// OPERATOR_LISTEN_ADDR may bind wider: compose publishes 127.0.0.1:9102:9102
+// for altctl, and docker-proxy connects from the container's eth0 — a loopback
+// bind inside the netns is unreachable from it, which took the host-side
+// operator workflow offline. The widening has to be typed out by a human and
+// is announced at startup (see ListenAddrReach).
 func TestLoadOperatorListenAddr(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -72,10 +75,11 @@ func TestLoadOperatorListenAddr(t *testing.T) {
 		{name: "explicit loopback IPv4", env: "127.0.0.1:9500", want: "127.0.0.1:9500"},
 		{name: "explicit loopback IPv6", env: "[::1]:9500", want: "[::1]:9500"},
 		{name: "localhost name", env: "localhost:9102", want: "localhost:9102"},
-		{name: "all interfaces is refused", env: "0.0.0.0:9102", wantErr: true},
-		{name: "bare port means all interfaces", env: ":9102", wantErr: true},
-		{name: "routable address is refused", env: "10.0.0.4:9102", wantErr: true},
+		{name: "explicit all interfaces is allowed", env: "0.0.0.0:9102", want: "0.0.0.0:9102"},
+		{name: "explicit bare port is allowed", env: ":9102", want: ":9102"},
+		{name: "explicit routable address is allowed", env: "10.0.0.4:9102", want: "10.0.0.4:9102"},
 		{name: "missing port", env: "127.0.0.1", wantErr: true},
+		{name: "empty port", env: "127.0.0.1:", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -95,6 +99,78 @@ func TestLoadOperatorListenAddr(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("LoadOperatorListenAddr() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// OPS_LISTEN is the one listener all three binaries open: /health for the
+// compose probe, /metrics for Prometheus, nothing else and no authentication.
+// Because it carries nothing worth authenticating, a non-loopback bind is a
+// normal deployment (compose sets ":9110" so Prometheus can reach it over
+// alt-network) rather than an accident to refuse.
+func TestLoadOpsListenAddr(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     string
+		want    string
+		wantErr bool
+	}{
+		{name: "defaults to loopback", env: "", want: "127.0.0.1:9110"},
+		{name: "compose binds every interface in the netns", env: ":9110", want: ":9110"},
+		{name: "explicit 0.0.0.0", env: "0.0.0.0:9110", want: "0.0.0.0:9110"},
+		{name: "explicit loopback", env: "127.0.0.1:19110", want: "127.0.0.1:19110"},
+		{name: "surrounding whitespace is trimmed", env: "  :9110  ", want: ":9110"},
+		{name: "missing port", env: "127.0.0.1", wantErr: true},
+		{name: "empty port", env: ":", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.env != "" {
+				t.Setenv("OPS_LISTEN", tt.env)
+			}
+			got, err := LoadOpsListenAddr()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("LoadOpsListenAddr() = %q, want error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("LoadOpsListenAddr() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// ListenAddrReach is what turns a relaxed bind rule into an audible one: the
+// binaries print it at startup so "this admin port answers the container
+// network" is a line in the log rather than something an operator has to infer
+// from a compose file.
+func TestListenAddrReach(t *testing.T) {
+	tests := []struct {
+		name string
+		addr string
+		want ListenReach
+	}{
+		{name: "loopback IPv4", addr: "127.0.0.1:9102", want: ReachLoopback},
+		{name: "loopback IPv6", addr: "[::1]:9102", want: ReachLoopback},
+		{name: "localhost name", addr: "localhost:9102", want: ReachLoopback},
+		{name: "bare port", addr: ":9110", want: ReachNetwork},
+		{name: "all interfaces", addr: "0.0.0.0:9110", want: ReachNetwork},
+		{name: "IPv6 all interfaces", addr: "[::]:9110", want: ReachNetwork},
+		{name: "routable address", addr: "10.0.0.4:9102", want: ReachNetwork},
+		{name: "unparseable is reported as reachable", addr: "nonsense", want: ReachNetwork},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ListenAddrReach(tt.addr); got != tt.want {
+				t.Errorf("ListenAddrReach(%q) = %q, want %q", tt.addr, got, tt.want)
 			}
 		})
 	}
@@ -262,30 +338,51 @@ func TestValidateDataHubConfig_EventPublishingDisabled(t *testing.T) {
 	}
 }
 
-// The harvester's only listener follows the same loopback rule as the
-// backend's operator listener: nothing on it authenticates a caller.
-func TestLoadHarvesterHealthAddr(t *testing.T) {
+// HARVESTER_HEALTH_ADDR and DATAHUB_HEALTH_ADDR gave two of the three binaries
+// their own private probe port (:9103 / :9104) while compose, Prometheus and
+// the Hurl suites all addressed one shared :9110. Both are gone; OPS_LISTEN is
+// the single knob. Nothing may quietly resurrect them, because a container
+// whose probe port disagrees with its healthcheck is a container that never
+// reports healthy.
+func TestRetiredPerBinaryHealthAddrEnvIsGone(t *testing.T) {
+	for _, name := range []string{"HARVESTER_HEALTH_ADDR", "DATAHUB_HEALTH_ADDR"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(name, "127.0.0.1:9999")
+			got, err := LoadOpsListenAddr()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != "127.0.0.1:9110" {
+				t.Errorf("LoadOpsListenAddr() = %q with %s set, want the OPS_LISTEN default %q",
+					got, name, "127.0.0.1:9110")
+			}
+		})
+	}
+}
+
+// cmd/datahub's healthcheck subcommand dials the mTLS listener as well as
+// GETting the ops surface, and it must do that without the certificate paths
+// LoadDataHubConfig requires — the probe runs before anything is loaded.
+func TestLoadDataHubListenAddr(t *testing.T) {
 	tests := []struct {
 		name    string
 		env     string
 		want    string
 		wantErr bool
 	}{
-		{name: "defaults to loopback", env: "", want: "127.0.0.1:9103"},
-		{name: "explicit loopback", env: "127.0.0.1:9999", want: "127.0.0.1:9999"},
-		{name: "all interfaces is refused", env: "0.0.0.0:9103", wantErr: true},
-		{name: "bare port is refused", env: ":9103", wantErr: true},
+		{name: "compose value", env: ":9443", want: ":9443"},
+		{name: "explicit host", env: "0.0.0.0:9443", want: "0.0.0.0:9443"},
+		{name: "unset is a startup failure", env: "", wantErr: true},
+		{name: "missing port", env: "0.0.0.0", wantErr: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.env != "" {
-				t.Setenv("HARVESTER_HEALTH_ADDR", tt.env)
-			}
-			got, err := LoadHarvesterHealthAddr()
+			t.Setenv("DATAHUB_LISTEN_ADDR", tt.env)
+			got, err := LoadDataHubListenAddr()
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("LoadHarvesterHealthAddr() = %q, want error", got)
+					t.Fatalf("LoadDataHubListenAddr() = %q, want error", got)
 				}
 				return
 			}
@@ -293,7 +390,7 @@ func TestLoadHarvesterHealthAddr(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if got != tt.want {
-				t.Errorf("LoadHarvesterHealthAddr() = %q, want %q", got, tt.want)
+				t.Errorf("LoadDataHubListenAddr() = %q, want %q", got, tt.want)
 			}
 		})
 	}

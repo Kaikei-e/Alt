@@ -1,6 +1,6 @@
 // Command backend serves alt-backend's user-facing surfaces: the browser REST
-// API, the browser Connect-RPC API, and a loopback operator listener carrying
-// the admin RPCs.
+// API, the browser Connect-RPC API, an operator listener carrying the admin
+// RPCs, and the ops listener shared with cmd/harvester and cmd/datahub.
 //
 // It deliberately runs no scheduled jobs (cmd/harvester) and serves no
 // service-to-service surface (cmd/datahub). Neither is a matter of
@@ -31,6 +31,13 @@ import (
 const serviceName = "alt-backend"
 
 func main() {
+	// The healthcheck subcommand runs before anything is booted: compose calls
+	// it every interval, and a probe that first opened the database pool would
+	// report a healthy process unhealthy whenever a dependency was slow.
+	if bootstrap.IsHealthcheckInvocation(os.Args) {
+		runHealthcheck()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -61,6 +68,11 @@ func main() {
 		log.ErrorContext(ctx, "operator listener config invalid", "error", err)
 		os.Exit(1)
 	}
+	opsAddr, err := config.LoadOpsListenAddr()
+	if err != nil {
+		log.ErrorContext(ctx, "ops listener config invalid", "error", err)
+		os.Exit(1)
+	}
 
 	pprofSrv := profiling.Start(ctx, log)
 	defer pprofSrv.Close()
@@ -70,7 +82,7 @@ func main() {
 	otelEnabled := altotel.ConfigFromEnv().Enabled
 
 	// ---- Listener 1: browser-facing REST ----
-	e := newRESTEcho(container, cfg, otelEnabled, rt.MetricsHandler)
+	e := newRESTEcho(container, cfg, otelEnabled)
 	rest.RegisterRoutes(ctx, e, container, cfg)
 	restSrv := bootstrap.NewRESTServer(fmt.Sprintf(":%d", cfg.Server.Port), e, cfg)
 
@@ -80,23 +92,32 @@ func main() {
 		connectv2.CreateConnectServer(container, cfg, log),
 	)
 
-	// ---- Listener 3: operator (loopback) ----
-	// KnowledgeHomeAdminService and AdminMonitorService authenticate nobody;
-	// the loopback bind is the entire access control, so say so at startup
-	// rather than leaving it implied by a compose port mapping (rule 8).
+	// ---- Listener 3: operator ----
+	// KnowledgeHomeAdminService and AdminMonitorService authenticate nobody, so
+	// the bind address is the entire access control. It defaults to loopback
+	// and compose widens it to ":9102" to match the 127.0.0.1:9102:9102
+	// publish that altctl uses — docker-proxy dials the container's eth0, which
+	// a loopback bind inside the netns does not answer. Because the value can
+	// be widened, the process states what it actually bound and how far that
+	// reaches (rule 8); the compose publish is what keeps it off other hosts.
 	log.InfoContext(ctx, "operator_listener.wiring",
 		"addr", operatorAddr,
-		"surfaces", "KnowledgeHomeAdminService,AdminMonitorService,/metrics",
+		"reach", string(config.ListenAddrReach(operatorAddr)),
+		"surfaces", "KnowledgeHomeAdminService,AdminMonitorService",
 		"auth", "none",
-		"control", "loopback_bind_only",
 		"admin_monitor_enabled", container.AdminMonitor != nil && container.AdminMonitor.Enabled,
 	)
-	operatorSrv := bootstrap.NewServiceServer(operatorAddr, newOperatorHandler(container, cfg, log, rt.MetricsHandler), cfg)
+	operatorSrv := bootstrap.NewServiceServer(operatorAddr, newOperatorHandler(container, cfg, log), cfg)
+
+	// ---- Listener 4: ops (/health + /metrics), shared with the other two binaries ----
+	bootstrap.LogOpsWiring(ctx, log, opsAddr, rt.MetricsHandler != nil)
+	opsSrv := bootstrap.NewOpsServer(opsAddr, bootstrap.NewOpsHandler(serviceName, rt.MetricsHandler), cfg)
 
 	sup := bootstrap.NewSupervisor(log)
 	sup.AddServer("rest", func() error { return e.StartServer(restSrv) }, e.Shutdown)
 	sup.AddServer("connect", connectSrv.ListenAndServe, connectSrv.Shutdown)
 	sup.AddServer("operator", operatorSrv.ListenAndServe, operatorSrv.Shutdown)
+	sup.AddServer("ops", opsSrv.ListenAndServe, opsSrv.Shutdown)
 	sup.Start(ctx)
 
 	outcome := sup.Wait(ctx)
@@ -107,10 +128,32 @@ func main() {
 	log.Info("server stopped", "reason", outcome.Reason, "signal", outcome.Signal, "server", outcome.Server)
 }
 
-// newRESTEcho builds the browser-facing Echo instance, unchanged from the
-// single-binary main.go: OTel middleware, the error handler that preserves a
-// 401 instead of rewriting it to 404, and the Prometheus endpoint.
-func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEnabled bool, metrics http.Handler) *echo.Echo {
+// runHealthcheck self-probes the ops listener and exits. cmd/backend has no
+// second listener the probe has to reach: :9000 and :9101 are user-facing and
+// the operator listener carries no health route, so a live ops surface is the
+// liveness statement.
+func runHealthcheck() {
+	addr, err := config.LoadOpsListenAddr()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: %v\n", err)
+		os.Exit(1)
+	}
+	if err := bootstrap.Healthcheck(context.Background(), bootstrap.HealthcheckOptions{OpsAddr: addr}); err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+// newRESTEcho builds the browser-facing Echo instance: OTel middleware and the
+// error handler that preserves a 401 instead of rewriting it to 404.
+//
+// /metrics is deliberately absent. It used to sit here, which meant the
+// browser-facing listener was also the monitoring surface and the three split
+// binaries each exposed metrics somewhere different. It now lives on the ops
+// listener alone, and e2e/hurl/alt-backend/03-topology-internal-surface-
+// absent.hurl asserts the 404 that this omission produces.
+func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEnabled bool) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = false
@@ -133,28 +176,16 @@ func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEn
 		_ = c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "internal_error"})
 	}
 
-	if metrics != nil {
-		e.GET("/metrics", echo.WrapHandler(metrics))
-	}
 	return e
 }
 
-// newOperatorHandler serves the admin Connect-RPC services plus /metrics.
+// newOperatorHandler serves the admin Connect-RPC services, and only those.
 //
-// /metrics is also still served on the REST listener. That is deliberate
-// duplication, not an oversight: the operator listener binds loopback inside
-// the container, so a Prometheus server in another container cannot scrape it,
-// and silently moving the scrape target would have taken the backend's metrics
-// offline. The operator copy exists so an operator shelling into the container
-// has the whole operator surface on one address.
-func newOperatorHandler(container *di.ApplicationComponents, cfg *config.Config, log *slog.Logger, metrics http.Handler) http.Handler {
-	connectHandler := connectv2.CreateOperatorConnectServer(container, cfg, log)
-	if metrics == nil {
-		return connectHandler
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", metrics)
-	mux.Handle("/", connectHandler)
-	return mux
+// It used to carry a second copy of /metrics so an operator inside the
+// container had everything on one address. That copy is gone: Prometheus
+// scrapes the ops listener on :9110 (the same port for all three binaries),
+// and keeping a duplicate here meant the admin port had a route whose presence
+// nothing tested and whose absence nothing would notice.
+func newOperatorHandler(container *di.ApplicationComponents, cfg *config.Config, log *slog.Logger) http.Handler {
+	return connectv2.CreateOperatorConnectServer(container, cfg, log)
 }

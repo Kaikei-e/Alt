@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -29,6 +30,12 @@ import (
 const serviceName = "alt-data-hub"
 
 func main() {
+	// Runs before MustBoot: compose probes this container every 10s, and the
+	// probe must not depend on the database pool or the certificate material.
+	if bootstrap.IsHealthcheckInvocation(os.Args) {
+		runHealthcheck()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -50,9 +57,9 @@ func main() {
 		log.ErrorContext(ctx, "datahub listener config invalid", "error", err)
 		os.Exit(1)
 	}
-	healthAddr, err := config.LoadDataHubHealthAddr()
+	opsAddr, err := config.LoadOpsListenAddr()
 	if err != nil {
-		log.ErrorContext(ctx, "datahub health listener config invalid", "error", err)
+		log.ErrorContext(ctx, "ops listener config invalid", "error", err)
 		os.Exit(1)
 	}
 
@@ -90,16 +97,18 @@ func main() {
 
 	srv := tlsutil.NewMTLSHTTPServer(dcfg.ListenAddr, tlsCfg, handler)
 
-	// The container probe gets its own loopback listener rather than a client
-	// certificate. It serves /health and /metrics and carries no data-plane
-	// surface, so it is not a second entrance to anything.
-	healthSrv := bootstrap.NewServiceServer(healthAddr, newHealthHandler(rt.MetricsHandler), cfg)
-	log.InfoContext(ctx, "datahub_health_listener.wiring",
-		"addr", healthAddr, "surfaces", "/health,/metrics", "control", "loopback_bind_only")
+	// The container probe and Prometheus get the plaintext ops listener rather
+	// than a client certificate: handing either one a certificate would put a
+	// monitoring identity in DATAHUB_ALLOWED_PEERS, which is the data plane's
+	// entire authorisation decision. The listener carries /health and /metrics
+	// and no data-plane surface, so it is not a second entrance to anything —
+	// e2e/hurl/alt-data-hub/03-ops-listener.hurl asserts the 404s that say so.
+	bootstrap.LogOpsWiring(ctx, log, opsAddr, rt.MetricsHandler != nil)
+	opsSrv := bootstrap.NewOpsServer(opsAddr, bootstrap.NewOpsHandler(serviceName, rt.MetricsHandler), cfg)
 
 	sup := bootstrap.NewSupervisor(log)
 	sup.AddServer("mtls", func() error { return srv.ListenAndServeTLS("", "") }, srv.Shutdown)
-	sup.AddServer("health", healthSrv.ListenAndServe, healthSrv.Shutdown)
+	sup.AddServer("ops", opsSrv.ListenAndServe, opsSrv.Shutdown)
 	sup.Start(ctx)
 
 	outcome := sup.Wait(ctx)
@@ -125,18 +134,32 @@ func newInternalEcho(container *di.DataHubComponents) *echo.Echo {
 	return e
 }
 
-// newHealthHandler builds the loopback probe surface on an explicit mux —
-// never http.DefaultServeMux, which is where net/http/pprof would register
-// itself if this binary ever linked it.
-func newHealthHandler(metrics http.Handler) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"healthy","service":"` + serviceName + `"}`))
-	})
-	if metrics != nil {
-		mux.Handle("/metrics", metrics)
+// runHealthcheck self-probes the ops listener and additionally dials the mTLS
+// listener.
+//
+// The second check is the point. A probe that only GETs the plaintext port
+// cannot tell a healthy process from one whose mTLS listener goroutine has
+// died — the data plane would be unreachable while the container reported
+// healthy (ADR-000784). It dials and closes without handshaking: completing a
+// handshake would mean adding alt-data-hub to its own DATAHUB_ALLOWED_PEERS,
+// muddying what that list means.
+func runHealthcheck() {
+	opsAddr, err := config.LoadOpsListenAddr()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: %v\n", err)
+		os.Exit(1)
 	}
-	return mux
+	mtlsAddr, err := config.LoadDataHubListenAddr()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: %v\n", err)
+		os.Exit(1)
+	}
+	if err := bootstrap.Healthcheck(context.Background(), bootstrap.HealthcheckOptions{
+		OpsAddr:    opsAddr,
+		TCPTargets: []string{mtlsAddr},
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }

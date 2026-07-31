@@ -2,16 +2,16 @@
 // collection, the outbox worker, the OGP image pipeline, scraping-policy
 // refresh and outbox pruning.
 //
-// It serves no API. The one listener it opens carries /health and /metrics on
-// loopback so the container has a probe; there is no Echo instance, no
+// It serves no API. The one listener it opens is the ops listener shared by
+// all three binaries — /health for the compose probe, /metrics for Prometheus
+// — so the container has something to probe; there is no Echo instance, no
 // Connect-RPC mux, and NewHarvesterComponents builds none of the clients that
 // would let one be added by accident.
 package main
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
+	"fmt"
 	"os"
 
 	"alt/config"
@@ -23,6 +23,13 @@ import (
 const serviceName = "alt-harvester"
 
 func main() {
+	// Runs before MustBoot: compose probes every 20s, and a probe that opened
+	// the database pool first would report a healthy job runner unhealthy
+	// whenever Postgres was slow.
+	if bootstrap.IsHealthcheckInvocation(os.Args) {
+		runHealthcheck()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -39,9 +46,9 @@ func main() {
 		log.ErrorContext(ctx, "harvester config invalid", "error", err)
 		os.Exit(1)
 	}
-	healthAddr, err := config.LoadHarvesterHealthAddr()
+	opsAddr, err := config.LoadOpsListenAddr()
 	if err != nil {
-		log.ErrorContext(ctx, "harvester health listener config invalid", "error", err)
+		log.ErrorContext(ctx, "ops listener config invalid", "error", err)
 		os.Exit(1)
 	}
 
@@ -52,15 +59,11 @@ func main() {
 	log.InfoContext(ctx, "harvester.jobs.wiring", "jobs", scheduler.JobNames())
 	scheduler.Start(ctx)
 
-	healthSrv := bootstrap.NewServiceServer(healthAddr, newHealthHandler(rt.MetricsHandler), cfg)
-	log.InfoContext(ctx, "harvester_listener.wiring",
-		"addr", healthAddr,
-		"surfaces", "/health,/metrics",
-		"control", "loopback_bind_only",
-	)
+	bootstrap.LogOpsWiring(ctx, log, opsAddr, rt.MetricsHandler != nil)
+	opsSrv := bootstrap.NewOpsServer(opsAddr, bootstrap.NewOpsHandler(serviceName, rt.MetricsHandler), cfg)
 
 	sup := bootstrap.NewSupervisor(log)
-	sup.AddServer("health", healthSrv.ListenAndServe, healthSrv.Shutdown)
+	sup.AddServer("ops", opsSrv.ListenAndServe, opsSrv.Shutdown)
 	// Registered as a task, so GracefulShutdown drains the running jobs before
 	// closing the listener. The root context is cancelled first (below), which
 	// is what lets JobScheduler.runJob return instead of waiting out a full
@@ -76,22 +79,19 @@ func main() {
 	log.Info("harvester stopped", "reason", outcome.Reason, "signal", outcome.Signal, "server", outcome.Server)
 }
 
-// newHealthHandler builds the harvester's only handler on an explicit mux.
-//
-// It must not be http.DefaultServeMux: that mux is where net/http/pprof
-// registers itself, and serving it here would publish heap and goroutine dumps
-// from the health endpoint. alt/internal/profiling owns that import and only
-// cmd/backend links it, so the risk is structural rather than a matter of
-// remembering — but the explicit mux keeps it that way.
-func newHealthHandler(metrics http.Handler) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "healthy", "service": serviceName})
-	})
-	if metrics != nil {
-		mux.Handle("/metrics", metrics)
+// runHealthcheck self-probes the ops listener and exits. It is the harvester's
+// only socket, so nothing else needs proving: the scheduler runs in-process and
+// a dead scheduler goroutine would take the process down with it (the
+// supervisor registers it as a task).
+func runHealthcheck() {
+	addr, err := config.LoadOpsListenAddr()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: %v\n", err)
+		os.Exit(1)
 	}
-	return mux
+	if err := bootstrap.Healthcheck(context.Background(), bootstrap.HealthcheckOptions{OpsAddr: addr}); err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }

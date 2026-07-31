@@ -52,6 +52,19 @@
 #     resolves to it without spinning up the real services. A seventh
 #     alias, `stub.invalid`, serves a minimal RSS 2.0 document for the
 #     registration scenarios.)
+#   alt-harvester suite        → profile `alt-harvester`
+#     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
+#     alt-harvester
+#     (the scheduled-job binary of the 3-binary split. Same module and
+#     schema as the alt-backend profile — what the suite pins is the
+#     listener set: :9110 ops only, nothing on :9000 / :9101 / :9102 /
+#     :9443.)
+#   alt-data-hub suite         → profile `alt-data-hub`
+#     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
+#     alt-data-hub
+#     (the mTLS data plane of the 3-binary split. run.sh mints a throwaway
+#     PKI into e2e/fixtures/alt-data-hub/pki and mounts it at /certs and
+#     /trust, so the production DATAHUB_TLS_* paths are used verbatim.)
 # Bring a suite up with:
 #   docker compose -f compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
 # Services with NO profile are never auto-started (Compose default).
@@ -808,7 +821,7 @@ services:
   alt-backend-db:
     image: postgres:17-alpine
     container_name: alt-staging-alt-backend-db
-    profiles: [alt-backend]
+    profiles: [alt-backend, alt-harvester, alt-data-hub]
     # Plain env — staging password is a committed test fixture with no
     # meaning outside the ephemeral alt-staging network. Uses the
     # DB_USER/DB_NAME pair that alt-backend defaults to so the runtime
@@ -838,7 +851,7 @@ services:
       context: ../migrations-atlas
       dockerfile: docker/Dockerfile
     container_name: alt-staging-alt-backend-db-migrator
-    profiles: [alt-backend]
+    profiles: [alt-backend, alt-harvester, alt-data-hub]
     command: ["apply"]
     environment:
       DATABASE_URL: postgres://alt_db_user:alt-staging-test-postgres-password@alt-backend-db:5432/alt?sslmode=disable
@@ -860,7 +873,7 @@ services:
       context: ../e2e/stubs/alt-backend-deps-stub
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend-deps-stub:${ALT_BACKEND_DEPS_STUB_IMAGE_TAG:-main}
     container_name: alt-staging-alt-backend-deps-stub
-    profiles: [alt-backend]
+    profiles: [alt-backend, alt-harvester, alt-data-hub]
     # Network aliases let one container answer to all six upstream
     # hostnames + the synthetic `stub.invalid` that RSS registration
     # scenarios fetch. FastAPI routes by path, not Host header.
@@ -915,6 +928,21 @@ services:
       - DB_PASSWORD=alt-staging-test-postgres-password
       - DB_NAME=alt
       - SERVER_PORT=9000
+      - CONNECT_PORT=9101
+      # render-slice.sh strips every `ports:` key, so the Hurl container
+      # reaches this service by DNS name on the staging network — a listener
+      # bound to loopback inside the container would be unreachable and the
+      # suite would fail at connect rather than at an assertion. Both of these
+      # are spelled out for that reason; the production defaults differ
+      # (see compose/core.yaml).
+      #
+      # :9102 is where 72-admin-emit-article-url-backfill.hurl and
+      # 03-topology-internal-surface-absent.hurl address {{internal_url}}.
+      - OPERATOR_LISTEN_ADDR=:9102
+      # :9110 is {{ops_url}} — /health and /metrics, asserted by
+      # 01-health-csrf.hurl — and the address the `healthcheck` subcommand
+      # self-probes.
+      - OPS_LISTEN=:9110
       # HS256 JWT validation. The secret is read from a file mounted
       # from e2e/fixtures/staging-secrets/ so the fixture is the single
       # source of truth for both compose and the pre-minted test JWT
@@ -956,9 +984,12 @@ services:
       # SSRF allowlist — only stub.invalid is reachable and feed
       # registration needs to bypass the private-IP guard for it.
       - FEED_ALLOWED_HOSTS=stub.invalid
-      # mTLS is off in staging; the Connect-RPC listener speaks plain
-      # HTTP/1.1 on :9101.
-      - MTLS_LISTEN=false
+      # MTLS_LISTEN is deliberately absent, not set to false: cmd/backend no
+      # longer opens a mutual-TLS listener at all (that surface is
+      # cmd/datahub's), and config.RejectBackendMTLSListenerEnv exits non-zero
+      # on the variable's mere presence — "false" and "true" are equally dead
+      # config, and treating the leftover as an error is what stops it from
+      # looking like a working knob (rule 8).
       - MTLS_ENFORCE=false
       - LOG_LEVEL=info
       - LOG_FORMAT=json
@@ -981,6 +1012,169 @@ services:
       retries: 30
       start_period: 10s
 
+
+  # alt-harvester suite — the scheduled-job binary of the 3-binary split.
+  #
+  # Shares alt-backend-db / alt-backend-db-migrator / alt-backend-deps-stub
+  # with the alt-backend profile: same module, same schema, same upstream
+  # aliases. What differs is the listener set, and that is the whole point of
+  # e2e/hurl/alt-harvester/ — :9110 answers /health and /metrics, and nothing
+  # is bound on :9000 / :9101 / :9102 / :9443.
+  alt-harvester:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-harvester:${ALT_HARVESTER_IMAGE_TAG:-main}
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+      args:
+        # Required — the Dockerfile fails the build on an unset BINARY.
+        BINARY: harvester
+    container_name: alt-staging-alt-harvester
+    profiles: [alt-harvester]
+    depends_on:
+      alt-backend-db:
+        condition: service_healthy
+      alt-backend-db-migrator:
+        condition: service_completed_successfully
+      alt-backend-deps-stub:
+        condition: service_healthy
+    environment:
+      - DB_HOST=alt-backend-db
+      - DB_PORT=5432
+      - DB_USER=alt_db_user
+      - DB_PASSWORD=alt-staging-test-postgres-password
+      - DB_NAME=alt
+      # The only socket this binary opens. render-slice.sh strips every
+      # `ports:` key, so the Hurl container reaches it by DNS name on the
+      # staging network — a loopback bind would make the suite fail at connect
+      # instead of at an assertion. It is also what `/app-entry healthcheck`
+      # self-probes.
+      - OPS_LISTEN=:9110
+      # SERVER_PORT / CONNECT_PORT / OPERATOR_LISTEN_ADDR / MTLS_LISTEN are
+      # deliberately absent: this binary opens none of those listeners, and
+      # 01-operator-surface-only.hurl asserts the ports stay closed.
+      #
+      # Upstreams the jobs call — every alias resolves to
+      # alt-backend-deps-stub. SOVEREIGN_URL and RAG_ORCHESTRATOR_URL are
+      # required by config.ValidateHarvesterConfig: unset means the sovereign
+      # client no-ops every append while outbox-worker still marks the row
+      # PROCESSED, which breaks the append-first invariant silently.
+      - SOVEREIGN_URL=http://knowledge-sovereign
+      - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
+      - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
+      - PRE_PROCESSOR_URL=http://pre-processor/
+      - PRE_PROCESSOR_CONNECT_URL=http://pre-processor/
+      - SEARCH_INDEXER_CONNECT_URL=http://search-indexer/
+      - MQHUB_ENABLED=true
+      - MQHUB_CONNECT_URL=http://mq-hub/
+      # IMAGE_PROXY_ENABLED defaults to true and validateImageProxyConfig
+      # exits non-zero when it is enabled without a signing secret. The
+      # harvester's OGP jobs are not exercised by this suite, which asserts
+      # listener topology only.
+      - IMAGE_PROXY_ENABLED=false
+      # Feed collection would otherwise be blocked by the SSRF private-IP
+      # guard; stub.invalid is the only host the deps stub answers for.
+      - FEED_ALLOWED_HOSTS=stub.invalid
+      # Must match the binary: bootstrap.MustBoot exits non-zero when
+      # OTEL_SERVICE_NAME names a different one, because all three emit the
+      # same instrument names and would otherwise merge into one series.
+      - OTEL_SERVICE_NAME=alt-harvester
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - DB_MAX_CONNS=10
+      - DB_MIN_CONNS=2
+    networks:
+      - alt-staging
+    healthcheck:
+      # No shell and no wget in the runtime image; the binary self-probes
+      # OPS_LISTEN over loopback (bootstrap.Healthcheck).
+      test: ["CMD", "/app-entry", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  # alt-data-hub suite — the mTLS data plane of the 3-binary split.
+  #
+  # The certificates are minted per run by e2e/hurl/alt-data-hub/run.sh into
+  # e2e/fixtures/alt-data-hub/pki and mounted at both /certs and /trust, so
+  # this slice can use the production DATAHUB_TLS_* paths verbatim. Staging
+  # TLS wiring that differs from production is TLS wiring that can rot.
+  alt-data-hub:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-data-hub:${ALT_DATA_HUB_IMAGE_TAG:-main}
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+      args:
+        # Required — the Dockerfile fails the build on an unset BINARY.
+        BINARY: datahub
+    container_name: alt-staging-alt-data-hub
+    profiles: [alt-data-hub]
+    depends_on:
+      alt-backend-db:
+        condition: service_healthy
+      alt-backend-db-migrator:
+        condition: service_completed_successfully
+      alt-backend-deps-stub:
+        condition: service_healthy
+    volumes:
+      - ../e2e/fixtures/alt-data-hub/pki:/certs:ro
+      - ../e2e/fixtures/alt-data-hub/pki:/trust:ro
+    environment:
+      - DB_HOST=alt-backend-db
+      - DB_PORT=5432
+      - DB_USER=alt_db_user
+      - DB_PASSWORD=alt-staging-test-postgres-password
+      - DB_NAME=alt
+      # --- the only east-west listener (config.LoadDataHubConfig) ---------
+      # Client auth is not a knob: cmd/datahub always requires and verifies a
+      # peer certificate, so DATAHUB_ALLOWED_PEERS is the whole authorisation
+      # decision. run.sh mints one leaf named by ALLOWED_PEER (on the list)
+      # and one named by DENIED_PEER (deliberately not), and asserts the
+      # second is refused during the handshake.
+      - DATAHUB_LISTEN_ADDR=:9443
+      - DATAHUB_TLS_CERT_FILE=/certs/svc-cert.pem
+      - DATAHUB_TLS_KEY_FILE=/certs/svc-key.pem
+      - DATAHUB_TLS_CA_FILE=/trust/ca-bundle.pem
+      - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-pre-processor}
+      # --- ops listener ---------------------------------------------------
+      # Plaintext, unauthenticated, /health + /metrics only — the surface
+      # 03-ops-listener.hurl pins. It exists so the probe and Prometheus do
+      # not need a client certificate, which would put a monitoring identity
+      # in the allowlist above.
+      - OPS_LISTEN=:9110
+      # OPERATOR_LISTEN_ADDR / SERVER_PORT / CONNECT_PORT are deliberately
+      # absent: the admin Connect services stayed on alt-backend, and run.sh
+      # asserts :9000 / :9101 / :9102 are refused from another container.
+      # --- upstreams (all required by config.ValidateDataHubConfig) -------
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
+      - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+      - AUTH_HUB_URL=http://auth-hub/
+      - SOVEREIGN_URL=http://knowledge-sovereign
+      # A disabled mq-hub client no-ops every publish while the article RPCs
+      # still answer 200 (ADR-000928), so the enabled value is carried into
+      # staging rather than switched off for convenience.
+      - MQHUB_ENABLED=true
+      - MQHUB_CONNECT_URL=http://mq-hub/
+      - IMAGE_PROXY_ENABLED=false
+      - OTEL_SERVICE_NAME=alt-data-hub
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - DB_MAX_CONNS=10
+      - DB_MIN_CONNS=2
+    secrets:
+      - alt_backend_token_secret
+    networks:
+      - alt-staging
+    healthcheck:
+      # GETs OPS_LISTEN/health and dials DATAHUB_LISTEN_ADDR — a probe that
+      # only checked the plaintext port could not tell a dead mTLS listener
+      # goroutine from a healthy process (ADR-000784).
+      test: ["CMD", "/app-entry", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
   # auth-hub suite — kratos-db Postgres + Kratos migrator + Kratos + auth-hub.
   # auth-hub is stateless; the "real DB" kept under test is kratos-db, which
   # Kratos owns entirely. No PgBouncer in the staging slice (one fewer

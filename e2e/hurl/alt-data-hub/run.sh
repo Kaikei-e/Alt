@@ -57,7 +57,11 @@ cd "$ROOT"
 # unrelated dependency services stay on the last successful main build.
 : "${ALT_DATA_HUB_IMAGE_TAG:=$IMAGE_TAG}"
 : "${ALT_BACKEND_DEPS_STUB_IMAGE_TAG:=$IMAGE_TAG}"
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME ALT_DATA_HUB_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG
+# ALLOWED_PEER is exported so `docker compose config` in render-slice.sh
+# resolves DATAHUB_ALLOWED_PEERS to the same name mint_leaf uses below. If the
+# two ever drifted, every positive scenario would fail in the TLS handshake
+# with no assertion to point at the cause.
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME ALT_DATA_HUB_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG ALLOWED_PEER
 
 # shellcheck source=../_lib/render-slice.sh
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"

@@ -10,11 +10,11 @@ The admin Connect services (`KnowledgeHomeAdminService`,
 loopback-bound operator listener. See `di/container_datahub.go`: "It builds
 no crawler, no search indexer, no image pipeline and no admin surface."
 
-**Status: RED.** This suite is written outside-in, ahead of the split. The
-`alt-data-hub` compose profile does not exist in
-`compose/compose.staging.yaml` yet, so `run.sh` fails at `compose up`. That
-is the intended starting state — see "What has to exist for this to go
-green".
+**Status: wired.** The `alt-data-hub` profile exists in
+`compose/compose.staging.yaml` and the sibling job exists in
+`.github/workflows/e2e-hurl.yml`. The suite was written outside-in ahead of
+the split; the list under "What has to exist for this to go green" is now a
+description of what is there rather than a to-do.
 
 ## The contract this suite exists to hold
 
@@ -33,14 +33,14 @@ The positive and negative halves have to be read together. On its own,
 everything to everyone, and the 404s in the sibling suites are satisfied by
 a service that serves nothing at all. The pair is the claim.
 
-`:9102` is in the refused list on purpose. alt-data-hub does run a plaintext
-internal listener, but it binds `127.0.0.1` *inside the container's netns*
-(`INTERNAL_BIND` in `compose/core.yaml`), so it exists for the healthcheck
-and is unreachable from any other container. On `0.0.0.0` every container on
-`alt-network` could reach the unauthenticated internal API by DNS name and
-skip mTLS entirely — that is layer L2 of the three the compose comment
-describes, and this probe is what makes it a tested claim rather than an
-intention.
+`:9102` is in the refused list on purpose. It is the port alt-backend's
+operator listener uses, and the tempting move during the split was to give
+alt-data-hub one too — "it already has a plaintext port for the probe". It
+does not: `cmd/datahub` opens exactly two sockets, the mTLS `:9443` and the
+ops `:9110`, and `di/container_datahub.go` builds no admin surface for a
+third to serve. The probe is what makes that a tested claim rather than an
+intention, and `03-ops-listener.hurl` covers the other half — that `:9110`
+answers nothing but `/health` and `/metrics`.
 
 ## Running
 
@@ -82,10 +82,10 @@ running, and deleting them would break the stack the flag exists to inspect.
 
 The duplicate names exist so the staging slice can mount this one directory
 at `/certs` and `/trust` and reuse the production environment values
-verbatim (`MTLS_CERT_FILE=/certs/svc-cert.pem`,
-`MTLS_KEY_FILE=/certs/svc-key.pem`, `MTLS_CA_FILE=/trust/ca-bundle.pem`).
-Staging TLS wiring that differs from production is TLS wiring that can rot
-without anyone noticing.
+verbatim (`DATAHUB_TLS_CERT_FILE=/certs/svc-cert.pem`,
+`DATAHUB_TLS_KEY_FILE=/certs/svc-key.pem`,
+`DATAHUB_TLS_CA_FILE=/trust/ca-bundle.pem`). Staging TLS wiring that differs
+from production is TLS wiring that can rot without anyone noticing.
 
 `--cacert` / `--cert` / `--key` are passed on the Hurl command line rather
 than in per-entry `[Options]`, so a scenario file cannot silently fall back
@@ -117,7 +117,7 @@ assert on.
   asserting on them would encode a codec detail. Field contracts belong to
   the Pact consumer tests under `alt-backend/pacts/`.
 
-## What has to exist for this to go green
+## What the suite depends on (all present)
 
 1. An `alt-data-hub` service on the `alt-data-hub` profile in
    `compose/compose.staging.yaml`, sharing `alt-backend-db` /
@@ -128,9 +128,8 @@ assert on.
      allowlist containing `pre-processor` but **not** `rogue-peer`
    - `../e2e/fixtures/alt-data-hub/pki` mounted at both `/certs` and
      `/trust` (read-only)
-   - the operator listener on `:9110`
-   - the plaintext internal listener bound to `127.0.0.1`
-   - **no** listener on `:9000` / `:9101`
+   - the ops listener on `:9110` (`OPS_LISTEN`)
+   - **no** listener on `:9000` / `:9101` / `:9102`
 2. A healthcheck that works without a shell — the runtime image has none;
    `compose/core.yaml` uses `["CMD", "/app-entry", "healthcheck"]`.
 3. A sibling job in `.github/workflows/e2e-hurl.yml` following the existing

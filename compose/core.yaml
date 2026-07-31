@@ -16,9 +16,13 @@ include:
 # `ARG BINARY`). Runtime knobs for DB / OTel / token verification are shared;
 # only the listener set differs:
 #
-#   alt-backend    user-facing API   :9000 REST / :9101 Connect / :9102 internal / :9443 mTLS
+#   alt-backend    user-facing API   :9000 REST / :9101 Connect / :9102 operator / :9110 ops
 #   alt-harvester  scheduled jobs    :9110 ops only (no user-facing listener)
-#   alt-data-hub   data plane        :9443 mTLS only, plus 127.0.0.1:9102 and :9110 ops
+#   alt-data-hub   data plane        :9443 mTLS + :9110 ops, zero published ports
+#
+# :9110 is the same listener in all three (bootstrap.NewOpsHandler): /health
+# for `["CMD", "/app-entry", "healthcheck"]` and /metrics for the three scrape
+# jobs in observability/prometheus/prometheus.yml. It is never published.
 #
 # `include:` does not export anchors across files, so these live here and are
 # merged here only.
@@ -208,13 +212,28 @@ services:
       # development. One documented knob, one source.
       - CONNECT_PORT=9101
       - INTERNAL_PORT=9102
-      - MTLS_LISTEN=${MTLS_LISTEN:-true}
-      - MTLS_PORT=9443
+      # Operator listener (KnowledgeHomeAdminService, AdminMonitorService).
+      # Stated explicitly and NOT left at the 127.0.0.1:9102 default: the
+      # `127.0.0.1:9102:9102` publish above is DNAT'd by docker-proxy, which
+      # dials the container's eth0 address — a bind pinned to loopback *inside*
+      # the netns does not answer it, so altctl on the host would find the port
+      # published and dead. config.LoadOperatorListenAddr allows the wider bind
+      # only when it is spelled out like this, and cmd/backend logs the bind
+      # plus its reach at startup. What keeps the surface off other hosts is
+      # the 127.0.0.1 prefix on the publish, not the in-container bind.
+      - OPERATOR_LISTEN_ADDR=:9102
+      # MTLS_LISTEN / MTLS_PORT / MTLS_CLIENT_AUTH / MTLS_ALLOWED_PEERS are
+      # deliberately absent: they configured the removed mixed-surface :9443
+      # listener, which is now cmd/datahub's (DATAHUB_* below). Nothing here
+      # reads them, so config.RejectBackendMTLSListenerEnv exits non-zero if
+      # one comes back — a leftover value is exactly the "config present,
+      # behaviour absent" shape the split exists to remove (rule 8).
+      #
+      # The three file paths stay: this binary still presents that leaf as a
+      # *client* for the rag-orchestrator Connect hop (di/rag_module.go).
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      - MTLS_CLIENT_AUTH=${ALT_BACKEND_MTLS_CLIENT_AUTH:-require_and_verify}
-      - MTLS_ALLOWED_PEERS=${ALT_BACKEND_MTLS_ALLOWED_PEERS:-pre-processor,search-indexer,alt-butterfly-facade,auth-hub,tag-generator,acolyte-orchestrator,recap-worker}
       - DB_HOST=pgbouncer
       - DB_PORT=6432
       - DB_USER=${DB_USER}
@@ -244,12 +263,14 @@ services:
       # removed from this binary. Changing the value has no effect today.
       - DATA_HUB_MTLS_URL=https://alt-data-hub:9443
       - DATA_HUB_SERVER_NAME=alt-data-hub
-      # Operator listener. /health + /metrics only, never published to the
-      # host: Prometheus scrapes it over alt-network. /metrics moved here
-      # from the REST listener so the three split binaries expose the same
-      # surface on the same port (see observability/prometheus/prometheus.yml).
+      # Ops listener. /health + /metrics only, never published to the host:
+      # Prometheus scrapes it over alt-network, and the healthcheck below
+      # self-probes it over loopback. /metrics moved here from the REST
+      # listener so the three split binaries expose the same surface on the
+      # same port (see observability/prometheus/prometheus.yml). The two
+      # routes are fixed in bootstrap.NewOpsHandler — there is no
+      # OPS_SURFACES knob, and a value here would be read by nothing.
       - OPS_LISTEN=:9110
-      - OPS_SURFACES=health,metrics
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=alt-backend
@@ -330,9 +351,11 @@ services:
         condition: service_healthy
     environment:
       <<: *alt-db-env
-      # --- operator listener (never published) ---------------------------
+      # --- ops listener (never published) ---------------------------------
+      # The only socket this binary opens. /health for the healthcheck below,
+      # /metrics for the `alt-harvester` scrape job. Both routes are fixed in
+      # bootstrap.NewOpsHandler; there is no OPS_SURFACES knob to set.
       OPS_LISTEN: ":9110"
-      OPS_SURFACES: "health,metrics"
       # --- schedule ------------------------------------------------------
       # Enabled/disabled is an explicit value, never inferred from an unset
       # variable (CLAUDE.md rule 9). SERVER_PORT / CONNECT_PORT / INTERNAL_PORT
@@ -397,15 +420,17 @@ services:
   #       ZERO_PUBLISH_SERVICES in scripts/compose-port-audit.py, because the
   #       audit otherwise only checks that published ports are loopback-bound
   #       and would happily accept a `127.0.0.1:9443:9443` added by mistake.
-  #   L2  the operator listener binds loopback inside the netns
-  #       (OPERATOR_LISTEN_ADDR). On 0.0.0.0 any container on alt-network
-  #       could reach the unauthenticated admin API by DNS name and skip mTLS
-  #       entirely — the same hole the tag-generator sidecar has.
-  #       config.LoadOperatorListenAddr refuses a non-loopback value.
+  #   L2  the only other socket is the ops listener (OPS_LISTEN), and it
+  #       carries /health and /metrics and nothing else — no admin API, no
+  #       data plane. The admin Connect services stayed on alt-backend, so
+  #       there is no unauthenticated surface here for a container on
+  #       alt-network to reach by DNS name. Pinned from outside by
+  #       e2e/hurl/alt-data-hub/03-ops-listener.hurl (everything but those two
+  #       routes must 404) and run.sh (:9000 / :9101 / :9102 refused).
   #   L3  DATAHUB_ALLOWED_PEERS. cmd/datahub always requires *and verifies* a
   #       client certificate — there is no knob to turn that off — so this
   #       list is the entire authorisation decision.
-  # Compose states L2/L3; config.LoadDataHubConfig and LoadOperatorListenAddr
+  # Compose states L2/L3; config.LoadDataHubConfig and bootstrap.NewOpsHandler
   # are what make them fail-fast rather than aspirational.
   #
   # The pki-agent sidecar is cert-only (pattern A, no network_mode sharing):
@@ -455,21 +480,23 @@ services:
       # decision, so wave 2 widens it *before* repointing each worker — the
       # receiving side must never be the thing that breaks.
       DATAHUB_ALLOWED_PEERS: ${ALT_DATA_HUB_ALLOWED_PEERS:-alt-backend,alt-harvester,pre-processor,search-indexer,tag-generator,recap-worker,rag-orchestrator}
-      # --- loopback operator listener (L2) --------------------------------
-      # Unauthenticated admin surfaces; config.LoadOperatorListenAddr refuses
-      # a non-loopback bind. Stated explicitly rather than left to its
-      # default so the value is visible where the port is reasoned about.
-      OPERATOR_LISTEN_ADDR: "127.0.0.1:9102"
-      # --- metrics listener (never published) -----------------------------
-      # Prometheus scrapes this over alt-network — see
-      # observability/prometheus/prometheus.yml. It cannot use
-      # OPERATOR_LISTEN_ADDR: that one is loopback-bound by design, and
+      # --- ops listener (never published) ----------------------------------
+      # The only other socket this binary opens, and it carries nothing worth
+      # authenticating: /health for the healthcheck below, /metrics for the
+      # `alt-data-hub` scrape job. Prometheus reaches it over alt-network;
       # giving Prometheus a client cert for :9443 instead would put a
-      # monitoring identity in the data plane's peer allowlist.
+      # monitoring identity in DATAHUB_ALLOWED_PEERS, which is the data
+      # plane's whole authorisation decision.
+      # e2e/hurl/alt-data-hub/03-ops-listener.hurl asserts that everything
+      # else 404s here.
       OPS_LISTEN: ":9110"
-      OPS_SURFACES: "health,metrics"
-      # SERVER_PORT / CONNECT_PORT are deliberately absent: this binary has no
-      # user-facing listener and exits non-zero if handed one.
+      # OPERATOR_LISTEN_ADDR is deliberately absent: the admin Connect
+      # services did NOT move here (di/container_datahub.go builds no admin
+      # surface), so cmd/datahub opens no operator listener and reads no such
+      # variable. e2e/hurl/alt-data-hub/run.sh proves :9102 is refused from
+      # another container.
+      # SERVER_PORT / CONNECT_PORT are deliberately absent too: this binary has
+      # no user-facing listener and exits non-zero if handed one.
       # --- upstreams (all required by config.ValidateDataHubConfig) -------
       BACKEND_TOKEN_SECRET_FILE: /run/secrets/backend_token_secret
       BACKEND_TOKEN_ISSUER: auth-hub
@@ -504,13 +531,13 @@ services:
           memory: 1500M
           cpus: '1.0'
     healthcheck:
-      # Runs inside the container, so it reaches the loopback-bound listeners
-      # that nothing outside the netns can see. The subcommand must GET
-      # OPERATOR_LISTEN_ADDR/health *and* dial DATAHUB_LISTEN_ADDR — a probe
-      # that only checks the plaintext port cannot tell a dead mTLS listener
-      # goroutine from a healthy process (ADR-000784). Dial only, no
-      # handshake: completing one would mean adding alt-data-hub to its own
-      # DATAHUB_ALLOWED_PEERS, which muddies what that list means.
+      # Runs inside the container, so it reaches listeners over loopback
+      # regardless of how wide they bind. The subcommand GETs OPS_LISTEN/health
+      # *and* dials DATAHUB_LISTEN_ADDR — a probe that only checks the
+      # plaintext port cannot tell a dead mTLS listener goroutine from a
+      # healthy process (ADR-000784). Dial only, no handshake: completing one
+      # would mean adding alt-data-hub to its own DATAHUB_ALLOWED_PEERS, which
+      # muddies what that list means. See cmd/datahub/main.go runHealthcheck.
       test: ["CMD", "/app-entry", "healthcheck"]
       interval: 10s
       timeout: 5s

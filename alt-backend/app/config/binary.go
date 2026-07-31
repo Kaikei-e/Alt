@@ -51,95 +51,109 @@ const operatorListenAddrEnv = "OPERATOR_LISTEN_ADDR"
 const defaultOperatorListenAddr = "127.0.0.1:9102"
 
 // LoadOperatorListenAddr returns the bind address for the backend's operator
-// listener (KnowledgeHomeAdminService, AdminMonitorService, /metrics).
+// listener (KnowledgeHomeAdminService, AdminMonitorService).
 //
-// Neither service authenticates its caller, so the loopback bind *is* the
-// access control. A non-loopback address would publish admin RPCs on every
-// interface, which is a startup failure rather than something to log and
-// accept.
+// Neither service authenticates its caller, so the bind address is the access
+// control — which is why the default is loopback and why widening it has to be
+// typed out. The widening is not hypothetical: compose publishes
+// `127.0.0.1:9102:9102` so altctl works from the host, and docker-proxy
+// connects to the container over its eth0 address. A bind pinned to 127.0.0.1
+// *inside* the netns is unreachable from there, so refusing an explicit
+// OPERATOR_LISTEN_ADDR=":9102" would not harden anything — it would only take
+// the operator workflow offline while leaving the published port in place.
+//
+// What replaces the refusal is a startup line: cmd/backend logs the bind and
+// ListenAddrReach(addr), so "this admin port answers the container network" is
+// something an operator reads in the log rather than infers from a compose
+// file (CLAUDE.md rule 8).
 func LoadOperatorListenAddr() (string, error) {
 	addr := strings.TrimSpace(os.Getenv(operatorListenAddrEnv))
 	if addr == "" {
-		addr = defaultOperatorListenAddr
+		// Unset means loopback, always. "Wider" is only ever an explicit value.
+		return defaultOperatorListenAddr, nil
 	}
-	if err := requireLoopbackAddr(operatorListenAddrEnv, addr); err != nil {
+	if err := validateHostPort(operatorListenAddrEnv, addr); err != nil {
 		return "", err
 	}
 	return addr, nil
 }
 
-// requireLoopbackAddr rejects any host:port that is reachable from outside the
-// container. An empty host (":9102") means all interfaces, so it is refused
-// too — that shorthand is exactly how an admin surface gets published by
-// accident.
-func requireLoopbackAddr(name, addr string) error {
-	host, port, err := net.SplitHostPort(addr)
+// opsListenEnv names the listener every alt-backend binary opens.
+const opsListenEnv = "OPS_LISTEN"
+
+// defaultOpsListenAddr keeps a `go run ./cmd/...` on a laptop off the LAN.
+// compose overrides it with ":9110" so Prometheus can scrape over alt-network.
+const defaultOpsListenAddr = "127.0.0.1:9110"
+
+// LoadOpsListenAddr returns the bind address of the ops listener shared by
+// cmd/backend, cmd/harvester and cmd/datahub.
+//
+// One port, one shape, three binaries: /health for the compose probe and the
+// healthcheck subcommand, /metrics for the three scrape jobs in
+// observability/prometheus/prometheus.yml. Nothing else is mounted on it, so
+// unlike the operator listener there is no admin surface for a wide bind to
+// expose — ":9110" is the normal deployment value, not an accident.
+//
+// It is also why data-hub can be scraped at all: its data plane speaks mTLS,
+// and giving Prometheus a client certificate would put a monitoring identity
+// in DATAHUB_ALLOWED_PEERS.
+func LoadOpsListenAddr() (string, error) {
+	addr := strings.TrimSpace(os.Getenv(opsListenEnv))
+	if addr == "" {
+		return defaultOpsListenAddr, nil
+	}
+	if err := validateHostPort(opsListenEnv, addr); err != nil {
+		return "", err
+	}
+	return addr, nil
+}
+
+// validateHostPort rejects anything net/http could not bind. An empty host is
+// allowed — that is the "every interface in this netns" shorthand compose uses
+// — but an empty port is not, because http.Server would then pick an ephemeral
+// one and nothing would ever reach the listener.
+func validateHostPort(name, addr string) error {
+	_, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return fmt.Errorf("%s=%q is not a valid host:port: %w", name, addr, err)
 	}
-	if port == "" {
+	if strings.TrimSpace(port) == "" {
 		return fmt.Errorf("%s=%q has no port", name, addr)
-	}
-	if host == "" {
-		return fmt.Errorf("%s=%q binds every interface (empty host); "+
-			"this listener carries unauthenticated admin surfaces and must bind loopback", name, addr)
-	}
-	if host == "localhost" {
-		return nil
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return fmt.Errorf("%s=%q host is neither an IP nor localhost", name, addr)
-	}
-	if !ip.IsLoopback() {
-		return fmt.Errorf("%s=%q binds a non-loopback address; "+
-			"this listener carries unauthenticated admin surfaces and must bind loopback", name, addr)
 	}
 	return nil
 }
 
-// harvesterHealthAddrEnv names the harvester's only listener.
-const harvesterHealthAddrEnv = "HARVESTER_HEALTH_ADDR"
+// ListenReach describes how far a bind address reaches, for the startup log.
+type ListenReach string
 
-const defaultHarvesterHealthAddr = "127.0.0.1:9103"
+const (
+	// ReachLoopback: only a process inside this network namespace can connect.
+	ReachLoopback ListenReach = "loopback_only"
+	// ReachNetwork: anything that can route to the container can connect —
+	// every other container on alt-network, and the host if the port is
+	// published.
+	ReachNetwork ListenReach = "container_network"
+)
 
-// LoadHarvesterHealthAddr returns the bind address for cmd/harvester's health
-// and metrics listener.
-//
-// The harvester serves no API. This listener exists so the container has a
-// health probe and a local metrics endpoint, and it binds loopback for the
-// same reason the operator listener does: nothing on it authenticates a
-// caller, so reachability is the control.
-func LoadHarvesterHealthAddr() (string, error) {
-	return loadLoopbackAddr(harvesterHealthAddrEnv, defaultHarvesterHealthAddr)
-}
-
-// datahubHealthAddrEnv names data-hub's loopback health listener.
-const datahubHealthAddrEnv = "DATAHUB_HEALTH_ADDR"
-
-const defaultDataHubHealthAddr = "127.0.0.1:9104"
-
-// LoadDataHubHealthAddr returns the bind address for cmd/datahub's loopback
-// health and metrics listener.
-//
-// This is separate from the mutual-TLS listener on purpose. Every request on
-// that listener must present a client certificate, so a container healthcheck
-// would need one too — and handing the probe a certificate just to answer
-// /health widens the surface for no gain. The probe gets a loopback listener
-// instead; it carries no data-plane surface at all.
-func LoadDataHubHealthAddr() (string, error) {
-	return loadLoopbackAddr(datahubHealthAddrEnv, defaultDataHubHealthAddr)
-}
-
-func loadLoopbackAddr(env, fallback string) (string, error) {
-	addr := strings.TrimSpace(os.Getenv(env))
-	if addr == "" {
-		addr = fallback
+// ListenAddrReach classifies a bind address. An address it cannot parse is
+// reported as ReachNetwork: the log line exists to warn, and guessing
+// "loopback" for something unrecognised would make it lie in the one direction
+// that matters.
+func ListenAddrReach(addr string) ListenReach {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(addr))
+	if err != nil {
+		return ReachNetwork
 	}
-	if err := requireLoopbackAddr(env, addr); err != nil {
-		return "", err
+	if host == "" {
+		return ReachNetwork
 	}
-	return addr, nil
+	if host == "localhost" {
+		return ReachLoopback
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return ReachLoopback
+	}
+	return ReachNetwork
 }
 
 // DataHubConfig is the mTLS listener configuration for cmd/datahub. Every
@@ -164,7 +178,7 @@ type DataHubConfig struct {
 // cmd/datahub always requires and verifies — and the allowlist is required
 // config.
 func LoadDataHubConfig() (*DataHubConfig, error) {
-	listenAddr, err := requiredEnv("DATAHUB_LISTEN_ADDR")
+	listenAddr, err := LoadDataHubListenAddr()
 	if err != nil {
 		return nil, err
 	}
@@ -196,10 +210,6 @@ func LoadDataHubConfig() (*DataHubConfig, error) {
 			"an empty allowlist accepts every certificate the shared CA issued")
 	}
 
-	if _, _, err := net.SplitHostPort(listenAddr); err != nil {
-		return nil, fmt.Errorf("DATAHUB_LISTEN_ADDR=%q is not a valid host:port: %w", listenAddr, err)
-	}
-
 	return &DataHubConfig{
 		ListenAddr:   listenAddr,
 		CertFile:     certFile,
@@ -207,6 +217,24 @@ func LoadDataHubConfig() (*DataHubConfig, error) {
 		CAFile:       caFile,
 		AllowedPeers: peers,
 	}, nil
+}
+
+// LoadDataHubListenAddr reads just the mutual-TLS listener's bind address.
+//
+// It is split out of LoadDataHubConfig because the healthcheck subcommand
+// needs it and nothing else: the probe dials this port to prove the mTLS
+// listener goroutine is alive, and a probe that had to load certificates and
+// the peer allowlist first would fail for reasons unrelated to liveness
+// (ADR-000784).
+func LoadDataHubListenAddr() (string, error) {
+	addr, err := requiredEnv("DATAHUB_LISTEN_ADDR")
+	if err != nil {
+		return "", err
+	}
+	if err := validateHostPort("DATAHUB_LISTEN_ADDR", addr); err != nil {
+		return "", err
+	}
+	return addr, nil
 }
 
 func requiredEnv(name string) (string, error) {
