@@ -18,6 +18,7 @@ package knowledge_home_projector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	neturl "net/url"
@@ -724,6 +725,27 @@ func (p *Projector) foldHomeItemDismissed(ctx context.Context, evt sovereign_db.
 		return fmt.Errorf("marshal HomeItemDismissed payload: %w", err)
 	}
 	if err := p.repo.DismissKnowledgeHomeItem(ctx, raw); err != nil {
+		// A dismiss whose target row does not exist is a benign no-op fold,
+		// not a failure: the handler only validates that item_key is
+		// non-empty, so a client can dismiss a key that never produced a
+		// knowledge_home_items row at this projection version. ADR-000473
+		// declared that condition non-fatal by design and alt-backend's
+		// write-through already logs and swallows it — only this fold treated
+		// it as fatal, which made a single such event a poison pill that
+		// wedged the checkpoint (and every user's Knowledge Home) forever.
+		//
+		// This is narrowly the not-found sentinel, NOT general event
+		// skipping: ADR-000456 explicitly rejected "skip the failing event
+		// and advance the checkpoint" as a policy, so every other error below
+		// still stops the batch. Nothing is dropped either — the event stays
+		// in the append-only log and a reproject re-folds it to the same
+		// no-op, so the read model remains reproject-safe.
+		if errors.Is(err, sovereign_db.ErrDismissTargetNotFound) {
+			p.logger.WarnContext(ctx, "knowledge_home_projector: dismiss target row not found, folding as no-op",
+				slog.String("event_id", evt.EventID.String()), slog.String("item_key", itemKey),
+				slog.Int("projection_version", version))
+			return nil
+		}
 		return fmt.Errorf("dismiss knowledge_home_items: %w", err)
 	}
 	return nil
