@@ -186,3 +186,5 @@ docs/retrospective/
 Alt.code-workspace
 scripts/rollout-knowledge-loop-evidence.sh
 secrets.bak-20260724094929
+# Pact verification evidence — regenerated per pact-check.sh run, never committed
+.pact-evidence/
