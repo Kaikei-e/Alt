@@ -77,11 +77,11 @@ class TestCreateBackendClient:
 
         assert result is not None
         client, headers = result
-        from tag_generator.gen.proto.services.backend.v1.internal_connect import (
-            BackendInternalServiceClientSync,
+        from tag_generator.gen.proto.alt.datahub.v1.datahub_connect import (
+            DataHubServiceClientSync,
         )
 
-        assert isinstance(client, BackendInternalServiceClientSync)
+        assert isinstance(client, DataHubServiceClientSync)
         assert isinstance(headers, dict)
         assert "X-Service-Token" not in headers
 
@@ -156,8 +156,8 @@ class TestReloadingBackendClient:
             ca_file=str(ca),
             timeout_ms=1000,
         )
-        # BackendInternalServiceClientSync exposes `base_url` as a positional
-        # constructor arg; the underlying ConnectClientSync stores it on
+        # DataHubServiceClientSync exposes `base_url` as a positional constructor
+        # arg; the underlying ConnectClientSync stores it on
         # `_base_url`. Rather than depending on internal field names, we just
         # assert that __getattr__ routes an unknown-to-proxy attribute to the
         # inner client by checking a known method's callability.
@@ -165,8 +165,8 @@ class TestReloadingBackendClient:
             _ = rc.this_attribute_should_not_exist_anywhere
 
         # Positive path: an attribute that only exists on the wrapped
-        # BackendInternalServiceClientSync (never defined on the proxy
-        # itself) must resolve to a bound method of that same inner
+        # DataHubServiceClientSync (never defined on the proxy itself)
+        # must resolve to a bound method of that same inner
         # instance -- proving __getattr__ actually forwards rather than
         # merely failing closed on unknown names.
         bound_close = rc.close  # noqa: SLF001 — real RPC-client method, forwarded via __getattr__

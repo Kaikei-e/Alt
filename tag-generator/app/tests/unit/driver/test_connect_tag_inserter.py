@@ -9,7 +9,7 @@ from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 
 from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
-from tag_generator.gen.proto.services.backend.v1 import internal_pb2
+from tag_generator.gen.proto.alt.datahub.v1 import datahub_pb2
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ class TestUpsertTags:
 
     def test_calls_upsert_article_tags_with_correct_request(self, inserter, mock_client, auth_headers) -> None:
         """Calls upsert_article_tags RPC with correct TagItems."""
-        mock_client.upsert_article_tags.return_value = internal_pb2.UpsertArticleTagsResponse(
+        mock_client.upsert_article_tags.return_value = datahub_pb2.UpsertArticleTagsResponse(
             success=True, upserted_count=3
         )
 
@@ -62,7 +62,7 @@ class TestUpsertTags:
 
     def test_maps_success_and_upserted_count(self, inserter, mock_client) -> None:
         """Maps response success and upserted_count correctly."""
-        mock_client.upsert_article_tags.return_value = internal_pb2.UpsertArticleTagsResponse(
+        mock_client.upsert_article_tags.return_value = datahub_pb2.UpsertArticleTagsResponse(
             success=True, upserted_count=5
         )
 
@@ -86,7 +86,7 @@ class TestBatchUpsertTagsNoCommit:
 
     def test_calls_batch_upsert_with_correct_items(self, inserter, mock_client, auth_headers) -> None:
         """Calls batch_upsert_article_tags RPC with correct batch items."""
-        mock_client.batch_upsert_article_tags.return_value = internal_pb2.BatchUpsertArticleTagsResponse(
+        mock_client.batch_upsert_article_tags.return_value = datahub_pb2.BatchUpsertArticleTagsResponse(
             success=True, total_upserted=4
         )
 
@@ -121,7 +121,7 @@ class TestBatchUpsertTagsNoCommit:
 
     def test_returns_batch_result_on_success(self, inserter, mock_client) -> None:
         """Returns BatchResult with correct fields on success."""
-        mock_client.batch_upsert_article_tags.return_value = internal_pb2.BatchUpsertArticleTagsResponse(
+        mock_client.batch_upsert_article_tags.return_value = datahub_pb2.BatchUpsertArticleTagsResponse(
             success=True, total_upserted=2
         )
 
@@ -157,7 +157,7 @@ class TestBatchUpsertTagsWithComparison:
 
     def test_delegates_to_batch_upsert_no_commit(self, inserter, mock_client) -> None:
         """Delegates to batch_upsert_tags_no_commit in API mode."""
-        mock_client.batch_upsert_article_tags.return_value = internal_pb2.BatchUpsertArticleTagsResponse(
+        mock_client.batch_upsert_article_tags.return_value = datahub_pb2.BatchUpsertArticleTagsResponse(
             success=True, total_upserted=1
         )
 

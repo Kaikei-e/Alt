@@ -1,4 +1,16 @@
-"""Factory for creating a typed Connect-RPC client to alt-backend."""
+"""Factory for creating a typed Connect-RPC client to alt-data-hub.
+
+Speaks ``alt.datahub.v1.DataHubService`` (ADR-000954 D7). The provider used
+to be the alt-backend process serving
+``services.backend.v1.BackendInternalService``; after the three-way split it
+is a separate binary owning alt_db, and Wave 2-B moved this consumer onto the
+new namespace. Nothing about the connection changed — same host, same port,
+same mTLS material — only the URL path prefix each RPC is POSTed to.
+
+``BACKEND_API_URL`` / ``BACKEND_API_MTLS_URL`` keep their names: compose
+already repoints them at ``https://alt-data-hub:9443`` (Wave 1), and renaming
+the variables is a compose-side change that does not belong in this PR.
+"""
 
 from __future__ import annotations
 
@@ -9,8 +21,8 @@ from typing import TYPE_CHECKING, Any, cast
 import structlog
 from pyqwest import SyncClient, SyncHTTPTransport
 
-from tag_generator.gen.proto.services.backend.v1.internal_connect import (
-    BackendInternalServiceClientSync,
+from tag_generator.gen.proto.alt.datahub.v1.datahub_connect import (
+    DataHubServiceClientSync,
 )
 
 if TYPE_CHECKING:
@@ -20,7 +32,7 @@ logger = structlog.get_logger(__name__)
 
 
 class _ReloadingBackendClient:
-    """Proxy around ``BackendInternalServiceClientSync`` that rebuilds its
+    """Proxy around ``DataHubServiceClientSync`` that rebuilds its
     underlying transport + client whenever the on-disk mTLS cert/key files'
     mtimes advance.
 
@@ -28,7 +40,7 @@ class _ReloadingBackendClient:
     unlike the Go / Rust / httpx paths we cannot hot-reload at the TLS layer
     directly. Rebuilding the full chain on rotation is cheap — it happens
     at most once per 24h in production — and the proxy keeps the public
-    shape of ``BackendInternalServiceClientSync`` via ``__getattr__`` so
+    shape of ``DataHubServiceClientSync`` via ``__getattr__`` so
     existing gateway code (``ConnectArticleFetcher`` / ``ConnectTagInserter``)
     sees no API change.
 
@@ -52,10 +64,10 @@ class _ReloadingBackendClient:
         self._timeout_ms = timeout_ms
         self._cert_mtime = 0.0
         self._key_mtime = 0.0
-        self._inner: BackendInternalServiceClientSync = self._build()
+        self._inner: DataHubServiceClientSync = self._build()
         self._record_mtimes()
 
-    def _build(self) -> BackendInternalServiceClientSync:
+    def _build(self) -> DataHubServiceClientSync:
         cert_pem = Path(self._cert_file).read_bytes()
         key_pem = Path(self._key_file).read_bytes()
         ca_pem = Path(self._ca_file).read_bytes()
@@ -66,7 +78,7 @@ class _ReloadingBackendClient:
             tls_ca_cert=ca_pem,
         )
         http_client = SyncClient(transport=transport)
-        return BackendInternalServiceClientSync(
+        return DataHubServiceClientSync(
             self._base_url,
             proto_json=True,
             timeout_ms=self._timeout_ms,
@@ -109,7 +121,7 @@ class _ReloadingBackendClient:
         return getattr(self._inner, name)
 
 
-def create_backend_client() -> tuple[BackendInternalServiceClientSync, dict[str, str]] | None:
+def create_backend_client() -> tuple[DataHubServiceClientSync, dict[str, str]] | None:
     """Create a Connect-RPC client from environment variables.
 
     Returns ``(client, auth_headers)`` when BACKEND_API_URL is set,
@@ -152,24 +164,30 @@ def create_backend_client() -> tuple[BackendInternalServiceClientSync, dict[str,
             ca_file=ca_file,
             timeout_ms=30_000,
         )
-        # Duck-typed to BackendInternalServiceClientSync via __getattr__.
+        # Duck-typed to DataHubServiceClientSync via __getattr__.
         # The cast is unchecked by design — _ReloadingBackendClient forwards
         # every RPC attribute to the wrapped client.
-        client: BackendInternalServiceClientSync = cast("BackendInternalServiceClientSync", reloading)
+        client: DataHubServiceClientSync = cast("DataHubServiceClientSync", reloading)
     else:
         transport = SyncHTTPTransport(use_system_dns=True)
         http_client = SyncClient(transport=transport)
-        client = BackendInternalServiceClientSync(
+        client = DataHubServiceClientSync(
             base_url.rstrip("/"),
             proto_json=True,
             timeout_ms=30_000,
             http_client=http_client,
         )
 
+    # `service` names the contract, not the host. During Wave 2 the provider
+    # serves both namespaces on the same listener, so base_url alone cannot
+    # tell an operator which one this process is actually talking to — and a
+    # peer that quietly stayed on the legacy path is exactly what would keep
+    # Wave 2-C from being able to delete it.
     logger.info(
-        "Connect-RPC backend client initialized",
+        "Connect-RPC data-hub client initialized",
         base_url=base_url,
         mtls_enforce=mtls_enforce,
+        service="alt.datahub.v1.DataHubService",
     )
     return client, auth_headers
 

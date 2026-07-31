@@ -10,7 +10,7 @@ from connectrpc.errors import ConnectError
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
-from tag_generator.gen.proto.services.backend.v1 import internal_pb2
+from tag_generator.gen.proto.alt.datahub.v1 import datahub_pb2
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ class TestFetchArticles:
 
     def test_first_page_omits_cursor(self, fetcher, mock_client, auth_headers) -> None:
         """First page request should NOT set cursor fields."""
-        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+        mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
         )
 
@@ -50,14 +50,14 @@ class TestFetchArticles:
         """When cursor is provided, it should be passed in the request."""
         ts = Timestamp()
         ts.FromJsonString("2026-03-17T12:00:00Z")
-        article = internal_pb2.ArticleWithTags(
+        article = datahub_pb2.ArticleWithTags(
             id="art-1",
             title="Test",
             content="Body",
             user_id="user-1",
             created_at=ts,
         )
-        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+        mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[article], total_count=1
         )
 
@@ -76,14 +76,14 @@ class TestFetchArticles:
         """Converts protobuf ArticleWithTags to dict matching old format."""
         ts = Timestamp()
         ts.FromJsonString("2024-06-15T12:30:00Z")
-        article = internal_pb2.ArticleWithTags(
+        article = datahub_pb2.ArticleWithTags(
             id="art-42",
             title="Proto Article",
             content="Proto content",
             user_id="user-99",
             created_at=ts,
         )
-        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+        mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[article], total_count=1
         )
 
@@ -102,7 +102,7 @@ class TestFetchArticles:
 
     def test_default_batch_size(self, fetcher, mock_client) -> None:
         """Uses default batch size of 75."""
-        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+        mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
         )
 
@@ -113,7 +113,7 @@ class TestFetchArticles:
 
     def test_empty_cursor_does_not_set_fields(self, fetcher, mock_client) -> None:
         """Empty string cursor should not set cursor fields."""
-        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+        mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
         )
 
@@ -129,7 +129,7 @@ class TestFetchNewArticles:
 
     def test_always_requests_first_page_regardless_of_cursor(self, fetcher, mock_client) -> None:
         """Forward processing should always get the newest untagged articles (first page)."""
-        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+        mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
         )
 
@@ -148,7 +148,7 @@ class TestCountUntaggedArticles:
 
     def test_returns_total_count(self, fetcher, mock_client) -> None:
         """Returns total_count from RPC response."""
-        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+        mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=42
         )
 
@@ -162,7 +162,7 @@ class TestFetchArticleById:
 
     def test_calls_get_article_content(self, fetcher, mock_client, auth_headers) -> None:
         """Calls get_article_content RPC with correct article_id."""
-        mock_client.get_article_content.return_value = internal_pb2.GetArticleContentResponse(
+        mock_client.get_article_content.return_value = datahub_pb2.GetArticleContentResponse(
             article_id="art-1",
             title="Title",
             content="Content",
@@ -199,7 +199,7 @@ class TestFetchArticlesByStatus:
 
     def test_delegates_to_fetch_articles_for_untagged(self, fetcher, mock_client) -> None:
         """Delegates to fetch_articles when has_tags=False."""
-        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+        mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
         )
 

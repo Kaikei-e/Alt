@@ -1,0 +1,37 @@
+version: v2
+# Python client stubs for alt.datahub.v1 — tag-generator's half of the
+# Wave 2-B peer move (ADR-000954 D7).
+#
+# Why this is a separate template rather than a target added to
+# buf.gen.datahub.yaml: that file's plugin list is Go-only (protoc-gen-go /
+# protoc-gen-connect-go, resolved from the local $PATH), while the Python
+# stubs come from buf's *remote* plugins pinned at
+# protocolbuffers/python:v33.5 for protobuf 6.x runtime compatibility.
+# Mixing local and remote plugins in one template means a contributor with no
+# network — or no Go toolchain — silently regenerates half the tree. Splitting
+# per language keeps each `buf generate` invocation all-or-nothing, which is
+# the same split buf.gen.tag-generator.yaml already applies to
+# services/backend.
+#
+# The pin and the output layout are copied verbatim from
+# buf.gen.tag-generator.yaml (the legacy services.backend template this one
+# supersedes for tag-generator) so the two trees stay byte-comparable while
+# both namespaces are served. Wave 2-C deletes buf.gen.tag-generator.yaml and
+# the generated services/backend tree together.
+#
+# Regenerate with:
+#   cd proto && buf generate --template buf.gen.datahub-taggen.yaml
+inputs:
+  - directory: .
+    paths:
+      - alt/datahub
+plugins:
+  # Python protobuf messages (pinned to v33.5 for protobuf 6.x runtime compatibility)
+  - remote: buf.build/protocolbuffers/python:v33.5
+    out: ../tag-generator/app/tag_generator/gen/proto
+  # Python protobuf type stubs
+  - remote: buf.build/protocolbuffers/pyi:v33.5
+    out: ../tag-generator/app/tag_generator/gen/proto
+  # Connect-RPC Python service stubs
+  - remote: buf.build/connectrpc/python
+    out: ../tag-generator/app/tag_generator/gen/proto
