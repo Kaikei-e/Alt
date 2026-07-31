@@ -1,0 +1,32 @@
+version: v2
+# Code generation of alt.datahub.v1 for pre-processor — the Wave 2-B consumer
+# target of ADR-000954 D7.
+#
+# This is a separate template from buf.gen.datahub.yaml rather than a second
+# plugin pair inside it, because the two need different managed-mode overrides:
+# alt-backend imports the generated messages as alt/gen/proto/... (the
+# go_package the proto declares), while pre-processor's module root is
+# `pre-processor`, so protoc-gen-connect-go has to be told to emit
+# `pre-processor/gen/proto/...` in the connect stub's import block. Same reason
+# buf.gen.pre-processor-services.yaml exists alongside
+# buf.gen.backend-internal.yaml for the namespace this one replaces.
+#
+# Keeping it separate is also what lets Wave 2-B move one peer per PR without
+# two agents editing the same file.
+managed:
+  enabled: true
+  override:
+    - file_option: go_package
+      path: alt/datahub/v1/datahub.proto
+      value: pre-processor/gen/proto/alt/datahub/v1;datahubv1
+inputs:
+  - directory: .
+    paths:
+      - alt/datahub
+plugins:
+  - local: protoc-gen-go
+    out: ../pre-processor/app/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../pre-processor/app/gen/proto
+    opt: paths=source_relative

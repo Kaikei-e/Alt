@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,31 +11,45 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"pre-processor/config"
 	"pre-processor/domain"
 	"pre-processor/driver"
+	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
+	"pre-processor/gen/proto/alt/datahub/v1/datahubv1connect"
 	"pre-processor/utils"
 )
 
 // maxInternalResponseBytes bounds response bodies read from internal services
-// so a misbehaving peer cannot exhaust memory.
-const maxInternalResponseBytes int64 = 10 * 1024 * 1024
+// so a misbehaving peer cannot exhaust memory. Connect-RPC defaults to no
+// limit, so the bound has to be passed explicitly — it used to be applied by
+// wrapping the REST response body in an io.LimitReader.
+const maxInternalResponseBytes = 10 * 1024 * 1024
 
 // ExternalAPIRepository implementation.
 type externalAPIRepository struct {
-	logger *slog.Logger
-	client *http.Client
-	config *config.Config
+	logger  *slog.Logger
+	client  *http.Client
+	dataHub datahubv1connect.DataHubServiceClient
+	config  *config.Config
 }
 
 // NewExternalAPIRepository creates a new external API repository. The HTTP
 // client uses the hardened transport (DialContext, TLSHandshake and
 // ResponseHeader timeouts) shared across the service.
+//
+// The alt-data-hub client is built over that same *http.Client, so the
+// transport hardening — and the transport substitution the tests rely on —
+// applies to the Connect-RPC calls too.
 func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger) ExternalAPIRepository {
+	httpClient := utils.NewHTTPClientManager().GetDefaultClient()
 	return &externalAPIRepository{
 		logger: logger,
 		config: cfg,
-		client: utils.NewHTTPClientManager().GetDefaultClient(),
+		client: httpClient,
+		dataHub: datahubv1connect.NewDataHubServiceClient(httpClient, cfg.AltService.Host,
+			connect.WithReadMaxBytes(maxInternalResponseBytes)),
 	}
 }
 
@@ -181,7 +194,7 @@ func (r *externalAPIRepository) CheckHealth(ctx context.Context, serviceURL stri
 	return nil
 }
 
-// GetSystemUserID retrieves the system user ID from alt-backend with retry logic.
+// GetSystemUserID retrieves the system user ID from alt-data-hub with retry logic.
 func (r *externalAPIRepository) GetSystemUserID(ctx context.Context) (string, error) {
 	const maxRetries = 3
 	baseDelay := 2 * time.Second
@@ -220,47 +233,21 @@ func (r *externalAPIRepository) GetSystemUserID(ctx context.Context) (string, er
 }
 
 // getSystemUserIDOnce performs a single attempt to retrieve the system user ID.
+//
+// This used to be GET /v1/internal/system-user on alt-backend. ADR-000954 D6
+// absorbed that REST route into alt-data-hub's Connect capability as the
+// GetSystemUser RPC, and D7 put it in the alt.datahub.v1 namespace. The host
+// is unchanged — only the protocol and the path moved.
 func (r *externalAPIRepository) getSystemUserIDOnce(ctx context.Context) (string, error) {
-	targetURL := fmt.Sprintf("%s/v1/internal/system-user", r.config.AltService.Host)
-
-	parsedURL, err := url.Parse(targetURL)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse URL: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
 	// Authentication is established at the TLS transport layer (mTLS).
-
-	resp, err := r.client.Do(req)
+	resp, err := r.dataHub.GetSystemUser(ctx, connect.NewRequest(&datahubv1.GetSystemUserRequest{}))
 	if err != nil {
-		return "", fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			r.logger.WarnContext(ctx, "failed to close system user response body", "error", cerr, "url", parsedURL.String())
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return "", fmt.Errorf("GetSystemUser: %w", err)
 	}
 
-	var result struct {
-		UserID string `json:"user_id"`
-	}
-
-	// Bound the decoder so a misbehaving alt-backend cannot exhaust memory.
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxInternalResponseBytes)).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if result.UserID == "" {
+	if resp.Msg.UserId == "" {
 		return "", fmt.Errorf("received empty user_id")
 	}
 
-	return result.UserID, nil
+	return resp.Msg.UserId, nil
 }

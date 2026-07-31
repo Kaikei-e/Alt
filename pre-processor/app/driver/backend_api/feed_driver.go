@@ -8,7 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	backendv1 "pre-processor/gen/proto/services/backend/v1"
+	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
 
 	"pre-processor/domain"
 )
@@ -30,7 +30,7 @@ func (r *FeedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain
 		cursorStr = cursor.LastID
 	}
 
-	protoReq := &backendv1.ListFeedURLsRequest{
+	protoReq := &datahubv1.ListFeedURLsRequest{
 		Cursor: cursorStr,
 		Limit:  int32(min(limit, math.MaxInt32)), // #nosec G115 -- clamped to int32 range
 	}
@@ -69,7 +69,7 @@ func (r *FeedRepository) GetProcessingStats(ctx context.Context) (*domain.Proces
 	total := 0
 	cursor := ""
 	for {
-		protoReq := &backendv1.ListFeedURLsRequest{
+		protoReq := &datahubv1.ListFeedURLsRequest{
 			Cursor: cursor,
 			Limit:  500,
 		}

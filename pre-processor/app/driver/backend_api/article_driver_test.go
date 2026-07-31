@@ -10,57 +10,57 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"pre-processor/domain"
-	backendv1 "pre-processor/gen/proto/services/backend/v1"
-	"pre-processor/gen/proto/services/backend/v1/backendv1connect"
+	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
+	"pre-processor/gen/proto/alt/datahub/v1/datahubv1connect"
 )
 
-// mockBackendClient implements backendv1connect.BackendInternalServiceClient for testing.
-type mockBackendClient struct {
-	backendv1connect.UnimplementedBackendInternalServiceHandler
+// mockDataHubClient implements datahubv1connect.DataHubServiceClient for testing.
+type mockDataHubClient struct {
+	datahubv1connect.UnimplementedDataHubServiceHandler
 
-	getFeedIDFunc        func(ctx context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error)
-	createArticleFunc    func(ctx context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error)
-	listUnsummarizedFunc func(ctx context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error)
-	hasUnsummarizedFunc  func(ctx context.Context, req *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error)
-	getEmptyFeedIDFunc   func(ctx context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error)
+	getFeedIDFunc        func(ctx context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error)
+	createArticleFunc    func(ctx context.Context, req *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error)
+	listUnsummarizedFunc func(ctx context.Context, req *connect.Request[datahubv1.ListUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.ListUnsummarizedArticlesResponse], error)
+	hasUnsummarizedFunc  func(ctx context.Context, req *connect.Request[datahubv1.HasUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.HasUnsummarizedArticlesResponse], error)
+	getEmptyFeedIDFunc   func(ctx context.Context, req *connect.Request[datahubv1.GetEmptyFeedIDRequest]) (*connect.Response[datahubv1.GetEmptyFeedIDResponse], error)
 }
 
-func (m *mockBackendClient) GetFeedID(ctx context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
+func (m *mockDataHubClient) GetFeedID(ctx context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
 	if m.getFeedIDFunc != nil {
 		return m.getFeedIDFunc(ctx, req)
 	}
-	return connect.NewResponse(&backendv1.GetFeedIDResponse{}), nil
+	return connect.NewResponse(&datahubv1.GetFeedIDResponse{}), nil
 }
 
-func (m *mockBackendClient) CreateArticle(ctx context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error) {
+func (m *mockDataHubClient) CreateArticle(ctx context.Context, req *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
 	if m.createArticleFunc != nil {
 		return m.createArticleFunc(ctx, req)
 	}
-	return connect.NewResponse(&backendv1.CreateArticleResponse{ArticleId: "test-id"}), nil
+	return connect.NewResponse(&datahubv1.CreateArticleResponse{ArticleId: "test-id"}), nil
 }
 
-func (m *mockBackendClient) ListUnsummarizedArticles(ctx context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error) {
+func (m *mockDataHubClient) ListUnsummarizedArticles(ctx context.Context, req *connect.Request[datahubv1.ListUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.ListUnsummarizedArticlesResponse], error) {
 	if m.listUnsummarizedFunc != nil {
 		return m.listUnsummarizedFunc(ctx, req)
 	}
-	return connect.NewResponse(&backendv1.ListUnsummarizedArticlesResponse{}), nil
+	return connect.NewResponse(&datahubv1.ListUnsummarizedArticlesResponse{}), nil
 }
 
-func (m *mockBackendClient) HasUnsummarizedArticles(ctx context.Context, req *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error) {
+func (m *mockDataHubClient) HasUnsummarizedArticles(ctx context.Context, req *connect.Request[datahubv1.HasUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.HasUnsummarizedArticlesResponse], error) {
 	if m.hasUnsummarizedFunc != nil {
 		return m.hasUnsummarizedFunc(ctx, req)
 	}
-	return connect.NewResponse(&backendv1.HasUnsummarizedArticlesResponse{}), nil
+	return connect.NewResponse(&datahubv1.HasUnsummarizedArticlesResponse{}), nil
 }
 
-func (m *mockBackendClient) GetEmptyFeedID(ctx context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error) {
+func (m *mockDataHubClient) GetEmptyFeedID(ctx context.Context, req *connect.Request[datahubv1.GetEmptyFeedIDRequest]) (*connect.Response[datahubv1.GetEmptyFeedIDResponse], error) {
 	if m.getEmptyFeedIDFunc != nil {
 		return m.getEmptyFeedIDFunc(ctx, req)
 	}
-	return connect.NewResponse(&backendv1.GetEmptyFeedIDResponse{}), nil
+	return connect.NewResponse(&datahubv1.GetEmptyFeedIDResponse{}), nil
 }
 
-func newTestRepo(mock *mockBackendClient) *ArticleRepository {
+func newTestRepo(mock *mockDataHubClient) *ArticleRepository {
 	client := &Client{client: mock}
 	return NewArticleRepository(client, nil)
 }
@@ -91,7 +91,7 @@ func TestFetchInoreaderArticles_DBPoolFieldIsSet(t *testing.T) {
 }
 
 func TestUpsertArticles_EmptySlice(t *testing.T) {
-	mock := &mockBackendClient{}
+	mock := &mockDataHubClient{}
 	repo := newTestRepo(mock)
 
 	err := repo.UpsertArticles(context.Background(), []*domain.Article{})
@@ -102,13 +102,13 @@ func TestUpsertArticles_EmptySlice(t *testing.T) {
 
 func TestUpsertArticles_SkipsEmptyFeedURL(t *testing.T) {
 	var createCalled int
-	mock := &mockBackendClient{
-		createArticleFunc: func(_ context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error) {
+	mock := &mockDataHubClient{
+		createArticleFunc: func(_ context.Context, req *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
 			createCalled++
-			return connect.NewResponse(&backendv1.CreateArticleResponse{ArticleId: "new-id"}), nil
+			return connect.NewResponse(&datahubv1.CreateArticleResponse{ArticleId: "new-id"}), nil
 		},
-		getFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
-			return connect.NewResponse(&backendv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
+		getFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
+			return connect.NewResponse(&datahubv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -129,16 +129,16 @@ func TestUpsertArticles_SkipsEmptyFeedURL(t *testing.T) {
 
 func TestUpsertArticles_SkipsFeedNotFound(t *testing.T) {
 	var createCalled int
-	mock := &mockBackendClient{
-		createArticleFunc: func(_ context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error) {
+	mock := &mockDataHubClient{
+		createArticleFunc: func(_ context.Context, req *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
 			createCalled++
-			return connect.NewResponse(&backendv1.CreateArticleResponse{ArticleId: "new-id"}), nil
+			return connect.NewResponse(&datahubv1.CreateArticleResponse{ArticleId: "new-id"}), nil
 		},
-		getFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
+		getFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
 			if req.Msg.FeedUrl == "https://unknown-feed.com" {
 				return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
 			}
-			return connect.NewResponse(&backendv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
+			return connect.NewResponse(&datahubv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -158,12 +158,12 @@ func TestUpsertArticles_SkipsFeedNotFound(t *testing.T) {
 }
 
 func TestUpsertArticles_CreateErrorAbortsBatch(t *testing.T) {
-	mock := &mockBackendClient{
-		createArticleFunc: func(_ context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error) {
+	mock := &mockDataHubClient{
+		createArticleFunc: func(_ context.Context, req *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
 			return nil, connect.NewError(connect.CodeInternal, errors.New("network failure"))
 		},
-		getFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
-			return connect.NewResponse(&backendv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
+		getFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
+			return connect.NewResponse(&datahubv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -187,13 +187,13 @@ func TestUpsertArticles_CreateErrorAbortsBatch(t *testing.T) {
 func TestUpsertArticles_CoalescesGetFeedIDPerBatch(t *testing.T) {
 	const batchSize = 25
 	var getFeedIDCalls int
-	mock := &mockBackendClient{
-		createArticleFunc: func(_ context.Context, _ *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error) {
-			return connect.NewResponse(&backendv1.CreateArticleResponse{ArticleId: "new"}), nil
+	mock := &mockDataHubClient{
+		createArticleFunc: func(_ context.Context, _ *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
+			return connect.NewResponse(&datahubv1.CreateArticleResponse{ArticleId: "new"}), nil
 		},
-		getFeedIDFunc: func(_ context.Context, _ *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
+		getFeedIDFunc: func(_ context.Context, _ *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
 			getFeedIDCalls++
-			return connect.NewResponse(&backendv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
+			return connect.NewResponse(&datahubv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -223,11 +223,11 @@ func TestUpsertArticles_CoalescesGetFeedIDPerBatch(t *testing.T) {
 func TestUpsertArticles_CoalescesNotFoundPerBatch(t *testing.T) {
 	const batchSize = 20
 	var getFeedIDCalls int
-	mock := &mockBackendClient{
-		createArticleFunc: func(_ context.Context, _ *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error) {
-			return connect.NewResponse(&backendv1.CreateArticleResponse{ArticleId: "new"}), nil
+	mock := &mockDataHubClient{
+		createArticleFunc: func(_ context.Context, _ *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
+			return connect.NewResponse(&datahubv1.CreateArticleResponse{ArticleId: "new"}), nil
 		},
-		getFeedIDFunc: func(_ context.Context, _ *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
+		getFeedIDFunc: func(_ context.Context, _ *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
 			getFeedIDCalls++
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
 		},
@@ -269,17 +269,17 @@ func intToStr(i int) string {
 func TestUpsertArticles_WithPresetFeedID(t *testing.T) {
 	var createCalled int
 	var getFeedIDCalled int
-	mock := &mockBackendClient{
-		createArticleFunc: func(_ context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error) {
+	mock := &mockDataHubClient{
+		createArticleFunc: func(_ context.Context, req *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
 			createCalled++
 			if req.Msg.FeedId != "preset-feed" {
 				return nil, errors.New("expected preset-feed as FeedId")
 			}
-			return connect.NewResponse(&backendv1.CreateArticleResponse{ArticleId: "new-id"}), nil
+			return connect.NewResponse(&datahubv1.CreateArticleResponse{ArticleId: "new-id"}), nil
 		},
-		getFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
+		getFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
 			getFeedIDCalled++
-			return connect.NewResponse(&backendv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
+			return connect.NewResponse(&datahubv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -304,13 +304,13 @@ func TestUpsertArticles_WithPresetFeedID(t *testing.T) {
 
 func TestFindForSummarization_Success(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
-	mock := &mockBackendClient{
-		listUnsummarizedFunc: func(_ context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error) {
+	mock := &mockDataHubClient{
+		listUnsummarizedFunc: func(_ context.Context, req *connect.Request[datahubv1.ListUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.ListUnsummarizedArticlesResponse], error) {
 			if req.Msg.Limit != 10 {
 				t.Errorf("expected limit 10, got %d", req.Msg.Limit)
 			}
-			return connect.NewResponse(&backendv1.ListUnsummarizedArticlesResponse{
-				Articles: []*backendv1.UnsummarizedArticle{
+			return connect.NewResponse(&datahubv1.ListUnsummarizedArticlesResponse{
+				Articles: []*datahubv1.UnsummarizedArticle{
 					{Id: "a1", Title: "T1", Content: "C1", Url: "http://ex.com/1", CreatedAt: timestamppb.New(now), UserId: "u1"},
 					{Id: "a2", Title: "T2", Content: "C2", Url: "http://ex.com/2", CreatedAt: timestamppb.New(now.Add(-time.Hour)), UserId: "u1"},
 				},
@@ -344,15 +344,15 @@ func TestFindForSummarization_Success(t *testing.T) {
 
 func TestFindForSummarization_WithCursor(t *testing.T) {
 	cursorTime := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
-	mock := &mockBackendClient{
-		listUnsummarizedFunc: func(_ context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error) {
+	mock := &mockDataHubClient{
+		listUnsummarizedFunc: func(_ context.Context, req *connect.Request[datahubv1.ListUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.ListUnsummarizedArticlesResponse], error) {
 			if req.Msg.LastId != "prev-id" {
 				t.Errorf("expected last_id prev-id, got %s", req.Msg.LastId)
 			}
 			if req.Msg.LastCreatedAt == nil {
 				t.Fatal("expected last_created_at to be set")
 			}
-			return connect.NewResponse(&backendv1.ListUnsummarizedArticlesResponse{}), nil
+			return connect.NewResponse(&datahubv1.ListUnsummarizedArticlesResponse{}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -371,8 +371,8 @@ func TestFindForSummarization_WithCursor(t *testing.T) {
 }
 
 func TestFindForSummarization_Error(t *testing.T) {
-	mock := &mockBackendClient{
-		listUnsummarizedFunc: func(_ context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error) {
+	mock := &mockDataHubClient{
+		listUnsummarizedFunc: func(_ context.Context, req *connect.Request[datahubv1.ListUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.ListUnsummarizedArticlesResponse], error) {
 			return nil, connect.NewError(connect.CodeInternal, errors.New("server error"))
 		},
 	}
@@ -387,9 +387,9 @@ func TestFindForSummarization_Error(t *testing.T) {
 // ── HasUnsummarizedArticles tests ──
 
 func TestHasUnsummarizedArticles_True(t *testing.T) {
-	mock := &mockBackendClient{
-		hasUnsummarizedFunc: func(_ context.Context, req *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error) {
-			return connect.NewResponse(&backendv1.HasUnsummarizedArticlesResponse{HasUnsummarized: true}), nil
+	mock := &mockDataHubClient{
+		hasUnsummarizedFunc: func(_ context.Context, req *connect.Request[datahubv1.HasUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.HasUnsummarizedArticlesResponse], error) {
+			return connect.NewResponse(&datahubv1.HasUnsummarizedArticlesResponse{HasUnsummarized: true}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -404,9 +404,9 @@ func TestHasUnsummarizedArticles_True(t *testing.T) {
 }
 
 func TestHasUnsummarizedArticles_False(t *testing.T) {
-	mock := &mockBackendClient{
-		hasUnsummarizedFunc: func(_ context.Context, req *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error) {
-			return connect.NewResponse(&backendv1.HasUnsummarizedArticlesResponse{HasUnsummarized: false}), nil
+	mock := &mockDataHubClient{
+		hasUnsummarizedFunc: func(_ context.Context, req *connect.Request[datahubv1.HasUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.HasUnsummarizedArticlesResponse], error) {
+			return connect.NewResponse(&datahubv1.HasUnsummarizedArticlesResponse{HasUnsummarized: false}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -421,8 +421,8 @@ func TestHasUnsummarizedArticles_False(t *testing.T) {
 }
 
 func TestHasUnsummarizedArticles_Error(t *testing.T) {
-	mock := &mockBackendClient{
-		hasUnsummarizedFunc: func(_ context.Context, req *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error) {
+	mock := &mockDataHubClient{
+		hasUnsummarizedFunc: func(_ context.Context, req *connect.Request[datahubv1.HasUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.HasUnsummarizedArticlesResponse], error) {
 			return nil, connect.NewError(connect.CodeInternal, errors.New("server error"))
 		},
 	}
@@ -437,12 +437,12 @@ func TestHasUnsummarizedArticles_Error(t *testing.T) {
 // ── GetEmptyFeedID helper tests ──
 
 func TestGetEmptyFeedID_Found(t *testing.T) {
-	mock := &mockBackendClient{
-		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error) {
+	mock := &mockDataHubClient{
+		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetEmptyFeedIDRequest]) (*connect.Response[datahubv1.GetEmptyFeedIDResponse], error) {
 			if req.Msg.FeedUrl != "http://example.com/feed.xml" {
 				t.Errorf("expected feed_url http://example.com/feed.xml, got %s", req.Msg.FeedUrl)
 			}
-			return connect.NewResponse(&backendv1.GetEmptyFeedIDResponse{FeedId: "empty-feed-123"}), nil
+			return connect.NewResponse(&datahubv1.GetEmptyFeedIDResponse{FeedId: "empty-feed-123"}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -457,9 +457,9 @@ func TestGetEmptyFeedID_Found(t *testing.T) {
 }
 
 func TestGetEmptyFeedID_NotFound(t *testing.T) {
-	mock := &mockBackendClient{
-		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error) {
-			return connect.NewResponse(&backendv1.GetEmptyFeedIDResponse{FeedId: ""}), nil
+	mock := &mockDataHubClient{
+		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetEmptyFeedIDRequest]) (*connect.Response[datahubv1.GetEmptyFeedIDResponse], error) {
+			return connect.NewResponse(&datahubv1.GetEmptyFeedIDResponse{FeedId: ""}), nil
 		},
 	}
 	repo := newTestRepo(mock)
@@ -474,8 +474,8 @@ func TestGetEmptyFeedID_NotFound(t *testing.T) {
 }
 
 func TestGetEmptyFeedID_Error(t *testing.T) {
-	mock := &mockBackendClient{
-		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error) {
+	mock := &mockDataHubClient{
+		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetEmptyFeedIDRequest]) (*connect.Response[datahubv1.GetEmptyFeedIDResponse], error) {
 			return nil, connect.NewError(connect.CodeInternal, errors.New("server error"))
 		},
 	}
