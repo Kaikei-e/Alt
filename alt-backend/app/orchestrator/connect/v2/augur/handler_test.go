@@ -92,29 +92,75 @@ func TestSanitizeMetaEvent_PreservesCitationKindAndRefID(t *testing.T) {
 		"citation ref_id must survive sanitization; it is the /articles/<id> target")
 }
 
-// TestSanitizeMetaEvent_CarriesEveryMetaField is the rot guard. The 3-field
+// TestSanitizeMetaEvent_CarriesEveryField is the rot guard. The 3-field
 // allowlist that dropped kind / ref_id was not wrong when it was written — the
 // Citation message had exactly those three fields at the time — it rotted the
 // day ADR-000926 added two more. Rather than trusting the next author to
-// remember this function, walk the descriptor: populate every field of
-// MetaPayload (and, transitively, of Citation) with a non-default value and
-// require the sanitized copy to compare equal. Adding a proto field without
-// carrying it fails here immediately.
-func TestSanitizeMetaEvent_CarriesEveryMetaField(t *testing.T) {
+// remember this function, walk the descriptor: populate every field with a
+// non-default value and require the sanitized copy to compare equal. Adding a
+// proto field without carrying it fails here immediately.
+//
+// The walk covers the whole StreamChatResponse, not just MetaPayload: the
+// envelope was rebuilt by hand too (kind + payload), which is the same
+// two-field allowlist one level up. A future `trace_id` on StreamChatResponse
+// would otherwise vanish on meta events while surviving on delta / done /
+// error — the same asymmetric, hard-to-diagnose shape as the citation bug.
+func TestSanitizeMetaEvent_CarriesEveryField(t *testing.T) {
 	h := NewHandler(nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 
 	meta := &augurv2.MetaPayload{}
 	populateEveryField(t, meta.ProtoReflect())
 	require.NotEmpty(t, meta.Citations, "guard must populate the repeated citations field")
 
-	out := h.sanitizeMetaEvent(&augurv2.StreamChatResponse{
-		Kind:    "meta",
+	// The payload oneof is set here rather than by the walk: its members are
+	// mutually exclusive, so populating each in turn would leave only the last
+	// one set and there would be no meta payload left to sanitize.
+	in := &augurv2.StreamChatResponse{
 		Payload: &augurv2.StreamChatResponse_Meta{Meta: meta},
-	})
+	}
+	populateEveryField(t, in.ProtoReflect())
+	require.NotEmpty(t, in.Kind, "guard must populate the envelope's non-oneof fields")
 
-	assert.Truef(t, proto.Equal(meta, out.GetMeta()),
-		"sanitizeMetaEvent dropped at least one MetaPayload/Citation field — carry it explicitly or copy the message wholesale\nwant: %v\ngot:  %v",
-		meta, out.GetMeta())
+	want := proto.Clone(in).(*augurv2.StreamChatResponse)
+	out := h.sanitizeMetaEvent(in)
+
+	assert.Truef(t, proto.Equal(want, out),
+		"sanitizeMetaEvent dropped at least one StreamChatResponse/MetaPayload/Citation field — copy the message wholesale instead of rebuilding it field by field\nwant: %v\ngot:  %v",
+		want, out)
+}
+
+// TestSanitizeMetaEvent_ReturnsDeepCopy pins the one behaviour that survives
+// from the old rebuild and is the only remaining reason this function exists:
+// the forwarded event must not alias the stream's receive buffer, which
+// connect reuses across Receive() calls. Once the body is a wholesale copy,
+// "why not just return event?" is a tempting simplification — this test is
+// what says no.
+func TestSanitizeMetaEvent_ReturnsDeepCopy(t *testing.T) {
+	h := NewHandler(nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	in := &augurv2.StreamChatResponse{
+		Kind: "meta",
+		Payload: &augurv2.StreamChatResponse_Meta{
+			Meta: &augurv2.MetaPayload{
+				ConversationId: "11111111-2222-3333-4444-555555555555",
+				Citations: []*augurv2.Citation{
+					{Url: "https://example.com", Kind: augurv2.CitationKind_CITATION_KIND_WEB},
+				},
+			},
+		},
+	}
+	want := proto.Clone(in).(*augurv2.StreamChatResponse)
+
+	out := h.sanitizeMetaEvent(in)
+
+	// Simulate connect reusing the buffer for the next event.
+	in.Kind = "delta"
+	in.GetMeta().ConversationId = "overwritten"
+	in.GetMeta().Citations[0].Url = "https://overwritten.example"
+
+	assert.Truef(t, proto.Equal(want, out),
+		"sanitizeMetaEvent must return a deep copy; mutating the received event changed the forwarded one\nwant: %v\ngot:  %v",
+		want, out)
 }
 
 // populateEveryField sets every field of m to a non-default value, recursing
@@ -122,12 +168,19 @@ func TestSanitizeMetaEvent_CarriesEveryMetaField(t *testing.T) {
 // It fails the test on any construct it does not know how to fill, so an
 // unhandled proto shape surfaces as a loud failure instead of a silent gap in
 // the guard above.
+//
+// Members of a real oneof are left to the caller: they are mutually exclusive,
+// so setting each in turn would leave only the last one populated. Synthetic
+// oneofs (proto3 `optional`) are ordinary fields and are still filled.
 func populateEveryField(t *testing.T, m protoreflect.Message) {
 	t.Helper()
 
 	fields := m.Descriptor().Fields()
 	for i := 0; i < fields.Len(); i++ {
 		fd := fields.Get(i)
+		if oneof := fd.ContainingOneof(); oneof != nil && !oneof.IsSynthetic() {
+			continue
+		}
 		switch {
 		case fd.IsMap():
 			t.Fatalf("map field %s is not covered by this guard; extend populateEveryField", fd.FullName())

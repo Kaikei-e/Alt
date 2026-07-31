@@ -120,34 +120,32 @@ func (h *Handler) StreamChat(
 // sanitizeMetaEvent returns a defensive deep copy of the meta event so the
 // forwarded message is not aliased to the stream's receive buffer.
 //
-// It used to rebuild MetaPayload field by field from a three-field citation
-// allowlist (url, title, published_at). That allowlist is a fossil: before
-// ADR-000154 this handler parsed rag-orchestrator's *SSE JSON* envelope, whose
-// context items carried ChunkText, ChunkID, Score, DocumentVersion and a Debug
-// object — none of which may reach the browser. The Connect-RPC migration
-// deleted the JSON parse and mechanically kept the allowlist, which at that
-// moment matched Citation exactly and therefore stripped nothing. It stayed a
-// no-op until ADR-000926 added `kind` and `ref_id`, after which every meta
-// citation silently reached the UI as CITATION_KIND_UNSPECIFIED with an empty
-// ref_id — the dead source link ADR-000927 believed it had eliminated.
+// It used to rebuild the event field by field: a three-field citation
+// allowlist (url, title, published_at) inside a hand-built envelope. That
+// allowlist is a fossil: before ADR-000154 this handler parsed
+// rag-orchestrator's *SSE JSON* envelope, whose context items carried
+// ChunkText, ChunkID, Score, DocumentVersion and a Debug object — none of
+// which may reach the browser. The Connect-RPC migration deleted the JSON
+// parse and mechanically kept the allowlist, which at that moment matched
+// Citation exactly and therefore stripped nothing. It stayed a no-op until
+// ADR-000926 added `kind` and `ref_id`, after which every meta citation
+// silently reached the UI as CITATION_KIND_UNSPECIFIED with an empty ref_id —
+// the dead source link ADR-000927 believed it had eliminated.
 //
-// Copying wholesale cannot re-expose what the allowlist was written to strip:
-// those fields exist only in the retired JSON shape and have no counterpart in
-// alt.augur.v2.Citation or MetaPayload, so rag-orchestrator has no way to put
-// them on this wire. Nor was the allowlist load-bearing as a filter — the done
-// event carries the same Citation list and is already forwarded untouched.
+// Cloning the whole event, envelope included, cannot re-expose what the
+// allowlist was written to strip: those fields exist only in the retired JSON
+// shape and have no counterpart anywhere in alt.augur.v2.StreamChatResponse,
+// so rag-orchestrator has no way to put them on this wire. Nor was the
+// allowlist load-bearing as a filter — the done event carries the same
+// Citation list and is already forwarded untouched. Do not reintroduce a
+// field-by-field rebuild at either level; it rots the day a proto field is
+// added, which is exactly how the citation allowlist failed.
 func (h *Handler) sanitizeMetaEvent(event *augurv2.StreamChatResponse) *augurv2.StreamChatResponse {
-	meta := event.GetMeta()
-	if meta == nil {
+	if event.GetMeta() == nil {
 		return event
 	}
 
-	return &augurv2.StreamChatResponse{
-		Kind: "meta",
-		Payload: &augurv2.StreamChatResponse_Meta{
-			Meta: proto.Clone(meta).(*augurv2.MetaPayload),
-		},
-	}
+	return proto.Clone(event).(*augurv2.StreamChatResponse)
 }
 
 // RetrieveContext retrieves relevant context for a query without generating an answer
