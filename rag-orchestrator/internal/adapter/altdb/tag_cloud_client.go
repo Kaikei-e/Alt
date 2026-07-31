@@ -6,27 +6,33 @@ import (
 	"log/slog"
 	"math"
 
-	backendv1 "alt/gen/proto/services/backend/v1"
-	"alt/gen/proto/services/backend/v1/backendv1connect"
+	datahubv1 "alt/gen/proto/alt/datahub/v1"
+	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
 
 	"rag-orchestrator/internal/domain"
 
 	"connectrpc.com/connect"
 )
 
-// InternalTagCloudClient implements domain.TagCloudClient using BackendInternalService Connect-RPC.
-type InternalTagCloudClient struct {
-	client backendv1connect.BackendInternalServiceClient
+// DataHubTagCloudClient implements domain.TagCloudClient using
+// alt.datahub.v1.DataHubService/FetchTagCloud.
+//
+// Origin: services.backend.v1.BackendInternalService/FetchTagCloud. The
+// request and response messages are wire-identical to the legacy pair
+// (ADR-000954 D7); only the package on the URL path changed, along with the
+// process that answers it and the mutual TLS in front of it.
+type DataHubTagCloudClient struct {
+	client datahubv1connect.DataHubServiceClient
 	logger *slog.Logger
 }
 
-// NewInternalTagCloudClient creates a tag cloud client using the BackendInternalService.
-func NewInternalTagCloudClient(client backendv1connect.BackendInternalServiceClient, logger *slog.Logger) *InternalTagCloudClient {
-	return &InternalTagCloudClient{client: client, logger: logger}
+// NewDataHubTagCloudClient creates a tag cloud client using DataHubService.
+func NewDataHubTagCloudClient(client datahubv1connect.DataHubServiceClient, logger *slog.Logger) *DataHubTagCloudClient {
+	return &DataHubTagCloudClient{client: client, logger: logger}
 }
 
-func (c *InternalTagCloudClient) FetchTagCloud(ctx context.Context, limit int) ([]domain.TagCloudEntry, error) {
-	req := connect.NewRequest(&backendv1.BackendInternalServiceFetchTagCloudRequest{
+func (c *DataHubTagCloudClient) FetchTagCloud(ctx context.Context, limit int) ([]domain.TagCloudEntry, error) {
+	req := connect.NewRequest(&datahubv1.FetchTagCloudRequest{
 		Limit: int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
 	})
 
@@ -35,11 +41,11 @@ func (c *InternalTagCloudClient) FetchTagCloud(ctx context.Context, limit int) (
 		return nil, fmt.Errorf("FetchTagCloud RPC failed: %w", err)
 	}
 
-	tags := make([]domain.TagCloudEntry, 0, len(resp.Msg.Tags))
-	for _, t := range resp.Msg.Tags {
+	tags := make([]domain.TagCloudEntry, 0, len(resp.Msg.GetTags()))
+	for _, t := range resp.Msg.GetTags() {
 		tags = append(tags, domain.TagCloudEntry{
-			TagName:      t.TagName,
-			ArticleCount: t.ArticleCount,
+			TagName:      t.GetTagName(),
+			ArticleCount: t.GetArticleCount(),
 		})
 	}
 

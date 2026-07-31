@@ -14,7 +14,76 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("PEER_IDENTITY_MODE", "disabled"); err != nil {
 		panic(err)
 	}
+	// Load() fail-fasts without these (ADR-000954 D7): alt-data-hub is the
+	// only route to alt_db and it accepts nothing but a client certificate,
+	// so there is no configuration in which they are optional.
+	for k, v := range map[string]string{
+		"DATAHUB_MTLS_URL": "https://alt-data-hub:9443",
+		"MTLS_CERT_FILE":   "/certs/svc-cert.pem",
+		"MTLS_KEY_FILE":    "/certs/svc-key.pem",
+		"MTLS_CA_FILE":     "/trust/ca-bundle.pem",
+	} {
+		if err := os.Setenv(k, v); err != nil {
+			panic(err)
+		}
+	}
 	os.Exit(m.Run())
+}
+
+func TestLoad_DataHub_MTLSURLUnsetPanics(t *testing.T) {
+	unsetEnv(t, "DATAHUB_MTLS_URL")
+
+	assert.Panics(t, func() { Load() },
+		"unset DATAHUB_MTLS_URL must fail startup; the plaintext surface it replaces no longer exists")
+}
+
+func TestLoad_DataHub_PlaintextURLPanics(t *testing.T) {
+	t.Setenv("DATAHUB_MTLS_URL", "http://alt-backend:9102")
+
+	assert.Panics(t, func() { Load() },
+		"an http:// data-hub URL is the dead pre-split endpoint and must never be accepted")
+}
+
+func TestLoad_DataHub_MissingCertMaterialPanics(t *testing.T) {
+	t.Setenv("DATAHUB_MTLS_URL", "https://alt-data-hub:9443")
+	unsetEnv(t, "MTLS_CERT_FILE")
+	unsetEnv(t, "MTLS_KEY_FILE")
+	unsetEnv(t, "MTLS_CA_FILE")
+
+	assert.Panics(t, func() { Load() },
+		"the client certificate is the only credential alt-data-hub accepts")
+}
+
+func TestLoad_DataHub_FullyConfigured(t *testing.T) {
+	t.Setenv("DATAHUB_MTLS_URL", "https://alt-data-hub:9443")
+	t.Setenv("DATAHUB_MTLS_SERVER_NAME", "alt-data-hub")
+	t.Setenv("DATAHUB_TIMEOUT", "45")
+	t.Setenv("MTLS_CERT_FILE", "/certs/svc-cert.pem")
+	t.Setenv("MTLS_KEY_FILE", "/certs/svc-key.pem")
+	t.Setenv("MTLS_CA_FILE", "/trust/ca-bundle.pem")
+
+	cfg := Load()
+
+	assert.Equal(t, "https://alt-data-hub:9443", cfg.DataHub.MTLSURL)
+	assert.Equal(t, "alt-data-hub", cfg.DataHub.ServerName)
+	assert.Equal(t, "/certs/svc-cert.pem", cfg.DataHub.CertFile)
+	assert.Equal(t, "/certs/svc-key.pem", cfg.DataHub.KeyFile)
+	assert.Equal(t, "/trust/ca-bundle.pem", cfg.DataHub.CAFile)
+	assert.Equal(t, 45, cfg.DataHub.Timeout)
+}
+
+// ServerName is the one data-hub setting that may legitimately be empty:
+// crypto/tls then derives it from the URL host, which is what makes the
+// compose default (https://alt-data-hub:9443 against CERT_SANS=alt-data-hub)
+// work without an extra variable. Empty must therefore NOT be a startup
+// failure — but it must also not be quietly rewritten to something else.
+func TestLoad_DataHub_ServerNameOptional(t *testing.T) {
+	t.Setenv("DATAHUB_MTLS_URL", "https://alt-data-hub:9443")
+	unsetEnv(t, "DATAHUB_MTLS_SERVER_NAME")
+
+	cfg := Load()
+
+	assert.Empty(t, cfg.DataHub.ServerName)
 }
 
 // unsetEnv removes key for the duration of the test, restoring the prior
@@ -46,15 +115,29 @@ func TestLoad_PeerIdentityMode_DisabledIsExplicit(t *testing.T) {
 	assert.Equal(t, PeerIdentityDisabled, cfg.PeerIdentity.Mode)
 }
 
-func TestLoad_PeerIdentityMode_MTLSRequiresCertsAndAllowlist(t *testing.T) {
+// MTLS_CERT_FILE/KEY/CA back both directions — the inbound Connect-RPC
+// listener and the outbound alt-data-hub client — so unsetting them fails
+// startup whichever loader reaches them first. The invariant under test is
+// that the process refuses to start, not which loader reports it.
+func TestLoad_PeerIdentityMode_MTLSRequiresCerts(t *testing.T) {
 	t.Setenv("PEER_IDENTITY_MODE", "mtls")
 	unsetEnv(t, "MTLS_CERT_FILE")
 	unsetEnv(t, "MTLS_KEY_FILE")
 	unsetEnv(t, "MTLS_CA_FILE")
+
+	assert.Panics(t, func() { Load() },
+		"mtls mode without cert paths must fail startup")
+}
+
+func TestLoad_PeerIdentityMode_MTLSRequiresAllowlist(t *testing.T) {
+	t.Setenv("PEER_IDENTITY_MODE", "mtls")
+	t.Setenv("MTLS_CERT_FILE", "/certs/svc-cert.pem")
+	t.Setenv("MTLS_KEY_FILE", "/certs/svc-key.pem")
+	t.Setenv("MTLS_CA_FILE", "/trust/ca-bundle.pem")
 	unsetEnv(t, "PEER_IDENTITY_ALLOWED_PEERS")
 
 	assert.Panics(t, func() { Load() },
-		"mtls mode without cert paths + peer allowlist must fail startup")
+		"mtls mode without a peer allowlist must fail startup")
 }
 
 func TestLoad_PeerIdentityMode_MTLSFullyConfigured(t *testing.T) {

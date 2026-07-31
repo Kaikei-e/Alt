@@ -2,119 +2,107 @@ package altdb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"rag-orchestrator/internal/domain"
-	"rag-orchestrator/internal/infra/httpclient"
+	"math"
 	"time"
 
+	datahubv1 "alt/gen/proto/alt/datahub/v1"
+	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+
+	"rag-orchestrator/internal/domain"
+
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 )
 
-// HTTPArticleClient implements domain.ArticleClient using HTTP calls to alt-backend.
-// Authentication is established at the TLS transport layer (mTLS).
-type HTTPArticleClient struct {
-	baseURL    string
-	httpClient *http.Client
-	logger     *slog.Logger
+// DataHubArticleClient implements domain.ArticleClient on top of
+// alt.datahub.v1.DataHubService/ListRecentArticles.
+//
+// It replaces the REST client that called
+// GET http://alt-backend:9102/v1/internal/articles/recent. That route did not
+// move — it was absorbed (ADR-000954 D6): alt-backend's :9102 is an
+// admin-only operator listener after the 3-binary split, and alt-data-hub is
+// the only process that can reach alt_db. Authentication is the client
+// certificate presented by the transport; there is no application-layer
+// credential.
+type DataHubArticleClient struct {
+	client datahubv1connect.DataHubServiceClient
+	logger *slog.Logger
 }
 
-// NewHTTPArticleClient creates a new HTTP-based article client.
-func NewHTTPArticleClient(baseURL string, timeout time.Duration, _ string, logger *slog.Logger) *HTTPArticleClient {
-	return &HTTPArticleClient{
-		baseURL:    baseURL,
-		httpClient: httpclient.NewPooledClient(timeout),
-		logger:     logger,
-	}
+// NewDataHubArticleClient creates an article client over DataHubService.
+func NewDataHubArticleClient(client datahubv1connect.DataHubServiceClient, logger *slog.Logger) *DataHubArticleClient {
+	return &DataHubArticleClient{client: client, logger: logger}
 }
 
-// recentArticlesResponse represents the response from alt-backend
-type recentArticlesResponse struct {
-	Articles []articleMetadataDTO `json:"articles"`
-	Since    string               `json:"since"`
-	Until    string               `json:"until"`
-	Count    int                  `json:"count"`
-}
+// GetRecentArticles fetches articles published within withinHours.
+//
+// Both request fields are set explicitly, and that is load-bearing. The proto
+// declares them `optional` so that "unset" and "0" stay distinguishable: an
+// unset limit means the server default of 100, while limit = 0 means "time
+// window only, no count cap" — the mode the morning-letter usecase runs in.
+// Letting protojson elide the zero would silently truncate the result to 100
+// articles. Sending both fields is what preserves the REST route's semantics.
+func (c *DataHubArticleClient) GetRecentArticles(ctx context.Context, withinHours int, limit int) ([]domain.ArticleMetadata, error) {
+	withinHours32 := int32(min(withinHours, math.MaxInt32)) //nolint:gosec // clamped to MaxInt32
+	limit32 := int32(min(limit, math.MaxInt32))             //nolint:gosec // clamped to MaxInt32
 
-type articleMetadataDTO struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	URL         string   `json:"url"`
-	PublishedAt string   `json:"published_at"`
-	FeedID      string   `json:"feed_id"`
-	Tags        []string `json:"tags"`
-}
+	req := connect.NewRequest(&datahubv1.ListRecentArticlesRequest{
+		WithinHours: &withinHours32,
+		Limit:       &limit32,
+	})
 
-// GetRecentArticles fetches recent articles from alt-backend
-func (c *HTTPArticleClient) GetRecentArticles(ctx context.Context, withinHours int, limit int) ([]domain.ArticleMetadata, error) {
-	url := fmt.Sprintf("%s/v1/internal/articles/recent?within_hours=%d&limit=%d", c.baseURL, withinHours, limit)
-
-	c.logger.Info("fetching recent articles from alt-backend",
-		slog.String("url", url),
+	c.logger.Info("fetching recent articles from alt-data-hub",
 		slog.Int("within_hours", withinHours),
 		slog.Int("limit", limit))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	resp, err := c.client.ListRecentArticles(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Accept", "application/json")
-	// Authentication is established at the TLS transport layer (mTLS).
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch recent articles: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	var response recentArticlesResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, fmt.Errorf("ListRecentArticles RPC failed: %w", err)
 	}
 
 	c.logger.Info("successfully fetched recent articles",
-		slog.Int("count", response.Count))
+		slog.Int("count", int(resp.Msg.GetCount())),
+		slog.String("since", resp.Msg.GetSince()),
+		slog.String("until", resp.Msg.GetUntil()))
 
-	// Convert DTOs to domain entities
-	articles := make([]domain.ArticleMetadata, 0, len(response.Articles))
-	for _, dto := range response.Articles {
-		articleID, err := uuid.Parse(dto.ID)
+	items := resp.Msg.GetArticles()
+	articles := make([]domain.ArticleMetadata, 0, len(items))
+	for _, item := range items {
+		articleID, err := uuid.Parse(item.GetId())
 		if err != nil {
-			c.logger.Warn("invalid article ID, skipping", slog.String("id", dto.ID), slog.String("error", err.Error()))
+			c.logger.Warn("invalid article ID, skipping",
+				slog.String("id", item.GetId()),
+				slog.String("error", err.Error()))
 			continue
 		}
 
-		feedID, err := uuid.Parse(dto.FeedID)
+		feedID, err := uuid.Parse(item.GetFeedId())
 		if err != nil {
-			// FeedID may be optional, use zero UUID
+			// FeedID may be absent; the zero UUID is the documented stand-in.
 			feedID = uuid.Nil
 		}
 
-		// published_at is a business fact (drives temporal boost scoring
+		// published_at is a business fact (it drives temporal boost scoring
 		// downstream); a parse failure must not be papered over with the
 		// wall-clock time. Keep the zero value so downstream temporal
 		// scoring can detect and deprioritize it instead of scoring it as
 		// "just published".
-		publishedAt, err := time.Parse(time.RFC3339, dto.PublishedAt)
+		publishedAt, err := time.Parse(time.RFC3339, item.GetPublishedAt())
 		if err != nil {
-			c.logger.Warn("invalid published_at, keeping zero value", slog.String("published_at", dto.PublishedAt))
+			c.logger.Warn("invalid published_at, keeping zero value",
+				slog.String("published_at", item.GetPublishedAt()))
 			publishedAt = time.Time{}
 		}
 
 		articles = append(articles, domain.ArticleMetadata{
 			ID:          articleID,
-			Title:       dto.Title,
-			URL:         dto.URL,
+			Title:       item.GetTitle(),
+			URL:         item.GetUrl(),
 			PublishedAt: publishedAt,
 			FeedID:      feedID,
-			Tags:        dto.Tags,
+			Tags:        item.GetTags(),
 		})
 	}
 
