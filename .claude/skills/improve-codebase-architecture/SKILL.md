@@ -36,7 +36,7 @@ This skill is _informed_ by the project's domain model. The domain language give
 
 Read the accepted ADRs covering the area you're touching first — `docs/ADR/` (6-digit files), plus the
 canonical contracts in `docs/plan/` and invariants in `docs/wiki/architecture/`. Confirm an ADR is
-still live with `python3 scripts/adr_graph.py resolve <id>` before treating it as binding; a
+still live with `docdag resolve <id>` before treating it as binding; a
 superseded decision is not a constraint.
 
 Then use the Agent tool with `subagent_type=Explore` to walk the codebase. Don't follow rigid heuristics — explore organically and note where you experience friction:

@@ -20,7 +20,7 @@ aliases:
 
 <!-- Proposed | Accepted | Deprecated | Superseded by ADR-NNNN -->
 <!-- 本ADRが既存ADRを置き換える場合は、frontmatterの supersedes に旧ADR番号を追記する。
-     逆辺は scripts/adr_graph.py が算出する。旧ADRの status はグラフ投影（inbound があれば superseded）。
+     逆辺は DocDag（docdag validate）が算出する。旧ADRの status はグラフ投影（inbound があれば superseded）。
      旧ADR本文の Decision は改変しない。 -->
 
 Proposed

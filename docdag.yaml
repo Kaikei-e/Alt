@@ -1,0 +1,3 @@
+preset: adr
+dir: docs/ADR
+id_width: 6

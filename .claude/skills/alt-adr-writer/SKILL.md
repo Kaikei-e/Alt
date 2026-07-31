@@ -54,9 +54,9 @@ ls docs/ADR/ | sort | tail -1     # 最新番号を確認
 | `date` | `YYYY-MM-DD`（当日） |
 | `status` | 原則 `accepted`。新 ADR 自身を `superseded` にしない（置換される側の status はグラフ投影） |
 | `tags` | §2.4 の許可タグから最大 5 個 |
-| `affected_services` | サービス名と変更概要を 1 行/件で列挙 |
+| `affected_services` | サービス名と変更概要を 1 行/件で列挙。バッククォートや `: ` を含む項目はシングルクォートで囲む（厳密 YAML） |
 | `aliases` | `ADR-NNN` と `ADR-000NNN` の 2 形式を必ず両方入れる（Obsidian のリンク解決用） |
-| `supersedes` | 本 ADR が既存 ADR を**完全置換**する場合のみ、旧 ADR 番号（6 桁）を列挙。置き換えないならキーごと省略する（空の `supersedes: -` stub は dangling 判定を汚す）。新 ADR 側にだけ書き、逆辺は `scripts/adr_graph.py` が算出する |
+| `supersedes` | 本 ADR が既存 ADR を**完全置換**する場合のみ、旧 ADR 番号（6 桁）を列挙。置き換えないならキーごと省略する（空の `supersedes: -` stub は dangling 判定を汚す）。新 ADR 側にだけ書き、逆辺は DocDag が算出する |
 
 ### 2.3 本文ルール
 
@@ -102,7 +102,7 @@ Write ツールで `docs/ADR/NNNNNN.md` を作る。heredoc や `cat > ...` は�
 （非ゼロ終了なら frontmatter を直す）。
 
 ```bash
-python3 scripts/adr_graph.py check
+docdag validate
 ```
 
 置き換え対象の旧 ADR の `status` は同じ commit で `superseded` に揃える（status 投影の例外）。
@@ -124,7 +124,7 @@ git commit -m "<英語の 1 行メッセージ>"   # Co-Authored-By は付けな
 
 - 書いた ADR のパス（`docs/ADR/NNNNNN.md`）とタイトル
 - 緑だったテスト（どのサービスで何を回したか）
-- `adr_graph.py check` の結果（`supersedes` を書いた場合）
+- `docdag validate` の結果（`supersedes` を書いた場合）
 - 次に目を向けておく指標や運用フォロー（あれば 1 行）
 
 ---

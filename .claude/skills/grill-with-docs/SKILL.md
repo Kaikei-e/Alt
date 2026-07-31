@@ -29,7 +29,7 @@ In this repo the documented model lives in the Obsidian vault under `docs/`, not
 | Known gaps / remediation | `docs/review/` |
 | Operational constraints | `docs/runbooks/` |
 
-`python3 scripts/adr_graph.py resolve <id>` gives the current successor of an ADR, so you challenge
+`docdag resolve <id>` gives the current successor of an ADR, so you challenge
 against the live decision rather than a superseded one.
 
 There is no glossary file in this repo today. When a term genuinely needs pinning down, resolve it in
@@ -79,6 +79,6 @@ If any of the three is missing, skip the ADR.
 When one is warranted, hand off to the **alt-adr-writer** skill rather than inventing a format here.
 This repo has one ADR convention — 6-digit numbering, `docs/ADR/template.md` sections, wikilink
 `[[000NNN]]` cross-references, a fixed tag list — and a second format competing with it produces
-records that Obsidian's graph and `scripts/adr_graph.py` cannot read.
+records that Obsidian's graph and `docdag` cannot read.
 
 </supporting-info>

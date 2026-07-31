@@ -15,7 +15,8 @@
 - ADRへのリンク追加（Related ADRsのwikilink化）は可。Decision 本文の内容改変は不可。
 - **例外（status 投影）**: inbound `supersedes` がある旧 ADR の frontmatter `status` だけは `superseded` に更新してよい（binding の正本は reverse グラフ。`status` はその投影）。
 - ADR参照は必ず `[[000NNN]]` wikilink形式を使う
-- ADRが既存ADRを置き換える場合、新ADR側のfrontmatterに `supersedes:` リストを書く（キー省略可。空の `supersedes: -` stub は禁止）。旧ADR側への逆方向記入は不要（`scripts/adr_graph.py` が算出）。循環・dangling・status ドリフト・空 stub は `python3 scripts/adr_graph.py check` で検出する
+- ADRが既存ADRを置き換える場合、新ADR側のfrontmatterに `supersedes:` リストを書く（キー省略可。空の `supersedes: -` stub は禁止）。旧ADR側への逆方向記入は不要（DocDag が算出）。循環・dangling・status ドリフト・空 stub は `docdag validate` で検出する（設定はリポジトリルートの `docdag.yaml`）
+- frontmatter は厳密 YAML。バッククォートや `: ` を含む値（特に `affected_services` の項目）はシングルクォートで囲む — `docdag validate` が invalid_frontmatter ERROR で検出する
 
 ## 検索ガイドライン
 - **まず `wiki/HOME.md` を見る** — 結晶化された navigation layer。ADR / runbook / plan の入口
