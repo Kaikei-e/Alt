@@ -28,9 +28,26 @@ import (
 	"mq-hub/domain"
 )
 
-const searchIndexerProviderPact = "search-indexer-mq-hub.json"
+const (
+	searchIndexerProviderPact = "search-indexer-mq-hub.json"
+	preProcessorProviderPact  = "pre-processor-mq-hub.json"
+)
 
-func articleCreatedFatEvent() *domain.Event {
+// SummarizeRequestedPayload is the payload alt-backend publishes for
+// SummarizeRequested events on alt:events:articles.
+type SummarizeRequestedPayload struct {
+	ArticleID string `json:"article_id"`
+	UserID    string `json:"user_id"`
+	Title     string `json:"title"`
+	Streaming bool   `json:"streaming"`
+}
+
+// articleCreatedEvent models what alt-backend puts on the stream today, body
+// included. No consumer contract asks for the body any more, but consumer
+// versions that still do are deployed and are pulled in by the
+// DeployedOrReleased selector below; Pact ignores keys a contract does not
+// mention, so the superset satisfies both. It shrinks when the producer does.
+func articleCreatedEvent() *domain.Event {
 	payload := ArticleCreatedPayload{
 		ArticleID:   "art-001",
 		UserID:      "user-001",
@@ -51,10 +68,10 @@ func articleCreatedFatEvent() *domain.Event {
 	return event
 }
 
-// articleUpdatedFatEvent mirrors articleCreatedFatEvent but with a different
+// articleUpdatedEvent mirrors articleCreatedEvent but with a different
 // event_type so search-indexer's ArticleUpdated pact (added 2026-04-18)
 // can be verified against real mq-hub wire output.
-func articleUpdatedFatEvent() *domain.Event {
+func articleUpdatedEvent() *domain.Event {
 	payload := ArticleCreatedPayload{
 		ArticleID:   "art-001",
 		UserID:      "user-001",
@@ -75,6 +92,23 @@ func articleUpdatedFatEvent() *domain.Event {
 	return event
 }
 
+func summarizeRequestedEvent() *domain.Event {
+	payload := SummarizeRequestedPayload{
+		ArticleID: "art-002",
+		UserID:    "user-001",
+		Title:     "Rust Memory Safety",
+		Streaming: false,
+	}
+	payloadJSON, _ := json.Marshal(payload)
+	event, _ := domain.NewEvent(
+		domain.EventTypeSummarizeRequested,
+		"alt-backend",
+		payloadJSON,
+		map[string]string{"trace_id": "trace-002"},
+	)
+	return event
+}
+
 func indexArticleEvent() *domain.Event {
 	payload := map[string]interface{}{
 		"article_id": "art-003",
@@ -91,55 +125,32 @@ func indexArticleEvent() *domain.Event {
 	return event
 }
 
-// TestVerifySearchIndexerMqHubMessagePact replays search-indexer's consumer
-// pact against a live mq-hub message generator. For each interaction description
-// the handler produces the mq-hub wire-format event, and the Pact verifier
-// checks that the structure matches the expected payload in the pact file.
-func TestVerifySearchIndexerMqHubMessagePact(t *testing.T) {
-	pactFile := filepath.Join(pactDir, searchIndexerProviderPact)
+// verifyMessagePact replays one consumer's message pact against live mq-hub
+// event generators. For each interaction description the handler produces the
+// mq-hub wire-format event, and the Pact verifier checks that the structure
+// matches the expected payload.
+func verifyMessagePact(
+	t *testing.T,
+	consumer string,
+	pactFileName string,
+	handlers message.Handlers,
+	states models.StateHandlers,
+) {
+	t.Helper()
+
+	pactFile := filepath.Join(pactDir, pactFileName)
 
 	brokerURL := os.Getenv("PACT_BROKER_BASE_URL")
 	if brokerURL == "" {
 		if _, err := os.Stat(pactFile); os.IsNotExist(err) {
-			t.Skipf("pact file missing: %s (run search-indexer consumer tests first)", pactFile)
+			t.Skipf("pact file missing: %s (run %s consumer tests first)", pactFile, consumer)
 		}
 	}
 
 	verifyRequest := provider.VerifyRequest{
-		Provider: "mq-hub",
-		MessageHandlers: message.Handlers{
-			"an ArticleCreated event on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
-				return eventToWireFormat(buildArticleCreatedEvent()), message.Metadata{
-					"contentType": "application/json",
-				}, nil
-			},
-			"an ArticleCreated fat event with content on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
-				return eventToWireFormat(articleCreatedFatEvent()), message.Metadata{
-					"contentType": "application/json",
-				}, nil
-			},
-			"an ArticleUpdated fat event on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
-				return eventToWireFormat(articleUpdatedFatEvent()), message.Metadata{
-					"contentType": "application/json",
-				}, nil
-			},
-			"an IndexArticle event on alt:events:index": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
-				return eventToWireFormat(indexArticleEvent()), message.Metadata{
-					"contentType": "application/json",
-				}, nil
-			},
-		},
-		StateHandlers: models.StateHandlers{
-			"the articles stream exists": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
-				return nil, nil
-			},
-			"the articles stream exists and an article was updated": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
-				return nil, nil
-			},
-			"the index stream exists": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
-				return nil, nil
-			},
-		},
+		Provider:        "mq-hub",
+		MessageHandlers: handlers,
+		StateHandlers:   states,
 	}
 
 	if brokerURL != "" {
@@ -151,8 +162,8 @@ func TestVerifySearchIndexerMqHubMessagePact(t *testing.T) {
 		// against both the new and the deployed consumer hash (Pact's
 		// recommended provider configuration).
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "search-indexer", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "search-indexer", DeployedOrReleased: true},
+			&provider.ConsumerVersionSelector{Consumer: consumer, MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: consumer, DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
@@ -165,8 +176,8 @@ func TestVerifySearchIndexerMqHubMessagePact(t *testing.T) {
 			verifyRequest.EnablePending = true
 		}
 		if since := os.Getenv("PACT_INCLUDE_WIP_SINCE"); since != "" {
-			if t, err := time.Parse(time.RFC3339, since); err == nil {
-				verifyRequest.IncludeWIPPactsSince = &t
+			if parsed, err := time.Parse(time.RFC3339, since); err == nil {
+				verifyRequest.IncludeWIPPactsSince = &parsed
 			}
 		}
 	} else {
@@ -176,4 +187,71 @@ func TestVerifySearchIndexerMqHubMessagePact(t *testing.T) {
 	verifier := provider.NewVerifier()
 	err := verifier.VerifyProvider(t, verifyRequest)
 	require.NoError(t, err)
+}
+
+// TestVerifySearchIndexerMqHubMessagePact replays search-indexer's consumer
+// pact against a live mq-hub message generator.
+func TestVerifySearchIndexerMqHubMessagePact(t *testing.T) {
+	verifyMessagePact(t, "search-indexer", searchIndexerProviderPact,
+		message.Handlers{
+			"an ArticleCreated event on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
+				return eventToWireFormat(buildArticleCreatedEvent()), message.Metadata{
+					"contentType": "application/json",
+				}, nil
+			},
+			"an ArticleCreated fat event with content on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
+				return eventToWireFormat(articleCreatedEvent()), message.Metadata{
+					"contentType": "application/json",
+				}, nil
+			},
+			"an ArticleUpdated fat event on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
+				return eventToWireFormat(articleUpdatedEvent()), message.Metadata{
+					"contentType": "application/json",
+				}, nil
+			},
+			"an IndexArticle event on alt:events:index": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
+				return eventToWireFormat(indexArticleEvent()), message.Metadata{
+					"contentType": "application/json",
+				}, nil
+			},
+		},
+		models.StateHandlers{
+			"the articles stream exists": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"the articles stream exists and an article was updated": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"the index stream exists": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+		},
+	)
+}
+
+// TestVerifyPreProcessorMqHubMessagePact does the same for pre-processor's
+// consumer pact. pre-processor takes only article_id and title off this stream,
+// so the generators here deliberately still carry the body alt-backend embeds:
+// the verification proves the id-only contract holds against what mq-hub
+// actually relays, not against a fixture trimmed to match it.
+func TestVerifyPreProcessorMqHubMessagePact(t *testing.T) {
+	verifyMessagePact(t, "pre-processor", preProcessorProviderPact,
+		message.Handlers{
+			"an ArticleCreated event on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
+				return eventToWireFormat(buildArticleCreatedEvent()), message.Metadata{
+					"contentType": "application/json",
+				}, nil
+			},
+			"a SummarizeRequested event on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
+				return eventToWireFormat(summarizeRequestedEvent()), message.Metadata{
+					"contentType": "application/json",
+				}, nil
+			},
+		},
+		models.StateHandlers{
+			"the articles stream exists": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+		},
+	)
 }

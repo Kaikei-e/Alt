@@ -1,8 +1,106 @@
 {
   "consumer": {
-    "name": "mq-hub"
+    "name": "pre-processor"
   },
   "interactions": [
+    {
+      "contents": {
+        "content": {
+          "created_at": "2026-03-26T00:00:00.000Z",
+          "event_id": "evt-uuid-sum-001",
+          "event_type": "SummarizeRequested",
+          "metadata": {
+            "trace_id": "trace-002"
+          },
+          "payload": {
+            "article_id": "art-002",
+            "title": "Rust Memory Safety"
+          },
+          "source": "alt-backend"
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "a SummarizeRequested event on alt:events:articles",
+      "matchingRules": {
+        "body": {
+          "$.created_at": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.event_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.metadata": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.metadata.trace_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.article_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.title": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.source": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json"
+      },
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "the articles stream exists"
+        }
+      ],
+      "type": "Asynchronous/Messages"
+    },
     {
       "contents": {
         "content": {
@@ -10,15 +108,11 @@
           "event_id": "evt-uuid-001",
           "event_type": "ArticleCreated",
           "metadata": {
-            "trace_id": "abc-123"
+            "trace_id": "trace-001"
           },
           "payload": {
             "article_id": "art-001",
-            "feed_id": "feed-001",
-            "published_at": "2026-03-26T00:00:00Z",
-            "title": "Breaking: Go 1.26 Released",
-            "url": "https://example.com/go-1-26",
-            "user_id": "user-001"
+            "title": "Breaking: Go 1.26 Released"
           },
           "source": "alt-backend"
         },
@@ -76,173 +170,7 @@
               }
             ]
           },
-          "$.payload.feed_id": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.published_at": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
           "$.payload.title": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.url": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.user_id": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.source": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          }
-        }
-      },
-      "metadata": {
-        "contentType": "application/json"
-      },
-      "pending": false,
-      "providerStates": [
-        {
-          "name": "the articles stream exists"
-        }
-      ],
-      "type": "Asynchronous/Messages"
-    },
-    {
-      "contents": {
-        "content": {
-          "created_at": "2026-03-26T00:00:00.000Z",
-          "event_id": "evt-uuid-fat-001",
-          "event_type": "ArticleCreated",
-          "metadata": {
-            "trace_id": "abc-123"
-          },
-          "payload": {
-            "article_id": "art-001",
-            "feed_id": "feed-001",
-            "published_at": "2026-03-26T00:00:00Z",
-            "title": "Breaking: Go 1.26 Released",
-            "url": "https://example.com/go-1-26",
-            "user_id": "user-001"
-          },
-          "source": "alt-backend"
-        },
-        "contentType": "application/json",
-        "encoded": false
-      },
-      "description": "an ArticleCreated fat event with content on alt:events:articles",
-      "matchingRules": {
-        "body": {
-          "$.created_at": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.event_id": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.metadata": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.metadata.trace_id": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.article_id": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.feed_id": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.published_at": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.title": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.url": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.user_id": {
             "combine": "AND",
             "matchers": [
               {
@@ -285,6 +213,6 @@
     }
   },
   "provider": {
-    "name": "search-indexer"
+    "name": "mq-hub"
   }
 }

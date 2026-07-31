@@ -148,12 +148,8 @@
           },
           "payload": {
             "article_id": "art-001",
-            "content": "Full article content for direct indexing.",
             "feed_id": "feed-001",
             "published_at": "2026-03-26T00:00:00Z",
-            "tags": [
-              "technology"
-            ],
             "title": "Test Article",
             "url": "https://example.com/article",
             "user_id": "user-001"
@@ -214,14 +210,6 @@
               }
             ]
           },
-          "$.payload.content": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
           "$.payload.feed_id": {
             "combine": "AND",
             "matchers": [
@@ -231,23 +219,6 @@
             ]
           },
           "$.payload.published_at": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.tags": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type",
-                "min": 1
-              }
-            ]
-          },
-          "$.payload.tags[*]": {
             "combine": "AND",
             "matchers": [
               {
@@ -311,12 +282,8 @@
           },
           "payload": {
             "article_id": "art-001",
-            "content": "Updated article content.",
             "feed_id": "feed-001",
             "published_at": "2026-03-26T00:00:00Z",
-            "tags": [
-              "technology"
-            ],
             "title": "Updated Article",
             "url": "https://example.com/article",
             "user_id": "user-001"
@@ -377,14 +344,6 @@
               }
             ]
           },
-          "$.payload.content": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
           "$.payload.feed_id": {
             "combine": "AND",
             "matchers": [
@@ -394,23 +353,6 @@
             ]
           },
           "$.payload.published_at": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          },
-          "$.payload.tags": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type",
-                "min": 1
-              }
-            ]
-          },
-          "$.payload.tags[*]": {
             "combine": "AND",
             "matchers": [
               {

@@ -29,6 +29,10 @@ type RedisStreamEvent struct {
 }
 
 // ArticleCreatedPayload is the payload structure for ArticleCreated events.
+// No consumer contract requires content/tags any more -- consumers dereference
+// article_id against alt-backend -- but the fields stay here because alt-backend
+// still emits them, and the fixtures below must keep satisfying the pacts of
+// consumer versions that are still deployed.
 type ArticleCreatedPayload struct {
 	ArticleID   string   `json:"article_id"`
 	UserID      string   `json:"user_id"`
@@ -165,7 +169,15 @@ func TestArticleCreatedMessageContract(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestArticleCreatedFatEventMessageContract(t *testing.T) {
+// TestArticleCreatedWithoutContentMessageContract mirrors search-indexer's
+// consumer pact for the same interaction: the event names the article, it does
+// not carry it. The interaction description is retained verbatim so the broker
+// key survives the producer migration.
+//
+// The expectation deliberately omits content/tags rather than forbidding them:
+// alt-backend still emits both, and Pact ignores keys the contract does not
+// mention, so this holds before and after they are dropped from the producer.
+func TestArticleCreatedWithoutContentMessageContract(t *testing.T) {
 	p, err := message.NewAsynchronousPact(message.Config{
 		Consumer: "mq-hub",
 		Provider: "search-indexer",
@@ -187,8 +199,6 @@ func TestArticleCreatedFatEventMessageContract(t *testing.T) {
 				"feed_id":      matchers.Like("feed-001"),
 				"title":        matchers.Like("Breaking: Go 1.26 Released"),
 				"url":          matchers.Like("https://example.com/go-1-26"),
-				"content":      matchers.Like("The Go team announced the release."),
-				"tags":         matchers.EachLike(matchers.Like("go"), 1),
 				"published_at": matchers.Like("2026-03-26T00:00:00Z"),
 			}),
 			"metadata": matchers.Like(matchers.MapMatcher{
@@ -204,9 +214,9 @@ func TestArticleCreatedFatEventMessageContract(t *testing.T) {
 			err := json.Unmarshal(wireEvent.Payload, &payload)
 			require.NoError(t, err)
 
-			// Fat events include content and tags
-			assert.NotEmpty(t, payload.Content, "fat event must include content")
-			assert.NotEmpty(t, payload.Tags, "fat event must include tags")
+			assert.NotEmpty(t, payload.ArticleID, "article_id is the only handle on the body")
+			assert.NotEmpty(t, payload.UserID, "user_id is needed for the search document")
+			assert.NotEmpty(t, payload.PublishedAt, "published_at cannot be recovered by the fetch path")
 
 			return nil
 		}).
