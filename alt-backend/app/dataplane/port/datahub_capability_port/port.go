@@ -414,3 +414,39 @@ type StatsPort interface {
 	// UserFeedIDs returns the feeds the user has read state against.
 	UserFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
 }
+
+// TagTrailPort pages the Tag Trail (catalog §2.J, ADR-000954 Wave 3 batch 6).
+//
+// This is the last read alt-backend performed against its own pool that no
+// existing procedure could express. FetchArticlesByTag — the Wave 2 procedure
+// with the similar name — takes a tag *name*, has no cursor and returns four
+// fields; the Tag Trail pages by feed_tags row id and reads six. Routing the
+// caller through the older shape would have compiled and would have dropped
+// its paging silently, which is why this port exists rather than a DI edit.
+//
+// A nil cursor means the first page. The two methods stay separate because the
+// queries differ — the by-name one joins through feed_tags and deduplicates —
+// and because merging them would need a third state meaning "neither
+// identifier given".
+type TagTrailPort interface {
+	// ArticlesByTagID pages one feed tag's articles, newest first.
+	ArticlesByTagID(ctx context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
+	// ArticlesByTagName pages every feed's articles carrying a tag of this
+	// name, deduplicated.
+	ArticlesByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
+}
+
+// ArticleRefPort is the recall rail's projection fallback (catalog §2.C,
+// ADR-000954 Wave 3 batch 6).
+//
+// It is separate from ArticleReadPort deliberately. That port answers "give me
+// this article" and every method on it belongs to a surface that renders
+// articles; this one answers "the projection is behind, what did this id used
+// to be" and has exactly one caller. Folding it in would hand every article
+// consumer a method that only makes sense during projection lag.
+type ArticleRefPort interface {
+	// ArticleRef returns title, url and published_at for one article. A nil
+	// result is "no such article" and is not an error: the rail asks about
+	// candidates whose article may legitimately have been deleted since.
+	ArticleRef(ctx context.Context, articleID string) (*domain.ArticleRef, error)
+}

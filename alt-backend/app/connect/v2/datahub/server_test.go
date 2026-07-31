@@ -11,7 +11,7 @@ import (
 	"alt/dataplane/driver/kratos_client"
 	"alt/dataplane/gateway/datahub_capability_gateway"
 	"alt/dataplane/usecase/outbox_usecase"
-	"alt/di"
+	datahubdi "alt/di/datahub"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 )
 
@@ -28,8 +28,8 @@ func mounted(t *testing.T, mux *http.ServeMux, path string) bool {
 // a nil there is a composition-root bug, and the setup panics on it by design
 // (ADR-000954 D6, CLAUDE.md rule 8). They are wired to zero-valued instances
 // because these tests assert routing, not behaviour.
-func components() *di.DataHubComponents {
-	return &di.DataHubComponents{
+func components() *datahubdi.DataHubComponents {
+	return &datahubdi.DataHubComponents{
 		KratosClient:               kratos_client.NewKratosClient("", ""),
 		FetchRecentArticlesUsecase: fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(nil),
 
@@ -61,6 +61,12 @@ func components() *di.DataHubComponents {
 		SummaryVersionCapabilityGateway: datahub_capability_gateway.NewSummaryVersionGateway(nil),
 		TagSetVersionCapabilityGateway:  datahub_capability_gateway.NewTagSetVersionGateway(nil),
 		StatsGateway:                    datahub_capability_gateway.NewStatsGateway(nil),
+
+		// Wave 3 batch 6, same rule, and these two are the last: after them
+		// alt-backend has no pool at all, so an unwired one here is the only
+		// thing standing between the Tag Trail / recall rail and nothing.
+		TagTrailGateway:   datahub_capability_gateway.NewTagTrailGateway(nil),
+		ArticleRefGateway: datahub_capability_gateway.NewArticleRefGateway(nil),
 	}
 }
 
@@ -109,17 +115,17 @@ func TestSetupConnectHandlers_ServesOnlyTheDataHubNamespace(t *testing.T) {
 func TestSetupConnectHandlers_RefusesToMountWithoutTheAbsorbedRESTCapabilities(t *testing.T) {
 	tests := []struct {
 		name      string
-		container *di.DataHubComponents
+		container *datahubdi.DataHubComponents
 	}{
 		{
 			name: "no kratos client",
-			container: &di.DataHubComponents{
+			container: &datahubdi.DataHubComponents{
 				FetchRecentArticlesUsecase: fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(nil),
 			},
 		},
 		{
 			name: "no recent articles usecase",
-			container: &di.DataHubComponents{
+			container: &datahubdi.DataHubComponents{
 				KratosClient: kratos_client.NewKratosClient("", ""),
 			},
 		},

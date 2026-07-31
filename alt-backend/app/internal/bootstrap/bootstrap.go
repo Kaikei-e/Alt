@@ -1,14 +1,23 @@
 // Package bootstrap holds the startup sequence shared by every alt-backend
 // binary (cmd/backend, cmd/harvester, cmd/datahub): config load, OpenTelemetry
-// init, logger swap, and the database pool — in that exact order.
+// init and the logger swap, in that exact order.
 //
 // The order matters and is the reason this lives in one place. The logger
 // package's init() has already called slog.SetDefault, and InitLoggerWithOTel
 // swaps that handler in place; the DI containers capture slog.Default() when
 // they emit their Rule 8 wiring logs. Building a container before Boot has run
 // therefore sends every wiring log to the bare stderr handler instead of OTel,
-// which is why the containers take a *Runtime-derived pool and config rather
-// than constructing their own.
+// which is why the containers take a *Runtime-derived config rather than
+// constructing their own.
+//
+// The database pool used to be the fourth step here, opened when
+// Options.RequireDB was set — which all three binaries set. It is not any
+// more, and it is not an option on this package either: it moved to
+// internal/bootstrap/dbboot, which cmd/datahub imports and the other two do
+// not. A flag would have left alt/shared/driver/alt_db in the dependency graph
+// of all three binaries, so "cmd/backend cannot open a connection" would have
+// remained a claim about a boolean rather than a fact about the link
+// (ADR-000954 Wave 3, di/import_boundary_test.go).
 package bootstrap
 
 import (
@@ -22,11 +31,8 @@ import (
 	"time"
 
 	"alt/config"
-	"alt/shared/driver/alt_db"
 	"alt/utils/logger"
 	altotel "alt/utils/otel"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Options describes what a binary needs from the shared startup sequence.
@@ -34,20 +40,27 @@ type Options struct {
 	// ServiceName is the binary's OpenTelemetry service.name. It must match
 	// OTEL_SERVICE_NAME when that variable is set.
 	ServiceName string
-	// RequireDB opens the alt-db pool. All three binaries set this during the
-	// transition period, when each still talks to alt-db directly.
-	RequireDB bool
 }
 
 // Runtime is what a booted process holds: validated config, the OTel-aware
-// logger, the database pool, and the Prometheus handler for /metrics.
+// logger, and the Prometheus handler for /metrics.
+//
+// There is no Pool field. Only cmd/datahub has one, it gets it from dbboot,
+// and putting it here would put pgxpool in every binary's dependency graph for
+// the sake of a field two of them leave nil.
 type Runtime struct {
 	Cfg            *config.Config
 	Log            *slog.Logger
-	Pool           *pgxpool.Pool
 	MetricsHandler http.Handler
 
 	shutdownHooks []func(context.Context) error
+}
+
+// AddShutdownHook registers a release step, run in reverse registration order
+// by Shutdown. It exists for dbboot: the pool is acquired after Boot returns
+// and still has to be closed with everything else, in the right order.
+func (r *Runtime) AddShutdownHook(fn func(context.Context) error) {
+	r.shutdownHooks = append(r.shutdownHooks, fn)
 }
 
 // Shutdown releases everything Boot acquired, in reverse acquisition order.
@@ -123,19 +136,6 @@ func MustBoot(ctx context.Context, opts Options) *Runtime {
 		"go_version", runtime.Version(),
 		"pid", os.Getpid(),
 	)
-
-	if opts.RequireDB {
-		pool, err := alt_db.InitDBConnectionPool(ctx)
-		if err != nil {
-			log.ErrorContext(ctx, "failed to connect to database", "error", err, "service", serviceName)
-			panic(fmt.Errorf("init db connection pool: %w", err))
-		}
-		rt.Pool = pool
-		rt.shutdownHooks = append(rt.shutdownHooks, func(context.Context) error {
-			pool.Close()
-			return nil
-		})
-	}
 
 	return rt
 }

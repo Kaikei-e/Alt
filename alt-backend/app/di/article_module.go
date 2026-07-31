@@ -25,8 +25,6 @@ import (
 	"alt/orchestrator/usecase/stream_article_tags_usecase"
 	"alt/orchestrator/usecase/summarize_article_usecase"
 	"alt/shared/gateway/datahub_gateway"
-	"alt/shared/gateway/fetch_articles_by_tag_gateway"
-	"alt/shared/gateway/internal_article_gateway"
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
 	"alt/utils/batch_article_fetcher"
@@ -56,26 +54,15 @@ type ArticleModule struct {
 	PreProcessorSummarizeGateway *preprocessor_summarize_gateway.Gateway
 
 	// Gateways exposed for cross-module wiring
-	InternalArticleGateway  *internal_article_gateway.Gateway
 	FetchArticleTagsGateway *fetch_article_tags_gateway.FetchArticleTagsGateway
 	FetchArticleGateway     *fetch_article_gateway.FetchArticleGateway
 }
 
 func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integration_port.RagIntegrationPort) *ArticleModule {
-	// Two direct alt_db uses are left in this module, both listed for the
-	// batch 6 finale (ADR-000954 Wave 3):
-	//
-	//   - fetch_articles_by_tag_gateway (catalog W2-23). The procedure exists,
-	//     but its wire shape is the Wave 2 one — tag *name* only, no cursor,
-	//     and a four-field item — while this caller pages by tag id and reads
-	//     domain.TagTrailArticle. Routing it through the existing message would
-	//     silently drop the Tag Trail's paging, so it needs a capability of its
-	//     own rather than a DI edit.
-	//   - internal_article_gateway, held here only for RecallRailUsecase's
-	//     GetArticleTitleAndLink. That read — title, url and published_at by
-	//     article id — has no procedure yet; the nearest, GetArticleContentByID,
-	//     carries no published_at.
-	altDB := infra.AltDBRepository
+	// No alt_db handle. The two that were left here through batch 5 — the Tag
+	// Trail's paged read and RecallRailUsecase's article fallback — became
+	// procedures of their own in ADR-000954 Wave 3 batch 6, which is what let
+	// cmd/backend stop opening a pool at all.
 
 	// Fetch article gateway / usecase
 	fetchArticleGw := fetch_article_gateway.NewFetchArticleGateway(infra.RateLimiter, infra.HTTPClient)
@@ -111,9 +98,12 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	// Article search (Meilisearch-based via search-indexer)
 	articleSearchUC := search_article_usecase.NewSearchArticleUsecase(infra.SearchIndexerDriver)
 
-	// Articles by tag (Tag Trail feature)
-	fetchArticlesByTagGw := fetch_articles_by_tag_gateway.NewFetchArticlesByTagGateway(altDB)
-	fetchArticlesByTagUC := fetch_articles_by_tag_usecase.NewFetchArticlesByTagUsecase(fetchArticlesByTagGw)
+	// Articles by tag (Tag Trail feature). Served by alt-data-hub since
+	// ADR-000954 Wave 3 batch 6 (catalog §2.J): the Wave 2 FetchArticlesByTag
+	// procedure could not express this caller's paging, so the Trail got
+	// ListArticlesByTagID / ListArticlesByTagName and TagGateway grew the two
+	// halves of the port.
+	fetchArticlesByTagUC := fetch_articles_by_tag_usecase.NewFetchArticlesByTagUsecase(infra.TagGateway)
 
 	// Tag cloud (Tag Verse feature). Both halves of the port — the counts and
 	// the cooccurrence edges — now take the same route (catalog §2.J W3-J3);
@@ -144,9 +134,6 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	streamArticleTagsUC := stream_article_tags_usecase.NewStreamArticleTagsUsecase(
 		cachedArticleTagsGw, fetchArticleTagsGw,
 	)
-
-	// Internal article API gateway (for DataHubService)
-	internalArticleGw := internal_article_gateway.NewGateway(altDB)
 
 	// GetArticleSourceURL: tenant-scoped read-side lookup for the Knowledge
 	// Loop ACT workspace's Open recovery affordance. Reuses the
@@ -190,7 +177,6 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 		FetchArticleSummariesUsecase: fetchArticleSummariesUC,
 		PreProcessorSummarizeGateway: preprocessorSummarizeGw,
 
-		InternalArticleGateway:  internalArticleGw,
 		FetchArticleTagsGateway: fetchArticleTagsGw,
 		FetchArticleGateway:     fetchArticleGw,
 	}

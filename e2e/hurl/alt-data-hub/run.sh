@@ -8,7 +8,7 @@
 # alt-data-hub is the data plane of the alt-backend split:
 # alt.datahub.v1.DataHubService, served over mTLS on :9443 and nothing
 # else. (The admin Connect services did *not* move here — they stay on
-# alt-backend's loopback operator listener; see di/container_datahub.go.)
+# alt-backend's loopback operator listener; see di/datahub/container.go.)
 # It publishes no host port at all, which forces the same shape as the
 # mq-hub / knowledge-sovereign / alt-backend suites: Hurl runs in a container
 # attached to the staging network, because that is the only place the service

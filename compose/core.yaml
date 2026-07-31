@@ -44,6 +44,16 @@ x-alt-go-common: &alt-go-common
 # APP_ENV is delivered by `env_file: ../.env` and deliberately absent here —
 # see the comment on alt-backend's environment block for why an `environment:`
 # entry would silently pin the operator's setting back to the default.
+
+# The database connection, and the one service that gets it.
+#
+# This anchor was merged into all three of alt-backend, alt-harvester and
+# alt-data-hub until ADR-000954 Wave 3 batch 6. It now has exactly one
+# consumer, and that is the deployment statement of D3: alt-data-hub owns
+# alt_db. The other two binaries are not merely configured without it — their
+# images do not contain the driver, so handing one of them DB_HOST would
+# configure nothing (alt-backend/app/di/import_boundary_test.go asserts that
+# at the link level, which is why there is no compose-side check for it here).
 x-alt-db-env: &alt-db-env
   DB_HOST: pgbouncer
   DB_PORT: "6432"
@@ -196,12 +206,12 @@ services:
         condition: service_healthy
       mq-hub:
         condition: service_healthy
-      # migrate / pgbouncer stay until wave 3 removes the direct DB
-      # connection from this binary; alt-data-hub already gates on both.
-      migrate:
-        condition: service_completed_successfully
-      pgbouncer:
-        condition: service_healthy
+      # No migrate / pgbouncer edge. This binary opens no database connection
+      # since ADR-000954 Wave 3 batch 6, so the schema and the pooler are not
+      # its preconditions — they are alt-data-hub's, and the `alt-data-hub:
+      # service_healthy` edge above already waits for a process that waits for
+      # both. Keeping them here would have made this container's start-up
+      # depend on infrastructure it cannot reach.
       knowledge-sovereign:
         condition: service_healthy
       search-indexer:
@@ -242,12 +252,11 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      - DB_HOST=pgbouncer
-      - DB_PORT=6432
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD_FILE=/run/secrets/postgres_password
-      - DB_NAME=${POSTGRES_DB}
-      - DB_SSL_MODE=prefer
+      # No DB_* block. ADR-000954 Wave 3 batch 6 moved the last two
+      # capabilities that needed a pool here — the Tag Trail's paged read and
+      # the recall rail's article fallback — onto alt-data-hub, and cmd/backend
+      # no longer links the driver at all. Adding these variables back would
+      # configure nothing: there is no code in this image that reads them.
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
@@ -259,8 +268,6 @@ services:
       # https scheme makes alt-backend present its leaf cert; rag-orchestrator
       # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml).
       - RAG_ORCHESTRATOR_CONNECT_URL=${RAG_ORCHESTRATOR_CONNECT_URL:-https://rag-orchestrator:9011}
-      - DB_MAX_CONNS=30
-      - DB_MIN_CONNS=5
       - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret
       # alt-data-hub is reachable over mTLS only; there is no plaintext
       # east-west port to fall back to (see alt-data-hub below).
@@ -298,8 +305,10 @@ services:
       - ADMIN_MONITOR_RATE_LIMIT_BURST=${ADMIN_MONITOR_RATE_LIMIT_BURST:-10}
       - ADMIN_MONITOR_STREAM_INTERVAL=${ADMIN_MONITOR_STREAM_INTERVAL:-5s}
     secrets:
+      # postgres_password is gone with the DB_* block: a credential mounted
+      # into a container that cannot open a connection is only an extra copy
+      # of a secret to leak.
       - backend_token_secret
-      - postgres_password
       - csrf_secret
       - image_proxy_secret
     deploy:
@@ -359,16 +368,13 @@ services:
         condition: service_healthy
       knowledge-sovereign:
         condition: service_healthy
-      # Still needed after Wave 3 batch 1: hourly-feed-collector, the
-      # feed-link availability writes and og-image-backfill's SaveArticleHead
-      # are later batches, so this binary keeps a database pool. Dropped when
-      # the last one moves.
-      migrate:
-        condition: service_completed_successfully
-      pgbouncer:
-        condition: service_healthy
+      # No migrate / pgbouncer edge, for the same reason as alt-backend: batch
+      # 5 removed this binary's last direct query and batch 6 removed the
+      # plumbing, so the schema and the pooler are alt-data-hub's
+      # preconditions and the `alt-data-hub: service_healthy` edge above
+      # already covers them.
     environment:
-      <<: *alt-db-env
+      # No DB_* block: cmd/harvester does not link the driver.
       # --- ops listener (never published) ---------------------------------
       # The only socket this binary opens. /health for the healthcheck below,
       # /metrics for the `alt-harvester` scrape job. Both routes are fixed in
@@ -425,7 +431,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
       OTEL_SERVICE_NAME: alt-harvester
     secrets:
-      - postgres_password
+      # postgres_password went with the DB_* block (ADR-000954 Wave 3 batch 6).
       - image_proxy_secret
     deploy:
       # Memory belongs under deploy.resources.limits, not mem_limit: compose
@@ -525,7 +531,7 @@ services:
       # else 404s here.
       OPS_LISTEN: ":9110"
       # OPERATOR_LISTEN_ADDR is deliberately absent: the admin Connect
-      # services did NOT move here (di/container_datahub.go builds no admin
+      # services did NOT move here (di/datahub builds no admin
       # surface), so cmd/datahub opens no operator listener and reads no such
       # variable. e2e/hurl/alt-data-hub/run.sh proves :9102 is refused from
       # another container.

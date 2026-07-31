@@ -68,19 +68,16 @@ import (
 	"alt/orchestrator/usecase/track_home_seen_usecase"
 	"alt/orchestrator/usecase/update_lens_usecase"
 	"alt/shared/driver/sovereign_client"
-	"alt/shared/gateway/internal_article_gateway"
 	"alt/shared/usecase/create_summary_version_usecase"
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
 	"alt/utils/batch_article_fetcher"
 	altotel "alt/utils/otel"
-
-	"alt/shared/driver/alt_db"
 )
 
 // ApplicationComponents is cmd/backend's component set — see
 // container_backend.go for the composition root that builds it, and
-// container_harvester.go / container_datahub.go for the other two binaries.
+// container_harvester.go / di/datahub for the other two binaries.
 //
 // Fields absent here are absent on purpose: what the backend does not build
 // must not be reachable from a backend handler even as a nil value. See
@@ -100,8 +97,10 @@ type ApplicationComponents struct {
 	// These allow existing handler code to continue working unchanged.
 	// They will be removed in a future phase when handlers access modules directly.
 
-	// Repository
-	AltDBRepository *alt_db.AltDBRepository
+	// There is no AltDBRepository field and no InternalArticleGateway. Both
+	// went with the database pool in ADR-000954 Wave 3 batch 6: cmd/backend
+	// reaches alt_db only through alt-data-hub now, and a handler that reaches
+	// for a repository here fails to compile rather than dereferencing a nil.
 
 	// Ports
 	RagIntegration   rag_integration_port.RagIntegrationPort
@@ -179,9 +178,6 @@ type ApplicationComponents struct {
 
 	// Service-to-service Connect-RPC clients
 	PreProcessorConnectClient *preprocessor_connect.ConnectPreProcessorClient
-
-	// Internal API gateway (service-to-service)
-	InternalArticleGateway *internal_article_gateway.Gateway
 
 	// Knowledge Home
 	GetKnowledgeHomeUsecase          *get_knowledge_home_usecase.GetKnowledgeHomeUsecase

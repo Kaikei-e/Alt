@@ -43,7 +43,6 @@ func main() {
 
 	rt := bootstrap.MustBoot(ctx, bootstrap.Options{
 		ServiceName: serviceName,
-		RequireDB:   true,
 	})
 	defer rt.Shutdown(ctx)
 
@@ -77,7 +76,7 @@ func main() {
 	pprofSrv := profiling.Start(ctx, log)
 	defer pprofSrv.Close()
 
-	container := di.NewBackendComponents(rt.Pool, cfg)
+	container := di.NewBackendComponents(cfg)
 
 	otelEnabled := altotel.ConfigFromEnv().Enabled
 

@@ -13149,6 +13149,437 @@ func (x *GetTagArticleCountsResponse) GetCounts() []*TagArticleCount {
 	return nil
 }
 
+// TagTrailArticle is one row of the Tag Trail: an article reached through a
+// tag, carrying the feed it came from so the list can name its source without
+// a second round trip.
+//
+// It exists beside ArticleByTagItem rather than replacing it. That message is
+// the Wave 2 shape rag-orchestrator still calls FetchArticlesByTag with — four
+// fields, no feed, no cursor, published_at as a string — and widening it would
+// have changed the bytes an already-migrated peer receives. This one is the
+// shape alt-backend's own Tag Trail has always read (domain.TagTrailArticle),
+// which is why the two coexist.
+//
+// published_at carries articles.created_at, which is when this deployment
+// first saw the article rather than when its publisher dated it. That is the
+// column the cursor below orders by, so the two must be the same clock or
+// paging skips rows.
+type TagTrailArticle struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Url           string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	PublishedAt   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=published_at,json=publishedAt,proto3" json:"published_at,omitempty"`
+	FeedId        string                 `protobuf:"bytes,5,opt,name=feed_id,json=feedId,proto3" json:"feed_id,omitempty"`
+	FeedTitle     string                 `protobuf:"bytes,6,opt,name=feed_title,json=feedTitle,proto3" json:"feed_title,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TagTrailArticle) Reset() {
+	*x = TagTrailArticle{}
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[241]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TagTrailArticle) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TagTrailArticle) ProtoMessage() {}
+
+func (x *TagTrailArticle) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[241]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TagTrailArticle.ProtoReflect.Descriptor instead.
+func (*TagTrailArticle) Descriptor() ([]byte, []int) {
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{241}
+}
+
+func (x *TagTrailArticle) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *TagTrailArticle) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *TagTrailArticle) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *TagTrailArticle) GetPublishedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PublishedAt
+	}
+	return nil
+}
+
+func (x *TagTrailArticle) GetFeedId() string {
+	if x != nil {
+		return x.FeedId
+	}
+	return ""
+}
+
+func (x *TagTrailArticle) GetFeedTitle() string {
+	if x != nil {
+		return x.FeedTitle
+	}
+	return ""
+}
+
+type ListArticlesByTagIDRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// feed_tags.id — one tag of one feed. See ListArticlesByTagNameRequest for
+	// why the two identifiers are separate procedures.
+	TagId string `protobuf:"bytes,1,opt,name=tag_id,json=tagId,proto3" json:"tag_id,omitempty"`
+	// Exclusive upper bound on published_at. Unset is the first page.
+	Cursor        *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListArticlesByTagIDRequest) Reset() {
+	*x = ListArticlesByTagIDRequest{}
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[242]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListArticlesByTagIDRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListArticlesByTagIDRequest) ProtoMessage() {}
+
+func (x *ListArticlesByTagIDRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[242]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListArticlesByTagIDRequest.ProtoReflect.Descriptor instead.
+func (*ListArticlesByTagIDRequest) Descriptor() ([]byte, []int) {
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{242}
+}
+
+func (x *ListArticlesByTagIDRequest) GetTagId() string {
+	if x != nil {
+		return x.TagId
+	}
+	return ""
+}
+
+func (x *ListArticlesByTagIDRequest) GetCursor() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Cursor
+	}
+	return nil
+}
+
+func (x *ListArticlesByTagIDRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListArticlesByTagIDResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Articles      []*TagTrailArticle     `protobuf:"bytes,1,rep,name=articles,proto3" json:"articles,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListArticlesByTagIDResponse) Reset() {
+	*x = ListArticlesByTagIDResponse{}
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[243]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListArticlesByTagIDResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListArticlesByTagIDResponse) ProtoMessage() {}
+
+func (x *ListArticlesByTagIDResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[243]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListArticlesByTagIDResponse.ProtoReflect.Descriptor instead.
+func (*ListArticlesByTagIDResponse) Descriptor() ([]byte, []int) {
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{243}
+}
+
+func (x *ListArticlesByTagIDResponse) GetArticles() []*TagTrailArticle {
+	if x != nil {
+		return x.Articles
+	}
+	return nil
+}
+
+type ListArticlesByTagNameRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// feed_tags.tag_name — the same label across every feed that uses it.
+	TagName string `protobuf:"bytes,1,opt,name=tag_name,json=tagName,proto3" json:"tag_name,omitempty"`
+	// Exclusive upper bound on published_at. Unset is the first page.
+	Cursor        *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListArticlesByTagNameRequest) Reset() {
+	*x = ListArticlesByTagNameRequest{}
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[244]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListArticlesByTagNameRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListArticlesByTagNameRequest) ProtoMessage() {}
+
+func (x *ListArticlesByTagNameRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[244]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListArticlesByTagNameRequest.ProtoReflect.Descriptor instead.
+func (*ListArticlesByTagNameRequest) Descriptor() ([]byte, []int) {
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{244}
+}
+
+func (x *ListArticlesByTagNameRequest) GetTagName() string {
+	if x != nil {
+		return x.TagName
+	}
+	return ""
+}
+
+func (x *ListArticlesByTagNameRequest) GetCursor() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Cursor
+	}
+	return nil
+}
+
+func (x *ListArticlesByTagNameRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListArticlesByTagNameResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Articles      []*TagTrailArticle     `protobuf:"bytes,1,rep,name=articles,proto3" json:"articles,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListArticlesByTagNameResponse) Reset() {
+	*x = ListArticlesByTagNameResponse{}
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[245]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListArticlesByTagNameResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListArticlesByTagNameResponse) ProtoMessage() {}
+
+func (x *ListArticlesByTagNameResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[245]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListArticlesByTagNameResponse.ProtoReflect.Descriptor instead.
+func (*ListArticlesByTagNameResponse) Descriptor() ([]byte, []int) {
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{245}
+}
+
+func (x *ListArticlesByTagNameResponse) GetArticles() []*TagTrailArticle {
+	if x != nil {
+		return x.Articles
+	}
+	return nil
+}
+
+type GetArticleTitleAndLinkRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ArticleId     string                 `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetArticleTitleAndLinkRequest) Reset() {
+	*x = GetArticleTitleAndLinkRequest{}
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[246]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetArticleTitleAndLinkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetArticleTitleAndLinkRequest) ProtoMessage() {}
+
+func (x *GetArticleTitleAndLinkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[246]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetArticleTitleAndLinkRequest.ProtoReflect.Descriptor instead.
+func (*GetArticleTitleAndLinkRequest) Descriptor() ([]byte, []int) {
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{246}
+}
+
+func (x *GetArticleTitleAndLinkRequest) GetArticleId() string {
+	if x != nil {
+		return x.ArticleId
+	}
+	return ""
+}
+
+type GetArticleTitleAndLinkResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// found distinguishes "no such article" from "an article whose title is the
+	// empty string". The in-process driver could not: it returned an empty title
+	// for both, and the caller keyed on that emptiness. Over the wire proto3
+	// gives an unset string and an empty string the same bytes, so the
+	// distinction has to be its own field or it stops existing.
+	Found bool   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
+	Title string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Url   string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	// Nullable in the table and nullable here: an article whose feed published
+	// no date has none, and the recall rail renders that case.
+	PublishedAt   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=published_at,json=publishedAt,proto3" json:"published_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetArticleTitleAndLinkResponse) Reset() {
+	*x = GetArticleTitleAndLinkResponse{}
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[247]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetArticleTitleAndLinkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetArticleTitleAndLinkResponse) ProtoMessage() {}
+
+func (x *GetArticleTitleAndLinkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[247]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetArticleTitleAndLinkResponse.ProtoReflect.Descriptor instead.
+func (*GetArticleTitleAndLinkResponse) Descriptor() ([]byte, []int) {
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{247}
+}
+
+func (x *GetArticleTitleAndLinkResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *GetArticleTitleAndLinkResponse) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *GetArticleTitleAndLinkResponse) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *GetArticleTitleAndLinkResponse) GetPublishedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PublishedAt
+	}
+	return nil
+}
+
 // SummaryVersion is one immutable row of summary_versions.
 //
 // The table is append-only: a re-summarised article gets a new row and the old
@@ -13185,7 +13616,7 @@ type SummaryVersion struct {
 
 func (x *SummaryVersion) Reset() {
 	*x = SummaryVersion{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[241]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[248]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13197,7 +13628,7 @@ func (x *SummaryVersion) String() string {
 func (*SummaryVersion) ProtoMessage() {}
 
 func (x *SummaryVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[241]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[248]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13210,7 +13641,7 @@ func (x *SummaryVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SummaryVersion.ProtoReflect.Descriptor instead.
 func (*SummaryVersion) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{241}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{248}
 }
 
 func (x *SummaryVersion) GetSummaryVersionId() string {
@@ -13292,7 +13723,7 @@ type CreateSummaryVersionRequest struct {
 
 func (x *CreateSummaryVersionRequest) Reset() {
 	*x = CreateSummaryVersionRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[242]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[249]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13304,7 +13735,7 @@ func (x *CreateSummaryVersionRequest) String() string {
 func (*CreateSummaryVersionRequest) ProtoMessage() {}
 
 func (x *CreateSummaryVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[242]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[249]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13317,7 +13748,7 @@ func (x *CreateSummaryVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSummaryVersionRequest.ProtoReflect.Descriptor instead.
 func (*CreateSummaryVersionRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{242}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{249}
 }
 
 func (x *CreateSummaryVersionRequest) GetVersion() *SummaryVersion {
@@ -13335,7 +13766,7 @@ type CreateSummaryVersionResponse struct {
 
 func (x *CreateSummaryVersionResponse) Reset() {
 	*x = CreateSummaryVersionResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[243]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[250]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13347,7 +13778,7 @@ func (x *CreateSummaryVersionResponse) String() string {
 func (*CreateSummaryVersionResponse) ProtoMessage() {}
 
 func (x *CreateSummaryVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[243]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[250]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13360,7 +13791,7 @@ func (x *CreateSummaryVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSummaryVersionResponse.ProtoReflect.Descriptor instead.
 func (*CreateSummaryVersionResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{243}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{250}
 }
 
 type MarkSummaryVersionSupersededRequest struct {
@@ -13373,7 +13804,7 @@ type MarkSummaryVersionSupersededRequest struct {
 
 func (x *MarkSummaryVersionSupersededRequest) Reset() {
 	*x = MarkSummaryVersionSupersededRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[244]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[251]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13385,7 +13816,7 @@ func (x *MarkSummaryVersionSupersededRequest) String() string {
 func (*MarkSummaryVersionSupersededRequest) ProtoMessage() {}
 
 func (x *MarkSummaryVersionSupersededRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[244]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[251]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13398,7 +13829,7 @@ func (x *MarkSummaryVersionSupersededRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use MarkSummaryVersionSupersededRequest.ProtoReflect.Descriptor instead.
 func (*MarkSummaryVersionSupersededRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{244}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{251}
 }
 
 func (x *MarkSummaryVersionSupersededRequest) GetArticleId() string {
@@ -13428,7 +13859,7 @@ type MarkSummaryVersionSupersededResponse struct {
 
 func (x *MarkSummaryVersionSupersededResponse) Reset() {
 	*x = MarkSummaryVersionSupersededResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[245]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[252]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13440,7 +13871,7 @@ func (x *MarkSummaryVersionSupersededResponse) String() string {
 func (*MarkSummaryVersionSupersededResponse) ProtoMessage() {}
 
 func (x *MarkSummaryVersionSupersededResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[245]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[252]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13453,7 +13884,7 @@ func (x *MarkSummaryVersionSupersededResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use MarkSummaryVersionSupersededResponse.ProtoReflect.Descriptor instead.
 func (*MarkSummaryVersionSupersededResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{245}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{252}
 }
 
 func (x *MarkSummaryVersionSupersededResponse) GetPreviousVersion() *SummaryVersion {
@@ -13472,7 +13903,7 @@ type GetSummaryVersionByIDRequest struct {
 
 func (x *GetSummaryVersionByIDRequest) Reset() {
 	*x = GetSummaryVersionByIDRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[246]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[253]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13484,7 +13915,7 @@ func (x *GetSummaryVersionByIDRequest) String() string {
 func (*GetSummaryVersionByIDRequest) ProtoMessage() {}
 
 func (x *GetSummaryVersionByIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[246]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[253]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13497,7 +13928,7 @@ func (x *GetSummaryVersionByIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSummaryVersionByIDRequest.ProtoReflect.Descriptor instead.
 func (*GetSummaryVersionByIDRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{246}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{253}
 }
 
 func (x *GetSummaryVersionByIDRequest) GetSummaryVersionId() string {
@@ -13516,7 +13947,7 @@ type GetSummaryVersionByIDResponse struct {
 
 func (x *GetSummaryVersionByIDResponse) Reset() {
 	*x = GetSummaryVersionByIDResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[247]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[254]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13528,7 +13959,7 @@ func (x *GetSummaryVersionByIDResponse) String() string {
 func (*GetSummaryVersionByIDResponse) ProtoMessage() {}
 
 func (x *GetSummaryVersionByIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[247]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[254]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13541,7 +13972,7 @@ func (x *GetSummaryVersionByIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSummaryVersionByIDResponse.ProtoReflect.Descriptor instead.
 func (*GetSummaryVersionByIDResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{247}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{254}
 }
 
 func (x *GetSummaryVersionByIDResponse) GetVersion() *SummaryVersion {
@@ -13560,7 +13991,7 @@ type GetLatestSummaryVersionRequest struct {
 
 func (x *GetLatestSummaryVersionRequest) Reset() {
 	*x = GetLatestSummaryVersionRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[248]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[255]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13572,7 +14003,7 @@ func (x *GetLatestSummaryVersionRequest) String() string {
 func (*GetLatestSummaryVersionRequest) ProtoMessage() {}
 
 func (x *GetLatestSummaryVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[248]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[255]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13585,7 +14016,7 @@ func (x *GetLatestSummaryVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLatestSummaryVersionRequest.ProtoReflect.Descriptor instead.
 func (*GetLatestSummaryVersionRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{248}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{255}
 }
 
 func (x *GetLatestSummaryVersionRequest) GetArticleId() string {
@@ -13604,7 +14035,7 @@ type GetLatestSummaryVersionResponse struct {
 
 func (x *GetLatestSummaryVersionResponse) Reset() {
 	*x = GetLatestSummaryVersionResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[249]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[256]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13616,7 +14047,7 @@ func (x *GetLatestSummaryVersionResponse) String() string {
 func (*GetLatestSummaryVersionResponse) ProtoMessage() {}
 
 func (x *GetLatestSummaryVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[249]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[256]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13629,7 +14060,7 @@ func (x *GetLatestSummaryVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLatestSummaryVersionResponse.ProtoReflect.Descriptor instead.
 func (*GetLatestSummaryVersionResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{249}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{256}
 }
 
 func (x *GetLatestSummaryVersionResponse) GetVersion() *SummaryVersion {
@@ -13662,7 +14093,7 @@ type TagSetVersion struct {
 
 func (x *TagSetVersion) Reset() {
 	*x = TagSetVersion{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[250]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[257]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13674,7 +14105,7 @@ func (x *TagSetVersion) String() string {
 func (*TagSetVersion) ProtoMessage() {}
 
 func (x *TagSetVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[250]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[257]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13687,7 +14118,7 @@ func (x *TagSetVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagSetVersion.ProtoReflect.Descriptor instead.
 func (*TagSetVersion) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{250}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{257}
 }
 
 func (x *TagSetVersion) GetTagSetVersionId() string {
@@ -13755,7 +14186,7 @@ type CreateTagSetVersionRequest struct {
 
 func (x *CreateTagSetVersionRequest) Reset() {
 	*x = CreateTagSetVersionRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[251]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[258]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13767,7 +14198,7 @@ func (x *CreateTagSetVersionRequest) String() string {
 func (*CreateTagSetVersionRequest) ProtoMessage() {}
 
 func (x *CreateTagSetVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[251]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[258]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13780,7 +14211,7 @@ func (x *CreateTagSetVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTagSetVersionRequest.ProtoReflect.Descriptor instead.
 func (*CreateTagSetVersionRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{251}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{258}
 }
 
 func (x *CreateTagSetVersionRequest) GetVersion() *TagSetVersion {
@@ -13798,7 +14229,7 @@ type CreateTagSetVersionResponse struct {
 
 func (x *CreateTagSetVersionResponse) Reset() {
 	*x = CreateTagSetVersionResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[252]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[259]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13810,7 +14241,7 @@ func (x *CreateTagSetVersionResponse) String() string {
 func (*CreateTagSetVersionResponse) ProtoMessage() {}
 
 func (x *CreateTagSetVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[252]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[259]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13823,7 +14254,7 @@ func (x *CreateTagSetVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTagSetVersionResponse.ProtoReflect.Descriptor instead.
 func (*CreateTagSetVersionResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{252}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{259}
 }
 
 type MarkTagSetVersionSupersededRequest struct {
@@ -13836,7 +14267,7 @@ type MarkTagSetVersionSupersededRequest struct {
 
 func (x *MarkTagSetVersionSupersededRequest) Reset() {
 	*x = MarkTagSetVersionSupersededRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[253]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[260]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13848,7 +14279,7 @@ func (x *MarkTagSetVersionSupersededRequest) String() string {
 func (*MarkTagSetVersionSupersededRequest) ProtoMessage() {}
 
 func (x *MarkTagSetVersionSupersededRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[253]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[260]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13861,7 +14292,7 @@ func (x *MarkTagSetVersionSupersededRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use MarkTagSetVersionSupersededRequest.ProtoReflect.Descriptor instead.
 func (*MarkTagSetVersionSupersededRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{253}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{260}
 }
 
 func (x *MarkTagSetVersionSupersededRequest) GetArticleId() string {
@@ -13887,7 +14318,7 @@ type MarkTagSetVersionSupersededResponse struct {
 
 func (x *MarkTagSetVersionSupersededResponse) Reset() {
 	*x = MarkTagSetVersionSupersededResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[254]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[261]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13899,7 +14330,7 @@ func (x *MarkTagSetVersionSupersededResponse) String() string {
 func (*MarkTagSetVersionSupersededResponse) ProtoMessage() {}
 
 func (x *MarkTagSetVersionSupersededResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[254]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[261]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13912,7 +14343,7 @@ func (x *MarkTagSetVersionSupersededResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use MarkTagSetVersionSupersededResponse.ProtoReflect.Descriptor instead.
 func (*MarkTagSetVersionSupersededResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{254}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{261}
 }
 
 func (x *MarkTagSetVersionSupersededResponse) GetPreviousVersion() *TagSetVersion {
@@ -13931,7 +14362,7 @@ type GetTagSetVersionByIDRequest struct {
 
 func (x *GetTagSetVersionByIDRequest) Reset() {
 	*x = GetTagSetVersionByIDRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[255]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[262]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13943,7 +14374,7 @@ func (x *GetTagSetVersionByIDRequest) String() string {
 func (*GetTagSetVersionByIDRequest) ProtoMessage() {}
 
 func (x *GetTagSetVersionByIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[255]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[262]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13956,7 +14387,7 @@ func (x *GetTagSetVersionByIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagSetVersionByIDRequest.ProtoReflect.Descriptor instead.
 func (*GetTagSetVersionByIDRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{255}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{262}
 }
 
 func (x *GetTagSetVersionByIDRequest) GetTagSetVersionId() string {
@@ -13975,7 +14406,7 @@ type GetTagSetVersionByIDResponse struct {
 
 func (x *GetTagSetVersionByIDResponse) Reset() {
 	*x = GetTagSetVersionByIDResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[256]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[263]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13987,7 +14418,7 @@ func (x *GetTagSetVersionByIDResponse) String() string {
 func (*GetTagSetVersionByIDResponse) ProtoMessage() {}
 
 func (x *GetTagSetVersionByIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[256]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[263]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14000,7 +14431,7 @@ func (x *GetTagSetVersionByIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagSetVersionByIDResponse.ProtoReflect.Descriptor instead.
 func (*GetTagSetVersionByIDResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{256}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{263}
 }
 
 func (x *GetTagSetVersionByIDResponse) GetVersion() *TagSetVersion {
@@ -14018,7 +14449,7 @@ type GetFeedAmountRequest struct {
 
 func (x *GetFeedAmountRequest) Reset() {
 	*x = GetFeedAmountRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[257]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[264]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14030,7 +14461,7 @@ func (x *GetFeedAmountRequest) String() string {
 func (*GetFeedAmountRequest) ProtoMessage() {}
 
 func (x *GetFeedAmountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[257]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[264]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14043,7 +14474,7 @@ func (x *GetFeedAmountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedAmountRequest.ProtoReflect.Descriptor instead.
 func (*GetFeedAmountRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{257}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{264}
 }
 
 type GetFeedAmountResponse struct {
@@ -14055,7 +14486,7 @@ type GetFeedAmountResponse struct {
 
 func (x *GetFeedAmountResponse) Reset() {
 	*x = GetFeedAmountResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[258]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[265]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14067,7 +14498,7 @@ func (x *GetFeedAmountResponse) String() string {
 func (*GetFeedAmountResponse) ProtoMessage() {}
 
 func (x *GetFeedAmountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[258]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[265]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14080,7 +14511,7 @@ func (x *GetFeedAmountResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedAmountResponse.ProtoReflect.Descriptor instead.
 func (*GetFeedAmountResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{258}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{265}
 }
 
 func (x *GetFeedAmountResponse) GetCount() int32 {
@@ -14099,7 +14530,7 @@ type GetTotalArticlesCountRequest struct {
 
 func (x *GetTotalArticlesCountRequest) Reset() {
 	*x = GetTotalArticlesCountRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[259]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[266]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14111,7 +14542,7 @@ func (x *GetTotalArticlesCountRequest) String() string {
 func (*GetTotalArticlesCountRequest) ProtoMessage() {}
 
 func (x *GetTotalArticlesCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[259]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[266]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14124,7 +14555,7 @@ func (x *GetTotalArticlesCountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTotalArticlesCountRequest.ProtoReflect.Descriptor instead.
 func (*GetTotalArticlesCountRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{259}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{266}
 }
 
 func (x *GetTotalArticlesCountRequest) GetUserId() string {
@@ -14143,7 +14574,7 @@ type GetTotalArticlesCountResponse struct {
 
 func (x *GetTotalArticlesCountResponse) Reset() {
 	*x = GetTotalArticlesCountResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[260]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[267]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14155,7 +14586,7 @@ func (x *GetTotalArticlesCountResponse) String() string {
 func (*GetTotalArticlesCountResponse) ProtoMessage() {}
 
 func (x *GetTotalArticlesCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[260]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[267]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14168,7 +14599,7 @@ func (x *GetTotalArticlesCountResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTotalArticlesCountResponse.ProtoReflect.Descriptor instead.
 func (*GetTotalArticlesCountResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{260}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{267}
 }
 
 func (x *GetTotalArticlesCountResponse) GetCount() int32 {
@@ -14187,7 +14618,7 @@ type GetSummarizedArticlesCountRequest struct {
 
 func (x *GetSummarizedArticlesCountRequest) Reset() {
 	*x = GetSummarizedArticlesCountRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[261]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[268]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14199,7 +14630,7 @@ func (x *GetSummarizedArticlesCountRequest) String() string {
 func (*GetSummarizedArticlesCountRequest) ProtoMessage() {}
 
 func (x *GetSummarizedArticlesCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[261]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[268]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14212,7 +14643,7 @@ func (x *GetSummarizedArticlesCountRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetSummarizedArticlesCountRequest.ProtoReflect.Descriptor instead.
 func (*GetSummarizedArticlesCountRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{261}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{268}
 }
 
 func (x *GetSummarizedArticlesCountRequest) GetUserId() string {
@@ -14231,7 +14662,7 @@ type GetSummarizedArticlesCountResponse struct {
 
 func (x *GetSummarizedArticlesCountResponse) Reset() {
 	*x = GetSummarizedArticlesCountResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[262]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[269]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14243,7 +14674,7 @@ func (x *GetSummarizedArticlesCountResponse) String() string {
 func (*GetSummarizedArticlesCountResponse) ProtoMessage() {}
 
 func (x *GetSummarizedArticlesCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[262]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[269]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14256,7 +14687,7 @@ func (x *GetSummarizedArticlesCountResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetSummarizedArticlesCountResponse.ProtoReflect.Descriptor instead.
 func (*GetSummarizedArticlesCountResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{262}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{269}
 }
 
 func (x *GetSummarizedArticlesCountResponse) GetCount() int32 {
@@ -14275,7 +14706,7 @@ type GetUnsummarizedArticlesCountRequest struct {
 
 func (x *GetUnsummarizedArticlesCountRequest) Reset() {
 	*x = GetUnsummarizedArticlesCountRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[263]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[270]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14287,7 +14718,7 @@ func (x *GetUnsummarizedArticlesCountRequest) String() string {
 func (*GetUnsummarizedArticlesCountRequest) ProtoMessage() {}
 
 func (x *GetUnsummarizedArticlesCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[263]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[270]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14300,7 +14731,7 @@ func (x *GetUnsummarizedArticlesCountRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use GetUnsummarizedArticlesCountRequest.ProtoReflect.Descriptor instead.
 func (*GetUnsummarizedArticlesCountRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{263}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{270}
 }
 
 func (x *GetUnsummarizedArticlesCountRequest) GetUserId() string {
@@ -14319,7 +14750,7 @@ type GetUnsummarizedArticlesCountResponse struct {
 
 func (x *GetUnsummarizedArticlesCountResponse) Reset() {
 	*x = GetUnsummarizedArticlesCountResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[264]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[271]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14331,7 +14762,7 @@ func (x *GetUnsummarizedArticlesCountResponse) String() string {
 func (*GetUnsummarizedArticlesCountResponse) ProtoMessage() {}
 
 func (x *GetUnsummarizedArticlesCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[264]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[271]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14344,7 +14775,7 @@ func (x *GetUnsummarizedArticlesCountResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use GetUnsummarizedArticlesCountResponse.ProtoReflect.Descriptor instead.
 func (*GetUnsummarizedArticlesCountResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{264}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{271}
 }
 
 func (x *GetUnsummarizedArticlesCountResponse) GetCount() int32 {
@@ -14365,7 +14796,7 @@ type GetTodayUnreadArticlesCountRequest struct {
 
 func (x *GetTodayUnreadArticlesCountRequest) Reset() {
 	*x = GetTodayUnreadArticlesCountRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[265]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[272]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14377,7 +14808,7 @@ func (x *GetTodayUnreadArticlesCountRequest) String() string {
 func (*GetTodayUnreadArticlesCountRequest) ProtoMessage() {}
 
 func (x *GetTodayUnreadArticlesCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[265]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[272]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14390,7 +14821,7 @@ func (x *GetTodayUnreadArticlesCountRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetTodayUnreadArticlesCountRequest.ProtoReflect.Descriptor instead.
 func (*GetTodayUnreadArticlesCountRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{265}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{272}
 }
 
 func (x *GetTodayUnreadArticlesCountRequest) GetUserId() string {
@@ -14416,7 +14847,7 @@ type GetTodayUnreadArticlesCountResponse struct {
 
 func (x *GetTodayUnreadArticlesCountResponse) Reset() {
 	*x = GetTodayUnreadArticlesCountResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[266]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[273]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14428,7 +14859,7 @@ func (x *GetTodayUnreadArticlesCountResponse) String() string {
 func (*GetTodayUnreadArticlesCountResponse) ProtoMessage() {}
 
 func (x *GetTodayUnreadArticlesCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[266]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[273]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14441,7 +14872,7 @@ func (x *GetTodayUnreadArticlesCountResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use GetTodayUnreadArticlesCountResponse.ProtoReflect.Descriptor instead.
 func (*GetTodayUnreadArticlesCountResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{266}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{273}
 }
 
 func (x *GetTodayUnreadArticlesCountResponse) GetCount() int32 {
@@ -14464,7 +14895,7 @@ type TrendDataPoint struct {
 
 func (x *TrendDataPoint) Reset() {
 	*x = TrendDataPoint{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[267]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[274]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14476,7 +14907,7 @@ func (x *TrendDataPoint) String() string {
 func (*TrendDataPoint) ProtoMessage() {}
 
 func (x *TrendDataPoint) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[267]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[274]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14489,7 +14920,7 @@ func (x *TrendDataPoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrendDataPoint.ProtoReflect.Descriptor instead.
 func (*TrendDataPoint) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{267}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{274}
 }
 
 func (x *TrendDataPoint) GetBucket() *timestamppb.Timestamp {
@@ -14530,7 +14961,7 @@ type GetTrendStatsRequest struct {
 
 func (x *GetTrendStatsRequest) Reset() {
 	*x = GetTrendStatsRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[268]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[275]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14542,7 +14973,7 @@ func (x *GetTrendStatsRequest) String() string {
 func (*GetTrendStatsRequest) ProtoMessage() {}
 
 func (x *GetTrendStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[268]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[275]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14555,7 +14986,7 @@ func (x *GetTrendStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTrendStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetTrendStatsRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{268}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{275}
 }
 
 func (x *GetTrendStatsRequest) GetUserId() string {
@@ -14585,7 +15016,7 @@ type GetTrendStatsResponse struct {
 
 func (x *GetTrendStatsResponse) Reset() {
 	*x = GetTrendStatsResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[269]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[276]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14597,7 +15028,7 @@ func (x *GetTrendStatsResponse) String() string {
 func (*GetTrendStatsResponse) ProtoMessage() {}
 
 func (x *GetTrendStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[269]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[276]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14610,7 +15041,7 @@ func (x *GetTrendStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTrendStatsResponse.ProtoReflect.Descriptor instead.
 func (*GetTrendStatsResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{269}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{276}
 }
 
 func (x *GetTrendStatsResponse) GetPoints() []*TrendDataPoint {
@@ -14636,7 +15067,7 @@ type ListUserFeedIDsRequest struct {
 
 func (x *ListUserFeedIDsRequest) Reset() {
 	*x = ListUserFeedIDsRequest{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[270]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[277]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14648,7 +15079,7 @@ func (x *ListUserFeedIDsRequest) String() string {
 func (*ListUserFeedIDsRequest) ProtoMessage() {}
 
 func (x *ListUserFeedIDsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[270]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[277]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14661,7 +15092,7 @@ func (x *ListUserFeedIDsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserFeedIDsRequest.ProtoReflect.Descriptor instead.
 func (*ListUserFeedIDsRequest) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{270}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{277}
 }
 
 func (x *ListUserFeedIDsRequest) GetUserId() string {
@@ -14680,7 +15111,7 @@ type ListUserFeedIDsResponse struct {
 
 func (x *ListUserFeedIDsResponse) Reset() {
 	*x = ListUserFeedIDsResponse{}
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[271]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[278]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14692,7 +15123,7 @@ func (x *ListUserFeedIDsResponse) String() string {
 func (*ListUserFeedIDsResponse) ProtoMessage() {}
 
 func (x *ListUserFeedIDsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[271]
+	mi := &file_alt_datahub_v1_datahub_proto_msgTypes[278]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14705,7 +15136,7 @@ func (x *ListUserFeedIDsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserFeedIDsResponse.ProtoReflect.Descriptor instead.
 func (*ListUserFeedIDsResponse) Descriptor() ([]byte, []int) {
-	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{271}
+	return file_alt_datahub_v1_datahub_proto_rawDescGZIP(), []int{278}
 }
 
 func (x *ListUserFeedIDsResponse) GetFeedIds() []string {
@@ -15593,7 +16024,35 @@ const file_alt_datahub_v1_datahub_proto_rawDesc = "" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x120\n" +
 	"\x05since\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\"V\n" +
 	"\x1bGetTagArticleCountsResponse\x127\n" +
-	"\x06counts\x18\x01 \x03(\v2\x1f.alt.datahub.v1.TagArticleCountR\x06counts\"\xac\x03\n" +
+	"\x06counts\x18\x01 \x03(\v2\x1f.alt.datahub.v1.TagArticleCountR\x06counts\"\xc0\x01\n" +
+	"\x0fTagTrailArticle\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\x12=\n" +
+	"\fpublished_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vpublishedAt\x12\x17\n" +
+	"\afeed_id\x18\x05 \x01(\tR\x06feedId\x12\x1d\n" +
+	"\n" +
+	"feed_title\x18\x06 \x01(\tR\tfeedTitle\"}\n" +
+	"\x1aListArticlesByTagIDRequest\x12\x15\n" +
+	"\x06tag_id\x18\x01 \x01(\tR\x05tagId\x122\n" +
+	"\x06cursor\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x06cursor\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\"Z\n" +
+	"\x1bListArticlesByTagIDResponse\x12;\n" +
+	"\barticles\x18\x01 \x03(\v2\x1f.alt.datahub.v1.TagTrailArticleR\barticles\"\x83\x01\n" +
+	"\x1cListArticlesByTagNameRequest\x12\x19\n" +
+	"\btag_name\x18\x01 \x01(\tR\atagName\x122\n" +
+	"\x06cursor\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x06cursor\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\"\\\n" +
+	"\x1dListArticlesByTagNameResponse\x12;\n" +
+	"\barticles\x18\x01 \x03(\v2\x1f.alt.datahub.v1.TagTrailArticleR\barticles\">\n" +
+	"\x1dGetArticleTitleAndLinkRequest\x12\x1d\n" +
+	"\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\"\x9d\x01\n" +
+	"\x1eGetArticleTitleAndLinkResponse\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\x12=\n" +
+	"\fpublished_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vpublishedAt\"\xac\x03\n" +
 	"\x0eSummaryVersion\x12,\n" +
 	"\x12summary_version_id\x18\x01 \x01(\tR\x10summaryVersionId\x12\x1d\n" +
 	"\n" +
@@ -15716,7 +16175,7 @@ const file_alt_datahub_v1_datahub_proto_rawDesc = "" +
 	"\x10TrendGranularity\x12!\n" +
 	"\x1dTREND_GRANULARITY_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18TREND_GRANULARITY_HOURLY\x10\x01\x12\x1b\n" +
-	"\x17TREND_GRANULARITY_DAILY\x10\x022\xcbe\n" +
+	"\x17TREND_GRANULARITY_DAILY\x10\x022\xaah\n" +
 	"\x0eDataHubService\x12q\n" +
 	"\x14ListArticlesWithTags\x12+.alt.datahub.v1.ListArticlesWithTagsRequest\x1a,.alt.datahub.v1.ListArticlesWithTagsResponse\x12\x86\x01\n" +
 	"\x1bListArticlesWithTagsForward\x122.alt.datahub.v1.ListArticlesWithTagsForwardRequest\x1a3.alt.datahub.v1.ListArticlesWithTagsForwardResponse\x12n\n" +
@@ -15818,7 +16277,10 @@ const file_alt_datahub_v1_datahub_proto_rawDesc = "" +
 	"\vGetFeedTags\x12\".alt.datahub.v1.GetFeedTagsRequest\x1a#.alt.datahub.v1.GetFeedTagsResponse\x12n\n" +
 	"\x13GetTagCooccurrences\x12*.alt.datahub.v1.GetTagCooccurrencesRequest\x1a+.alt.datahub.v1.GetTagCooccurrencesResponse\x12k\n" +
 	"\x12SearchTagsByPrefix\x12).alt.datahub.v1.SearchTagsByPrefixRequest\x1a*.alt.datahub.v1.SearchTagsByPrefixResponse\x12n\n" +
-	"\x13GetTagArticleCounts\x12*.alt.datahub.v1.GetTagArticleCountsRequest\x1a+.alt.datahub.v1.GetTagArticleCountsResponse\x12q\n" +
+	"\x13GetTagArticleCounts\x12*.alt.datahub.v1.GetTagArticleCountsRequest\x1a+.alt.datahub.v1.GetTagArticleCountsResponse\x12n\n" +
+	"\x13ListArticlesByTagID\x12*.alt.datahub.v1.ListArticlesByTagIDRequest\x1a+.alt.datahub.v1.ListArticlesByTagIDResponse\x12t\n" +
+	"\x15ListArticlesByTagName\x12,.alt.datahub.v1.ListArticlesByTagNameRequest\x1a-.alt.datahub.v1.ListArticlesByTagNameResponse\x12w\n" +
+	"\x16GetArticleTitleAndLink\x12-.alt.datahub.v1.GetArticleTitleAndLinkRequest\x1a..alt.datahub.v1.GetArticleTitleAndLinkResponse\x12q\n" +
 	"\x14CreateSummaryVersion\x12+.alt.datahub.v1.CreateSummaryVersionRequest\x1a,.alt.datahub.v1.CreateSummaryVersionResponse\x12\x89\x01\n" +
 	"\x1cMarkSummaryVersionSuperseded\x123.alt.datahub.v1.MarkSummaryVersionSupersededRequest\x1a4.alt.datahub.v1.MarkSummaryVersionSupersededResponse\x12t\n" +
 	"\x15GetSummaryVersionByID\x12,.alt.datahub.v1.GetSummaryVersionByIDRequest\x1a-.alt.datahub.v1.GetSummaryVersionByIDResponse\x12z\n" +
@@ -15847,7 +16309,7 @@ func file_alt_datahub_v1_datahub_proto_rawDescGZIP() []byte {
 }
 
 var file_alt_datahub_v1_datahub_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_alt_datahub_v1_datahub_proto_msgTypes = make([]protoimpl.MessageInfo, 275)
+var file_alt_datahub_v1_datahub_proto_msgTypes = make([]protoimpl.MessageInfo, 282)
 var file_alt_datahub_v1_datahub_proto_goTypes = []any{
 	(SummaryVersioning)(0),                            // 0: alt.datahub.v1.SummaryVersioning
 	(OutboxEventStatus)(0),                            // 1: alt.datahub.v1.OutboxEventStatus
@@ -16095,130 +16557,137 @@ var file_alt_datahub_v1_datahub_proto_goTypes = []any{
 	(*TagArticleCount)(nil),                           // 243: alt.datahub.v1.TagArticleCount
 	(*GetTagArticleCountsRequest)(nil),                // 244: alt.datahub.v1.GetTagArticleCountsRequest
 	(*GetTagArticleCountsResponse)(nil),               // 245: alt.datahub.v1.GetTagArticleCountsResponse
-	(*SummaryVersion)(nil),                            // 246: alt.datahub.v1.SummaryVersion
-	(*CreateSummaryVersionRequest)(nil),               // 247: alt.datahub.v1.CreateSummaryVersionRequest
-	(*CreateSummaryVersionResponse)(nil),              // 248: alt.datahub.v1.CreateSummaryVersionResponse
-	(*MarkSummaryVersionSupersededRequest)(nil),       // 249: alt.datahub.v1.MarkSummaryVersionSupersededRequest
-	(*MarkSummaryVersionSupersededResponse)(nil),      // 250: alt.datahub.v1.MarkSummaryVersionSupersededResponse
-	(*GetSummaryVersionByIDRequest)(nil),              // 251: alt.datahub.v1.GetSummaryVersionByIDRequest
-	(*GetSummaryVersionByIDResponse)(nil),             // 252: alt.datahub.v1.GetSummaryVersionByIDResponse
-	(*GetLatestSummaryVersionRequest)(nil),            // 253: alt.datahub.v1.GetLatestSummaryVersionRequest
-	(*GetLatestSummaryVersionResponse)(nil),           // 254: alt.datahub.v1.GetLatestSummaryVersionResponse
-	(*TagSetVersion)(nil),                             // 255: alt.datahub.v1.TagSetVersion
-	(*CreateTagSetVersionRequest)(nil),                // 256: alt.datahub.v1.CreateTagSetVersionRequest
-	(*CreateTagSetVersionResponse)(nil),               // 257: alt.datahub.v1.CreateTagSetVersionResponse
-	(*MarkTagSetVersionSupersededRequest)(nil),        // 258: alt.datahub.v1.MarkTagSetVersionSupersededRequest
-	(*MarkTagSetVersionSupersededResponse)(nil),       // 259: alt.datahub.v1.MarkTagSetVersionSupersededResponse
-	(*GetTagSetVersionByIDRequest)(nil),               // 260: alt.datahub.v1.GetTagSetVersionByIDRequest
-	(*GetTagSetVersionByIDResponse)(nil),              // 261: alt.datahub.v1.GetTagSetVersionByIDResponse
-	(*GetFeedAmountRequest)(nil),                      // 262: alt.datahub.v1.GetFeedAmountRequest
-	(*GetFeedAmountResponse)(nil),                     // 263: alt.datahub.v1.GetFeedAmountResponse
-	(*GetTotalArticlesCountRequest)(nil),              // 264: alt.datahub.v1.GetTotalArticlesCountRequest
-	(*GetTotalArticlesCountResponse)(nil),             // 265: alt.datahub.v1.GetTotalArticlesCountResponse
-	(*GetSummarizedArticlesCountRequest)(nil),         // 266: alt.datahub.v1.GetSummarizedArticlesCountRequest
-	(*GetSummarizedArticlesCountResponse)(nil),        // 267: alt.datahub.v1.GetSummarizedArticlesCountResponse
-	(*GetUnsummarizedArticlesCountRequest)(nil),       // 268: alt.datahub.v1.GetUnsummarizedArticlesCountRequest
-	(*GetUnsummarizedArticlesCountResponse)(nil),      // 269: alt.datahub.v1.GetUnsummarizedArticlesCountResponse
-	(*GetTodayUnreadArticlesCountRequest)(nil),        // 270: alt.datahub.v1.GetTodayUnreadArticlesCountRequest
-	(*GetTodayUnreadArticlesCountResponse)(nil),       // 271: alt.datahub.v1.GetTodayUnreadArticlesCountResponse
-	(*TrendDataPoint)(nil),                            // 272: alt.datahub.v1.TrendDataPoint
-	(*GetTrendStatsRequest)(nil),                      // 273: alt.datahub.v1.GetTrendStatsRequest
-	(*GetTrendStatsResponse)(nil),                     // 274: alt.datahub.v1.GetTrendStatsResponse
-	(*ListUserFeedIDsRequest)(nil),                    // 275: alt.datahub.v1.ListUserFeedIDsRequest
-	(*ListUserFeedIDsResponse)(nil),                   // 276: alt.datahub.v1.ListUserFeedIDsResponse
-	nil,                                               // 277: alt.datahub.v1.BatchGetOgImageURLsResponse.OgImageUrlsEntry
-	nil,                                               // 278: alt.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry
-	nil,                                               // 279: alt.datahub.v1.BatchGetFeedTitlesByIDsResponse.TitlesEntry
-	(*timestamppb.Timestamp)(nil),                     // 280: google.protobuf.Timestamp
+	(*TagTrailArticle)(nil),                           // 246: alt.datahub.v1.TagTrailArticle
+	(*ListArticlesByTagIDRequest)(nil),                // 247: alt.datahub.v1.ListArticlesByTagIDRequest
+	(*ListArticlesByTagIDResponse)(nil),               // 248: alt.datahub.v1.ListArticlesByTagIDResponse
+	(*ListArticlesByTagNameRequest)(nil),              // 249: alt.datahub.v1.ListArticlesByTagNameRequest
+	(*ListArticlesByTagNameResponse)(nil),             // 250: alt.datahub.v1.ListArticlesByTagNameResponse
+	(*GetArticleTitleAndLinkRequest)(nil),             // 251: alt.datahub.v1.GetArticleTitleAndLinkRequest
+	(*GetArticleTitleAndLinkResponse)(nil),            // 252: alt.datahub.v1.GetArticleTitleAndLinkResponse
+	(*SummaryVersion)(nil),                            // 253: alt.datahub.v1.SummaryVersion
+	(*CreateSummaryVersionRequest)(nil),               // 254: alt.datahub.v1.CreateSummaryVersionRequest
+	(*CreateSummaryVersionResponse)(nil),              // 255: alt.datahub.v1.CreateSummaryVersionResponse
+	(*MarkSummaryVersionSupersededRequest)(nil),       // 256: alt.datahub.v1.MarkSummaryVersionSupersededRequest
+	(*MarkSummaryVersionSupersededResponse)(nil),      // 257: alt.datahub.v1.MarkSummaryVersionSupersededResponse
+	(*GetSummaryVersionByIDRequest)(nil),              // 258: alt.datahub.v1.GetSummaryVersionByIDRequest
+	(*GetSummaryVersionByIDResponse)(nil),             // 259: alt.datahub.v1.GetSummaryVersionByIDResponse
+	(*GetLatestSummaryVersionRequest)(nil),            // 260: alt.datahub.v1.GetLatestSummaryVersionRequest
+	(*GetLatestSummaryVersionResponse)(nil),           // 261: alt.datahub.v1.GetLatestSummaryVersionResponse
+	(*TagSetVersion)(nil),                             // 262: alt.datahub.v1.TagSetVersion
+	(*CreateTagSetVersionRequest)(nil),                // 263: alt.datahub.v1.CreateTagSetVersionRequest
+	(*CreateTagSetVersionResponse)(nil),               // 264: alt.datahub.v1.CreateTagSetVersionResponse
+	(*MarkTagSetVersionSupersededRequest)(nil),        // 265: alt.datahub.v1.MarkTagSetVersionSupersededRequest
+	(*MarkTagSetVersionSupersededResponse)(nil),       // 266: alt.datahub.v1.MarkTagSetVersionSupersededResponse
+	(*GetTagSetVersionByIDRequest)(nil),               // 267: alt.datahub.v1.GetTagSetVersionByIDRequest
+	(*GetTagSetVersionByIDResponse)(nil),              // 268: alt.datahub.v1.GetTagSetVersionByIDResponse
+	(*GetFeedAmountRequest)(nil),                      // 269: alt.datahub.v1.GetFeedAmountRequest
+	(*GetFeedAmountResponse)(nil),                     // 270: alt.datahub.v1.GetFeedAmountResponse
+	(*GetTotalArticlesCountRequest)(nil),              // 271: alt.datahub.v1.GetTotalArticlesCountRequest
+	(*GetTotalArticlesCountResponse)(nil),             // 272: alt.datahub.v1.GetTotalArticlesCountResponse
+	(*GetSummarizedArticlesCountRequest)(nil),         // 273: alt.datahub.v1.GetSummarizedArticlesCountRequest
+	(*GetSummarizedArticlesCountResponse)(nil),        // 274: alt.datahub.v1.GetSummarizedArticlesCountResponse
+	(*GetUnsummarizedArticlesCountRequest)(nil),       // 275: alt.datahub.v1.GetUnsummarizedArticlesCountRequest
+	(*GetUnsummarizedArticlesCountResponse)(nil),      // 276: alt.datahub.v1.GetUnsummarizedArticlesCountResponse
+	(*GetTodayUnreadArticlesCountRequest)(nil),        // 277: alt.datahub.v1.GetTodayUnreadArticlesCountRequest
+	(*GetTodayUnreadArticlesCountResponse)(nil),       // 278: alt.datahub.v1.GetTodayUnreadArticlesCountResponse
+	(*TrendDataPoint)(nil),                            // 279: alt.datahub.v1.TrendDataPoint
+	(*GetTrendStatsRequest)(nil),                      // 280: alt.datahub.v1.GetTrendStatsRequest
+	(*GetTrendStatsResponse)(nil),                     // 281: alt.datahub.v1.GetTrendStatsResponse
+	(*ListUserFeedIDsRequest)(nil),                    // 282: alt.datahub.v1.ListUserFeedIDsRequest
+	(*ListUserFeedIDsResponse)(nil),                   // 283: alt.datahub.v1.ListUserFeedIDsResponse
+	nil,                                               // 284: alt.datahub.v1.BatchGetOgImageURLsResponse.OgImageUrlsEntry
+	nil,                                               // 285: alt.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry
+	nil,                                               // 286: alt.datahub.v1.BatchGetFeedTitlesByIDsResponse.TitlesEntry
+	(*timestamppb.Timestamp)(nil),                     // 287: google.protobuf.Timestamp
 }
 var file_alt_datahub_v1_datahub_proto_depIdxs = []int32{
-	280, // 0: alt.datahub.v1.ArticleWithTags.created_at:type_name -> google.protobuf.Timestamp
-	280, // 1: alt.datahub.v1.ArticleWithTags.published_at:type_name -> google.protobuf.Timestamp
-	280, // 2: alt.datahub.v1.DeletedArticle.deleted_at:type_name -> google.protobuf.Timestamp
-	280, // 3: alt.datahub.v1.ListArticlesWithTagsRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	287, // 0: alt.datahub.v1.ArticleWithTags.created_at:type_name -> google.protobuf.Timestamp
+	287, // 1: alt.datahub.v1.ArticleWithTags.published_at:type_name -> google.protobuf.Timestamp
+	287, // 2: alt.datahub.v1.DeletedArticle.deleted_at:type_name -> google.protobuf.Timestamp
+	287, // 3: alt.datahub.v1.ListArticlesWithTagsRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	5,   // 4: alt.datahub.v1.ListArticlesWithTagsResponse.articles:type_name -> alt.datahub.v1.ArticleWithTags
-	280, // 5: alt.datahub.v1.ListArticlesWithTagsResponse.next_created_at:type_name -> google.protobuf.Timestamp
-	280, // 6: alt.datahub.v1.ListArticlesWithTagsForwardRequest.incremental_mark:type_name -> google.protobuf.Timestamp
-	280, // 7: alt.datahub.v1.ListArticlesWithTagsForwardRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	287, // 5: alt.datahub.v1.ListArticlesWithTagsResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	287, // 6: alt.datahub.v1.ListArticlesWithTagsForwardRequest.incremental_mark:type_name -> google.protobuf.Timestamp
+	287, // 7: alt.datahub.v1.ListArticlesWithTagsForwardRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	5,   // 8: alt.datahub.v1.ListArticlesWithTagsForwardResponse.articles:type_name -> alt.datahub.v1.ArticleWithTags
-	280, // 9: alt.datahub.v1.ListArticlesWithTagsForwardResponse.next_created_at:type_name -> google.protobuf.Timestamp
-	280, // 10: alt.datahub.v1.ListDeletedArticlesRequest.last_deleted_at:type_name -> google.protobuf.Timestamp
+	287, // 9: alt.datahub.v1.ListArticlesWithTagsForwardResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	287, // 10: alt.datahub.v1.ListDeletedArticlesRequest.last_deleted_at:type_name -> google.protobuf.Timestamp
 	6,   // 11: alt.datahub.v1.ListDeletedArticlesResponse.articles:type_name -> alt.datahub.v1.DeletedArticle
-	280, // 12: alt.datahub.v1.ListDeletedArticlesResponse.next_deleted_at:type_name -> google.protobuf.Timestamp
-	280, // 13: alt.datahub.v1.GetLatestArticleTimestampResponse.latest_created_at:type_name -> google.protobuf.Timestamp
+	287, // 12: alt.datahub.v1.ListDeletedArticlesResponse.next_deleted_at:type_name -> google.protobuf.Timestamp
+	287, // 13: alt.datahub.v1.GetLatestArticleTimestampResponse.latest_created_at:type_name -> google.protobuf.Timestamp
 	5,   // 14: alt.datahub.v1.GetArticleByIDResponse.article:type_name -> alt.datahub.v1.ArticleWithTags
-	280, // 15: alt.datahub.v1.CreateArticleRequest.published_at:type_name -> google.protobuf.Timestamp
+	287, // 15: alt.datahub.v1.CreateArticleRequest.published_at:type_name -> google.protobuf.Timestamp
 	0,   // 16: alt.datahub.v1.SaveArticleSummaryRequest.summary_versioning:type_name -> alt.datahub.v1.SummaryVersioning
 	29,  // 17: alt.datahub.v1.ListFeedURLsResponse.feeds:type_name -> alt.datahub.v1.FeedURL
 	31,  // 18: alt.datahub.v1.UpsertArticleTagsRequest.tags:type_name -> alt.datahub.v1.TagItem
 	30,  // 19: alt.datahub.v1.BatchUpsertArticleTagsRequest.items:type_name -> alt.datahub.v1.UpsertArticleTagsRequest
-	280, // 20: alt.datahub.v1.ListUntaggedArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	287, // 20: alt.datahub.v1.ListUntaggedArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	5,   // 21: alt.datahub.v1.ListUntaggedArticlesResponse.articles:type_name -> alt.datahub.v1.ArticleWithTags
-	280, // 22: alt.datahub.v1.ListUntaggedArticlesResponse.next_created_at:type_name -> google.protobuf.Timestamp
-	280, // 23: alt.datahub.v1.ArticleTagEntry.updated_at:type_name -> google.protobuf.Timestamp
+	287, // 22: alt.datahub.v1.ListUntaggedArticlesResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	287, // 23: alt.datahub.v1.ArticleTagEntry.updated_at:type_name -> google.protobuf.Timestamp
 	38,  // 24: alt.datahub.v1.ArticleTagsEntry.tags:type_name -> alt.datahub.v1.ArticleTagEntry
 	39,  // 25: alt.datahub.v1.BatchGetTagsByArticleIDsResponse.items:type_name -> alt.datahub.v1.ArticleTagsEntry
-	280, // 26: alt.datahub.v1.ArticleWithSummaryItem.created_at:type_name -> google.protobuf.Timestamp
-	280, // 27: alt.datahub.v1.FindArticlesWithSummariesRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	287, // 26: alt.datahub.v1.ArticleWithSummaryItem.created_at:type_name -> google.protobuf.Timestamp
+	287, // 27: alt.datahub.v1.FindArticlesWithSummariesRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	45,  // 28: alt.datahub.v1.FindArticlesWithSummariesResponse.articles:type_name -> alt.datahub.v1.ArticleWithSummaryItem
-	280, // 29: alt.datahub.v1.FindArticlesWithSummariesResponse.next_created_at:type_name -> google.protobuf.Timestamp
-	280, // 30: alt.datahub.v1.UnsummarizedArticle.created_at:type_name -> google.protobuf.Timestamp
-	280, // 31: alt.datahub.v1.ListUnsummarizedArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	287, // 29: alt.datahub.v1.FindArticlesWithSummariesResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	287, // 30: alt.datahub.v1.UnsummarizedArticle.created_at:type_name -> google.protobuf.Timestamp
+	287, // 31: alt.datahub.v1.ListUnsummarizedArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	48,  // 32: alt.datahub.v1.ListUnsummarizedArticlesResponse.articles:type_name -> alt.datahub.v1.UnsummarizedArticle
-	280, // 33: alt.datahub.v1.ListUnsummarizedArticlesResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	287, // 33: alt.datahub.v1.ListUnsummarizedArticlesResponse.next_created_at:type_name -> google.protobuf.Timestamp
 	57,  // 34: alt.datahub.v1.FetchTagCloudResponse.tags:type_name -> alt.datahub.v1.TagCloudItem
 	60,  // 35: alt.datahub.v1.FetchArticlesByTagResponse.articles:type_name -> alt.datahub.v1.ArticleByTagItem
 	62,  // 36: alt.datahub.v1.ListRecapArticlesResponse.range:type_name -> alt.datahub.v1.RecapArticleRange
 	63,  // 37: alt.datahub.v1.ListRecapArticlesResponse.articles:type_name -> alt.datahub.v1.RecapArticleItem
 	67,  // 38: alt.datahub.v1.ListRecentArticlesResponse.articles:type_name -> alt.datahub.v1.RecentArticleItem
 	1,   // 39: alt.datahub.v1.OutboxEvent.status:type_name -> alt.datahub.v1.OutboxEventStatus
-	280, // 40: alt.datahub.v1.OutboxEvent.created_at:type_name -> google.protobuf.Timestamp
+	287, // 40: alt.datahub.v1.OutboxEvent.created_at:type_name -> google.protobuf.Timestamp
 	70,  // 41: alt.datahub.v1.ClaimOutboxBatchResponse.events:type_name -> alt.datahub.v1.OutboxEvent
 	1,   // 42: alt.datahub.v1.MarkOutboxProcessedRequest.status:type_name -> alt.datahub.v1.OutboxEventStatus
 	79,  // 43: alt.datahub.v1.GetArticleHeadResponse.head:type_name -> alt.datahub.v1.ArticleHead
-	277, // 44: alt.datahub.v1.BatchGetOgImageURLsResponse.og_image_urls:type_name -> alt.datahub.v1.BatchGetOgImageURLsResponse.OgImageUrlsEntry
+	284, // 44: alt.datahub.v1.BatchGetOgImageURLsResponse.og_image_urls:type_name -> alt.datahub.v1.BatchGetOgImageURLsResponse.OgImageUrlsEntry
 	84,  // 45: alt.datahub.v1.ListFeedsMissingOgImageResponse.candidates:type_name -> alt.datahub.v1.OgImageBackfillCandidate
-	280, // 46: alt.datahub.v1.ImageProxyCacheEntry.created_at:type_name -> google.protobuf.Timestamp
-	280, // 47: alt.datahub.v1.ImageProxyCacheEntry.expires_at:type_name -> google.protobuf.Timestamp
+	287, // 46: alt.datahub.v1.ImageProxyCacheEntry.created_at:type_name -> google.protobuf.Timestamp
+	287, // 47: alt.datahub.v1.ImageProxyCacheEntry.expires_at:type_name -> google.protobuf.Timestamp
 	91,  // 48: alt.datahub.v1.GetImageProxyCacheResponse.entry:type_name -> alt.datahub.v1.ImageProxyCacheEntry
 	91,  // 49: alt.datahub.v1.PutImageProxyCacheRequest.entry:type_name -> alt.datahub.v1.ImageProxyCacheEntry
-	280, // 50: alt.datahub.v1.ScrapingDomain.robots_txt_fetched_at:type_name -> google.protobuf.Timestamp
-	280, // 51: alt.datahub.v1.ScrapingDomain.created_at:type_name -> google.protobuf.Timestamp
-	280, // 52: alt.datahub.v1.ScrapingDomain.updated_at:type_name -> google.protobuf.Timestamp
+	287, // 50: alt.datahub.v1.ScrapingDomain.robots_txt_fetched_at:type_name -> google.protobuf.Timestamp
+	287, // 51: alt.datahub.v1.ScrapingDomain.created_at:type_name -> google.protobuf.Timestamp
+	287, // 52: alt.datahub.v1.ScrapingDomain.updated_at:type_name -> google.protobuf.Timestamp
 	100, // 53: alt.datahub.v1.GetScrapingDomainByDomainResponse.scraping_domain:type_name -> alt.datahub.v1.ScrapingDomain
 	100, // 54: alt.datahub.v1.GetScrapingDomainByIDResponse.scraping_domain:type_name -> alt.datahub.v1.ScrapingDomain
 	100, // 55: alt.datahub.v1.SaveScrapingDomainRequest.scraping_domain:type_name -> alt.datahub.v1.ScrapingDomain
 	100, // 56: alt.datahub.v1.SaveScrapingDomainResponse.scraping_domain:type_name -> alt.datahub.v1.ScrapingDomain
 	100, // 57: alt.datahub.v1.ListScrapingDomainsResponse.scraping_domains:type_name -> alt.datahub.v1.ScrapingDomain
 	109, // 58: alt.datahub.v1.UpdateScrapingDomainPolicyRequest.update:type_name -> alt.datahub.v1.ScrapingPolicyUpdate
-	280, // 59: alt.datahub.v1.UserArticle.published_at:type_name -> google.protobuf.Timestamp
-	280, // 60: alt.datahub.v1.UserArticle.created_at:type_name -> google.protobuf.Timestamp
+	287, // 59: alt.datahub.v1.UserArticle.published_at:type_name -> google.protobuf.Timestamp
+	287, // 60: alt.datahub.v1.UserArticle.created_at:type_name -> google.protobuf.Timestamp
 	124, // 61: alt.datahub.v1.GetArticleByURLResponse.article:type_name -> alt.datahub.v1.ArticleContent
-	278, // 62: alt.datahub.v1.BatchGetArticlesByURLsResponse.articles:type_name -> alt.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry
+	285, // 62: alt.datahub.v1.BatchGetArticlesByURLsResponse.articles:type_name -> alt.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry
 	124, // 63: alt.datahub.v1.GetArticleContentByIDResponse.article:type_name -> alt.datahub.v1.ArticleContent
-	280, // 64: alt.datahub.v1.ListArticlesCursorRequest.cursor:type_name -> google.protobuf.Timestamp
+	287, // 64: alt.datahub.v1.ListArticlesCursorRequest.cursor:type_name -> google.protobuf.Timestamp
 	125, // 65: alt.datahub.v1.ListArticlesCursorResponse.articles:type_name -> alt.datahub.v1.UserArticle
-	280, // 66: alt.datahub.v1.ListArticleIDsCursorRequest.cursor:type_name -> google.protobuf.Timestamp
+	287, // 66: alt.datahub.v1.ListArticleIDsCursorRequest.cursor:type_name -> google.protobuf.Timestamp
 	125, // 67: alt.datahub.v1.BatchGetArticlesByIDsResponse.articles:type_name -> alt.datahub.v1.UserArticle
 	124, // 68: alt.datahub.v1.GetLatestArticleByFeedIDResponse.article:type_name -> alt.datahub.v1.ArticleContent
-	280, // 69: alt.datahub.v1.BackfillArticle.created_at:type_name -> google.protobuf.Timestamp
-	280, // 70: alt.datahub.v1.BackfillArticle.published_at:type_name -> google.protobuf.Timestamp
-	280, // 71: alt.datahub.v1.ListBackfillArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	287, // 69: alt.datahub.v1.BackfillArticle.created_at:type_name -> google.protobuf.Timestamp
+	287, // 70: alt.datahub.v1.BackfillArticle.published_at:type_name -> google.protobuf.Timestamp
+	287, // 71: alt.datahub.v1.ListBackfillArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	142, // 72: alt.datahub.v1.ListBackfillArticlesResponse.articles:type_name -> alt.datahub.v1.BackfillArticle
-	280, // 73: alt.datahub.v1.BackfillSummaryTitle.generated_at:type_name -> google.protobuf.Timestamp
-	280, // 74: alt.datahub.v1.ListBackfillSummaryTitlesRequest.last_generated_at:type_name -> google.protobuf.Timestamp
+	287, // 73: alt.datahub.v1.BackfillSummaryTitle.generated_at:type_name -> google.protobuf.Timestamp
+	287, // 74: alt.datahub.v1.ListBackfillSummaryTitlesRequest.last_generated_at:type_name -> google.protobuf.Timestamp
 	147, // 75: alt.datahub.v1.ListBackfillSummaryTitlesResponse.entries:type_name -> alt.datahub.v1.BackfillSummaryTitle
-	280, // 76: alt.datahub.v1.FeedLinkAvailability.last_failure_at:type_name -> google.protobuf.Timestamp
+	287, // 76: alt.datahub.v1.FeedLinkAvailability.last_failure_at:type_name -> google.protobuf.Timestamp
 	152, // 77: alt.datahub.v1.FeedLinkWithHealth.feed_link:type_name -> alt.datahub.v1.FeedLink
 	153, // 78: alt.datahub.v1.FeedLinkWithHealth.availability:type_name -> alt.datahub.v1.FeedLinkAvailability
-	280, // 79: alt.datahub.v1.Feed.pub_date:type_name -> google.protobuf.Timestamp
-	280, // 80: alt.datahub.v1.Feed.created_at:type_name -> google.protobuf.Timestamp
-	280, // 81: alt.datahub.v1.Feed.updated_at:type_name -> google.protobuf.Timestamp
-	280, // 82: alt.datahub.v1.FeedRegistration.pub_date:type_name -> google.protobuf.Timestamp
-	280, // 83: alt.datahub.v1.FeedRegistration.created_at:type_name -> google.protobuf.Timestamp
-	280, // 84: alt.datahub.v1.FeedRegistration.updated_at:type_name -> google.protobuf.Timestamp
-	280, // 85: alt.datahub.v1.InoreaderSummary.published_at:type_name -> google.protobuf.Timestamp
-	280, // 86: alt.datahub.v1.InoreaderSummary.fetched_at:type_name -> google.protobuf.Timestamp
+	287, // 79: alt.datahub.v1.Feed.pub_date:type_name -> google.protobuf.Timestamp
+	287, // 80: alt.datahub.v1.Feed.created_at:type_name -> google.protobuf.Timestamp
+	287, // 81: alt.datahub.v1.Feed.updated_at:type_name -> google.protobuf.Timestamp
+	287, // 82: alt.datahub.v1.FeedRegistration.pub_date:type_name -> google.protobuf.Timestamp
+	287, // 83: alt.datahub.v1.FeedRegistration.created_at:type_name -> google.protobuf.Timestamp
+	287, // 84: alt.datahub.v1.FeedRegistration.updated_at:type_name -> google.protobuf.Timestamp
+	287, // 85: alt.datahub.v1.InoreaderSummary.published_at:type_name -> google.protobuf.Timestamp
+	287, // 86: alt.datahub.v1.InoreaderSummary.fetched_at:type_name -> google.protobuf.Timestamp
 	152, // 87: alt.datahub.v1.ListFeedLinksResponse.feed_links:type_name -> alt.datahub.v1.FeedLink
 	154, // 88: alt.datahub.v1.ListFeedLinksWithHealthResponse.feed_links:type_name -> alt.datahub.v1.FeedLinkWithHealth
 	155, // 89: alt.datahub.v1.ListFeedLinkDomainsResponse.domains:type_name -> alt.datahub.v1.FeedLinkDomain
@@ -16228,7 +16697,7 @@ var file_alt_datahub_v1_datahub_proto_depIdxs = []int32{
 	158, // 93: alt.datahub.v1.RegisterFeedsRequest.feeds:type_name -> alt.datahub.v1.FeedRegistration
 	159, // 94: alt.datahub.v1.RegisterFeedsResponse.results:type_name -> alt.datahub.v1.FeedRegistrationResult
 	2,   // 95: alt.datahub.v1.ListFeedsCursorRequest.scope:type_name -> alt.datahub.v1.FeedScope
-	280, // 96: alt.datahub.v1.ListFeedsCursorRequest.cursor:type_name -> google.protobuf.Timestamp
+	287, // 96: alt.datahub.v1.ListFeedsCursorRequest.cursor:type_name -> google.protobuf.Timestamp
 	157, // 97: alt.datahub.v1.ListFeedsCursorResponse.feeds:type_name -> alt.datahub.v1.Feed
 	157, // 98: alt.datahub.v1.ListFeedsPageResponse.feeds:type_name -> alt.datahub.v1.Feed
 	157, // 99: alt.datahub.v1.ListFeedsLimitResponse.feeds:type_name -> alt.datahub.v1.Feed
@@ -16239,269 +16708,281 @@ var file_alt_datahub_v1_datahub_proto_depIdxs = []int32{
 	157, // 104: alt.datahub.v1.SearchFeedsByTitleResponse.feeds:type_name -> alt.datahub.v1.Feed
 	157, // 105: alt.datahub.v1.GetRandomFeedResponse.feed:type_name -> alt.datahub.v1.Feed
 	161, // 106: alt.datahub.v1.GetFeedURLsByArticleIDsResponse.pairs:type_name -> alt.datahub.v1.FeedAndArticle
-	279, // 107: alt.datahub.v1.BatchGetFeedTitlesByIDsResponse.titles:type_name -> alt.datahub.v1.BatchGetFeedTitlesByIDsResponse.TitlesEntry
+	286, // 107: alt.datahub.v1.BatchGetFeedTitlesByIDsResponse.titles:type_name -> alt.datahub.v1.BatchGetFeedTitlesByIDsResponse.TitlesEntry
 	162, // 108: alt.datahub.v1.GetInoreaderSummariesByURLsResponse.summaries:type_name -> alt.datahub.v1.InoreaderSummary
-	280, // 109: alt.datahub.v1.FeedSubscription.subscribed_at:type_name -> google.protobuf.Timestamp
+	287, // 109: alt.datahub.v1.FeedSubscription.subscribed_at:type_name -> google.protobuf.Timestamp
 	211, // 110: alt.datahub.v1.ListSubscriptionsResponse.subscriptions:type_name -> alt.datahub.v1.FeedSubscription
-	280, // 111: alt.datahub.v1.FeedTag.created_at:type_name -> google.protobuf.Timestamp
-	280, // 112: alt.datahub.v1.FeedTag.updated_at:type_name -> google.protobuf.Timestamp
+	287, // 111: alt.datahub.v1.FeedTag.created_at:type_name -> google.protobuf.Timestamp
+	287, // 112: alt.datahub.v1.FeedTag.updated_at:type_name -> google.protobuf.Timestamp
 	232, // 113: alt.datahub.v1.GetArticleTagsResponse.tags:type_name -> alt.datahub.v1.FeedTag
-	280, // 114: alt.datahub.v1.GetFeedTagsRequest.cursor:type_name -> google.protobuf.Timestamp
+	287, // 114: alt.datahub.v1.GetFeedTagsRequest.cursor:type_name -> google.protobuf.Timestamp
 	232, // 115: alt.datahub.v1.GetFeedTagsResponse.tags:type_name -> alt.datahub.v1.FeedTag
 	237, // 116: alt.datahub.v1.GetTagCooccurrencesResponse.cooccurrences:type_name -> alt.datahub.v1.TagCooccurrence
 	240, // 117: alt.datahub.v1.SearchTagsByPrefixResponse.hits:type_name -> alt.datahub.v1.TagPrefixHit
-	280, // 118: alt.datahub.v1.GetTagArticleCountsRequest.since:type_name -> google.protobuf.Timestamp
+	287, // 118: alt.datahub.v1.GetTagArticleCountsRequest.since:type_name -> google.protobuf.Timestamp
 	243, // 119: alt.datahub.v1.GetTagArticleCountsResponse.counts:type_name -> alt.datahub.v1.TagArticleCount
-	280, // 120: alt.datahub.v1.SummaryVersion.generated_at:type_name -> google.protobuf.Timestamp
-	246, // 121: alt.datahub.v1.CreateSummaryVersionRequest.version:type_name -> alt.datahub.v1.SummaryVersion
-	246, // 122: alt.datahub.v1.MarkSummaryVersionSupersededResponse.previous_version:type_name -> alt.datahub.v1.SummaryVersion
-	246, // 123: alt.datahub.v1.GetSummaryVersionByIDResponse.version:type_name -> alt.datahub.v1.SummaryVersion
-	246, // 124: alt.datahub.v1.GetLatestSummaryVersionResponse.version:type_name -> alt.datahub.v1.SummaryVersion
-	280, // 125: alt.datahub.v1.TagSetVersion.generated_at:type_name -> google.protobuf.Timestamp
-	255, // 126: alt.datahub.v1.CreateTagSetVersionRequest.version:type_name -> alt.datahub.v1.TagSetVersion
-	255, // 127: alt.datahub.v1.MarkTagSetVersionSupersededResponse.previous_version:type_name -> alt.datahub.v1.TagSetVersion
-	255, // 128: alt.datahub.v1.GetTagSetVersionByIDResponse.version:type_name -> alt.datahub.v1.TagSetVersion
-	280, // 129: alt.datahub.v1.GetTodayUnreadArticlesCountRequest.since:type_name -> google.protobuf.Timestamp
-	280, // 130: alt.datahub.v1.TrendDataPoint.bucket:type_name -> google.protobuf.Timestamp
-	3,   // 131: alt.datahub.v1.GetTrendStatsRequest.window:type_name -> alt.datahub.v1.TrendWindow
-	272, // 132: alt.datahub.v1.GetTrendStatsResponse.points:type_name -> alt.datahub.v1.TrendDataPoint
-	4,   // 133: alt.datahub.v1.GetTrendStatsResponse.granularity:type_name -> alt.datahub.v1.TrendGranularity
-	124, // 134: alt.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry.value:type_name -> alt.datahub.v1.ArticleContent
-	7,   // 135: alt.datahub.v1.DataHubService.ListArticlesWithTags:input_type -> alt.datahub.v1.ListArticlesWithTagsRequest
-	9,   // 136: alt.datahub.v1.DataHubService.ListArticlesWithTagsForward:input_type -> alt.datahub.v1.ListArticlesWithTagsForwardRequest
-	11,  // 137: alt.datahub.v1.DataHubService.ListDeletedArticles:input_type -> alt.datahub.v1.ListDeletedArticlesRequest
-	13,  // 138: alt.datahub.v1.DataHubService.GetLatestArticleTimestamp:input_type -> alt.datahub.v1.GetLatestArticleTimestampRequest
-	15,  // 139: alt.datahub.v1.DataHubService.GetArticleByID:input_type -> alt.datahub.v1.GetArticleByIDRequest
-	17,  // 140: alt.datahub.v1.DataHubService.CheckArticleExists:input_type -> alt.datahub.v1.CheckArticleExistsRequest
-	19,  // 141: alt.datahub.v1.DataHubService.CreateArticle:input_type -> alt.datahub.v1.CreateArticleRequest
-	21,  // 142: alt.datahub.v1.DataHubService.SaveArticleSummary:input_type -> alt.datahub.v1.SaveArticleSummaryRequest
-	23,  // 143: alt.datahub.v1.DataHubService.GetArticleContent:input_type -> alt.datahub.v1.GetArticleContentRequest
-	25,  // 144: alt.datahub.v1.DataHubService.GetFeedID:input_type -> alt.datahub.v1.GetFeedIDRequest
-	27,  // 145: alt.datahub.v1.DataHubService.ListFeedURLs:input_type -> alt.datahub.v1.ListFeedURLsRequest
-	30,  // 146: alt.datahub.v1.DataHubService.UpsertArticleTags:input_type -> alt.datahub.v1.UpsertArticleTagsRequest
-	33,  // 147: alt.datahub.v1.DataHubService.BatchUpsertArticleTags:input_type -> alt.datahub.v1.BatchUpsertArticleTagsRequest
-	35,  // 148: alt.datahub.v1.DataHubService.ListUntaggedArticles:input_type -> alt.datahub.v1.ListUntaggedArticlesRequest
-	37,  // 149: alt.datahub.v1.DataHubService.BatchGetTagsByArticleIDs:input_type -> alt.datahub.v1.BatchGetTagsByArticleIDsRequest
-	41,  // 150: alt.datahub.v1.DataHubService.DeleteArticleSummary:input_type -> alt.datahub.v1.DeleteArticleSummaryRequest
-	43,  // 151: alt.datahub.v1.DataHubService.CheckArticleSummaryExists:input_type -> alt.datahub.v1.CheckArticleSummaryExistsRequest
-	46,  // 152: alt.datahub.v1.DataHubService.FindArticlesWithSummaries:input_type -> alt.datahub.v1.FindArticlesWithSummariesRequest
-	49,  // 153: alt.datahub.v1.DataHubService.ListUnsummarizedArticles:input_type -> alt.datahub.v1.ListUnsummarizedArticlesRequest
-	51,  // 154: alt.datahub.v1.DataHubService.HasUnsummarizedArticles:input_type -> alt.datahub.v1.HasUnsummarizedArticlesRequest
-	53,  // 155: alt.datahub.v1.DataHubService.GetEmptyFeedID:input_type -> alt.datahub.v1.GetEmptyFeedIDRequest
-	55,  // 156: alt.datahub.v1.DataHubService.FetchTagCloud:input_type -> alt.datahub.v1.FetchTagCloudRequest
-	58,  // 157: alt.datahub.v1.DataHubService.FetchArticlesByTag:input_type -> alt.datahub.v1.FetchArticlesByTagRequest
-	61,  // 158: alt.datahub.v1.DataHubService.ListRecapArticles:input_type -> alt.datahub.v1.ListRecapArticlesRequest
-	65,  // 159: alt.datahub.v1.DataHubService.GetSystemUser:input_type -> alt.datahub.v1.GetSystemUserRequest
-	68,  // 160: alt.datahub.v1.DataHubService.ListRecentArticles:input_type -> alt.datahub.v1.ListRecentArticlesRequest
-	71,  // 161: alt.datahub.v1.DataHubService.ClaimOutboxBatch:input_type -> alt.datahub.v1.ClaimOutboxBatchRequest
-	73,  // 162: alt.datahub.v1.DataHubService.MarkOutboxProcessed:input_type -> alt.datahub.v1.MarkOutboxProcessedRequest
-	75,  // 163: alt.datahub.v1.DataHubService.ReleaseOutboxEvent:input_type -> alt.datahub.v1.ReleaseOutboxEventRequest
-	77,  // 164: alt.datahub.v1.DataHubService.PruneOutboxEvents:input_type -> alt.datahub.v1.PruneOutboxEventsRequest
-	80,  // 165: alt.datahub.v1.DataHubService.GetArticleHead:input_type -> alt.datahub.v1.GetArticleHeadRequest
-	82,  // 166: alt.datahub.v1.DataHubService.BatchGetOgImageURLs:input_type -> alt.datahub.v1.BatchGetOgImageURLsRequest
-	85,  // 167: alt.datahub.v1.DataHubService.ListFeedsMissingOgImage:input_type -> alt.datahub.v1.ListFeedsMissingOgImageRequest
-	87,  // 168: alt.datahub.v1.DataHubService.ListUnwarmedOgImageURLs:input_type -> alt.datahub.v1.ListUnwarmedOgImageURLsRequest
-	89,  // 169: alt.datahub.v1.DataHubService.PurgeExpiredArticleHeads:input_type -> alt.datahub.v1.PurgeExpiredArticleHeadsRequest
-	92,  // 170: alt.datahub.v1.DataHubService.GetImageProxyCache:input_type -> alt.datahub.v1.GetImageProxyCacheRequest
-	94,  // 171: alt.datahub.v1.DataHubService.PutImageProxyCache:input_type -> alt.datahub.v1.PutImageProxyCacheRequest
-	96,  // 172: alt.datahub.v1.DataHubService.EvictExpiredImageProxyCache:input_type -> alt.datahub.v1.EvictExpiredImageProxyCacheRequest
-	98,  // 173: alt.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan:input_type -> alt.datahub.v1.PurgeImageProxyCacheOlderThanRequest
-	101, // 174: alt.datahub.v1.DataHubService.GetScrapingDomainByDomain:input_type -> alt.datahub.v1.GetScrapingDomainByDomainRequest
-	103, // 175: alt.datahub.v1.DataHubService.GetScrapingDomainByID:input_type -> alt.datahub.v1.GetScrapingDomainByIDRequest
-	105, // 176: alt.datahub.v1.DataHubService.SaveScrapingDomain:input_type -> alt.datahub.v1.SaveScrapingDomainRequest
-	107, // 177: alt.datahub.v1.DataHubService.ListScrapingDomains:input_type -> alt.datahub.v1.ListScrapingDomainsRequest
-	110, // 178: alt.datahub.v1.DataHubService.UpdateScrapingDomainPolicy:input_type -> alt.datahub.v1.UpdateScrapingDomainPolicyRequest
-	112, // 179: alt.datahub.v1.DataHubService.SaveDeclinedDomain:input_type -> alt.datahub.v1.SaveDeclinedDomainRequest
-	114, // 180: alt.datahub.v1.DataHubService.IsDomainDeclined:input_type -> alt.datahub.v1.IsDomainDeclinedRequest
-	116, // 181: alt.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID:input_type -> alt.datahub.v1.ListSubscribedUserIDsByFeedLinkIDRequest
-	118, // 182: alt.datahub.v1.DataHubService.CheckArticleExistsByURLForUser:input_type -> alt.datahub.v1.CheckArticleExistsByURLForUserRequest
-	120, // 183: alt.datahub.v1.DataHubService.ArchiveArticle:input_type -> alt.datahub.v1.ArchiveArticleRequest
-	122, // 184: alt.datahub.v1.DataHubService.SaveArticleHead:input_type -> alt.datahub.v1.SaveArticleHeadRequest
-	126, // 185: alt.datahub.v1.DataHubService.GetArticleByURL:input_type -> alt.datahub.v1.GetArticleByURLRequest
-	128, // 186: alt.datahub.v1.DataHubService.BatchGetArticlesByURLs:input_type -> alt.datahub.v1.BatchGetArticlesByURLsRequest
-	130, // 187: alt.datahub.v1.DataHubService.GetArticleContentByID:input_type -> alt.datahub.v1.GetArticleContentByIDRequest
-	132, // 188: alt.datahub.v1.DataHubService.ListArticlesCursor:input_type -> alt.datahub.v1.ListArticlesCursorRequest
-	134, // 189: alt.datahub.v1.DataHubService.ListArticleIDsCursor:input_type -> alt.datahub.v1.ListArticleIDsCursorRequest
-	136, // 190: alt.datahub.v1.DataHubService.BatchGetArticlesByIDs:input_type -> alt.datahub.v1.BatchGetArticlesByIDsRequest
-	138, // 191: alt.datahub.v1.DataHubService.GetLatestArticleByFeedID:input_type -> alt.datahub.v1.GetLatestArticleByFeedIDRequest
-	140, // 192: alt.datahub.v1.DataHubService.LookupArticleURL:input_type -> alt.datahub.v1.LookupArticleURLRequest
-	143, // 193: alt.datahub.v1.DataHubService.CountBackfillArticles:input_type -> alt.datahub.v1.CountBackfillArticlesRequest
-	145, // 194: alt.datahub.v1.DataHubService.ListBackfillArticles:input_type -> alt.datahub.v1.ListBackfillArticlesRequest
-	148, // 195: alt.datahub.v1.DataHubService.CountBackfillSummaryTitles:input_type -> alt.datahub.v1.CountBackfillSummaryTitlesRequest
-	150, // 196: alt.datahub.v1.DataHubService.ListBackfillSummaryTitles:input_type -> alt.datahub.v1.ListBackfillSummaryTitlesRequest
-	163, // 197: alt.datahub.v1.DataHubService.RegisterFeedLink:input_type -> alt.datahub.v1.RegisterFeedLinkRequest
-	165, // 198: alt.datahub.v1.DataHubService.BulkRegisterFeedLinks:input_type -> alt.datahub.v1.BulkRegisterFeedLinksRequest
-	167, // 199: alt.datahub.v1.DataHubService.ListFeedLinks:input_type -> alt.datahub.v1.ListFeedLinksRequest
-	169, // 200: alt.datahub.v1.DataHubService.ListFeedLinksWithHealth:input_type -> alt.datahub.v1.ListFeedLinksWithHealthRequest
-	171, // 201: alt.datahub.v1.DataHubService.DeleteFeedLink:input_type -> alt.datahub.v1.DeleteFeedLinkRequest
-	173, // 202: alt.datahub.v1.DataHubService.ResolveFeedLinkIDByURL:input_type -> alt.datahub.v1.ResolveFeedLinkIDByURLRequest
-	175, // 203: alt.datahub.v1.DataHubService.ListFeedLinkDomains:input_type -> alt.datahub.v1.ListFeedLinkDomainsRequest
-	177, // 204: alt.datahub.v1.DataHubService.ListRSSFeedURLs:input_type -> alt.datahub.v1.ListRSSFeedURLsRequest
-	179, // 205: alt.datahub.v1.DataHubService.ListFeedLinksForExport:input_type -> alt.datahub.v1.ListFeedLinksForExportRequest
-	181, // 206: alt.datahub.v1.DataHubService.RecordFeedLinkFailure:input_type -> alt.datahub.v1.RecordFeedLinkFailureRequest
-	183, // 207: alt.datahub.v1.DataHubService.ResetFeedLinkFailures:input_type -> alt.datahub.v1.ResetFeedLinkFailuresRequest
-	185, // 208: alt.datahub.v1.DataHubService.RegisterFeeds:input_type -> alt.datahub.v1.RegisterFeedsRequest
-	187, // 209: alt.datahub.v1.DataHubService.ListFeedsCursor:input_type -> alt.datahub.v1.ListFeedsCursorRequest
-	189, // 210: alt.datahub.v1.DataHubService.ListFeedsPage:input_type -> alt.datahub.v1.ListFeedsPageRequest
-	191, // 211: alt.datahub.v1.DataHubService.ListFeedsLimit:input_type -> alt.datahub.v1.ListFeedsLimitRequest
-	193, // 212: alt.datahub.v1.DataHubService.GetSingleFeed:input_type -> alt.datahub.v1.GetSingleFeedRequest
-	195, // 213: alt.datahub.v1.DataHubService.ListFeedsByFeedLinkID:input_type -> alt.datahub.v1.ListFeedsByFeedLinkIDRequest
-	197, // 214: alt.datahub.v1.DataHubService.GetFeedSummary:input_type -> alt.datahub.v1.GetFeedSummaryRequest
-	199, // 215: alt.datahub.v1.DataHubService.GetArticleSummaryByArticleID:input_type -> alt.datahub.v1.GetArticleSummaryByArticleIDRequest
-	201, // 216: alt.datahub.v1.DataHubService.SearchFeedsByTitle:input_type -> alt.datahub.v1.SearchFeedsByTitleRequest
-	203, // 217: alt.datahub.v1.DataHubService.GetRandomFeed:input_type -> alt.datahub.v1.GetRandomFeedRequest
-	205, // 218: alt.datahub.v1.DataHubService.GetFeedURLsByArticleIDs:input_type -> alt.datahub.v1.GetFeedURLsByArticleIDsRequest
-	207, // 219: alt.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs:input_type -> alt.datahub.v1.BatchGetFeedTitlesByIDsRequest
-	209, // 220: alt.datahub.v1.DataHubService.GetInoreaderSummariesByURLs:input_type -> alt.datahub.v1.GetInoreaderSummariesByURLsRequest
-	212, // 221: alt.datahub.v1.DataHubService.MarkFeedRead:input_type -> alt.datahub.v1.MarkFeedReadRequest
-	214, // 222: alt.datahub.v1.DataHubService.MarkArticleRead:input_type -> alt.datahub.v1.MarkArticleReadRequest
-	216, // 223: alt.datahub.v1.DataHubService.GetReadFeedIDs:input_type -> alt.datahub.v1.GetReadFeedIDsRequest
-	218, // 224: alt.datahub.v1.DataHubService.GetAllReadFeedIDs:input_type -> alt.datahub.v1.GetAllReadFeedIDsRequest
-	220, // 225: alt.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs:input_type -> alt.datahub.v1.GetUserSubscribedFeedLinkIDsRequest
-	222, // 226: alt.datahub.v1.DataHubService.ListSubscriptions:input_type -> alt.datahub.v1.ListSubscriptionsRequest
-	224, // 227: alt.datahub.v1.DataHubService.Subscribe:input_type -> alt.datahub.v1.SubscribeRequest
-	226, // 228: alt.datahub.v1.DataHubService.Unsubscribe:input_type -> alt.datahub.v1.UnsubscribeRequest
-	228, // 229: alt.datahub.v1.DataHubService.AddFavoriteFeed:input_type -> alt.datahub.v1.AddFavoriteFeedRequest
-	230, // 230: alt.datahub.v1.DataHubService.RemoveFavoriteFeed:input_type -> alt.datahub.v1.RemoveFavoriteFeedRequest
-	233, // 231: alt.datahub.v1.DataHubService.GetArticleTags:input_type -> alt.datahub.v1.GetArticleTagsRequest
-	235, // 232: alt.datahub.v1.DataHubService.GetFeedTags:input_type -> alt.datahub.v1.GetFeedTagsRequest
-	238, // 233: alt.datahub.v1.DataHubService.GetTagCooccurrences:input_type -> alt.datahub.v1.GetTagCooccurrencesRequest
-	241, // 234: alt.datahub.v1.DataHubService.SearchTagsByPrefix:input_type -> alt.datahub.v1.SearchTagsByPrefixRequest
-	244, // 235: alt.datahub.v1.DataHubService.GetTagArticleCounts:input_type -> alt.datahub.v1.GetTagArticleCountsRequest
-	247, // 236: alt.datahub.v1.DataHubService.CreateSummaryVersion:input_type -> alt.datahub.v1.CreateSummaryVersionRequest
-	249, // 237: alt.datahub.v1.DataHubService.MarkSummaryVersionSuperseded:input_type -> alt.datahub.v1.MarkSummaryVersionSupersededRequest
-	251, // 238: alt.datahub.v1.DataHubService.GetSummaryVersionByID:input_type -> alt.datahub.v1.GetSummaryVersionByIDRequest
-	253, // 239: alt.datahub.v1.DataHubService.GetLatestSummaryVersion:input_type -> alt.datahub.v1.GetLatestSummaryVersionRequest
-	256, // 240: alt.datahub.v1.DataHubService.CreateTagSetVersion:input_type -> alt.datahub.v1.CreateTagSetVersionRequest
-	258, // 241: alt.datahub.v1.DataHubService.MarkTagSetVersionSuperseded:input_type -> alt.datahub.v1.MarkTagSetVersionSupersededRequest
-	260, // 242: alt.datahub.v1.DataHubService.GetTagSetVersionByID:input_type -> alt.datahub.v1.GetTagSetVersionByIDRequest
-	262, // 243: alt.datahub.v1.DataHubService.GetFeedAmount:input_type -> alt.datahub.v1.GetFeedAmountRequest
-	264, // 244: alt.datahub.v1.DataHubService.GetTotalArticlesCount:input_type -> alt.datahub.v1.GetTotalArticlesCountRequest
-	266, // 245: alt.datahub.v1.DataHubService.GetSummarizedArticlesCount:input_type -> alt.datahub.v1.GetSummarizedArticlesCountRequest
-	268, // 246: alt.datahub.v1.DataHubService.GetUnsummarizedArticlesCount:input_type -> alt.datahub.v1.GetUnsummarizedArticlesCountRequest
-	270, // 247: alt.datahub.v1.DataHubService.GetTodayUnreadArticlesCount:input_type -> alt.datahub.v1.GetTodayUnreadArticlesCountRequest
-	273, // 248: alt.datahub.v1.DataHubService.GetTrendStats:input_type -> alt.datahub.v1.GetTrendStatsRequest
-	275, // 249: alt.datahub.v1.DataHubService.ListUserFeedIDs:input_type -> alt.datahub.v1.ListUserFeedIDsRequest
-	8,   // 250: alt.datahub.v1.DataHubService.ListArticlesWithTags:output_type -> alt.datahub.v1.ListArticlesWithTagsResponse
-	10,  // 251: alt.datahub.v1.DataHubService.ListArticlesWithTagsForward:output_type -> alt.datahub.v1.ListArticlesWithTagsForwardResponse
-	12,  // 252: alt.datahub.v1.DataHubService.ListDeletedArticles:output_type -> alt.datahub.v1.ListDeletedArticlesResponse
-	14,  // 253: alt.datahub.v1.DataHubService.GetLatestArticleTimestamp:output_type -> alt.datahub.v1.GetLatestArticleTimestampResponse
-	16,  // 254: alt.datahub.v1.DataHubService.GetArticleByID:output_type -> alt.datahub.v1.GetArticleByIDResponse
-	18,  // 255: alt.datahub.v1.DataHubService.CheckArticleExists:output_type -> alt.datahub.v1.CheckArticleExistsResponse
-	20,  // 256: alt.datahub.v1.DataHubService.CreateArticle:output_type -> alt.datahub.v1.CreateArticleResponse
-	22,  // 257: alt.datahub.v1.DataHubService.SaveArticleSummary:output_type -> alt.datahub.v1.SaveArticleSummaryResponse
-	24,  // 258: alt.datahub.v1.DataHubService.GetArticleContent:output_type -> alt.datahub.v1.GetArticleContentResponse
-	26,  // 259: alt.datahub.v1.DataHubService.GetFeedID:output_type -> alt.datahub.v1.GetFeedIDResponse
-	28,  // 260: alt.datahub.v1.DataHubService.ListFeedURLs:output_type -> alt.datahub.v1.ListFeedURLsResponse
-	32,  // 261: alt.datahub.v1.DataHubService.UpsertArticleTags:output_type -> alt.datahub.v1.UpsertArticleTagsResponse
-	34,  // 262: alt.datahub.v1.DataHubService.BatchUpsertArticleTags:output_type -> alt.datahub.v1.BatchUpsertArticleTagsResponse
-	36,  // 263: alt.datahub.v1.DataHubService.ListUntaggedArticles:output_type -> alt.datahub.v1.ListUntaggedArticlesResponse
-	40,  // 264: alt.datahub.v1.DataHubService.BatchGetTagsByArticleIDs:output_type -> alt.datahub.v1.BatchGetTagsByArticleIDsResponse
-	42,  // 265: alt.datahub.v1.DataHubService.DeleteArticleSummary:output_type -> alt.datahub.v1.DeleteArticleSummaryResponse
-	44,  // 266: alt.datahub.v1.DataHubService.CheckArticleSummaryExists:output_type -> alt.datahub.v1.CheckArticleSummaryExistsResponse
-	47,  // 267: alt.datahub.v1.DataHubService.FindArticlesWithSummaries:output_type -> alt.datahub.v1.FindArticlesWithSummariesResponse
-	50,  // 268: alt.datahub.v1.DataHubService.ListUnsummarizedArticles:output_type -> alt.datahub.v1.ListUnsummarizedArticlesResponse
-	52,  // 269: alt.datahub.v1.DataHubService.HasUnsummarizedArticles:output_type -> alt.datahub.v1.HasUnsummarizedArticlesResponse
-	54,  // 270: alt.datahub.v1.DataHubService.GetEmptyFeedID:output_type -> alt.datahub.v1.GetEmptyFeedIDResponse
-	56,  // 271: alt.datahub.v1.DataHubService.FetchTagCloud:output_type -> alt.datahub.v1.FetchTagCloudResponse
-	59,  // 272: alt.datahub.v1.DataHubService.FetchArticlesByTag:output_type -> alt.datahub.v1.FetchArticlesByTagResponse
-	64,  // 273: alt.datahub.v1.DataHubService.ListRecapArticles:output_type -> alt.datahub.v1.ListRecapArticlesResponse
-	66,  // 274: alt.datahub.v1.DataHubService.GetSystemUser:output_type -> alt.datahub.v1.GetSystemUserResponse
-	69,  // 275: alt.datahub.v1.DataHubService.ListRecentArticles:output_type -> alt.datahub.v1.ListRecentArticlesResponse
-	72,  // 276: alt.datahub.v1.DataHubService.ClaimOutboxBatch:output_type -> alt.datahub.v1.ClaimOutboxBatchResponse
-	74,  // 277: alt.datahub.v1.DataHubService.MarkOutboxProcessed:output_type -> alt.datahub.v1.MarkOutboxProcessedResponse
-	76,  // 278: alt.datahub.v1.DataHubService.ReleaseOutboxEvent:output_type -> alt.datahub.v1.ReleaseOutboxEventResponse
-	78,  // 279: alt.datahub.v1.DataHubService.PruneOutboxEvents:output_type -> alt.datahub.v1.PruneOutboxEventsResponse
-	81,  // 280: alt.datahub.v1.DataHubService.GetArticleHead:output_type -> alt.datahub.v1.GetArticleHeadResponse
-	83,  // 281: alt.datahub.v1.DataHubService.BatchGetOgImageURLs:output_type -> alt.datahub.v1.BatchGetOgImageURLsResponse
-	86,  // 282: alt.datahub.v1.DataHubService.ListFeedsMissingOgImage:output_type -> alt.datahub.v1.ListFeedsMissingOgImageResponse
-	88,  // 283: alt.datahub.v1.DataHubService.ListUnwarmedOgImageURLs:output_type -> alt.datahub.v1.ListUnwarmedOgImageURLsResponse
-	90,  // 284: alt.datahub.v1.DataHubService.PurgeExpiredArticleHeads:output_type -> alt.datahub.v1.PurgeExpiredArticleHeadsResponse
-	93,  // 285: alt.datahub.v1.DataHubService.GetImageProxyCache:output_type -> alt.datahub.v1.GetImageProxyCacheResponse
-	95,  // 286: alt.datahub.v1.DataHubService.PutImageProxyCache:output_type -> alt.datahub.v1.PutImageProxyCacheResponse
-	97,  // 287: alt.datahub.v1.DataHubService.EvictExpiredImageProxyCache:output_type -> alt.datahub.v1.EvictExpiredImageProxyCacheResponse
-	99,  // 288: alt.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan:output_type -> alt.datahub.v1.PurgeImageProxyCacheOlderThanResponse
-	102, // 289: alt.datahub.v1.DataHubService.GetScrapingDomainByDomain:output_type -> alt.datahub.v1.GetScrapingDomainByDomainResponse
-	104, // 290: alt.datahub.v1.DataHubService.GetScrapingDomainByID:output_type -> alt.datahub.v1.GetScrapingDomainByIDResponse
-	106, // 291: alt.datahub.v1.DataHubService.SaveScrapingDomain:output_type -> alt.datahub.v1.SaveScrapingDomainResponse
-	108, // 292: alt.datahub.v1.DataHubService.ListScrapingDomains:output_type -> alt.datahub.v1.ListScrapingDomainsResponse
-	111, // 293: alt.datahub.v1.DataHubService.UpdateScrapingDomainPolicy:output_type -> alt.datahub.v1.UpdateScrapingDomainPolicyResponse
-	113, // 294: alt.datahub.v1.DataHubService.SaveDeclinedDomain:output_type -> alt.datahub.v1.SaveDeclinedDomainResponse
-	115, // 295: alt.datahub.v1.DataHubService.IsDomainDeclined:output_type -> alt.datahub.v1.IsDomainDeclinedResponse
-	117, // 296: alt.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID:output_type -> alt.datahub.v1.ListSubscribedUserIDsByFeedLinkIDResponse
-	119, // 297: alt.datahub.v1.DataHubService.CheckArticleExistsByURLForUser:output_type -> alt.datahub.v1.CheckArticleExistsByURLForUserResponse
-	121, // 298: alt.datahub.v1.DataHubService.ArchiveArticle:output_type -> alt.datahub.v1.ArchiveArticleResponse
-	123, // 299: alt.datahub.v1.DataHubService.SaveArticleHead:output_type -> alt.datahub.v1.SaveArticleHeadResponse
-	127, // 300: alt.datahub.v1.DataHubService.GetArticleByURL:output_type -> alt.datahub.v1.GetArticleByURLResponse
-	129, // 301: alt.datahub.v1.DataHubService.BatchGetArticlesByURLs:output_type -> alt.datahub.v1.BatchGetArticlesByURLsResponse
-	131, // 302: alt.datahub.v1.DataHubService.GetArticleContentByID:output_type -> alt.datahub.v1.GetArticleContentByIDResponse
-	133, // 303: alt.datahub.v1.DataHubService.ListArticlesCursor:output_type -> alt.datahub.v1.ListArticlesCursorResponse
-	135, // 304: alt.datahub.v1.DataHubService.ListArticleIDsCursor:output_type -> alt.datahub.v1.ListArticleIDsCursorResponse
-	137, // 305: alt.datahub.v1.DataHubService.BatchGetArticlesByIDs:output_type -> alt.datahub.v1.BatchGetArticlesByIDsResponse
-	139, // 306: alt.datahub.v1.DataHubService.GetLatestArticleByFeedID:output_type -> alt.datahub.v1.GetLatestArticleByFeedIDResponse
-	141, // 307: alt.datahub.v1.DataHubService.LookupArticleURL:output_type -> alt.datahub.v1.LookupArticleURLResponse
-	144, // 308: alt.datahub.v1.DataHubService.CountBackfillArticles:output_type -> alt.datahub.v1.CountBackfillArticlesResponse
-	146, // 309: alt.datahub.v1.DataHubService.ListBackfillArticles:output_type -> alt.datahub.v1.ListBackfillArticlesResponse
-	149, // 310: alt.datahub.v1.DataHubService.CountBackfillSummaryTitles:output_type -> alt.datahub.v1.CountBackfillSummaryTitlesResponse
-	151, // 311: alt.datahub.v1.DataHubService.ListBackfillSummaryTitles:output_type -> alt.datahub.v1.ListBackfillSummaryTitlesResponse
-	164, // 312: alt.datahub.v1.DataHubService.RegisterFeedLink:output_type -> alt.datahub.v1.RegisterFeedLinkResponse
-	166, // 313: alt.datahub.v1.DataHubService.BulkRegisterFeedLinks:output_type -> alt.datahub.v1.BulkRegisterFeedLinksResponse
-	168, // 314: alt.datahub.v1.DataHubService.ListFeedLinks:output_type -> alt.datahub.v1.ListFeedLinksResponse
-	170, // 315: alt.datahub.v1.DataHubService.ListFeedLinksWithHealth:output_type -> alt.datahub.v1.ListFeedLinksWithHealthResponse
-	172, // 316: alt.datahub.v1.DataHubService.DeleteFeedLink:output_type -> alt.datahub.v1.DeleteFeedLinkResponse
-	174, // 317: alt.datahub.v1.DataHubService.ResolveFeedLinkIDByURL:output_type -> alt.datahub.v1.ResolveFeedLinkIDByURLResponse
-	176, // 318: alt.datahub.v1.DataHubService.ListFeedLinkDomains:output_type -> alt.datahub.v1.ListFeedLinkDomainsResponse
-	178, // 319: alt.datahub.v1.DataHubService.ListRSSFeedURLs:output_type -> alt.datahub.v1.ListRSSFeedURLsResponse
-	180, // 320: alt.datahub.v1.DataHubService.ListFeedLinksForExport:output_type -> alt.datahub.v1.ListFeedLinksForExportResponse
-	182, // 321: alt.datahub.v1.DataHubService.RecordFeedLinkFailure:output_type -> alt.datahub.v1.RecordFeedLinkFailureResponse
-	184, // 322: alt.datahub.v1.DataHubService.ResetFeedLinkFailures:output_type -> alt.datahub.v1.ResetFeedLinkFailuresResponse
-	186, // 323: alt.datahub.v1.DataHubService.RegisterFeeds:output_type -> alt.datahub.v1.RegisterFeedsResponse
-	188, // 324: alt.datahub.v1.DataHubService.ListFeedsCursor:output_type -> alt.datahub.v1.ListFeedsCursorResponse
-	190, // 325: alt.datahub.v1.DataHubService.ListFeedsPage:output_type -> alt.datahub.v1.ListFeedsPageResponse
-	192, // 326: alt.datahub.v1.DataHubService.ListFeedsLimit:output_type -> alt.datahub.v1.ListFeedsLimitResponse
-	194, // 327: alt.datahub.v1.DataHubService.GetSingleFeed:output_type -> alt.datahub.v1.GetSingleFeedResponse
-	196, // 328: alt.datahub.v1.DataHubService.ListFeedsByFeedLinkID:output_type -> alt.datahub.v1.ListFeedsByFeedLinkIDResponse
-	198, // 329: alt.datahub.v1.DataHubService.GetFeedSummary:output_type -> alt.datahub.v1.GetFeedSummaryResponse
-	200, // 330: alt.datahub.v1.DataHubService.GetArticleSummaryByArticleID:output_type -> alt.datahub.v1.GetArticleSummaryByArticleIDResponse
-	202, // 331: alt.datahub.v1.DataHubService.SearchFeedsByTitle:output_type -> alt.datahub.v1.SearchFeedsByTitleResponse
-	204, // 332: alt.datahub.v1.DataHubService.GetRandomFeed:output_type -> alt.datahub.v1.GetRandomFeedResponse
-	206, // 333: alt.datahub.v1.DataHubService.GetFeedURLsByArticleIDs:output_type -> alt.datahub.v1.GetFeedURLsByArticleIDsResponse
-	208, // 334: alt.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs:output_type -> alt.datahub.v1.BatchGetFeedTitlesByIDsResponse
-	210, // 335: alt.datahub.v1.DataHubService.GetInoreaderSummariesByURLs:output_type -> alt.datahub.v1.GetInoreaderSummariesByURLsResponse
-	213, // 336: alt.datahub.v1.DataHubService.MarkFeedRead:output_type -> alt.datahub.v1.MarkFeedReadResponse
-	215, // 337: alt.datahub.v1.DataHubService.MarkArticleRead:output_type -> alt.datahub.v1.MarkArticleReadResponse
-	217, // 338: alt.datahub.v1.DataHubService.GetReadFeedIDs:output_type -> alt.datahub.v1.GetReadFeedIDsResponse
-	219, // 339: alt.datahub.v1.DataHubService.GetAllReadFeedIDs:output_type -> alt.datahub.v1.GetAllReadFeedIDsResponse
-	221, // 340: alt.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs:output_type -> alt.datahub.v1.GetUserSubscribedFeedLinkIDsResponse
-	223, // 341: alt.datahub.v1.DataHubService.ListSubscriptions:output_type -> alt.datahub.v1.ListSubscriptionsResponse
-	225, // 342: alt.datahub.v1.DataHubService.Subscribe:output_type -> alt.datahub.v1.SubscribeResponse
-	227, // 343: alt.datahub.v1.DataHubService.Unsubscribe:output_type -> alt.datahub.v1.UnsubscribeResponse
-	229, // 344: alt.datahub.v1.DataHubService.AddFavoriteFeed:output_type -> alt.datahub.v1.AddFavoriteFeedResponse
-	231, // 345: alt.datahub.v1.DataHubService.RemoveFavoriteFeed:output_type -> alt.datahub.v1.RemoveFavoriteFeedResponse
-	234, // 346: alt.datahub.v1.DataHubService.GetArticleTags:output_type -> alt.datahub.v1.GetArticleTagsResponse
-	236, // 347: alt.datahub.v1.DataHubService.GetFeedTags:output_type -> alt.datahub.v1.GetFeedTagsResponse
-	239, // 348: alt.datahub.v1.DataHubService.GetTagCooccurrences:output_type -> alt.datahub.v1.GetTagCooccurrencesResponse
-	242, // 349: alt.datahub.v1.DataHubService.SearchTagsByPrefix:output_type -> alt.datahub.v1.SearchTagsByPrefixResponse
-	245, // 350: alt.datahub.v1.DataHubService.GetTagArticleCounts:output_type -> alt.datahub.v1.GetTagArticleCountsResponse
-	248, // 351: alt.datahub.v1.DataHubService.CreateSummaryVersion:output_type -> alt.datahub.v1.CreateSummaryVersionResponse
-	250, // 352: alt.datahub.v1.DataHubService.MarkSummaryVersionSuperseded:output_type -> alt.datahub.v1.MarkSummaryVersionSupersededResponse
-	252, // 353: alt.datahub.v1.DataHubService.GetSummaryVersionByID:output_type -> alt.datahub.v1.GetSummaryVersionByIDResponse
-	254, // 354: alt.datahub.v1.DataHubService.GetLatestSummaryVersion:output_type -> alt.datahub.v1.GetLatestSummaryVersionResponse
-	257, // 355: alt.datahub.v1.DataHubService.CreateTagSetVersion:output_type -> alt.datahub.v1.CreateTagSetVersionResponse
-	259, // 356: alt.datahub.v1.DataHubService.MarkTagSetVersionSuperseded:output_type -> alt.datahub.v1.MarkTagSetVersionSupersededResponse
-	261, // 357: alt.datahub.v1.DataHubService.GetTagSetVersionByID:output_type -> alt.datahub.v1.GetTagSetVersionByIDResponse
-	263, // 358: alt.datahub.v1.DataHubService.GetFeedAmount:output_type -> alt.datahub.v1.GetFeedAmountResponse
-	265, // 359: alt.datahub.v1.DataHubService.GetTotalArticlesCount:output_type -> alt.datahub.v1.GetTotalArticlesCountResponse
-	267, // 360: alt.datahub.v1.DataHubService.GetSummarizedArticlesCount:output_type -> alt.datahub.v1.GetSummarizedArticlesCountResponse
-	269, // 361: alt.datahub.v1.DataHubService.GetUnsummarizedArticlesCount:output_type -> alt.datahub.v1.GetUnsummarizedArticlesCountResponse
-	271, // 362: alt.datahub.v1.DataHubService.GetTodayUnreadArticlesCount:output_type -> alt.datahub.v1.GetTodayUnreadArticlesCountResponse
-	274, // 363: alt.datahub.v1.DataHubService.GetTrendStats:output_type -> alt.datahub.v1.GetTrendStatsResponse
-	276, // 364: alt.datahub.v1.DataHubService.ListUserFeedIDs:output_type -> alt.datahub.v1.ListUserFeedIDsResponse
-	250, // [250:365] is the sub-list for method output_type
-	135, // [135:250] is the sub-list for method input_type
-	135, // [135:135] is the sub-list for extension type_name
-	135, // [135:135] is the sub-list for extension extendee
-	0,   // [0:135] is the sub-list for field type_name
+	287, // 120: alt.datahub.v1.TagTrailArticle.published_at:type_name -> google.protobuf.Timestamp
+	287, // 121: alt.datahub.v1.ListArticlesByTagIDRequest.cursor:type_name -> google.protobuf.Timestamp
+	246, // 122: alt.datahub.v1.ListArticlesByTagIDResponse.articles:type_name -> alt.datahub.v1.TagTrailArticle
+	287, // 123: alt.datahub.v1.ListArticlesByTagNameRequest.cursor:type_name -> google.protobuf.Timestamp
+	246, // 124: alt.datahub.v1.ListArticlesByTagNameResponse.articles:type_name -> alt.datahub.v1.TagTrailArticle
+	287, // 125: alt.datahub.v1.GetArticleTitleAndLinkResponse.published_at:type_name -> google.protobuf.Timestamp
+	287, // 126: alt.datahub.v1.SummaryVersion.generated_at:type_name -> google.protobuf.Timestamp
+	253, // 127: alt.datahub.v1.CreateSummaryVersionRequest.version:type_name -> alt.datahub.v1.SummaryVersion
+	253, // 128: alt.datahub.v1.MarkSummaryVersionSupersededResponse.previous_version:type_name -> alt.datahub.v1.SummaryVersion
+	253, // 129: alt.datahub.v1.GetSummaryVersionByIDResponse.version:type_name -> alt.datahub.v1.SummaryVersion
+	253, // 130: alt.datahub.v1.GetLatestSummaryVersionResponse.version:type_name -> alt.datahub.v1.SummaryVersion
+	287, // 131: alt.datahub.v1.TagSetVersion.generated_at:type_name -> google.protobuf.Timestamp
+	262, // 132: alt.datahub.v1.CreateTagSetVersionRequest.version:type_name -> alt.datahub.v1.TagSetVersion
+	262, // 133: alt.datahub.v1.MarkTagSetVersionSupersededResponse.previous_version:type_name -> alt.datahub.v1.TagSetVersion
+	262, // 134: alt.datahub.v1.GetTagSetVersionByIDResponse.version:type_name -> alt.datahub.v1.TagSetVersion
+	287, // 135: alt.datahub.v1.GetTodayUnreadArticlesCountRequest.since:type_name -> google.protobuf.Timestamp
+	287, // 136: alt.datahub.v1.TrendDataPoint.bucket:type_name -> google.protobuf.Timestamp
+	3,   // 137: alt.datahub.v1.GetTrendStatsRequest.window:type_name -> alt.datahub.v1.TrendWindow
+	279, // 138: alt.datahub.v1.GetTrendStatsResponse.points:type_name -> alt.datahub.v1.TrendDataPoint
+	4,   // 139: alt.datahub.v1.GetTrendStatsResponse.granularity:type_name -> alt.datahub.v1.TrendGranularity
+	124, // 140: alt.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry.value:type_name -> alt.datahub.v1.ArticleContent
+	7,   // 141: alt.datahub.v1.DataHubService.ListArticlesWithTags:input_type -> alt.datahub.v1.ListArticlesWithTagsRequest
+	9,   // 142: alt.datahub.v1.DataHubService.ListArticlesWithTagsForward:input_type -> alt.datahub.v1.ListArticlesWithTagsForwardRequest
+	11,  // 143: alt.datahub.v1.DataHubService.ListDeletedArticles:input_type -> alt.datahub.v1.ListDeletedArticlesRequest
+	13,  // 144: alt.datahub.v1.DataHubService.GetLatestArticleTimestamp:input_type -> alt.datahub.v1.GetLatestArticleTimestampRequest
+	15,  // 145: alt.datahub.v1.DataHubService.GetArticleByID:input_type -> alt.datahub.v1.GetArticleByIDRequest
+	17,  // 146: alt.datahub.v1.DataHubService.CheckArticleExists:input_type -> alt.datahub.v1.CheckArticleExistsRequest
+	19,  // 147: alt.datahub.v1.DataHubService.CreateArticle:input_type -> alt.datahub.v1.CreateArticleRequest
+	21,  // 148: alt.datahub.v1.DataHubService.SaveArticleSummary:input_type -> alt.datahub.v1.SaveArticleSummaryRequest
+	23,  // 149: alt.datahub.v1.DataHubService.GetArticleContent:input_type -> alt.datahub.v1.GetArticleContentRequest
+	25,  // 150: alt.datahub.v1.DataHubService.GetFeedID:input_type -> alt.datahub.v1.GetFeedIDRequest
+	27,  // 151: alt.datahub.v1.DataHubService.ListFeedURLs:input_type -> alt.datahub.v1.ListFeedURLsRequest
+	30,  // 152: alt.datahub.v1.DataHubService.UpsertArticleTags:input_type -> alt.datahub.v1.UpsertArticleTagsRequest
+	33,  // 153: alt.datahub.v1.DataHubService.BatchUpsertArticleTags:input_type -> alt.datahub.v1.BatchUpsertArticleTagsRequest
+	35,  // 154: alt.datahub.v1.DataHubService.ListUntaggedArticles:input_type -> alt.datahub.v1.ListUntaggedArticlesRequest
+	37,  // 155: alt.datahub.v1.DataHubService.BatchGetTagsByArticleIDs:input_type -> alt.datahub.v1.BatchGetTagsByArticleIDsRequest
+	41,  // 156: alt.datahub.v1.DataHubService.DeleteArticleSummary:input_type -> alt.datahub.v1.DeleteArticleSummaryRequest
+	43,  // 157: alt.datahub.v1.DataHubService.CheckArticleSummaryExists:input_type -> alt.datahub.v1.CheckArticleSummaryExistsRequest
+	46,  // 158: alt.datahub.v1.DataHubService.FindArticlesWithSummaries:input_type -> alt.datahub.v1.FindArticlesWithSummariesRequest
+	49,  // 159: alt.datahub.v1.DataHubService.ListUnsummarizedArticles:input_type -> alt.datahub.v1.ListUnsummarizedArticlesRequest
+	51,  // 160: alt.datahub.v1.DataHubService.HasUnsummarizedArticles:input_type -> alt.datahub.v1.HasUnsummarizedArticlesRequest
+	53,  // 161: alt.datahub.v1.DataHubService.GetEmptyFeedID:input_type -> alt.datahub.v1.GetEmptyFeedIDRequest
+	55,  // 162: alt.datahub.v1.DataHubService.FetchTagCloud:input_type -> alt.datahub.v1.FetchTagCloudRequest
+	58,  // 163: alt.datahub.v1.DataHubService.FetchArticlesByTag:input_type -> alt.datahub.v1.FetchArticlesByTagRequest
+	61,  // 164: alt.datahub.v1.DataHubService.ListRecapArticles:input_type -> alt.datahub.v1.ListRecapArticlesRequest
+	65,  // 165: alt.datahub.v1.DataHubService.GetSystemUser:input_type -> alt.datahub.v1.GetSystemUserRequest
+	68,  // 166: alt.datahub.v1.DataHubService.ListRecentArticles:input_type -> alt.datahub.v1.ListRecentArticlesRequest
+	71,  // 167: alt.datahub.v1.DataHubService.ClaimOutboxBatch:input_type -> alt.datahub.v1.ClaimOutboxBatchRequest
+	73,  // 168: alt.datahub.v1.DataHubService.MarkOutboxProcessed:input_type -> alt.datahub.v1.MarkOutboxProcessedRequest
+	75,  // 169: alt.datahub.v1.DataHubService.ReleaseOutboxEvent:input_type -> alt.datahub.v1.ReleaseOutboxEventRequest
+	77,  // 170: alt.datahub.v1.DataHubService.PruneOutboxEvents:input_type -> alt.datahub.v1.PruneOutboxEventsRequest
+	80,  // 171: alt.datahub.v1.DataHubService.GetArticleHead:input_type -> alt.datahub.v1.GetArticleHeadRequest
+	82,  // 172: alt.datahub.v1.DataHubService.BatchGetOgImageURLs:input_type -> alt.datahub.v1.BatchGetOgImageURLsRequest
+	85,  // 173: alt.datahub.v1.DataHubService.ListFeedsMissingOgImage:input_type -> alt.datahub.v1.ListFeedsMissingOgImageRequest
+	87,  // 174: alt.datahub.v1.DataHubService.ListUnwarmedOgImageURLs:input_type -> alt.datahub.v1.ListUnwarmedOgImageURLsRequest
+	89,  // 175: alt.datahub.v1.DataHubService.PurgeExpiredArticleHeads:input_type -> alt.datahub.v1.PurgeExpiredArticleHeadsRequest
+	92,  // 176: alt.datahub.v1.DataHubService.GetImageProxyCache:input_type -> alt.datahub.v1.GetImageProxyCacheRequest
+	94,  // 177: alt.datahub.v1.DataHubService.PutImageProxyCache:input_type -> alt.datahub.v1.PutImageProxyCacheRequest
+	96,  // 178: alt.datahub.v1.DataHubService.EvictExpiredImageProxyCache:input_type -> alt.datahub.v1.EvictExpiredImageProxyCacheRequest
+	98,  // 179: alt.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan:input_type -> alt.datahub.v1.PurgeImageProxyCacheOlderThanRequest
+	101, // 180: alt.datahub.v1.DataHubService.GetScrapingDomainByDomain:input_type -> alt.datahub.v1.GetScrapingDomainByDomainRequest
+	103, // 181: alt.datahub.v1.DataHubService.GetScrapingDomainByID:input_type -> alt.datahub.v1.GetScrapingDomainByIDRequest
+	105, // 182: alt.datahub.v1.DataHubService.SaveScrapingDomain:input_type -> alt.datahub.v1.SaveScrapingDomainRequest
+	107, // 183: alt.datahub.v1.DataHubService.ListScrapingDomains:input_type -> alt.datahub.v1.ListScrapingDomainsRequest
+	110, // 184: alt.datahub.v1.DataHubService.UpdateScrapingDomainPolicy:input_type -> alt.datahub.v1.UpdateScrapingDomainPolicyRequest
+	112, // 185: alt.datahub.v1.DataHubService.SaveDeclinedDomain:input_type -> alt.datahub.v1.SaveDeclinedDomainRequest
+	114, // 186: alt.datahub.v1.DataHubService.IsDomainDeclined:input_type -> alt.datahub.v1.IsDomainDeclinedRequest
+	116, // 187: alt.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID:input_type -> alt.datahub.v1.ListSubscribedUserIDsByFeedLinkIDRequest
+	118, // 188: alt.datahub.v1.DataHubService.CheckArticleExistsByURLForUser:input_type -> alt.datahub.v1.CheckArticleExistsByURLForUserRequest
+	120, // 189: alt.datahub.v1.DataHubService.ArchiveArticle:input_type -> alt.datahub.v1.ArchiveArticleRequest
+	122, // 190: alt.datahub.v1.DataHubService.SaveArticleHead:input_type -> alt.datahub.v1.SaveArticleHeadRequest
+	126, // 191: alt.datahub.v1.DataHubService.GetArticleByURL:input_type -> alt.datahub.v1.GetArticleByURLRequest
+	128, // 192: alt.datahub.v1.DataHubService.BatchGetArticlesByURLs:input_type -> alt.datahub.v1.BatchGetArticlesByURLsRequest
+	130, // 193: alt.datahub.v1.DataHubService.GetArticleContentByID:input_type -> alt.datahub.v1.GetArticleContentByIDRequest
+	132, // 194: alt.datahub.v1.DataHubService.ListArticlesCursor:input_type -> alt.datahub.v1.ListArticlesCursorRequest
+	134, // 195: alt.datahub.v1.DataHubService.ListArticleIDsCursor:input_type -> alt.datahub.v1.ListArticleIDsCursorRequest
+	136, // 196: alt.datahub.v1.DataHubService.BatchGetArticlesByIDs:input_type -> alt.datahub.v1.BatchGetArticlesByIDsRequest
+	138, // 197: alt.datahub.v1.DataHubService.GetLatestArticleByFeedID:input_type -> alt.datahub.v1.GetLatestArticleByFeedIDRequest
+	140, // 198: alt.datahub.v1.DataHubService.LookupArticleURL:input_type -> alt.datahub.v1.LookupArticleURLRequest
+	143, // 199: alt.datahub.v1.DataHubService.CountBackfillArticles:input_type -> alt.datahub.v1.CountBackfillArticlesRequest
+	145, // 200: alt.datahub.v1.DataHubService.ListBackfillArticles:input_type -> alt.datahub.v1.ListBackfillArticlesRequest
+	148, // 201: alt.datahub.v1.DataHubService.CountBackfillSummaryTitles:input_type -> alt.datahub.v1.CountBackfillSummaryTitlesRequest
+	150, // 202: alt.datahub.v1.DataHubService.ListBackfillSummaryTitles:input_type -> alt.datahub.v1.ListBackfillSummaryTitlesRequest
+	163, // 203: alt.datahub.v1.DataHubService.RegisterFeedLink:input_type -> alt.datahub.v1.RegisterFeedLinkRequest
+	165, // 204: alt.datahub.v1.DataHubService.BulkRegisterFeedLinks:input_type -> alt.datahub.v1.BulkRegisterFeedLinksRequest
+	167, // 205: alt.datahub.v1.DataHubService.ListFeedLinks:input_type -> alt.datahub.v1.ListFeedLinksRequest
+	169, // 206: alt.datahub.v1.DataHubService.ListFeedLinksWithHealth:input_type -> alt.datahub.v1.ListFeedLinksWithHealthRequest
+	171, // 207: alt.datahub.v1.DataHubService.DeleteFeedLink:input_type -> alt.datahub.v1.DeleteFeedLinkRequest
+	173, // 208: alt.datahub.v1.DataHubService.ResolveFeedLinkIDByURL:input_type -> alt.datahub.v1.ResolveFeedLinkIDByURLRequest
+	175, // 209: alt.datahub.v1.DataHubService.ListFeedLinkDomains:input_type -> alt.datahub.v1.ListFeedLinkDomainsRequest
+	177, // 210: alt.datahub.v1.DataHubService.ListRSSFeedURLs:input_type -> alt.datahub.v1.ListRSSFeedURLsRequest
+	179, // 211: alt.datahub.v1.DataHubService.ListFeedLinksForExport:input_type -> alt.datahub.v1.ListFeedLinksForExportRequest
+	181, // 212: alt.datahub.v1.DataHubService.RecordFeedLinkFailure:input_type -> alt.datahub.v1.RecordFeedLinkFailureRequest
+	183, // 213: alt.datahub.v1.DataHubService.ResetFeedLinkFailures:input_type -> alt.datahub.v1.ResetFeedLinkFailuresRequest
+	185, // 214: alt.datahub.v1.DataHubService.RegisterFeeds:input_type -> alt.datahub.v1.RegisterFeedsRequest
+	187, // 215: alt.datahub.v1.DataHubService.ListFeedsCursor:input_type -> alt.datahub.v1.ListFeedsCursorRequest
+	189, // 216: alt.datahub.v1.DataHubService.ListFeedsPage:input_type -> alt.datahub.v1.ListFeedsPageRequest
+	191, // 217: alt.datahub.v1.DataHubService.ListFeedsLimit:input_type -> alt.datahub.v1.ListFeedsLimitRequest
+	193, // 218: alt.datahub.v1.DataHubService.GetSingleFeed:input_type -> alt.datahub.v1.GetSingleFeedRequest
+	195, // 219: alt.datahub.v1.DataHubService.ListFeedsByFeedLinkID:input_type -> alt.datahub.v1.ListFeedsByFeedLinkIDRequest
+	197, // 220: alt.datahub.v1.DataHubService.GetFeedSummary:input_type -> alt.datahub.v1.GetFeedSummaryRequest
+	199, // 221: alt.datahub.v1.DataHubService.GetArticleSummaryByArticleID:input_type -> alt.datahub.v1.GetArticleSummaryByArticleIDRequest
+	201, // 222: alt.datahub.v1.DataHubService.SearchFeedsByTitle:input_type -> alt.datahub.v1.SearchFeedsByTitleRequest
+	203, // 223: alt.datahub.v1.DataHubService.GetRandomFeed:input_type -> alt.datahub.v1.GetRandomFeedRequest
+	205, // 224: alt.datahub.v1.DataHubService.GetFeedURLsByArticleIDs:input_type -> alt.datahub.v1.GetFeedURLsByArticleIDsRequest
+	207, // 225: alt.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs:input_type -> alt.datahub.v1.BatchGetFeedTitlesByIDsRequest
+	209, // 226: alt.datahub.v1.DataHubService.GetInoreaderSummariesByURLs:input_type -> alt.datahub.v1.GetInoreaderSummariesByURLsRequest
+	212, // 227: alt.datahub.v1.DataHubService.MarkFeedRead:input_type -> alt.datahub.v1.MarkFeedReadRequest
+	214, // 228: alt.datahub.v1.DataHubService.MarkArticleRead:input_type -> alt.datahub.v1.MarkArticleReadRequest
+	216, // 229: alt.datahub.v1.DataHubService.GetReadFeedIDs:input_type -> alt.datahub.v1.GetReadFeedIDsRequest
+	218, // 230: alt.datahub.v1.DataHubService.GetAllReadFeedIDs:input_type -> alt.datahub.v1.GetAllReadFeedIDsRequest
+	220, // 231: alt.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs:input_type -> alt.datahub.v1.GetUserSubscribedFeedLinkIDsRequest
+	222, // 232: alt.datahub.v1.DataHubService.ListSubscriptions:input_type -> alt.datahub.v1.ListSubscriptionsRequest
+	224, // 233: alt.datahub.v1.DataHubService.Subscribe:input_type -> alt.datahub.v1.SubscribeRequest
+	226, // 234: alt.datahub.v1.DataHubService.Unsubscribe:input_type -> alt.datahub.v1.UnsubscribeRequest
+	228, // 235: alt.datahub.v1.DataHubService.AddFavoriteFeed:input_type -> alt.datahub.v1.AddFavoriteFeedRequest
+	230, // 236: alt.datahub.v1.DataHubService.RemoveFavoriteFeed:input_type -> alt.datahub.v1.RemoveFavoriteFeedRequest
+	233, // 237: alt.datahub.v1.DataHubService.GetArticleTags:input_type -> alt.datahub.v1.GetArticleTagsRequest
+	235, // 238: alt.datahub.v1.DataHubService.GetFeedTags:input_type -> alt.datahub.v1.GetFeedTagsRequest
+	238, // 239: alt.datahub.v1.DataHubService.GetTagCooccurrences:input_type -> alt.datahub.v1.GetTagCooccurrencesRequest
+	241, // 240: alt.datahub.v1.DataHubService.SearchTagsByPrefix:input_type -> alt.datahub.v1.SearchTagsByPrefixRequest
+	244, // 241: alt.datahub.v1.DataHubService.GetTagArticleCounts:input_type -> alt.datahub.v1.GetTagArticleCountsRequest
+	247, // 242: alt.datahub.v1.DataHubService.ListArticlesByTagID:input_type -> alt.datahub.v1.ListArticlesByTagIDRequest
+	249, // 243: alt.datahub.v1.DataHubService.ListArticlesByTagName:input_type -> alt.datahub.v1.ListArticlesByTagNameRequest
+	251, // 244: alt.datahub.v1.DataHubService.GetArticleTitleAndLink:input_type -> alt.datahub.v1.GetArticleTitleAndLinkRequest
+	254, // 245: alt.datahub.v1.DataHubService.CreateSummaryVersion:input_type -> alt.datahub.v1.CreateSummaryVersionRequest
+	256, // 246: alt.datahub.v1.DataHubService.MarkSummaryVersionSuperseded:input_type -> alt.datahub.v1.MarkSummaryVersionSupersededRequest
+	258, // 247: alt.datahub.v1.DataHubService.GetSummaryVersionByID:input_type -> alt.datahub.v1.GetSummaryVersionByIDRequest
+	260, // 248: alt.datahub.v1.DataHubService.GetLatestSummaryVersion:input_type -> alt.datahub.v1.GetLatestSummaryVersionRequest
+	263, // 249: alt.datahub.v1.DataHubService.CreateTagSetVersion:input_type -> alt.datahub.v1.CreateTagSetVersionRequest
+	265, // 250: alt.datahub.v1.DataHubService.MarkTagSetVersionSuperseded:input_type -> alt.datahub.v1.MarkTagSetVersionSupersededRequest
+	267, // 251: alt.datahub.v1.DataHubService.GetTagSetVersionByID:input_type -> alt.datahub.v1.GetTagSetVersionByIDRequest
+	269, // 252: alt.datahub.v1.DataHubService.GetFeedAmount:input_type -> alt.datahub.v1.GetFeedAmountRequest
+	271, // 253: alt.datahub.v1.DataHubService.GetTotalArticlesCount:input_type -> alt.datahub.v1.GetTotalArticlesCountRequest
+	273, // 254: alt.datahub.v1.DataHubService.GetSummarizedArticlesCount:input_type -> alt.datahub.v1.GetSummarizedArticlesCountRequest
+	275, // 255: alt.datahub.v1.DataHubService.GetUnsummarizedArticlesCount:input_type -> alt.datahub.v1.GetUnsummarizedArticlesCountRequest
+	277, // 256: alt.datahub.v1.DataHubService.GetTodayUnreadArticlesCount:input_type -> alt.datahub.v1.GetTodayUnreadArticlesCountRequest
+	280, // 257: alt.datahub.v1.DataHubService.GetTrendStats:input_type -> alt.datahub.v1.GetTrendStatsRequest
+	282, // 258: alt.datahub.v1.DataHubService.ListUserFeedIDs:input_type -> alt.datahub.v1.ListUserFeedIDsRequest
+	8,   // 259: alt.datahub.v1.DataHubService.ListArticlesWithTags:output_type -> alt.datahub.v1.ListArticlesWithTagsResponse
+	10,  // 260: alt.datahub.v1.DataHubService.ListArticlesWithTagsForward:output_type -> alt.datahub.v1.ListArticlesWithTagsForwardResponse
+	12,  // 261: alt.datahub.v1.DataHubService.ListDeletedArticles:output_type -> alt.datahub.v1.ListDeletedArticlesResponse
+	14,  // 262: alt.datahub.v1.DataHubService.GetLatestArticleTimestamp:output_type -> alt.datahub.v1.GetLatestArticleTimestampResponse
+	16,  // 263: alt.datahub.v1.DataHubService.GetArticleByID:output_type -> alt.datahub.v1.GetArticleByIDResponse
+	18,  // 264: alt.datahub.v1.DataHubService.CheckArticleExists:output_type -> alt.datahub.v1.CheckArticleExistsResponse
+	20,  // 265: alt.datahub.v1.DataHubService.CreateArticle:output_type -> alt.datahub.v1.CreateArticleResponse
+	22,  // 266: alt.datahub.v1.DataHubService.SaveArticleSummary:output_type -> alt.datahub.v1.SaveArticleSummaryResponse
+	24,  // 267: alt.datahub.v1.DataHubService.GetArticleContent:output_type -> alt.datahub.v1.GetArticleContentResponse
+	26,  // 268: alt.datahub.v1.DataHubService.GetFeedID:output_type -> alt.datahub.v1.GetFeedIDResponse
+	28,  // 269: alt.datahub.v1.DataHubService.ListFeedURLs:output_type -> alt.datahub.v1.ListFeedURLsResponse
+	32,  // 270: alt.datahub.v1.DataHubService.UpsertArticleTags:output_type -> alt.datahub.v1.UpsertArticleTagsResponse
+	34,  // 271: alt.datahub.v1.DataHubService.BatchUpsertArticleTags:output_type -> alt.datahub.v1.BatchUpsertArticleTagsResponse
+	36,  // 272: alt.datahub.v1.DataHubService.ListUntaggedArticles:output_type -> alt.datahub.v1.ListUntaggedArticlesResponse
+	40,  // 273: alt.datahub.v1.DataHubService.BatchGetTagsByArticleIDs:output_type -> alt.datahub.v1.BatchGetTagsByArticleIDsResponse
+	42,  // 274: alt.datahub.v1.DataHubService.DeleteArticleSummary:output_type -> alt.datahub.v1.DeleteArticleSummaryResponse
+	44,  // 275: alt.datahub.v1.DataHubService.CheckArticleSummaryExists:output_type -> alt.datahub.v1.CheckArticleSummaryExistsResponse
+	47,  // 276: alt.datahub.v1.DataHubService.FindArticlesWithSummaries:output_type -> alt.datahub.v1.FindArticlesWithSummariesResponse
+	50,  // 277: alt.datahub.v1.DataHubService.ListUnsummarizedArticles:output_type -> alt.datahub.v1.ListUnsummarizedArticlesResponse
+	52,  // 278: alt.datahub.v1.DataHubService.HasUnsummarizedArticles:output_type -> alt.datahub.v1.HasUnsummarizedArticlesResponse
+	54,  // 279: alt.datahub.v1.DataHubService.GetEmptyFeedID:output_type -> alt.datahub.v1.GetEmptyFeedIDResponse
+	56,  // 280: alt.datahub.v1.DataHubService.FetchTagCloud:output_type -> alt.datahub.v1.FetchTagCloudResponse
+	59,  // 281: alt.datahub.v1.DataHubService.FetchArticlesByTag:output_type -> alt.datahub.v1.FetchArticlesByTagResponse
+	64,  // 282: alt.datahub.v1.DataHubService.ListRecapArticles:output_type -> alt.datahub.v1.ListRecapArticlesResponse
+	66,  // 283: alt.datahub.v1.DataHubService.GetSystemUser:output_type -> alt.datahub.v1.GetSystemUserResponse
+	69,  // 284: alt.datahub.v1.DataHubService.ListRecentArticles:output_type -> alt.datahub.v1.ListRecentArticlesResponse
+	72,  // 285: alt.datahub.v1.DataHubService.ClaimOutboxBatch:output_type -> alt.datahub.v1.ClaimOutboxBatchResponse
+	74,  // 286: alt.datahub.v1.DataHubService.MarkOutboxProcessed:output_type -> alt.datahub.v1.MarkOutboxProcessedResponse
+	76,  // 287: alt.datahub.v1.DataHubService.ReleaseOutboxEvent:output_type -> alt.datahub.v1.ReleaseOutboxEventResponse
+	78,  // 288: alt.datahub.v1.DataHubService.PruneOutboxEvents:output_type -> alt.datahub.v1.PruneOutboxEventsResponse
+	81,  // 289: alt.datahub.v1.DataHubService.GetArticleHead:output_type -> alt.datahub.v1.GetArticleHeadResponse
+	83,  // 290: alt.datahub.v1.DataHubService.BatchGetOgImageURLs:output_type -> alt.datahub.v1.BatchGetOgImageURLsResponse
+	86,  // 291: alt.datahub.v1.DataHubService.ListFeedsMissingOgImage:output_type -> alt.datahub.v1.ListFeedsMissingOgImageResponse
+	88,  // 292: alt.datahub.v1.DataHubService.ListUnwarmedOgImageURLs:output_type -> alt.datahub.v1.ListUnwarmedOgImageURLsResponse
+	90,  // 293: alt.datahub.v1.DataHubService.PurgeExpiredArticleHeads:output_type -> alt.datahub.v1.PurgeExpiredArticleHeadsResponse
+	93,  // 294: alt.datahub.v1.DataHubService.GetImageProxyCache:output_type -> alt.datahub.v1.GetImageProxyCacheResponse
+	95,  // 295: alt.datahub.v1.DataHubService.PutImageProxyCache:output_type -> alt.datahub.v1.PutImageProxyCacheResponse
+	97,  // 296: alt.datahub.v1.DataHubService.EvictExpiredImageProxyCache:output_type -> alt.datahub.v1.EvictExpiredImageProxyCacheResponse
+	99,  // 297: alt.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan:output_type -> alt.datahub.v1.PurgeImageProxyCacheOlderThanResponse
+	102, // 298: alt.datahub.v1.DataHubService.GetScrapingDomainByDomain:output_type -> alt.datahub.v1.GetScrapingDomainByDomainResponse
+	104, // 299: alt.datahub.v1.DataHubService.GetScrapingDomainByID:output_type -> alt.datahub.v1.GetScrapingDomainByIDResponse
+	106, // 300: alt.datahub.v1.DataHubService.SaveScrapingDomain:output_type -> alt.datahub.v1.SaveScrapingDomainResponse
+	108, // 301: alt.datahub.v1.DataHubService.ListScrapingDomains:output_type -> alt.datahub.v1.ListScrapingDomainsResponse
+	111, // 302: alt.datahub.v1.DataHubService.UpdateScrapingDomainPolicy:output_type -> alt.datahub.v1.UpdateScrapingDomainPolicyResponse
+	113, // 303: alt.datahub.v1.DataHubService.SaveDeclinedDomain:output_type -> alt.datahub.v1.SaveDeclinedDomainResponse
+	115, // 304: alt.datahub.v1.DataHubService.IsDomainDeclined:output_type -> alt.datahub.v1.IsDomainDeclinedResponse
+	117, // 305: alt.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID:output_type -> alt.datahub.v1.ListSubscribedUserIDsByFeedLinkIDResponse
+	119, // 306: alt.datahub.v1.DataHubService.CheckArticleExistsByURLForUser:output_type -> alt.datahub.v1.CheckArticleExistsByURLForUserResponse
+	121, // 307: alt.datahub.v1.DataHubService.ArchiveArticle:output_type -> alt.datahub.v1.ArchiveArticleResponse
+	123, // 308: alt.datahub.v1.DataHubService.SaveArticleHead:output_type -> alt.datahub.v1.SaveArticleHeadResponse
+	127, // 309: alt.datahub.v1.DataHubService.GetArticleByURL:output_type -> alt.datahub.v1.GetArticleByURLResponse
+	129, // 310: alt.datahub.v1.DataHubService.BatchGetArticlesByURLs:output_type -> alt.datahub.v1.BatchGetArticlesByURLsResponse
+	131, // 311: alt.datahub.v1.DataHubService.GetArticleContentByID:output_type -> alt.datahub.v1.GetArticleContentByIDResponse
+	133, // 312: alt.datahub.v1.DataHubService.ListArticlesCursor:output_type -> alt.datahub.v1.ListArticlesCursorResponse
+	135, // 313: alt.datahub.v1.DataHubService.ListArticleIDsCursor:output_type -> alt.datahub.v1.ListArticleIDsCursorResponse
+	137, // 314: alt.datahub.v1.DataHubService.BatchGetArticlesByIDs:output_type -> alt.datahub.v1.BatchGetArticlesByIDsResponse
+	139, // 315: alt.datahub.v1.DataHubService.GetLatestArticleByFeedID:output_type -> alt.datahub.v1.GetLatestArticleByFeedIDResponse
+	141, // 316: alt.datahub.v1.DataHubService.LookupArticleURL:output_type -> alt.datahub.v1.LookupArticleURLResponse
+	144, // 317: alt.datahub.v1.DataHubService.CountBackfillArticles:output_type -> alt.datahub.v1.CountBackfillArticlesResponse
+	146, // 318: alt.datahub.v1.DataHubService.ListBackfillArticles:output_type -> alt.datahub.v1.ListBackfillArticlesResponse
+	149, // 319: alt.datahub.v1.DataHubService.CountBackfillSummaryTitles:output_type -> alt.datahub.v1.CountBackfillSummaryTitlesResponse
+	151, // 320: alt.datahub.v1.DataHubService.ListBackfillSummaryTitles:output_type -> alt.datahub.v1.ListBackfillSummaryTitlesResponse
+	164, // 321: alt.datahub.v1.DataHubService.RegisterFeedLink:output_type -> alt.datahub.v1.RegisterFeedLinkResponse
+	166, // 322: alt.datahub.v1.DataHubService.BulkRegisterFeedLinks:output_type -> alt.datahub.v1.BulkRegisterFeedLinksResponse
+	168, // 323: alt.datahub.v1.DataHubService.ListFeedLinks:output_type -> alt.datahub.v1.ListFeedLinksResponse
+	170, // 324: alt.datahub.v1.DataHubService.ListFeedLinksWithHealth:output_type -> alt.datahub.v1.ListFeedLinksWithHealthResponse
+	172, // 325: alt.datahub.v1.DataHubService.DeleteFeedLink:output_type -> alt.datahub.v1.DeleteFeedLinkResponse
+	174, // 326: alt.datahub.v1.DataHubService.ResolveFeedLinkIDByURL:output_type -> alt.datahub.v1.ResolveFeedLinkIDByURLResponse
+	176, // 327: alt.datahub.v1.DataHubService.ListFeedLinkDomains:output_type -> alt.datahub.v1.ListFeedLinkDomainsResponse
+	178, // 328: alt.datahub.v1.DataHubService.ListRSSFeedURLs:output_type -> alt.datahub.v1.ListRSSFeedURLsResponse
+	180, // 329: alt.datahub.v1.DataHubService.ListFeedLinksForExport:output_type -> alt.datahub.v1.ListFeedLinksForExportResponse
+	182, // 330: alt.datahub.v1.DataHubService.RecordFeedLinkFailure:output_type -> alt.datahub.v1.RecordFeedLinkFailureResponse
+	184, // 331: alt.datahub.v1.DataHubService.ResetFeedLinkFailures:output_type -> alt.datahub.v1.ResetFeedLinkFailuresResponse
+	186, // 332: alt.datahub.v1.DataHubService.RegisterFeeds:output_type -> alt.datahub.v1.RegisterFeedsResponse
+	188, // 333: alt.datahub.v1.DataHubService.ListFeedsCursor:output_type -> alt.datahub.v1.ListFeedsCursorResponse
+	190, // 334: alt.datahub.v1.DataHubService.ListFeedsPage:output_type -> alt.datahub.v1.ListFeedsPageResponse
+	192, // 335: alt.datahub.v1.DataHubService.ListFeedsLimit:output_type -> alt.datahub.v1.ListFeedsLimitResponse
+	194, // 336: alt.datahub.v1.DataHubService.GetSingleFeed:output_type -> alt.datahub.v1.GetSingleFeedResponse
+	196, // 337: alt.datahub.v1.DataHubService.ListFeedsByFeedLinkID:output_type -> alt.datahub.v1.ListFeedsByFeedLinkIDResponse
+	198, // 338: alt.datahub.v1.DataHubService.GetFeedSummary:output_type -> alt.datahub.v1.GetFeedSummaryResponse
+	200, // 339: alt.datahub.v1.DataHubService.GetArticleSummaryByArticleID:output_type -> alt.datahub.v1.GetArticleSummaryByArticleIDResponse
+	202, // 340: alt.datahub.v1.DataHubService.SearchFeedsByTitle:output_type -> alt.datahub.v1.SearchFeedsByTitleResponse
+	204, // 341: alt.datahub.v1.DataHubService.GetRandomFeed:output_type -> alt.datahub.v1.GetRandomFeedResponse
+	206, // 342: alt.datahub.v1.DataHubService.GetFeedURLsByArticleIDs:output_type -> alt.datahub.v1.GetFeedURLsByArticleIDsResponse
+	208, // 343: alt.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs:output_type -> alt.datahub.v1.BatchGetFeedTitlesByIDsResponse
+	210, // 344: alt.datahub.v1.DataHubService.GetInoreaderSummariesByURLs:output_type -> alt.datahub.v1.GetInoreaderSummariesByURLsResponse
+	213, // 345: alt.datahub.v1.DataHubService.MarkFeedRead:output_type -> alt.datahub.v1.MarkFeedReadResponse
+	215, // 346: alt.datahub.v1.DataHubService.MarkArticleRead:output_type -> alt.datahub.v1.MarkArticleReadResponse
+	217, // 347: alt.datahub.v1.DataHubService.GetReadFeedIDs:output_type -> alt.datahub.v1.GetReadFeedIDsResponse
+	219, // 348: alt.datahub.v1.DataHubService.GetAllReadFeedIDs:output_type -> alt.datahub.v1.GetAllReadFeedIDsResponse
+	221, // 349: alt.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs:output_type -> alt.datahub.v1.GetUserSubscribedFeedLinkIDsResponse
+	223, // 350: alt.datahub.v1.DataHubService.ListSubscriptions:output_type -> alt.datahub.v1.ListSubscriptionsResponse
+	225, // 351: alt.datahub.v1.DataHubService.Subscribe:output_type -> alt.datahub.v1.SubscribeResponse
+	227, // 352: alt.datahub.v1.DataHubService.Unsubscribe:output_type -> alt.datahub.v1.UnsubscribeResponse
+	229, // 353: alt.datahub.v1.DataHubService.AddFavoriteFeed:output_type -> alt.datahub.v1.AddFavoriteFeedResponse
+	231, // 354: alt.datahub.v1.DataHubService.RemoveFavoriteFeed:output_type -> alt.datahub.v1.RemoveFavoriteFeedResponse
+	234, // 355: alt.datahub.v1.DataHubService.GetArticleTags:output_type -> alt.datahub.v1.GetArticleTagsResponse
+	236, // 356: alt.datahub.v1.DataHubService.GetFeedTags:output_type -> alt.datahub.v1.GetFeedTagsResponse
+	239, // 357: alt.datahub.v1.DataHubService.GetTagCooccurrences:output_type -> alt.datahub.v1.GetTagCooccurrencesResponse
+	242, // 358: alt.datahub.v1.DataHubService.SearchTagsByPrefix:output_type -> alt.datahub.v1.SearchTagsByPrefixResponse
+	245, // 359: alt.datahub.v1.DataHubService.GetTagArticleCounts:output_type -> alt.datahub.v1.GetTagArticleCountsResponse
+	248, // 360: alt.datahub.v1.DataHubService.ListArticlesByTagID:output_type -> alt.datahub.v1.ListArticlesByTagIDResponse
+	250, // 361: alt.datahub.v1.DataHubService.ListArticlesByTagName:output_type -> alt.datahub.v1.ListArticlesByTagNameResponse
+	252, // 362: alt.datahub.v1.DataHubService.GetArticleTitleAndLink:output_type -> alt.datahub.v1.GetArticleTitleAndLinkResponse
+	255, // 363: alt.datahub.v1.DataHubService.CreateSummaryVersion:output_type -> alt.datahub.v1.CreateSummaryVersionResponse
+	257, // 364: alt.datahub.v1.DataHubService.MarkSummaryVersionSuperseded:output_type -> alt.datahub.v1.MarkSummaryVersionSupersededResponse
+	259, // 365: alt.datahub.v1.DataHubService.GetSummaryVersionByID:output_type -> alt.datahub.v1.GetSummaryVersionByIDResponse
+	261, // 366: alt.datahub.v1.DataHubService.GetLatestSummaryVersion:output_type -> alt.datahub.v1.GetLatestSummaryVersionResponse
+	264, // 367: alt.datahub.v1.DataHubService.CreateTagSetVersion:output_type -> alt.datahub.v1.CreateTagSetVersionResponse
+	266, // 368: alt.datahub.v1.DataHubService.MarkTagSetVersionSuperseded:output_type -> alt.datahub.v1.MarkTagSetVersionSupersededResponse
+	268, // 369: alt.datahub.v1.DataHubService.GetTagSetVersionByID:output_type -> alt.datahub.v1.GetTagSetVersionByIDResponse
+	270, // 370: alt.datahub.v1.DataHubService.GetFeedAmount:output_type -> alt.datahub.v1.GetFeedAmountResponse
+	272, // 371: alt.datahub.v1.DataHubService.GetTotalArticlesCount:output_type -> alt.datahub.v1.GetTotalArticlesCountResponse
+	274, // 372: alt.datahub.v1.DataHubService.GetSummarizedArticlesCount:output_type -> alt.datahub.v1.GetSummarizedArticlesCountResponse
+	276, // 373: alt.datahub.v1.DataHubService.GetUnsummarizedArticlesCount:output_type -> alt.datahub.v1.GetUnsummarizedArticlesCountResponse
+	278, // 374: alt.datahub.v1.DataHubService.GetTodayUnreadArticlesCount:output_type -> alt.datahub.v1.GetTodayUnreadArticlesCountResponse
+	281, // 375: alt.datahub.v1.DataHubService.GetTrendStats:output_type -> alt.datahub.v1.GetTrendStatsResponse
+	283, // 376: alt.datahub.v1.DataHubService.ListUserFeedIDs:output_type -> alt.datahub.v1.ListUserFeedIDsResponse
+	259, // [259:377] is the sub-list for method output_type
+	141, // [141:259] is the sub-list for method input_type
+	141, // [141:141] is the sub-list for extension type_name
+	141, // [141:141] is the sub-list for extension extendee
+	0,   // [0:141] is the sub-list for field type_name
 }
 
 func init() { file_alt_datahub_v1_datahub_proto_init() }
@@ -16540,17 +17021,17 @@ func file_alt_datahub_v1_datahub_proto_init() {
 	file_alt_datahub_v1_datahub_proto_msgTypes[194].OneofWrappers = []any{}
 	file_alt_datahub_v1_datahub_proto_msgTypes[206].OneofWrappers = []any{}
 	file_alt_datahub_v1_datahub_proto_msgTypes[230].OneofWrappers = []any{}
-	file_alt_datahub_v1_datahub_proto_msgTypes[241].OneofWrappers = []any{}
-	file_alt_datahub_v1_datahub_proto_msgTypes[245].OneofWrappers = []any{}
-	file_alt_datahub_v1_datahub_proto_msgTypes[250].OneofWrappers = []any{}
-	file_alt_datahub_v1_datahub_proto_msgTypes[254].OneofWrappers = []any{}
+	file_alt_datahub_v1_datahub_proto_msgTypes[248].OneofWrappers = []any{}
+	file_alt_datahub_v1_datahub_proto_msgTypes[252].OneofWrappers = []any{}
+	file_alt_datahub_v1_datahub_proto_msgTypes[257].OneofWrappers = []any{}
+	file_alt_datahub_v1_datahub_proto_msgTypes[261].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_alt_datahub_v1_datahub_proto_rawDesc), len(file_alt_datahub_v1_datahub_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   275,
+			NumMessages:   282,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

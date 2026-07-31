@@ -4,8 +4,6 @@ import (
 	"alt/config"
 	"alt/orchestrator/driver/preprocessor_connect"
 	"log/slog"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // NewBackendComponents is cmd/backend's composition root: the browser-facing
@@ -20,17 +18,24 @@ import (
 //     CreateTagSetVersionUsecase — data-plane reads served by cmd/datahub
 //   - ConfigPort / RateLimiterPort / ErrorHandlerPort /
 //     AppendKnowledgeEventUsecase — no consumer anywhere (plan R11)
+//   - AltDBRepository, and any database pool at all — ADR-000954 Wave 3
+//     batch 6 moved the last two reads (the Tag Trail's paging and the recall
+//     rail's article fallback) onto alt-data-hub, so this root takes no pool
+//     and there is nothing here to give one to
 //
 // Those are absent fields, not nil ones. A handler that reaches for them fails
 // to compile, which is the strongest available form of "no silent fallback for
-// unwired dependencies" (CLAUDE.md rule 8).
+// unwired dependencies" (CLAUDE.md rule 8). For the database the guarantee is
+// stronger still and is checked rather than asserted: cmd/backend's transitive
+// dependency graph contains neither alt/shared/driver/alt_db nor pgx — see
+// di/import_boundary_test.go.
 //
-// InternalArticleGateway is the one internal-looking component the backend
-// keeps: RecallRailUsecase reads articles through it, so removing it with the
-// rest of the internal surface would have broken the recall rail.
-func NewBackendComponents(pool *pgxpool.Pool, cfg *config.Config) *ApplicationComponents {
+// InternalArticleGateway is gone with the pool. It was the one internal-looking
+// component the backend kept, for RecallRailUsecase's article fallback, and
+// that read is now a procedure (catalog §2.C).
+func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 	// 1. Infrastructure (shared deps)
-	infra := newInfraModule(pool, cfg)
+	infra := newInfraModule(cfg)
 
 	// 2. Subscription module (needed by feed module for auto-subscribe)
 	sub := newSubscriptionModule(infra)
@@ -73,9 +78,6 @@ func NewBackendComponents(pool *pgxpool.Pool, cfg *config.Config) *ApplicationCo
 		Subscription: sub,
 
 		// ===== Backward-compat fields populated from modules =====
-
-		// Repository
-		AltDBRepository: infra.AltDBRepository,
 
 		// Ports (RAG)
 		RagIntegration:   rag.RagAdapter,
@@ -126,7 +128,6 @@ func NewBackendComponents(pool *pgxpool.Pool, cfg *config.Config) *ApplicationCo
 		FetchArticleGateway:        article.FetchArticleGateway,
 		FetchTagCloudUsecase:       article.FetchTagCloudUsecase,
 		GetArticleSourceURLUsecase: article.GetArticleSourceURLUsecase,
-		InternalArticleGateway:     article.InternalArticleGateway,
 
 		SummarizeArticleUsecase:      article.SummarizeArticleUsecase,
 		FetchArticleSummariesUsecase: article.FetchArticleSummariesUsecase,

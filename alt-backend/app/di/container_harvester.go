@@ -24,8 +24,6 @@ import (
 	"alt/utils"
 	"alt/utils/image_proxy"
 	"alt/utils/rate_limiter"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // HarvesterComponents is cmd/harvester's component set: exactly what the
@@ -97,12 +95,12 @@ type HarvesterComponents struct {
 //     load-bearing, because RegisterHarvesterJobs then refuses to register the
 //     two image jobs rather than ticking them into a warning every hour.
 //
-// The pool parameter is no longer read. ADR-000954 Wave 3 batch 5 removed the
-// harvester's last direct query, so every table these jobs touch now goes
-// through alt-data-hub; the parameter stays only because internal/bootstrap
-// still opens a pool for all three binaries, and taking that apart is the Wave
-// 3 exit condition (drop DB_* from the harvester's env, then this signature).
-func NewHarvesterComponents(_ *pgxpool.Pool, cfg *config.Config) *HarvesterComponents {
+// There is no pool parameter. ADR-000954 Wave 3 batch 5 removed the
+// harvester's last direct query and batch 6 removed the plumbing that carried
+// a pool to it anyway: internal/bootstrap no longer opens one, the DB_* block
+// is gone from this container's compose environment, and cmd/harvester's
+// dependency graph contains neither alt_db nor pgx (di/import_boundary_test.go).
+func NewHarvesterComponents(cfg *config.Config) *HarvesterComponents {
 	// alt-data-hub client. Built before anything else because five of the
 	// eight jobs cannot run without it, and a failure here must stop the
 	// process rather than surface later as a handshake error on a scheduler
@@ -145,7 +143,7 @@ func NewHarvesterComponents(_ *pgxpool.Pool, cfg *config.Config) *HarvesterCompo
 	// §2.J), through the same gateway the backend uses. The octree layout and
 	// the in-process cache stay here (D4).
 	fetchTagCloudUC := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(
-		datahub_gateway.NewTagGateway(dataHubClient), tagCloudCacheTTL)
+		datahub_gateway.NewTagGateway(dataHubClient), TagCloudCacheTTL)
 
 	// outbox-worker targets: rag-orchestrator (REST only — the harvester never
 	// speaks Connect-RPC, so it needs no mTLS leaf certificate) and
@@ -156,7 +154,7 @@ func NewHarvesterComponents(_ *pgxpool.Pool, cfg *config.Config) *HarvesterCompo
 	}
 	ragAdapter := augur_adapter.NewAugurAdapter(ragClient)
 
-	sovereignEnabled := logSovereignWiringState("alt-harvester", cfg.Sovereign.URL, cfg.AppEnv)
+	sovereignEnabled := LogSovereignWiringState("alt-harvester", cfg.Sovereign.URL, cfg.AppEnv)
 	if !sovereignEnabled {
 		panic("SOVEREIGN_URL is required for alt-harvester in every environment — " +
 			"the outbox worker would mark rows PROCESSED while their knowledge events are dropped")
@@ -187,8 +185,11 @@ const imageProxyFetchTimeout = 30 * time.Second
 // 1 req/s/host avoids deadline-exceeded when several images share a host.
 const imageProxyRateLimitInterval = 1 * time.Second
 
-// tagCloudCacheTTL is the in-process cache window for the tag cloud read model.
-const tagCloudCacheTTL = 30 * time.Minute
+// TagCloudCacheTTL is the in-process cache window for the tag cloud read
+// model. Exported because di/datahub needs the same window: the tag cloud is
+// served to rag-orchestrator from cmd/datahub and rendered from cmd/harvester,
+// and two constants would drift into two different answers to one question.
+const TagCloudCacheTTL = 30 * time.Minute
 
 func newHarvesterImageProxyUsecase(
 	cfg *config.Config,
@@ -218,10 +219,12 @@ func newHarvesterImageProxyUsecase(
 	)
 }
 
-// logSovereignWiringState is shared by all three composition roots, so it
+// LogSovereignWiringState is shared by all three composition roots, so it
 // records which binary emitted it — three processes now produce this line and
-// they are otherwise indistinguishable in the log stream.
-func logSovereignWiringState(binary, sovereignURL, appEnv string) bool {
+// they are otherwise indistinguishable in the log stream. Exported for
+// di/datahub, which became a package of its own when the database left the
+// other two binaries (ADR-000954 Wave 3 batch 6).
+func LogSovereignWiringState(binary, sovereignURL, appEnv string) bool {
 	enabled := sovereignURL != ""
 	if enabled {
 		slog.Info("sovereign_enabled", "binary", binary, "base_url", sovereignURL)

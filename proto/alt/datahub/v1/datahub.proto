@@ -1739,6 +1739,82 @@ message GetTagArticleCountsResponse {
 }
 
 // =============================================================================
+// Tag Trail paging (capability catalog §2.J, ADR-000954 Wave 3 batch 6)
+// =============================================================================
+
+// TagTrailArticle is one row of the Tag Trail: an article reached through a
+// tag, carrying the feed it came from so the list can name its source without
+// a second round trip.
+//
+// It exists beside ArticleByTagItem rather than replacing it. That message is
+// the Wave 2 shape rag-orchestrator still calls FetchArticlesByTag with — four
+// fields, no feed, no cursor, published_at as a string — and widening it would
+// have changed the bytes an already-migrated peer receives. This one is the
+// shape alt-backend's own Tag Trail has always read (domain.TagTrailArticle),
+// which is why the two coexist.
+//
+// published_at carries articles.created_at, which is when this deployment
+// first saw the article rather than when its publisher dated it. That is the
+// column the cursor below orders by, so the two must be the same clock or
+// paging skips rows.
+message TagTrailArticle {
+  string id = 1;
+  string title = 2;
+  string url = 3;
+  google.protobuf.Timestamp published_at = 4;
+  string feed_id = 5;
+  string feed_title = 6;
+}
+
+message ListArticlesByTagIDRequest {
+  // feed_tags.id — one tag of one feed. See ListArticlesByTagNameRequest for
+  // why the two identifiers are separate procedures.
+  string tag_id = 1;
+  // Exclusive upper bound on published_at. Unset is the first page.
+  google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message ListArticlesByTagIDResponse {
+  repeated TagTrailArticle articles = 1;
+}
+
+message ListArticlesByTagNameRequest {
+  // feed_tags.tag_name — the same label across every feed that uses it.
+  string tag_name = 1;
+  // Exclusive upper bound on published_at. Unset is the first page.
+  google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message ListArticlesByTagNameResponse {
+  repeated TagTrailArticle articles = 1;
+}
+
+// =============================================================================
+// Article reference for the recall rail (capability catalog §2.C,
+// ADR-000954 Wave 3 batch 6)
+// =============================================================================
+
+message GetArticleTitleAndLinkRequest {
+  string article_id = 1;
+}
+
+message GetArticleTitleAndLinkResponse {
+  // found distinguishes "no such article" from "an article whose title is the
+  // empty string". The in-process driver could not: it returned an empty title
+  // for both, and the caller keyed on that emptiness. Over the wire proto3
+  // gives an unset string and an empty string the same bytes, so the
+  // distinction has to be its own field or it stops existing.
+  bool found = 1;
+  string title = 2;
+  string url = 3;
+  // Nullable in the table and nullable here: an article whose feed published
+  // no date has none, and the recall rail renders that case.
+  google.protobuf.Timestamp published_at = 4;
+}
+
+// =============================================================================
 // Versioned artifacts (capability catalog §2.K)
 // =============================================================================
 
@@ -2524,6 +2600,41 @@ service DataHubService {
   // arithmetic has no SQL in it — moving it here would put a product decision
   // in the data plane, where changing it means redeploying the database owner.
   rpc GetTagArticleCounts(GetTagArticleCountsRequest) returns (GetTagArticleCountsResponse);
+
+  // ── Tag Trail paging (catalog §2.J, ADR-000954 Wave 3 batch 6) ──
+
+  // ListArticlesByTagID pages the articles carrying one feed's tag, newest
+  // first, by an exclusive published_at cursor.
+  //
+  // FetchArticlesByTag above answers a different question and keeps answering
+  // it. That procedure takes a tag *name*, has no cursor and returns four
+  // fields; this one takes a feed_tags row id, pages, and carries the feed the
+  // article came from. Routing the Tag Trail through the older message would
+  // have compiled and would have silently dropped its paging — which is why
+  // this is a capability rather than a DI edit (ADR-000954 Wave 3 batch 6).
+  rpc ListArticlesByTagID(ListArticlesByTagIDRequest) returns (ListArticlesByTagIDResponse);
+
+  // ListArticlesByTagName is the cross-feed half: every article carrying a tag
+  // of this name, whichever feed tagged it, deduplicated.
+  //
+  // It is a separate procedure rather than a oneof on the request above
+  // because the two are different queries — this one joins through feed_tags
+  // and distinct-s the result — and because an unset oneof is a third case
+  // that would have to mean something. Two procedures have no such case.
+  rpc ListArticlesByTagName(ListArticlesByTagNameRequest) returns (ListArticlesByTagNameResponse);
+
+  // ── Article reference for the recall rail (catalog §2.C) ──
+
+  // GetArticleTitleAndLink returns just enough of an article to render it in
+  // the recall rail when the knowledge_home_items projection has not caught up
+  // yet: title, url, published_at.
+  //
+  // It exists beside GetArticleContentByID because that procedure carries no
+  // published_at, and the rail orders by it. It is not scoped to a user: the
+  // caller has already established that this article id came out of that
+  // user's own recall candidates, and the columns returned are the ones the
+  // rail would have rendered from the projection.
+  rpc GetArticleTitleAndLink(GetArticleTitleAndLinkRequest) returns (GetArticleTitleAndLinkResponse);
 
   // ── Versioned artifacts (catalog §2.K) ──
 

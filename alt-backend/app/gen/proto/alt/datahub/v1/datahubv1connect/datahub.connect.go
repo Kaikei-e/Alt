@@ -363,6 +363,15 @@ const (
 	// DataHubServiceGetTagArticleCountsProcedure is the fully-qualified name of the DataHubService's
 	// GetTagArticleCounts RPC.
 	DataHubServiceGetTagArticleCountsProcedure = "/alt.datahub.v1.DataHubService/GetTagArticleCounts"
+	// DataHubServiceListArticlesByTagIDProcedure is the fully-qualified name of the DataHubService's
+	// ListArticlesByTagID RPC.
+	DataHubServiceListArticlesByTagIDProcedure = "/alt.datahub.v1.DataHubService/ListArticlesByTagID"
+	// DataHubServiceListArticlesByTagNameProcedure is the fully-qualified name of the DataHubService's
+	// ListArticlesByTagName RPC.
+	DataHubServiceListArticlesByTagNameProcedure = "/alt.datahub.v1.DataHubService/ListArticlesByTagName"
+	// DataHubServiceGetArticleTitleAndLinkProcedure is the fully-qualified name of the DataHubService's
+	// GetArticleTitleAndLink RPC.
+	DataHubServiceGetArticleTitleAndLinkProcedure = "/alt.datahub.v1.DataHubService/GetArticleTitleAndLink"
 	// DataHubServiceCreateSummaryVersionProcedure is the fully-qualified name of the DataHubService's
 	// CreateSummaryVersion RPC.
 	DataHubServiceCreateSummaryVersionProcedure = "/alt.datahub.v1.DataHubService/CreateSummaryVersion"
@@ -830,6 +839,34 @@ type DataHubServiceClient interface {
 	// arithmetic has no SQL in it — moving it here would put a product decision
 	// in the data plane, where changing it means redeploying the database owner.
 	GetTagArticleCounts(context.Context, *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error)
+	// ListArticlesByTagID pages the articles carrying one feed's tag, newest
+	// first, by an exclusive published_at cursor.
+	//
+	// FetchArticlesByTag above answers a different question and keeps answering
+	// it. That procedure takes a tag *name*, has no cursor and returns four
+	// fields; this one takes a feed_tags row id, pages, and carries the feed the
+	// article came from. Routing the Tag Trail through the older message would
+	// have compiled and would have silently dropped its paging — which is why
+	// this is a capability rather than a DI edit (ADR-000954 Wave 3 batch 6).
+	ListArticlesByTagID(context.Context, *connect.Request[v1.ListArticlesByTagIDRequest]) (*connect.Response[v1.ListArticlesByTagIDResponse], error)
+	// ListArticlesByTagName is the cross-feed half: every article carrying a tag
+	// of this name, whichever feed tagged it, deduplicated.
+	//
+	// It is a separate procedure rather than a oneof on the request above
+	// because the two are different queries — this one joins through feed_tags
+	// and distinct-s the result — and because an unset oneof is a third case
+	// that would have to mean something. Two procedures have no such case.
+	ListArticlesByTagName(context.Context, *connect.Request[v1.ListArticlesByTagNameRequest]) (*connect.Response[v1.ListArticlesByTagNameResponse], error)
+	// GetArticleTitleAndLink returns just enough of an article to render it in
+	// the recall rail when the knowledge_home_items projection has not caught up
+	// yet: title, url, published_at.
+	//
+	// It exists beside GetArticleContentByID because that procedure carries no
+	// published_at, and the rail orders by it. It is not scoped to a user: the
+	// caller has already established that this article id came out of that
+	// user's own recall candidates, and the columns returned are the ones the
+	// rail would have rendered from the projection.
+	GetArticleTitleAndLink(context.Context, *connect.Request[v1.GetArticleTitleAndLinkRequest]) (*connect.Response[v1.GetArticleTitleAndLinkResponse], error)
 	// CreateSummaryVersion appends one row to summary_versions.
 	//
 	// Append-only, so there is no update procedure beside it and no way to ask
@@ -1534,6 +1571,24 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("GetTagArticleCounts")),
 			connect.WithClientOptions(opts...),
 		),
+		listArticlesByTagID: connect.NewClient[v1.ListArticlesByTagIDRequest, v1.ListArticlesByTagIDResponse](
+			httpClient,
+			baseURL+DataHubServiceListArticlesByTagIDProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListArticlesByTagID")),
+			connect.WithClientOptions(opts...),
+		),
+		listArticlesByTagName: connect.NewClient[v1.ListArticlesByTagNameRequest, v1.ListArticlesByTagNameResponse](
+			httpClient,
+			baseURL+DataHubServiceListArticlesByTagNameProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListArticlesByTagName")),
+			connect.WithClientOptions(opts...),
+		),
+		getArticleTitleAndLink: connect.NewClient[v1.GetArticleTitleAndLinkRequest, v1.GetArticleTitleAndLinkResponse](
+			httpClient,
+			baseURL+DataHubServiceGetArticleTitleAndLinkProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetArticleTitleAndLink")),
+			connect.WithClientOptions(opts...),
+		),
 		createSummaryVersion: connect.NewClient[v1.CreateSummaryVersionRequest, v1.CreateSummaryVersionResponse](
 			httpClient,
 			baseURL+DataHubServiceCreateSummaryVersionProcedure,
@@ -1724,6 +1779,9 @@ type dataHubServiceClient struct {
 	getTagCooccurrences               *connect.Client[v1.GetTagCooccurrencesRequest, v1.GetTagCooccurrencesResponse]
 	searchTagsByPrefix                *connect.Client[v1.SearchTagsByPrefixRequest, v1.SearchTagsByPrefixResponse]
 	getTagArticleCounts               *connect.Client[v1.GetTagArticleCountsRequest, v1.GetTagArticleCountsResponse]
+	listArticlesByTagID               *connect.Client[v1.ListArticlesByTagIDRequest, v1.ListArticlesByTagIDResponse]
+	listArticlesByTagName             *connect.Client[v1.ListArticlesByTagNameRequest, v1.ListArticlesByTagNameResponse]
+	getArticleTitleAndLink            *connect.Client[v1.GetArticleTitleAndLinkRequest, v1.GetArticleTitleAndLinkResponse]
 	createSummaryVersion              *connect.Client[v1.CreateSummaryVersionRequest, v1.CreateSummaryVersionResponse]
 	markSummaryVersionSuperseded      *connect.Client[v1.MarkSummaryVersionSupersededRequest, v1.MarkSummaryVersionSupersededResponse]
 	getSummaryVersionByID             *connect.Client[v1.GetSummaryVersionByIDRequest, v1.GetSummaryVersionByIDResponse]
@@ -2247,6 +2305,21 @@ func (c *dataHubServiceClient) GetTagArticleCounts(ctx context.Context, req *con
 	return c.getTagArticleCounts.CallUnary(ctx, req)
 }
 
+// ListArticlesByTagID calls alt.datahub.v1.DataHubService.ListArticlesByTagID.
+func (c *dataHubServiceClient) ListArticlesByTagID(ctx context.Context, req *connect.Request[v1.ListArticlesByTagIDRequest]) (*connect.Response[v1.ListArticlesByTagIDResponse], error) {
+	return c.listArticlesByTagID.CallUnary(ctx, req)
+}
+
+// ListArticlesByTagName calls alt.datahub.v1.DataHubService.ListArticlesByTagName.
+func (c *dataHubServiceClient) ListArticlesByTagName(ctx context.Context, req *connect.Request[v1.ListArticlesByTagNameRequest]) (*connect.Response[v1.ListArticlesByTagNameResponse], error) {
+	return c.listArticlesByTagName.CallUnary(ctx, req)
+}
+
+// GetArticleTitleAndLink calls alt.datahub.v1.DataHubService.GetArticleTitleAndLink.
+func (c *dataHubServiceClient) GetArticleTitleAndLink(ctx context.Context, req *connect.Request[v1.GetArticleTitleAndLinkRequest]) (*connect.Response[v1.GetArticleTitleAndLinkResponse], error) {
+	return c.getArticleTitleAndLink.CallUnary(ctx, req)
+}
+
 // CreateSummaryVersion calls alt.datahub.v1.DataHubService.CreateSummaryVersion.
 func (c *dataHubServiceClient) CreateSummaryVersion(ctx context.Context, req *connect.Request[v1.CreateSummaryVersionRequest]) (*connect.Response[v1.CreateSummaryVersionResponse], error) {
 	return c.createSummaryVersion.CallUnary(ctx, req)
@@ -2740,6 +2813,34 @@ type DataHubServiceHandler interface {
 	// arithmetic has no SQL in it — moving it here would put a product decision
 	// in the data plane, where changing it means redeploying the database owner.
 	GetTagArticleCounts(context.Context, *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error)
+	// ListArticlesByTagID pages the articles carrying one feed's tag, newest
+	// first, by an exclusive published_at cursor.
+	//
+	// FetchArticlesByTag above answers a different question and keeps answering
+	// it. That procedure takes a tag *name*, has no cursor and returns four
+	// fields; this one takes a feed_tags row id, pages, and carries the feed the
+	// article came from. Routing the Tag Trail through the older message would
+	// have compiled and would have silently dropped its paging — which is why
+	// this is a capability rather than a DI edit (ADR-000954 Wave 3 batch 6).
+	ListArticlesByTagID(context.Context, *connect.Request[v1.ListArticlesByTagIDRequest]) (*connect.Response[v1.ListArticlesByTagIDResponse], error)
+	// ListArticlesByTagName is the cross-feed half: every article carrying a tag
+	// of this name, whichever feed tagged it, deduplicated.
+	//
+	// It is a separate procedure rather than a oneof on the request above
+	// because the two are different queries — this one joins through feed_tags
+	// and distinct-s the result — and because an unset oneof is a third case
+	// that would have to mean something. Two procedures have no such case.
+	ListArticlesByTagName(context.Context, *connect.Request[v1.ListArticlesByTagNameRequest]) (*connect.Response[v1.ListArticlesByTagNameResponse], error)
+	// GetArticleTitleAndLink returns just enough of an article to render it in
+	// the recall rail when the knowledge_home_items projection has not caught up
+	// yet: title, url, published_at.
+	//
+	// It exists beside GetArticleContentByID because that procedure carries no
+	// published_at, and the rail orders by it. It is not scoped to a user: the
+	// caller has already established that this article id came out of that
+	// user's own recall candidates, and the columns returned are the ones the
+	// rail would have rendered from the projection.
+	GetArticleTitleAndLink(context.Context, *connect.Request[v1.GetArticleTitleAndLinkRequest]) (*connect.Response[v1.GetArticleTitleAndLinkResponse], error)
 	// CreateSummaryVersion appends one row to summary_versions.
 	//
 	// Append-only, so there is no update procedure beside it and no way to ask
@@ -3440,6 +3541,24 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("GetTagArticleCounts")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceListArticlesByTagIDHandler := connect.NewUnaryHandler(
+		DataHubServiceListArticlesByTagIDProcedure,
+		svc.ListArticlesByTagID,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListArticlesByTagID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListArticlesByTagNameHandler := connect.NewUnaryHandler(
+		DataHubServiceListArticlesByTagNameProcedure,
+		svc.ListArticlesByTagName,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListArticlesByTagName")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetArticleTitleAndLinkHandler := connect.NewUnaryHandler(
+		DataHubServiceGetArticleTitleAndLinkProcedure,
+		svc.GetArticleTitleAndLink,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetArticleTitleAndLink")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataHubServiceCreateSummaryVersionHandler := connect.NewUnaryHandler(
 		DataHubServiceCreateSummaryVersionProcedure,
 		svc.CreateSummaryVersion,
@@ -3728,6 +3847,12 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceSearchTagsByPrefixHandler.ServeHTTP(w, r)
 		case DataHubServiceGetTagArticleCountsProcedure:
 			dataHubServiceGetTagArticleCountsHandler.ServeHTTP(w, r)
+		case DataHubServiceListArticlesByTagIDProcedure:
+			dataHubServiceListArticlesByTagIDHandler.ServeHTTP(w, r)
+		case DataHubServiceListArticlesByTagNameProcedure:
+			dataHubServiceListArticlesByTagNameHandler.ServeHTTP(w, r)
+		case DataHubServiceGetArticleTitleAndLinkProcedure:
+			dataHubServiceGetArticleTitleAndLinkHandler.ServeHTTP(w, r)
 		case DataHubServiceCreateSummaryVersionProcedure:
 			dataHubServiceCreateSummaryVersionHandler.ServeHTTP(w, r)
 		case DataHubServiceMarkSummaryVersionSupersededProcedure:
@@ -4167,6 +4292,18 @@ func (UnimplementedDataHubServiceHandler) SearchTagsByPrefix(context.Context, *c
 
 func (UnimplementedDataHubServiceHandler) GetTagArticleCounts(context.Context, *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetTagArticleCounts is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListArticlesByTagID(context.Context, *connect.Request[v1.ListArticlesByTagIDRequest]) (*connect.Response[v1.ListArticlesByTagIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListArticlesByTagID is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListArticlesByTagName(context.Context, *connect.Request[v1.ListArticlesByTagNameRequest]) (*connect.Response[v1.ListArticlesByTagNameResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListArticlesByTagName is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetArticleTitleAndLink(context.Context, *connect.Request[v1.GetArticleTitleAndLinkRequest]) (*connect.Response[v1.GetArticleTitleAndLinkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetArticleTitleAndLink is not implemented"))
 }
 
 func (UnimplementedDataHubServiceHandler) CreateSummaryVersion(context.Context, *connect.Request[v1.CreateSummaryVersionRequest]) (*connect.Response[v1.CreateSummaryVersionResponse], error) {

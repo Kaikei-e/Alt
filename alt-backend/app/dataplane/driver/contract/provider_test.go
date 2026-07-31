@@ -913,6 +913,12 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub has unread feeds for the user since the bound",
 			"alt-data-hub has trend data for the user",
 			"alt-data-hub has read state for the user",
+
+			// Wave 3 batch 6 (catalog §2.J / §2.C) — the last two.
+			"alt-data-hub has articles carrying the feed tag",
+			"alt-data-hub has articles carrying the tag name across feeds",
+			"alt-data-hub has the article",
+			"alt-data-hub has no article with that id",
 		))
 }
 
@@ -1235,6 +1241,96 @@ func mountWave3Batch2Procedures(mux *http.ServeMux) {
 	mountWave3Batch3Procedures(mux)
 	mountWave3Batch4Procedures(mux)
 	mountWave3Batch5Procedures(mux)
+	mountWave3Batch6Procedures(mux)
+}
+
+// mountWave3Batch6Procedures adds the two capabilities that close Wave 3: the
+// Tag Trail's paged reads (§2.J) and the recall rail's article fallback
+// (§2.C).
+//
+// GetArticleTitleAndLink branches on the article id for the same reason
+// GetArticleByURL and GetArticleHead do above: both of its answers mean
+// something. `found` is the entire point of the message — proto3 cannot tell
+// an unset title from an empty one — so a stub that always answered found
+// would verify a provider that had dropped the distinction and would let the
+// recall rail render every deleted article as a blank row.
+func mountWave3Batch6Procedures(mux *http.ServeMux) {
+	const (
+		stubArticleID    = "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
+		stubFeedID       = "33333333-4444-5555-6666-777777777777"
+		missingArticleID = "00000000-0000-4000-8000-000000000000"
+	)
+
+	trailArticle := map[string]interface{}{
+		"id":          stubArticleID,
+		"title":       "Tagged article",
+		"url":         "https://example.com/tagged",
+		"publishedAt": "2026-07-30T08:00:00Z",
+		"feedId":      stubFeedID,
+		"feedTitle":   "Example Feed",
+	}
+
+	// ---- §2.J Tag Trail paging ---------------------------------------------
+	//
+	// The by-id stub branches on the cursor, because the interaction that
+	// records the first page expects an empty body: a stub answering the same
+	// page either way would verify a provider that ignored the cursor, which
+	// is the failure that pins the Trail to its first screen.
+	dataHubProcedure(mux, "ListArticlesByTagID", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Cursor string `json:"cursor"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		if req.Cursor == "" {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"articles": []map[string]interface{}{trailArticle},
+		})
+	})
+	// The cross-feed half answers a row with no feed, which is legal and is
+	// what the consumer asserts: the by-name query does not always resolve one.
+	dataHubProcedure(mux, "ListArticlesByTagName", jsonPost(map[string]interface{}{
+		"articles": []map[string]interface{}{{
+			"id":          stubArticleID,
+			"title":       "Cross-feed article",
+			"url":         "https://example.com/cross",
+			"publishedAt": "2026-07-30T08:00:00Z",
+		}},
+	}))
+
+	// ---- §2.C Article reference for the recall rail -------------------------
+	dataHubProcedure(mux, "GetArticleTitleAndLink", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			ArticleID string `json:"articleId"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		if req.ArticleID == missingArticleID {
+			// No found key at all: protojson omits a false bool, and the
+			// consumer must read that absence as "nothing to render".
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"found":       true,
+			"title":       "Recalled article",
+			"url":         "https://example.com/recalled",
+			"publishedAt": "2026-06-01T07:30:00Z",
+		})
+	})
 }
 
 // mountWave3Batch3Procedures adds the feed and feed-link capabilities

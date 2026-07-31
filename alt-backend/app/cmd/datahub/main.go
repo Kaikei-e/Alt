@@ -21,8 +21,9 @@ import (
 
 	"alt/config"
 	datahubconnect "alt/connect/v2/datahub"
-	"alt/di"
+	datahubdi "alt/di/datahub"
 	"alt/internal/bootstrap"
+	"alt/internal/bootstrap/dbboot"
 	"alt/middleware"
 	"alt/tlsutil"
 )
@@ -41,7 +42,6 @@ func main() {
 
 	rt := bootstrap.MustBoot(ctx, bootstrap.Options{
 		ServiceName: serviceName,
-		RequireDB:   true,
 	})
 	defer rt.Shutdown(ctx)
 
@@ -63,7 +63,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	container := di.NewDataHubComponents(rt.Pool, cfg)
+	// The pool is opened here rather than by MustBoot, and by a package the
+	// other two binaries do not import. That is what makes "only alt-data-hub
+	// can reach alt_db" a property of the link rather than of a boolean —
+	// see internal/bootstrap/dbboot and di/import_boundary_test.go.
+	pool := dbboot.MustOpen(ctx, rt, serviceName)
+
+	container := datahubdi.NewDataHubComponents(pool, cfg)
 
 	// Client authentication is a constant here, not a setting. The listener it
 	// replaced read MTLS_CLIENT_AUTH and fell back to tls.NoClientCert — TLS

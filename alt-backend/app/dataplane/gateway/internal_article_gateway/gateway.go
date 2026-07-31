@@ -1,4 +1,12 @@
-// Package internal_article_gateway provides gateway implementations for internal article API.
+// Package internal_article_gateway provides gateway implementations for
+// internal article API.
+//
+// It sits under dataplane/ since ADR-000954 Wave 3 batch 6. It used to live in
+// shared/, which was accurate while both cmd/backend and cmd/datahub built it;
+// after batch 6 moved GetArticleTitleAndLink onto the wire, cmd/datahub is the
+// only binary that constructs it, and a package under shared/ holding an
+// *alt_db.AltDBRepository is an invitation for the next caller to reach for a
+// pool that no longer exists in its process.
 package internal_article_gateway
 
 import (
@@ -135,10 +143,13 @@ func (g *Gateway) SaveArticleSummary(ctx context.Context, params internal_articl
 	return nil
 }
 
-// GetArticleTitleAndLink implements recall_candidate_port.ArticleFallbackPort.
-func (g *Gateway) GetArticleTitleAndLink(ctx context.Context, articleID string) (string, string, *time.Time, error) {
-	return g.repo.GetArticleTitleAndURL(ctx, articleID)
-}
+// GetArticleTitleAndLink used to live here, satisfying
+// recall_candidate_port.ArticleFallbackPort for RecallRailUsecase — and it was
+// the reason cmd/backend held this gateway, and therefore a database pool, for
+// five batches after the rest of the surface had moved. It is now the
+// GetArticleTitleAndLink procedure, served from the same driver read through
+// datahub_capability_gateway.ArticleRefGateway, and the caller reaches it over
+// the wire like everything else (ADR-000954 Wave 3 batch 6).
 
 // GetArticleContent implements GetArticleContentPort.
 func (g *Gateway) GetArticleContent(ctx context.Context, articleID string) (*internal_article_port.ArticleContent, error) {

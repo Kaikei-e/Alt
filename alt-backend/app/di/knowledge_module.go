@@ -86,7 +86,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 
 	// Knowledge Sovereign: all knowledge data access via Connect-RPC
 	sovereignURL := cfg.Sovereign.URL
-	sovereignEnabled := logSovereignWiringState("alt-backend", sovereignURL, cfg.AppEnv)
+	sovereignEnabled := LogSovereignWiringState("alt-backend", sovereignURL, cfg.AppEnv)
 	sovereignCli := sovereign_client.NewClient(sovereignURL, sovereignEnabled)
 
 	// Knowledge Home gateways.
@@ -166,8 +166,14 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	}
 	healthChecker := health_checker.NewChecker(healthEndpoints)
 
-	// RecallRail, Lens, Supersede
-	recallRailUC := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, featureFlagGw, article.InternalArticleGateway)
+	// RecallRail, Lens, Supersede.
+	//
+	// The rail's article fallback — what a candidate looked like when
+	// knowledge_home_items has not caught up with it — comes from alt-data-hub
+	// since ADR-000954 Wave 3 batch 6 (catalog §2.C). It was the last read
+	// cmd/backend performed against its own pool, which is why this line used
+	// to reach into the article module for a gateway wrapping alt_db.
+	recallRailUC := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, featureFlagGw, infra.ArticleRefGateway)
 	recallSnoozeUC := recall_snooze_usecase.NewRecallSnoozeUsecase(sovereignCli, sovereignCli)
 	recallDismissUC := recall_dismiss_usecase.NewRecallDismissUsecase(sovereignCli, sovereignCli)
 	createLensUC := create_lens_usecase.NewCreateLensUsecase(sovereignCli, sovereignCli)

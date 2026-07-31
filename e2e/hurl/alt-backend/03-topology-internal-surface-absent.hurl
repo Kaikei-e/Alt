@@ -10,7 +10,7 @@
 # Nothing that authenticates a *service* rather than a user may be reachable
 # on either. BackendInternalService and the /v1/internal/* REST routes move
 # out of this binary entirely, to alt-data-hub behind mTLS
-# (di/container_datahub.go). The admin Connect services do not move — they
+# (di/datahub/container.go). The admin Connect services do not move — they
 # stay on this binary's loopback-bound operator listener — so for them the
 # claim is narrower but just as load-bearing: not on a port the public NIC
 # can reach.

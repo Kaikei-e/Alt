@@ -1,3 +1,12 @@
+// Package fetch_articles_by_tag_gateway serves the Tag Trail from alt_db.
+//
+// It sits under dataplane/ since ADR-000954 Wave 3 batch 6. Until then it was
+// under shared/ and both cmd/backend and cmd/datahub built it — which was the
+// problem: the Wave 2 FetchArticlesByTag procedure took a tag name with no
+// cursor, so alt-backend's own paged Trail could not use it and kept reading
+// the database directly. Batch 6 gave the Trail its own pair of procedures
+// (ListArticlesByTagID / ListArticlesByTagName) and left this implementation
+// as what serves them, in the one binary that owns the pool.
 package fetch_articles_by_tag_gateway
 
 import (

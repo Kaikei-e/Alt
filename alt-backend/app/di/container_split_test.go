@@ -39,6 +39,11 @@ func fieldNames(t *testing.T, v any) map[string]bool {
 // for it cannot tell "DI forgot to wire this" from "deliberately disabled".
 // Absent field, absent surface, compile error — that is the whole point of
 // splitting the container, so it is pinned here.
+//
+// cmd/datahub's half of this table lives in di/datahub/container_test.go. That
+// root became a package of its own in ADR-000954 Wave 3 batch 6 — it is the
+// only one that constructs an alt_db repository, and a package is Go's unit of
+// linkage — so a test in this package cannot import it without a cycle.
 func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -57,13 +62,17 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				// roots would have tripled the dead wiring.
 				"ConfigPort", "RateLimiterPort", "ErrorHandlerPort",
 				"AppendKnowledgeEventUsecase",
+				// ADR-000954 Wave 3 batch 6. The Tag Trail's paged read and
+				// RecallRailUsecase's article fallback were the last two
+				// capabilities holding a pool open here; both are procedures
+				// now, so the backend has no database handle and no gateway
+				// wrapping one. InternalArticleGateway went with it — it
+				// existed here only for that fallback — and it moved to
+				// dataplane/ with the rest of the provider-side gateways.
+				"AltDBRepository", "InternalArticleGateway",
 			},
 			present: []string{
-				"AltDBRepository", "SovereignClient", "AdminMonitor",
-				// RecallRail reads articles through the same gateway
-				// DataHubService uses, so backend keeps it even though the
-				// service-to-service RPC surface moved away.
-				"InternalArticleGateway", "RecallRailUsecase",
+				"SovereignClient", "AdminMonitor", "RecallRailUsecase",
 				"CreateSummaryVersionUsecase", "ImageProxyUsecase", "CSRFTokenUsecase",
 			},
 		},
@@ -87,24 +96,6 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				"ScrapingDomainUsecase", "RagIntegration",
 				"SovereignClient", "ImageProxyUsecase", "FetchArticleGateway",
 				"FetchTagCloudUsecase",
-			},
-		},
-		{
-			name:  "datahub",
-			value: DataHubComponents{},
-			absent: []string{
-				// data-hub serves DataHubService only: no crawling, no search,
-				// no image pipeline, no admin surface.
-				"SearchIndexerDriver", "RobotsTxtGateway", "ImageProxyUsecase",
-				"AdminMonitor", "RagConnectClient", "FetchArticleGateway",
-				"KnowledgeBackfillUsecase", "MetricsUsecase",
-			},
-			present: []string{
-				"AltDBRepository", "KratosClient", "EventPublisher",
-				"InternalArticleGateway", "RecapArticlesUsecase",
-				"FetchRecentArticlesUsecase", "CreateSummaryVersionUsecase",
-				"CreateTagSetVersionUsecase", "SovereignClient",
-				"FetchTagCloudUsecase", "FetchArticlesByTagUsecase",
 			},
 		},
 	}
@@ -146,7 +137,7 @@ func splitTestConfig() *config.Config {
 func TestNewFeedModule_WiresDeleteFeedLinkUsecase(t *testing.T) {
 	setDataHubClientEnv(t)
 
-	infra := newInfraModule(nil, splitTestConfig())
+	infra := newInfraModule(splitTestConfig())
 	sub := newSubscriptionModule(infra)
 
 	feed := newFeedModule(infra, sub)

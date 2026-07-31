@@ -8,23 +8,20 @@ import (
 	"alt/orchestrator/gateway/config_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
 	"alt/orchestrator/port/search_indexer_port"
-	"alt/shared/driver/alt_db"
 	"alt/shared/driver/mqhub_connect"
 	"alt/shared/gateway/datahub_gateway"
 	"alt/utils"
 	"alt/utils/rate_limiter"
 	"log/slog"
 	"net/http"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // InfraModule holds the infrastructure cmd/backend's domain modules share.
 //
 // It is deliberately not the union of everything the three binaries need.
 // cmd/harvester and cmd/datahub build their own narrow set of drivers in
-// container_harvester.go / container_datahub.go, because a shared "build
-// everything" infra module would hand each process credentials and clients for
+// container_harvester.go / di/datahub, because a shared "build everything"
+// infra module would hand each process credentials and clients for
 // surfaces it does not serve — and would reintroduce the dead wiring this
 // split removes (plan R11).
 type InfraModule struct {
@@ -33,16 +30,13 @@ type InfraModule struct {
 	HTTPClient  *http.Client
 	MQHubClient *mqhub_connect.Client
 
-	// Shared drivers. AltDBRepository is down to two consumers after
-	// ADR-000954 Wave 3 batch 5, both named in newArticleModule: the Tag Trail
-	// read, whose Wave 2 wire shape cannot express the paging this caller does,
-	// and the recall-rail article fallback, which has no procedure yet. Neither
-	// is a DI edit, which is why cmd/backend still opens a pool.
-	//
-	// cmd/harvester no longer does — see container_harvester.go. That makes it
-	// the first of the three binaries to reach Wave 3's exit condition, and the
-	// difference between the two is the size of what is left here.
-	AltDBRepository     *alt_db.AltDBRepository
+	// There is no AltDBRepository field and no pool, since ADR-000954 Wave 3
+	// batch 6. The two reads that kept one here through batch 5 — the Tag
+	// Trail's paged articles and the recall rail's article fallback — became
+	// procedures of their own, so cmd/backend reaches alt_db only through
+	// alt-data-hub. That is Wave 3's exit condition, and it is asserted rather
+	// than merely achieved: cmd/backend's dependency graph contains neither
+	// alt_db nor pgx (see import_boundary_test.go).
 	SearchIndexerDriver search_indexer_port.SearchIndexerPort
 	RobotsTxtGateway    *robots_txt_gateway.RobotsTxtGateway
 
@@ -98,7 +92,11 @@ type InfraModule struct {
 	VersionGateway *datahub_gateway.VersionGateway
 	StatsGateway   *datahub_gateway.StatsGateway
 
-	Pool *pgxpool.Pool
+	// ADR-000954 Wave 3 batch 6 (capability catalog §2.J / §2.C). TagGateway
+	// grew the Tag Trail's two paged reads in the same batch, so the only new
+	// field here is the recall rail's fallback — the last read this binary
+	// performed against a database it owned.
+	ArticleRefGateway *datahub_gateway.ArticleRefGateway
 }
 
 // newInfraModule wires infrastructure components from the single Config
@@ -112,9 +110,7 @@ type InfraModule struct {
 // DataHubService article mutations) live in cmd/datahub now, so building them for the
 // backend would hand that process an auth-hub token and an event-publishing
 // client it has no surface to use.
-func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
-	altDBRepository := alt_db.NewAltDBRepository(pool)
-
+func newInfraModule(cfg *config.Config) *InfraModule {
 	// Rate limiter configuration is read through the config gateway; the port
 	// itself has no consumer beyond this function, so it stays a local.
 	configPort := config_gateway.NewConfigGateway(cfg)
@@ -130,7 +126,7 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 	// MQ-Hub client. The backend uses it for on-the-fly tag generation only;
 	// event publishing moved to cmd/datahub.
 	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled)
-	logMQHubWiringState("alt-backend", cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
+	LogMQHubWiringState("alt-backend", cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
 
 	// Search indexer driver (shared between article search and feed search)
 	searchIndexerDriver := search_indexer_connect.NewConnectSearchIndexerDriver(cfg.SearchIndexer.ConnectURL, "")
@@ -145,7 +141,6 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 		RateLimiter:         hostRateLimiter,
 		HTTPClient:          httpClient,
 		MQHubClient:         mqhubClient,
-		AltDBRepository:     altDBRepository,
 		SearchIndexerDriver: searchIndexerDriver,
 		RobotsTxtGateway:    robotsTxtGw,
 
@@ -172,11 +167,11 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 		VersionGateway: datahub_gateway.NewVersionGateway(dataHubClient),
 		StatsGateway:   datahub_gateway.NewStatsGateway(dataHubClient),
 
-		Pool: pool,
+		ArticleRefGateway: datahub_gateway.NewArticleRefGateway(dataHubClient),
 	}
 }
 
-// logMQHubWiringState emits the loud enabled/disabled signal CLAUDE.md rule 8
+// LogMQHubWiringState emits the loud enabled/disabled signal CLAUDE.md rule 8
 // / .claude/rules/di-wiring.md require: mqhub_connect.Client silently no-ops
 // every event publish when disabled, and without this log there was no way
 // to tell "MQHUB_ENABLED=false" (intentional) apart from a forgotten config
@@ -185,7 +180,7 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 // The binary name is part of the record because two of the three processes
 // build an mq-hub client for different reasons (backend: tag generation,
 // data-hub: event publishing), and their logs otherwise read identically.
-func logMQHubWiringState(binary string, enabled bool, connectURL string) {
+func LogMQHubWiringState(binary string, enabled bool, connectURL string) {
 	if enabled {
 		slog.Info("mqhub_enabled", "binary", binary, "connect_url", connectURL)
 	} else {

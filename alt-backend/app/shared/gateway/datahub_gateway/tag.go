@@ -189,6 +189,75 @@ func (g *TagGateway) FetchTagArticleCounts(ctx context.Context, userID uuid.UUID
 	return counts, nil
 }
 
+// FetchArticlesByTag and FetchArticlesByTagName satisfy
+// fetch_articles_by_tag_port.FetchArticlesByTagPort together — the Tag Trail's
+// two paged reads (catalog §2.J, ADR-000954 Wave 3 batch 6).
+//
+// They live on this gateway rather than beside the Wave 2 FetchArticlesByTag
+// procedure because they are a different question. That procedure takes a tag
+// *name*, has no cursor and returns four fields; it still serves
+// rag-orchestrator and is untouched. These two page by an exclusive
+// published_at bound and carry the feed each article came from, which is what
+// the Trail renders. Reusing the older message would have compiled and would
+// have dropped the paging in silence — the reason this pair is a capability
+// rather than a DI edit.
+//
+// A nil cursor is the first page. It stays nil on the wire rather than
+// becoming the zero time: protojson omits an unset timestamp, and the provider
+// reads its absence as "no upper bound".
+func (g *TagGateway) FetchArticlesByTag(ctx context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	req := &datahubv1.ListArticlesByTagIDRequest{
+		TagId: tagID,
+		Limit: safeconv.Int32(limit),
+	}
+	if cursor != nil {
+		req.Cursor = timestamppb.New(*cursor)
+	}
+
+	resp, err := g.client.ListArticlesByTagID(ctx, connect.NewRequest(req))
+	if err != nil {
+		return nil, fmt.Errorf("list articles by tag id %s: %w", tagID, err)
+	}
+	return tagTrailArticlesFromProto(resp.Msg.GetArticles()), nil
+}
+
+func (g *TagGateway) FetchArticlesByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+	req := &datahubv1.ListArticlesByTagNameRequest{
+		TagName: tagName,
+		Limit:   safeconv.Int32(limit),
+	}
+	if cursor != nil {
+		req.Cursor = timestamppb.New(*cursor)
+	}
+
+	resp, err := g.client.ListArticlesByTagName(ctx, connect.NewRequest(req))
+	if err != nil {
+		return nil, fmt.Errorf("list articles by tag name %q: %w", tagName, err)
+	}
+	return tagTrailArticlesFromProto(resp.Msg.GetArticles()), nil
+}
+
+func tagTrailArticlesFromProto(articles []*datahubv1.TagTrailArticle) []*domain.TagTrailArticle {
+	if len(articles) == 0 {
+		return nil
+	}
+	out := make([]*domain.TagTrailArticle, 0, len(articles))
+	for _, a := range articles {
+		if a == nil {
+			continue
+		}
+		out = append(out, &domain.TagTrailArticle{
+			ID:          a.GetId(),
+			Title:       a.GetTitle(),
+			Link:        a.GetUrl(),
+			PublishedAt: timeFromProto(a.GetPublishedAt()),
+			FeedID:      a.GetFeedId(),
+			FeedTitle:   a.GetFeedTitle(),
+		})
+	}
+	return out
+}
+
 func feedTagsFromProto(tags []*datahubv1.FeedTag) []*domain.FeedTag {
 	out := make([]*domain.FeedTag, 0, len(tags))
 	for _, t := range tags {

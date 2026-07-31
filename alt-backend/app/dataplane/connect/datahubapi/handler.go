@@ -172,6 +172,14 @@ type Handler struct {
 	tagSetVersion  datahub_capability_port.TagSetVersionPort
 	stats          datahub_capability_port.StatsPort
 
+	// Wave 3 batch 6 (catalog §2.J / §2.C) — the last two, after which
+	// alt-backend has no database pool at all. Required, and
+	// WithWave3Batch6Capabilities panics on nil: neither of these answering
+	// nothing looks like an error to its caller, so an unwired one produces a
+	// working-looking product with two features quietly missing.
+	tagTrail   datahub_capability_port.TagTrailPort
+	articleRef datahub_capability_port.ArticleRefPort
+
 	logger *slog.Logger
 }
 

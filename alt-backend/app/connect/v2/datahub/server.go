@@ -24,7 +24,7 @@ import (
 	"alt/connect/v2/middleware"
 	"alt/connect/v2/muxutil"
 	"alt/dataplane/connect/datahubapi"
-	"alt/di"
+	datahubdi "alt/di/datahub"
 	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
 )
 
@@ -39,11 +39,11 @@ import (
 // nothing here, which is what makes "the data plane has a single door" a
 // property of the code rather than of the deployment.
 //
-// It takes *di.DataHubComponents rather than the backend's component set: the
+// It takes *di/datahub.DataHubComponents rather than the backend's component set: the
 // event publisher, the Kratos client and the recap/tag-set read models it
 // needs are built by that binary alone, so a backend handler cannot reach them
 // even by accident (CLAUDE.md rule 8 — absent field, compile error).
-func SetupConnectHandlers(mux *http.ServeMux, container *di.DataHubComponents, cfg *config.Config, logger *slog.Logger) {
+func SetupConnectHandlers(mux *http.ServeMux, container *datahubdi.DataHubComponents, cfg *config.Config, logger *slog.Logger) {
 	cancelInterceptor := middleware.NewContextCancelInterceptor(logger)
 
 	datahubOpts := connect.WithInterceptors(
@@ -129,6 +129,16 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.DataHubComponents, c
 			container.TagSetVersionCapabilityGateway,
 			container.StatsGateway,
 		),
+		// ADR-000954 Wave 3 batch 6, and the last application of the rule:
+		// the Tag Trail's paged reads and the recall rail's article fallback.
+		// These two are the quietest failures of the six batches — an unwired
+		// Tag Trail renders "no articles" and an unwired fallback drops
+		// exactly the items it exists to rescue, both with a 200 — which is
+		// why they refuse nil at construction like the rest.
+		datahubapi.WithWave3Batch6Capabilities(
+			container.TagTrailGateway,
+			container.ArticleRefGateway,
+		),
 	)
 	datahubPath, datahubServiceHandler := datahubv1connect.NewDataHubServiceHandler(datahubHandler, datahubOpts)
 	mux.Handle(datahubPath, datahubServiceHandler)
@@ -145,7 +155,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.DataHubComponents, c
 
 // CreateServer builds the Connect-RPC handler for data-hub's mutual-TLS
 // listener: DataHubService and /health, and nothing else.
-func CreateServer(container *di.DataHubComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
+func CreateServer(container *datahubdi.DataHubComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	muxutil.RegisterHealth(mux)
 	SetupConnectHandlers(mux, container, cfg, logger)

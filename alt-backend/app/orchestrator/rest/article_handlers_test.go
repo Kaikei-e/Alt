@@ -7,7 +7,6 @@ import (
 	"alt/orchestrator/gateway/fetch_article_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
 	"alt/orchestrator/usecase/fetch_article_usecase"
-	"alt/shared/driver/alt_db"
 	// Note: driver/gateway imports are used to construct the usecase, not for direct handler access.
 	"alt/utils/logger"
 	"alt/utils/security"
@@ -24,10 +23,65 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
+
+// stubArticleRepository stands in for the repository fetch_article_usecase
+// depends on.
+//
+// It used to be *alt_db.AltDBRepository over a pgxmock pool, and these three
+// subtests were written as SQL expectations: an empty rows set for the article
+// lookup, a boolean row for declined_domains, an INSERT for the save. That
+// stopped being possible in ADR-000954 Wave 3 — cmd/backend has no pool, and
+// this handler's repository is now three alt-data-hub gateways behind one
+// interface — and it stopped being desirable at the same time. What these
+// subtests are about is the *handler's* branching: declined means 403, robots
+// disallow means "record the decline and 403", allowed means 200 with the
+// extracted text. None of that is a claim about SQL, and asserting it through
+// query regexes made the test fail whenever a column moved.
+//
+// The queries themselves are covered where they belong: the driver tests in
+// shared/driver/alt_db, and the CDC pacts in
+// shared/gateway/datahub_gateway/contract for the wire shape between them.
+type stubArticleRepository struct {
+	existing *domain.ArticleContent
+	declined bool
+
+	declinedSaved  []string
+	savedArticleID string
+	saveArticleErr error
+}
+
+func (s *stubArticleRepository) FetchArticleByURL(_ context.Context, _ string) (*domain.ArticleContent, error) {
+	return s.existing, nil
+}
+
+func (s *stubArticleRepository) IsDomainDeclined(_ context.Context, _, _ string) (bool, error) {
+	return s.declined, nil
+}
+
+func (s *stubArticleRepository) SaveDeclinedDomain(_ context.Context, _, domainStr string) error {
+	s.declinedSaved = append(s.declinedSaved, domainStr)
+	return nil
+}
+
+func (s *stubArticleRepository) SaveArticle(_ context.Context, _, _, _ string) (string, error) {
+	if s.saveArticleErr != nil {
+		return "", s.saveArticleErr
+	}
+	return s.savedArticleID, nil
+}
+
+func (s *stubArticleRepository) SaveArticleHead(_ context.Context, _, _, _ string) error { return nil }
+
+func (s *stubArticleRepository) FetchArticleHeadByArticleID(_ context.Context, _ string) (*domain.ArticleHead, error) {
+	return nil, nil
+}
+
+func (s *stubArticleRepository) FetchOgImageURLByArticleID(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
 
 // MockRoundTripper for intercepting HTTP requests
 type MockRoundTripper struct {
@@ -43,18 +97,12 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 	logger.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// 1. Setup
-	mockPool, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-	defer mockPool.Close()
-
 	mockTransport := &MockRoundTripper{}
 	mockHttpClient := &http.Client{Transport: mockTransport}
 	// We skip strict SSRF validation for tests or ensure we use allowed domains
 	ssrfValidator := security.NewSSRFValidator()
 
-	repo := alt_db.NewAltDBRepository(mockPool)
+	repo := &stubArticleRepository{savedArticleID: uuid.New().String()}
 	gw := robots_txt_gateway.NewRobotsTxtGatewayWithDeps(mockHttpClient, ssrfValidator)
 	// Inject Gateway with deps (injecting mockHttpClient allows intercepting fetch article request)
 	fetchGw := fetch_article_gateway.NewFetchArticleGatewayWithDeps(nil, mockHttpClient, ssrfValidator)
@@ -66,13 +114,14 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 
 	// Create real Usecase composed of mocks/stubs
 	// Note: NewArticleUsecase expects (FetchArticlePort, RobotsTxtPort, ArticleRepository, RagIntegrationPort)
-	// repo is *AltDBRepository which uses mockPool, so it satisfies ArticleRepository interface.
 	articleUsecase := fetch_article_usecase.NewArticleUsecase(fetchGw, gw, repo, mockRag)
 
-	// Partial container with only needed components
+	// Partial container with only needed components. There is no repository
+	// field to populate any more: the handler reaches its data through the
+	// usecase, and cmd/backend's container carries no database handle at all
+	// since ADR-000954 Wave 3 batch 6.
 	container := &di.ApplicationComponents{
-		AltDBRepository: repo,
-		ArticleUsecase:  articleUsecase,
+		ArticleUsecase: articleUsecase,
 	}
 
 	userID := uuid.New()
@@ -101,18 +150,13 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		return nil, fmt.Errorf("unexpected call to %s", req.URL.String())
 	}
 
-	t.Run("Already Declined in DB", func(t *testing.T) {
+	t.Run("Already Declined", func(t *testing.T) {
 		c, rec := createContext()
 
-		// Mock: FetchArticleByURL -> Not Found (nil)
-		mockPool.ExpectQuery(`(?is)SELECT id, .* FROM articles WHERE url = \$1 AND user_id = \$2`).
-			WithArgs(targetURLStr, userID).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "url", "title", "content", "created_at", "updated_at"})) // Empty means not found
-
-		// Mock: IsDomainDeclined -> True
-		mockPool.ExpectQuery(`(?is)SELECT EXISTS.*FROM declined_domains`).
-			WithArgs(userID.String(), domainStr).
-			WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+		// No stored article, and the domain has already declined us.
+		repo.existing = nil
+		repo.declined = true
+		repo.declinedSaved = nil
 
 		handler := handleFetchArticle(container)
 		err := handler(c)
@@ -121,24 +165,17 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		assert.NoError(t, err) // Handler returns error via c.JSON usually, or nil if handled
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 		assert.Contains(t, rec.Body.String(), "The request was declined")
-
-		if err := mockPool.ExpectationsWereMet(); err != nil {
-			t.Errorf("there were unfulfilled expectations: %s", err)
-		}
+		// A domain already on the list is not written again — the check short
+		// circuits before robots.txt is ever fetched.
+		assert.Empty(t, repo.declinedSaved)
 	})
 
 	t.Run("Robots.txt Disallowed", func(t *testing.T) {
 		c, rec := createContext()
 
-		// Mock: FetchArticleByURL -> Not Found
-		mockPool.ExpectQuery(`(?is)SELECT id, .* FROM articles WHERE url = \$1 AND user_id = \$2`).
-			WithArgs(targetURLStr, userID).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "url", "title", "content", "created_at", "updated_at"}))
-
-		// Mock: IsDomainDeclined -> False
-		mockPool.ExpectQuery(`(?is)SELECT EXISTS.*FROM declined_domains`).
-			WithArgs(userID.String(), domainStr).
-			WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+		repo.existing = nil
+		repo.declined = false
+		repo.declinedSaved = nil
 
 		// Mock HTTP: robots.txt Disallow: /article
 		mockTransport.RoundTripFunc = func(req *http.Request) (*http.Response, error) {
@@ -152,35 +189,23 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
 		}
 
-		// Mock: SaveDeclinedDomain -> Success
-		mockPool.ExpectExec("INSERT INTO declined_domains").
-			WithArgs(userID.String(), domainStr, pgxmock.AnyArg()).
-			WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
 		handler := handleFetchArticle(container)
 		err := handler(c)
 
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 		assert.Contains(t, rec.Body.String(), "The request was declined")
-
-		if err := mockPool.ExpectationsWereMet(); err != nil {
-			t.Errorf("there were unfulfilled expectations: %s", err)
-		}
+		// The refusal is recorded, so the next reader does not re-fetch
+		// robots.txt to be told the same thing.
+		assert.Equal(t, []string{domainStr}, repo.declinedSaved)
 	})
 
 	t.Run("Allowed and Fetched", func(t *testing.T) {
 		c, rec := createContext()
 
-		// Mock: FetchArticleByURL -> Not Found
-		mockPool.ExpectQuery(`(?is)SELECT id, .* FROM articles WHERE url = \$1 AND user_id = \$2`).
-			WithArgs(targetURLStr, userID).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "url", "title", "content", "created_at", "updated_at"}))
-
-		// Mock: IsDomainDeclined -> False
-		mockPool.ExpectQuery(`(?is)SELECT EXISTS.*FROM declined_domains`).
-			WithArgs(userID.String(), domainStr).
-			WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+		repo.existing = nil
+		repo.declined = false
+		repo.declinedSaved = nil
 
 		// Mock HTTP: robots.txt Allowed
 		mockTransport.RoundTripFunc = func(req *http.Request) (*http.Response, error) {
@@ -203,28 +228,11 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
 		}
 
-		// Mock: GetFeedIDByURL -> Not Found (used inside SaveArticle)
-		// We expect this to fail or return empty, and SaveArticle handles it.
-		// GetFeedIDByURL uses separate query: SELECT id FROM feeds WHERE website_url = $1
-		mockPool.ExpectQuery(`(?is)SELECT id FROM feeds WHERE website_url = \$1`).
-			WithArgs(targetURLStr).
-			WillReturnRows(pgxmock.NewRows([]string{"id"})) // Returns empty, so Scan returns ErrNoRows
-
-		// Expect Transaction
-		mockPool.ExpectBegin()
-
-		// Expect Upsert Article — RETURNING id, (xmax = 0) AS created
-		mockPool.ExpectQuery("(?is)INSERT INTO articles").
-			WithArgs("Title", pgxmock.AnyArg(), targetURLStr, userID, nil).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow(uuid.New(), true))
-
-		// Expect Outbox Event Insert
-		mockPool.ExpectExec("(?is)INSERT INTO outbox_events").
-			WithArgs("ARTICLE_UPSERT", pgxmock.AnyArg()).
-			WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
-		// Expect Commit
-		mockPool.ExpectCommit()
+		// The save itself — the upsert, the outbox insert and the transaction
+		// holding them together — is one alt-data-hub procedure now
+		// (ArchiveArticle, catalog §2.B). Its atomicity is asserted where it
+		// lives, in the driver test and in the pact; here the article simply
+		// comes back with an id.
 
 		// RAG upsert is async (goroutine); use AnyTimes to avoid race with ctrl.Finish
 		mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -236,11 +244,9 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "Content") // Extracted text
 
-		// Allow async RAG goroutine to complete before checking pool expectations
+		// Allow the async RAG goroutine to complete before the gomock
+		// controller finishes.
 		time.Sleep(50 * time.Millisecond)
-
-		if err := mockPool.ExpectationsWereMet(); err != nil {
-			t.Errorf("there were unfulfilled expectations: %s", err)
-		}
+		assert.Empty(t, repo.declinedSaved, "an allowed fetch must not record a decline")
 	})
 }

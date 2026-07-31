@@ -1,4 +1,19 @@
-package di
+// Package datahub is cmd/datahub's composition root.
+//
+// It is a package of its own, separate from alt/di, since ADR-000954 Wave 3
+// batch 6 — and the reason is the same one that split the binaries. This is
+// the only root that constructs an *alt_db.AltDBRepository, and Go's unit of
+// linkage is the package: leaving it in alt/di would have put
+// alt/shared/driver/alt_db in the dependency graph of cmd/backend and
+// cmd/harvester too, since both import alt/di for their own roots. Wave 3's
+// exit condition is that those two binaries *cannot* reach the database, and
+// with one shared di package that could only ever have been a convention.
+//
+// It imports alt/di rather than duplicating it: the wiring-state loggers and
+// the tag-cloud cache window are shared with the other two roots, and two
+// copies of a "which binary emitted this" log helper is how the three
+// processes' log lines start disagreeing.
+package datahub
 
 import (
 	"log/slog"
@@ -6,20 +21,21 @@ import (
 	"alt/config"
 	"alt/dataplane/driver/kratos_client"
 	"alt/dataplane/gateway/datahub_capability_gateway"
+	"alt/dataplane/gateway/fetch_articles_by_tag_gateway"
 	"alt/dataplane/gateway/fetch_recent_articles_gateway"
+	"alt/dataplane/gateway/fetch_tag_cloud_gateway"
+	"alt/dataplane/gateway/internal_article_gateway"
 	"alt/dataplane/gateway/recap_articles_gateway"
 	"alt/dataplane/port/datahub_capability_port"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/dataplane/usecase/outbox_usecase"
 	"alt/dataplane/usecase/recap_articles_usecase"
+	"alt/di"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 	"alt/shared/driver/alt_db"
 	"alt/shared/driver/mqhub_connect"
 	"alt/shared/driver/sovereign_client"
 	"alt/shared/gateway/event_publisher_gateway"
-	"alt/shared/gateway/fetch_articles_by_tag_gateway"
-	"alt/shared/gateway/fetch_tag_cloud_gateway"
-	"alt/shared/gateway/internal_article_gateway"
 	"alt/shared/port/event_publisher_port"
 	"alt/shared/usecase/create_summary_version_usecase"
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
@@ -120,6 +136,16 @@ type DataHubComponents struct {
 	SummaryVersionCapabilityGateway datahub_capability_port.SummaryVersionPort
 	TagSetVersionCapabilityGateway  datahub_capability_port.TagSetVersionPort
 	StatsGateway                    datahub_capability_port.StatsPort
+
+	// ADR-000954 Wave 3 batch 6 (catalog §2.J / §2.C) — the last two.
+	//
+	// TagTrailGateway is the paged Tag Trail read whose Wave 2 wire shape
+	// could not express the caller's cursor, and ArticleRefGateway is the
+	// recall rail's projection fallback. Neither gets a usecase: one is a
+	// query and the other is a single row, and there is no state machine
+	// between them.
+	TagTrailGateway   datahub_capability_port.TagTrailPort
+	ArticleRefGateway datahub_capability_port.ArticleRefPort
 }
 
 // NewDataHubComponents is cmd/datahub's composition root.
@@ -142,11 +168,11 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 
 	// Event publishing.
 	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled)
-	logMQHubWiringState("alt-data-hub", cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
+	di.LogMQHubWiringState("alt-data-hub", cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
 	eventPublisher := event_publisher_gateway.NewEventPublisherGateway(mqhubClient, slog.Default())
 
 	// Knowledge event sink.
-	sovereignEnabled := logSovereignWiringState("alt-data-hub", cfg.Sovereign.URL, cfg.AppEnv)
+	sovereignEnabled := di.LogSovereignWiringState("alt-data-hub", cfg.Sovereign.URL, cfg.AppEnv)
 	if !sovereignEnabled {
 		panic("SOVEREIGN_URL is required for alt-data-hub in every environment — " +
 			"versioned summary/tag-set artifacts would be written with no knowledge event appended")
@@ -177,7 +203,7 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 
 	// RAG tool reads.
 	fetchTagCloudGw := fetch_tag_cloud_gateway.NewFetchTagCloudGateway(altDB)
-	fetchTagCloudUC := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(fetchTagCloudGw, tagCloudCacheTTL)
+	fetchTagCloudUC := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(fetchTagCloudGw, di.TagCloudCacheTTL)
 	fetchArticlesByTagGw := fetch_articles_by_tag_gateway.NewFetchArticlesByTagGateway(altDB)
 	fetchArticlesByTagUC := fetch_articles_by_tag_usecase.NewFetchArticlesByTagUsecase(fetchArticlesByTagGw)
 
@@ -248,6 +274,17 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		"procedures", 14,
 		"adr", "ADR-000954 Wave 3 batch 5")
 
+	// ADR-000954 Wave 3 batch 6 capabilities — the two that close the wave.
+	// After these, alt-backend opens no database pool at all, so "leaving one
+	// unwired" is not a degraded deployment but a missing feature that still
+	// answers 200.
+	tagTrailGw := datahub_capability_gateway.NewTagTrailGateway(altDB)
+	articleRefGw := datahub_capability_gateway.NewArticleRefGateway(altDB)
+	slog.Info("datahub.wave3_capabilities_enabled",
+		"groups", "tag_trail,article_ref",
+		"procedures", 3,
+		"adr", "ADR-000954 Wave 3 batch 6")
+
 	return &DataHubComponents{
 		Config:                      cfg,
 		AltDBRepository:             altDB,
@@ -283,5 +320,8 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		SummaryVersionCapabilityGateway: summaryVersionGw,
 		TagSetVersionCapabilityGateway:  tagSetVersionGw,
 		StatsGateway:                    statsGw,
+
+		TagTrailGateway:   tagTrailGw,
+		ArticleRefGateway: articleRefGw,
 	}
 }

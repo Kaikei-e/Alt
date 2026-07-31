@@ -1,3 +1,10 @@
+// Package fetch_tag_cloud_gateway serves the tag cloud's counts from alt_db.
+//
+// It sits under dataplane/ since ADR-000954 Wave 3 batch 6. Batch 5 moved the
+// last calling side onto the FetchTagCloud procedure, leaving cmd/datahub as
+// the only binary that constructs this — and a package under shared/ holding
+// an *alt_db.AltDBRepository is an invitation for the next caller to reach for
+// a pool its process does not have.
 package fetch_tag_cloud_gateway
 
 import (

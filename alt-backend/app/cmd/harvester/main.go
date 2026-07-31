@@ -35,7 +35,6 @@ func main() {
 
 	rt := bootstrap.MustBoot(ctx, bootstrap.Options{
 		ServiceName: serviceName,
-		RequireDB:   true,
 	})
 	defer rt.Shutdown(ctx)
 
@@ -52,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	container := di.NewHarvesterComponents(rt.Pool, cfg)
+	container := di.NewHarvesterComponents(cfg)
 
 	scheduler := job.NewJobScheduler()
 	job.RegisterHarvesterJobs(scheduler, container, cfg)
