@@ -30,7 +30,6 @@ import (
 	"alt/orchestrator/usecase/get_article_source_url_usecase"
 	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/orchestrator/usecase/stream_article_tags_usecase"
-	"alt/shared/driver/alt_db"
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
 	"alt/utils/perf"
@@ -54,7 +53,6 @@ type OgImageURLLookup interface {
 
 // ArticleHandlerDeps holds the dependencies for the Article service handler.
 type ArticleHandlerDeps struct {
-	AltDBRepository         *alt_db.AltDBRepository
 	OgImageURLs             OgImageURLLookup
 	ArchiveArticle          *archive_article_usecase.ArchiveArticleUsecase
 	Article                 fetch_article_usecase.ArticleUsecase

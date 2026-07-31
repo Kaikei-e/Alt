@@ -52,6 +52,10 @@ func components() *di.DataHubComponents {
 		FeedLinkGateway:             datahub_capability_gateway.NewFeedLinkGateway(nil),
 		FeedLinkAvailabilityGateway: datahub_capability_gateway.NewFeedLinkAvailabilityGateway(nil),
 		FeedGateway:                 datahub_capability_gateway.NewFeedGateway(nil),
+
+		// Wave 3 batch 4, same rule.
+		ReadStateGateway: datahub_capability_gateway.NewReadStateGateway(nil),
+		TagReadGateway:   datahub_capability_gateway.NewTagReadGateway(nil),
 	}
 }
 

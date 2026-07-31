@@ -102,7 +102,11 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	articleURLLookupGw := infra.ArticleURLLookupGateway
 
 	// Knowledge Home usecases
-	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(altDB, 30*time.Minute)
+	// The counts come from alt-data-hub (catalog §2.J W3-J5); what counts as
+	// trending — the 7-versus-30-day comparison and its thresholds — stays
+	// here, because it is a product decision and changing it should not mean
+	// redeploying the process that owns the database.
+	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(infra.TagGateway, 30*time.Minute)
 	getKnowledgeHomeUC := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli, trendingTagsGw)
 	trailThumbnailGw := trail_thumbnail_gateway.NewGateway(infra.OgImageGateway)
 	getKnowledgeTrailUC := get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(sovereignCli, trailThumbnailGw)

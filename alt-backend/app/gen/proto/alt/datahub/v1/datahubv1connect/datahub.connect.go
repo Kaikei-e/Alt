@@ -318,6 +318,51 @@ const (
 	// DataHubServiceGetInoreaderSummariesByURLsProcedure is the fully-qualified name of the
 	// DataHubService's GetInoreaderSummariesByURLs RPC.
 	DataHubServiceGetInoreaderSummariesByURLsProcedure = "/alt.datahub.v1.DataHubService/GetInoreaderSummariesByURLs"
+	// DataHubServiceMarkFeedReadProcedure is the fully-qualified name of the DataHubService's
+	// MarkFeedRead RPC.
+	DataHubServiceMarkFeedReadProcedure = "/alt.datahub.v1.DataHubService/MarkFeedRead"
+	// DataHubServiceMarkArticleReadProcedure is the fully-qualified name of the DataHubService's
+	// MarkArticleRead RPC.
+	DataHubServiceMarkArticleReadProcedure = "/alt.datahub.v1.DataHubService/MarkArticleRead"
+	// DataHubServiceGetReadFeedIDsProcedure is the fully-qualified name of the DataHubService's
+	// GetReadFeedIDs RPC.
+	DataHubServiceGetReadFeedIDsProcedure = "/alt.datahub.v1.DataHubService/GetReadFeedIDs"
+	// DataHubServiceGetAllReadFeedIDsProcedure is the fully-qualified name of the DataHubService's
+	// GetAllReadFeedIDs RPC.
+	DataHubServiceGetAllReadFeedIDsProcedure = "/alt.datahub.v1.DataHubService/GetAllReadFeedIDs"
+	// DataHubServiceGetUserSubscribedFeedLinkIDsProcedure is the fully-qualified name of the
+	// DataHubService's GetUserSubscribedFeedLinkIDs RPC.
+	DataHubServiceGetUserSubscribedFeedLinkIDsProcedure = "/alt.datahub.v1.DataHubService/GetUserSubscribedFeedLinkIDs"
+	// DataHubServiceListSubscriptionsProcedure is the fully-qualified name of the DataHubService's
+	// ListSubscriptions RPC.
+	DataHubServiceListSubscriptionsProcedure = "/alt.datahub.v1.DataHubService/ListSubscriptions"
+	// DataHubServiceSubscribeProcedure is the fully-qualified name of the DataHubService's Subscribe
+	// RPC.
+	DataHubServiceSubscribeProcedure = "/alt.datahub.v1.DataHubService/Subscribe"
+	// DataHubServiceUnsubscribeProcedure is the fully-qualified name of the DataHubService's
+	// Unsubscribe RPC.
+	DataHubServiceUnsubscribeProcedure = "/alt.datahub.v1.DataHubService/Unsubscribe"
+	// DataHubServiceAddFavoriteFeedProcedure is the fully-qualified name of the DataHubService's
+	// AddFavoriteFeed RPC.
+	DataHubServiceAddFavoriteFeedProcedure = "/alt.datahub.v1.DataHubService/AddFavoriteFeed"
+	// DataHubServiceRemoveFavoriteFeedProcedure is the fully-qualified name of the DataHubService's
+	// RemoveFavoriteFeed RPC.
+	DataHubServiceRemoveFavoriteFeedProcedure = "/alt.datahub.v1.DataHubService/RemoveFavoriteFeed"
+	// DataHubServiceGetArticleTagsProcedure is the fully-qualified name of the DataHubService's
+	// GetArticleTags RPC.
+	DataHubServiceGetArticleTagsProcedure = "/alt.datahub.v1.DataHubService/GetArticleTags"
+	// DataHubServiceGetFeedTagsProcedure is the fully-qualified name of the DataHubService's
+	// GetFeedTags RPC.
+	DataHubServiceGetFeedTagsProcedure = "/alt.datahub.v1.DataHubService/GetFeedTags"
+	// DataHubServiceGetTagCooccurrencesProcedure is the fully-qualified name of the DataHubService's
+	// GetTagCooccurrences RPC.
+	DataHubServiceGetTagCooccurrencesProcedure = "/alt.datahub.v1.DataHubService/GetTagCooccurrences"
+	// DataHubServiceSearchTagsByPrefixProcedure is the fully-qualified name of the DataHubService's
+	// SearchTagsByPrefix RPC.
+	DataHubServiceSearchTagsByPrefixProcedure = "/alt.datahub.v1.DataHubService/SearchTagsByPrefix"
+	// DataHubServiceGetTagArticleCountsProcedure is the fully-qualified name of the DataHubService's
+	// GetTagArticleCounts RPC.
+	DataHubServiceGetTagArticleCountsProcedure = "/alt.datahub.v1.DataHubService/GetTagArticleCounts"
 )
 
 // DataHubServiceClient is a client for the alt.datahub.v1.DataHubService service.
@@ -630,6 +675,93 @@ type DataHubServiceClient interface {
 	BatchGetFeedTitlesByIDs(context.Context, *connect.Request[v1.BatchGetFeedTitlesByIDsRequest]) (*connect.Response[v1.BatchGetFeedTitlesByIDsResponse], error)
 	// GetInoreaderSummariesByURLs returns imported Inoreader bodies for URLs.
 	GetInoreaderSummariesByURLs(context.Context, *connect.Request[v1.GetInoreaderSummariesByURLsRequest]) (*connect.Response[v1.GetInoreaderSummariesByURLsResponse], error)
+	// MarkFeedRead records that a user has read everything at a feed's URL.
+	//
+	// A URL with no feeds row answers NotFound, and the provider decides that
+	// from the zero rows the upsert affected — not from a SELECT issued first.
+	// That is the one semantics both this procedure and MarkArticleRead now
+	// use (catalog §4-5). They had two: this one resolved the feed with a
+	// SELECT and read pgx.ErrNoRows, its twin ran a single
+	// INSERT ... SELECT and read RowsAffected() == 0. Two ways to answer
+	// "there is no such feed" is one too many across a process boundary,
+	// because a consumer sees only the Connect code and cannot tell which
+	// implementation produced it; and the SELECT-first version also had a
+	// window in which the feed could be deleted between the check and the
+	// write, turning a NotFound into a silent no-op that reported success.
+	//
+	// The transaction stays inside this procedure. It wraps one statement now,
+	// so it commits nothing the statement would not have committed on its own;
+	// it is kept because collapsing a transaction boundary is a behaviour
+	// change independent of collapsing the round trips, and a commit that mixed
+	// both would be ambiguous in a bisect (ADR-000954 D3).
+	MarkFeedRead(context.Context, *connect.Request[v1.MarkFeedReadRequest]) (*connect.Response[v1.MarkFeedReadResponse], error)
+	// MarkArticleRead records the same read against the feed an article's URL
+	// belongs to.
+	//
+	// Two procedures for one table, deliberately. The name is the caller's
+	// vocabulary — the browser marks an article read, and the driver comment
+	// has said "named MarkArticleAsRead but operates on feeds" since it was
+	// written — while MarkFeedRead is the feed list's bulk action. Merging them
+	// would make the request field mean "a URL, of one of two kinds", and the
+	// provider would have to guess which query the caller meant. What they now
+	// share is the part that was actually inconsistent: the missing-row answer
+	// is NotFound derived from RowsAffected() == 0 in both.
+	MarkArticleRead(context.Context, *connect.Request[v1.MarkArticleReadRequest]) (*connect.Response[v1.MarkArticleReadResponse], error)
+	// GetReadFeedIDs filters a batch of feed ids down to the ones the user has
+	// read — the per-page overlay on a feed list.
+	GetReadFeedIDs(context.Context, *connect.Request[v1.GetReadFeedIDsRequest]) (*connect.Response[v1.GetReadFeedIDsResponse], error)
+	// GetAllReadFeedIDs returns the user's whole read set, capped by the
+	// provider. The caller caches it for a few seconds and answers many pages
+	// from one call.
+	GetAllReadFeedIDs(context.Context, *connect.Request[v1.GetAllReadFeedIDsRequest]) (*connect.Response[v1.GetAllReadFeedIDsResponse], error)
+	// GetUserSubscribedFeedLinkIDs returns the feed links a user follows.
+	GetUserSubscribedFeedLinkIDs(context.Context, *connect.Request[v1.GetUserSubscribedFeedLinkIDsRequest]) (*connect.Response[v1.GetUserSubscribedFeedLinkIDsResponse], error)
+	// ListSubscriptions returns every feed link with this user's follow state —
+	// the subscription management screen, not just the followed subset.
+	ListSubscriptions(context.Context, *connect.Request[v1.ListSubscriptionsRequest]) (*connect.Response[v1.ListSubscriptionsResponse], error)
+	// Subscribe follows a feed link. Idempotent.
+	Subscribe(context.Context, *connect.Request[v1.SubscribeRequest]) (*connect.Response[v1.SubscribeResponse], error)
+	// Unsubscribe stops following a feed link. Idempotent.
+	Unsubscribe(context.Context, *connect.Request[v1.UnsubscribeRequest]) (*connect.Response[v1.UnsubscribeResponse], error)
+	// AddFavoriteFeed stars the feed at a URL for one user.
+	//
+	// Unlike the two read-status writes above, this keeps its SELECT: the
+	// insert is ON CONFLICT DO NOTHING, so a zero RowsAffected() means either
+	// "no such feed" or "already a favourite", and those two answers are a
+	// NotFound and a success. The pair stays in one transaction because that is
+	// what a transaction is for — two statements whose combination the caller
+	// must not see half of — where MarkFeedRead's transaction wrapped one.
+	AddFavoriteFeed(context.Context, *connect.Request[v1.AddFavoriteFeedRequest]) (*connect.Response[v1.AddFavoriteFeedResponse], error)
+	// RemoveFavoriteFeed unstars it. NotFound covers both a URL with no feed and
+	// a feed the user had not starred, which is the distinction the caller has
+	// never made.
+	RemoveFavoriteFeed(context.Context, *connect.Request[v1.RemoveFavoriteFeedRequest]) (*connect.Response[v1.RemoveFavoriteFeedResponse], error)
+	// GetArticleTags returns an article's tags, and nothing else.
+	//
+	// The on-the-fly generation that used to sit behind this read — ask mq-hub
+	// for tags when there are none, then write them back — stays with the
+	// caller. Generating is a call to another service and orchestration around
+	// it (ADR-000954 D4); this procedure is the read, and UpsertArticleTags is
+	// the write-back.
+	GetArticleTags(context.Context, *connect.Request[v1.GetArticleTagsRequest]) (*connect.Response[v1.GetArticleTagsResponse], error)
+	// GetFeedTags pages one feed's tags, newest first.
+	GetFeedTags(context.Context, *connect.Request[v1.GetFeedTagsRequest]) (*connect.Response[v1.GetFeedTagsResponse], error)
+	// GetTagCooccurrences returns tag pairs sharing at least two articles — the
+	// edge set behind the tag cloud's layout.
+	//
+	// The layout itself is not here. The octree that turns counts and edges into
+	// 3D coordinates is a pure function with no database in it, and it stays
+	// with the caller for the same reason the RSS rendering did (ADR-000954 D4).
+	GetTagCooccurrences(context.Context, *connect.Request[v1.GetTagCooccurrencesRequest]) (*connect.Response[v1.GetTagCooccurrencesResponse], error)
+	// SearchTagsByPrefix is the global search box's tag section.
+	SearchTagsByPrefix(context.Context, *connect.Request[v1.SearchTagsByPrefixRequest]) (*connect.Response[v1.SearchTagsByPrefixResponse], error)
+	// GetTagArticleCounts counts one user's tagged articles since a timestamp.
+	//
+	// Counts, not "trending tags". Which tags count as trending is a comparison
+	// of two of these windows against thresholds the caller owns, and that
+	// arithmetic has no SQL in it — moving it here would put a product decision
+	// in the data plane, where changing it means redeploying the database owner.
+	GetTagArticleCounts(context.Context, *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error)
 }
 
 // NewDataHubServiceClient constructs a client for the alt.datahub.v1.DataHubService service. By
@@ -1159,6 +1291,96 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("GetInoreaderSummariesByURLs")),
 			connect.WithClientOptions(opts...),
 		),
+		markFeedRead: connect.NewClient[v1.MarkFeedReadRequest, v1.MarkFeedReadResponse](
+			httpClient,
+			baseURL+DataHubServiceMarkFeedReadProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("MarkFeedRead")),
+			connect.WithClientOptions(opts...),
+		),
+		markArticleRead: connect.NewClient[v1.MarkArticleReadRequest, v1.MarkArticleReadResponse](
+			httpClient,
+			baseURL+DataHubServiceMarkArticleReadProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("MarkArticleRead")),
+			connect.WithClientOptions(opts...),
+		),
+		getReadFeedIDs: connect.NewClient[v1.GetReadFeedIDsRequest, v1.GetReadFeedIDsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetReadFeedIDsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetReadFeedIDs")),
+			connect.WithClientOptions(opts...),
+		),
+		getAllReadFeedIDs: connect.NewClient[v1.GetAllReadFeedIDsRequest, v1.GetAllReadFeedIDsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetAllReadFeedIDsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetAllReadFeedIDs")),
+			connect.WithClientOptions(opts...),
+		),
+		getUserSubscribedFeedLinkIDs: connect.NewClient[v1.GetUserSubscribedFeedLinkIDsRequest, v1.GetUserSubscribedFeedLinkIDsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetUserSubscribedFeedLinkIDsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetUserSubscribedFeedLinkIDs")),
+			connect.WithClientOptions(opts...),
+		),
+		listSubscriptions: connect.NewClient[v1.ListSubscriptionsRequest, v1.ListSubscriptionsResponse](
+			httpClient,
+			baseURL+DataHubServiceListSubscriptionsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListSubscriptions")),
+			connect.WithClientOptions(opts...),
+		),
+		subscribe: connect.NewClient[v1.SubscribeRequest, v1.SubscribeResponse](
+			httpClient,
+			baseURL+DataHubServiceSubscribeProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("Subscribe")),
+			connect.WithClientOptions(opts...),
+		),
+		unsubscribe: connect.NewClient[v1.UnsubscribeRequest, v1.UnsubscribeResponse](
+			httpClient,
+			baseURL+DataHubServiceUnsubscribeProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("Unsubscribe")),
+			connect.WithClientOptions(opts...),
+		),
+		addFavoriteFeed: connect.NewClient[v1.AddFavoriteFeedRequest, v1.AddFavoriteFeedResponse](
+			httpClient,
+			baseURL+DataHubServiceAddFavoriteFeedProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("AddFavoriteFeed")),
+			connect.WithClientOptions(opts...),
+		),
+		removeFavoriteFeed: connect.NewClient[v1.RemoveFavoriteFeedRequest, v1.RemoveFavoriteFeedResponse](
+			httpClient,
+			baseURL+DataHubServiceRemoveFavoriteFeedProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("RemoveFavoriteFeed")),
+			connect.WithClientOptions(opts...),
+		),
+		getArticleTags: connect.NewClient[v1.GetArticleTagsRequest, v1.GetArticleTagsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetArticleTagsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetArticleTags")),
+			connect.WithClientOptions(opts...),
+		),
+		getFeedTags: connect.NewClient[v1.GetFeedTagsRequest, v1.GetFeedTagsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetFeedTagsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetFeedTags")),
+			connect.WithClientOptions(opts...),
+		),
+		getTagCooccurrences: connect.NewClient[v1.GetTagCooccurrencesRequest, v1.GetTagCooccurrencesResponse](
+			httpClient,
+			baseURL+DataHubServiceGetTagCooccurrencesProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetTagCooccurrences")),
+			connect.WithClientOptions(opts...),
+		),
+		searchTagsByPrefix: connect.NewClient[v1.SearchTagsByPrefixRequest, v1.SearchTagsByPrefixResponse](
+			httpClient,
+			baseURL+DataHubServiceSearchTagsByPrefixProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("SearchTagsByPrefix")),
+			connect.WithClientOptions(opts...),
+		),
+		getTagArticleCounts: connect.NewClient[v1.GetTagArticleCountsRequest, v1.GetTagArticleCountsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetTagArticleCountsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetTagArticleCounts")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1250,6 +1472,21 @@ type dataHubServiceClient struct {
 	getFeedURLsByArticleIDs           *connect.Client[v1.GetFeedURLsByArticleIDsRequest, v1.GetFeedURLsByArticleIDsResponse]
 	batchGetFeedTitlesByIDs           *connect.Client[v1.BatchGetFeedTitlesByIDsRequest, v1.BatchGetFeedTitlesByIDsResponse]
 	getInoreaderSummariesByURLs       *connect.Client[v1.GetInoreaderSummariesByURLsRequest, v1.GetInoreaderSummariesByURLsResponse]
+	markFeedRead                      *connect.Client[v1.MarkFeedReadRequest, v1.MarkFeedReadResponse]
+	markArticleRead                   *connect.Client[v1.MarkArticleReadRequest, v1.MarkArticleReadResponse]
+	getReadFeedIDs                    *connect.Client[v1.GetReadFeedIDsRequest, v1.GetReadFeedIDsResponse]
+	getAllReadFeedIDs                 *connect.Client[v1.GetAllReadFeedIDsRequest, v1.GetAllReadFeedIDsResponse]
+	getUserSubscribedFeedLinkIDs      *connect.Client[v1.GetUserSubscribedFeedLinkIDsRequest, v1.GetUserSubscribedFeedLinkIDsResponse]
+	listSubscriptions                 *connect.Client[v1.ListSubscriptionsRequest, v1.ListSubscriptionsResponse]
+	subscribe                         *connect.Client[v1.SubscribeRequest, v1.SubscribeResponse]
+	unsubscribe                       *connect.Client[v1.UnsubscribeRequest, v1.UnsubscribeResponse]
+	addFavoriteFeed                   *connect.Client[v1.AddFavoriteFeedRequest, v1.AddFavoriteFeedResponse]
+	removeFavoriteFeed                *connect.Client[v1.RemoveFavoriteFeedRequest, v1.RemoveFavoriteFeedResponse]
+	getArticleTags                    *connect.Client[v1.GetArticleTagsRequest, v1.GetArticleTagsResponse]
+	getFeedTags                       *connect.Client[v1.GetFeedTagsRequest, v1.GetFeedTagsResponse]
+	getTagCooccurrences               *connect.Client[v1.GetTagCooccurrencesRequest, v1.GetTagCooccurrencesResponse]
+	searchTagsByPrefix                *connect.Client[v1.SearchTagsByPrefixRequest, v1.SearchTagsByPrefixResponse]
+	getTagArticleCounts               *connect.Client[v1.GetTagArticleCountsRequest, v1.GetTagArticleCountsResponse]
 }
 
 // ListArticlesWithTags calls alt.datahub.v1.DataHubService.ListArticlesWithTags.
@@ -1684,6 +1921,81 @@ func (c *dataHubServiceClient) GetInoreaderSummariesByURLs(ctx context.Context, 
 	return c.getInoreaderSummariesByURLs.CallUnary(ctx, req)
 }
 
+// MarkFeedRead calls alt.datahub.v1.DataHubService.MarkFeedRead.
+func (c *dataHubServiceClient) MarkFeedRead(ctx context.Context, req *connect.Request[v1.MarkFeedReadRequest]) (*connect.Response[v1.MarkFeedReadResponse], error) {
+	return c.markFeedRead.CallUnary(ctx, req)
+}
+
+// MarkArticleRead calls alt.datahub.v1.DataHubService.MarkArticleRead.
+func (c *dataHubServiceClient) MarkArticleRead(ctx context.Context, req *connect.Request[v1.MarkArticleReadRequest]) (*connect.Response[v1.MarkArticleReadResponse], error) {
+	return c.markArticleRead.CallUnary(ctx, req)
+}
+
+// GetReadFeedIDs calls alt.datahub.v1.DataHubService.GetReadFeedIDs.
+func (c *dataHubServiceClient) GetReadFeedIDs(ctx context.Context, req *connect.Request[v1.GetReadFeedIDsRequest]) (*connect.Response[v1.GetReadFeedIDsResponse], error) {
+	return c.getReadFeedIDs.CallUnary(ctx, req)
+}
+
+// GetAllReadFeedIDs calls alt.datahub.v1.DataHubService.GetAllReadFeedIDs.
+func (c *dataHubServiceClient) GetAllReadFeedIDs(ctx context.Context, req *connect.Request[v1.GetAllReadFeedIDsRequest]) (*connect.Response[v1.GetAllReadFeedIDsResponse], error) {
+	return c.getAllReadFeedIDs.CallUnary(ctx, req)
+}
+
+// GetUserSubscribedFeedLinkIDs calls alt.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs.
+func (c *dataHubServiceClient) GetUserSubscribedFeedLinkIDs(ctx context.Context, req *connect.Request[v1.GetUserSubscribedFeedLinkIDsRequest]) (*connect.Response[v1.GetUserSubscribedFeedLinkIDsResponse], error) {
+	return c.getUserSubscribedFeedLinkIDs.CallUnary(ctx, req)
+}
+
+// ListSubscriptions calls alt.datahub.v1.DataHubService.ListSubscriptions.
+func (c *dataHubServiceClient) ListSubscriptions(ctx context.Context, req *connect.Request[v1.ListSubscriptionsRequest]) (*connect.Response[v1.ListSubscriptionsResponse], error) {
+	return c.listSubscriptions.CallUnary(ctx, req)
+}
+
+// Subscribe calls alt.datahub.v1.DataHubService.Subscribe.
+func (c *dataHubServiceClient) Subscribe(ctx context.Context, req *connect.Request[v1.SubscribeRequest]) (*connect.Response[v1.SubscribeResponse], error) {
+	return c.subscribe.CallUnary(ctx, req)
+}
+
+// Unsubscribe calls alt.datahub.v1.DataHubService.Unsubscribe.
+func (c *dataHubServiceClient) Unsubscribe(ctx context.Context, req *connect.Request[v1.UnsubscribeRequest]) (*connect.Response[v1.UnsubscribeResponse], error) {
+	return c.unsubscribe.CallUnary(ctx, req)
+}
+
+// AddFavoriteFeed calls alt.datahub.v1.DataHubService.AddFavoriteFeed.
+func (c *dataHubServiceClient) AddFavoriteFeed(ctx context.Context, req *connect.Request[v1.AddFavoriteFeedRequest]) (*connect.Response[v1.AddFavoriteFeedResponse], error) {
+	return c.addFavoriteFeed.CallUnary(ctx, req)
+}
+
+// RemoveFavoriteFeed calls alt.datahub.v1.DataHubService.RemoveFavoriteFeed.
+func (c *dataHubServiceClient) RemoveFavoriteFeed(ctx context.Context, req *connect.Request[v1.RemoveFavoriteFeedRequest]) (*connect.Response[v1.RemoveFavoriteFeedResponse], error) {
+	return c.removeFavoriteFeed.CallUnary(ctx, req)
+}
+
+// GetArticleTags calls alt.datahub.v1.DataHubService.GetArticleTags.
+func (c *dataHubServiceClient) GetArticleTags(ctx context.Context, req *connect.Request[v1.GetArticleTagsRequest]) (*connect.Response[v1.GetArticleTagsResponse], error) {
+	return c.getArticleTags.CallUnary(ctx, req)
+}
+
+// GetFeedTags calls alt.datahub.v1.DataHubService.GetFeedTags.
+func (c *dataHubServiceClient) GetFeedTags(ctx context.Context, req *connect.Request[v1.GetFeedTagsRequest]) (*connect.Response[v1.GetFeedTagsResponse], error) {
+	return c.getFeedTags.CallUnary(ctx, req)
+}
+
+// GetTagCooccurrences calls alt.datahub.v1.DataHubService.GetTagCooccurrences.
+func (c *dataHubServiceClient) GetTagCooccurrences(ctx context.Context, req *connect.Request[v1.GetTagCooccurrencesRequest]) (*connect.Response[v1.GetTagCooccurrencesResponse], error) {
+	return c.getTagCooccurrences.CallUnary(ctx, req)
+}
+
+// SearchTagsByPrefix calls alt.datahub.v1.DataHubService.SearchTagsByPrefix.
+func (c *dataHubServiceClient) SearchTagsByPrefix(ctx context.Context, req *connect.Request[v1.SearchTagsByPrefixRequest]) (*connect.Response[v1.SearchTagsByPrefixResponse], error) {
+	return c.searchTagsByPrefix.CallUnary(ctx, req)
+}
+
+// GetTagArticleCounts calls alt.datahub.v1.DataHubService.GetTagArticleCounts.
+func (c *dataHubServiceClient) GetTagArticleCounts(ctx context.Context, req *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error) {
+	return c.getTagArticleCounts.CallUnary(ctx, req)
+}
+
 // DataHubServiceHandler is an implementation of the alt.datahub.v1.DataHubService service.
 type DataHubServiceHandler interface {
 	// ListArticlesWithTags returns articles with tags using backward keyset pagination.
@@ -1994,6 +2306,93 @@ type DataHubServiceHandler interface {
 	BatchGetFeedTitlesByIDs(context.Context, *connect.Request[v1.BatchGetFeedTitlesByIDsRequest]) (*connect.Response[v1.BatchGetFeedTitlesByIDsResponse], error)
 	// GetInoreaderSummariesByURLs returns imported Inoreader bodies for URLs.
 	GetInoreaderSummariesByURLs(context.Context, *connect.Request[v1.GetInoreaderSummariesByURLsRequest]) (*connect.Response[v1.GetInoreaderSummariesByURLsResponse], error)
+	// MarkFeedRead records that a user has read everything at a feed's URL.
+	//
+	// A URL with no feeds row answers NotFound, and the provider decides that
+	// from the zero rows the upsert affected — not from a SELECT issued first.
+	// That is the one semantics both this procedure and MarkArticleRead now
+	// use (catalog §4-5). They had two: this one resolved the feed with a
+	// SELECT and read pgx.ErrNoRows, its twin ran a single
+	// INSERT ... SELECT and read RowsAffected() == 0. Two ways to answer
+	// "there is no such feed" is one too many across a process boundary,
+	// because a consumer sees only the Connect code and cannot tell which
+	// implementation produced it; and the SELECT-first version also had a
+	// window in which the feed could be deleted between the check and the
+	// write, turning a NotFound into a silent no-op that reported success.
+	//
+	// The transaction stays inside this procedure. It wraps one statement now,
+	// so it commits nothing the statement would not have committed on its own;
+	// it is kept because collapsing a transaction boundary is a behaviour
+	// change independent of collapsing the round trips, and a commit that mixed
+	// both would be ambiguous in a bisect (ADR-000954 D3).
+	MarkFeedRead(context.Context, *connect.Request[v1.MarkFeedReadRequest]) (*connect.Response[v1.MarkFeedReadResponse], error)
+	// MarkArticleRead records the same read against the feed an article's URL
+	// belongs to.
+	//
+	// Two procedures for one table, deliberately. The name is the caller's
+	// vocabulary — the browser marks an article read, and the driver comment
+	// has said "named MarkArticleAsRead but operates on feeds" since it was
+	// written — while MarkFeedRead is the feed list's bulk action. Merging them
+	// would make the request field mean "a URL, of one of two kinds", and the
+	// provider would have to guess which query the caller meant. What they now
+	// share is the part that was actually inconsistent: the missing-row answer
+	// is NotFound derived from RowsAffected() == 0 in both.
+	MarkArticleRead(context.Context, *connect.Request[v1.MarkArticleReadRequest]) (*connect.Response[v1.MarkArticleReadResponse], error)
+	// GetReadFeedIDs filters a batch of feed ids down to the ones the user has
+	// read — the per-page overlay on a feed list.
+	GetReadFeedIDs(context.Context, *connect.Request[v1.GetReadFeedIDsRequest]) (*connect.Response[v1.GetReadFeedIDsResponse], error)
+	// GetAllReadFeedIDs returns the user's whole read set, capped by the
+	// provider. The caller caches it for a few seconds and answers many pages
+	// from one call.
+	GetAllReadFeedIDs(context.Context, *connect.Request[v1.GetAllReadFeedIDsRequest]) (*connect.Response[v1.GetAllReadFeedIDsResponse], error)
+	// GetUserSubscribedFeedLinkIDs returns the feed links a user follows.
+	GetUserSubscribedFeedLinkIDs(context.Context, *connect.Request[v1.GetUserSubscribedFeedLinkIDsRequest]) (*connect.Response[v1.GetUserSubscribedFeedLinkIDsResponse], error)
+	// ListSubscriptions returns every feed link with this user's follow state —
+	// the subscription management screen, not just the followed subset.
+	ListSubscriptions(context.Context, *connect.Request[v1.ListSubscriptionsRequest]) (*connect.Response[v1.ListSubscriptionsResponse], error)
+	// Subscribe follows a feed link. Idempotent.
+	Subscribe(context.Context, *connect.Request[v1.SubscribeRequest]) (*connect.Response[v1.SubscribeResponse], error)
+	// Unsubscribe stops following a feed link. Idempotent.
+	Unsubscribe(context.Context, *connect.Request[v1.UnsubscribeRequest]) (*connect.Response[v1.UnsubscribeResponse], error)
+	// AddFavoriteFeed stars the feed at a URL for one user.
+	//
+	// Unlike the two read-status writes above, this keeps its SELECT: the
+	// insert is ON CONFLICT DO NOTHING, so a zero RowsAffected() means either
+	// "no such feed" or "already a favourite", and those two answers are a
+	// NotFound and a success. The pair stays in one transaction because that is
+	// what a transaction is for — two statements whose combination the caller
+	// must not see half of — where MarkFeedRead's transaction wrapped one.
+	AddFavoriteFeed(context.Context, *connect.Request[v1.AddFavoriteFeedRequest]) (*connect.Response[v1.AddFavoriteFeedResponse], error)
+	// RemoveFavoriteFeed unstars it. NotFound covers both a URL with no feed and
+	// a feed the user had not starred, which is the distinction the caller has
+	// never made.
+	RemoveFavoriteFeed(context.Context, *connect.Request[v1.RemoveFavoriteFeedRequest]) (*connect.Response[v1.RemoveFavoriteFeedResponse], error)
+	// GetArticleTags returns an article's tags, and nothing else.
+	//
+	// The on-the-fly generation that used to sit behind this read — ask mq-hub
+	// for tags when there are none, then write them back — stays with the
+	// caller. Generating is a call to another service and orchestration around
+	// it (ADR-000954 D4); this procedure is the read, and UpsertArticleTags is
+	// the write-back.
+	GetArticleTags(context.Context, *connect.Request[v1.GetArticleTagsRequest]) (*connect.Response[v1.GetArticleTagsResponse], error)
+	// GetFeedTags pages one feed's tags, newest first.
+	GetFeedTags(context.Context, *connect.Request[v1.GetFeedTagsRequest]) (*connect.Response[v1.GetFeedTagsResponse], error)
+	// GetTagCooccurrences returns tag pairs sharing at least two articles — the
+	// edge set behind the tag cloud's layout.
+	//
+	// The layout itself is not here. The octree that turns counts and edges into
+	// 3D coordinates is a pure function with no database in it, and it stays
+	// with the caller for the same reason the RSS rendering did (ADR-000954 D4).
+	GetTagCooccurrences(context.Context, *connect.Request[v1.GetTagCooccurrencesRequest]) (*connect.Response[v1.GetTagCooccurrencesResponse], error)
+	// SearchTagsByPrefix is the global search box's tag section.
+	SearchTagsByPrefix(context.Context, *connect.Request[v1.SearchTagsByPrefixRequest]) (*connect.Response[v1.SearchTagsByPrefixResponse], error)
+	// GetTagArticleCounts counts one user's tagged articles since a timestamp.
+	//
+	// Counts, not "trending tags". Which tags count as trending is a comparison
+	// of two of these windows against thresholds the caller owns, and that
+	// arithmetic has no SQL in it — moving it here would put a product decision
+	// in the data plane, where changing it means redeploying the database owner.
+	GetTagArticleCounts(context.Context, *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error)
 }
 
 // NewDataHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -2519,6 +2918,96 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("GetInoreaderSummariesByURLs")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceMarkFeedReadHandler := connect.NewUnaryHandler(
+		DataHubServiceMarkFeedReadProcedure,
+		svc.MarkFeedRead,
+		connect.WithSchema(dataHubServiceMethods.ByName("MarkFeedRead")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceMarkArticleReadHandler := connect.NewUnaryHandler(
+		DataHubServiceMarkArticleReadProcedure,
+		svc.MarkArticleRead,
+		connect.WithSchema(dataHubServiceMethods.ByName("MarkArticleRead")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetReadFeedIDsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetReadFeedIDsProcedure,
+		svc.GetReadFeedIDs,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetReadFeedIDs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetAllReadFeedIDsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetAllReadFeedIDsProcedure,
+		svc.GetAllReadFeedIDs,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetAllReadFeedIDs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetUserSubscribedFeedLinkIDsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetUserSubscribedFeedLinkIDsProcedure,
+		svc.GetUserSubscribedFeedLinkIDs,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetUserSubscribedFeedLinkIDs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListSubscriptionsHandler := connect.NewUnaryHandler(
+		DataHubServiceListSubscriptionsProcedure,
+		svc.ListSubscriptions,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListSubscriptions")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceSubscribeHandler := connect.NewUnaryHandler(
+		DataHubServiceSubscribeProcedure,
+		svc.Subscribe,
+		connect.WithSchema(dataHubServiceMethods.ByName("Subscribe")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceUnsubscribeHandler := connect.NewUnaryHandler(
+		DataHubServiceUnsubscribeProcedure,
+		svc.Unsubscribe,
+		connect.WithSchema(dataHubServiceMethods.ByName("Unsubscribe")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceAddFavoriteFeedHandler := connect.NewUnaryHandler(
+		DataHubServiceAddFavoriteFeedProcedure,
+		svc.AddFavoriteFeed,
+		connect.WithSchema(dataHubServiceMethods.ByName("AddFavoriteFeed")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceRemoveFavoriteFeedHandler := connect.NewUnaryHandler(
+		DataHubServiceRemoveFavoriteFeedProcedure,
+		svc.RemoveFavoriteFeed,
+		connect.WithSchema(dataHubServiceMethods.ByName("RemoveFavoriteFeed")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetArticleTagsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetArticleTagsProcedure,
+		svc.GetArticleTags,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetArticleTags")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetFeedTagsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetFeedTagsProcedure,
+		svc.GetFeedTags,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetFeedTags")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetTagCooccurrencesHandler := connect.NewUnaryHandler(
+		DataHubServiceGetTagCooccurrencesProcedure,
+		svc.GetTagCooccurrences,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetTagCooccurrences")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceSearchTagsByPrefixHandler := connect.NewUnaryHandler(
+		DataHubServiceSearchTagsByPrefixProcedure,
+		svc.SearchTagsByPrefix,
+		connect.WithSchema(dataHubServiceMethods.ByName("SearchTagsByPrefix")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetTagArticleCountsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetTagArticleCountsProcedure,
+		svc.GetTagArticleCounts,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetTagArticleCounts")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.datahub.v1.DataHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataHubServiceListArticlesWithTagsProcedure:
@@ -2693,6 +3182,36 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceBatchGetFeedTitlesByIDsHandler.ServeHTTP(w, r)
 		case DataHubServiceGetInoreaderSummariesByURLsProcedure:
 			dataHubServiceGetInoreaderSummariesByURLsHandler.ServeHTTP(w, r)
+		case DataHubServiceMarkFeedReadProcedure:
+			dataHubServiceMarkFeedReadHandler.ServeHTTP(w, r)
+		case DataHubServiceMarkArticleReadProcedure:
+			dataHubServiceMarkArticleReadHandler.ServeHTTP(w, r)
+		case DataHubServiceGetReadFeedIDsProcedure:
+			dataHubServiceGetReadFeedIDsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetAllReadFeedIDsProcedure:
+			dataHubServiceGetAllReadFeedIDsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetUserSubscribedFeedLinkIDsProcedure:
+			dataHubServiceGetUserSubscribedFeedLinkIDsHandler.ServeHTTP(w, r)
+		case DataHubServiceListSubscriptionsProcedure:
+			dataHubServiceListSubscriptionsHandler.ServeHTTP(w, r)
+		case DataHubServiceSubscribeProcedure:
+			dataHubServiceSubscribeHandler.ServeHTTP(w, r)
+		case DataHubServiceUnsubscribeProcedure:
+			dataHubServiceUnsubscribeHandler.ServeHTTP(w, r)
+		case DataHubServiceAddFavoriteFeedProcedure:
+			dataHubServiceAddFavoriteFeedHandler.ServeHTTP(w, r)
+		case DataHubServiceRemoveFavoriteFeedProcedure:
+			dataHubServiceRemoveFavoriteFeedHandler.ServeHTTP(w, r)
+		case DataHubServiceGetArticleTagsProcedure:
+			dataHubServiceGetArticleTagsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetFeedTagsProcedure:
+			dataHubServiceGetFeedTagsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetTagCooccurrencesProcedure:
+			dataHubServiceGetTagCooccurrencesHandler.ServeHTTP(w, r)
+		case DataHubServiceSearchTagsByPrefixProcedure:
+			dataHubServiceSearchTagsByPrefixHandler.ServeHTTP(w, r)
+		case DataHubServiceGetTagArticleCountsProcedure:
+			dataHubServiceGetTagArticleCountsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -3044,4 +3563,64 @@ func (UnimplementedDataHubServiceHandler) BatchGetFeedTitlesByIDs(context.Contex
 
 func (UnimplementedDataHubServiceHandler) GetInoreaderSummariesByURLs(context.Context, *connect.Request[v1.GetInoreaderSummariesByURLsRequest]) (*connect.Response[v1.GetInoreaderSummariesByURLsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetInoreaderSummariesByURLs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) MarkFeedRead(context.Context, *connect.Request[v1.MarkFeedReadRequest]) (*connect.Response[v1.MarkFeedReadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.MarkFeedRead is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) MarkArticleRead(context.Context, *connect.Request[v1.MarkArticleReadRequest]) (*connect.Response[v1.MarkArticleReadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.MarkArticleRead is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetReadFeedIDs(context.Context, *connect.Request[v1.GetReadFeedIDsRequest]) (*connect.Response[v1.GetReadFeedIDsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetReadFeedIDs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetAllReadFeedIDs(context.Context, *connect.Request[v1.GetAllReadFeedIDsRequest]) (*connect.Response[v1.GetAllReadFeedIDsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetAllReadFeedIDs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetUserSubscribedFeedLinkIDs(context.Context, *connect.Request[v1.GetUserSubscribedFeedLinkIDsRequest]) (*connect.Response[v1.GetUserSubscribedFeedLinkIDsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListSubscriptions(context.Context, *connect.Request[v1.ListSubscriptionsRequest]) (*connect.Response[v1.ListSubscriptionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListSubscriptions is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) Subscribe(context.Context, *connect.Request[v1.SubscribeRequest]) (*connect.Response[v1.SubscribeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.Subscribe is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) Unsubscribe(context.Context, *connect.Request[v1.UnsubscribeRequest]) (*connect.Response[v1.UnsubscribeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.Unsubscribe is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) AddFavoriteFeed(context.Context, *connect.Request[v1.AddFavoriteFeedRequest]) (*connect.Response[v1.AddFavoriteFeedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.AddFavoriteFeed is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) RemoveFavoriteFeed(context.Context, *connect.Request[v1.RemoveFavoriteFeedRequest]) (*connect.Response[v1.RemoveFavoriteFeedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.RemoveFavoriteFeed is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetArticleTags(context.Context, *connect.Request[v1.GetArticleTagsRequest]) (*connect.Response[v1.GetArticleTagsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetArticleTags is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetFeedTags(context.Context, *connect.Request[v1.GetFeedTagsRequest]) (*connect.Response[v1.GetFeedTagsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetFeedTags is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetTagCooccurrences(context.Context, *connect.Request[v1.GetTagCooccurrencesRequest]) (*connect.Response[v1.GetTagCooccurrencesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetTagCooccurrences is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) SearchTagsByPrefix(context.Context, *connect.Request[v1.SearchTagsByPrefixRequest]) (*connect.Response[v1.SearchTagsByPrefixResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.SearchTagsByPrefix is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetTagArticleCounts(context.Context, *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetTagArticleCounts is not implemented"))
 }

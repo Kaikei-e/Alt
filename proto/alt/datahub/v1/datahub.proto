@@ -1511,6 +1511,203 @@ message GetInoreaderSummariesByURLsResponse {
 }
 
 // =============================================================================
+// Read state / subscriptions / favorites (capability catalog §2.I)
+// =============================================================================
+
+// FeedSubscription is one row of the subscription screen: every known feed
+// link, and whether this user follows it.
+message FeedSubscription {
+  string feed_link_id = 1;
+  string url = 2;
+  bool is_subscribed = 3;
+  // Set only when is_subscribed. The screen shows "following since"; an unset
+  // field says there is no such date, where a zero timestamp would claim the
+  // user subscribed at the epoch.
+  optional google.protobuf.Timestamp subscribed_at = 4;
+}
+
+message MarkFeedReadRequest {
+  // The feed's website_url. Normalisation — tracking-parameter stripping,
+  // trailing slash — happens on the provider side, so two callers that
+  // normalise differently cannot write two read_status rows for one feed.
+  string feed_url = 1;
+  string user_id = 2;
+}
+
+message MarkFeedReadResponse {}
+
+message MarkArticleReadRequest {
+  string article_url = 1;
+  string user_id = 2;
+}
+
+message MarkArticleReadResponse {}
+
+message GetReadFeedIDsRequest {
+  string user_id = 1;
+  repeated string feed_ids = 2;
+}
+
+message GetReadFeedIDsResponse {
+  // The subset of the requested ids the user has read. Unread ids are absent
+  // rather than present with a false flag.
+  repeated string read_feed_ids = 1;
+}
+
+message GetAllReadFeedIDsRequest {
+  string user_id = 1;
+}
+
+message GetAllReadFeedIDsResponse {
+  repeated string read_feed_ids = 1;
+}
+
+message GetUserSubscribedFeedLinkIDsRequest {
+  string user_id = 1;
+}
+
+message GetUserSubscribedFeedLinkIDsResponse {
+  // feed_link ids, not feed ids. The driver method this replaces was named
+  // GetUserSubscriptions and the catalog listed it as
+  // GetUserSubscribedFeedIDs; both read as feeds. Subscriptions are held
+  // against feed_links — the URL somebody follows — and the exclusion list the
+  // caller builds from this is matched against feed.feed_link_id.
+  repeated string feed_link_ids = 1;
+}
+
+message ListSubscriptionsRequest {
+  string user_id = 1;
+}
+
+message ListSubscriptionsResponse {
+  repeated FeedSubscription subscriptions = 1;
+}
+
+message SubscribeRequest {
+  string user_id = 1;
+  string feed_link_id = 2;
+}
+
+// Idempotent: subscribing twice is a no-op, not an error.
+message SubscribeResponse {}
+
+message UnsubscribeRequest {
+  string user_id = 1;
+  string feed_link_id = 2;
+}
+
+// Idempotent in the other direction: unsubscribing from something the user
+// does not follow succeeds.
+message UnsubscribeResponse {}
+
+message AddFavoriteFeedRequest {
+  string feed_url = 1;
+  string user_id = 2;
+}
+
+message AddFavoriteFeedResponse {}
+
+message RemoveFavoriteFeedRequest {
+  string feed_url = 1;
+  string user_id = 2;
+}
+
+message RemoveFavoriteFeedResponse {}
+
+// =============================================================================
+// Tag reads (capability catalog §2.J)
+// =============================================================================
+
+// FeedTag is a row of feed_tags as the reads return it.
+//
+// Named for the table rather than for the caller: the same row is an
+// "article tag" when reached through article_tags and a "feed tag" when
+// reached by feed_id, and giving one row two message names would let the two
+// shapes drift.
+message FeedTag {
+  string id = 1;
+  string feed_id = 2;
+  string tag_name = 3;
+  double confidence = 4;
+  string tag_type = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message GetArticleTagsRequest {
+  string article_id = 1;
+}
+
+message GetArticleTagsResponse {
+  // Empty for an article nobody has tagged. That is not NotFound: the caller
+  // reads the empty list as "generate some", and an error would make an
+  // untagged article indistinguishable from a database fault.
+  repeated FeedTag tags = 1;
+}
+
+message GetFeedTagsRequest {
+  string feed_id = 1;
+  // Absent on the first page. Rows are walked newest first by
+  // (created_at, id).
+  optional google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message GetFeedTagsResponse {
+  repeated FeedTag tags = 1;
+}
+
+// TagCooccurrence is a pair of tags that appear on the same articles.
+message TagCooccurrence {
+  string tag_name_a = 1;
+  string tag_name_b = 2;
+  int32 shared_count = 3;
+}
+
+message GetTagCooccurrencesRequest {
+  repeated string tag_names = 1;
+}
+
+message GetTagCooccurrencesResponse {
+  repeated TagCooccurrence cooccurrences = 1;
+}
+
+// TagPrefixHit is one global-search suggestion: a tag and how many articles
+// carry it.
+message TagPrefixHit {
+  string tag_name = 1;
+  int32 article_count = 2;
+}
+
+message SearchTagsByPrefixRequest {
+  string prefix = 1;
+  int32 limit = 2;
+}
+
+message SearchTagsByPrefixResponse {
+  repeated TagPrefixHit hits = 1;
+}
+
+// TagArticleCount is how many of one user's articles carry a tag within a
+// window.
+message TagArticleCount {
+  string tag_name = 1;
+  int32 article_count = 2;
+}
+
+message GetTagArticleCountsRequest {
+  string user_id = 1;
+  // Lower bound on articles.created_at. Required: an unset value would count
+  // the user's entire history, which is a different and far more expensive
+  // query than the one the caller means.
+  google.protobuf.Timestamp since = 2;
+}
+
+message GetTagArticleCountsResponse {
+  repeated TagArticleCount counts = 1;
+}
+
+// =============================================================================
 // DataHubService — every capability backed by alt_db
 // =============================================================================
 
@@ -1955,4 +2152,109 @@ service DataHubService {
 
   // GetInoreaderSummariesByURLs returns imported Inoreader bodies for URLs.
   rpc GetInoreaderSummariesByURLs(GetInoreaderSummariesByURLsRequest) returns (GetInoreaderSummariesByURLsResponse);
+  // ── Read state, subscriptions, favorites (catalog §2.I) ──
+
+  // MarkFeedRead records that a user has read everything at a feed's URL.
+  //
+  // A URL with no feeds row answers NotFound, and the provider decides that
+  // from the zero rows the upsert affected — not from a SELECT issued first.
+  // That is the one semantics both this procedure and MarkArticleRead now
+  // use (catalog §4-5). They had two: this one resolved the feed with a
+  // SELECT and read pgx.ErrNoRows, its twin ran a single
+  // INSERT ... SELECT and read RowsAffected() == 0. Two ways to answer
+  // "there is no such feed" is one too many across a process boundary,
+  // because a consumer sees only the Connect code and cannot tell which
+  // implementation produced it; and the SELECT-first version also had a
+  // window in which the feed could be deleted between the check and the
+  // write, turning a NotFound into a silent no-op that reported success.
+  //
+  // The transaction stays inside this procedure. It wraps one statement now,
+  // so it commits nothing the statement would not have committed on its own;
+  // it is kept because collapsing a transaction boundary is a behaviour
+  // change independent of collapsing the round trips, and a commit that mixed
+  // both would be ambiguous in a bisect (ADR-000954 D3).
+  rpc MarkFeedRead(MarkFeedReadRequest) returns (MarkFeedReadResponse);
+
+  // MarkArticleRead records the same read against the feed an article's URL
+  // belongs to.
+  //
+  // Two procedures for one table, deliberately. The name is the caller's
+  // vocabulary — the browser marks an article read, and the driver comment
+  // has said "named MarkArticleAsRead but operates on feeds" since it was
+  // written — while MarkFeedRead is the feed list's bulk action. Merging them
+  // would make the request field mean "a URL, of one of two kinds", and the
+  // provider would have to guess which query the caller meant. What they now
+  // share is the part that was actually inconsistent: the missing-row answer
+  // is NotFound derived from RowsAffected() == 0 in both.
+  rpc MarkArticleRead(MarkArticleReadRequest) returns (MarkArticleReadResponse);
+
+  // GetReadFeedIDs filters a batch of feed ids down to the ones the user has
+  // read — the per-page overlay on a feed list.
+  rpc GetReadFeedIDs(GetReadFeedIDsRequest) returns (GetReadFeedIDsResponse);
+
+  // GetAllReadFeedIDs returns the user's whole read set, capped by the
+  // provider. The caller caches it for a few seconds and answers many pages
+  // from one call.
+  rpc GetAllReadFeedIDs(GetAllReadFeedIDsRequest) returns (GetAllReadFeedIDsResponse);
+
+  // GetUserSubscribedFeedLinkIDs returns the feed links a user follows.
+  rpc GetUserSubscribedFeedLinkIDs(GetUserSubscribedFeedLinkIDsRequest) returns (GetUserSubscribedFeedLinkIDsResponse);
+
+  // ListSubscriptions returns every feed link with this user's follow state —
+  // the subscription management screen, not just the followed subset.
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+
+  // Subscribe follows a feed link. Idempotent.
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse);
+
+  // Unsubscribe stops following a feed link. Idempotent.
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+
+  // AddFavoriteFeed stars the feed at a URL for one user.
+  //
+  // Unlike the two read-status writes above, this keeps its SELECT: the
+  // insert is ON CONFLICT DO NOTHING, so a zero RowsAffected() means either
+  // "no such feed" or "already a favourite", and those two answers are a
+  // NotFound and a success. The pair stays in one transaction because that is
+  // what a transaction is for — two statements whose combination the caller
+  // must not see half of — where MarkFeedRead's transaction wrapped one.
+  rpc AddFavoriteFeed(AddFavoriteFeedRequest) returns (AddFavoriteFeedResponse);
+
+  // RemoveFavoriteFeed unstars it. NotFound covers both a URL with no feed and
+  // a feed the user had not starred, which is the distinction the caller has
+  // never made.
+  rpc RemoveFavoriteFeed(RemoveFavoriteFeedRequest) returns (RemoveFavoriteFeedResponse);
+
+  // ── Tag reads (catalog §2.J) ──
+
+  // GetArticleTags returns an article's tags, and nothing else.
+  //
+  // The on-the-fly generation that used to sit behind this read — ask mq-hub
+  // for tags when there are none, then write them back — stays with the
+  // caller. Generating is a call to another service and orchestration around
+  // it (ADR-000954 D4); this procedure is the read, and UpsertArticleTags is
+  // the write-back.
+  rpc GetArticleTags(GetArticleTagsRequest) returns (GetArticleTagsResponse);
+
+  // GetFeedTags pages one feed's tags, newest first.
+  rpc GetFeedTags(GetFeedTagsRequest) returns (GetFeedTagsResponse);
+
+  // GetTagCooccurrences returns tag pairs sharing at least two articles — the
+  // edge set behind the tag cloud's layout.
+  //
+  // The layout itself is not here. The octree that turns counts and edges into
+  // 3D coordinates is a pure function with no database in it, and it stays
+  // with the caller for the same reason the RSS rendering did (ADR-000954 D4).
+  rpc GetTagCooccurrences(GetTagCooccurrencesRequest) returns (GetTagCooccurrencesResponse);
+
+  // SearchTagsByPrefix is the global search box's tag section.
+  rpc SearchTagsByPrefix(SearchTagsByPrefixRequest) returns (SearchTagsByPrefixResponse);
+
+  // GetTagArticleCounts counts one user's tagged articles since a timestamp.
+  //
+  // Counts, not "trending tags". Which tags count as trending is a comparison
+  // of two of these windows against thresholds the caller owns, and that
+  // arithmetic has no SQL in it — moving it here would put a product decision
+  // in the data plane, where changing it means redeploying the database owner.
+  rpc GetTagArticleCounts(GetTagArticleCountsRequest) returns (GetTagArticleCountsResponse);
 }

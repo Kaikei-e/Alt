@@ -251,3 +251,75 @@ type KnowledgeBackfillPort interface {
 	// ListSummaryTitles walks (generated_at, summary_version_id) ascending.
 	ListSummaryTitles(ctx context.Context, lastGeneratedAt *time.Time, lastSummaryVersionID *uuid.UUID, limit int) ([]domain.KnowledgeBackfillSummaryTitle, error)
 }
+
+// ReadStatePort is the per-user state kept beside the feed list: what has been
+// read, what is subscribed, what is starred (catalog §2.I).
+//
+// One port for three tables — read_status, user_feed_subscriptions,
+// favorite_feeds — because they are the same question asked three ways ("what
+// is this feed to this user?") and every method here is scoped by user. A
+// split would put the tenant argument in three places and make it three
+// separate things to forget.
+//
+// userID is an argument on every method, never a context lookup. The provider
+// serves these over Connect, where the peer certificate identifies alt-backend
+// rather than the person whose read state is being written; a context-scoped
+// user would resolve to the service account for every call.
+type ReadStatePort interface {
+	// MarkFeedRead marks the feed at a website_url read. A URL with no feeds
+	// row is domain.ErrFeedNotFound, decided from the zero rows the upsert
+	// affected rather than from a preceding SELECT (catalog §4-5).
+	MarkFeedRead(ctx context.Context, feedURL string, userID uuid.UUID) error
+	// MarkArticleRead is the same write reached by an article's URL, with the
+	// same missing-feed answer. Two methods rather than one because the two
+	// URLs are two different lookups, not one lookup with a mode flag.
+	MarkArticleRead(ctx context.Context, articleURL string, userID uuid.UUID) error
+	// ReadFeedIDs returns the subset of the given feed ids the user has read.
+	// Unread ids are absent rather than returned with a false flag.
+	ReadFeedIDs(ctx context.Context, userID uuid.UUID, feedIDs []uuid.UUID) ([]uuid.UUID, error)
+	// AllReadFeedIDs returns the user's whole read set, capped by the driver.
+	AllReadFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+	// SubscribedFeedLinkIDs returns the feed links the user follows. Feed
+	// links, not feeds: subscriptions are held against the URL somebody
+	// followed.
+	SubscribedFeedLinkIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+	// ListSubscriptions returns every feed link with this user's follow state,
+	// which is the subscription screen rather than the followed subset.
+	ListSubscriptions(ctx context.Context, userID uuid.UUID) ([]*domain.FeedSource, error)
+	// Subscribe is idempotent.
+	Subscribe(ctx context.Context, userID, feedLinkID uuid.UUID) error
+	// Unsubscribe is idempotent in the other direction.
+	Unsubscribe(ctx context.Context, userID, feedLinkID uuid.UUID) error
+	// AddFavorite stars the feed at a URL. domain.ErrFeedNotFound for a URL
+	// with no feed; starring twice succeeds.
+	AddFavorite(ctx context.Context, feedURL string, userID uuid.UUID) error
+	// RemoveFavorite unstars it. domain.ErrFeedNotFound covers both a URL with
+	// no feed and a feed the user had not starred — a distinction the caller
+	// has never made.
+	RemoveFavorite(ctx context.Context, feedURL string, userID uuid.UUID) error
+}
+
+// TagReadPort is the read half of the tag tables (catalog §2.J).
+//
+// Reads only. UpsertArticleTags — the write that on-the-fly generation
+// performs after mq-hub answers — is already a procedure of its own from
+// Wave 2, and the mq-hub call between the two stays with the caller
+// (ADR-000954 D4).
+type TagReadPort interface {
+	// ArticleTags returns an article's tags. An untagged article is an empty
+	// slice, not an error: the caller reads emptiness as "generate some".
+	ArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error)
+	// FeedTags pages one feed's tags newest first. A nil cursor is the first
+	// page.
+	FeedTags(ctx context.Context, feedID string, cursor *time.Time, limit int) ([]*domain.FeedTag, error)
+	// Cooccurrences returns tag pairs sharing articles — the edge set the tag
+	// cloud's layout consumes. The layout itself is a pure function and stays
+	// with the caller.
+	Cooccurrences(ctx context.Context, tagNames []string) ([]*domain.TagCooccurrence, error)
+	// SearchByPrefix is the global search box's tag section.
+	SearchByPrefix(ctx context.Context, prefix string, limit int) ([]domain.GlobalTagHit, error)
+	// ArticleCounts counts one user's tagged articles since a timestamp.
+	// Counts, not trending tags: which of them is a surge is arithmetic the
+	// caller owns.
+	ArticleCounts(ctx context.Context, userID uuid.UUID, since time.Time) ([]domain.TagArticleCount, error)
+}

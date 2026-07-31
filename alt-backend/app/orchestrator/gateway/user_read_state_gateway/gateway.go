@@ -1,7 +1,6 @@
 package user_read_state_gateway
 
 import (
-	"alt/shared/driver/alt_db"
 	"alt/utils/cache"
 	"context"
 	"fmt"
@@ -10,6 +9,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// userReadStateDB is the alt-data-hub read state (capability catalog §2.I
+// W3-I3 / W3-I4 / W3-I5). Method names match the driver they replace, so
+// migrating was a DI change.
+//
+// The two caches stay on this side. A TTL is flow orchestration and belongs to
+// the caller (ADR-000954 D4); putting them in the provider would make one
+// process's staleness another process's problem, and the 5-second read-state
+// window exists because this process re-reads it per page render.
 type userReadStateDB interface {
 	GetReadFeedIDs(ctx context.Context, userID uuid.UUID, feedIDs []uuid.UUID) (map[uuid.UUID]bool, error)
 	GetAllReadFeedIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]bool, error)
@@ -22,7 +29,11 @@ type Gateway struct {
 	readStateCache    *cache.SharedCache[uuid.UUID, map[uuid.UUID]bool]
 }
 
-func NewGateway(db *alt_db.AltDBRepository) *Gateway {
+func NewGateway(db userReadStateDB) *Gateway {
+	if db == nil {
+		panic("user_read_state_gateway: a read state source is required — " +
+			"a nil one would render every feed as unread for every user (see .claude/rules/di-wiring.md)")
+	}
 	g := &Gateway{db: db}
 	g.subscriptionCache = cache.NewSharedCache(30*time.Second, 0, g.loadSubscriptions)
 	g.readStateCache = cache.NewSharedCache(5*time.Second, 0, g.loadAllReadFeedIDs)

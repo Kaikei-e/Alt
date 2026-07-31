@@ -108,6 +108,16 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.DataHubComponents, c
 			container.FeedLinkAvailabilityGateway,
 			container.FeedGateway,
 		),
+		// ADR-000954 Wave 3 batch 4, same rule again: read_status,
+		// user_feed_subscriptions, favorite_feeds and the tag tables. A nil
+		// read-state port would make every read mark and every star vanish
+		// without an error anyone could see, and a nil tag port would make
+		// every article look untagged — which the on-the-fly path reads as
+		// "generate some" and would turn into an mq-hub request per view.
+		datahubapi.WithWave3Batch4Capabilities(
+			container.ReadStateGateway,
+			container.TagReadGateway,
+		),
 	)
 	datahubPath, datahubServiceHandler := datahubv1connect.NewDataHubServiceHandler(datahubHandler, datahubOpts)
 	mux.Handle(datahubPath, datahubServiceHandler)

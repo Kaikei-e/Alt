@@ -497,6 +497,57 @@
       }
     },
     {
+      "description": "a GetAllReadFeedIDs request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has read marks for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetAllReadFeedIDs"
+      },
+      "response": {
+        "body": {
+          "readFeedIds": [
+            "b2c3d4e5-2222-4222-8222-222222222222"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.readFeedIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.readFeedIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetArticleByURL request from alt-backend",
       "providerStates": [
         {
@@ -842,6 +893,31 @@
       }
     },
     {
+      "description": "a GetArticleTags request from alt-backend for an untagged article",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no tags for the article"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetArticleTags"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetFeedSummary request from alt-backend",
       "providerStates": [
         {
@@ -879,6 +955,77 @@
               ]
             },
             "$.summary.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetFeedTags request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has tags for the feed"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedId": "b2c3d4e5-2222-4222-8222-222222222222",
+          "limit": 20
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetFeedTags"
+      },
+      "response": {
+        "body": {
+          "tags": [
+            {
+              "createdAt": "2026-07-31T09:00:00Z",
+              "id": "11111111-2222-3333-4444-555555555555",
+              "tagName": "AI"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.tags": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.tags[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.tags[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.tags[*].tagName": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1329,6 +1476,60 @@
       }
     },
     {
+      "description": "a GetReadFeedIDs request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has read marks for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedIds": [
+            "b2c3d4e5-2222-4222-8222-222222222222"
+          ],
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetReadFeedIDs"
+      },
+      "response": {
+        "body": {
+          "readFeedIds": [
+            "b2c3d4e5-2222-4222-8222-222222222222"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.readFeedIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.readFeedIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetScrapingDomainByDomain request from alt-backend",
       "providerStates": [
         {
@@ -1547,6 +1748,192 @@
         "body": {},
         "headers": {
           "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetTagArticleCounts request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has tagged articles for the user in the window"
+        }
+      ],
+      "request": {
+        "body": {
+          "since": "2026-07-24T00:00:00Z",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetTagArticleCounts"
+      },
+      "response": {
+        "body": {
+          "counts": [
+            {
+              "articleCount": 10,
+              "tagName": "AI"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.counts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.counts[*].articleCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.counts[*].tagName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetTagCooccurrences request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has tag cooccurrences"
+        }
+      ],
+      "request": {
+        "body": {
+          "tagNames": [
+            "AI",
+            "Go"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetTagCooccurrences"
+      },
+      "response": {
+        "body": {
+          "cooccurrences": [
+            {
+              "sharedCount": 4,
+              "tagNameA": "AI",
+              "tagNameB": "Go"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.cooccurrences": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.cooccurrences[*].sharedCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.cooccurrences[*].tagNameA": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.cooccurrences[*].tagNameB": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetUserSubscribedFeedLinkIDs request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has subscriptions for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetUserSubscribedFeedLinkIDs"
+      },
+      "response": {
+        "body": {
+          "feedLinkIds": [
+            "a1b2c3d4-1111-4111-8111-111111111111"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feedLinkIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feedLinkIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
         },
         "status": 200
       }
@@ -2531,6 +2918,86 @@
       }
     },
     {
+      "description": "a ListSubscriptions request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has subscriptions for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListSubscriptions"
+      },
+      "response": {
+        "body": {
+          "subscriptions": [
+            {
+              "feedLinkId": "a1b2c3d4-1111-4111-8111-111111111111",
+              "isSubscribed": true,
+              "subscribedAt": "2026-05-01T12:00:00Z",
+              "url": "https://example.com/feed.xml"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.subscriptions": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.subscriptions[*].feedLinkId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.subscriptions[*].isSubscribed": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscriptions[*].subscribedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscriptions[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a LookupArticleURL request from alt-backend",
       "providerStates": [
         {
@@ -2568,6 +3035,138 @@
           }
         },
         "status": 200
+      }
+    },
+    {
+      "description": "a MarkArticleRead request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a feed for the article url"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleUrl": "https://example.com/post",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/MarkArticleRead"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a MarkArticleRead request from alt-backend for a url with no feed",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no feed at the url"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleUrl": "https://gone.example.com/feed.xml",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/MarkArticleRead"
+      },
+      "response": {
+        "body": {
+          "code": "not_found"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.code": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 404
+      }
+    },
+    {
+      "description": "a MarkFeedRead request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a feed at the url"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedUrl": "https://example.com/feed.xml",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/MarkFeedRead"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a MarkFeedRead request from alt-backend for a url with no feed",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no feed at the url"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedUrl": "https://gone.example.com/feed.xml",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/MarkFeedRead"
+      },
+      "response": {
+        "body": {
+          "code": "not_found"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.code": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 404
       }
     },
     {
@@ -2685,6 +3284,46 @@
           "Content-Type": "application/json"
         },
         "status": 200
+      }
+    },
+    {
+      "description": "a RemoveFavoriteFeed request from alt-backend for a url with no feed",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no feed at the url"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedUrl": "https://gone.example.com/feed.xml",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/RemoveFavoriteFeed"
+      },
+      "response": {
+        "body": {
+          "code": "not_found"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.code": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 404
       }
     },
     {
@@ -2837,6 +3476,120 @@
       }
     },
     {
+      "description": "a SearchTagsByPrefix request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has tags matching the prefix"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 10,
+          "prefix": "AI"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/SearchTagsByPrefix"
+      },
+      "response": {
+        "body": {
+          "hits": [
+            {
+              "articleCount": 42,
+              "tagName": "AI"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.hits": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.hits[*].articleCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.hits[*].tagName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a Subscribe request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts subscription writes"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedLinkId": "a1b2c3d4-1111-4111-8111-111111111111",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/Subscribe"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an AddFavoriteFeed request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a feed at the url"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedUrl": "https://example.com/feed.xml",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/AddFavoriteFeed"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an ArchiveArticle request from alt-backend",
       "providerStates": [
         {
@@ -2916,6 +3669,87 @@
         "matchingRules": {
           "body": {
             "$.declined": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an Unsubscribe request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts subscription writes"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedLinkId": "a1b2c3d4-1111-4111-8111-111111111111",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/Unsubscribe"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an UpsertArticleTags request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts article tag writes"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+          "feedId": "b2c3d4e5-2222-4222-8222-222222222222",
+          "tags": [
+            {
+              "confidence": 0.9,
+              "name": "AI"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/UpsertArticleTags"
+      },
+      "response": {
+        "body": {
+          "success": true,
+          "upsertedCount": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.upsertedCount": {
               "combine": "AND",
               "matchers": [
                 {

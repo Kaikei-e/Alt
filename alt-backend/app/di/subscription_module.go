@@ -4,7 +4,7 @@ import (
 	"alt/orchestrator/driver/csrf_token_driver"
 	"alt/orchestrator/gateway/csrf_token_gateway"
 	"alt/orchestrator/gateway/opml_gateway"
-	"alt/orchestrator/gateway/subscription_gateway"
+	"alt/orchestrator/port/subscription_port"
 	"alt/orchestrator/usecase/csrf_token_usecase"
 	"alt/orchestrator/usecase/feed_link_usecase"
 	"alt/orchestrator/usecase/opml_usecase"
@@ -26,15 +26,16 @@ type SubscriptionModule struct {
 	// CSRF usecase
 	CSRFTokenUsecase *csrf_token_usecase.CSRFTokenUsecase
 
-	// Gateway exposed for cross-module wiring
-	SubscriptionGateway *subscription_gateway.SubscriptionGateway
+	// Gateway exposed for cross-module wiring. It is the alt-data-hub read
+	// state gateway itself since ADR-000954 Wave 3 batch 4: the wrapper that
+	// used to sit here forwarded three methods unchanged and held a database
+	// pool, and neither is left to do.
+	SubscriptionGateway subscription_port.SubscriptionPort
 }
 
 func newSubscriptionModule(infra *InfraModule) *SubscriptionModule {
-	pool := infra.Pool
-
-	// Subscription
-	subscriptionGw := subscription_gateway.NewSubscriptionGateway(pool)
+	// Subscription (capability catalog §2.I W3-I6 / W3-I7 / W3-I8)
+	subscriptionGw := infra.ReadStateGateway
 	listSubscriptionsUC := subscription_usecase.NewListSubscriptionsUsecase(subscriptionGw)
 	subscribeUC := subscription_usecase.NewSubscribeUsecase(subscriptionGw)
 	unsubscribeUC := subscription_usecase.NewUnsubscribeUsecase(subscriptionGw)

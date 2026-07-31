@@ -2,7 +2,6 @@ package fetch_article_tags_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"alt/shared/driver/mqhub_connect"
 	"alt/utils/logger"
 	"context"
@@ -29,7 +28,7 @@ type stubDB struct {
 	upsertCalled    bool
 	upsertArticleID string
 	upsertFeedID    string
-	upsertTags      []alt_db.TagUpsertItem
+	upsertTags      []domain.TagUpsert
 	upsertResult    int32
 	upsertErr       error
 }
@@ -42,7 +41,7 @@ func (s *stubDB) FetchArticleByID(_ context.Context, _ string) (*domain.ArticleC
 	return s.fetchArticle, s.fetchArticleErr
 }
 
-func (s *stubDB) UpsertArticleTags(_ context.Context, articleID, feedID string, tags []alt_db.TagUpsertItem) (int32, error) {
+func (s *stubDB) UpsertArticleTags(_ context.Context, articleID, feedID string, tags []domain.TagUpsert) (int32, error) {
 	s.upsertCalled = true
 	s.upsertArticleID = articleID
 	s.upsertFeedID = feedID

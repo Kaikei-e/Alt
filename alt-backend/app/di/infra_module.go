@@ -70,6 +70,17 @@ type InfraModule struct {
 	FeedLinkAvailabilityGateway *datahub_gateway.FeedLinkAvailabilityGateway
 	FeedGateway                 *datahub_gateway.FeedGateway
 
+	// ADR-000954 Wave 3 batch 4 (capability catalog §2.I / §2.J): the per-user
+	// state beside the feed list, and every tag read.
+	//
+	// ReadStateGateway satisfies four ports at once — read marks,
+	// subscriptions, favourites — because they are one question about one
+	// tenant asked four ways. TagGateway carries the tag write-back as well as
+	// the reads, which is what lets fetch_article_tags_gateway stop having two
+	// sources for one story.
+	ReadStateGateway *datahub_gateway.ReadStateGateway
+	TagGateway       *datahub_gateway.TagGateway
+
 	Pool *pgxpool.Pool
 }
 
@@ -137,6 +148,9 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 		FeedLinkGateway:             datahub_gateway.NewFeedLinkGateway(dataHubClient),
 		FeedLinkAvailabilityGateway: datahub_gateway.NewFeedLinkAvailabilityGateway(dataHubClient, domain.DefaultMaxConsecutiveFailures),
 		FeedGateway:                 datahub_gateway.NewFeedGateway(dataHubClient),
+
+		ReadStateGateway: datahub_gateway.NewReadStateGateway(dataHubClient),
+		TagGateway:       datahub_gateway.NewTagGateway(dataHubClient),
 
 		Pool: pool,
 	}

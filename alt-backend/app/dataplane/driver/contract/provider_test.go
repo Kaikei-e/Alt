@@ -880,6 +880,20 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub has no tagged feeds",
 			"alt-data-hub has feeds for the articles",
 			"alt-data-hub has imported inoreader articles for the urls",
+
+			// Wave 3 batch 4 (catalog §2.I / §2.J).
+			"alt-data-hub has a feed at the url",
+			"alt-data-hub has no feed at the url",
+			"alt-data-hub has a feed for the article url",
+			"alt-data-hub has read marks for the user",
+			"alt-data-hub has subscriptions for the user",
+			"alt-data-hub accepts subscription writes",
+			"alt-data-hub has no tags for the article",
+			"alt-data-hub has tags for the feed",
+			"alt-data-hub accepts article tag writes",
+			"alt-data-hub has tag cooccurrences",
+			"alt-data-hub has tags matching the prefix",
+			"alt-data-hub has tagged articles for the user in the window",
 		))
 }
 
@@ -1200,6 +1214,7 @@ func mountWave3Batch2Procedures(mux *http.ServeMux) {
 	}))
 
 	mountWave3Batch3Procedures(mux)
+	mountWave3Batch4Procedures(mux)
 }
 
 // mountWave3Batch3Procedures adds the feed and feed-link capabilities
@@ -1403,5 +1418,106 @@ func mountWave3Batch3Procedures(mux *http.ServeMux) {
 			"fetchedAt":   "2026-07-31T01:00:00Z",
 			"inoreaderId": "tag:google.com,2005:reader/item/0001",
 		}},
+	}))
+}
+
+// mountWave3Batch4Procedures adds the per-user feed state and the tag reads
+// ADR-000954 Wave 3 batch 4 moved off the direct alt_db path (capability
+// catalog §2.I / §2.J).
+//
+// Three of the writes branch on the URL, and that branch is the batch's whole
+// argument. Capability catalog §4-5 found MarkFeedRead and MarkArticleRead
+// answering "there is no such feed" two different ways — one from a preceding
+// SELECT's pgx.ErrNoRows, one from an upsert's RowsAffected() — and the
+// favourite writes raising a third sentinel for the same situation. A stub
+// that always answered 200 would verify a provider that had quietly kept them
+// apart, because the consumer's whole branch is on the Connect code.
+func mountWave3Batch4Procedures(mux *http.ServeMux) {
+	const (
+		stubUser        = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+		stubFeedRow     = "b2c3d4e5-2222-4222-8222-222222222222"
+		stubLink        = "a1b2c3d4-1111-4111-8111-111111111111"
+		stubMissingFeed = "https://gone.example.com/feed.xml"
+	)
+
+	// ---- §2.I Read state ---------------------------------------------------
+
+	// notFoundForMissingURL answers 404 when the request names the URL the
+	// consumer uses for "nothing here", and 200 otherwise. urlField is the
+	// protoJSON name of whichever URL field the procedure takes — the two read
+	// marks disagree about that and agree about everything else, which is the
+	// state §4-5 left them in.
+	notFoundForMissingURL := func(urlField string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			var req map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+
+			w.Header().Set("Content-Type", "application/json")
+			if url, _ := req[urlField].(string); url == stubMissingFeed {
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"code":    "not_found",
+					"message": "feed not found",
+				})
+				return
+			}
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}
+
+	dataHubProcedure(mux, "MarkFeedRead", notFoundForMissingURL("feedUrl"))
+	dataHubProcedure(mux, "MarkArticleRead", notFoundForMissingURL("articleUrl"))
+	dataHubProcedure(mux, "AddFavoriteFeed", notFoundForMissingURL("feedUrl"))
+	dataHubProcedure(mux, "RemoveFavoriteFeed", notFoundForMissingURL("feedUrl"))
+
+	dataHubProcedure(mux, "GetReadFeedIDs", jsonPost(map[string]interface{}{
+		"readFeedIds": []string{stubFeedRow},
+	}))
+	dataHubProcedure(mux, "GetAllReadFeedIDs", jsonPost(map[string]interface{}{
+		"readFeedIds": []string{stubFeedRow},
+	}))
+	dataHubProcedure(mux, "GetUserSubscribedFeedLinkIDs", jsonPost(map[string]interface{}{
+		"feedLinkIds": []string{stubLink},
+	}))
+	dataHubProcedure(mux, "ListSubscriptions", jsonPost(map[string]interface{}{
+		"subscriptions": []map[string]interface{}{{
+			"feedLinkId":   stubLink,
+			"url":          "https://example.com/feed.xml",
+			"isSubscribed": true,
+			"subscribedAt": "2026-05-01T12:00:00Z",
+		}},
+	}))
+	dataHubProcedure(mux, "Subscribe", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "Unsubscribe", jsonPost(map[string]interface{}{}))
+
+	// ---- §2.J Tag reads ----------------------------------------------------
+
+	// GetArticleTags answers {} — the empty repeated field. An untagged
+	// article is not a 404 here, because the consumer reads emptiness as
+	// "generate some" and a NotFound would suppress that path entirely.
+	dataHubProcedure(mux, "GetArticleTags", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "GetFeedTags", jsonPost(map[string]interface{}{
+		"tags": []map[string]interface{}{{
+			"id":        "11111111-2222-3333-4444-555555555555",
+			"tagName":   "AI",
+			"createdAt": "2026-07-31T09:00:00Z",
+		}},
+	}))
+	dataHubProcedure(mux, "GetTagCooccurrences", jsonPost(map[string]interface{}{
+		"cooccurrences": []map[string]interface{}{{
+			"tagNameA":    "AI",
+			"tagNameB":    "Go",
+			"sharedCount": 4,
+		}},
+	}))
+	dataHubProcedure(mux, "SearchTagsByPrefix", jsonPost(map[string]interface{}{
+		"hits": []map[string]interface{}{{"tagName": "AI", "articleCount": 42}},
+	}))
+	dataHubProcedure(mux, "GetTagArticleCounts", jsonPost(map[string]interface{}{
+		"counts": []map[string]interface{}{{"tagName": "AI", "articleCount": 10}},
 	}))
 }

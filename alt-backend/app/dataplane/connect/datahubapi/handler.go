@@ -155,6 +155,13 @@ type Handler struct {
 	feedLinkAvailability datahub_capability_port.FeedLinkAvailabilityPort
 	feed                 datahub_capability_port.FeedPort
 
+	// Wave 3 batch 4 (catalog §2.I / §2.J). Required, and
+	// WithWave3Batch4Capabilities panics on nil. These carry the per-user
+	// state — read marks, subscriptions, favourites — and every tag surface;
+	// a nil one makes a user's actions vanish rather than fail.
+	readState datahub_capability_port.ReadStatePort
+	tagRead   datahub_capability_port.TagReadPort
+
 	logger *slog.Logger
 }
 

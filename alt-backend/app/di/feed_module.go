@@ -15,7 +15,6 @@ import (
 	"alt/orchestrator/gateway/register_favorite_feed_gateway"
 	"alt/orchestrator/gateway/register_feed_gateway"
 	"alt/orchestrator/gateway/trend_stats_gateway"
-	"alt/orchestrator/gateway/update_feed_status_gateway"
 	"alt/orchestrator/gateway/validate_fetch_rss_gateway"
 	"alt/orchestrator/port/scraping_domain_port"
 	"alt/orchestrator/usecase/cached_feed_list_usecase"
@@ -105,7 +104,7 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	validateAndFetchRSSGw := validate_fetch_rss_gateway.NewValidateAndFetchRSSGateway()
 	registerFeedLinkGw := register_feed_gateway.NewRegisterFeedLinkGateway(feedLinkGw)
 	registerFeedsGw := register_feed_gateway.NewRegisterFeedsGateway(feedGw)
-	registerFavoriteFeedGw := register_favorite_feed_gateway.NewRegisterFavoriteFeedGateway(pool)
+	registerFavoriteFeedGw := register_favorite_feed_gateway.NewRegisterFavoriteFeedGateway(infra.ReadStateGateway)
 	registerFeedsUC := register_feed_usecase.NewRegisterFeedsUsecase(validateAndFetchRSSGw, registerFeedLinkGw, registerFeedsGw, &register_feed_usecase.RegisterFeedsOpts{
 		FeedLinkIDResolver:   feedLinkGw,
 		FeedLinkAvailability: infra.FeedLinkAvailabilityGateway,
@@ -120,10 +119,11 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	listFeedLinksUC := feed_link_usecase.NewListFeedLinksUsecase(feedLinkMgmtGw)
 	listFeedLinksWithHealthUC := feed_link_usecase.NewListFeedLinksWithHealthUsecase(feedLinkMgmtGw)
 
-	// Reading status
-	updateFeedStatusGw := update_feed_status_gateway.NewUpdateFeedStatusGateway(pool)
-	feedsReadingStatusUC := reading_status.NewFeedsReadingStatusUsecase(updateFeedStatusGw)
-	articlesReadingStatusUC := reading_status.NewArticlesReadingStatusUsecase(altDB)
+	// Reading status (capability catalog §2.I W3-I1 / W3-I2). Both writes go
+	// to the same gateway: they hit one table and, since §4-5, answer an
+	// absent feed the same way.
+	feedsReadingStatusUC := reading_status.NewFeedsReadingStatusUsecase(infra.ReadStateGateway)
+	articlesReadingStatusUC := reading_status.NewArticlesReadingStatusUsecase(infra.ReadStateGateway)
 
 	// Feed details / stats
 	feedSummaryGw := fetch_feed_detail_gateway.NewFeedSummaryGateway(feedGw)
@@ -155,7 +155,7 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 
 	// Feed tags
 	feedURLToIDGw := feed_url_to_id_gateway.NewFeedURLToIDGateway(altDB)
-	fetchFeedTagsGw := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDB)
+	fetchFeedTagsGw := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(infra.TagGateway)
 	fetchFeedTagsUC := fetch_feed_tags_usecase.NewFetchFeedTagsUsecase(feedURLToIDGw, fetchFeedTagsGw)
 	fetchFeedTagsByIDUC := fetch_feed_tags_by_id_usecase.NewFetchFeedTagsByIDUsecase(fetchFeedTagsGw)
 

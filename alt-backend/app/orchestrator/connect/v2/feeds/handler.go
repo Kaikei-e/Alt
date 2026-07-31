@@ -4,6 +4,7 @@ package feeds
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"alt/config"
 	"alt/domain"
@@ -43,10 +44,13 @@ type FeedHandlerDeps struct {
 	// ArticleStore is the article half (catalog §2.B / §2.C), served by
 	// alt-data-hub since ADR-000954 Wave 3 batch 2. SummaryStore is the
 	// summary *read*, which moved in batch 3 (catalog §2.H W3-H8).
-	// AltDBRepository is what is left: the article_summaries write and the
-	// feed-tag read, each migrating with its own capability group.
+	// FeedTagStore is the feed's tag list, which moved in batch 4
+	// (catalog §2.J W3-J2). AltDBRepository is what is left after it: the
+	// article_summaries write alone (W2-08), which migrates with the summary
+	// group.
 	ArticleStore         ArticleStore
 	SummaryStore         SummaryStore
+	FeedTagStore         FeedTagStore
 	AltDBRepository      *alt_db.AltDBRepository
 	PreProcessorClient   *preprocessor_connect.ConnectPreProcessorClient
 	CreateSummaryVersion *create_summary_version_usecase.CreateSummaryVersionUsecase
@@ -78,6 +82,15 @@ type ArticleStore interface {
 // meant reporting a data plane fault for every unsummarised article.
 type SummaryStore interface {
 	FetchArticleSummaryByArticleID(ctx context.Context, articleID string) (*domain.FeedSummary, error)
+}
+
+// FeedTagStore is the feed's tag list (capability catalog §2.J W3-J2).
+//
+// Named here for the same reason as the two above: GetFeedTags used to call
+// AltDBRepository directly, which is a Handler → Driver hop, and after batch 4
+// there is no database on this side to hop to.
+type FeedTagStore interface {
+	FetchFeedTags(ctx context.Context, feedID string, cursor *time.Time, limit int) ([]*domain.FeedTag, error)
 }
 
 // Handler implements the FeedService Connect-RPC service.

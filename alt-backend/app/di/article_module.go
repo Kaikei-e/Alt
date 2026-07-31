@@ -27,7 +27,6 @@ import (
 	"alt/shared/driver/alt_db"
 	"alt/shared/gateway/datahub_gateway"
 	"alt/shared/gateway/fetch_articles_by_tag_gateway"
-	"alt/shared/gateway/fetch_tag_cloud_gateway"
 	"alt/shared/gateway/internal_article_gateway"
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
@@ -104,17 +103,19 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	fetchArticlesByTagGw := fetch_articles_by_tag_gateway.NewFetchArticlesByTagGateway(altDB)
 	fetchArticlesByTagUC := fetch_articles_by_tag_usecase.NewFetchArticlesByTagUsecase(fetchArticlesByTagGw)
 
-	// Tag cloud (Tag Verse feature)
-	fetchTagCloudGw := fetch_tag_cloud_gateway.NewFetchTagCloudGateway(altDB)
-	fetchTagCloudUC := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(fetchTagCloudGw, 30*time.Minute)
+	// Tag cloud (Tag Verse feature). Both halves of the port — the counts and
+	// the cooccurrence edges — now take the same route (catalog §2.J W3-J3);
+	// alt-backend used to serve FetchTagCloud as an RPC to rag-orchestrator
+	// while reading the same table directly for itself. The octree layout and
+	// the 30-minute cache stay in the usecase (ADR-000954 D4).
+	fetchTagCloudUC := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(infra.TagGateway, 30*time.Minute)
 
-	// Article tags (Tag Trail feature, with mq-hub for on-the-fly tag generation ADR-168)
+	// Article tags (Tag Trail feature, with mq-hub for on-the-fly tag generation ADR-168).
+	// One source since batch 4: the tag read, the tag write-back and the
+	// article body all arrive over the same connection (catalog §2.J / W2-13).
 	fetchArticleTagsConfig := fetch_article_tags_gateway.DefaultConfig()
-	// Two sources: the tag reads and the tag upsert are still direct
-	// (catalog §2.J), the article body read is alt-data-hub's since batch 2
-	// (catalog §2.C W3-C3).
 	fetchArticleTagsGw := fetch_article_tags_gateway.NewFetchArticleTagsGatewayWithMQHub(
-		altDB, infra.ArticleStoreGateway, infra.MQHubClient, fetchArticleTagsConfig,
+		infra.TagGateway, infra.ArticleStoreGateway, infra.MQHubClient, fetchArticleTagsConfig,
 	)
 	fetchArticleTagsUC := fetch_article_tags_usecase.NewFetchArticleTagsUsecase(fetchArticleTagsGw)
 
@@ -127,7 +128,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	fetchLatestArticleUC := fetch_latest_article_usecase.NewFetchLatestArticleUsecase(latestArticleGw)
 
 	// Stream article tags (cached check + on-the-fly generation)
-	cachedArticleTagsGw := cached_article_tags_gateway.NewGateway(altDB)
+	cachedArticleTagsGw := cached_article_tags_gateway.NewGateway(infra.TagGateway)
 	streamArticleTagsUC := stream_article_tags_usecase.NewStreamArticleTagsUsecase(
 		cachedArticleTagsGw, fetchArticleTagsGw,
 	)

@@ -102,6 +102,15 @@ type DataHubComponents struct {
 	FeedLinkGateway             datahub_capability_port.FeedLinkPort
 	FeedLinkAvailabilityGateway datahub_capability_port.FeedLinkAvailabilityPort
 	FeedGateway                 datahub_capability_port.FeedPort
+
+	// ADR-000954 Wave 3 batch 4 (catalog §2.I / §2.J).
+	//
+	// Neither gets a usecase. The read-state writes each hold their invariant
+	// in one statement or one driver transaction, and the tag reads have none
+	// at all — what made the outbox need a usecase was a state machine spread
+	// across several driver calls, and there is nothing like that here.
+	ReadStateGateway datahub_capability_port.ReadStatePort
+	TagReadGateway   datahub_capability_port.TagReadPort
 }
 
 // NewDataHubComponents is cmd/datahub's composition root.
@@ -203,6 +212,16 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		"procedures", 24,
 		"adr", "ADR-000954 Wave 3 batch 3")
 
+	// ADR-000954 Wave 3 batch 4 capabilities. Same reasoning once more: after
+	// this batch alt-backend has no pool for read_status,
+	// user_feed_subscriptions, favorite_feeds or the tag tables.
+	readStateGw := datahub_capability_gateway.NewReadStateGateway(altDB)
+	tagReadGw := datahub_capability_gateway.NewTagReadGateway(altDB)
+	slog.Info("datahub.wave3_capabilities_enabled",
+		"groups", "read_state,tag_read",
+		"procedures", 15,
+		"adr", "ADR-000954 Wave 3 batch 4")
+
 	return &DataHubComponents{
 		Config:                      cfg,
 		AltDBRepository:             altDB,
@@ -231,5 +250,8 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		FeedLinkGateway:             feedLinkGw,
 		FeedLinkAvailabilityGateway: feedLinkAvailabilityGw,
 		FeedGateway:                 feedGw,
+
+		ReadStateGateway: readStateGw,
+		TagReadGateway:   tagReadGw,
 	}
 }

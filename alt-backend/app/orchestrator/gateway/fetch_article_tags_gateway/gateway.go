@@ -2,7 +2,6 @@ package fetch_article_tags_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"alt/shared/driver/mqhub_connect"
 	"alt/utils/logger"
 	"context"
@@ -17,19 +16,20 @@ type tagGenerator interface {
 	IsEnabled() bool
 }
 
-// articleDB is the tag half: catalog §2.J and W2-13, still a direct alt_db
-// call because the tag capabilities migrate in their own batch.
-type articleDB interface {
+// tagStore is the tag read and the tag write-back (catalog §2.J W3-J1 and
+// W2-13), both served by alt-data-hub since ADR-000954 Wave 3 batch 4.
+//
+// The seam batch 2 left here is closed: the article body, the tag read and the
+// tag write used to arrive by two different routes — one over Connect, one
+// through a database pool this process owned — and a gateway with two routes
+// to one story is a place where only one of them gets a timeout, a retry or a
+// metric.
+type tagStore interface {
 	FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error)
-	UpsertArticleTags(ctx context.Context, articleID string, feedID string, tags []alt_db.TagUpsertItem) (int32, error)
+	UpsertArticleTags(ctx context.Context, articleID string, feedID string, tags []domain.TagUpsert) (int32, error)
 }
 
-// articleReader is catalog §2.C W3-C3, served by alt-data-hub since ADR-000954
-// Wave 3 batch 2.
-//
-// Two sources rather than one interface, because the two halves moved at
-// different times. This is a seam: when the tag capabilities move, both fields
-// become the same gateway and articleDB goes away.
+// articleReader is catalog §2.C W3-C3.
 type articleReader interface {
 	FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
 }
@@ -58,7 +58,7 @@ func DefaultConfig() Config {
 
 // FetchArticleTagsGateway implements the port for fetching article tags.
 type FetchArticleTagsGateway struct {
-	db      articleDB
+	db      tagStore
 	article articleReader
 	tagger  tagGenerator
 	config  Config
@@ -71,19 +71,22 @@ type FetchArticleTagsGateway struct {
 // article body through it, and a nil there would surface as a panic on the
 // first article with no tags rather than at boot (CLAUDE.md rule 8).
 func NewFetchArticleTagsGatewayWithMQHub(
-	altDB *alt_db.AltDBRepository,
+	tags tagStore,
 	article articleReader,
 	mqhubClient *mqhub_connect.Client,
 	config Config,
 ) *FetchArticleTagsGateway {
-	if article == nil {
+	switch {
+	case tags == nil:
+		panic("fetch_article_tags_gateway: a tag store is required — a nil one makes every article look untagged and turns each view into an mq-hub request")
+	case article == nil:
 		panic("fetch_article_tags_gateway: an article reader is required — the article body read moved to alt-data-hub in ADR-000954 Wave 3")
 	}
-	return newGateway(altDB, article, mqhubClient, config)
+	return newGateway(tags, article, mqhubClient, config)
 }
 
 // newGateway is an internal constructor for testing with interfaces.
-func newGateway(db articleDB, article articleReader, tagger tagGenerator, config Config) *FetchArticleTagsGateway {
+func newGateway(db tagStore, article articleReader, tagger tagGenerator, config Config) *FetchArticleTagsGateway {
 	return &FetchArticleTagsGateway{
 		db:      db,
 		article: article,
@@ -174,9 +177,9 @@ func (g *FetchArticleTagsGateway) generateAndPersistTags(ctx context.Context, ar
 
 	// 6. Persist generated tags to DB (fail-open: return tags even if upsert fails)
 	if article.FeedID != "" {
-		upsertItems := make([]alt_db.TagUpsertItem, len(resp.Tags))
+		upsertItems := make([]domain.TagUpsert, len(resp.Tags))
 		for i, tag := range resp.Tags {
-			upsertItems[i] = alt_db.TagUpsertItem{
+			upsertItems[i] = domain.TagUpsert{
 				Name:       tag.Name,
 				Confidence: tag.Confidence,
 			}

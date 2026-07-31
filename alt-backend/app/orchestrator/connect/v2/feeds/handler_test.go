@@ -48,7 +48,7 @@ func (m *mockUnsummarizedArticlesCountPort) Execute(ctx context.Context) (int, e
 // Mock for ArticlesReadingStatusUsecase dependency
 type mockUpdateArticleStatusPort struct{}
 
-func (m *mockUpdateArticleStatusPort) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
+func (m *mockUpdateArticleStatusPort) MarkArticleAsRead(ctx context.Context, articleURL url.URL, userID uuid.UUID) error {
 	return nil
 }
 
@@ -692,14 +692,14 @@ func TestMarkAsReadResponse_Construction(t *testing.T) {
 // Mock that returns ErrFeedNotFound
 type mockUpdateArticleStatusPortReturnsNotFound struct{}
 
-func (m *mockUpdateArticleStatusPortReturnsNotFound) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
+func (m *mockUpdateArticleStatusPortReturnsNotFound) MarkArticleAsRead(ctx context.Context, articleURL url.URL, userID uuid.UUID) error {
 	return domain.ErrFeedNotFound
 }
 
 // Mock that returns generic error
 type mockUpdateArticleStatusPortReturnsError struct{}
 
-func (m *mockUpdateArticleStatusPortReturnsError) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
+func (m *mockUpdateArticleStatusPortReturnsError) MarkArticleAsRead(ctx context.Context, articleURL url.URL, userID uuid.UUID) error {
 	return assert.AnError // Generic error from testify
 }
 
