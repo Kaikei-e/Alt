@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	pactDir                    = "../../../../pacts"
+	pactDir                    = "../../../../../pacts"
 	providerName               = "alt-backend"
 	recapWorkerPactFile        = "recap-worker-alt-backend.json"
 	searchIndexerPactFile      = "search-indexer-alt-backend.json"
@@ -211,6 +211,33 @@ func startStubServer(t *testing.T) int {
 					},
 				},
 				"nextId": "art-002",
+			})
+		})
+
+	// search-indexer-alt-backend.json: "a GetArticleByID request".
+	// published_at is deliberately a different instant from created_at: the
+	// consumer indexes documents from this response alone, so substituting
+	// created_at here would silently regress its date filter.
+	mux.HandleFunc("/services.backend.v1.BackendInternalService/GetArticleByID",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"article": map[string]interface{}{
+					"id":          "art-001",
+					"title":       "Test Article",
+					"content":     "Article content.",
+					"tags":        []string{"technology"},
+					"createdAt":   "2026-03-26T00:00:00Z",
+					"userId":      "user-001",
+					"feedId":      "feed-001",
+					"language":    "en",
+					"publishedAt": "2026-03-20T09:30:00Z",
+				},
 			})
 		})
 
@@ -450,6 +477,9 @@ func TestVerifySearchIndexerContract(t *testing.T) {
 				return nil, nil
 			},
 			"articles with tags exist for backward pagination": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"an article with a source publication timestamp exists": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 		},

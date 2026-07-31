@@ -78,8 +78,8 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 	mapped := make([]register_feed_port.RegisterFeedResult, 0, len(results))
 	for _, result := range results {
 		mapped = append(mapped, register_feed_port.RegisterFeedResult{
-			ArticleID: result.ArticleID,
-			Created:   result.Created,
+			FeedID:  result.FeedID,
+			Created: result.Created,
 		})
 	}
 

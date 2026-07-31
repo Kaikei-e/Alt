@@ -15,6 +15,9 @@ type ArticleWithTags struct {
 	CreatedAt time.Time
 	UserID    string
 	Language  string
+	// PublishedAt is the source publication timestamp. nil when the article
+	// has none; consumers decide their own fallback.
+	PublishedAt *time.Time
 }
 
 // DeletedArticle represents a deleted article.

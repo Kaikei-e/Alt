@@ -6,7 +6,6 @@ import (
 	"alt/orchestrator/port/register_feed_port"
 	"alt/orchestrator/port/subscription_port"
 	"alt/orchestrator/port/validate_fetch_rss_port"
-	"alt/shared/port/event_publisher_port"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -25,12 +24,16 @@ type FeedPageInvalidator interface {
 }
 
 // RegisterFeedsOpts holds optional dependencies for RegisterFeedsUsecase.
+//
+// No event publisher belongs here. Registration writes feeds rows, so the only
+// identifier it can produce is a feeds.id; ArticleCreated / ArticleUpdated are
+// published by the internal CreateArticle RPC once an articles row — and
+// therefore a real articles.id — exists (ADR-000953).
 type RegisterFeedsOpts struct {
 	FeedLinkIDResolver   FeedLinkIDResolver
 	FeedLinkAvailability feed_link_availability_port.FeedLinkAvailabilityPort
 	FeedPageInvalidator  FeedPageInvalidator
 	SubscriptionPort     subscription_port.SubscriptionPort
-	EventPublisher       event_publisher_port.EventPublisherPort
 }
 
 type RegisterFeedsUsecase struct {
@@ -40,7 +43,6 @@ type RegisterFeedsUsecase struct {
 	feedLinkIDResolver   FeedLinkIDResolver
 	subscriptionPort     subscription_port.SubscriptionPort
 	availabilityPort     feed_link_availability_port.FeedLinkAvailabilityPort
-	eventPublisher       event_publisher_port.EventPublisherPort
 	feedPageInvalidator  FeedPageInvalidator
 }
 
@@ -60,7 +62,6 @@ func NewRegisterFeedsUsecase(
 		uc.availabilityPort = opts.FeedLinkAvailability
 		uc.feedPageInvalidator = opts.FeedPageInvalidator
 		uc.subscriptionPort = opts.SubscriptionPort
-		uc.eventPublisher = opts.EventPublisher
 	}
 	return uc
 }
@@ -100,13 +101,20 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 	logger.Logger.InfoContext(ctx, "Feed items", "count", len(parsedFeed.Items))
 
 	// 5. Register feed items in DB
-	ids, err := r.registerFeedsGateway.RegisterFeeds(ctx, parsedFeed.Items)
+	results, err := r.registerFeedsGateway.RegisterFeeds(ctx, parsedFeed.Items)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to register feeds", "error", err)
 		return errors.New("failed to register feeds")
 	}
 
-	logger.Logger.InfoContext(ctx, "Feed items registered", "count", len(parsedFeed.Items))
+	created := 0
+	for _, result := range results {
+		if result.Created {
+			created++
+		}
+	}
+	logger.Logger.InfoContext(ctx, "Feed items registered",
+		"count", len(parsedFeed.Items), "created", created, "updated", len(results)-created)
 
 	// 6. Initialize feed availability state from the successful registration fetch.
 	if r.availabilityPort != nil {
@@ -116,59 +124,12 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 		}
 	}
 
-	// 7. Fire-and-forget: event publishing + auto-subscribe (truly async)
-	// Use context.WithoutCancel so goroutines survive after HTTP response is sent.
-	// Both operations already log errors without propagating them.
-	bgCtx := context.WithoutCancel(ctx)
-	go r.publishFeedEvents(bgCtx, ids, parsedFeed.Items, feedLinkID)
-	go r.autoSubscribeUser(bgCtx, feedLinkID)
+	// 7. Fire-and-forget: auto-subscribe (truly async)
+	// Use context.WithoutCancel so the goroutine survives after the HTTP
+	// response is sent. It already logs errors without propagating them.
+	go r.autoSubscribeUser(context.WithoutCancel(ctx), feedLinkID)
 
 	return nil
-}
-
-// publishFeedEvents publishes ArticleCreated events for each registered feed item.
-// This is fire-and-forget: failures are logged but do not affect the main operation.
-func (r *RegisterFeedsUsecase) publishFeedEvents(ctx context.Context, results []register_feed_port.RegisterFeedResult, feedItems []*domain.FeedItem, feedLinkID *string) {
-	if r.eventPublisher == nil || !r.eventPublisher.IsEnabled() {
-		return
-	}
-	feedID := ""
-	if feedLinkID != nil {
-		feedID = *feedLinkID
-	}
-	for i, result := range results {
-		if i >= len(feedItems) {
-			break
-		}
-		item := feedItems[i]
-
-		if result.Created {
-			if err := r.eventPublisher.PublishArticleCreated(ctx, event_publisher_port.ArticleCreatedEvent{
-				ArticleID:   result.ArticleID,
-				FeedID:      feedID,
-				Title:       item.Title,
-				URL:         item.Link,
-				Content:     item.Description,
-				PublishedAt: item.PublishedParsed,
-			}); err != nil {
-				logger.Logger.WarnContext(ctx, "failed to publish ArticleCreated event (non-fatal)",
-					"article_id", result.ArticleID, "error", err)
-			}
-			continue
-		}
-
-		if err := r.eventPublisher.PublishArticleUpdated(ctx, event_publisher_port.ArticleUpdatedEvent{
-			ArticleID:   result.ArticleID,
-			FeedID:      feedID,
-			Title:       item.Title,
-			URL:         item.Link,
-			Content:     item.Description,
-			PublishedAt: item.PublishedParsed,
-		}); err != nil {
-			logger.Logger.WarnContext(ctx, "failed to publish ArticleUpdated event (non-fatal)",
-				"article_id", result.ArticleID, "error", err)
-		}
-	}
 }
 
 // autoSubscribeUser subscribes the authenticated user to the feed link.

@@ -9,11 +9,13 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -29,11 +31,43 @@ func mockRegisterFeedResults(ids ...string) []register_feed_port.RegisterFeedRes
 	results := make([]register_feed_port.RegisterFeedResult, 0, len(ids))
 	for _, id := range ids {
 		results = append(results, register_feed_port.RegisterFeedResult{
-			ArticleID: id,
-			Created:   true,
+			FeedID:  id,
+			Created: true,
 		})
 	}
 	return results
+}
+
+// TestRegisterFeedPath_HasNoEventPublisherDependency pins the decision that feed
+// registration publishes no article events. This path inserts feeds rows; the
+// only identifier it can produce is a feeds.id. ArticleCreated / ArticleUpdated
+// are published by the internal CreateArticle RPC, at the moment an articles row
+// is actually written and a real articles.id exists.
+//
+// Wiring a publisher back in here would reintroduce the ADR-000953 defect: the
+// event would once again carry a feeds.id in a field consumers dereference as an
+// article id.
+func TestRegisterFeedPath_HasNoEventPublisherDependency(t *testing.T) {
+	publisherType := reflect.TypeOf((*event_publisher_port.EventPublisherPort)(nil)).Elem()
+
+	tests := []struct {
+		name string
+		typ  reflect.Type
+	}{
+		{name: "RegisterFeedsOpts", typ: reflect.TypeOf(RegisterFeedsOpts{})},
+		{name: "RegisterFeedsUsecase", typ: reflect.TypeOf(RegisterFeedsUsecase{})},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i := range tt.typ.NumField() {
+				field := tt.typ.Field(i)
+				require.False(t, field.Type.Implements(publisherType),
+					"%s.%s wires an event publisher into the feed-registration path, "+
+						"which has no articles.id to publish", tt.name, field.Name)
+			}
+		})
+	}
 }
 
 func TestRegisterFeedUsecase_Execute(t *testing.T) {
@@ -395,195 +429,4 @@ func TestRegisterFeedUsecase_FailsWhenAvailabilityInitializationFails(t *testing
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
-}
-
-func TestRegisterFeedUsecase_EventPublishing_Success(t *testing.T) {
-	logger.InitLogger()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
-	mockRegisterFeedLinkPort := mocks.NewMockRegisterFeedLinkPort(ctrl)
-	mockRegisterFeedsPort := mocks.NewMockRegisterFeedsPort(ctrl)
-	mockEventPublisher := mocks.NewMockEventPublisherPort(ctrl)
-	mockData := testutil.CreateMockFeedItems()
-
-	feedLinkID := uuid.New().String()
-
-	pf := mockParsedFeed("https://example.com/rss/news", mockData)
-	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
-	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("art-1", "art-2"), nil).Times(1)
-
-	// Event publisher is enabled and should be called for each ID (async via goroutine)
-	var wg sync.WaitGroup
-	wg.Add(1) // 1 for IsEnabled + publishFeedEvents goroutine completion
-	mockEventPublisher.EXPECT().IsEnabled().Return(true).Times(1)
-	callCount := 0
-	var mu sync.Mutex
-	mockEventPublisher.EXPECT().PublishArticleCreated(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ event_publisher_port.ArticleCreatedEvent) error {
-			mu.Lock()
-			callCount++
-			if callCount == 2 {
-				wg.Done()
-			}
-			mu.Unlock()
-			return nil
-		}).Times(2)
-
-	mockResolver := mocks.NewMockFeedLinkIDResolver(ctrl)
-	mockResolver.EXPECT().FetchFeedLinkIDByURL(gomock.Any(), "https://example.com/rss/news").Return(&feedLinkID, nil).Times(1)
-
-	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
-		EventPublisher:     mockEventPublisher,
-		FeedLinkIDResolver: mockResolver,
-	})
-
-	err := r.Execute(context.Background(), "https://example.com/rss/news")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	wg.Wait()
-}
-
-func TestRegisterFeedUsecase_EventPublishing_Disabled(t *testing.T) {
-	logger.InitLogger()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
-	mockRegisterFeedLinkPort := mocks.NewMockRegisterFeedLinkPort(ctrl)
-	mockRegisterFeedsPort := mocks.NewMockRegisterFeedsPort(ctrl)
-	mockEventPublisher := mocks.NewMockEventPublisherPort(ctrl)
-	mockData := testutil.CreateMockFeedItems()
-
-	pf := mockParsedFeed("https://example.com/rss/news", mockData)
-	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
-	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("art-1", "art-2"), nil).Times(1)
-
-	// Event publisher is disabled — PublishArticleCreated should NOT be called
-	mockEventPublisher.EXPECT().IsEnabled().Return(false).Times(1)
-
-	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
-		EventPublisher: mockEventPublisher,
-	})
-
-	err := r.Execute(context.Background(), "https://example.com/rss/news")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	// Give goroutine time to run (returns early since disabled)
-	time.Sleep(50 * time.Millisecond)
-}
-
-func TestRegisterFeedUsecase_EventPublishing_NotSet(t *testing.T) {
-	logger.InitLogger()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
-	mockRegisterFeedLinkPort := mocks.NewMockRegisterFeedLinkPort(ctrl)
-	mockRegisterFeedsPort := mocks.NewMockRegisterFeedsPort(ctrl)
-	mockData := testutil.CreateMockFeedItems()
-
-	pf := mockParsedFeed("https://example.com/rss/news", mockData)
-	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
-	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("art-1", "art-2"), nil).Times(1)
-
-	// No event publisher set — should work without error
-	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, nil)
-
-	err := r.Execute(context.Background(), "https://example.com/rss/news")
-	if err != nil {
-		t.Errorf("Expected no error with nil event publisher, got %v", err)
-	}
-}
-
-func TestRegisterFeedUsecase_EventPublishing_FailureNonFatal(t *testing.T) {
-	logger.InitLogger()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
-	mockRegisterFeedLinkPort := mocks.NewMockRegisterFeedLinkPort(ctrl)
-	mockRegisterFeedsPort := mocks.NewMockRegisterFeedsPort(ctrl)
-	mockEventPublisher := mocks.NewMockEventPublisherPort(ctrl)
-	mockData := testutil.CreateMockFeedItems()
-
-	pf := mockParsedFeed("https://example.com/rss/news", mockData)
-	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
-	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("art-1", "art-2"), nil).Times(1)
-
-	// Event publisher is enabled but PublishArticleCreated fails (async via goroutine)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	mockEventPublisher.EXPECT().IsEnabled().Return(true).Times(1)
-	callCount := 0
-	var mu sync.Mutex
-	mockEventPublisher.EXPECT().PublishArticleCreated(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ event_publisher_port.ArticleCreatedEvent) error {
-			mu.Lock()
-			callCount++
-			if callCount == 2 {
-				wg.Done()
-			}
-			mu.Unlock()
-			return errors.New("publish failed")
-		}).Times(2)
-
-	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
-		EventPublisher: mockEventPublisher,
-	})
-
-	// Execute should succeed even when event publishing fails
-	err := r.Execute(context.Background(), "https://example.com/rss/news")
-	if err != nil {
-		t.Errorf("Expected no error even when event publishing fails, got %v", err)
-	}
-	wg.Wait()
-}
-
-func TestRegisterFeedUsecase_EventPublishing_SplitsCreatedAndUpdated(t *testing.T) {
-	logger.InitLogger()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
-	mockRegisterFeedLinkPort := mocks.NewMockRegisterFeedLinkPort(ctrl)
-	mockRegisterFeedsPort := mocks.NewMockRegisterFeedsPort(ctrl)
-	mockEventPublisher := mocks.NewMockEventPublisherPort(ctrl)
-	mockData := testutil.CreateMockFeedItems()
-
-	pf := mockParsedFeed("https://example.com/rss/news", mockData)
-	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
-	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]register_feed_port.RegisterFeedResult{
-		{ArticleID: "art-1", Created: true},
-		{ArticleID: "art-2", Created: false},
-	}, nil).Times(1)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	mockEventPublisher.EXPECT().IsEnabled().Return(true).Times(1)
-	mockEventPublisher.EXPECT().PublishArticleCreated(gomock.Any(), gomock.Any()).Return(nil).Times(1)
-	mockEventPublisher.EXPECT().PublishArticleUpdated(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ event_publisher_port.ArticleUpdatedEvent) error {
-			wg.Done()
-			return nil
-		},
-	).Times(1)
-
-	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
-		EventPublisher: mockEventPublisher,
-	})
-
-	err := r.Execute(context.Background(), "https://example.com/rss/news")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	wg.Wait()
 }

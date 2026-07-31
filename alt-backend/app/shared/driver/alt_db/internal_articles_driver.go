@@ -15,6 +15,9 @@ type InternalArticleWithTags struct {
 	CreatedAt time.Time
 	UserID    string
 	Language  string
+	// PublishedAt mirrors the nullable articles.published_at column. nil means
+	// the row carries no source publication timestamp.
+	PublishedAt *time.Time
 }
 
 // InternalDeletedArticle is the driver-level model for deleted articles.
@@ -247,7 +250,7 @@ func (r *InternalRepository) GetLatestArticleTimestamp(ctx context.Context) (*ti
 // GetArticleWithTagsByID retrieves a single article with tags by ID.
 func (r *InternalRepository) GetArticleWithTagsByID(ctx context.Context, articleID string) (*InternalArticleWithTags, error) {
 	query := `
-		SELECT a.id, a.title, a.content, a.created_at, a.user_id, a.language,
+		SELECT a.id, a.title, a.content, a.created_at, a.published_at, a.user_id, a.language,
 			   COALESCE(
 				   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
 				   '{}'
@@ -263,7 +266,7 @@ func (r *InternalRepository) GetArticleWithTagsByID(ctx context.Context, article
 	var tagNames []string
 
 	err := r.pool.QueryRow(ctx, query, articleID).Scan(
-		&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.UserID, &article.Language, &tagNames,
+		&article.ID, &article.Title, &article.Content, &article.CreatedAt, &article.PublishedAt, &article.UserID, &article.Language, &tagNames,
 	)
 	if err != nil {
 		return nil, err

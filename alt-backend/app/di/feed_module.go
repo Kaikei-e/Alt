@@ -106,7 +106,6 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 		FeedLinkAvailability: altDB,
 		FeedPageInvalidator:  feedPageCacheGw,
 		SubscriptionPort:     sub.SubscriptionGateway,
-		EventPublisher:       infra.EventPublisher,
 	})
 	registerFavoriteFeedUC := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(registerFavoriteFeedGw)
 	removeFavoriteFeedUC := remove_favorite_feed_usecase.NewRemoveFavoriteFeedUsecase(registerFavoriteFeedGw)

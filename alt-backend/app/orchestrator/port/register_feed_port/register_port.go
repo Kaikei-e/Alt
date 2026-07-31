@@ -15,7 +15,10 @@ type RegisterFeedsPort interface {
 	RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]RegisterFeedResult, error)
 }
 
+// RegisterFeedResult reports the outcome of registering one RSS item.
+// FeedID is a feeds.id. Registration does not create an articles row, so this
+// value must never be published as an article identifier (ADR-000953).
 type RegisterFeedResult struct {
-	ArticleID string
-	Created   bool
+	FeedID  string
+	Created bool
 }

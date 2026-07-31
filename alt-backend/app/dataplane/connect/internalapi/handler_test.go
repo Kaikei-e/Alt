@@ -272,6 +272,60 @@ func TestGetArticleByID_Success(t *testing.T) {
 	}
 }
 
+// TestGetArticleByID_PublishedAt pins the mapping of the nullable
+// articles.published_at column onto the wire. search-indexer builds every
+// document's date filter from this RPC, so a present timestamp must be
+// forwarded and an absent one must stay unset rather than defaulting to
+// created_at on the provider side.
+func TestGetArticleByID_PublishedAt(t *testing.T) {
+	createdAt := time.Date(2026, 3, 26, 0, 0, 0, 0, time.UTC)
+	publishedAt := time.Date(2026, 3, 20, 9, 30, 0, 0, time.UTC)
+
+	tests := []struct {
+		name        string
+		publishedAt *time.Time
+		wantSet     bool
+	}{
+		{name: "published_at present", publishedAt: &publishedAt, wantSet: true},
+		{name: "published_at is NULL", publishedAt: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, _, _, _, _, mockGetByID := setupHandler(t)
+			ctx := context.Background()
+
+			mockGetByID.EXPECT().
+				GetArticleByID(gomock.Any(), "a1").
+				Return(&internal_article_port.ArticleWithTags{
+					ID:          "a1",
+					Title:       "Test",
+					CreatedAt:   createdAt,
+					UserID:      "u1",
+					PublishedAt: tt.publishedAt,
+				}, nil)
+
+			resp, err := h.GetArticleByID(ctx, connect.NewRequest(&backendv1.GetArticleByIDRequest{ArticleId: "a1"}))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !tt.wantSet {
+				if resp.Msg.Article.PublishedAt != nil {
+					t.Fatalf("expected published_at to stay unset, got %v", resp.Msg.Article.PublishedAt.AsTime())
+				}
+				return
+			}
+			if resp.Msg.Article.PublishedAt == nil {
+				t.Fatal("expected published_at to be set")
+			}
+			if got := resp.Msg.Article.PublishedAt.AsTime(); !got.Equal(publishedAt) {
+				t.Errorf("published_at = %v, want %v", got, publishedAt)
+			}
+		})
+	}
+}
+
 func TestGetArticleByID_EmptyID(t *testing.T) {
 	h, _, _, _, _, _ := setupHandler(t)
 	ctx := context.Background()

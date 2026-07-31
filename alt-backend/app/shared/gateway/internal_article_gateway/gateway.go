@@ -357,12 +357,13 @@ func (g *Gateway) GetEmptyFeedID(ctx context.Context, feedURL string) (string, e
 
 func toPortArticle(da *alt_db.InternalArticleWithTags) *internal_article_port.ArticleWithTags {
 	return &internal_article_port.ArticleWithTags{
-		ID:        da.ID,
-		Title:     da.Title,
-		Content:   da.Content,
-		Tags:      da.Tags,
-		CreatedAt: da.CreatedAt,
-		UserID:    da.UserID,
-		Language:  da.Language,
+		ID:          da.ID,
+		Title:       da.Title,
+		Content:     da.Content,
+		Tags:        da.Tags,
+		CreatedAt:   da.CreatedAt,
+		UserID:      da.UserID,
+		Language:    da.Language,
+		PublishedAt: da.PublishedAt,
 	}
 }

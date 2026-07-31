@@ -974,7 +974,7 @@ func toProtoArticles(articles []*internal_article_port.ArticleWithTags) []*backe
 }
 
 func toProtoArticle(a *internal_article_port.ArticleWithTags) *backendv1.ArticleWithTags {
-	return &backendv1.ArticleWithTags{
+	proto := &backendv1.ArticleWithTags{
 		Id:        a.ID,
 		Title:     a.Title,
 		Content:   a.Content,
@@ -983,6 +983,13 @@ func toProtoArticle(a *internal_article_port.ArticleWithTags) *backendv1.Article
 		UserId:    a.UserID,
 		Language:  a.Language,
 	}
+	// A NULL articles.published_at stays an unset Timestamp rather than being
+	// substituted with created_at: only the consumer knows whether a fallback
+	// is acceptable for its use.
+	if a.PublishedAt != nil {
+		proto.PublishedAt = timestamppb.New(*a.PublishedAt)
+	}
+	return proto
 }
 
 func clampLimit(limit int) int {

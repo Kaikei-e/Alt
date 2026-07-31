@@ -17,8 +17,8 @@ func integrationRegisterFeedResults(ids ...string) []register_feed_port.Register
 	results := make([]register_feed_port.RegisterFeedResult, 0, len(ids))
 	for _, id := range ids {
 		results = append(results, register_feed_port.RegisterFeedResult{
-			ArticleID: id,
-			Created:   true,
+			FeedID:  id,
+			Created: true,
 		})
 	}
 	return results
@@ -225,8 +225,8 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 				results := make([]register_feed_port.RegisterFeedResult, len(feedItems))
 				for i := range feedItems {
 					results[i] = register_feed_port.RegisterFeedResult{
-						ArticleID: fmt.Sprintf("id-%d", i+1),
-						Created:   true,
+						FeedID:  fmt.Sprintf("id-%d", i+1),
+						Created: true,
 					}
 				}
 				return results, nil

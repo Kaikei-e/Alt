@@ -10,9 +10,13 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// FeedRegistrationResult reports the outcome of upserting one RSS item into
+// the feeds table. FeedID is the feeds.id returned by the upsert; the
+// registration transaction writes no articles row, so no articles.id exists at
+// this point (ADR-000953).
 type FeedRegistrationResult struct {
-	ArticleID string
-	Created   bool
+	FeedID  string
+	Created bool
 }
 
 func (r *FeedRepository) RegisterSingleFeed(ctx context.Context, feed *models.Feed) error {
@@ -48,7 +52,7 @@ func (r *FeedRepository) RegisterMultipleFeeds(ctx context.Context, feeds []mode
 
 	ids := make([]string, 0, len(results))
 	for _, result := range results {
-		ids = append(ids, result.ArticleID)
+		ids = append(ids, result.FeedID)
 	}
 
 	return ids, nil
@@ -95,7 +99,7 @@ func (r *FeedRepository) RegisterMultipleFeedsWithState(ctx context.Context, fee
 	results := make([]FeedRegistrationResult, 0, len(feeds))
 	for range feeds {
 		var result FeedRegistrationResult
-		if err := br.QueryRow().Scan(&result.ArticleID, &result.Created); err != nil {
+		if err := br.QueryRow().Scan(&result.FeedID, &result.Created); err != nil {
 			_ = br.Close() //#nosec G104 -- Scan error already surfaced; Close error is noise
 			return nil, fmt.Errorf("batch upsert feed: %w", err)
 		}
