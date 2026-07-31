@@ -257,6 +257,9 @@ func TestDOSProtectionConfigValidation(t *testing.T) {
 func TestDOSProtectionEnvironmentConfiguration(t *testing.T) {
 	// Test environment variable loading
 	originalEnv := map[string]string{
+		// config.NewConfig fails fast unless the image proxy is either given a
+		// secret or explicitly disabled (see config.validateImageProxyConfig).
+		"IMAGE_PROXY_ENABLED":               "false",
 		"DOS_PROTECTION_ENABLED":            "true",
 		"DOS_PROTECTION_RATE_LIMIT":         "50",
 		"DOS_PROTECTION_BURST_LIMIT":        "100",
