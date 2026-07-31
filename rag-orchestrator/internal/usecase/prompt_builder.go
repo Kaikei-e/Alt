@@ -445,7 +445,7 @@ func (b *XMLPromptBuilder) writeSupplementaryInfo(sb *strings.Builder, input Pro
 	if len(input.SupplementaryInfo) > 0 {
 		sb.WriteString("### 補足情報（ツール結果）\n")
 		for i, info := range input.SupplementaryInfo {
-			sb.WriteString(fmt.Sprintf("<supplementary index=\"%d\">\n", i+1))
+			fmt.Fprintf(sb, "<supplementary index=\"%d\">\n", i+1)
 			sb.WriteString(escapeContextTags(info))
 			sb.WriteString("\n</supplementary>\n")
 		}

@@ -50,7 +50,7 @@ func TestNewConfig_WithDefaults(t *testing.T) {
 
 			// NewConfig refuses to start with the image proxy enabled (the
 			// default) and an empty secret — see validateImageProxyConfig.
-			os.Setenv("IMAGE_PROXY_SECRET", "test-image-proxy-secret")
+			t.Setenv("IMAGE_PROXY_SECRET", "test-image-proxy-secret")
 
 			// Set test environment variables
 			for key, value := range tt.envVars {
@@ -132,7 +132,7 @@ func TestNewConfig_WithEnvironmentOverrides(t *testing.T) {
 
 			// NewConfig refuses to start with the image proxy enabled (the
 			// default) and an empty secret — see validateImageProxyConfig.
-			os.Setenv("IMAGE_PROXY_SECRET", "test-image-proxy-secret")
+			t.Setenv("IMAGE_PROXY_SECRET", "test-image-proxy-secret")
 
 			// Set test environment variables
 			for key, value := range tt.envVars {

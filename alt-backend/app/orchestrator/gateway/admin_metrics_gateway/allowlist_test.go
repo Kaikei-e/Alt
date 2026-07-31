@@ -130,7 +130,7 @@ func prometheusScrapeJobs(t *testing.T, path string) []scrapeJob {
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	jobs, err := parseScrapeJobs(f)
 	if err != nil {
