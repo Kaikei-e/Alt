@@ -11,12 +11,22 @@ Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームで�
 ## Service Categories
 
 ### Core Services
-| Service | Language | Port(s) | Compose File | Health Endpoint | Notes |
-|---------|----------|---------|--------------|-----------------|-------|
-| nginx | - | 80, 8080 | core.yaml | `pidof nginx` | |
-| alt-frontend | TypeScript (Next.js 16) | 3000 | core.yaml | `/api/health` | |
-| alt-frontend-sv | TypeScript (SvelteKit 2.x) | 4173 | core.yaml | `/sv/health` | Knowledge Home admin at `/admin/knowledge-home` |
-| alt-backend | Go 1.26+ (Echo) | 9000, 9101 | core.yaml | `/v1/health` | Knowledge Home (event sourcing, projector, backfill, reproject, SLO) |
+Host ports below are what the stacks included by `compose/compose.yaml` publish, plus
+the optional `compose.augur.yaml` / `compose.tts.yaml` overlays. Most are bound to
+`127.0.0.1` and so answer on the Docker host only — east-west callers use the container
+DNS name and the in-container port. The exceptions are exactly the rows flagged
+`[all NICs]` in [Quick Reference - Ports](#quick-reference---ports), plus `pact-broker`,
+which binds `${PROD_TAILNET_IP}` (tailnet) in addition to `127.0.0.1`. Do not infer the
+bind address from this table — check the `ports:` entry in the compose file. The dev,
+staging and load-test overlays (`compose/dev.yaml`, `compose/frontend-dev.yaml`,
+`compose/compose.staging.yaml`, `compose/load-test.yaml`, `compose.dev.yaml`) publish on
+all interfaces and are out of scope here.
+
+| Service | Language | Host Port(s) | Compose File | Health Endpoint | Notes |
+|---------|----------|--------------|--------------|-----------------|-------|
+| plecto-proxy | Rust (PlectoProxy 0.6.0) | 80 → 8443, 8080 | core.yaml | `plecto healthz` / admin `/healthz` `/readyz` (:8080) | Edge/ingress; replaced nginx. Routes in `plecto/manifest.toml` |
+| alt-frontend-sv | TypeScript (SvelteKit 2.x) | 4173 | core.yaml | `/health` | Knowledge Home admin at `/admin/knowledge-home` |
+| alt-backend | Go 1.26+ (Echo) | 9000, 9101, 9102 | core.yaml | `/v1/health` | Knowledge Home (event sourcing, projector, backfill, reproject, SLO) |
 | alt-butterfly-facade | Go 1.26+ | 9250 | bff.yaml | `/alt-butterfly-facade healthcheck` | Knowledge Home Admin API routing |
 
 ### Worker Services
@@ -108,7 +118,7 @@ Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームで�
 | Compose File | Services | Profile |
 |--------------|----------|---------|
 | base.yaml | 共通設定 (networks, volumes, secrets) | - |
-| core.yaml | nginx, alt-frontend, alt-frontend-sv, alt-backend, migrate | default |
+| core.yaml | plecto-proxy, alt-frontend-sv, alt-backend, migrate | default |
 | bff.yaml | alt-butterfly-facade | default |
 | db.yaml | db, meilisearch, clickhouse, pre-processor-db, pre-processor-db-migrator | default |
 | auth.yaml | kratos-db, kratos, kratos-migrate, auth-hub | default |
@@ -132,12 +142,10 @@ Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームで�
 ```mermaid
 flowchart TB
     subgraph Edge["Edge"]
-        nginx
+        plecto-proxy
     end
 
     subgraph Frontend["Frontend"]
-        direction LR
-        alt-frontend
         alt-frontend-sv
     end
 
@@ -209,8 +217,8 @@ flowchart TB
         redis-cache[(Redis)]
     end
 
-    %% Request flow
-    nginx --> alt-frontend & alt-frontend-sv & auth-hub
+    %% Request flow (plecto upstreams: alt-frontend-sv, alt-backend, kratos, dashboard)
+    plecto-proxy --> alt-frontend-sv & alt-backend & kratos
     alt-frontend-sv --> alt-butterfly-facade --> alt-backend
     alt-backend --> db & mq-hub & auth-hub
     alt-backend -.->|"Knowledge Home\n(event sourcing)"| db
@@ -243,10 +251,9 @@ flowchart TB
     acolyte-orchestrator --> acolyte-db & search-indexer & news-creator
 
     %% Styling - Edge (gray)
-    style nginx fill:#eceff1,stroke:#546e7a,color:#37474f,stroke-width:2px
+    style plecto-proxy fill:#eceff1,stroke:#546e7a,color:#37474f,stroke-width:2px
 
     %% Styling - Frontend (blue)
-    style alt-frontend fill:#e3f2fd,stroke:#1976d2,color:#0d47a1,stroke-width:2px
     style alt-frontend-sv fill:#e3f2fd,stroke:#1976d2,color:#0d47a1,stroke-width:2px
 
     %% Styling - BFF (light blue)
@@ -305,50 +312,65 @@ flowchart TB
 
 ## Quick Reference - Ports
 
+**Host** ports only — i.e. what a `ports:` entry actually publishes. Unless marked
+`[all NICs]`, the bind address is `127.0.0.1`, so the port answers on the Docker host
+and nowhere else. `(→ N)` is the in-container port when it differs from the host port.
+
 ```
-80      → nginx (HTTP)
-3000    → alt-frontend (Next.js)
+80      → plecto-proxy (edge/ingress, → 8443)     [all NICs]
+3001    → grafana (→ 3000)                        [all NICs]
 4173    → alt-frontend-sv (SvelteKit)
 4433    → kratos (public API)
-4434    → kratos (admin API)
 5432    → db (PostgreSQL 17)
-5434    → kratos-db (PostgreSQL 16)
-5435    → recap-db (PostgreSQL 18)
-5436    → rag-db (PostgreSQL 18)
-5437    → pre-processor-db (PostgreSQL 17)
-5438    → knowledge-sovereign-db (PostgreSQL 16)
-5439    → acolyte-db (PostgreSQL 18)
-6380    → redis-streams
+5434    → kratos-db (PostgreSQL 16, → 5432)
+5435    → recap-db (PostgreSQL 18, → 5432)
+5436    → rag-db (PostgreSQL 18, → 5432)
+5437    → pre-processor-db (PostgreSQL 17, → 5432)
+5438    → knowledge-sovereign-db (PostgreSQL 16, → 5432)
+5439    → acolyte-db (PostgreSQL 18, → 5432)
+6380    → redis-streams (→ 6379)
 7700    → meilisearch
 8002    → recap-subworker
-8085    → recap-evaluator
+8080    → plecto-proxy admin (/metrics /healthz /readyz)
+8082    → rerank-local (→ 8080)
+8085    → recap-evaluator (→ 8080)
 8090    → acolyte-orchestrator (Connect-RPC)
 8123    → clickhouse (HTTP)
+8181    → cadvisor (→ 8080)
 8501    → dashboard (Streamlit)
-8888    → auth-hub
+8502    → dashboard (metrics, → 8000)
 9000    → alt-backend (REST)
 9005    → recap-worker
-9009    → clickhouse (native)
+9009    → clickhouse (native, → 9000)
 9010    → rag-orchestrator (REST)
 9011    → rag-orchestrator (Connect-RPC)
+9090    → prometheus
 9101    → alt-backend (Connect-RPC)
+9102    → alt-backend (internal/admin, unauthenticated — loopback only)
 9200    → pre-processor (REST)
 9201    → auth-token-manager
 9202    → pre-processor (Connect-RPC)
-9250    → alt-butterfly-facade (Compose: 9250:9250)
+9250    → alt-butterfly-facade
+9292    → pact-broker (also bound on ${PROD_TAILNET_IP})
 9300    → search-indexer (REST)
 9301    → search-indexer (Connect-RPC)
 9400    → tag-generator
 9500    → mq-hub
-9510    → knowledge-sovereign (RPC, Compose: 9510:9500)
-9511    → knowledge-sovereign (metrics/health, Compose: 9511:9501)
-9600    → rask-log-aggregator (HTTP)
-9700    → tts-speaker
-4317    → rask-log-aggregator (OTLP gRPC)
-4318    → rask-log-aggregator (OTLP HTTP)
+9510    → knowledge-sovereign (RPC, → 9500)
+9511    → knowledge-sovereign (metrics/health, → 9501)
+9700    → tts-speaker (compose.tts.yaml)             [all NICs]
 11434   → news-creator (Ollama API)
-11435   → knowledge-augur (Compose: 11435:11434)
+11435   → news-creator-backend (Ollama, ai.yaml)
+11435   → knowledge-augur (compose.augur.yaml, → 11434)  [all NICs, conflicts with the row above]
+11436   → knowledge-embedder (compose.augur.yaml, → 11434) [all NICs]
+11437   → knowledge-embedder-local (rag.yaml, → 11434)
 ```
+
+**No host port at all** — reachable only from inside `alt-network` via the container
+DNS name: `auth-hub` (:8888), `kratos` admin (:4434), `pgbouncer` (:6432),
+`rask-log-aggregator` (:9600, :4317, :4318), `redis-cache`, `pre-processor-sidecar`,
+`step-ca`, and every `pki-agent-*` sidecar. `curl http://localhost:<port>` against any
+of these cannot work; use `docker compose exec <service> …` instead.
 
 ---
 
@@ -400,32 +422,50 @@ altctl down --volumes
 
 ## Health Check Commands
 
+Use `curl -fsS` (not bare `curl`): `-f` makes a non-2xx a non-zero exit and `-S` keeps
+the connection error on stderr, so a dead endpoint is loud instead of printing nothing.
+
 ```bash
 # Core Services
-curl http://localhost:3000/api/health          # alt-frontend
-curl http://localhost:4173/sv/health           # alt-frontend-sv
-curl http://localhost:9000/v1/health           # alt-backend
-curl http://localhost:8888/health              # auth-hub
+curl -fsS http://localhost:8080/readyz              # plecto-proxy (edge, admin port)
+curl -fsS http://localhost:4173/health              # alt-frontend-sv
+curl -fsS http://localhost:9000/v1/health           # alt-backend
+curl -fsS http://localhost:9250/health              # alt-butterfly-facade
 
 # Data Stores
-curl http://localhost:7700/health              # meilisearch
-curl http://localhost:8123/ping                # clickhouse
+curl -fsS http://localhost:7700/health              # meilisearch
+curl -fsS http://localhost:8123/ping                # clickhouse
 
 # AI Services
-curl http://localhost:11434/health             # news-creator
+curl -fsS http://localhost:11434/health             # news-creator
 
 # Recap Pipeline
-curl http://localhost:9005/health/ready        # recap-worker
-curl http://localhost:8085/health              # recap-evaluator
+curl -fsS http://localhost:9005/health/ready        # recap-worker
+curl -fsS http://localhost:8085/health              # recap-evaluator
 
 # RAG
-curl http://localhost:9010/health              # rag-orchestrator
+curl -fsS http://localhost:9010/healthz             # rag-orchestrator
 
 # Acolyte
-curl http://localhost:8090/health              # acolyte-orchestrator
+curl -fsS http://localhost:8090/health              # acolyte-orchestrator
 
 # Message Queue
-curl http://localhost:9500/health              # mq-hub
+curl -fsS http://localhost:9500/health              # mq-hub
+
+# Knowledge Sovereign
+curl -fsS http://localhost:9511/health              # knowledge-sovereign (host 9511 -> :9501)
+
+# Observability
+curl -fsS http://localhost:9090/-/healthy           # prometheus
+```
+
+`auth-hub` and `kratos`'s admin API publish no host port, so they have no `localhost`
+form. Probe them from inside the network instead:
+
+```bash
+docker compose -f compose/compose.yaml -p alt exec auth-hub /auth-hub healthcheck
+docker compose -f compose/compose.yaml -p alt exec kratos \
+  wget --spider -q http://127.0.0.1:4434/admin/health/ready
 ```
 
 ---

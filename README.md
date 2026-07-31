@@ -75,7 +75,7 @@ Alt is structured as a six-layer microservice catalog running in Docker Compose:
 ```mermaid
 flowchart TB
     subgraph EdgeLayer["1. Edge & Identity Boundary"]
-        nginx[nginx<br/>Reverse Proxy]
+        plecto-proxy[plecto-proxy<br/>Reverse Proxy]
         auth-hub[auth-hub<br/>Go 1.26+]
         kratos[Ory Kratos<br/>v1.3.0]
     end
@@ -128,7 +128,7 @@ flowchart TB
     end
 
     %% Client and Gateway routing
-    nginx --> alt-frontend-sv & auth-hub
+    plecto-proxy --> alt-frontend-sv & alt-backend & kratos
     auth-hub --> kratos --> kratos-db
     alt-frontend-sv --> alt-butterfly-facade --> alt-backend
 
@@ -157,7 +157,7 @@ flowchart TB
     rask-log-forwarder --> rask-log-aggregator --> clickhouse
 ```
 
-Six layers: **Edge & Auth** (nginx, auth-hub, Kratos) · **Product Surface** (SvelteKit frontend, BFF) · **Core Platform** (alt-backend, mq-hub, knowledge-sovereign) · **Ingestion & Enrichment** (pre-processor, news-creator, tag-generator, search-indexer) · **Intelligence** (rag-orchestrator, acolyte-orchestrator, recap-worker, tts-speaker) · **Observability & Data** (PostgreSQL x7, Meilisearch, ClickHouse, Redis x2, Grafana, Prometheus)
+Six layers: **Edge & Auth** (plecto-proxy, auth-hub, Kratos) · **Product Surface** (SvelteKit frontend, BFF) · **Core Platform** (alt-backend, mq-hub, knowledge-sovereign) · **Ingestion & Enrichment** (pre-processor, news-creator, tag-generator, search-indexer) · **Intelligence** (rag-orchestrator, acolyte-orchestrator, recap-worker, tts-speaker) · **Observability & Data** (PostgreSQL x7, Meilisearch, ClickHouse, Redis x2, Grafana, Prometheus)
 
 Services communicate via REST, Connect-RPC (Protobuf), and Redis Streams. For the full service reference with ports, health endpoints, and dependency graph, see [`docs/services/MICROSERVICES.md`](./docs/services/MICROSERVICES.md).
 
@@ -167,19 +167,26 @@ Services communicate via REST, Connect-RPC (Protobuf), and Redis Streams. For th
 
 Alt separates concerns across distinct microservices located within the repository root:
 
+Ports below are the **in-container** listen ports. They are not always the port you
+reach on the host: `compose/*.yaml` maps most of them to a `127.0.0.1`-bound host port
+(e.g. knowledge-sovereign's `:9500` is published as host `9510`), and some services
+publish nothing at all. For the host-side mapping see
+[`docs/services/MICROSERVICES.md`](./docs/services/MICROSERVICES.md#quick-reference---ports).
+
 ### Product Surface & Edge Gateways
-| Directory | Technology | Default Port | Primary Responsibility |
+| Directory | Technology | Port (in-container) | Primary Responsibility |
 | :--- | :--- | :--- | :--- |
+| [`plecto/`](./plecto) | Rust / WASM Component (PlectoProxy manifest + filter) | `8443` / `8080` (admin) | Edge/ingress config: routing manifest and the `security-headers` WASM filter run by the `plecto-proxy` container. |
 | [`alt-frontend-sv/`](./alt-frontend-sv) | TypeScript / SvelteKit 2 + Svelte 5 Runes + Tailwind v4 + Threlte | `4173` | Core UI dashboard. Implements type-safe API queries and Threlte WebGPU tag visualization under `/sv`. |
 | [`alt-butterfly-facade/`](./alt-butterfly-facade) | Go 1.26+ / Connect-RPC | `9250` | Aggregation API gateway and Connect-RPC reverse proxy mapping requests. |
-| [`auth-hub/`](./auth-hub) | Go 1.26+ / Echo | `8888` | Identity session validation bridge. Validates Ory Kratos public cookies and exchanges keys. |
+| [`auth-hub/`](./auth-hub) | Go 1.26+ / Echo | `8888` (no host port) | Identity session validation bridge. Validates Ory Kratos public cookies and exchanges keys. |
 | [`auth-token-manager/`](./auth-token-manager) | Deno 2.x | `9201` | Safe OAuth2 client refreshing and serializing external Inoreader platform credentials. |
 
 ### Core & Ingestion Framework
-| Directory | Technology | Default Port | Primary Responsibility |
+| Directory | Technology | Port (in-container) | Primary Responsibility |
 | :--- | :--- | :--- | :--- |
 | [`alt-backend/`](./alt-backend) | Go 1.26+ / Clean Architecture | `9000` / `9101` | Primary SQL driver owner. Computes event outboxes, manages feed storage, and serves backfills. |
-| [`knowledge-sovereign/`](./knowledge-sovereign) | Go 1.26+ | `9500` | Append-only transaction ledger validating and saving structured projection runs. |
+| [`knowledge-sovereign/`](./knowledge-sovereign) | Go 1.26+ | `9500` / `9501` (host `9510` / `9511`) | Append-only transaction ledger validating and saving structured projection runs. |
 | [`mq-hub/`](./mq-hub) | Go 1.26+ / Redis Streams | `9500` | Stream message distributor routing payload packets throughout parallel workers. |
 | [`pre-processor/`](./pre-processor) | Go 1.26+ | `9200` / `9202` | Feed enrichment worker incorporating `go-circuitbreaker` boundaries for third-party requests. |
 | [`pre-processor-sidecar/`](./pre-processor-sidecar) | Go 1.26+ | - | Inoreader collection cron scheduler executing tasks via singleflight caches. |
@@ -188,13 +195,13 @@ Alt separates concerns across distinct microservices located within the reposito
 | [`news-creator/`](./news-creator) | Python 3.14+ / FastAPI | `11434` | Inference gateway handling local summarization workloads via GPU-bound Ollama APIs. |
 
 ### Intelligence & Telemetry Pipelines
-| Directory | Technology | Default Port | Primary Responsibility |
+| Directory | Technology | Port (in-container) | Primary Responsibility |
 | :--- | :--- | :--- | :--- |
 | [`rag-orchestrator/`](./rag-orchestrator) | Go 1.26+ | `9010` / `9011` | Semantic search index client querying pgvector configurations. |
 | [`acolyte-orchestrator/`](./acolyte-orchestrator) | Python 3.14+ / LangGraph | `8090` | LangGraph agent synthesizing cited reports using Connect-RPC routing. |
 | [`recap-worker/`](./recap-worker) | Rust 1.94+ (Tokio) | `9005` | High-throughput batch worker running sentence-level XXH3 deduplication and genre analysis. |
 | [`recap-subworker/`](./recap-subworker) | Python 3.14+ / FastAPI | `8002` | Localized summary structuring endpoint verifying recap metrics. |
-| [`recap-evaluator/`](./recap-evaluator) | Python / FastAPI | `8085` | DeepEval integration pipeline checking hallucination boundaries inside summaries. |
+| [`recap-evaluator/`](./recap-evaluator) | Python / FastAPI | `8080` (host `8085`) | DeepEval integration pipeline checking hallucination boundaries inside summaries. |
 | [`rask-log-forwarder/`](./rask-log-forwarder) | Rust 1.94+ | - | SIMD-based zero-copy Docker log parser forwarding container stdout. |
 | [`rask-log-aggregator/`](./rask-log-aggregator) | Rust 1.94+ / Axum | `9600` / `4317` | OpenTelemetry receiver collecting telemetry buffers for ClickHouse bulk inputs. |
 
@@ -215,9 +222,12 @@ altctl up                                       # 3. Start default stack (db, au
 Open `http://localhost/` and verify:
 
 ```bash
-curl http://localhost:9000/v1/health    # alt-backend
-curl http://localhost:8888/health       # auth-hub
-curl http://localhost:7700/health       # Meilisearch
+curl -fsS http://localhost:8080/readyz   # plecto-proxy (edge, admin port)
+curl -fsS http://localhost:9000/v1/health # alt-backend
+curl -fsS http://localhost:7700/health   # Meilisearch
+
+# auth-hub publishes no host port; probe it inside the network instead
+docker compose -f compose/compose.yaml -p alt exec auth-hub /auth-hub healthcheck
 ```
 
 Add optional stacks as needed:
