@@ -58,11 +58,12 @@ func DefaultCircuitBreakerConfig() CircuitBreakerConfig {
 
 // CircuitBreakerStats holds statistics about the circuit breaker.
 type CircuitBreakerStats struct {
-	State           CircuitState
-	TotalSuccesses  int64
-	TotalFailures   int64
-	ConsecFailures  int
-	ConsecSuccesses int
+	State            CircuitState
+	TotalSuccesses   int64
+	TotalFailures    int64
+	ConsecFailures   int
+	ConsecSuccesses  int
+	HalfOpenInFlight int
 }
 
 // CircuitBreaker implements the circuit breaker pattern.
@@ -77,10 +78,17 @@ type CircuitBreaker struct {
 	lastFailure     time.Time
 
 	// halfOpenInFlight tracks the number of trial calls currently permitted
-	// (allowed but not yet resolved via RecordSuccess/RecordFailure) while
-	// the circuit is half-open. Only one trial call is permitted at a time
-	// so concurrent requests don't all flood a not-yet-recovered backend.
+	// (allowed but not yet resolved via RecordSuccess/RecordFailure/Release)
+	// while the circuit is half-open. Only one trial call is permitted at a
+	// time so concurrent requests don't all flood a not-yet-recovered backend.
 	halfOpenInFlight int
+	// halfOpenSince is when the outstanding trial permit was handed out, so a
+	// permit whose holder never resolved it can be reclaimed instead of
+	// rejecting the whole dependency class until the process restarts.
+	halfOpenSince time.Time
+	// halfOpenSeq increments on every trial permit handed out, so a Release
+	// arriving after the permit was already resolved or superseded is a no-op.
+	halfOpenSeq uint64
 
 	// Stats
 	totalSuccesses int64
@@ -110,40 +118,95 @@ func (cb *CircuitBreaker) State() CircuitState {
 	return state
 }
 
-// Allow checks if a request should be allowed through.
-// Returns true if the request is allowed, false if it should be rejected.
-func (cb *CircuitBreaker) Allow() bool {
+// Permit is the admission granted by Acquire. While the circuit is half-open
+// it carries the single trial slot; Release hands that slot back so callers
+// that finish without recording an outcome (an early return, a cache hit, a
+// panic unwinding) don't strand it. Release is a no-op for permits granted
+// while the circuit was closed and a no-op once RecordSuccess/RecordFailure
+// resolved the trial, so `defer permit.Release()` is always safe to place
+// immediately after acquisition.
+type Permit struct {
+	cb  *CircuitBreaker
+	seq uint64
+}
+
+// Release hands an unresolved half-open trial slot back to the circuit breaker.
+func (p Permit) Release() {
+	if p.cb == nil {
+		return
+	}
+
+	p.cb.mu.Lock()
+	defer p.cb.mu.Unlock()
+
+	// A newer trial (sequence mismatch) or an already-recorded outcome
+	// (nothing in flight) means this permit is no longer outstanding.
+	if p.cb.halfOpenSeq != p.seq || p.cb.halfOpenInFlight == 0 {
+		return
+	}
+	p.cb.halfOpenInFlight--
+}
+
+// Acquire checks if a request should be allowed through and returns the permit
+// covering it. Callers must `defer permit.Release()` immediately after a
+// successful acquisition so the half-open trial slot is handed back on every
+// exit path — including the ones that never reach the dependency and so never
+// record an outcome.
+func (cb *CircuitBreaker) Acquire() (Permit, bool) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
+	now := time.Now()
+
 	switch cb.state {
 	case StateClosed:
-		return true
+		return Permit{}, true
 
 	case StateOpen:
 		// Check if we should transition to half-open
-		if time.Since(cb.lastFailure) > cb.config.OpenTimeout {
+		if now.Sub(cb.lastFailure) > cb.config.OpenTimeout {
 			cb.state = StateHalfOpen
 			cb.consecSuccesses = 0
 			cb.halfOpenInFlight = 0
-			cb.halfOpenInFlight++
-			return true
+			return cb.grantTrialLocked(now), true
 		}
-		return false
+		return Permit{}, false
 
 	case StateHalfOpen:
 		// Only one trial call is permitted at a time while the circuit
-		// verifies the backend has recovered; concurrent callers are
-		// rejected until that trial resolves via RecordSuccess/RecordFailure.
-		if cb.halfOpenInFlight >= 1 {
-			return false
+		// verifies the backend has recovered; concurrent callers are rejected
+		// until that trial resolves via RecordSuccess/RecordFailure/Release.
+		// A trial still outstanding after OpenTimeout is treated as abandoned
+		// and reclaimed — a permit nobody hands back must not reject the whole
+		// dependency class until the process restarts.
+		if cb.halfOpenInFlight >= 1 && now.Sub(cb.halfOpenSince) <= cb.config.OpenTimeout {
+			return Permit{}, false
 		}
-		cb.halfOpenInFlight++
-		return true
+		cb.halfOpenInFlight = 0
+		return cb.grantTrialLocked(now), true
 
 	default:
-		return false
+		return Permit{}, false
 	}
+}
+
+// Allow checks if a request should be allowed through, discarding the permit.
+// Returns true if the request is allowed, false if it should be rejected.
+// A half-open trial taken this way is released only by RecordSuccess /
+// RecordFailure or by Acquire's reclaim; callers with exit paths that record
+// no outcome must use Acquire and release the permit themselves.
+func (cb *CircuitBreaker) Allow() bool {
+	_, allowed := cb.Acquire()
+	return allowed
+}
+
+// grantTrialLocked hands out the single half-open trial slot.
+// Callers must hold cb.mu.
+func (cb *CircuitBreaker) grantTrialLocked(now time.Time) Permit {
+	cb.halfOpenInFlight++
+	cb.halfOpenSince = now
+	cb.halfOpenSeq++
+	return Permit{cb: cb, seq: cb.halfOpenSeq}
 }
 
 // RecordSuccess records a successful operation.
@@ -195,11 +258,12 @@ func (cb *CircuitBreaker) Stats() CircuitBreakerStats {
 	defer cb.mu.RUnlock()
 
 	return CircuitBreakerStats{
-		State:           cb.state,
-		TotalSuccesses:  atomic.LoadInt64(&cb.totalSuccesses),
-		TotalFailures:   atomic.LoadInt64(&cb.totalFailures),
-		ConsecFailures:  cb.consecFailures,
-		ConsecSuccesses: cb.consecSuccesses,
+		State:            cb.state,
+		TotalSuccesses:   atomic.LoadInt64(&cb.totalSuccesses),
+		TotalFailures:    atomic.LoadInt64(&cb.totalFailures),
+		ConsecFailures:   cb.consecFailures,
+		ConsecSuccesses:  cb.consecSuccesses,
+		HalfOpenInFlight: cb.halfOpenInFlight,
 	}
 }
 
@@ -212,6 +276,9 @@ func (cb *CircuitBreaker) Reset() {
 	cb.consecFailures = 0
 	cb.consecSuccesses = 0
 	cb.halfOpenInFlight = 0
+	// Stale outstanding permits must not decrement a future trial slot.
+	cb.halfOpenSeq++
+	cb.halfOpenSince = time.Time{}
 }
 
 // Execute runs the given function if the circuit breaker allows it.
@@ -219,9 +286,13 @@ func (cb *CircuitBreaker) Reset() {
 func Execute[T any](cb *CircuitBreaker, fn func() (T, error)) (T, error) {
 	var zero T
 
-	if !cb.Allow() {
+	permit, allowed := cb.Acquire()
+	if !allowed {
 		return zero, ErrCircuitOpen
 	}
+	// Hands the half-open trial slot back if fn panics before an outcome is
+	// recorded; a no-op once RecordSuccess/RecordFailure ran.
+	defer permit.Release()
 
 	result, err := fn()
 	if err != nil {

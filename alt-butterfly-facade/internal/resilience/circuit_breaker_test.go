@@ -2,11 +2,13 @@ package resilience
 
 import (
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewCircuitBreaker(t *testing.T) {
@@ -372,4 +374,236 @@ func TestCircuitBreaker_HalfOpenSlotFreedOnFailure(t *testing.T) {
 	cb.RecordFailure()
 	assert.Equal(t, StateOpen, cb.State())
 	assert.False(t, cb.Allow())
+}
+
+// TestCircuitBreaker_HalfOpenTrialWithoutOutcomeSelfHeals covers the wedge:
+// the request that takes the single half-open trial permit returns early
+// (BFF cache hit) without ever calling RecordSuccess or RecordFailure. The
+// permit must not stay outstanding forever — the half-open branch has to be
+// time-aware so the class re-tests the backend instead of rejecting every
+// later request until the process restarts.
+func TestCircuitBreaker_HalfOpenTrialWithoutOutcomeSelfHeals(t *testing.T) {
+	cb := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 3,
+		SuccessThreshold: 1,
+		OpenTimeout:      50 * time.Millisecond,
+	})
+
+	// Trip the circuit
+	for i := 0; i < 3; i++ {
+		cb.Allow()
+		cb.RecordFailure()
+	}
+	require.Equal(t, StateOpen, cb.State())
+
+	// Wait for half-open, then take the trial permit and record nothing
+	time.Sleep(60 * time.Millisecond)
+	require.True(t, cb.Allow())
+
+	// While the trial is still fresh the slot stays reserved
+	assert.False(t, cb.Allow())
+
+	// Once the trial has outlived its bound the abandoned permit is reclaimed
+	time.Sleep(60 * time.Millisecond)
+	assert.True(t, cb.Allow(), "an unresolved trial permit must be reclaimed, not wedge the circuit shut")
+}
+
+// TestCircuitBreaker_ReleaseFreesHalfOpenTrialSlot is the `defer
+// permit.Release()` shape callers are expected to use: the trial slot comes
+// back immediately when the holder finishes without recording an outcome,
+// rather than waiting out the reclaim timeout.
+func TestCircuitBreaker_ReleaseFreesHalfOpenTrialSlot(t *testing.T) {
+	cb := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 3,
+		SuccessThreshold: 1,
+		OpenTimeout:      50 * time.Millisecond,
+	})
+
+	// Trip the circuit
+	for i := 0; i < 3; i++ {
+		cb.Allow()
+		cb.RecordFailure()
+	}
+
+	// Wait for half-open
+	time.Sleep(60 * time.Millisecond)
+
+	permit, allowed := cb.Acquire()
+	require.True(t, allowed)
+	assert.Equal(t, 1, cb.Stats().HalfOpenInFlight)
+
+	// Caller returns early without recording an outcome
+	permit.Release()
+	assert.Equal(t, 0, cb.Stats().HalfOpenInFlight)
+
+	next, allowed := cb.Acquire()
+	assert.True(t, allowed, "released trial slot must be available to the next request")
+
+	// Releasing a superseded or already-resolved permit must not double-free
+	permit.Release()
+	next.Release()
+	next.Release()
+	assert.Equal(t, 0, cb.Stats().HalfOpenInFlight)
+}
+
+// TestCircuitBreaker_ReleaseAfterRecordedOutcomeIsNoop guards the boundary
+// between the two ways a trial resolves: RecordSuccess/RecordFailure already
+// freed the slot, so the deferred Release must not free it a second time and
+// let two trials run at once.
+func TestCircuitBreaker_ReleaseAfterRecordedOutcomeIsNoop(t *testing.T) {
+	cb := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 2,
+		SuccessThreshold: 3,
+		OpenTimeout:      50 * time.Millisecond,
+	})
+
+	// Trip the circuit, then wait for half-open
+	for i := 0; i < 2; i++ {
+		cb.Allow()
+		cb.RecordFailure()
+	}
+	time.Sleep(60 * time.Millisecond)
+
+	first, allowed := cb.Acquire()
+	require.True(t, allowed)
+	cb.RecordSuccess()
+
+	second, allowed := cb.Acquire()
+	require.True(t, allowed)
+
+	// The first permit is stale now; releasing it must not free the second slot
+	first.Release()
+	assert.Equal(t, 1, cb.Stats().HalfOpenInFlight)
+	assert.False(t, cb.Allow(), "a stale Release must not admit a second concurrent trial")
+
+	second.Release()
+	assert.True(t, cb.Allow())
+}
+
+// TestCircuitBreaker_AcquireFullTransitionCycle pins the normal
+// closed -> open -> half-open -> closed path through the permit API, matching
+// the transitions the Allow()-based tests above assert.
+func TestCircuitBreaker_AcquireFullTransitionCycle(t *testing.T) {
+	cb := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 3,
+		SuccessThreshold: 2,
+		OpenTimeout:      50 * time.Millisecond,
+	})
+
+	// Closed: every request admitted, permits carry no trial slot
+	for i := 0; i < 2; i++ {
+		permit, allowed := cb.Acquire()
+		require.True(t, allowed)
+		cb.RecordSuccess()
+		permit.Release()
+	}
+	require.Equal(t, StateClosed, cb.State())
+	assert.Equal(t, 0, cb.Stats().HalfOpenInFlight)
+
+	// Closed -> open on consecutive failures
+	for i := 0; i < 3; i++ {
+		permit, allowed := cb.Acquire()
+		require.True(t, allowed)
+		cb.RecordFailure()
+		permit.Release()
+	}
+	require.Equal(t, StateOpen, cb.State())
+	_, allowed := cb.Acquire()
+	assert.False(t, allowed, "open circuit must reject requests")
+
+	// Open -> half-open after OpenTimeout, one trial at a time
+	time.Sleep(60 * time.Millisecond)
+	trial, allowed := cb.Acquire()
+	require.True(t, allowed)
+	require.Equal(t, StateHalfOpen, cb.State())
+	_, allowed = cb.Acquire()
+	assert.False(t, allowed, "half-open must admit only one trial at a time")
+
+	// Half-open -> closed once SuccessThreshold trials succeed
+	cb.RecordSuccess()
+	trial.Release()
+	assert.Equal(t, StateHalfOpen, cb.State())
+
+	trial, allowed = cb.Acquire()
+	require.True(t, allowed)
+	cb.RecordSuccess()
+	trial.Release()
+
+	assert.Equal(t, StateClosed, cb.State())
+	assert.Equal(t, 0, cb.Stats().HalfOpenInFlight)
+}
+
+// TestCircuitBreaker_HalfOpenPermitAccountingUnderConcurrency hammers the
+// half-open trial slot from many goroutines, mixing trials that record an
+// outcome with trials that return early and only release. The ledger must
+// never leak a slot (which wedges the class) and never hand out two at once.
+func TestCircuitBreaker_HalfOpenPermitAccountingUnderConcurrency(t *testing.T) {
+	cb := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 2,
+		// High enough that the storm never closes the circuit, so every
+		// iteration keeps exercising the half-open permit ledger. OpenTimeout
+		// is long relative to the storm so no trial is ever held long enough
+		// to hit the abandoned-permit reclaim.
+		SuccessThreshold: 1_000_000,
+		OpenTimeout:      300 * time.Millisecond,
+	})
+
+	// Trip the circuit, then settle into half-open with the slot free
+	for i := 0; i < 2; i++ {
+		cb.Allow()
+		cb.RecordFailure()
+	}
+	require.Equal(t, StateOpen, cb.State())
+	time.Sleep(320 * time.Millisecond)
+	warmup, allowed := cb.Acquire()
+	require.True(t, allowed)
+	warmup.Release()
+	require.Equal(t, StateHalfOpen, cb.State())
+
+	const (
+		goroutines = 32
+		iterations = 50
+	)
+	var granted, ledgerViolations int64
+
+	// sampleLedger records any moment the breaker's own trial ledger leaves
+	// [0, 1]: above 1 means two trials were admitted at once, below 0 means a
+	// permit was freed twice.
+	sampleLedger := func() {
+		if inFlight := cb.Stats().HalfOpenInFlight; inFlight < 0 || inFlight > 1 {
+			atomic.AddInt64(&ledgerViolations, 1)
+		}
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				permit, allowed := cb.Acquire()
+				if !allowed {
+					sampleLedger()
+					continue
+				}
+				atomic.AddInt64(&granted, 1)
+				sampleLedger()
+
+				// Half the trials reach the dependency and record an outcome;
+				// the other half return early (cache hit) and only release.
+				if j%2 == 0 {
+					cb.RecordSuccess()
+					sampleLedger()
+				}
+				permit.Release()
+				sampleLedger()
+			}
+		}()
+	}
+	wg.Wait()
+
+	assert.Positive(t, granted, "the half-open slot must keep being handed out")
+	assert.Zero(t, ledgerViolations, "at most one trial may be outstanding, and none may be freed twice")
+	assert.Equal(t, 0, cb.Stats().HalfOpenInFlight, "every granted trial permit must be handed back")
+	assert.True(t, cb.Allow(), "a sound permit ledger must still admit the next trial")
 }
