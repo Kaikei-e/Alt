@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // timeFar returns a far-future timestamp for UserContext.ExpiresAt so
@@ -48,6 +50,137 @@ func TestSanitizeMetaEvent_PreservesConversationID(t *testing.T) {
 			"conversation_id must round-trip through sanitization")
 		assert.Len(t, meta.Citations, 1, "citations array must be preserved")
 		assert.Equal(t, "https://example.com", meta.Citations[0].Url)
+	}
+}
+
+// sanitizeMetaEvent must carry Citation.kind / Citation.ref_id through to the
+// client. ADR-000926 introduced CitationKind precisely so ARTICLE / SUMMARY
+// citations route via `/articles/<ref_id>` instead of gambling on `url`, and
+// the FE (citation-href.ts) renders an UNSPECIFIED citation as a dead,
+// unlinked span. Dropping the discriminator here therefore reproduces the very
+// "Ask Augur で元記事が参照されない" bug ADR-000927 declared eliminated — the
+// meta citations are what the FE falls back to whenever the stream ends
+// without a done event, so the dead links are permanent, not transient.
+func TestSanitizeMetaEvent_PreservesCitationKindAndRefID(t *testing.T) {
+	h := NewHandler(nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	in := &augurv2.StreamChatResponse{
+		Kind: "meta",
+		Payload: &augurv2.StreamChatResponse_Meta{
+			Meta: &augurv2.MetaPayload{
+				ConversationId: "11111111-2222-3333-4444-555555555555",
+				Citations: []*augurv2.Citation{
+					{
+						Url:         "https://example.com",
+						Title:       "Example",
+						PublishedAt: "2026-05-27T00:00:00Z",
+						Kind:        augurv2.CitationKind_CITATION_KIND_ARTICLE,
+						RefId:       "6b5bbd85-ed4a-4812-95f1-22f2d181437a",
+					},
+				},
+			},
+		},
+	}
+
+	out := h.sanitizeMetaEvent(in)
+	meta := out.GetMeta()
+	require.NotNil(t, meta, "sanitized event must still carry MetaPayload")
+	require.Len(t, meta.Citations, 1, "citations array must be preserved")
+	assert.Equal(t, augurv2.CitationKind_CITATION_KIND_ARTICLE, meta.Citations[0].Kind,
+		"citation kind must survive sanitization; UNSPECIFIED renders as a dead link")
+	assert.Equal(t, "6b5bbd85-ed4a-4812-95f1-22f2d181437a", meta.Citations[0].RefId,
+		"citation ref_id must survive sanitization; it is the /articles/<id> target")
+}
+
+// TestSanitizeMetaEvent_CarriesEveryMetaField is the rot guard. The 3-field
+// allowlist that dropped kind / ref_id was not wrong when it was written — the
+// Citation message had exactly those three fields at the time — it rotted the
+// day ADR-000926 added two more. Rather than trusting the next author to
+// remember this function, walk the descriptor: populate every field of
+// MetaPayload (and, transitively, of Citation) with a non-default value and
+// require the sanitized copy to compare equal. Adding a proto field without
+// carrying it fails here immediately.
+func TestSanitizeMetaEvent_CarriesEveryMetaField(t *testing.T) {
+	h := NewHandler(nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	meta := &augurv2.MetaPayload{}
+	populateEveryField(t, meta.ProtoReflect())
+	require.NotEmpty(t, meta.Citations, "guard must populate the repeated citations field")
+
+	out := h.sanitizeMetaEvent(&augurv2.StreamChatResponse{
+		Kind:    "meta",
+		Payload: &augurv2.StreamChatResponse_Meta{Meta: meta},
+	})
+
+	assert.Truef(t, proto.Equal(meta, out.GetMeta()),
+		"sanitizeMetaEvent dropped at least one MetaPayload/Citation field — carry it explicitly or copy the message wholesale\nwant: %v\ngot:  %v",
+		meta, out.GetMeta())
+}
+
+// populateEveryField sets every field of m to a non-default value, recursing
+// into message fields and appending exactly one element to repeated fields.
+// It fails the test on any construct it does not know how to fill, so an
+// unhandled proto shape surfaces as a loud failure instead of a silent gap in
+// the guard above.
+func populateEveryField(t *testing.T, m protoreflect.Message) {
+	t.Helper()
+
+	fields := m.Descriptor().Fields()
+	for i := 0; i < fields.Len(); i++ {
+		fd := fields.Get(i)
+		switch {
+		case fd.IsMap():
+			t.Fatalf("map field %s is not covered by this guard; extend populateEveryField", fd.FullName())
+		case fd.IsList():
+			list := m.Mutable(fd).List()
+			if fd.Message() != nil {
+				elem := list.NewElement()
+				populateEveryField(t, elem.Message())
+				list.Append(elem)
+				continue
+			}
+			list.Append(nonDefaultScalar(t, fd))
+		case fd.Message() != nil:
+			populateEveryField(t, m.Mutable(fd).Message())
+		default:
+			m.Set(fd, nonDefaultScalar(t, fd))
+		}
+	}
+}
+
+// nonDefaultScalar returns a value distinguishable from the proto3 zero value,
+// so a dropped field shows up as a diff rather than as an accidental match.
+func nonDefaultScalar(t *testing.T, fd protoreflect.FieldDescriptor) protoreflect.Value {
+	t.Helper()
+
+	switch fd.Kind() {
+	case protoreflect.StringKind:
+		return protoreflect.ValueOfString("guard-" + string(fd.Name()))
+	case protoreflect.BytesKind:
+		return protoreflect.ValueOfBytes([]byte("guard"))
+	case protoreflect.BoolKind:
+		return protoreflect.ValueOfBool(true)
+	case protoreflect.EnumKind:
+		values := fd.Enum().Values()
+		if values.Len() < 2 {
+			t.Fatalf("enum %s has no non-default value to assert on", fd.Enum().FullName())
+		}
+		return protoreflect.ValueOfEnum(values.Get(1).Number())
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
+		return protoreflect.ValueOfInt32(1)
+	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		return protoreflect.ValueOfInt64(1)
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+		return protoreflect.ValueOfUint32(1)
+	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		return protoreflect.ValueOfUint64(1)
+	case protoreflect.FloatKind:
+		return protoreflect.ValueOfFloat32(1)
+	case protoreflect.DoubleKind:
+		return protoreflect.ValueOfFloat64(1)
+	default:
+		t.Fatalf("field %s has kind %s; extend nonDefaultScalar", fd.FullName(), fd.Kind())
+		return protoreflect.Value{}
 	}
 }
 
