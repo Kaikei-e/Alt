@@ -305,7 +305,13 @@ if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
   # Actions checks out in detached HEAD so `git branch --show-current` is
   # empty and would produce `/pacticipants/X/branches//versions/Y` URLs
   # (404). Fall back to git when not set, then to `main` as last resort.
-  PACT_PROVIDER_VERSION="${PACT_PROVIDER_VERSION:-${CONSUMER_VERSION:-$(git rev-parse --short HEAD)}}"
+  #
+  # Full 40-char SHA, not --short: alt-deploy's verify-pact-on-demand webhook
+  # feeds the recorded version straight to actions/checkout, which only reads
+  # a ref as a commit SHA at full length and otherwise hunts for a branch of
+  # that name. Every abbreviated version this publishes becomes a webhook
+  # firing that cannot check anything out.
+  PACT_PROVIDER_VERSION="${PACT_PROVIDER_VERSION:-${CONSUMER_VERSION:-$(git rev-parse HEAD)}}"
   PACT_PROVIDER_BRANCH="${PACT_PROVIDER_BRANCH:-${CONSUMER_BRANCH:-$(git branch --show-current)}}"
   PACT_PROVIDER_BRANCH="${PACT_PROVIDER_BRANCH:-main}"
   export PACT_PROVIDER_VERSION PACT_PROVIDER_BRANCH
