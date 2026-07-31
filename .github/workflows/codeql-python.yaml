@@ -53,7 +53,7 @@ jobs:
           args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
 
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Mask sensitive paths and git information
         run: |
@@ -115,7 +115,7 @@ jobs:
           fi
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4.37.4
         with:
           languages: python
           # 解析対象をさらに絞りたい場合は、paths/paths-ignore を調整してください
@@ -123,9 +123,9 @@ jobs:
           # paths-ignore: tmp,dist,.venv
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+        uses: github/codeql-action/autobuild@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4.37.4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4.37.4
         with:
           category: "/language:python"

@@ -51,6 +51,30 @@ run_script() {
   (cd "$(dirname "$SCRIPT")/.." && "$SCRIPT" "$@") 2>&1 || true
 }
 
+# Same, but keeps the exit status. Assigns OUT/RC in the caller's shell
+# rather than returning the output, because a command substitution would
+# run the assignment in a subshell and lose RC.
+OUT=""
+RC=0
+run_script_rc() {
+  set +e
+  OUT=$( (cd "$(dirname "$SCRIPT")/.." && "$SCRIPT" "$@") 2>&1 )
+  RC=$?
+  set -e
+}
+
+assert_rc_nonzero() {
+  local desc="$1"
+  TESTS=$((TESTS + 1))
+  if [[ "$RC" -ne 0 ]]; then
+    echo "  PASS: $desc"
+  else
+    echo "  FAIL: $desc"
+    echo "    expected a non-zero exit, got 0"
+    FAILS=$((FAILS + 1))
+  fi
+}
+
 # --- search-indexer provider leg ---
 echo "== --services search-indexer --role provider (dry-run) =="
 out=$(run_script --dry-run --publish-only --services search-indexer --role provider)
@@ -81,16 +105,31 @@ assert_contains "$out" "WOULD RUN: Go: mq-hub provider" \
 assert_not_contains "$out" "WOULD RUN: Go: search-indexer provider" \
   "mq-hub provider leg does not accidentally run search-indexer provider"
 
-# --- kratos is no longer a pacticipant at all ---
+# --- a filter that matches no step is a wiring gap, not a pass ---
 #
-# Ory neither reads nor answers this repo's pacts, so the pair could only ever
-# replay a pinned image against itself. auth-hub's assumptions about the
-# /sessions/whoami response live in httptest cases instead. Nothing in the
-# registry may resurrect a step for it.
+# alt-deploy derives its (service, role) legs from PACTICIPANT_ROLES, so every
+# pair it can emit must select at least one step here. When a pacticipant
+# loses its last contract — as auth-hub did when the kratos pact was deleted —
+# the leg would otherwise run nothing, write "pass" to its status file, and
+# turn the matrix green having verified nothing. Failing loudly is what makes
+# a stale PACTICIPANT_ROLES entry visible instead of silently harmless.
+echo "== --services auth-hub --role consumer (dry-run): selects nothing =="
+run_script_rc --dry-run --publish-only --services auth-hub --role consumer
+assert_rc_nonzero "a filter that selects no step must not report success"
+assert_contains "$OUT" "matched no step" \
+  "the failure names the filter that selected nothing"
+assert_not_contains "$OUT" "All contract checks passed." \
+  "a run that executed nothing must not claim every check passed"
+
+# kratos is no longer a pacticipant at all: Ory neither reads nor answers this
+# repo's pacts, so the pair could only ever replay a pinned image against
+# itself. auth-hub's assumptions about /sessions/whoami live in httptest cases
+# instead. Nothing in the registry may resurrect a step for it.
 echo "== --services kratos --role provider (dry-run) =="
-out=$(run_script --dry-run --publish-only --services kratos --role provider)
-assert_not_contains "$out" "WOULD RUN:" \
+run_script_rc --dry-run --publish-only --services kratos --role provider
+assert_not_contains "$OUT" "WOULD RUN:" \
   "kratos matches no step: it is not a pacticipant"
+assert_rc_nonzero "an unknown pacticipant is a gap, not an empty success"
 
 # --- publish-manual-verifications runs the evidence producers + manual block ---
 #

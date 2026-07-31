@@ -90,7 +90,7 @@ jobs:
 
       # --- Checkout & Go setup ---
       - name: Checkout (sparse)
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           sparse-checkout: |
             ${{ inputs.working-directory }}
@@ -98,7 +98,7 @@ jobs:
           fetch-depth: 1 # 変更差分だけで十分
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: ${{ inputs.go-version }}
           go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
@@ -141,7 +141,7 @@ jobs:
         run: git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
         env:
           GOFLAGS: "-buildvcs=false"  # sparse-checkout + shallow clone では VCS 情報取得不可
         with:
@@ -156,7 +156,7 @@ jobs:
       # Pinned tool versions cached in ~/go/bin to skip recompilation on repeat runs.
       - name: Cache Go security tools
         id: cache-go-tools
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/go/bin
           key: go-tools-${{ runner.os }}-gosec-v2.28.0-govulncheck-v1.6.0
@@ -191,7 +191,7 @@ jobs:
 
       - name: Upload SARIF (gosec)
         if: ${{ inputs.upload-sarif }}
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4.37.4
         with:
           sarif_file: ${{ inputs.working-directory }}/_reports/gosec.sarif
           category: gosec
@@ -232,7 +232,7 @@ jobs:
 
       - name: Upload SARIF (govulncheck)
         if: ${{ inputs.upload-sarif }}
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4.37.4
         with:
           sarif_file: ${{ inputs.working-directory }}/_reports/govulncheck.sarif
           category: govulncheck

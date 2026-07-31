@@ -133,6 +133,9 @@ esac
 PASS=0
 FAIL=0
 SKIP=0
+# Steps the --services/--role filter selected, whether or not they then ran.
+# Zero is a wiring gap, not an empty success — see the guard in the summary.
+MATCHED=0
 
 # ---------- Verification evidence ----------
 # The manual-verification bridge (playbooks/publish-manual-verifications.yml)
@@ -207,16 +210,7 @@ should_run_service_filter() {
 
 run_step() {
   local label="$1"
-  local produces_evidence="$2"
-  shift 2
-  if ! should_run_service_filter "$label" "$produces_evidence"; then
-    if [[ "$DRY_RUN" != "true" ]]; then
-      echo ""
-      echo "=== SKIP (filter: --services ${SERVICE_FILTER} --role ${ROLE_FILTER}): ${label} ==="
-    fi
-    SKIP=$((SKIP + 1))
-    return 0
-  fi
+  shift
   if [[ "$DRY_RUN" == "true" ]]; then
     echo "WOULD RUN: ${label}"
     PASS=$((PASS + 1))
@@ -311,7 +305,13 @@ if [[ "$MODE" == "broker" && "$DRY_RUN" != "true" ]]; then
   # Actions checks out in detached HEAD so `git branch --show-current` is
   # empty and would produce `/pacticipants/X/branches//versions/Y` URLs
   # (404). Fall back to git when not set, then to `main` as last resort.
-  PACT_PROVIDER_VERSION="${PACT_PROVIDER_VERSION:-${CONSUMER_VERSION:-$(git rev-parse --short HEAD)}}"
+  #
+  # Full 40-char SHA, not --short: alt-deploy's verify-pact-on-demand webhook
+  # feeds the recorded version straight to actions/checkout, which only reads
+  # a ref as a commit SHA at full length and otherwise hunts for a branch of
+  # that name. Every abbreviated version this publishes becomes a webhook
+  # firing that cannot check anything out.
+  PACT_PROVIDER_VERSION="${PACT_PROVIDER_VERSION:-${CONSUMER_VERSION:-$(git rev-parse HEAD)}}"
   PACT_PROVIDER_BRANCH="${PACT_PROVIDER_BRANCH:-${CONSUMER_BRANCH:-$(git branch --show-current)}}"
   PACT_PROVIDER_BRANCH="${PACT_PROVIDER_BRANCH:-main}"
   export PACT_PROVIDER_VERSION PACT_PROVIDER_BRANCH
@@ -363,6 +363,7 @@ STEPS_CONSUMER=(
   "Rust: recap-worker consumer|cargo|recap-worker/recap-worker|cargo test --lib contract -- --ignored"
   "Python: recap-evaluator consumer|uv|recap-evaluator|uv run pytest tests/contract/ -v --no-cov"
   "Python: tag-generator consumer|uv|tag-generator/app|uv run pytest tests/contract/test_mqhub_tags_consumer.py tests/contract/test_datahub_consumer.py -v --no-cov"
+  "Python: acolyte-orchestrator consumer|uv|acolyte-orchestrator|uv run pytest tests/contract/ -v --no-cov"
 )
 
 STEPS_PROVIDER=(
@@ -373,6 +374,7 @@ STEPS_PROVIDER=(
   "Go: alt-backend provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./dataplane/driver/contract/ -v"
   "Go: search-indexer provider|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v"
   "Go: pre-processor provider|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v"
+  "Go: mq-hub provider (pre-processor message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyPreProcessorMqHubMessagePact ./driver/contract/ -v"
   "Go: mq-hub provider (search-indexer message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v"
   "Go: mq-hub provider (tag-generator message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyTagGeneratorMqHubMessagePact ./driver/contract/ -v"
   "Go: knowledge-sovereign provider|go|knowledge-sovereign/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
@@ -386,11 +388,23 @@ execute_steps() {
   local spec label tool wd cmd evidence
   for spec in "${steps[@]}"; do
     IFS='|' read -r label tool wd cmd evidence <<<"$spec"
+    # Selection is decided before toolchain availability, so MATCHED counts
+    # what the filter asked for rather than what happened to be runnable. A
+    # missing toolchain must not read as "this leg had nothing to do".
+    if ! should_run_service_filter "$label" "$evidence"; then
+      if [[ "$DRY_RUN" != "true" ]]; then
+        echo ""
+        echo "=== SKIP (filter: --services ${SERVICE_FILTER} --role ${ROLE_FILTER}): ${label} ==="
+      fi
+      SKIP=$((SKIP + 1))
+      continue
+    fi
+    MATCHED=$((MATCHED + 1))
     if ! need_tool "$tool"; then
       skip_step "$label (missing $tool toolchain)"
       continue
     fi
-    run_step "$label" "$evidence" bash -c "cd \"$wd\" && $cmd"
+    run_step "$label" bash -c "cd \"$wd\" && $cmd"
   done
 }
 
@@ -609,6 +623,20 @@ echo "  Skipped: ${SKIP}"
 if [[ $FAIL -gt 0 ]]; then
   echo ""
   echo "Contract regressions detected. Fix before building."
+  exit 1
+fi
+
+# A filtered invocation that selected nothing has verified nothing, and the
+# caller cannot tell the difference from a clean run. alt-deploy derives its
+# matrix legs from PACTICIPANT_ROLES, so an empty selection means that map
+# names a (service, role) pair this registry has no step for — a pacticipant
+# that lost its last contract, a renamed label, or a step never registered.
+# Each of those turns a deploy leg green while doing no work.
+if [[ ( -n "$SERVICE_FILTER" || -n "$ROLE_FILTER" ) && $MATCHED -eq 0 ]]; then
+  echo ""
+  echo "--services '${SERVICE_FILTER}' --role '${ROLE_FILTER}' matched no step." >&2
+  echo "Nothing was verified. Either register a step for this pair, or drop it" >&2
+  echo "from PACTICIPANT_ROLES in alt-deploy's release-deploy.yaml." >&2
   exit 1
 fi
 

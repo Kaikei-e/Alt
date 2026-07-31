@@ -38,7 +38,7 @@ jobs:
           entrypoint: /bin/sh
           args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Mask sensitive paths and git information
         if: runner.environment == 'self-hosted'
@@ -55,16 +55,16 @@ jobs:
             echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
           fi
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: '24'
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2.2.0
         with:
           bun-version: latest
 
       - name: Cache bun dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}
@@ -145,7 +145,7 @@ jobs:
           entrypoint: /bin/sh
           args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Mask sensitive paths and git information
         if: runner.environment == 'self-hosted'
@@ -162,16 +162,16 @@ jobs:
             echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
           fi
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: '24'
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2.2.0
         with:
           bun-version: latest
 
       - name: Cache bun dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}
@@ -185,7 +185,7 @@ jobs:
       # Keyed on bun.lock so the cache is invalidated exactly when the pinned
       # playwright-core (and therefore the required browser revision) moves.
       - name: Cache Playwright browsers
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}

@@ -838,6 +838,36 @@ func TestSSRFValidator_CanonicalRequestURL(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestSSRFValidator_CanonicalRequestURL_PreservesPercentEncodedPath(t *testing.T) {
+	validator := NewSSRFValidator()
+	validator.SetTestingMode(true)
+
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{
+			"Cloudinary transformation path with encoded commas and double-encoded text",
+			"https://example.com/zenn/image/upload/s--sig--/c_fit%2Cg_north_west%2Cl_text:font_55:%25E9%259A%259C%2Cw_1010/v1/base.png?_a=X",
+		},
+		{
+			"encoded slashes and colons in nested image URL",
+			"https://example.com/image/scale/abc/https%3A%2F%2Fexample.com%2Fimg%2Fphoto.png",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u, err := url.Parse(tt.raw)
+			require.NoError(t, err)
+
+			got, err := validator.CanonicalRequestURL(context.Background(), u)
+			require.NoError(t, err)
+			assert.Equal(t, tt.raw, got)
+		})
+	}
+}
+
 // BenchmarkIsPrivateIPAddress benchmarks the exported function
 func BenchmarkIsPrivateIPAddress(b *testing.B) {
 	ip := net.ParseIP("192.168.1.1")

@@ -79,7 +79,7 @@ jobs:
           args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
 
       - name: Checkout (sparse)
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 1
           clean: false
@@ -112,7 +112,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Install uv (Rust-based tool)
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
           enable-cache: false
 
@@ -134,7 +134,7 @@ jobs:
       # 2) ランナーがエフェメラル等でHOME永続化できない場合は、GitHub Cacheを併用
       - name: Restore uv cache (GitHub Cache)
         if: ${{ !inputs.use-local-persistent-cache }}
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cache/uv

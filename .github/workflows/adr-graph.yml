@@ -4,14 +4,12 @@ on:
   push:
     paths:
       - "docs/ADR/**"
-      - "scripts/adr_graph.py"
-      - "scripts/tests/test_adr_graph.py"
+      - "docdag.yaml"
       - ".github/workflows/adr-graph.yml"
   pull_request:
     paths:
       - "docs/ADR/**"
-      - "scripts/adr_graph.py"
-      - "scripts/tests/test_adr_graph.py"
+      - "docdag.yaml"
       - ".github/workflows/adr-graph.yml"
   workflow_dispatch:
 
@@ -24,11 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          python-version: "3.12"
-      - name: Unit tests
-        run: python3 -m unittest scripts.tests.test_adr_graph -v
+          go-version: "1.26"
+      - name: Install DocDag
+        run: go install github.com/Kaikei-e/DocDag/cmd/docdag@latest
       - name: Corpus check
-        run: python3 scripts/adr_graph.py check
+        run: docdag validate

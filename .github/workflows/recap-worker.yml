@@ -59,7 +59,7 @@ jobs:
           args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
 
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Configure logging (mask sensitive info)
         if: runner.environment == 'self-hosted'
@@ -99,7 +99,7 @@ jobs:
       # GitHub-hosted runner: dtolnay/rust-toolchain を使用
       - name: Install Rust toolchain (GitHub-hosted)
         if: runner.environment != 'self-hosted'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable branch head, 2026-07-31
         with:
           toolchain: stable
           components: clippy
@@ -127,7 +127,7 @@ jobs:
       # GitHub-hosted runner: Swatinem/rust-cache を使用
       - name: Cache Rust dependencies (GitHub-hosted)
         if: runner.environment != 'self-hosted'
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
         with:
           workspaces: recap-worker/recap-worker
           shared-key: recap-worker

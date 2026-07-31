@@ -1,5 +1,0 @@
-```mermaid
-graph LR
-    000001["000001: A very long first decision title exce..."] -->|superseded by| 000002["000002: Second 'quoted' decision"]
-    000002["000002: Second 'quoted' decision"] -->|superseded by| 000003["000003: Third decision"]
-```

@@ -50,7 +50,6 @@ on:
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
       - 'alt-butterfly-facade/internal/handler/contract/**'
-      - 'auth-hub/internal/adapter/gateway/contract/**'
       - 'tts-speaker/tests/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
   pull_request:
@@ -74,7 +73,6 @@ on:
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
       - 'alt-butterfly-facade/internal/handler/contract/**'
-      - 'auth-hub/internal/adapter/gateway/contract/**'
       - 'tts-speaker/tests/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
 
@@ -87,20 +85,19 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   buf-lint-breaking:
     name: Buf Lint & Breaking Change Detection
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: bufbuild/buf-setup-action@v1
+      # buf-setup-action / buf-breaking-action are archived; buf-action with
+      # setup_only installs the CLI and leaves lint/breaking to explicit steps.
+      - uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3  # v1.5.0
         with:
-          version: latest
+          setup_only: true
 
       - name: Buf lint
         working-directory: proto
@@ -108,25 +105,23 @@ jobs:
 
       - name: Buf breaking change detection
         if: github.event_name == 'pull_request'
-        uses: bufbuild/buf-breaking-action@v1
-        with:
-          input: proto
-          against: 'https://github.com/Kaikei-e/Alt.git#branch=main,subdir=proto'
+        working-directory: proto
+        run: buf breaking --against 'https://github.com/Kaikei-e/Alt.git#branch=main,subdir=proto'
 
   contract-conformance:
     name: Contract Conformance Tests (FE)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: "24"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2.2.0
         with:
           bun-version: latest
 
@@ -143,6 +138,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
+      # One broken service should not cancel the other consumers' pact
+      # generation — the verify job needs every artifact that can be built.
+      fail-fast: false
       matrix:
         include:
           - service: alt-backend/app
@@ -161,28 +159,30 @@ jobs:
             test-path: ./driver/contract/
             sparse-checkout: search-indexer
             pact-dir: pacts
+          # mq-hub no longer emits consumer pacts (it only wire-format-checks
+          # here; provider verification runs in pact-verify-go), so it has no
+          # pact-dir and the upload step is skipped.
           - service: mq-hub/app
             test-path: ./driver/contract/
             sparse-checkout: mq-hub
-            pact-dir: pacts
+            pact-dir: ""
           - service: alt-butterfly-facade
             test-path: ./internal/handler/contract/
             sparse-checkout: alt-butterfly-facade
             pact-dir: pacts
-          - service: auth-hub
-            test-path: ./internal/adapter/gateway/contract/
-            sparse-checkout: auth-hub
-            pact-dir: pacts
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           sparse-checkout: ${{ matrix.sparse-checkout }}
           sparse-checkout-cone-mode: true
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: "1.26"
           cache: true
+          # Sparse checkout leaves no go.mod at the repo root, so the default
+          # dependency-file lookup fails and the module cache never restores.
+          cache-dependency-path: ${{ matrix.service }}/go.sum
 
       - name: Install pact FFI library
         run: |
@@ -199,7 +199,8 @@ jobs:
         run: go test -tags=contract ${{ matrix.test-path }} -v
 
       - name: Upload pact files
-        uses: actions/upload-artifact@v7
+        if: matrix.pact-dir != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: pacts-${{ matrix.sparse-checkout }}
           path: ${{ matrix.pact-dir }}/*.json
@@ -254,10 +255,10 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Download all pact artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: collected-pacts
           pattern: pacts-*
@@ -293,10 +294,12 @@ jobs:
             --broker-username "${PACT_BROKER_USERNAME}" \
             --broker-password "${PACT_BROKER_PASSWORD}"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: "1.26"
           cache: true
+          # Monorepo: no root go.mod, so point the cache at the per-service sums.
+          cache-dependency-path: "**/go.sum"
 
       - name: Install pact FFI library
         run: |
@@ -423,10 +426,10 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Download all pact artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: collected-pacts
           pattern: pacts-*
@@ -463,9 +466,12 @@ jobs:
             --broker-password "${PACT_BROKER_PASSWORD}"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
           enable-cache: true
+          # setup-uv v9 flipped the prune-cache default to false; keep pruning
+          # so GitHub cache entries stay small.
+          prune-cache: true
           cache-dependency-glob: ${{ matrix.lock }}
 
       - name: Install Python
@@ -509,15 +515,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           sparse-checkout: recap-worker
           sparse-checkout-cone-mode: true
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable branch head, 2026-07-31
+        with:
+          toolchain: stable
 
       - name: Cache Rust build
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -530,7 +538,7 @@ jobs:
         run: cargo test --lib contract -- --ignored
 
       - name: Upload pact files
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: pacts-recap-worker
           path: pacts/*.json
@@ -541,10 +549,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
 
       - name: Install Python
         run: uv python install 3.13
@@ -558,7 +566,7 @@ jobs:
         run: uv run pytest tests/contract/ -v --no-cov
 
       - name: Upload pact files (recap-evaluator)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: pacts-recap-evaluator
           path: pacts/recap-evaluator-recap-worker.json
@@ -576,7 +584,7 @@ jobs:
         run: uv run pytest tests/contract/ -v --no-cov
 
       - name: Upload pact files (acolyte-orchestrator)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: pacts-acolyte-orchestrator
           path: pacts/acolyte-orchestrator-*.json

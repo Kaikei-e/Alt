@@ -70,7 +70,7 @@ jobs:
           args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
 
       - name: Checkout (sparse)
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 1
           clean: false
@@ -104,7 +104,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Set up Go (with built-in cache)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: ${{ inputs.go-version }}
           go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
@@ -141,7 +141,7 @@ jobs:
       # === Codecov: OIDC か token を選択 ===
       # - name: Upload coverage to Codecov (OIDC)
       #   if: ${{ always() && inputs.upload-coverage && inputs.use-oidc }}
-      #   uses: codecov/codecov-action@v5
+      #   uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0
       #   with:
       #     use_oidc: true
       #     files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.out
@@ -151,7 +151,7 @@ jobs:
 
       # - name: Upload coverage to Codecov (token)
       #   if: ${{ always() && inputs.upload-coverage && !inputs.use-oidc }}
-      #   uses: codecov/codecov-action@v5
+      #   uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0
       #   with:
       #     files: ${{ github.workspace }}/${{ inputs.working-directory }}/coverage.out
       #     flags: ${{ inputs.coverage-flags }}
