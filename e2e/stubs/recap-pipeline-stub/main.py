@@ -72,7 +72,7 @@ _CANNED_ARTICLES = [
 ]
 
 
-@app.post("/services.backend.v1.BackendInternalService/ListRecapArticles")
+@app.post("/alt.datahub.v1.DataHubService/ListRecapArticles")
 async def list_recap_articles() -> dict[str, Any]:
     return {
         "total": len(_CANNED_ARTICLES),
@@ -83,11 +83,11 @@ async def list_recap_articles() -> dict[str, Any]:
     }
 
 
-@app.post("/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs")
+@app.post("/alt.datahub.v1.DataHubService/BatchGetTagsByArticleIDs")
 async def batch_get_tags_by_article_ids(req: Request) -> dict[str, Any]:
     """Connect-RPC tag fetch surface replacing tag-generator /api/v1/tags/batch
     (ADR-000241 / ADR-000397). alt-backend owns articles / article_tags /
-    feed_tags, so the recap-worker contract now lives on BackendInternalService.
+    feed_tags, so the recap-worker contract now lives on DataHubService (alt.datahub.v1, ADR-000954 Wave 2).
     """
     payload = await req.json()
     article_ids = payload.get("articleIds") or payload.get("article_ids") or []
