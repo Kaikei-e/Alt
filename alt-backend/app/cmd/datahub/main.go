@@ -1,6 +1,8 @@
 // Command datahub serves alt-backend's service-to-service surface:
-// BackendInternalService over Connect-RPC plus the /v1/internal REST routes
-// that pre-processor and rag-orchestrator call.
+// alt.datahub.v1.DataHubService over Connect-RPC, plus — until ADR-000954
+// Wave 2-C has moved the last peer — the same capabilities under their former
+// names, services.backend.v1.BackendInternalService and the /v1/internal REST
+// routes that pre-processor and rag-orchestrator call.
 //
 // It has exactly one externally reachable listener and that listener speaks
 // mutual TLS. There is no plaintext fallback, no MTLS_LISTEN flag to turn
@@ -84,7 +86,7 @@ func main() {
 		"client_auth", "require_and_verify",
 		"allowed_peers", dcfg.AllowedPeers,
 		"plaintext_listeners", 0,
-		"surfaces", "BackendInternalService,/v1/internal,/health",
+		"surfaces", "DataHubService,BackendInternalService(deprecated),/v1/internal(deprecated),/health",
 	)
 
 	internalEcho := newInternalEcho(container)

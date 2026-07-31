@@ -1,0 +1,693 @@
+syntax = "proto3";
+
+// Package alt.datahub.v1 is the contract alt-data-hub serves — the single
+// owner of alt_db (ADR-000954 D3).
+//
+// It supersedes services.backend.v1.BackendInternalService. That name was
+// accurate while the internal API lived inside the alt-backend process; after
+// the three-way split (ADR-000954 D1) the provider is a different binary with
+// a different failure domain, and "backend internal" describes neither the
+// owner nor the boundary. ADR-000954 D7 chose one namespace over a
+// keep-both split precisely so that "which package does a new capability go
+// in" stops being a per-PR judgement call: every alt_db capability goes here.
+//
+// MIGRATION STATE (ADR-000954 D7, Wave 2-A):
+// alt-data-hub serves this service *and* the legacy
+// services.backend.v1.BackendInternalService at the same time. Every RPC below
+// carries an `Origin:` comment naming the legacy procedure it replaces, and
+// every request/response message is wire-identical to its legacy counterpart —
+// same field numbers, same field names, same types, same cardinality. Only the
+// package and (where the legacy name was awkward) the message name differ.
+// That is what lets Wave 2-B move one peer at a time: a peer switches the URL
+// path and nothing else about the bytes it sends changes.
+//
+// alt-backend/app/dataplane/connect/datahubapi enforces the wire-identity
+// claim as a test rather than a promise — see wirecompat_test.go, which walks
+// both descriptor sets field by field. If you add a field here without adding
+// it to the legacy message, that test fails; that is deliberate for as long as
+// both namespaces are served. Wave 2-C deletes the legacy proto, the adapter
+// and that test together, and this file becomes free to evolve on its own.
+package alt.datahub.v1;
+
+option go_package = "alt/gen/proto/alt/datahub/v1;datahubv1";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Article Types
+// =============================================================================
+
+// ArticleWithTags represents an article with its associated tags.
+// Wire-identical to services.backend.v1.ArticleWithTags.
+message ArticleWithTags {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  repeated string tags = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string user_id = 6;
+  string feed_id = 7;
+  // BCP-47 short code ("ja", "en") or "und" when detection is unavailable.
+  string language = 8;
+  // Source publication timestamp from the feed. Unset when the article row
+  // has no published_at; consumers that need a date fall back to created_at.
+  google.protobuf.Timestamp published_at = 9;
+}
+
+// DeletedArticle represents a deleted article.
+// Wire-identical to services.backend.v1.DeletedArticle.
+message DeletedArticle {
+  string id = 1;
+  google.protobuf.Timestamp deleted_at = 2;
+}
+
+// =============================================================================
+// ListArticlesWithTags - Backward pagination for backfill
+// =============================================================================
+
+message ListArticlesWithTagsRequest {
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 1;
+  // Cursor: last article ID from previous page
+  string last_id = 2;
+  // Page size (max 500)
+  int32 limit = 3;
+}
+
+message ListArticlesWithTagsResponse {
+  repeated ArticleWithTags articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+// =============================================================================
+// ListArticlesWithTagsForward - Forward pagination for incremental indexing
+// =============================================================================
+
+message ListArticlesWithTagsForwardRequest {
+  // Incremental mark: only return articles created after this timestamp
+  google.protobuf.Timestamp incremental_mark = 1;
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 2;
+  // Cursor: last article ID from previous page
+  string last_id = 3;
+  // Page size (max 500)
+  int32 limit = 4;
+}
+
+message ListArticlesWithTagsForwardResponse {
+  repeated ArticleWithTags articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+// =============================================================================
+// ListDeletedArticles - For syncing deletions
+// =============================================================================
+
+message ListDeletedArticlesRequest {
+  // Cursor: last deleted_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_deleted_at = 1;
+  // Page size (max 500)
+  int32 limit = 2;
+}
+
+message ListDeletedArticlesResponse {
+  repeated DeletedArticle articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_deleted_at = 2;
+}
+
+// =============================================================================
+// GetLatestArticleTimestamp - For determining incremental mark
+// =============================================================================
+
+message GetLatestArticleTimestampRequest {}
+
+message GetLatestArticleTimestampResponse {
+  // Latest created_at timestamp, absent if no articles exist
+  optional google.protobuf.Timestamp latest_created_at = 1;
+}
+
+// =============================================================================
+// GetArticleByID
+// =============================================================================
+
+message GetArticleByIDRequest {
+  string article_id = 1;
+}
+
+message GetArticleByIDResponse {
+  ArticleWithTags article = 1;
+}
+
+// =============================================================================
+// Article Write Operations
+// =============================================================================
+
+message CheckArticleExistsRequest {
+  string url = 1;
+  string feed_id = 2;
+}
+
+message CheckArticleExistsResponse {
+  bool exists = 1;
+  string article_id = 2;
+}
+
+message CreateArticleRequest {
+  string title = 1;
+  string url = 2;
+  string content = 3;
+  string feed_id = 4;
+  string user_id = 5;
+  google.protobuf.Timestamp published_at = 6;
+  // BCP-47 short code ("ja", "en") or "und" when detection is unavailable.
+  string language = 7;
+}
+
+message CreateArticleResponse {
+  string article_id = 1;
+}
+
+message SaveArticleSummaryRequest {
+  string article_id = 1;
+  string summary = 2;
+  string language = 3;
+  string user_id = 4;
+}
+
+message SaveArticleSummaryResponse {
+  bool success = 1;
+}
+
+message GetArticleContentRequest {
+  string article_id = 1;
+}
+
+message GetArticleContentResponse {
+  string article_id = 1;
+  string title = 2;
+  string content = 3;
+  string url = 4;
+  string user_id = 5;
+}
+
+// =============================================================================
+// Feed Operations
+// =============================================================================
+
+message GetFeedIDRequest {
+  string feed_url = 1;
+}
+
+message GetFeedIDResponse {
+  string feed_id = 1;
+}
+
+message ListFeedURLsRequest {
+  // Cursor for pagination (omit for first page)
+  string cursor = 1;
+  // Page size (max 500)
+  int32 limit = 2;
+}
+
+message ListFeedURLsResponse {
+  repeated FeedURL feeds = 1;
+  // Cursor for next page (empty if no more)
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+message FeedURL {
+  string feed_id = 1;
+  string url = 2;
+}
+
+// =============================================================================
+// Tag Operations
+// =============================================================================
+
+message UpsertArticleTagsRequest {
+  string article_id = 1;
+  string feed_id = 2;
+  repeated TagItem tags = 3;
+}
+
+message TagItem {
+  string name = 1;
+  float confidence = 2;
+}
+
+message UpsertArticleTagsResponse {
+  bool success = 1;
+  int32 upserted_count = 2;
+}
+
+message BatchUpsertArticleTagsRequest {
+  repeated UpsertArticleTagsRequest items = 1;
+}
+
+message BatchUpsertArticleTagsResponse {
+  bool success = 1;
+  int32 total_upserted = 2;
+}
+
+message ListUntaggedArticlesRequest {
+  int32 limit = 1;
+  // DEPRECATED: offset pagination — use cursor fields instead.
+  int32 offset = 2;
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 3;
+  // Cursor: last article ID from previous page
+  string last_id = 4;
+}
+
+message ListUntaggedArticlesResponse {
+  repeated ArticleWithTags articles = 1;
+  int32 total_count = 2;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 3;
+  string next_id = 4;
+}
+
+message BatchGetTagsByArticleIDsRequest {
+  repeated string article_ids = 1;
+}
+
+message ArticleTagEntry {
+  string tag_name = 1;
+  float confidence = 2;
+  // Tag provenance (e.g. "ml_model", "classifier"). Empty when unknown.
+  string source = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message ArticleTagsEntry {
+  string article_id = 1;
+  repeated ArticleTagEntry tags = 2;
+}
+
+message BatchGetTagsByArticleIDsResponse {
+  repeated ArticleTagsEntry items = 1;
+}
+
+// =============================================================================
+// Summary Quality Operations
+// =============================================================================
+
+message DeleteArticleSummaryRequest {
+  string article_id = 1;
+}
+
+message DeleteArticleSummaryResponse {
+  bool success = 1;
+}
+
+message CheckArticleSummaryExistsRequest {
+  string article_id = 1;
+}
+
+message CheckArticleSummaryExistsResponse {
+  bool exists = 1;
+  string summary_id = 2;
+}
+
+message ArticleWithSummaryItem {
+  string article_id = 1;
+  string article_content = 2;
+  string article_url = 3;
+  string summary_id = 4;
+  string summary_japanese = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message FindArticlesWithSummariesRequest {
+  optional google.protobuf.Timestamp last_created_at = 1;
+  string last_id = 2;
+  int32 limit = 3;
+}
+
+message FindArticlesWithSummariesResponse {
+  repeated ArticleWithSummaryItem articles = 1;
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+// =============================================================================
+// ListUnsummarizedArticles - For summarization polling
+// =============================================================================
+
+message UnsummarizedArticle {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string url = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string user_id = 6;
+}
+
+message ListUnsummarizedArticlesRequest {
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 1;
+  // Cursor: last article ID from previous page
+  string last_id = 2;
+  // Page size (max 500)
+  int32 limit = 3;
+}
+
+message ListUnsummarizedArticlesResponse {
+  repeated UnsummarizedArticle articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+message HasUnsummarizedArticlesRequest {}
+
+message HasUnsummarizedArticlesResponse {
+  bool has_unsummarized = 1;
+}
+
+// =============================================================================
+// GetEmptyFeedID - For backfill empty-feed filtering (split-DB)
+// =============================================================================
+
+message GetEmptyFeedIDRequest {
+  string feed_url = 1;
+}
+
+message GetEmptyFeedIDResponse {
+  string feed_id = 1;  // empty string = no empty feed found
+}
+
+// =============================================================================
+// RAG Tool Operations (ADR-000617)
+// =============================================================================
+
+// FetchTagCloudRequest is the request for FetchTagCloud.
+// Wire-identical to
+// services.backend.v1.BackendInternalServiceFetchTagCloudRequest — the legacy
+// name carried the service name because that package already had a
+// FetchTagCloud pair belonging to a different service.
+message FetchTagCloudRequest {
+  // Maximum number of tags to return (default: 300, max: 500)
+  int32 limit = 1;
+}
+
+// FetchTagCloudResponse contains tag cloud entries.
+// Wire-identical to
+// services.backend.v1.BackendInternalServiceFetchTagCloudResponse.
+message FetchTagCloudResponse {
+  repeated TagCloudItem tags = 1;
+}
+
+// TagCloudItem represents a tag with its article count.
+// Wire-identical to services.backend.v1.TagCloudInternalItem.
+message TagCloudItem {
+  string tag_name = 1;
+  int32 article_count = 2;
+}
+
+// FetchArticlesByTagRequest is the request for FetchArticlesByTag.
+// Wire-identical to
+// services.backend.v1.BackendInternalServiceFetchArticlesByTagRequest.
+message FetchArticlesByTagRequest {
+  string tag_name = 1;
+  int32 limit = 2;
+}
+
+// FetchArticlesByTagResponse contains articles matching the tag.
+// Wire-identical to
+// services.backend.v1.BackendInternalServiceFetchArticlesByTagResponse.
+message FetchArticlesByTagResponse {
+  repeated ArticleByTagItem articles = 1;
+}
+
+// ArticleByTagItem represents a minimal article returned by tag search.
+message ArticleByTagItem {
+  string id = 1;
+  string title = 2;
+  string url = 3;
+  string published_at = 4;
+}
+
+// =============================================================================
+// ListRecapArticles — service-to-service paginated article window fetch
+// =============================================================================
+
+// ListRecapArticlesRequest is the request for paginated article fetch in a window
+message ListRecapArticlesRequest {
+  // Lower bound of the time window (RFC3339)
+  string from = 1;
+  // Upper bound of the time window (RFC3339)
+  string to = 2;
+  // 1-indexed page number (default 1)
+  optional int32 page = 3;
+  // Articles per page (default server-side)
+  optional int32 page_size = 4;
+  // Optional projection: "title" / "fulltext"; empty = all fields
+  repeated string fields = 5;
+  // Optional language filter: "ja" / "en"
+  optional string lang_hint = 6;
+}
+
+// RecapArticleRange echoes the window bounds in the response
+message RecapArticleRange {
+  string from = 1;
+  string to = 2;
+}
+
+// RecapArticleItem is a single article entry in the response
+message RecapArticleItem {
+  // Article UUID
+  string article_id = 1;
+  // Optional title
+  optional string title = 2;
+  // Full article text (may be empty if fields=title)
+  string fulltext = 3;
+  // Optional publication timestamp (RFC3339)
+  optional string published_at = 4;
+  // Optional source URL
+  optional string source_url = 5;
+  // Optional detected language
+  optional string lang_hint = 6;
+}
+
+// ListRecapArticlesResponse is the paginated response
+message ListRecapArticlesResponse {
+  // Echo of requested window
+  RecapArticleRange range = 1;
+  // Total matching articles in the window
+  int32 total = 2;
+  // Current page (1-indexed)
+  int32 page = 3;
+  // Page size used
+  int32 page_size = 4;
+  // Whether additional pages exist
+  bool has_more = 5;
+  // Articles on this page
+  repeated RecapArticleItem articles = 6;
+}
+
+// =============================================================================
+// Absorbed REST surface (ADR-000954 D6)
+//
+// The two /v1/internal REST routes are capabilities of the same owner, reached
+// over a different protocol only because ADR-000945 judged the extraction cost
+// too high at the time. They get RPCs here so that Wave 2-C can delete the
+// REST group rather than move it. Field names mirror the JSON bodies those
+// routes answer with, so a peer porting from REST to RPC changes the transport
+// and not the shape it parses.
+//
+// These two have no legacy BackendInternalService counterpart, so — unlike
+// every other message in this file — they are exempt from the wire-identity
+// test in datahubapi/wirecompat_test.go.
+// =============================================================================
+
+message GetSystemUserRequest {}
+
+message GetSystemUserResponse {
+  // Kratos identity id of the first identity, as GET /v1/internal/system-user
+  // returns in its `user_id` field.
+  string user_id = 1;
+}
+
+// RecentArticleItem mirrors one entry of GET /v1/internal/articles/recent.
+// published_at is an RFC3339 string rather than a Timestamp because that is
+// what the REST route emits and rag-orchestrator parses today; converting it
+// would make the RPC a re-shaping as well as a re-protocolling.
+message RecentArticleItem {
+  string id = 1;
+  string title = 2;
+  string url = 3;
+  string published_at = 4;
+  string feed_id = 5;
+  repeated string tags = 6;
+}
+
+message ListRecentArticlesRequest {
+  // Time window in hours. Unset means the server default (24); the maximum is
+  // 168. Explicitly optional so that "unset" stays distinguishable from a
+  // caller that means to send 0 — proto3 cannot tell those apart otherwise,
+  // and the REST route's zero handling differs between the two parameters.
+  optional int32 within_hours = 1;
+  // Maximum articles to return. Unset means the server default (100); an
+  // explicit 0 means "no count limit, time window only", which is the mode
+  // rag-orchestrator uses. That distinction is the reason for optional.
+  optional int32 limit = 2;
+}
+
+message ListRecentArticlesResponse {
+  repeated RecentArticleItem articles = 1;
+  // Window lower bound (RFC3339)
+  string since = 2;
+  // Window upper bound (RFC3339)
+  string until = 3;
+  int32 count = 4;
+}
+
+// =============================================================================
+// DataHubService — every capability backed by alt_db
+// =============================================================================
+
+// DataHubService is the contract alt-data-hub serves behind mutual TLS.
+//
+// Authentication is the peer certificate; there is no per-RPC credential and
+// no tenant argument. Callers are the 10 principals on the provider's
+// allowlist (ADR-000954 D5), not end users.
+service DataHubService {
+  // ── Article reads (search-indexer) ──
+
+  // ListArticlesWithTags returns articles with tags using backward keyset pagination.
+  // Used by search-indexer for backfill indexing.
+  // Origin: services.backend.v1.BackendInternalService/ListArticlesWithTags
+  rpc ListArticlesWithTags(ListArticlesWithTagsRequest) returns (ListArticlesWithTagsResponse);
+
+  // ListArticlesWithTagsForward returns articles with tags using forward keyset pagination.
+  // Used by search-indexer for incremental indexing.
+  // Origin: services.backend.v1.BackendInternalService/ListArticlesWithTagsForward
+  rpc ListArticlesWithTagsForward(ListArticlesWithTagsForwardRequest) returns (ListArticlesWithTagsForwardResponse);
+
+  // ListDeletedArticles returns deleted articles for syncing deletions.
+  // Origin: services.backend.v1.BackendInternalService/ListDeletedArticles
+  rpc ListDeletedArticles(ListDeletedArticlesRequest) returns (ListDeletedArticlesResponse);
+
+  // GetLatestArticleTimestamp returns the latest article created_at timestamp.
+  // Origin: services.backend.v1.BackendInternalService/GetLatestArticleTimestamp
+  rpc GetLatestArticleTimestamp(GetLatestArticleTimestampRequest) returns (GetLatestArticleTimestampResponse);
+
+  // GetArticleByID returns a single article with tags.
+  // Origin: services.backend.v1.BackendInternalService/GetArticleByID
+  rpc GetArticleByID(GetArticleByIDRequest) returns (GetArticleByIDResponse);
+
+  // ── Article writes (pre-processor) ──
+
+  // CheckArticleExists checks if an article already exists by URL and feed.
+  // Origin: services.backend.v1.BackendInternalService/CheckArticleExists
+  rpc CheckArticleExists(CheckArticleExistsRequest) returns (CheckArticleExistsResponse);
+
+  // CreateArticle creates a new article and publishes ArticleCreated event.
+  // Origin: services.backend.v1.BackendInternalService/CreateArticle
+  rpc CreateArticle(CreateArticleRequest) returns (CreateArticleResponse);
+
+  // SaveArticleSummary saves an article summary.
+  // Origin: services.backend.v1.BackendInternalService/SaveArticleSummary
+  rpc SaveArticleSummary(SaveArticleSummaryRequest) returns (SaveArticleSummaryResponse);
+
+  // GetArticleContent returns article content for summarization.
+  // Origin: services.backend.v1.BackendInternalService/GetArticleContent
+  rpc GetArticleContent(GetArticleContentRequest) returns (GetArticleContentResponse);
+
+  // ── Feed operations (pre-processor, pre-processor-sidecar) ──
+
+  // GetFeedID returns the feed ID for a given feed URL.
+  // Origin: services.backend.v1.BackendInternalService/GetFeedID
+  rpc GetFeedID(GetFeedIDRequest) returns (GetFeedIDResponse);
+
+  // ListFeedURLs returns feed URLs with cursor pagination.
+  // Origin: services.backend.v1.BackendInternalService/ListFeedURLs
+  rpc ListFeedURLs(ListFeedURLsRequest) returns (ListFeedURLsResponse);
+
+  // ── Tag operations (tag-generator) ──
+
+  // UpsertArticleTags upserts tags for an article.
+  // Origin: services.backend.v1.BackendInternalService/UpsertArticleTags
+  rpc UpsertArticleTags(UpsertArticleTagsRequest) returns (UpsertArticleTagsResponse);
+
+  // BatchUpsertArticleTags upserts tags for multiple articles.
+  // Origin: services.backend.v1.BackendInternalService/BatchUpsertArticleTags
+  rpc BatchUpsertArticleTags(BatchUpsertArticleTagsRequest) returns (BatchUpsertArticleTagsResponse);
+
+  // ListUntaggedArticles returns articles without tags.
+  // Origin: services.backend.v1.BackendInternalService/ListUntaggedArticles
+  rpc ListUntaggedArticles(ListUntaggedArticlesRequest) returns (ListUntaggedArticlesResponse);
+
+  // BatchGetTagsByArticleIDs returns tags for a batch of article ids.
+  // Replaces tag-generator /api/v1/tags/batch (ADR-000241 / ADR-000397)
+  // so recap-worker fetches tags directly from the data owner instead
+  // of reading alt_db tables through tag-generator.
+  // Origin: services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs
+  rpc BatchGetTagsByArticleIDs(BatchGetTagsByArticleIDsRequest) returns (BatchGetTagsByArticleIDsResponse);
+
+  // ── Summary quality operations (quality checker) ──
+
+  // DeleteArticleSummary deletes an article summary by article ID.
+  // Origin: services.backend.v1.BackendInternalService/DeleteArticleSummary
+  rpc DeleteArticleSummary(DeleteArticleSummaryRequest) returns (DeleteArticleSummaryResponse);
+
+  // CheckArticleSummaryExists checks if an article summary exists.
+  // Origin: services.backend.v1.BackendInternalService/CheckArticleSummaryExists
+  rpc CheckArticleSummaryExists(CheckArticleSummaryExistsRequest) returns (CheckArticleSummaryExistsResponse);
+
+  // FindArticlesWithSummaries returns articles with summaries for quality checking.
+  // Origin: services.backend.v1.BackendInternalService/FindArticlesWithSummaries
+  rpc FindArticlesWithSummaries(FindArticlesWithSummariesRequest) returns (FindArticlesWithSummariesResponse);
+
+  // ── Summarization polling (pre-processor) ──
+
+  // ListUnsummarizedArticles returns articles without summaries for polling-based summarization.
+  // Origin: services.backend.v1.BackendInternalService/ListUnsummarizedArticles
+  rpc ListUnsummarizedArticles(ListUnsummarizedArticlesRequest) returns (ListUnsummarizedArticlesResponse);
+
+  // HasUnsummarizedArticles checks if any articles lack summaries.
+  // Origin: services.backend.v1.BackendInternalService/HasUnsummarizedArticles
+  rpc HasUnsummarizedArticles(HasUnsummarizedArticlesRequest) returns (HasUnsummarizedArticlesResponse);
+
+  // ── Backfill operations (pre-processor split-DB) ──
+
+  // GetEmptyFeedID returns a feed ID that has no articles for the given feed URL.
+  // Returns empty feed_id if all feeds for this URL already have articles.
+  // Origin: services.backend.v1.BackendInternalService/GetEmptyFeedID
+  rpc GetEmptyFeedID(GetEmptyFeedIDRequest) returns (GetEmptyFeedIDResponse);
+
+  // ── RAG tool operations (ADR-000617: rag-orchestrator synthesis) ──
+
+  // FetchTagCloud returns tag names with article counts for topic exploration.
+  // Origin: services.backend.v1.BackendInternalService/FetchTagCloud
+  rpc FetchTagCloud(FetchTagCloudRequest) returns (FetchTagCloudResponse);
+
+  // FetchArticlesByTag returns articles filtered by tag name.
+  // Origin: services.backend.v1.BackendInternalService/FetchArticlesByTag
+  rpc FetchArticlesByTag(FetchArticlesByTagRequest) returns (FetchArticlesByTagResponse);
+
+  // ── Recap article window (recap-worker) ──
+
+  // ListRecapArticles returns paginated articles within a time window.
+  // Service-to-service only; auth is established at the mTLS transport layer.
+  // Origin: services.backend.v1.BackendInternalService/ListRecapArticles
+  rpc ListRecapArticles(ListRecapArticlesRequest) returns (ListRecapArticlesResponse);
+
+  // ── Absorbed REST surface (ADR-000954 D6) ──
+
+  // GetSystemUser returns the first Kratos identity id.
+  // Origin: GET /v1/internal/system-user (REST). Called by pre-processor.
+  rpc GetSystemUser(GetSystemUserRequest) returns (GetSystemUserResponse);
+
+  // ListRecentArticles returns articles published within a time window.
+  // Origin: GET /v1/internal/articles/recent (REST). Called by
+  // rag-orchestrator for its temporal topics feature.
+  rpc ListRecentArticles(ListRecentArticlesRequest) returns (ListRecentArticlesResponse);
+}

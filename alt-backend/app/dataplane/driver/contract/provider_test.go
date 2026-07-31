@@ -84,6 +84,21 @@ type listRecapArticlesRequest struct {
 	To   string `json:"to"`
 }
 
+// internalProcedure mounts one service-to-service procedure under both names
+// alt-data-hub answers to during ADR-000954 Wave 2: the legacy
+// services.backend.v1.BackendInternalService and its replacement
+// alt.datahub.v1.DataHubService.
+//
+// Registering both here is what lets a Wave 2-B peer PR change only its own
+// consumer test. The provider's real handlers already serve both paths from
+// one implementation (connect/v2/datahub/server.go); this stub mirrors that,
+// so provider verification does not become the reason a peer migration needs
+// a second PR.
+func internalProcedure(mux *http.ServeMux, procedure string, h http.HandlerFunc) {
+	mux.HandleFunc("/services.backend.v1.BackendInternalService/"+procedure, h)
+	mux.HandleFunc("/alt.datahub.v1.DataHubService/"+procedure, h)
+}
+
 // startStubServer creates a minimal HTTP server bound to an ephemeral port.
 // It returns the listener port so the Pact verifier can connect.
 func startStubServer(t *testing.T) int {
@@ -132,9 +147,9 @@ func startStubServer(t *testing.T) int {
 		_ = json.NewEncoder(w).Encode(resp)
 	}
 
-	// ---- POST /services.backend.v1.BackendInternalService/ListRecapArticles ----
-	// Current canonical path.
-	mux.HandleFunc("/services.backend.v1.BackendInternalService/ListRecapArticles", recapArticlesHandler)
+	// ---- POST .../ListRecapArticles ----
+	// Current canonical paths, legacy and ADR-000954 D7 alike.
+	internalProcedure(mux, "ListRecapArticles", recapArticlesHandler)
 
 	// Transitional shims: the broker's DeployedOrReleased selector still
 	// advertises older recap-worker versions whose pact targets either the
@@ -178,7 +193,14 @@ func startStubServer(t *testing.T) int {
 
 	// ---- Connect-RPC BackendInternalService (JSON wire format) ----
 	// search-indexer-alt-backend.json contract.
-	mux.HandleFunc("/services.backend.v1.BackendInternalService/GetLatestArticleTimestamp",
+	//
+	// Each of these is registered under two paths — see internalProcedure at
+	// the bottom of this function. ADR-000954 D7 renames the namespace to
+	// alt.datahub.v1.DataHubService and Wave 2-B moves the consumers one PR at
+	// a time, so at any point during that wave the broker holds pacts naming
+	// both paths. The stub answers either, which keeps a peer's migration PR
+	// from having to touch this file to stay green.
+	internalProcedure(mux, "GetLatestArticleTimestamp",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -190,7 +212,7 @@ func startStubServer(t *testing.T) int {
 			})
 		})
 
-	mux.HandleFunc("/services.backend.v1.BackendInternalService/ListArticlesWithTags",
+	internalProcedure(mux, "ListArticlesWithTags",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -218,7 +240,7 @@ func startStubServer(t *testing.T) int {
 	// published_at is deliberately a different instant from created_at: the
 	// consumer indexes documents from this response alone, so substituting
 	// created_at here would silently regress its date filter.
-	mux.HandleFunc("/services.backend.v1.BackendInternalService/GetArticleByID",
+	internalProcedure(mux, "GetArticleByID",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -244,7 +266,7 @@ func startStubServer(t *testing.T) int {
 	// recap-worker-alt-backend.json: "a batch tags request by article ids"
 	// recap-worker fetches tags for a batch of article ids to enrich the
 	// recap payload. Connect-RPC, JSON wire format, camelCase keys.
-	mux.HandleFunc("/services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs",
+	internalProcedure(mux, "BatchGetTagsByArticleIDs",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)

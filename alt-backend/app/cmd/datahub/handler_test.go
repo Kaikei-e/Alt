@@ -21,6 +21,7 @@ func sourceHandler(name string) http.Handler {
 func TestDataHubHandler_ServesOnlyTheServiceToServiceSurfaces(t *testing.T) {
 	connectMux := http.NewServeMux()
 	connectMux.Handle("/services.backend.v1.BackendInternalService/", sourceHandler("connect"))
+	connectMux.Handle("/alt.datahub.v1.DataHubService/", sourceHandler("connect"))
 
 	h := dataHubHandler(connectMux, sourceHandler("internal-echo"))
 
@@ -29,6 +30,10 @@ func TestDataHubHandler_ServesOnlyTheServiceToServiceSurfaces(t *testing.T) {
 		wantSource string
 		wantCode   int
 	}{
+		// Both namespaces alt-data-hub serves during ADR-000954 Wave 2 reach
+		// the connect mux. The legacy row inverts in Wave 2-C.
+		{path: "/alt.datahub.v1.DataHubService/CreateArticle", wantSource: "connect", wantCode: http.StatusOK},
+		{path: "/alt.datahub.v1.DataHubService/ListRecentArticles", wantSource: "connect", wantCode: http.StatusOK},
 		{path: "/services.backend.v1.BackendInternalService/CreateArticle", wantSource: "connect", wantCode: http.StatusOK},
 		{path: "/v1/internal/system-user", wantSource: "internal-echo", wantCode: http.StatusOK},
 		{path: "/v1/internal/articles/recent?limit=0", wantSource: "internal-echo", wantCode: http.StatusOK},

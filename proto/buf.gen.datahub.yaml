@@ -1,0 +1,30 @@
+version: v2
+# Code generation for alt.datahub.v1 — the contract alt-data-hub serves
+# (ADR-000954 D3/D7).
+#
+# This lives in its own template, and is excluded from buf.gen.yaml, for the
+# same reason services/backend does: the default template also emits
+# TypeScript into alt-frontend-sv. DataHubService is reachable only over
+# mutual TLS from a listener with no published port, so a browser bundle can
+# never call it; shipping client stubs for it would advertise a surface that
+# does not exist from the browser's side of the network.
+#
+# Only alt-backend is a target today because Wave 2-A only makes alt-data-hub
+# *serve* the new namespace. Wave 2-B adds one consumer target per peer PR
+# (rag-orchestrator, pre-processor, search-indexer, …) as each peer is moved,
+# so that a service acquires the generated client in the same commit that
+# starts calling it.
+inputs:
+  - directory: .
+    paths:
+      - alt/datahub
+plugins:
+  # ============================================================================
+  # alt-backend / alt-data-hub (server implementation)
+  # ============================================================================
+  - local: protoc-gen-go
+    out: ../alt-backend/app/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../alt-backend/app/gen/proto
+    opt: paths=source_relative

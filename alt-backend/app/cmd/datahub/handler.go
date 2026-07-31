@@ -6,6 +6,14 @@ import (
 )
 
 // connectRPCPrefixes are the URL path prefixes served by the Connect-RPC mux.
+//
+// Both proto namespaces this binary answers on fall under these two prefixes:
+// alt.datahub.v1.DataHubService under "/alt.", and the legacy
+// services.backend.v1.BackendInternalService under "/services." until
+// ADR-000954 Wave 2-C retires it. Routing here is prefix-based rather than a
+// list of procedures, so adding a capability to the proto does not need a
+// matching edit in this file — the connect mux is what decides whether a
+// procedure exists, and it 404s the ones that do not.
 var connectRPCPrefixes = []string{
 	"/alt.",
 	"/services.",

@@ -21,6 +21,7 @@ description of what is there rather than a to-do.
 | Claim | Where it is asserted |
 |---|---|
 | `BackendInternalService` answers here, over mTLS | `01-backend-internal-service.hurl` |
+| `DataHubService` answers here, over mTLS | `04-datahub-service.hurl` |
 | …and *only* here | `../alt-backend/03-topology-internal-surface-absent.hurl`, `../alt-harvester/01-operator-surface-only.hurl` |
 | `/v1/internal/*` answers here, over mTLS | `02-internal-rest-routes.hurl` |
 | `:9110` serves health + metrics in plaintext, and nothing else | `03-ops-listener.hurl` |
@@ -32,6 +33,21 @@ The positive and negative halves have to be read together. On its own,
 `01-backend-internal-service.hurl` is satisfied by a service that serves
 everything to everyone, and the 404s in the sibling suites are satisfied by
 a service that serves nothing at all. The pair is the claim.
+
+### Two namespaces, on purpose
+
+`01` and `04` assert the same procedures under two different paths, and both
+must pass. ADR-000954 D7 replaces `services.backend.v1.BackendInternalService`
+with `alt.datahub.v1.DataHubService`, but Wave 2-B moves the seven peers one
+PR at a time, so between the first and last of those PRs some callers are on
+each path. Serving one and not the other would break whichever half had not
+been migrated yet.
+
+The duplication is scheduled to end, not to persist. Wave 2-C deletes the
+legacy proto, and at that point `01` inverts — from "these procedures answer"
+to "these procedures 404" — in the same commit. Until then, a `04` that passes
+while `01` fails means a peer that has not been migrated has just lost its
+data plane.
 
 `:9102` is in the refused list on purpose. It is the port alt-backend's
 operator listener uses, and the tempting move during the split was to give
