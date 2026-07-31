@@ -173,6 +173,14 @@ type `verify_pact` を受信し、`scripts/pact-check.sh --publish-only
 権限は **Contents: Read and write** + **Metadata: Read**。他 repo には
 scope させない。
 
+置き場所は `/etc/alt/secrets/gh_dispatch_pat.txt`、モードは **0600 のままでよい**。
+同ディレクトリの compose 用 secret は 0644 だが、これは compose が
+bind-mount する側の要件であってディレクトリ全体の規約ではない。
+alt-deploy の deploy job は `docker compose config` が宣言した secret だけを
+staging するので、compose が参照しないファイルの権限は deploy に影響しない
+(以前はディレクトリを丸ごと glob していたため、この PAT を 0600 で置いた
+だけで本番デプロイが落ちた。2026-07-31)。
+
 > **Contents は write が必須。** `POST /repos/{owner}/{repo}/dispatches` は
 > Contents の書き込み権限を要求する。Actions 権限では通らない。
 > Actions:Read だけの token は `/actions/workflows` に 200 を返すのに
