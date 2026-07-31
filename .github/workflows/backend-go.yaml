@@ -5,10 +5,22 @@ on:
     branches: [ main, master ]
     paths:
       - 'alt-backend/**'
+      # The admin availability tile's job matcher is pinned to the Prometheus
+      # scrape config by a Go test, so a prometheus.yml-only change is exactly
+      # the edit that can break alt-backend's tests without touching
+      # alt-backend/. Without this entry that PR never starts this job.
+      - 'observability/prometheus/**'
+      # Same shape: alt-backend refuses to start when IMAGE_PROXY_ENABLED is
+      # true without a secret, so a compose-only edit that drops the image
+      # proxy wiring breaks a deployment without touching alt-backend/.
+      # TestComposeAltBackendImageProxyIsExplicitlyWired guards that.
+      - 'compose/**'
   pull_request:
     branches: [ main, master ]
     paths:
       - 'alt-backend/**'
+      - 'observability/prometheus/**'
+      - 'compose/**'
   workflow_dispatch:
 
 concurrency:
@@ -33,9 +45,24 @@ jobs:
       # proto/alt/knowledge/loop/v1/loop_transition_policy.json. Without
       # the proto/ tree in the sparse checkout it fails with
       # "could not locate ... loop_transition_policy.json".
+      #
+      # observability/ carries prometheus.yml, which
+      # TestAllowlist_AvailabilityJobsMatchPrometheusScrapeConfig reads to pin
+      # the admin availability tile's job matcher to the jobs Prometheus
+      # actually scrapes. That test fails — it does not skip — when the file is
+      # absent, so dropping this entry turns the build red instead of silently
+      # disabling the drift guard.
+      #
+      # compose/ carries the three files that define an alt-backend service.
+      # TestComposeAltBackendImageProxyIsExplicitlyWired reads them to prove
+      # each one either supplies an image-proxy secret or opts out with
+      # IMAGE_PROXY_ENABLED=false — the config guard makes silence a non-zero
+      # exit. That test also fails rather than skips when the tree is absent.
       sparse-checkout: |
         alt-backend
         proto
+        observability
+        compose
 
   # M-001: govulncheck と gosec を SARIF として GitHub Code Scanning に
   # アップロードして PR 時点で依存 CVE / コードの脆弱性を検出する。

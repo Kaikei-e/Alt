@@ -14,8 +14,10 @@ type allowEntry struct {
 	grafanaURL  string
 }
 
-// allowlist reflects metric names actually emitted by the Alt stack's
-// scrape targets as of 2026-04-13. See
+// allowlist reflects metric names actually emitted by the Alt stack's scrape
+// targets. It is not self-validating: only the availability entry's job matcher
+// is pinned to observability/prometheus/prometheus.yml by a test, so a metric
+// renamed upstream still goes silently empty here. See
 // docs/runbooks/admin-observability.md for the target ↔ metric inventory.
 var allowlist = []allowEntry{
 	{
@@ -24,8 +26,21 @@ var allowlist = []allowEntry{
 		unit:        "bool",
 		description: "up{} for each scraped service.",
 		kind:        domain.SeriesKindInstant,
-		promql:      `up{job=~"alt-backend|auth-hub|mq-hub|recap-worker|recap-subworker|tag-generator|news-creator|knowledge-sovereign|rag-orchestrator|cadvisor|nginx|prometheus"}`,
-		grafanaURL:  "/d/otel-overview",
+		// Job list mirrors the active scrape_configs in
+		// observability/prometheus/prometheus.yml, in declaration order. A job
+		// listed here but not scraped can never return a sample; a scraped job
+		// missing here is dropped from the tile entirely, so a fully-down target
+		// looks identical to a healthy stack. Both directions are guarded by
+		// TestAllowlist_AvailabilityJobsMatchPrometheusScrapeConfig.
+		//
+		// `min by (job)` collapses multi-target jobs to their worst target.
+		// pki-agent is one job fanned out over eight sidecars; every consumer
+		// keys rows by `job`, so without the aggregation eight series overwrite
+		// each other and one dead sidecar reads "up" whenever a healthy sibling
+		// happens to be last. Guarded by
+		// TestAllowlist_AvailabilityAggregatesMultiTargetJobs.
+		promql:     `min by (job) (up{job=~"prometheus|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
+		grafanaURL: "/d/otel-overview",
 	},
 	{
 		key:         domain.MetricHTTPLatencyP50,

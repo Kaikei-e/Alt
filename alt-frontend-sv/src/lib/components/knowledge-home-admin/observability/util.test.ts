@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeDelta, topSeries, type SimpleSeries } from "./util";
+import {
+	computeDelta,
+	serviceHealthRows,
+	topSeries,
+	type SimpleSeries,
+} from "./util";
 
 function pts(values: number[]): { time: string; value: number }[] {
 	return values.map((v, i) => ({
@@ -82,5 +87,62 @@ describe("topSeries", () => {
 		const r = topSeries([], "job", 3);
 		expect(r.head).toEqual([]);
 		expect(r.overflow).toBe(0);
+	});
+});
+
+describe("serviceHealthRows", () => {
+	const mk = (job: string, value: number): SimpleSeries => ({
+		labels: { job },
+		points: pts([value]),
+	});
+
+	it("derives a row for every job in the series, including new ones", () => {
+		// plecto-proxy is the edge proxy. It was scraped but absent from the
+		// component's hardcoded list, so a fully-down edge rendered as no row
+		// at all — indistinguishable from a healthy stack.
+		const rows = serviceHealthRows([
+			mk("alt-backend", 1),
+			mk("plecto-proxy", 0),
+		]);
+		expect(rows.map((r) => r.job)).toEqual(["alt-backend", "plecto-proxy"]);
+		expect(rows.find((r) => r.job === "plecto-proxy")!.up).toBe(0);
+	});
+
+	it("sorts rows by job name", () => {
+		const rows = serviceHealthRows([
+			mk("rag-orchestrator", 1),
+			mk("cadvisor", 1),
+			mk("mq-hub", 1),
+		]);
+		expect(rows.map((r) => r.job)).toEqual([
+			"cadvisor",
+			"mq-hub",
+			"rag-orchestrator",
+		]);
+	});
+
+	it("collapses several series of one job to the worst target", () => {
+		// Defense in depth: the backend aggregates pki-agent's eight sidecars
+		// with min by (job), but if that ever regresses the table must not let
+		// a healthy sibling overwrite a dead one.
+		const rows = serviceHealthRows([
+			mk("pki-agent", 1),
+			mk("pki-agent", 0),
+			mk("pki-agent", 1),
+		]);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.up).toBe(0);
+	});
+
+	it("ignores series with no points and returns [] for empty input", () => {
+		expect(serviceHealthRows([])).toEqual([]);
+		expect(serviceHealthRows([{ labels: { job: "x" }, points: [] }])).toEqual(
+			[],
+		);
+	});
+
+	it("labels a series with no job label rather than dropping it", () => {
+		const rows = serviceHealthRows([{ labels: {}, points: pts([0]) }]);
+		expect(rows).toEqual([{ job: "(unknown)", up: 0 }]);
 	});
 });
