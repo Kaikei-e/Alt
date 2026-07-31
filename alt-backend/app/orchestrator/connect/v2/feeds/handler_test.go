@@ -797,9 +797,11 @@ type stubArticleStore struct {
 	savedID string
 	err     error
 
-	askedID  string
-	askedURL string
-	savedURL string
+	askedID        string
+	askedURL       string
+	savedURL       string
+	savedSummaryID string
+	savedSummary   string
 }
 
 func (s *stubArticleStore) FetchArticleByID(_ context.Context, articleID string) (*domain.ArticleContent, error) {
@@ -815,6 +817,16 @@ func (s *stubArticleStore) FetchArticleByURL(_ context.Context, articleURL strin
 func (s *stubArticleStore) SaveArticle(_ context.Context, url, _, _ string) (string, error) {
 	s.savedURL = url
 	return s.savedID, s.err
+}
+
+// SaveArticleSummary joined this stub in ADR-000954 Wave 3 batch 5, when the
+// summary write stopped being a *alt_db.AltDBRepository field on the handler.
+// The resolveArticle tests never reach it; it is here so the stub still is an
+// ArticleStore.
+func (s *stubArticleStore) SaveArticleSummary(_ context.Context, articleID, _, _, summary string) error {
+	s.savedSummaryID = articleID
+	s.savedSummary = summary
+	return s.err
 }
 
 func newResolveArticleHandler(store *stubArticleStore) *Handler {

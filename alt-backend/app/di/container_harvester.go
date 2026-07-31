@@ -18,10 +18,8 @@ import (
 	"alt/orchestrator/port/rag_integration_port"
 	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/orchestrator/usecase/scraping_domain_usecase"
-	"alt/shared/driver/alt_db"
 	"alt/shared/driver/sovereign_client"
 	"alt/shared/gateway/datahub_gateway"
-	"alt/shared/gateway/fetch_tag_cloud_gateway"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
 	"alt/utils"
 	"alt/utils/image_proxy"
@@ -42,10 +40,11 @@ import (
 type HarvesterComponents struct {
 	Config *config.Config
 
-	// Shared driver. Still present for the tag cloud read, which is a later
-	// ADR-000954 Wave 3 batch. The feed collector and the feed-link
-	// availability writes moved in batch 3.
-	AltDBRepository *alt_db.AltDBRepository
+	// There is no AltDBRepository field. The tag cloud read was the last one
+	// that needed it, and ADR-000954 Wave 3 batch 5 moved it onto the same
+	// gateway the backend uses (catalog §2.J). alt-harvester now reaches alt_db
+	// only through alt-data-hub, which is the state Wave 3's exit condition
+	// asks for: a job that reaches for a database fails to compile.
 
 	// alt-data-hub client and the capability gateways built on it
 	// (ADR-000954 Wave 3 batch 1, catalog §2.A / §2.D / §2.E / §2.L).
@@ -97,9 +96,13 @@ type HarvesterComponents struct {
 //     "enabled but no secret"; for the harvester a deliberate disable is also
 //     load-bearing, because RegisterHarvesterJobs then refuses to register the
 //     two image jobs rather than ticking them into a warning every hour.
-func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterComponents {
-	altDB := alt_db.NewAltDBRepository(pool)
-
+//
+// The pool parameter is no longer read. ADR-000954 Wave 3 batch 5 removed the
+// harvester's last direct query, so every table these jobs touch now goes
+// through alt-data-hub; the parameter stays only because internal/bootstrap
+// still opens a pool for all three binaries, and taking that apart is the Wave
+// 3 exit condition (drop DB_* from the harvester's env, then this signature).
+func NewHarvesterComponents(_ *pgxpool.Pool, cfg *config.Config) *HarvesterComponents {
 	// alt-data-hub client. Built before anything else because five of the
 	// eight jobs cannot run without it, and a failure here must stop the
 	// process rather than surface later as a handshake error on a scheduler
@@ -135,11 +138,14 @@ func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterCo
 	fetchArticleGw := fetch_article_gateway.NewFetchArticleGateway(hostRateLimiter, httpClient)
 
 	// Image pipeline (ogp-image-warmer, og-image-backfill)
-	imageProxyUC := newHarvesterImageProxyUsecase(cfg, altDB, imageProxyCacheGw)
+	imageProxyUC := newHarvesterImageProxyUsecase(cfg, feedLinkGw, imageProxyCacheGw)
 
-	// Tag cloud read model
-	fetchTagCloudGw := fetch_tag_cloud_gateway.NewFetchTagCloudGateway(altDB)
-	fetchTagCloudUC := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(fetchTagCloudGw, tagCloudCacheTTL)
+	// Tag cloud read model. Both halves — the tag counts and the cooccurrence
+	// edges — come from alt-data-hub since ADR-000954 Wave 3 batch 4 (catalog
+	// §2.J), through the same gateway the backend uses. The octree layout and
+	// the in-process cache stay here (D4).
+	fetchTagCloudUC := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(
+		datahub_gateway.NewTagGateway(dataHubClient), tagCloudCacheTTL)
 
 	// outbox-worker targets: rag-orchestrator (REST only — the harvester never
 	// speaks Connect-RPC, so it needs no mTLS leaf certificate) and
@@ -159,7 +165,6 @@ func NewHarvesterComponents(pool *pgxpool.Pool, cfg *config.Config) *HarvesterCo
 
 	return &HarvesterComponents{
 		Config:                 cfg,
-		AltDBRepository:        altDB,
 		DataHubClient:          dataHubClient,
 		OutboxGateway:          outboxGw,
 		OgImageGateway:         ogImageGw,
@@ -187,7 +192,7 @@ const tagCloudCacheTTL = 30 * time.Minute
 
 func newHarvesterImageProxyUsecase(
 	cfg *config.Config,
-	altDB *alt_db.AltDBRepository,
+	feedLinkGw *datahub_gateway.FeedLinkGateway,
 	cacheGw *datahub_gateway.ImageProxyCacheGateway,
 ) *image_proxy_usecase.ImageProxyUsecase {
 	if !logImageProxyWiringState(cfg.ImageProxy.Enabled, cfg.ImageProxy.Secret != "") {
@@ -198,7 +203,7 @@ func newHarvesterImageProxyUsecase(
 	imageFetchGw := image_fetch_gateway.NewImageFetchGateway(imageHTTPClient)
 	signer := image_proxy.NewSigner(cfg.ImageProxy.Secret)
 	processingGw := image_proxy_gateway.NewProcessingGateway()
-	dynamicDomainGw := image_proxy_gateway.NewDynamicDomainGateway(altDB)
+	dynamicDomainGw := image_proxy_gateway.NewDynamicDomainGateway(feedLinkGw)
 
 	return image_proxy_usecase.NewImageProxyUsecase(
 		imageFetchGw,

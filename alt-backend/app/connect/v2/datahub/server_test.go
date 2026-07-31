@@ -56,6 +56,11 @@ func components() *di.DataHubComponents {
 		// Wave 3 batch 4, same rule.
 		ReadStateGateway: datahub_capability_gateway.NewReadStateGateway(nil),
 		TagReadGateway:   datahub_capability_gateway.NewTagReadGateway(nil),
+
+		// Wave 3 batch 5, same rule.
+		SummaryVersionCapabilityGateway: datahub_capability_gateway.NewSummaryVersionGateway(nil),
+		TagSetVersionCapabilityGateway:  datahub_capability_gateway.NewTagSetVersionGateway(nil),
+		StatsGateway:                    datahub_capability_gateway.NewStatsGateway(nil),
 	}
 }
 

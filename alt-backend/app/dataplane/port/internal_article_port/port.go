@@ -83,9 +83,28 @@ type CreateArticlePort interface {
 	CreateArticle(ctx context.Context, params CreateArticleParams) (articleID string, created bool, err error)
 }
 
+// SaveArticleSummaryParams is one article_summaries upsert.
+//
+// A struct rather than five positional strings, which is what this became when
+// ADR-000954 Wave 3 batch 5 added ArticleTitle: the four it already had were
+// all strings, and a fifth in that list is a swap waiting to happen — one that
+// compiles and shows up as summaries filed under the wrong title.
+type SaveArticleSummaryParams struct {
+	ArticleID string
+	UserID    string
+	// ArticleTitle as the writer knew it. Empty is valid and means the caller
+	// did not know it; pre-processor never does.
+	ArticleTitle string
+	Summary      string
+	// Language is accepted and not persisted — article_summaries has no such
+	// column. Kept on the way in rather than dropped at the wire so that the
+	// place where it stops is the driver, where the absent column is visible.
+	Language string
+}
+
 // SaveArticleSummaryPort saves an article summary.
 type SaveArticleSummaryPort interface {
-	SaveArticleSummary(ctx context.Context, articleID string, userID string, summary string, language string) error
+	SaveArticleSummary(ctx context.Context, params SaveArticleSummaryParams) error
 }
 
 // GetArticleContentPort returns article content for summarization.

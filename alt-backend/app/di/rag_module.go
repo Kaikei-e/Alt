@@ -85,7 +85,7 @@ func newRAGModule(infra *InfraModule, feed *FeedModule) *RAGModule {
 	morningLetterConnectGw := morning_letter_connect_gateway.NewGateway(ragConnectHTTPClient, cfg.Rag.OrchestratorConnectURL, slog.Default())
 
 	// Morning letter usecase
-	userFeedGw := user_feed_gateway.NewGateway(infra.AltDBRepository)
+	userFeedGw := user_feed_gateway.NewGateway(infra.StatsGateway)
 	morningGw := morning_gateway.NewMorningGateway(infra.ArticleBatchGateway)
 	morningUC := morning_usecase.NewMorningUsecase(morningGw, userFeedGw)
 

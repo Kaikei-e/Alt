@@ -894,6 +894,25 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub has tag cooccurrences",
 			"alt-data-hub has tags matching the prefix",
 			"alt-data-hub has tagged articles for the user in the window",
+
+			// Wave 3 batch 5 (catalog §2.K / §2.M).
+			"alt-data-hub accepts summary version appends",
+			"alt-data-hub has an earlier summary version for the article",
+			"alt-data-hub has no earlier summary version for the article",
+			"alt-data-hub has a superseded summary version",
+			"alt-data-hub has a current summary version for the article",
+			"alt-data-hub accepts tag set version appends",
+			"alt-data-hub has an earlier tag set version for the article",
+			"alt-data-hub has a tag set version",
+			"alt-data-hub accepts article summary writes",
+			// "has feeds" and "has articles for the user" are already declared
+			// by batches 2 and 3 above; the §2.M counts reuse them rather than
+			// inventing a second name for the same precondition.
+			"alt-data-hub has summarized articles for the user",
+			"alt-data-hub has unsummarized articles for the user",
+			"alt-data-hub has unread feeds for the user since the bound",
+			"alt-data-hub has trend data for the user",
+			"alt-data-hub has read state for the user",
 		))
 }
 
@@ -1215,6 +1234,7 @@ func mountWave3Batch2Procedures(mux *http.ServeMux) {
 
 	mountWave3Batch3Procedures(mux)
 	mountWave3Batch4Procedures(mux)
+	mountWave3Batch5Procedures(mux)
 }
 
 // mountWave3Batch3Procedures adds the feed and feed-link capabilities
@@ -1519,5 +1539,146 @@ func mountWave3Batch4Procedures(mux *http.ServeMux) {
 	}))
 	dataHubProcedure(mux, "GetTagArticleCounts", jsonPost(map[string]interface{}{
 		"counts": []map[string]interface{}{{"tagName": "AI", "articleCount": 10}},
+	}))
+}
+
+// mountWave3Batch5Procedures adds the versioned artifacts and the dashboard
+// statistics ADR-000954 Wave 3 batch 5 moved off the direct alt_db path
+// (capability catalog §2.K / §2.M).
+//
+// Two shapes here are the batch's argument rather than stub filler.
+//
+// MarkSummaryVersionSuperseded branches on the article id: one answers with a
+// previousVersion, the other with `{}`. That pair is the only thing a consumer
+// can observe of a transaction that takes a per-article
+// pg_advisory_xact_lock, reads the current version and updates it — and the
+// caller emits SummarySuperseded on exactly that distinction. A stub that
+// always returned a previous version would verify a provider that announced
+// the replacement of summaries that never existed.
+//
+// GetTrendStats answers a granularity the consumer did not ask for. The window
+// selects the date_trunc unit inside the query, so "7d implies daily" is the
+// provider's to state; a stub that echoed the request would hide a provider
+// that had stopped stating it.
+func mountWave3Batch5Procedures(mux *http.ServeMux) {
+	const (
+		stubVersionUser   = "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+		stubVersionArtID  = "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d"
+		stubSummaryVerID  = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		stubPrevSummaryID = "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		stubTagSetVerID   = "33333333-cccc-4ccc-8ccc-cccccccccccc"
+		stubPrevTagSetID  = "44444444-dddd-4ddd-8ddd-dddddddddddd"
+		stubStatsFeedID   = "5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f"
+		// The article the consumer uses for "this is a first version". Its all
+		// zeroes make it a deliberate sentinel rather than a value that could
+		// collide with a real id.
+		stubFirstVersionArticle = "00000000-0000-4000-8000-000000000000"
+		// base64 of [{"name":"AI"}] — protoJSON renders the jsonb column's
+		// bytes field this way, and the encoding is part of the contract.
+		stubTagsJSON = "W3sibmFtZSI6IkFJIn1d"
+	)
+
+	// ---- §2.K Versioned artifacts ------------------------------------------
+
+	// Append-only writes report nothing: the id was the caller's, so there is
+	// no server-assigned value to hand back.
+	dataHubProcedure(mux, "CreateSummaryVersion", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "CreateTagSetVersion", jsonPost(map[string]interface{}{}))
+
+	// previousOrAbsent answers `{}` for the sentinel article and a previous
+	// version for anything else. The absent case is the load-bearing one — see
+	// the function comment.
+	previousOrAbsent := func(previous map[string]interface{}) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				ArticleID string `json:"articleId"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+
+			w.Header().Set("Content-Type", "application/json")
+			if req.ArticleID == stubFirstVersionArticle {
+				_, _ = w.Write([]byte(`{}`))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"previousVersion": previous})
+		}
+	}
+
+	dataHubProcedure(mux, "MarkSummaryVersionSuperseded", previousOrAbsent(map[string]interface{}{
+		"summaryVersionId": stubPrevSummaryID,
+		"articleId":        stubVersionArtID,
+		"userId":           stubVersionUser,
+		"generatedAt":      "2026-07-30T09:00:00Z",
+		"model":            "pre-processor",
+		"summaryText":      "the older summary",
+	}))
+	dataHubProcedure(mux, "MarkTagSetVersionSuperseded", previousOrAbsent(map[string]interface{}{
+		"tagSetVersionId": stubPrevTagSetID,
+		"articleId":       stubVersionArtID,
+		"userId":          stubVersionUser,
+		"generatedAt":     "2026-07-30T09:00:00Z",
+		"generator":       "tag-generator",
+		"tagsJson":        stubTagsJSON,
+	}))
+
+	// GetSummaryVersionByID answers a version that carries supersededBy. That
+	// is the reproject-safe read stated as data: an old event resolves to the
+	// version it named even though something has replaced it since.
+	dataHubProcedure(mux, "GetSummaryVersionByID", jsonPost(map[string]interface{}{
+		"version": map[string]interface{}{
+			"summaryVersionId": stubPrevSummaryID,
+			"articleId":        stubVersionArtID,
+			"userId":           stubVersionUser,
+			"generatedAt":      "2026-07-30T09:00:00Z",
+			"model":            "pre-processor",
+			"summaryText":      "the older summary",
+			"supersededBy":     stubSummaryVerID,
+		},
+	}))
+	// GetLatestSummaryVersion answers one without it, because "latest" means
+	// exactly "nothing has replaced it".
+	dataHubProcedure(mux, "GetLatestSummaryVersion", jsonPost(map[string]interface{}{
+		"version": map[string]interface{}{
+			"summaryVersionId": stubSummaryVerID,
+			"articleId":        stubVersionArtID,
+			"userId":           stubVersionUser,
+			"generatedAt":      "2026-07-31T09:00:00Z",
+			"model":            "stream-summarize",
+			"summaryText":      "a summary",
+		},
+	}))
+	dataHubProcedure(mux, "GetTagSetVersionByID", jsonPost(map[string]interface{}{
+		"version": map[string]interface{}{
+			"tagSetVersionId": stubTagSetVerID,
+			"articleId":       stubVersionArtID,
+			"userId":          stubVersionUser,
+			"generatedAt":     "2026-07-31T09:00:00Z",
+			"generator":       "tag-generator",
+			"tagsJson":        stubTagsJSON,
+		},
+	}))
+
+	// ---- §2.M Statistics / dashboard ---------------------------------------
+
+	dataHubProcedure(mux, "GetFeedAmount", jsonPost(map[string]interface{}{"count": 42}))
+	dataHubProcedure(mux, "GetTotalArticlesCount", jsonPost(map[string]interface{}{"count": 120}))
+	dataHubProcedure(mux, "GetSummarizedArticlesCount", jsonPost(map[string]interface{}{"count": 80}))
+	dataHubProcedure(mux, "GetUnsummarizedArticlesCount", jsonPost(map[string]interface{}{"count": 40}))
+	dataHubProcedure(mux, "GetTodayUnreadArticlesCount", jsonPost(map[string]interface{}{"count": 7}))
+	dataHubProcedure(mux, "GetTrendStats", jsonPost(map[string]interface{}{
+		"points": []map[string]interface{}{{
+			"bucket":       "2026-07-30T00:00:00Z",
+			"articles":     12,
+			"summarized":   9,
+			"feedActivity": 3,
+		}},
+		"granularity": "TREND_GRANULARITY_DAILY",
+	}))
+	dataHubProcedure(mux, "ListUserFeedIDs", jsonPost(map[string]interface{}{
+		"feedIds": []string{stubStatsFeedID},
 	}))
 }

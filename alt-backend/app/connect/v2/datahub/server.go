@@ -118,6 +118,17 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.DataHubComponents, c
 			container.ReadStateGateway,
 			container.TagReadGateway,
 		),
+		// ADR-000954 Wave 3 batch 5, and the rule holds to the end:
+		// summary_versions, tag_set_versions and every dashboard count. A nil
+		// version port is the worst of the five batches, because the knowledge
+		// events describing those versions are appended by the caller either
+		// way — sovereign would fill with references to versions that were
+		// never written, and nothing would look wrong until a replay.
+		datahubapi.WithWave3Batch5Capabilities(
+			container.SummaryVersionCapabilityGateway,
+			container.TagSetVersionCapabilityGateway,
+			container.StatsGateway,
+		),
 	)
 	datahubPath, datahubServiceHandler := datahubv1connect.NewDataHubServiceHandler(datahubHandler, datahubOpts)
 	mux.Handle(datahubPath, datahubServiceHandler)

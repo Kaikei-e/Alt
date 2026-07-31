@@ -76,9 +76,15 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				"SearchIndexerDriver", "MQHubClient", "EventPublisher", "KratosClient",
 				"CSRFTokenUsecase", "RagConnectClient", "AdminMonitor",
 				"InternalArticleGateway", "RecapArticlesUsecase",
+				// ADR-000954 Wave 3 batch 5: the tag cloud was the harvester's
+				// last direct read, so it has no database handle at all. This
+				// is the first of the three binaries to reach Wave 3's exit
+				// condition, and the absence is asserted rather than merely
+				// achieved — a job that reaches for a pool must not compile.
+				"AltDBRepository",
 			},
 			present: []string{
-				"AltDBRepository", "ScrapingDomainUsecase", "RagIntegration",
+				"ScrapingDomainUsecase", "RagIntegration",
 				"SovereignClient", "ImageProxyUsecase", "FetchArticleGateway",
 				"FetchTagCloudUsecase",
 			},

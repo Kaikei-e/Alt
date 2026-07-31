@@ -1,26 +1,23 @@
 package feed_stats_gateway
 
 import (
-	"alt/shared/driver/alt_db"
 	"context"
-	"errors"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// UnsummarizedArticlesCountGateway implements
+// feed_stats_port.UnsummarizedArticlesCountPort.
+//
+// Its own call rather than a subtraction of the two counts beside it: a summary
+// can outlive the article it describes, so total minus summarized is a
+// different number.
 type UnsummarizedArticlesCountGateway struct {
-	altDBRepository *alt_db.AltDBRepository
+	stats statsClient
 }
 
-func NewUnsummarizedArticlesCountGateway(pool *pgxpool.Pool) *UnsummarizedArticlesCountGateway {
-	return &UnsummarizedArticlesCountGateway{
-		altDBRepository: alt_db.NewAltDBRepositoryWithPool(pool),
-	}
+func NewUnsummarizedArticlesCountGateway(stats statsClient) *UnsummarizedArticlesCountGateway {
+	return &UnsummarizedArticlesCountGateway{stats: stats}
 }
 
 func (g *UnsummarizedArticlesCountGateway) Execute(ctx context.Context) (int, error) {
-	if g.altDBRepository == nil {
-		return 0, errors.New("database connection not available")
-	}
-	return g.altDBRepository.FetchUnsummarizedArticlesCount(ctx)
+	return g.stats.UnsummarizedArticlesCount(ctx)
 }

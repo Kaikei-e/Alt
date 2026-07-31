@@ -77,11 +77,10 @@ type FeedModule struct {
 }
 
 func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
-	pool := infra.Pool
-	altDB := infra.AltDBRepository
-	// The feed tables moved to alt-data-hub in ADR-000954 Wave 3 batch 3
-	// (catalog §2.F / §2.G / §2.H). altDB stays for the read/subscription
-	// state and the tag reads, which are later batches.
+	// Every table this module touches is alt-data-hub's: the feed tables moved
+	// in ADR-000954 Wave 3 batch 3 (catalog §2.F / §2.G / §2.H), the
+	// read/subscription state and the tag reads in batch 4, and the dashboard
+	// counts in batch 5. Nothing here holds a database handle any more.
 	feedGw := infra.FeedGateway
 	feedLinkGw := infra.FeedLinkGateway
 
@@ -129,23 +128,28 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	feedSummaryGw := fetch_feed_detail_gateway.NewFeedSummaryGateway(feedGw)
 	feedsSummaryUC := fetch_feed_details_usecase.NewFeedsSummaryUsecase(feedSummaryGw)
 
-	feedAmountGw := feed_stats_gateway.NewFeedAmountGateway(pool)
+	// Dashboard counts and the trend chart come from alt-data-hub since
+	// ADR-000954 Wave 3 batch 5 (catalog §2.M). Each port adapter holds the
+	// same gateway; they stay separate types because each port declares its own
+	// Execute.
+	statsGw := infra.StatsGateway
+	feedAmountGw := feed_stats_gateway.NewFeedAmountGateway(statsGw)
 	feedsCountUC := fetch_feed_stats_usecase.NewFeedsCountUsecase(feedAmountGw)
 
-	unsummarizedGw := feed_stats_gateway.NewUnsummarizedArticlesCountGateway(pool)
+	unsummarizedGw := feed_stats_gateway.NewUnsummarizedArticlesCountGateway(statsGw)
 	unsummarizedUC := fetch_feed_stats_usecase.NewUnsummarizedArticlesCountUsecase(unsummarizedGw)
 
-	summarizedGw := feed_stats_gateway.NewSummarizedArticlesCountGateway(pool)
+	summarizedGw := feed_stats_gateway.NewSummarizedArticlesCountGateway(statsGw)
 	summarizedUC := fetch_feed_stats_usecase.NewSummarizedArticlesCountUsecase(summarizedGw)
 
-	totalGw := feed_stats_gateway.NewTotalArticlesCountGateway(pool)
+	totalGw := feed_stats_gateway.NewTotalArticlesCountGateway(statsGw)
 	totalUC := fetch_feed_stats_usecase.NewTotalArticlesCountUsecase(totalGw)
 
-	todayUnreadGw := feed_stats_gateway.NewTodayUnreadArticlesCountGateway(pool)
+	todayUnreadGw := feed_stats_gateway.NewTodayUnreadArticlesCountGateway(statsGw)
 	todayUnreadUC := fetch_feed_stats_usecase.NewTodayUnreadArticlesCountUsecase(todayUnreadGw)
 
 	// Trend stats
-	trendStatsGw := trend_stats_gateway.NewTrendStatsGateway(pool)
+	trendStatsGw := trend_stats_gateway.NewTrendStatsGateway(statsGw)
 	trendStatsUC := fetch_trend_stats_usecase.NewFetchTrendStatsUsecase(trendStatsGw)
 
 	// Feed search (Meilisearch-based via search-indexer)
@@ -154,7 +158,7 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	feedSearchUC := search_feed_usecase.NewSearchFeedMeilisearchUsecase(searchFeedMeilisearchGw, feedURLLinkGw)
 
 	// Feed tags
-	feedURLToIDGw := feed_url_to_id_gateway.NewFeedURLToIDGateway(altDB)
+	feedURLToIDGw := feed_url_to_id_gateway.NewFeedURLToIDGateway(feedGw)
 	fetchFeedTagsGw := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(infra.TagGateway)
 	fetchFeedTagsUC := fetch_feed_tags_usecase.NewFetchFeedTagsUsecase(feedURLToIDGw, fetchFeedTagsGw)
 	fetchFeedTagsByIDUC := fetch_feed_tags_by_id_usecase.NewFetchFeedTagsByIDUsecase(fetchFeedTagsGw)

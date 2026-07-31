@@ -162,6 +162,16 @@ type Handler struct {
 	readState datahub_capability_port.ReadStatePort
 	tagRead   datahub_capability_port.TagReadPort
 
+	// Wave 3 batch 5 (catalog §2.K / §2.M). Required, and
+	// WithWave3Batch5Capabilities panics on nil. The version ports carry the
+	// append-first invariant — including the two advisory-locked supersedes,
+	// the only place in this service where correctness depends on a lock
+	// rather than on a constraint — and the stats port carries every dashboard
+	// number.
+	summaryVersion datahub_capability_port.SummaryVersionPort
+	tagSetVersion  datahub_capability_port.TagSetVersionPort
+	stats          datahub_capability_port.StatsPort
+
 	logger *slog.Logger
 }
 
@@ -578,14 +588,32 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[d
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("user_id is required"))
 	}
 
-	err := h.saveArticleSummary.SaveArticleSummary(ctx, req.Msg.ArticleId, req.Msg.UserId, req.Msg.Summary, req.Msg.Language)
+	err := h.saveArticleSummary.SaveArticleSummary(ctx, internal_article_port.SaveArticleSummaryParams{
+		ArticleID: req.Msg.GetArticleId(),
+		UserID:    req.Msg.GetUserId(),
+		// Empty for pre-processor, which does not know the title. Set by
+		// alt-backend's summarise paths, which do (ADR-000954 Wave 3 batch 5).
+		ArticleTitle: req.Msg.GetArticleTitle(),
+		Summary:      req.Msg.GetSummary(),
+		Language:     req.Msg.GetLanguage(),
+	})
 	if err != nil {
 		h.logger.Error("SaveArticleSummary failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to save article summary"))
 	}
 
-	// Also create summary version + knowledge event for Knowledge Home
-	if h.createSummaryVersionUsecase != nil {
+	// Also create summary version + knowledge event for Knowledge Home —
+	// unless the caller says it owns its own versioning.
+	//
+	// Chaining the version onto this write is right for pre-processor, which
+	// has no other way to record one, and wrong for a caller that appends its
+	// own: alt-backend's stream-summarise path does exactly that, under its own
+	// model name, and would otherwise get two versions and two
+	// SummaryVersionCreated events for one summary. The only symptom would be a
+	// duplicated entry in the Knowledge Home timeline, which no test on either
+	// side reads. SUMMARY_VERSIONING_SKIP makes the caller say so.
+	if req.Msg.GetSummaryVersioning() != datahubv1.SummaryVersioning_SUMMARY_VERSIONING_SKIP &&
+		h.createSummaryVersionUsecase != nil {
 		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
 		userUUID, userParseErr := uuid.Parse(req.Msg.UserId)
 		if parseErr == nil && userParseErr == nil {

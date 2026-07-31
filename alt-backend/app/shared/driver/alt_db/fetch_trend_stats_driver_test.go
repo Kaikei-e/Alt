@@ -3,9 +3,6 @@ package alt_db
 import (
 	"context"
 	"testing"
-	"time"
-
-	"alt/domain"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -22,27 +19,35 @@ func TestFetchTrendStats_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	// Add user to context
-	userCtx := &domain.UserContext{
-		UserID:    uuid.New(),
-		Email:     "test@example.com",
-		Role:      domain.UserRoleUser,
-		TenantID:  uuid.New(),
-		ExpiresAt: time.Now().Add(time.Hour),
-	}
-	ctx = domain.SetUserContext(ctx, userCtx)
-
-	_, err := repo.FetchTrendStats(ctx, "24h")
+	_, err := repo.FetchTrendStatsForUser(ctx, statsTestUserID, "24h")
 	assert.Error(t, err, "should return error with cancelled context")
 }
 
-func TestFetchTrendStats_NoUserContext(t *testing.T) {
+// TestFetchTrendStats_ZeroUserRefused replaces the missing-user-context test
+// that stood here before ADR-000954 Wave 3 batch 5.
+//
+// The owner is an argument now, so the failure this guards against changed
+// shape: not "nobody is signed in" but "the caller passed the zero UUID". The
+// query has no other tenant predicate, so an unguarded zero owner would return
+// an empty series that looks exactly like a quiet week.
+func TestFetchTrendStats_ZeroUserRefused(t *testing.T) {
 	repo := &DashboardRepository{pool: nil}
-	ctx := context.Background()
 
-	_, err := repo.FetchTrendStats(ctx, "24h")
-	assert.Error(t, err, "should return error when user context is missing")
+	_, err := repo.FetchTrendStatsForUser(context.Background(), uuid.Nil, "24h")
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "authentication required")
+}
+
+// TestFetchTrendStats_UnsupportedWindowRefused pins that the closed set is
+// enforced before any connection is used: the window selects both the lower
+// bound and the date_trunc unit, so there is no sensible behaviour for a value
+// outside it.
+func TestFetchTrendStats_UnsupportedWindowRefused(t *testing.T) {
+	repo := &DashboardRepository{pool: nil}
+
+	_, err := repo.FetchTrendStatsForUser(context.Background(), statsTestUserID, "90d")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported window")
 }
 
 func TestParseWindow(t *testing.T) {

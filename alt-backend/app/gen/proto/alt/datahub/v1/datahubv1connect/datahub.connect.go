@@ -363,6 +363,48 @@ const (
 	// DataHubServiceGetTagArticleCountsProcedure is the fully-qualified name of the DataHubService's
 	// GetTagArticleCounts RPC.
 	DataHubServiceGetTagArticleCountsProcedure = "/alt.datahub.v1.DataHubService/GetTagArticleCounts"
+	// DataHubServiceCreateSummaryVersionProcedure is the fully-qualified name of the DataHubService's
+	// CreateSummaryVersion RPC.
+	DataHubServiceCreateSummaryVersionProcedure = "/alt.datahub.v1.DataHubService/CreateSummaryVersion"
+	// DataHubServiceMarkSummaryVersionSupersededProcedure is the fully-qualified name of the
+	// DataHubService's MarkSummaryVersionSuperseded RPC.
+	DataHubServiceMarkSummaryVersionSupersededProcedure = "/alt.datahub.v1.DataHubService/MarkSummaryVersionSuperseded"
+	// DataHubServiceGetSummaryVersionByIDProcedure is the fully-qualified name of the DataHubService's
+	// GetSummaryVersionByID RPC.
+	DataHubServiceGetSummaryVersionByIDProcedure = "/alt.datahub.v1.DataHubService/GetSummaryVersionByID"
+	// DataHubServiceGetLatestSummaryVersionProcedure is the fully-qualified name of the
+	// DataHubService's GetLatestSummaryVersion RPC.
+	DataHubServiceGetLatestSummaryVersionProcedure = "/alt.datahub.v1.DataHubService/GetLatestSummaryVersion"
+	// DataHubServiceCreateTagSetVersionProcedure is the fully-qualified name of the DataHubService's
+	// CreateTagSetVersion RPC.
+	DataHubServiceCreateTagSetVersionProcedure = "/alt.datahub.v1.DataHubService/CreateTagSetVersion"
+	// DataHubServiceMarkTagSetVersionSupersededProcedure is the fully-qualified name of the
+	// DataHubService's MarkTagSetVersionSuperseded RPC.
+	DataHubServiceMarkTagSetVersionSupersededProcedure = "/alt.datahub.v1.DataHubService/MarkTagSetVersionSuperseded"
+	// DataHubServiceGetTagSetVersionByIDProcedure is the fully-qualified name of the DataHubService's
+	// GetTagSetVersionByID RPC.
+	DataHubServiceGetTagSetVersionByIDProcedure = "/alt.datahub.v1.DataHubService/GetTagSetVersionByID"
+	// DataHubServiceGetFeedAmountProcedure is the fully-qualified name of the DataHubService's
+	// GetFeedAmount RPC.
+	DataHubServiceGetFeedAmountProcedure = "/alt.datahub.v1.DataHubService/GetFeedAmount"
+	// DataHubServiceGetTotalArticlesCountProcedure is the fully-qualified name of the DataHubService's
+	// GetTotalArticlesCount RPC.
+	DataHubServiceGetTotalArticlesCountProcedure = "/alt.datahub.v1.DataHubService/GetTotalArticlesCount"
+	// DataHubServiceGetSummarizedArticlesCountProcedure is the fully-qualified name of the
+	// DataHubService's GetSummarizedArticlesCount RPC.
+	DataHubServiceGetSummarizedArticlesCountProcedure = "/alt.datahub.v1.DataHubService/GetSummarizedArticlesCount"
+	// DataHubServiceGetUnsummarizedArticlesCountProcedure is the fully-qualified name of the
+	// DataHubService's GetUnsummarizedArticlesCount RPC.
+	DataHubServiceGetUnsummarizedArticlesCountProcedure = "/alt.datahub.v1.DataHubService/GetUnsummarizedArticlesCount"
+	// DataHubServiceGetTodayUnreadArticlesCountProcedure is the fully-qualified name of the
+	// DataHubService's GetTodayUnreadArticlesCount RPC.
+	DataHubServiceGetTodayUnreadArticlesCountProcedure = "/alt.datahub.v1.DataHubService/GetTodayUnreadArticlesCount"
+	// DataHubServiceGetTrendStatsProcedure is the fully-qualified name of the DataHubService's
+	// GetTrendStats RPC.
+	DataHubServiceGetTrendStatsProcedure = "/alt.datahub.v1.DataHubService/GetTrendStats"
+	// DataHubServiceListUserFeedIDsProcedure is the fully-qualified name of the DataHubService's
+	// ListUserFeedIDs RPC.
+	DataHubServiceListUserFeedIDsProcedure = "/alt.datahub.v1.DataHubService/ListUserFeedIDs"
 )
 
 // DataHubServiceClient is a client for the alt.datahub.v1.DataHubService service.
@@ -419,6 +461,32 @@ type DataHubServiceClient interface {
 	BatchGetTagsByArticleIDs(context.Context, *connect.Request[v1.BatchGetTagsByArticleIDsRequest]) (*connect.Response[v1.BatchGetTagsByArticleIDsResponse], error)
 	// DeleteArticleSummary deletes an article summary by article ID.
 	// Origin: services.backend.v1.BackendInternalService/DeleteArticleSummary
+	//
+	// KNOWN CONFLICT with the append-first invariant (capability catalog §4-6).
+	// Recorded here rather than resolved, because resolving it is a behaviour
+	// change and this batch made none.
+	//
+	// This is a physical DELETE, and it is the only destructive write on the
+	// summary domain that this service offers. The versioned half —
+	// CreateSummaryVersion / MarkSummaryVersionSuperseded, added by Wave 3
+	// batch 5 — never overwrites and never removes: a bad summary is superseded
+	// and the old row stays readable so a reprojection can still resolve it. Two
+	// models for one concept now sit side by side in this contract:
+	// article_summaries is destructively mutable, summary_versions is
+	// append-only.
+	//
+	// The consequence is concrete, not stylistic. When the quality checker
+	// deletes a summary here, summary_versions still holds every version of it,
+	// so the two stores disagree about whether that article was ever
+	// summarised — and which one is right depends on which question is asked.
+	// A data plane whose job is to hold the append-first line should not also
+	// be the thing that breaks it.
+	//
+	// The resolution on the table (catalog §4-6) is to treat article_summaries
+	// as a disposable projection of summary_versions and retire this procedure,
+	// which would make the delete a supersede. That belongs to whoever owns
+	// article_summaries next; until then, this comment is the record that the
+	// contradiction is known rather than overlooked.
 	DeleteArticleSummary(context.Context, *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error)
 	// CheckArticleSummaryExists checks if an article summary exists.
 	// Origin: services.backend.v1.BackendInternalService/CheckArticleSummaryExists
@@ -762,6 +830,91 @@ type DataHubServiceClient interface {
 	// arithmetic has no SQL in it — moving it here would put a product decision
 	// in the data plane, where changing it means redeploying the database owner.
 	GetTagArticleCounts(context.Context, *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error)
+	// CreateSummaryVersion appends one row to summary_versions.
+	//
+	// Append-only, so there is no update procedure beside it and no way to ask
+	// for one: a re-summarised article gets a new version and the old one is
+	// marked superseded by the procedure below. The SummaryVersionCreated event
+	// that accompanies this write is *not* emitted here — appending to
+	// knowledge-sovereign is a call to another service, and ADR-000954 D4 keeps
+	// those with the caller. The caller therefore orders the two.
+	CreateSummaryVersion(context.Context, *connect.Request[v1.CreateSummaryVersionRequest]) (*connect.Response[v1.CreateSummaryVersionResponse], error)
+	// MarkSummaryVersionSuperseded points every current version of an article at
+	// the new one and returns the version that was current before.
+	//
+	// The whole procedure is one transaction and it opens with
+	// `SELECT pg_advisory_xact_lock(hashtext(article_id))`. That lock is the
+	// capability: without it two summaries generated back-to-back for the same
+	// article can run this concurrently and each mark the *other* superseded,
+	// leaving the article with no current version at all. Row-level UPDATE
+	// locking does not prevent it, because each call's WHERE clause excludes
+	// only its own new id — the two candidate row sets are disjoint, so the two
+	// UPDATEs never contend for a row and Postgres serialises nothing. Keying
+	// the advisory lock on article_id rather than on the (changing) set of
+	// non-superseded rows is what makes the second call wait for the first to
+	// commit before it can even read `previous_version`.
+	//
+	// This is the reason the capability is one RPC rather than the SELECT and
+	// the UPDATE the port used to expose: an advisory *xact* lock is released at
+	// commit, so splitting the pair across a round trip would release the lock
+	// between them and reintroduce exactly the interleaving it exists to stop
+	// (ADR-000954 D3, catalog §2.K).
+	MarkSummaryVersionSuperseded(context.Context, *connect.Request[v1.MarkSummaryVersionSupersededRequest]) (*connect.Response[v1.MarkSummaryVersionSupersededResponse], error)
+	// GetSummaryVersionByID reads one version by its own id.
+	//
+	// Reproject-safe: replaying a SummaryVersionCreated event from a year ago
+	// must resolve to the summary that event was about, not to whatever is
+	// current. That is why it exists separately from GetLatestSummaryVersion —
+	// the two answer different questions and a projector must never ask the
+	// second one.
+	GetSummaryVersionByID(context.Context, *connect.Request[v1.GetSummaryVersionByIDRequest]) (*connect.Response[v1.GetSummaryVersionByIDResponse], error)
+	// GetLatestSummaryVersion reads the article's current version — the one no
+	// other version has superseded. NotFound when the article has never been
+	// summarised.
+	GetLatestSummaryVersion(context.Context, *connect.Request[v1.GetLatestSummaryVersionRequest]) (*connect.Response[v1.GetLatestSummaryVersionResponse], error)
+	// CreateTagSetVersion appends one row to tag_set_versions. Append-only, for
+	// the same reason CreateSummaryVersion is.
+	CreateTagSetVersion(context.Context, *connect.Request[v1.CreateTagSetVersionRequest]) (*connect.Response[v1.CreateTagSetVersionResponse], error)
+	// MarkTagSetVersionSuperseded is the tag-set twin of
+	// MarkSummaryVersionSuperseded, including the per-article
+	// pg_advisory_xact_lock and the reason for it. See that procedure's comment;
+	// the failure it prevents is the same one, and tag sets are regenerated more
+	// often than summaries are.
+	MarkTagSetVersionSuperseded(context.Context, *connect.Request[v1.MarkTagSetVersionSupersededRequest]) (*connect.Response[v1.MarkTagSetVersionSupersededResponse], error)
+	// GetTagSetVersionByID reads one tag set version by its own id.
+	// Reproject-safe, like GetSummaryVersionByID.
+	GetTagSetVersionByID(context.Context, *connect.Request[v1.GetTagSetVersionByIDRequest]) (*connect.Response[v1.GetTagSetVersionByIDResponse], error)
+	// GetFeedAmount counts every feed row. The only unscoped count in this
+	// group: it is the deployment's size, not a user's.
+	GetFeedAmount(context.Context, *connect.Request[v1.GetFeedAmountRequest]) (*connect.Response[v1.GetFeedAmountResponse], error)
+	// GetTotalArticlesCount counts one user's live articles.
+	//
+	// user_id is a field on this and the three counts below it, where the
+	// in-process versions read it from the request context. That is not a
+	// translation detail: the provider serves these over mutual TLS, where the
+	// peer certificate names alt-backend, so a context-scoped user would resolve
+	// to the service account and every dashboard would show the same numbers.
+	GetTotalArticlesCount(context.Context, *connect.Request[v1.GetTotalArticlesCountRequest]) (*connect.Response[v1.GetTotalArticlesCountResponse], error)
+	// GetSummarizedArticlesCount counts one user's article_summaries rows.
+	GetSummarizedArticlesCount(context.Context, *connect.Request[v1.GetSummarizedArticlesCountRequest]) (*connect.Response[v1.GetSummarizedArticlesCountResponse], error)
+	// GetUnsummarizedArticlesCount counts one user's live articles with no
+	// summary. Not the difference of the two counts above — a summary can
+	// outlive its article — so it is its own query and its own procedure.
+	GetUnsummarizedArticlesCount(context.Context, *connect.Request[v1.GetUnsummarizedArticlesCountRequest]) (*connect.Response[v1.GetUnsummarizedArticlesCountResponse], error)
+	// GetTodayUnreadArticlesCount counts feeds created since `since` that the
+	// user has not marked read.
+	//
+	// `since` is required and carries no default. "Today" is a wall-clock
+	// question and therefore the caller's: the provider does not know the
+	// reader's timezone, and defaulting to a server-side midnight would answer a
+	// different question convincingly.
+	GetTodayUnreadArticlesCount(context.Context, *connect.Request[v1.GetTodayUnreadArticlesCountRequest]) (*connect.Response[v1.GetTodayUnreadArticlesCountResponse], error)
+	// GetTrendStats returns the admin dashboard's article/summary/feed series
+	// for one user over one window.
+	GetTrendStats(context.Context, *connect.Request[v1.GetTrendStatsRequest]) (*connect.Response[v1.GetTrendStatsResponse], error)
+	// ListUserFeedIDs returns the feeds a user has read state against — the
+	// Morning Letter's candidate set.
+	ListUserFeedIDs(context.Context, *connect.Request[v1.ListUserFeedIDsRequest]) (*connect.Response[v1.ListUserFeedIDsResponse], error)
 }
 
 // NewDataHubServiceClient constructs a client for the alt.datahub.v1.DataHubService service. By
@@ -1381,6 +1534,90 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("GetTagArticleCounts")),
 			connect.WithClientOptions(opts...),
 		),
+		createSummaryVersion: connect.NewClient[v1.CreateSummaryVersionRequest, v1.CreateSummaryVersionResponse](
+			httpClient,
+			baseURL+DataHubServiceCreateSummaryVersionProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("CreateSummaryVersion")),
+			connect.WithClientOptions(opts...),
+		),
+		markSummaryVersionSuperseded: connect.NewClient[v1.MarkSummaryVersionSupersededRequest, v1.MarkSummaryVersionSupersededResponse](
+			httpClient,
+			baseURL+DataHubServiceMarkSummaryVersionSupersededProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("MarkSummaryVersionSuperseded")),
+			connect.WithClientOptions(opts...),
+		),
+		getSummaryVersionByID: connect.NewClient[v1.GetSummaryVersionByIDRequest, v1.GetSummaryVersionByIDResponse](
+			httpClient,
+			baseURL+DataHubServiceGetSummaryVersionByIDProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetSummaryVersionByID")),
+			connect.WithClientOptions(opts...),
+		),
+		getLatestSummaryVersion: connect.NewClient[v1.GetLatestSummaryVersionRequest, v1.GetLatestSummaryVersionResponse](
+			httpClient,
+			baseURL+DataHubServiceGetLatestSummaryVersionProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetLatestSummaryVersion")),
+			connect.WithClientOptions(opts...),
+		),
+		createTagSetVersion: connect.NewClient[v1.CreateTagSetVersionRequest, v1.CreateTagSetVersionResponse](
+			httpClient,
+			baseURL+DataHubServiceCreateTagSetVersionProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("CreateTagSetVersion")),
+			connect.WithClientOptions(opts...),
+		),
+		markTagSetVersionSuperseded: connect.NewClient[v1.MarkTagSetVersionSupersededRequest, v1.MarkTagSetVersionSupersededResponse](
+			httpClient,
+			baseURL+DataHubServiceMarkTagSetVersionSupersededProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("MarkTagSetVersionSuperseded")),
+			connect.WithClientOptions(opts...),
+		),
+		getTagSetVersionByID: connect.NewClient[v1.GetTagSetVersionByIDRequest, v1.GetTagSetVersionByIDResponse](
+			httpClient,
+			baseURL+DataHubServiceGetTagSetVersionByIDProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetTagSetVersionByID")),
+			connect.WithClientOptions(opts...),
+		),
+		getFeedAmount: connect.NewClient[v1.GetFeedAmountRequest, v1.GetFeedAmountResponse](
+			httpClient,
+			baseURL+DataHubServiceGetFeedAmountProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetFeedAmount")),
+			connect.WithClientOptions(opts...),
+		),
+		getTotalArticlesCount: connect.NewClient[v1.GetTotalArticlesCountRequest, v1.GetTotalArticlesCountResponse](
+			httpClient,
+			baseURL+DataHubServiceGetTotalArticlesCountProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetTotalArticlesCount")),
+			connect.WithClientOptions(opts...),
+		),
+		getSummarizedArticlesCount: connect.NewClient[v1.GetSummarizedArticlesCountRequest, v1.GetSummarizedArticlesCountResponse](
+			httpClient,
+			baseURL+DataHubServiceGetSummarizedArticlesCountProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetSummarizedArticlesCount")),
+			connect.WithClientOptions(opts...),
+		),
+		getUnsummarizedArticlesCount: connect.NewClient[v1.GetUnsummarizedArticlesCountRequest, v1.GetUnsummarizedArticlesCountResponse](
+			httpClient,
+			baseURL+DataHubServiceGetUnsummarizedArticlesCountProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetUnsummarizedArticlesCount")),
+			connect.WithClientOptions(opts...),
+		),
+		getTodayUnreadArticlesCount: connect.NewClient[v1.GetTodayUnreadArticlesCountRequest, v1.GetTodayUnreadArticlesCountResponse](
+			httpClient,
+			baseURL+DataHubServiceGetTodayUnreadArticlesCountProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetTodayUnreadArticlesCount")),
+			connect.WithClientOptions(opts...),
+		),
+		getTrendStats: connect.NewClient[v1.GetTrendStatsRequest, v1.GetTrendStatsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetTrendStatsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetTrendStats")),
+			connect.WithClientOptions(opts...),
+		),
+		listUserFeedIDs: connect.NewClient[v1.ListUserFeedIDsRequest, v1.ListUserFeedIDsResponse](
+			httpClient,
+			baseURL+DataHubServiceListUserFeedIDsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListUserFeedIDs")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1487,6 +1724,20 @@ type dataHubServiceClient struct {
 	getTagCooccurrences               *connect.Client[v1.GetTagCooccurrencesRequest, v1.GetTagCooccurrencesResponse]
 	searchTagsByPrefix                *connect.Client[v1.SearchTagsByPrefixRequest, v1.SearchTagsByPrefixResponse]
 	getTagArticleCounts               *connect.Client[v1.GetTagArticleCountsRequest, v1.GetTagArticleCountsResponse]
+	createSummaryVersion              *connect.Client[v1.CreateSummaryVersionRequest, v1.CreateSummaryVersionResponse]
+	markSummaryVersionSuperseded      *connect.Client[v1.MarkSummaryVersionSupersededRequest, v1.MarkSummaryVersionSupersededResponse]
+	getSummaryVersionByID             *connect.Client[v1.GetSummaryVersionByIDRequest, v1.GetSummaryVersionByIDResponse]
+	getLatestSummaryVersion           *connect.Client[v1.GetLatestSummaryVersionRequest, v1.GetLatestSummaryVersionResponse]
+	createTagSetVersion               *connect.Client[v1.CreateTagSetVersionRequest, v1.CreateTagSetVersionResponse]
+	markTagSetVersionSuperseded       *connect.Client[v1.MarkTagSetVersionSupersededRequest, v1.MarkTagSetVersionSupersededResponse]
+	getTagSetVersionByID              *connect.Client[v1.GetTagSetVersionByIDRequest, v1.GetTagSetVersionByIDResponse]
+	getFeedAmount                     *connect.Client[v1.GetFeedAmountRequest, v1.GetFeedAmountResponse]
+	getTotalArticlesCount             *connect.Client[v1.GetTotalArticlesCountRequest, v1.GetTotalArticlesCountResponse]
+	getSummarizedArticlesCount        *connect.Client[v1.GetSummarizedArticlesCountRequest, v1.GetSummarizedArticlesCountResponse]
+	getUnsummarizedArticlesCount      *connect.Client[v1.GetUnsummarizedArticlesCountRequest, v1.GetUnsummarizedArticlesCountResponse]
+	getTodayUnreadArticlesCount       *connect.Client[v1.GetTodayUnreadArticlesCountRequest, v1.GetTodayUnreadArticlesCountResponse]
+	getTrendStats                     *connect.Client[v1.GetTrendStatsRequest, v1.GetTrendStatsResponse]
+	listUserFeedIDs                   *connect.Client[v1.ListUserFeedIDsRequest, v1.ListUserFeedIDsResponse]
 }
 
 // ListArticlesWithTags calls alt.datahub.v1.DataHubService.ListArticlesWithTags.
@@ -1996,6 +2247,76 @@ func (c *dataHubServiceClient) GetTagArticleCounts(ctx context.Context, req *con
 	return c.getTagArticleCounts.CallUnary(ctx, req)
 }
 
+// CreateSummaryVersion calls alt.datahub.v1.DataHubService.CreateSummaryVersion.
+func (c *dataHubServiceClient) CreateSummaryVersion(ctx context.Context, req *connect.Request[v1.CreateSummaryVersionRequest]) (*connect.Response[v1.CreateSummaryVersionResponse], error) {
+	return c.createSummaryVersion.CallUnary(ctx, req)
+}
+
+// MarkSummaryVersionSuperseded calls alt.datahub.v1.DataHubService.MarkSummaryVersionSuperseded.
+func (c *dataHubServiceClient) MarkSummaryVersionSuperseded(ctx context.Context, req *connect.Request[v1.MarkSummaryVersionSupersededRequest]) (*connect.Response[v1.MarkSummaryVersionSupersededResponse], error) {
+	return c.markSummaryVersionSuperseded.CallUnary(ctx, req)
+}
+
+// GetSummaryVersionByID calls alt.datahub.v1.DataHubService.GetSummaryVersionByID.
+func (c *dataHubServiceClient) GetSummaryVersionByID(ctx context.Context, req *connect.Request[v1.GetSummaryVersionByIDRequest]) (*connect.Response[v1.GetSummaryVersionByIDResponse], error) {
+	return c.getSummaryVersionByID.CallUnary(ctx, req)
+}
+
+// GetLatestSummaryVersion calls alt.datahub.v1.DataHubService.GetLatestSummaryVersion.
+func (c *dataHubServiceClient) GetLatestSummaryVersion(ctx context.Context, req *connect.Request[v1.GetLatestSummaryVersionRequest]) (*connect.Response[v1.GetLatestSummaryVersionResponse], error) {
+	return c.getLatestSummaryVersion.CallUnary(ctx, req)
+}
+
+// CreateTagSetVersion calls alt.datahub.v1.DataHubService.CreateTagSetVersion.
+func (c *dataHubServiceClient) CreateTagSetVersion(ctx context.Context, req *connect.Request[v1.CreateTagSetVersionRequest]) (*connect.Response[v1.CreateTagSetVersionResponse], error) {
+	return c.createTagSetVersion.CallUnary(ctx, req)
+}
+
+// MarkTagSetVersionSuperseded calls alt.datahub.v1.DataHubService.MarkTagSetVersionSuperseded.
+func (c *dataHubServiceClient) MarkTagSetVersionSuperseded(ctx context.Context, req *connect.Request[v1.MarkTagSetVersionSupersededRequest]) (*connect.Response[v1.MarkTagSetVersionSupersededResponse], error) {
+	return c.markTagSetVersionSuperseded.CallUnary(ctx, req)
+}
+
+// GetTagSetVersionByID calls alt.datahub.v1.DataHubService.GetTagSetVersionByID.
+func (c *dataHubServiceClient) GetTagSetVersionByID(ctx context.Context, req *connect.Request[v1.GetTagSetVersionByIDRequest]) (*connect.Response[v1.GetTagSetVersionByIDResponse], error) {
+	return c.getTagSetVersionByID.CallUnary(ctx, req)
+}
+
+// GetFeedAmount calls alt.datahub.v1.DataHubService.GetFeedAmount.
+func (c *dataHubServiceClient) GetFeedAmount(ctx context.Context, req *connect.Request[v1.GetFeedAmountRequest]) (*connect.Response[v1.GetFeedAmountResponse], error) {
+	return c.getFeedAmount.CallUnary(ctx, req)
+}
+
+// GetTotalArticlesCount calls alt.datahub.v1.DataHubService.GetTotalArticlesCount.
+func (c *dataHubServiceClient) GetTotalArticlesCount(ctx context.Context, req *connect.Request[v1.GetTotalArticlesCountRequest]) (*connect.Response[v1.GetTotalArticlesCountResponse], error) {
+	return c.getTotalArticlesCount.CallUnary(ctx, req)
+}
+
+// GetSummarizedArticlesCount calls alt.datahub.v1.DataHubService.GetSummarizedArticlesCount.
+func (c *dataHubServiceClient) GetSummarizedArticlesCount(ctx context.Context, req *connect.Request[v1.GetSummarizedArticlesCountRequest]) (*connect.Response[v1.GetSummarizedArticlesCountResponse], error) {
+	return c.getSummarizedArticlesCount.CallUnary(ctx, req)
+}
+
+// GetUnsummarizedArticlesCount calls alt.datahub.v1.DataHubService.GetUnsummarizedArticlesCount.
+func (c *dataHubServiceClient) GetUnsummarizedArticlesCount(ctx context.Context, req *connect.Request[v1.GetUnsummarizedArticlesCountRequest]) (*connect.Response[v1.GetUnsummarizedArticlesCountResponse], error) {
+	return c.getUnsummarizedArticlesCount.CallUnary(ctx, req)
+}
+
+// GetTodayUnreadArticlesCount calls alt.datahub.v1.DataHubService.GetTodayUnreadArticlesCount.
+func (c *dataHubServiceClient) GetTodayUnreadArticlesCount(ctx context.Context, req *connect.Request[v1.GetTodayUnreadArticlesCountRequest]) (*connect.Response[v1.GetTodayUnreadArticlesCountResponse], error) {
+	return c.getTodayUnreadArticlesCount.CallUnary(ctx, req)
+}
+
+// GetTrendStats calls alt.datahub.v1.DataHubService.GetTrendStats.
+func (c *dataHubServiceClient) GetTrendStats(ctx context.Context, req *connect.Request[v1.GetTrendStatsRequest]) (*connect.Response[v1.GetTrendStatsResponse], error) {
+	return c.getTrendStats.CallUnary(ctx, req)
+}
+
+// ListUserFeedIDs calls alt.datahub.v1.DataHubService.ListUserFeedIDs.
+func (c *dataHubServiceClient) ListUserFeedIDs(ctx context.Context, req *connect.Request[v1.ListUserFeedIDsRequest]) (*connect.Response[v1.ListUserFeedIDsResponse], error) {
+	return c.listUserFeedIDs.CallUnary(ctx, req)
+}
+
 // DataHubServiceHandler is an implementation of the alt.datahub.v1.DataHubService service.
 type DataHubServiceHandler interface {
 	// ListArticlesWithTags returns articles with tags using backward keyset pagination.
@@ -2050,6 +2371,32 @@ type DataHubServiceHandler interface {
 	BatchGetTagsByArticleIDs(context.Context, *connect.Request[v1.BatchGetTagsByArticleIDsRequest]) (*connect.Response[v1.BatchGetTagsByArticleIDsResponse], error)
 	// DeleteArticleSummary deletes an article summary by article ID.
 	// Origin: services.backend.v1.BackendInternalService/DeleteArticleSummary
+	//
+	// KNOWN CONFLICT with the append-first invariant (capability catalog §4-6).
+	// Recorded here rather than resolved, because resolving it is a behaviour
+	// change and this batch made none.
+	//
+	// This is a physical DELETE, and it is the only destructive write on the
+	// summary domain that this service offers. The versioned half —
+	// CreateSummaryVersion / MarkSummaryVersionSuperseded, added by Wave 3
+	// batch 5 — never overwrites and never removes: a bad summary is superseded
+	// and the old row stays readable so a reprojection can still resolve it. Two
+	// models for one concept now sit side by side in this contract:
+	// article_summaries is destructively mutable, summary_versions is
+	// append-only.
+	//
+	// The consequence is concrete, not stylistic. When the quality checker
+	// deletes a summary here, summary_versions still holds every version of it,
+	// so the two stores disagree about whether that article was ever
+	// summarised — and which one is right depends on which question is asked.
+	// A data plane whose job is to hold the append-first line should not also
+	// be the thing that breaks it.
+	//
+	// The resolution on the table (catalog §4-6) is to treat article_summaries
+	// as a disposable projection of summary_versions and retire this procedure,
+	// which would make the delete a supersede. That belongs to whoever owns
+	// article_summaries next; until then, this comment is the record that the
+	// contradiction is known rather than overlooked.
 	DeleteArticleSummary(context.Context, *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error)
 	// CheckArticleSummaryExists checks if an article summary exists.
 	// Origin: services.backend.v1.BackendInternalService/CheckArticleSummaryExists
@@ -2393,6 +2740,91 @@ type DataHubServiceHandler interface {
 	// arithmetic has no SQL in it — moving it here would put a product decision
 	// in the data plane, where changing it means redeploying the database owner.
 	GetTagArticleCounts(context.Context, *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error)
+	// CreateSummaryVersion appends one row to summary_versions.
+	//
+	// Append-only, so there is no update procedure beside it and no way to ask
+	// for one: a re-summarised article gets a new version and the old one is
+	// marked superseded by the procedure below. The SummaryVersionCreated event
+	// that accompanies this write is *not* emitted here — appending to
+	// knowledge-sovereign is a call to another service, and ADR-000954 D4 keeps
+	// those with the caller. The caller therefore orders the two.
+	CreateSummaryVersion(context.Context, *connect.Request[v1.CreateSummaryVersionRequest]) (*connect.Response[v1.CreateSummaryVersionResponse], error)
+	// MarkSummaryVersionSuperseded points every current version of an article at
+	// the new one and returns the version that was current before.
+	//
+	// The whole procedure is one transaction and it opens with
+	// `SELECT pg_advisory_xact_lock(hashtext(article_id))`. That lock is the
+	// capability: without it two summaries generated back-to-back for the same
+	// article can run this concurrently and each mark the *other* superseded,
+	// leaving the article with no current version at all. Row-level UPDATE
+	// locking does not prevent it, because each call's WHERE clause excludes
+	// only its own new id — the two candidate row sets are disjoint, so the two
+	// UPDATEs never contend for a row and Postgres serialises nothing. Keying
+	// the advisory lock on article_id rather than on the (changing) set of
+	// non-superseded rows is what makes the second call wait for the first to
+	// commit before it can even read `previous_version`.
+	//
+	// This is the reason the capability is one RPC rather than the SELECT and
+	// the UPDATE the port used to expose: an advisory *xact* lock is released at
+	// commit, so splitting the pair across a round trip would release the lock
+	// between them and reintroduce exactly the interleaving it exists to stop
+	// (ADR-000954 D3, catalog §2.K).
+	MarkSummaryVersionSuperseded(context.Context, *connect.Request[v1.MarkSummaryVersionSupersededRequest]) (*connect.Response[v1.MarkSummaryVersionSupersededResponse], error)
+	// GetSummaryVersionByID reads one version by its own id.
+	//
+	// Reproject-safe: replaying a SummaryVersionCreated event from a year ago
+	// must resolve to the summary that event was about, not to whatever is
+	// current. That is why it exists separately from GetLatestSummaryVersion —
+	// the two answer different questions and a projector must never ask the
+	// second one.
+	GetSummaryVersionByID(context.Context, *connect.Request[v1.GetSummaryVersionByIDRequest]) (*connect.Response[v1.GetSummaryVersionByIDResponse], error)
+	// GetLatestSummaryVersion reads the article's current version — the one no
+	// other version has superseded. NotFound when the article has never been
+	// summarised.
+	GetLatestSummaryVersion(context.Context, *connect.Request[v1.GetLatestSummaryVersionRequest]) (*connect.Response[v1.GetLatestSummaryVersionResponse], error)
+	// CreateTagSetVersion appends one row to tag_set_versions. Append-only, for
+	// the same reason CreateSummaryVersion is.
+	CreateTagSetVersion(context.Context, *connect.Request[v1.CreateTagSetVersionRequest]) (*connect.Response[v1.CreateTagSetVersionResponse], error)
+	// MarkTagSetVersionSuperseded is the tag-set twin of
+	// MarkSummaryVersionSuperseded, including the per-article
+	// pg_advisory_xact_lock and the reason for it. See that procedure's comment;
+	// the failure it prevents is the same one, and tag sets are regenerated more
+	// often than summaries are.
+	MarkTagSetVersionSuperseded(context.Context, *connect.Request[v1.MarkTagSetVersionSupersededRequest]) (*connect.Response[v1.MarkTagSetVersionSupersededResponse], error)
+	// GetTagSetVersionByID reads one tag set version by its own id.
+	// Reproject-safe, like GetSummaryVersionByID.
+	GetTagSetVersionByID(context.Context, *connect.Request[v1.GetTagSetVersionByIDRequest]) (*connect.Response[v1.GetTagSetVersionByIDResponse], error)
+	// GetFeedAmount counts every feed row. The only unscoped count in this
+	// group: it is the deployment's size, not a user's.
+	GetFeedAmount(context.Context, *connect.Request[v1.GetFeedAmountRequest]) (*connect.Response[v1.GetFeedAmountResponse], error)
+	// GetTotalArticlesCount counts one user's live articles.
+	//
+	// user_id is a field on this and the three counts below it, where the
+	// in-process versions read it from the request context. That is not a
+	// translation detail: the provider serves these over mutual TLS, where the
+	// peer certificate names alt-backend, so a context-scoped user would resolve
+	// to the service account and every dashboard would show the same numbers.
+	GetTotalArticlesCount(context.Context, *connect.Request[v1.GetTotalArticlesCountRequest]) (*connect.Response[v1.GetTotalArticlesCountResponse], error)
+	// GetSummarizedArticlesCount counts one user's article_summaries rows.
+	GetSummarizedArticlesCount(context.Context, *connect.Request[v1.GetSummarizedArticlesCountRequest]) (*connect.Response[v1.GetSummarizedArticlesCountResponse], error)
+	// GetUnsummarizedArticlesCount counts one user's live articles with no
+	// summary. Not the difference of the two counts above — a summary can
+	// outlive its article — so it is its own query and its own procedure.
+	GetUnsummarizedArticlesCount(context.Context, *connect.Request[v1.GetUnsummarizedArticlesCountRequest]) (*connect.Response[v1.GetUnsummarizedArticlesCountResponse], error)
+	// GetTodayUnreadArticlesCount counts feeds created since `since` that the
+	// user has not marked read.
+	//
+	// `since` is required and carries no default. "Today" is a wall-clock
+	// question and therefore the caller's: the provider does not know the
+	// reader's timezone, and defaulting to a server-side midnight would answer a
+	// different question convincingly.
+	GetTodayUnreadArticlesCount(context.Context, *connect.Request[v1.GetTodayUnreadArticlesCountRequest]) (*connect.Response[v1.GetTodayUnreadArticlesCountResponse], error)
+	// GetTrendStats returns the admin dashboard's article/summary/feed series
+	// for one user over one window.
+	GetTrendStats(context.Context, *connect.Request[v1.GetTrendStatsRequest]) (*connect.Response[v1.GetTrendStatsResponse], error)
+	// ListUserFeedIDs returns the feeds a user has read state against — the
+	// Morning Letter's candidate set.
+	ListUserFeedIDs(context.Context, *connect.Request[v1.ListUserFeedIDsRequest]) (*connect.Response[v1.ListUserFeedIDsResponse], error)
 }
 
 // NewDataHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -3008,6 +3440,90 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("GetTagArticleCounts")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceCreateSummaryVersionHandler := connect.NewUnaryHandler(
+		DataHubServiceCreateSummaryVersionProcedure,
+		svc.CreateSummaryVersion,
+		connect.WithSchema(dataHubServiceMethods.ByName("CreateSummaryVersion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceMarkSummaryVersionSupersededHandler := connect.NewUnaryHandler(
+		DataHubServiceMarkSummaryVersionSupersededProcedure,
+		svc.MarkSummaryVersionSuperseded,
+		connect.WithSchema(dataHubServiceMethods.ByName("MarkSummaryVersionSuperseded")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetSummaryVersionByIDHandler := connect.NewUnaryHandler(
+		DataHubServiceGetSummaryVersionByIDProcedure,
+		svc.GetSummaryVersionByID,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetSummaryVersionByID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetLatestSummaryVersionHandler := connect.NewUnaryHandler(
+		DataHubServiceGetLatestSummaryVersionProcedure,
+		svc.GetLatestSummaryVersion,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetLatestSummaryVersion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceCreateTagSetVersionHandler := connect.NewUnaryHandler(
+		DataHubServiceCreateTagSetVersionProcedure,
+		svc.CreateTagSetVersion,
+		connect.WithSchema(dataHubServiceMethods.ByName("CreateTagSetVersion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceMarkTagSetVersionSupersededHandler := connect.NewUnaryHandler(
+		DataHubServiceMarkTagSetVersionSupersededProcedure,
+		svc.MarkTagSetVersionSuperseded,
+		connect.WithSchema(dataHubServiceMethods.ByName("MarkTagSetVersionSuperseded")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetTagSetVersionByIDHandler := connect.NewUnaryHandler(
+		DataHubServiceGetTagSetVersionByIDProcedure,
+		svc.GetTagSetVersionByID,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetTagSetVersionByID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetFeedAmountHandler := connect.NewUnaryHandler(
+		DataHubServiceGetFeedAmountProcedure,
+		svc.GetFeedAmount,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetFeedAmount")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetTotalArticlesCountHandler := connect.NewUnaryHandler(
+		DataHubServiceGetTotalArticlesCountProcedure,
+		svc.GetTotalArticlesCount,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetTotalArticlesCount")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetSummarizedArticlesCountHandler := connect.NewUnaryHandler(
+		DataHubServiceGetSummarizedArticlesCountProcedure,
+		svc.GetSummarizedArticlesCount,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetSummarizedArticlesCount")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetUnsummarizedArticlesCountHandler := connect.NewUnaryHandler(
+		DataHubServiceGetUnsummarizedArticlesCountProcedure,
+		svc.GetUnsummarizedArticlesCount,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetUnsummarizedArticlesCount")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetTodayUnreadArticlesCountHandler := connect.NewUnaryHandler(
+		DataHubServiceGetTodayUnreadArticlesCountProcedure,
+		svc.GetTodayUnreadArticlesCount,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetTodayUnreadArticlesCount")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetTrendStatsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetTrendStatsProcedure,
+		svc.GetTrendStats,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetTrendStats")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListUserFeedIDsHandler := connect.NewUnaryHandler(
+		DataHubServiceListUserFeedIDsProcedure,
+		svc.ListUserFeedIDs,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListUserFeedIDs")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.datahub.v1.DataHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataHubServiceListArticlesWithTagsProcedure:
@@ -3212,6 +3728,34 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceSearchTagsByPrefixHandler.ServeHTTP(w, r)
 		case DataHubServiceGetTagArticleCountsProcedure:
 			dataHubServiceGetTagArticleCountsHandler.ServeHTTP(w, r)
+		case DataHubServiceCreateSummaryVersionProcedure:
+			dataHubServiceCreateSummaryVersionHandler.ServeHTTP(w, r)
+		case DataHubServiceMarkSummaryVersionSupersededProcedure:
+			dataHubServiceMarkSummaryVersionSupersededHandler.ServeHTTP(w, r)
+		case DataHubServiceGetSummaryVersionByIDProcedure:
+			dataHubServiceGetSummaryVersionByIDHandler.ServeHTTP(w, r)
+		case DataHubServiceGetLatestSummaryVersionProcedure:
+			dataHubServiceGetLatestSummaryVersionHandler.ServeHTTP(w, r)
+		case DataHubServiceCreateTagSetVersionProcedure:
+			dataHubServiceCreateTagSetVersionHandler.ServeHTTP(w, r)
+		case DataHubServiceMarkTagSetVersionSupersededProcedure:
+			dataHubServiceMarkTagSetVersionSupersededHandler.ServeHTTP(w, r)
+		case DataHubServiceGetTagSetVersionByIDProcedure:
+			dataHubServiceGetTagSetVersionByIDHandler.ServeHTTP(w, r)
+		case DataHubServiceGetFeedAmountProcedure:
+			dataHubServiceGetFeedAmountHandler.ServeHTTP(w, r)
+		case DataHubServiceGetTotalArticlesCountProcedure:
+			dataHubServiceGetTotalArticlesCountHandler.ServeHTTP(w, r)
+		case DataHubServiceGetSummarizedArticlesCountProcedure:
+			dataHubServiceGetSummarizedArticlesCountHandler.ServeHTTP(w, r)
+		case DataHubServiceGetUnsummarizedArticlesCountProcedure:
+			dataHubServiceGetUnsummarizedArticlesCountHandler.ServeHTTP(w, r)
+		case DataHubServiceGetTodayUnreadArticlesCountProcedure:
+			dataHubServiceGetTodayUnreadArticlesCountHandler.ServeHTTP(w, r)
+		case DataHubServiceGetTrendStatsProcedure:
+			dataHubServiceGetTrendStatsHandler.ServeHTTP(w, r)
+		case DataHubServiceListUserFeedIDsProcedure:
+			dataHubServiceListUserFeedIDsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -3623,4 +4167,60 @@ func (UnimplementedDataHubServiceHandler) SearchTagsByPrefix(context.Context, *c
 
 func (UnimplementedDataHubServiceHandler) GetTagArticleCounts(context.Context, *connect.Request[v1.GetTagArticleCountsRequest]) (*connect.Response[v1.GetTagArticleCountsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetTagArticleCounts is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) CreateSummaryVersion(context.Context, *connect.Request[v1.CreateSummaryVersionRequest]) (*connect.Response[v1.CreateSummaryVersionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.CreateSummaryVersion is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) MarkSummaryVersionSuperseded(context.Context, *connect.Request[v1.MarkSummaryVersionSupersededRequest]) (*connect.Response[v1.MarkSummaryVersionSupersededResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.MarkSummaryVersionSuperseded is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetSummaryVersionByID(context.Context, *connect.Request[v1.GetSummaryVersionByIDRequest]) (*connect.Response[v1.GetSummaryVersionByIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetSummaryVersionByID is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetLatestSummaryVersion(context.Context, *connect.Request[v1.GetLatestSummaryVersionRequest]) (*connect.Response[v1.GetLatestSummaryVersionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetLatestSummaryVersion is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) CreateTagSetVersion(context.Context, *connect.Request[v1.CreateTagSetVersionRequest]) (*connect.Response[v1.CreateTagSetVersionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.CreateTagSetVersion is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) MarkTagSetVersionSuperseded(context.Context, *connect.Request[v1.MarkTagSetVersionSupersededRequest]) (*connect.Response[v1.MarkTagSetVersionSupersededResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.MarkTagSetVersionSuperseded is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetTagSetVersionByID(context.Context, *connect.Request[v1.GetTagSetVersionByIDRequest]) (*connect.Response[v1.GetTagSetVersionByIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetTagSetVersionByID is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetFeedAmount(context.Context, *connect.Request[v1.GetFeedAmountRequest]) (*connect.Response[v1.GetFeedAmountResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetFeedAmount is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetTotalArticlesCount(context.Context, *connect.Request[v1.GetTotalArticlesCountRequest]) (*connect.Response[v1.GetTotalArticlesCountResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetTotalArticlesCount is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetSummarizedArticlesCount(context.Context, *connect.Request[v1.GetSummarizedArticlesCountRequest]) (*connect.Response[v1.GetSummarizedArticlesCountResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetSummarizedArticlesCount is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetUnsummarizedArticlesCount(context.Context, *connect.Request[v1.GetUnsummarizedArticlesCountRequest]) (*connect.Response[v1.GetUnsummarizedArticlesCountResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetUnsummarizedArticlesCount is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetTodayUnreadArticlesCount(context.Context, *connect.Request[v1.GetTodayUnreadArticlesCountRequest]) (*connect.Response[v1.GetTodayUnreadArticlesCountResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetTodayUnreadArticlesCount is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetTrendStats(context.Context, *connect.Request[v1.GetTrendStatsRequest]) (*connect.Response[v1.GetTrendStatsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetTrendStats is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListUserFeedIDs(context.Context, *connect.Request[v1.ListUserFeedIDsRequest]) (*connect.Response[v1.ListUserFeedIDsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListUserFeedIDs is not implemented"))
 }

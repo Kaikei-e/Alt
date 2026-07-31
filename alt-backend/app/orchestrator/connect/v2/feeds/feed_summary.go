@@ -172,7 +172,7 @@ waitLoop:
 
 	// Save summary to database
 	if fullSummary != "" && resolvedArticleID != "" {
-		if err := h.deps.AltDBRepository.SaveArticleSummary(ctx, resolvedArticleID, userCtx.UserID.String(), resolvedTitle, fullSummary); err != nil {
+		if err := h.deps.ArticleStore.SaveArticleSummary(ctx, resolvedArticleID, userCtx.UserID.String(), resolvedTitle, fullSummary); err != nil {
 			h.logger.ErrorContext(ctx, "failed to save summary", "error", err, "article_id", resolvedArticleID)
 			// Don't return error, streaming was successful
 		} else {

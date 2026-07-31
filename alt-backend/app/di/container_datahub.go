@@ -8,7 +8,6 @@ import (
 	"alt/dataplane/gateway/datahub_capability_gateway"
 	"alt/dataplane/gateway/fetch_recent_articles_gateway"
 	"alt/dataplane/gateway/recap_articles_gateway"
-	"alt/dataplane/gateway/tag_set_version_gateway"
 	"alt/dataplane/port/datahub_capability_port"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/dataplane/usecase/outbox_usecase"
@@ -21,7 +20,6 @@ import (
 	"alt/shared/gateway/fetch_articles_by_tag_gateway"
 	"alt/shared/gateway/fetch_tag_cloud_gateway"
 	"alt/shared/gateway/internal_article_gateway"
-	"alt/shared/gateway/summary_version_gateway"
 	"alt/shared/port/event_publisher_port"
 	"alt/shared/usecase/create_summary_version_usecase"
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
@@ -111,6 +109,17 @@ type DataHubComponents struct {
 	// across several driver calls, and there is nothing like that here.
 	ReadStateGateway datahub_capability_port.ReadStatePort
 	TagReadGateway   datahub_capability_port.TagReadPort
+
+	// ADR-000954 Wave 3 batch 5 (catalog §2.K / §2.M).
+	//
+	// The version gateways are where this binary's reason for existing is most
+	// visible: MarkSuperseded holds a per-article pg_advisory_xact_lock across
+	// a read and an update, and an advisory xact lock cannot span a round trip.
+	// Neither gets a usecase — the caller still orders the DB write against the
+	// sovereign append, because talking to sovereign is its business (D4).
+	SummaryVersionCapabilityGateway datahub_capability_port.SummaryVersionPort
+	TagSetVersionCapabilityGateway  datahub_capability_port.TagSetVersionPort
+	StatsGateway                    datahub_capability_port.StatsPort
 }
 
 // NewDataHubComponents is cmd/datahub's composition root.
@@ -149,11 +158,19 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	internalArticleGw := internal_article_gateway.NewGateway(altDB)
 
 	// Versioned artifacts.
-	summaryVersionGw := summary_version_gateway.NewGateway(altDB)
+	//
+	// The same two gateways serve the DataHubService procedures and the
+	// in-process usecases behind SaveArticleSummary / UpsertArticleTags. One
+	// object per table, so a version written through the RPC and one written
+	// through the chained usecase take the identical path, advisory lock
+	// included — and the capability port names its methods after the artifact
+	// precisely so that summary_version_port and tag_set_version_port are
+	// satisfied by the same type, with no adapter in between.
+	summaryVersionGw := datahub_capability_gateway.NewSummaryVersionGateway(altDB)
+	tagSetVersionGw := datahub_capability_gateway.NewTagSetVersionGateway(altDB)
 	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(
 		summaryVersionGw, sovereignCli, summaryVersionGw,
 	)
-	tagSetVersionGw := tag_set_version_gateway.NewGateway(altDB)
 	createTagSetVersionUC := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(
 		tagSetVersionGw, sovereignCli, tagSetVersionGw,
 	)
@@ -222,6 +239,15 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		"procedures", 15,
 		"adr", "ADR-000954 Wave 3 batch 4")
 
+	// ADR-000954 Wave 3 batch 5 capabilities. Same reasoning to the end: after
+	// this batch alt-backend has no pool for summary_versions,
+	// tag_set_versions or any of the dashboard counts.
+	statsGw := datahub_capability_gateway.NewStatsGateway(altDB)
+	slog.Info("datahub.wave3_capabilities_enabled",
+		"groups", "summary_version,tag_set_version,stats",
+		"procedures", 14,
+		"adr", "ADR-000954 Wave 3 batch 5")
+
 	return &DataHubComponents{
 		Config:                      cfg,
 		AltDBRepository:             altDB,
@@ -253,5 +279,9 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 
 		ReadStateGateway: readStateGw,
 		TagReadGateway:   tagReadGw,
+
+		SummaryVersionCapabilityGateway: summaryVersionGw,
+		TagSetVersionCapabilityGateway:  tagSetVersionGw,
+		StatsGateway:                    statsGw,
 	}
 }

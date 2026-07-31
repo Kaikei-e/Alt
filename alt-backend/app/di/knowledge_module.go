@@ -1,7 +1,6 @@
 package di
 
 import (
-	"alt/dataplane/gateway/tag_set_version_gateway"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/orchestrator/driver/health_checker"
 	"alt/orchestrator/gateway/feature_flag_gateway"
@@ -34,7 +33,6 @@ import (
 	"alt/orchestrator/usecase/track_home_seen_usecase"
 	"alt/orchestrator/usecase/update_lens_usecase"
 	"alt/shared/driver/sovereign_client"
-	"alt/shared/gateway/summary_version_gateway"
 	"alt/shared/usecase/create_summary_version_usecase"
 	altotel "alt/utils/otel"
 	"log/slog"
@@ -84,7 +82,6 @@ type KnowledgeModule struct {
 }
 
 func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeModule {
-	altDB := infra.AltDBRepository
 	cfg := infra.Config
 
 	// Knowledge Sovereign: all knowledge data access via Connect-RPC
@@ -92,9 +89,16 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	sovereignEnabled := logSovereignWiringState("alt-backend", sovereignURL, cfg.AppEnv)
 	sovereignCli := sovereign_client.NewClient(sovereignURL, sovereignEnabled)
 
-	// Knowledge Home gateways
-	summaryVersionGw := summary_version_gateway.NewGateway(altDB)
-	tagSetVersionGw := tag_set_version_gateway.NewGateway(altDB)
+	// Knowledge Home gateways.
+	//
+	// The two versioned artifacts come from alt-data-hub since ADR-000954
+	// Wave 3 batch 5 (catalog §2.K). One gateway satisfies both sets of ports
+	// because they are the same three operations asked of two tables; what it
+	// deliberately does not carry is the knowledge event, which
+	// create_summary_version_usecase still appends through sovereignCli below.
+	// The order between "write the version" and "announce it" stays here, where
+	// a reader can see it (ADR-000954 D4).
+	versionGw := infra.VersionGateway
 	featureFlagGw := feature_flag_gateway.NewGateway(&cfg.KnowledgeHome)
 	// Catalog §2.N and §2.C W3-C8, served by alt-data-hub since ADR-000954
 	// Wave 3 batch 2.
@@ -123,8 +127,8 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
 	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
-	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(summaryVersionGw, sovereignCli, summaryVersionGw)
-	createTagSetVersionUC := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetVersionGw, sovereignCli, tagSetVersionGw)
+	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(versionGw, sovereignCli, versionGw)
+	createTagSetVersionUC := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(versionGw, sovereignCli, versionGw)
 	knowledgeBackfillUC := knowledge_backfill_usecase.NewUsecase(
 		sovereignCli,
 		sovereignCli,

@@ -117,8 +117,18 @@ func (g *Gateway) CreateArticle(ctx context.Context, params internal_article_por
 }
 
 // SaveArticleSummary implements SaveArticleSummaryPort.
-func (g *Gateway) SaveArticleSummary(ctx context.Context, articleID string, userID string, summary string, language string) error {
-	err := g.repo.SaveArticleSummary(ctx, articleID, userID, "", summary)
+//
+// The title now travels instead of being hard-coded empty here. It was empty
+// because the only caller — pre-processor — does not know it, and that is still
+// what pre-processor sends; what changed is that alt-backend's summarise paths
+// come through this procedure too since ADR-000954 Wave 3 batch 5, and they do
+// know it. An empty string still overwrites, which is correct: it is the
+// writer's honest answer, not a missing argument.
+//
+// Language stops here. article_summaries has no language column, so this is the
+// layer that knows the field has nowhere to go.
+func (g *Gateway) SaveArticleSummary(ctx context.Context, params internal_article_port.SaveArticleSummaryParams) error {
+	err := g.repo.SaveArticleSummary(ctx, params.ArticleID, params.UserID, params.ArticleTitle, params.Summary)
 	if err != nil {
 		return fmt.Errorf("SaveArticleSummary: %w", err)
 	}

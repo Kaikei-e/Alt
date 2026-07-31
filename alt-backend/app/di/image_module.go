@@ -43,7 +43,7 @@ func newImageModule(infra *InfraModule) *ImageModule {
 		// D4 moves.
 		imageProxyCacheGw := infra.ImageProxyCacheGateway
 		imageProxyProcessingGw := image_proxy_gateway.NewProcessingGateway()
-		imageProxyDynamicDomainGw := image_proxy_gateway.NewDynamicDomainGateway(infra.AltDBRepository)
+		imageProxyDynamicDomainGw := image_proxy_gateway.NewDynamicDomainGateway(infra.FeedLinkGateway)
 		imageProxyUsecaseInstance = image_proxy_usecase.NewImageProxyUsecase(
 			imageFetchGw,
 			imageProxyProcessingGw,

@@ -472,6 +472,70 @@
       }
     },
     {
+      "description": "a CreateSummaryVersion request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts summary version appends"
+        }
+      ],
+      "request": {
+        "body": {
+          "version": {
+            "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+            "generatedAt": "2026-07-31T09:00:00Z",
+            "model": "stream-summarize",
+            "summaryText": "a summary",
+            "summaryVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/CreateSummaryVersion"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a CreateTagSetVersion request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts tag set version appends"
+        }
+      ],
+      "request": {
+        "body": {
+          "version": {
+            "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+            "generatedAt": "2026-07-31T09:00:00Z",
+            "generator": "tag-generator",
+            "tagSetVersionId": "33333333-cccc-4ccc-8ccc-cccccccccccc",
+            "tagsJson": "W3sibmFtZSI6IkFJIn1d",
+            "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/CreateTagSetVersion"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a DeleteFeedLink request from alt-backend",
       "providerStates": [
         {
@@ -913,6 +977,43 @@
         "body": {},
         "headers": {
           "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetFeedAmount request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feeds"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetFeedAmount"
+      },
+      "response": {
+        "body": {
+          "count": 42
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
         },
         "status": 200
       }
@@ -1453,6 +1554,103 @@
       }
     },
     {
+      "description": "a GetLatestSummaryVersion request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a current summary version for the article"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetLatestSummaryVersion"
+      },
+      "response": {
+        "body": {
+          "version": {
+            "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+            "generatedAt": "2026-07-31T09:00:00Z",
+            "model": "stream-summarize",
+            "summaryText": "a summary",
+            "summaryVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.version": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.version.generatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.summaryText": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.summaryVersionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.version.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetRandomFeed request from alt-backend with nothing tagged",
       "providerStates": [
         {
@@ -1753,6 +1951,152 @@
       }
     },
     {
+      "description": "a GetSummarizedArticlesCount request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has summarized articles for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetSummarizedArticlesCount"
+      },
+      "response": {
+        "body": {
+          "count": 80
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetSummaryVersionByID request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a superseded summary version"
+        }
+      ],
+      "request": {
+        "body": {
+          "summaryVersionId": "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetSummaryVersionByID"
+      },
+      "response": {
+        "body": {
+          "version": {
+            "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+            "generatedAt": "2026-07-30T09:00:00Z",
+            "model": "pre-processor",
+            "summaryText": "the older summary",
+            "summaryVersionId": "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "supersededBy": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.version": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.version.generatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.summaryText": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.summaryVersionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.version.supersededBy": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.version.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetTagArticleCounts request from alt-backend",
       "providerStates": [
         {
@@ -1875,6 +2219,310 @@
               ]
             },
             "$.cooccurrences[*].tagNameB": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetTagSetVersionByID request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a tag set version"
+        }
+      ],
+      "request": {
+        "body": {
+          "tagSetVersionId": "33333333-cccc-4ccc-8ccc-cccccccccccc"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetTagSetVersionByID"
+      },
+      "response": {
+        "body": {
+          "version": {
+            "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+            "generatedAt": "2026-07-31T09:00:00Z",
+            "generator": "tag-generator",
+            "tagSetVersionId": "33333333-cccc-4ccc-8ccc-cccccccccccc",
+            "tagsJson": "W3sibmFtZSI6IkFJIn1d",
+            "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.version": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.version.generatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.generator": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.tagSetVersionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.version.tagsJson": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.version.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetTodayUnreadArticlesCount request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has unread feeds for the user since the bound"
+        }
+      ],
+      "request": {
+        "body": {
+          "since": "2026-07-31T00:00:00Z",
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetTodayUnreadArticlesCount"
+      },
+      "response": {
+        "body": {
+          "count": 7
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetTotalArticlesCount request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has articles for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetTotalArticlesCount"
+      },
+      "response": {
+        "body": {
+          "count": 120
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetTrendStats request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has trend data for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b",
+          "window": "TREND_WINDOW_7D"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetTrendStats"
+      },
+      "response": {
+        "body": {
+          "granularity": "TREND_GRANULARITY_DAILY",
+          "points": [
+            {
+              "articles": 12,
+              "bucket": "2026-07-30T00:00:00Z",
+              "feedActivity": 3,
+              "summarized": 9
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.granularity": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.points": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.points[*].articles": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.points[*].bucket": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.points[*].feedActivity": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.points[*].summarized": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetUnsummarizedArticlesCount request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has unsummarized articles for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetUnsummarizedArticlesCount"
+      },
+      "response": {
+        "body": {
+          "count": 40
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.count": {
               "combine": "AND",
               "matchers": [
                 {
@@ -2998,6 +3646,57 @@
       }
     },
     {
+      "description": "a ListUserFeedIDs request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has read state for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListUserFeedIDs"
+      },
+      "response": {
+        "body": {
+          "feedIds": [
+            "5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feedIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feedIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a LookupArticleURL request from alt-backend",
       "providerStates": [
         {
@@ -3167,6 +3866,228 @@
           }
         },
         "status": 404
+      }
+    },
+    {
+      "description": "a MarkSummaryVersionSuperseded request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has an earlier summary version for the article"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/MarkSummaryVersionSuperseded"
+      },
+      "response": {
+        "body": {
+          "previousVersion": {
+            "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+            "generatedAt": "2026-07-30T09:00:00Z",
+            "model": "pre-processor",
+            "summaryText": "the older summary",
+            "summaryVersionId": "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.previousVersion": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.previousVersion.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.previousVersion.generatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.previousVersion.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.previousVersion.summaryText": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.previousVersion.summaryVersionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.previousVersion.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a MarkSummaryVersionSuperseded request from alt-backend for a first summary",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no earlier summary version for the article"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "00000000-0000-4000-8000-000000000000",
+          "newVersionId": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/MarkSummaryVersionSuperseded"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a MarkTagSetVersionSuperseded request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has an earlier tag set version for the article"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+          "newVersionId": "33333333-cccc-4ccc-8ccc-cccccccccccc"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/MarkTagSetVersionSuperseded"
+      },
+      "response": {
+        "body": {
+          "previousVersion": {
+            "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+            "generatedAt": "2026-07-30T09:00:00Z",
+            "generator": "tag-generator",
+            "tagSetVersionId": "44444444-dddd-4ddd-8ddd-dddddddddddd",
+            "tagsJson": "W3sibmFtZSI6IkFJIn1d",
+            "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.previousVersion": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.previousVersion.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.previousVersion.generatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.previousVersion.generator": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.previousVersion.tagSetVersionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.previousVersion.tagsJson": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.previousVersion.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
       }
     },
     {
@@ -3374,6 +4295,49 @@
         "body": {},
         "headers": {
           "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a SaveArticleSummary request from alt-backend that owns its own versioning",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts article summary writes"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+          "articleTitle": "The article",
+          "summary": "a summary",
+          "summaryVersioning": "SUMMARY_VERSIONING_SKIP",
+          "userId": "9f8e7d6c-5b4a-4392-8281-706f5e4d3c2b"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/SaveArticleSummary"
+      },
+      "response": {
+        "body": {
+          "success": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
         },
         "status": 200
       }

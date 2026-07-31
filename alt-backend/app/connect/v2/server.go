@@ -80,7 +80,6 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		ArticleStore:             container.Infra.ArticleStoreGateway,
 		SummaryStore:             container.Infra.FeedGateway,
 		FeedTagStore:             container.Infra.TagGateway,
-		AltDBRepository:          container.AltDBRepository,
 		PreProcessorClient:       container.PreProcessorConnectClient,
 		CreateSummaryVersion:     container.CreateSummaryVersionUsecase,
 		ImageProxy:               container.ImageProxyUsecase,

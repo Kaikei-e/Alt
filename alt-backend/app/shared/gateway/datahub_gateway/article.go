@@ -95,6 +95,41 @@ func (g *ArticleStoreGateway) FetchArticlesByURLs(ctx context.Context, urls []st
 	return out, nil
 }
 
+// SaveArticleSummary upserts the article_summaries row (catalog §2.K seam,
+// wire capability W2-08).
+//
+// This is the last write alt-backend held against alt_db directly, and closing
+// it needed two things the procedure did not have. The title is one: the driver
+// took an article_title and this side has always passed a real one, while the
+// only existing caller — pre-processor — passes none, so a request without the
+// field would have blanked every title alt-backend had written.
+//
+// The versioning flag is the other, and it is the more interesting of the two.
+// The procedure appends a summary_versions row and a SummaryVersionCreated
+// event as part of the write. Both callers on this side already own their
+// versioning: the stream-summarise path appends its own version under its own
+// model, and the legacy summarise usecase deliberately appends none. Letting
+// the provider version these too would have given one summary two versions in
+// the first case and invented versions in the second — neither of which any
+// test on either side would have failed on, because the extra rows are only
+// visible in the Knowledge Home timeline. SUMMARY_VERSIONING_SKIP says so out
+// loud instead.
+func (g *ArticleStoreGateway) SaveArticleSummary(ctx context.Context, articleID, userID, articleTitle, summary string) error {
+	_, err := g.client.SaveArticleSummary(ctx, connect.NewRequest(&datahubv1.SaveArticleSummaryRequest{
+		ArticleId:    articleID,
+		UserId:       userID,
+		ArticleTitle: articleTitle,
+		Summary:      summary,
+		// Language is left unset. The column does not exist; the field is
+		// pre-processor's, and the driver has always ignored it.
+		SummaryVersioning: datahubv1.SummaryVersioning_SUMMARY_VERSIONING_SKIP,
+	}))
+	if err != nil {
+		return fmt.Errorf("save article summary %s: %w", articleID, err)
+	}
+	return nil
+}
+
 // FetchArticleByID returns the article, or (nil, nil) for an unknown id.
 func (g *ArticleStoreGateway) FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error) {
 	resp, err := g.client.GetArticleContentByID(ctx, connect.NewRequest(&datahubv1.GetArticleContentByIDRequest{

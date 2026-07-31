@@ -33,10 +33,15 @@ type InfraModule struct {
 	HTTPClient  *http.Client
 	MQHubClient *mqhub_connect.Client
 
-	// Shared drivers. AltDBRepository is still here: the feed tables, the tag
-	// reads and the read/subscription state are later ADR-000954 Wave 3
-	// batches, so cmd/backend keeps a database pool until they land. The
-	// article reads and writes moved in batch 2.
+	// Shared drivers. AltDBRepository is down to two consumers after
+	// ADR-000954 Wave 3 batch 5, both named in newArticleModule: the Tag Trail
+	// read, whose Wave 2 wire shape cannot express the paging this caller does,
+	// and the recall-rail article fallback, which has no procedure yet. Neither
+	// is a DI edit, which is why cmd/backend still opens a pool.
+	//
+	// cmd/harvester no longer does — see container_harvester.go. That makes it
+	// the first of the three binaries to reach Wave 3's exit condition, and the
+	// difference between the two is the size of what is left here.
 	AltDBRepository     *alt_db.AltDBRepository
 	SearchIndexerDriver search_indexer_port.SearchIndexerPort
 	RobotsTxtGateway    *robots_txt_gateway.RobotsTxtGateway
@@ -80,6 +85,18 @@ type InfraModule struct {
 	// sources for one story.
 	ReadStateGateway *datahub_gateway.ReadStateGateway
 	TagGateway       *datahub_gateway.TagGateway
+
+	// ADR-000954 Wave 3 batch 5 (capability catalog §2.K / §2.M): the
+	// versioned artifacts and the dashboard numbers — the last two groups
+	// cmd/backend read from its own pool.
+	//
+	// VersionGateway satisfies all seven version ports at once, summary and
+	// tag-set, because they are one question about two tables. StatsGateway is
+	// held by the thin port adapters in orchestrator/gateway rather than by a
+	// usecase, since every one of those ports declares a method called Execute
+	// and no single type can satisfy them all.
+	VersionGateway *datahub_gateway.VersionGateway
+	StatsGateway   *datahub_gateway.StatsGateway
 
 	Pool *pgxpool.Pool
 }
@@ -151,6 +168,9 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 
 		ReadStateGateway: datahub_gateway.NewReadStateGateway(dataHubClient),
 		TagGateway:       datahub_gateway.NewTagGateway(dataHubClient),
+
+		VersionGateway: datahub_gateway.NewVersionGateway(dataHubClient),
+		StatsGateway:   datahub_gateway.NewStatsGateway(dataHubClient),
 
 		Pool: pool,
 	}

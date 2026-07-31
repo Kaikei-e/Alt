@@ -6,13 +6,11 @@ import (
 	"alt/config"
 	"alt/di"
 	"alt/orchestrator/usecase/image_proxy_usecase"
-	"alt/shared/driver/alt_db"
 )
 
 func harvesterComponents(imageProxy *image_proxy_usecase.ImageProxyUsecase) *di.HarvesterComponents {
 	return &di.HarvesterComponents{
 		Config:            &config.Config{},
-		AltDBRepository:   alt_db.NewAltDBRepository(nil),
 		ImageProxyUsecase: imageProxy,
 	}
 }

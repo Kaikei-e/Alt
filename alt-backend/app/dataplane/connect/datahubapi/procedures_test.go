@@ -479,7 +479,12 @@ func TestSaveArticleSummary_Success(t *testing.T) {
 		WithPhase2Ports(nil, nil, mockSave, nil, nil, nil))
 
 	mockSave.EXPECT().
-		SaveArticleSummary(gomock.Any(), "article-1", "user-uuid-1", "This is a summary", "ja").
+		SaveArticleSummary(gomock.Any(), internal_article_port.SaveArticleSummaryParams{
+			ArticleID: "article-1",
+			UserID:    "user-uuid-1",
+			Summary:   "This is a summary",
+			Language:  "ja",
+		}).
 		Return(nil)
 
 	req := connect.NewRequest(&datahubv1.SaveArticleSummaryRequest{
@@ -495,6 +500,41 @@ func TestSaveArticleSummary_Success(t *testing.T) {
 	}
 	if !resp.Msg.Success {
 		t.Error("expected success to be true")
+	}
+}
+
+// TestSaveArticleSummary_ForwardsArticleTitle pins the field ADR-000954 Wave 3
+// batch 5 added so that alt-backend could stop writing article_summaries
+// directly.
+//
+// Without it, routing alt-backend's summarise paths through this procedure
+// would have written the empty title every existing caller sends, silently
+// blanking every title alt-backend had stored.
+func TestSaveArticleSummary_ForwardsArticleTitle(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockSave := mocks.NewMockSaveArticleSummaryPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+		WithPhase2Ports(nil, nil, mockSave, nil, nil, nil))
+
+	mockSave.EXPECT().
+		SaveArticleSummary(gomock.Any(), internal_article_port.SaveArticleSummaryParams{
+			ArticleID:    "article-1",
+			UserID:       "user-uuid-1",
+			ArticleTitle: "The article",
+			Summary:      "This is a summary",
+		}).
+		Return(nil)
+
+	req := connect.NewRequest(&datahubv1.SaveArticleSummaryRequest{
+		ArticleId:    "article-1",
+		UserId:       "user-uuid-1",
+		ArticleTitle: "The article",
+		Summary:      "This is a summary",
+	})
+
+	if _, err := h.SaveArticleSummary(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

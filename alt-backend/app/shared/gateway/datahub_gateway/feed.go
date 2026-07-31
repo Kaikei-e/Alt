@@ -243,6 +243,23 @@ func (g *FeedGateway) FetchArticleSummaryByArticleID(ctx context.Context, articl
 	return feedSummaryFromProto(resp.Msg.GetSummary()), nil
 }
 
+// GetFeedIDByURL resolves a feed's id from its website URL (wire capability
+// W2-10).
+//
+// The error travels unwrapped so that the caller's normalization retry can read
+// the Connect code off it. That retry — try the literal URL, then its canonical
+// form — is the one thing this lookup's caller does that the provider does not,
+// and it depends on telling NotFound from a fault.
+func (g *FeedGateway) GetFeedIDByURL(ctx context.Context, feedURL string) (string, error) {
+	resp, err := g.client.GetFeedID(ctx, connect.NewRequest(&datahubv1.GetFeedIDRequest{
+		FeedUrl: feedURL,
+	}))
+	if err != nil {
+		return "", err
+	}
+	return resp.Msg.GetFeedId(), nil
+}
+
 // SearchFeedsByTitle re-derives the domain.FeedItem shape its caller expects.
 //
 // pub_date is already the driver's resolved value — it substitutes created_at

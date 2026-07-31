@@ -323,3 +323,94 @@ type TagReadPort interface {
 	// caller owns.
 	ArticleCounts(ctx context.Context, userID uuid.UUID, since time.Time) ([]domain.TagArticleCount, error)
 }
+
+// SummaryVersionPort is the append-only summary artifact store
+// (catalog §2.K W3-K1 … K4).
+//
+// There is no Update and no Delete, here or on the wire, and that is the
+// interface saying what the table is: a summary is never rewritten, it is
+// superseded by a newer one and stays readable so a reprojection can still
+// resolve the event that named it.
+//
+// The method names are the artifact's rather than the group's — Create would
+// have read better here and would have cost more elsewhere. summary_version_port
+// (the caller's port, and the one the chained SaveArticleSummary usecase still
+// depends on inside this process) declares exactly these four names, so one
+// gateway satisfies both and there is no adapter whose only job is to rename a
+// call.
+type SummaryVersionPort interface {
+	// CreateSummaryVersion appends one version. The id is the caller's, so
+	// there is nothing to return.
+	CreateSummaryVersion(ctx context.Context, sv domain.SummaryVersion) error
+	// MarkSummaryVersionSuperseded points every current version of the article
+	// at newVersionID and returns the one that was current before, or nil when
+	// this is the article's first.
+	//
+	// One method, not a Get followed by an Update, because the pair runs
+	// under a per-article pg_advisory_xact_lock and an advisory *xact* lock is
+	// released at commit. An interface that exposed the two halves would let a
+	// caller take them in separate transactions, which is the interleaving the
+	// lock exists to prevent: two concurrent supersedes for one article each
+	// mark the other, and the article ends up with no current version at all.
+	// Row-level locking does not help — each call's WHERE excludes only its
+	// own new id, so the two UPDATEs never touch the same row.
+	MarkSummaryVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.SummaryVersion, error)
+	// GetSummaryVersionByID is the reproject-safe read: the version an old
+	// event named, not whichever is current now.
+	GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error)
+	// GetLatestSummaryVersion is the current version — the one nothing has
+	// superseded.
+	GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error)
+}
+
+// TagSetVersionPort is the same shape for tag sets (catalog §2.K W3-K5 … K7),
+// including the advisory lock on MarkSuperseded and the reason for it.
+type TagSetVersionPort interface {
+	CreateTagSetVersion(ctx context.Context, tsv domain.TagSetVersion) error
+	MarkTagSetVersionSuperseded(ctx context.Context, articleID, newVersionID uuid.UUID) (*domain.TagSetVersion, error)
+	GetTagSetVersionByID(ctx context.Context, tagSetVersionID uuid.UUID) (domain.TagSetVersion, error)
+}
+
+// TrendPoint is one time bucket of the dashboard chart.
+//
+// Declared here rather than borrowed from orchestrator/port/trend_stats_port,
+// which is the caller's port and now lives in another process. The two are
+// field-for-field identical today; keeping them separate is what stops the
+// data plane's contract from being defined by whoever renders the chart.
+type TrendPoint struct {
+	Timestamp    time.Time
+	Articles     int
+	Summarized   int
+	FeedActivity int
+}
+
+// TrendSeries is one window of the dashboard chart as the provider computed it.
+type TrendSeries struct {
+	Points []TrendPoint
+	// "hourly" or "daily". Reported rather than requested: which unit a window
+	// groups by is a property of the query.
+	Granularity string
+}
+
+// StatsPort is the dashboard's counts and series (catalog §2.M).
+//
+// userID is an argument on every method but FeedAmount, and FeedAmount has none
+// because it counts the whole deployment. The in-process drivers read the user
+// from the request context; that could not survive the move, because the
+// context alt-data-hub has describes a peer certificate naming alt-backend.
+type StatsPort interface {
+	// FeedAmount counts every feed row. The one unscoped read here.
+	FeedAmount(ctx context.Context) (int, error)
+	TotalArticles(ctx context.Context, userID uuid.UUID) (int, error)
+	SummarizedArticles(ctx context.Context, userID uuid.UUID) (int, error)
+	// UnsummarizedArticles is its own query rather than a subtraction: a
+	// summary can outlive the article it describes.
+	UnsummarizedArticles(ctx context.Context, userID uuid.UUID) (int, error)
+	// TodayUnread counts feeds newer than `since` the user has not read.
+	// `since` is the caller's, because "today" needs the reader's timezone.
+	TodayUnread(ctx context.Context, userID uuid.UUID, since time.Time) (int, error)
+	// TrendStats rejects a window outside the closed set the query plans for.
+	TrendStats(ctx context.Context, userID uuid.UUID, window string) (*TrendSeries, error)
+	// UserFeedIDs returns the feeds the user has read state against.
+	UserFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+}

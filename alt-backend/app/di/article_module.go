@@ -24,7 +24,6 @@ import (
 	"alt/orchestrator/usecase/search_article_usecase"
 	"alt/orchestrator/usecase/stream_article_tags_usecase"
 	"alt/orchestrator/usecase/summarize_article_usecase"
-	"alt/shared/driver/alt_db"
 	"alt/shared/gateway/datahub_gateway"
 	"alt/shared/gateway/fetch_articles_by_tag_gateway"
 	"alt/shared/gateway/internal_article_gateway"
@@ -63,6 +62,19 @@ type ArticleModule struct {
 }
 
 func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integration_port.RagIntegrationPort) *ArticleModule {
+	// Two direct alt_db uses are left in this module, both listed for the
+	// batch 6 finale (ADR-000954 Wave 3):
+	//
+	//   - fetch_articles_by_tag_gateway (catalog W2-23). The procedure exists,
+	//     but its wire shape is the Wave 2 one — tag *name* only, no cursor,
+	//     and a four-field item — while this caller pages by tag id and reads
+	//     domain.TagTrailArticle. Routing it through the existing message would
+	//     silently drop the Tag Trail's paging, so it needs a capability of its
+	//     own rather than a DI edit.
+	//   - internal_article_gateway, held here only for RecallRailUsecase's
+	//     GetArticleTitleAndLink. That read — title, url and published_at by
+	//     article id — has no procedure yet; the nearest, GetArticleContentByID,
+	//     carries no published_at.
 	altDB := infra.AltDBRepository
 
 	// Fetch article gateway / usecase
@@ -120,7 +132,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	fetchArticleTagsUC := fetch_article_tags_usecase.NewFetchArticleTagsUsecase(fetchArticleTagsGw)
 
 	// Article summary
-	articleSummaryGw := article_summary_gateway.NewGateway(altDB)
+	articleSummaryGw := article_summary_gateway.NewGateway(infra.FeedGateway)
 	fetchArticleSummaryUC := fetch_article_summary_usecase.NewFetchArticleSummaryUsecase(articleSummaryGw)
 
 	// Latest article (FetchRandomFeed)
@@ -149,14 +161,13 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	preprocessorClient := preprocessor_client.NewClient(infra.Config.PreProcessor.URL)
 	preprocessorSummarizeGw := preprocessor_summarize_gateway.NewGateway(preprocessorClient)
 	//
-	// Three sources, and the seam narrows by one with each batch: the article
-	// read and write from batch 2 (catalog §2.B / §2.C), the article-summary
-	// read from batch 3 (catalog §2.H W3-H8), and the summary write still
-	// direct — article_summaries is a later batch.
+	// One source since ADR-000954 Wave 3 batch 5. The article read and write
+	// arrived in batch 2 (catalog §2.B / §2.C), the article-summary read in
+	// batch 3 (§2.H W3-H8), and the summary *write* — the last direct alt_db
+	// call alt-backend held — in batch 5.
 	summarizeRepo := summarize_article_repository{
 		ArticleStoreGateway: infra.ArticleStoreGateway,
 		FeedGateway:         infra.FeedGateway,
-		AltDBRepository:     altDB,
 	}
 	summarizeArticleUC := summarize_article_usecase.NewUsecase(summarizeRepo, preprocessorSummarizeGw, fetchArticleGw)
 	fetchArticleSummariesUC := fetch_article_summaries_usecase.NewUsecase(summarizeRepo, batchFetcher, summarizeArticleUC)
@@ -190,22 +201,19 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 // out of two alt-data-hub gateways.
 //
 // The article read and write are catalog §2.B / §2.C (batch 2); the
-// article-summary read is §2.H W3-H8 (batch 3). Embedding both is what lets
-// the usecases keep the interfaces they declared: Go promotes each method from
-// whichever embedded type has it, and the two sets are disjoint.
+// article-summary read is §2.H W3-H8 (batch 3); the summary write is the seam
+// batch 5 closed. Embedding both gateways is what lets the usecases keep the
+// interfaces they declared: Go promotes each method from whichever embedded
+// type has it, and the two sets are disjoint.
 //
-// One direct driver call is left: SaveArticleSummary writes article_summaries,
-// which has not moved. The summary *read* did move in batch 3, so the two now
-// come from different places — and the read resolves to the gateway rather
-// than the driver because Go promotes the shallower method, FeedGateway's at
-// depth one against AltDBRepository's at depth two through FeedRepository.
-// That is load-bearing enough to say out loud: reordering these fields does
-// not change it, but flattening the driver embed would.
-//
-// This is a seam, not a destination. When article_summaries moves, the driver
-// field goes and this type keeps only its two gateways.
+// The *alt_db.AltDBRepository that used to sit here as a third embed is gone,
+// and with it the one thing that made this type fragile. While it was present,
+// the summary read resolved to FeedGateway rather than to the driver only
+// because Go promotes the shallower method — depth one against depth two
+// through FeedRepository — so flattening the embed would silently have sent
+// that read back to the database. There is now no second candidate for any
+// method here.
 type summarize_article_repository struct {
 	*datahub_gateway.ArticleStoreGateway
 	*datahub_gateway.FeedGateway
-	*alt_db.AltDBRepository
 }

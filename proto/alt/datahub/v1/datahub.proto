@@ -172,11 +172,42 @@ message CreateArticleResponse {
   string article_id = 1;
 }
 
+// SummaryVersioning says whether SaveArticleSummary should also append a
+// summary_versions row and its SummaryVersionCreated knowledge event.
+//
+// The procedure has always done both, and whether that is right depends on who
+// is calling: pre-processor writes a summary and wants it versioned in the same
+// breath, while alt-backend's stream-summarise path appends its own version
+// (attributed to its own model) and would otherwise get two versions for one
+// summary. Making that a field is how the difference stops being a property of
+// which code path happened to reach the table.
+enum SummaryVersioning {
+  // Append one. The zero value, because it is what every caller predating this
+  // field already gets — changing the meaning of an unset field is how a
+  // silent regression happens.
+  SUMMARY_VERSIONING_UNSPECIFIED = 0;
+  // Write the article_summaries row and nothing else. For callers that append
+  // their own version through CreateSummaryVersion, or that deliberately do
+  // not version this write at all.
+  SUMMARY_VERSIONING_SKIP = 1;
+}
+
 message SaveArticleSummaryRequest {
   string article_id = 1;
   string summary = 2;
   string language = 3;
   string user_id = 4;
+  // The article's title as the writer knew it, copied into the
+  // article_summaries row.
+  //
+  // Added by ADR-000954 Wave 3 batch 5 to close the last direct alt_db write
+  // alt-backend held: its summarise paths passed a real title to the driver,
+  // and routing them through this procedure without the field would have
+  // overwritten every title with the empty string the existing callers send.
+  // Empty is therefore a valid value and means what it has always meant here —
+  // pre-processor does not know the title and sends none.
+  string article_title = 5;
+  SummaryVersioning summary_versioning = 6;
 }
 
 message SaveArticleSummaryResponse {
@@ -1708,6 +1739,216 @@ message GetTagArticleCountsResponse {
 }
 
 // =============================================================================
+// Versioned artifacts (capability catalog §2.K)
+// =============================================================================
+
+// SummaryVersion is one immutable row of summary_versions.
+//
+// The table is append-only: a re-summarised article gets a new row and the old
+// one is marked superseded, never rewritten (docs/wiki/architecture/
+// immutable-data-model.md). Every field here therefore describes a fact as of
+// generated_at, and a consumer that reads one back by id gets what was true
+// then rather than what is true now — which is what makes reprojection
+// deterministic.
+//
+// article_title is deliberately absent. domain.SummaryVersion carries one, but
+// it is transport for the SummaryVersionCreated event payload and is not a
+// column; putting it in this message would invite a provider to persist it and
+// a consumer to read it back.
+message SummaryVersion {
+  string summary_version_id = 1;
+  string article_id = 2;
+  string user_id = 3;
+  google.protobuf.Timestamp generated_at = 4;
+  string model = 5;
+  string prompt_version = 6;
+  string input_hash = 7;
+  // Absent when the generator produced no score. Absent and 0.0 are different
+  // answers — 0.0 is a graded summary that scored nothing — so this is
+  // optional rather than defaulted.
+  optional double quality_score = 8;
+  string summary_text = 9;
+  // Set once, by MarkSummaryVersionSuperseded. Absent means this is the
+  // current version.
+  optional string superseded_by = 10;
+}
+
+message CreateSummaryVersionRequest {
+  SummaryVersion version = 1;
+}
+
+message CreateSummaryVersionResponse {}
+
+message MarkSummaryVersionSupersededRequest {
+  string article_id = 1;
+  string new_version_id = 2;
+}
+
+message MarkSummaryVersionSupersededResponse {
+  // The version that was current before this call, or absent when the new
+  // version is the article's first. The caller emits SummarySuperseded only
+  // when it is present, so "no previous version" must not arrive as a zero
+  // message.
+  optional SummaryVersion previous_version = 1;
+}
+
+message GetSummaryVersionByIDRequest {
+  string summary_version_id = 1;
+}
+
+message GetSummaryVersionByIDResponse {
+  SummaryVersion version = 1;
+}
+
+message GetLatestSummaryVersionRequest {
+  string article_id = 1;
+}
+
+message GetLatestSummaryVersionResponse {
+  SummaryVersion version = 1;
+}
+
+// TagSetVersion is one immutable row of tag_set_versions — the same
+// append-only shape as SummaryVersion, for the tag set an article carried at a
+// moment in time.
+message TagSetVersion {
+  string tag_set_version_id = 1;
+  string article_id = 2;
+  string user_id = 3;
+  google.protobuf.Timestamp generated_at = 4;
+  string generator = 5;
+  string input_hash = 6;
+  // The tag set as the generator emitted it, verbatim. bytes rather than a
+  // repeated message: the column is jsonb written by whoever generated it, and
+  // re-encoding it through a schema here would make a reprojection return
+  // something the generator did not produce.
+  bytes tags_json = 7;
+  optional string superseded_by = 8;
+}
+
+message CreateTagSetVersionRequest {
+  TagSetVersion version = 1;
+}
+
+message CreateTagSetVersionResponse {}
+
+message MarkTagSetVersionSupersededRequest {
+  string article_id = 1;
+  string new_version_id = 2;
+}
+
+message MarkTagSetVersionSupersededResponse {
+  optional TagSetVersion previous_version = 1;
+}
+
+message GetTagSetVersionByIDRequest {
+  string tag_set_version_id = 1;
+}
+
+message GetTagSetVersionByIDResponse {
+  TagSetVersion version = 1;
+}
+
+// =============================================================================
+// Statistics / dashboard (capability catalog §2.M)
+// =============================================================================
+
+message GetFeedAmountRequest {}
+
+message GetFeedAmountResponse {
+  int32 count = 1;
+}
+
+message GetTotalArticlesCountRequest {
+  string user_id = 1;
+}
+
+message GetTotalArticlesCountResponse {
+  int32 count = 1;
+}
+
+message GetSummarizedArticlesCountRequest {
+  string user_id = 1;
+}
+
+message GetSummarizedArticlesCountResponse {
+  int32 count = 1;
+}
+
+message GetUnsummarizedArticlesCountRequest {
+  string user_id = 1;
+}
+
+message GetUnsummarizedArticlesCountResponse {
+  int32 count = 1;
+}
+
+message GetTodayUnreadArticlesCountRequest {
+  string user_id = 1;
+  // Lower bound on feeds.created_at. Required — see the RPC comment.
+  google.protobuf.Timestamp since = 2;
+}
+
+message GetTodayUnreadArticlesCountResponse {
+  int32 count = 1;
+}
+
+// TrendWindow is the set of windows this database will bucket for.
+//
+// An enum rather than a string because the window is not free text: it selects
+// both a lower bound and the date_trunc unit the query groups by, and those
+// two travel together inside the provider. A string field would let a caller
+// send "90d" and get a runtime error describing a value the contract had
+// implied was acceptable.
+enum TrendWindow {
+  TREND_WINDOW_UNSPECIFIED = 0;
+  TREND_WINDOW_4H = 1;
+  TREND_WINDOW_24H = 2;
+  TREND_WINDOW_3D = 3;
+  TREND_WINDOW_7D = 4;
+}
+
+// TrendGranularity is the bucket size the provider chose for a window.
+//
+// Reported rather than requested: which unit a window groups by is a property
+// of the query, and letting a caller ask for hourly buckets over 7 days would
+// be asking for a different and far more expensive question.
+enum TrendGranularity {
+  TREND_GRANULARITY_UNSPECIFIED = 0;
+  TREND_GRANULARITY_HOURLY = 1;
+  TREND_GRANULARITY_DAILY = 2;
+}
+
+// TrendDataPoint is one time bucket of the dashboard chart.
+message TrendDataPoint {
+  google.protobuf.Timestamp bucket = 1;
+  int32 articles = 2;
+  int32 summarized = 3;
+  int32 feed_activity = 4;
+}
+
+message GetTrendStatsRequest {
+  string user_id = 1;
+  TrendWindow window = 2;
+}
+
+message GetTrendStatsResponse {
+  // Ascending by bucket, and sparse: a bucket in which nothing happened is
+  // absent rather than present with zeros, which is what the query's FULL
+  // OUTER JOIN produces.
+  repeated TrendDataPoint points = 1;
+  TrendGranularity granularity = 2;
+}
+
+message ListUserFeedIDsRequest {
+  string user_id = 1;
+}
+
+message ListUserFeedIDsResponse {
+  repeated string feed_ids = 1;
+}
+
+// =============================================================================
 // DataHubService — every capability backed by alt_db
 // =============================================================================
 
@@ -1794,6 +2035,32 @@ service DataHubService {
 
   // DeleteArticleSummary deletes an article summary by article ID.
   // Origin: services.backend.v1.BackendInternalService/DeleteArticleSummary
+  //
+  // KNOWN CONFLICT with the append-first invariant (capability catalog §4-6).
+  // Recorded here rather than resolved, because resolving it is a behaviour
+  // change and this batch made none.
+  //
+  // This is a physical DELETE, and it is the only destructive write on the
+  // summary domain that this service offers. The versioned half —
+  // CreateSummaryVersion / MarkSummaryVersionSuperseded, added by Wave 3
+  // batch 5 — never overwrites and never removes: a bad summary is superseded
+  // and the old row stays readable so a reprojection can still resolve it. Two
+  // models for one concept now sit side by side in this contract:
+  // article_summaries is destructively mutable, summary_versions is
+  // append-only.
+  //
+  // The consequence is concrete, not stylistic. When the quality checker
+  // deletes a summary here, summary_versions still holds every version of it,
+  // so the two stores disagree about whether that article was ever
+  // summarised — and which one is right depends on which question is asked.
+  // A data plane whose job is to hold the append-first line should not also
+  // be the thing that breaks it.
+  //
+  // The resolution on the table (catalog §4-6) is to treat article_summaries
+  // as a disposable projection of summary_versions and retire this procedure,
+  // which would make the delete a supersede. That belongs to whoever owns
+  // article_summaries next; until then, this comment is the record that the
+  // contradiction is known rather than overlooked.
   rpc DeleteArticleSummary(DeleteArticleSummaryRequest) returns (DeleteArticleSummaryResponse);
 
   // CheckArticleSummaryExists checks if an article summary exists.
@@ -2257,4 +2524,107 @@ service DataHubService {
   // arithmetic has no SQL in it — moving it here would put a product decision
   // in the data plane, where changing it means redeploying the database owner.
   rpc GetTagArticleCounts(GetTagArticleCountsRequest) returns (GetTagArticleCountsResponse);
+
+  // ── Versioned artifacts (catalog §2.K) ──
+
+  // CreateSummaryVersion appends one row to summary_versions.
+  //
+  // Append-only, so there is no update procedure beside it and no way to ask
+  // for one: a re-summarised article gets a new version and the old one is
+  // marked superseded by the procedure below. The SummaryVersionCreated event
+  // that accompanies this write is *not* emitted here — appending to
+  // knowledge-sovereign is a call to another service, and ADR-000954 D4 keeps
+  // those with the caller. The caller therefore orders the two.
+  rpc CreateSummaryVersion(CreateSummaryVersionRequest) returns (CreateSummaryVersionResponse);
+
+  // MarkSummaryVersionSuperseded points every current version of an article at
+  // the new one and returns the version that was current before.
+  //
+  // The whole procedure is one transaction and it opens with
+  // `SELECT pg_advisory_xact_lock(hashtext(article_id))`. That lock is the
+  // capability: without it two summaries generated back-to-back for the same
+  // article can run this concurrently and each mark the *other* superseded,
+  // leaving the article with no current version at all. Row-level UPDATE
+  // locking does not prevent it, because each call's WHERE clause excludes
+  // only its own new id — the two candidate row sets are disjoint, so the two
+  // UPDATEs never contend for a row and Postgres serialises nothing. Keying
+  // the advisory lock on article_id rather than on the (changing) set of
+  // non-superseded rows is what makes the second call wait for the first to
+  // commit before it can even read `previous_version`.
+  //
+  // This is the reason the capability is one RPC rather than the SELECT and
+  // the UPDATE the port used to expose: an advisory *xact* lock is released at
+  // commit, so splitting the pair across a round trip would release the lock
+  // between them and reintroduce exactly the interleaving it exists to stop
+  // (ADR-000954 D3, catalog §2.K).
+  rpc MarkSummaryVersionSuperseded(MarkSummaryVersionSupersededRequest) returns (MarkSummaryVersionSupersededResponse);
+
+  // GetSummaryVersionByID reads one version by its own id.
+  //
+  // Reproject-safe: replaying a SummaryVersionCreated event from a year ago
+  // must resolve to the summary that event was about, not to whatever is
+  // current. That is why it exists separately from GetLatestSummaryVersion —
+  // the two answer different questions and a projector must never ask the
+  // second one.
+  rpc GetSummaryVersionByID(GetSummaryVersionByIDRequest) returns (GetSummaryVersionByIDResponse);
+
+  // GetLatestSummaryVersion reads the article's current version — the one no
+  // other version has superseded. NotFound when the article has never been
+  // summarised.
+  rpc GetLatestSummaryVersion(GetLatestSummaryVersionRequest) returns (GetLatestSummaryVersionResponse);
+
+  // CreateTagSetVersion appends one row to tag_set_versions. Append-only, for
+  // the same reason CreateSummaryVersion is.
+  rpc CreateTagSetVersion(CreateTagSetVersionRequest) returns (CreateTagSetVersionResponse);
+
+  // MarkTagSetVersionSuperseded is the tag-set twin of
+  // MarkSummaryVersionSuperseded, including the per-article
+  // pg_advisory_xact_lock and the reason for it. See that procedure's comment;
+  // the failure it prevents is the same one, and tag sets are regenerated more
+  // often than summaries are.
+  rpc MarkTagSetVersionSuperseded(MarkTagSetVersionSupersededRequest) returns (MarkTagSetVersionSupersededResponse);
+
+  // GetTagSetVersionByID reads one tag set version by its own id.
+  // Reproject-safe, like GetSummaryVersionByID.
+  rpc GetTagSetVersionByID(GetTagSetVersionByIDRequest) returns (GetTagSetVersionByIDResponse);
+
+  // ── Statistics / dashboard (catalog §2.M) ──
+
+  // GetFeedAmount counts every feed row. The only unscoped count in this
+  // group: it is the deployment's size, not a user's.
+  rpc GetFeedAmount(GetFeedAmountRequest) returns (GetFeedAmountResponse);
+
+  // GetTotalArticlesCount counts one user's live articles.
+  //
+  // user_id is a field on this and the three counts below it, where the
+  // in-process versions read it from the request context. That is not a
+  // translation detail: the provider serves these over mutual TLS, where the
+  // peer certificate names alt-backend, so a context-scoped user would resolve
+  // to the service account and every dashboard would show the same numbers.
+  rpc GetTotalArticlesCount(GetTotalArticlesCountRequest) returns (GetTotalArticlesCountResponse);
+
+  // GetSummarizedArticlesCount counts one user's article_summaries rows.
+  rpc GetSummarizedArticlesCount(GetSummarizedArticlesCountRequest) returns (GetSummarizedArticlesCountResponse);
+
+  // GetUnsummarizedArticlesCount counts one user's live articles with no
+  // summary. Not the difference of the two counts above — a summary can
+  // outlive its article — so it is its own query and its own procedure.
+  rpc GetUnsummarizedArticlesCount(GetUnsummarizedArticlesCountRequest) returns (GetUnsummarizedArticlesCountResponse);
+
+  // GetTodayUnreadArticlesCount counts feeds created since `since` that the
+  // user has not marked read.
+  //
+  // `since` is required and carries no default. "Today" is a wall-clock
+  // question and therefore the caller's: the provider does not know the
+  // reader's timezone, and defaulting to a server-side midnight would answer a
+  // different question convincingly.
+  rpc GetTodayUnreadArticlesCount(GetTodayUnreadArticlesCountRequest) returns (GetTodayUnreadArticlesCountResponse);
+
+  // GetTrendStats returns the admin dashboard's article/summary/feed series
+  // for one user over one window.
+  rpc GetTrendStats(GetTrendStatsRequest) returns (GetTrendStatsResponse);
+
+  // ListUserFeedIDs returns the feeds a user has read state against — the
+  // Morning Letter's candidate set.
+  rpc ListUserFeedIDs(ListUserFeedIDsRequest) returns (ListUserFeedIDsResponse);
 }
