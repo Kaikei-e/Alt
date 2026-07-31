@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -693,4 +695,151 @@ func createTestToken(t *testing.T, secret []byte) string {
 	signedToken, err := token.SignedString(secret)
 	require.NoError(t, err)
 	return signedToken
+}
+
+// TestBFFHandler_CircuitBreaker_HalfOpenTrialServedFromCacheDoesNotWedge drives
+// the exact wedge sequence: alt-backend blips, the unread-projection breaker
+// trips, OpenTimeout elapses, and the request that takes the single half-open
+// trial permit is answered from a still-warm cache entry — it never reaches
+// the backend and so records neither success nor failure. The permit must be
+// handed back; otherwise every later unread-projection request is rejected
+// with 503 forever, long after alt-backend recovered.
+func TestBFFHandler_CircuitBreaker_HalfOpenTrialServedFromCacheDoesNotWedge(t *testing.T) {
+	var backendFails atomic.Bool
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if backendFails.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"count":1}`))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCache:          true,
+		EnableCircuitBreaker: true,
+		CacheMaxSize:         100,
+		CBFailureThreshold:   3,
+		CBSuccessThreshold:   1,
+		CBOpenTimeout:        50 * time.Millisecond,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	// Two distinct request bodies so they land on distinct cache keys: one is
+	// warmed while the backend is healthy, the other always misses the cache
+	// and therefore always needs the backend.
+	warmBody := []byte(`{"warm":true}`)
+	coldBody := []byte(`{"cold":true}`)
+	do := func(body []byte) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetUnreadCount", bytes.NewReader(body))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Warm the 15s-TTL GetUnreadCount cache entry
+	require.Equal(t, http.StatusOK, do(warmBody).Code)
+
+	// alt-backend blips: consecutive failures trip the projection breaker
+	backendFails.Store(true)
+	for i := 0; i < 3; i++ {
+		do(coldBody)
+	}
+	require.Equal(t, resilience.StateOpen, handler.projectionCB.State())
+
+	// OpenTimeout elapses; this request takes the single trial permit but is
+	// answered from cache without ever touching the backend
+	time.Sleep(60 * time.Millisecond)
+	trial := do(warmBody)
+	require.Equal(t, http.StatusOK, trial.Code)
+	require.Equal(t, "HIT", trial.Header().Get("X-Cache"))
+
+	// alt-backend recovers seconds later; the next real read must reach it
+	backendFails.Store(false)
+	rec := do(coldBody)
+
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"a half-open trial answered from cache must not wedge the projection breaker shut")
+	assert.Equal(t, resilience.StateClosed, handler.projectionCB.State())
+}
+
+// TestBFFHandler_CircuitBreaker_HalfOpenParallelRequestsReleasePermits runs the
+// wedge shape under parallel load: while the projection breaker is half-open,
+// concurrent unread-projection requests race between cache hits (which record
+// no outcome) and real backend calls (which do). However each request exits,
+// its trial permit must come back, so the class keeps admitting requests
+// instead of wedging. Exercised under -race for the permit accounting.
+func TestBFFHandler_CircuitBreaker_HalfOpenParallelRequestsReleasePermits(t *testing.T) {
+	var backendFails atomic.Bool
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if backendFails.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"count":1}`))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCache:          true,
+		EnableCircuitBreaker: true,
+		CacheMaxSize:         100,
+		CBFailureThreshold:   3,
+		// High enough that the storm never closes the circuit, so every request
+		// keeps contending for the half-open trial slot.
+		CBSuccessThreshold: 1_000_000,
+		CBOpenTimeout:      300 * time.Millisecond,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	warmBody := []byte(`{"warm":true}`)
+	coldBody := []byte(`{"cold":true}`)
+	do := func(body []byte) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetUnreadCount", bytes.NewReader(body))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Warm the cache, then trip the projection breaker
+	require.Equal(t, http.StatusOK, do(warmBody).Code)
+	backendFails.Store(true)
+	for i := 0; i < 3; i++ {
+		do(coldBody)
+	}
+	require.Equal(t, resilience.StateOpen, handler.projectionCB.State())
+
+	// OpenTimeout elapses and alt-backend recovers
+	time.Sleep(320 * time.Millisecond)
+	backendFails.Store(false)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 24; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if i%2 == 0 {
+				do(warmBody) // cache hit: records no outcome
+				return
+			}
+			do(coldBody) // reaches the backend: records an outcome
+		}(i)
+	}
+	wg.Wait()
+
+	rec := do(coldBody)
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"parallel half-open requests must all hand their trial permit back")
+	assert.Equal(t, 0, handler.projectionCB.Stats().HalfOpenInFlight,
+		"no trial permit may be stranded after the storm")
 }

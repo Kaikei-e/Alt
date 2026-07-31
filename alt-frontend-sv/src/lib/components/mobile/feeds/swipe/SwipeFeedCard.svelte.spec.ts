@@ -351,14 +351,14 @@ describe("SwipeFeedCard", () => {
 
 		it("retries content fetch when error button is clicked", async () => {
 			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
-			vi.mocked(getFeedContentOnTheFlyClient)
-				.mockRejectedValueOnce(new Error("Server error"))
-				.mockResolvedValueOnce({
-					content: "<p>Loaded content</p>",
-					article_id: "art-1",
-					og_image_url: "",
-					og_image_proxy_url: "",
-				});
+			// Persistent reject/resolve rather than a queue of `Once` mocks: the
+			// component also fires a background fetch from onMount, so the click
+			// is not the first call and a queue is consumed in an order this test
+			// does not control. Swapping the behaviour once the error state is on
+			// screen makes the test independent of that ordering.
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				new Error("Server error"),
+			);
 
 			render(SwipeFeedCard, {
 				props: defaultProps,
@@ -369,19 +369,33 @@ describe("SwipeFeedCard", () => {
 			await articleButton.click();
 
 			// Wait for error state
-			await new Promise((resolve) => setTimeout(resolve, 200));
+			const retryButton = page.getByRole("button", { name: /try again/i });
+			await expect.element(retryButton).toBeInTheDocument();
+
+			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
+				content: "<p>Loaded content</p>",
+				article_id: "art-1",
+				og_image_url: "",
+				og_image_proxy_url: "",
+			});
 
 			// Click retry
-			const retryButton = page.getByRole("button", { name: /try again/i });
 			await retryButton.click();
-
-			// Wait for success
-			await new Promise((resolve) => setTimeout(resolve, 200));
 
 			// Content section should be visible
 			await expect
 				.element(page.getByTestId("content-section"))
 				.toBeInTheDocument();
+			// ...and actually hold the refetched article. The section alone is
+			// not evidence of a successful retry: it is already on screen while
+			// the error is showing, so without these two the assertion above
+			// passes even when the retry does nothing.
+			await expect
+				.element(page.getByText("Loaded content"))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("source-unavailable-notice"))
+				.not.toBeInTheDocument();
 		});
 
 		it("shows content error with role='alert'", async () => {
@@ -404,10 +418,16 @@ describe("SwipeFeedCard", () => {
 	});
 
 	describe("summary retry", () => {
-		it("shows error state on Summary button when summarization fails", async () => {
+		// Summarization has two paths, and "summarization fails" means both of
+		// them failed: when the stream errors non-transiently the component
+		// falls back to the legacy summarizeArticleClient endpoint. The
+		// module-level mock at the top of this file resolves that fallback, so
+		// failing only the stream produces a *successful* summary — the two
+		// tests below have to fail the fallback as well or they assert an error
+		// surface the component was never asked to show. The fallback-succeeds
+		// path is covered separately in "summary fallback" below.
+		const failStream = async () => {
 			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
-
-			// Make stream fail with non-transient error
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementation(
 				(
 					_transport: unknown,
@@ -423,6 +443,18 @@ describe("SwipeFeedCard", () => {
 					return new AbortController();
 				},
 			);
+		};
+
+		const failLegacyFallback = async () => {
+			const { summarizeArticleClient } = await import("$lib/api/client");
+			vi.mocked(summarizeArticleClient).mockRejectedValue(
+				new Error("500 Internal Server Error"),
+			);
+		};
+
+		it("shows error state on Summary button when summarization fails", async () => {
+			await failStream();
+			await failLegacyFallback();
 
 			render(SwipeFeedCard, {
 				props: defaultProps,
@@ -432,9 +464,6 @@ describe("SwipeFeedCard", () => {
 			const summaryButton = page.getByRole("button", { name: /summary/i });
 			await summaryButton.click();
 
-			// Wait for error
-			await new Promise((resolve) => setTimeout(resolve, 200));
-
 			// Button should show "Try again"
 			await expect
 				.element(page.getByRole("button", { name: /try again/i }))
@@ -442,8 +471,49 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("shows summary error with role='alert'", async () => {
-			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			await failStream();
+			await failLegacyFallback();
 
+			render(SwipeFeedCard, {
+				props: defaultProps,
+			});
+
+			const summaryButton = page.getByRole("button", { name: /summary/i });
+			await summaryButton.click();
+
+			await expect.element(page.getByRole("alert")).toBeInTheDocument();
+		});
+
+		it("keeps the summary error inside the AI summary section", async () => {
+			await failStream();
+			await failLegacyFallback();
+
+			render(SwipeFeedCard, {
+				props: defaultProps,
+			});
+
+			await page.getByRole("button", { name: /summary/i }).click();
+
+			const alert = page.getByRole("alert");
+			await expect.element(alert).toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("ai-summary-section"))
+				.toBeInTheDocument();
+			expect(
+				document
+					.querySelector('[data-testid="ai-summary-section"]')
+					?.contains(alert.element()),
+			).toBe(true);
+		});
+	});
+
+	describe("summary fallback", () => {
+		// The path that ambushed this file: a non-transient stream error is not
+		// a failure on its own, the component retries via the legacy endpoint.
+		// That behaviour had no coverage, which is why the two tests above could
+		// silently assert against a rendered summary instead of an error.
+		it("renders the legacy summary when the stream fails but the fallback succeeds", async () => {
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
 			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementation(
 				(
 					_transport: unknown,
@@ -459,17 +529,37 @@ describe("SwipeFeedCard", () => {
 					return new AbortController();
 				},
 			);
+			// Stated here rather than inherited from the module-level mock:
+			// vi.clearAllMocks() clears recorded calls but keeps implementations,
+			// so the rejection installed by "summary retry" above survives into
+			// this test. Declaring the behaviour it depends on keeps it
+			// independent of the order the tests happen to run in.
+			const { summarizeArticleClient } = await import("$lib/api/client");
+			vi.mocked(summarizeArticleClient).mockResolvedValue({
+				success: true,
+				summary: "This is a test summary.",
+				article_id: "article-123",
+				feed_url: mockFeed.link,
+			});
 
 			render(SwipeFeedCard, {
 				props: defaultProps,
 			});
 
-			const summaryButton = page.getByRole("button", { name: /summary/i });
-			await summaryButton.click();
+			await page.getByRole("button", { name: /summary/i }).click();
 
-			await new Promise((resolve) => setTimeout(resolve, 200));
+			await expect
+				.element(page.getByTestId("ai-summary-section"))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByText("This is a test summary."))
+				.toBeInTheDocument();
 
-			await expect.element(page.getByRole("alert")).toBeInTheDocument();
+			// The fallback succeeded, so nothing may claim the summary failed.
+			await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
+			await expect
+				.element(page.getByRole("button", { name: /try again/i }))
+				.not.toBeInTheDocument();
 		});
 	});
 
@@ -501,9 +591,7 @@ describe("SwipeFeedCard", () => {
 			});
 
 			const favoriteButton = page.getByRole("button", { name: /favorite/i });
-			// Native click: the swipe action's setPointerCapture retargets
-			// CDP pointer sequences to the card in this environment.
-			(favoriteButton.element() as HTMLElement).click();
+			await favoriteButton.click();
 
 			// Wait for async handler
 			await new Promise((resolve) => setTimeout(resolve, 50));
@@ -517,9 +605,7 @@ describe("SwipeFeedCard", () => {
 			});
 
 			const favoriteButton = page.getByRole("button", { name: /favorite/i });
-			// Native click: the swipe action's setPointerCapture retargets
-			// CDP pointer sequences to the card in this environment.
-			(favoriteButton.element() as HTMLElement).click();
+			await favoriteButton.click();
 
 			// Wait for async handler to complete
 			await new Promise((resolve) => setTimeout(resolve, 100));
@@ -540,9 +626,7 @@ describe("SwipeFeedCard", () => {
 			});
 
 			const favoriteButton = page.getByRole("button", { name: /favorite/i });
-			// Native click: the swipe action's setPointerCapture retargets
-			// CDP pointer sequences to the card in this environment.
-			(favoriteButton.element() as HTMLElement).click();
+			await favoriteButton.click();
 
 			// Wait for async handler to complete
 			await new Promise((resolve) => setTimeout(resolve, 100));
@@ -568,16 +652,14 @@ describe("SwipeFeedCard", () => {
 			});
 
 			const favoriteButton = page.getByRole("button", { name: /favorite/i });
-			// Native click: the swipe action's setPointerCapture retargets
-			// CDP pointer sequences to the card in this environment.
-			(favoriteButton.element() as HTMLElement).click();
+			await favoriteButton.click();
 
 			// Wait for error state
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
 			// Click again (retry)
 			const retryButton = page.getByRole("button", { name: /failed/i });
-			(retryButton.element() as HTMLElement).click();
+			await retryButton.click();
 
 			// Wait for success
 			await new Promise((resolve) => setTimeout(resolve, 100));

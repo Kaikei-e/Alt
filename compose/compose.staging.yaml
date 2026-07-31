@@ -931,6 +931,14 @@ services:
       - AUTH_HUB_URL=http://auth-hub/
       - MQHUB_CONNECT_URL=http://mq-hub/
       - MQHUB_ENABLED=false
+      # The image proxy is off in staging, stated explicitly because
+      # IMAGE_PROXY_ENABLED defaults to true and config.validateImageProxyConfig
+      # exits non-zero when it is enabled without a secret. The Hurl suite only
+      # pins that /v1/images/proxy sits behind auth (50-images.hurl asserts 401
+      # with no token, which the group's auth middleware answers whether or not
+      # the route is registered) — signature validation is not exercised, so
+      # there is nothing here for a secret to buy.
+      - IMAGE_PROXY_ENABLED=false
       # knowledge-sovereign is served by alt-backend-deps-stub via a
       # network alias. Without SOVEREIGN_URL the sovereign_client falls
       # back to `enabled=false` and short-circuits every call with a

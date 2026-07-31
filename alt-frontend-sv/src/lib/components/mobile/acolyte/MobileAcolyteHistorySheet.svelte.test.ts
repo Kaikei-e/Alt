@@ -56,8 +56,14 @@ describe("MobileAcolyteHistorySheet", () => {
 			},
 		});
 
-		await expect.element(page.getByText("overview")).toBeInTheDocument();
-		await expect.element(page.getByText("market_trends")).toBeInTheDocument();
+		// MOCK_VERSIONS touches `overview` and `market_trends` in both editions,
+		// so a field name on its own resolves to two tags (strict mode
+		// violation). Assert the whole tag — change-kind icon plus field name —
+		// which is what a change tag actually is and is unique per edition.
+		await expect.element(page.getByText("~ overview")).toBeInTheDocument();
+		await expect.element(page.getByText("↻ market_trends")).toBeInTheDocument();
+		await expect.element(page.getByText("+ overview")).toBeInTheDocument();
+		await expect.element(page.getByText("+ market_trends")).toBeInTheDocument();
 	});
 
 	it("shows empty state when no versions", async () => {

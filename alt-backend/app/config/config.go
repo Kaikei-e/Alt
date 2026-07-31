@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -28,9 +29,13 @@ type Config struct {
 	Sovereign     SovereignConfig     `json:"sovereign"`
 	Meilisearch   MeilisearchConfig   `json:"meilisearch"`
 
-	// AppEnv drives fail-fast-in-production checks (e.g. Knowledge Sovereign
-	// wiring). "production" is the only value that turns missing-required-config
-	// warnings into startup panics.
+	// AppEnv drives the remaining environment-keyed checks (e.g. Knowledge
+	// Sovereign wiring, BACKEND_TOKEN_SECRET length). It must be one of
+	// appEnvValues: an unrecognised value is rejected rather than degrading to
+	// the permissive development behaviour, because APP_ENV is optional and a
+	// "prod" typo would otherwise be indistinguishable from "unset".
+	// Guards that protect a deployment regardless of environment (see
+	// validateImageProxyConfig) must NOT be keyed on this field.
 	AppEnv string `json:"app_env" env:"APP_ENV" default:"development"`
 
 	// Legacy fields for backward compatibility
@@ -94,6 +99,9 @@ type MQHubConfig struct {
 }
 
 // ImageProxyConfig holds configuration for the OGP image proxy.
+// Enabled defaults to true, so a deployment that supplies no secret is a
+// misconfiguration, not an opt-out: set IMAGE_PROXY_ENABLED=false to disable
+// the proxy explicitly (see validateImageProxyConfig).
 type ImageProxyConfig struct {
 	Enabled     bool   `json:"enabled" env:"IMAGE_PROXY_ENABLED" default:"true"`
 	Secret      string `json:"secret" env:"IMAGE_PROXY_SECRET"`
@@ -248,17 +256,68 @@ func NewConfig() (*Config, error) {
 		config.Auth.BackendTokenAudience = "alt-backend"
 	}
 
+	if err := validateAppEnv(config.AppEnv); err != nil {
+		return nil, fmt.Errorf("app env validation failed: %w", err)
+	}
+	slog.Info("app_env_resolved", "app_env", config.AppEnv)
+
+	// Validate the image proxy after secrets are loaded. This guard is
+	// deliberately environment-independent: keying it on APP_ENV made it dead
+	// code, because APP_ENV is set in no compose file.
+	if err := validateImageProxyConfig(&config.ImageProxy); err != nil {
+		return nil, fmt.Errorf("image proxy config validation failed: %w", err)
+	}
+
 	// Validate auth configuration after secrets are loaded
 	// This ensures fail-fast behavior for misconfigured production deployments
-	env := os.Getenv("APP_ENV")
-	if env == "" {
-		env = "development"
-	}
-	if err := validateAuthConfig(&config.Auth, env); err != nil {
+	if err := validateAuthConfig(&config.Auth, config.AppEnv); err != nil {
 		return nil, fmt.Errorf("auth config validation failed: %w", err)
 	}
 
 	return config, nil
+}
+
+// appEnvValues enumerates the environments alt-backend recognises. Anything
+// else is a typo, and a typo must not silently buy the development behaviour
+// of the environment-keyed guards.
+var appEnvValues = []string{"development", "staging", "production"}
+
+func validateAppEnv(appEnv string) error {
+	for _, valid := range appEnvValues {
+		if appEnv == valid {
+			return nil
+		}
+	}
+	return fmt.Errorf("APP_ENV must be one of: %s, got %s",
+		strings.Join(appEnvValues, ", "), appEnv)
+}
+
+// validateImageProxyConfig enforces CLAUDE.md rule 9 for the OGP image proxy:
+// a missing secret is missing required config, so startup exits non-zero
+// instead of limping along with the proxy silently unwired.
+//
+// IMAGE_PROXY_ENABLED defaults to true and compose/core.yaml mounts
+// IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret, so an empty or
+// whitespace-only secret file used to land in di/image_module.go's
+// "enabled && !hasSecret" branch, which logged slog.Error and continued —
+// leaving every warmer/backfill job no-oping forever. The old panic there was
+// keyed on APP_ENV=production, which is set in no compose file and therefore
+// never fired.
+//
+// The explicit opt-out is IMAGE_PROXY_ENABLED=false, which di/image_module.go
+// reports as a loud image_proxy_disabled startup log.
+func validateImageProxyConfig(config *ImageProxyConfig) error {
+	if !config.Enabled {
+		return nil
+	}
+
+	if strings.TrimSpace(config.Secret) == "" {
+		return fmt.Errorf("IMAGE_PROXY_ENABLED=true requires a non-empty secret: " +
+			"set IMAGE_PROXY_SECRET, point IMAGE_PROXY_SECRET_FILE at a non-empty file, " +
+			"or set IMAGE_PROXY_ENABLED=false to disable the image proxy explicitly")
+	}
+
+	return nil
 }
 
 // Load is an alias for NewConfig for backward compatibility

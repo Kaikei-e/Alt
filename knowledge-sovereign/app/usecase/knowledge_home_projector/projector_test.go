@@ -143,11 +143,19 @@ type fakeRepo struct {
 	activeProjectionVersion *sovereign_db.ProjectionVersion
 	activeVersionErr        error
 
+	// dismissMissingKeys mirrors the real repository's zero-rows-updated
+	// outcome: item_keys listed here have no knowledge_home_items row at the
+	// projector's version, so DismissKnowledgeHomeItem reports
+	// sovereign_db.ErrDismissTargetNotFound exactly as Postgres would (see
+	// driver/sovereign_db/repository.go's RowsAffected() == 0 branch).
+	dismissMissingKeys map[string]bool
+
 	todayDigestErr    error
 	recallCandErr     error
 	clearSupersedeErr error
 	snoozeRecallErr   error
 	dismissRecallErr  error
+	dismissHomeErr    error
 }
 
 var _ Repository = (*fakeRepo)(nil)
@@ -163,6 +171,7 @@ func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
 		urlPatches:              map[string]capturedURLPatch{},
 		snoozed:                 map[string]capturedSnooze{},
 		recallDismissed:         map[string]capturedRecallDismiss{},
+		dismissMissingKeys:      map[string]bool{},
 		activeProjectionVersion: &sovereign_db.ProjectionVersion{Version: 1},
 	}
 }
@@ -206,9 +215,15 @@ func (f *fakeRepo) UpsertKnowledgeHomeItem(_ context.Context, payload json.RawMe
 }
 
 func (f *fakeRepo) DismissKnowledgeHomeItem(_ context.Context, payload json.RawMessage) error {
+	if f.dismissHomeErr != nil {
+		return f.dismissHomeErr
+	}
 	var w capturedDismiss
 	if err := json.Unmarshal(payload, &w); err != nil {
 		return fmt.Errorf("fakeRepo.DismissKnowledgeHomeItem: %w", err)
+	}
+	if f.dismissMissingKeys[w.ItemKey] {
+		return sovereign_db.ErrDismissTargetNotFound
 	}
 	f.dismissed[w.ItemKey] = w
 	return nil
@@ -678,6 +693,60 @@ func TestProjector_HomeItemDismissed_FallsBackToAggregateIDWhenPayloadItemKeyEmp
 
 	_, ok := repo.dismissed[itemKey]
 	assert.True(t, ok, "an empty payload.item_key must fall back to event.AggregateID")
+}
+
+// A client may dismiss an item_key that never produced a knowledge_home_items
+// row (the handler only checks item_key is non-empty, and the event is
+// appended independently of the write-through). ADR-000473 declared that
+// condition non-fatal by design — alt-backend's write-through already logs and
+// swallows it. Folding it as a hard failure instead turns one such event into
+// a poison pill: the batch stops, the checkpoint never advances past it, and
+// every user's Knowledge Home freezes on the same event tick after tick.
+func TestProjector_HomeItemDismissed_MissingTargetRowIsBenignAndBatchContinues(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	orphanKey := "article:" + uuid.New().String()
+	articleID := uuid.New()
+	occurredAt := time.Date(2026, 7, 14, 14, 30, 0, 0, time.UTC)
+
+	dismissPayload := mustJSON(t, map[string]any{"item_key": orphanKey})
+	articlePayload := mustJSON(t, map[string]any{
+		"article_id": articleID.String(),
+		"title":      "Still projected after the orphan dismiss",
+		"url":        "https://example.com/after",
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "HomeItemDismissed", orphanKey, occurredAt, tenant, user, dismissPayload),
+		homeEvent(2, "ArticleCreated", articleID.String(), occurredAt.Add(time.Minute), tenant, user, articlePayload),
+	}
+	repo := newFakeRepo(events)
+	repo.dismissMissingKeys[orphanKey] = true
+	p := NewProjector(repo, nil, Config{})
+
+	require.NoError(t, p.RunBatch(context.Background()), "a dismiss whose target row does not exist must not fail the batch")
+	assert.Equal(t, int64(2), repo.checkpoint, "checkpoint must advance past the orphan dismiss, not wedge on it forever")
+
+	_, ok := repo.homeItems[fmt.Sprintf("article:%s", articleID)]
+	assert.True(t, ok, "events after the orphan dismiss must still project")
+}
+
+func TestProjector_HomeItemDismissed_UnexpectedRepositoryFailureStopsBatch(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	itemKey := "article:" + uuid.New().String()
+	occurredAt := time.Date(2026, 7, 14, 14, 45, 0, 0, time.UTC)
+
+	payload := mustJSON(t, map[string]any{"item_key": itemKey})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "HomeItemDismissed", itemKey, occurredAt, tenant, user, payload),
+	}
+	repo := newFakeRepo(events)
+	repo.dismissHomeErr = fmt.Errorf("knowledge_home_items unavailable")
+	p := NewProjector(repo, nil, Config{})
+
+	err := p.RunBatch(context.Background())
+	require.Error(t, err, "only the not-found condition is benign — a genuine repository failure must still stop the batch")
+	assert.Equal(t, int64(0), repo.checkpoint, "checkpoint must not advance past a dismiss lost to an unexpected failure")
 }
 
 // ── Supersede projections ──

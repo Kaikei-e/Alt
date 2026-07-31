@@ -1,33 +1,30 @@
 <script lang="ts">
 import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+import { type SimpleSeries, serviceHealthRows } from "./util";
 
+// notInstrumented is still a list because it is the one thing the series
+// cannot tell us: these services have no scrape job at all, so they never
+// produce an `up` sample and must be labelled as uninstrumented rather than
+// left off the table where they would read as "nothing to worry about".
 let {
 	availability,
-	knownInstrumented = [
-		"alt-backend",
-		"mq-hub",
-		"recap-worker",
-		"recap-subworker",
-		"cadvisor",
-		"nginx",
-		"prometheus",
-	],
 	notInstrumented = ["pre-processor", "auth-hub", "rask-log-aggregator"],
 }: {
 	availability: MetricResult | undefined;
-	knownInstrumented?: string[];
 	notInstrumented?: string[];
 } = $props();
 
-const byJob = $derived(() => {
-	const map = new Map<string, number>();
-	for (const s of availability?.series ?? []) {
-		const job = s.labels?.["job"] ?? "(unknown)";
-		const last = s.points.at(-1)?.value;
-		if (typeof last === "number") map.set(job, last);
-	}
-	return map;
-});
+// Rows come from the series, not from a job list kept here: a hardcoded list
+// drops any job it has not been taught about, so a fully-down service renders
+// as no row at all instead of a red one. See serviceHealthRows in ./util.
+const rows = $derived(() =>
+	serviceHealthRows(
+		(availability?.series ?? []).map<SimpleSeries>((s) => ({
+			labels: s.labels ?? {},
+			points: s.points.map((p) => ({ time: p.time, value: p.value })),
+		})),
+	),
+);
 </script>
 
 <div class="table" role="table" aria-label="Service availability">
@@ -36,20 +33,21 @@ const byJob = $derived(() => {
 		<div role="columnheader">Status</div>
 		<div role="columnheader">Note</div>
 	</div>
-	{#each knownInstrumented as job (job)}
-		{@const v = byJob().get(job)}
-		<div
-			class="row"
-			role="row"
-			class:down={v === 0}
-			class:nodata={v === undefined}
-		>
-			<div class="job" role="cell">{job}</div>
+	{#if rows().length === 0}
+		<div class="row dim" role="row">
+			<div class="job" role="cell">—</div>
 			<div class="status" role="cell">
-				{#if v === undefined}
-					<span class="dot dim" aria-hidden="true">○</span>
-					<span class="word dim">no data</span>
-				{:else if v >= 1}
+				<span class="dot dim" aria-hidden="true">○</span>
+				<span class="word dim">no data</span>
+			</div>
+			<div class="note" role="cell">Awaiting a snapshot from Prometheus</div>
+		</div>
+	{/if}
+	{#each rows() as row (row.job)}
+		<div class="row" role="row" class:down={row.up === 0}>
+			<div class="job" role="cell">{row.job}</div>
+			<div class="status" role="cell">
+				{#if row.up >= 1}
 					<span class="dot" aria-hidden="true">●</span>
 					<span class="word">up</span>
 				{:else}

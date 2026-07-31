@@ -50,8 +50,15 @@ describe("KnowledgeStream", () => {
 			},
 		});
 
-		const shimmerBlocks = container.querySelectorAll(".animate-shimmer");
-		expect(shimmerBlocks.length).toBeGreaterThan(0);
+		// KnowledgeHomeSkeleton animates its blocks with a component-scoped
+		// `@keyframes skel-pulse`, not the global `.animate-shimmer` utility, so
+		// assert on the rendered blocks and their computed animation. Svelte
+		// prefixes scoped keyframes, hence `svelte-<hash>-skel-pulse`.
+		const skeletonBlocks = container.querySelectorAll(".skel-block");
+		expect(skeletonBlocks.length).toBeGreaterThan(0);
+		for (const block of skeletonBlocks) {
+			expect(getComputedStyle(block).animationName).toMatch(/skel-pulse$/);
+		}
 	});
 
 	it("shows empty state with correct reason", async () => {

@@ -155,10 +155,17 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	userID := userCtx.UserID.String()
 	endpoint := r.URL.Path
 
-	// Check dependency-class circuit breaker
-	if cb := h.breakerFor(endpoint); cb != nil && !cb.Allow() {
-		h.handleCircuitOpen(w, requestID)
-		return
+	// Check dependency-class circuit breaker. The permit is released on every
+	// exit path: a cache hit or a body-read failure never reaches the backend
+	// and so records no outcome, and a half-open trial permit that is never
+	// handed back rejects the whole class until the process restarts.
+	if cb := h.breakerFor(endpoint); cb != nil {
+		permit, allowed := cb.Acquire()
+		if !allowed {
+			h.handleCircuitOpen(w, requestID)
+			return
+		}
+		defer permit.Release()
 	}
 
 	// Read request body once, for cache key, dedup key, and forwarding.
@@ -213,9 +220,13 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 	}
 
 	endpoint := r.URL.Path
-	if cb := h.breakerFor(endpoint); cb != nil && !cb.Allow() {
-		h.handleCircuitOpen(w, requestID)
-		return
+	if cb := h.breakerFor(endpoint); cb != nil {
+		permit, allowed := cb.Acquire()
+		if !allowed {
+			h.handleCircuitOpen(w, requestID)
+			return
+		}
+		defer permit.Release()
 	}
 
 	resp, err := h.backendClient.ForwardStreamingRequest(r, token)

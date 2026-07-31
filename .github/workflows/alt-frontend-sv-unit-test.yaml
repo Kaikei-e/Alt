@@ -79,6 +79,149 @@ jobs:
         working-directory: alt-frontend-sv
         run: bun run check
 
-      - name: Run Vitest
+      - name: Run Vitest (server project)
         working-directory: alt-frontend-sv
         run: bun run test
+
+  # The 63 src/**/*.svelte.{test,spec}.ts specs are the `client` vitest
+  # project, which runs in real Chromium via @vitest/browser-playwright. That
+  # project is only constructed when VITEST_BROWSER=true (vitest.config.ts) and
+  # no workflow set it, so every one of them was skipped while `bun run test`
+  # still reported green.
+  #
+  # Kept as its own job rather than extra steps on `unit-test`: the Chromium
+  # download plus the browser-mode run is the slowest part of this workflow, and
+  # a separate job puts it in parallel with the server tests and `svelte-check`
+  # instead of on their critical path. Bounded by timeout-minutes and by caching
+  # the browser between runs.
+  #
+  # That this job exists at all is enforced by
+  # .github/workflows/scripts/workflow-safety-check.py (check 3) — deleting it,
+  # dropping --project=client, gutting the `test:client` npm script, or muting
+  # it with continue-on-error fails workflow-safety-lint. Do not "fix" a red
+  # run here by weakening any of those; that recreates the original defect,
+  # which was 63 spec files silently collected zero times.
+  #
+  # ---------------------------------------------------------------------
+  # Turning this suite on (2026-07-31) surfaced 10 failing files, 17 failing
+  # tests and one spec that killed its browser page. All of it is repaired;
+  # the run is green at 64 files / 462 passed / 2 skipped in ~200s.
+  #
+  # Two of those were product bugs the specs had been catching all along,
+  # not spec drift:
+  #   - FeedDetails.svelte refetched without bound after a failed content
+  #     fetch (a $effect that re-fired on its own callee's writes), pegging
+  #     the renderer past 6 GB. That is a user-facing loop, not a test issue.
+  #   - the swipe action took setPointerCapture on the whole card, so mouse
+  #     and pen clicks on its buttons landed on the card instead. Touch was
+  #     unaffected, which is why a mobile-first screen shipped it.
+  #
+  # Keep that in mind before treating a red run here as spec rot: this suite
+  # has now demonstrated twice that it catches real defects.
+  # ---------------------------------------------------------------------
+  component-test:
+    runs-on: ubuntu-latest
+    # 30, not 25: the run step below self-kills at 20m and setup (checkout,
+    # bun install, Chromium) costs 2-4m, so the job cap is a backstop that
+    # should never be the thing that fires. When GitHub kills a job it
+    # publishes no report at all, which for a job whose whole purpose is
+    # visibility is strictly worse than a failing step.
+    timeout-minutes: 30
+    env:
+      CI: true
+      FORCE_COLOR: "1"
+    steps:
+      - name: Get workspace parent GID
+        if: runner.environment == 'self-hosted'
+        id: get-gid
+        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
+
+      - name: Pre-checkout cleanup
+        if: runner.environment == 'self-hosted'
+        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+        env:
+          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
+        with:
+          entrypoint: /bin/sh
+          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
+
+      - uses: actions/checkout@v5
+
+      - name: Mask sensitive paths and git information
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "::add-mask::$(hostname)"
+          echo "::add-mask::$(whoami)"
+          [ -n "$HOME" ] && echo "::add-mask::$HOME"
+          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
+          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
+          if command -v git >/dev/null 2>&1; then
+            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
+            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
+          fi
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        working-directory: alt-frontend-sv
+        run: bun install
+
+      # Keyed on bun.lock so the cache is invalidated exactly when the pinned
+      # playwright-core (and therefore the required browser revision) moves.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      # Only chromium: vitest.config.ts declares a single chromium instance, so
+      # downloading firefox/webkit would be pure cost.
+      - name: Install Chromium for vitest browser mode
+        working-directory: alt-frontend-sv
+        run: bunx playwright install --with-deps chromium
+
+      # Wall-clock kill, because vitest cannot bound this from the inside.
+      # Browser mode runs the test runner *inside* the renderer, so
+      # testTimeout is a setTimeout on the same event loop as the code under
+      # test. A component stuck in a render/retry loop starves it: measured
+      # locally on FeedDetails.svelte.test.ts, the renderer burned 122% CPU
+      # and grew past 6 GB while the node process sat at 0% CPU and the 15s
+      # testTimeout never fired. The vitest.config.ts timeouts still bound
+      # every ordinary slow or failing spec; this bounds the pathological one.
+      #
+      # 20m sits under the job's 30m cap so the step fails and GitHub still
+      # renders everything vitest streamed (the default reporter emits
+      # per-file results as files finish), instead of the job being killed
+      # with no report. Raise this only alongside timeout-minutes.
+      - name: Run Vitest (client project — Svelte component tests)
+        working-directory: alt-frontend-sv
+        run: |
+          set -uo pipefail
+          # `|| rc=$?`, not a bare call followed by `rc=$?`: GitHub runs
+          # `run:` under `bash -e`, which would abort the step on the first
+          # non-zero exit and skip the diagnostic below entirely. Putting the
+          # command in an `||` list is what keeps `-e` from firing.
+          rc=0
+          timeout --kill-after=1m 20m bun run test:client || rc=$?
+          if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            echo "::error::The client vitest project hit its 20-minute wall clock. This is not slowness — it means a spec wedged the browser's event loop, so vitest's own testTimeout could not fire. The per-file results printed above stop at the offending file. See the note at the top of this workflow: this suite has already caught one spec that wedged its own renderer."
+          fi
+          exit "$rc"

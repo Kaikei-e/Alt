@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -17,6 +18,20 @@ import (
 )
 
 const maxConsecutiveFailures = 5
+
+// maxFeedBodyBytes bounds how much of a feed body gofeed reads. gofeed treats a
+// zero MaxByteSize as "no limit", and the transport transparently decompresses
+// gzip, so without a ceiling a few KB on the wire can expand into GBs resident.
+const maxFeedBodyBytes = 10 * 1024 * 1024
+
+// newBoundedFeedParser builds a gofeed parser that refuses bodies larger than
+// maxFeedBodyBytes instead of reading them in full.
+func newBoundedFeedParser(client *http.Client) *rssFeed.Parser {
+	fp := rssFeed.NewParser()
+	fp.Client = client
+	fp.MaxByteSize = maxFeedBodyBytes
+	return fp
+}
 
 func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_limiter.HostRateLimiter) (*rssFeed.Feed, error) {
 	// Apply rate limiting if rate limiter is configured
@@ -32,8 +47,7 @@ func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_l
 	// Use unified HTTP client factory for secure RSS feed fetching
 	factory := utils.NewHTTPClientFactory()
 	httpClient := factory.CreateHTTPClient()
-	fp := rssFeed.NewParser()
-	fp.Client = httpClient
+	fp := newBoundedFeedParser(httpClient)
 	feed, err := fp.ParseURL(feedURL.String())
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Error parsing feed", "error", err)
@@ -61,8 +75,7 @@ func CollectMultipleFeeds(ctx context.Context, feedLinks []domain.FeedLink, rate
 	// Use unified HTTP client factory for secure RSS feed fetching
 	factory := utils.NewHTTPClientFactory()
 	httpClient := factory.CreateHTTPClient()
-	fp := rssFeed.NewParser()
-	fp.Client = httpClient
+	fp := newBoundedFeedParser(httpClient)
 	var feedItems []*domain.FeedItem
 	var errors []error
 

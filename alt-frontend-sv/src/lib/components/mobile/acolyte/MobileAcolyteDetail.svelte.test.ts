@@ -58,8 +58,21 @@ describe("MobileAcolyteDetail", () => {
 	it("renders section tabs", async () => {
 		render(MobileAcolyteDetail, { props: baseProps });
 
-		await expect.element(page.getByText("overview")).toBeInTheDocument();
-		await expect.element(page.getByText("market trends")).toBeInTheDocument();
+		// Scope to the tab itself. An unscoped getByText("overview") resolves to
+		// three elements — the tab label, the active section's <h2>, and the
+		// markdown body's own "## Overview" heading — so it is both a strict
+		// mode violation and a weak assertion: it would pass with no tabs
+		// rendered at all.
+		await expect
+			.element(page.getByTestId("section-tab-overview").getByText("overview"))
+			.toBeInTheDocument();
+		await expect
+			.element(
+				page
+					.getByTestId("section-tab-market_trends")
+					.getByText("market trends"),
+			)
+			.toBeInTheDocument();
 	});
 
 	it("renders Generate button", async () => {

@@ -1,8 +1,9 @@
 /**
  * Pure helpers for the Observability panel.
  *
- * computeDelta: trailing-half vs leading-half mean, used for MetricRow Δ.
- * topSeries:    order per-series digest rows by lead value, cap to N.
+ * computeDelta:      trailing-half vs leading-half mean, used for MetricRow Δ.
+ * topSeries:         order per-series digest rows by lead value, cap to N.
+ * serviceHealthRows: availability rows derived from the returned series.
  *
  * Kept framework-free so the logic can be unit-tested without Svelte runes.
  */
@@ -86,6 +87,40 @@ export function topSeries(
 	const head = withLead.slice(0, Math.max(0, limit));
 	const overflow = Math.max(0, withLead.length - head.length);
 	return { head, overflow };
+}
+
+export interface ServiceHealthRow {
+	job: string;
+	up: number;
+}
+
+/**
+ * Availability rows, derived from the series the backend actually returned
+ * rather than from a list of job names kept in the component.
+ *
+ * A hardcoded list drifts silently and in the worse direction: Prometheus
+ * emits `up=0` for a configured target it cannot scrape, so a dead service
+ * always produces a series — but a job the list has never been taught about
+ * is dropped before it can be drawn, and a fully-down edge proxy then looks
+ * exactly like a healthy stack. Deriving the rows means a new scrape job shows
+ * up on its own.
+ *
+ * Several series sharing one job collapse to the worst value, never the last
+ * one seen: `pki-agent` fans out over one sidecar per east-west service, and
+ * overwriting per series would let a healthy sibling hide a dead one.
+ */
+export function serviceHealthRows(series: SimpleSeries[]): ServiceHealthRow[] {
+	const worst = new Map<string, number>();
+	for (const s of series) {
+		const value = s.points.at(-1)?.value;
+		if (typeof value !== "number" || !Number.isFinite(value)) continue;
+		const job = s.labels?.job || "(unknown)";
+		const seen = worst.get(job);
+		worst.set(job, seen === undefined ? value : Math.min(seen, value));
+	}
+	return [...worst]
+		.map(([job, up]) => ({ job, up }))
+		.sort((a, b) => a.job.localeCompare(b.job));
 }
 
 function average(nums: number[]): number {

@@ -34,7 +34,7 @@ func newImageModule(infra *InfraModule) *ImageModule {
 	// when multiple images from the same host are requested concurrently.
 	imageProxyRateLimiter := rate_limiter.NewHostRateLimiter(1 * time.Second)
 	var imageProxyUsecaseInstance *image_proxy_usecase.ImageProxyUsecase
-	imageProxyWired := logImageProxyWiringState(cfg.ImageProxy.Enabled, cfg.ImageProxy.Secret != "", cfg.AppEnv)
+	imageProxyWired := logImageProxyWiringState(cfg.ImageProxy.Enabled, cfg.ImageProxy.Secret != "")
 	if imageProxyWired {
 		imageProxySigner := image_proxy.NewSigner(cfg.ImageProxy.Secret)
 		imageProxyCacheGw := image_proxy_gateway.NewCacheGateway(infra.AltDBRepository)
@@ -66,19 +66,20 @@ func newImageModule(infra *InfraModule) *ImageModule {
 // startup log — indistinguishable from a deliberate
 // IMAGE_PROXY_ENABLED=false, and every warmer/backfill job downstream just
 // logged "not configured" at Info level forever (findings [6], [12]).
-// In production a misconfiguration (enabled but no secret) is a startup
-// failure rather than a limp-mode warning.
-func logImageProxyWiringState(enabled, hasSecret bool, appEnv string) bool {
+// A misconfiguration (enabled but no secret) is a startup failure rather than
+// a limp-mode warning, in every environment. config.validateImageProxyConfig
+// already rejects it before the container is built, so reaching this branch
+// means the config guard was bypassed — rule 8 says panic rather than return a
+// nil usecase. This used to be keyed on appEnv == "production", which is set
+// in no compose file and therefore never fired.
+func logImageProxyWiringState(enabled, hasSecret bool) bool {
 	switch {
 	case enabled && hasSecret:
 		slog.Info("image_proxy_enabled")
 		return true
 	case enabled && !hasSecret:
 		slog.Error("image_proxy_misconfigured", "reason", "IMAGE_PROXY_ENABLED=true but secret is empty")
-		if appEnv == "production" {
-			panic("IMAGE_PROXY_ENABLED=true requires a non-empty secret — refusing to start with image proxy silently disabled")
-		}
-		return false
+		panic("IMAGE_PROXY_ENABLED=true requires a non-empty secret — refusing to start with image proxy silently disabled")
 	default:
 		slog.Warn("image_proxy_disabled", "reason", "IMAGE_PROXY_ENABLED=false")
 		return false

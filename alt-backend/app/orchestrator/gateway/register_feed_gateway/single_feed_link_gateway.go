@@ -6,6 +6,7 @@ import (
 	"alt/utils/constants"
 	"alt/utils/logger"
 	"alt/utils/proxy"
+	"alt/utils/security"
 	"context"
 	"crypto/tls"
 	stderrors "errors"
@@ -23,6 +24,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
 )
+
+// maxFeedBodyBytes bounds how much of a feed body gofeed reads. gofeed treats a
+// zero MaxByteSize as "no limit", and the transport transparently decompresses
+// gzip, so without a ceiling a few KB on the wire can expand into GBs resident.
+const maxFeedBodyBytes = 10 * 1024 * 1024
 
 // ProxyConfig holds proxy configuration
 type ProxyConfig struct {
@@ -79,6 +85,7 @@ type DefaultRSSFeedFetcher struct {
 	proxyConfig      *ProxyConfig
 	envoyProxyConfig *EnvoyProxyConfig
 	proxyStrategy    *proxy.Strategy
+	ssrfValidator    *security.SSRFValidator
 	httpClient       *http.Client // shared HTTP client with connection pooling
 }
 
@@ -89,6 +96,7 @@ func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
 		proxyConfig:      getProxyConfigFromEnv(),
 		envoyProxyConfig: getEnvoyProxyConfigFromEnv(),
 		proxyStrategy:    strategy,
+		ssrfValidator:    security.NewSSRFValidator(),
 	}
 
 	// Create shared HTTP client with connection pooling (goroutine-safe)
@@ -111,6 +119,24 @@ func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
 	f.httpClient = &http.Client{
 		Timeout:   60 * time.Second,
 		Transport: roundTripper,
+		// Go's default policy follows up to 10 redirects without looking at where
+		// they point, so a registered feed could 302 into an internal service.
+		// Re-validate every hop, as SSRFValidator.CreateSecureHTTPClient does.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			// An operator-allow-listed host (FEED_ALLOWED_HOSTS) is an explicit trust
+			// decision, exactly as it is on the first hop — see the same escape hatch
+			// in URLSecurityValidator.isPrivateNetwork.
+			if security.IsFeedHostAllowed(req.URL.Hostname()) {
+				return nil
+			}
+			if err := f.ssrfValidator.ValidateURL(req.Context(), req.URL); err != nil {
+				return fmt.Errorf("redirect blocked by SSRF policy: %w", err)
+			}
+			return nil
+		},
 	}
 
 	return f
@@ -165,6 +191,7 @@ func isRetryableError(err error) bool {
 func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link string) (*gofeed.Feed, error) {
 	fp := gofeed.NewParser()
 	fp.Client = f.httpClient
+	fp.MaxByteSize = maxFeedBodyBytes
 	fp.UserAgent = "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
 
 	feedCtx, cancel := context.WithTimeout(ctx, 60*time.Second)

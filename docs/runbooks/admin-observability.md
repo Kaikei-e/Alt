@@ -6,9 +6,9 @@ affected_services:
   - alt-butterfly-facade
   - alt-frontend-sv
   - prometheus
-  - nginx
+  - plecto-proxy
 owner: platform
-last_updated: 2026-04-13
+last_updated: 2026-07-31
 ---
 
 # Admin Observability UI — Runbook
@@ -77,10 +77,12 @@ Browser
                                 └─ prometheus:9090/api/v1/query{,_range}
 ```
 
-nginx location `^/api/v2/alt\.admin_monitor\.v1\..+` disables
-`proxy_buffering` and `proxy_request_buffering`, giving the server stream an
-unbuffered path end-to-end. `X-Accel-Buffering: no` is set both at the
-alt-backend response and at the SvelteKit proxy as defense-in-depth.
+plecto-proxy routes the stream by an explicit prefix
+(`path_prefix = "/api/v2/alt.admin_monitor.v1."` in `plecto/manifest.toml`),
+not by nginx's old `~* ^/api/.*(stream|sse)` regex — a streaming RPC that is
+not enumerated there falls through to the generic `/api/` route. Both the
+alt-backend response and the SvelteKit proxy set `X-Accel-Buffering: no` as
+defense-in-depth.
 
 ## Most likely failure modes
 
@@ -102,9 +104,10 @@ Usually an idle kill at an intermediate proxy.
 
 1. In DevTools network tab, confirm the Watch request is still open
    (pending indefinitely with chunked frames).
-2. If it closed, check `proxy_read_timeout` at nginx for the
-   `alt.admin_monitor.v1` location block (must be ≥ stream rotate
-   horizon, currently 1h).
+2. If it closed, confirm the `/api/v2/alt.admin_monitor.v1.` route is still
+   enumerated in `plecto/manifest.toml`; an unlisted streaming prefix falls
+   through to the non-streaming `/api/` catch-all. Check `docker compose logs
+   plecto-proxy` for the closed connection.
 3. FE rotates each stream every 15 min ±60s to prevent idle kills;
    reconnects use exponential backoff with full jitter (1s → 30s cap).
 
@@ -130,18 +133,18 @@ the bare "Not instrumented" badge instead of false-positive "down".
 ## Adding a new metric
 
 1. Append a `domain.MetricKey` constant and an `allowEntry` in
-   `alt-backend/app/gateway/admin_metrics_gateway/allowlist.go`.
+   `alt-backend/app/orchestrator/gateway/admin_metrics_gateway/allowlist.go`.
 2. Keep PromQL as a literal string on the entry — do not accept any
    client-supplied fragment.
 3. Extend the FE `DEFAULT_KEYS` and add a `MetricRow` in
    `ObservabilityPanel.svelte` if it should render by default.
 4. Add a row to the metrics table at the top of this document.
 
-## Allowlist (2026-04-13 refresh — actual metric names)
+## Allowlist (actual metric names)
 
 | key | PromQL | unit |
 |---|---|---|
-| `availability_services` | `up{job=~"alt-backend\|pre-processor\|mq-hub\|recap-worker\|recap-subworker\|cadvisor\|nginx\|prometheus"}` | bool |
+| `availability_services` | `min by (job) (up{job=~"prometheus\|plecto-proxy\|cadvisor\|mq-hub\|recap-worker\|recap-subworker\|news-creator\|alt-backend\|pki-agent\|knowledge-sovereign\|rag-orchestrator"})` | bool |
 | `http_latency_p95` | `histogram_quantile(0.95, sum by (job,le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
 | `http_rps` | `sum by (job) (rate(http_requests_total[1m]))` | req/s |
 | `http_error_ratio` | `sum by (job) (rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum by (job) (rate(http_requests_total[5m])), 1e-9)` | ratio |
@@ -159,11 +162,34 @@ the bare "Not instrumented" badge instead of false-positive "down".
 | `availability_burn_1h` | `(sum(rate(http_requests_total{status=~"5.."}[1h])) / clamp_min(sum(rate(http_requests_total[1h])), 1e-9)) / 0.001` | ratio |
 | `availability_burn_6h` | `(sum(rate(http_requests_total{status=~"5.."}[6h])) / clamp_min(sum(rate(http_requests_total[6h])), 1e-9)) / 0.001` | ratio |
 
-The `availability_services` regex widened on the same refresh to cover
-`auth-hub|tag-generator|news-creator|knowledge-sovereign|rag-orchestrator`
-in addition to the original alt-backend|mq-hub|recap-* set. Services that
-do not yet expose `/metrics` continue to surface as a "Not instrumented"
-badge rather than as a false-positive down.
+The `availability_services` job matcher must list exactly the active
+`scrape_configs` job names in `observability/prometheus/prometheus.yml` — no
+more, no less. A job in the matcher but not scraped can never return a sample;
+a scraped job missing from the matcher is dropped from the tile entirely, so a
+fully-down target (an edge-proxy outage, say) looks identical to a healthy
+stack rather than showing as a red row. When you add or remove a scrape job,
+update the matcher in the same change:
+`TestAllowlist_AvailabilityJobsMatchPrometheusScrapeConfig` fails on drift in
+either direction. It cannot be skipped — the test fails outright when
+`prometheus.yml` is not on disk — and `.github/workflows/backend-go.yaml` both
+sparse-checks-out `observability/` and triggers on `observability/prometheus/**`
+so a prometheus.yml-only PR still runs it.
+
+Job names are not service names. `plecto-proxy` replaced the old `nginx` +
+nginx-exporter pair, and all eight `pki-agent` sidecars share a single job,
+distinguished only by a `subject` label. `min by (job)` collapses such a job to
+its worst target, so one dead sidecar reads "down" instead of being overwritten
+by a healthy sibling; to find *which* sidecar, query `up{job="pki-agent"}` in
+Prometheus directly and read `subject`.
+`TestAllowlist_AvailabilityAggregatesMultiTargetJobs` requires the aggregation
+for as long as any job has more than one target.
+
+Services that do not yet expose `/metrics` (`pre-processor`, `auth-hub`,
+`rask-log-aggregator`) have no scrape job and so never appear in the series.
+`ServiceHealthTable` lists them explicitly with a "Not instrumented" badge
+rather than as a false-positive "down". Every other row is derived from the
+returned series rather than from a job list held in the component, so a newly
+scraped job shows up in the tile without a frontend change.
 
 ## Monitor route (`/admin/monitor`)
 
@@ -231,7 +257,7 @@ Exceed at your peril.
 
 ```bash
 docker compose -f compose/compose.yaml -p alt up --build -d \
-  alt-backend alt-butterfly-facade alt-frontend-sv prometheus grafana nginx
+  alt-backend alt-butterfly-facade alt-frontend-sv prometheus grafana plecto-proxy
 ADMIN_MONITOR_ENABLED=true \
   docker compose -f compose/compose.yaml -p alt up -d alt-backend
 
@@ -244,4 +270,4 @@ ADMIN_MONITOR_ENABLED=true \
 
 - Plan: `/home/koko/.claude/plans/floofy-bubbling-papert.md`
 - Proto: `proto/alt/admin_monitor/v1/admin_monitor.proto`
-- Allowlist: `alt-backend/app/gateway/admin_metrics_gateway/allowlist.go`
+- Allowlist: `alt-backend/app/orchestrator/gateway/admin_metrics_gateway/allowlist.go`

@@ -48,6 +48,10 @@ func TestNewConfig_WithDefaults(t *testing.T) {
 			// Clear environment first
 			clearTestEnv()
 
+			// NewConfig refuses to start with the image proxy enabled (the
+			// default) and an empty secret — see validateImageProxyConfig.
+			t.Setenv("IMAGE_PROXY_SECRET", "test-image-proxy-secret")
+
 			// Set test environment variables
 			for key, value := range tt.envVars {
 				os.Setenv(key, value)
@@ -125,6 +129,10 @@ func TestNewConfig_WithEnvironmentOverrides(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear environment first
 			clearTestEnv()
+
+			// NewConfig refuses to start with the image proxy enabled (the
+			// default) and an empty secret — see validateImageProxyConfig.
+			t.Setenv("IMAGE_PROXY_SECRET", "test-image-proxy-secret")
 
 			// Set test environment variables
 			for key, value := range tt.envVars {
@@ -218,6 +226,8 @@ func clearTestEnv() {
 		"CACHE_FEED_EXPIRY", "CACHE_SEARCH_EXPIRY",
 		"LOG_LEVEL", "LOG_FORMAT",
 		"PRE_PROCESSOR_ENABLED",
+		"APP_ENV",
+		"IMAGE_PROXY_ENABLED", "IMAGE_PROXY_SECRET", "IMAGE_PROXY_SECRET_FILE",
 	}
 
 	for _, env := range envVars {

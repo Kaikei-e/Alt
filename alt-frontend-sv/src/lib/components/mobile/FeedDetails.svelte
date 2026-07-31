@@ -62,9 +62,47 @@ let feedDetails = $state<FeedContentOnTheFlyResponse | null>(
 	})(),
 );
 
-// Retry counters
-let contentRetryCount = $state(0);
+// Bounded auto-retry policy for the on-open content fetch.
+//
+// Transient-only with a hard attempt ceiling. The shape follows
+// $lib/utils/loadProxyImage — a permanent failure is terminal on the first
+// attempt, a transient one buys a finite number of retries from a backoff
+// table — and the budget is deliberately identical to the one
+// SwipeFeedCard.svelte already applies to getFeedContentOnTheFlyClient
+// (`contentRetryCount < 1` + a 500ms delay): the two mobile content paths hit
+// the same endpoints, so they must not retry at different rates.
+const CONTENT_RETRY_BACKOFFS_MS: readonly number[] = [500];
+const MAX_CONTENT_ATTEMPTS = CONTENT_RETRY_BACKOFFS_MS.length + 1;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Attempts actually spent by the current/last content fetch. Drives the
+// terminal message, so it must be the real count and never the ceiling: the
+// budget is abandoned early on a permanent failure.
+let contentAttemptCount = $state(0);
 let summaryRetryCount = $state(0);
+// Terminal state for the content fetch: the attempt budget is spent (or the
+// failure was permanent) and nothing will be retried until the user asks.
+let contentFetchExhausted = $state(false);
+// Monotonic token identifying the newest content fetch. A fetch only applies
+// its result while it is still the newest one — the stale-response guard for
+// swipe-to-next-article, where a backed-off retry can outlive its article.
+let contentFetchToken = 0;
+// Tracker for the feedURL the current state belongs to. Plain `let`, not
+// `$state`: it is only ever read from inside untrack(), and making it
+// reactive would put it back in the auto-fetch effect's dependency set.
+let previousFeedUrl = untrack(() => feedURL);
+
+// What the terminal content-failure stripe announces. It reports the attempts
+// actually spent, never MAX_CONTENT_ATTEMPTS: a permanent failure (or an
+// empty-but-successful response) is terminal after a single attempt, so
+// hard-coding the ceiling would state something untrue to every user — and,
+// since the stripe is role="alert", read it out to screen readers.
+const contentFailureMessage = $derived(
+	`Stopped after ${contentAttemptCount} ${
+		contentAttemptCount === 1 ? "attempt" : "attempts"
+	}.`,
+);
 
 // Derived button state for summary
 const summaryButtonState = $derived.by(() => {
@@ -80,24 +118,51 @@ const uniqueId = $derived(
 	feedURL ? btoa(encodeURIComponent(feedURL)).slice(0, 8) : "default",
 );
 
-// Auto-fetch data when opened externally (e.g., from ViewedFeedCard)
+// Reset per-article state on a feedURL change (handling swipes), then
+// auto-fetch when the sheet is open (e.g., from ViewedFeedCard).
+//
+// The tracked dependencies are deliberately ONLY `open` and `feedURL` — the
+// two things that should ever start a fetch. Every value the fetch itself
+// writes (isLoading / articleSummary / feedDetails / contentFetchExhausted)
+// is read under untrack(). $effect dependency tracking crosses the call
+// stack, so while those reads were tracked, `isLoading = false` in
+// fetchData()'s finally block re-armed the very effect that had called it
+// whenever the fetch came back with nothing to show: guard passes → fetch →
+// fails → guard passes again, an unbounded refetch loop measured at ~4,000
+// console.error/sec that ran until the tab hit its memory ceiling.
+// See .claude/skills/bp-svelte principle 9.
+//
+// The reset lives here rather than in its own effect so the ordering is
+// explicit: an untracked auto-fetch cannot be re-run by a reset that happens
+// to be scheduled after it.
 $effect(() => {
-	// Only trigger when:
-	// 1. Modal is opening (open becomes true)
-	// 2. No initial data provided
-	// 3. Data not already loaded
-	// 4. Not currently loading
-	if (
-		open &&
-		!initialData &&
-		!articleSummary &&
-		!feedDetails &&
-		!isLoading &&
-		feedURL
-	) {
-		// Fetch data when opened externally
-		fetchData();
-	}
+	const url = feedURL;
+	const isOpen = open;
+
+	untrack(() => {
+		if (url !== previousFeedUrl) {
+			resetForNewArticle();
+			previousFeedUrl = url;
+		}
+
+		// Only trigger when:
+		// 1. Modal is open
+		// 2. No initial data provided
+		// 3. Data not already loaded
+		// 4. Not currently loading
+		// 5. The bounded retry budget has not already been spent
+		if (
+			isOpen &&
+			url &&
+			!initialData &&
+			!articleSummary &&
+			!feedDetails &&
+			!isLoading &&
+			!contentFetchExhausted
+		) {
+			void fetchData();
+		}
+	});
 });
 
 // Notify the optional callback prop whenever `open` changes, whether the
@@ -123,39 +188,46 @@ $effect(() => {
 	};
 });
 
-// Cleanup abort controller on destroy
+// Cleanup on destroy
 $effect(() => {
 	return () => {
 		if (abortController) {
 			abortController.abort();
 		}
+		// Invalidate any in-flight content fetch. Without this a retry parked
+		// in sleep() outlives the component: it wakes after unmount, spends the
+		// rest of its budget on requests nobody is waiting for, and writes
+		// $state on a destroyed instance.
+		contentFetchToken++;
 	};
 });
 
-// Reset state when feedURL changes (handling swipes)
-let previousFeedUrl = $state(untrack(() => feedURL));
-$effect(() => {
-	if (feedURL !== previousFeedUrl) {
-		// Abort any ongoing summarization
-		if (abortController) {
-			abortController.abort();
-			abortController = null;
-		}
-
-		// Reset all article-specific state
-		summary = null;
-		summaryError = null;
-		isSummarizing = false;
-		articleSummary = null;
-		feedDetails = null;
-		isFavoriting = false;
-		contentRetryCount = 0;
-		summaryRetryCount = 0;
-
-		// Update tracker
-		previousFeedUrl = feedURL;
+// Reset all article-specific state. Called from the effect above when the
+// feedURL changes (handling swipes).
+const resetForNewArticle = () => {
+	// Abort any ongoing summarization
+	if (abortController) {
+		abortController.abort();
+		abortController = null;
 	}
-});
+
+	// Invalidate any in-flight content fetch so a late attempt — or one
+	// sleeping between bounded retries — cannot write the previous article's
+	// content or error into this one.
+	contentFetchToken++;
+
+	summary = null;
+	summaryError = null;
+	isSummarizing = false;
+	articleSummary = null;
+	feedDetails = null;
+	isFavoriting = false;
+	isLoading = false;
+	error = null;
+	contentAttemptCount = 0;
+	summaryRetryCount = 0;
+	contentFetchExhausted = false;
+};
 
 const handleHideDetails = () => {
 	open = false;
@@ -165,70 +237,146 @@ const handleHideDetails = () => {
 	}
 };
 
-// Reusable function to fetch article data
+// A single attempt at both endpoints. Reports what came back and whether any
+// failure looked transient, so the caller can decide whether it is worth
+// spending an attempt from the budget.
+const attemptFetch = async (url: string) => {
+	let sawTransient = false;
+
+	// Fetch both summary and content independently
+	const summaryPromise = getArticleSummaryClient(url).catch((err: unknown) => {
+		sawTransient = sawTransient || isTransientError(err);
+		console.error("Error fetching article summary:", err);
+		return null;
+	});
+
+	const detailsPromise = getFeedContentOnTheFlyClient(url).catch(
+		(err: unknown) => {
+			sawTransient = sawTransient || isTransientError(err);
+			console.error("Error fetching article content:", err);
+			return null;
+		},
+	);
+
+	const [summaryResult, detailsResult] = await Promise.all([
+		summaryPromise,
+		detailsPromise,
+	]);
+
+	return {
+		summaryResult,
+		detailsResult,
+		// Check if summary has valid content
+		hasValidSummary: Boolean(
+			summaryResult?.matched_articles &&
+				summaryResult.matched_articles.length > 0,
+		),
+		// Check if details has valid content
+		hasValidDetails: Boolean(
+			detailsResult?.content && detailsResult.content.trim() !== "",
+		),
+		sawTransient,
+	};
+};
+
+// Reusable function to fetch article data, with a bounded retry.
+//
+// At most MAX_CONTENT_ATTEMPTS attempts, and only a transient failure buys a
+// retry at all; anything else is terminal immediately. When the budget runs
+// out the component parks in `contentFetchExhausted` and waits for the user
+// instead of retrying on its own — nothing in here may leave a state that
+// re-arms the auto-fetch effect.
 const fetchData = async () => {
 	if (!feedURL) {
 		error = "No feed URL available";
 		return;
 	}
+	// A fetch is already in flight; joining it would double the request rate.
+	if (isLoading) return;
+
+	const url = feedURL;
+	const token = ++contentFetchToken;
 
 	isLoading = true;
 	error = null;
-
-	// Fetch both summary and content independently
-	const summaryPromise = getArticleSummaryClient(feedURL).catch((err) => {
-		console.error("Error fetching article summary:", err);
-		return null;
-	});
-
-	const detailsPromise = getFeedContentOnTheFlyClient(feedURL).catch((err) => {
-		console.error("Error fetching article content:", err);
-		return null;
-	});
+	contentAttemptCount = 0;
+	contentFetchExhausted = false;
 
 	try {
-		const [summaryResult, detailsResult] = await Promise.all([
-			summaryPromise,
-			detailsPromise,
-		]);
+		// Counted loop, not `for (;;)`: the ceiling is structural, so the bound
+		// holds even if the backoff table is later edited into something that
+		// never runs out.
+		for (let attemptNo = 1; attemptNo <= MAX_CONTENT_ATTEMPTS; attemptNo++) {
+			const attempt = await attemptFetch(url);
 
-		// Check if summary has valid content
-		const hasValidSummary =
-			summaryResult?.matched_articles &&
-			summaryResult.matched_articles.length > 0;
-		// Check if details has valid content
-		const hasValidDetails =
-			detailsResult?.content && detailsResult.content.trim() !== "";
+			// Stale-response guard: a newer fetch (or a feedURL change) took over
+			// while this attempt was in flight. Drop the result on the floor.
+			if (token !== contentFetchToken) return;
 
-		if (hasValidSummary) {
-			articleSummary = summaryResult;
+			contentAttemptCount = attemptNo;
+
+			if (attempt.hasValidSummary) {
+				articleSummary = attempt.summaryResult;
+			}
+			if (attempt.hasValidDetails) {
+				feedDetails = attempt.detailsResult;
+			}
+			if (attempt.hasValidSummary || attempt.hasValidDetails) return;
+
+			// Neither API call came back with valid content. Retry only a
+			// transient failure, and only while the budget has an entry left.
+			const backoffMs = attempt.sawTransient
+				? CONTENT_RETRY_BACKOFFS_MS[attemptNo - 1]
+				: undefined;
+
+			// Permanent failure, or the budget is spent: stop here, having made
+			// attemptNo attempts — which is what the user is told.
+			if (backoffMs === undefined) break;
+
+			await sleep(backoffMs);
+			if (token !== contentFetchToken) return;
 		}
 
-		if (hasValidDetails) {
-			feedDetails = detailsResult;
-		}
-
-		// If neither API call succeeded with valid content, show error
-		if (!hasValidSummary && !hasValidDetails) {
-			error = "Unable to fetch article content";
-		}
+		error = "Unable to fetch article content";
+		contentFetchExhausted = true;
 	} catch (err) {
 		console.error("Unexpected error:", err);
-		error = "Unexpected error occurred";
+		if (token === contentFetchToken) {
+			// A throw before the in-flight attempt could record itself (e.g. the
+			// client throws synchronously) still cost the user one attempt —
+			// announcing "0 attempts" would be as untrue as announcing the
+			// ceiling.
+			contentAttemptCount = Math.max(contentAttemptCount, 1);
+			error = "Unexpected error occurred";
+			contentFetchExhausted = true;
+		}
 	} finally {
-		isLoading = false;
+		if (token === contentFetchToken) {
+			isLoading = false;
+		}
 	}
 };
 
-const handleShowDetails = async () => {
-	// If we already have initial data, just open the modal
-	if (initialData) {
-		open = true;
-		return;
-	}
+// User-initiated retry after the automatic budget is spent. This is the only
+// way back into fetchData once `contentFetchExhausted` is set.
+const handleRetryContent = () => {
+	void fetchData();
+};
 
-	await fetchData();
+const handleShowDetails = () => {
+	// Open first, fetch behind the sheet's own loading state. Awaiting the
+	// fetch here would hold the sheet closed for the whole bounded retry
+	// sequence — up to 500ms of backoff plus two round trips — with nothing on
+	// screen but a disabled button.
 	open = true;
+
+	// If we already have initial data there is nothing to fetch.
+	if (initialData) return;
+
+	// Kick the fetch off synchronously so `isLoading` is already set by the
+	// time the auto-fetch effect runs; its guard then makes that a no-op
+	// rather than a second request.
+	void fetchData();
 };
 
 async function handleSummarize(forceRefresh = false) {
@@ -407,6 +555,20 @@ async function handleSummarize(forceRefresh = false) {
 				/>
 			{/if}
 
+			{#if contentFetchExhausted}
+				<div class="error-stripe content-failure" role="alert">
+					<span>{contentFailureMessage}</span>
+					<button
+						class="action-btn"
+						data-testid="retry-content-{uniqueId}"
+						onclick={handleRetryContent}
+						disabled={isLoading}
+					>
+						Reload article
+					</button>
+				</div>
+			{/if}
+
 			{#if summary}
 				<div
 					id="summary-section"
@@ -565,6 +727,14 @@ async function handleSummarize(forceRefresh = false) {
 		font-family: var(--font-body);
 		font-size: 0.82rem;
 		color: var(--alt-terracotta);
+	}
+
+	.content-failure {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
 	}
 
 	:global(.sheet-footer) {

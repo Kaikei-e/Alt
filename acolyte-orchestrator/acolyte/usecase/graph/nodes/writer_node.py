@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 from acolyte.config.settings import Settings
 from acolyte.domain.citation_format import validate_citation_format, validate_citation_grounding
 from acolyte.domain.executive_summary import ExecutiveSummaryRenderer
+from acolyte.domain.prompt_safety import count_prompt_scaffolding, neutralize_evidence_text
 from acolyte.domain.source_map import SourceMap
 from acolyte.domain.writer_prompt import WRITER_PROMPT, format_evidence
 
@@ -271,7 +272,11 @@ def _format_supporting_quotes(
     evidence_ids: list[str] | None = None,
     languages: list[str] | None = None,
 ) -> str:
-    """Format supporting quotes, attaching ``[Sn][lang]`` when available."""
+    """Format supporting quotes, attaching ``[Sn][lang]`` when available.
+
+    Quotes are lifted verbatim out of third-party article bodies, so each one
+    is neutralised before it enters the ``<supporting_quotes>`` wrapper.
+    """
     if not quotes:
         return "なし"
     if evidence_ids and len(evidence_ids) >= len(quotes):
@@ -280,9 +285,9 @@ def _format_supporting_quotes(
             sn = evidence_ids[i]
             lang = languages[i] if languages and i < len(languages) and languages[i] else ""
             tag = f"[{sn}][{lang}]" if lang and lang != "und" else f"[{sn}]"
-            lines.append(f'- {tag} "{quote}"')
+            lines.append(f'- {tag} "{neutralize_evidence_text(quote)}"')
         return "\n".join(lines)
-    return "\n".join(f'- "{q}"' for q in quotes)
+    return "\n".join(f'- "{neutralize_evidence_text(q)}"' for q in quotes)
 
 
 def _synthesis_claims_from_accepted(
@@ -510,10 +515,22 @@ class WriterNode:
         # [Sn] usage anyway invites fabricated markers.
         citation_rule = _CITATION_RULE if raw_eids else _NO_CITATION_RULE
 
+        # The claim text is derived from the article body, so it carries the
+        # same untrusted content — neutralise it before it enters <claim>.
+        scaffolding = count_prompt_scaffolding(claim.get("claim", "")) + sum(
+            count_prompt_scaffolding(q) for q in claim.get("supporting_quotes", [])
+        )
+        if scaffolding:
+            logger.warning(
+                "Neutralized prompt scaffolding in claim text",
+                claim_id=claim.get("claim_id", ""),
+                token_count=scaffolding,
+            )
+
         prompt = prompt_template.format(
             topic=topic,
             section_title=section_title,
-            claim=claim.get("claim", ""),
+            claim=neutralize_evidence_text(claim.get("claim", "")),
             supporting_quotes=quotes_str,
             evidence_ids=", ".join(eids),
             delta_feedback_block=delta_block,

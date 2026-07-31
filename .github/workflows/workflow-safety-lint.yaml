@@ -5,12 +5,22 @@
 #       OSS repos), or
 #   (2) a workflow has a `pull_request:` trigger AND a job with
 #       `runs-on:` that enlists the `self-hosted` label (fork PRs would land
-#       on privileged infrastructure).
+#       on privileged infrastructure), or
+#   (3) no automatically-triggered job runs alt-frontend-sv's `client` vitest
+#       project. (3) is not a fork-PR rule; it lives here because it is the
+#       same structural assertion over the same files — "this workflow really
+#       does what its name says". The client project (the Svelte component
+#       specs) is opt-in behind VITEST_BROWSER, and for a long time nothing
+#       set it, so 63 spec files were collected zero times while the job
+#       reported green.
 #
 # Scope boundary: this lint only inspects `.github/workflows/**`. Composite
 # actions under `.github/actions/**` cannot declare their own triggers or
 # runners, so they are out of scope here; guard them separately if the trust
-# model ever requires it.
+# model ever requires it. Check (3) additionally reads
+# `alt-frontend-sv/package.json`, because a workflow step reaches vitest
+# through an npm script and gutting the script is as effective a way to stop
+# the suite as deleting the job — hence that file is in the trigger paths too.
 #
 # Implementation note: the structural check lives in a sibling script file
 # (scripts/workflow-safety-check.py) rather than an inline heredoc, because
@@ -27,10 +37,14 @@ on:
   pull_request:
     paths:
       - '.github/workflows/**'
+      - 'alt-frontend-sv/package.json'
+      - 'alt-frontend-sv/vitest.config.ts'
   push:
     branches: [main]
     paths:
       - '.github/workflows/**'
+      - 'alt-frontend-sv/package.json'
+      - 'alt-frontend-sv/vitest.config.ts'
 
 permissions:
   contents: read

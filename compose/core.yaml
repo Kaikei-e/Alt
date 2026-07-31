@@ -150,6 +150,13 @@ services:
       pki-agent-alt-backend:
         condition: service_healthy
     environment:
+      # APP_ENV (development | staging | production, validated at startup) is
+      # delivered by the `env_file: ../.env` above and deliberately NOT repeated
+      # here. An `environment:` entry wins over env_file, and `${APP_ENV}` would
+      # interpolate from the compose project directory — not from the root .env
+      # that .env.example tells operators to edit — so an operator setting
+      # APP_ENV=production in .env would find it silently pinned back to
+      # development. One documented knob, one source.
       - CONNECT_PORT=9101
       - INTERNAL_PORT=9102
       - MTLS_LISTEN=${MTLS_LISTEN:-true}

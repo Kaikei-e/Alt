@@ -46,6 +46,69 @@ describe("swipe action", () => {
 		expect(typeof action.destroy).toBe("function");
 	});
 
+	// Pointer capture retargets the follow-up click to the capturing element,
+	// so taking it on a press that started on a control inside the surface
+	// makes the card swallow that control's click (mouse/pen only — touch taps
+	// hit-test the tap point, which is why this was invisible on mobile).
+	// jsdom cannot reproduce the retargeting itself; the behavioural pin lives
+	// in swipe.svelte.spec.ts, which needs a real browser. These two assert the
+	// decision that drives it, in the project that always runs.
+	describe("pointer capture", () => {
+		it("should not capture a press that starts on a control", () => {
+			const captureSpy = vi.fn();
+			element.setPointerCapture = captureSpy;
+
+			const button = document.createElement("button");
+			element.appendChild(button);
+
+			swipe(element);
+
+			button.dispatchEvent(
+				createPointerEvent("pointerdown", { clientX: 10, clientY: 10 }),
+			);
+
+			expect(captureSpy).not.toHaveBeenCalled();
+		});
+
+		it("should capture a press that starts on the surface itself", () => {
+			const captureSpy = vi.fn();
+			element.setPointerCapture = captureSpy;
+
+			swipe(element);
+
+			element.dispatchEvent(
+				createPointerEvent("pointerdown", { clientX: 10, clientY: 10 }),
+			);
+
+			// Kept deliberately: capture is the Android fallback for when
+			// window-level pointermove/pointerup are cut short by a
+			// pointercancel, so the fix above narrows it rather than dropping it.
+			expect(captureSpy).toHaveBeenCalledWith(1);
+		});
+
+		it("should still track a gesture that starts on a control", () => {
+			const endHandler = vi.fn();
+			element.addEventListener("swipe:end", endHandler as EventListener);
+			element.setPointerCapture = vi.fn();
+
+			const button = document.createElement("button");
+			element.appendChild(button);
+
+			swipe(element, { threshold: 50 });
+
+			button.dispatchEvent(
+				createPointerEvent("pointerdown", { clientX: 100, clientY: 0 }),
+			);
+			window.dispatchEvent(
+				createPointerEvent("pointerup", { clientX: 0, clientY: 0 }),
+			);
+
+			// Skipping capture must not become "ignore the gesture": the window
+			// listeners are armed for every pointerdown regardless of target.
+			expect(endHandler).toHaveBeenCalled();
+		});
+	});
+
 	it("should emit swipe:move event during pointer move", async () => {
 		const moveHandler = vi.fn();
 		element.addEventListener("swipe:move", moveHandler as EventListener);

@@ -13,6 +13,11 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.fact import ExtractorOutput
+from acolyte.domain.prompt_safety import (
+    count_prompt_scaffolding,
+    neutralize_evidence_line,
+    neutralize_evidence_text,
+)
 from acolyte.usecase.graph.llm_parse import generate_validated
 
 if TYPE_CHECKING:
@@ -132,15 +137,27 @@ class ExtractorNode:
         body: str,
     ) -> list[dict]:
         """Try extraction with degradation ladder: full → light → quote-only."""
+        scaffolding = count_prompt_scaffolding(source_title) + count_prompt_scaffolding(body)
+        if scaffolding:
+            logger.warning(
+                "Neutralized prompt scaffolding in article text",
+                article_id=source_id,
+                token_count=scaffolding,
+            )
+
         for pass_idx, config in enumerate(_PASSES):
             try:
+                # Body and title are third-party RSS content — neutralise the
+                # prompt's own scaffolding inside them before interpolation so
+                # they cannot forge a second Article record. Truncate first so
+                # the cut never lands inside an escape sequence.
                 pass_body = body[: config["max_body"]]
                 prompt = _FULL_PROMPT.format(
                     max_facts=config["max_facts"],
                     max_quote=config["max_quote"],
                     source_id=source_id,
-                    source_title=source_title,
-                    body=pass_body,
+                    source_title=neutralize_evidence_line(source_title),
+                    body=neutralize_evidence_text(pass_body),
                 )
 
                 fallback = ExtractorOutput(facts=[])

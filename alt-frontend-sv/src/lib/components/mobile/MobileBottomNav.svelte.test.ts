@@ -1,31 +1,40 @@
 import { describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { NAV_TABS } from "./bottom-nav";
 import MobileBottomNav from "./MobileBottomNav.svelte";
 
+// The tab list is derived from NAV_TABS rather than duplicated here: ADR-000716
+// makes `src/lib/config/navigation.ts` the single source of truth for the nav,
+// and this file's job is that the component renders exactly what that source
+// declares. What each tab *is* stays pinned in bottom-nav.test.ts /
+// navigation.test.ts, so a nav change fails in one place instead of silently
+// drifting away from a copy kept here — which is what happened to the "Swipe"
+// tab this spec used to assert: ADR-000903 replaced it at index 1 (Loop, later
+// Trail per ADR-000940), keeping 5 tabs and moving the swipe destination to the
+// Menu page's Browse section, and ADR-000948 then made /feeds/swipe* immersive
+// so ResponsiveLayout drops the bar there entirely.
+
 describe("MobileBottomNav", () => {
-	it("renders 5 tab labels", async () => {
-		render(MobileBottomNav, { props: { pathname: "/home" } });
-
-		await expect.element(page.getByText("Home")).toBeInTheDocument();
-		await expect.element(page.getByText("Swipe")).toBeInTheDocument();
-		await expect.element(page.getByText("Search")).toBeInTheDocument();
-		await expect.element(page.getByText("Augur")).toBeInTheDocument();
-		await expect.element(page.getByText("Menu")).toBeInTheDocument();
-	});
-
-	it("renders 5 tab links with correct hrefs in order", async () => {
+	it("renders one labelled tab per NAV_TABS entry", async () => {
 		render(MobileBottomNav, { props: { pathname: "/home" } });
 
 		const nav = page.getByRole("navigation");
-		const links = nav.getByRole("link");
-		await expect.element(links.nth(0)).toHaveAttribute("href", "/home");
-		await expect
-			.element(links.nth(1))
-			.toHaveAttribute("href", "/feeds/swipe/visual-preview");
-		await expect.element(links.nth(2)).toHaveAttribute("href", "/search");
-		await expect.element(links.nth(3)).toHaveAttribute("href", "/augur");
-		await expect.element(links.nth(4)).toHaveAttribute("href", "/menu");
+		await expect.element(nav).toBeInTheDocument();
+		expect(nav.getByRole("link").elements()).toHaveLength(NAV_TABS.length);
+
+		for (const tab of NAV_TABS) {
+			await expect.element(page.getByText(tab.label)).toBeInTheDocument();
+		}
+	});
+
+	it("renders the tab links in NAV_TABS order with their declared hrefs", async () => {
+		render(MobileBottomNav, { props: { pathname: "/home" } });
+
+		const links = page.getByRole("navigation").getByRole("link");
+		for (const [i, tab] of NAV_TABS.entries()) {
+			await expect.element(links.nth(i)).toHaveAttribute("href", tab.href);
+		}
 	});
 
 	it("marks the active tab with aria-current=page", async () => {
@@ -45,8 +54,8 @@ describe("MobileBottomNav", () => {
 		await expect.element(links.nth(4)).not.toHaveAttribute("aria-current");
 	});
 
-	it("activates Feeds tab for /feeds/swipe", async () => {
-		render(MobileBottomNav, { props: { pathname: "/feeds/swipe" } });
+	it("activates Trail tab for /knowledge/trail", async () => {
+		render(MobileBottomNav, { props: { pathname: "/knowledge/trail" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
@@ -69,7 +78,9 @@ describe("MobileBottomNav", () => {
 		await expect.element(links.nth(4)).toHaveAttribute("aria-current", "page");
 	});
 
-	it("is always rendered (no HIDE_PATHS)", async () => {
+	// The component itself has no hide list: immersive routes (/feeds/swipe*)
+	// are dropped by ResponsiveLayout, not by this component (ADR-000948).
+	it("renders unconditionally (hiding is ResponsiveLayout's job)", async () => {
 		render(MobileBottomNav, { props: { pathname: "/augur" } });
 		await expect.element(page.getByRole("navigation")).toBeInTheDocument();
 	});

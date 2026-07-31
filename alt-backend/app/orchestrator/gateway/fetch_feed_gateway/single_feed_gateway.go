@@ -108,9 +108,7 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 	// Parse the RSS feed from the URL using unified HTTP client factory
 	factory := utils.NewHTTPClientFactory()
 	httpClient := factory.CreateHTTPClient()
-	fp := gofeed.NewParser()
-	fp.Client = httpClient
-	fp.UserAgent = "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
+	fp := newBoundedFeedParser(httpClient)
 
 	feedCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
