@@ -32,7 +32,13 @@ func newImageModule(infra *InfraModule) *ImageModule {
 	// CDN public images are fetched on-demand per user action, not crawled.
 	// 1 req/s/host is conservative enough and avoids context deadline exceeded
 	// when multiple images from the same host are requested concurrently.
-	imageProxyRateLimiter := rate_limiter.NewHostRateLimiter(1 * time.Second)
+	//
+	// A rate-limit class of its own: cmd/harvester's warmer and backfill hit
+	// these same CDNs and must coordinate with this limiter, while neither may
+	// share slots with the 5s+ feed traffic to the same host
+	// (rate_limiter.NamespaceImageProxy).
+	imageProxyRateLimiter := infra.RateLimiterCoordinator.Limiter(
+		rate_limiter.NamespaceImageProxy, imageProxyRateLimitInterval, 1)
 	var imageProxyUsecaseInstance *image_proxy_usecase.ImageProxyUsecase
 	imageProxyWired := logImageProxyWiringState(cfg.ImageProxy.Enabled, cfg.ImageProxy.Secret != "")
 	if imageProxyWired {

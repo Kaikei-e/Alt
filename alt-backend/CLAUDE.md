@@ -83,8 +83,9 @@ docker build --build-arg BINARY=backend -f alt-backend/Dockerfile.backend -t alt
 
 1. **TDD First**: No implementation without failing tests
 2. **Rate Limiting**: YOU MUST enforce 5-second minimum for external APIs
-   （`HostRateLimiter` はプロセスローカル。backend と harvester が同じホストを叩くと
-   実効レートが最悪 2 倍になる — 外部 fetch は harvester 側に寄せる）
+   （`HostRateLimiter` は `HOST_RATE_LIMITER_REDIS_URL` 設定時に Redis 調停で
+   backend / harvester 横断のホスト別スロットを共有する。未設定はプロセス
+   ローカル保証のみ = 実効レート最悪 2 倍。詳細は ADR-000954 のレビュー対応節）
 3. **Error Wrapping**: Use `fmt.Errorf("context: %w", err)`
 4. **Context**: Pass `context.Context` through entire call chain
 5. **Logging**: Use `log/slog` with structured context

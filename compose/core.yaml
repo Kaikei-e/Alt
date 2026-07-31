@@ -186,8 +186,9 @@ services:
       # (KnowledgeHomeAdminService, AdminMonitorService) — which authenticate
       # nobody. Loopback bind keeps it reachable for altctl on this host while
       # removing it from every other NIC.
-      # BackendInternalService and /v1/internal/* are NOT here: they moved to
-      # alt-data-hub's mTLS listener in the split (ADR-000954), and
+      # The data plane and /v1/internal/* are NOT here: they moved to
+      # alt-data-hub's mTLS listener in the split (ADR-000954) and are served
+      # as `alt.datahub.v1.DataHubService`, and
       # e2e/hurl/alt-backend/03-topology-internal-surface-absent.hurl asserts
       # their absence.
       - "127.0.0.1:9102:9102"
@@ -269,6 +270,14 @@ services:
       # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml).
       - RAG_ORCHESTRATOR_CONNECT_URL=${RAG_ORCHESTRATOR_CONNECT_URL:-https://rag-orchestrator:9011}
       - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret
+      # Cross-process per-host rate limiting (CLAUDE.md rule 2). The interval
+      # is a promise to the publisher's server, and this binary polls the same
+      # hosts alt-harvester does — feed-registration validation vs the hourly
+      # collector, article archiving vs og-image backfill. Both containers must
+      # carry the *same* value or they arbitrate nothing; db 3 keeps the slot
+      # keys clear of mq-hub's streams on db 0. Unset = local mode, logged
+      # loudly at startup as a per-process-only guarantee.
+      - HOST_RATE_LIMITER_REDIS_URL=redis://redis-streams:6379/3
       # alt-data-hub is reachable over mTLS only; there is no plaintext
       # east-west port to fall back to (see alt-data-hub below).
       #
@@ -428,6 +437,10 @@ services:
       # secret follows the jobs. alt-backend keeps its own copy for the
       # serving-side signature check.
       IMAGE_PROXY_SECRET_FILE: /run/secrets/image_proxy_secret
+      # Same arbiter, same value as alt-backend above — that is what makes the
+      # per-host interval hold across the two internet-facing binaries instead
+      # of once each (CLAUDE.md rule 2). See the comment there.
+      HOST_RATE_LIMITER_REDIS_URL: redis://redis-streams:6379/3
       OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
       OTEL_SERVICE_NAME: alt-harvester
     secrets:
@@ -548,7 +561,7 @@ services:
       # every append while the caller still records success.
       SOVEREIGN_URL: http://knowledge-sovereign:9500
       # MQHUB_ENABLED defaults to false, and a disabled client no-ops every
-      # publish — BackendInternalService article RPCs would answer 200 having
+      # publish — DataHubService article RPCs would answer 200 having
       # emitted nothing (ADR-000928). ValidateDataHubConfig rejects false
       # outside development, so this is not optional here.
       MQHUB_ENABLED: "true"

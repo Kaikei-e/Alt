@@ -23,7 +23,7 @@ func RegisterHarvesterJobs(scheduler *JobScheduler, container *di.HarvesterCompo
 		Name:     "hourly-feed-collector",
 		Interval: 1 * time.Hour,
 		Timeout:  30 * time.Minute,
-		Fn:       CollectFeedsJob(container.FeedCollectorGateway),
+		Fn:       CollectFeedsJob(container.FeedCollectorGateway, container.HostRateLimiter),
 	})
 	scheduler.Add(Job{
 		Name:     "daily-scraping-policy",

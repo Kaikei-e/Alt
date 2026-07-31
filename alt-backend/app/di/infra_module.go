@@ -30,6 +30,13 @@ type InfraModule struct {
 	HTTPClient  *http.Client
 	MQHubClient *mqhub_connect.Client
 
+	// RateLimiterCoordinator is the process-wide arbiter handle. Held on the
+	// module because the image proxy runs its own rate-limit class (1s CDN
+	// reads) and must be built from the same coordinator — two coordinators
+	// would mean two connection pools and, worse, two independent startup mode
+	// logs for one process (ADR-000954 review, weakness 5).
+	RateLimiterCoordinator *HostRateLimiterCoordinator
+
 	// There is no AltDBRepository field and no pool, since ADR-000954 Wave 3
 	// batch 6. The two reads that kept one here through batch 5 — the Tag
 	// Trail's paged articles and the recall rail's article fallback — became
@@ -115,7 +122,14 @@ func newInfraModule(cfg *config.Config) *InfraModule {
 	// itself has no consumer beyond this function, so it stays a local.
 	configPort := config_gateway.NewConfigGateway(cfg)
 	rateLimitConfig := configPort.GetRateLimitConfig()
-	hostRateLimiter := rate_limiter.NewHostRateLimiter(rateLimitConfig.ExternalAPIInterval, rateLimitConfig.ExternalAPIBurst)
+	// The interval is a promise to the publisher's server, not to this
+	// process. cmd/backend fetches the same hosts cmd/harvester's hourly
+	// collector and og-image backfill fetch, so the two coordinate through a
+	// shared arbiter when one is configured, and say loudly at startup when
+	// one is not (ADR-000954 review, weakness 5).
+	rateLimiterCoordinator := NewHostRateLimiterCoordinator("alt-backend", cfg.RateLimit.CoordinationRedisURL)
+	hostRateLimiter := rateLimiterCoordinator.Limiter(
+		rate_limiter.NamespaceExternalAPI, rateLimitConfig.ExternalAPIInterval, rateLimitConfig.ExternalAPIBurst)
 
 	// HTTP client
 	httpClient := utils.NewHTTPClientFactory().CreateHTTPClient()
@@ -137,12 +151,13 @@ func newInfraModule(cfg *config.Config) *InfraModule {
 	dataHubClient := newDataHubClient("alt-backend")
 
 	return &InfraModule{
-		Config:              cfg,
-		RateLimiter:         hostRateLimiter,
-		HTTPClient:          httpClient,
-		MQHubClient:         mqhubClient,
-		SearchIndexerDriver: searchIndexerDriver,
-		RobotsTxtGateway:    robotsTxtGw,
+		Config:                 cfg,
+		RateLimiter:            hostRateLimiter,
+		RateLimiterCoordinator: rateLimiterCoordinator,
+		HTTPClient:             httpClient,
+		MQHubClient:            mqhubClient,
+		SearchIndexerDriver:    searchIndexerDriver,
+		RobotsTxtGateway:       robotsTxtGw,
 
 		DataHubClient:          dataHubClient,
 		OgImageGateway:         datahub_gateway.NewOgImageGateway(dataHubClient),

@@ -63,6 +63,13 @@ type HarvesterComponents struct {
 	// og-image-backfill
 	FetchArticleGateway *fetch_article_gateway.FetchArticleGateway
 
+	// The external-API limiter, held so RegisterHarvesterJobs can hand it to
+	// hourly-feed-collector. It is the same limiter fetch_article_gateway
+	// uses, and — when HOST_RATE_LIMITER_REDIS_URL is set — it arbitrates the
+	// per-host interval with cmd/backend's copy rather than beside it
+	// (ADR-000954 review, weakness 5).
+	HostRateLimiter *rate_limiter.HostRateLimiter
+
 	// ogp-image-warmer / og-image-backfill. Non-nil whenever the harvester
 	// starts: NewHarvesterComponents refuses to build otherwise, because two
 	// of the eight jobs exist only to run the image pipeline.
@@ -117,11 +124,17 @@ func NewHarvesterComponents(cfg *config.Config) *HarvesterComponents {
 		FeedLinkAvailabilityGateway: datahub_gateway.NewFeedLinkAvailabilityGateway(dataHubClient, domain.DefaultMaxConsecutiveFailures),
 	}
 
-	// Shared external-fetch primitives. CLAUDE.md rule 2: this rate limiter is
-	// process-local, so the harvester's effective rate against a publisher is
-	// independent of the backend's — see the split ADR's R1 note.
+	// Shared external-fetch primitives. CLAUDE.md rule 2 is a promise to the
+	// publisher's server, so the interval has to hold across processes: the
+	// hourly collector and og-image backfill here poll the same hosts
+	// cmd/backend polls for feed registration and article archiving. The
+	// coordinator is what makes the two processes see one another's requests;
+	// with HOST_RATE_LIMITER_REDIS_URL unset it is the pre-split, per-process
+	// guarantee and says so at startup (ADR-000954 review, weakness 5).
+	rateLimiterCoordinator := NewHostRateLimiterCoordinator("alt-harvester", cfg.RateLimit.CoordinationRedisURL)
 	rateLimitInterval := cfg.RateLimit.ExternalAPIInterval
-	hostRateLimiter := rate_limiter.NewHostRateLimiter(rateLimitInterval, cfg.RateLimit.ExternalAPIBurst)
+	hostRateLimiter := rateLimiterCoordinator.Limiter(
+		rate_limiter.NamespaceExternalAPI, rateLimitInterval, cfg.RateLimit.ExternalAPIBurst)
 	httpClient := utils.NewHTTPClientFactory().CreateHTTPClient()
 	robotsTxtGw := robots_txt_gateway.NewRobotsTxtGateway(httpClient)
 
@@ -136,7 +149,7 @@ func NewHarvesterComponents(cfg *config.Config) *HarvesterComponents {
 	fetchArticleGw := fetch_article_gateway.NewFetchArticleGateway(hostRateLimiter, httpClient)
 
 	// Image pipeline (ogp-image-warmer, og-image-backfill)
-	imageProxyUC := newHarvesterImageProxyUsecase(cfg, feedLinkGw, imageProxyCacheGw)
+	imageProxyUC := newHarvesterImageProxyUsecase(cfg, rateLimiterCoordinator, feedLinkGw, imageProxyCacheGw)
 
 	// Tag cloud read model. Both halves — the tag counts and the cooccurrence
 	// edges — come from alt-data-hub since ADR-000954 Wave 3 batch 4 (catalog
@@ -170,6 +183,7 @@ func NewHarvesterComponents(cfg *config.Config) *HarvesterComponents {
 		FeedCollectorGateway:   feedCollectorGw,
 		ScrapingDomainUsecase:  scrapingDomainUC,
 		FetchArticleGateway:    fetchArticleGw,
+		HostRateLimiter:        hostRateLimiter,
 		ImageProxyUsecase:      imageProxyUC,
 		FetchTagCloudUsecase:   fetchTagCloudUC,
 		RagIntegration:         ragAdapter,
@@ -183,6 +197,11 @@ const imageProxyFetchTimeout = 30 * time.Second
 
 // imageProxyRateLimitInterval: CDN public images are fetched per job item, and
 // 1 req/s/host avoids deadline-exceeded when several images share a host.
+//
+// di/image_module.go uses the same constant for cmd/backend's serving-side
+// proxy. That is not incidental: the two processes coordinate on one slot per
+// CDN host (rate_limiter.NamespaceImageProxy), and two different intervals
+// would mean each of them enforcing a different promise on the same key.
 const imageProxyRateLimitInterval = 1 * time.Second
 
 // TagCloudCacheTTL is the in-process cache window for the tag cloud read
@@ -193,6 +212,7 @@ const TagCloudCacheTTL = 30 * time.Minute
 
 func newHarvesterImageProxyUsecase(
 	cfg *config.Config,
+	coordinator *HostRateLimiterCoordinator,
 	feedLinkGw *datahub_gateway.FeedLinkGateway,
 	cacheGw *datahub_gateway.ImageProxyCacheGateway,
 ) *image_proxy_usecase.ImageProxyUsecase {
@@ -212,7 +232,11 @@ func newHarvesterImageProxyUsecase(
 		cacheGw,
 		signer,
 		dynamicDomainGw,
-		rate_limiter.NewHostRateLimiter(imageProxyRateLimitInterval),
+		// Its own rate-limit class: the warmer and the backfill hit the same
+		// CDNs cmd/backend's proxy serves from, so the two processes coordinate
+		// with each other — but at 1s, and never against the 5s+ feed slots for
+		// the same host (rate_limiter.NamespaceImageProxy).
+		coordinator.Limiter(rate_limiter.NamespaceImageProxy, imageProxyRateLimitInterval, 1),
 		cfg.ImageProxy.MaxWidth,
 		cfg.ImageProxy.WebPQuality,
 		cfg.ImageProxy.CacheTTLMin,

@@ -93,6 +93,17 @@ func validateRateLimitConfig(config *RateLimitConfig) error {
 		return fmt.Errorf("feed fetch limit must be at least 1, got %d", config.FeedFetchLimit)
 	}
 
+	// A set-but-unusable arbiter URL is the worst of the three states: the
+	// operator believes cross-process coordination is on, and the process would
+	// run with the local guarantee only. Reject it at startup (rule 9) instead
+	// of discovering it in the first degraded warning.
+	if config.CoordinationRedisURL != "" &&
+		!strings.HasPrefix(config.CoordinationRedisURL, "redis://") &&
+		!strings.HasPrefix(config.CoordinationRedisURL, "rediss://") {
+		return fmt.Errorf("HOST_RATE_LIMITER_REDIS_URL must be a redis:// or rediss:// URL, got %q; "+
+			"leave it unset to run the per-host interval in local mode", config.CoordinationRedisURL)
+	}
+
 	// Validate DOS protection configuration
 	if err := validateDOSProtectionConfig(&config.DOSProtection); err != nil {
 		return fmt.Errorf("DOS protection config validation failed: %w", err)

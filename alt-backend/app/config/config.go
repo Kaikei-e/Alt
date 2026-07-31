@@ -180,6 +180,19 @@ type RateLimitConfig struct {
 	ExternalAPIBurst    int           `json:"external_api_burst" env:"RATE_LIMIT_EXTERNAL_API_BURST" default:"3"`
 	FeedFetchLimit      int           `json:"feed_fetch_limit" env:"RATE_LIMIT_FEED_FETCH_LIMIT" default:"100"`
 
+	// CoordinationRedisURL points at the arbiter that makes the per-host
+	// interval hold across processes. ADR-000954 put two internet-facing
+	// binaries in the deployment — cmd/backend fetches synchronously for the
+	// user, cmd/harvester fetches on a schedule — and a process-local token
+	// bucket lets the same publisher see two requests per interval, which is
+	// the thing CLAUDE.md rule 2 promises will not happen.
+	//
+	// It has no default on purpose. Empty is the explicit "local mode": the
+	// composition roots log host_rate_limiter.mode=local at startup and state
+	// that the guarantee is per process, so an unset value can never be
+	// mistaken for wiring that silently went missing (rules 8 and 9).
+	CoordinationRedisURL string `json:"coordination_redis_url" env:"HOST_RATE_LIMITER_REDIS_URL" default:""`
+
 	// DOS Protection Configuration
 	DOSProtection DOSProtectionConfig `json:"dos_protection"`
 }
