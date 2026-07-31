@@ -7,6 +7,8 @@ private namespace.
 
 from __future__ import annotations
 
+from acolyte.domain.prompt_safety import neutralize_evidence_line, neutralize_evidence_text
+
 WRITER_PROMPT = """あなたはプロのレポートライターです。「{title}」セクションを日本語で執筆してください。
 
 トピック: {topic}
@@ -35,17 +37,20 @@ def format_evidence(
     hydrated = hydrated or {}
     lines = ["参考記事:"]
     for i, item in enumerate(curated[:10], 1):
-        title = item.get("title", "Untitled")
+        # Title, body and excerpt are third-party RSS content — neutralise the
+        # list's own scaffolding inside them so they cannot forge an entry or
+        # a rule line.
+        title = neutralize_evidence_line(item.get("title", "Untitled"))
         source_type = item.get("type", "article")
         item_id = item.get("id", "")
         line = f"{i}. [{source_type}] {title}"
 
         body = hydrated.get(item_id, "")
         if body:
-            line += f"\n   {body[:300]}"
+            line += f"\n   {neutralize_evidence_text(body[:300])}"
         else:
             excerpt = item.get("excerpt", "")
             if excerpt:
-                line += f"\n   {excerpt[:150]}"
+                line += f"\n   {neutralize_evidence_text(excerpt[:150])}"
         lines.append(line)
     return "\n".join(lines)

@@ -119,7 +119,13 @@ class CuratorNode:
         return {"curated_by_section": curated_by_section, "curated": curated_flat, "source_map": source_map.to_dict()}
 
     async def _curate_with_llm(self, section_evidence: list[dict], topic: str, section_title: str) -> list[dict]:
-        """Use LLM to select top evidence items for a section."""
+        """Use LLM to select top evidence items for a section.
+
+        The evidence is attacker-controlled RSS content, but ``json.dumps``
+        already escapes every newline and quote, so it lands on a single
+        ASCII line and cannot forge the prompt's ``Evidence:`` block. No
+        extra neutralisation (``domain.prompt_safety``) is needed here.
+        """
         prompt = CURATOR_PROMPT.format(
             limit=self._max_evidence,
             topic=topic,
