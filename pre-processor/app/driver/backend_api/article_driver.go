@@ -14,7 +14,7 @@ import (
 
 	"pre-processor/domain"
 	"pre-processor/driver"
-	backendv1 "pre-processor/gen/proto/services/backend/v1"
+	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
 	"pre-processor/utils"
 )
 
@@ -57,7 +57,7 @@ func (r *ArticleRepository) Create(ctx context.Context, article *domain.Article)
 		language = utils.DetectLanguage(article.Title + "\n" + article.Content)
 	}
 
-	protoReq := &backendv1.CreateArticleRequest{
+	protoReq := &datahubv1.CreateArticleRequest{
 		Title:    article.Title,
 		Url:      article.URL,
 		Content:  article.Content,
@@ -106,7 +106,7 @@ func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (boo
 			continue
 		}
 
-		protoReq := &backendv1.CheckArticleExistsRequest{
+		protoReq := &datahubv1.CheckArticleExistsRequest{
 			Url:    u,
 			FeedId: feedID,
 		}
@@ -126,7 +126,7 @@ func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (boo
 
 // FindForSummarization finds articles that need summarization via the backend API.
 func (r *ArticleRepository) FindForSummarization(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
-	protoReq := &backendv1.ListUnsummarizedArticlesRequest{
+	protoReq := &datahubv1.ListUnsummarizedArticlesRequest{
 		Limit: int32(min(limit, math.MaxInt32)), // #nosec G115 -- clamped to int32 range
 	}
 	if cursor != nil {
@@ -174,7 +174,7 @@ func (r *ArticleRepository) FindForSummarization(ctx context.Context, cursor *do
 
 // HasUnsummarizedArticles checks if there are articles without summaries via the backend API.
 func (r *ArticleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
-	protoReq := &backendv1.HasUnsummarizedArticlesRequest{}
+	protoReq := &datahubv1.HasUnsummarizedArticlesRequest{}
 	req := connect.NewRequest(protoReq)
 	r.client.addAuth(req)
 
@@ -188,7 +188,7 @@ func (r *ArticleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, 
 
 // FindByID finds an article by its ID.
 func (r *ArticleRepository) FindByID(ctx context.Context, articleID string) (*domain.Article, error) {
-	protoReq := &backendv1.GetArticleContentRequest{ArticleId: articleID}
+	protoReq := &datahubv1.GetArticleContentRequest{ArticleId: articleID}
 	req := connect.NewRequest(protoReq)
 	r.client.addAuth(req)
 
@@ -369,7 +369,7 @@ func (r *ArticleRepository) UpsertArticlesWithFeedID(ctx context.Context, articl
 }
 
 func (r *ArticleRepository) getEmptyFeedID(ctx context.Context, feedURL string) (string, error) {
-	protoReq := &backendv1.GetEmptyFeedIDRequest{FeedUrl: feedURL}
+	protoReq := &datahubv1.GetEmptyFeedIDRequest{FeedUrl: feedURL}
 	req := connect.NewRequest(protoReq)
 	r.client.addAuth(req)
 
@@ -381,7 +381,7 @@ func (r *ArticleRepository) getEmptyFeedID(ctx context.Context, feedURL string) 
 }
 
 func (r *ArticleRepository) getFeedID(ctx context.Context, feedURL string) (string, error) {
-	protoReq := &backendv1.GetFeedIDRequest{FeedUrl: feedURL}
+	protoReq := &datahubv1.GetFeedIDRequest{FeedUrl: feedURL}
 	req := connect.NewRequest(protoReq)
 	r.client.addAuth(req)
 

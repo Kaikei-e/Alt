@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"alt/domain"
-	"alt/orchestrator/port/trend_stats_port"
 	"alt/utils/logger"
+
+	"github.com/google/uuid"
 )
 
-// TrendStatsRow represents a single row from the trend stats query
+// TrendStatsRow is one time bucket of the dashboard chart.
 type TrendStatsRow struct {
 	Bucket       time.Time
 	Articles     int
@@ -19,45 +19,58 @@ type TrendStatsRow struct {
 	FeedActivity int
 }
 
-// FetchTrendStats fetches trend statistics for the given time window
-func (r *DashboardRepository) FetchTrendStats(ctx context.Context, window string) (*trend_stats_port.TrendDataResponse, error) {
-	// Validate user context and extract user_id for multi-tenant filtering
-	user, err := domain.GetUserFromContext(ctx)
-	if err != nil {
-		logger.SafeErrorContext(ctx, "user context not found for trend stats", "error", err)
+// TrendStats is what FetchTrendStatsForUser returns.
+//
+// A driver-local type rather than trend_stats_port.TrendDataResponse. This
+// file used to import that port, which pointed the dependency backwards —
+// driver → orchestrator's port layer — and after ADR-000954 Wave 3 batch 5 it
+// would have been worse than untidy: the caller that owns the port is in
+// another process, and the type would have travelled here only to be mapped
+// onto a wire message anyway.
+type TrendStats struct {
+	Rows []TrendStatsRow
+	// "hourly" or "daily" — chosen from the window, not requested.
+	Granularity string
+}
+
+// FetchTrendStatsForUser aggregates one user's articles, summaries and feed
+// activity into time buckets over a window (catalog §2.M W3-M6).
+//
+// The window string is the provider's vocabulary and the set is closed:
+// parseWindow rejects anything else, because each accepted value picks both a
+// lower bound and the date_trunc unit the query groups by, and those two only
+// make sense together.
+func (r *DashboardRepository) FetchTrendStatsForUser(ctx context.Context, userID uuid.UUID, window string) (*TrendStats, error) {
+	if userID == uuid.Nil {
 		return nil, errors.New("authentication required")
 	}
 
-	// Parse window
 	windowSeconds, granularity, err := parseWindow(window)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "invalid window parameter", "window", window, "error", err)
 		return nil, fmt.Errorf("invalid window: %w", err)
 	}
 
-	// Check if pool is nil
-	if r.pool == nil {
+	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection pool is nil")
 	}
 
-	// Calculate since time
 	since := time.Now().Add(-time.Duration(windowSeconds) * time.Second)
 
-	// Build and execute query with user_id filter for multi-tenant isolation
 	query, err := buildTrendQuery(granularity)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "invalid granularity", "granularity", granularity, "error", err)
 		return nil, fmt.Errorf("invalid granularity: %w", err)
 	}
 
-	rows, err := r.pool.Query(ctx, query, since, user.UserID)
+	rows, err := r.pool.Query(ctx, query, since, userID)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "failed to fetch trend stats", "error", err)
 		return nil, errors.New("failed to fetch trend stats")
 	}
 	defer rows.Close()
 
-	var dataPoints []trend_stats_port.TrendDataPoint
+	var dataPoints []TrendStatsRow
 	for rows.Next() {
 		var bucket time.Time
 		var articles, summarized, feedActivity int
@@ -67,8 +80,8 @@ func (r *DashboardRepository) FetchTrendStats(ctx context.Context, window string
 			continue
 		}
 
-		dataPoints = append(dataPoints, trend_stats_port.TrendDataPoint{
-			Timestamp:    bucket,
+		dataPoints = append(dataPoints, TrendStatsRow{
+			Bucket:       bucket,
 			Articles:     articles,
 			Summarized:   summarized,
 			FeedActivity: feedActivity,
@@ -85,11 +98,7 @@ func (r *DashboardRepository) FetchTrendStats(ctx context.Context, window string
 		"granularity", granularity,
 		"data_points", len(dataPoints))
 
-	return &trend_stats_port.TrendDataResponse{
-		DataPoints:  dataPoints,
-		Granularity: granularity,
-		Window:      window,
-	}, nil
+	return &TrendStats{Rows: dataPoints, Granularity: granularity}, nil
 }
 
 // parseWindow parses the window string and returns duration in seconds and granularity

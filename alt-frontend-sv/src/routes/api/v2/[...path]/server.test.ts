@@ -25,11 +25,21 @@ describe("POST /api/v2/[...path]", () => {
 
 	// The proxy attaches a valid backend token to whatever path the caller
 	// picked. Without an allowlist, a self-registered user could steer it at
-	// alt-backend's service-to-service RPC surface, which has no user-JWT
-	// check of its own.
+	// the service-to-service RPC surface, which has no user-JWT check of its
+	// own.
+	//
+	// ADR-000954 moved that surface: `services.backend.v1.BackendInternalService`
+	// is retired and its capabilities live on `alt.datahub.v1.DataHubService`
+	// in alt-data-hub. The retired path stays in the table — it must remain
+	// refused rather than merely unrouted — and the live one sits beside it.
+	// Note the shape of the guard here differs from the BFF's: this proxy is an
+	// allowlist (PROXYABLE_SERVICES), so a new east-west service is denied by
+	// construction; the assertion pins that it is never added by accident.
 	it.each([
+		"alt.datahub.v1.DataHubService/CreateArticle",
+		"alt.datahub.v1.DataHubService/ListArticlesWithTags",
+		"alt.datahub.v1.DataHubService/ListRecapArticles",
 		"services.backend.v1.BackendInternalService/CreateArticle",
-		"services.backend.v1.BackendInternalService/ListArticlesWithTags",
 		"services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
 		"alt.knowledge_home.v1.KnowledgeHomeAdminService/StartReproject",
 	])("refuses to proxy %s", async (path) => {

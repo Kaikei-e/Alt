@@ -51,12 +51,7 @@ func (h *Handler) GetFeedTags(
 		cursor = &parsed
 	}
 
-	if h.deps.AltDBRepository == nil {
-		return nil, connect.NewError(connect.CodeUnimplemented,
-			fmt.Errorf("feed tags repository not wired"))
-	}
-
-	tags, err := h.deps.AltDBRepository.FetchFeedTags(ctx, req.Msg.FeedId, cursor, limit)
+	tags, err := h.deps.FeedTagStore.FetchFeedTags(ctx, req.Msg.FeedId, cursor, limit)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetFeedTags")
 	}

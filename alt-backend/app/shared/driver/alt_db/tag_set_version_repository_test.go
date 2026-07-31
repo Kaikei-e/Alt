@@ -12,7 +12,14 @@ import (
 
 // Finding [4]: MarkTagSetVersionSuperseded is the tag_set_versions twin of
 // MarkSummaryVersionSuperseded and carries the exact same mutual-supersede
-// race — see summary_version_repository_test.go for the full mechanism.
+// race — see summary_version_repository_test.go for the full mechanism, and
+// for why ADR-000954 Wave 3 batch 5 had to keep the whole transaction inside
+// one RPC rather than splitting the read from the update.
+//
+// The race is more likely here than there: tag sets are regenerated whenever
+// an article is re-tagged, which happens on the on-the-fly generation path as
+// well as in the batch job, so two calls for one article arriving together is
+// ordinary rather than exceptional.
 func TestMarkTagSetVersionSuperseded_UsesTransactionWithAdvisoryLock(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)

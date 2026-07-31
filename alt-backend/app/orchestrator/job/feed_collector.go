@@ -17,8 +17,6 @@ import (
 	rssFeed "github.com/mmcdole/gofeed"
 )
 
-const maxConsecutiveFailures = 5
-
 // maxFeedBodyBytes bounds how much of a feed body gofeed reads. gofeed treats a
 // zero MaxByteSize as "no limit", and the transport transparently decompresses
 // gzip, so without a ceiling a few KB on the wire can expand into GBs resident.
@@ -166,22 +164,23 @@ func handleFeedError(ctx context.Context, feedURL url.URL, err error, rateLimite
 				"url", feedURL.String())
 		}
 	} else if isPersistentError(err) && availabilityRepo != nil {
-		// For persistent errors, increment failure count
-		availability, dbErr := availabilityRepo.IncrementFeedLinkFailures(ctx, feedURL.String(), err.Error())
+		// One call, not two. The count-and-decide used to happen here — read
+		// the incremented failure count back, compare it to
+		// maxConsecutiveFailures, then issue a disable — and two ticks racing
+		// on the same broken feed could both see a count below the threshold
+		// and neither disable it. The comparison now happens inside the
+		// provider's transaction, and the threshold travels with the wiring
+		// rather than with this branch (capability catalog §4-4).
+		availability, disabledNow, dbErr := availabilityRepo.RecordFeedLinkFailure(ctx, feedURL.String(), err.Error())
 		if dbErr != nil {
 			logger.Logger.ErrorContext(ctx, "Failed to track feed failure", "url", feedURL.String(), "error", dbErr)
 			return
 		}
 
-		// Use domain business logic to determine if feed should be disabled
-		if availability.ShouldDisable(maxConsecutiveFailures) {
-			if disableErr := availabilityRepo.DisableFeedLink(ctx, feedURL.String()); disableErr != nil {
-				logger.Logger.ErrorContext(ctx, "Failed to disable feed", "url", feedURL.String(), "error", disableErr)
-			} else {
-				logger.Logger.WarnContext(ctx, "Auto-disabled feed after repeated failures",
-					"url", feedURL.String(),
-					"failures", availability.ConsecutiveFailures)
-			}
+		if disabledNow {
+			logger.Logger.WarnContext(ctx, "Auto-disabled feed after repeated failures",
+				"url", feedURL.String(),
+				"failures", availability.ConsecutiveFailures)
 		}
 	}
 }

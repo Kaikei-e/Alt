@@ -438,7 +438,7 @@ func TestRegisterFavoriteFeed_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockPort := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
-	mockPort.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/feed").Return(nil)
+	mockPort.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/feed", gomock.Any()).Return(nil)
 
 	usecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(mockPort)
 	container := &di.ApplicationComponents{
@@ -461,7 +461,7 @@ func TestRegisterFavoriteFeed_UsecaseError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockPort := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
-	mockPort.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/feed").Return(errors.New("db error"))
+	mockPort.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/feed", gomock.Any()).Return(errors.New("db error"))
 
 	usecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(mockPort)
 	container := &di.ApplicationComponents{

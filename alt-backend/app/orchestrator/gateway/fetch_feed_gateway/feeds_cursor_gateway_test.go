@@ -1,26 +1,22 @@
 package fetch_feed_gateway
 
 import (
+	"alt/orchestrator/driver/models"
+
+	stderrors "errors"
+
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"alt/utils/logger"
 	"context"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	pgxmock "github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/require"
 )
 
 func TestFetchFeedsGateway_FetchReadFeedsListCursor_MapsOgImage(t *testing.T) {
 	logger.InitLogger()
-
-	mock, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	defer mock.Close()
-
-	gateway := &FetchFeedsGateway{alt_db: alt_db.NewAltDBRepository(mock)}
 
 	userID := uuid.New()
 	ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
@@ -37,25 +33,34 @@ func TestFetchFeedsGateway_FetchReadFeedsListCursor_MapsOgImage(t *testing.T) {
 	now := time.Now()
 	ogURL := "https://img.example.com/read-og.jpg"
 
-	mock.ExpectQuery(`(?s)article_heads.*INNER JOIN read_status`).
-		WithArgs(20, userID).
-		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url",
-		}).AddRow(feedID, "Read Title", "Desc", "https://example.com/feed", now, now, now, &articleID, &ogURL))
+	// The og:image and the article id are pointers on the row and plain
+	// strings on the item. That flattening is this gateway's job and the
+	// reason the test exists: a nil pointer has to become "" rather than
+	// panic, and a set one has to survive.
+	gateway := &FetchFeedsGateway{store: &feedListStoreStub{feeds: []*models.Feed{{
+		ID:          feedID,
+		Title:       "Read Title",
+		Description: "Desc",
+		WebsiteURL:  "https://example.com/feed",
+		PubDate:     now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		ArticleID:   &articleID,
+		OgImageURL:  &ogURL,
+	}}}}
 
 	items, err := gateway.FetchReadFeedsListCursor(ctx, nil, 20)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	require.Equal(t, ogURL, items[0].OgImageURL)
 	require.Equal(t, articleID, items[0].ArticleID)
-	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestFetchFeedsGateway_FetchFeedsListCursor_NilCheck(t *testing.T) {
+func TestFetchFeedsGateway_FetchFeedsListCursor_PropagatesStoreFailure(t *testing.T) {
 	logger.InitLogger()
 
 	gateway := &FetchFeedsGateway{
-		alt_db: nil,
+		store: &feedListStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	ctx := context.Background()
@@ -68,13 +73,13 @@ func TestFetchFeedsGateway_FetchFeedsListCursor_NilCheck(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "nil database connection - no cursor",
+			name:    "store failure - no cursor",
 			cursor:  nil,
 			limit:   10,
 			wantErr: true,
 		},
 		{
-			name:    "nil database connection - with cursor",
+			name:    "store failure - with cursor",
 			cursor:  &cursor,
 			limit:   5,
 			wantErr: true,
@@ -88,21 +93,23 @@ func TestFetchFeedsGateway_FetchFeedsListCursor_NilCheck(t *testing.T) {
 				t.Errorf("FetchFeedsGateway.FetchFeedsListCursor() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if err != nil {
-				expectedError := "database connection not available"
-				if err.Error() != expectedError {
-					t.Errorf("FetchFeedsGateway.FetchFeedsListCursor() error = %v, want %v", err.Error(), expectedError)
-				}
+			// The message is the gateway's, not the store's: the old test
+			// asserted "database connection not available", which only ever
+			// held because the gateway short-circuited on a nil repository.
+			// What matters now is that a data plane failure reaches the caller
+			// as a failure rather than as an empty list.
+			if err != nil && len(err.Error()) == 0 {
+				t.Error("expected a non-empty error message")
 			}
 		})
 	}
 }
 
-func TestFetchFeedsGateway_FetchReadFeedsListCursor_NilCheck(t *testing.T) {
+func TestFetchFeedsGateway_FetchReadFeedsListCursor_PropagatesStoreFailure(t *testing.T) {
 	logger.InitLogger()
 
 	gateway := &FetchFeedsGateway{
-		alt_db: nil,
+		store: &feedListStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	ctx := context.Background()
@@ -115,13 +122,13 @@ func TestFetchFeedsGateway_FetchReadFeedsListCursor_NilCheck(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "nil database connection - no cursor",
+			name:    "store failure - no cursor",
 			cursor:  nil,
 			limit:   10,
 			wantErr: true,
 		},
 		{
-			name:    "nil database connection - with cursor",
+			name:    "store failure - with cursor",
 			cursor:  &cursor,
 			limit:   5,
 			wantErr: true,
@@ -135,21 +142,23 @@ func TestFetchFeedsGateway_FetchReadFeedsListCursor_NilCheck(t *testing.T) {
 				t.Errorf("FetchReadFeedsListCursor error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if err != nil {
-				expectedError := "database connection not available"
-				if err.Error() != expectedError {
-					t.Errorf("FetchReadFeedsListCursor error = %v, want %v", err.Error(), expectedError)
-				}
+			// The message is the gateway's, not the store's: the old test
+			// asserted "database connection not available", which only ever
+			// held because the gateway short-circuited on a nil repository.
+			// What matters now is that a data plane failure reaches the caller
+			// as a failure rather than as an empty list.
+			if err != nil && len(err.Error()) == 0 {
+				t.Error("expected a non-empty error message")
 			}
 		})
 	}
 }
 
-func TestFetchFeedsGateway_FetchFavoriteFeedsListCursor_NilCheck(t *testing.T) {
+func TestFetchFeedsGateway_FetchFavoriteFeedsListCursor_PropagatesStoreFailure(t *testing.T) {
 	logger.InitLogger()
 
 	gateway := &FetchFeedsGateway{
-		alt_db: nil,
+		store: &feedListStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	ctx := context.Background()
@@ -162,13 +171,13 @@ func TestFetchFeedsGateway_FetchFavoriteFeedsListCursor_NilCheck(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "nil database connection - no cursor",
+			name:    "store failure - no cursor",
 			cursor:  nil,
 			limit:   10,
 			wantErr: true,
 		},
 		{
-			name:    "nil database connection - with cursor",
+			name:    "store failure - with cursor",
 			cursor:  &cursor,
 			limit:   5,
 			wantErr: true,
@@ -182,21 +191,23 @@ func TestFetchFeedsGateway_FetchFavoriteFeedsListCursor_NilCheck(t *testing.T) {
 				t.Errorf("FetchFavoriteFeedsListCursor error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if err != nil {
-				expectedError := "database connection not available"
-				if err.Error() != expectedError {
-					t.Errorf("FetchFavoriteFeedsListCursor error = %v, want %v", err.Error(), expectedError)
-				}
+			// The message is the gateway's, not the store's: the old test
+			// asserted "database connection not available", which only ever
+			// held because the gateway short-circuited on a nil repository.
+			// What matters now is that a data plane failure reaches the caller
+			// as a failure rather than as an empty list.
+			if err != nil && len(err.Error()) == 0 {
+				t.Error("expected a non-empty error message")
 			}
 		})
 	}
 }
 
-func TestFetchFeedsGateway_FetchUnreadFeedsListCursor_NilCheck(t *testing.T) {
+func TestFetchFeedsGateway_FetchUnreadFeedsListCursor_PropagatesStoreFailure(t *testing.T) {
 	logger.InitLogger()
 
 	gateway := &FetchFeedsGateway{
-		alt_db: nil,
+		store: &feedListStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	ctx := context.Background()
@@ -209,13 +220,13 @@ func TestFetchFeedsGateway_FetchUnreadFeedsListCursor_NilCheck(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "nil database connection - no cursor",
+			name:    "store failure - no cursor",
 			cursor:  nil,
 			limit:   10,
 			wantErr: true,
 		},
 		{
-			name:    "nil database connection - with cursor",
+			name:    "store failure - with cursor",
 			cursor:  &cursor,
 			limit:   5,
 			wantErr: true,
@@ -229,11 +240,13 @@ func TestFetchFeedsGateway_FetchUnreadFeedsListCursor_NilCheck(t *testing.T) {
 				t.Errorf("FetchUnreadFeedsListCursor error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if err != nil {
-				expectedError := "database connection not available"
-				if err.Error() != expectedError {
-					t.Errorf("FetchUnreadFeedsListCursor error = %v, want %v", err.Error(), expectedError)
-				}
+			// The message is the gateway's, not the store's: the old test
+			// asserted "database connection not available", which only ever
+			// held because the gateway short-circuited on a nil repository.
+			// What matters now is that a data plane failure reaches the caller
+			// as a failure rather than as an empty list.
+			if err != nil && len(err.Error()) == 0 {
+				t.Error("expected a non-empty error message")
 			}
 		})
 	}

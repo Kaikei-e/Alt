@@ -1,29 +1,34 @@
-// Package trail_thumbnail_gateway adapts alt_db's article_heads OG image
-// lookup (the same table the og-image-backfill job scrapes into) to the
-// trail episode thumbnail port.
+// Package trail_thumbnail_gateway adapts the article_heads OG image lookup
+// (the same table the og-image-backfill job scrapes into) to the trail episode
+// thumbnail port.
+//
+// The lookup itself moved to alt-data-hub in ADR-000954 Wave 3
+// (catalog §2.D / W3-D2), so what this wraps is a Connect-RPC client rather
+// than a database driver. Nothing about the port changed, which is the point:
+// the trail rendering code cannot tell the difference.
 package trail_thumbnail_gateway
 
 import (
 	"context"
-
-	"alt/shared/driver/alt_db"
 )
 
-type ogImageLookupDB interface {
+// ogImageLookup is the one capability this gateway needs. Declared here as an
+// interface rather than taking the concrete data-hub gateway so the trail
+// tests can substitute it without a Connect client.
+type ogImageLookup interface {
 	FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error)
 }
 
 // Gateway implements trail_thumbnail_port.GetOgImageURLsPort.
 type Gateway struct {
-	db ogImageLookupDB
+	db ogImageLookup
 }
 
-// NewGateway wires the gateway to the shared alt_db repository.
-func NewGateway(db *alt_db.AltDBRepository) *Gateway {
-	return newGateway(db)
-}
-
-func newGateway(db ogImageLookupDB) *Gateway {
+// NewGateway wires the gateway to the data-hub OG image capability.
+func NewGateway(db ogImageLookup) *Gateway {
+	if db == nil {
+		panic("trail_thumbnail_gateway: og image lookup is required — a nil one would render every trail episode without a thumbnail and report success (see .claude/rules/di-wiring.md)")
+	}
 	return &Gateway{db: db}
 }
 

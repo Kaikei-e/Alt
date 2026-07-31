@@ -1,0 +1,472 @@
+{
+  "consumer": {
+    "name": "pre-processor"
+  },
+  "interactions": [
+    {
+      "description": "a CreateArticle request",
+      "providerStates": [
+        {
+          "name": "a feed exists with id feed-001"
+        }
+      ],
+      "request": {
+        "body": {
+          "content": "Article body text.",
+          "feedId": "feed-001",
+          "language": "en",
+          "title": "Go 1.26 Released",
+          "url": "https://example.com/articles/go-126",
+          "userId": "user-001"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.content": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feedId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.language": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/CreateArticle"
+      },
+      "response": {
+        "body": {
+          "articleId": "art-001"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetFeedID request",
+      "providerStates": [
+        {
+          "name": "a feed is registered for the requested url"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedUrl": "https://example.com/feed.xml"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feedUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetFeedID"
+      },
+      "response": {
+        "body": {
+          "feedId": "feed-001"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feedId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetSystemUser request",
+      "providerStates": [
+        {
+          "name": "a Kratos identity exists"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/GetSystemUser"
+      },
+      "response": {
+        "body": {
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListFeedURLs request",
+      "providerStates": [
+        {
+          "name": "registered feeds exist"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 500
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.limit": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListFeedURLs"
+      },
+      "response": {
+        "body": {
+          "feeds": [
+            {
+              "url": "https://example.com/feed.xml"
+            }
+          ],
+          "hasMore": true,
+          "nextCursor": "feed-002"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feeds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feeds[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.hasMore": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.nextCursor": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListUnsummarizedArticles request",
+      "providerStates": [
+        {
+          "name": "unsummarized articles exist"
+        }
+      ],
+      "request": {
+        "body": {
+          "limit": 100
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.limit": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/ListUnsummarizedArticles"
+      },
+      "response": {
+        "body": {
+          "articles": [
+            {
+              "content": "Article body text.",
+              "createdAt": "2026-03-26T00:00:00Z",
+              "id": "art-001",
+              "title": "Go 1.26 Released",
+              "url": "https://example.com/articles/go-126",
+              "userId": "user-001"
+            }
+          ],
+          "nextCreatedAt": "2026-03-26T00:00:00Z",
+          "nextId": "art-002"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.articles": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.articles[*].content": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.nextCreatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.nextId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a SaveArticleSummary request",
+      "providerStates": [
+        {
+          "name": "an article exists with id art-001"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "art-001",
+          "language": "ja",
+          "summary": "これはテスト記事の要約です。",
+          "userId": "user-001"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.datahub.v1.DataHubService/SaveArticleSummary"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.5.1"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "alt-backend"
+  }
+}

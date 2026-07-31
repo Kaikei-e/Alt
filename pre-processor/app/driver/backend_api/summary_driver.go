@@ -8,7 +8,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	backendv1 "pre-processor/gen/proto/services/backend/v1"
+	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
 
 	"pre-processor/domain"
 )
@@ -32,7 +32,7 @@ func (r *SummaryRepository) Create(ctx context.Context, summary *domain.ArticleS
 		return fmt.Errorf("article ID cannot be empty")
 	}
 
-	protoReq := &backendv1.SaveArticleSummaryRequest{
+	protoReq := &datahubv1.SaveArticleSummaryRequest{
 		ArticleId: summary.ArticleID,
 		Summary:   summary.SummaryJapanese,
 		Language:  "ja",
@@ -52,7 +52,7 @@ func (r *SummaryRepository) Create(ctx context.Context, summary *domain.ArticleS
 
 // FindArticlesWithSummaries finds articles with summaries for quality checking via the backend API.
 func (r *SummaryRepository) FindArticlesWithSummaries(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.ArticleWithSummary, *domain.Cursor, error) {
-	protoReq := &backendv1.FindArticlesWithSummariesRequest{
+	protoReq := &datahubv1.FindArticlesWithSummariesRequest{
 		Limit: int32(min(limit, math.MaxInt32)), // #nosec G115 -- clamped to int32 range
 	}
 
@@ -105,7 +105,7 @@ func (r *SummaryRepository) Delete(ctx context.Context, articleID string) error 
 		return fmt.Errorf("article ID cannot be empty")
 	}
 
-	protoReq := &backendv1.DeleteArticleSummaryRequest{
+	protoReq := &datahubv1.DeleteArticleSummaryRequest{
 		ArticleId: articleID,
 	}
 
@@ -126,7 +126,7 @@ func (r *SummaryRepository) Exists(ctx context.Context, articleID string) (bool,
 		return false, fmt.Errorf("article ID cannot be empty")
 	}
 
-	protoReq := &backendv1.CheckArticleSummaryExistsRequest{
+	protoReq := &datahubv1.CheckArticleSummaryExistsRequest{
 		ArticleId: articleID,
 	}
 

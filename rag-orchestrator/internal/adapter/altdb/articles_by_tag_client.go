@@ -6,27 +6,32 @@ import (
 	"log/slog"
 	"math"
 
-	backendv1 "alt/gen/proto/services/backend/v1"
-	"alt/gen/proto/services/backend/v1/backendv1connect"
+	datahubv1 "alt/gen/proto/alt/datahub/v1"
+	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
 
 	"rag-orchestrator/internal/domain"
 
 	"connectrpc.com/connect"
 )
 
-// InternalArticlesByTagClient implements domain.ArticlesByTagClient using BackendInternalService.
-type InternalArticlesByTagClient struct {
-	client backendv1connect.BackendInternalServiceClient
+// DataHubArticlesByTagClient implements domain.ArticlesByTagClient using
+// alt.datahub.v1.DataHubService/FetchArticlesByTag.
+//
+// Origin: services.backend.v1.BackendInternalService/FetchArticlesByTag,
+// wire-identical messages (ADR-000954 D7).
+type DataHubArticlesByTagClient struct {
+	client datahubv1connect.DataHubServiceClient
 	logger *slog.Logger
 }
 
-// NewInternalArticlesByTagClient creates an articles-by-tag client using BackendInternalService.
-func NewInternalArticlesByTagClient(client backendv1connect.BackendInternalServiceClient, logger *slog.Logger) *InternalArticlesByTagClient {
-	return &InternalArticlesByTagClient{client: client, logger: logger}
+// NewDataHubArticlesByTagClient creates an articles-by-tag client using
+// DataHubService.
+func NewDataHubArticlesByTagClient(client datahubv1connect.DataHubServiceClient, logger *slog.Logger) *DataHubArticlesByTagClient {
+	return &DataHubArticlesByTagClient{client: client, logger: logger}
 }
 
-func (c *InternalArticlesByTagClient) FetchArticlesByTag(ctx context.Context, tagName string, limit int) ([]domain.TagArticle, error) {
-	req := connect.NewRequest(&backendv1.BackendInternalServiceFetchArticlesByTagRequest{
+func (c *DataHubArticlesByTagClient) FetchArticlesByTag(ctx context.Context, tagName string, limit int) ([]domain.TagArticle, error) {
+	req := connect.NewRequest(&datahubv1.FetchArticlesByTagRequest{
 		TagName: tagName,
 		Limit:   int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
 	})
@@ -36,8 +41,8 @@ func (c *InternalArticlesByTagClient) FetchArticlesByTag(ctx context.Context, ta
 		return nil, fmt.Errorf("FetchArticlesByTag RPC failed: %w", err)
 	}
 
-	articles := make([]domain.TagArticle, 0, len(resp.Msg.Articles))
-	for _, a := range resp.Msg.Articles {
+	articles := make([]domain.TagArticle, 0, len(resp.Msg.GetArticles()))
+	for _, a := range resp.Msg.GetArticles() {
 		articles = append(articles, domain.TagArticle{
 			ID:    a.GetId(),
 			Title: a.GetTitle(),

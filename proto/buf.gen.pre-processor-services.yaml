@@ -5,14 +5,10 @@ managed:
     - file_option: go_package
       path: services/mqhub/v1/mqhub.proto
       value: pre-processor/gen/proto/services/mqhub/v1;mqhubv1
-    - file_option: go_package
-      path: services/backend/v1/internal.proto
-      value: pre-processor/gen/proto/services/backend/v1;backendv1
 inputs:
   - directory: .
     paths:
       - services/mqhub
-      - services/backend
 plugins:
   - local: protoc-gen-go
     out: ../pre-processor/app/gen/proto

@@ -1,4 +1,8 @@
-// Package backend_api provides a Connect-RPC client for alt-backend's BackendInternalService.
+// Package backend_api provides a Connect-RPC client for alt-data-hub's
+// DataHubService (ADR-000954 D7). The package name is kept so the DI wiring
+// and its tests move in one step; the peer it talks to is alt-data-hub, which
+// serves alt.datahub.v1.DataHubService on the same mTLS listener the legacy
+// services.backend.v1.BackendInternalService was reached on.
 package backend_api
 
 import (
@@ -12,17 +16,17 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	backendv1 "search-indexer/gen/proto/services/backend/v1"
-	"search-indexer/gen/proto/services/backend/v1/backendv1connect"
+	datahubv1 "search-indexer/gen/proto/alt/datahub/v1"
+	"search-indexer/gen/proto/alt/datahub/v1/datahubv1connect"
 
 	"search-indexer/driver"
 )
 
-// Client wraps the BackendInternalService Connect-RPC client.
+// Client wraps the DataHubService Connect-RPC client.
 // It implements gateway.ArticleDriver to serve as a drop-in replacement
 // for the database driver.
 type Client struct {
-	client backendv1connect.BackendInternalServiceClient
+	client datahubv1connect.DataHubServiceClient
 }
 
 // DefaultHTTPClient constructs a dedicated *http.Client for backend Connect-RPC
@@ -55,7 +59,7 @@ func NewClient(baseURL, _ string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = DefaultHTTPClient()
 	}
-	c := backendv1connect.NewBackendInternalServiceClient(
+	c := datahubv1connect.NewDataHubServiceClient(
 		httpClient,
 		baseURL,
 	)
@@ -68,7 +72,7 @@ func (c *Client) addAuth(_ connect.AnyRequest) {
 
 // GetArticlesWithTags fetches articles with backward keyset pagination (backfill).
 func (c *Client) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*driver.ArticleWithTags, *time.Time, string, error) {
-	protoReq := &backendv1.ListArticlesWithTagsRequest{
+	protoReq := &datahubv1.ListArticlesWithTagsRequest{
 		LastId: lastID,
 		Limit:  safeInt32(limit),
 	}
@@ -97,7 +101,7 @@ func (c *Client) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Ti
 
 // GetArticlesWithTagsForward fetches articles with forward keyset pagination (incremental).
 func (c *Client) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*driver.ArticleWithTags, *time.Time, string, error) {
-	protoReq := &backendv1.ListArticlesWithTagsForwardRequest{
+	protoReq := &datahubv1.ListArticlesWithTagsForwardRequest{
 		LastId: lastID,
 		Limit:  safeInt32(limit),
 	}
@@ -129,7 +133,7 @@ func (c *Client) GetArticlesWithTagsForward(ctx context.Context, incrementalMark
 
 // GetDeletedArticles fetches deleted articles for syncing deletions.
 func (c *Client) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]*driver.DeletedArticle, *time.Time, error) {
-	protoReq := &backendv1.ListDeletedArticlesRequest{
+	protoReq := &datahubv1.ListDeletedArticlesRequest{
 		Limit: safeInt32(limit),
 	}
 	if lastDeletedAt != nil {
@@ -163,7 +167,7 @@ func (c *Client) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Tim
 
 // GetLatestCreatedAt returns the latest article created_at timestamp.
 func (c *Client) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
-	req := connect.NewRequest(&backendv1.GetLatestArticleTimestampRequest{})
+	req := connect.NewRequest(&datahubv1.GetLatestArticleTimestampRequest{})
 	c.addAuth(req)
 
 	resp, err := c.client.GetLatestArticleTimestamp(ctx, req)
@@ -181,7 +185,7 @@ func (c *Client) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
 
 // GetArticleByID retrieves a single article with tags by ID.
 func (c *Client) GetArticleByID(ctx context.Context, articleID string) (*driver.ArticleWithTags, error) {
-	req := connect.NewRequest(&backendv1.GetArticleByIDRequest{ArticleId: articleID})
+	req := connect.NewRequest(&datahubv1.GetArticleByIDRequest{ArticleId: articleID})
 	c.addAuth(req)
 
 	resp, err := c.client.GetArticleByID(ctx, req)
@@ -196,7 +200,7 @@ func (c *Client) GetArticleByID(ctx context.Context, articleID string) (*driver.
 	return toDriverArticle(resp.Msg.Article), nil
 }
 
-func toDriverArticles(protos []*backendv1.ArticleWithTags) []*driver.ArticleWithTags {
+func toDriverArticles(protos []*datahubv1.ArticleWithTags) []*driver.ArticleWithTags {
 	articles := make([]*driver.ArticleWithTags, len(protos))
 	for i, p := range protos {
 		articles[i] = toDriverArticle(p)
@@ -204,7 +208,7 @@ func toDriverArticles(protos []*backendv1.ArticleWithTags) []*driver.ArticleWith
 	return articles
 }
 
-func toDriverArticle(p *backendv1.ArticleWithTags) *driver.ArticleWithTags {
+func toDriverArticle(p *datahubv1.ArticleWithTags) *driver.ArticleWithTags {
 	tags := make([]driver.TagModel, len(p.Tags))
 	for i, t := range p.Tags {
 		tags[i] = driver.TagModel{TagName: t}

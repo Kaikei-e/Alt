@@ -12,7 +12,6 @@ import (
 
 	"alt/domain"
 	"alt/orchestrator/port/morning_letter_port"
-	"alt/shared/driver/alt_db"
 	"alt/utils/logger"
 
 	"github.com/google/uuid"
@@ -23,20 +22,26 @@ func bytesReader(b []byte) *bytes.Reader { return bytes.NewReader(b) }
 
 // MorningLetterGateway implements MorningLetterRepository by calling recap-worker REST.
 type MorningLetterGateway struct {
-	altDBRepository *alt_db.AltDBRepository
-	httpClient      *http.Client
-	recapWorkerURL  string
+	articles       articleBatchReader
+	httpClient     *http.Client
+	recapWorkerURL string
 }
 
-func NewMorningLetterGateway(pool alt_db.PgxIface) morning_letter_port.MorningLetterRepository {
+// NewMorningLetterGateway panics on a nil article source — see
+// NewMorningGateway.
+func NewMorningLetterGateway(articles articleBatchReader) morning_letter_port.MorningLetterRepository {
+	if articles == nil {
+		panic("morning_gateway: an article batch reader is required — articles moved to alt-data-hub in ADR-000954 Wave 3")
+	}
+
 	recapWorkerURL := os.Getenv("RECAP_WORKER_URL")
 	if recapWorkerURL == "" {
 		recapWorkerURL = "http://recap-worker:9005" //#nosec G101 -- service-discovery default, not a credential
 	}
 	return &MorningLetterGateway{
-		altDBRepository: alt_db.NewAltDBRepository(pool),
-		httpClient:      &http.Client{Timeout: 30 * time.Second},
-		recapWorkerURL:  recapWorkerURL,
+		articles:       articles,
+		httpClient:     &http.Client{Timeout: 30 * time.Second},
+		recapWorkerURL: recapWorkerURL,
 	}
 }
 
@@ -170,8 +175,8 @@ func (g *MorningLetterGateway) GetLetterSources(ctx context.Context, letterID st
 
 	// Fetch articles to get feed_id mapping
 	feedIDMap := make(map[uuid.UUID]uuid.UUID)
-	if g.altDBRepository != nil && len(articleIDs) > 0 {
-		articles, err := g.altDBRepository.FetchArticlesByIDs(ctx, articleIDs)
+	if len(articleIDs) > 0 {
+		articles, err := g.articles.FetchArticlesByIDs(ctx, articleIDs)
 		if err != nil {
 			logger.Logger.WarnContext(ctx, "Failed to fetch articles for feed_id mapping", "error", err)
 		} else {

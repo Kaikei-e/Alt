@@ -17,11 +17,20 @@ PostgreSQL 17 database serving as the central data store for RSS feeds, articles
 
 | Service | DB User | Access Purpose |
 |---------|---------|----------------|
-| alt-backend | `DB_USER` | Core API operations (唯一のデータオーナー) |
-| pre-processor | `PRE_PROCESSOR_DB_USER` | Job queue (`summarize_job_queue`) + Inoreader テーブルのみ |
-| pre-processor-sidecar | `PRE_PROCESSOR_SIDECAR_DB_USER` | RSS/Inoreader sync |
+| **alt-data-hub** | `DB_USER` | **唯一のデータオーナー。alt-db に接続する唯一のプロセス** |
+| migrate | `DB_USER` | Atlas migration の one-shot 実行 |
 
-> **Note:** search-indexer, tag-generator は ADR-000241 により alt-backend Internal API (:9101) 経由でアクセス。DB 直接接続は廃止。
+> **Note ([[000954]]):** [[000241]] の「唯一のデータオーナー」は、alt-backend という
+> 名前のプロセスから **alt-data-hub** へ移った。alt-backend / alt-harvester を含む
+> 全 consumer は `alt.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ
+> alt-db に触れる。DB DSN を持つ env アンカー (`x-alt-db-env` in `compose/core.yaml`) の
+> consumer は alt-data-hub 1 つだけで、alt-backend / alt-harvester のイメージには
+> そもそも DB ドライバが含まれていない（`alt-backend/app/di/import_boundary_test.go` が
+> `go list -deps` でリンクレベルに強制）。
+>
+> pre-processor と pre-processor-sidecar は **alt-db ではなく `pre-processor-db`**
+> を使う（[[000246]]）。search-indexer / tag-generator / recap-worker /
+> rag-orchestrator も DB 直接接続は持たず、DataHubService 経由でアクセスする。
 
 ## ER Diagram
 

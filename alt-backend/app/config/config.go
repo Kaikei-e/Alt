@@ -160,9 +160,14 @@ type AuthConfig struct {
 }
 
 type ServerConfig struct {
-	Port               int           `json:"port" env:"SERVER_PORT" default:"9000"`
-	ConnectPort        int           `json:"connect_port" env:"CONNECT_PORT" default:"9101"`
-	InternalPort       int           `json:"internal_port" env:"INTERNAL_PORT" default:"9102"`
+	Port        int `json:"port" env:"SERVER_PORT" default:"9000"`
+	ConnectPort int `json:"connect_port" env:"CONNECT_PORT" default:"9101"`
+	// There is no InternalPort. The listener it named became cmd/backend's
+	// operator listener, whose bind address comes from OPERATOR_LISTEN_ADDR
+	// via config.LoadOperatorListenAddr — a host:port, not a bare port, because
+	// how far it binds is the whole access control for the admin services.
+	// Keeping a parsed-but-unread INTERNAL_PORT here would have made a compose
+	// line look like it moved a listener that it could not move (rule 8).
 	ReadTimeout        time.Duration `json:"read_timeout" env:"SERVER_READ_TIMEOUT" default:"300s"` // Extended for LLM processing (nginx timeout 240s + margin)
 	WriteTimeout       time.Duration `json:"write_timeout" env:"SERVER_WRITE_TIMEOUT" default:"300s"`
 	IdleTimeout        time.Duration `json:"idle_timeout" env:"SERVER_IDLE_TIMEOUT" default:"120s"`
@@ -174,6 +179,19 @@ type RateLimitConfig struct {
 	ExternalAPIInterval time.Duration `json:"external_api_interval" env:"RATE_LIMIT_EXTERNAL_API_INTERVAL" default:"10s"`
 	ExternalAPIBurst    int           `json:"external_api_burst" env:"RATE_LIMIT_EXTERNAL_API_BURST" default:"3"`
 	FeedFetchLimit      int           `json:"feed_fetch_limit" env:"RATE_LIMIT_FEED_FETCH_LIMIT" default:"100"`
+
+	// CoordinationRedisURL points at the arbiter that makes the per-host
+	// interval hold across processes. ADR-000954 put two internet-facing
+	// binaries in the deployment — cmd/backend fetches synchronously for the
+	// user, cmd/harvester fetches on a schedule — and a process-local token
+	// bucket lets the same publisher see two requests per interval, which is
+	// the thing CLAUDE.md rule 2 promises will not happen.
+	//
+	// It has no default on purpose. Empty is the explicit "local mode": the
+	// composition roots log host_rate_limiter.mode=local at startup and state
+	// that the guarantee is per process, so an unset value can never be
+	// mistaken for wiring that silently went missing (rules 8 and 9).
+	CoordinationRedisURL string `json:"coordination_redis_url" env:"HOST_RATE_LIMITER_REDIS_URL" default:""`
 
 	// DOS Protection Configuration
 	DOSProtection DOSProtectionConfig `json:"dos_protection"`

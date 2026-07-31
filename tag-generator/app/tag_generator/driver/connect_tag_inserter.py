@@ -11,9 +11,9 @@ from typing import Any
 import structlog
 from connectrpc.errors import ConnectError
 
-from tag_generator.gen.proto.services.backend.v1 import internal_pb2
-from tag_generator.gen.proto.services.backend.v1.internal_connect import (
-    BackendInternalServiceClientSync,
+from tag_generator.gen.proto.alt.datahub.v1 import datahub_pb2
+from tag_generator.gen.proto.alt.datahub.v1.datahub_connect import (
+    DataHubServiceClientSync,
 )
 from tag_inserter.upsert_tags import BatchResult
 
@@ -27,7 +27,7 @@ class ConnectTagInserter:
 
     def __init__(
         self,
-        client: BackendInternalServiceClientSync,
+        client: DataHubServiceClientSync,
         auth_headers: dict[str, str],
     ) -> None:
         self.client = client
@@ -43,14 +43,14 @@ class ConnectTagInserter:
     ) -> dict[str, Any]:
         """Upsert tags for a single article via UpsertArticleTags RPC."""
         tag_items = [
-            internal_pb2.TagItem(
+            datahub_pb2.TagItem(
                 name=tag,
                 confidence=tag_confidences.get(tag, 0.5) if tag_confidences else 0.5,
             )
             for tag in tags
         ]
 
-        req = internal_pb2.UpsertArticleTagsRequest(
+        req = datahub_pb2.UpsertArticleTagsRequest(
             article_id=article_id,
             feed_id=feed_id,
             tags=tag_items,
@@ -72,7 +72,7 @@ class ConnectTagInserter:
 
     def batch_upsert_tags_no_commit(self, conn: Any, article_tags: list[dict[str, Any]]) -> BatchResult:
         """Batch upsert tags via BatchUpsertArticleTags RPC."""
-        items: list[internal_pb2.UpsertArticleTagsRequest] = []
+        items: list[datahub_pb2.UpsertArticleTagsRequest] = []
         for entry in article_tags:
             article_id = entry.get("article_id", "")
             feed_id = entry.get("feed_id", "")
@@ -80,7 +80,7 @@ class ConnectTagInserter:
             tag_confidences = entry.get("tag_confidences", {})
 
             tag_items = [
-                internal_pb2.TagItem(
+                datahub_pb2.TagItem(
                     name=tag,
                     confidence=tag_confidences.get(tag, 0.5) if tag_confidences else 0.5,
                 )
@@ -88,14 +88,14 @@ class ConnectTagInserter:
             ]
 
             items.append(
-                internal_pb2.UpsertArticleTagsRequest(
+                datahub_pb2.UpsertArticleTagsRequest(
                     article_id=article_id,
                     feed_id=feed_id,
                     tags=tag_items,
                 )
             )
 
-        req = internal_pb2.BatchUpsertArticleTagsRequest(items=items)
+        req = datahub_pb2.BatchUpsertArticleTagsRequest(items=items)
 
         try:
             resp = self.client.batch_upsert_article_tags(

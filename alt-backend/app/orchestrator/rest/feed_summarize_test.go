@@ -72,11 +72,11 @@ func TestHandleSummarizeFeed(t *testing.T) {
 				},
 			}
 
-			// Create container with a usecase wired against a nil repository
-			// (will cause a database-unavailable error, same as the legacy
-			// nil-AltDBRepository setup this test replaced).
+			// Create container with a usecase wired against nil ports, which
+			// is what makes the summarise attempt fail. The container has no
+			// repository field to nil out any more — cmd/backend carries no
+			// database handle since ADR-000954 Wave 3 batch 6.
 			container := &di.ApplicationComponents{
-				AltDBRepository:         nil,
 				SummarizeArticleUsecase: summarize_article_usecase.NewUsecase(nil, nil, nil),
 			}
 

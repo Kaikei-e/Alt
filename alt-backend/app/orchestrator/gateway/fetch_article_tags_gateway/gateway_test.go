@@ -2,7 +2,6 @@ package fetch_article_tags_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"alt/shared/driver/mqhub_connect"
 	"alt/utils/logger"
 	"context"
@@ -29,7 +28,7 @@ type stubDB struct {
 	upsertCalled    bool
 	upsertArticleID string
 	upsertFeedID    string
-	upsertTags      []alt_db.TagUpsertItem
+	upsertTags      []domain.TagUpsert
 	upsertResult    int32
 	upsertErr       error
 }
@@ -42,7 +41,7 @@ func (s *stubDB) FetchArticleByID(_ context.Context, _ string) (*domain.ArticleC
 	return s.fetchArticle, s.fetchArticleErr
 }
 
-func (s *stubDB) UpsertArticleTags(_ context.Context, articleID, feedID string, tags []alt_db.TagUpsertItem) (int32, error) {
+func (s *stubDB) UpsertArticleTags(_ context.Context, articleID, feedID string, tags []domain.TagUpsert) (int32, error) {
 	s.upsertCalled = true
 	s.upsertArticleID = articleID
 	s.upsertFeedID = feedID
@@ -86,7 +85,7 @@ func TestFetchArticleTags_ExistingTags_ReturnsCached(t *testing.T) {
 
 	db := &stubDB{fetchTagsResult: existingTags}
 	tagger := &stubTagger{enabled: true}
-	gw := newGateway(db, tagger, DefaultConfig())
+	gw := newGateway(db, db, tagger, DefaultConfig())
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -135,7 +134,7 @@ func TestFetchArticleTags_NoTags_GeneratesAndPersists(t *testing.T) {
 		},
 	}
 
-	gw := newGateway(db, tagger, DefaultConfig())
+	gw := newGateway(db, db, tagger, DefaultConfig())
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -200,7 +199,7 @@ func TestFetchArticleTags_GenerateFails_RetriesOnce(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.RetryBackoff = time.Millisecond // fast for testing
-	gw := newGateway(db, tagger, cfg)
+	gw := newGateway(db, db, tagger, cfg)
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -244,7 +243,7 @@ func TestFetchArticleTags_UpsertFails_StillReturnsTags(t *testing.T) {
 		},
 	}
 
-	gw := newGateway(db, tagger, DefaultConfig())
+	gw := newGateway(db, db, tagger, DefaultConfig())
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -287,7 +286,7 @@ func TestFetchArticleTags_EmptyFeedID_SkipsUpsert(t *testing.T) {
 		},
 	}
 
-	gw := newGateway(db, tagger, DefaultConfig())
+	gw := newGateway(db, db, tagger, DefaultConfig())
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -324,7 +323,7 @@ func TestFetchArticleTags_AllRetriesFail_ReturnsEmpty(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.RetryBackoff = time.Millisecond
-	gw := newGateway(db, tagger, cfg)
+	gw := newGateway(db, db, tagger, cfg)
 
 	tags, err := gw.FetchArticleTags(context.Background(), "article-1")
 	if err != nil {
@@ -392,7 +391,7 @@ func TestFetchArticleTags_ConcurrentSameArticle_SingleGeneration(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.MaxRetries = 0 // no retries for this test
-	gw := newGateway(db, tagger, cfg)
+	gw := newGateway(db, db, tagger, cfg)
 
 	const goroutines = 10
 	var wg sync.WaitGroup

@@ -14,6 +14,7 @@ import (
 	url "net/url"
 	reflect "reflect"
 
+	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,15 +43,15 @@ func (m *MockUpdateArticleStatusPort) EXPECT() *MockUpdateArticleStatusPortMockR
 }
 
 // MarkArticleAsRead mocks base method.
-func (m *MockUpdateArticleStatusPort) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
+func (m *MockUpdateArticleStatusPort) MarkArticleAsRead(ctx context.Context, articleURL url.URL, userID uuid.UUID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkArticleAsRead", ctx, articleURL)
+	ret := m.ctrl.Call(m, "MarkArticleAsRead", ctx, articleURL, userID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // MarkArticleAsRead indicates an expected call of MarkArticleAsRead.
-func (mr *MockUpdateArticleStatusPortMockRecorder) MarkArticleAsRead(ctx, articleURL any) *gomock.Call {
+func (mr *MockUpdateArticleStatusPortMockRecorder) MarkArticleAsRead(ctx, articleURL, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkArticleAsRead", reflect.TypeOf((*MockUpdateArticleStatusPort)(nil).MarkArticleAsRead), ctx, articleURL)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkArticleAsRead", reflect.TypeOf((*MockUpdateArticleStatusPort)(nil).MarkArticleAsRead), ctx, articleURL, userID)
 }

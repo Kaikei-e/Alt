@@ -25,25 +25,15 @@ func routePaths(e *echo.Echo) map[string]bool {
 	return paths
 }
 
-// The /v1/internal group inherits no auth middleware. Registering it on the
-// public Echo instance published the system-user identity and an unbounded
-// cross-tenant article dump on the browser-facing REST port.
-func TestRegisterInternalRoutes_MountsOnItsOwnEcho(t *testing.T) {
-	e := echo.New()
-	RegisterInternalRoutes(e, &di.ApplicationComponents{})
-
-	paths := routePaths(e)
-	for _, p := range []string{systemUserPath, recentArticlesPath} {
-		if !paths[p] {
-			t.Errorf("%s must be registered on the internal Echo instance", p)
-		}
-	}
-}
-
-// The pin the other direction. ADR-000717 closed these two endpoints with a
-// RequireServiceAuth wrap, ADR-000743 removed the wrap, and nothing failed —
-// the router built by RegisterRoutes is what the published REST port serves,
-// so this asserts against that router rather than against a hand-built one.
+// ADR-000717 closed these two endpoints with a RequireServiceAuth wrap,
+// ADR-000743 removed the wrap, and nothing failed — so this asserts against
+// the router RegisterRoutes actually builds rather than a hand-made one.
+//
+// The handlers themselves are gone — ADR-000954 D6 folded them into
+// alt.datahub.v1.DataHubService and Wave 2-C deleted the REST pair. The
+// assertion stays because "the published REST port serves no /v1/internal
+// route" is the property that matters, and it has to keep holding whether the
+// route is unregistered, moved to another binary, or retired outright.
 func TestRegisterRoutes_DoesNotExposeInternalRoutes(t *testing.T) {
 	e := echo.New()
 	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{}, &config.Config{})

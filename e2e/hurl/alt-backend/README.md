@@ -7,6 +7,12 @@ pre-processor, recap-worker, rag-orchestrator, knowledge-sovereign,
 mq-hub) are replaced by a single multi-alias FastAPI stub
 ([`e2e/stubs/alt-backend-deps-stub`](../../stubs/alt-backend-deps-stub/)).
 
+`alt-data-hub` is the one upstream that is **not** stubbed: after
+ADR-000954 Wave 3 it is the only owner of `alt_db`, and `cmd/backend` holds
+no DB pool at all, so the real binary runs in this slice and alt-backend
+reaches it over mutual TLS. `run.sh` mints the throwaway PKI for that hop
+via [`_lib/mint-staging-pki.sh`](../_lib/mint-staging-pki.sh).
+
 Follows the three-service common dispatch convention established in
 [ADR-000766](../../../docs/ADR/000766.md); conceptually this is
 Increment 5 after search-indexer / mq-hub / knowledge-sovereign /
@@ -32,10 +38,17 @@ builds it in a preceding job step; locally, build it first:
 
 ```bash
 docker build \
+  --build-arg BINARY=backend \
   -t ghcr.io/kaikei-e/alt-alt-backend:ci \
   -f alt-backend/Dockerfile.backend \
   alt-backend
 ```
+
+`--build-arg BINARY=backend` is required, not optional: one Dockerfile and one
+Go module produce all three split binaries, so `BINARY` selects `./cmd/<BINARY>`
+(`backend` | `harvester` | `datahub`) and the Dockerfile fails the build outright
+when it is unset rather than defaulting to one of them (ADR-000954). The sibling
+suites pass `harvester` / `datahub` to the same command.
 
 ## Authentication
 
@@ -75,8 +88,9 @@ upstream to fetch. The hostname is allowlisted on alt-backend via
 | File | Coverage |
 |---|---|
 | `00-setup.hurl` | Readiness probe for REST + Connect-RPC ports (retried) |
-| `01-health-csrf.hurl` | `/v1/health`, `/v1/csrf-token`, `/metrics` (public) |
+| `01-health-csrf.hurl` | `/v1/health`, `/v1/csrf-token` (public); `/metrics` on the operator listener |
 | `02-auth-negative.hurl` | Missing / malformed / wrong-signature JWT → 401 |
+| `03-topology-internal-surface-absent.hurl` | Split topology: `:9000`/`:9101` stay wire-compatible; every service-to-service surface, plus `/metrics`, 404s on them |
 | `10-rss-feed-link-register.hurl` | `POST /v1/rss-feed-link/register` ×3 + SSRF negative |
 | `11-rss-feed-link-list.hurl` | `GET list`, `random`, `export/opml` |
 | `12-rss-feed-link-opml-import.hurl` | `POST /v1/rss-feed-link/import/opml` (multipart) |
@@ -96,6 +110,43 @@ upstream to fetch. The hostname is allowlisted on alt-backend via
 | `70-admin-dashboard.hurl` | `/v1/dashboard/{metrics,overview,logs,jobs,recap_jobs}` (admin-only) |
 | `71-admin-scraping-domains.hurl` | `/v1/admin/scraping-domains` list/get/patch |
 | `80-csp-report.hurl` | `POST /security/csp-report` (public) |
+
+## Split topology (alt-backend / alt-harvester / alt-data-hub)
+
+alt-backend is split into three containers (ADR-000954, Waves 1-3 landed):
+
+| Container | Surface |
+|---|---|
+| `alt-backend` | user-facing `:9000` REST + `:9101` Connect, plus the loopback operator listener (`:9102`) that keeps the admin Connect services, and `:9110` for health + metrics |
+| `alt-harvester` | scheduled jobs; `:9110` health + metrics and nothing else |
+| `alt-data-hub` | `alt.datahub.v1.DataHubService` over mTLS on `:9443`, plus `:9110` health + metrics; no published port |
+
+`03-topology-internal-surface-absent.hurl` holds this suite's half of that
+contract: the user-facing ports keep answering exactly what they answered
+before, and every service-to-service surface returns **404** on them — not
+401, which would mean the routes are still registered here and only a
+middleware stands between the public NIC and them.
+
+The other half — that the data plane *does* answer on alt-data-hub over
+mTLS, and that alt-harvester serves nothing but its operator listener —
+lives in [`../alt-data-hub/`](../alt-data-hub/) and
+[`../alt-harvester/`](../alt-harvester/). Both now run as their own jobs in
+`.github/workflows/e2e-hurl.yml`, built from this same Dockerfile with
+`--build-arg BINARY=datahub` / `BINARY=harvester`.
+
+`72-admin-emit-article-url-backfill.hurl` keeps working as written. The
+admin Connect services do not move to alt-data-hub — they stay on this
+binary's loopback operator listener, which is what `{{internal_url}}`
+already points at.
+
+### `/metrics` moved
+
+The three binaries share one operator listener, and
+`observability/prometheus/prometheus.yml` scrapes all of them at `:9110`.
+`01-health-csrf.hurl` therefore asserts `/metrics` on `{{ops_url}}` rather
+than `{{base_url}}`, and `03-topology-internal-surface-absent.hurl` asserts
+it is gone from `:9000`. `run.sh` exposes the new `OPS_URL` /
+`{{ops_url}}` pair (default `http://alt-backend:9110`).
 
 ## Excluded from the initial suite
 

@@ -323,17 +323,17 @@ func (m *MockSaveArticleSummaryPort) EXPECT() *MockSaveArticleSummaryPortMockRec
 }
 
 // SaveArticleSummary mocks base method.
-func (m *MockSaveArticleSummaryPort) SaveArticleSummary(ctx context.Context, articleID, userID, summary, language string) error {
+func (m *MockSaveArticleSummaryPort) SaveArticleSummary(ctx context.Context, params internal_article_port.SaveArticleSummaryParams) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SaveArticleSummary", ctx, articleID, userID, summary, language)
+	ret := m.ctrl.Call(m, "SaveArticleSummary", ctx, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SaveArticleSummary indicates an expected call of SaveArticleSummary.
-func (mr *MockSaveArticleSummaryPortMockRecorder) SaveArticleSummary(ctx, articleID, userID, summary, language any) *gomock.Call {
+func (mr *MockSaveArticleSummaryPortMockRecorder) SaveArticleSummary(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveArticleSummary", reflect.TypeOf((*MockSaveArticleSummaryPort)(nil).SaveArticleSummary), ctx, articleID, userID, summary, language)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveArticleSummary", reflect.TypeOf((*MockSaveArticleSummaryPort)(nil).SaveArticleSummary), ctx, params)
 }
 
 // MockGetArticleContentPort is a mock of GetArticleContentPort interface.

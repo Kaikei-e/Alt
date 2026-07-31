@@ -1,18 +1,18 @@
 package fetch_feed_gateway
 
 import (
+	stderrors "errors"
+
 	"alt/domain"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +28,7 @@ func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			Body:       io.NopCloser(strings.NewReader(body)),
 		}, nil
 	}
-	return nil, errors.New("unknown URL")
+	return nil, stderrors.New("unknown URL")
 }
 
 type spyTransport struct {
@@ -81,7 +81,7 @@ func TestFetchFeedsGateway_FetchFeeds(t *testing.T) {
 	client := &http.Client{Transport: &mockTransport{responses: responses}}
 
 	gateway := &FetchFeedsGateway{
-		alt_db:     nil, // Not used in FetchFeeds method
+		store:      &feedListStoreStub{},
 		httpClient: client,
 	}
 
@@ -182,7 +182,7 @@ func TestFetchFeedsGateway_FetchFeedsList(t *testing.T) {
 	// This test would require database mocking, which is more complex
 	// For now, we'll test the basic structure and error handling
 	gateway := &FetchFeedsGateway{
-		alt_db: nil, // This will cause an error, which we can test
+		store: &feedListStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	ctx := context.Background()
@@ -196,7 +196,7 @@ func TestFetchFeedsGateway_FetchFeedsList(t *testing.T) {
 
 func TestFetchFeedsGateway_FetchFeedsListLimit(t *testing.T) {
 	gateway := &FetchFeedsGateway{
-		alt_db: nil, // This will cause an error, which we can test
+		store: &feedListStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	ctx := context.Background()
@@ -210,7 +210,7 @@ func TestFetchFeedsGateway_FetchFeedsListLimit(t *testing.T) {
 
 func TestFetchFeedsGateway_FetchFeedsListPage(t *testing.T) {
 	gateway := &FetchFeedsGateway{
-		alt_db: nil, // This will cause an error, which we can test
+		store: &feedListStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	ctx := context.Background()
@@ -227,7 +227,7 @@ func TestFetchFeedsGateway_FetchFeedsListPage_ShouldNotFallbackToReadArticles(t 
 	// This test will document the dangerous behavior before we fix it
 
 	gateway := &FetchFeedsGateway{
-		alt_db: nil, // This will cause FetchUnreadFeedsListPage to fail
+		store: &feedListStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	ctx := context.Background()
@@ -245,16 +245,17 @@ func TestFetchFeedsGateway_FetchFeedsListPage_ShouldNotFallbackToReadArticles(t 
 }
 
 func TestNewFetchFeedsGateway(t *testing.T) {
-	// Test constructor
-	var pool *pgxpool.Pool // nil pool for testing
-	gateway := NewFetchFeedsGateway(pool)
-
+	gateway := NewFetchFeedsGateway(&feedListStoreStub{})
 	require.NotNil(t, gateway, "NewFetchFeedsGateway() returned nil")
+}
 
-	// With our refactored approach, repository will be nil when pool is nil
-	if gateway.alt_db != nil {
-		t.Error("NewFetchFeedsGateway() with nil pool should have nil repository")
-	}
+// A gateway built with no store refuses at construction rather than answering
+// every feed list with an error at request time. The old test asserted the
+// opposite — that a nil pool produced a gateway with a nil repository — which
+// is precisely the shape that lets a DI mistake look like an empty database
+// (CLAUDE.md rule 8).
+func TestNewFetchFeedsGateway_RefusesNilStore(t *testing.T) {
+	require.Panics(t, func() { NewFetchFeedsGateway(nil) })
 }
 
 // Helper function to compare feed items while handling time comparison
@@ -321,7 +322,7 @@ func TestFetchFeedsGateway_RateLimiting(t *testing.T) {
 	t.Run("gateway should use rate limiter for external calls", func(t *testing.T) {
 		rateLimiter := rate_limiter.NewHostRateLimiter(100 * time.Millisecond)
 		gateway := &FetchFeedsGateway{
-			alt_db:      nil,
+			store:       &feedListStoreStub{},
 			rateLimiter: rateLimiter,
 			httpClient:  client,
 		}
@@ -356,7 +357,7 @@ func TestFetchFeedsGateway_RateLimiting(t *testing.T) {
 	t.Run("different hosts should not interfere with rate limiting", func(t *testing.T) {
 		rateLimiter := rate_limiter.NewHostRateLimiter(200 * time.Millisecond)
 		gateway := &FetchFeedsGateway{
-			alt_db:      nil,
+			store:       &feedListStoreStub{},
 			rateLimiter: rateLimiter,
 			httpClient:  client,
 		}
@@ -385,10 +386,9 @@ func TestFetchFeedsGateway_RateLimiting(t *testing.T) {
 
 func TestFetchFeedsGateway_WithRateLimiter(t *testing.T) {
 	// Test the constructor with rate limiter
-	var pool *pgxpool.Pool
 	rateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
 
-	gateway := NewFetchFeedsGatewayWithRateLimiter(pool, rateLimiter) // This function doesn't exist yet - should cause compile error
+	gateway := NewFetchFeedsGatewayWithRateLimiter(&feedListStoreStub{}, rateLimiter)
 
 	require.NotNil(t, gateway, "NewFetchFeedsGatewayWithRateLimiter() returned nil")
 
@@ -416,7 +416,7 @@ func TestFetchFeedsGateway_FetchFeeds_ProxyIntegration(t *testing.T) {
 	logger.InitLogger()
 
 	gateway := &FetchFeedsGateway{
-		alt_db:     nil,
+		store:      &feedListStoreStub{},
 		httpClient: client,
 	}
 

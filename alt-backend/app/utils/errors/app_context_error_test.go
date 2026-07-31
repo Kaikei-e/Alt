@@ -91,6 +91,7 @@ func TestAppContextError_HTTPStatusCode(t *testing.T) {
 		{"external API error", "EXTERNAL_API_ERROR", http.StatusBadGateway},
 		{"timeout error", "TIMEOUT_ERROR", http.StatusGatewayTimeout},
 		{"database error", "DATABASE_ERROR", http.StatusInternalServerError},
+		{"feed not found", "FEED_NOT_FOUND", http.StatusNotFound},
 		{"unknown error", "UNKNOWN_ERROR", http.StatusInternalServerError},
 		{"undefined error", "CUSTOM_ERROR", http.StatusInternalServerError},
 	}

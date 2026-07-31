@@ -1,10 +1,8 @@
 package di
 
 import (
-	"alt/dataplane/gateway/tag_set_version_gateway"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/orchestrator/driver/health_checker"
-	"alt/orchestrator/gateway/article_gateway"
 	"alt/orchestrator/gateway/feature_flag_gateway"
 	"alt/orchestrator/gateway/knowledge_backfill_gateway"
 	"alt/orchestrator/gateway/knowledge_metrics_gateway"
@@ -35,7 +33,6 @@ import (
 	"alt/orchestrator/usecase/track_home_seen_usecase"
 	"alt/orchestrator/usecase/update_lens_usecase"
 	"alt/shared/driver/sovereign_client"
-	"alt/shared/gateway/summary_version_gateway"
 	"alt/shared/usecase/create_summary_version_usecase"
 	altotel "alt/utils/otel"
 	"log/slog"
@@ -85,25 +82,37 @@ type KnowledgeModule struct {
 }
 
 func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeModule {
-	altDB := infra.AltDBRepository
 	cfg := infra.Config
 
 	// Knowledge Sovereign: all knowledge data access via Connect-RPC
 	sovereignURL := cfg.Sovereign.URL
-	sovereignEnabled := logSovereignWiringState(sovereignURL, cfg.AppEnv)
+	sovereignEnabled := LogSovereignWiringState("alt-backend", sovereignURL, cfg.AppEnv)
 	sovereignCli := sovereign_client.NewClient(sovereignURL, sovereignEnabled)
 
-	// Knowledge Home gateways
-	summaryVersionGw := summary_version_gateway.NewGateway(altDB)
-	tagSetVersionGw := tag_set_version_gateway.NewGateway(altDB)
+	// Knowledge Home gateways.
+	//
+	// The two versioned artifacts come from alt-data-hub since ADR-000954
+	// Wave 3 batch 5 (catalog §2.K). One gateway satisfies both sets of ports
+	// because they are the same three operations asked of two tables; what it
+	// deliberately does not carry is the knowledge event, which
+	// create_summary_version_usecase still appends through sovereignCli below.
+	// The order between "write the version" and "announce it" stays here, where
+	// a reader can see it (ADR-000954 D4).
+	versionGw := infra.VersionGateway
 	featureFlagGw := feature_flag_gateway.NewGateway(&cfg.KnowledgeHome)
-	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(altDB)
-	articleURLLookupGw := article_gateway.NewArticleURLLookupGateway(infra.Pool)
+	// Catalog §2.N and §2.C W3-C8, served by alt-data-hub since ADR-000954
+	// Wave 3 batch 2.
+	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(infra.KnowledgeBackfillGateway)
+	articleURLLookupGw := infra.ArticleURLLookupGateway
 
 	// Knowledge Home usecases
-	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(altDB, 30*time.Minute)
+	// The counts come from alt-data-hub (catalog §2.J W3-J5); what counts as
+	// trending — the 7-versus-30-day comparison and its thresholds — stays
+	// here, because it is a product decision and changing it should not mean
+	// redeploying the process that owns the database.
+	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(infra.TagGateway, 30*time.Minute)
 	getKnowledgeHomeUC := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli, trendingTagsGw)
-	trailThumbnailGw := trail_thumbnail_gateway.NewGateway(altDB)
+	trailThumbnailGw := trail_thumbnail_gateway.NewGateway(infra.OgImageGateway)
 	getKnowledgeTrailUC := get_knowledge_trail_usecase.NewGetKnowledgeTrailUsecase(sovereignCli, trailThumbnailGw)
 	resolveTrailBranchUC := resolve_trail_branch_usecase.NewResolveTrailBranchUsecase(sovereignCli)
 	emitTrailOutcomeUC := emit_trail_outcome_usecase.NewEmitTrailOutcomeUsecase(sovereignCli)
@@ -118,8 +127,8 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	trackHomeSeenUC := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
 	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
-	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(summaryVersionGw, sovereignCli, summaryVersionGw)
-	createTagSetVersionUC := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetVersionGw, sovereignCli, tagSetVersionGw)
+	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(versionGw, sovereignCli, versionGw)
+	createTagSetVersionUC := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(versionGw, sovereignCli, versionGw)
 	knowledgeBackfillUC := knowledge_backfill_usecase.NewUsecase(
 		sovereignCli,
 		sovereignCli,
@@ -157,8 +166,14 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	}
 	healthChecker := health_checker.NewChecker(healthEndpoints)
 
-	// RecallRail, Lens, Supersede
-	recallRailUC := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, featureFlagGw, article.InternalArticleGateway)
+	// RecallRail, Lens, Supersede.
+	//
+	// The rail's article fallback — what a candidate looked like when
+	// knowledge_home_items has not caught up with it — comes from alt-data-hub
+	// since ADR-000954 Wave 3 batch 6 (catalog §2.C). It was the last read
+	// cmd/backend performed against its own pool, which is why this line used
+	// to reach into the article module for a gateway wrapping alt_db.
+	recallRailUC := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, featureFlagGw, infra.ArticleRefGateway)
 	recallSnoozeUC := recall_snooze_usecase.NewRecallSnoozeUsecase(sovereignCli, sovereignCli)
 	recallDismissUC := recall_dismiss_usecase.NewRecallDismissUsecase(sovereignCli, sovereignCli)
 	createLensUC := create_lens_usecase.NewCreateLensUsecase(sovereignCli, sovereignCli)
@@ -218,24 +233,4 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 
 		KnowledgeHomeMetrics: knowledgeHomeMetrics,
 	}
-}
-
-// logSovereignWiringState emits the loud enabled/disabled signal CLAUDE.md
-// rule 8 / .claude/rules/di-wiring.md require: without it, "SOVEREIGN_URL
-// forgotten" and "Knowledge Home deliberately disabled" were
-// indistinguishable at startup, even though a disabled client makes every
-// knowledge_home mutation a silent no-op (sovereign_client.Client.enabled).
-// In production (appEnv == "production") a missing SOVEREIGN_URL is a
-// startup failure rather than a limp-mode warning.
-func logSovereignWiringState(sovereignURL, appEnv string) bool {
-	enabled := sovereignURL != ""
-	if enabled {
-		slog.Info("sovereign_enabled", "base_url", sovereignURL)
-		return true
-	}
-	slog.Warn("sovereign_disabled", "reason", "SOVEREIGN_URL unset; all Knowledge Home mutations will no-op")
-	if appEnv == "production" {
-		panic("SOVEREIGN_URL is required when APP_ENV=production — refusing to start with Knowledge Home silently disabled")
-	}
-	return false
 }

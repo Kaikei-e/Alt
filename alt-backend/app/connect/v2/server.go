@@ -7,8 +7,6 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"alt/gen/proto/alt/admin_monitor/v1/adminmonitorv1connect"
 	"alt/gen/proto/alt/articles/v2/articlesv2connect"
@@ -20,12 +18,11 @@ import (
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
 	"alt/gen/proto/alt/search/v2/searchv2connect"
-	"alt/gen/proto/services/backend/v1/backendv1connect"
 
 	"alt/config"
 	"alt/connect/v2/codec"
 	"alt/connect/v2/middleware"
-	internalhandler "alt/dataplane/connect/internalapi"
+	"alt/connect/v2/muxutil"
 	"alt/di"
 	recapinternal "alt/internal/recap"
 	"alt/orchestrator/connect/v2/admin_monitor"
@@ -44,7 +41,8 @@ import (
 // SetupConnectHandlers registers the browser-facing Connect-RPC handlers with
 // the HTTP mux. Every service registered here runs behind the JWT auth
 // interceptor. Service-to-service and admin surfaces belong on the internal
-// mux instead — see SetupInternalConnectHandlers.
+// mux instead — see SetupOperatorConnectHandlers for the admin services and
+// alt/connect/v2/datahub for the service-to-service ones.
 func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) {
 	// Create interceptors
 	cancelInterceptor := middleware.NewContextCancelInterceptor(logger)
@@ -79,7 +77,9 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		SummarizedCount:          container.SummarizedArticlesCountUsecase,
 		TotalCount:               container.TotalArticlesCountUsecase,
 		TodayUnreadCount:         container.TodayUnreadArticlesCountUsecase,
-		AltDBRepository:          container.AltDBRepository,
+		ArticleStore:             container.Infra.ArticleStoreGateway,
+		SummaryStore:             container.Infra.FeedGateway,
+		FeedTagStore:             container.Infra.TagGateway,
 		PreProcessorClient:       container.PreProcessorConnectClient,
 		CreateSummaryVersion:     container.CreateSummaryVersionUsecase,
 		ImageProxy:               container.ImageProxyUsecase,
@@ -90,7 +90,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 
 	// Register Article service
 	articleHandler := articles.NewHandler(articles.ArticleHandlerDeps{
-		AltDBRepository:         container.AltDBRepository,
+		OgImageURLs:             container.Infra.OgImageGateway,
 		ArchiveArticle:          container.ArchiveArticleUsecase,
 		Article:                 container.ArticleUsecase,
 		FetchArticlesByTag:      container.FetchArticlesByTagUsecase,
@@ -188,11 +188,16 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	}
 }
 
-// SetupInternalConnectHandlers registers the service-to-service and admin
-// Connect-RPC handlers. None of them carries a user-JWT interceptor, so the
-// mux they are mounted on decides who can reach them: the loopback-bound
-// internal listener and the TLS listener, never the browser-facing one.
-func SetupInternalConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) {
+// SetupOperatorConnectHandlers registers the admin Connect-RPC handlers that
+// cmd/backend serves on its loopback operator listener.
+//
+// These used to share a mux with the data-plane service, which meant one
+// listener answered to two unrelated access controls: reachability (loopback
+// bind) for the admin surfaces and a client certificate for the
+// service-to-service one. They are separate binaries now — the
+// service-to-service surface lives in SetupDataHubConnectHandlers — so neither
+// may re-acquire the other's services.
+func SetupOperatorConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) {
 	cancelInterceptor := middleware.NewContextCancelInterceptor(logger)
 
 	// The custom JSON codec replaces Connect-RPC's default protojson
@@ -235,80 +240,32 @@ func SetupInternalConnectHandlers(mux *http.ServeMux, container *di.ApplicationC
 	} else {
 		logger.Info("AdminMonitorService disabled (config.AdminMonitor.Enabled=false)")
 	}
-
-	// Register BackendInternalService (service-to-service API).
-	internalOpts := connect.WithInterceptors(
-		cancelInterceptor.Interceptor(),
-	)
-	gw := container.InternalArticleGateway
-	internalHandler := internalhandler.NewHandler(
-		gw, gw, gw, gw, gw,
-		logger,
-		internalhandler.WithPhase2Ports(gw, gw, gw, gw, gw, gw),
-		internalhandler.WithPhase3Ports(gw, gw, gw),
-		internalhandler.WithBatchGetTagsPort(gw),
-		internalhandler.WithPhase4Ports(gw, gw, gw),
-		internalhandler.WithSummarizationPorts(gw, gw),
-		internalhandler.WithBackfillPorts(gw),
-		internalhandler.WithEventPublisher(container.EventPublisher),
-		internalhandler.WithKnowledgeVersionUsecases(container.CreateSummaryVersionUsecase, container.CreateTagSetVersionUsecase),
-		internalhandler.WithKnowledgeEventPort(container.SovereignClient),
-		internalhandler.WithRAGToolPorts(container.FetchTagCloudUsecase, container.FetchArticlesByTagUsecase),
-		internalhandler.WithRecapArticlesUsecase(container.RecapArticlesUsecase),
-	)
-	internalPath, internalServiceHandler := backendv1connect.NewBackendInternalServiceHandler(internalHandler, internalOpts)
-	mux.Handle(internalPath, internalServiceHandler)
-	logger.Info("Registered Connect-RPC BackendInternalService", "path", internalPath)
 }
 
-func registerConnectHealth(mux *http.ServeMux) {
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"healthy","service":"connect-rpc"}`))
-	})
-}
-
-// withH2C enables HTTP/2 without TLS (h2c) for local development and internal
-// communication. The single call site keeps the deprecation in one place: the
-// documented replacement is http.Server.Protocols, which the listeners in
-// main.go must opt into together with the mTLS listener's ALPN config, so the
-// migration is deliberately not spread across these constructors.
-func withH2C(mux *http.ServeMux) http.Handler {
-	return h2c.NewHandler(mux, &http2.Server{}) //nolint:staticcheck // SA1019: migrating to http.Server.Protocols requires changing every listener at once
-}
-
-// CreateConnectServer creates the browser-facing Connect-RPC server with
-// HTTP/2 support. This is the handler behind the published plaintext port, so
-// it carries only JWT-guarded user services.
+// CreateConnectServer creates the browser-facing Connect-RPC server. This is
+// the handler behind the published plaintext port, so it carries only
+// JWT-guarded user services.
+//
+// Cleartext HTTP/2, which Connect's gRPC protocol needs on a plaintext
+// listener, is enabled by bootstrap.NewConnectServer via http.Server.Protocols
+// — a server field, so it cannot be expressed here.
 func CreateConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
-	registerConnectHealth(mux)
+	muxutil.RegisterHealth(mux)
 	SetupConnectHandlers(mux, container, cfg, logger)
 
-	return withH2C(mux)
+	return mux
 }
 
-// CreateInternalConnectServer creates the Connect-RPC server for the internal
-// listener: service-to-service and admin surfaces only.
-func CreateInternalConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
+// CreateOperatorConnectServer creates the Connect-RPC server for
+// cmd/backend's loopback operator listener: admin surfaces only.
+//
+// Cleartext HTTP/2 is enabled by bootstrap.NewServiceServer, which is what
+// mounts this handler.
+func CreateOperatorConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
-	registerConnectHealth(mux)
-	SetupInternalConnectHandlers(mux, container, cfg, logger)
+	muxutil.RegisterHealth(mux)
+	SetupOperatorConnectHandlers(mux, container, cfg, logger)
 
-	return withH2C(mux)
-}
-
-// CreateMTLSConnectServer creates the Connect-RPC server for the TLS listener
-// (:9443), which is not published to the host and carries both surfaces.
-// Whether the client certificate is actually verified depends on
-// MTLS_CLIENT_AUTH — main.go logs the resolved mode at startup rather than
-// letting this comment assert a guarantee the config may not grant.
-func CreateMTLSConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
-	mux := http.NewServeMux()
-	registerConnectHealth(mux)
-	SetupConnectHandlers(mux, container, cfg, logger)
-	SetupInternalConnectHandlers(mux, container, cfg, logger)
-
-	return withH2C(mux)
+	return mux
 }

@@ -2,7 +2,9 @@
 package feeds
 
 import (
+	"context"
 	"log/slog"
+	"time"
 
 	"alt/config"
 	"alt/domain"
@@ -15,7 +17,6 @@ import (
 	"alt/orchestrator/usecase/reading_status"
 	"alt/orchestrator/usecase/search_feed_usecase"
 	"alt/orchestrator/usecase/subscription_usecase"
-	"alt/shared/driver/alt_db"
 	"alt/shared/usecase/create_summary_version_usecase"
 )
 
@@ -37,12 +38,67 @@ type FeedHandlerDeps struct {
 	SummarizedCount   *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
 	TotalCount        *fetch_feed_stats_usecase.TotalArticlesCountUsecase
 	TodayUnreadCount  *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
-	// Feed summary
-	AltDBRepository      *alt_db.AltDBRepository
+	// Feed summary.
+	//
+	// ArticleStore is the article half (catalog §2.B / §2.C), served by
+	// alt-data-hub since ADR-000954 Wave 3 batch 2, and since batch 5 it also
+	// carries the summary write that used to go straight to the driver from
+	// here. SummaryStore is the summary *read*, which moved in batch 3
+	// (catalog §2.H W3-H8). FeedTagStore is the feed's tag list, which moved in
+	// batch 4 (catalog §2.J W3-J2).
+	//
+	// There is no *alt_db.AltDBRepository field any more. It was the last one
+	// on this handler, and its last use — SaveArticleSummary — is now
+	// ArticleStore.SaveArticleSummary. That is not only tidier: the write is a
+	// Handler → Driver hop while it is a field here, and after batch 5 there is
+	// no database on this side to hop to.
+	ArticleStore         ArticleStore
+	SummaryStore         SummaryStore
+	FeedTagStore         FeedTagStore
 	PreProcessorClient   *preprocessor_connect.ConnectPreProcessorClient
 	CreateSummaryVersion *create_summary_version_usecase.CreateSummaryVersionUsecase
 	// Shared
 	ImageProxy *image_proxy_usecase.ImageProxyUsecase
+}
+
+// ArticleStore is the slice of the article capabilities StreamSummarize needs
+// to resolve or create the article it is about to summarise.
+//
+// Naming it here rather than reaching through AltDBRepository is the point:
+// these three cross a process boundary now, and a handler that still held the
+// driver would be one edit away from calling a query alt-backend no longer has
+// a database for.
+type ArticleStore interface {
+	FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
+	FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error)
+	SaveArticle(ctx context.Context, url, title, content string) (string, error)
+	// SaveArticleSummary upserts article_summaries. The gateway behind it tells
+	// the provider not to append a summary version of its own, because
+	// StreamSummarize appends one under its own model name immediately after —
+	// see CreateSummaryVersion below.
+	SaveArticleSummary(ctx context.Context, articleID, userID, articleTitle, summary string) error
+}
+
+// SummaryStore is the cached-summary read StreamSummarize consults before it
+// spends a model call (capability catalog §2.H W3-H8).
+//
+// Named here for the same reason ArticleStore is: the handler used to reach
+// through AltDBRepository for it, which is a Handler → Driver hop, and after
+// the batch there is no database on this side to reach. A miss is
+// (nil, nil) — the driver used to raise pgx.ErrNoRows and this path read the
+// error as "no cached summary, go generate one", which over an RPC would have
+// meant reporting a data plane fault for every unsummarised article.
+type SummaryStore interface {
+	FetchArticleSummaryByArticleID(ctx context.Context, articleID string) (*domain.FeedSummary, error)
+}
+
+// FeedTagStore is the feed's tag list (capability catalog §2.J W3-J2).
+//
+// Named here for the same reason as the two above: GetFeedTags used to call
+// AltDBRepository directly, which is a Handler → Driver hop, and after batch 4
+// there is no database on this side to hop to.
+type FeedTagStore interface {
+	FetchFeedTags(ctx context.Context, feedID string, cursor *time.Time, limit int) ([]*domain.FeedTag, error)
 }
 
 // Handler implements the FeedService Connect-RPC service.

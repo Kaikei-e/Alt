@@ -1,19 +1,21 @@
 package alt_db
 
 import (
-	"alt/domain"
 	"alt/utils/logger"
 	"context"
 	"errors"
+
+	"github.com/google/uuid"
 )
 
-func (r *DashboardRepository) FetchSummarizedArticlesCount(ctx context.Context) (int, error) {
+// FetchSummarizedArticlesCountForUser counts one user's article_summaries
+// rows (catalog §2.M W3-M3). Explicit owner, for the reason given on
+// FetchTotalArticlesCountForUser.
+func (r *DashboardRepository) FetchSummarizedArticlesCountForUser(ctx context.Context, userID uuid.UUID) (int, error) {
 	if r == nil || r.pool == nil {
 		return 0, errors.New("database connection not available")
 	}
-
-	user, err := domain.GetUserFromContext(ctx)
-	if err != nil {
+	if userID == uuid.Nil {
 		return 0, errors.New("authentication required")
 	}
 
@@ -22,8 +24,7 @@ func (r *DashboardRepository) FetchSummarizedArticlesCount(ctx context.Context) 
 	`
 
 	var count int
-	err = r.pool.QueryRow(ctx, query, user.UserID).Scan(&count)
-	if err != nil {
+	if err := r.pool.QueryRow(ctx, query, userID).Scan(&count); err != nil {
 		logger.SafeErrorContext(ctx, "failed to fetch summarized articles count", "error", err)
 		return 0, errors.New("failed to fetch summarized articles count")
 	}

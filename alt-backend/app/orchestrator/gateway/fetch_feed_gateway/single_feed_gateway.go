@@ -2,7 +2,6 @@ package fetch_feed_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"alt/utils"
 	"alt/utils/errors"
 	"alt/utils/logger"
@@ -12,46 +11,35 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
 )
 
+// PollableFeedLinkStore is the subscription work list (capability catalog
+// §2.F W3-F8). Only the reads: the RSS fetch this gateway performs afterwards
+// is external HTTP and stays here (ADR-000954 D4).
+type PollableFeedLinkStore interface {
+	FetchRSSFeedURLs(ctx context.Context) ([]domain.FeedLink, error)
+}
+
 type SingleFeedGateway struct {
-	alt_db      *alt_db.AltDBRepository
+	store       PollableFeedLinkStore
 	rateLimiter *rate_limiter.HostRateLimiter
 }
 
-func NewSingleFeedGateway(pool *pgxpool.Pool) *SingleFeedGateway {
-	return &SingleFeedGateway{
-		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
-		rateLimiter: nil, // No rate limiting for backward compatibility
-	}
+func NewSingleFeedGateway(store PollableFeedLinkStore) *SingleFeedGateway {
+	return NewSingleFeedGatewayWithRateLimiter(store, nil)
 }
 
-func NewSingleFeedGatewayWithRateLimiter(pool *pgxpool.Pool, rateLimiter *rate_limiter.HostRateLimiter) *SingleFeedGateway {
-	return &SingleFeedGateway{
-		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
-		rateLimiter: rateLimiter,
+func NewSingleFeedGatewayWithRateLimiter(store PollableFeedLinkStore, rateLimiter *rate_limiter.HostRateLimiter) *SingleFeedGateway {
+	if store == nil {
+		panic("fetch_feed_gateway: PollableFeedLinkStore is required (see .claude/rules/di-wiring.md)")
 	}
+	return &SingleFeedGateway{store: store, rateLimiter: rateLimiter}
 }
 
 func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFeed, error) {
-	if g.alt_db == nil {
-		dbErr := errors.NewDatabaseUnavailableError(
-			"gateway",
-			"SingleFeedGateway",
-			"FetchSingleFeed",
-			nil,
-			map[string]interface{}{
-				"component": "SingleFeedGateway",
-				"operation": "database_connection_check",
-			},
-		)
-		logger.SafeLogErrorWithAppContext(ctx, "database_connection_check", dbErr)
-		return nil, dbErr
-	}
-	// Get RSS feed links from the database
-	feedLinks, err := g.alt_db.FetchRSSFeedURLs(ctx)
+	// Get RSS feed links from the data plane
+	feedLinks, err := g.store.FetchRSSFeedURLs(ctx)
 	if err != nil {
 		dbErr := errors.NewDatabaseUnavailableError(
 			"gateway",

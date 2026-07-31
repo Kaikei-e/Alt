@@ -12,9 +12,9 @@ import structlog
 from connectrpc.errors import ConnectError
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from tag_generator.gen.proto.services.backend.v1 import internal_pb2
-from tag_generator.gen.proto.services.backend.v1.internal_connect import (
-    BackendInternalServiceClientSync,
+from tag_generator.gen.proto.alt.datahub.v1 import datahub_pb2
+from tag_generator.gen.proto.alt.datahub.v1.datahub_connect import (
+    DataHubServiceClientSync,
 )
 
 logger = structlog.get_logger(__name__)
@@ -27,7 +27,7 @@ class ConnectArticleFetcher:
 
     def __init__(
         self,
-        client: BackendInternalServiceClientSync,
+        client: DataHubServiceClientSync,
         auth_headers: dict[str, str],
     ) -> None:
         self.client = client
@@ -46,7 +46,7 @@ class ConnectArticleFetcher:
         """Fetch articles using ListUntaggedArticles RPC with keyset pagination."""
         limit = custom_batch_size or 75
 
-        req = internal_pb2.ListUntaggedArticlesRequest(limit=limit)
+        req = datahub_pb2.ListUntaggedArticlesRequest(limit=limit)
 
         # Pass cursor to backend for keyset pagination (skip on first page)
         if last_created_at and last_created_at != self._FIRST_PAGE_SENTINEL:
@@ -98,7 +98,7 @@ class ConnectArticleFetcher:
 
     def count_untagged_articles(self, conn: Any) -> int:
         """Count untagged articles via ListUntaggedArticles RPC."""
-        req = internal_pb2.ListUntaggedArticlesRequest(limit=1)
+        req = datahub_pb2.ListUntaggedArticlesRequest(limit=1)
         resp = self.client.list_untagged_articles(
             req,
             headers=self.auth_headers,
@@ -126,7 +126,7 @@ class ConnectArticleFetcher:
     def fetch_article_by_id(self, conn: Any, article_id: str) -> dict[str, Any] | None:
         """Fetch article by ID via GetArticleContent RPC."""
         try:
-            req = internal_pb2.GetArticleContentRequest(article_id=article_id)
+            req = datahub_pb2.GetArticleContentRequest(article_id=article_id)
             resp = self.client.get_article_content(
                 req,
                 headers=self.auth_headers,

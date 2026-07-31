@@ -27,14 +27,29 @@ type ArticleWithTags struct {
 // FetchArticlesWithCursor retrieves articles using cursor-based pagination
 // Includes tags from tag-generator via article_tags and tags tables
 func (r *ArticleRepository) FetchArticlesWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.Article, error) {
-	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchArticlesWithCursor")
-	defer span.End()
-
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
+	return r.FetchArticlesWithCursorForUser(ctx, user.UserID, cursor, limit)
+}
+
+// FetchArticlesWithCursorForUser is the same timeline walk with the owner
+// named explicitly, for alt-data-hub's ListArticlesCursor (ADR-000954 Wave 3,
+// catalog §2.C).
+//
+// The zero UUID is refused rather than treated as "everyone": this query has
+// no other tenant predicate, so a missing owner would page through every
+// user's articles instead of failing.
+func (r *ArticleRepository) FetchArticlesWithCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]*domain.Article, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchArticlesWithCursor")
+	defer span.End()
+
+	if userID == uuid.Nil {
+		return nil, errors.New("authentication required")
+	}
+	user := &domain.UserContext{UserID: userID}
 
 	var query string
 	var args []interface{}
@@ -145,6 +160,17 @@ func (r *ArticleRepository) FetchArticleIDsWithCursor(ctx context.Context, curso
 	if err != nil {
 		return nil, errors.New("authentication required")
 	}
+	return r.FetchArticleIDsWithCursorForUser(ctx, user.UserID, cursor, limit)
+}
+
+// FetchArticleIDsWithCursorForUser is the id-only walk with the owner named
+// explicitly. Same zero-UUID refusal as FetchArticlesWithCursorForUser, for
+// the same reason.
+func (r *ArticleRepository) FetchArticleIDsWithCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]uuid.UUID, error) {
+	if userID == uuid.Nil {
+		return nil, errors.New("authentication required")
+	}
+	user := &domain.UserContext{UserID: userID}
 
 	var query string
 	var args []interface{}

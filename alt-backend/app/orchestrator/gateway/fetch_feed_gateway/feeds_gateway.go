@@ -2,7 +2,7 @@ package fetch_feed_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
+	"alt/orchestrator/driver/models"
 	"alt/utils"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
 	"go.opentelemetry.io/otel"
 )
@@ -34,23 +33,41 @@ func newBoundedFeedParser(client *http.Client) *gofeed.Parser {
 	return fp
 }
 
+// FeedListStore is the set of feed reads this gateway renders (ADR-000954
+// Wave 3 batch 3, capability catalog §2.H).
+//
+// It returns rows, not domain.FeedItem: the sanitising and the RFC3339
+// formatting below are pure functions of the columns and stay on this side of
+// the boundary (D4). The four cursor walks are separate methods rather than
+// one with a scope argument because that is the shape the usecases above
+// already call.
+type FeedListStore interface {
+	FetchFeedsList(ctx context.Context) ([]*models.Feed, error)
+	FetchFeedsListLimit(ctx context.Context, limit int) ([]*models.Feed, error)
+	FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error)
+	FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error)
+	FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error)
+	FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error)
+	FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error)
+}
+
 type FetchFeedsGateway struct {
-	alt_db      *alt_db.AltDBRepository
+	store       FeedListStore
 	rateLimiter *rate_limiter.HostRateLimiter
 	httpClient  *http.Client
 }
 
-func NewFetchFeedsGateway(pool *pgxpool.Pool) *FetchFeedsGateway {
-	return &FetchFeedsGateway{
-		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
-		rateLimiter: nil, // No rate limiting for backward compatibility
-		httpClient:  nil,
-	}
+func NewFetchFeedsGateway(store FeedListStore) *FetchFeedsGateway {
+	return NewFetchFeedsGatewayWithRateLimiter(store, nil)
 }
 
-func NewFetchFeedsGatewayWithRateLimiter(pool *pgxpool.Pool, rateLimiter *rate_limiter.HostRateLimiter) *FetchFeedsGateway {
+func NewFetchFeedsGatewayWithRateLimiter(store FeedListStore, rateLimiter *rate_limiter.HostRateLimiter) *FetchFeedsGateway {
+	if store == nil {
+		panic("fetch_feed_gateway: FeedListStore is required — a nil one would make every feed list " +
+			"fail identically to a user with no subscriptions (see .claude/rules/di-wiring.md)")
+	}
 	return &FetchFeedsGateway{
-		alt_db:      alt_db.NewAltDBRepositoryWithPool(pool),
+		store:       store,
 		rateLimiter: rateLimiter,
 		httpClient:  nil,
 	}
@@ -115,10 +132,7 @@ func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*dom
 }
 
 func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedItem, error) {
-	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
-	}
-	feeds, err := g.alt_db.FetchFeedsList(ctx)
+	feeds, err := g.store.FetchFeedsList(ctx)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching feeds list", "error", err)
 		return nil, errors.New("error fetching feeds list")
@@ -139,10 +153,7 @@ func (g *FetchFeedsGateway) FetchFeedsList(ctx context.Context) ([]*domain.FeedI
 }
 
 func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int) ([]*domain.FeedItem, error) {
-	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
-	}
-	feeds, err := g.alt_db.FetchFeedsListLimit(ctx, offset)
+	feeds, err := g.store.FetchFeedsListLimit(ctx, offset)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching feeds list offset", "error", err)
 		return nil, errors.New("error fetching feeds list offset")
@@ -164,12 +175,8 @@ func (g *FetchFeedsGateway) FetchFeedsListLimit(ctx context.Context, offset int)
 }
 
 func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
-	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
-	}
-
 	// TDD Fix: No dangerous fallback! Only fetch unread feeds
-	feeds, err := g.alt_db.FetchUnreadFeedsListPage(ctx, page)
+	feeds, err := g.store.FetchUnreadFeedsListPage(ctx, page)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching unread feeds", "error", err)
 		return nil, errors.New("error fetching unread feeds list page")
@@ -194,11 +201,7 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchFeedsListCursor")
 	defer span.End()
 
-	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
-	}
-
-	feeds, err := g.alt_db.FetchAllFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
+	feeds, err := g.store.FetchAllFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching all feeds with cursor", "error", err)
 		return nil, errors.New("error fetching feeds with cursor")
@@ -232,11 +235,7 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchUnreadFeedsListCursor")
 	defer span.End()
 
-	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
-	}
-
-	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
+	feeds, err := g.store.FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching unread feeds with cursor", "error", err)
 		return nil, errors.New("error fetching unread feeds with cursor")
@@ -288,11 +287,7 @@ func (g *FetchFeedsGateway) FetchReadFeedsListCursor(ctx context.Context, cursor
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchReadFeedsListCursor")
 	defer span.End()
 
-	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
-	}
-
-	feeds, err := g.alt_db.FetchReadFeedsListCursor(ctx, cursor, limit)
+	feeds, err := g.store.FetchReadFeedsListCursor(ctx, cursor, limit)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching read feeds with cursor", "error", err)
 		return nil, errors.New("error fetching read feeds with cursor")
@@ -319,11 +314,7 @@ func (g *FetchFeedsGateway) FetchReadFeedsListCursor(ctx context.Context, cursor
 }
 
 func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
-	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
-	}
-
-	feeds, err := g.alt_db.FetchFavoriteFeedsListCursor(ctx, cursor, limit)
+	feeds, err := g.store.FetchFavoriteFeedsListCursor(ctx, cursor, limit)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching favorite feeds with cursor", "error", err)
 		return nil, errors.New("error fetching favorite feeds with cursor")

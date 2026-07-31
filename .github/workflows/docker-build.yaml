@@ -92,6 +92,8 @@ jobs:
             "acolyte-orchestrator"
             "knowledge-sovereign"
             # --- Additional runtime services used by compose ---
+            "alt-harvester"
+            "alt-data-hub"
             "alt-frontend-sv"
             "pre-processor-sidecar"
             "auth-token-manager"
@@ -99,6 +101,88 @@ jobs:
             "rask-log-forwarder"
             "pki-agent"
             "dashboard"
+          )
+
+          # Build inputs per service. BUILD_DIR doubles as the
+          # change-detection prefix, so several services can share one
+          # source directory. An empty BUILD_DOCKERFILE means "discover
+          # it under BUILD_DIR"; an empty BUILD_BINARY means no
+          # --build-arg BINARY. Defaults reproduce the historical
+          # name-is-the-directory rule.
+          declare -A BUILD_DIR=(
+            ["alt-backend"]="alt-backend"
+            ["alt-butterfly-facade"]="alt-butterfly-facade"
+            ["auth-hub"]="auth-hub"
+            ["pre-processor"]="pre-processor"
+            ["search-indexer"]="search-indexer"
+            ["mq-hub"]="mq-hub"
+            ["rag-orchestrator"]="rag-orchestrator"
+            ["recap-worker"]="recap-worker"
+            ["recap-subworker"]="recap-subworker"
+            ["recap-evaluator"]="recap-evaluator"
+            ["news-creator"]="news-creator"
+            ["tag-generator"]="tag-generator"
+            ["acolyte-orchestrator"]="acolyte-orchestrator"
+            ["knowledge-sovereign"]="knowledge-sovereign"
+            ["alt-harvester"]="alt-backend"
+            ["alt-data-hub"]="alt-backend"
+            ["alt-frontend-sv"]="alt-frontend-sv"
+            ["pre-processor-sidecar"]="pre-processor-sidecar"
+            ["auth-token-manager"]="auth-token-manager"
+            ["rask-log-aggregator"]="rask-log-aggregator"
+            ["rask-log-forwarder"]="rask-log-forwarder"
+            ["pki-agent"]="pki-agent"
+            ["dashboard"]="dashboard"
+          )
+          declare -A BUILD_DOCKERFILE=(
+            ["alt-backend"]="alt-backend/Dockerfile.backend"
+            ["alt-butterfly-facade"]=""
+            ["auth-hub"]=""
+            ["pre-processor"]=""
+            ["search-indexer"]=""
+            ["mq-hub"]=""
+            ["rag-orchestrator"]=""
+            ["recap-worker"]=""
+            ["recap-subworker"]=""
+            ["recap-evaluator"]=""
+            ["news-creator"]=""
+            ["tag-generator"]=""
+            ["acolyte-orchestrator"]=""
+            ["knowledge-sovereign"]=""
+            ["alt-harvester"]="alt-backend/Dockerfile.backend"
+            ["alt-data-hub"]="alt-backend/Dockerfile.backend"
+            ["alt-frontend-sv"]=""
+            ["pre-processor-sidecar"]=""
+            ["auth-token-manager"]=""
+            ["rask-log-aggregator"]=""
+            ["rask-log-forwarder"]=""
+            ["pki-agent"]=""
+            ["dashboard"]=""
+          )
+          declare -A BUILD_BINARY=(
+            ["alt-backend"]="backend"
+            ["alt-butterfly-facade"]=""
+            ["auth-hub"]=""
+            ["pre-processor"]=""
+            ["search-indexer"]=""
+            ["mq-hub"]=""
+            ["rag-orchestrator"]=""
+            ["recap-worker"]=""
+            ["recap-subworker"]=""
+            ["recap-evaluator"]=""
+            ["news-creator"]=""
+            ["tag-generator"]=""
+            ["acolyte-orchestrator"]=""
+            ["knowledge-sovereign"]=""
+            ["alt-harvester"]="harvester"
+            ["alt-data-hub"]="datahub"
+            ["alt-frontend-sv"]=""
+            ["pre-processor-sidecar"]=""
+            ["auth-token-manager"]=""
+            ["rask-log-aggregator"]=""
+            ["rask-log-forwarder"]=""
+            ["pki-agent"]=""
+            ["dashboard"]=""
           )
           # <<<SERVICES-REGISTRY-END>>>
 
@@ -155,25 +239,40 @@ jobs:
             fi
           fi
 
+          # Matrix entries are objects, not bare names: the build job needs
+          # the source directory and Dockerfile separately from the image
+          # name now that alt-backend/ produces three images. Change
+          # detection keys on BUILD_DIR for the same reason — a commit
+          # touching alt-backend/ must rebuild all three.
+          emit() {
+            local svc="$1"
+            local dir="${BUILD_DIR[$svc]:-$svc}"
+            local dockerfile="${BUILD_DOCKERFILE[$svc]:-}"
+            local binary="${BUILD_BINARY[$svc]:-}"
+            CHANGED="$CHANGED{\"service\":\"$svc\",\"dir\":\"$dir\",\"dockerfile\":\"$dockerfile\",\"binary\":\"$binary\"},"
+          }
+
           if [[ "$BUILD_ALL" == "true" ]]; then
             for svc in "${SERVICES[@]}"; do
-              CHANGED="$CHANGED\"$svc\","
+              emit "$svc"
             done
           else
             for svc in "${SERVICES[@]}"; do
-              if echo "$CHANGED_FILES" | grep -q "^$svc/"; then
-                CHANGED="$CHANGED\"$svc\","
+              if echo "$CHANGED_FILES" | grep -q "^${BUILD_DIR[$svc]:-$svc}/"; then
+                emit "$svc"
               fi
             done
           fi
 
+          # `include` with no base axes gives exactly one job per entry, with
+          # every key exposed as matrix.<key>.
           if [ -n "$CHANGED" ]; then
-            MATRIX="{\"service\":[${CHANGED%,}]}"
+            MATRIX="{\"include\":[${CHANGED%,}]}"
             echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
             echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "Changed services: ${CHANGED%,}"
           else
-            echo "matrix={\"service\":[]}" >> $GITHUB_OUTPUT
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "No service changes detected"
           fi
@@ -211,7 +310,7 @@ jobs:
           fetch-depth: 1
           clean: false
           sparse-checkout: |
-            ${{ matrix.service }}
+            ${{ matrix.dir }}
             docker
           sparse-checkout-cone-mode: true
 
@@ -250,19 +349,33 @@ jobs:
 
       - name: Find Dockerfile
         id: dockerfile
+        env:
+          SERVICE: ${{ matrix.service }}
+          DIR: ${{ matrix.dir }}
+          DECLARED: ${{ matrix.dockerfile }}
         run: |
-          # Try to find the Dockerfile in the service directory
-          if [ -f "${{ matrix.service }}/Dockerfile" ]; then
-            echo "path=${{ matrix.service }}/Dockerfile" >> $GITHUB_OUTPUT
-          elif [ -f "${{ matrix.service }}/Dockerfile.${{ matrix.service }}" ]; then
-            echo "path=${{ matrix.service }}/Dockerfile.${{ matrix.service }}" >> $GITHUB_OUTPUT
+          # services.yaml may state the path outright. It has to when one
+          # directory builds several images: `find | head -1` would pick an
+          # arbitrary Dockerfile, and Dockerfile.<service> cannot match more
+          # than one of them. When it is silent, fall back to the historical
+          # discovery order so the services that never needed a build: block
+          # behave exactly as before.
+          if [ -n "$DECLARED" ]; then
+            if [ ! -f "$DECLARED" ]; then
+              echo "::error::services.yaml declares $DECLARED for $SERVICE but it does not exist"
+              exit 1
+            fi
+            echo "path=$DECLARED" >> $GITHUB_OUTPUT
+          elif [ -f "$DIR/Dockerfile" ]; then
+            echo "path=$DIR/Dockerfile" >> $GITHUB_OUTPUT
+          elif [ -f "$DIR/Dockerfile.$SERVICE" ]; then
+            echo "path=$DIR/Dockerfile.$SERVICE" >> $GITHUB_OUTPUT
           else
-            # Find any Dockerfile in the directory
-            DOCKERFILE=$(find ${{ matrix.service }} -maxdepth 1 -name 'Dockerfile*' | head -1)
+            DOCKERFILE=$(find "$DIR" -maxdepth 1 -name 'Dockerfile*' | head -1)
             if [ -n "$DOCKERFILE" ]; then
               echo "path=$DOCKERFILE" >> $GITHUB_OUTPUT
             else
-              echo "::error::No Dockerfile found for ${{ matrix.service }}"
+              echo "::error::No Dockerfile found for $SERVICE (dir: $DIR)"
               exit 1
             fi
           fi
@@ -271,7 +384,7 @@ jobs:
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
         with:
-          context: ./${{ matrix.service }}
+          context: ./${{ matrix.dir }}
           file: ${{ steps.dockerfile.outputs.path }}
           push: ${{ github.event_name != 'pull_request' }}
           load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator","recap-worker"]'), matrix.service) }}
@@ -279,14 +392,27 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           # Stable build identifier. alt-frontend-sv pins SvelteKit's app
           # version to it (svelte.config.js); other Dockerfiles ignore it.
+          # BINARY selects ./cmd/<BINARY> for the alt-backend trio. Emitted
+          # only when services.yaml declares one — passing an empty
+          # BINARY= to the 21 Dockerfiles that never declare the ARG would
+          # produce an unused-build-arg warning on every one of them.
           build-args: |
             GIT_COMMIT_SHA=${{ github.sha }}
+            ${{ matrix.binary && format('BINARY={0}', matrix.binary) || '' }}
           # Registry cache: 常時 read/write 可 (GHCR ACL で保護)。
           # GHA cache: public repo だと fork PR から読める仕様のため、cache-from/to
           # とも main branch への push イベント限定。PR ビルドは registry のみ参照。
           # OWASP A08 / CWE-494 (cache poisoning) 対策。
+          #
+          # 2 本目の registry ref は「1 ディレクトリ = 複数イメージ」用。
+          # alt-harvester / alt-data-hub は alt-backend と同一 Dockerfile を
+          # 使い、`go mod download` レイヤは ARG BINARY より前にあるので 3
+          # イメージで digest が一致する。dir と同名のサービス
+          # (= alt-backend) の buildcache を read しておくと、その依存レイヤ
+          # が確実に温まる。write は自分の ref にのみ行うので相互汚染はない。
           cache-from: |
             type=registry,ref=ghcr.io/${{ steps.repo.outputs.owner }}/alt-${{ matrix.service }}:buildcache
+            ${{ (matrix.dir != matrix.service) && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache', steps.repo.outputs.owner, matrix.dir) || '' }}
             ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=gha,scope={0}', matrix.service) || '' }}
           cache-to: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', steps.repo.outputs.owner, matrix.service) || '' }}
 

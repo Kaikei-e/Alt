@@ -1,8 +1,8 @@
 package job
 
 import (
+	"alt/domain"
 	"alt/orchestrator/usecase/image_proxy_usecase"
-	"alt/shared/driver/alt_db"
 	"alt/utils/html_parser"
 	"context"
 	"fmt"
@@ -13,9 +13,14 @@ import (
 // cap external HTTP load. Per-host rate limiting is enforced by the fetcher.
 const ogBackfillBatchLimit = 50
 
-// ogBackfillCandidateLister abstracts the work-list query (for testability).
+// ogBackfillCandidateLister abstracts the work-list query.
+//
+// Backed by datahub_gateway.OgImageGateway since ADR-000954 Wave 3. The
+// element type moved to domain with it: the job runs in a different process
+// from the query now, and a driver struct in this signature would put the
+// database driver in alt-harvester's import graph for the sake of two strings.
 type ogBackfillCandidateLister interface {
-	FetchFeedsMissingOgImage(ctx context.Context, limit int) ([]alt_db.OgBackfillCandidate, error)
+	FetchFeedsMissingOgImage(ctx context.Context, limit int) ([]domain.OgImageBackfillCandidate, error)
 }
 
 // articleContentFetcher abstracts the SSRF-protected, rate-limited article page
@@ -25,6 +30,11 @@ type articleContentFetcher interface {
 }
 
 // articleHeadSaver abstracts persisting the scraped head + og:image.
+//
+// Backed by datahub_gateway.OgImageGateway since ADR-000954 Wave 3 batch 2
+// (catalog W3-B2), which was the last direct database call this job made. The
+// scrape that produces the markup stays here — it is an outbound HTTP fetch,
+// and D4 keeps those on the calling side.
 type articleHeadSaver interface {
 	SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error
 }
@@ -34,11 +44,12 @@ type articleHeadSaver interface {
 // the image proxy cache. Coverage complement to the OGP image warmer, which
 // only warms feeds that already have an og_image_url.
 func OgImageBackfillJob(
-	r *alt_db.AltDBRepository,
+	lister ogBackfillCandidateLister,
+	saver articleHeadSaver,
 	fetcher articleContentFetcher,
 	imageProxy *image_proxy_usecase.ImageProxyUsecase,
 ) func(ctx context.Context) error {
-	if r == nil || fetcher == nil || imageProxy == nil {
+	if lister == nil || saver == nil || fetcher == nil || imageProxy == nil {
 		// imageProxy is legitimately nil when IMAGE_PROXY_ENABLED=false or
 		// misconfigured (see logImageProxyWiringState in di/image_module.go,
 		// finding [6]) — that DI-level log already distinguishes "disabled"
@@ -50,7 +61,7 @@ func OgImageBackfillJob(
 			return nil
 		}
 	}
-	return ogImageBackfillJobFn(r, fetcher, r, imageProxy)
+	return ogImageBackfillJobFn(lister, fetcher, saver, imageProxy)
 }
 
 func ogImageBackfillJobFn(

@@ -22,8 +22,6 @@ import (
 	"rag-orchestrator/internal/infra/httpclient"
 	"rag-orchestrator/internal/usecase"
 	"rag-orchestrator/internal/worker"
-
-	"alt/gen/proto/services/backend/v1/backendv1connect"
 )
 
 type ragLLMClient interface {
@@ -201,14 +199,34 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Tool dispatcher (Agentic RAG: subintent-driven tool selection + synthesis tools)
 	relatedArticlesTool := tools.NewRelatedArticlesTool(searchClient)
 
-	// Connect-RPC clients for alt-backend and recap service. Authentication
-	// is established at the TLS transport layer (mTLS); no application-layer
-	// interceptor is needed.
-	backendInternalClient := backendv1connect.NewBackendInternalServiceClient(
-		httpclient.NewPooledClient(time.Duration(cfg.Backend.Timeout)*time.Second), cfg.Backend.ConnectURL,
-	)
-	tagCloudClient := altdb.NewInternalTagCloudClient(backendInternalClient, log)
-	articlesByTagClient := altdb.NewInternalArticlesByTagClient(backendInternalClient, log)
+	// Connect-RPC client for alt-data-hub — the single owner of alt_db
+	// (ADR-000954 D3) and the only route this service has to it. Every
+	// alt_db-backed adapter below shares this one client: they all speak
+	// alt.datahub.v1.DataHubService to the same mTLS listener.
+	//
+	// Failing to build the transport is fatal by design. The predecessor of
+	// this call dialled http://alt-backend:9102 in plaintext, and that
+	// surface no longer exists — carrying on without a client would mean
+	// every tag-cloud and morning-letter request erroring at request time
+	// instead of the container refusing to start (CLAUDE.md rules 8/9).
+	dataHubHTTP, err := httpclient.NewDataHubClient(httpclient.DataHubTransportConfig{
+		CertFile:   cfg.DataHub.CertFile,
+		KeyFile:    cfg.DataHub.KeyFile,
+		CAFile:     cfg.DataHub.CAFile,
+		ServerName: cfg.DataHub.ServerName,
+	}, time.Duration(cfg.DataHub.Timeout)*time.Second)
+	if err != nil {
+		log.Error("datahub_mtls_client_init_failed", slog.String("error", err.Error()))
+		panic(fmt.Errorf("alt-data-hub mTLS client: %w", err))
+	}
+	dataHubClient := altdb.NewDataHubServiceClient(dataHubHTTP, cfg.DataHub.MTLSURL)
+	log.Info("datahub_client_enabled",
+		slog.String("url", cfg.DataHub.MTLSURL),
+		slog.String("server_name", cfg.DataHub.ServerName),
+		slog.Int("timeout_seconds", cfg.DataHub.Timeout))
+
+	tagCloudClient := altdb.NewDataHubTagCloudClient(dataHubClient, log)
+	articlesByTagClient := altdb.NewDataHubArticlesByTagClient(dataHubClient, log)
 
 	toolMap := map[string]domain.Tool{
 		"related_articles":  relatedArticlesTool,
@@ -285,13 +303,11 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		answerOpts...,
 	)
 
-	// Morning letter usecase
-	articleClient := altdb.NewHTTPArticleClient(
-		cfg.Backend.URL,
-		time.Duration(cfg.Backend.Timeout)*time.Second,
-		"",
-		log,
-	)
+	// Morning letter usecase. Recent-article lookup used to be a REST GET
+	// against alt-backend's internal port; it is now
+	// DataHubService/ListRecentArticles over the same mTLS client as the
+	// tools above (ADR-000954 D6).
+	articleClient := altdb.NewDataHubArticleClient(dataHubClient, log)
 	morningLetterPromptBuilder := usecase.NewMorningLetterPromptBuilder()
 	temporalBoostConfig := usecase.TemporalBoostConfig{
 		Boost6h:  cfg.Temporal.Boost6h,

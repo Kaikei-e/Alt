@@ -362,7 +362,7 @@ STEPS_CONSUMER=(
   "Go: altctl sovereign consumer|go|altctl|CGO_ENABLED=1 go test -tags=contract ./internal/sovereignclient/contract/ -v"
   "Rust: recap-worker consumer|cargo|recap-worker/recap-worker|cargo test --lib contract -- --ignored"
   "Python: recap-evaluator consumer|uv|recap-evaluator|uv run pytest tests/contract/ -v --no-cov"
-  "Python: tag-generator consumer|uv|tag-generator/app|uv run pytest tests/contract/test_mqhub_tags_consumer.py -v --no-cov"
+  "Python: tag-generator consumer|uv|tag-generator/app|uv run pytest tests/contract/test_mqhub_tags_consumer.py tests/contract/test_datahub_consumer.py -v --no-cov"
   "Python: acolyte-orchestrator consumer|uv|acolyte-orchestrator|uv run pytest tests/contract/ -v --no-cov"
 )
 

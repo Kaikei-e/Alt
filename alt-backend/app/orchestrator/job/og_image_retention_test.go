@@ -35,7 +35,7 @@ func (m *mockRetentionPurger) CleanupExpiredImageProxyCache(ctx context.Context)
 func TestOgImageRetentionJob_PurgesAllArtifactsWithin7DayWindow(t *testing.T) {
 	p := &mockRetentionPurger{heads: 3, images: 5, expired: 2}
 
-	fn := ogImageRetentionJobFn(p)
+	fn := ogImageRetentionJobFn(p, p)
 	if err := fn(context.Background()); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -60,7 +60,7 @@ func TestOgImageRetentionJob_PurgesAllArtifactsWithin7DayWindow(t *testing.T) {
 func TestOgImageRetentionJob_PropagatesArticleHeadError(t *testing.T) {
 	p := &mockRetentionPurger{headsErr: errors.New("boom")}
 
-	fn := ogImageRetentionJobFn(p)
+	fn := ogImageRetentionJobFn(p, p)
 	if err := fn(context.Background()); err == nil {
 		t.Fatal("expected error when article_heads purge fails, got nil")
 	}
@@ -69,7 +69,7 @@ func TestOgImageRetentionJob_PropagatesArticleHeadError(t *testing.T) {
 func TestOgImageRetentionJob_PropagatesImageCacheError(t *testing.T) {
 	p := &mockRetentionPurger{imagesErr: errors.New("boom")}
 
-	fn := ogImageRetentionJobFn(p)
+	fn := ogImageRetentionJobFn(p, p)
 	if err := fn(context.Background()); err == nil {
 		t.Fatal("expected error when image cache purge fails, got nil")
 	}

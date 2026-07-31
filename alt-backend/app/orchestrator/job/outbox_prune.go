@@ -7,11 +7,13 @@ import (
 	"time"
 )
 
-// outboxPruneRepository abstracts the outbox prune query for testability.
-// *alt_db.AltDBRepository satisfies this via its embedded
-// *alt_db.OutboxRepository.
+// outboxPruneRepository abstracts the outbox prune capability.
+//
+// Backed by datahub_gateway.OutboxGateway since ADR-000954 Wave 3: the DELETE
+// runs on alt-data-hub, and the retention window below travels with the
+// request rather than being a constant the provider holds.
 type outboxPruneRepository interface {
-	PruneOutboxEvents(ctx context.Context, olderThan time.Duration) (int64, error)
+	Prune(ctx context.Context, olderThan time.Duration) (int64, error)
 }
 
 // outboxPruneRetention is how long a PROCESSED/FAILED outbox_events row is
@@ -40,7 +42,7 @@ func OutboxPruneJob(repo outboxPruneRepository) func(ctx context.Context) error 
 		panic("outbox-prune: outbox repository is nil — must be wired unconditionally at composition root (see .claude/rules/di-wiring.md)")
 	}
 	return func(ctx context.Context) error {
-		pruned, err := repo.PruneOutboxEvents(ctx, outboxPruneRetention)
+		pruned, err := repo.Prune(ctx, outboxPruneRetention)
 		if err != nil {
 			return fmt.Errorf("prune outbox events: %w", err)
 		}

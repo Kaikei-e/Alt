@@ -1,8 +1,46 @@
 # Alt Backend
 
 _Last reviewed: July 7, 2026_
+_Split note added: July 31, 2026_
 
 **Location:** `alt-backend/app`
+
+> [!IMPORTANT]
+> **このサービスは 3 プロセスに分割済み（[[000954]]）。以下の本文は分割前の記述を
+> 多く含み、まだ全面改稿されていない。**
+>
+> `alt-backend/app`（`module alt`）という 1 つの Go モジュールから、同じ
+> `Dockerfile.backend` を `--build-arg BINARY=backend|harvester|datahub` で切り替えて
+> **3 つのコンテナ**をビルドする。
+>
+> | compose service | エントリポイント | 責務 | リスナー |
+> |---|---|---|---|
+> | `alt-backend` | `cmd/backend` | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102` / ops `:9110` |
+> | `alt-harvester` | `cmd/harvester` | `orchestrator/job/` の 7 定期ジョブ | ops `:9110` のみ |
+> | `alt-data-hub` | `cmd/datahub` | **alt-db の唯一のオーナー**。`alt.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`、publish ゼロ |
+>
+> 本文を読むときに読み替えが必要な主な点:
+>
+> - **root `main.go` は存在しない。** `cmd/<binary>/main.go` の 3 本に置き換わり、
+>   共通の起動処理は `internal/bootstrap` にある。
+> - **`:9102` は admin Connect サービス専用のオペレータリスナー。**
+>   `BackendInternalService` と `/v1/internal/*` REST は**削除済み**で、
+>   その責務は alt-data-hub の `alt.datahub.v1.DataHubService` に移った。
+> - **alt-backend / alt-harvester は DB に触らない。** DB DSN と pgx を持つのは
+>   alt-data-hub だけで、`di/import_boundary_test.go` が `go list -deps` で
+>   リンクレベルに強制している。本文中の
+>   `container.AltDBRepository` / `g.alt_db.…` を経由する記述はすべて
+>   DataHubService の capability 呼び出しに置き換わっている。
+> - **`X-Service-Token` / `SERVICE_SECRET` は存在しない。** [[000743]] で全サービスから
+>   撤去され、サービス間認証は mTLS に一本化された。本文の
+>   `middleware/service_auth_middleware.go` の記述は歴史的なものである。
+> - **ディレクトリは `app/` 直下ではない。** [[000945]] 以降、レイヤは
+>   `app/orchestrator/` `app/dataplane/` `app/shared/` の 3 package ファミリの下に並ぶ
+>   （`rest/` → `orchestrator/rest/` など）。
+> - **`tag-cloud-cache-warmer` ジョブは廃止された。** 定期ジョブは 8 本から 7 本になり、
+>   タグクラウドのキャッシュは初回リクエスト時の遅延ウォームになった。
+>
+> 詳細と判断根拠は [[000954]]、レイヤの現行配置は `alt-backend/CLAUDE.md` を参照。
 
 ## Purpose
 - Serve as the Compose-first back end for Alt’s RSS/LLM stack, routing authenticated requests from the frontend, inner services, and dashboards to the clean-architecture layers that orchestrate feed ingestion, summarization, search, and recap data.

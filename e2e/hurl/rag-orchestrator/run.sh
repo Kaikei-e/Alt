@@ -42,7 +42,18 @@ cd "$ROOT"
 
 # Per-service image tag: see search-indexer/run.sh for rationale.
 : "${RAG_ORCHESTRATOR_IMAGE_TAG:=$IMAGE_TAG}"
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME RAG_ORCHESTRATOR_IMAGE_TAG
+
+# Throwaway mTLS material. rag-orchestrator does not talk to alt-data-hub in
+# this suite — Phase 1 covers health plus the Augur RPCs, all of which are
+# backed by rag-db — but it still needs a client leaf to *start*:
+# config.loadDataHub panics on an unset DATAHUB_MTLS_URL and
+# httpclient.NewDataHubClient reads the CA at construction, because after
+# ADR-000954 D7 there is no plaintext route to alt_db to degrade onto. See
+# compose.staging.yaml's rag-orchestrator block.
+PKI_DIR="$ROOT/e2e/fixtures/rag-orchestrator/pki"
+STAGING_PKI_DIR="$PKI_DIR"
+
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME RAG_ORCHESTRATOR_IMAGE_TAG STAGING_PKI_DIR
 
 # Render a per-project compose slice (sets $SLICE + $SLICE_DIR) so
 # parallel matrix jobs can coexist on the same Docker daemon under
@@ -61,6 +72,9 @@ reclaim_network_pool
 # shellcheck source=../_lib/compose-up-with-retry.sh
 source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
 
+# shellcheck source=../_lib/mint-staging-pki.sh
+source "$ROOT/e2e/hurl/_lib/mint-staging-pki.sh"
+
 USER_ID_A="$(tr -d '\n' < "$ROOT/e2e/fixtures/rag-orchestrator/test-user-id.txt")"
 USER_ID_EMPTY="$(tr -d '\n' < "$ROOT/e2e/fixtures/rag-orchestrator/test-empty-user-id.txt")"
 CONV_ID="$(tr -d '\n' < "$ROOT/e2e/fixtures/rag-orchestrator/test-conversation-id.txt")"
@@ -77,8 +91,10 @@ cleanup() {
     # isn't needed for `down`, and dropping it avoids the silent skip.
     docker compose -p "$STAGING_PROJECT_NAME" \
       down -v --remove-orphans || true
+    rm -rf "$PKI_DIR"
   else
     echo "==> KEEP_STACK=1 — leaving $STAGING_PROJECT_NAME stack up" >&2
+    echo "==> KEEP_STACK=1 — leaving $PKI_DIR in place (mounted by the container)" >&2
   fi
   # $SLICE_DIR is under mktemp -d; always clean up even when KEEP_STACK=1
   # so the resolved compose config (which could bake future ${VAR:-...}
@@ -87,13 +103,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The server leaf is alt-data-hub's (unused here, but mint_staging_pki wants a
+# server name) and the client leaf is `rag-orchestrator`, the CN production
+# puts in DATAHUB_ALLOWED_PEERS.
+mint_staging_pki "$PKI_DIR" alt-data-hub rag-orchestrator
+
 echo "==> bringing up rag-orchestrator slice ($STAGING_PROJECT_NAME)" >&2
 # --build is required because rag-orchestrator is a local build context
 # in CI (no GHCR image pulled). --wait blocks on healthcheck convergence;
 # rag-db-migrator's `restart: "no"` + service_completed_successfully gate
 # guarantees migrations apply before rag-orchestrator starts.
-compose_up_with_retry --build \
-  rag-db rag-db-migrator rag-orchestrator
+if ! compose_up_with_retry --build \
+    rag-db rag-db-migrator rag-orchestrator; then
+  # `up --wait` tears a failing container down immediately, so by the time the
+  # EXIT trap runs (and under KEEP_STACK=1 it does not dump at all) the process
+  # that exited non-zero is unaddressable. Grab the logs here, before the error
+  # propagates. Matches the alt-backend / alt-data-hub runners.
+  echo "==> compose up failed — dumping logs before trap cleanup" >&2
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" ps -a >&2 2>&1 || true
+  docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" logs --no-color --tail=500 >&2 2>&1 || true
+  exit 1
+fi
 
 echo "==> seeding augur conversation fixtures via psql" >&2
 # `exec -T` disables TTY allocation so the SQL file can be piped on

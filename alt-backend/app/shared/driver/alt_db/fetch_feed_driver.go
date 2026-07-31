@@ -134,13 +134,24 @@ func (r *FeedRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*m
 	return feeds, nil
 }
 
+// FetchUnreadFeedsListPage reads the signed-in user out of the request context.
+//
+// The *ForUser variants below exist because alt-data-hub serves these reads
+// over Connect-RPC (ADR-000954 Wave 3 batch 3, capability catalog §2.H), where
+// there is no Go request context carrying a person: the peer certificate says
+// "alt-backend" and nothing about whose feeds are being listed. The
+// context-reading wrappers stay so the in-process callers that have not moved
+// keep working, and so the tenant predicate is written once.
 func (r *FeedRepository) FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
+	return r.FetchUnreadFeedsListPageForUser(ctx, user.UserID, page)
+}
 
+func (r *FeedRepository) FetchUnreadFeedsListPageForUser(ctx context.Context, userID uuid.UUID, page int) ([]*models.Feed, error) {
 	// For now, keeping the original OFFSET-based implementation for backward compatibility
 	// Consider migrating to cursor-based pagination (FetchUnreadFeedsListCursor) for better performance
 	query := `
@@ -157,9 +168,9 @@ func (r *FeedRepository) FetchUnreadFeedsListPage(ctx context.Context, page int)
 		LIMIT $1 OFFSET $2
 	`
 
-	rows, err := r.pool.Query(ctx, query, constants.DefaultPageSize, constants.DefaultPageSize*page, user.UserID)
+	rows, err := r.pool.Query(ctx, query, constants.DefaultPageSize, constants.DefaultPageSize*page, userID)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "error fetching unread feeds list page", "error", err, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "error fetching unread feeds list page", "error", err, "user_id", userID)
 		return nil, errors.New("error fetching feeds list page")
 	}
 	defer rows.Close()
@@ -204,14 +215,17 @@ func buildExcludeClauseMultiple(args []any, excludeFeedLinkIDs []uuid.UUID) (str
 }
 
 func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
-	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchUnreadFeedsListCursor")
-	defer span.End()
-
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
+	return r.FetchUnreadFeedsListCursorForUser(ctx, user.UserID, cursor, limit, excludeFeedLinkIDs)
+}
+
+func (r *FeedRepository) FetchUnreadFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchUnreadFeedsListCursorForUser")
+	defer span.End()
 
 	// Cursor-based pagination using created_at only
 	// created_at is always populated (NOT NULL DEFAULT CURRENT_TIMESTAMP) and reliable
@@ -222,7 +236,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 
 	var excludeClause string
 	if cursor == nil {
-		args = []interface{}{limit, user.UserID}
+		args = []interface{}{limit, userID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
@@ -242,7 +256,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 			LIMIT $1
 		`, ogImageSelectExpr, excludeClause)
 	} else {
-		args = []interface{}{cursor, limit, user.UserID}
+		args = []interface{}{cursor, limit, userID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
@@ -266,7 +280,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "error fetching unread feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "error fetching unread feeds with cursor", "error", err, "cursor", cursor, "user_id", userID)
 		return nil, errors.New("error fetching feeds list")
 	}
 	defer rows.Close()
@@ -290,21 +304,24 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 // Unlike FetchUnreadFeedsListCursor, this does not filter by read status but includes
 // the read status via LEFT JOIN so the frontend can visually distinguish read/unread feeds.
 func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
-	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchAllFeedsListCursor")
-	defer span.End()
-
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
+	return r.FetchAllFeedsListCursorForUser(ctx, user.UserID, cursor, limit, excludeFeedLinkIDs)
+}
+
+func (r *FeedRepository) FetchAllFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchAllFeedsListCursorForUser")
+	defer span.End()
 
 	var query string
 	var args []interface{}
 
 	var excludeClause string
 	if cursor == nil {
-		args = []interface{}{limit, user.UserID}
+		args = []interface{}{limit, userID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
@@ -319,7 +336,7 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 			LIMIT $1
 		`, ogImageSelectExpr, excludeClause)
 	} else {
-		args = []interface{}{cursor, limit, user.UserID}
+		args = []interface{}{cursor, limit, userID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
@@ -361,14 +378,17 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 // FetchReadFeedsListCursor retrieves read feeds using cursor-based pagination
 // This method uses INNER JOIN with read_status table for better performance
 func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
-	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchReadFeedsListCursor")
-	defer span.End()
-
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
+	return r.FetchReadFeedsListCursorForUser(ctx, user.UserID, cursor, limit)
+}
+
+func (r *FeedRepository) FetchReadFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchReadFeedsListCursorForUser")
+	defer span.End()
 
 	var query string
 	var args []interface{}
@@ -386,7 +406,7 @@ func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *t
 			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $1
 		`, ogImageSelectExpr)
-		args = []interface{}{limit, user.UserID}
+		args = []interface{}{limit, userID}
 	} else {
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
@@ -401,12 +421,12 @@ func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *t
 			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $2
 		`, ogImageSelectExpr)
-		args = []interface{}{cursor, limit, user.UserID}
+		args = []interface{}{cursor, limit, userID}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "error fetching read feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "error fetching read feeds with cursor", "error", err, "cursor", cursor, "user_id", userID)
 		return nil, errors.New("error fetching read feeds list")
 	}
 	defer rows.Close()
@@ -432,6 +452,10 @@ func (r *FeedRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curso
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
+	return r.FetchFavoriteFeedsListCursorForUser(ctx, user.UserID, cursor, limit)
+}
+
+func (r *FeedRepository) FetchFavoriteFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]*models.Feed, error) {
 
 	var query string
 	var args []interface{}
@@ -448,7 +472,7 @@ func (r *FeedRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curso
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $1
                `, ogImageSelectExpr)
-		args = []interface{}{limit, user.UserID}
+		args = []interface{}{limit, userID}
 	} else {
 		query = fmt.Sprintf(`
                        SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
@@ -461,12 +485,12 @@ func (r *FeedRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curso
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $2
                `, ogImageSelectExpr)
-		args = []interface{}{cursor, limit, user.UserID}
+		args = []interface{}{cursor, limit, userID}
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "error fetching favorite feeds with cursor", "error", err, "cursor", cursor, "user_id", user.UserID)
+		logger.Logger.ErrorContext(ctx, "error fetching favorite feeds with cursor", "error", err, "cursor", cursor, "user_id", userID)
 		return nil, errors.New("error fetching favorite feeds list")
 	}
 	defer rows.Close()

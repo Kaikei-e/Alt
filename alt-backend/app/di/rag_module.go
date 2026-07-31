@@ -85,20 +85,24 @@ func newRAGModule(infra *InfraModule, feed *FeedModule) *RAGModule {
 	morningLetterConnectGw := morning_letter_connect_gateway.NewGateway(ragConnectHTTPClient, cfg.Rag.OrchestratorConnectURL, slog.Default())
 
 	// Morning letter usecase
-	userFeedGw := user_feed_gateway.NewGateway(infra.AltDBRepository)
-	morningGw := morning_gateway.NewMorningGateway(infra.Pool)
+	userFeedGw := user_feed_gateway.NewGateway(infra.StatsGateway)
+	morningGw := morning_gateway.NewMorningGateway(infra.ArticleBatchGateway)
 	morningUC := morning_usecase.NewMorningUsecase(morningGw, userFeedGw)
 
 	// Morning Letter v2 read usecase + v3 enrichment ports.
-	// ArticleRepository is embedded on AltDBRepository so FetchArticlesByIDs
-	// is method-promoted; same for the newly added FetchFeedTitlesByIDs.
-	// SearchIndexerDriver provides the related-articles fan-out.
-	morningLetterGw := morning_gateway.NewMorningLetterGateway(infra.Pool)
+	//
+	// The article batch read is alt-data-hub's since ADR-000954 Wave 3 batch 2
+	// (catalog §2.C W3-C5) and the feed-title batch from the feed gateway
+	// (catalog §2.H W3-H12). The two enrichment ports come from different
+	// gateways rather than from the one repository that used to satisfy both
+	// by method promotion — which is the point: each names the capability it
+	// uses. SearchIndexerDriver provides the related-articles fan-out.
+	morningLetterGw := morning_gateway.NewMorningLetterGateway(infra.ArticleBatchGateway)
 	morningLetterUC := morning_usecase.NewMorningLetterUsecaseWithEnrichment(
 		morningLetterGw,
 		userFeedGw,
-		infra.AltDBRepository,
-		infra.AltDBRepository,
+		infra.ArticleBatchGateway,
+		infra.FeedGateway,
 		infra.SearchIndexerDriver,
 	)
 

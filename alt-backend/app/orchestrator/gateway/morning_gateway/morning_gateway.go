@@ -3,7 +3,6 @@ package morning_gateway
 import (
 	"alt/domain"
 	"alt/orchestrator/port/morning_letter_port"
-	"alt/shared/driver/alt_db"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
@@ -17,20 +16,34 @@ import (
 	"github.com/google/uuid"
 )
 
-type MorningGateway struct {
-	altDBRepository *alt_db.AltDBRepository
-	httpClient      *http.Client
-	recapWorkerURL  string
+// articleBatchReader is catalog §2.C W3-C5, served by alt-data-hub since
+// ADR-000954 Wave 3 batch 2. The recap-worker call below stays an outbound
+// HTTP request made from here, which is what D4 keeps on the calling side.
+type articleBatchReader interface {
+	FetchArticlesByIDs(ctx context.Context, articleIDs []uuid.UUID) ([]*domain.Article, error)
 }
 
-func NewMorningGateway(pool alt_db.PgxIface) morning_letter_port.MorningRepository {
+type MorningGateway struct {
+	articles       articleBatchReader
+	httpClient     *http.Client
+	recapWorkerURL string
+}
+
+// NewMorningGateway panics on a nil article source: Morning Letter would
+// render every group as "article not found" and log a warning per group, which
+// is indistinguishable from a quiet morning.
+func NewMorningGateway(articles articleBatchReader) morning_letter_port.MorningRepository {
+	if articles == nil {
+		panic("morning_gateway: an article batch reader is required — articles moved to alt-data-hub in ADR-000954 Wave 3")
+	}
+
 	recapWorkerURL := os.Getenv("RECAP_WORKER_URL")
 	if recapWorkerURL == "" {
 		recapWorkerURL = "http://recap-worker:9005" //#nosec G101 -- service-discovery default, not a credential
 	}
 
 	return &MorningGateway{
-		altDBRepository: alt_db.NewAltDBRepository(pool),
+		articles: articles,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -104,7 +117,7 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 	logger.Logger.InfoContext(ctx, "Fetching articles from database", "article_count", len(articleIDs))
 
 	// 3. Fetch Articles from DB using Driver layer
-	articles, err := g.altDBRepository.FetchArticlesByIDs(ctx, articleIDs)
+	articles, err := g.articles.FetchArticlesByIDs(ctx, articleIDs)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to fetch articles from database", "error", err, "article_count", len(articleIDs))
 		return nil, fmt.Errorf("failed to fetch articles: %w", err)

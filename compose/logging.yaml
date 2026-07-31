@@ -93,6 +93,20 @@ services:
       <<: *rask-forwarder-env
       TARGET_SERVICE: "${ALT_BACKEND_TARGET:-alt-backend}"
 
+  # One forwarder per container of the alt-backend 3-binary split. A single
+  # forwarder cannot cover them: TARGET_SERVICE selects one container.
+  alt-harvester-logs:
+    <<: *rask-forwarder
+    environment:
+      <<: *rask-forwarder-env
+      TARGET_SERVICE: "alt-harvester"
+
+  alt-data-hub-logs:
+    <<: *rask-forwarder
+    environment:
+      <<: *rask-forwarder-env
+      TARGET_SERVICE: "alt-data-hub"
+
   auth-hub-logs:
     <<: *rask-forwarder
     environment:

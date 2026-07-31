@@ -10,13 +10,16 @@ import (
 	"alt/di"
 )
 
-// internalServicePaths are the Connect-RPC surfaces that carry no user-JWT
-// interceptor. Mounting them on the browser-facing listener made them
-// reachable by any self-registered user through the product's own
-// /api/v2 proxy, which forwards an arbitrary service/method path with the
-// caller's valid token attached.
-var internalServicePaths = []string{
-	"/services.backend.v1.BackendInternalService/CreateArticle",
+// dataHubServicePaths are the service-to-service surfaces. They carry no
+// user-JWT interceptor and now live on their own binary behind mTLS.
+var dataHubServicePaths = []string{
+	"/alt.datahub.v1.DataHubService/CreateArticle",
+}
+
+// operatorServicePaths are the admin surfaces. They carry no user-JWT
+// interceptor either, but their control is the backend's loopback bind, not a
+// client certificate — so they must not share a mux with the data-hub ones.
+var operatorServicePaths = []string{
 	"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
 }
 
@@ -28,8 +31,16 @@ var publicServicePaths = []string{
 	"/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome",
 }
 
+// testDeps returns the smallest container SetupConnectHandlers accepts.
+//
+// Infra must be non-nil: the article handler takes its OG image lookup from
+// there since ADR-000954 Wave 3 moved article_heads to alt-data-hub, and these
+// tests assert routing rather than behaviour, so a zero-valued module is
+// enough.
 func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
-	return &di.ApplicationComponents{}, &config.Config{}, slog.New(slog.NewTextHandler(io_Discard{}, nil))
+	return &di.ApplicationComponents{Infra: &di.InfraModule{}},
+		&config.Config{},
+		slog.New(slog.NewTextHandler(io_Discard{}, nil))
 }
 
 type io_Discard struct{}
@@ -47,7 +58,7 @@ func TestSetupConnectHandlers_ExcludesInternalAndAdminServices(t *testing.T) {
 	mux := http.NewServeMux()
 	SetupConnectHandlers(mux, container, cfg, logger)
 
-	for _, path := range internalServicePaths {
+	for _, path := range append(append([]string{}, dataHubServicePaths...), operatorServicePaths...) {
 		if mounted(t, mux, path) {
 			t.Errorf("%s must not be reachable on the browser-facing mux", path)
 		}
@@ -59,34 +70,64 @@ func TestSetupConnectHandlers_ExcludesInternalAndAdminServices(t *testing.T) {
 	}
 }
 
-func TestSetupInternalConnectHandlers_ServesOnlyInternalAndAdminServices(t *testing.T) {
+// The pre-split internal mux carried the admin surfaces and the data-plane
+// service together, which meant one listener answered to two
+// different access controls. They are separate muxes on separate binaries now,
+// and neither may re-acquire the other's services.
+func TestSetupOperatorConnectHandlers_ServesOnlyTheAdminSurfaces(t *testing.T) {
 	container, cfg, logger := testDeps()
 	mux := http.NewServeMux()
-	SetupInternalConnectHandlers(mux, container, cfg, logger)
+	SetupOperatorConnectHandlers(mux, container, cfg, logger)
 
-	for _, path := range internalServicePaths {
+	for _, path := range operatorServicePaths {
 		if !mounted(t, mux, path) {
-			t.Errorf("%s must be reachable on the internal mux", path)
+			t.Errorf("%s must be reachable on the operator mux", path)
 		}
 	}
-	for _, path := range publicServicePaths {
+	for _, path := range append(append([]string{}, dataHubServicePaths...), publicServicePaths...) {
 		if mounted(t, mux, path) {
-			t.Errorf("%s must not be duplicated onto the internal mux", path)
+			t.Errorf("%s must not be mounted on the operator mux", path)
 		}
 	}
 }
 
-// The mTLS listener verifies the client certificate against alt-ca before any
-// handler runs, so it is the one place both surfaces may coexist.
-func TestCreateMTLSConnectServer_ServesBothSurfaces(t *testing.T) {
+// The mixed-surface mTLS server was the direct motivation for splitting the
+// binary: one listener served the user API, the admin API and the
+// service-to-service API at once. Neither mux this package builds may carry
+// the other's services, nor the data-hub ones — whose handler lives in
+// alt/connect/v2/datahub and is not even linked into this package.
+func TestConnectServers_NeverShareSurfaces(t *testing.T) {
 	container, cfg, logger := testDeps()
-	mux := http.NewServeMux()
-	SetupConnectHandlers(mux, container, cfg, logger)
-	SetupInternalConnectHandlers(mux, container, cfg, logger)
 
-	for _, path := range append(append([]string{}, internalServicePaths...), publicServicePaths...) {
-		if !mounted(t, mux, path) {
-			t.Errorf("%s must be reachable on the mTLS mux", path)
-		}
+	userMux := http.NewServeMux()
+	SetupConnectHandlers(userMux, container, cfg, logger)
+	operatorMux := http.NewServeMux()
+	SetupOperatorConnectHandlers(operatorMux, container, cfg, logger)
+
+	surfaces := []struct {
+		name  string
+		mux   *http.ServeMux
+		owns  []string
+		alien []string
+	}{
+		{name: "user", mux: userMux, owns: publicServicePaths,
+			alien: append(append([]string{}, operatorServicePaths...), dataHubServicePaths...)},
+		{name: "operator", mux: operatorMux, owns: operatorServicePaths,
+			alien: append(append([]string{}, publicServicePaths...), dataHubServicePaths...)},
+	}
+
+	for _, s := range surfaces {
+		t.Run(s.name, func(t *testing.T) {
+			for _, p := range s.owns {
+				if !mounted(t, s.mux, p) {
+					t.Errorf("%s mux lost %s", s.name, p)
+				}
+			}
+			for _, p := range s.alien {
+				if mounted(t, s.mux, p) {
+					t.Errorf("%s mux must not serve %s", s.name, p)
+				}
+			}
+		})
 	}
 }

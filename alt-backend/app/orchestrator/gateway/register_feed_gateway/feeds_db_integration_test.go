@@ -1,6 +1,8 @@
 package register_feed_gateway
 
 import (
+	stderrors "errors"
+
 	"alt/domain"
 	"alt/utils/logger"
 	"context"
@@ -68,9 +70,12 @@ func TestRegisterFeedsGateway_RegisterFeeds_MemoryTest(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test with nil database connection to trigger error path
+	// A data plane failure must reach the caller as a failure. The previous
+	// version asserted the exact string "database connection not available",
+	// which only held because the gateway short-circuited on a nil repository
+	// — a state that no longer exists (the constructor refuses it).
 	gateway := &RegisterFeedsGateway{
-		alt_db: nil, // This will trigger database unavailable error
+		store: &feedWriteStoreStub{err: errDataPlaneUnavailable},
 	}
 
 	testFeeds := []*domain.FeedItem{
@@ -85,13 +90,11 @@ func TestRegisterFeedsGateway_RegisterFeeds_MemoryTest(t *testing.T) {
 
 	_, err := gateway.RegisterFeeds(ctx, testFeeds)
 
-	// Should get database connection error
 	if err == nil {
-		t.Error("Expected error for nil database connection, got nil")
+		t.Fatal("Expected error when the data plane refuses the write, got nil")
 	}
-
-	if err.Error() != "database connection not available" {
-		t.Errorf("Expected specific error message, got: %s", err.Error())
+	if !stderrors.Is(err, errDataPlaneUnavailable) {
+		t.Errorf("Expected the store's failure to survive the gateway, got: %v", err)
 	}
 }
 

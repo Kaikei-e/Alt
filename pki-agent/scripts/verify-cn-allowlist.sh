@@ -1,7 +1,8 @@
 #!/bin/bash
 # Verifies F-001 / F-002 remediation:
 #   1. pki-agent JWK provisioner exists in step-ca ca.json (separate from bootstrap)
-#   2. Authority-level X.509 policy allowlists the 11 east-west subjects
+#   2. Authority-level X.509 policy allowlists every east-west subject
+#      (see EXPECTED_CNS below; kept in lockstep with the bootstrap script)
 #   3. CA rejects cert requests for a non-allowlisted CN (attacker.local)
 #   4. CA accepts cert requests for an allowlisted CN (alt-backend)
 #
@@ -15,6 +16,9 @@ STEP_CA="${STEP_CA:-alt-step-ca-1}"
 CA_CONFIG="${CA_CONFIG:-/home/step/config/ca.json}"
 EXPECTED_CNS=(
   alt-backend
+  # Keep in lockstep with SUBJECTS in bootstrap-pki-provisioner.sh.
+  alt-harvester
+  alt-data-hub
   alt-butterfly-facade
   auth-hub
   pre-processor

@@ -2,7 +2,6 @@ package article_content_cache_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"alt/utils/cache"
 	"context"
 	"fmt"
@@ -12,6 +11,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// articleContentDB is catalog §2.C W3-C5, served by alt-data-hub since
+// ADR-000954 Wave 3 batch 2. The cache in front of it stays here: a TTL is
+// flow orchestration, which D4 keeps on the calling side.
 type articleContentDB interface {
 	FetchArticlesByIDs(ctx context.Context, ids []uuid.UUID) ([]*domain.Article, error)
 }
@@ -21,10 +23,13 @@ type Gateway struct {
 	cache *cache.SharedCache[uuid.UUID, *domain.Article]
 }
 
-func NewGateway(db *alt_db.AltDBRepository) *Gateway {
-	g := &Gateway{db: db}
-	g.cache = cache.NewSharedCache(10*time.Minute, 5*time.Minute, g.loadSingleArticle)
-	return g
+// NewGateway panics on a nil source: the cache would answer every miss with
+// a nil dereference on a user request rather than failing at boot.
+func NewGateway(db articleContentDB) *Gateway {
+	if db == nil {
+		panic("article_content_cache_gateway: an article batch reader is required — articles moved to alt-data-hub in ADR-000954 Wave 3")
+	}
+	return newGateway(db)
 }
 
 func newGateway(db articleContentDB) *Gateway {

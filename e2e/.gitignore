@@ -1,1 +1,10 @@
 reports/
+# Throwaway mTLS material minted per run by e2e/hurl/_lib/mint-staging-pki.sh.
+# The directories have to sit under fixtures/ so compose can mount them, which
+# also puts private keys one `git add e2e/` away from being committed. One per
+# suite that needs a client leaf for alt-data-hub's mutual-TLS listener, so
+# parallel matrix jobs on a shared daemon never write to the same directory.
+fixtures/alt-data-hub/pki/
+fixtures/alt-backend/pki/
+fixtures/alt-harvester/pki/
+fixtures/rag-orchestrator/pki/

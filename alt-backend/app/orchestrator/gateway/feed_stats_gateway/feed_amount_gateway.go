@@ -1,43 +1,47 @@
 package feed_stats_gateway
 
 import (
-	"alt/shared/driver/alt_db"
-	"alt/utils/errors"
-	"alt/utils/logger"
 	"context"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"alt/shared/gateway/datahub_gateway"
 )
 
+// statsClient is the slice of the alt-data-hub stats gateway this package
+// adapts (capability catalog §2.M).
+//
+// Five types in this package rather than one, because each satisfies a port
+// that declares a method called Execute and no single object can answer five of
+// those. What they no longer hold is a database: the query, the tenancy and the
+// error wording live behind this interface, and these types are the port-shaped
+// faces of one shared gateway.
+//
+// The `if repository == nil` guard each of them used to open with is gone along
+// with the repository. It reported "database connection not available" at call
+// time for a mistake made at wiring time; datahub_gateway.NewStatsGateway
+// panics at construction instead, so the same mistake is now a process that
+// does not start rather than a dashboard of zeroes (CLAUDE.md rule 8).
+type statsClient interface {
+	FeedAmount(ctx context.Context) (int, error)
+	TotalArticlesCount(ctx context.Context) (int, error)
+	SummarizedArticlesCount(ctx context.Context) (int, error)
+	UnsummarizedArticlesCount(ctx context.Context) (int, error)
+	TodayUnreadArticlesCount(ctx context.Context, since time.Time) (int, error)
+}
+
+var _ statsClient = (*datahub_gateway.StatsGateway)(nil)
+
+// FeedAmountGateway implements feed_stats_port.FeedAmountPort.
 type FeedAmountGateway struct {
-	altDBRepository *alt_db.AltDBRepository
+	stats statsClient
 }
 
-func NewFeedAmountGateway(pool *pgxpool.Pool) *FeedAmountGateway {
-	return &FeedAmountGateway{
-		altDBRepository: alt_db.NewAltDBRepositoryWithPool(pool),
-	}
+func NewFeedAmountGateway(stats statsClient) *FeedAmountGateway {
+	return &FeedAmountGateway{stats: stats}
 }
 
+// Execute counts every feed in the deployment — the one dashboard number that
+// is not per-user.
 func (g *FeedAmountGateway) Execute(ctx context.Context) (int, error) {
-	if g.altDBRepository == nil {
-		dbErr := errors.DatabaseError("database connection not available", nil, map[string]interface{}{
-			"gateway": "FeedAmountGateway",
-			"method":  "Execute",
-		})
-		errors.LogError(logger.Logger, dbErr, "database_connection_check")
-		return 0, dbErr
-	}
-
-	count, err := g.altDBRepository.FetchFeedAmount(ctx)
-	if err != nil {
-		dbErr := errors.DatabaseError("failed to fetch feed amount", err, map[string]interface{}{
-			"gateway": "FeedAmountGateway",
-			"method":  "FetchFeedAmount",
-		})
-		errors.LogError(logger.Logger, dbErr, "fetch_feed_amount")
-		return 0, dbErr
-	}
-
-	return count, nil
+	return g.stats.FeedAmount(ctx)
 }

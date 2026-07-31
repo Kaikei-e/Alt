@@ -3,6 +3,9 @@ package morning_gateway
 import (
 	"context"
 	"encoding/json"
+
+	"alt/domain"
+
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -121,7 +124,7 @@ func TestGetLetterSources_WithSources(t *testing.T) {
 	result, err := gw.GetLetterSources(context.Background(), "l1")
 
 	require.NoError(t, err)
-	// All dropped because altDBRepository is nil → no feed_id lookup possible
+	// All dropped because the article reader resolves neither id → no feed_id
 	assert.Empty(t, result)
 }
 
@@ -142,9 +145,22 @@ func TestGetLetterSources_Empty(t *testing.T) {
 func newTestGateway(t *testing.T, serverURL string) *MorningLetterGateway {
 	t.Helper()
 	return &MorningLetterGateway{
+		// An article reader that knows nothing: the sources it cannot resolve
+		// a feed_id for are dropped, which is the behaviour under test.
+		articles:       stubArticleBatchReader{},
 		httpClient:     &http.Client{Timeout: 10 * time.Second},
 		recapWorkerURL: serverURL,
 	}
+}
+
+// stubArticleBatchReader stands in for the alt-data-hub article batch read
+// (catalog §2.C W3-C5) these gateways use to resolve feed ids.
+type stubArticleBatchReader struct {
+	articles []*domain.Article
+}
+
+func (s stubArticleBatchReader) FetchArticlesByIDs(_ context.Context, _ []uuid.UUID) ([]*domain.Article, error) {
+	return s.articles, nil
 }
 
 func strPtr(s string) *string {

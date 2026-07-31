@@ -1,191 +1,88 @@
 package fetch_feed_detail_gateway
 
 import (
-	"alt/domain"
 	"context"
+	"errors"
 	"net/url"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"alt/domain"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// These used to assert that a nil *AltDBRepository produced "database
+// connection not available" on every call. That test could only ever fail if
+// someone deleted the nil check, and it passed for a gateway that had never
+// been wired at all — which is the failure ADR-000928 is about. With the
+// summary read served by alt-data-hub the constructor refuses a nil store
+// outright, so the interesting questions moved: does a miss stay a miss, and
+// does an error stay an error.
+
+type summaryStoreStub struct {
+	summary *domain.FeedSummary
+	err     error
+	gotURL  *url.URL
+}
+
+func (s *summaryStoreStub) FetchFeedSummary(_ context.Context, feedURL *url.URL) (*domain.FeedSummary, error) {
+	s.gotURL = feedURL
+	return s.summary, s.err
+}
+
 func TestFeedSummaryGateway_FetchFeedDetails(t *testing.T) {
-	gateway := &FeedSummaryGateway{
-		alt_db: nil, // This will cause an error, which we can test
-	}
-
-	// Create test URLs
-	validURL, _ := url.Parse("https://example.com/feed.xml")
-	invalidURL, _ := url.Parse("not-a-valid-url")
-
-	type args struct {
-		ctx     context.Context
-		feedURL *url.URL
-	}
+	feedURL, err := url.Parse("https://example.com/feed.xml")
+	require.NoError(t, err)
 
 	tests := []struct {
-		name    string
-		args    args
-		want    *domain.FeedSummary
+		name  string
+		store *summaryStoreStub
+		want  *domain.FeedSummary
+		// wantErr is the whole point of the miss case: a summary that has not
+		// been generated yet is nil-without-error, because the summarise path
+		// reads that as "go generate one" rather than as a failure.
 		wantErr bool
 	}{
 		{
-			name: "fetch with valid URL but nil database (should error)",
-			args: args{
-				ctx:     context.Background(),
-				feedURL: validURL,
-			},
-			want:    nil,
-			wantErr: true,
+			name:  "returns the summary",
+			store: &summaryStoreStub{summary: &domain.FeedSummary{Summary: "要約"}},
+			want:  &domain.FeedSummary{Summary: "要約"},
 		},
 		{
-			name: "fetch with invalid URL",
-			args: args{
-				ctx:     context.Background(),
-				feedURL: invalidURL,
-			},
-			want:    nil,
-			wantErr: true,
+			name:  "a missing summary is nil without error",
+			store: &summaryStoreStub{},
+			want:  nil,
 		},
 		{
-			name: "fetch with nil URL",
-			args: args{
-				ctx:     context.Background(),
-				feedURL: nil,
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "fetch with cancelled context",
-			args: args{
-				ctx: func() context.Context {
-					ctx, cancel := context.WithCancel(context.Background())
-					cancel()
-					return ctx
-				}(),
-				feedURL: validURL,
-			},
-			want:    nil,
+			name:    "a data plane failure surfaces",
+			store:   &summaryStoreStub{err: errors.New("connection reset")},
 			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := gateway.FetchFeedDetails(tt.args.ctx, tt.args.feedURL)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("FeedSummaryGateway.FetchFeedDetails() error = %v, wantErr %v", err, tt.wantErr)
+			gateway := NewFeedSummaryGateway(tt.store)
+
+			got, err := gateway.FetchFeedDetails(context.Background(), feedURL)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Nil(t, got)
 				return
 			}
-			if got != tt.want {
-				t.Errorf("FeedSummaryGateway.FetchFeedDetails() = %v, want %v", got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, feedURL, tt.store.gotURL)
 		})
 	}
 }
 
-func TestNewFeedSummaryGateway(t *testing.T) {
-	// Test constructor
-	var pool *pgxpool.Pool // nil pool for testing
-	gateway := NewFeedSummaryGateway(pool)
-
-	if gateway == nil {
-		t.Error("NewFeedSummaryGateway() returned nil")
-	}
-
-	// With our refactored approach, repository will be nil when pool is nil
-	if gateway.alt_db != nil {
-		t.Error("NewFeedSummaryGateway() with nil pool should have nil repository")
-	}
-}
-
-func TestFeedSummaryGateway_URLValidation(t *testing.T) {
-	gateway := &FeedSummaryGateway{
-		alt_db: nil,
-	}
-
-	// Test various URL formats
-	testURLs := []struct {
-		name      string
-		urlString string
-		wantErr   bool
-	}{
-		{
-			name:      "valid HTTP URL",
-			urlString: "http://example.com/feed.xml",
-			wantErr:   true, // Will error due to nil database
-		},
-		{
-			name:      "valid HTTPS URL",
-			urlString: "https://example.com/feed.xml",
-			wantErr:   true, // Will error due to nil database
-		},
-		{
-			name:      "URL with port",
-			urlString: "https://example.com:8080/feed.xml",
-			wantErr:   true, // Will error due to nil database
-		},
-		{
-			name:      "URL with query parameters",
-			urlString: "https://example.com/feed.xml?format=rss&version=2.0",
-			wantErr:   true, // Will error due to nil database
-		},
-		{
-			name:      "URL with fragment",
-			urlString: "https://example.com/feed.xml#section1",
-			wantErr:   true, // Will error due to nil database
-		},
-		{
-			name:      "relative URL",
-			urlString: "/feed.xml",
-			wantErr:   true, // Will error due to nil database
-		},
-	}
-
-	for _, testURL := range testURLs {
-		t.Run(testURL.name, func(t *testing.T) {
-			parsedURL, parseErr := url.Parse(testURL.urlString)
-			if parseErr != nil {
-				t.Fatalf("Failed to parse test URL: %v", parseErr)
-			}
-
-			_, err := gateway.FetchFeedDetails(context.Background(), parsedURL)
-			if (err != nil) != testURL.wantErr {
-				t.Errorf("FeedSummaryGateway.FetchFeedDetails() with URL %s error = %v, wantErr %v",
-					testURL.urlString, err, testURL.wantErr)
-			}
-		})
-	}
-}
-
-func TestFeedSummaryGateway_ErrorPropagation(t *testing.T) {
-	gateway := &FeedSummaryGateway{
-		alt_db: nil,
-	}
-
-	testURL, _ := url.Parse("https://example.com/feed.xml")
-
-	// Test that errors from the database layer are properly propagated
-	_, err := gateway.FetchFeedDetails(context.Background(), testURL)
-	if err == nil {
-		t.Error("FeedSummaryGateway.FetchFeedDetails() should propagate database errors")
-	}
-}
-
-func TestFeedSummaryGateway_ContextHandling(t *testing.T) {
-	gateway := &FeedSummaryGateway{
-		alt_db: nil,
-	}
-
-	testURL, _ := url.Parse("https://example.com/feed.xml")
-
-	// Test with cancelled context
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err := gateway.FetchFeedDetails(ctx, testURL)
-	if err == nil {
-		t.Error("FeedSummaryGateway.FetchFeedDetails() expected error with cancelled context, got nil")
-	}
+// A gateway built with no store refuses at construction rather than at the
+// first request. The alternative — a nil check on every call — makes "nobody
+// wired this" indistinguishable from "the database is down", which is the
+// silent-fallback failure CLAUDE.md rule 8 forbids.
+func TestNewFeedSummaryGateway_RefusesNilStore(t *testing.T) {
+	assert.Panics(t, func() { NewFeedSummaryGateway(nil) })
 }

@@ -48,10 +48,11 @@ type ListDistinctUserIDsPort interface {
 }
 
 // TagArticleCount holds a tag name and its article count for a given time period.
-type TagArticleCount struct {
-	TagName      string
-	ArticleCount int
-}
+// TagArticleCount is domain.TagArticleCount. The alias keeps the name this
+// package's readers know while the type itself lives in the domain, where it
+// has to be now that the count is read from alt-data-hub rather than computed
+// here (capability catalog §2.J W3-J5).
+type TagArticleCount = domain.TagArticleCount
 
 // FetchTagArticleCountsPort fetches tag-level article counts since a given time.
 type FetchTagArticleCountsPort interface {

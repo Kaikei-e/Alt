@@ -6,31 +6,31 @@ import (
 	"testing"
 	"time"
 
-	"alt/shared/driver/alt_db"
+	"alt/domain"
 
 	"github.com/google/uuid"
 )
 
 type feedPageDBStub struct {
 	loads int32
-	rows  []*alt_db.FeedPageRow
+	rows  []*domain.FeedRow
 }
 
-func (s *feedPageDBStub) FetchFeedsByFeedLinkID(ctx context.Context, feedLinkID uuid.UUID) ([]*alt_db.FeedPageRow, error) {
+func (s *feedPageDBStub) FetchFeedsByFeedLinkID(ctx context.Context, feedLinkID uuid.UUID) ([]*domain.FeedRow, error) {
 	atomic.AddInt32(&s.loads, 1)
 	return s.rows, nil
 }
 
 func TestGateway_GetFeedPage_UsesCache(t *testing.T) {
 	feedLinkID := uuid.New()
-	row := &alt_db.FeedPageRow{
-		FeedID:    uuid.New(),
-		Title:     "title",
-		Link:      "https://example.com",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	row := &domain.FeedRow{
+		ID:         uuid.New().String(),
+		Title:      "title",
+		WebsiteURL: "https://example.com",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
-	db := &feedPageDBStub{rows: []*alt_db.FeedPageRow{row}}
+	db := &feedPageDBStub{rows: []*domain.FeedRow{row}}
 	gateway := newGateway(db)
 
 	first, err := gateway.GetFeedPage(context.Background(), feedLinkID)
@@ -54,15 +54,15 @@ func TestGateway_LoadFeedPage_PreComputesFields(t *testing.T) {
 	feedLinkID := uuid.New()
 	feedID := uuid.New()
 	now := time.Now()
-	row := &alt_db.FeedPageRow{
-		FeedID:      feedID,
+	row := &domain.FeedRow{
+		ID:          feedID.String(),
 		Title:       "title",
 		Description: "<b>Bold</b> &amp; text",
-		Link:        "https://example.com",
+		WebsiteURL:  "https://example.com",
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	db := &feedPageDBStub{rows: []*alt_db.FeedPageRow{row}}
+	db := &feedPageDBStub{rows: []*domain.FeedRow{row}}
 	gateway := newGateway(db)
 
 	entries, err := gateway.GetFeedPage(context.Background(), feedLinkID)
@@ -89,7 +89,7 @@ func TestGateway_LoadFeedPage_PreComputesFields(t *testing.T) {
 }
 
 func TestGateway_InvalidateFeedPage(t *testing.T) {
-	db := &feedPageDBStub{rows: []*alt_db.FeedPageRow{{FeedID: uuid.New()}}}
+	db := &feedPageDBStub{rows: []*domain.FeedRow{{ID: uuid.New().String()}}}
 	gateway := newGateway(db)
 	feedLinkID := uuid.New()
 

@@ -1,6 +1,7 @@
 package alt_db
 
 import (
+	"context"
 	"errors"
 	"regexp"
 	"testing"
@@ -15,7 +16,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_Success(t *testing.T) {
 	defer mock.Close()
 
 	repo := &DashboardRepository{pool: mock}
-	ctx := authContext()
+	ctx := context.Background()
 
 	expectedQuery := `
 		SELECT COUNT(*)
@@ -29,7 +30,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_Success(t *testing.T) {
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(3))
 
-	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
+	count, err := repo.FetchUnsummarizedArticlesCountForUser(ctx, statsTestUserID)
 	require.NoError(t, err)
 	require.Equal(t, 3, count)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -41,7 +42,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_AllSummarized(t *testing
 	defer mock.Close()
 
 	repo := &DashboardRepository{pool: mock}
-	ctx := authContext()
+	ctx := context.Background()
 
 	expectedQuery := `
 		SELECT COUNT(*)
@@ -55,7 +56,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_AllSummarized(t *testing
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
-	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
+	count, err := repo.FetchUnsummarizedArticlesCountForUser(ctx, statsTestUserID)
 	require.NoError(t, err)
 	require.Equal(t, 0, count)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -67,7 +68,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_NoArticles(t *testing.T)
 	defer mock.Close()
 
 	repo := &DashboardRepository{pool: mock}
-	ctx := authContext()
+	ctx := context.Background()
 
 	expectedQuery := `
 		SELECT COUNT(*)
@@ -81,7 +82,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_NoArticles(t *testing.T)
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
-	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
+	count, err := repo.FetchUnsummarizedArticlesCountForUser(ctx, statsTestUserID)
 	require.NoError(t, err)
 	require.Equal(t, 0, count)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -93,7 +94,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_QueryError(t *testing.T)
 	defer mock.Close()
 
 	repo := &DashboardRepository{pool: mock}
-	ctx := authContext()
+	ctx := context.Background()
 
 	expectedQuery := `
 		SELECT COUNT(*)
@@ -107,7 +108,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_QueryError(t *testing.T)
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnError(errors.New("database connection failed"))
 
-	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
+	count, err := repo.FetchUnsummarizedArticlesCountForUser(ctx, statsTestUserID)
 	require.Error(t, err)
 	require.Equal(t, 0, count)
 	require.ErrorContains(t, err, "failed to fetch unsummarized articles count")
@@ -116,9 +117,9 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_QueryError(t *testing.T)
 
 func TestAltDBRepository_FetchUnsummarizedArticlesCount_NilRepository(t *testing.T) {
 	var repo *DashboardRepository
-	ctx := authContext()
+	ctx := context.Background()
 
-	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
+	count, err := repo.FetchUnsummarizedArticlesCountForUser(ctx, statsTestUserID)
 	require.Error(t, err)
 	require.Equal(t, 0, count)
 	require.Equal(t, "database connection not available", err.Error())
@@ -126,9 +127,9 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_NilRepository(t *testing
 
 func TestAltDBRepository_FetchUnsummarizedArticlesCount_NilPool(t *testing.T) {
 	repo := &DashboardRepository{}
-	ctx := authContext()
+	ctx := context.Background()
 
-	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
+	count, err := repo.FetchUnsummarizedArticlesCountForUser(ctx, statsTestUserID)
 	require.Error(t, err)
 	require.Equal(t, 0, count)
 	require.Equal(t, "database connection not available", err.Error())
@@ -143,7 +144,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_IgnoresOrphanedSummaries
 	defer mock.Close()
 
 	repo := &DashboardRepository{pool: mock}
-	ctx := authContext()
+	ctx := context.Background()
 
 	expectedQuery := `
 		SELECT COUNT(*)
@@ -164,7 +165,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_IgnoresOrphanedSummaries
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(3))
 
-	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
+	count, err := repo.FetchUnsummarizedArticlesCountForUser(ctx, statsTestUserID)
 	require.NoError(t, err)
 	require.Equal(t, 3, count, "Should count only articles without summaries, ignoring orphaned summary records")
 	require.NoError(t, mock.ExpectationsWereMet())

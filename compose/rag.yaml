@@ -122,14 +122,37 @@ services:
       # keeps live behavior unchanged.
       - RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=${RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT:-true}
       - RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL=${RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
-      # /v1/internal/articles/recent moved off the published REST port onto
-      # alt-backend's internal listener (:9102).
-      - ALT_BACKEND_URL=http://alt-backend:9102
-      - ALT_BACKEND_CONNECT_URL=http://alt-backend:9102
+      # Outbound to the data plane (ADR-000954 D7, Wave 2-B). ALT_BACKEND_URL
+      # and ALT_BACKEND_CONNECT_URL used to sit here, both pointed at
+      # http://alt-backend:9102, and both had been dead since the 3-binary
+      # split: :9102 is alt-backend's admin-only operator listener now, and
+      # neither /v1/internal/articles/recent nor any data-plane RPC is served
+      # there. alt-data-hub is the sole owner of alt_db and answers
+      # alt.datahub.v1.DataHubService behind mutual TLS. (The
+      # `services.backend.v1.BackendInternalService` namespace that used to
+      # carry these RPCs was deleted in Wave 2-C.)
+      #
+      # config.loadDataHub fail-fasts on an unset or non-https value, so a
+      # forgotten line here is a container that does not start rather than one
+      # that starts and 404s every tag-cloud and morning-letter query.
+      - DATAHUB_MTLS_URL=${RAG_ORCHESTRATOR_DATAHUB_MTLS_URL:-https://alt-data-hub:9443}
+      # Pins tls.Config.ServerName. Leaving it empty would also work here —
+      # crypto/tls derives it from the URL host, and `alt-data-hub` is a SAN of
+      # the leaf pki-agent-alt-data-hub mints (CERT_SANS=alt-data-hub,localhost)
+      # — but naming it keeps the URL and the identity independently editable.
+      - DATAHUB_MTLS_SERVER_NAME=alt-data-hub
+      - DATAHUB_TIMEOUT=${RAG_ORCHESTRATOR_DATAHUB_TIMEOUT:-30}
       # Required inbound peer-auth mode for the Connect-RPC listener (:9011).
       # mtls: terminate TLS with the pki-agent leaf and only admit allowlisted
       # client-cert CNs. Override to "disabled" to fall back to plaintext h2c.
       - PEER_IDENTITY_MODE=${RAG_ORCHESTRATOR_PEER_IDENTITY_MODE:-mtls}
+      # One pki-agent-provisioned leaf serves both directions: presented to
+      # inbound callers by the listener above, and presented AS a client
+      # certificate to alt-data-hub. Its CN/SAN is `rag-orchestrator`, which is
+      # in alt-data-hub's DATAHUB_ALLOWED_PEERS (compose/core.yaml). These
+      # three paths are required by the data-hub client regardless of
+      # PEER_IDENTITY_MODE — there is no plaintext route to alt_db to fall
+      # back to.
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem

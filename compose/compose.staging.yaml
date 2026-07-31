@@ -41,17 +41,36 @@
 #     Connect-RPC service. Phase 1 covers health, /connect/health,
 #     auth enforcement, and Augur read-only RPCs — the retrieve /
 #     answer paths that need news-creator, search-indexer,
-#     rerank-external, and alt-backend are deferred to Phase 2.)
+#     rerank-external, and alt-data-hub are deferred to Phase 2.
+#     run.sh still mints a throwaway client leaf: the data-hub client
+#     is constructed at startup and fail-fasts without one.)
 #   alt-backend suite          → profile `alt-backend`
 #     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
-#     alt-backend
+#     alt-data-hub, alt-backend
 #     (Postgres + Atlas migrator + Echo REST / Connect-RPC service.
 #     The deps stub is registered under six network aliases so every
 #     upstream alt-backend talks to (search-indexer, pre-processor,
 #     recap-worker, rag-orchestrator, knowledge-sovereign, mq-hub)
 #     resolves to it without spinning up the real services. A seventh
 #     alias, `stub.invalid`, serves a minimal RSS 2.0 document for the
-#     registration scenarios.)
+#     registration scenarios. alt-data-hub is NOT a stub: after
+#     ADR-000954 Wave 3 it is the only owner of alt_db, so the real
+#     binary runs and alt-backend reaches it over mutual TLS.)
+#   alt-harvester suite        → profile `alt-harvester`
+#     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
+#     alt-data-hub, alt-harvester
+#     (the scheduled-job binary of the 3-binary split. Same module and
+#     schema as the alt-backend profile — what the suite pins is the
+#     listener set: :9110 ops only, nothing on :9000 / :9101 / :9102 /
+#     :9443.)
+#   alt-data-hub suite         → profile `alt-data-hub`
+#     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
+#     alt-data-hub
+#     (the mTLS data plane of the 3-binary split. run.sh mints a throwaway
+#     PKI via e2e/hurl/_lib/mint-staging-pki.sh and mounts it at /certs and
+#     /trust, so the production DATAHUB_TLS_* paths are used verbatim. The
+#     mount path comes from $STAGING_PKI_DIR, which every suite that needs
+#     a client leaf sets to its own directory.)
 # Bring a suite up with:
 #   docker compose -f compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
 # Services with NO profile are never auto-started (Compose default).
@@ -386,8 +405,25 @@ services:
       - RAG_PROMPT_VERSION=alpha-v2
       - LLM_BACKEND=ollama
       - LOG_LEVEL=info
-      # Explicit opt-out: staging has no PKI stack, listener stays h2c.
+      # Explicit opt-out for the *inbound* listener: this suite speaks plain
+      # h2c to :9011, so no client certificate is demanded of Hurl.
       - PEER_IDENTITY_MODE=disabled
+      # The *outbound* data-hub client is not covered by that opt-out.
+      # config.loadDataHub panics on an unset or non-https DATAHUB_MTLS_URL,
+      # and httpclient.NewDataHubClient reads the cert material at
+      # construction — there is no plaintext route to alt_db to degrade onto
+      # (ADR-000954 D7). Phase 1 exercises augur + health only, so the URL
+      # names a host this slice does not run, exactly like the loopback
+      # upstreams above; what has to be real is the certificate material,
+      # which run.sh mints.
+      - DATAHUB_MTLS_URL=https://alt-data-hub:9443
+      - DATAHUB_MTLS_SERVER_NAME=alt-data-hub
+      - MTLS_CERT_FILE=/certs/rag-orchestrator.pem
+      - MTLS_KEY_FILE=/certs/rag-orchestrator-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+    volumes:
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
     networks:
       - alt-staging
     # rag-orchestrator ships on distroless/static — no wget/curl/shell,
@@ -808,7 +844,7 @@ services:
   alt-backend-db:
     image: postgres:17-alpine
     container_name: alt-staging-alt-backend-db
-    profiles: [alt-backend]
+    profiles: [alt-backend, alt-harvester, alt-data-hub]
     # Plain env — staging password is a committed test fixture with no
     # meaning outside the ephemeral alt-staging network. Uses the
     # DB_USER/DB_NAME pair that alt-backend defaults to so the runtime
@@ -838,7 +874,7 @@ services:
       context: ../migrations-atlas
       dockerfile: docker/Dockerfile
     container_name: alt-staging-alt-backend-db-migrator
-    profiles: [alt-backend]
+    profiles: [alt-backend, alt-harvester, alt-data-hub]
     command: ["apply"]
     environment:
       DATABASE_URL: postgres://alt_db_user:alt-staging-test-postgres-password@alt-backend-db:5432/alt?sslmode=disable
@@ -860,7 +896,7 @@ services:
       context: ../e2e/stubs/alt-backend-deps-stub
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-backend-deps-stub:${ALT_BACKEND_DEPS_STUB_IMAGE_TAG:-main}
     container_name: alt-staging-alt-backend-deps-stub
-    profiles: [alt-backend]
+    profiles: [alt-backend, alt-harvester, alt-data-hub]
     # Network aliases let one container answer to all six upstream
     # hostnames + the synthetic `stub.invalid` that RSS registration
     # scenarios fetch. FastAPI routes by path, not Host header.
@@ -893,6 +929,10 @@ services:
     build:
       context: ../alt-backend
       dockerfile: Dockerfile.backend
+      args:
+        # The staging slice exercises the user-facing API binary only.
+        # Required — the Dockerfile fails the build on an unset BINARY.
+        BINARY: backend
     container_name: alt-staging-alt-backend
     profiles: [alt-backend]
     depends_on:
@@ -902,6 +942,17 @@ services:
         condition: service_completed_successfully
       alt-backend-deps-stub:
         condition: service_healthy
+      # cmd/backend holds no DB pool after ADR-000954 Wave 3 — every read and
+      # write goes through alt.datahub.v1.DataHubService. Waiting for it here
+      # keeps a cold-start handshake failure out of the first scenario.
+      alt-data-hub:
+        condition: service_healthy
+    volumes:
+      # The client leaf alt-backend presents to alt-data-hub. Same throwaway
+      # PKI the data-hub itself mounts; the CN/SAN is `alt-backend`, which is
+      # on DATAHUB_ALLOWED_PEERS.
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
     environment:
       # Point alt-backend directly at the staging Postgres (no pgbouncer
       # in the staging slice) and at the deps stub for every upstream.
@@ -911,6 +962,21 @@ services:
       - DB_PASSWORD=alt-staging-test-postgres-password
       - DB_NAME=alt
       - SERVER_PORT=9000
+      - CONNECT_PORT=9101
+      # render-slice.sh strips every `ports:` key, so the Hurl container
+      # reaches this service by DNS name on the staging network — a listener
+      # bound to loopback inside the container would be unreachable and the
+      # suite would fail at connect rather than at an assertion. Both of these
+      # are spelled out for that reason; the production defaults differ
+      # (see compose/core.yaml).
+      #
+      # :9102 is where 72-admin-emit-article-url-backfill.hurl and
+      # 03-topology-internal-surface-absent.hurl address {{internal_url}}.
+      - OPERATOR_LISTEN_ADDR=:9102
+      # :9110 is {{ops_url}} — /health and /metrics, asserted by
+      # 01-health-csrf.hurl — and the address the `healthcheck` subcommand
+      # self-probes.
+      - OPS_LISTEN=:9110
       # HS256 JWT validation. The secret is read from a file mounted
       # from e2e/fixtures/staging-secrets/ so the fixture is the single
       # source of truth for both compose and the pre-minted test JWT
@@ -952,10 +1018,38 @@ services:
       # SSRF allowlist — only stub.invalid is reachable and feed
       # registration needs to bypass the private-IP guard for it.
       - FEED_ALLOWED_HOSTS=stub.invalid
-      # mTLS is off in staging; the Connect-RPC listener speaks plain
-      # HTTP/1.1 on :9101.
-      - MTLS_LISTEN=false
-      - MTLS_ENFORCE=false
+      # MTLS_LISTEN is deliberately absent, not set to false: cmd/backend no
+      # longer opens a mutual-TLS listener at all (that surface is
+      # cmd/datahub's), and config.RejectBackendMTLSListenerEnv exits non-zero
+      # on the variable's mere presence — "false" and "true" are equally dead
+      # config, and treating the leftover as an error is what stops it from
+      # looking like a working knob (rule 8).
+      #
+      # MTLS_ENFORCE is absent for the same reason, minus the guard: nothing in
+      # this module reads it.
+      #
+      # --- the data plane (ADR-000954 Wave 3) -----------------------------
+      # cmd/backend has no DB pool: alt-data-hub owns alt_db and answers
+      # alt.datahub.v1.DataHubService over mutual TLS. di.newDataHubClient
+      # panics when any of these four is missing — deliberately, because a
+      # backend without this client is a backend without a database that would
+      # still report healthy on :9000 (CLAUDE.md rules 8/9). That panic is
+      # exactly what this block stops.
+      - DATA_HUB_MTLS_URL=https://alt-data-hub:9443
+      # Pins tls.Config.ServerName. `alt-data-hub` is the CN and DNS SAN of the
+      # server leaf mint-staging-pki.sh issues, matching production
+      # (compose/core.yaml).
+      - DATA_HUB_SERVER_NAME=alt-data-hub
+      # The client leaf. Production mounts one pki-agent leaf per container at
+      # /certs/svc-cert.pem; this slice shares one throwaway CA across the
+      # whole network, so each peer reads its own name out of the same
+      # directory. MTLS_CERT_FILE / MTLS_KEY_FILE / MTLS_CA_FILE are also what
+      # di/rag_module.go would read if RAG_ORCHESTRATOR_CONNECT_URL were
+      # https:// — it is http:// above, so that branch still logs
+      # `rag_connect_plaintext`.
+      - MTLS_CERT_FILE=/certs/alt-backend.pem
+      - MTLS_KEY_FILE=/certs/alt-backend-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
       - LOG_LEVEL=info
       - LOG_FORMAT=json
       # Cap connection pool so the ephemeral Postgres isn't stressed.
@@ -969,12 +1063,207 @@ services:
     networks:
       - alt-staging
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9000/v1/health"]
+      # busybox wget is no longer in the image (alt-backend/Dockerfile.backend
+      # dropped it with the shell); the binary self-probes instead.
+      test: ["CMD", "/app-entry", "healthcheck"]
       interval: 3s
       timeout: 3s
       retries: 30
       start_period: 10s
 
+
+  # alt-harvester suite — the scheduled-job binary of the 3-binary split.
+  #
+  # Shares alt-backend-db / alt-backend-db-migrator / alt-backend-deps-stub
+  # with the alt-backend profile: same module, same schema, same upstream
+  # aliases. What differs is the listener set, and that is the whole point of
+  # e2e/hurl/alt-harvester/ — :9110 answers /health and /metrics, and nothing
+  # is bound on :9000 / :9101 / :9102 / :9443.
+  alt-harvester:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-harvester:${ALT_HARVESTER_IMAGE_TAG:-main}
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+      args:
+        # Required — the Dockerfile fails the build on an unset BINARY.
+        BINARY: harvester
+    container_name: alt-staging-alt-harvester
+    profiles: [alt-harvester]
+    depends_on:
+      alt-backend-db:
+        condition: service_healthy
+      alt-backend-db-migrator:
+        condition: service_completed_successfully
+      alt-backend-deps-stub:
+        condition: service_healthy
+      # Same reason as alt-backend: cmd/harvester holds no DB pool, so every
+      # one of its seven jobs reads and writes through DataHubService.
+      alt-data-hub:
+        condition: service_healthy
+    volumes:
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
+    environment:
+      - DB_HOST=alt-backend-db
+      - DB_PORT=5432
+      - DB_USER=alt_db_user
+      - DB_PASSWORD=alt-staging-test-postgres-password
+      - DB_NAME=alt
+      # The only socket this binary opens. render-slice.sh strips every
+      # `ports:` key, so the Hurl container reaches it by DNS name on the
+      # staging network — a loopback bind would make the suite fail at connect
+      # instead of at an assertion. It is also what `/app-entry healthcheck`
+      # self-probes.
+      - OPS_LISTEN=:9110
+      # SERVER_PORT / CONNECT_PORT / OPERATOR_LISTEN_ADDR / MTLS_LISTEN are
+      # deliberately absent: this binary opens none of those listeners, and
+      # 01-operator-surface-only.hurl asserts the ports stay closed.
+      #
+      # Upstreams the jobs call — every alias resolves to
+      # alt-backend-deps-stub. SOVEREIGN_URL and RAG_ORCHESTRATOR_URL are
+      # required by config.ValidateHarvesterConfig: unset means the sovereign
+      # client no-ops every append while outbox-worker still marks the row
+      # PROCESSED, which breaks the append-first invariant silently.
+      - SOVEREIGN_URL=http://knowledge-sovereign
+      - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
+      - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
+      - PRE_PROCESSOR_URL=http://pre-processor/
+      - PRE_PROCESSOR_CONNECT_URL=http://pre-processor/
+      - SEARCH_INDEXER_CONNECT_URL=http://search-indexer/
+      - MQHUB_ENABLED=true
+      - MQHUB_CONNECT_URL=http://mq-hub/
+      # IMAGE_PROXY_ENABLED defaults to true and validateImageProxyConfig
+      # exits non-zero when it is enabled without a signing secret. The
+      # harvester's OGP jobs are not exercised by this suite, which asserts
+      # listener topology only.
+      - IMAGE_PROXY_ENABLED=false
+      # Feed collection would otherwise be blocked by the SSRF private-IP
+      # guard; stub.invalid is the only host the deps stub answers for.
+      - FEED_ALLOWED_HOSTS=stub.invalid
+      # Must match the binary: bootstrap.MustBoot exits non-zero when
+      # OTEL_SERVICE_NAME names a different one, because all three emit the
+      # same instrument names and would otherwise merge into one series.
+      - OTEL_SERVICE_NAME=alt-harvester
+      # --- the data plane (ADR-000954 Wave 3) -----------------------------
+      # di.newDataHubClient panics without all four of these. For the harvester
+      # the panic is the cheap outcome: the alternative is a process whose ops
+      # listener answers /health while every scheduled job fails on the first
+      # RPC, minutes after the container reported ready.
+      - DATA_HUB_MTLS_URL=https://alt-data-hub:9443
+      - DATA_HUB_SERVER_NAME=alt-data-hub
+      - MTLS_CERT_FILE=/certs/alt-harvester.pem
+      - MTLS_KEY_FILE=/certs/alt-harvester-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - DB_MAX_CONNS=10
+      - DB_MIN_CONNS=2
+    networks:
+      - alt-staging
+    healthcheck:
+      # No shell and no wget in the runtime image; the binary self-probes
+      # OPS_LISTEN over loopback (bootstrap.Healthcheck).
+      test: ["CMD", "/app-entry", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  # alt-data-hub suite — the mTLS data plane of the 3-binary split.
+  #
+  # The certificates are minted per run by e2e/hurl/alt-data-hub/run.sh into
+  # e2e/fixtures/alt-data-hub/pki and mounted at both /certs and /trust, so
+  # this slice can use the production DATAHUB_TLS_* paths verbatim. Staging
+  # TLS wiring that differs from production is TLS wiring that can rot.
+  alt-data-hub:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-data-hub:${ALT_DATA_HUB_IMAGE_TAG:-main}
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+      args:
+        # Required — the Dockerfile fails the build on an unset BINARY.
+        BINARY: datahub
+    container_name: alt-staging-alt-data-hub
+    # Also in the alt-backend and alt-harvester profiles: after ADR-000954
+    # Wave 3 this process is the only owner of alt_db, and both of those
+    # binaries panic at boot without a data-hub client
+    # (di/datahub_client_module.go). A slice with alt-backend-db but no
+    # alt-data-hub is a database nobody can reach.
+    profiles: [alt-data-hub, alt-backend, alt-harvester]
+    depends_on:
+      alt-backend-db:
+        condition: service_healthy
+      alt-backend-db-migrator:
+        condition: service_completed_successfully
+      alt-backend-deps-stub:
+        condition: service_healthy
+    volumes:
+      # STAGING_PKI_DIR is exported by each run.sh (absolute path) so parallel
+      # matrix jobs mint into their own directory instead of racing on one.
+      # The default keeps `docker compose config` resolvable for suites that
+      # never mount it.
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/certs:ro
+      - ${STAGING_PKI_DIR:-../e2e/fixtures/alt-data-hub/pki}:/trust:ro
+    environment:
+      - DB_HOST=alt-backend-db
+      - DB_PORT=5432
+      - DB_USER=alt_db_user
+      - DB_PASSWORD=alt-staging-test-postgres-password
+      - DB_NAME=alt
+      # --- the only east-west listener (config.LoadDataHubConfig) ---------
+      # Client auth is not a knob: cmd/datahub always requires and verifies a
+      # peer certificate, so DATAHUB_ALLOWED_PEERS is the whole authorisation
+      # decision. run.sh mints one leaf named by ALLOWED_PEER (on the list)
+      # and one named by DENIED_PEER (deliberately not), and asserts the
+      # second is refused during the handshake.
+      - DATAHUB_LISTEN_ADDR=:9443
+      - DATAHUB_TLS_CERT_FILE=/certs/svc-cert.pem
+      - DATAHUB_TLS_KEY_FILE=/certs/svc-key.pem
+      - DATAHUB_TLS_CA_FILE=/trust/ca-bundle.pem
+      # ALLOWED_PEER is the alt-data-hub suite's positive identity (run.sh mints
+      # a leaf for it and one for DENIED_PEER, which stays off this list).
+      # alt-backend and alt-harvester are appended unconditionally because the
+      # same container serves their slices, where they are the callers.
+      - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-pre-processor},alt-backend,alt-harvester
+      # --- ops listener ---------------------------------------------------
+      # Plaintext, unauthenticated, /health + /metrics only — the surface
+      # 03-ops-listener.hurl pins. It exists so the probe and Prometheus do
+      # not need a client certificate, which would put a monitoring identity
+      # in the allowlist above.
+      - OPS_LISTEN=:9110
+      # OPERATOR_LISTEN_ADDR / SERVER_PORT / CONNECT_PORT are deliberately
+      # absent: the admin Connect services stayed on alt-backend, and run.sh
+      # asserts :9000 / :9101 / :9102 are refused from another container.
+      # --- upstreams (all required by config.ValidateDataHubConfig) -------
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
+      - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+      - AUTH_HUB_URL=http://auth-hub/
+      - SOVEREIGN_URL=http://knowledge-sovereign
+      # A disabled mq-hub client no-ops every publish while the article RPCs
+      # still answer 200 (ADR-000928), so the enabled value is carried into
+      # staging rather than switched off for convenience.
+      - MQHUB_ENABLED=true
+      - MQHUB_CONNECT_URL=http://mq-hub/
+      - IMAGE_PROXY_ENABLED=false
+      - OTEL_SERVICE_NAME=alt-data-hub
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - DB_MAX_CONNS=10
+      - DB_MIN_CONNS=2
+    secrets:
+      - alt_backend_token_secret
+    networks:
+      - alt-staging
+    healthcheck:
+      # GETs OPS_LISTEN/health and dials DATAHUB_LISTEN_ADDR — a probe that
+      # only checked the plaintext port could not tell a dead mTLS listener
+      # goroutine from a healthy process (ADR-000784).
+      test: ["CMD", "/app-entry", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
   # auth-hub suite — kratos-db Postgres + Kratos migrator + Kratos + auth-hub.
   # auth-hub is stateless; the "real DB" kept under test is kratos-db, which
   # Kratos owns entirely. No PgBouncer in the staging slice (one fewer

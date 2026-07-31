@@ -2,36 +2,36 @@ package global_search_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"context"
-	"errors"
+	"fmt"
 	"log/slog"
 )
 
+// tagPrefixSearcher is the alt-data-hub read (capability catalog §2.J W3-J4).
+type tagPrefixSearcher interface {
+	SearchTagsByPrefix(ctx context.Context, prefix string, limit int) ([]domain.GlobalTagHit, error)
+}
+
 // TagSearchGateway implements global_search_port.SearchTagsPort.
 type TagSearchGateway struct {
-	tagRepo *alt_db.TagRepository
-	logger  *slog.Logger
+	tags   tagPrefixSearcher
+	logger *slog.Logger
 }
 
 // NewTagSearchGateway creates a new TagSearchGateway.
-func NewTagSearchGateway(tagRepo *alt_db.TagRepository) *TagSearchGateway {
-	return &TagSearchGateway{
-		tagRepo: tagRepo,
-		logger:  slog.Default(),
+func NewTagSearchGateway(tags tagPrefixSearcher) *TagSearchGateway {
+	if tags == nil {
+		panic("global_search_gateway: a tag searcher is required — a nil one would return an empty tag section for every query, which reads as 'no such tag' (see .claude/rules/di-wiring.md)")
 	}
+	return &TagSearchGateway{tags: tags, logger: slog.Default()}
 }
 
 // SearchTagsByPrefix searches for tags matching a prefix.
 func (g *TagSearchGateway) SearchTagsByPrefix(ctx context.Context, prefix string, limit int) (*domain.TagSearchSection, error) {
-	if g.tagRepo == nil {
-		return nil, errors.New("tag repository not available")
-	}
-
-	hits, err := g.tagRepo.SearchTagsByPrefix(ctx, prefix, limit)
+	hits, err := g.tags.SearchTagsByPrefix(ctx, prefix, limit)
 	if err != nil {
 		g.logger.ErrorContext(ctx, "failed to search tags by prefix", "error", err, "prefix", prefix)
-		return nil, err
+		return nil, fmt.Errorf("search tags by prefix %q: %w", prefix, err)
 	}
 
 	return &domain.TagSearchSection{

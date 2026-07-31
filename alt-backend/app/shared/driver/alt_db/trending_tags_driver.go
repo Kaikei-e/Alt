@@ -1,7 +1,7 @@
 package alt_db
 
 import (
-	"alt/orchestrator/port/knowledge_home_port"
+	"alt/domain"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -24,7 +24,7 @@ func buildTagArticleCountsQuery() string {
 }
 
 // FetchTagArticleCounts returns tag names with article counts since the given time for a user.
-func (r *TagRepository) FetchTagArticleCounts(ctx context.Context, userID uuid.UUID, since time.Time) ([]knowledge_home_port.TagArticleCount, error) {
+func (r *TagRepository) FetchTagArticleCounts(ctx context.Context, userID uuid.UUID, since time.Time) ([]domain.TagArticleCount, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection pool is nil")
 	}
@@ -36,9 +36,9 @@ func (r *TagRepository) FetchTagArticleCounts(ctx context.Context, userID uuid.U
 	}
 	defer rows.Close()
 
-	var results []knowledge_home_port.TagArticleCount
+	var results []domain.TagArticleCount
 	for rows.Next() {
-		var item knowledge_home_port.TagArticleCount
+		var item domain.TagArticleCount
 		if err := rows.Scan(&item.TagName, &item.ArticleCount); err != nil {
 			logger.SafeErrorContext(ctx, "failed to scan tag article count", "error", err)
 			continue

@@ -177,12 +177,68 @@ type TemporalConfig struct {
 	Boost18h float32
 }
 
-// BackendConfig holds alt-backend connection settings.
+// BackendConfig holds connection settings for peers reached over plain HTTP.
+//
+// URL and ConnectURL are gone. They pointed at http://alt-backend:9102, which
+// the 3-binary split (ADR-000954 D1) turned into an admin-only operator
+// listener: neither the REST /v1/internal routes nor BackendInternalService
+// are served there any more. Everything backed by alt_db now lives behind
+// alt-data-hub's mTLS listener — see DataHubConfig.
 type BackendConfig struct {
-	URL            string
-	ConnectURL     string // Connect-RPC URL (separate port from REST)
 	Timeout        int    // Seconds
 	RecapWorkerURL string // recap-worker REST base URL for letter fetching
+}
+
+// DataHubConfig holds the connection settings for alt.datahub.v1.DataHubService
+// on alt-data-hub (ADR-000954 D3/D7). This is the only route rag-orchestrator
+// has to alt_db.
+//
+// Every field is required, and loadDataHub panics when one is missing. There
+// is no "plaintext mode" to fall back to: the plaintext surface this service
+// used to call is gone, so an unset variable can only produce requests to a
+// listener that will refuse them. Failing at startup makes a forgotten compose
+// variable a container that does not come up, instead of one that comes up and
+// answers every tag-cloud query with an error (CLAUDE.md rules 8/9).
+type DataHubConfig struct {
+	// MTLSURL is the Connect-RPC base URL, e.g. https://alt-data-hub:9443.
+	MTLSURL string
+	// ServerName pins tls.Config.ServerName when set. Empty means crypto/tls
+	// derives it from MTLSURL's host, which is correct for the compose
+	// default because alt-data-hub's leaf carries CERT_SANS=alt-data-hub.
+	ServerName string
+	// Cert material — the same pki-agent-provisioned leaf the inbound
+	// listener presents (PeerIdentityConfig), used here as a client cert.
+	CertFile string
+	KeyFile  string
+	CAFile   string
+	// Timeout in seconds for a single RPC.
+	Timeout int
+}
+
+func loadDataHub(timeout int) DataHubConfig {
+	url, ok := os.LookupEnv("DATAHUB_MTLS_URL")
+	if !ok || url == "" {
+		panic("config: DATAHUB_MTLS_URL must be set (e.g. https://alt-data-hub:9443); " +
+			"the plaintext alt-backend internal surface it replaces no longer exists (ADR-000954)")
+	}
+	if !strings.HasPrefix(url, "https://") {
+		panic(fmt.Sprintf("config: DATAHUB_MTLS_URL must be an https:// URL, got %q; "+
+			"alt-data-hub requires and verifies a peer certificate on every request", url))
+	}
+
+	cfg := DataHubConfig{
+		MTLSURL:    url,
+		ServerName: os.Getenv("DATAHUB_MTLS_SERVER_NAME"),
+		CertFile:   os.Getenv("MTLS_CERT_FILE"),
+		KeyFile:    os.Getenv("MTLS_KEY_FILE"),
+		CAFile:     os.Getenv("MTLS_CA_FILE"),
+		Timeout:    timeout,
+	}
+	if cfg.CertFile == "" || cfg.KeyFile == "" || cfg.CAFile == "" {
+		panic("config: DATAHUB_MTLS_URL requires MTLS_CERT_FILE, MTLS_KEY_FILE and MTLS_CA_FILE " +
+			"(the client certificate is the only credential alt-data-hub accepts)")
+	}
+	return cfg
 }
 
 // CacheConfig holds answer cache settings.
@@ -262,6 +318,7 @@ type Config struct {
 	Hybrid         HybridConfig
 	Temporal       TemporalConfig
 	Backend        BackendConfig
+	DataHub        DataHubConfig
 	Cache          CacheConfig
 	PeerIdentity   PeerIdentityConfig
 }
@@ -343,10 +400,9 @@ func Load() *Config {
 			Boost18h: getEnvFloat32("TEMPORAL_BOOST_18H", defaultTemporalBoost18h),
 		},
 		Backend: BackendConfig{
-			URL:        getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
-			ConnectURL: getEnv("ALT_BACKEND_CONNECT_URL", "http://alt-backend:9101"),
-			Timeout:    getEnvInt("ALT_BACKEND_TIMEOUT", 30),
+			Timeout: getEnvInt("ALT_BACKEND_TIMEOUT", 30),
 		},
+		DataHub: loadDataHub(getEnvInt("DATAHUB_TIMEOUT", 30)),
 		Cache: CacheConfig{
 			Size: getEnvInt("RAG_CACHE_SIZE", defaultCacheSize),
 			TTL:  getEnvInt("RAG_CACHE_TTL_MINUTES", defaultCacheTTL),

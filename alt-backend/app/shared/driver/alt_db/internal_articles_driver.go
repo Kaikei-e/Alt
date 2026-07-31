@@ -2,8 +2,13 @@ package alt_db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
+
+	"alt/domain"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // InternalArticleWithTags is the driver-level model for articles with tags.
@@ -277,19 +282,27 @@ func (r *InternalRepository) GetArticleWithTagsByID(ctx context.Context, article
 }
 
 // GetArticleTitleAndURL returns minimal article info for recall fallback.
-// Returns empty title when article is not found (no error).
-func (r *InternalRepository) GetArticleTitleAndURL(ctx context.Context, articleID string) (string, string, *time.Time, error) {
+//
+// A missing (or soft-deleted) article is a nil result and no error: the recall
+// rail asks about candidates whose article may legitimately have gone away
+// since knowledge-sovereign proposed them.
+//
+// The miss used to be detected with `err.Error() == "no rows in result set"`,
+// a string comparison against pgx's message. errors.Is against the sentinel is
+// the same check without depending on the driver's wording — and the wording
+// is what a wrapped or renamed error changes first, at which point a routine
+// miss would have started surfacing as a failed lookup.
+func (r *InternalRepository) GetArticleTitleAndURL(ctx context.Context, articleID string) (*domain.ArticleRef, error) {
 	query := `SELECT title, url, published_at FROM articles WHERE id = $1 AND deleted_at IS NULL`
-	var title, url string
-	var publishedAt *time.Time
-	err := r.pool.QueryRow(ctx, query, articleID).Scan(&title, &url, &publishedAt)
+	var ref domain.ArticleRef
+	err := r.pool.QueryRow(ctx, query, articleID).Scan(&ref.Title, &ref.Link, &ref.PublishedAt)
 	if err != nil {
-		if err.Error() == "no rows in result set" {
-			return "", "", nil, nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
 		}
-		return "", "", nil, fmt.Errorf("GetArticleTitleAndURL: %w", err)
+		return nil, fmt.Errorf("GetArticleTitleAndURL %s: %w", articleID, err)
 	}
-	return title, url, publishedAt, nil
+	return &ref, nil
 }
 
 func filterEmptyStrings(ss []string) []string {

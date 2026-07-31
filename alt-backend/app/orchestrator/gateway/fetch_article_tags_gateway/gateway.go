@@ -2,7 +2,6 @@ package fetch_article_tags_gateway
 
 import (
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"alt/shared/driver/mqhub_connect"
 	"alt/utils/logger"
 	"context"
@@ -17,11 +16,22 @@ type tagGenerator interface {
 	IsEnabled() bool
 }
 
-// articleDB abstracts DB operations needed by this gateway.
-type articleDB interface {
+// tagStore is the tag read and the tag write-back (catalog §2.J W3-J1 and
+// W2-13), both served by alt-data-hub since ADR-000954 Wave 3 batch 4.
+//
+// The seam batch 2 left here is closed: the article body, the tag read and the
+// tag write used to arrive by two different routes — one over Connect, one
+// through a database pool this process owned — and a gateway with two routes
+// to one story is a place where only one of them gets a timeout, a retry or a
+// metric.
+type tagStore interface {
 	FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error)
+	UpsertArticleTags(ctx context.Context, articleID string, feedID string, tags []domain.TagUpsert) (int32, error)
+}
+
+// articleReader is catalog §2.C W3-C3.
+type articleReader interface {
 	FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
-	UpsertArticleTags(ctx context.Context, articleID string, feedID string, tags []alt_db.TagUpsertItem) (int32, error)
 }
 
 // Config holds configuration for the gateway.
@@ -48,39 +58,40 @@ func DefaultConfig() Config {
 
 // FetchArticleTagsGateway implements the port for fetching article tags.
 type FetchArticleTagsGateway struct {
-	db      articleDB
+	db      tagStore
+	article articleReader
 	tagger  tagGenerator
 	config  Config
 	sfGroup singleflight.Group // deduplicates concurrent on-the-fly generation for the same articleID
 }
 
-// NewFetchArticleTagsGateway creates a new gateway instance.
-func NewFetchArticleTagsGateway(altDB *alt_db.AltDBRepository) *FetchArticleTagsGateway {
-	return &FetchArticleTagsGateway{
-		db:     altDB,
-		config: DefaultConfig(),
-	}
-}
-
 // NewFetchArticleTagsGatewayWithMQHub creates a new gateway with mq-hub client for on-the-fly tag generation.
+//
+// It panics on a nil article reader: the on-the-fly generation path reads the
+// article body through it, and a nil there would surface as a panic on the
+// first article with no tags rather than at boot (CLAUDE.md rule 8).
 func NewFetchArticleTagsGatewayWithMQHub(
-	altDB *alt_db.AltDBRepository,
+	tags tagStore,
+	article articleReader,
 	mqhubClient *mqhub_connect.Client,
 	config Config,
 ) *FetchArticleTagsGateway {
-	return &FetchArticleTagsGateway{
-		db:     altDB,
-		tagger: mqhubClient,
-		config: config,
+	switch {
+	case tags == nil:
+		panic("fetch_article_tags_gateway: a tag store is required — a nil one makes every article look untagged and turns each view into an mq-hub request")
+	case article == nil:
+		panic("fetch_article_tags_gateway: an article reader is required — the article body read moved to alt-data-hub in ADR-000954 Wave 3")
 	}
+	return newGateway(tags, article, mqhubClient, config)
 }
 
 // newGateway is an internal constructor for testing with interfaces.
-func newGateway(db articleDB, tagger tagGenerator, config Config) *FetchArticleTagsGateway {
+func newGateway(db tagStore, article articleReader, tagger tagGenerator, config Config) *FetchArticleTagsGateway {
 	return &FetchArticleTagsGateway{
-		db:     db,
-		tagger: tagger,
-		config: config,
+		db:      db,
+		article: article,
+		tagger:  tagger,
+		config:  config,
 	}
 }
 
@@ -121,7 +132,7 @@ func (g *FetchArticleTagsGateway) FetchArticleTags(ctx context.Context, articleI
 // generateAndPersistTags fetches article content, generates tags via mq-hub, and persists them.
 func (g *FetchArticleTagsGateway) generateAndPersistTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error) {
 	// 3. Fetch article content for tag generation
-	article, err := g.db.FetchArticleByID(ctx, articleID)
+	article, err := g.article.FetchArticleByID(ctx, articleID)
 	if err != nil {
 		logger.Logger.WarnContext(ctx, "failed to fetch article for on-the-fly tag generation",
 			"articleID", articleID, "error", err)
@@ -166,9 +177,9 @@ func (g *FetchArticleTagsGateway) generateAndPersistTags(ctx context.Context, ar
 
 	// 6. Persist generated tags to DB (fail-open: return tags even if upsert fails)
 	if article.FeedID != "" {
-		upsertItems := make([]alt_db.TagUpsertItem, len(resp.Tags))
+		upsertItems := make([]domain.TagUpsert, len(resp.Tags))
 		for i, tag := range resp.Tags {
-			upsertItems[i] = alt_db.TagUpsertItem{
+			upsertItems[i] = domain.TagUpsert{
 				Name:       tag.Name,
 				Confidence: tag.Confidence,
 			}

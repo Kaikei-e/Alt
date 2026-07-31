@@ -79,7 +79,7 @@ func (h *Handler) StreamSummarize(
 	// Check cache for existing summary (skip when force refresh)
 	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
 	if !forceRefresh {
-		existingSummary, err := h.deps.AltDBRepository.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
+		existingSummary, err := h.deps.SummaryStore.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
 		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
 			h.logger.InfoContext(ctx, "returning cached summary", "article_id", resolvedArticleID)
 			// Return cached summary immediately
@@ -172,7 +172,7 @@ waitLoop:
 
 	// Save summary to database
 	if fullSummary != "" && resolvedArticleID != "" {
-		if err := h.deps.AltDBRepository.SaveArticleSummary(ctx, resolvedArticleID, userCtx.UserID.String(), resolvedTitle, fullSummary); err != nil {
+		if err := h.deps.ArticleStore.SaveArticleSummary(ctx, resolvedArticleID, userCtx.UserID.String(), resolvedTitle, fullSummary); err != nil {
 			h.logger.ErrorContext(ctx, "failed to save summary", "error", err, "article_id", resolvedArticleID)
 			// Don't return error, streaming was successful
 		} else {
@@ -218,7 +218,7 @@ waitLoop:
 func (h *Handler) resolveArticle(ctx context.Context, feedURL, articleID, content, title string) (string, string, string, error) {
 	// Case 1 & 2: article_id provided - always fetch from DB first (DB content is authoritative)
 	if articleID != "" {
-		article, err := h.deps.AltDBRepository.FetchArticleByID(ctx, articleID)
+		article, err := h.deps.ArticleStore.FetchArticleByID(ctx, articleID)
 		if err != nil {
 			return "", "", "", fmt.Errorf("failed to fetch article by ID: %w", err)
 		}
@@ -243,7 +243,7 @@ func (h *Handler) resolveArticle(ctx context.Context, feedURL, articleID, conten
 	}
 
 	// Check if article exists in DB
-	existingArticle, err := h.deps.AltDBRepository.FetchArticleByURL(ctx, feedURL)
+	existingArticle, err := h.deps.ArticleStore.FetchArticleByURL(ctx, feedURL)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to fetch article by URL: %w", err)
 	}
@@ -266,7 +266,7 @@ func (h *Handler) resolveArticle(ctx context.Context, feedURL, articleID, conten
 		if title == "" {
 			title = "No Title"
 		}
-		newArticleID, err := h.deps.AltDBRepository.SaveArticle(ctx, feedURL, title, content)
+		newArticleID, err := h.deps.ArticleStore.SaveArticle(ctx, feedURL, title, content)
 		if err != nil {
 			return "", "", "", fmt.Errorf("failed to save article: %w", err)
 		}
@@ -284,7 +284,7 @@ func (h *Handler) resolveArticle(ctx context.Context, feedURL, articleID, conten
 	}
 
 	// Save the article
-	newArticleID, err := h.deps.AltDBRepository.SaveArticle(ctx, feedURL, title, fetchedContent)
+	newArticleID, err := h.deps.ArticleStore.SaveArticle(ctx, feedURL, title, fetchedContent)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to save article: %w", err)
 	}

@@ -1,8 +1,9 @@
 package register_feed_gateway
 
 import (
+	stderrors "errors"
+
 	"alt/domain"
-	"alt/shared/driver/alt_db"
 	"alt/utils/logger"
 	"alt/utils/proxy"
 	"context"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
 	"github.com/stretchr/testify/assert"
 )
@@ -53,7 +53,7 @@ func (m *MockRSSFeedFetcher) SetError(url string, err error) {
 
 func TestRegisterFeedsGateway_RegisterFeeds(t *testing.T) {
 	gateway := &RegisterFeedsGateway{
-		alt_db: nil, // This will cause an error, which we can test
+		store: &feedWriteStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	testFeeds := []*domain.FeedItem{
@@ -117,43 +117,33 @@ func TestRegisterFeedsGateway_RegisterFeeds(t *testing.T) {
 	}
 }
 
-func TestRegisterFeedGateway_RegisterFeedLink_NilDB(t *testing.T) {
-	gateway := &RegisterFeedGateway{alt_db: nil}
+func TestRegisterFeedGateway_RegisterFeedLink_PropagatesStoreFailure(t *testing.T) {
+	gateway := NewRegisterFeedLinkGateway(&feedLinkWriteStoreStub{err: stderrors.New("data plane unavailable")})
 
 	err := gateway.RegisterFeedLink(context.Background(), "https://example.com/feed.xml")
 	if err == nil {
-		t.Error("RegisterFeedLink() expected error with nil database, got nil")
+		t.Fatal("RegisterFeedLink() expected error when the data plane refuses, got nil")
 	}
-	assert.Contains(t, err.Error(), "database connection not available")
+	assert.Contains(t, err.Error(), "failed to register RSS feed link")
 }
 
-func TestNewRegisterFeedsGateway(t *testing.T) {
-	var pool *pgxpool.Pool
-	gateway := NewRegisterFeedsGateway(pool)
-
-	if gateway == nil {
-		t.Error("NewRegisterFeedsGateway() returned nil")
-	}
-	if gateway.alt_db != nil {
-		t.Error("NewRegisterFeedsGateway() with nil pool should have nil repository")
-	}
+// Both constructors refuse a nil store rather than producing a gateway that
+// errors on every call. The tests these replace asserted the opposite — that a
+// nil pool yielded a gateway with a nil repository — which is the shape that
+// makes a DI mistake look like a database outage (CLAUDE.md rule 8).
+func TestNewRegisterFeedsGateway_RefusesNilStore(t *testing.T) {
+	assert.NotNil(t, NewRegisterFeedsGateway(&feedWriteStoreStub{}))
+	assert.Panics(t, func() { NewRegisterFeedsGateway(nil) })
 }
 
-func TestNewRegisterFeedLinkGateway(t *testing.T) {
-	var pool *pgxpool.Pool
-	gateway := NewRegisterFeedLinkGateway(pool)
-
-	if gateway == nil {
-		t.Error("NewRegisterFeedLinkGateway() returned nil")
-	}
-	if gateway.alt_db != nil {
-		t.Error("NewRegisterFeedLinkGateway() with nil pool should have nil repository")
-	}
+func TestNewRegisterFeedLinkGateway_RefusesNilStore(t *testing.T) {
+	assert.NotNil(t, NewRegisterFeedLinkGateway(&feedLinkWriteStoreStub{}))
+	assert.Panics(t, func() { NewRegisterFeedLinkGateway(nil) })
 }
 
 func TestRegisterFeedsGateway_ValidationEdgeCases(t *testing.T) {
 	gateway := &RegisterFeedsGateway{
-		alt_db: nil,
+		store: &feedWriteStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	edgeCaseFeeds := []*domain.FeedItem{
@@ -191,7 +181,7 @@ func TestRegisterFeedsGateway_ValidationEdgeCases(t *testing.T) {
 
 func TestRegisterFeedsGateway_LargeDataset(t *testing.T) {
 	gateway := &RegisterFeedsGateway{
-		alt_db: nil,
+		store: &feedWriteStoreStub{err: stderrors.New("data plane unavailable")},
 	}
 
 	var largeFeeds []*domain.FeedItem
@@ -405,37 +395,41 @@ func (c *capturePgxIface) Begin(_ context.Context) (pgx.Tx, error) {
 func TestRegisterFeedGateway_RegisterFeedLink_StripsTrackingParams(t *testing.T) {
 	logger.InitLogger()
 
-	// Use a mock pool that returns an error from Begin so we can verify
-	// the sanitized URL is passed through (it will fail at Begin, but the
-	// StripTrackingParams logic runs before the DB call).
-	mockPool := &capturePgxIface{beginErr: pgx.ErrTxClosed}
-	repo := alt_db.NewAltDBRepository(mockPool)
-	gateway := &RegisterFeedGateway{alt_db: repo}
-
+	// The sanitised URL is now observable: the store records what it was
+	// handed. The previous version could only infer it, by forcing Begin to
+	// fail and checking the call had got that far — which proved the strip ran
+	// but never that it produced the right string.
 	tests := []struct {
 		name  string
 		input string
+		want  string
 	}{
 		{
 			name:  "URL with utm_source",
 			input: "https://example.com/feed.xml?utm_source=chatgpt.com",
+			want:  "https://example.com/feed.xml",
 		},
 		{
 			name:  "URL with multiple tracking params",
 			input: "https://example.com/feed.xml?utm_source=rss&fbclid=abc123&gclid=xyz",
+			want:  "https://example.com/feed.xml",
 		},
 		{
 			name:  "clean URL unchanged",
 			input: "https://example.com/feed.xml",
+			want:  "https://example.com/feed.xml",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			store := &feedLinkWriteStoreStub{}
+			gateway := NewRegisterFeedLinkGateway(store)
+
 			err := gateway.RegisterFeedLink(context.Background(), tt.input)
-			// Error is expected (Begin fails), but the function should not panic
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "failed to register RSS feed link")
+
+			assert.NoError(t, err)
+			assert.Equal(t, []string{tt.want}, store.gotLinks)
 		})
 	}
 }

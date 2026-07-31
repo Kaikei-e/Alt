@@ -6,13 +6,20 @@ Monorepo with 20+ microservices. Docker Compose-first orchestration, TDD-first d
 
 | Language | Services | Test | Build |
 |----------|----------|------|-------|
-| Go 1.26+ | alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, altctl | `go test ./...` | `go build ./...` |
+| Go 1.26+ | alt-backend, **alt-harvester**, **alt-data-hub**, auth-hub, pre-processor, search-indexer, mq-hub, altctl | `go test ./...` | `go build ./...` |
 | Python 3.14+ | news-creator, tag-generator, metrics, recap-subworker, recap-evaluator | `uv run pytest` | — |
 | Rust 1.94+ | rask-log-aggregator, rask-log-forwarder, recap-worker | `cargo test` | `cargo build` |
 | TypeScript | alt-frontend-sv | `bun test` | `bun run build` |
 | Deno 2.x | auth-token-manager, alt-perf | `deno test` | — |
 
 Each service has its own `CLAUDE.md` with service-specific guidance. See `docs/services/MICROSERVICES.md` for the full reference.
+
+**alt-backend / alt-harvester / alt-data-hub は 1 ディレクトリ 3 バイナリ** — `alt-backend/app`
+という単一 Go モジュール (`module alt`) から `cmd/backend`（ユーザ向け API）/ `cmd/harvester`
+（7 定期ジョブ）/ `cmd/datahub`（alt-db の唯一のオーナー、mTLS 専用）の 3 本を切り出し、
+同じ `alt-backend/Dockerfile.backend` を `--build-arg BINARY=backend|harvester|datahub` で
+3 イメージにビルドする。3 つとも `cd alt-backend/app && go test ./...` で一括してテストする。
+根拠と責務分担は `docs/ADR/000954.md`。
 
 **Wiki entry**: `docs/wiki/HOME.md` — crystallized navigation layer over ADR / runbook / plan. Read this first to get the current map of the system.
 

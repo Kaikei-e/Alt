@@ -3,7 +3,6 @@ package job
 import (
 	"alt/domain"
 	"alt/orchestrator/port/rag_integration_port"
-	"alt/shared/driver/alt_db"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
@@ -89,12 +88,15 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 	})
 }
 
-// mockOutboxRepo is an in-memory stand-in for *alt_db.AltDBRepository's
-// outbox methods (mirrors the mockCandidateLister/mockArticleHeadSaver
-// pattern in og_image_backfill_test.go).
+// mockOutboxRepo is an in-memory stand-in for datahub_gateway.OutboxGateway,
+// which reaches alt-data-hub over Connect-RPC in production (ADR-000954
+// Wave 3). It records what the worker asked for, not how the provider stored
+// it: Release is a distinct method from MarkProcessed, so the assertions below
+// distinguish "gave up on this event" from "handed it back untouched" — which
+// a single status-string setter could not.
 type mockOutboxRepo struct {
 	mu            sync.Mutex
-	events        []alt_db.OutboxEvent
+	events        []domain.OutboxEvent
 	statusUpdates []outboxStatusUpdate
 }
 
@@ -103,14 +105,21 @@ type outboxStatusUpdate struct {
 	status string
 }
 
-func (m *mockOutboxRepo) FetchAndLockPendingOutboxEvents(_ context.Context, _ int) ([]alt_db.OutboxEvent, error) {
+func (m *mockOutboxRepo) ClaimBatch(_ context.Context, _ int) ([]domain.OutboxEvent, error) {
 	return m.events, nil
 }
 
-func (m *mockOutboxRepo) UpdateOutboxEventStatus(_ context.Context, id string, status string, _ *string) error {
+func (m *mockOutboxRepo) MarkProcessed(_ context.Context, id string, status domain.OutboxEventStatus, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.statusUpdates = append(m.statusUpdates, outboxStatusUpdate{id: id, status: status})
+	m.statusUpdates = append(m.statusUpdates, outboxStatusUpdate{id: id, status: string(status)})
+	return nil
+}
+
+func (m *mockOutboxRepo) Release(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statusUpdates = append(m.statusUpdates, outboxStatusUpdate{id: id, status: string(domain.OutboxPending)})
 	return nil
 }
 
@@ -151,7 +160,7 @@ func (b *blockingRagIntegration) Answer(_ context.Context, _ rag_integration_por
 // outboxUpsertEventFixture mirrors the raw map payload save_article_driver.go
 // actually enqueues (snake_case keys), not the Go-native UpsertArticleInput
 // struct, so it also exercises emitArticleCreatedEvent's payload parsing.
-func outboxUpsertEventFixture(id string) alt_db.OutboxEvent {
+func outboxUpsertEventFixture(id string) domain.OutboxEvent {
 	payload, _ := json.Marshal(map[string]any{
 		"article_id": id,
 		"url":        "https://example.com/" + id,
@@ -160,11 +169,11 @@ func outboxUpsertEventFixture(id string) alt_db.OutboxEvent {
 		"user_id":    uuid.New().String(),
 		"updated_at": time.Now().Format(time.RFC3339),
 	})
-	return alt_db.OutboxEvent{
+	return domain.OutboxEvent{
 		ID:        id,
 		EventType: "ARTICLE_UPSERT",
 		Payload:   payload,
-		Status:    "PROCESSING",
+		Status:    domain.OutboxProcessing,
 	}
 }
 
@@ -172,7 +181,7 @@ func TestProcessOutboxEvents_CancelMidProcessing_MarksInFlightEventFailed(t *tes
 	logger.InitLogger()
 
 	eventID := uuid.New().String()
-	repo := &mockOutboxRepo{events: []alt_db.OutboxEvent{outboxUpsertEventFixture(eventID)}}
+	repo := &mockOutboxRepo{events: []domain.OutboxEvent{outboxUpsertEventFixture(eventID)}}
 	rag := &blockingRagIntegration{started: make(chan struct{})}
 	knowledgePort := &stubKnowledgeEventPort{}
 
@@ -206,7 +215,7 @@ func TestProcessOutboxEvents_CancelMidBatch_ResetsUnattemptedClaimedEventsToPend
 	unattemptedID1 := uuid.New().String()
 	unattemptedID2 := uuid.New().String()
 
-	repo := &mockOutboxRepo{events: []alt_db.OutboxEvent{
+	repo := &mockOutboxRepo{events: []domain.OutboxEvent{
 		outboxUpsertEventFixture(blockedID),
 		outboxUpsertEventFixture(unattemptedID1),
 		outboxUpsertEventFixture(unattemptedID2),

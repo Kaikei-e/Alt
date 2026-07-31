@@ -2,7 +2,6 @@ package job
 
 import (
 	"alt/orchestrator/usecase/image_proxy_usecase"
-	"alt/shared/driver/alt_db"
 	"context"
 	"fmt"
 	"log/slog"
@@ -10,7 +9,8 @@ import (
 
 const ogpWarmerBatchLimit = 100
 
-// ogpUnwarmedFetcher abstracts the query for unwarmed OGP image URLs (for testability).
+// ogpUnwarmedFetcher abstracts the query for unwarmed OGP image URLs.
+// Backed by datahub_gateway.OgImageGateway since ADR-000954 Wave 3.
 type ogpUnwarmedFetcher interface {
 	FetchUnwarmedOgImageURLs(ctx context.Context, limit int) ([]string, error)
 }
@@ -24,7 +24,10 @@ type imageWarmer interface {
 // OgpImageWarmerJob returns a function suitable for the JobScheduler that
 // pre-fetches OGP images for recently collected feeds and caches them.
 // Rate limiting is handled by the DI-injected ImageProxyUsecase.
-func OgpImageWarmerJob(r *alt_db.AltDBRepository, imageProxy *image_proxy_usecase.ImageProxyUsecase) func(ctx context.Context) error {
+func OgpImageWarmerJob(fetcher ogpUnwarmedFetcher, imageProxy *image_proxy_usecase.ImageProxyUsecase) func(ctx context.Context) error {
+	if fetcher == nil {
+		panic("ogp-image-warmer: unwarmed-image fetcher is nil — must be wired unconditionally at composition root (see .claude/rules/di-wiring.md)")
+	}
 	if imageProxy == nil {
 		// imageProxy is legitimately nil when IMAGE_PROXY_ENABLED=false or
 		// misconfigured (see logImageProxyWiringState in di/image_module.go,
@@ -38,7 +41,7 @@ func OgpImageWarmerJob(r *alt_db.AltDBRepository, imageProxy *image_proxy_usecas
 		}
 	}
 
-	return ogpImageWarmerJobFn(r, imageProxy)
+	return ogpImageWarmerJobFn(fetcher, imageProxy)
 }
 
 // ogpImageWarmerJobFn is the testable core of the warmer job.

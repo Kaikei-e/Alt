@@ -29,6 +29,14 @@ GIT_SHA="$(git rev-parse --short=HEAD 2>/dev/null || echo 'nogit')"
 KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-alt-prod}"
 
 # ----- サービス → Dockerfile パス -----
+# Extra --build-arg flags per service. alt-backend's Dockerfile builds one of
+# three binaries (backend | harvester | datahub) and fails the build when
+# BINARY is unset rather than guessing; this script only ever wanted the
+# user-facing API binary.
+declare -A SERVICE_BUILD_ARGS=(
+  [alt-backend]="--build-arg BINARY=backend"
+)
+
 declare -A SERVICE_CONFIGS=(
   [alt-backend]="alt-backend/Dockerfile.backend"
   [alt-frontend]="alt-frontend/Dockerfile.frontend"
@@ -125,7 +133,8 @@ build_and_load() {
   # ビルド（ローカルタグでビルド）
   echo -e "${BLUE}▶ Building $svc → $local_sha_image${NC}"
   pushd "$dir" >/dev/null
-  docker build --pull -f "$(basename "$df_path")" -t "$local_sha_image" .
+  # shellcheck disable=SC2086 — deliberate word splitting of the build-arg flags
+  docker build --pull ${SERVICE_BUILD_ARGS[$svc]-} -f "$(basename "$df_path")" -t "$local_sha_image" .
   docker tag "$local_sha_image" "$local_latest_image"
   
   # IMAGE_PREFIX設定時はレジストリ用タグも作成

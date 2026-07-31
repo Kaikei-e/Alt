@@ -1,0 +1,38 @@
+version: v2
+# Code generation of alt.datahub.v1 for rag-orchestrator — Wave 2-B consumer
+# target (ADR-000954 D7).
+#
+# Why a separate template rather than a plugin block appended to
+# buf.gen.datahub.yaml: that file's head states the Wave 2-B rule — "one
+# consumer target per peer PR, so that a service acquires the generated client
+# in the same commit that starts calling it". Each peer's PR is scoped to its
+# own service directory, and a shared template would make every such PR touch
+# the same file, so the peers would serialise on each other for no reason.
+# buf.gen.datahub.yaml stays the provider-side (alt-backend / alt-data-hub)
+# template and is not edited here.
+#
+# Why not buf.gen.yaml: that template emits TypeScript into alt-frontend-sv
+# and explicitly excludes alt/datahub, because DataHubService is only
+# reachable over mutual TLS from a listener with no published port. Adding
+# rag-orchestrator's Go client there would drag the browser bundle along.
+#
+# Output lands in rag-orchestrator/internal/gen/proto, which go.mod maps to
+# the module path `alt/gen/proto` via a replace directive — hence the import
+# path alt/gen/proto/alt/datahub/v1 rather than a rag-orchestrator-local one.
+#
+# Regenerate with:
+#   cd proto && buf generate --template buf.gen.datahub-rag.yaml
+inputs:
+  - directory: .
+    paths:
+      - alt/datahub
+plugins:
+  # ============================================================================
+  # rag-orchestrator (DataHubService client)
+  # ============================================================================
+  - local: protoc-gen-go
+    out: ../rag-orchestrator/internal/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../rag-orchestrator/internal/gen/proto
+    opt: paths=source_relative

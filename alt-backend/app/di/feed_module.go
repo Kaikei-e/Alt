@@ -14,9 +14,7 @@ import (
 	"alt/orchestrator/gateway/fetch_random_subscription_gateway"
 	"alt/orchestrator/gateway/register_favorite_feed_gateway"
 	"alt/orchestrator/gateway/register_feed_gateway"
-	"alt/orchestrator/gateway/scraping_domain_gateway"
 	"alt/orchestrator/gateway/trend_stats_gateway"
-	"alt/orchestrator/gateway/update_feed_status_gateway"
 	"alt/orchestrator/gateway/validate_fetch_rss_gateway"
 	"alt/orchestrator/port/scraping_domain_port"
 	"alt/orchestrator/usecase/cached_feed_list_usecase"
@@ -79,13 +77,18 @@ type FeedModule struct {
 }
 
 func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
-	pool := infra.Pool
-	altDB := infra.AltDBRepository
+	// Every table this module touches is alt-data-hub's: the feed tables moved
+	// in ADR-000954 Wave 3 batch 3 (catalog §2.F / §2.G / §2.H), the
+	// read/subscription state and the tag reads in batch 4, and the dashboard
+	// counts in batch 5. Nothing here holds a database handle any more.
+	feedGw := infra.FeedGateway
+	feedLinkGw := infra.FeedLinkGateway
 
-	// Feed fetch gateways
-	feedFetcherGw := fetch_feed_gateway.NewSingleFeedGatewayWithRateLimiter(pool, infra.RateLimiter)
-	fetchFeedsListGw := fetch_feed_gateway.NewFetchFeedsGatewayWithRateLimiter(pool, infra.RateLimiter)
-	feedPageCacheGw := feed_page_cache_gateway.NewGateway(altDB)
+	// Feed fetch gateways. The RSS fetch each performs afterwards is external
+	// HTTP and stays here (ADR-000954 D4); only the reads crossed.
+	feedFetcherGw := fetch_feed_gateway.NewSingleFeedGatewayWithRateLimiter(feedLinkGw, infra.RateLimiter)
+	fetchFeedsListGw := fetch_feed_gateway.NewFetchFeedsGatewayWithRateLimiter(feedGw, infra.RateLimiter)
+	feedPageCacheGw := feed_page_cache_gateway.NewGateway(feedGw)
 
 	// Feed fetch usecases
 	fetchSingleFeedUC := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGw)
@@ -98,12 +101,12 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 
 	// Register feed gateways / usecases
 	validateAndFetchRSSGw := validate_fetch_rss_gateway.NewValidateAndFetchRSSGateway()
-	registerFeedLinkGw := register_feed_gateway.NewRegisterFeedLinkGateway(pool)
-	registerFeedsGw := register_feed_gateway.NewRegisterFeedsGateway(pool)
-	registerFavoriteFeedGw := register_favorite_feed_gateway.NewRegisterFavoriteFeedGateway(pool)
+	registerFeedLinkGw := register_feed_gateway.NewRegisterFeedLinkGateway(feedLinkGw)
+	registerFeedsGw := register_feed_gateway.NewRegisterFeedsGateway(feedGw)
+	registerFavoriteFeedGw := register_favorite_feed_gateway.NewRegisterFavoriteFeedGateway(infra.ReadStateGateway)
 	registerFeedsUC := register_feed_usecase.NewRegisterFeedsUsecase(validateAndFetchRSSGw, registerFeedLinkGw, registerFeedsGw, &register_feed_usecase.RegisterFeedsOpts{
-		FeedLinkIDResolver:   altDB,
-		FeedLinkAvailability: altDB,
+		FeedLinkIDResolver:   feedLinkGw,
+		FeedLinkAvailability: infra.FeedLinkAvailabilityGateway,
 		FeedPageInvalidator:  feedPageCacheGw,
 		SubscriptionPort:     sub.SubscriptionGateway,
 	})
@@ -111,60 +114,68 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	removeFavoriteFeedUC := remove_favorite_feed_usecase.NewRemoveFavoriteFeedUsecase(registerFavoriteFeedGw)
 
 	// Feed link gateways / usecases
-	feedLinkGw := feed_link_gateway.NewFeedLinkGateway(pool)
-	listFeedLinksUC := feed_link_usecase.NewListFeedLinksUsecase(feedLinkGw)
-	listFeedLinksWithHealthUC := feed_link_usecase.NewListFeedLinksWithHealthUsecase(feedLinkGw)
+	feedLinkMgmtGw := feed_link_gateway.NewFeedLinkGateway(feedLinkGw)
+	listFeedLinksUC := feed_link_usecase.NewListFeedLinksUsecase(feedLinkMgmtGw)
+	listFeedLinksWithHealthUC := feed_link_usecase.NewListFeedLinksWithHealthUsecase(feedLinkMgmtGw)
 
-	// Reading status
-	updateFeedStatusGw := update_feed_status_gateway.NewUpdateFeedStatusGateway(pool)
-	feedsReadingStatusUC := reading_status.NewFeedsReadingStatusUsecase(updateFeedStatusGw)
-	articlesReadingStatusUC := reading_status.NewArticlesReadingStatusUsecase(altDB)
+	// Reading status (capability catalog §2.I W3-I1 / W3-I2). Both writes go
+	// to the same gateway: they hit one table and, since §4-5, answer an
+	// absent feed the same way.
+	feedsReadingStatusUC := reading_status.NewFeedsReadingStatusUsecase(infra.ReadStateGateway)
+	articlesReadingStatusUC := reading_status.NewArticlesReadingStatusUsecase(infra.ReadStateGateway)
 
 	// Feed details / stats
-	feedSummaryGw := fetch_feed_detail_gateway.NewFeedSummaryGateway(pool)
+	feedSummaryGw := fetch_feed_detail_gateway.NewFeedSummaryGateway(feedGw)
 	feedsSummaryUC := fetch_feed_details_usecase.NewFeedsSummaryUsecase(feedSummaryGw)
 
-	feedAmountGw := feed_stats_gateway.NewFeedAmountGateway(pool)
+	// Dashboard counts and the trend chart come from alt-data-hub since
+	// ADR-000954 Wave 3 batch 5 (catalog §2.M). Each port adapter holds the
+	// same gateway; they stay separate types because each port declares its own
+	// Execute.
+	statsGw := infra.StatsGateway
+	feedAmountGw := feed_stats_gateway.NewFeedAmountGateway(statsGw)
 	feedsCountUC := fetch_feed_stats_usecase.NewFeedsCountUsecase(feedAmountGw)
 
-	unsummarizedGw := feed_stats_gateway.NewUnsummarizedArticlesCountGateway(pool)
+	unsummarizedGw := feed_stats_gateway.NewUnsummarizedArticlesCountGateway(statsGw)
 	unsummarizedUC := fetch_feed_stats_usecase.NewUnsummarizedArticlesCountUsecase(unsummarizedGw)
 
-	summarizedGw := feed_stats_gateway.NewSummarizedArticlesCountGateway(pool)
+	summarizedGw := feed_stats_gateway.NewSummarizedArticlesCountGateway(statsGw)
 	summarizedUC := fetch_feed_stats_usecase.NewSummarizedArticlesCountUsecase(summarizedGw)
 
-	totalGw := feed_stats_gateway.NewTotalArticlesCountGateway(pool)
+	totalGw := feed_stats_gateway.NewTotalArticlesCountGateway(statsGw)
 	totalUC := fetch_feed_stats_usecase.NewTotalArticlesCountUsecase(totalGw)
 
-	todayUnreadGw := feed_stats_gateway.NewTodayUnreadArticlesCountGateway(pool)
+	todayUnreadGw := feed_stats_gateway.NewTodayUnreadArticlesCountGateway(statsGw)
 	todayUnreadUC := fetch_feed_stats_usecase.NewTodayUnreadArticlesCountUsecase(todayUnreadGw)
 
 	// Trend stats
-	trendStatsGw := trend_stats_gateway.NewTrendStatsGateway(pool)
+	trendStatsGw := trend_stats_gateway.NewTrendStatsGateway(statsGw)
 	trendStatsUC := fetch_trend_stats_usecase.NewFetchTrendStatsUsecase(trendStatsGw)
 
 	// Feed search (Meilisearch-based via search-indexer)
 	searchFeedMeilisearchGw := feed_search_gateway.NewSearchFeedMeilisearchGateway(infra.SearchIndexerDriver)
-	feedURLLinkGw := feed_url_link_gateway.NewFeedURLLinkGateway(altDB)
+	feedURLLinkGw := feed_url_link_gateway.NewFeedURLLinkGateway(feedGw)
 	feedSearchUC := search_feed_usecase.NewSearchFeedMeilisearchUsecase(searchFeedMeilisearchGw, feedURLLinkGw)
 
 	// Feed tags
-	feedURLToIDGw := feed_url_to_id_gateway.NewFeedURLToIDGateway(altDB)
-	fetchFeedTagsGw := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(altDB)
+	feedURLToIDGw := feed_url_to_id_gateway.NewFeedURLToIDGateway(feedGw)
+	fetchFeedTagsGw := fetch_feed_tags_gateway.NewFetchFeedTagsGateway(infra.TagGateway)
 	fetchFeedTagsUC := fetch_feed_tags_usecase.NewFetchFeedTagsUsecase(feedURLToIDGw, fetchFeedTagsGw)
 	fetchFeedTagsByIDUC := fetch_feed_tags_by_id_usecase.NewFetchFeedTagsByIDUsecase(fetchFeedTagsGw)
 
 	// Inoreader summary
-	fetchInoreaderSummaryGw := fetch_inoreader_summary_gateway.NewInoreaderSummaryGateway(altDB)
+	fetchInoreaderSummaryGw := fetch_inoreader_summary_gateway.NewInoreaderSummaryGateway(feedGw)
 	fetchInoreaderSummaryUC := fetch_inoreader_summary_usecase.NewFetchInoreaderSummaryUsecase(fetchInoreaderSummaryGw)
 
 	// Random subscription (Tag Trail feature)
-	fetchRandomSubscriptionGw := fetch_random_subscription_gateway.NewFetchRandomSubscriptionGateway(altDB)
+	fetchRandomSubscriptionGw := fetch_random_subscription_gateway.NewFetchRandomSubscriptionGateway(feedGw)
 	fetchRandomSubscriptionUC := fetch_random_subscription_usecase.NewFetchRandomSubscriptionUsecase(fetchRandomSubscriptionGw)
 
-	// Scraping domain
-	scrapingDomainGw := scraping_domain_gateway.NewScrapingDomainGateway(altDB)
-	feedLinkDomainGw := feed_link_domain_gateway.NewFeedLinkDomainGateway(altDB)
+	// Scraping domain. The recorded policy lives in alt-data-hub since
+	// ADR-000954 Wave 3 (catalog §2.L); the robots.txt fetch behind
+	// infra.RobotsTxtGateway is external HTTP and stays here (D4).
+	scrapingDomainGw := infra.ScrapingDomainGateway
+	feedLinkDomainGw := feed_link_domain_gateway.NewFeedLinkDomainGateway(feedLinkGw)
 	scrapingDomainUC := scraping_domain_usecase.NewScrapingDomainUsecaseWithFeedLinkDomain(scrapingDomainGw, infra.RobotsTxtGateway, feedLinkDomainGw)
 
 	return &FeedModule{
@@ -180,22 +191,27 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 		RemoveFavoriteFeedUsecase:           removeFavoriteFeedUC,
 		ListFeedLinksUsecase:                listFeedLinksUC,
 		ListFeedLinksWithHealthUsecase:      listFeedLinksWithHealthUC,
-		DeleteFeedLinkUsecase:               nil, // set after subscription module
-		FeedsReadingStatusUsecase:           feedsReadingStatusUC,
-		ArticlesReadingStatusUsecase:        articlesReadingStatusUC,
-		FeedsSummaryUsecase:                 feedsSummaryUC,
-		FeedAmountUsecase:                   feedsCountUC,
-		UnsummarizedArticlesCountUsecase:    unsummarizedUC,
-		SummarizedArticlesCountUsecase:      summarizedUC,
-		TotalArticlesCountUsecase:           totalUC,
-		TodayUnreadArticlesCountUsecase:     todayUnreadUC,
-		TrendStatsUsecase:                   trendStatsUC,
-		FeedSearchUsecase:                   feedSearchUC,
-		FetchFeedTagsUsecase:                fetchFeedTagsUC,
-		FetchFeedTagsByIDUsecase:            fetchFeedTagsByIDUC,
-		FetchInoreaderSummaryUsecase:        fetchInoreaderSummaryUC,
-		FetchRandomSubscriptionUsecase:      fetchRandomSubscriptionUC,
-		ScrapingDomainUsecase:               scrapingDomainUC,
+		// Taken straight from the subscription module rather than patched in
+		// by the composition root afterwards. The old "return nil, the root
+		// fills it in" shape compiled fine if a root forgot the assignment and
+		// only surfaced as a nil dereference inside the RSS DeleteFeedLink
+		// handler — and there are three roots now (CLAUDE.md rule 8).
+		DeleteFeedLinkUsecase:            sub.DeleteFeedLinkUsecase,
+		FeedsReadingStatusUsecase:        feedsReadingStatusUC,
+		ArticlesReadingStatusUsecase:     articlesReadingStatusUC,
+		FeedsSummaryUsecase:              feedsSummaryUC,
+		FeedAmountUsecase:                feedsCountUC,
+		UnsummarizedArticlesCountUsecase: unsummarizedUC,
+		SummarizedArticlesCountUsecase:   summarizedUC,
+		TotalArticlesCountUsecase:        totalUC,
+		TodayUnreadArticlesCountUsecase:  todayUnreadUC,
+		TrendStatsUsecase:                trendStatsUC,
+		FeedSearchUsecase:                feedSearchUC,
+		FetchFeedTagsUsecase:             fetchFeedTagsUC,
+		FetchFeedTagsByIDUsecase:         fetchFeedTagsByIDUC,
+		FetchInoreaderSummaryUsecase:     fetchInoreaderSummaryUC,
+		FetchRandomSubscriptionUsecase:   fetchRandomSubscriptionUC,
+		ScrapingDomainUsecase:            scrapingDomainUC,
 
 		FeedPageCacheGateway:         feedPageCacheGw,
 		FetchFeedsListGateway:        fetchFeedsListGw,

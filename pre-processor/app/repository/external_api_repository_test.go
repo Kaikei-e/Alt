@@ -17,9 +17,11 @@ import (
 
 	"pre-processor/config"
 	"pre-processor/domain"
+	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 // Test constants
@@ -557,15 +559,30 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 	})
 }
 
+// writeSystemUserResponse writes what alt-data-hub's Connect handler returns
+// for GetSystemUser. The repository speaks the default binary-proto codec — the
+// same one every other pre-processor -> alt-data-hub call uses — so the stub
+// has to encode a real message rather than the JSON the retired REST route
+// used to emit.
+func writeSystemUserResponse(t *testing.T, w http.ResponseWriter, userID string) {
+	t.Helper()
+	body, err := proto.Marshal(&datahubv1.GetSystemUserResponse{UserId: userID})
+	require.NoError(t, err)
+	w.Header().Set("Content-Type", "application/proto")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
 func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 	t.Run("should return user_id on successful response", func(t *testing.T) {
 		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, "/v1/internal/system-user", r.URL.Path)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"user_id":"test-user-123"}`))
+			// ADR-000954 D6/D7: GET /v1/internal/system-user was absorbed
+			// into alt-data-hub as the GetSystemUser RPC.
+			assert.Equal(t, "/alt.datahub.v1.DataHubService/GetSystemUser", r.URL.Path)
+			assert.Equal(t, http.MethodPost, r.Method)
+			writeSystemUserResponse(t, w, "test-user-123")
 		}, 0))
 
 		userID, err := repo.GetSystemUserID(context.Background())
@@ -582,9 +599,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 		var headerSeen bool
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 			_, headerSeen = r.Header["X-Service-Token"]
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"user_id":"test-user-123"}`))
+			writeSystemUserResponse(t, w, "test-user-123")
 		}, 0))
 
 		_, err := repo.GetSystemUserID(context.Background())
@@ -597,9 +612,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"user_id":""}`))
+			writeSystemUserResponse(t, w, "")
 		}, 0))
 
 		userID, err := repo.GetSystemUserID(context.Background())
@@ -608,7 +621,10 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 		assert.Empty(t, userID)
 	})
 
-	t.Run("should return error on non-200 status", func(t *testing.T) {
+	// A 5xx from alt-data-hub arrives as a Connect error rather than a raw
+	// status code. It must still be a hard failure: an empty system user id
+	// would be stamped onto every backfilled article.
+	t.Run("should return error on upstream failure", func(t *testing.T) {
 		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
@@ -617,7 +633,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 
 		userID, err := repo.GetSystemUserID(context.Background())
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "unexpected status code")
+		assert.Contains(t, err.Error(), "failed after")
 		assert.Empty(t, userID)
 	})
 
@@ -634,9 +650,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 			}
 			// Third call succeeds
 			recorder := httptest.NewRecorder()
-			recorder.Header().Set("Content-Type", "application/json")
-			recorder.WriteHeader(http.StatusOK)
-			_, _ = recorder.Write([]byte(`{"user_id":"retry-success-user"}`))
+			writeSystemUserResponse(t, recorder, "retry-success-user")
 			return recorder.Result(), nil
 		}))
 

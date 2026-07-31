@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,29 +42,29 @@ func (m *MockRegisterFavoriteFeedPort) EXPECT() *MockRegisterFavoriteFeedPortMoc
 }
 
 // RegisterFavoriteFeed mocks base method.
-func (m *MockRegisterFavoriteFeedPort) RegisterFavoriteFeed(ctx context.Context, url string) error {
+func (m *MockRegisterFavoriteFeedPort) RegisterFavoriteFeed(ctx context.Context, url string, userID uuid.UUID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RegisterFavoriteFeed", ctx, url)
+	ret := m.ctrl.Call(m, "RegisterFavoriteFeed", ctx, url, userID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RegisterFavoriteFeed indicates an expected call of RegisterFavoriteFeed.
-func (mr *MockRegisterFavoriteFeedPortMockRecorder) RegisterFavoriteFeed(ctx, url any) *gomock.Call {
+func (mr *MockRegisterFavoriteFeedPortMockRecorder) RegisterFavoriteFeed(ctx, url, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterFavoriteFeed", reflect.TypeOf((*MockRegisterFavoriteFeedPort)(nil).RegisterFavoriteFeed), ctx, url)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterFavoriteFeed", reflect.TypeOf((*MockRegisterFavoriteFeedPort)(nil).RegisterFavoriteFeed), ctx, url, userID)
 }
 
 // RemoveFavoriteFeed mocks base method.
-func (m *MockRegisterFavoriteFeedPort) RemoveFavoriteFeed(ctx context.Context, url string) error {
+func (m *MockRegisterFavoriteFeedPort) RemoveFavoriteFeed(ctx context.Context, url string, userID uuid.UUID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveFavoriteFeed", ctx, url)
+	ret := m.ctrl.Call(m, "RemoveFavoriteFeed", ctx, url, userID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RemoveFavoriteFeed indicates an expected call of RemoveFavoriteFeed.
-func (mr *MockRegisterFavoriteFeedPortMockRecorder) RemoveFavoriteFeed(ctx, url any) *gomock.Call {
+func (mr *MockRegisterFavoriteFeedPortMockRecorder) RemoveFavoriteFeed(ctx, url, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveFavoriteFeed", reflect.TypeOf((*MockRegisterFavoriteFeedPort)(nil).RemoveFavoriteFeed), ctx, url)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveFavoriteFeed", reflect.TypeOf((*MockRegisterFavoriteFeedPort)(nil).RemoveFavoriteFeed), ctx, url, userID)
 }

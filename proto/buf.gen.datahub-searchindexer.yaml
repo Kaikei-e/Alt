@@ -1,0 +1,33 @@
+version: v2
+# Code generation of alt.datahub.v1 for search-indexer (ADR-000954 Wave 2-B).
+#
+# Why a second template instead of a target inside buf.gen.datahub.yaml:
+# search-indexer vendors its stubs under its own Go module path
+# (`search-indexer/gen/proto/...`), so it needs a managed-mode go_package
+# override that must not leak onto the alt-backend / alt-data-hub targets in
+# buf.gen.datahub.yaml, which keep the proto's declared `alt/gen/proto/...`
+# path. buf applies `managed` per template, not per plugin, so one template
+# cannot hold both package mappings — buf.gen.search-indexer.yaml covers
+# services/search for the same consumer.
+#
+# search-indexer is a pure consumer here: it only needs the generated client,
+# so the same two Go plugins alt-backend uses are enough — no TypeScript, for
+# the reason buf.gen.datahub.yaml spells out (DataHubService is reachable only
+# over mutual TLS from an unpublished listener).
+managed:
+  enabled: true
+  override:
+    - file_option: go_package
+      path: alt/datahub/v1/datahub.proto
+      value: search-indexer/gen/proto/alt/datahub/v1;datahubv1
+inputs:
+  - directory: .
+    paths:
+      - alt/datahub
+plugins:
+  - local: protoc-gen-go
+    out: ../search-indexer/app/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../search-indexer/app/gen/proto
+    opt: paths=source_relative

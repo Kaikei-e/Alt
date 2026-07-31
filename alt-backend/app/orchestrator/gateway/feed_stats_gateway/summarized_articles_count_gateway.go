@@ -1,26 +1,19 @@
 package feed_stats_gateway
 
 import (
-	"alt/shared/driver/alt_db"
 	"context"
-	"errors"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// SummarizedArticlesCountGateway implements
+// feed_stats_port.SummarizedArticlesCountPort.
 type SummarizedArticlesCountGateway struct {
-	altDBRepository *alt_db.AltDBRepository
+	stats statsClient
 }
 
-func NewSummarizedArticlesCountGateway(pool *pgxpool.Pool) *SummarizedArticlesCountGateway {
-	return &SummarizedArticlesCountGateway{
-		altDBRepository: alt_db.NewAltDBRepositoryWithPool(pool),
-	}
+func NewSummarizedArticlesCountGateway(stats statsClient) *SummarizedArticlesCountGateway {
+	return &SummarizedArticlesCountGateway{stats: stats}
 }
 
 func (g *SummarizedArticlesCountGateway) Execute(ctx context.Context) (int, error) {
-	if g.altDBRepository == nil {
-		return 0, errors.New("database connection not available")
-	}
-	return g.altDBRepository.FetchSummarizedArticlesCount(ctx)
+	return g.stats.SummarizedArticlesCount(ctx)
 }

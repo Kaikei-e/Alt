@@ -5,6 +5,8 @@ package rate_limiter
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/url"
 	"sync"
 	"time"
@@ -15,6 +17,11 @@ import (
 // HostRateLimiter implements per-host rate limiting using token bucket algorithm.
 // It maintains separate rate limiters for each unique host to prevent exceeding
 // external API rate limits.
+//
+// The token bucket is per process. When a Coordination is supplied (see
+// distributed.go), a shared slot store arbitrates the same interval across
+// every process that fetches from the open internet — which is what keeps
+// CLAUDE.md rule 2 a promise about the host rather than about one binary.
 type HostRateLimiter struct {
 	limiters map[string]*rate.Limiter
 	// currentIntervals tracks each host's post-backoff interval so repeated
@@ -25,6 +32,15 @@ type HostRateLimiter struct {
 	mu               sync.RWMutex
 	interval         time.Duration
 	burst            int
+
+	// coord is the cross-process arbiter. Zero value = ModeLocal.
+	coord Coordination
+	// degraded state for the rate-limited "coordination is down" warning.
+	degraded        bool
+	degradedCount   int
+	lastDegradedLog time.Time
+	// logger is nil outside tests; log() falls back to slog.Default().
+	logger *slog.Logger
 }
 
 // NewHostRateLimiter creates a new HostRateLimiter with the specified interval
@@ -47,6 +63,16 @@ func NewHostRateLimiter(interval time.Duration, burst ...int) *HostRateLimiter {
 // WaitForHost blocks until the rate limiter allows a request to the host
 // extracted from the URL. It returns an error if the URL is invalid or
 // if the context is cancelled.
+//
+// Two gates, in this order:
+//
+//  1. the in-process token bucket, which serialises this process's own
+//     goroutines and therefore keeps step 2 to one round trip per interval
+//     rather than one per caller;
+//  2. the shared slot, when coordination is configured.
+//
+// Step 2 degrades to a no-op (with a loud warning) if the arbiter is
+// unreachable, leaving step 1's guarantee intact.
 func (h *HostRateLimiter) WaitForHost(ctx context.Context, urlStr string) error {
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
@@ -60,7 +86,11 @@ func (h *HostRateLimiter) WaitForHost(ctx context.Context, urlStr string) error 
 
 	limiter := h.getLimiterForHost(host)
 
-	return limiter.Wait(ctx)
+	if err := limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("wait for host %q: %w", host, err)
+	}
+
+	return h.waitForSlot(ctx, host)
 }
 
 func (h *HostRateLimiter) getLimiterForHost(host string) *rate.Limiter {
