@@ -50,7 +50,6 @@ on:
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
       - 'alt-butterfly-facade/internal/handler/contract/**'
-      - 'auth-hub/internal/adapter/gateway/contract/**'
       - 'tts-speaker/tests/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
   pull_request:
@@ -74,7 +73,6 @@ on:
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
       - 'alt-butterfly-facade/internal/handler/contract/**'
-      - 'auth-hub/internal/adapter/gateway/contract/**'
       - 'tts-speaker/tests/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
 
@@ -166,10 +164,6 @@ jobs:
             test-path: ./internal/handler/contract/
             sparse-checkout: alt-butterfly-facade
             pact-dir: pacts
-          - service: auth-hub
-            test-path: ./internal/adapter/gateway/contract/
-            sparse-checkout: auth-hub
-            pact-dir: pacts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -180,6 +174,9 @@ jobs:
         with:
           go-version: "1.26"
           cache: true
+          # Sparse checkout leaves no go.mod at the repo root, so the default
+          # dependency-file lookup fails and the module cache never restores.
+          cache-dependency-path: ${{ matrix.service }}/go.sum
 
       - name: Install pact FFI library
         run: |
@@ -294,6 +291,8 @@ jobs:
         with:
           go-version: "1.26"
           cache: true
+          # Monorepo: no root go.mod, so point the cache at the per-service sums.
+          cache-dependency-path: "**/go.sum"
 
       - name: Install pact FFI library
         run: |
