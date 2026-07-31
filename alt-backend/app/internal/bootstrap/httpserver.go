@@ -16,6 +16,21 @@ const readHeaderTimeout = 10 * time.Second
 // connectIdleTimeout bounds Connect-RPC keep-alive connections.
 const connectIdleTimeout = 120 * time.Second
 
+// cleartextHTTP2 is the protocol set every plaintext Connect-RPC listener
+// serves: HTTP/1.1 for unary Connect and the browser, plus cleartext HTTP/2
+// (h2c) for Connect's gRPC and gRPC-Web protocols, which require it.
+//
+// This replaces golang.org/x/net/http2/h2c, deprecated in favour of
+// http.Server.Protocols (Go 1.24+). The capability is a server field, so it
+// cannot be applied by a handler-returning helper — which is why the
+// connect/v2 constructors now return the bare mux and the switch is here.
+func cleartextHTTP2() *http.Protocols {
+	p := new(http.Protocols)
+	p.SetHTTP1(true)
+	p.SetUnencryptedHTTP2(true)
+	return p
+}
+
 // NewRESTServer builds the browser-facing REST listener. All four timeouts
 // come from the server config.
 func NewRESTServer(addr string, h http.Handler, cfg *config.Config) *http.Server {
@@ -41,6 +56,7 @@ func NewConnectServer(addr string, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           h,
+		Protocols:         cleartextHTTP2(),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       0,
 		WriteTimeout:      0,
@@ -55,6 +71,7 @@ func NewServiceServer(addr string, h http.Handler, cfg *config.Config) *http.Ser
 	return &http.Server{
 		Addr:              addr,
 		Handler:           h,
+		Protocols:         cleartextHTTP2(),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       cfg.Server.ReadTimeout,
 		WriteTimeout:      0,

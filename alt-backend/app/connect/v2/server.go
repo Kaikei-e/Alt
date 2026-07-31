@@ -242,23 +242,30 @@ func SetupOperatorConnectHandlers(mux *http.ServeMux, container *di.ApplicationC
 	}
 }
 
-// CreateConnectServer creates the browser-facing Connect-RPC server with
-// HTTP/2 support. This is the handler behind the published plaintext port, so
-// it carries only JWT-guarded user services.
+// CreateConnectServer creates the browser-facing Connect-RPC server. This is
+// the handler behind the published plaintext port, so it carries only
+// JWT-guarded user services.
+//
+// Cleartext HTTP/2, which Connect's gRPC protocol needs on a plaintext
+// listener, is enabled by bootstrap.NewConnectServer via http.Server.Protocols
+// — a server field, so it cannot be expressed here.
 func CreateConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	muxutil.RegisterHealth(mux)
 	SetupConnectHandlers(mux, container, cfg, logger)
 
-	return muxutil.WithH2C(mux)
+	return mux
 }
 
 // CreateOperatorConnectServer creates the Connect-RPC server for
 // cmd/backend's loopback operator listener: admin surfaces only.
+//
+// Cleartext HTTP/2 is enabled by bootstrap.NewServiceServer, which is what
+// mounts this handler.
 func CreateOperatorConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	muxutil.RegisterHealth(mux)
 	SetupOperatorConnectHandlers(mux, container, cfg, logger)
 
-	return muxutil.WithH2C(mux)
+	return mux
 }

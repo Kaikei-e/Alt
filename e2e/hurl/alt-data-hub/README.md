@@ -82,7 +82,10 @@ from `alt-backend/Dockerfile.backend` with `--build-arg BINARY=datahub`
 There is no JWT here. The client certificate *is* the caller's identity —
 that is the whole reason these surfaces had to leave a listener the public
 NIC can reach. `run.sh` mints a throwaway PKI per run under
-`e2e/fixtures/alt-data-hub/pki/`. It lives under `fixtures/` because compose
+`e2e/fixtures/alt-data-hub/pki/` (via the shared
+[`_lib/mint-staging-pki.sh`](../_lib/mint-staging-pki.sh), which the
+alt-backend / alt-harvester / rag-orchestrator suites also use — their
+binaries need a client leaf just to boot). It lives under `fixtures/` because compose
 has to bind-mount it; it is gitignored because that puts private keys one
 `git add e2e/` away from a commit. The exit trap wipes it, except under
 `KEEP_STACK=1` — the files are mounted into a container that is still
@@ -137,14 +140,18 @@ assert on.
 
 ## What the suite depends on (all present)
 
-1. An `alt-data-hub` service on the `alt-data-hub` profile in
-   `compose/compose.staging.yaml`, sharing `alt-backend-db` /
-   `alt-backend-db-migrator` / `alt-backend-deps-stub` with the
-   `alt-backend` profile, with:
+1. An `alt-data-hub` service on the `alt-data-hub`, `alt-backend` and
+   `alt-harvester` profiles in `compose/compose.staging.yaml` (it is the only
+   owner of `alt_db`, so the other two slices run the real binary rather than
+   a stub), sharing `alt-backend-db` / `alt-backend-db-migrator` /
+   `alt-backend-deps-stub` with them, with:
    - `build.args.BINARY: datahub`
    - the mTLS listener on `:9443`, client auth `require_and_verify`, and an
-     allowlist containing `pre-processor` but **not** `rogue-peer`
-   - `../e2e/fixtures/alt-data-hub/pki` mounted at both `/certs` and
+     allowlist containing `pre-processor` (plus `alt-backend` and
+     `alt-harvester`, which reach the same container in their own slices)
+     but **not** `rogue-peer`
+   - `${STAGING_PKI_DIR}` — set by each run.sh, default
+     `../e2e/fixtures/alt-data-hub/pki` — mounted at both `/certs` and
      `/trust` (read-only)
    - the ops listener on `:9110` (`OPS_LISTEN`)
    - **no** listener on `:9000` / `:9101` / `:9102`

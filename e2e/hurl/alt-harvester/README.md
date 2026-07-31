@@ -77,9 +77,16 @@ cannot masquerade as a refusal). The alt-data-hub suite uses the same pair.
 
 1. An `alt-harvester` service on the `alt-harvester` profile in
    `compose/compose.staging.yaml`, sharing `alt-backend-db` /
-   `alt-backend-db-migrator` / `alt-backend-deps-stub` with the
-   `alt-backend` profile, with:
+   `alt-backend-db-migrator` / `alt-backend-deps-stub` / `alt-data-hub`
+   with the `alt-backend` profile, with:
    - `build.args.BINARY: harvester`
+   - the data-hub client wired (`DATA_HUB_MTLS_URL` plus the
+     `MTLS_CERT_FILE` / `MTLS_KEY_FILE` / `MTLS_CA_FILE` trio, pointing at
+     the throwaway leaf `run.sh` mints via
+     [`_lib/mint-staging-pki.sh`](../_lib/mint-staging-pki.sh)).
+     `di.newDataHubClient` panics without it: after ADR-000954 Wave 3
+     `cmd/harvester` has no DB pool of its own, so an unwired client is a
+     job runner with no database that still reports healthy on `:9110`
    - the operator listener on `:9110` serving `/health` and `/metrics`
    - **no** listener on `:9000` / `:9101` / `:9102` / `:9443`
    - the scheduler explicitly enabled, and the upstream aliases the jobs

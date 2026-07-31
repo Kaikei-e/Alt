@@ -37,7 +37,17 @@ cd "$ROOT"
 
 : "${ALT_HARVESTER_IMAGE_TAG:=$IMAGE_TAG}"
 : "${ALT_BACKEND_DEPS_STUB_IMAGE_TAG:=$IMAGE_TAG}"
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME ALT_HARVESTER_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG
+# alt-data-hub runs in this slice too: cmd/harvester holds no DB pool after
+# ADR-000954 Wave 3, and di.newDataHubClient panics at boot without a reachable
+# configuration for it.
+: "${ALT_DATA_HUB_IMAGE_TAG:=$IMAGE_TAG}"
+
+# Throwaway mTLS material for the alt-harvester → alt-data-hub hop. See
+# e2e/hurl/_lib/mint-staging-pki.sh; the directory is gitignored.
+PKI_DIR="$ROOT/e2e/fixtures/alt-harvester/pki"
+STAGING_PKI_DIR="$PKI_DIR"
+
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME ALT_HARVESTER_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG ALT_DATA_HUB_IMAGE_TAG STAGING_PKI_DIR
 
 # shellcheck source=../_lib/render-slice.sh
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"
@@ -53,6 +63,9 @@ source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
 # shellcheck source=../_lib/assert-transport-refused.sh
 source "$ROOT/e2e/hurl/_lib/assert-transport-refused.sh"
 
+# shellcheck source=../_lib/mint-staging-pki.sh
+source "$ROOT/e2e/hurl/_lib/mint-staging-pki.sh"
+
 REPORT_DIR="$ROOT/e2e/reports/alt-harvester-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
@@ -67,18 +80,25 @@ cleanup() {
     echo "==> tearing down $STAGING_PROJECT_NAME stack" >&2
     docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
       down -v --remove-orphans >/dev/null 2>&1 || true
+    rm -rf "$PKI_DIR"
   else
     echo "==> KEEP_STACK=1 — leaving $STAGING_PROJECT_NAME stack up" >&2
+    echo "==> KEEP_STACK=1 — leaving $PKI_DIR in place (mounted by the containers)" >&2
   fi
   rm -rf "$SLICE_DIR"
 }
 trap cleanup EXIT
+
+# Client leaf named `alt-harvester`, which is what DATAHUB_ALLOWED_PEERS
+# admits, plus the server leaf alt-data-hub presents.
+mint_staging_pki "$PKI_DIR" alt-data-hub alt-harvester
 
 echo "==> bringing up alt-harvester slice ($STAGING_PROJECT_NAME)" >&2
 if ! compose_up_with_retry \
     alt-backend-db \
     alt-backend-db-migrator \
     alt-backend-deps-stub \
+    alt-data-hub \
     alt-harvester; then
   echo "==> compose up failed — dumping logs before trap cleanup" >&2
   docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" ps -a >&2 2>&1 || true

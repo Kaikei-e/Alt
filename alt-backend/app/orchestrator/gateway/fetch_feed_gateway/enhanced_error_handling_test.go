@@ -11,8 +11,6 @@ import (
 	"context"
 	"testing"
 	"time"
-	// Add alias for standard errors package to avoid naming conflict
-	stdErrors "errors"
 
 	"github.com/google/uuid"
 )
@@ -45,7 +43,7 @@ func TestSingleFeedGateway_EnhancedErrorHandling(t *testing.T) {
 
 				// Check that we can extract AppContextError
 				var appContextErr *errors.AppContextError
-				if !stdErrors.As(err, &appContextErr) {
+				if !stderrors.As(err, &appContextErr) {
 					t.Error("Expected error to be extractable as AppContextError")
 				} else {
 					if appContextErr.Layer != "gateway" {
@@ -115,7 +113,7 @@ func TestSingleFeedGateway_ErrorContextEnrichment(t *testing.T) {
 
 	// Extract AppContextError to check context enrichment
 	var appContextErr *errors.AppContextError
-	if !stdErrors.As(err, &appContextErr) {
+	if !stderrors.As(err, &appContextErr) {
 		t.Fatal("Expected error to be AppContextError")
 	}
 
@@ -178,7 +176,7 @@ func TestSingleFeedGateway_RateLimitErrorHandling(t *testing.T) {
 
 	// 2. AppContextError contains rate limiting context
 	var appContextErr *errors.AppContextError
-	if !stdErrors.As(err, &appContextErr) {
+	if !stderrors.As(err, &appContextErr) {
 		t.Fatal("Expected error to be extractable as AppContextError")
 	}
 	if appContextErr.Context["operation"] != "rate_limit_wait" {
@@ -225,7 +223,7 @@ func TestSingleFeedGateway_ExternalAPIErrorHandling(t *testing.T) {
 
 	// 2. AppContextError contains API context (URL, parser, etc.)
 	var appContextErr *errors.AppContextError
-	if !stdErrors.As(err, &appContextErr) {
+	if !stderrors.As(err, &appContextErr) {
 		t.Fatal("Expected error to be extractable as AppContextError")
 	}
 	if appContextErr.Context["url"] != "http://127.0.0.1:1/feed.xml" {
@@ -256,7 +254,7 @@ func TestErrorContextPreservation(t *testing.T) {
 		"driver",
 		"PostgresDriver",
 		"Connect",
-		stdErrors.New("connection timeout"),
+		stderrors.New("connection timeout"),
 		map[string]interface{}{
 			"host": "localhost",
 			"port": 5432,

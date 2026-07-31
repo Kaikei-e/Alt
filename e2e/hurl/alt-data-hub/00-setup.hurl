@@ -16,4 +16,9 @@ retry-interval: 1000
 HTTP 200
 [Asserts]
 jsonpath "$.status" == "healthy"
-jsonpath "$.service" == "alt-data-hub"
+# `connect-rpc`, not `alt-data-hub`. This is the health endpoint every
+# Connect-RPC listener in the module mounts (connect/v2/muxutil.RegisterHealth),
+# and it names the surface rather than the process — the same body comes back
+# from alt-backend:9101 and :9102. The per-binary name lives on the ops
+# listener instead, where 03-ops-listener.hurl pins it to `alt-data-hub`.
+jsonpath "$.service" == "connect-rpc"

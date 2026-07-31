@@ -57,11 +57,19 @@ cd "$ROOT"
 # unrelated dependency services stay on the last successful main build.
 : "${ALT_DATA_HUB_IMAGE_TAG:=$IMAGE_TAG}"
 : "${ALT_BACKEND_DEPS_STUB_IMAGE_TAG:=$IMAGE_TAG}"
+# Throwaway PKI for this run. It has to sit under e2e/fixtures/ so compose
+# can bind-mount it, which also puts private keys one `git add e2e/` away
+# from a commit — hence the entry in e2e/.gitignore. STAGING_PKI_DIR is what
+# compose.staging.yaml mounts at /certs and /trust; it is absolute so parallel
+# matrix jobs never share a directory.
+PKI_DIR="$ROOT/e2e/fixtures/alt-data-hub/pki"
+STAGING_PKI_DIR="$PKI_DIR"
+
 # ALLOWED_PEER is exported so `docker compose config` in render-slice.sh
-# resolves DATAHUB_ALLOWED_PEERS to the same name mint_leaf uses below. If the
-# two ever drifted, every positive scenario would fail in the TLS handshake
-# with no assertion to point at the cause.
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME ALT_DATA_HUB_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG ALLOWED_PEER
+# resolves DATAHUB_ALLOWED_PEERS to the same name mint_staging_leaf uses below.
+# If the two ever drifted, every positive scenario would fail in the TLS
+# handshake with no assertion to point at the cause.
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME ALT_DATA_HUB_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG ALLOWED_PEER STAGING_PKI_DIR
 
 # shellcheck source=../_lib/render-slice.sh
 source "$ROOT/e2e/hurl/_lib/render-slice.sh"
@@ -77,16 +85,15 @@ source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
 # shellcheck source=../_lib/assert-transport-refused.sh
 source "$ROOT/e2e/hurl/_lib/assert-transport-refused.sh"
 
+# shellcheck source=../_lib/mint-staging-pki.sh
+source "$ROOT/e2e/hurl/_lib/mint-staging-pki.sh"
+
 REPORT_DIR="$ROOT/e2e/reports/alt-data-hub-$RUN_ID"
 mkdir -p "$REPORT_DIR"
 
-# Throwaway PKI for this run. It has to sit under e2e/fixtures/ so compose
-# can bind-mount it into the container, which also puts private keys one
-# `git add e2e/` away from a commit — hence the entry in e2e/.gitignore.
-# The trap wipes it on the way out, except under KEEP_STACK=1: the
+# The trap wipes $PKI_DIR on the way out, except under KEEP_STACK=1: the
 # certificates are bind-mounted into a container that is still running, so
 # deleting them would break the very stack the flag exists to inspect.
-PKI_DIR="$ROOT/e2e/fixtures/alt-data-hub/pki"
 
 cleanup() {
   local exit_code=$?
@@ -110,53 +117,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-command -v openssl >/dev/null 2>&1 || {
-  echo "openssl not found — required to mint the throwaway mTLS fixtures" >&2
-  exit 1
-}
-
-# mint_leaf <name> <serverAuth|clientAuth>
-#
-# CN *and* DNS SAN are both set to <name>: tlsutil.WithAllowedPeers accepts
-# either, and pinning both keeps this fixture honest whichever one the
-# allowlist ends up reading. The server leaf's SAN doubles as the hostname
-# Hurl verifies, so <name> must equal the compose service name.
-mint_leaf() {
-  local name="$1" eku="$2"
-  openssl req -newkey rsa:2048 -nodes \
-    -subj "/CN=$name" \
-    -keyout "$PKI_DIR/$name-key.pem" \
-    -out "$PKI_DIR/$name.csr" >/dev/null 2>&1
-  openssl x509 -req -days 1 -sha256 \
-    -in "$PKI_DIR/$name.csr" \
-    -CA "$PKI_DIR/ca.pem" -CAkey "$PKI_DIR/ca-key.pem" -CAcreateserial \
-    -extfile <(printf 'subjectAltName=DNS:%s\nextendedKeyUsage=%s\nbasicConstraints=CA:FALSE\n' "$name" "$eku") \
-    -out "$PKI_DIR/$name.pem" >/dev/null 2>&1
-  rm -f "$PKI_DIR/$name.csr"
-}
-
-echo "==> minting throwaway mTLS fixtures under e2e/fixtures/alt-data-hub/pki" >&2
-rm -rf "$PKI_DIR"
-mkdir -p "$PKI_DIR"
-openssl req -x509 -newkey rsa:2048 -nodes -days 1 -sha256 \
-  -subj "/CN=alt-e2e-ca" \
-  -keyout "$PKI_DIR/ca-key.pem" -out "$PKI_DIR/ca.pem" >/dev/null 2>&1
-mint_leaf alt-data-hub serverAuth
-mint_leaf "$ALLOWED_PEER" clientAuth
-mint_leaf "$DENIED_PEER" clientAuth
-# Second names for the server leaf and the root, matching the filenames the
-# pki-agent sidecar publishes in production (compose/core.yaml points
-# alt-data-hub at /certs/svc-cert.pem, /certs/svc-key.pem and
-# /trust/ca-bundle.pem). Mounting this directory at both paths then works
-# with the production environment values unchanged, so the staging slice
-# does not need its own TLS wiring to drift from.
-cp "$PKI_DIR/alt-data-hub.pem"     "$PKI_DIR/svc-cert.pem"
-cp "$PKI_DIR/alt-data-hub-key.pem" "$PKI_DIR/svc-key.pem"
-cp "$PKI_DIR/ca.pem"               "$PKI_DIR/ca-bundle.pem"
-# The container runs as a non-root uid and mounts this directory read-only.
-# These are one-day throwaway keys for an ephemeral network, so world-read
-# is the right trade against a chown that would need root on the host.
-chmod 0644 "$PKI_DIR"/*.pem
+mint_staging_pki "$PKI_DIR" alt-data-hub "$ALLOWED_PEER" "$DENIED_PEER"
 
 echo "==> bringing up alt-data-hub slice ($STAGING_PROJECT_NAME)" >&2
 if ! compose_up_with_retry \

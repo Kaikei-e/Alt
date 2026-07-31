@@ -7,6 +7,12 @@ pre-processor, recap-worker, rag-orchestrator, knowledge-sovereign,
 mq-hub) are replaced by a single multi-alias FastAPI stub
 ([`e2e/stubs/alt-backend-deps-stub`](../../stubs/alt-backend-deps-stub/)).
 
+`alt-data-hub` is the one upstream that is **not** stubbed: after
+ADR-000954 Wave 3 it is the only owner of `alt_db`, and `cmd/backend` holds
+no DB pool at all, so the real binary runs in this slice and alt-backend
+reaches it over mutual TLS. `run.sh` mints the throwaway PKI for that hop
+via [`_lib/mint-staging-pki.sh`](../_lib/mint-staging-pki.sh).
+
 Follows the three-service common dispatch convention established in
 [ADR-000766](../../../docs/ADR/000766.md); conceptually this is
 Increment 5 after search-indexer / mq-hub / knowledge-sovereign /

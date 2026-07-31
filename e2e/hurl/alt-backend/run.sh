@@ -52,7 +52,21 @@ cd "$ROOT"
 # stream.
 : "${ALT_BACKEND_IMAGE_TAG:=$IMAGE_TAG}"
 : "${ALT_BACKEND_DEPS_STUB_IMAGE_TAG:=$IMAGE_TAG}"
-export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME ALT_BACKEND_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG
+# alt-data-hub runs in this slice too — it is the only owner of alt_db after
+# ADR-000954 Wave 3, so cmd/backend reaches every row through it. Co-versioned
+# with alt-backend because the two are built from the same Go module.
+: "${ALT_DATA_HUB_IMAGE_TAG:=$IMAGE_TAG}"
+
+# Throwaway mTLS material for the alt-backend → alt-data-hub hop. It has to
+# sit under e2e/fixtures/ so compose can bind-mount it, which also puts private
+# keys one `git add e2e/` away from a commit — hence the entry in
+# e2e/.gitignore. STAGING_PKI_DIR is what compose.staging.yaml mounts at /certs
+# and /trust; it is absolute and suite-scoped so parallel matrix jobs never
+# share a directory.
+PKI_DIR="$ROOT/e2e/fixtures/alt-backend/pki"
+STAGING_PKI_DIR="$PKI_DIR"
+
+export IMAGE_TAG GHCR_OWNER STAGING_PROJECT_NAME ALT_BACKEND_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG ALT_DATA_HUB_IMAGE_TAG STAGING_PKI_DIR
 
 # Render a per-project compose slice (sets $SLICE + $SLICE_DIR). This
 # lets parallel matrix jobs coexist on the same Docker daemon by
@@ -70,6 +84,9 @@ reclaim_network_pool
 
 # shellcheck source=../_lib/compose-up-with-retry.sh
 source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+
+# shellcheck source=../_lib/mint-staging-pki.sh
+source "$ROOT/e2e/hurl/_lib/mint-staging-pki.sh"
 
 REPORT_DIR="$ROOT/e2e/reports/alt-backend-$RUN_ID"
 mkdir -p "$REPORT_DIR"
@@ -104,8 +121,10 @@ cleanup() {
     echo "==> tearing down $STAGING_PROJECT_NAME stack" >&2
     docker compose -f "$SLICE" -p "$STAGING_PROJECT_NAME" \
       down -v --remove-orphans >/dev/null 2>&1 || true
+    rm -rf "$PKI_DIR"
   else
     echo "==> KEEP_STACK=1 — leaving $STAGING_PROJECT_NAME stack up" >&2
+    echo "==> KEEP_STACK=1 — leaving $PKI_DIR in place (mounted by the containers)" >&2
   fi
   # $SLICE_DIR is under mktemp -d; always clean up, even when
   # KEEP_STACK=1, so resolved compose config doesn't linger.
@@ -117,11 +136,18 @@ trap cleanup EXIT
 # newline — HTTP header values must not contain CR/LF.
 JWT="$(tr -d '\n' < e2e/fixtures/alt-backend/test-jwt.txt)"
 
+# One CA, one server leaf for alt-data-hub and one client leaf named
+# `alt-backend` — which is what DATAHUB_ALLOWED_PEERS admits. Minted before the
+# stack comes up because di.newDataHubClient reads the CA at construction and
+# panics if it cannot (CLAUDE.md rules 8/9).
+mint_staging_pki "$PKI_DIR" alt-data-hub alt-backend
+
 echo "==> bringing up alt-backend slice ($STAGING_PROJECT_NAME)" >&2
 if ! compose_up_with_retry \
     alt-backend-db \
     alt-backend-db-migrator \
     alt-backend-deps-stub \
+    alt-data-hub \
     alt-backend; then
   # A dependency failure during `up --wait` (e.g. stub exits 1 on import)
   # makes compose *immediately* tear the failing container down. By the

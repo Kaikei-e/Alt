@@ -7,7 +7,6 @@ import (
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -29,7 +28,7 @@ func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			Body:       io.NopCloser(strings.NewReader(body)),
 		}, nil
 	}
-	return nil, errors.New("unknown URL")
+	return nil, stderrors.New("unknown URL")
 }
 
 type spyTransport struct {

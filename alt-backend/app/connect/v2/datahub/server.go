@@ -155,10 +155,15 @@ func SetupConnectHandlers(mux *http.ServeMux, container *datahubdi.DataHubCompon
 
 // CreateServer builds the Connect-RPC handler for data-hub's mutual-TLS
 // listener: DataHubService and /health, and nothing else.
+//
+// No h2c wrapper: this handler is only ever mounted on the TLS listener built
+// by tlsutil.NewMTLSHTTPServer, which negotiates HTTP/2 through ALPN. Cleartext
+// HTTP/2 is a property of the plaintext listeners, and is set there via
+// http.Server.Protocols.
 func CreateServer(container *datahubdi.DataHubComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	muxutil.RegisterHealth(mux)
 	SetupConnectHandlers(mux, container, cfg, logger)
 
-	return muxutil.WithH2C(mux)
+	return mux
 }

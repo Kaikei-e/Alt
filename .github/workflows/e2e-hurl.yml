@@ -48,6 +48,21 @@ jobs:
             -f alt-backend/Dockerfile.backend \
             alt-backend
 
+      - name: Build alt-data-hub image locally (tag `ci`)
+        run: |
+          # The alt-backend slice runs the real data plane, not a stub:
+          # ADR-000954 Wave 3 made alt-data-hub the only owner of alt_db, so
+          # cmd/backend reaches every row through it over mutual TLS. Same
+          # module, same Dockerfile, same buildcache — only BINARY differs, and
+          # the dependency layers above `ARG BINARY` are already warm from the
+          # step above.
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-alt-backend:buildcache \
+            --build-arg BINARY=datahub \
+            -t ghcr.io/kaikei-e/alt-alt-data-hub:ci \
+            -f alt-backend/Dockerfile.backend \
+            alt-backend
+
       - name: Build alt-backend-deps-stub image locally (tag `ci`)
         run: |
           docker build \
@@ -84,6 +99,14 @@ jobs:
           name: alt-backend-hurl-reports
           path: e2e/reports/alt-backend-*
           if-no-files-found: ignore
+
+      - name: Wipe throwaway mTLS fixtures
+        # run.sh's own trap skips this under KEEP_STACK=1 (the certificates are
+        # still bind-mounted into a live container). The runner is ephemeral,
+        # but private keys under the workspace would otherwise be in scope for
+        # the artifact upload step of any later job.
+        if: always()
+        run: rm -rf e2e/fixtures/alt-backend/pki
 
       - name: Tear down alt-staging stack
         if: always()
@@ -464,9 +487,13 @@ jobs:
           # docker logs on the explicit container names instead.
           echo "===== docker ps -a ====="
           docker ps -a --filter "name=alt-staging-" || true
+          # render-slice.sh strips `container_name:`, so compose auto-names
+          # each container `<project>-<service>-1`. Naming them without the
+          # index (as this step used to) makes every lookup a "No such
+          # container" and the job's only evidence disappears.
           for svc in rag-orchestrator rag-db rag-db-migrator; do
-            echo "===== alt-staging-$svc logs (tail=500) ====="
-            docker logs --tail=500 "alt-staging-$svc" 2>&1 || true
+            echo "===== alt-staging-$svc-1 logs (tail=500) ====="
+            docker logs --tail=500 "alt-staging-$svc-1" 2>&1 || true
           done
 
       - name: Upload Hurl reports
@@ -476,6 +503,10 @@ jobs:
           name: rag-orchestrator-hurl-reports
           path: e2e/reports/rag-orchestrator-*
           if-no-files-found: ignore
+
+      - name: Wipe throwaway mTLS fixtures
+        if: always()
+        run: rm -rf e2e/fixtures/rag-orchestrator/pki
 
       - name: Tear down alt-staging stack
         if: always()
@@ -567,6 +598,17 @@ jobs:
             -f alt-backend/Dockerfile.backend \
             alt-backend
 
+      - name: Build alt-data-hub image locally (tag `ci`)
+        run: |
+          # cmd/harvester holds no DB pool either — every job reads and writes
+          # through DataHubService, so the slice runs the real data plane.
+          docker buildx build \
+            --cache-from type=registry,ref=ghcr.io/kaikei-e/alt-alt-backend:buildcache \
+            --build-arg BINARY=datahub \
+            -t ghcr.io/kaikei-e/alt-alt-data-hub:ci \
+            -f alt-backend/Dockerfile.backend \
+            alt-backend
+
       - name: Build alt-backend-deps-stub image locally (tag `ci`)
         run: |
           docker build \
@@ -593,7 +635,7 @@ jobs:
           # compose derived from the project name.
           echo "===== docker ps -a ====="
           docker ps -a --filter "name=alt-staging-alt-harvester" || true
-          for svc in alt-harvester alt-backend-db alt-backend-db-migrator alt-backend-deps-stub; do
+          for svc in alt-harvester alt-data-hub alt-backend-db alt-backend-db-migrator alt-backend-deps-stub; do
             echo "===== alt-staging-alt-harvester-$svc logs (tail=500) ====="
             docker logs --tail=500 "alt-staging-alt-harvester-$svc-1" 2>&1 || true
           done
@@ -605,6 +647,12 @@ jobs:
           name: alt-harvester-hurl-reports
           path: e2e/reports/alt-harvester-*
           if-no-files-found: ignore
+
+      - name: Wipe throwaway mTLS fixtures
+        # run.sh's own trap skips this under KEEP_STACK=1 (the certificates are
+        # still bind-mounted into a live container). See the alt-data-hub job.
+        if: always()
+        run: rm -rf e2e/fixtures/alt-harvester/pki
 
       - name: Tear down alt-staging stack
         if: always()
