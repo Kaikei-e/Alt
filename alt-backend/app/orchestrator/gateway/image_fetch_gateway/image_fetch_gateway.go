@@ -272,10 +272,13 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 			)
 		}
 		// Proxy host is allowlisted; still drop userinfo/fragment via reconstruction.
+		// Path/RawPath keep the original encoding — assigning EscapedPath() to
+		// Path would double-escape percent-encoded segments (%2C -> %252C).
 		safeReqURL = (&url.URL{
 			Scheme:   strings.ToLower(parsedReqURL.Scheme),
 			Host:     parsedReqURL.Host,
-			Path:     parsedReqURL.EscapedPath(),
+			Path:     parsedReqURL.Path,
+			RawPath:  parsedReqURL.RawPath,
 			RawQuery: parsedReqURL.RawQuery,
 		}).String()
 	} else {

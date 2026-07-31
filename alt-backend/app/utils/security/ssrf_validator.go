@@ -85,10 +85,14 @@ func (v *SSRFValidator) CanonicalRequestURL(ctx context.Context, u *url.URL) (st
 	if err := v.ValidateURL(ctx, u); err != nil {
 		return "", err
 	}
+	// Path carries the decoded form and RawPath its original encoding;
+	// setting Path to EscapedPath() would make String() escape it a second
+	// time (%2C -> %252C), corrupting signed CDN URLs.
 	safe := &url.URL{
 		Scheme:   strings.ToLower(u.Scheme),
 		Host:     u.Host,
-		Path:     u.EscapedPath(),
+		Path:     u.Path,
+		RawPath:  u.RawPath,
 		RawQuery: u.RawQuery,
 	}
 	if safe.Path == "" {
