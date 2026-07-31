@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,13 +28,31 @@ func DefaultRetentionPolicy() RetentionPolicy {
 	}
 }
 
+// Reasons a partition has no finite upper bound, reported in
+// PartitionInfo.UnboundedUpper.
+const (
+	// UnboundedUpperDefault is the DEFAULT catch-all partition: it has no
+	// bounds at all and holds every row no other partition accepts.
+	UnboundedUpperDefault = "default"
+	// UnboundedUpperMaxValue is a range partition declared TO (MAXVALUE).
+	UnboundedUpperMaxValue = "maxvalue"
+	// UnboundedUpperUnreadable is a bound expression this parser cannot read,
+	// e.g. a LIST or HASH partition. Treated the same way: without a known
+	// upper bound there is nothing to compare against a cutoff.
+	UnboundedUpperUnreadable = "unreadable"
+)
+
 // PartitionInfo describes a table partition.
 type PartitionInfo struct {
 	Name       string    `json:"partition_name"`
 	RangeStart time.Time `json:"range_start"`
 	RangeEnd   time.Time `json:"range_end"`
-	RowCount   int64     `json:"row_count"`
-	SizeBytes  int64     `json:"size_bytes"`
+	// UnboundedUpper is empty for an ordinary bounded range partition and
+	// otherwise names why the partition has no finite upper bound (one of the
+	// UnboundedUpper* constants). Such a partition is never archive-eligible.
+	UnboundedUpper string `json:"unbounded_upper,omitempty"`
+	RowCount       int64  `json:"row_count"`
+	SizeBytes      int64  `json:"size_bytes"`
 }
 
 // RetentionLogEntry records a retention operation.
@@ -65,10 +84,21 @@ func (p RetentionPolicy) PartitionsEligibleForArchive(tableName string, partitio
 	cutoff := now.Add(-hotWindow)
 	var eligible []PartitionInfo
 	for _, part := range partitions {
+		// A partition with no upper bound - the DEFAULT catch-all, or a range
+		// declared TO (MAXVALUE) - accepts rows of any timestamp, including
+		// ones written a second ago, so no cutoff can prove it is cold.
+		if part.UnboundedUpper != "" {
+			continue
+		}
 		// A partition is eligible if its entire range is before the cutoff.
 		// For monthly partitions, RangeEnd is the first day of the next month.
 		rangeEnd := part.RangeEnd
 		if rangeEnd.IsZero() {
+			if part.RangeStart.IsZero() {
+				// Neither bound is known, so there is nothing to compare
+				// against the cutoff. Never eligible.
+				continue
+			}
 			// Infer from name: partition covers 1 month starting at RangeStart
 			rangeEnd = part.RangeStart.AddDate(0, 1, 0)
 		}
@@ -104,7 +134,7 @@ func (r *Repository) ListPartitions(ctx context.Context, tableName string) ([]Pa
 		if err := rows.Scan(&p.Name, &boundExpr, &p.SizeBytes); err != nil {
 			return nil, fmt.Errorf("ListPartitions scan: %w", err)
 		}
-		p.RangeStart, p.RangeEnd = parseBoundExpr(boundExpr)
+		p.RangeStart, p.RangeEnd, p.UnboundedUpper = parseBoundExpr(boundExpr)
 		partitions = append(partitions, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -164,25 +194,42 @@ func (r *Repository) ListRetentionLogs(ctx context.Context, limit int) ([]Retent
 // boundExprPattern matches a PostgreSQL partition bound expression, e.g.
 // "FOR VALUES FROM ('2026-03-01 00:00:00+00') TO ('2026-04-01 00:00:00+00')".
 // The FROM/TO operands may also be the bare keywords MINVALUE/MAXVALUE for
-// unbounded partitions, which is why each side is matched as either a quoted
-// string or a bare word rather than assuming a fixed-width quoted date.
-var boundExprPattern = regexp.MustCompile(`FROM \((?:'([^']*)'|(\w+))\) TO \((?:'([^']*)'|(\w+))\)`)
+// unbounded partitions, which is why each side is captured with the quotes
+// optional rather than assuming a fixed-width quoted date.
+var boundExprPattern = regexp.MustCompile(`FROM \('?([^')]*)'?\) TO \('?([^')]*)'?\)`)
 
 // parseBoundExpr extracts start/end timestamps from a PostgreSQL partition bound expression.
-// Format: "FOR VALUES FROM ('2026-03-01 00:00:00+00') TO ('2026-04-01 00:00:00+00')"
-func parseBoundExpr(expr string) (time.Time, time.Time) {
+// Format: "FOR VALUES FROM ('2026-03-01 00:00:00+00') TO ('2026-04-01 00:00:00+00')".
+// The third return value is empty when the partition has a finite upper bound,
+// and otherwise names why it has none - see PartitionInfo.UnboundedUpper.
+func parseBoundExpr(expr string) (time.Time, time.Time, string) {
 	const layout = "2006-01-02"
 	var start, end time.Time
 
+	// pg_get_expr reports the DEFAULT partition as the bare word "DEFAULT":
+	// it declares no bounds at all, so there is nothing to parse.
+	if strings.EqualFold(strings.TrimSpace(expr), "DEFAULT") {
+		return start, end, UnboundedUpperDefault
+	}
+
 	m := boundExprPattern.FindStringSubmatch(expr)
 	if m == nil {
-		return start, end
+		return start, end, UnboundedUpperUnreadable
 	}
+	// An unbounded lower bound (MINVALUE) is harmless - it is too short to
+	// parse as a date and leaves start zero. Only the upper bound decides
+	// whether a cutoff can cover the whole partition.
 	if startStr := m[1]; len(startStr) >= len(layout) {
 		start, _ = time.Parse(layout, startStr[:len(layout)])
 	}
-	if endStr := m[3]; len(endStr) >= len(layout) {
+	if strings.EqualFold(m[2], "MAXVALUE") {
+		return start, end, UnboundedUpperMaxValue
+	}
+	if endStr := m[2]; len(endStr) >= len(layout) {
 		end, _ = time.Parse(layout, endStr[:len(layout)])
 	}
-	return start, end
+	if end.IsZero() {
+		return start, end, UnboundedUpperUnreadable
+	}
+	return start, end, ""
 }
