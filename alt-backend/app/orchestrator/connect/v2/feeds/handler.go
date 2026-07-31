@@ -2,6 +2,7 @@
 package feeds
 
 import (
+	"context"
 	"log/slog"
 
 	"alt/config"
@@ -37,12 +38,31 @@ type FeedHandlerDeps struct {
 	SummarizedCount   *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
 	TotalCount        *fetch_feed_stats_usecase.TotalArticlesCountUsecase
 	TodayUnreadCount  *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
-	// Feed summary
+	// Feed summary.
+	//
+	// ArticleStore is the article half (catalog §2.B / §2.C), served by
+	// alt-data-hub since ADR-000954 Wave 3 batch 2. AltDBRepository is what is
+	// left: the article_summaries reads and writes, which migrate with their
+	// own capability group.
+	ArticleStore         ArticleStore
 	AltDBRepository      *alt_db.AltDBRepository
 	PreProcessorClient   *preprocessor_connect.ConnectPreProcessorClient
 	CreateSummaryVersion *create_summary_version_usecase.CreateSummaryVersionUsecase
 	// Shared
 	ImageProxy *image_proxy_usecase.ImageProxyUsecase
+}
+
+// ArticleStore is the slice of the article capabilities StreamSummarize needs
+// to resolve or create the article it is about to summarise.
+//
+// Naming it here rather than reaching through AltDBRepository is the point:
+// these three cross a process boundary now, and a handler that still held the
+// driver would be one edit away from calling a query alt-backend no longer has
+// a database for.
+type ArticleStore interface {
+	FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
+	FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error)
+	SaveArticle(ctx context.Context, url, title, content string) (string, error)
 }
 
 // Handler implements the FeedService Connect-RPC service.

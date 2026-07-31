@@ -1,7 +1,7 @@
 package morning_gateway
 
 import (
-	"alt/shared/driver/alt_db"
+	"alt/domain"
 	"alt/utils/logger"
 	"bytes"
 	"context"
@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,10 +26,6 @@ func TestGetArticleGroups(t *testing.T) {
 	// Initialize logger for testing to prevent nil pointer dereference
 	logger.InitLogger()
 	// Mock DB
-	mockPool, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	defer mockPool.Close()
-
 	// Mock API response payload
 	groupID := uuid.New()
 	articleID := uuid.New()
@@ -59,27 +54,23 @@ func TestGetArticleGroups(t *testing.T) {
 		return resp, nil
 	})
 
-	// Gateway
+	// Gateway. The article read crosses to alt-data-hub since ADR-000954
+	// Wave 3 batch 2, so the stub stands where a pgx mock used to.
 	gateway := &MorningGateway{
-		altDBRepository: alt_db.NewAltDBRepository(mockPool),
+		articles: stubArticleBatchReader{articles: []*domain.Article{{
+			ID:        articleID,
+			FeedID:    uuid.New(),
+			Title:     "Test Title",
+			Content:   "Content",
+			URL:       "http://example.com",
+			CreatedAt: time.Now(),
+			Tags:      []string{"tag1"},
+		}}},
 		httpClient: &http.Client{
 			Transport: mockTransport,
 		},
 		recapWorkerURL: "http://recap-worker.test",
 	}
-
-	// Expect DB Query
-	// Note: articles table structure - actual columns: id, feed_id, title, content, url, created_at
-	// Tags are joined from article_tags and feed_tags
-	rows := pgxmock.NewRows([]string{
-		"id", "feed_id", "title", "content", "url", "created_at", "tags",
-	}).AddRow(
-		articleID, uuid.New(), "Test Title", "Content", "http://example.com", time.Now(), []string{"tag1"},
-	)
-
-	mockPool.ExpectQuery("SELECT.*FROM articles a.*WHERE a.id = ANY").
-		WithArgs([]string{articleID.String()}).
-		WillReturnRows(rows)
 
 	// Execute
 	groups, err := gateway.GetMorningArticleGroups(context.Background(), time.Now().Add(-24*time.Hour))
@@ -88,6 +79,4 @@ func TestGetArticleGroups(t *testing.T) {
 	assert.Equal(t, groupID, groups[0].GroupID)
 	assert.Equal(t, articleID, groups[0].ArticleID)
 	assert.Equal(t, "Test Title", groups[0].Article.Title)
-
-	require.NoError(t, mockPool.ExpectationsWereMet())
 }

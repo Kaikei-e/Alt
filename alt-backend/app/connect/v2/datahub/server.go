@@ -90,6 +90,14 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.DataHubComponents, c
 			container.ScrapingPolicyGateway,
 			container.AutoFulltextGateway,
 		),
+		// ADR-000954 Wave 3 batch 2, same rule: after this batch alt-backend
+		// has no database pool for articles, so a nil here would make every
+		// article surface answer Unimplemented.
+		datahubapi.WithWave3Batch2Capabilities(
+			container.ArticleWriteGateway,
+			container.ArticleReadGateway,
+			container.KnowledgeBackfillGateway,
+		),
 	)
 	datahubPath, datahubServiceHandler := datahubv1connect.NewDataHubServiceHandler(datahubHandler, datahubOpts)
 	mux.Handle(datahubPath, datahubServiceHandler)

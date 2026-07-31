@@ -81,6 +81,17 @@ type DataHubComponents struct {
 	ImageProxyCacheGateway datahub_capability_port.ImageProxyCachePort
 	ScrapingPolicyGateway  datahub_capability_port.ScrapingPolicyPort
 	AutoFulltextGateway    datahub_capability_port.AutoFulltextPort
+
+	// ADR-000954 Wave 3 batch 2 (catalog §2.B / §2.C / §2.N).
+	//
+	// The article write gets no usecase even though it is the heaviest
+	// transaction in the batch: the articles upsert and the outbox insert are
+	// already one statement pair inside one driver method, so a usecase would
+	// only forward. What made the outbox need one was a state machine spread
+	// across several driver calls; this has none.
+	ArticleWriteGateway      datahub_capability_port.ArticleWritePort
+	ArticleReadGateway       datahub_capability_port.ArticleReadPort
+	KnowledgeBackfillGateway datahub_capability_port.KnowledgeBackfillPort
 }
 
 // NewDataHubComponents is cmd/datahub's composition root.
@@ -157,8 +168,19 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	autoFulltextGw := datahub_capability_gateway.NewAutoFulltextGateway(altDB)
 	slog.Info("datahub.wave3_capabilities_enabled",
 		"groups", "outbox,og_image,image_proxy_cache,scraping_policy,auto_fulltext",
-		"procedures", 22,
+		"procedures", 23,
 		"adr", "ADR-000954 Wave 3 batch 1")
+
+	// ADR-000954 Wave 3 batch 2 capabilities. Same reasoning: after this batch
+	// alt-backend has no database pool for articles, so there is no deployment
+	// in which leaving one of these unwired is valid.
+	articleWriteGw := datahub_capability_gateway.NewArticleWriteGateway(altDB)
+	articleReadGw := datahub_capability_gateway.NewArticleReadGateway(altDB)
+	knowledgeBackfillGw := datahub_capability_gateway.NewKnowledgeBackfillGateway(altDB)
+	slog.Info("datahub.wave3_capabilities_enabled",
+		"groups", "article_write,article_read,knowledge_backfill",
+		"procedures", 13,
+		"adr", "ADR-000954 Wave 3 batch 2")
 
 	return &DataHubComponents{
 		Config:                      cfg,
@@ -180,5 +202,9 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		ImageProxyCacheGateway: imageProxyCacheGw,
 		ScrapingPolicyGateway:  scrapingPolicyGw,
 		AutoFulltextGateway:    autoFulltextGw,
+
+		ArticleWriteGateway:      articleWriteGw,
+		ArticleReadGateway:       articleReadGw,
+		KnowledgeBackfillGateway: knowledgeBackfillGw,
 	}
 }

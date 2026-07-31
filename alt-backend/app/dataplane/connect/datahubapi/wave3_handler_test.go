@@ -61,6 +61,17 @@ type fakeOgImagePort struct {
 	unwarmed   []string
 	purgeTTL   time.Duration
 	purged     int64
+
+	// SaveArticleHead is catalog §2.B W3-B2, added in Wave 3 batch 2. It
+	// writes the table the reads above read, so it lives on the same port.
+	savedHeadArticleID string
+	savedHeadHTML      string
+	savedHeadOgImage   string
+}
+
+func (f *fakeOgImagePort) SaveArticleHead(_ context.Context, articleID, headHTML, ogImageURL string) error {
+	f.savedHeadArticleID, f.savedHeadHTML, f.savedHeadOgImage = articleID, headHTML, ogImageURL
+	return nil
 }
 
 func (f *fakeOgImagePort) GetArticleHead(_ context.Context, _ string) (*domain.ArticleHead, error) {

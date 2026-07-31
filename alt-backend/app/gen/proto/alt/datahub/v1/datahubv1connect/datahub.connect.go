@@ -204,6 +204,48 @@ const (
 	// DataHubServiceCheckArticleExistsByURLForUserProcedure is the fully-qualified name of the
 	// DataHubService's CheckArticleExistsByURLForUser RPC.
 	DataHubServiceCheckArticleExistsByURLForUserProcedure = "/alt.datahub.v1.DataHubService/CheckArticleExistsByURLForUser"
+	// DataHubServiceArchiveArticleProcedure is the fully-qualified name of the DataHubService's
+	// ArchiveArticle RPC.
+	DataHubServiceArchiveArticleProcedure = "/alt.datahub.v1.DataHubService/ArchiveArticle"
+	// DataHubServiceSaveArticleHeadProcedure is the fully-qualified name of the DataHubService's
+	// SaveArticleHead RPC.
+	DataHubServiceSaveArticleHeadProcedure = "/alt.datahub.v1.DataHubService/SaveArticleHead"
+	// DataHubServiceGetArticleByURLProcedure is the fully-qualified name of the DataHubService's
+	// GetArticleByURL RPC.
+	DataHubServiceGetArticleByURLProcedure = "/alt.datahub.v1.DataHubService/GetArticleByURL"
+	// DataHubServiceBatchGetArticlesByURLsProcedure is the fully-qualified name of the DataHubService's
+	// BatchGetArticlesByURLs RPC.
+	DataHubServiceBatchGetArticlesByURLsProcedure = "/alt.datahub.v1.DataHubService/BatchGetArticlesByURLs"
+	// DataHubServiceGetArticleContentByIDProcedure is the fully-qualified name of the DataHubService's
+	// GetArticleContentByID RPC.
+	DataHubServiceGetArticleContentByIDProcedure = "/alt.datahub.v1.DataHubService/GetArticleContentByID"
+	// DataHubServiceListArticlesCursorProcedure is the fully-qualified name of the DataHubService's
+	// ListArticlesCursor RPC.
+	DataHubServiceListArticlesCursorProcedure = "/alt.datahub.v1.DataHubService/ListArticlesCursor"
+	// DataHubServiceListArticleIDsCursorProcedure is the fully-qualified name of the DataHubService's
+	// ListArticleIDsCursor RPC.
+	DataHubServiceListArticleIDsCursorProcedure = "/alt.datahub.v1.DataHubService/ListArticleIDsCursor"
+	// DataHubServiceBatchGetArticlesByIDsProcedure is the fully-qualified name of the DataHubService's
+	// BatchGetArticlesByIDs RPC.
+	DataHubServiceBatchGetArticlesByIDsProcedure = "/alt.datahub.v1.DataHubService/BatchGetArticlesByIDs"
+	// DataHubServiceGetLatestArticleByFeedIDProcedure is the fully-qualified name of the
+	// DataHubService's GetLatestArticleByFeedID RPC.
+	DataHubServiceGetLatestArticleByFeedIDProcedure = "/alt.datahub.v1.DataHubService/GetLatestArticleByFeedID"
+	// DataHubServiceLookupArticleURLProcedure is the fully-qualified name of the DataHubService's
+	// LookupArticleURL RPC.
+	DataHubServiceLookupArticleURLProcedure = "/alt.datahub.v1.DataHubService/LookupArticleURL"
+	// DataHubServiceCountBackfillArticlesProcedure is the fully-qualified name of the DataHubService's
+	// CountBackfillArticles RPC.
+	DataHubServiceCountBackfillArticlesProcedure = "/alt.datahub.v1.DataHubService/CountBackfillArticles"
+	// DataHubServiceListBackfillArticlesProcedure is the fully-qualified name of the DataHubService's
+	// ListBackfillArticles RPC.
+	DataHubServiceListBackfillArticlesProcedure = "/alt.datahub.v1.DataHubService/ListBackfillArticles"
+	// DataHubServiceCountBackfillSummaryTitlesProcedure is the fully-qualified name of the
+	// DataHubService's CountBackfillSummaryTitles RPC.
+	DataHubServiceCountBackfillSummaryTitlesProcedure = "/alt.datahub.v1.DataHubService/CountBackfillSummaryTitles"
+	// DataHubServiceListBackfillSummaryTitlesProcedure is the fully-qualified name of the
+	// DataHubService's ListBackfillSummaryTitles RPC.
+	DataHubServiceListBackfillSummaryTitlesProcedure = "/alt.datahub.v1.DataHubService/ListBackfillSummaryTitles"
 )
 
 // DataHubServiceClient is a client for the alt.datahub.v1.DataHubService service.
@@ -356,6 +398,70 @@ type DataHubServiceClient interface {
 	ListSubscribedUserIDsByFeedLinkID(context.Context, *connect.Request[v1.ListSubscribedUserIDsByFeedLinkIDRequest]) (*connect.Response[v1.ListSubscribedUserIDsByFeedLinkIDResponse], error)
 	// CheckArticleExistsByURLForUser is the tenant-scoped existence check.
 	CheckArticleExistsByURLForUser(context.Context, *connect.Request[v1.CheckArticleExistsByURLForUserRequest]) (*connect.Response[v1.CheckArticleExistsByURLForUserResponse], error)
+	// ArchiveArticle upserts the article and appends its ARTICLE_UPSERT outbox
+	// row in one transaction.
+	//
+	// The outbox insert is inside this procedure rather than beside it, and
+	// that is the capability. Splitting them would put a network round trip
+	// between the write and its announcement: a crash in the gap leaves an
+	// article rag-orchestrator never indexes, or an event for an article that
+	// was never written. Neither is recoverable by retrying, because nothing
+	// records that the pair was meant to be atomic (ADR-000954 D3, catalog
+	// §4-2).
+	//
+	// The event payload's `updated_at` is stamped when the row is enqueued, not
+	// when it is drained, so replaying the outbox reproduces the same bytes —
+	// the reproject-safe rule in docs/wiki/architecture/immutable-data-model.md.
+	ArchiveArticle(context.Context, *connect.Request[v1.ArchiveArticleRequest]) (*connect.Response[v1.ArchiveArticleResponse], error)
+	// SaveArticleHead upserts the scraped <head> and its og:image URL.
+	//
+	// Catalog §2.B lists this with the article write, but it lands in
+	// article_heads alongside the §2.D reads, and the scrape that produces the
+	// markup stays with the caller either way (ADR-000954 D4).
+	SaveArticleHead(context.Context, *connect.Request[v1.SaveArticleHeadRequest]) (*connect.Response[v1.SaveArticleHeadResponse], error)
+	// GetArticleByURL returns the archived article for a URL, if there is one.
+	GetArticleByURL(context.Context, *connect.Request[v1.GetArticleByURLRequest]) (*connect.Response[v1.GetArticleByURLResponse], error)
+	// BatchGetArticlesByURLs is the same read for many URLs in one query — the
+	// shape that replaced an N+1 loop on the summaries path.
+	BatchGetArticlesByURLs(context.Context, *connect.Request[v1.BatchGetArticlesByURLsRequest]) (*connect.Response[v1.BatchGetArticlesByURLsResponse], error)
+	// GetArticleContentByID returns the narrow projection of one article.
+	//
+	// Not merged into GetArticleByID, which reads the same row (catalog §4-3
+	// raised the question). They differ in three ways that a merge would have
+	// to erase: GetArticleByID answers NotFound for a missing article while
+	// this one answers an unset field, GetArticleByID returns tags and
+	// timestamps but not the URL this one exists to provide, and the two have
+	// different consumers — search-indexer's pact pins the first, alt-backend's
+	// pins this. Widening one message and relaxing its missing-row behaviour to
+	// save a procedure would change a contract a peer already verifies against,
+	// to remove a duplication that costs nothing to keep.
+	GetArticleContentByID(context.Context, *connect.Request[v1.GetArticleContentByIDRequest]) (*connect.Response[v1.GetArticleContentByIDResponse], error)
+	// ListArticlesCursor pages through one user's articles, newest first.
+	ListArticlesCursor(context.Context, *connect.Request[v1.ListArticlesCursorRequest]) (*connect.Response[v1.ListArticlesCursorResponse], error)
+	// ListArticleIDsCursor is the same walk returning ids only.
+	//
+	// A separate procedure rather than a flag on the one above, because it is a
+	// different query and not a narrower rendering of the same one: it skips the
+	// tag join and the body columns entirely. The caller pages ids here and
+	// hydrates them from its own cache, so folding the two together would make
+	// the cheap query pay for the expensive one's work whenever a caller forgot
+	// the flag.
+	ListArticleIDsCursor(context.Context, *connect.Request[v1.ListArticleIDsCursorRequest]) (*connect.Response[v1.ListArticleIDsCursorResponse], error)
+	// BatchGetArticlesByIDs hydrates ids into full articles with their tags.
+	BatchGetArticlesByIDs(context.Context, *connect.Request[v1.BatchGetArticlesByIDsRequest]) (*connect.Response[v1.BatchGetArticlesByIDsResponse], error)
+	// GetLatestArticleByFeedID returns the newest article of one feed.
+	GetLatestArticleByFeedID(context.Context, *connect.Request[v1.GetLatestArticleByFeedIDRequest]) (*connect.Response[v1.GetLatestArticleByFeedIDResponse], error)
+	// LookupArticleURL resolves an article's source URL within one tenant.
+	LookupArticleURL(context.Context, *connect.Request[v1.LookupArticleURLRequest]) (*connect.Response[v1.LookupArticleURLResponse], error)
+	// CountBackfillArticles sizes the article replay.
+	CountBackfillArticles(context.Context, *connect.Request[v1.CountBackfillArticlesRequest]) (*connect.Response[v1.CountBackfillArticlesResponse], error)
+	// ListBackfillArticles walks historic articles oldest first.
+	ListBackfillArticles(context.Context, *connect.Request[v1.ListBackfillArticlesRequest]) (*connect.Response[v1.ListBackfillArticlesResponse], error)
+	// CountBackfillSummaryTitles sizes the summary-narrative replay.
+	CountBackfillSummaryTitles(context.Context, *connect.Request[v1.CountBackfillSummaryTitlesRequest]) (*connect.Response[v1.CountBackfillSummaryTitlesResponse], error)
+	// ListBackfillSummaryTitles walks (summary_version, article) pairs oldest
+	// first.
+	ListBackfillSummaryTitles(context.Context, *connect.Request[v1.ListBackfillSummaryTitlesRequest]) (*connect.Response[v1.ListBackfillSummaryTitlesResponse], error)
 }
 
 // NewDataHubServiceClient constructs a client for the alt.datahub.v1.DataHubService service. By
@@ -657,6 +763,90 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("CheckArticleExistsByURLForUser")),
 			connect.WithClientOptions(opts...),
 		),
+		archiveArticle: connect.NewClient[v1.ArchiveArticleRequest, v1.ArchiveArticleResponse](
+			httpClient,
+			baseURL+DataHubServiceArchiveArticleProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ArchiveArticle")),
+			connect.WithClientOptions(opts...),
+		),
+		saveArticleHead: connect.NewClient[v1.SaveArticleHeadRequest, v1.SaveArticleHeadResponse](
+			httpClient,
+			baseURL+DataHubServiceSaveArticleHeadProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("SaveArticleHead")),
+			connect.WithClientOptions(opts...),
+		),
+		getArticleByURL: connect.NewClient[v1.GetArticleByURLRequest, v1.GetArticleByURLResponse](
+			httpClient,
+			baseURL+DataHubServiceGetArticleByURLProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetArticleByURL")),
+			connect.WithClientOptions(opts...),
+		),
+		batchGetArticlesByURLs: connect.NewClient[v1.BatchGetArticlesByURLsRequest, v1.BatchGetArticlesByURLsResponse](
+			httpClient,
+			baseURL+DataHubServiceBatchGetArticlesByURLsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("BatchGetArticlesByURLs")),
+			connect.WithClientOptions(opts...),
+		),
+		getArticleContentByID: connect.NewClient[v1.GetArticleContentByIDRequest, v1.GetArticleContentByIDResponse](
+			httpClient,
+			baseURL+DataHubServiceGetArticleContentByIDProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetArticleContentByID")),
+			connect.WithClientOptions(opts...),
+		),
+		listArticlesCursor: connect.NewClient[v1.ListArticlesCursorRequest, v1.ListArticlesCursorResponse](
+			httpClient,
+			baseURL+DataHubServiceListArticlesCursorProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListArticlesCursor")),
+			connect.WithClientOptions(opts...),
+		),
+		listArticleIDsCursor: connect.NewClient[v1.ListArticleIDsCursorRequest, v1.ListArticleIDsCursorResponse](
+			httpClient,
+			baseURL+DataHubServiceListArticleIDsCursorProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListArticleIDsCursor")),
+			connect.WithClientOptions(opts...),
+		),
+		batchGetArticlesByIDs: connect.NewClient[v1.BatchGetArticlesByIDsRequest, v1.BatchGetArticlesByIDsResponse](
+			httpClient,
+			baseURL+DataHubServiceBatchGetArticlesByIDsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("BatchGetArticlesByIDs")),
+			connect.WithClientOptions(opts...),
+		),
+		getLatestArticleByFeedID: connect.NewClient[v1.GetLatestArticleByFeedIDRequest, v1.GetLatestArticleByFeedIDResponse](
+			httpClient,
+			baseURL+DataHubServiceGetLatestArticleByFeedIDProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetLatestArticleByFeedID")),
+			connect.WithClientOptions(opts...),
+		),
+		lookupArticleURL: connect.NewClient[v1.LookupArticleURLRequest, v1.LookupArticleURLResponse](
+			httpClient,
+			baseURL+DataHubServiceLookupArticleURLProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("LookupArticleURL")),
+			connect.WithClientOptions(opts...),
+		),
+		countBackfillArticles: connect.NewClient[v1.CountBackfillArticlesRequest, v1.CountBackfillArticlesResponse](
+			httpClient,
+			baseURL+DataHubServiceCountBackfillArticlesProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("CountBackfillArticles")),
+			connect.WithClientOptions(opts...),
+		),
+		listBackfillArticles: connect.NewClient[v1.ListBackfillArticlesRequest, v1.ListBackfillArticlesResponse](
+			httpClient,
+			baseURL+DataHubServiceListBackfillArticlesProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListBackfillArticles")),
+			connect.WithClientOptions(opts...),
+		),
+		countBackfillSummaryTitles: connect.NewClient[v1.CountBackfillSummaryTitlesRequest, v1.CountBackfillSummaryTitlesResponse](
+			httpClient,
+			baseURL+DataHubServiceCountBackfillSummaryTitlesProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("CountBackfillSummaryTitles")),
+			connect.WithClientOptions(opts...),
+		),
+		listBackfillSummaryTitles: connect.NewClient[v1.ListBackfillSummaryTitlesRequest, v1.ListBackfillSummaryTitlesResponse](
+			httpClient,
+			baseURL+DataHubServiceListBackfillSummaryTitlesProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListBackfillSummaryTitles")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -710,6 +900,20 @@ type dataHubServiceClient struct {
 	isDomainDeclined                  *connect.Client[v1.IsDomainDeclinedRequest, v1.IsDomainDeclinedResponse]
 	listSubscribedUserIDsByFeedLinkID *connect.Client[v1.ListSubscribedUserIDsByFeedLinkIDRequest, v1.ListSubscribedUserIDsByFeedLinkIDResponse]
 	checkArticleExistsByURLForUser    *connect.Client[v1.CheckArticleExistsByURLForUserRequest, v1.CheckArticleExistsByURLForUserResponse]
+	archiveArticle                    *connect.Client[v1.ArchiveArticleRequest, v1.ArchiveArticleResponse]
+	saveArticleHead                   *connect.Client[v1.SaveArticleHeadRequest, v1.SaveArticleHeadResponse]
+	getArticleByURL                   *connect.Client[v1.GetArticleByURLRequest, v1.GetArticleByURLResponse]
+	batchGetArticlesByURLs            *connect.Client[v1.BatchGetArticlesByURLsRequest, v1.BatchGetArticlesByURLsResponse]
+	getArticleContentByID             *connect.Client[v1.GetArticleContentByIDRequest, v1.GetArticleContentByIDResponse]
+	listArticlesCursor                *connect.Client[v1.ListArticlesCursorRequest, v1.ListArticlesCursorResponse]
+	listArticleIDsCursor              *connect.Client[v1.ListArticleIDsCursorRequest, v1.ListArticleIDsCursorResponse]
+	batchGetArticlesByIDs             *connect.Client[v1.BatchGetArticlesByIDsRequest, v1.BatchGetArticlesByIDsResponse]
+	getLatestArticleByFeedID          *connect.Client[v1.GetLatestArticleByFeedIDRequest, v1.GetLatestArticleByFeedIDResponse]
+	lookupArticleURL                  *connect.Client[v1.LookupArticleURLRequest, v1.LookupArticleURLResponse]
+	countBackfillArticles             *connect.Client[v1.CountBackfillArticlesRequest, v1.CountBackfillArticlesResponse]
+	listBackfillArticles              *connect.Client[v1.ListBackfillArticlesRequest, v1.ListBackfillArticlesResponse]
+	countBackfillSummaryTitles        *connect.Client[v1.CountBackfillSummaryTitlesRequest, v1.CountBackfillSummaryTitlesResponse]
+	listBackfillSummaryTitles         *connect.Client[v1.ListBackfillSummaryTitlesRequest, v1.ListBackfillSummaryTitlesResponse]
 }
 
 // ListArticlesWithTags calls alt.datahub.v1.DataHubService.ListArticlesWithTags.
@@ -954,6 +1158,76 @@ func (c *dataHubServiceClient) CheckArticleExistsByURLForUser(ctx context.Contex
 	return c.checkArticleExistsByURLForUser.CallUnary(ctx, req)
 }
 
+// ArchiveArticle calls alt.datahub.v1.DataHubService.ArchiveArticle.
+func (c *dataHubServiceClient) ArchiveArticle(ctx context.Context, req *connect.Request[v1.ArchiveArticleRequest]) (*connect.Response[v1.ArchiveArticleResponse], error) {
+	return c.archiveArticle.CallUnary(ctx, req)
+}
+
+// SaveArticleHead calls alt.datahub.v1.DataHubService.SaveArticleHead.
+func (c *dataHubServiceClient) SaveArticleHead(ctx context.Context, req *connect.Request[v1.SaveArticleHeadRequest]) (*connect.Response[v1.SaveArticleHeadResponse], error) {
+	return c.saveArticleHead.CallUnary(ctx, req)
+}
+
+// GetArticleByURL calls alt.datahub.v1.DataHubService.GetArticleByURL.
+func (c *dataHubServiceClient) GetArticleByURL(ctx context.Context, req *connect.Request[v1.GetArticleByURLRequest]) (*connect.Response[v1.GetArticleByURLResponse], error) {
+	return c.getArticleByURL.CallUnary(ctx, req)
+}
+
+// BatchGetArticlesByURLs calls alt.datahub.v1.DataHubService.BatchGetArticlesByURLs.
+func (c *dataHubServiceClient) BatchGetArticlesByURLs(ctx context.Context, req *connect.Request[v1.BatchGetArticlesByURLsRequest]) (*connect.Response[v1.BatchGetArticlesByURLsResponse], error) {
+	return c.batchGetArticlesByURLs.CallUnary(ctx, req)
+}
+
+// GetArticleContentByID calls alt.datahub.v1.DataHubService.GetArticleContentByID.
+func (c *dataHubServiceClient) GetArticleContentByID(ctx context.Context, req *connect.Request[v1.GetArticleContentByIDRequest]) (*connect.Response[v1.GetArticleContentByIDResponse], error) {
+	return c.getArticleContentByID.CallUnary(ctx, req)
+}
+
+// ListArticlesCursor calls alt.datahub.v1.DataHubService.ListArticlesCursor.
+func (c *dataHubServiceClient) ListArticlesCursor(ctx context.Context, req *connect.Request[v1.ListArticlesCursorRequest]) (*connect.Response[v1.ListArticlesCursorResponse], error) {
+	return c.listArticlesCursor.CallUnary(ctx, req)
+}
+
+// ListArticleIDsCursor calls alt.datahub.v1.DataHubService.ListArticleIDsCursor.
+func (c *dataHubServiceClient) ListArticleIDsCursor(ctx context.Context, req *connect.Request[v1.ListArticleIDsCursorRequest]) (*connect.Response[v1.ListArticleIDsCursorResponse], error) {
+	return c.listArticleIDsCursor.CallUnary(ctx, req)
+}
+
+// BatchGetArticlesByIDs calls alt.datahub.v1.DataHubService.BatchGetArticlesByIDs.
+func (c *dataHubServiceClient) BatchGetArticlesByIDs(ctx context.Context, req *connect.Request[v1.BatchGetArticlesByIDsRequest]) (*connect.Response[v1.BatchGetArticlesByIDsResponse], error) {
+	return c.batchGetArticlesByIDs.CallUnary(ctx, req)
+}
+
+// GetLatestArticleByFeedID calls alt.datahub.v1.DataHubService.GetLatestArticleByFeedID.
+func (c *dataHubServiceClient) GetLatestArticleByFeedID(ctx context.Context, req *connect.Request[v1.GetLatestArticleByFeedIDRequest]) (*connect.Response[v1.GetLatestArticleByFeedIDResponse], error) {
+	return c.getLatestArticleByFeedID.CallUnary(ctx, req)
+}
+
+// LookupArticleURL calls alt.datahub.v1.DataHubService.LookupArticleURL.
+func (c *dataHubServiceClient) LookupArticleURL(ctx context.Context, req *connect.Request[v1.LookupArticleURLRequest]) (*connect.Response[v1.LookupArticleURLResponse], error) {
+	return c.lookupArticleURL.CallUnary(ctx, req)
+}
+
+// CountBackfillArticles calls alt.datahub.v1.DataHubService.CountBackfillArticles.
+func (c *dataHubServiceClient) CountBackfillArticles(ctx context.Context, req *connect.Request[v1.CountBackfillArticlesRequest]) (*connect.Response[v1.CountBackfillArticlesResponse], error) {
+	return c.countBackfillArticles.CallUnary(ctx, req)
+}
+
+// ListBackfillArticles calls alt.datahub.v1.DataHubService.ListBackfillArticles.
+func (c *dataHubServiceClient) ListBackfillArticles(ctx context.Context, req *connect.Request[v1.ListBackfillArticlesRequest]) (*connect.Response[v1.ListBackfillArticlesResponse], error) {
+	return c.listBackfillArticles.CallUnary(ctx, req)
+}
+
+// CountBackfillSummaryTitles calls alt.datahub.v1.DataHubService.CountBackfillSummaryTitles.
+func (c *dataHubServiceClient) CountBackfillSummaryTitles(ctx context.Context, req *connect.Request[v1.CountBackfillSummaryTitlesRequest]) (*connect.Response[v1.CountBackfillSummaryTitlesResponse], error) {
+	return c.countBackfillSummaryTitles.CallUnary(ctx, req)
+}
+
+// ListBackfillSummaryTitles calls alt.datahub.v1.DataHubService.ListBackfillSummaryTitles.
+func (c *dataHubServiceClient) ListBackfillSummaryTitles(ctx context.Context, req *connect.Request[v1.ListBackfillSummaryTitlesRequest]) (*connect.Response[v1.ListBackfillSummaryTitlesResponse], error) {
+	return c.listBackfillSummaryTitles.CallUnary(ctx, req)
+}
+
 // DataHubServiceHandler is an implementation of the alt.datahub.v1.DataHubService service.
 type DataHubServiceHandler interface {
 	// ListArticlesWithTags returns articles with tags using backward keyset pagination.
@@ -1104,6 +1378,70 @@ type DataHubServiceHandler interface {
 	ListSubscribedUserIDsByFeedLinkID(context.Context, *connect.Request[v1.ListSubscribedUserIDsByFeedLinkIDRequest]) (*connect.Response[v1.ListSubscribedUserIDsByFeedLinkIDResponse], error)
 	// CheckArticleExistsByURLForUser is the tenant-scoped existence check.
 	CheckArticleExistsByURLForUser(context.Context, *connect.Request[v1.CheckArticleExistsByURLForUserRequest]) (*connect.Response[v1.CheckArticleExistsByURLForUserResponse], error)
+	// ArchiveArticle upserts the article and appends its ARTICLE_UPSERT outbox
+	// row in one transaction.
+	//
+	// The outbox insert is inside this procedure rather than beside it, and
+	// that is the capability. Splitting them would put a network round trip
+	// between the write and its announcement: a crash in the gap leaves an
+	// article rag-orchestrator never indexes, or an event for an article that
+	// was never written. Neither is recoverable by retrying, because nothing
+	// records that the pair was meant to be atomic (ADR-000954 D3, catalog
+	// §4-2).
+	//
+	// The event payload's `updated_at` is stamped when the row is enqueued, not
+	// when it is drained, so replaying the outbox reproduces the same bytes —
+	// the reproject-safe rule in docs/wiki/architecture/immutable-data-model.md.
+	ArchiveArticle(context.Context, *connect.Request[v1.ArchiveArticleRequest]) (*connect.Response[v1.ArchiveArticleResponse], error)
+	// SaveArticleHead upserts the scraped <head> and its og:image URL.
+	//
+	// Catalog §2.B lists this with the article write, but it lands in
+	// article_heads alongside the §2.D reads, and the scrape that produces the
+	// markup stays with the caller either way (ADR-000954 D4).
+	SaveArticleHead(context.Context, *connect.Request[v1.SaveArticleHeadRequest]) (*connect.Response[v1.SaveArticleHeadResponse], error)
+	// GetArticleByURL returns the archived article for a URL, if there is one.
+	GetArticleByURL(context.Context, *connect.Request[v1.GetArticleByURLRequest]) (*connect.Response[v1.GetArticleByURLResponse], error)
+	// BatchGetArticlesByURLs is the same read for many URLs in one query — the
+	// shape that replaced an N+1 loop on the summaries path.
+	BatchGetArticlesByURLs(context.Context, *connect.Request[v1.BatchGetArticlesByURLsRequest]) (*connect.Response[v1.BatchGetArticlesByURLsResponse], error)
+	// GetArticleContentByID returns the narrow projection of one article.
+	//
+	// Not merged into GetArticleByID, which reads the same row (catalog §4-3
+	// raised the question). They differ in three ways that a merge would have
+	// to erase: GetArticleByID answers NotFound for a missing article while
+	// this one answers an unset field, GetArticleByID returns tags and
+	// timestamps but not the URL this one exists to provide, and the two have
+	// different consumers — search-indexer's pact pins the first, alt-backend's
+	// pins this. Widening one message and relaxing its missing-row behaviour to
+	// save a procedure would change a contract a peer already verifies against,
+	// to remove a duplication that costs nothing to keep.
+	GetArticleContentByID(context.Context, *connect.Request[v1.GetArticleContentByIDRequest]) (*connect.Response[v1.GetArticleContentByIDResponse], error)
+	// ListArticlesCursor pages through one user's articles, newest first.
+	ListArticlesCursor(context.Context, *connect.Request[v1.ListArticlesCursorRequest]) (*connect.Response[v1.ListArticlesCursorResponse], error)
+	// ListArticleIDsCursor is the same walk returning ids only.
+	//
+	// A separate procedure rather than a flag on the one above, because it is a
+	// different query and not a narrower rendering of the same one: it skips the
+	// tag join and the body columns entirely. The caller pages ids here and
+	// hydrates them from its own cache, so folding the two together would make
+	// the cheap query pay for the expensive one's work whenever a caller forgot
+	// the flag.
+	ListArticleIDsCursor(context.Context, *connect.Request[v1.ListArticleIDsCursorRequest]) (*connect.Response[v1.ListArticleIDsCursorResponse], error)
+	// BatchGetArticlesByIDs hydrates ids into full articles with their tags.
+	BatchGetArticlesByIDs(context.Context, *connect.Request[v1.BatchGetArticlesByIDsRequest]) (*connect.Response[v1.BatchGetArticlesByIDsResponse], error)
+	// GetLatestArticleByFeedID returns the newest article of one feed.
+	GetLatestArticleByFeedID(context.Context, *connect.Request[v1.GetLatestArticleByFeedIDRequest]) (*connect.Response[v1.GetLatestArticleByFeedIDResponse], error)
+	// LookupArticleURL resolves an article's source URL within one tenant.
+	LookupArticleURL(context.Context, *connect.Request[v1.LookupArticleURLRequest]) (*connect.Response[v1.LookupArticleURLResponse], error)
+	// CountBackfillArticles sizes the article replay.
+	CountBackfillArticles(context.Context, *connect.Request[v1.CountBackfillArticlesRequest]) (*connect.Response[v1.CountBackfillArticlesResponse], error)
+	// ListBackfillArticles walks historic articles oldest first.
+	ListBackfillArticles(context.Context, *connect.Request[v1.ListBackfillArticlesRequest]) (*connect.Response[v1.ListBackfillArticlesResponse], error)
+	// CountBackfillSummaryTitles sizes the summary-narrative replay.
+	CountBackfillSummaryTitles(context.Context, *connect.Request[v1.CountBackfillSummaryTitlesRequest]) (*connect.Response[v1.CountBackfillSummaryTitlesResponse], error)
+	// ListBackfillSummaryTitles walks (summary_version, article) pairs oldest
+	// first.
+	ListBackfillSummaryTitles(context.Context, *connect.Request[v1.ListBackfillSummaryTitlesRequest]) (*connect.Response[v1.ListBackfillSummaryTitlesResponse], error)
 }
 
 // NewDataHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1401,6 +1739,90 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("CheckArticleExistsByURLForUser")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceArchiveArticleHandler := connect.NewUnaryHandler(
+		DataHubServiceArchiveArticleProcedure,
+		svc.ArchiveArticle,
+		connect.WithSchema(dataHubServiceMethods.ByName("ArchiveArticle")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceSaveArticleHeadHandler := connect.NewUnaryHandler(
+		DataHubServiceSaveArticleHeadProcedure,
+		svc.SaveArticleHead,
+		connect.WithSchema(dataHubServiceMethods.ByName("SaveArticleHead")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetArticleByURLHandler := connect.NewUnaryHandler(
+		DataHubServiceGetArticleByURLProcedure,
+		svc.GetArticleByURL,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetArticleByURL")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceBatchGetArticlesByURLsHandler := connect.NewUnaryHandler(
+		DataHubServiceBatchGetArticlesByURLsProcedure,
+		svc.BatchGetArticlesByURLs,
+		connect.WithSchema(dataHubServiceMethods.ByName("BatchGetArticlesByURLs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetArticleContentByIDHandler := connect.NewUnaryHandler(
+		DataHubServiceGetArticleContentByIDProcedure,
+		svc.GetArticleContentByID,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetArticleContentByID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListArticlesCursorHandler := connect.NewUnaryHandler(
+		DataHubServiceListArticlesCursorProcedure,
+		svc.ListArticlesCursor,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListArticlesCursor")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListArticleIDsCursorHandler := connect.NewUnaryHandler(
+		DataHubServiceListArticleIDsCursorProcedure,
+		svc.ListArticleIDsCursor,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListArticleIDsCursor")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceBatchGetArticlesByIDsHandler := connect.NewUnaryHandler(
+		DataHubServiceBatchGetArticlesByIDsProcedure,
+		svc.BatchGetArticlesByIDs,
+		connect.WithSchema(dataHubServiceMethods.ByName("BatchGetArticlesByIDs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetLatestArticleByFeedIDHandler := connect.NewUnaryHandler(
+		DataHubServiceGetLatestArticleByFeedIDProcedure,
+		svc.GetLatestArticleByFeedID,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetLatestArticleByFeedID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceLookupArticleURLHandler := connect.NewUnaryHandler(
+		DataHubServiceLookupArticleURLProcedure,
+		svc.LookupArticleURL,
+		connect.WithSchema(dataHubServiceMethods.ByName("LookupArticleURL")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceCountBackfillArticlesHandler := connect.NewUnaryHandler(
+		DataHubServiceCountBackfillArticlesProcedure,
+		svc.CountBackfillArticles,
+		connect.WithSchema(dataHubServiceMethods.ByName("CountBackfillArticles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListBackfillArticlesHandler := connect.NewUnaryHandler(
+		DataHubServiceListBackfillArticlesProcedure,
+		svc.ListBackfillArticles,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListBackfillArticles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceCountBackfillSummaryTitlesHandler := connect.NewUnaryHandler(
+		DataHubServiceCountBackfillSummaryTitlesProcedure,
+		svc.CountBackfillSummaryTitles,
+		connect.WithSchema(dataHubServiceMethods.ByName("CountBackfillSummaryTitles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListBackfillSummaryTitlesHandler := connect.NewUnaryHandler(
+		DataHubServiceListBackfillSummaryTitlesProcedure,
+		svc.ListBackfillSummaryTitles,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListBackfillSummaryTitles")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.datahub.v1.DataHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataHubServiceListArticlesWithTagsProcedure:
@@ -1499,6 +1921,34 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceListSubscribedUserIDsByFeedLinkIDHandler.ServeHTTP(w, r)
 		case DataHubServiceCheckArticleExistsByURLForUserProcedure:
 			dataHubServiceCheckArticleExistsByURLForUserHandler.ServeHTTP(w, r)
+		case DataHubServiceArchiveArticleProcedure:
+			dataHubServiceArchiveArticleHandler.ServeHTTP(w, r)
+		case DataHubServiceSaveArticleHeadProcedure:
+			dataHubServiceSaveArticleHeadHandler.ServeHTTP(w, r)
+		case DataHubServiceGetArticleByURLProcedure:
+			dataHubServiceGetArticleByURLHandler.ServeHTTP(w, r)
+		case DataHubServiceBatchGetArticlesByURLsProcedure:
+			dataHubServiceBatchGetArticlesByURLsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetArticleContentByIDProcedure:
+			dataHubServiceGetArticleContentByIDHandler.ServeHTTP(w, r)
+		case DataHubServiceListArticlesCursorProcedure:
+			dataHubServiceListArticlesCursorHandler.ServeHTTP(w, r)
+		case DataHubServiceListArticleIDsCursorProcedure:
+			dataHubServiceListArticleIDsCursorHandler.ServeHTTP(w, r)
+		case DataHubServiceBatchGetArticlesByIDsProcedure:
+			dataHubServiceBatchGetArticlesByIDsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetLatestArticleByFeedIDProcedure:
+			dataHubServiceGetLatestArticleByFeedIDHandler.ServeHTTP(w, r)
+		case DataHubServiceLookupArticleURLProcedure:
+			dataHubServiceLookupArticleURLHandler.ServeHTTP(w, r)
+		case DataHubServiceCountBackfillArticlesProcedure:
+			dataHubServiceCountBackfillArticlesHandler.ServeHTTP(w, r)
+		case DataHubServiceListBackfillArticlesProcedure:
+			dataHubServiceListBackfillArticlesHandler.ServeHTTP(w, r)
+		case DataHubServiceCountBackfillSummaryTitlesProcedure:
+			dataHubServiceCountBackfillSummaryTitlesHandler.ServeHTTP(w, r)
+		case DataHubServiceListBackfillSummaryTitlesProcedure:
+			dataHubServiceListBackfillSummaryTitlesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1698,4 +2148,60 @@ func (UnimplementedDataHubServiceHandler) ListSubscribedUserIDsByFeedLinkID(cont
 
 func (UnimplementedDataHubServiceHandler) CheckArticleExistsByURLForUser(context.Context, *connect.Request[v1.CheckArticleExistsByURLForUserRequest]) (*connect.Response[v1.CheckArticleExistsByURLForUserResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.CheckArticleExistsByURLForUser is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ArchiveArticle(context.Context, *connect.Request[v1.ArchiveArticleRequest]) (*connect.Response[v1.ArchiveArticleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ArchiveArticle is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) SaveArticleHead(context.Context, *connect.Request[v1.SaveArticleHeadRequest]) (*connect.Response[v1.SaveArticleHeadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.SaveArticleHead is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetArticleByURL(context.Context, *connect.Request[v1.GetArticleByURLRequest]) (*connect.Response[v1.GetArticleByURLResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetArticleByURL is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) BatchGetArticlesByURLs(context.Context, *connect.Request[v1.BatchGetArticlesByURLsRequest]) (*connect.Response[v1.BatchGetArticlesByURLsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.BatchGetArticlesByURLs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetArticleContentByID(context.Context, *connect.Request[v1.GetArticleContentByIDRequest]) (*connect.Response[v1.GetArticleContentByIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetArticleContentByID is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListArticlesCursor(context.Context, *connect.Request[v1.ListArticlesCursorRequest]) (*connect.Response[v1.ListArticlesCursorResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListArticlesCursor is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListArticleIDsCursor(context.Context, *connect.Request[v1.ListArticleIDsCursorRequest]) (*connect.Response[v1.ListArticleIDsCursorResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListArticleIDsCursor is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) BatchGetArticlesByIDs(context.Context, *connect.Request[v1.BatchGetArticlesByIDsRequest]) (*connect.Response[v1.BatchGetArticlesByIDsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.BatchGetArticlesByIDs is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetLatestArticleByFeedID(context.Context, *connect.Request[v1.GetLatestArticleByFeedIDRequest]) (*connect.Response[v1.GetLatestArticleByFeedIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.GetLatestArticleByFeedID is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) LookupArticleURL(context.Context, *connect.Request[v1.LookupArticleURLRequest]) (*connect.Response[v1.LookupArticleURLResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.LookupArticleURL is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) CountBackfillArticles(context.Context, *connect.Request[v1.CountBackfillArticlesRequest]) (*connect.Response[v1.CountBackfillArticlesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.CountBackfillArticles is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListBackfillArticles(context.Context, *connect.Request[v1.ListBackfillArticlesRequest]) (*connect.Response[v1.ListBackfillArticlesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListBackfillArticles is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) CountBackfillSummaryTitles(context.Context, *connect.Request[v1.CountBackfillSummaryTitlesRequest]) (*connect.Response[v1.CountBackfillSummaryTitlesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.CountBackfillSummaryTitles is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListBackfillSummaryTitles(context.Context, *connect.Request[v1.ListBackfillSummaryTitlesRequest]) (*connect.Response[v1.ListBackfillSummaryTitlesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.datahub.v1.DataHubService.ListBackfillSummaryTitles is not implemented"))
 }

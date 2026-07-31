@@ -8,8 +8,25 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
+
+// userIDFromContext is the bridge between the in-process callers, which carry
+// the signed-in user in the request context, and the *ForUser driver methods
+// alt-data-hub calls with the owner as an argument.
+//
+// It returns nil rather than an error for an absent user: the reads that use
+// it have an anonymous variant, and collapsing "no user" into a failure would
+// break the unauthenticated article lookup that has always worked.
+func userIDFromContext(ctx context.Context) *uuid.UUID {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil
+	}
+	id := user.UserID
+	return &id
+}
 
 const fetchArticleByURLQuery = `
 	SELECT id, title, content, url, COALESCE(feed_id::text, '') AS feed_id
@@ -26,6 +43,16 @@ const fetchArticleByURLWithUserQuery = `
 // FetchArticleByURL retrieves article content from database by URL.
 // Scopes to the authenticated user when user context is available.
 func (r *ArticleRepository) FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error) {
+	return r.FetchArticleByURLForUser(ctx, articleURL, userIDFromContext(ctx))
+}
+
+// FetchArticleByURLForUser is the same read with the owner named explicitly.
+//
+// A nil userID keeps the unscoped query the anonymous path already used; the
+// two are different SQL statements and the caller picks one, rather than the
+// scope depending on whether a context value happened to be present
+// (ADR-000954 Wave 3, catalog §2.C).
+func (r *ArticleRepository) FetchArticleByURLForUser(ctx context.Context, articleURL string, userID *uuid.UUID) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -35,14 +62,11 @@ func (r *ArticleRepository) FetchArticleByURL(ctx context.Context, articleURL st
 		return nil, errors.New("article url cannot be empty")
 	}
 
-	// Use user-scoped query when context has authenticated user
-	user, userErr := domain.GetUserFromContext(ctx)
-
 	var article domain.ArticleContent
 	var err error
 
-	if userErr == nil {
-		err = r.pool.QueryRow(ctx, fetchArticleByURLWithUserQuery, cleanURL, user.UserID).Scan(
+	if userID != nil {
+		err = r.pool.QueryRow(ctx, fetchArticleByURLWithUserQuery, cleanURL, *userID).Scan(
 			&article.ID,
 			&article.Title,
 			&article.Content,
@@ -91,6 +115,12 @@ const fetchArticlesByURLsWithUserQuery = `
 // the authenticated user when user context is available, mirroring
 // FetchArticleByURL.
 func (r *ArticleRepository) FetchArticlesByURLs(ctx context.Context, urls []string) (map[string]*domain.ArticleContent, error) {
+	return r.FetchArticlesByURLsForUser(ctx, urls, userIDFromContext(ctx))
+}
+
+// FetchArticlesByURLsForUser is the batch read with the owner named
+// explicitly. See FetchArticleByURLForUser for why the scope is an argument.
+func (r *ArticleRepository) FetchArticlesByURLsForUser(ctx context.Context, urls []string, userID *uuid.UUID) (map[string]*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -98,12 +128,10 @@ func (r *ArticleRepository) FetchArticlesByURLs(ctx context.Context, urls []stri
 		return map[string]*domain.ArticleContent{}, nil
 	}
 
-	user, userErr := domain.GetUserFromContext(ctx)
-
 	var rows pgx.Rows
 	var err error
-	if userErr == nil {
-		rows, err = r.pool.Query(ctx, fetchArticlesByURLsWithUserQuery, urls, user.UserID)
+	if userID != nil {
+		rows, err = r.pool.Query(ctx, fetchArticlesByURLsWithUserQuery, urls, *userID)
 	} else {
 		rows, err = r.pool.Query(ctx, fetchArticlesByURLsQuery, urls)
 	}

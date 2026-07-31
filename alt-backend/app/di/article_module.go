@@ -4,7 +4,6 @@ import (
 	"alt/orchestrator/driver/preprocessor_client"
 	"alt/orchestrator/gateway/archive_article_gateway"
 	"alt/orchestrator/gateway/article_content_cache_gateway"
-	"alt/orchestrator/gateway/article_gateway"
 	"alt/orchestrator/gateway/article_repository_gateway"
 	"alt/orchestrator/gateway/article_summary_gateway"
 	"alt/orchestrator/gateway/cached_article_tags_gateway"
@@ -25,6 +24,8 @@ import (
 	"alt/orchestrator/usecase/search_article_usecase"
 	"alt/orchestrator/usecase/stream_article_tags_usecase"
 	"alt/orchestrator/usecase/summarize_article_usecase"
+	"alt/shared/driver/alt_db"
+	"alt/shared/gateway/datahub_gateway"
 	"alt/shared/gateway/fetch_articles_by_tag_gateway"
 	"alt/shared/gateway/fetch_tag_cloud_gateway"
 	"alt/shared/gateway/internal_article_gateway"
@@ -63,23 +64,22 @@ type ArticleModule struct {
 }
 
 func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integration_port.RagIntegrationPort) *ArticleModule {
-	pool := infra.Pool
 	altDB := infra.AltDBRepository
 
 	// Fetch article gateway / usecase
 	fetchArticleGw := fetch_article_gateway.NewFetchArticleGateway(infra.RateLimiter, infra.HTTPClient)
-	archiveArticleGw := archive_article_gateway.NewArchiveArticleGateway(altDB)
+	archiveArticleGw := archive_article_gateway.NewArchiveArticleGateway(infra.ArticleStoreGateway)
 	archiveArticleUC := archive_article_usecase.NewArchiveArticleUsecase(fetchArticleGw, archiveArticleGw)
 
 	// Wire ScrapingPolicyGateway into ArticleUsecase (uses cached robots.txt from scraping_domains)
 	scrapingPolicyGw := scraping_policy_gateway.NewScrapingPolicyGateway(feed.ScrapingDomainGateway)
 
-	// ArticleRepository is served from two sources during ADR-000954 Wave 3:
-	// article_heads and declined_domains come from alt-data-hub (batch 1,
-	// catalog §2.D / §2.L), the article read and write are still direct
-	// (§2.B / §2.C, later batches). See article_repository_gateway — the
-	// usecase's interface is unchanged.
-	articleRepoGw := article_repository_gateway.New(altDB, infra.OgImageGateway, infra.DeclinedDomainGateway)
+	// ArticleRepository is served entirely by alt-data-hub since ADR-000954
+	// Wave 3 batch 2: the article read and write (§2.B / §2.C) joined
+	// article_heads (§2.D) and declined_domains (§2.L). The usecase's
+	// interface is unchanged — see article_repository_gateway for why the
+	// three gateways stay separate.
+	articleRepoGw := article_repository_gateway.New(infra.ArticleStoreGateway, infra.OgImageGateway, infra.DeclinedDomainGateway)
 	fetchArticleUC := fetch_article_usecase.NewArticleUsecaseWithScrapingPolicy(
 		fetchArticleGw, infra.RobotsTxtGateway, articleRepoGw, ragAdapter, scrapingPolicyGw,
 	)
@@ -87,9 +87,11 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	// Batch article fetcher for efficient multi-URL fetching with domain-based rate limiting
 	batchFetcher := batch_article_fetcher.NewBatchArticleFetcher(infra.RateLimiter, infra.HTTPClient)
 
-	// Fetch articles with cursor
-	fetchArticlesGw := article_gateway.NewFetchArticlesGateway(pool)
-	articleContentCacheGw := article_content_cache_gateway.NewGateway(altDB)
+	// Fetch articles with cursor (catalog §2.C W3-C4 / W3-C5). The read-through
+	// cache stays here: a TTL is flow orchestration, which ADR-000954 D4 keeps
+	// on the calling side.
+	fetchArticlesGw := infra.ArticleCursorGateway
+	articleContentCacheGw := article_content_cache_gateway.NewGateway(infra.ArticleBatchGateway)
 	fetchArticlesCursorUC := fetch_articles_usecase.NewFetchArticlesCursorUsecaseWithCache(fetchArticlesGw, articleContentCacheGw)
 
 	// Recent articles for rag-orchestrator's temporal topics moved to
@@ -108,8 +110,11 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 
 	// Article tags (Tag Trail feature, with mq-hub for on-the-fly tag generation ADR-168)
 	fetchArticleTagsConfig := fetch_article_tags_gateway.DefaultConfig()
+	// Two sources: the tag reads and the tag upsert are still direct
+	// (catalog §2.J), the article body read is alt-data-hub's since batch 2
+	// (catalog §2.C W3-C3).
 	fetchArticleTagsGw := fetch_article_tags_gateway.NewFetchArticleTagsGatewayWithMQHub(
-		altDB, infra.MQHubClient, fetchArticleTagsConfig,
+		altDB, infra.ArticleStoreGateway, infra.MQHubClient, fetchArticleTagsConfig,
 	)
 	fetchArticleTagsUC := fetch_article_tags_usecase.NewFetchArticleTagsUsecase(fetchArticleTagsGw)
 
@@ -118,7 +123,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	fetchArticleSummaryUC := fetch_article_summary_usecase.NewFetchArticleSummaryUsecase(articleSummaryGw)
 
 	// Latest article (FetchRandomFeed)
-	latestArticleGw := latest_article_gateway.NewGateway(altDB)
+	latestArticleGw := latest_article_gateway.NewGateway(infra.LatestArticleGateway)
 	fetchLatestArticleUC := fetch_latest_article_usecase.NewFetchLatestArticleUsecase(latestArticleGw)
 
 	// Stream article tags (cached check + on-the-fly generation)
@@ -133,8 +138,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	// GetArticleSourceURL: tenant-scoped read-side lookup for the Knowledge
 	// Loop ACT workspace's Open recovery affordance. Reuses the
 	// ArticleURLLookupGateway already defined in knowledge_module.go.
-	articleURLLookupGw := article_gateway.NewArticleURLLookupGateway(infra.Pool)
-	getArticleSourceURLUC := get_article_source_url_usecase.NewGetArticleSourceURLUsecase(articleURLLookupGw)
+	getArticleSourceURLUC := get_article_source_url_usecase.NewGetArticleSourceURLUsecase(infra.ArticleURLLookupGateway)
 
 	// Legacy REST v1 summarize endpoints. Single driver-layer pre-processor
 	// HTTP client, wrapped by a gateway satisfying preprocessor_summarize_port,
@@ -143,8 +147,17 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	// rest/rest_feeds/summarization/helpers.go.
 	preprocessorClient := preprocessor_client.NewClient(infra.Config.PreProcessor.URL)
 	preprocessorSummarizeGw := preprocessor_summarize_gateway.NewGateway(preprocessorClient)
-	summarizeArticleUC := summarize_article_usecase.NewUsecase(altDB, preprocessorSummarizeGw, fetchArticleGw)
-	fetchArticleSummariesUC := fetch_article_summaries_usecase.NewUsecase(altDB, batchFetcher, summarizeArticleUC)
+	//
+	// The repository these two take spans two capability groups: the article
+	// read and write come from alt-data-hub (batch 2) while the summary read
+	// and write are still direct. summarize_article_repository is the seam,
+	// the same shape article_repository_gateway had while §2.B was mid-move.
+	summarizeRepo := summarize_article_repository{
+		ArticleStoreGateway: infra.ArticleStoreGateway,
+		AltDBRepository:     altDB,
+	}
+	summarizeArticleUC := summarize_article_usecase.NewUsecase(summarizeRepo, preprocessorSummarizeGw, fetchArticleGw)
+	fetchArticleSummariesUC := fetch_article_summaries_usecase.NewUsecase(summarizeRepo, batchFetcher, summarizeArticleUC)
 
 	return &ArticleModule{
 		ArticleUsecase:             fetchArticleUC,
@@ -168,4 +181,21 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 		FetchArticleTagsGateway: fetchArticleTagsGw,
 		FetchArticleGateway:     fetchArticleGw,
 	}
+}
+
+// summarize_article_repository satisfies the local ArticleRepository
+// interfaces of summarize_article_usecase and fetch_article_summaries_usecase
+// out of two sources while ADR-000954 Wave 3 migrates alt_db group by group.
+//
+// The article read and write cross to alt-data-hub (catalog §2.B / §2.C,
+// batch 2); article_summaries has not moved yet, so it is still a direct
+// driver call. Embedding both is what lets the usecases keep the interfaces
+// they declared: Go promotes each method from whichever embedded type has it,
+// and the two sets are disjoint.
+//
+// This is a seam, not a destination. When the summary capabilities move, both
+// fields become the same gateway and this type goes away.
+type summarize_article_repository struct {
+	*datahub_gateway.ArticleStoreGateway
+	*alt_db.AltDBRepository
 }

@@ -870,6 +870,242 @@ message CheckArticleExistsByURLForUserResponse {
 }
 
 // =============================================================================
+// Article writes (ADR-000954 Wave 3, catalog §2.B)
+// =============================================================================
+//
+// Every procedure in this section and the next one carries `user_id` as an
+// explicit field. The drivers they replace read it from the Go context, which
+// a request carries in-process and a Connect call does not: an mTLS peer
+// certificate identifies alt-backend, not the person whose article is being
+// written. Leaving it implicit would mean either fabricating a user context on
+// the provider side — a synthetic identity that satisfies UserContext.IsValid
+// while belonging to nobody — or silently dropping the tenant predicate from
+// the WHERE clause. Both turn a tenant-scoped read into a global one.
+
+// ArchiveArticleRequest asks for one article to be persisted and announced.
+message ArchiveArticleRequest {
+  string url = 1;
+  // Empty is allowed and becomes the URL, matching the driver this replaces.
+  string title = 2;
+  string content = 3;
+  // Owner of the row. Required: articles is keyed by (url, user_id).
+  string user_id = 4;
+}
+
+message ArchiveArticleResponse {
+  string article_id = 1;
+  // True when this call inserted the row rather than updating one, read from
+  // the upsert's `xmax = 0`. The caller uses it to tell a first sighting from
+  // a re-fetch.
+  bool created = 2;
+}
+
+message SaveArticleHeadRequest {
+  string article_id = 1;
+  // NOT NULL in the table. Callers with no markup to store send a
+  // `<head></head>` placeholder rather than an empty string, which is what the
+  // og-image backfill job does.
+  string head_html = 2;
+  string og_image_url = 3;
+}
+
+message SaveArticleHeadResponse {}
+
+// =============================================================================
+// Article reads (ADR-000954 Wave 3, catalog §2.C)
+// =============================================================================
+
+// ArticleContent is the narrow projection: one article's body and identity,
+// with no tags and no timestamps.
+//
+// It is a different message from ArticleWithTags rather than a subset of it
+// because the two answer different questions and have different consumers —
+// see the note on GetArticleContentByID for why they were not merged.
+message ArticleContent {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string url = 4;
+  // Empty when the article was archived before its feed was known. Not every
+  // article has one, so absence here is ordinary rather than an error.
+  string feed_id = 5;
+}
+
+// UserArticle is the wide projection the article-list surfaces render: body,
+// tags and both timestamps.
+message UserArticle {
+  string id = 1;
+  string feed_id = 2;
+  string title = 3;
+  string content = 4;
+  string url = 5;
+  repeated string tags = 6;
+  google.protobuf.Timestamp published_at = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message GetArticleByURLRequest {
+  string url = 1;
+  // Optional. When set the lookup is scoped to that user; when empty it
+  // matches any owner, which is the unauthenticated path the driver already
+  // had. The two are different queries and the caller chooses deliberately.
+  string user_id = 2;
+}
+
+message GetArticleByURLResponse {
+  // Unset when no article matches. "Not archived yet" is an ordinary answer
+  // on this path — the caller fetches the page — so it is not an error code.
+  ArticleContent article = 1;
+}
+
+message BatchGetArticlesByURLsRequest {
+  repeated string urls = 1;
+  string user_id = 2;
+}
+
+message BatchGetArticlesByURLsResponse {
+  // Keyed by URL. A URL with no archived article is absent from the map rather
+  // than present with an empty value.
+  map<string, ArticleContent> articles = 1;
+}
+
+message GetArticleContentByIDRequest {
+  string article_id = 1;
+}
+
+message GetArticleContentByIDResponse {
+  ArticleContent article = 1;
+}
+
+message ListArticlesCursorRequest {
+  // Required: this is a per-user timeline, not a global one.
+  string user_id = 1;
+  // Unset for the first page. Subsequent pages send the created_at of the last
+  // row they saw.
+  google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message ListArticlesCursorResponse {
+  repeated UserArticle articles = 1;
+}
+
+message ListArticleIDsCursorRequest {
+  string user_id = 1;
+  google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message ListArticleIDsCursorResponse {
+  repeated string article_ids = 1;
+}
+
+message BatchGetArticlesByIDsRequest {
+  repeated string article_ids = 1;
+}
+
+message BatchGetArticlesByIDsResponse {
+  // In the order of the requested ids, with unknown ids omitted. The caller
+  // renders this list positionally, so the ordering is part of the contract.
+  repeated UserArticle articles = 1;
+}
+
+message GetLatestArticleByFeedIDRequest {
+  string feed_id = 1;
+}
+
+message GetLatestArticleByFeedIDResponse {
+  // Unset when the feed has no articles yet, which is normal for a feed
+  // registered but not yet crawled.
+  ArticleContent article = 1;
+}
+
+message LookupArticleURLRequest {
+  string article_id = 1;
+  // Required. This procedure exists to resolve a URL for a Knowledge Trail
+  // action, and an unscoped lookup would disclose another tenant's URL.
+  string user_id = 2;
+}
+
+message LookupArticleURLResponse {
+  // Empty when the article does not exist within the user's tenant. The two
+  // cases are deliberately indistinguishable: telling them apart would confirm
+  // the existence of another tenant's article.
+  string url = 1;
+}
+
+// =============================================================================
+// Knowledge backfill reads (ADR-000954 Wave 3, catalog §2.N)
+// =============================================================================
+//
+// These four feed alt-backend's knowledge backfill jobs, which replay historic
+// articles and summary versions into knowledge-sovereign. Only the alt_db
+// reads are here: the sovereign append, the progress bookkeeping and the
+// reprojection stay with the caller, because talking to another service is the
+// caller's business under ADR-000954 D4.
+
+message BackfillArticle {
+  string article_id = 1;
+  string user_id = 2;
+  google.protobuf.Timestamp created_at = 3;
+  // Falls back to created_at when the source published no date, which is what
+  // the query the job has always run does.
+  google.protobuf.Timestamp published_at = 4;
+  string title = 5;
+  string url = 6;
+}
+
+message CountBackfillArticlesRequest {}
+
+message CountBackfillArticlesResponse {
+  int32 count = 1;
+}
+
+message ListBackfillArticlesRequest {
+  // Keyset cursor over (created_at, article_id) ascending. Both are unset on
+  // the first page and both must be set afterwards — a half-set cursor is
+  // rejected rather than silently restarting the walk, which would make the
+  // job replay from the beginning and re-emit every event.
+  google.protobuf.Timestamp last_created_at = 1;
+  string last_article_id = 2;
+  int32 limit = 3;
+}
+
+message ListBackfillArticlesResponse {
+  repeated BackfillArticle articles = 1;
+}
+
+message BackfillSummaryTitle {
+  string summary_version_id = 1;
+  string article_id = 2;
+  string user_id = 3;
+  string tenant_id = 4;
+  // Read from the articles row at backfill time. articles is mutable and there
+  // is no article_versions snapshot, so this is the title as of now, which the
+  // job then freezes into the event payload (ADR-000846).
+  string title = 5;
+  google.protobuf.Timestamp generated_at = 6;
+}
+
+message CountBackfillSummaryTitlesRequest {}
+
+message CountBackfillSummaryTitlesResponse {
+  int32 count = 1;
+}
+
+message ListBackfillSummaryTitlesRequest {
+  // Keyset cursor over (generated_at, summary_version_id) ascending, with the
+  // same all-or-nothing rule as ListBackfillArticlesRequest.
+  google.protobuf.Timestamp last_generated_at = 1;
+  string last_summary_version_id = 2;
+  int32 limit = 3;
+}
+
+message ListBackfillSummaryTitlesResponse {
+  repeated BackfillSummaryTitle entries = 1;
+}
+
+// =============================================================================
 // DataHubService — every capability backed by alt_db
 // =============================================================================
 
@@ -1104,4 +1340,88 @@ service DataHubService {
 
   // CheckArticleExistsByURLForUser is the tenant-scoped existence check.
   rpc CheckArticleExistsByURLForUser(CheckArticleExistsByURLForUserRequest) returns (CheckArticleExistsByURLForUserResponse);
+
+  // ── Article writes (alt-backend serving path, catalog §2.B) ──
+
+  // ArchiveArticle upserts the article and appends its ARTICLE_UPSERT outbox
+  // row in one transaction.
+  //
+  // The outbox insert is inside this procedure rather than beside it, and
+  // that is the capability. Splitting them would put a network round trip
+  // between the write and its announcement: a crash in the gap leaves an
+  // article rag-orchestrator never indexes, or an event for an article that
+  // was never written. Neither is recoverable by retrying, because nothing
+  // records that the pair was meant to be atomic (ADR-000954 D3, catalog
+  // §4-2).
+  //
+  // The event payload's `updated_at` is stamped when the row is enqueued, not
+  // when it is drained, so replaying the outbox reproduces the same bytes —
+  // the reproject-safe rule in docs/wiki/architecture/immutable-data-model.md.
+  rpc ArchiveArticle(ArchiveArticleRequest) returns (ArchiveArticleResponse);
+
+  // SaveArticleHead upserts the scraped <head> and its og:image URL.
+  //
+  // Catalog §2.B lists this with the article write, but it lands in
+  // article_heads alongside the §2.D reads, and the scrape that produces the
+  // markup stays with the caller either way (ADR-000954 D4).
+  rpc SaveArticleHead(SaveArticleHeadRequest) returns (SaveArticleHeadResponse);
+
+  // ── Article reads (alt-backend serving path, catalog §2.C) ──
+
+  // GetArticleByURL returns the archived article for a URL, if there is one.
+  rpc GetArticleByURL(GetArticleByURLRequest) returns (GetArticleByURLResponse);
+
+  // BatchGetArticlesByURLs is the same read for many URLs in one query — the
+  // shape that replaced an N+1 loop on the summaries path.
+  rpc BatchGetArticlesByURLs(BatchGetArticlesByURLsRequest) returns (BatchGetArticlesByURLsResponse);
+
+  // GetArticleContentByID returns the narrow projection of one article.
+  //
+  // Not merged into GetArticleByID, which reads the same row (catalog §4-3
+  // raised the question). They differ in three ways that a merge would have
+  // to erase: GetArticleByID answers NotFound for a missing article while
+  // this one answers an unset field, GetArticleByID returns tags and
+  // timestamps but not the URL this one exists to provide, and the two have
+  // different consumers — search-indexer's pact pins the first, alt-backend's
+  // pins this. Widening one message and relaxing its missing-row behaviour to
+  // save a procedure would change a contract a peer already verifies against,
+  // to remove a duplication that costs nothing to keep.
+  rpc GetArticleContentByID(GetArticleContentByIDRequest) returns (GetArticleContentByIDResponse);
+
+  // ListArticlesCursor pages through one user's articles, newest first.
+  rpc ListArticlesCursor(ListArticlesCursorRequest) returns (ListArticlesCursorResponse);
+
+  // ListArticleIDsCursor is the same walk returning ids only.
+  //
+  // A separate procedure rather than a flag on the one above, because it is a
+  // different query and not a narrower rendering of the same one: it skips the
+  // tag join and the body columns entirely. The caller pages ids here and
+  // hydrates them from its own cache, so folding the two together would make
+  // the cheap query pay for the expensive one's work whenever a caller forgot
+  // the flag.
+  rpc ListArticleIDsCursor(ListArticleIDsCursorRequest) returns (ListArticleIDsCursorResponse);
+
+  // BatchGetArticlesByIDs hydrates ids into full articles with their tags.
+  rpc BatchGetArticlesByIDs(BatchGetArticlesByIDsRequest) returns (BatchGetArticlesByIDsResponse);
+
+  // GetLatestArticleByFeedID returns the newest article of one feed.
+  rpc GetLatestArticleByFeedID(GetLatestArticleByFeedIDRequest) returns (GetLatestArticleByFeedIDResponse);
+
+  // LookupArticleURL resolves an article's source URL within one tenant.
+  rpc LookupArticleURL(LookupArticleURLRequest) returns (LookupArticleURLResponse);
+
+  // ── Knowledge backfill reads (alt-backend admin jobs, catalog §2.N) ──
+
+  // CountBackfillArticles sizes the article replay.
+  rpc CountBackfillArticles(CountBackfillArticlesRequest) returns (CountBackfillArticlesResponse);
+
+  // ListBackfillArticles walks historic articles oldest first.
+  rpc ListBackfillArticles(ListBackfillArticlesRequest) returns (ListBackfillArticlesResponse);
+
+  // CountBackfillSummaryTitles sizes the summary-narrative replay.
+  rpc CountBackfillSummaryTitles(CountBackfillSummaryTitlesRequest) returns (CountBackfillSummaryTitlesResponse);
+
+  // ListBackfillSummaryTitles walks (summary_version, article) pairs oldest
+  // first.
+  rpc ListBackfillSummaryTitles(ListBackfillSummaryTitlesRequest) returns (ListBackfillSummaryTitlesResponse);
 }

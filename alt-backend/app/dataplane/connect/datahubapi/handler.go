@@ -140,6 +140,13 @@ type Handler struct {
 	scrapingPolicy  datahub_capability_port.ScrapingPolicyPort
 	autoFulltext    datahub_capability_port.AutoFulltextPort
 
+	// Wave 3 batch 2 (catalog §2.B / §2.C / §2.N). Same rule: required, and
+	// WithWave3Batch2Capabilities panics on nil rather than letting the
+	// article surface answer Unimplemented.
+	articleWrite      datahub_capability_port.ArticleWritePort
+	articleRead       datahub_capability_port.ArticleReadPort
+	knowledgeBackfill datahub_capability_port.KnowledgeBackfillPort
+
 	logger *slog.Logger
 }
 

@@ -11,25 +11,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubLocal struct {
+type stubArticle struct {
 	fetchedURL string
 	savedURL   string
-	savedHead  string
 }
 
-func (s *stubLocal) FetchArticleByURL(_ context.Context, articleURL string) (*domain.ArticleContent, error) {
+func (s *stubArticle) FetchArticleByURL(_ context.Context, articleURL string) (*domain.ArticleContent, error) {
 	s.fetchedURL = articleURL
 	return &domain.ArticleContent{}, nil
 }
 
-func (s *stubLocal) SaveArticle(_ context.Context, url, _, _ string) (string, error) {
+func (s *stubArticle) SaveArticle(_ context.Context, url, _, _ string) (string, error) {
 	s.savedURL = url
 	return "article-1", nil
-}
-
-func (s *stubLocal) SaveArticleHead(_ context.Context, articleID, _, _ string) error {
-	s.savedHead = articleID
-	return nil
 }
 
 type stubOgImage struct {
@@ -38,6 +32,12 @@ type stubOgImage struct {
 	ogURL     string
 	askedHead string
 	askedOg   string
+	savedHead string
+}
+
+func (s *stubOgImage) SaveArticleHead(_ context.Context, articleID, _, _ string) error {
+	s.savedHead = articleID
+	return nil
 }
 
 func (s *stubOgImage) FetchArticleHeadByArticleID(_ context.Context, articleID string) (*domain.ArticleHead, error) {
@@ -69,103 +69,110 @@ func (s *stubDeclined) IsDomainDeclined(_ context.Context, userID, domainName st
 	return s.declined, nil
 }
 
-func newTestGateway() (*Gateway, *stubLocal, *stubOgImage, *stubDeclined) {
-	local := &stubLocal{}
+func newTestGateway() (*Gateway, *stubArticle, *stubOgImage, *stubDeclined) {
+	article := &stubArticle{}
 	og := &stubOgImage{}
 	declined := &stubDeclined{}
-	return New(local, og, declined), local, og, declined
+	return New(article, og, declined), article, og, declined
 }
 
 // TestNewRequiresEveryCollaborator: this gateway satisfies one interface out of
 // three sources, and a nil one would fail on whichever of the seven methods
 // happened to be called first — during a user request, not at boot.
 func TestNewRequiresEveryCollaborator(t *testing.T) {
-	local := &stubLocal{}
+	article := &stubArticle{}
 	og := &stubOgImage{}
 	declined := &stubDeclined{}
 
 	tests := []struct {
 		name     string
-		local    localArticleStore
-		ogImage  ogImageReader
+		article  articleStore
+		ogImage  ogImageStore
 		declined declinedDomainStore
 	}{
-		{name: "no local store", ogImage: og, declined: declined},
-		{name: "no og image reader", local: local, declined: declined},
-		{name: "no declined domain store", local: local, ogImage: og},
+		{name: "no article store", ogImage: og, declined: declined},
+		{name: "no og image store", article: article, declined: declined},
+		{name: "no declined domain store", article: article, ogImage: og},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Panics(t, func() { New(tt.local, tt.ogImage, tt.declined) })
+			assert.Panics(t, func() { New(tt.article, tt.ogImage, tt.declined) })
 		})
 	}
 }
 
-// TestRoutesToDataHub covers the four methods this batch moved: whichever
-// collaborator answers, it must not be the local database.
-func TestRoutesToDataHub(t *testing.T) {
-	gw, local, og, declined := newTestGateway()
-	og.head = &domain.ArticleHead{ArticleID: "a1", OgImageURL: "https://cdn.example/og.png"}
-	og.ogURL = "https://cdn.example/og.png"
-	declined.declined = true
-
+// TestRoutingByCapabilityGroup is the attribution table for all seven methods.
+//
+// Batch 1 used this file to pin which half had moved and which was still a
+// direct database call. That distinction is gone — every method here crosses
+// the RPC boundary now — so what it pins instead is which capability gateway
+// answers which method. A later batch that re-points one has to say so here.
+func TestRoutingByCapabilityGroup(t *testing.T) {
 	ctx := context.Background()
 
-	head, err := gw.FetchArticleHeadByArticleID(ctx, "a1")
-	require.NoError(t, err)
-	require.NotNil(t, head)
-	assert.Equal(t, "a1", og.askedHead)
+	t.Run("§2.B / §2.C article store", func(t *testing.T) {
+		gw, article, og, declined := newTestGateway()
 
-	url, err := gw.FetchOgImageURLByArticleID(ctx, "a2")
-	require.NoError(t, err)
-	assert.Equal(t, "https://cdn.example/og.png", url)
-	assert.Equal(t, "a2", og.askedOg)
+		_, err := gw.FetchArticleByURL(ctx, "https://example.com/post")
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/post", article.fetchedURL)
 
-	got, err := gw.IsDomainDeclined(ctx, "u1", "paywalled.example")
-	require.NoError(t, err)
-	assert.True(t, got)
-	assert.Equal(t, "u1", declined.askedUser)
-	assert.Equal(t, "paywalled.example", declined.askedHost)
+		id, err := gw.SaveArticle(ctx, "https://example.com/post", "title", "body")
+		require.NoError(t, err)
+		assert.Equal(t, "article-1", id)
+		assert.Equal(t, "https://example.com/post", article.savedURL)
 
-	require.NoError(t, gw.SaveDeclinedDomain(ctx, "u1", "paywalled.example"))
-	assert.Equal(t, "paywalled.example", declined.savedHost)
+		assert.Empty(t, og.askedHead)
+		assert.Empty(t, declined.askedHost)
+	})
 
-	assert.Empty(t, local.fetchedURL)
-	assert.Empty(t, local.savedURL)
-	assert.Empty(t, local.savedHead)
-}
+	t.Run("§2.D article_heads (with §2.B's SaveArticleHead)", func(t *testing.T) {
+		gw, article, og, declined := newTestGateway()
+		og.head = &domain.ArticleHead{ArticleID: "a1", OgImageURL: "https://cdn.example/og.png"}
+		og.ogURL = "https://cdn.example/og.png"
 
-// TestRoutesToLocalStore covers the three methods this batch does NOT move.
-// They belong to catalog §2.B / §2.C and stay on the direct driver until those
-// batches land; pinning it here means a later batch cannot quietly forget to
-// move one.
-func TestRoutesToLocalStore(t *testing.T) {
-	gw, local, og, declined := newTestGateway()
-	ctx := context.Background()
+		require.NoError(t, gw.SaveArticleHead(ctx, "a1", "<head></head>", "https://cdn.example/og.png"))
+		assert.Equal(t, "a1", og.savedHead)
 
-	_, err := gw.FetchArticleByURL(ctx, "https://example.com/post")
-	require.NoError(t, err)
-	assert.Equal(t, "https://example.com/post", local.fetchedURL)
+		head, err := gw.FetchArticleHeadByArticleID(ctx, "a1")
+		require.NoError(t, err)
+		require.NotNil(t, head)
+		assert.Equal(t, "a1", og.askedHead)
 
-	id, err := gw.SaveArticle(ctx, "https://example.com/post", "title", "body")
-	require.NoError(t, err)
-	assert.Equal(t, "article-1", id)
+		url, err := gw.FetchOgImageURLByArticleID(ctx, "a2")
+		require.NoError(t, err)
+		assert.Equal(t, "https://cdn.example/og.png", url)
+		assert.Equal(t, "a2", og.askedOg)
 
-	require.NoError(t, gw.SaveArticleHead(ctx, "a1", "<head></head>", "https://cdn.example/og.png"))
-	assert.Equal(t, "a1", local.savedHead)
+		assert.Empty(t, article.fetchedURL)
+		assert.Empty(t, declined.askedHost)
+	})
 
-	assert.Empty(t, og.askedHead)
-	assert.Empty(t, declined.askedHost)
+	t.Run("§2.L declined domains", func(t *testing.T) {
+		gw, article, og, declined := newTestGateway()
+		declined.declined = true
+
+		got, err := gw.IsDomainDeclined(ctx, "u1", "paywalled.example")
+		require.NoError(t, err)
+		assert.True(t, got)
+		assert.Equal(t, "u1", declined.askedUser)
+		assert.Equal(t, "paywalled.example", declined.askedHost)
+
+		require.NoError(t, gw.SaveDeclinedDomain(ctx, "u1", "paywalled.example"))
+		assert.Equal(t, "paywalled.example", declined.savedHost)
+
+		assert.Empty(t, article.fetchedURL)
+		assert.Empty(t, og.askedHead)
+	})
 }
 
 // TestPropagatesDataHubErrors: a failed RPC must not read as "no head found",
 // which is the answer that makes the caller re-scrape the page.
 func TestPropagatesDataHubErrors(t *testing.T) {
-	local := &stubLocal{}
 	sentinel := errors.New("data-hub unreachable")
 	og := &stubOgImage{headErr: sentinel}
-	gw := New(local, og, &stubDeclined{})
+	gw := New(&stubArticle{}, og, &stubDeclined{})
 
 	head, err := gw.FetchArticleHeadByArticleID(context.Background(), "a1")
 	require.Error(t, err)

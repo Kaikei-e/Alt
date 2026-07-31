@@ -17,11 +17,21 @@ type tagGenerator interface {
 	IsEnabled() bool
 }
 
-// articleDB abstracts DB operations needed by this gateway.
+// articleDB is the tag half: catalog §2.J and W2-13, still a direct alt_db
+// call because the tag capabilities migrate in their own batch.
 type articleDB interface {
 	FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error)
-	FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
 	UpsertArticleTags(ctx context.Context, articleID string, feedID string, tags []alt_db.TagUpsertItem) (int32, error)
+}
+
+// articleReader is catalog §2.C W3-C3, served by alt-data-hub since ADR-000954
+// Wave 3 batch 2.
+//
+// Two sources rather than one interface, because the two halves moved at
+// different times. This is a seam: when the tag capabilities move, both fields
+// become the same gateway and articleDB goes away.
+type articleReader interface {
+	FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error)
 }
 
 // Config holds configuration for the gateway.
@@ -49,38 +59,36 @@ func DefaultConfig() Config {
 // FetchArticleTagsGateway implements the port for fetching article tags.
 type FetchArticleTagsGateway struct {
 	db      articleDB
+	article articleReader
 	tagger  tagGenerator
 	config  Config
 	sfGroup singleflight.Group // deduplicates concurrent on-the-fly generation for the same articleID
 }
 
-// NewFetchArticleTagsGateway creates a new gateway instance.
-func NewFetchArticleTagsGateway(altDB *alt_db.AltDBRepository) *FetchArticleTagsGateway {
-	return &FetchArticleTagsGateway{
-		db:     altDB,
-		config: DefaultConfig(),
-	}
-}
-
 // NewFetchArticleTagsGatewayWithMQHub creates a new gateway with mq-hub client for on-the-fly tag generation.
+//
+// It panics on a nil article reader: the on-the-fly generation path reads the
+// article body through it, and a nil there would surface as a panic on the
+// first article with no tags rather than at boot (CLAUDE.md rule 8).
 func NewFetchArticleTagsGatewayWithMQHub(
 	altDB *alt_db.AltDBRepository,
+	article articleReader,
 	mqhubClient *mqhub_connect.Client,
 	config Config,
 ) *FetchArticleTagsGateway {
-	return &FetchArticleTagsGateway{
-		db:     altDB,
-		tagger: mqhubClient,
-		config: config,
+	if article == nil {
+		panic("fetch_article_tags_gateway: an article reader is required — the article body read moved to alt-data-hub in ADR-000954 Wave 3")
 	}
+	return newGateway(altDB, article, mqhubClient, config)
 }
 
 // newGateway is an internal constructor for testing with interfaces.
-func newGateway(db articleDB, tagger tagGenerator, config Config) *FetchArticleTagsGateway {
+func newGateway(db articleDB, article articleReader, tagger tagGenerator, config Config) *FetchArticleTagsGateway {
 	return &FetchArticleTagsGateway{
-		db:     db,
-		tagger: tagger,
-		config: config,
+		db:      db,
+		article: article,
+		tagger:  tagger,
+		config:  config,
 	}
 }
 
@@ -121,7 +129,7 @@ func (g *FetchArticleTagsGateway) FetchArticleTags(ctx context.Context, articleI
 // generateAndPersistTags fetches article content, generates tags via mq-hub, and persists them.
 func (g *FetchArticleTagsGateway) generateAndPersistTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error) {
 	// 3. Fetch article content for tag generation
-	article, err := g.db.FetchArticleByID(ctx, articleID)
+	article, err := g.article.FetchArticleByID(ctx, articleID)
 	if err != nil {
 		logger.Logger.WarnContext(ctx, "failed to fetch article for on-the-fly tag generation",
 			"articleID", articleID, "error", err)

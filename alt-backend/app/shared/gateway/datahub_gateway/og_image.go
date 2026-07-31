@@ -30,6 +30,24 @@ func NewOgImageGateway(client datahubv1connect.DataHubServiceClient) *OgImageGat
 	return &OgImageGateway{client: client}
 }
 
+// SaveArticleHead stores the scraped head and the og:image URL extracted from
+// it (catalog §2.B W3-B2).
+//
+// head_html is NOT NULL in the table, so a caller with nothing to store sends
+// a `<head></head>` placeholder — the og-image backfill job does exactly that
+// when it has an image but no markup worth keeping.
+func (g *OgImageGateway) SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error {
+	_, err := g.client.SaveArticleHead(ctx, connect.NewRequest(&datahubv1.SaveArticleHeadRequest{
+		ArticleId:  articleID,
+		HeadHtml:   headHTML,
+		OgImageUrl: ogImageURL,
+	}))
+	if err != nil {
+		return fmt.Errorf("save article head %s: %w", articleID, err)
+	}
+	return nil
+}
+
 // FetchArticleHeadByArticleID returns the stored head record, or (nil, nil)
 // when the article has never been scraped.
 //

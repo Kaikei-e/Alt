@@ -101,6 +101,7 @@ func (g *OutboxGateway) Prune(ctx context.Context, olderThan time.Duration) (int
 // ---------------------------------------------------------------------------
 
 type ogImageDriver interface {
+	SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error
 	FetchArticleHeadByArticleID(ctx context.Context, articleID string) (*domain.ArticleHead, error)
 	FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error)
 	FetchFeedsMissingOgImage(ctx context.Context, limit int) ([]alt_db.OgBackfillCandidate, error)
@@ -115,6 +116,15 @@ type OgImageGateway struct {
 
 func NewOgImageGateway(db *alt_db.AltDBRepository) *OgImageGateway {
 	return &OgImageGateway{db: db}
+}
+
+// SaveArticleHead upserts the scraped head (catalog §2.B W3-B2). It lives on
+// the OG image gateway because it writes the table the §2.D reads read.
+func (g *OgImageGateway) SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error {
+	if err := g.db.SaveArticleHead(ctx, articleID, headHTML, ogImageURL); err != nil {
+		return fmt.Errorf("save article head %s: %w", articleID, err)
+	}
+	return nil
 }
 
 func (g *OgImageGateway) GetArticleHead(ctx context.Context, articleID string) (*domain.ArticleHead, error) {

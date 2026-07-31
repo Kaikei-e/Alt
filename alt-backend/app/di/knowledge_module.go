@@ -4,7 +4,6 @@ import (
 	"alt/dataplane/gateway/tag_set_version_gateway"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/orchestrator/driver/health_checker"
-	"alt/orchestrator/gateway/article_gateway"
 	"alt/orchestrator/gateway/feature_flag_gateway"
 	"alt/orchestrator/gateway/knowledge_backfill_gateway"
 	"alt/orchestrator/gateway/knowledge_metrics_gateway"
@@ -97,8 +96,10 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	summaryVersionGw := summary_version_gateway.NewGateway(altDB)
 	tagSetVersionGw := tag_set_version_gateway.NewGateway(altDB)
 	featureFlagGw := feature_flag_gateway.NewGateway(&cfg.KnowledgeHome)
-	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(altDB)
-	articleURLLookupGw := article_gateway.NewArticleURLLookupGateway(infra.Pool)
+	// Catalog §2.N and §2.C W3-C8, served by alt-data-hub since ADR-000954
+	// Wave 3 batch 2.
+	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(infra.KnowledgeBackfillGateway)
+	articleURLLookupGw := infra.ArticleURLLookupGateway
 
 	// Knowledge Home usecases
 	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(altDB, 30*time.Minute)

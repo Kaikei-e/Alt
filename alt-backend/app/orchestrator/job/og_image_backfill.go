@@ -31,9 +31,10 @@ type articleContentFetcher interface {
 
 // articleHeadSaver abstracts persisting the scraped head + og:image.
 //
-// Still backed by *alt_db.AltDBRepository: SaveArticleHead is catalog W3-B2,
-// which belongs to the article-write batch rather than to this one. It is the
-// last direct database call this job makes.
+// Backed by datahub_gateway.OgImageGateway since ADR-000954 Wave 3 batch 2
+// (catalog W3-B2), which was the last direct database call this job made. The
+// scrape that produces the markup stays here — it is an outbound HTTP fetch,
+// and D4 keeps those on the calling side.
 type articleHeadSaver interface {
 	SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error
 }

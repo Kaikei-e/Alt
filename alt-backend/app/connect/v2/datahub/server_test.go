@@ -42,6 +42,11 @@ func components() *di.DataHubComponents {
 		ImageProxyCacheGateway: datahub_capability_gateway.NewImageProxyCacheGateway(nil),
 		ScrapingPolicyGateway:  datahub_capability_gateway.NewScrapingPolicyGateway(nil),
 		AutoFulltextGateway:    datahub_capability_gateway.NewAutoFulltextGateway(nil),
+
+		// Wave 3 batch 2, same rule.
+		ArticleWriteGateway:      datahub_capability_gateway.NewArticleWriteGateway(nil),
+		ArticleReadGateway:       datahub_capability_gateway.NewArticleReadGateway(nil),
+		KnowledgeBackfillGateway: datahub_capability_gateway.NewKnowledgeBackfillGateway(nil),
 	}
 }
 

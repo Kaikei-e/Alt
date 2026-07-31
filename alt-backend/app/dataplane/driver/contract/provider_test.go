@@ -853,6 +853,15 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub has a declined domain for the user",
 			"alt-data-hub has subscribers for the feed link",
 			"alt-data-hub has the article for the user",
+
+			// Wave 3 batch 2 (catalog §2.B / §2.C / §2.N).
+			"alt-data-hub accepts article archives",
+			"alt-data-hub accepts article head writes",
+			"alt-data-hub has no article for the url",
+			"alt-data-hub has articles for the user",
+			"alt-data-hub has articles for the feed",
+			"alt-data-hub has historic articles to replay",
+			"alt-data-hub has summary versions to replay",
 		))
 }
 
@@ -1042,5 +1051,126 @@ func mountWave3Procedures(mux *http.ServeMux) {
 	dataHubProcedure(mux, "CheckArticleExistsByURLForUser", jsonPost(map[string]interface{}{
 		"exists":    true,
 		"articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+	}))
+
+	mountWave3Batch2Procedures(mux)
+}
+
+// mountWave3Batch2Procedures adds the article capabilities ADR-000954 Wave 3
+// batch 2 moved off the direct alt_db path (catalog §2.B / §2.C / §2.N).
+//
+// Two shapes recur here and both are contract, not convenience:
+//
+//   - "no such article" is an absent key, not an empty object. GetArticleByURL
+//     answers `{}` for an unarchived URL, and the fetch usecase reads that
+//     absence as "go get the page". An empty ArticleContent would read as an
+//     article with no body and stop it fetching.
+//   - The backfill counts are JSON numbers because they are int32, while the
+//     retention counts above are JSON strings because those are int64. That is
+//     protojson's rule, not a per-procedure choice.
+func mountWave3Batch2Procedures(mux *http.ServeMux) {
+	const (
+		stubArticleID = "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
+		stubUserID    = "11111111-2222-3333-4444-555555555555"
+		stubFeedID    = "33333333-4444-5555-6666-777777777777"
+		stubURL       = "https://example.com/post"
+		stubTimestamp = "2026-07-31T00:00:00Z"
+	)
+
+	articleContent := map[string]interface{}{
+		"id":      stubArticleID,
+		"title":   "Example",
+		"content": "body text",
+		"url":     stubURL,
+		"feedId":  stubFeedID,
+	}
+	userArticle := map[string]interface{}{
+		"id":          stubArticleID,
+		"feedId":      stubFeedID,
+		"title":       "Example",
+		"content":     "body text",
+		"url":         stubURL,
+		"tags":        []string{"go"},
+		"publishedAt": stubTimestamp,
+		"createdAt":   stubTimestamp,
+	}
+
+	// ---- §2.B Article writes ----------------------------------------------
+	dataHubProcedure(mux, "ArchiveArticle", jsonPost(map[string]interface{}{
+		"articleId": stubArticleID,
+		"created":   true,
+	}))
+	dataHubProcedure(mux, "SaveArticleHead", jsonPost(map[string]interface{}{}))
+
+	// ---- §2.C Article reads ------------------------------------------------
+	//
+	// GetArticleByURL branches for the same reason GetArticleHead does above:
+	// both of its answers mean something, and a stub that always found an
+	// article would verify a provider that had lost the distinction.
+	dataHubProcedure(mux, "GetArticleByURL", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			URL string `json:"url"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		if req.URL != stubURL {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"article": articleContent})
+	})
+	dataHubProcedure(mux, "BatchGetArticlesByURLs", jsonPost(map[string]interface{}{
+		"articles": map[string]interface{}{stubURL: articleContent},
+	}))
+	dataHubProcedure(mux, "GetArticleContentByID", jsonPost(map[string]interface{}{
+		"article": articleContent,
+	}))
+	dataHubProcedure(mux, "ListArticlesCursor", jsonPost(map[string]interface{}{
+		"articles": []map[string]interface{}{userArticle},
+	}))
+	dataHubProcedure(mux, "ListArticleIDsCursor", jsonPost(map[string]interface{}{
+		"articleIds": []string{stubArticleID},
+	}))
+	dataHubProcedure(mux, "BatchGetArticlesByIDs", jsonPost(map[string]interface{}{
+		"articles": []map[string]interface{}{userArticle},
+	}))
+	dataHubProcedure(mux, "GetLatestArticleByFeedID", jsonPost(map[string]interface{}{
+		"article": articleContent,
+	}))
+	dataHubProcedure(mux, "LookupArticleURL", jsonPost(map[string]interface{}{
+		"url": stubURL,
+	}))
+
+	// ---- §2.N Knowledge backfill -------------------------------------------
+	dataHubProcedure(mux, "CountBackfillArticles", jsonPost(map[string]interface{}{
+		"count": 4242,
+	}))
+	dataHubProcedure(mux, "ListBackfillArticles", jsonPost(map[string]interface{}{
+		"articles": []map[string]interface{}{{
+			"articleId":   stubArticleID,
+			"userId":      stubUserID,
+			"createdAt":   "2026-01-02T03:04:05Z",
+			"publishedAt": "2026-01-02T03:04:05Z",
+			"title":       "Example",
+			"url":         stubURL,
+		}},
+	}))
+	dataHubProcedure(mux, "CountBackfillSummaryTitles", jsonPost(map[string]interface{}{
+		"count": 7,
+	}))
+	dataHubProcedure(mux, "ListBackfillSummaryTitles", jsonPost(map[string]interface{}{
+		"entries": []map[string]interface{}{{
+			"summaryVersionId": "22222222-3333-4444-5555-666666666666",
+			"articleId":        stubArticleID,
+			"userId":           stubUserID,
+			"tenantId":         stubUserID,
+			"title":            "Example",
+			"generatedAt":      "2026-03-04T05:06:07Z",
+		}},
 	}))
 }

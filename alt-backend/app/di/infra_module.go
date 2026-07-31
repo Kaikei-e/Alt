@@ -32,20 +32,33 @@ type InfraModule struct {
 	HTTPClient  *http.Client
 	MQHubClient *mqhub_connect.Client
 
-	// Shared drivers. AltDBRepository is still here: the article reads and
-	// writes, the feed tables and the knowledge backfill are later ADR-000954
-	// Wave 3 batches, so cmd/backend keeps a database pool until they land.
+	// Shared drivers. AltDBRepository is still here: the feed tables, the tag
+	// reads and the read/subscription state are later ADR-000954 Wave 3
+	// batches, so cmd/backend keeps a database pool until they land. The
+	// article reads and writes moved in batch 2.
 	AltDBRepository     *alt_db.AltDBRepository
 	SearchIndexerDriver search_indexer_port.SearchIndexerPort
 	RobotsTxtGateway    *robots_txt_gateway.RobotsTxtGateway
 
 	// alt-data-hub client and the capability gateways built on it
-	// (ADR-000954 Wave 3 batch 1, catalog §2.D / §2.E / §2.L).
+	// (ADR-000954 Wave 3 batch 1, catalog §2.D / §2.E / §2.L; batch 2,
+	// catalog §2.B / §2.C / §2.N).
 	DataHubClient          datahubv1connect.DataHubServiceClient
 	OgImageGateway         *datahub_gateway.OgImageGateway
 	ImageProxyCacheGateway *datahub_gateway.ImageProxyCacheGateway
 	ScrapingDomainGateway  *datahub_gateway.ScrapingDomainGateway
 	DeclinedDomainGateway  *datahub_gateway.DeclinedDomainGateway
+
+	// Batch 2. Four gateways rather than one because they are grouped by the
+	// question they answer — archive an article, page a timeline, hydrate ids,
+	// resolve a URL — and a single "article gateway" would hand every consumer
+	// the whole surface.
+	ArticleStoreGateway      *datahub_gateway.ArticleStoreGateway
+	ArticleCursorGateway     *datahub_gateway.ArticleCursorGateway
+	ArticleBatchGateway      *datahub_gateway.ArticleBatchGateway
+	LatestArticleGateway     *datahub_gateway.LatestArticleGateway
+	ArticleURLLookupGateway  *datahub_gateway.ArticleURLLookupGateway
+	KnowledgeBackfillGateway *datahub_gateway.KnowledgeBackfillGateway
 
 	Pool *pgxpool.Pool
 }
@@ -103,6 +116,13 @@ func newInfraModule(pool *pgxpool.Pool, cfg *config.Config) *InfraModule {
 		ImageProxyCacheGateway: datahub_gateway.NewImageProxyCacheGateway(dataHubClient),
 		ScrapingDomainGateway:  datahub_gateway.NewScrapingDomainGateway(dataHubClient),
 		DeclinedDomainGateway:  datahub_gateway.NewDeclinedDomainGateway(dataHubClient),
+
+		ArticleStoreGateway:      datahub_gateway.NewArticleStoreGateway(dataHubClient),
+		ArticleCursorGateway:     datahub_gateway.NewArticleCursorGateway(dataHubClient),
+		ArticleBatchGateway:      datahub_gateway.NewArticleBatchGateway(dataHubClient),
+		LatestArticleGateway:     datahub_gateway.NewLatestArticleGateway(dataHubClient),
+		ArticleURLLookupGateway:  datahub_gateway.NewArticleURLLookupGateway(dataHubClient),
+		KnowledgeBackfillGateway: datahub_gateway.NewKnowledgeBackfillGateway(dataHubClient),
 
 		Pool: pool,
 	}

@@ -88,12 +88,12 @@ func registerImageJobs(scheduler *JobScheduler, container *di.HarvesterComponent
 		Name:     "og-image-backfill",
 		Interval: 30 * time.Minute,
 		Timeout:  20 * time.Minute,
-		// The candidate list comes from alt-data-hub; SaveArticleHead is still
-		// a direct write, because catalog W3-B2 belongs to the article-write
-		// batch rather than this one.
+		// Both the candidate list and the head write go to alt-data-hub since
+		// batch 2 (catalog §2.D and W3-B2). The page scrape between them is
+		// this job's own work.
 		Fn: OgImageBackfillJob(
 			container.OgImageGateway,
-			container.AltDBRepository,
+			container.OgImageGateway,
 			container.FetchArticleGateway,
 			container.ImageProxyUsecase,
 		),
