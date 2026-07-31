@@ -172,12 +172,18 @@ services:
       # every NIC only offers a way around the edge.
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9101:9101"
-      # :9102 carries BackendInternalService, the admin services and
-      # /v1/internal/* — none of which authenticate their caller. Loopback
-      # bind keeps it reachable for altctl on this host while removing it
-      # from every other NIC; east-west callers use the container DNS name.
+      # :9102 is the operator listener and carries the admin Connect services
+      # (KnowledgeHomeAdminService, AdminMonitorService) — which authenticate
+      # nobody. Loopback bind keeps it reachable for altctl on this host while
+      # removing it from every other NIC.
+      # BackendInternalService and /v1/internal/* are NOT here: they moved to
+      # alt-data-hub's mTLS listener in the split (ADR-000954), and
+      # e2e/hurl/alt-backend/03-topology-internal-surface-absent.hurl asserts
+      # their absence.
       - "127.0.0.1:9102:9102"
-      # mTLS :9443 intentionally not published (internal east-west only)
+      # No :9443. cmd/backend opens no mTLS listener at all — that surface is
+      # alt-data-hub's, and config.RejectBackendMTLSListenerEnv exits non-zero
+      # if the old MTLS_LISTEN / MTLS_PORT knobs reappear here.
     networks:
       - alt-network
     volumes:
@@ -211,7 +217,9 @@ services:
       # APP_ENV=production in .env would find it silently pinned back to
       # development. One documented knob, one source.
       - CONNECT_PORT=9101
-      - INTERNAL_PORT=9102
+      # INTERNAL_PORT is deliberately absent: the listener it used to
+      # configure is now spelled OPERATOR_LISTEN_ADDR below, and nothing reads
+      # an internal-port value any more (the ServerConfig field went with it).
       # Operator listener (KnowledgeHomeAdminService, AdminMonitorService).
       # Stated explicitly and NOT left at the 127.0.0.1:9102 default: the
       # `127.0.0.1:9102:9102` publish above is DNAT'd by docker-proxy, which
@@ -357,21 +365,26 @@ services:
       # bootstrap.NewOpsHandler; there is no OPS_SURFACES knob to set.
       OPS_LISTEN: ":9110"
       # --- schedule ------------------------------------------------------
-      # Enabled/disabled is an explicit value, never inferred from an unset
-      # variable (CLAUDE.md rule 9). SERVER_PORT / CONNECT_PORT / INTERNAL_PORT
-      # / MTLS_LISTEN are deliberately NOT set: the harvester binary exits
-      # non-zero if it is handed one, so a mis-copied listener knob is a
-      # startup failure rather than a silently ignored line.
-      SCHEDULER_ENABLED: "true"
-      SCHEDULER_JOBS: "hourly-feed-collector,daily-scraping-policy,outbox-worker,ogp-image-warmer,og-image-retention,og-image-backfill,outbox-prune"
+      # There are no schedule knobs. cmd/harvester calls
+      # job.RegisterHarvesterJobs unconditionally and then logs
+      # `harvester.jobs.wiring` with the resolved job names — that log line is
+      # the statement of what is running (CLAUDE.md rule 8), and it is the only
+      # one. SCHEDULER_ENABLED / SCHEDULER_JOBS used to sit here and were read
+      # by nothing, which is the "config present, behaviour absent" shape the
+      # split exists to remove: editing the list looked like it disabled a job
+      # and did not. Listener variables (SERVER_PORT / CONNECT_PORT /
+      # MTLS_LISTEN) are absent for the same reason — this binary opens no
+      # listener but the ops one, so a value here would be equally inert.
       # --- outbound mTLS (client side; leaf cert from pki-agent) ----------
       # WAVE 3 PLACEHOLDER — nothing reads DATA_HUB_* yet; the jobs still
       # open their own alt-db pool. See alt-backend above.
       DATA_HUB_MTLS_URL: https://alt-data-hub:9443
       DATA_HUB_SERVER_NAME: alt-data-hub
-      # These three are live now: di/rag_module.go builds the outbox worker's
-      # rag-orchestrator client from them.
-      MTLS_ENFORCE: ${ALT_HARVESTER_MTLS_ENFORCE:-true}
+      # di/rag_module.go builds the outbox worker's rag-orchestrator client
+      # from these three whenever RAG_ORCHESTRATOR_CONNECT_URL is https, and
+      # panics rather than falling back to plaintext if the leaf cannot be
+      # loaded. There is no MTLS_ENFORCE here: the URL scheme is the switch,
+      # and a separate boolean read by nothing would only look like one.
       MTLS_CERT_FILE: /certs/svc-cert.pem
       MTLS_KEY_FILE: /certs/svc-key.pem
       MTLS_CA_FILE: /trust/ca-bundle.pem

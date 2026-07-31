@@ -160,9 +160,14 @@ type AuthConfig struct {
 }
 
 type ServerConfig struct {
-	Port               int           `json:"port" env:"SERVER_PORT" default:"9000"`
-	ConnectPort        int           `json:"connect_port" env:"CONNECT_PORT" default:"9101"`
-	InternalPort       int           `json:"internal_port" env:"INTERNAL_PORT" default:"9102"`
+	Port        int `json:"port" env:"SERVER_PORT" default:"9000"`
+	ConnectPort int `json:"connect_port" env:"CONNECT_PORT" default:"9101"`
+	// There is no InternalPort. The listener it named became cmd/backend's
+	// operator listener, whose bind address comes from OPERATOR_LISTEN_ADDR
+	// via config.LoadOperatorListenAddr — a host:port, not a bare port, because
+	// how far it binds is the whole access control for the admin services.
+	// Keeping a parsed-but-unread INTERNAL_PORT here would have made a compose
+	// line look like it moved a listener that it could not move (rule 8).
 	ReadTimeout        time.Duration `json:"read_timeout" env:"SERVER_READ_TIMEOUT" default:"300s"` // Extended for LLM processing (nginx timeout 240s + margin)
 	WriteTimeout       time.Duration `json:"write_timeout" env:"SERVER_WRITE_TIMEOUT" default:"300s"`
 	IdleTimeout        time.Duration `json:"idle_timeout" env:"SERVER_IDLE_TIMEOUT" default:"120s"`

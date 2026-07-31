@@ -990,7 +990,14 @@ services:
       # on the variable's mere presence — "false" and "true" are equally dead
       # config, and treating the leftover as an error is what stops it from
       # looking like a working knob (rule 8).
-      - MTLS_ENFORCE=false
+      #
+      # MTLS_ENFORCE is absent for the same reason, minus the guard: nothing in
+      # this module reads it. The one place cmd/backend presents a client
+      # certificate is di/rag_module.go, and the switch there is the *scheme*
+      # of RAG_ORCHESTRATOR_CONNECT_URL — http:// above, so the plaintext
+      # branch runs and logs `rag_connect_plaintext`. MTLS_CERT_FILE /
+      # MTLS_KEY_FILE / MTLS_CA_FILE are the variables that branch reads, and
+      # this slice has no PKI to point them at.
       - LOG_LEVEL=info
       - LOG_FORMAT=json
       # Cap connection pool so the ephemeral Postgres isn't stressed.

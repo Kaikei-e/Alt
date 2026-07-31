@@ -33,10 +33,35 @@ services:
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_CLIENT_AUTH=${ALT_BUTTERFLY_FACADE_MTLS_CLIENT_AUTH:-}
       - MTLS_ALLOWED_PEERS=${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}
-      - MTLS_ENFORCE=${ALT_BUTTERFLY_FACADE_MTLS_ENFORCE:-true}
-      - BACKEND_CONNECT_MTLS_URL=https://alt-backend:9443
-      - BACKEND_MTLS_SERVER_NAME=alt-backend
-      # Acolyte and TTS each run an nginx mTLS sidecar on :9443
+      # Outbound mTLS is OFF, and that is an explicit value rather than an
+      # unset one (rule 9): main.go logs `mtls_enforce_disabled` with every
+      # upstream it resolved, so the state is visible at startup.
+      #
+      # Why it is off after the 3-binary split (ADR-000954): this service
+      # proxies alt-backend's *browser* Connect services and its *admin*
+      # Connect services, and neither moved to alt-data-hub. cmd/datahub
+      # registers exactly one handler — BackendInternalService — and its
+      # dataHubHandler 404s everything else, so repointing this hop at
+      # https://alt-data-hub:9443 would connect and then 404 every RPC.
+      # cmd/backend, meanwhile, no longer opens an mTLS listener at all
+      # (config.RejectBackendMTLSListenerEnv makes re-adding one a startup
+      # error), so https://alt-backend:9443 has nothing behind it either.
+      # The only reachable targets are the plaintext BACKEND_CONNECT_URL /
+      # BACKEND_INTERNAL_CONNECT_URL / BACKEND_REST_URL above.
+      #
+      # Turning this back on needs an mTLS target that serves the browser and
+      # admin surfaces; ADR-000954 schedules that peer repoint for Wave 2.
+      # Setting ALT_BUTTERFLY_FACADE_MTLS_ENFORCE=true today makes every
+      # Connect RPC fail: newMTLSBackendTransport hands the backend client an
+      # http2.Transport with AllowHTTP unset, which refuses an http:// URL.
+      #
+      # BACKEND_CONNECT_MTLS_URL / BACKEND_MTLS_SERVER_NAME are deliberately
+      # absent. The first pointed at the removed alt-backend :9443; the second
+      # was never read by this binary at all (newMTLSBackendTransport leaves
+      # ServerName empty on purpose so SNI follows each request's URL host).
+      - MTLS_ENFORCE=${ALT_BUTTERFLY_FACADE_MTLS_ENFORCE:-false}
+      # Acolyte and TTS each run an nginx mTLS sidecar on :9443. Read only
+      # when MTLS_ENFORCE is true, so they are inert with the default above.
       - ACOLYTE_CONNECT_MTLS_URL=https://acolyte-orchestrator:9443
       - TTS_CONNECT_MTLS_URL=${TTS_CONNECT_MTLS_URL:-}
     extra_hosts:

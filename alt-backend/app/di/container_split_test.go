@@ -115,7 +115,7 @@ func splitTestConfig() *config.Config {
 	return &config.Config{
 		AppEnv: "development",
 		Server: config.ServerConfig{
-			Port: 9000, ConnectPort: 9101, InternalPort: 9102,
+			Port: 9000, ConnectPort: 9101,
 			ReadTimeout: 300 * time.Second, WriteTimeout: 300 * time.Second, IdleTimeout: 120 * time.Second,
 		},
 		RateLimit:     config.RateLimitConfig{ExternalAPIInterval: 10 * time.Second, ExternalAPIBurst: 3, FeedFetchLimit: 100},

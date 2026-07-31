@@ -236,13 +236,20 @@ services:
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_CLIENT_AUTH=${PRE_PROCESSOR_MTLS_CLIENT_AUTH:-}
       - MTLS_ALLOWED_PEERS=${PRE_PROCESSOR_MTLS_ALLOWED_PEERS:-}
-      # Outbound mTLS to alt-backend (pilot toggle)
+      # Outbound mTLS to the data plane. BackendInternalService and
+      # /v1/internal moved out of alt-backend in the 3-binary split
+      # (ADR-000954): cmd/backend opens no mTLS listener at all, and
+      # cmd/datahub is the only process serving that surface. The leaf this
+      # container presents has CN/SAN `pre-processor`, which is in
+      # alt-data-hub's DATAHUB_ALLOWED_PEERS (compose/core.yaml).
       - MTLS_ENFORCE=${PRE_PROCESSOR_MTLS_ENFORCE:-true}
-      - BACKEND_API_MTLS_URL=https://alt-backend:9443
-      - BACKEND_MTLS_SERVER_NAME=alt-backend
-      # Backend API mode: article/feed/summary repos via Connect-RPC.
-      # :9102 is alt-backend's internal listener (BackendInternalService);
-      # the published :9101 no longer serves it.
+      - BACKEND_API_MTLS_URL=https://alt-data-hub:9443
+      # bootstrap/wire.go pins tls.Config.ServerName from this, so it must be
+      # the SAN pki-agent-alt-data-hub mints (CERT_SANS=alt-data-hub,localhost).
+      - BACKEND_MTLS_SERVER_NAME=alt-data-hub
+      # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
+      # alt-backend's operator listener and no longer carries
+      # BackendInternalService — see the note in compose/core.yaml.
       - BACKEND_API_URL=http://alt-backend:9102
       - ALT_BACKEND_HOST=http://alt-backend:9102
       # Pre-processor dedicated DB (ADR-000246)

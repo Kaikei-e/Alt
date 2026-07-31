@@ -12,7 +12,6 @@ func baseConfig() *Config {
 		Server: ServerConfig{
 			Port:         9000,
 			ConnectPort:  9101,
-			InternalPort: 9102,
 			ReadTimeout:  300 * time.Second,
 			WriteTimeout: 300 * time.Second,
 			IdleTimeout:  120 * time.Second,
