@@ -138,6 +138,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
+      # One broken service should not cancel the other consumers' pact
+      # generation — the verify job needs every artifact that can be built.
+      fail-fast: false
       matrix:
         include:
           - service: alt-backend/app
@@ -156,10 +159,13 @@ jobs:
             test-path: ./driver/contract/
             sparse-checkout: search-indexer
             pact-dir: pacts
+          # mq-hub no longer emits consumer pacts (it only wire-format-checks
+          # here; provider verification runs in pact-verify-go), so it has no
+          # pact-dir and the upload step is skipped.
           - service: mq-hub/app
             test-path: ./driver/contract/
             sparse-checkout: mq-hub
-            pact-dir: pacts
+            pact-dir: ""
           - service: alt-butterfly-facade
             test-path: ./internal/handler/contract/
             sparse-checkout: alt-butterfly-facade
@@ -193,6 +199,7 @@ jobs:
         run: go test -tags=contract ${{ matrix.test-path }} -v
 
       - name: Upload pact files
+        if: matrix.pact-dir != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: pacts-${{ matrix.sparse-checkout }}
