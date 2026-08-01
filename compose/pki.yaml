@@ -324,8 +324,15 @@ services:
       - CERT_SANS=tag-generator,localhost
       - CERT_PATH=/certs/svc-cert.pem
       - KEY_PATH=/certs/svc-key.pem
-      - CERT_OWNER_UID=0
-      - CERT_OWNER_GID=0
+      # tag-generator reads this key itself since ADR-000954 made it an mTLS
+      # *client* of alt-data-hub:9443 (MTLS_KEY_FILE in workers.yaml), and its
+      # image runs as uid 1000 (appuser). Root-owned 0400 was fine while only
+      # this sidecar's reverse proxy read the key; after the split it
+      # crashlooped the parent's healthcheck with EACCES (run 30702287712).
+      # The sidecar itself runs as root, so it can still read the key for the
+      # :9443 proxy.
+      - CERT_OWNER_UID=1000
+      - CERT_OWNER_GID=1000
       - RENEW_AT_FRACTION=0.66
       - TICK_INTERVAL=5m
       - METRICS_ADDR=:9510
