@@ -47,6 +47,46 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout HEAD (shallow, for diff enumeration)
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Enumerate changed paths via git (no 300-file API cap)
+        # The Compare Commits API caps `files` at 300 per response. Run
+        # 30666223031 (alt-deploy) received exactly 300 entries for the
+        # ADR-000954 merge (400+ files): recap-worker / search-indexer /
+        # tag-generator / rag-orchestrator sorted past the cap, silently
+        # dropped out of the release matrix, and production would have
+        # rolled a provider without its migrated consumers. git diff has
+        # no such cap. The list is then compacted to unique <=3-segment
+        # prefixes (deeper paths keep a trailing slash) so the
+        # client_payload stays far below the dispatch size limit while
+        # alt-deploy's SERVICE_PATHS prefix matching — whose deepest
+        # prefixes are 3 segments (`e2e/fixtures/<svc>/`) — still matches
+        # exactly the same set of services.
+        if: steps.check.outputs.ready == 'true'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          zero="0000000000000000000000000000000000000000"
+          if [[ ! "$BEFORE" =~ ^[0-9a-f]{40}$ || ! "$AFTER" =~ ^[0-9a-f]{40}$ \
+                || "$BEFORE" == "$zero" || "$AFTER" == "$zero" || "$BEFORE" == "$AFTER" ]]; then
+            echo "before/after unusable (first push or force-push); leaving changed.txt absent for webhook fallback"
+            exit 0
+          fi
+          if ! git fetch --depth=1 origin "$BEFORE"; then
+            echo "::warning::could not fetch $BEFORE (history rewritten?); falling back to webhook commits[]"
+            exit 0
+          fi
+          git diff --name-only "$BEFORE" "$AFTER" \
+            | awk -F/ 'NF<=3 { print; next } { print $1 "/" $2 "/" $3 "/" }' \
+            | sort -u > changed.txt
+          echo "changed prefixes: $(wc -l < changed.txt)"
+
       - name: Fire repository_dispatch at alt-deploy
         if: steps.check.outputs.ready == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
@@ -55,40 +95,20 @@ jobs:
           script: |
             const sha = context.sha;
             const ref = context.ref;
-            // Push webhooks sometimes deliver `commits[].{added,modified,removed}`
-            // empty even when the push carries real diff — the alt-deploy
-            // resolve job then can't tell what moved and (prior to its fix)
-            // fell back to deploying every pacticipant. Use the Compare
-            // Commits API instead, which is authoritative regardless of
-            // webhook quirks. Falls back to the webhook payload when
-            // before/after are unusable (e.g. first push, force-push that
-            // collapses branch history).
-            const before = context.payload.before;
-            const after = context.payload.after;
-            const zeroSha = '0000000000000000000000000000000000000000';
-            // Hex-40 pre-validation before interpolating into the API path.
-            // Octokit URL-encodes parameters so this is defense-in-depth, not
-            // a live exploit vector — it matches the `sha` regex above and
-            // keeps the invariant explicit for future refactors.
-            const shaRe = /^[0-9a-f]{40}$/;
+            // The git step above enumerates the push diff without the
+            // Compare API's 300-file cap. Falls back to the webhook
+            // payload when before/after were unusable (first push,
+            // force-push that collapses branch history) — webhooks
+            // sometimes deliver `commits[].{added,modified,removed}`
+            // empty even for real diffs, which alt-deploy's resolve job
+            // treats as "nothing moved", so this is last resort only.
+            const fs = require('fs');
             let changed = [];
-            if (
-              shaRe.test(before) && shaRe.test(after) &&
-              before !== zeroSha && after !== zeroSha && before !== after
-            ) {
-              try {
-                const cmp = await github.rest.repos.compareCommitsWithBasehead({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  basehead: `${before}...${after}`,
-                });
-                changed = (cmp.data.files || []).map(f => f.filename);
-              } catch (cmpErr) {
-                core.warning(
-                  `compareCommits failed (${cmpErr.status || cmpErr.message}); ` +
-                  `falling back to webhook commits[]`
-                );
-              }
+            try {
+              changed = fs.readFileSync('changed.txt', 'utf8')
+                .split('\n').map(s => s.trim()).filter(Boolean);
+            } catch (readErr) {
+              core.warning(`changed.txt not produced (${readErr.message}); falling back to webhook commits[]`);
             }
             if (changed.length === 0) {
               changed = (context.payload.commits || [])

@@ -124,10 +124,13 @@ type listRecapArticlesRequest struct {
 //
 // It mounted the retired services.backend.v1.BackendInternalService path as
 // well while Wave 2-B moved the consumers one PR at a time, so that a peer's
-// migration did not also need an edit here. Both names are no longer served by
-// the real handler, and a stub that kept answering the old one would let a
-// consumer pact still naming it verify green against a provider that would
-// 404 it in production.
+// migration did not also need an edit here. That blanket dual-mount is gone:
+// a stub that answered the old name for every procedure would let any future
+// consumer pact naming it verify green against a provider that would 404 it
+// in production. The BackendInternalService routes that remain are mounted
+// explicitly in the transitional-shims block below, scoped to the pacts the
+// production-deployed recap-worker and search-indexer still publish, with a
+// remove-once-deployed-past marker.
 func dataHubProcedure(mux *http.ServeMux, procedure string, h http.HandlerFunc) {
 	mux.HandleFunc("/alt.datahub.v1.DataHubService/"+procedure, h)
 }
@@ -238,8 +241,10 @@ func startStubServer(t *testing.T) int {
 	})
 
 	// ---- alt.datahub.v1.DataHubService (JSON wire format) ----
-	// search-indexer-alt-backend.json contract.
-	dataHubProcedure(mux, "GetLatestArticleTimestamp",
+	// search-indexer-alt-backend.json contract. The three handlers are named
+	// so the BackendInternalService transitional shims below can mount the
+	// same stubs under the retired path.
+	latestArticleTimestampHandler := http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -250,8 +255,9 @@ func startStubServer(t *testing.T) int {
 				"latestCreatedAt": "2026-03-26T00:00:00Z",
 			})
 		})
+	dataHubProcedure(mux, "GetLatestArticleTimestamp", latestArticleTimestampHandler)
 
-	dataHubProcedure(mux, "ListArticlesWithTags",
+	listArticlesWithTagsHandler := http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -274,12 +280,13 @@ func startStubServer(t *testing.T) int {
 				"nextId": "art-002",
 			})
 		})
+	dataHubProcedure(mux, "ListArticlesWithTags", listArticlesWithTagsHandler)
 
 	// search-indexer-alt-backend.json: "a GetArticleByID request".
 	// published_at is deliberately a different instant from created_at: the
 	// consumer indexes documents from this response alone, so substituting
 	// created_at here would silently regress its date filter.
-	dataHubProcedure(mux, "GetArticleByID",
+	getArticleByIDHandler := http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -301,34 +308,57 @@ func startStubServer(t *testing.T) int {
 				},
 			})
 		})
+	dataHubProcedure(mux, "GetArticleByID", getArticleByIDHandler)
 
 	// recap-worker-alt-backend.json: "a batch tags request by article ids"
 	// recap-worker fetches tags for a batch of article ids to enrich the
 	// recap payload. Connect-RPC, JSON wire format, camelCase keys.
-	dataHubProcedure(mux, "BatchGetTagsByArticleIDs",
-		func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				w.WriteHeader(http.StatusMethodNotAllowed)
-				return
-			}
-			_, _ = io.Copy(io.Discard, r.Body)
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"items": []map[string]interface{}{
-					{
-						"articleId": "art-001",
-						"tags": []map[string]interface{}{
-							{
-								"tagName":    "technology",
-								"confidence": 0.95,
-								"source":     "ml_model",
-								"updatedAt":  "2026-03-26T00:00:00Z",
-							},
+	batchTagsHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"items": []map[string]interface{}{
+				{
+					"articleId": "art-001",
+					"tags": []map[string]interface{}{
+						{
+							"tagName":    "technology",
+							"confidence": 0.95,
+							"source":     "ml_model",
+							"updatedAt":  "2026-03-26T00:00:00Z",
 						},
 					},
 				},
-			})
+			},
 		})
+	}
+	dataHubProcedure(mux, "BatchGetTagsByArticleIDs", batchTagsHandler)
+
+	// Transitional shims, same rationale as the recap-articles pair above:
+	// the recap-worker (58648b8) and search-indexer (64d94ed / caed48f)
+	// currently deployed to production publish pacts against the retired
+	// services.backend.v1.BackendInternalService paths, and the broker's
+	// DeployedOrReleased selector keeps selecting those pacts until a
+	// post-split version of each consumer is recorded as deployed. Without
+	// these routes every release that includes alt-backend fails provider
+	// verification (alt-deploy run 30666223031) and the pipeline deadlocks —
+	// record-deployment only happens after a successful deploy. The wire
+	// shapes are identical to the DataHubService procedures, so the same
+	// stubs serve both names. Remove once the deployed recap-worker and
+	// search-indexer versions advance past 4b4f07230.
+	for procedure, handler := range map[string]http.Handler{
+		"ListRecapArticles":         http.HandlerFunc(recapArticlesHandler),
+		"BatchGetTagsByArticleIDs":  http.HandlerFunc(batchTagsHandler),
+		"GetLatestArticleTimestamp": latestArticleTimestampHandler,
+		"ListArticlesWithTags":      listArticlesWithTagsHandler,
+		"GetArticleByID":            getArticleByIDHandler,
+	} {
+		mux.Handle("/services.backend.v1.BackendInternalService/"+procedure, handler)
+	}
 
 	// ---- pre-processor-alt-backend.json ----
 	// The crawl/summarise loop: resolve a feed, write an article, poll for
