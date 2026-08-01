@@ -566,6 +566,14 @@ services:
       # outside development, so this is not optional here.
       MQHUB_ENABLED: "true"
       MQHUB_CONNECT_URL: http://mq-hub:9500
+      # IMAGE_PROXY_ENABLED defaults to true and validateImageProxyConfig
+      # then demands a signing secret at boot. The proxy is served by
+      # alt-backend and its URLs are minted by alt-harvester — this binary
+      # does neither, so disable it explicitly (CLAUDE.md rule 9) instead of
+      # mounting a secret it would never read. compose.staging.yaml already
+      # carries this line; its absence here crashlooped the first production
+      # rollout of the split (release-deploy run 30700686079).
+      IMAGE_PROXY_ENABLED: "false"
       DB_MAX_CONNS: "40"
       DB_MIN_CONNS: "10"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
