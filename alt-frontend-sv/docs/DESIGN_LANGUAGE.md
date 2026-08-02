@@ -543,6 +543,6 @@ All motion is **editorial** — deliberate, restrained, purposeful. No playful b
 - **SvelteKit**: 2.x
 - **Svelte**: 5 (Runes — `$state`, `$derived`, `$effect`, `$props`)
 - **TailwindCSS**: v4 (CSS-first, no tailwind.config.js)
-- **TypeScript**: 7 (tsgo)
+- **TypeScript**: 6 (tsc — TS7 は `svelte-check` 非対応。`CLAUDE.md` 参照)
 - **UI Primitives**: bits-ui / shadcn-svelte
 - **Icons**: @lucide/svelte
