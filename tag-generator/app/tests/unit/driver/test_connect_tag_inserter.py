@@ -9,7 +9,7 @@ from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 
 from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
-from tag_generator.gen.proto.alt.datahub.v1 import datahub_pb2
+from tag_generator.gen.proto.services.datahub.v1 import datahub_pb2
 
 
 @pytest.fixture

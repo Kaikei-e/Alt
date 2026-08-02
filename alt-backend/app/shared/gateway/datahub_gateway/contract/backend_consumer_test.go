@@ -1,6 +1,6 @@
 //go:build contract
 
-// Pact CDC: alt-backend → alt-data-hub (alt.datahub.v1.DataHubService).
+// Pact CDC: alt-backend → alt-data-hub (services.datahub.v1.DataHubService).
 //
 // ADR-000954 Wave 3, capability catalog §2.D / §2.E / §2.L / §2.O — the half
 // of the batch that sits on the user-facing request path rather than on a
@@ -47,7 +47,7 @@ func TestGetArticleHeadContract(t *testing.T) {
 		UponReceiving("a GetArticleHead request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetArticleHead"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleHead"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"},
 		}).
@@ -89,7 +89,7 @@ func TestGetArticleHeadMissContract(t *testing.T) {
 		UponReceiving("a GetArticleHead request from alt-backend for an unscraped article").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetArticleHead"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleHead"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"articleId": "00000000-0000-4000-8000-000000000000"},
 		}).
@@ -121,7 +121,7 @@ func TestBatchGetOgImageURLsContract(t *testing.T) {
 		UponReceiving("a BatchGetOgImageURLs request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/BatchGetOgImageURLs"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/BatchGetOgImageURLs"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleIds": []string{"6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"},
@@ -166,7 +166,7 @@ func TestGetImageProxyCacheContract(t *testing.T) {
 		UponReceiving("a GetImageProxyCache request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetImageProxyCache"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetImageProxyCache"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"urlHash": "abc123"},
 		}).
@@ -213,7 +213,7 @@ func TestGetImageProxyCacheMissContract(t *testing.T) {
 		UponReceiving("a GetImageProxyCache request from alt-backend that misses").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetImageProxyCache"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetImageProxyCache"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"urlHash": "missing"},
 		}).
@@ -243,7 +243,7 @@ func TestPutImageProxyCacheContract(t *testing.T) {
 		UponReceiving("a PutImageProxyCache request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/PutImageProxyCache"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/PutImageProxyCache"),
 			Headers: jsonHeaders(),
 			Body: matchers.MapMatcher{
 				"entry": matchers.Like(map[string]interface{}{
@@ -292,7 +292,7 @@ func TestGetScrapingDomainByDomainContract(t *testing.T) {
 		UponReceiving("a GetScrapingDomainByDomain request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetScrapingDomainByDomain"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetScrapingDomainByDomain"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"domain": "example.com"},
 		}).
@@ -340,7 +340,7 @@ func TestGetScrapingDomainByDomainUnknownContract(t *testing.T) {
 		UponReceiving("a GetScrapingDomainByDomain request from alt-backend for an unknown host").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetScrapingDomainByDomain"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetScrapingDomainByDomain"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"domain": "unknown.example"},
 		}).
@@ -370,7 +370,7 @@ func TestGetScrapingDomainByIDContract(t *testing.T) {
 		UponReceiving("a GetScrapingDomainByID request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetScrapingDomainByID"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetScrapingDomainByID"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"id": "2b1c3d4e-5f60-4711-8899-aabbccddeeff"},
 		}).
@@ -411,7 +411,7 @@ func TestSaveDeclinedDomainContract(t *testing.T) {
 		UponReceiving("a SaveDeclinedDomain request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/SaveDeclinedDomain"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/SaveDeclinedDomain"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId": "11111111-2222-3333-4444-555555555555",
@@ -440,7 +440,7 @@ func TestIsDomainDeclinedContract(t *testing.T) {
 		UponReceiving("an IsDomainDeclined request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/IsDomainDeclined"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/IsDomainDeclined"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId": "11111111-2222-3333-4444-555555555555",
@@ -478,7 +478,7 @@ func TestListSubscribedUserIDsByFeedLinkIDContract(t *testing.T) {
 		UponReceiving("a ListSubscribedUserIDsByFeedLinkID request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListSubscribedUserIDsByFeedLinkID"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListSubscribedUserIDsByFeedLinkID"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"feedLinkId": "33333333-4444-5555-6666-777777777777"},
 		}).
@@ -511,7 +511,7 @@ func TestCheckArticleExistsByURLForUserContract(t *testing.T) {
 		UponReceiving("a CheckArticleExistsByURLForUser request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/CheckArticleExistsByURLForUser"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/CheckArticleExistsByURLForUser"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"url":    "https://example.com/post",

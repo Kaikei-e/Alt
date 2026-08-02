@@ -2,7 +2,7 @@
 
 // Package contract contains provider verification tests for the data plane.
 //
-// Every consumer of alt.datahub.v1.DataHubService is verified here, plus the
+// Every consumer of services.datahub.v1.DataHubService is verified here, plus the
 // browser-facing services alt-butterfly-facade proxies:
 //
 //	consumer            pacticipant it names as provider
@@ -119,7 +119,7 @@ type listRecapArticlesRequest struct {
 	To   string `json:"to"`
 }
 
-// dataHubProcedure mounts one procedure of alt.datahub.v1.DataHubService, the
+// dataHubProcedure mounts one procedure of services.datahub.v1.DataHubService, the
 // only name the data plane answers to since ADR-000954 Wave 2-C.
 //
 // It mounted the retired services.backend.v1.BackendInternalService path as
@@ -132,7 +132,7 @@ type listRecapArticlesRequest struct {
 // production-deployed recap-worker and search-indexer still publish, with a
 // remove-once-deployed-past marker.
 func dataHubProcedure(mux *http.ServeMux, procedure string, h http.HandlerFunc) {
-	mux.HandleFunc("/alt.datahub.v1.DataHubService/"+procedure, h)
+	mux.HandleFunc("/services.datahub.v1.DataHubService/"+procedure, h)
 }
 
 // jsonPost answers POST with body and rejects every other method, which is the
@@ -240,7 +240,7 @@ func startStubServer(t *testing.T) int {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
-	// ---- alt.datahub.v1.DataHubService (JSON wire format) ----
+	// ---- services.datahub.v1.DataHubService (JSON wire format) ----
 	// search-indexer-alt-backend.json contract. The three handlers are named
 	// so the BackendInternalService transitional shims below can mount the
 	// same stubs under the retired path.
@@ -798,7 +798,7 @@ func verifyConsumer(t *testing.T, consumer, providerPacticipant, pactPath string
 }
 
 // TestVerifyPreProcessorContract verifies the crawl/summarise loop's half of
-// alt.datahub.v1.DataHubService.
+// services.datahub.v1.DataHubService.
 //
 // pre-processor is the only consumer that both reads and writes through this
 // service, so it is the one whose pact would catch a write path answering with

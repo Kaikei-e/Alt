@@ -16,11 +16,11 @@ func sourceHandler(name string) http.Handler {
 // data-hub's single listener carries the service-to-service surface and
 // nothing else. The pre-split mTLS listener also served the whole browser
 // REST API and the user Connect services from the same socket; that mix is
-// what the split removed, so anything outside alt.datahub.v1 is a 404 here
+// what the split removed, so anything outside services.datahub.v1 is a 404 here
 // rather than a route into the user API.
 func TestDataHubHandler_ServesOnlyTheServiceToServiceSurface(t *testing.T) {
 	connectMux := http.NewServeMux()
-	connectMux.Handle("/alt.datahub.v1.DataHubService/", sourceHandler("connect"))
+	connectMux.Handle("/services.datahub.v1.DataHubService/", sourceHandler("connect"))
 	connectMux.Handle("/health", sourceHandler("connect"))
 
 	h := dataHubHandler(connectMux)
@@ -31,8 +31,8 @@ func TestDataHubHandler_ServesOnlyTheServiceToServiceSurface(t *testing.T) {
 		wantSource string
 		wantCode   int
 	}{
-		{name: "datahub rpc", path: "/alt.datahub.v1.DataHubService/CreateArticle", wantSource: "connect", wantCode: http.StatusOK},
-		{name: "absorbed rest read", path: "/alt.datahub.v1.DataHubService/ListRecentArticles", wantSource: "connect", wantCode: http.StatusOK},
+		{name: "datahub rpc", path: "/services.datahub.v1.DataHubService/CreateArticle", wantSource: "connect", wantCode: http.StatusOK},
+		{name: "absorbed rest read", path: "/services.datahub.v1.DataHubService/ListRecentArticles", wantSource: "connect", wantCode: http.StatusOK},
 		{name: "health", path: "/health", wantSource: "connect", wantCode: http.StatusOK},
 
 		// ADR-000954 Wave 2-C retired both former names of this surface. A
@@ -72,7 +72,7 @@ func TestDataHubHandler_ServesOnlyTheServiceToServiceSurface(t *testing.T) {
 func TestDataHubHandler_UnknownConnectMethodReachesTheConnectMux(t *testing.T) {
 	consulted := false
 	connectMux := http.NewServeMux()
-	connectMux.HandleFunc("/alt.datahub.v1.DataHubService/", func(w http.ResponseWriter, _ *http.Request) {
+	connectMux.HandleFunc("/services.datahub.v1.DataHubService/", func(w http.ResponseWriter, _ *http.Request) {
 		consulted = true
 		w.WriteHeader(http.StatusNotFound)
 	})
@@ -80,10 +80,10 @@ func TestDataHubHandler_UnknownConnectMethodReachesTheConnectMux(t *testing.T) {
 	h := dataHubHandler(connectMux)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/alt.datahub.v1.DataHubService/DoesNotExist", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/DoesNotExist", nil))
 
 	if !consulted {
-		t.Fatal("the connect mux was never consulted for an alt.datahub.v1 path")
+		t.Fatal("the connect mux was never consulted for a services.datahub.v1 path")
 	}
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404 from the connect mux", rec.Code)

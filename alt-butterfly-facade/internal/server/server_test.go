@@ -113,18 +113,12 @@ func TestServer_ProxyEndpoint_Success(t *testing.T) {
 	assert.Equal(t, "response", recorder.Body.String())
 }
 
-// TestServer_RESTRoute_NonAllowlistedPathIsStillForwarded documents the
-// current (known-incomplete) state of ADR-000729 Phase 3: allowRESTPath is
-// only used for warn-only telemetry today, not for routing enforcement. A
-// path absent from restAllowlistPrefixes still reaches the upstream REST
-// listener instead of being rejected with 404. If/when boundary enforcement
-// lands, this test should be updated to assert http.StatusNotFound instead.
-func TestServer_RESTRoute_NonAllowlistedPathIsStillForwarded(t *testing.T) {
+// The plaintext REST surface is now closed: a /v1/* path that is not on the
+// architectural allowlist dies at the BFF instead of reaching alt-backend's
+// Echo listener (ADR-000729 Phase 3).
+func TestServer_RESTRoute_NonAllowlistedPathIsRejected(t *testing.T) {
 	restBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/v1/feeds/tags", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{}`))
+		t.Errorf("non-allowlisted REST path must not reach alt-backend, got %s", r.URL.Path)
 	}))
 	defer restBackend.Close()
 
@@ -140,14 +134,123 @@ func TestServer_RESTRoute_NonAllowlistedPathIsStillForwarded(t *testing.T) {
 
 	handler := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
-	// "/v1/feeds/tags" is not in restAllowlistPrefixes.
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds/tags", nil)
-	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+	paths := []string{
+		"/v1/feeds/tags",
+		"/v1/feeds/fetch/cursor",
+		"/v1/feeds/x/y/tags",
+		"/v1/whatever",
+		"/v1/",
+	}
 
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, req)
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
 
-	assert.Equal(t, http.StatusOK, recorder.Code)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusNotFound, recorder.Code)
+		})
+	}
+}
+
+// /v1/bff/stats and /v1/aggregate are BFF-owned endpoints, not proxies, so
+// they are deliberately absent from the REST allowlist. They survive because
+// their exact mux patterns outrank the "/v1/" subtree — a fence worth keeping
+// now that falling through to "/v1/" means 404 instead of a proxied request.
+func TestServer_BFFOwnedV1Routes_OutrankRESTAllowlist(t *testing.T) {
+	restBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("BFF-owned route must not be proxied, got %s", r.URL.Path)
+	}))
+	defer restBackend.Close()
+
+	cfg := Config{
+		BackendURL:       "http://localhost:9101",
+		BackendRESTURL:   restBackend.URL,
+		Secret:           []byte("test-secret"),
+		Issuer:           "auth-hub",
+		Audience:         "alt-backend",
+		RequestTimeout:   30 * time.Second,
+		StreamingTimeout: 5 * time.Minute,
+	}
+
+	handler := NewServerWithTransport(cfg, nil, http.DefaultTransport)
+
+	assert.False(t, allowRESTPath("/v1/bff/stats"), "guard: this test is only meaningful while the path is off the allowlist")
+	assert.False(t, allowRESTPath("/v1/aggregate"), "guard: this test is only meaningful while the path is off the allowlist")
+
+	statsReq := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
+	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, []byte("test-secret")))
+	statsRec := httptest.NewRecorder()
+	handler.ServeHTTP(statsRec, statsReq)
+	assert.Equal(t, http.StatusOK, statsRec.Code)
+
+	// The aggregation handler rejects an unauthenticated caller itself; the
+	// point here is only that it, not the 404, answers.
+	aggReq := httptest.NewRequest(http.MethodPost, "/v1/aggregate", strings.NewReader(`{}`))
+	aggRec := httptest.NewRecorder()
+	handler.ServeHTTP(aggRec, aggReq)
+	assert.NotEqual(t, http.StatusNotFound, aggRec.Code)
+}
+
+// Every allowlisted REST path — including the segment patterns that carry a
+// resource id — still reaches the upstream Echo listener untouched.
+func TestServer_RESTRoute_AllowlistedPathsAreForwarded(t *testing.T) {
+	var seen string
+	restBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer restBackend.Close()
+
+	cfg := Config{
+		BackendURL:       "http://localhost:9101",
+		BackendRESTURL:   restBackend.URL,
+		Secret:           []byte("test-secret"),
+		Issuer:           "auth-hub",
+		Audience:         "alt-backend",
+		RequestTimeout:   30 * time.Second,
+		StreamingTimeout: 5 * time.Minute,
+	}
+
+	handler := NewServerWithTransport(cfg, nil, http.DefaultTransport)
+
+	paths := []string{
+		"/v1/images/fetch",
+		"/v1/dashboard/metrics",
+		"/v1/dashboard/recap_jobs",
+		"/v1/admin/scraping-domains",
+		"/v1/csrf-token",
+		"/v1/health",
+		"/v1/rss-feed-link/list",
+		"/v1/rss-feed-link/register",
+		"/v1/rss-feed-link/random",
+		"/v1/rss-feed-link/0f8fad5b-d9cb-469f-a165-70867728950e",
+		"/v1/rss-feed-link/export/opml",
+		"/v1/rss-feed-link/import/opml",
+		"/v1/feeds/read",
+		"/v1/feeds/stats/trends",
+		"/v1/feeds/0f8fad5b-d9cb-469f-a165-70867728950e/tags",
+		"/v1/articles/by-tag",
+		"/v1/articles/123/tags",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			seen = ""
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Equal(t, path, seen, "path must be forwarded unmodified")
+		})
+	}
 }
 
 func TestServer_TTSRoute_Unauthorized(t *testing.T) {

@@ -78,7 +78,7 @@ func components() *datahubdi.DataHubComponents {
 //
 // Exactly one service-to-service namespace is mounted. ADR-000954 D7 kept
 // services.backend.v1 alive through Wave 2-B while the peers moved onto
-// alt.datahub.v1 one PR at a time; Wave 2-C removed it, so a call on the old
+// services.datahub.v1 one PR at a time; Wave 2-C removed it, so a call on the old
 // path must now find nothing rather than a second door onto the same data.
 func TestSetupConnectHandlers_ServesOnlyTheDataHubNamespace(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -91,8 +91,8 @@ func TestSetupConnectHandlers_ServesOnlyTheDataHubNamespace(t *testing.T) {
 		path        string
 		wantMounted bool
 	}{
-		{name: "datahub service", path: "/alt.datahub.v1.DataHubService/CreateArticle", wantMounted: true},
-		{name: "datahub service absorbs the internal REST reads", path: "/alt.datahub.v1.DataHubService/ListRecentArticles", wantMounted: true},
+		{name: "datahub service", path: "/services.datahub.v1.DataHubService/CreateArticle", wantMounted: true},
+		{name: "datahub service absorbs the internal REST reads", path: "/services.datahub.v1.DataHubService/ListRecentArticles", wantMounted: true},
 		{name: "retired backend internal service", path: "/services.backend.v1.BackendInternalService/CreateArticle"},
 		{name: "admin surface belongs to the backend operator listener", path: "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth"},
 		{name: "user feed service", path: "/alt.feeds.v2.FeedService/GetFeedStats"},

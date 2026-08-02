@@ -72,7 +72,7 @@ issues POST/PUT/PATCH/DELETE captures a fresh token via
 | Alias | Replaces | Proto |
 |---|---|---|
 | `search-indexer` | search-indexer | Connect-RPC JSON |
-| `pre-processor` | pre-processor | Connect-RPC JSON |
+| `pre-processor` | pre-processor | Connect-RPC (catch-all only — see the stub's pre-processor note) |
 | `recap-worker` | recap-worker | HTTP/REST |
 | `rag-orchestrator` | rag-orchestrator | HTTP/REST + Connect-RPC |
 | `knowledge-sovereign` | knowledge-sovereign | Connect-RPC JSON |
@@ -119,7 +119,7 @@ alt-backend is split into three containers (ADR-000954, Waves 1-3 landed):
 |---|---|
 | `alt-backend` | user-facing `:9000` REST + `:9101` Connect, plus the loopback operator listener (`:9102`) that keeps the admin Connect services, and `:9110` for health + metrics |
 | `alt-harvester` | scheduled jobs; `:9110` health + metrics and nothing else |
-| `alt-data-hub` | `alt.datahub.v1.DataHubService` over mTLS on `:9443`, plus `:9110` health + metrics; no published port |
+| `alt-data-hub` | `services.datahub.v1.DataHubService` over mTLS on `:9443`, plus `:9110` health + metrics; no published port |
 
 `03-topology-internal-surface-absent.hurl` holds this suite's half of that
 contract: the user-facing ports keep answering exactly what they answered

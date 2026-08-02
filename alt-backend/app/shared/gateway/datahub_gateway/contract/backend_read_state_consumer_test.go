@@ -63,7 +63,7 @@ func TestMarkFeedReadContract(t *testing.T) {
 		UponReceiving("a MarkFeedRead request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/MarkFeedRead"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/MarkFeedRead"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"feedUrl": readStateFeedURL,
@@ -111,7 +111,7 @@ func TestMarkFeedReadNotFoundContract(t *testing.T) {
 		UponReceiving("a MarkFeedRead request from alt-backend for a url with no feed").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/MarkFeedRead"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/MarkFeedRead"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"feedUrl": readStateMissingURL,
@@ -149,7 +149,7 @@ func TestMarkArticleReadContract(t *testing.T) {
 		UponReceiving("a MarkArticleRead request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/MarkArticleRead"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/MarkArticleRead"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleUrl": "https://example.com/post",
@@ -184,7 +184,7 @@ func TestMarkArticleReadNotFoundContract(t *testing.T) {
 		UponReceiving("a MarkArticleRead request from alt-backend for a url with no feed").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/MarkArticleRead"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/MarkArticleRead"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleUrl": readStateMissingURL,
@@ -222,7 +222,7 @@ func TestGetReadFeedIDsContract(t *testing.T) {
 		UponReceiving("a GetReadFeedIDs request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetReadFeedIDs"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetReadFeedIDs"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId":  readStateUserID,
@@ -268,7 +268,7 @@ func TestGetAllReadFeedIDsContract(t *testing.T) {
 		UponReceiving("a GetAllReadFeedIDs request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetAllReadFeedIDs"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetAllReadFeedIDs"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"userId": readStateUserID},
 		}).
@@ -304,7 +304,7 @@ func TestGetUserSubscribedFeedLinkIDsContract(t *testing.T) {
 		UponReceiving("a GetUserSubscribedFeedLinkIDs request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetUserSubscribedFeedLinkIDs"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetUserSubscribedFeedLinkIDs"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"userId": readStateUserID},
 		}).
@@ -347,7 +347,7 @@ func TestListSubscriptionsContract(t *testing.T) {
 		UponReceiving("a ListSubscriptions request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListSubscriptions"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListSubscriptions"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"userId": readStateUserID},
 		}).
@@ -391,7 +391,7 @@ func TestSubscribeContract(t *testing.T) {
 		UponReceiving("a Subscribe request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/Subscribe"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/Subscribe"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId":     readStateUserID,
@@ -432,7 +432,7 @@ func TestUnsubscribeContract(t *testing.T) {
 		UponReceiving("an Unsubscribe request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/Unsubscribe"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/Unsubscribe"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId":     readStateUserID,
@@ -471,7 +471,7 @@ func TestAddFavoriteFeedContract(t *testing.T) {
 		UponReceiving("an AddFavoriteFeed request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/AddFavoriteFeed"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/AddFavoriteFeed"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"feedUrl": readStateFeedURL,
@@ -510,7 +510,7 @@ func TestRemoveFavoriteFeedNotFoundContract(t *testing.T) {
 		UponReceiving("a RemoveFavoriteFeed request from alt-backend for a url with no feed").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/RemoveFavoriteFeed"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/RemoveFavoriteFeed"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"feedUrl": readStateMissingURL,
@@ -555,7 +555,7 @@ func TestGetArticleTagsEmptyContract(t *testing.T) {
 		UponReceiving("a GetArticleTags request from alt-backend for an untagged article").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetArticleTags"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleTags"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"articleId": readStateArticleID},
 		}).
@@ -586,7 +586,7 @@ func TestGetFeedTagsContract(t *testing.T) {
 		UponReceiving("a GetFeedTags request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetFeedTags"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetFeedTags"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"feedId": readStateFeedID,
@@ -630,7 +630,7 @@ func TestUpsertArticleTagsContract(t *testing.T) {
 		UponReceiving("an UpsertArticleTags request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/UpsertArticleTags"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/UpsertArticleTags"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleId": readStateArticleID,
@@ -670,7 +670,7 @@ func TestGetTagCooccurrencesContract(t *testing.T) {
 		UponReceiving("a GetTagCooccurrences request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetTagCooccurrences"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetTagCooccurrences"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"tagNames": []string{"AI", "Go"}},
 		}).
@@ -707,7 +707,7 @@ func TestSearchTagsByPrefixContract(t *testing.T) {
 		UponReceiving("a SearchTagsByPrefix request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/SearchTagsByPrefix"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/SearchTagsByPrefix"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"prefix": "AI",
@@ -752,7 +752,7 @@ func TestGetTagArticleCountsContract(t *testing.T) {
 		UponReceiving("a GetTagArticleCounts request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetTagArticleCounts"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetTagArticleCounts"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId": readStateUserID,

@@ -77,7 +77,7 @@ class TestCreateBackendClient:
 
         assert result is not None
         client, headers = result
-        from tag_generator.gen.proto.alt.datahub.v1.datahub_connect import (
+        from tag_generator.gen.proto.services.datahub.v1.datahub_connect import (
             DataHubServiceClientSync,
         )
 

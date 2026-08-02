@@ -69,12 +69,12 @@ HTTP 404
 # many-surfaces-one-binary shape the split exists to remove, and it would do
 # it on a plaintext port with no peer allowlist in front.
 
-POST {{ops_url}}/alt.datahub.v1.DataHubService/CreateArticle
+POST {{ops_url}}/services.datahub.v1.DataHubService/CreateArticle
 Content-Type: application/json
 {}
 HTTP 404
 
-POST {{ops_url}}/alt.datahub.v1.DataHubService/GetLatestArticleTimestamp
+POST {{ops_url}}/services.datahub.v1.DataHubService/GetLatestArticleTimestamp
 Content-Type: application/json
 {}
 HTTP 404

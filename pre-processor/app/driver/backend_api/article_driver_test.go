@@ -10,8 +10,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"pre-processor/domain"
-	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
-	"pre-processor/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
+	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
 )
 
 // mockDataHubClient implements datahubv1connect.DataHubServiceClient for testing.

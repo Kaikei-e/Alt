@@ -1,4 +1,4 @@
-"""Consumer-Driven Contract for tag-generator -> alt-data-hub (alt.datahub.v1).
+"""Consumer-Driven Contract for tag-generator -> alt-data-hub (services.datahub.v1).
 
 tag-generator reaches alt_db only through Connect-RPC. Four procedures carry
 the whole relationship:
@@ -12,7 +12,7 @@ the whole relationship:
                          .batch_upsert_tags_no_commit)
 
 ADR-000954 D7 moves that surface from ``services.backend.v1
-.BackendInternalService`` to ``alt.datahub.v1.DataHubService``. The RPC names,
+.BackendInternalService`` to ``services.datahub.v1.DataHubService``. The RPC names,
 the message fields and the field numbers are identical on both sides — the
 only thing that changes on the wire is the **URL path prefix** each request is
 POSTed to. A rename that touches nothing but a path is exactly the kind of
@@ -50,7 +50,7 @@ import pytest
 from pact import Pact, match
 
 from tag_generator.driver import connect_client_factory
-from tag_generator.gen.proto.alt.datahub.v1.datahub_connect import DataHubServiceClientSync
+from tag_generator.gen.proto.services.datahub.v1.datahub_connect import DataHubServiceClientSync
 
 if TYPE_CHECKING:
     from tag_generator.ports import ArticleFetcherPort, TagInserterPort
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "pacts"
 
 # The one thing this file exists to pin. ADR-000954 D7.
-DATAHUB_PREFIX = "/alt.datahub.v1.DataHubService"
+DATAHUB_PREFIX = "/services.datahub.v1.DataHubService"
 
 # ConnectArticleFetcher._FIRST_PAGE_SENTINEL — "no cursor yet".
 _FIRST_PAGE = "9999-12-31T23:59:59Z"

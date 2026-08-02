@@ -44,7 +44,7 @@ func TestBinaryDependencyGraphs_DatabaseIsDataHubOnly(t *testing.T) {
 	}{
 		{
 			// The user-facing API. Every capability it needs is a procedure of
-			// alt.datahub.v1.DataHubService since batch 6 (catalog §2.B …
+			// services.datahub.v1.DataHubService since batch 6 (catalog §2.B …
 			// §2.O).
 			name:      "cmd/backend",
 			pkg:       "alt/cmd/backend",
@@ -76,7 +76,7 @@ func TestBinaryDependencyGraphs_DatabaseIsDataHubOnly(t *testing.T) {
 					t.Errorf("%s must not depend on %s — ADR-000954 Wave 3 gives alt-data-hub "+
 						"sole ownership of alt_db, and a dependency here means some package "+
 						"in this binary can still open a connection. Route the capability "+
-						"through alt.datahub.v1.DataHubService instead.", tt.pkg, forbidden)
+						"through services.datahub.v1.DataHubService instead.", tt.pkg, forbidden)
 				}
 			}
 			for _, required := range tt.required {

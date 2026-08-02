@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	datahubv1 "search-indexer/gen/proto/alt/datahub/v1"
+	datahubv1 "search-indexer/gen/proto/services/datahub/v1"
 )
 
 // TestToDriverArticle_PublishedAt covers the mapping that decides what

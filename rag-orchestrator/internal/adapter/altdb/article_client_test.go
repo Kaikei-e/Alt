@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"testing"
 
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
@@ -20,7 +20,7 @@ func testLogger() *slog.Logger {
 
 // stubDataHubClient records the ListRecentArticles request and returns a
 // canned response. Only the RPC under test is implemented; embedding the
-// generated client interface makes the remaining 25 RPCs panic if a future
+// generated client interface makes every other RPC on it panic if a future
 // change starts calling one from this adapter, rather than silently
 // returning zero values.
 type stubDataHubClient struct {

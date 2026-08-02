@@ -11,8 +11,9 @@
 # on either. The data plane and the /v1/internal/* REST routes move out of
 # this binary entirely, to alt-data-hub behind mTLS
 # (di/datahub/container.go), where they are served as
-# `alt.datahub.v1.DataHubService` (ADR-000954 Wave 2-C retired the
-# `services.backend.v1.BackendInternalService` name outright). The admin
+# `services.datahub.v1.DataHubService` (ADR-000954 Wave 2-C retired the
+# `services.backend.v1.BackendInternalService` name outright; ADR-000955
+# renamed the surviving surface from `alt.datahub.v1`). The admin
 # Connect services do not move — they
 # stay on this binary's loopback-bound operator listener — so for them the
 # claim is narrower but just as load-bearing: not on a port the public NIC
@@ -78,19 +79,19 @@ status != 404
 # Their post-split home is asserted positively in
 # ../alt-data-hub/04-datahub-service.hurl.
 
-POST {{connect_url}}/alt.datahub.v1.DataHubService/CreateArticle
+POST {{connect_url}}/services.datahub.v1.DataHubService/CreateArticle
 X-Alt-Backend-Token: {{jwt}}
 Content-Type: application/json
 {}
 HTTP 404
 
-POST {{connect_url}}/alt.datahub.v1.DataHubService/ListArticlesWithTags
+POST {{connect_url}}/services.datahub.v1.DataHubService/ListArticlesWithTags
 X-Alt-Backend-Token: {{jwt}}
 Content-Type: application/json
 {}
 HTTP 404
 
-POST {{connect_url}}/alt.datahub.v1.DataHubService/ListRecapArticles
+POST {{connect_url}}/services.datahub.v1.DataHubService/ListRecapArticles
 X-Alt-Backend-Token: {{jwt}}
 Content-Type: application/json
 {}
@@ -136,7 +137,7 @@ HTTP 404
 # ever be an unmatched route. Asserting it anyway pins the negative: a future
 # "just proxy the internal RPCs through the REST server" shortcut breaks here.
 
-POST {{base_url}}/alt.datahub.v1.DataHubService/CreateArticle
+POST {{base_url}}/services.datahub.v1.DataHubService/CreateArticle
 X-Alt-Backend-Token: {{jwt}}
 X-CSRF-Token: {{csrf}}
 Content-Type: application/json

@@ -13,7 +13,7 @@ import (
 // dataHubServicePaths are the service-to-service surfaces. They carry no
 // user-JWT interceptor and now live on their own binary behind mTLS.
 var dataHubServicePaths = []string{
-	"/alt.datahub.v1.DataHubService/CreateArticle",
+	"/services.datahub.v1.DataHubService/CreateArticle",
 }
 
 // operatorServicePaths are the admin surfaces. They carry no user-JWT

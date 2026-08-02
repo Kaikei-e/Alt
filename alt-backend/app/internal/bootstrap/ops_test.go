@@ -35,7 +35,7 @@ func TestNewOpsHandler(t *testing.T) {
 		{
 			name:       "DataHubService is not here",
 			method:     http.MethodPost,
-			path:       "/alt.datahub.v1.DataHubService/CreateArticle",
+			path:       "/services.datahub.v1.DataHubService/CreateArticle",
 			wantStatus: http.StatusNotFound,
 		},
 		{

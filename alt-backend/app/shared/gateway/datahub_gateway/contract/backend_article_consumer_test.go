@@ -72,7 +72,7 @@ func TestArchiveArticleContract(t *testing.T) {
 		UponReceiving("an ArchiveArticle request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ArchiveArticle"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ArchiveArticle"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"url":     "https://example.com/post",
@@ -119,7 +119,7 @@ func TestArchiveArticleWithoutUserContract(t *testing.T) {
 		UponReceiving("a GetArticleByURL request from alt-backend with no signed-in user").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetArticleByURL"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleByURL"),
 			Headers: jsonHeaders(),
 			// userId omitted: the unscoped lookup is a different query, and
 			// the provider treats the empty field as the caller asking for it.
@@ -157,7 +157,7 @@ func TestSaveArticleHeadContract(t *testing.T) {
 		UponReceiving("a SaveArticleHead request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/SaveArticleHead"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/SaveArticleHead"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleId": testArticleID,
@@ -195,7 +195,7 @@ func TestGetArticleByURLContract(t *testing.T) {
 		UponReceiving("a GetArticleByURL request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetArticleByURL"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleByURL"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"url":    "https://example.com/post",
@@ -240,7 +240,7 @@ func TestGetArticleByURLMissContract(t *testing.T) {
 		UponReceiving("a GetArticleByURL request from alt-backend for an unarchived url").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetArticleByURL"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleByURL"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"url":    "https://example.com/never-fetched",
@@ -275,7 +275,7 @@ func TestBatchGetArticlesByURLsContract(t *testing.T) {
 		UponReceiving("a BatchGetArticlesByURLs request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/BatchGetArticlesByURLs"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/BatchGetArticlesByURLs"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"urls":   []string{"https://example.com/post"},
@@ -321,7 +321,7 @@ func TestGetArticleContentByIDContract(t *testing.T) {
 		UponReceiving("a GetArticleContentByID request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetArticleContentByID"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleContentByID"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"articleId": testArticleID},
 		}).
@@ -361,7 +361,7 @@ func TestListArticlesCursorContract(t *testing.T) {
 		UponReceiving("a ListArticlesCursor request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListArticlesCursor"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListArticlesCursor"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId": testUserID,
@@ -406,7 +406,7 @@ func TestListArticleIDsCursorContract(t *testing.T) {
 		UponReceiving("a ListArticleIDsCursor request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListArticleIDsCursor"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListArticleIDsCursor"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId": testUserID,
@@ -443,7 +443,7 @@ func TestBatchGetArticlesByIDsContract(t *testing.T) {
 		UponReceiving("a BatchGetArticlesByIDs request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/BatchGetArticlesByIDs"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/BatchGetArticlesByIDs"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"articleIds": []string{testArticleID}},
 		}).
@@ -483,7 +483,7 @@ func TestGetLatestArticleByFeedIDContract(t *testing.T) {
 		UponReceiving("a GetLatestArticleByFeedID request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetLatestArticleByFeedID"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetLatestArticleByFeedID"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"feedId": testFeedID},
 		}).
@@ -522,7 +522,7 @@ func TestLookupArticleURLContract(t *testing.T) {
 		UponReceiving("a LookupArticleURL request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/LookupArticleURL"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/LookupArticleURL"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleId": testArticleID,
@@ -564,7 +564,7 @@ func TestCountBackfillArticlesContract(t *testing.T) {
 		UponReceiving("a CountBackfillArticles request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/CountBackfillArticles"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/CountBackfillArticles"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{},
 		}).
@@ -600,7 +600,7 @@ func TestListBackfillArticlesContract(t *testing.T) {
 		UponReceiving("a ListBackfillArticles request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListBackfillArticles"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListBackfillArticles"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"lastCreatedAt": "2026-01-02T03:04:05Z",
@@ -646,7 +646,7 @@ func TestCountBackfillSummaryTitlesContract(t *testing.T) {
 		UponReceiving("a CountBackfillSummaryTitles request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/CountBackfillSummaryTitles"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/CountBackfillSummaryTitles"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{},
 		}).
@@ -676,7 +676,7 @@ func TestListBackfillSummaryTitlesContract(t *testing.T) {
 		UponReceiving("a ListBackfillSummaryTitles request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListBackfillSummaryTitles"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListBackfillSummaryTitles"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"lastGeneratedAt":      "2026-03-04T05:06:07Z",

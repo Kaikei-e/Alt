@@ -1,6 +1,6 @@
 //go:build contract
 
-// Pact CDC: alt-harvester → alt-data-hub (alt.datahub.v1.DataHubService).
+// Pact CDC: alt-harvester → alt-data-hub (services.datahub.v1.DataHubService).
 //
 // ADR-000954 Wave 3, capability catalog §2.A / §2.D / §2.E / §2.L. These are
 // the procedures the eight scheduled jobs call after their direct alt_db
@@ -8,7 +8,7 @@
 //
 // What these interactions pin, beyond "the procedure exists":
 //
-//   - The Connect-RPC path carries the alt.datahub.v1 package name.
+//   - The Connect-RPC path carries the services.datahub.v1 package name.
 //   - Content-Type: application/json — Connect over HTTP/1.1 with the
 //     protoJSON codec (ADR-000764). The gateways go through
 //     datahub_client.NewServiceClient rather than the generated constructor
@@ -31,7 +31,7 @@ import (
 	"time"
 
 	"alt/domain"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/shared/driver/datahub_client"
 	"alt/shared/gateway/datahub_gateway"
 
@@ -93,7 +93,7 @@ func TestClaimOutboxBatchContract(t *testing.T) {
 		UponReceiving("a ClaimOutboxBatch request from alt-harvester").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ClaimOutboxBatch"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ClaimOutboxBatch"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"limit": 10},
 		}).
@@ -143,7 +143,7 @@ func TestMarkOutboxProcessedContract(t *testing.T) {
 		UponReceiving("a MarkOutboxProcessed request from alt-harvester recording success").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/MarkOutboxProcessed"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/MarkOutboxProcessed"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"id": "8f14e45f-ceea-467a-9d0c-1a2b3c4d5e6f",
@@ -174,7 +174,7 @@ func TestMarkOutboxFailedCarriesErrorMessageContract(t *testing.T) {
 		UponReceiving("a MarkOutboxProcessed request from alt-harvester recording failure").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/MarkOutboxProcessed"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/MarkOutboxProcessed"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"id":     "8f14e45f-ceea-467a-9d0c-1a2b3c4d5e6f",
@@ -209,7 +209,7 @@ func TestReleaseOutboxEventContract(t *testing.T) {
 		UponReceiving("a ReleaseOutboxEvent request from alt-harvester after mid-batch cancellation").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ReleaseOutboxEvent"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ReleaseOutboxEvent"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"id": "8f14e45f-ceea-467a-9d0c-1a2b3c4d5e6f"},
 		}).
@@ -234,7 +234,7 @@ func TestPruneOutboxEventsContract(t *testing.T) {
 		UponReceiving("a PruneOutboxEvents request from alt-harvester").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/PruneOutboxEvents"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/PruneOutboxEvents"),
 			Headers: jsonHeaders(),
 			// int64 over protoJSON is a string. 604800 = 7 days, the
 			// retention window the pruning job owns.
@@ -270,7 +270,7 @@ func TestListFeedsMissingOgImageContract(t *testing.T) {
 		UponReceiving("a ListFeedsMissingOgImage request from alt-harvester").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListFeedsMissingOgImage"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListFeedsMissingOgImage"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"limit": 50},
 		}).
@@ -307,7 +307,7 @@ func TestListUnwarmedOgImageURLsContract(t *testing.T) {
 		UponReceiving("a ListUnwarmedOgImageURLs request from alt-harvester").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListUnwarmedOgImageURLs"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListUnwarmedOgImageURLs"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"limit": 100},
 		}).
@@ -344,7 +344,7 @@ func TestPurgeExpiredArticleHeadsContract(t *testing.T) {
 		UponReceiving("a PurgeExpiredArticleHeads request from alt-harvester").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/PurgeExpiredArticleHeads"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/PurgeExpiredArticleHeads"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"ttlSeconds": "604800"},
 		}).
@@ -378,7 +378,7 @@ func TestPurgeImageProxyCacheOlderThanContract(t *testing.T) {
 		UponReceiving("a PurgeImageProxyCacheOlderThan request from alt-harvester").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/PurgeImageProxyCacheOlderThan"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/PurgeImageProxyCacheOlderThan"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"ttlSeconds": "604800"},
 		}).
@@ -408,7 +408,7 @@ func TestEvictExpiredImageProxyCacheContract(t *testing.T) {
 		UponReceiving("an EvictExpiredImageProxyCache request from alt-harvester").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/EvictExpiredImageProxyCache"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/EvictExpiredImageProxyCache"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{},
 		}).
@@ -446,7 +446,7 @@ func TestSaveScrapingDomainContract(t *testing.T) {
 		UponReceiving("a SaveScrapingDomain request from alt-harvester").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/SaveScrapingDomain"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/SaveScrapingDomain"),
 			Headers: jsonHeaders(),
 			Body: matchers.MapMatcher{
 				"scrapingDomain": matchers.Like(map[string]interface{}{
@@ -502,7 +502,7 @@ func TestListScrapingDomainsContract(t *testing.T) {
 		UponReceiving("a ListScrapingDomains request from alt-harvester").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListScrapingDomains"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListScrapingDomains"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"limit": 100},
 		}).
@@ -542,7 +542,7 @@ func TestUpdateScrapingDomainPolicyContract(t *testing.T) {
 		UponReceiving("an UpdateScrapingDomainPolicy request from alt-harvester setting one field").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/UpdateScrapingDomainPolicy"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/UpdateScrapingDomainPolicy"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"id": "2b1c3d4e-5f60-4711-8899-aabbccddeeff",

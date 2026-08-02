@@ -1,6 +1,6 @@
 //go:build contract
 
-// Pact CDC: rag-orchestrator → alt-data-hub (alt.datahub.v1.DataHubService).
+// Pact CDC: rag-orchestrator → alt-data-hub (services.datahub.v1.DataHubService).
 //
 // ADR-000954 D7, Wave 2-B. Before this contract existed rag-orchestrator
 // reached alt_db two different ways, both of them now dead:
@@ -17,9 +17,13 @@
 //
 // What this pins:
 //
-//   - POST /alt.datahub.v1.DataHubService/{ListRecentArticles,FetchTagCloud,
-//     FetchArticlesByTag} — the Connect-RPC unary path shape, i.e. the new
-//     package name is on the wire and not the legacy services.backend.v1 one.
+//   - POST /services.datahub.v1.DataHubService/{ListRecentArticles,
+//     FetchTagCloud,FetchArticlesByTag} — the Connect-RPC unary path shape,
+//     i.e. the package name ADR-000955 settled on is the one on the wire, and
+//     not the legacy services.backend.v1 one. The paths are written out as
+//     literals rather than taken from datahubv1connect's generated constants
+//     on purpose: a constant would follow the generated code wherever it
+//     moves, which is the drift this interaction exists to catch.
 //   - Content-Type: application/json (Connect over HTTP/1.1 + protojson,
 //     ADR-000764 convention).
 //   - Camel-cased protojson field names (withinHours, publishedAt, feedId,
@@ -48,7 +52,7 @@ import (
 
 	"rag-orchestrator/internal/adapter/altdb"
 
-	datahubv1connect "alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1connect "alt/gen/proto/services/datahub/v1/datahubv1connect"
 
 	"github.com/pact-foundation/pact-go/v2/consumer"
 	"github.com/pact-foundation/pact-go/v2/matchers"
@@ -97,7 +101,7 @@ func TestDataHubListRecentArticlesContract(t *testing.T) {
 		UponReceiving("a ListRecentArticles request from rag-orchestrator with no count limit").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/alt.datahub.v1.DataHubService/ListRecentArticles"),
+			Path:   matchers.String("/services.datahub.v1.DataHubService/ListRecentArticles"),
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
@@ -157,7 +161,7 @@ func TestDataHubFetchTagCloudContract(t *testing.T) {
 		UponReceiving("a FetchTagCloud request from rag-orchestrator").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/alt.datahub.v1.DataHubService/FetchTagCloud"),
+			Path:   matchers.String("/services.datahub.v1.DataHubService/FetchTagCloud"),
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
@@ -204,7 +208,7 @@ func TestDataHubFetchArticlesByTagContract(t *testing.T) {
 		UponReceiving("a FetchArticlesByTag request from rag-orchestrator").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/alt.datahub.v1.DataHubService/FetchArticlesByTag"),
+			Path:   matchers.String("/services.datahub.v1.DataHubService/FetchArticlesByTag"),
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},

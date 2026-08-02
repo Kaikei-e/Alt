@@ -15,7 +15,7 @@ import (
 	"alt/dataplane/port/internal_tag_port"
 	"alt/dataplane/usecase/recap_articles_usecase"
 	"alt/domain"
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/mocks"
 	"alt/shared/port/event_publisher_port"
 

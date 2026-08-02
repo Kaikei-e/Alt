@@ -17,7 +17,7 @@ import (
 
 	"pre-processor/config"
 	"pre-processor/domain"
-	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
+	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -580,7 +580,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 			// ADR-000954 D6/D7: GET /v1/internal/system-user was absorbed
 			// into alt-data-hub as the GetSystemUser RPC.
-			assert.Equal(t, "/alt.datahub.v1.DataHubService/GetSystemUser", r.URL.Path)
+			assert.Equal(t, "/services.datahub.v1.DataHubService/GetSystemUser", r.URL.Path)
 			assert.Equal(t, http.MethodPost, r.Method)
 			writeSystemUserResponse(t, w, "test-user-123")
 		}, 0))

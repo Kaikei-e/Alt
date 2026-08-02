@@ -1,12 +1,12 @@
 //! Consumer-Driven Contract tests for recap-worker → alt-data-hub.
 //!
 //! Verifies the Connect-RPC `ListRecapArticles` / `BatchGetTagsByArticleIDs`
-//! endpoints on `alt.datahub.v1.DataHubService` (ADR-000954 D7 — the
+//! endpoints on `services.datahub.v1.DataHubService` (ADR-000954 D7 — the
 //! `services.backend.v1.BackendInternalService` namespace is being retired;
 //! RPC names and protojson wire shapes are unchanged, only the package /
 //! service prefix of the path moves). Service-to-service endpoint — auth is
 //! established at the mTLS transport layer, no user token required.
-//! Path: POST `/alt.datahub.v1.DataHubService/ListRecapArticles`, JSON body.
+//! Path: POST `/services.datahub.v1.DataHubService/ListRecapArticles`, JSON body.
 //!
 //! These tests drive the *production* `AltBackendClient` rather than a
 //! hand-rolled reqwest call. That is deliberate: a contract test that restates
@@ -40,7 +40,7 @@ fn ts(raw: &str) -> DateTime<Utc> {
         .with_timezone(&Utc)
 }
 
-/// Paginated article fetch: POST /alt.datahub.v1.DataHubService/ListRecapArticles → 200 OK
+/// Paginated article fetch: POST /services.datahub.v1.DataHubService/ListRecapArticles → 200 OK
 #[tokio::test]
 #[ignore = "CDC contract test"]
 async fn contract_alt_backend_recap_articles() {
@@ -49,7 +49,7 @@ async fn contract_alt_backend_recap_articles() {
             i.given("articles exist in the recap window");
             i.request.method("POST");
             i.request
-                .path("/alt.datahub.v1.DataHubService/ListRecapArticles");
+                .path("/services.datahub.v1.DataHubService/ListRecapArticles");
             i.request.content_type("application/json");
             i.request.json_body(json_pattern!({
                 "from": like!("2026-03-19T00:00:00Z"),
@@ -88,7 +88,7 @@ async fn contract_alt_backend_recap_articles() {
     assert_eq!(articles[0].article_id, "art-001");
 }
 
-/// Batch tag fetch: POST /alt.datahub.v1.DataHubService/BatchGetTagsByArticleIDs → 200 OK
+/// Batch tag fetch: POST /services.datahub.v1.DataHubService/BatchGetTagsByArticleIDs → 200 OK
 ///
 /// Replaces the former `recap-worker → tag-generator /api/v1/tags/batch`
 /// contract per ADR-000241 / ADR-000397 (Shared Database anti-pattern
@@ -102,7 +102,7 @@ async fn contract_alt_backend_batch_get_tags_by_article_ids() {
             i.given("tags exist for the requested articles");
             i.request.method("POST");
             i.request
-                .path("/alt.datahub.v1.DataHubService/BatchGetTagsByArticleIDs");
+                .path("/services.datahub.v1.DataHubService/BatchGetTagsByArticleIDs");
             i.request.content_type("application/json");
             i.request.json_body(json_pattern!({
                 "articleIds": each_like!(like!("art-001")),

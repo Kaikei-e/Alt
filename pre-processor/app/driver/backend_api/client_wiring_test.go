@@ -32,7 +32,7 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 	}{
 		{
 			name: "GetFeedID",
-			want: "/alt.datahub.v1.DataHubService/GetFeedID",
+			want: "/services.datahub.v1.DataHubService/GetFeedID",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := NewArticleRepository(c, nil).getFeedID(ctx, "https://example.com/feed.xml")
 				return err
@@ -40,7 +40,7 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 		},
 		{
 			name: "GetEmptyFeedID",
-			want: "/alt.datahub.v1.DataHubService/GetEmptyFeedID",
+			want: "/services.datahub.v1.DataHubService/GetEmptyFeedID",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := NewArticleRepository(c, nil).getEmptyFeedID(ctx, "https://example.com/feed.xml")
 				return err
@@ -48,7 +48,7 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 		},
 		{
 			name: "CreateArticle",
-			want: "/alt.datahub.v1.DataHubService/CreateArticle",
+			want: "/services.datahub.v1.DataHubService/CreateArticle",
 			call: func(ctx context.Context, c *Client) error {
 				return NewArticleRepository(c, nil).Create(ctx, &domain.Article{
 					Title:   "Go 1.26 Released",
@@ -61,7 +61,7 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 		},
 		{
 			name: "ListUnsummarizedArticles",
-			want: "/alt.datahub.v1.DataHubService/ListUnsummarizedArticles",
+			want: "/services.datahub.v1.DataHubService/ListUnsummarizedArticles",
 			call: func(ctx context.Context, c *Client) error {
 				_, _, err := NewArticleRepository(c, nil).FindForSummarization(ctx, nil, 100)
 				return err
@@ -69,7 +69,7 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 		},
 		{
 			name: "HasUnsummarizedArticles",
-			want: "/alt.datahub.v1.DataHubService/HasUnsummarizedArticles",
+			want: "/services.datahub.v1.DataHubService/HasUnsummarizedArticles",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := NewArticleRepository(c, nil).HasUnsummarizedArticles(ctx)
 				return err
@@ -77,7 +77,7 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 		},
 		{
 			name: "GetArticleContent",
-			want: "/alt.datahub.v1.DataHubService/GetArticleContent",
+			want: "/services.datahub.v1.DataHubService/GetArticleContent",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := NewArticleRepository(c, nil).FindByID(ctx, "art-001")
 				return err
@@ -85,7 +85,7 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 		},
 		{
 			name: "ListFeedURLs",
-			want: "/alt.datahub.v1.DataHubService/ListFeedURLs",
+			want: "/services.datahub.v1.DataHubService/ListFeedURLs",
 			call: func(ctx context.Context, c *Client) error {
 				_, _, err := NewFeedRepository(c).GetUnprocessedFeeds(ctx, nil, 100)
 				return err
@@ -93,7 +93,7 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 		},
 		{
 			name: "SaveArticleSummary",
-			want: "/alt.datahub.v1.DataHubService/SaveArticleSummary",
+			want: "/services.datahub.v1.DataHubService/SaveArticleSummary",
 			call: func(ctx context.Context, c *Client) error {
 				return NewSummaryRepository(c).Create(ctx, &domain.ArticleSummary{
 					ArticleID:       "art-001",
@@ -104,7 +104,7 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 		},
 		{
 			name: "FindArticlesWithSummaries",
-			want: "/alt.datahub.v1.DataHubService/FindArticlesWithSummaries",
+			want: "/services.datahub.v1.DataHubService/FindArticlesWithSummaries",
 			call: func(ctx context.Context, c *Client) error {
 				_, _, err := NewSummaryRepository(c).FindArticlesWithSummaries(ctx, nil, 100)
 				return err
@@ -112,14 +112,14 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 		},
 		{
 			name: "DeleteArticleSummary",
-			want: "/alt.datahub.v1.DataHubService/DeleteArticleSummary",
+			want: "/services.datahub.v1.DataHubService/DeleteArticleSummary",
 			call: func(ctx context.Context, c *Client) error {
 				return NewSummaryRepository(c).Delete(ctx, "art-001")
 			},
 		},
 		{
 			name: "CheckArticleSummaryExists",
-			want: "/alt.datahub.v1.DataHubService/CheckArticleSummaryExists",
+			want: "/services.datahub.v1.DataHubService/CheckArticleSummaryExists",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := NewSummaryRepository(c).Exists(ctx, "art-001")
 				return err
@@ -144,8 +144,8 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 			require.NoError(t, tt.call(context.Background(), client))
 
 			assert.Equal(t, tt.want, gotPath,
-				"pre-processor must call alt-data-hub through alt.datahub.v1.DataHubService (ADR-000954 D7)")
-			assert.False(t, strings.Contains(gotPath, "services.backend.v1"),
+				"pre-processor must call alt-data-hub through services.datahub.v1.DataHubService (ADR-000954 D7)")
+			assert.NotContains(t, gotPath, "services.backend.v1",
 				"the services.backend.v1 namespace is retired")
 		})
 	}
@@ -173,7 +173,7 @@ func TestCheckExistsRoutesToDataHubNamespace(t *testing.T) {
 	// namespace.
 	require.NotEmpty(t, seen)
 	for _, path := range seen {
-		assert.True(t, strings.HasPrefix(path, "/alt.datahub.v1.DataHubService/"),
+		assert.True(t, strings.HasPrefix(path, "/services.datahub.v1.DataHubService/"),
 			"every alt-data-hub call must use the D7 namespace, got %s", path)
 	}
 }

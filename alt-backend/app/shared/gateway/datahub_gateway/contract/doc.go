@@ -1,5 +1,5 @@
 // Package contract holds the consumer-driven contract tests for the two
-// in-family callers of alt.datahub.v1.DataHubService.
+// in-family callers of services.datahub.v1.DataHubService.
 //
 // alt-backend and alt-harvester are built from the same Go module as
 // alt-data-hub, which is exactly why these pacts exist. A shared module makes

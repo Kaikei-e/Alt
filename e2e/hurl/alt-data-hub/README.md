@@ -1,7 +1,7 @@
 # alt-data-hub Hurl E2E suite
 
 End-to-end scenarios for the data plane of the alt-backend 3-binary split.
-alt-data-hub serves `alt.datahub.v1.DataHubService` — the surface that
+alt-data-hub serves `services.datahub.v1.DataHubService` — the surface that
 authenticates a *service* rather than a user — over mTLS on `:9443`, with no
 host port published at all.
 
@@ -22,7 +22,7 @@ description of what is there rather than a to-do.
 |---|---|
 | `DataHubService` answers here, over mTLS | `04-datahub-service.hurl` |
 | …and *only* here | `../alt-backend/03-topology-internal-surface-absent.hurl`, `../alt-harvester/01-operator-surface-only.hurl` |
-| The retired `BackendInternalService` answers nowhere | `01-retired-connect-namespace-absent.hurl` |
+| The retired `BackendInternalService` and `alt.datahub.v1` names answer nowhere | `01-retired-connect-namespace-absent.hurl` |
 | The retired `/v1/internal/*` REST pair answers nowhere | `02-retired-internal-rest-absent.hurl` |
 | `:9110` serves health + metrics in plaintext, and nothing else | `03-ops-listener.hurl` |
 | An anonymous TLS client is refused | `run.sh` → `assert_transport_refused` |
@@ -34,7 +34,7 @@ The positive and negative halves have to be read together. On its own,
 everyone, and the 404s in the sibling suites are satisfied by a service that
 serves nothing at all. The pair is the claim.
 
-### One namespace, after two
+### One namespace, after three
 
 `01` and `02` used to be the positive assertions for
 `services.backend.v1.BackendInternalService` and the `/v1/internal/*` REST
@@ -47,7 +47,13 @@ migrated yet was still using the old one.
 Wave 2-C ended the duplication and inverted both files in the same commit, as
 this section said it would. They were inverted rather than deleted: a second
 name for the data plane is a second path to alt-db's owner, and nothing else
-in the suite fails if one comes back. `04` says the surface answers; `01` and
+in the suite fails if one comes back.
+
+ADR-000955 then moved every proto package under the `services.` prefix, which
+renamed the surviving surface once more — to
+`services.datahub.v1.DataHubService`. That rename had no overlap window: the
+provider serves the new name only, so `alt.datahub.v1` went straight from
+"the name" to a line in `01`'s fence. `04` says the surface answers; `01` and
 `02` say it answers under exactly one name.
 
 `:9102` is in the refused list on purpose. It is the port alt-backend's

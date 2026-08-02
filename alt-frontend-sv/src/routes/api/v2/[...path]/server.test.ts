@@ -29,18 +29,23 @@ describe("POST /api/v2/[...path]", () => {
 	// own.
 	//
 	// ADR-000954 moved that surface: `services.backend.v1.BackendInternalService`
-	// is retired and its capabilities live on `alt.datahub.v1.DataHubService`
+	// is retired and its capabilities live on `services.datahub.v1.DataHubService`
 	// in alt-data-hub. The retired path stays in the table — it must remain
 	// refused rather than merely unrouted — and the live one sits beside it.
-	// Note the shape of the guard here differs from the BFF's: this proxy is an
-	// allowlist (PROXYABLE_SERVICES), so a new east-west service is denied by
-	// construction; the assertion pins that it is never added by accident.
+	// Both gates on this hop are now allowlists: this proxy and the BFF each
+	// generate their set from the same `(alt.api.v1.visibility)` proto option
+	// (ADR-000955), so an east-west service is denied by construction at both
+	// and can only become reachable by annotating its proto. `alt.*` is not a
+	// pass: the `alt.preprocessor.v2` row is an alt-rooted name absent from the
+	// generated list, and default-deny still refuses it. The assertion pins
+	// that none of these is ever added by accident.
 	it.each([
-		"alt.datahub.v1.DataHubService/CreateArticle",
-		"alt.datahub.v1.DataHubService/ListArticlesWithTags",
-		"alt.datahub.v1.DataHubService/ListRecapArticles",
+		"services.datahub.v1.DataHubService/CreateArticle",
+		"services.datahub.v1.DataHubService/ListArticlesWithTags",
+		"services.datahub.v1.DataHubService/ListRecapArticles",
 		"services.backend.v1.BackendInternalService/CreateArticle",
 		"services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+		"alt.preprocessor.v2.PreProcessorService/Summarize",
 		"alt.knowledge_home.v1.KnowledgeHomeAdminService/StartReproject",
 	])("refuses to proxy %s", async (path) => {
 		const res = await fallback(makeEvent(path));

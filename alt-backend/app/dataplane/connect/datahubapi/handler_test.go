@@ -17,7 +17,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"alt/domain"
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 )
 
@@ -66,7 +66,7 @@ func (f *fakeRecentArticles) Execute(_ context.Context, in fetch_recent_articles
 // move passed through twice. Comparing the descriptor against the methods the
 // handler actually has catches that without anyone maintaining a list.
 func TestHandlerImplementsEveryDataHubProcedure(t *testing.T) {
-	svcs := datahubv1.File_alt_datahub_v1_datahub_proto.Services()
+	svcs := datahubv1.File_services_datahub_v1_datahub_proto.Services()
 
 	var svc protoreflect.ServiceDescriptor
 	for i := range svcs.Len() {
@@ -74,7 +74,7 @@ func TestHandlerImplementsEveryDataHubProcedure(t *testing.T) {
 			svc = svcs.Get(i)
 		}
 	}
-	require.NotNil(t, svc, "alt.datahub.v1.DataHubService not found in the generated file descriptor")
+	require.NotNil(t, svc, "services.datahub.v1.DataHubService not found in the generated file descriptor")
 
 	h := reflect.ValueOf(newTestHandler())
 	for i := range svc.Methods().Len() {

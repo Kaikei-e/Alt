@@ -6,7 +6,7 @@
 # suite inside the alt-staging network, and tears the stack down.
 #
 # alt-data-hub is the data plane of the alt-backend split:
-# alt.datahub.v1.DataHubService, served over mTLS on :9443 and nothing
+# services.datahub.v1.DataHubService, served over mTLS on :9443 and nothing
 # else. (The admin Connect services did *not* move here — they stay on
 # alt-backend's loopback operator listener; see di/datahub/container.go.)
 # It publishes no host port at all, which forces the same shape as the

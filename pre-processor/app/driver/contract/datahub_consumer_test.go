@@ -1,11 +1,12 @@
 //go:build contract
 
-// Consumer-Driven Contract for pre-processor -> alt-data-hub (ADR-000954 D7).
+// Consumer-Driven Contract for pre-processor -> alt-data-hub (ADR-000954 D7,
+// ADR-000955).
 //
 // pre-processor reads and writes every article / feed / summary row it touches
 // through alt-data-hub's Connect-RPC service. Wave 2-A renamed that contract's
 // namespace from services.backend.v1.BackendInternalService to
-// alt.datahub.v1.DataHubService with identical RPC names and fields, and
+// services.datahub.v1.DataHubService with identical RPC names and fields, and
 // absorbed the last REST route pre-processor called — GET
 // /v1/internal/system-user — as the GetSystemUser RPC.
 //
@@ -27,7 +28,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -36,8 +36,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
-	"pre-processor/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
+	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
 )
 
 // dataHubProcedurePrefix is the namespace ADR-000954 D7 moves this contract to.
@@ -360,10 +360,10 @@ func TestDataHubGetSystemUserContract(t *testing.T) {
 // TestDataHubProcedurePathsAreNamespaced covers the seven RPCs that do not get
 // their own interaction above. The pacts pin what alt-data-hub must answer;
 // this pins what pre-processor is allowed to ask for, so a stub regenerated
-// against the retired services.backend.v1 namespace fails here rather than at
-// the first production call after the legacy routes are removed.
+// against a retired namespace fails here rather than at the first production
+// call after those routes are removed.
 func TestDataHubProcedurePathsAreNamespaced(t *testing.T) {
-	assert.Equal(t, "alt.datahub.v1.DataHubService", datahubv1connect.DataHubServiceName,
+	assert.Equal(t, "services.datahub.v1.DataHubService", datahubv1connect.DataHubServiceName,
 		"ADR-000954 D7 fixes the service's fully-qualified name")
 
 	tests := []struct {
@@ -388,7 +388,7 @@ func TestDataHubProcedurePathsAreNamespaced(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, dataHubProcedure(tt.name), tt.procedure)
-			assert.False(t, strings.Contains(tt.procedure, "services.backend.v1"),
+			assert.NotContains(t, tt.procedure, "services.backend.v1",
 				"the legacy namespace is retired by ADR-000954 D7")
 		})
 	}

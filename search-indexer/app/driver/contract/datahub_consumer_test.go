@@ -14,14 +14,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	datahubv1 "search-indexer/gen/proto/alt/datahub/v1"
-	"search-indexer/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "search-indexer/gen/proto/services/datahub/v1"
+	"search-indexer/gen/proto/services/datahub/v1/datahubv1connect"
 )
 
 // newDataHubPact opens the pact search-indexer holds against the alt_db owner.
 //
 // The Provider name stays "alt-backend" even though the RPCs moved to
-// alt.datahub.v1.DataHubService (ADR-000954 D7, Wave 2-B). The pact identity
+// services.datahub.v1.DataHubService (ADR-000955). The pact identity
 // is the Broker participant, not the proto package: alt-data-hub is built from
 // the alt-backend module and its verification job publishes under
 // "alt-backend", reading pacts/search-indexer-alt-backend.json. Renaming the
@@ -58,7 +58,7 @@ func TestDataHubListArticlesWithTagsContract(t *testing.T) {
 		UponReceiving("a ListArticlesWithTags request for backward keyset pagination").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/alt.datahub.v1.DataHubService/ListArticlesWithTags"),
+			Path:   matchers.String("/services.datahub.v1.DataHubService/ListArticlesWithTags"),
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
@@ -117,7 +117,7 @@ func TestDataHubGetArticleByIDContract(t *testing.T) {
 		UponReceiving("a GetArticleByID request").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/alt.datahub.v1.DataHubService/GetArticleByID"),
+			Path:   matchers.String("/services.datahub.v1.DataHubService/GetArticleByID"),
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},
@@ -176,7 +176,7 @@ func TestDataHubGetLatestArticleTimestampContract(t *testing.T) {
 		UponReceiving("a GetLatestArticleTimestamp request").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/alt.datahub.v1.DataHubService/GetLatestArticleTimestamp"),
+			Path:   matchers.String("/services.datahub.v1.DataHubService/GetLatestArticleTimestamp"),
 			Headers: matchers.MapMatcher{
 				"Content-Type": matchers.String("application/json"),
 			},

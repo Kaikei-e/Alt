@@ -90,7 +90,7 @@ func TestCreateSummaryVersionContract(t *testing.T) {
 		UponReceiving("a CreateSummaryVersion request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/CreateSummaryVersion"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/CreateSummaryVersion"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"version": map[string]interface{}{
@@ -159,7 +159,7 @@ func TestMarkSummaryVersionSupersededContract(t *testing.T) {
 		UponReceiving("a MarkSummaryVersionSuperseded request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/MarkSummaryVersionSuperseded"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/MarkSummaryVersionSuperseded"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleId":    versionArticleID,
@@ -225,7 +225,7 @@ func TestMarkSummaryVersionSupersededFirstVersionContract(t *testing.T) {
 		UponReceiving("a MarkSummaryVersionSuperseded request from alt-backend for a first summary").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/MarkSummaryVersionSuperseded"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/MarkSummaryVersionSuperseded"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleId":    "00000000-0000-4000-8000-000000000000",
@@ -271,7 +271,7 @@ func TestGetSummaryVersionByIDContract(t *testing.T) {
 		UponReceiving("a GetSummaryVersionByID request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetSummaryVersionByID"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetSummaryVersionByID"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"summaryVersionId": prevSummaryID},
 		}).
@@ -322,7 +322,7 @@ func TestGetLatestSummaryVersionContract(t *testing.T) {
 		UponReceiving("a GetLatestSummaryVersion request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetLatestSummaryVersion"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetLatestSummaryVersion"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"articleId": versionArticleID},
 		}).
@@ -385,7 +385,7 @@ func TestCreateTagSetVersionContract(t *testing.T) {
 		UponReceiving("a CreateTagSetVersion request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/CreateTagSetVersion"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/CreateTagSetVersion"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"version": map[string]interface{}{
@@ -443,7 +443,7 @@ func TestMarkTagSetVersionSupersededContract(t *testing.T) {
 		UponReceiving("a MarkTagSetVersionSuperseded request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/MarkTagSetVersionSuperseded"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/MarkTagSetVersionSuperseded"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleId":    versionArticleID,
@@ -497,7 +497,7 @@ func TestGetTagSetVersionByIDContract(t *testing.T) {
 		UponReceiving("a GetTagSetVersionByID request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetTagSetVersionByID"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetTagSetVersionByID"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"tagSetVersionId": tagSetVersionID},
 		}).
@@ -554,7 +554,7 @@ func TestSaveArticleSummaryFromBackendContract(t *testing.T) {
 		UponReceiving("a SaveArticleSummary request from alt-backend that owns its own versioning").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/SaveArticleSummary"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/SaveArticleSummary"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"articleId":         versionArticleID,
@@ -598,7 +598,7 @@ func TestGetFeedAmountContract(t *testing.T) {
 		UponReceiving("a GetFeedAmount request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetFeedAmount"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetFeedAmount"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{},
 		}).
@@ -636,7 +636,7 @@ func TestGetTotalArticlesCountContract(t *testing.T) {
 		UponReceiving("a GetTotalArticlesCount request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetTotalArticlesCount"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetTotalArticlesCount"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"userId": statsUserIDValue},
 		}).
@@ -666,7 +666,7 @@ func TestGetSummarizedArticlesCountContract(t *testing.T) {
 		UponReceiving("a GetSummarizedArticlesCount request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetSummarizedArticlesCount"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetSummarizedArticlesCount"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"userId": statsUserIDValue},
 		}).
@@ -700,7 +700,7 @@ func TestGetUnsummarizedArticlesCountContract(t *testing.T) {
 		UponReceiving("a GetUnsummarizedArticlesCount request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetUnsummarizedArticlesCount"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetUnsummarizedArticlesCount"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"userId": statsUserIDValue},
 		}).
@@ -735,7 +735,7 @@ func TestGetTodayUnreadArticlesCountContract(t *testing.T) {
 		UponReceiving("a GetTodayUnreadArticlesCount request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetTodayUnreadArticlesCount"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetTodayUnreadArticlesCount"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId": statsUserIDValue,
@@ -776,7 +776,7 @@ func TestGetTrendStatsContract(t *testing.T) {
 		UponReceiving("a GetTrendStats request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetTrendStats"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetTrendStats"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"userId": statsUserIDValue,
@@ -819,7 +819,7 @@ func TestListUserFeedIDsContract(t *testing.T) {
 		UponReceiving("a ListUserFeedIDs request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListUserFeedIDs"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListUserFeedIDs"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"userId": statsUserIDValue},
 		}).

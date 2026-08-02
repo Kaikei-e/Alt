@@ -66,7 +66,7 @@ func TestListArticlesByTagIDContract(t *testing.T) {
 		UponReceiving("a ListArticlesByTagID request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListArticlesByTagID"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListArticlesByTagID"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"tagId":  testTrailTagID,
@@ -118,7 +118,7 @@ func TestListArticlesByTagIDFirstPageContract(t *testing.T) {
 		UponReceiving("a ListArticlesByTagID request from alt-backend for the first page").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListArticlesByTagID"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListArticlesByTagID"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"tagId": testTrailTagID,
@@ -154,7 +154,7 @@ func TestListArticlesByTagNameContract(t *testing.T) {
 		UponReceiving("a ListArticlesByTagName request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/ListArticlesByTagName"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListArticlesByTagName"),
 			Headers: jsonHeaders(),
 			Body: map[string]interface{}{
 				"tagName": "golang",
@@ -204,7 +204,7 @@ func TestGetArticleTitleAndLinkContract(t *testing.T) {
 		UponReceiving("a GetArticleTitleAndLink request from alt-backend").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetArticleTitleAndLink"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleTitleAndLink"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"articleId": testArticleID},
 		}).
@@ -248,7 +248,7 @@ func TestGetArticleTitleAndLinkMissContract(t *testing.T) {
 		UponReceiving("a GetArticleTitleAndLink request from alt-backend for a deleted article").
 		WithCompleteRequest(consumer.Request{
 			Method:  "POST",
-			Path:    matchers.String("/alt.datahub.v1.DataHubService/GetArticleTitleAndLink"),
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetArticleTitleAndLink"),
 			Headers: jsonHeaders(),
 			Body:    map[string]interface{}{"articleId": "00000000-0000-4000-8000-000000000000"},
 		}).

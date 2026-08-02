@@ -30,7 +30,7 @@ import (
 //
 // ADR-000954 Wave 3 batch 5 is why this test now guards a process boundary as
 // well as a race. MarkSummaryVersionSuperseded became one RPC —
-// alt.datahub.v1.DataHubService/MarkSummaryVersionSuperseded — with this whole
+// services.datahub.v1.DataHubService/MarkSummaryVersionSuperseded — with this whole
 // transaction on the provider's side of it. That shape is forced rather than
 // chosen: pg_advisory_xact_lock is released at COMMIT, so a contract that
 // exposed the read and the update as two procedures would release the lock
