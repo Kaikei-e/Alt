@@ -6,7 +6,7 @@ SvelteKit frontend for the Alt platform, serving desktop and mobile experiences 
 
 | Component | Technology |
 |-----------|------------|
-| Framework | SvelteKit 2.49 + Svelte 5.46 |
+| Framework | SvelteKit 2.70 + Svelte 5.56 |
 | Runtime | Bun 1.x |
 | Styling | TailwindCSS v4 + bits-ui |
 | API | Connect-RPC + REST |
