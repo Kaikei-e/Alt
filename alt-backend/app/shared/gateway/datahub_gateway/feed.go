@@ -44,8 +44,13 @@ func NewFeedGateway(client datahubv1connect.DataHubServiceClient) *FeedGateway {
 	return &FeedGateway{client: client}
 }
 
-// RegisterMultipleFeedsWithState upserts a poll's items in one provider
-// transaction and reports, per item, whether the row was new.
+// registerFeedsBatchLimit mirrors data-hub's maxFeedRegistrationBatch; an
+// hourly poll routinely exceeds it, so polls are sent as ≤limit chunks. Each
+// chunk is one provider transaction — safe because the upsert is idempotent.
+const registerFeedsBatchLimit = 2000
+
+// RegisterMultipleFeedsWithState upserts a poll's items and reports, per item,
+// whether the row was new. Result order matches the input order.
 func (g *FeedGateway) RegisterMultipleFeedsWithState(ctx context.Context, feeds []models.Feed) ([]domain.FeedRegistrationResult, error) {
 	if len(feeds) == 0 {
 		return nil, nil
@@ -65,14 +70,16 @@ func (g *FeedGateway) RegisterMultipleFeedsWithState(ctx context.Context, feeds 
 		})
 	}
 
-	resp, err := g.client.RegisterFeeds(ctx, connect.NewRequest(&datahubv1.RegisterFeedsRequest{Feeds: items}))
-	if err != nil {
-		return nil, fmt.Errorf("register %d feeds: %w", len(feeds), err)
-	}
-
-	results := make([]domain.FeedRegistrationResult, 0, len(resp.Msg.GetResults()))
-	for _, r := range resp.Msg.GetResults() {
-		results = append(results, domain.FeedRegistrationResult{FeedID: r.GetFeedId(), Created: r.GetCreated()})
+	results := make([]domain.FeedRegistrationResult, 0, len(items))
+	for start := 0; start < len(items); start += registerFeedsBatchLimit {
+		end := min(start+registerFeedsBatchLimit, len(items))
+		resp, err := g.client.RegisterFeeds(ctx, connect.NewRequest(&datahubv1.RegisterFeedsRequest{Feeds: items[start:end]}))
+		if err != nil {
+			return nil, fmt.Errorf("register feeds %d-%d of %d: %w", start+1, end, len(items), err)
+		}
+		for _, r := range resp.Msg.GetResults() {
+			results = append(results, domain.FeedRegistrationResult{FeedID: r.GetFeedId(), Created: r.GetCreated()})
+		}
 	}
 	return results, nil
 }
