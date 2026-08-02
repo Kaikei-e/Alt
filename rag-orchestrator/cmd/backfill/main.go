@@ -188,7 +188,7 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 		}
 		embeddingModel := os.Getenv("EMBEDDING_MODEL")
 		if embeddingModel == "" {
-			embeddingModel = "embeddinggemma"
+			embeddingModel = "bge-m3"
 		}
 
 		// Support multiple embedder replicas (EMBEDDER_URLS) or single (EMBEDDER_URL)

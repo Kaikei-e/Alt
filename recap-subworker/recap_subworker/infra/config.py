@@ -10,7 +10,11 @@ from urllib.parse import urlparse, urlunparse
 from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from recap_subworker.infra.embedding_identity import canonicalize_embedding_id
+from recap_subworker.infra.embedding_identity import (
+    DEFAULT_OLLAMA_EMBED_MODEL,
+    DEFAULT_SENTENCE_TRANSFORMER_MODEL_ID,
+    canonicalize_embedding_id,
+)
 
 
 class Settings(BaseSettings):
@@ -287,7 +291,7 @@ class Settings(BaseSettings):
 
         try:
             thresholds_payload = json.loads(thresholds_file.read_text())
-        except OSError, json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             return self
 
         if not isinstance(thresholds_payload, dict):
@@ -337,7 +341,7 @@ class Settings(BaseSettings):
         meta_path = Path(classifier_path).with_suffix(".meta.json")
         try:
             payload_text = meta_path.read_text()
-        except FileNotFoundError, IsADirectoryError, PermissionError:
+        except (FileNotFoundError, IsADirectoryError, PermissionError):
             # Missing sidecar is the responsibility of
             # GenreClassifierService._load_sidecar_metadata which warns; do
             # not double-fire here.
@@ -535,7 +539,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("PORT", "RECAP_SUBWORKER_PORT"),
     )
     model_id: str = Field(
-        "BAAI/bge-m3", description="Primary sentence-transformer model identifier"
+        DEFAULT_SENTENCE_TRANSFORMER_MODEL_ID,
+        description="Primary sentence-transformer model identifier",
     )
     distill_model_id: str = Field(
         "BAAI/bge-m3-distill-8l",
@@ -586,7 +591,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OLLAMA_EMBED_URL", "RECAP_SUBWORKER_OLLAMA_EMBED_URL"),
     )
     ollama_embed_model: str = Field(
-        "mxbai-embed-large",
+        DEFAULT_OLLAMA_EMBED_MODEL,
         description="Ollama embedding model name",
         validation_alias=AliasChoices("OLLAMA_EMBED_MODEL", "RECAP_SUBWORKER_OLLAMA_EMBED_MODEL"),
     )
@@ -1029,7 +1034,7 @@ class Settings(BaseSettings):
                 if isinstance(value, (int, float)) and 0.0 <= float(value) <= 1.0:
                     result[str(genre)] = float(value)
             return result
-        except json.JSONDecodeError, ValueError, TypeError:
+        except (json.JSONDecodeError, ValueError, TypeError):
             return {}
 
 

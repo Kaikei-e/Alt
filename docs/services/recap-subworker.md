@@ -257,7 +257,7 @@ flowchart TB
 | Variable | Default | Description |
 | --- | --- | --- |
 | `OLLAMA_EMBED_URL` | - | Remote Ollama API URL (required when backend=`ollama-remote`). |
-| `OLLAMA_EMBED_MODEL` | `mxbai-embed-large` | Ollama embedding model name. |
+| `OLLAMA_EMBED_MODEL` | `bge-m3` | Ollama embedding model name. |
 | `OLLAMA_EMBED_TIMEOUT` | `30.0` | Timeout for Ollama API calls. |
 
 ### Concurrency & Limits

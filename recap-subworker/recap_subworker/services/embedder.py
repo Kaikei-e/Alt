@@ -17,6 +17,11 @@ import numpy as np
 import structlog
 
 from ..infra.cache import LRUCache
+from ..infra.embedding_identity import (
+    DEFAULT_OLLAMA_EMBED_MODEL,
+    DEFAULT_SENTENCE_TRANSFORMER_MODEL_ID,
+    canonicalize_embedding_id,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -55,7 +60,7 @@ class EmbedderConfig:
     onnx_max_length: int = 512
     # Ollama remote settings
     ollama_embed_url: str | None = None
-    ollama_embed_model: str = "mxbai-embed-large"
+    ollama_embed_model: str = DEFAULT_OLLAMA_EMBED_MODEL
     # ADR-890 followup: bge-m3 (8192 token capacity) と cold model load を
     # 見越して、Ollama 公式ガイドラインの ≥60s を上回る値を既定にする。
     # 2026-05-12 17:00 UTC の事故では 30s 既定で全 chunk が timeout し、
@@ -86,11 +91,13 @@ class Embedder:
             backend=self.config.backend,
         )
 
-        if self.config.model_id != "intfloat/multilingual-e5-large":
+        if canonicalize_embedding_id(self.config.model_id) != canonicalize_embedding_id(
+            DEFAULT_SENTENCE_TRANSFORMER_MODEL_ID
+        ):
             logger.warning(
                 "Model ID mismatch recommendation",
                 current=self.config.model_id,
-                recommended="intfloat/multilingual-e5-large",
+                recommended=DEFAULT_SENTENCE_TRANSFORMER_MODEL_ID,
             )
 
         model_kwargs = {

@@ -32,7 +32,7 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 # Ensure embedding models exist (overridable per deployment)
-EMBEDDING_MODELS="${EMBEDDING_MODELS:-embeddinggemma mxbai-embed-large}"
+EMBEDDING_MODELS="${EMBEDDING_MODELS:-bge-m3}"
 
 # Pulls every model in EMBEDDING_MODELS, retrying transient failures up to
 # MODEL_PULL_MAX_ATTEMPTS times. Returns non-zero if any required model is

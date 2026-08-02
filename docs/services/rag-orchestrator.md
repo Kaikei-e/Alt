@@ -156,7 +156,7 @@ Loads configuration from environment variables. Secrets support both env vars an
 | Environment Variable | Description | Default |
 |----------------------|-------------|---------|
 | `EMBEDDER_EXTERNAL` / `EMBEDDER_EXTERNAL_URL` | Embedder (Ollama) URL | `http://embedder-external:11436` |
-| `EMBEDDING_MODEL` | Model for embeddings | `embeddinggemma` |
+| `EMBEDDING_MODEL` | Model for embeddings | `bge-m3` |
 | `EMBEDDER_TIMEOUT` | Embedder timeout (seconds) | `30` |
 | `AUGUR_EXTERNAL` / `AUGUR_EXTERNAL_URL` | Knowledge Augur (LLM) URL | `http://augur-external:11435` |
 | `AUGUR_KNOWLEDGE_MODEL` | LLM model for generation | `gemma3-12b-rag` |

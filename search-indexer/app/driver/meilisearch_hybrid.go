@@ -15,7 +15,7 @@ import (
 // HybridConfig captures the two Meilisearch hybrid-search fields.
 //
 // Embedder is the name of an embedder registered on the index (e.g.
-// "qwen3"). An empty string disables hybrid mode.
+// "bge-m3"). An empty string disables hybrid mode.
 //
 // SemanticRatio is clamped to [0.0, 1.0]. 0.0 ≈ BM25-only, 1.0 ≈ vector-only,
 // 0.5 is the balanced default we ship with ADR-000778.

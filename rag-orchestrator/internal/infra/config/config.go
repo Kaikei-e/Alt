@@ -343,7 +343,7 @@ func Load() *Config {
 		},
 		Embedder: EmbedderConfig{
 			URL:                    getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedder-external:11436"),
-			Model:                  getEnv("EMBEDDING_MODEL", "embeddinggemma"),
+			Model:                  getEnv("EMBEDDING_MODEL", "bge-m3"),
 			Timeout:                getEnvInt("EMBEDDER_TIMEOUT", 30),
 			AllowedOverrideOrigins: getEnvCSV("RAG_EMBEDDER_ALLOWED_OVERRIDE_URLS", []string{"http://backfill-hyperboost:11434"}),
 		},

@@ -412,13 +412,143 @@ func TestIndexArticle_Upsert_EncodeHappensBeforeTransactionBegins(t *testing.T) 
 
 	mockEncoder.On("Encode", ctx, mock.Anything).Run(func(args mock.Arguments) {
 		order = append(order, "encode")
-	}).Return([][]float32{{0.1, 0.2}}, nil)
+	}).Return([][]float32{embeddingOfWidth(domain.EmbeddingDimension)}, nil)
 
 	err := uc.Upsert(ctx, articleID, title, "", body)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{"encode", "tx_begin"}, order,
 		"Encode must run before the write transaction begins")
+}
+
+// TestIndexArticle_Upsert_EmbedderVersionChangeForcesReindex covers the model
+// swap: content, url, title and chunker are all unchanged, only the embedder
+// behind the URL is a different model. The stored vectors belong to a vector
+// space that no longer exists, so the article must be re-embedded — the
+// embedding-side analogue of the v8->v9 chunker re-index trigger. Without it a
+// model swap leaves every row stranded on its old (or cleared) embedding and
+// silently drops out of vector search.
+func TestIndexArticle_Upsert_EmbedderVersionChangeForcesReindex(t *testing.T) {
+	cases := []struct {
+		name          string
+		storedVersion string
+		wantReindex   bool
+	}{
+		{name: "previous model", storedVersion: "embeddinggemma", wantReindex: true},
+		// rag_document_versions.embedder_version is NOT NULL, so "unrecorded"
+		// reads back as the empty string.
+		{name: "unrecorded", storedVersion: "", wantReindex: true},
+		{name: "current model", storedVersion: "mock-v1", wantReindex: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockDocRepo := new(MockRagDocumentRepository)
+			mockChunkRepo := new(MockRagChunkRepository)
+			mockTxManager := new(MockTransactionManager)
+			mockEncoder := new(MockVectorEncoder) // Version() reports "mock-v1"
+			hasher := domain.NewSourceHashPolicy()
+			chunker := domain.NewChunker()
+
+			uc := usecase.NewIndexArticleUsecase(
+				mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, mockEncoder,
+			)
+
+			ctx := context.Background()
+			articleID := "embedder-version-article"
+			title := "Embedder Version Title"
+			body := "Body content long enough to survive the chunker's minimum length rule."
+			docID := uuid.New()
+			verID := uuid.New()
+
+			mockDocRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
+				ID:               docID,
+				ArticleID:        articleID,
+				CurrentVersionID: &verID,
+			}, nil)
+			// Everything except the embedder version already matches.
+			mockDocRepo.On("GetLatestVersion", ctx, docID).Return(&domain.RagDocumentVersion{
+				ID:              verID,
+				DocumentID:      docID,
+				VersionNumber:   1,
+				SourceHash:      hasher.Compute(title, body),
+				Title:           title,
+				ChunkerVersion:  string(domain.ChunkerVersionV9),
+				EmbedderVersion: tc.storedVersion,
+			}, nil)
+
+			mockEncoder.On("Encode", ctx, mock.Anything).
+				Return([][]float32{embeddingOfWidth(domain.EmbeddingDimension)}, nil).Maybe()
+			mockChunkRepo.On("GetChunksByVersionID", ctx, verID).Return([]domain.RagChunk{}, nil).Maybe()
+			mockDocRepo.On("CreateVersion", ctx, mock.Anything).Return(nil).Maybe()
+			mockChunkRepo.On("BulkInsertChunks", ctx, mock.Anything).Return(nil).Maybe()
+			mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil).Maybe()
+			mockDocRepo.On("UpdateCurrentVersion", ctx, docID, mock.Anything).Return(nil).Maybe()
+
+			err := uc.Upsert(ctx, articleID, title, "", body)
+			assert.NoError(t, err)
+
+			if tc.wantReindex {
+				mockEncoder.AssertCalled(t, "Encode", ctx, mock.Anything)
+				mockDocRepo.AssertCalled(t, "CreateVersion", ctx, mock.MatchedBy(func(v *domain.RagDocumentVersion) bool {
+					return v.EmbedderVersion == "mock-v1"
+				}))
+				mockChunkRepo.AssertCalled(t, "BulkInsertChunks", ctx, mock.Anything)
+			} else {
+				mockEncoder.AssertNotCalled(t, "Encode", mock.Anything, mock.Anything)
+				mockDocRepo.AssertNotCalled(t, "CreateVersion", mock.Anything, mock.Anything)
+				mockChunkRepo.AssertNotCalled(t, "BulkInsertChunks", mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+// embeddingOfWidth builds a vector of the given width for encoder mocks.
+func embeddingOfWidth(width int) []float32 {
+	v := make([]float32, width)
+	for i := range v {
+		v[i] = 0.1
+	}
+	return v
+}
+
+// TestIndexArticle_Upsert_RejectsWrongEmbeddingWidth pins the write path
+// against a wrong-model / wrong-endpoint embedder. Without the width check the
+// failure surfaces either as a raw pgvector "expected 1024 dimensions" error
+// from inside the write transaction, or — when the wrong model happens to
+// share the width — not at all, silently poisoning the vector space
+// (ADR-000943: an embedder substitution must be the same model).
+func TestIndexArticle_Upsert_RejectsWrongEmbeddingWidth(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockEncoder := new(MockVectorEncoder)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	var order []string
+	mockTxManager := &MockTransactionManager{callOrder: &order}
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, mockEncoder,
+	)
+
+	ctx := context.Background()
+	articleID := "wrong-width-article"
+	title := "Wrong Width Title"
+	body := "Paragraph 1.\n\nParagraph 2."
+
+	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(nil, nil)
+	// A 768-wide vector is what the previous embeddinggemma deployment returned.
+	mockEncoder.On("Encode", ctx, mock.Anything).Return([][]float32{embeddingOfWidth(768)}, nil)
+
+	err := uc.Upsert(ctx, articleID, title, "", body)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "embedding dimension mismatch")
+	assert.Empty(t, order, "the write transaction must never begin on a dimension mismatch")
+
+	mockDocRepo.AssertNotCalled(t, "CreateDocument", mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "BulkInsertChunks", mock.Anything, mock.Anything)
 }
 
 // TestIndexArticle_Upsert_EncodeErrorAttemptsNoWrites is the failure-mode

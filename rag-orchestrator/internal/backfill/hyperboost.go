@@ -17,7 +17,7 @@ const (
 	hyperBoostPort          = 11434 // Internal Ollama port
 	hyperBoostHostPort      = 11437 // Host port for health checks
 	hyperBoostImage         = "ollama/ollama:latest"
-	hyperBoostModel         = "embeddinggemma"
+	hyperBoostModel         = "bge-m3"
 	hyperBoostNetwork       = "alt_alt-network" // Same network as orchestrator
 )
 

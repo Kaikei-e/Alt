@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"rag-orchestrator/internal/domain"
 	"testing"
 	"time"
 
@@ -117,9 +118,16 @@ func TestOllamaEmbedder_Encode_DecodeFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to decode response")
 }
 
+// TestOllamaEmbedder_Version pins the reported version to the configured
+// model, so that swapping EMBEDDING_MODEL changes the version stored on every
+// document version and re-triggers indexing without anyone remembering to
+// bump a constant.
 func TestOllamaEmbedder_Version(t *testing.T) {
-	embedder := NewOllamaEmbedder("http://localhost", "my-model", 10, nil)
-	assert.Equal(t, "my-model", embedder.Version())
+	assert.Equal(t, domain.EmbedderVersion("my-model"), NewOllamaEmbedder("http://localhost", "my-model", 10, nil).Version())
+	assert.NotEqual(t,
+		NewOllamaEmbedder("http://localhost", "my-model", 10, nil).Version(),
+		NewOllamaEmbedder("http://localhost", "other-model", 10, nil).Version(),
+		"a different embedding model must produce a different embedder version")
 }
 
 func TestClassifyTransportError(t *testing.T) {

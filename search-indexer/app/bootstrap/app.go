@@ -102,12 +102,30 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
-	// Periodically probe Search so Meilisearch keeps the qwen3 embedding model
-	// in Ollama's resident set. A single startup-only probe is not enough:
-	// gemma4 (chat/RAG) and qwen3-embedding were observed to exclusively swap
-	// GPU residency, so the embedder goes cold again within minutes regardless
-	// of OLLAMA_KEEP_ALIVE. Goroutine so a stalled embedder cannot delay
-	// service start or block the loop.
+	// Declare the embedder hybrid search runs on. Failing here is fatal on
+	// purpose: every search request names this embedder, so a stale or absent
+	// definition breaks queries outright rather than degrading them.
+	if config.MeiliHybridEmbedder != "" {
+		embedderSettings := driver.NewEmbedderSettingsDriver(
+			os.Getenv("MEILISEARCH_HOST"),
+			readSecretEnv("MEILISEARCH_API_KEY"),
+			"articles",
+			config.MeiliTimeout,
+		)
+		if err := ensureEmbedderSettings(ctx, embedderSettings, config.MeiliHybridEmbedder, desiredEmbedder()); err != nil {
+			logger.Logger.Error("Failed to ensure embedder settings", "err", err)
+			return err
+		}
+	} else {
+		logger.Logger.Info("Hybrid search disabled (MEILI_HYBRID_EMBEDDER empty); embedder settings left unmanaged")
+	}
+
+	// Periodically probe Search so Meilisearch keeps the embedding model in
+	// Ollama's resident set. A single startup-only probe is not enough:
+	// gemma4 (chat/RAG) and the embedding model were observed to exclusively
+	// swap GPU residency, so the embedder goes cold again within minutes
+	// regardless of OLLAMA_KEEP_ALIVE. Goroutine so a stalled embedder cannot
+	// delay service start or block the loop.
 	go runWarmupLoop(ctx, searchEngine, config.WarmupInterval)
 
 	// Periodically prune finished Meilisearch tasks so registerBatchSynonyms's

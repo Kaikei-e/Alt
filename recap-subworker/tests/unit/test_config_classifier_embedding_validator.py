@@ -140,6 +140,63 @@ class TestPeerValidatorMatchPath:
         assert settings.model_backend == "ollama-remote"
 
 
+class TestUnconfiguredDefaultsMatchSidecar:
+    """Losing an env override must fail toward the encoder the head was
+    trained on, not away from it (ADR-000872)."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_embedding_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for name in (
+            "OLLAMA_EMBED_MODEL",
+            "RECAP_SUBWORKER_OLLAMA_EMBED_MODEL",
+            "RECAP_SUBWORKER_MODEL_ID",
+            "RECAP_SUBWORKER_MODEL_BACKEND",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+    def test_ollama_remote_default_model_passes_validator(
+        self, ja_model_path_30: Path, ja_thresholds_path: Path
+    ) -> None:
+        from recap_subworker.infra.config import Settings
+
+        _write_sidecar(ja_model_path_30, "BAAI/bge-m3")
+        settings = Settings(  # type: ignore[arg-type]
+            classification_backend="joblib",
+            genre_classifier_model_path_ja=str(ja_model_path_30),
+            genre_classifier_model_path_en="",
+            genre_thresholds_path_ja=str(ja_thresholds_path),
+            genre_thresholds_path_en="",
+            model_backend="ollama-remote",
+            ollama_embed_url="http://example:11434",
+        )
+        assert settings.ollama_embed_model == "bge-m3"
+
+    def test_sentence_transformers_default_model_id_passes_validator(
+        self, ja_model_path_30: Path, ja_thresholds_path: Path
+    ) -> None:
+        from recap_subworker.infra.config import Settings
+
+        _write_sidecar(ja_model_path_30, "BAAI/bge-m3")
+        settings = Settings(  # type: ignore[arg-type]
+            classification_backend="joblib",
+            genre_classifier_model_path_ja=str(ja_model_path_30),
+            genre_classifier_model_path_en="",
+            genre_thresholds_path_ja=str(ja_thresholds_path),
+            genre_thresholds_path_en="",
+        )
+        assert settings.model_backend == "sentence-transformers"
+        assert settings.model_id == "BAAI/bge-m3"
+
+    def test_backend_defaults_resolve_to_one_vector_space(self) -> None:
+        from recap_subworker.infra.config import Settings
+        from recap_subworker.infra.embedding_identity import canonicalize_embedding_id
+
+        settings = Settings()
+        assert canonicalize_embedding_id(settings.ollama_embed_model) == canonicalize_embedding_id(
+            settings.model_id
+        )
+
+
 class TestPeerValidatorDriftPath:
     def test_ollama_mxbai_against_bge_m3_sidecar_raises(
         self, ja_model_path_30: Path, ja_thresholds_path: Path

@@ -89,7 +89,7 @@ def _load_sidecar_metadata(model_path: Path) -> ClassifierMetadata | None:
     meta_path = model_path.with_suffix(".meta.json")
     try:
         payload_text = meta_path.read_text()
-    except FileNotFoundError, IsADirectoryError, PermissionError:
+    except (FileNotFoundError, IsADirectoryError, PermissionError):
         logger.warning(
             "classifier sidecar metadata missing",
             model_path=str(model_path),

@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description="Prepare dataset for genre classification")
     parser.add_argument("--input", type=str, required=True, help="Path to golden_classification.json")
     parser.add_argument("--output_dir", type=str, default="data/dataset", help="Output directory for pickle files")
-    parser.add_argument("--model_name", type=str, default="intfloat/multilingual-e5-large", help="Embedding model name")
+    parser.add_argument("--model_name", type=str, default="BAAI/bge-m3", help="Embedding model name")
     parser.add_argument("--language", type=str, choices=["ja", "en", "both"], default="both",
                         help="Language filter: 'ja' for Japanese only, 'en' for English only, 'both' for both (ja priority)")
     args = parser.parse_args()

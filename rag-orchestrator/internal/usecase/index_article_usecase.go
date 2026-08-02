@@ -57,6 +57,10 @@ func NewIndexArticleUsecase(
 func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url, body string) error {
 	sourceHash := u.hasher.Compute(title, body)
 	chunkerVersion := string(u.chunker.Version())
+	embedderVersion := ""
+	if u.encoder != nil {
+		embedderVersion = u.encoder.Version()
+	}
 
 	// Pre-check (read-only, no transaction): skip chunking/embedding
 	// entirely when the article hasn't changed. This is a fast-path only —
@@ -68,7 +72,7 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 	if err != nil {
 		return err
 	}
-	if isUpToDate(latestVer, sourceHash, url, title, chunkerVersion) {
+	if isUpToDate(latestVer, sourceHash, url, title, chunkerVersion, embedderVersion) {
 		return nil
 	}
 
@@ -101,10 +105,6 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 
 	// Embed — the network call to the encoder — happens here, before any
 	// transaction is opened.
-	embedderVersion := ""
-	if u.encoder != nil {
-		embedderVersion = u.encoder.Version()
-	}
 	if u.encoder != nil && len(contentsToEmbed) > 0 {
 		embeddings, err := u.encoder.Encode(ctx, contentsToEmbed)
 		if err != nil {
@@ -117,6 +117,13 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 			return fmt.Errorf("embeddings count mismatch: got %d, want %d", len(embeddings), len(contentsToEmbed))
 		}
 		for i, idx := range chunkIndicesToEmbed {
+			// Width, not just count: a wrong model behind the embedder URL
+			// otherwise surfaces as a raw pgvector error from inside the write
+			// transaction, and a same-width wrong model not at all.
+			if len(embeddings[i]) != domain.EmbeddingDimension {
+				return fmt.Errorf("embedding dimension mismatch from embedder %q: got %d, want %d",
+					embedderVersion, len(embeddings[i]), domain.EmbeddingDimension)
+			}
 			ragChunks[idx].Embedding = pgvector.NewVector(embeddings[i])
 		}
 	}
@@ -135,7 +142,7 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 		if err != nil {
 			return err
 		}
-		if isUpToDate(latestVer, sourceHash, url, title, chunkerVersion) {
+		if isUpToDate(latestVer, sourceHash, url, title, chunkerVersion, embedderVersion) {
 			return nil
 		}
 
@@ -349,14 +356,19 @@ func (u *indexArticleUsecase) loadCurrent(ctx context.Context, articleID string)
 }
 
 // isUpToDate reports whether latestVer already reflects sourceHash/url/title
-// under chunkerVersion, i.e. re-indexing would be a no-op. Re-index when the
-// chunker version changes too (e.g. v8->v9 HTML sanitization).
-func isUpToDate(latestVer *domain.RagDocumentVersion, sourceHash, url, title, chunkerVersion string) bool {
+// under chunkerVersion and embedderVersion, i.e. re-indexing would be a no-op.
+// Both derivation versions participate: a chunker change (e.g. v8->v9 HTML
+// sanitization) invalidates the chunk text, and an embedder change invalidates
+// the vectors derived from it. A version row that predates the current
+// embedder — including one that never recorded it, which reads back as the
+// empty string — is stale by the same comparison.
+func isUpToDate(latestVer *domain.RagDocumentVersion, sourceHash, url, title, chunkerVersion, embedderVersion string) bool {
 	return latestVer != nil &&
 		latestVer.SourceHash == sourceHash &&
 		latestVer.URL == url &&
 		latestVer.Title == title &&
-		latestVer.ChunkerVersion == chunkerVersion
+		latestVer.ChunkerVersion == chunkerVersion &&
+		latestVer.EmbedderVersion == embedderVersion
 }
 
 // Helper to get pointer to UUID

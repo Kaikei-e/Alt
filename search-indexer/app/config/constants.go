@@ -19,10 +19,23 @@ var (
 	RecapIndexInterval  = durationEnv("RECAP_INDEX_INTERVAL", 5*time.Minute)
 	RecapIndexBatchSize = intEnv("RECAP_INDEX_BATCH_SIZE", 200)
 	// MeiliHybridEmbedder names the embedder Meilisearch uses for hybrid search.
-	// Empty disables hybrid mode (BM25 only). When set, the driver attaches
-	// the embedder name + semantic ratio to every SearchRequest.
+	// Empty disables hybrid mode (BM25 only) and, with it, the startup
+	// reconciliation in bootstrap.ensureEmbedderSettings. When set, the driver
+	// attaches the embedder name + semantic ratio to every SearchRequest, and
+	// bootstrap declares an embedder under exactly this name -- one name for
+	// both so the declared embedder and the queried one cannot drift apart.
 	MeiliHybridEmbedder      = stringEnv("MEILI_HYBRID_EMBEDDER", "")
 	MeiliHybridSemanticRatio = floatEnv("MEILI_HYBRID_SEMANTIC_RATIO", 0.5)
+	// MeiliEmbedder* describe the embedder definition search-indexer declares
+	// on the articles index at startup.
+	//
+	// MeiliEmbedderURL is Ollama's embed endpoint, not the instance root:
+	// Meilisearch's ollama source POSTs to exactly the URL it is given.
+	// knowledge-embedder-local is the dedicated embedding Ollama instance, and
+	// bge-m3 (1024 dimensions) is the only model it keeps resident.
+	MeiliEmbedderModel      = stringEnv("MEILI_EMBEDDER_MODEL", "bge-m3")
+	MeiliEmbedderURL        = stringEnv("MEILI_EMBEDDER_URL", "http://knowledge-embedder-local:11434/api/embed")
+	MeiliEmbedderDimensions = intEnv("MEILI_EMBEDDER_DIMENSIONS", 1024)
 	// MeiliSearchCutoffMs bounds Meilisearch processing time per query at the
 	// engine level. When a query exceeds this budget Meilisearch returns the
 	// hits it has accumulated so far and marks estimatedTotalHits as a lower
@@ -49,7 +62,7 @@ var (
 	// it becomes eligible for pruning.
 	TaskRetention = durationEnv("MEILI_TASK_RETENTION", 72*time.Hour)
 	// WarmupInterval controls how often the startup warmup probe re-fires.
-	// See bootstrap.runWarmupLoop: gemma4 (chat/RAG) and qwen3-embedding
+	// See bootstrap.runWarmupLoop: gemma4 (chat/RAG) and the embedding model
 	// (hybrid search) were observed to exclusively swap GPU residency, so
 	// a single startup-only probe goes cold again within minutes. Matches
 	// MeiliSearchCacheTTL's cadence so a query is either a cache hit or

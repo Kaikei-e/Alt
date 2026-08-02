@@ -9,15 +9,15 @@ import (
 )
 
 // warmupTimeout caps how long the warmup probe is allowed to block. Set to
-// 30s because Ollama's first qwen3-embedding load on cold GPU can take ~10s
-// in the worst case; anything past 30s indicates the embedding Ollama
-// instance (knowledge-embedder-local) is down and the probe should give up
-// so it never holds back service start.
+// 30s because Ollama's first bge-m3 load on cold GPU can take ~10s in the
+// worst case; anything past 30s indicates the embedding Ollama instance
+// (knowledge-embedder-local) is down and the probe should give up so it never
+// holds back service start.
 const warmupTimeout = 30 * time.Second
 
 // warmupProbeQuery is intentionally a non-word so it matches nothing useful in
 // the index. The point is to force Meilisearch to invoke the embedder so the
-// qwen3 model becomes GPU-resident; the search result is discarded.
+// embedding model becomes GPU-resident; the search result is discarded.
 const warmupProbeQuery = "warmup-probe-aaa"
 
 // warmupSearcher narrows the SearchEngine surface to the single method
@@ -28,7 +28,7 @@ type warmupSearcher interface {
 }
 
 // warmupSearchEngine issues a single probe Search so Meilisearch's hybrid
-// pipeline pulls the qwen3 embedding model into Ollama's resident set. Without
+// pipeline pulls the embedding model into Ollama's resident set. Without
 // this, the first user-facing search after process start pays the embedder
 // cold-start tax (~1.1s in production observations).
 //
@@ -53,12 +53,12 @@ func warmupSearchEngine(ctx context.Context, eng warmupSearcher) {
 
 // runWarmupLoop re-probes the search engine on an interval instead of once
 // at startup. A single startup-only probe (the pre-2026-07-22 design) was
-// not enough: while qwen3-embedding shared the generation Ollama instance,
-// gemma4 (chat/RAG) and qwen3-embedding (hybrid search) exclusively swapped
-// GPU residency, so the embedding model went cold again within minutes of
-// the last chat request regardless of OLLAMA_KEEP_ALIVE. qwen3-embedding
-// now lives on the dedicated knowledge-embedder-local instance, where that
-// eviction cannot happen; the loop is kept as cheap insurance. Re-probing on
+// not enough: while the embedding model shared the generation Ollama
+// instance, gemma4 (chat/RAG) and the embedder exclusively swapped GPU
+// residency, so the embedding model went cold again within minutes of the
+// last chat request regardless of OLLAMA_KEEP_ALIVE. The embedder now lives
+// on the dedicated knowledge-embedder-local instance, where that eviction
+// cannot happen; the loop is kept as cheap insurance. Re-probing on
 // the same cadence as the LRU cache TTL means a query is either a cheap
 // cache hit or the embedder is already warm.
 func runWarmupLoop(ctx context.Context, eng warmupSearcher, interval time.Duration) {

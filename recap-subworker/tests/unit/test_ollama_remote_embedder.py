@@ -18,9 +18,26 @@ class TestOllamaRemoteConfig:
         assert settings.ollama_embed_url is None
 
     def test_ollama_embed_model_default(self):
-        """ollama_embed_model のデフォルトは mxbai-embed-large"""
+        """ollama_embed_model のデフォルトは bge-m3 (ADR-000872).
+
+        production は既に bge-m3 を env override で流している。default が
+        mxbai-embed-large のままだと override 喪失時に 2026-04 の silent
+        classification collapse と同じ vector space へ落ちる。
+        """
         settings = Settings()
-        assert settings.ollama_embed_model == "mxbai-embed-large"
+        assert settings.ollama_embed_model == "bge-m3"
+
+    def test_embedder_config_default_matches_settings_default(self):
+        """EmbedderConfig の default が Settings の default と一致する。"""
+        config = EmbedderConfig(
+            model_id="test",
+            distill_model_id="test",
+            backend="ollama-remote",
+            device="cpu",
+            batch_size=8,
+            cache_size=100,
+        )
+        assert config.ollama_embed_model == Settings().ollama_embed_model
 
     def test_ollama_embed_timeout_default(self):
         """ollama_embed_timeout のデフォルトは 120.0 (ADR-890 followup).

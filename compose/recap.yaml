@@ -207,10 +207,10 @@ services:
     environment:
       - RECAP_SUBWORKER_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_SUBWORKER_BASE_URL=http://recap-subworker:8002
-      - RECAP_SUBWORKER_MODEL_BACKEND=${RECAP_SUBWORKER_MODEL_BACKEND:-sentence-transformers}
-      - RECAP_SUBWORKER_MODEL_ID=${RECAP_SUBWORKER_MODEL_ID:-intfloat/multilingual-e5-large}
-      - RECAP_SUBWORKER_OLLAMA_EMBED_URL=${OLLAMA_EMBED_URL:-}
-      - RECAP_SUBWORKER_OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-mxbai-embed-large}
+      - RECAP_SUBWORKER_MODEL_BACKEND=${RECAP_SUBWORKER_MODEL_BACKEND:-ollama-remote}
+      - RECAP_SUBWORKER_MODEL_ID=${RECAP_SUBWORKER_MODEL_ID:-BAAI/bge-m3}
+      - RECAP_SUBWORKER_OLLAMA_EMBED_URL=${OLLAMA_EMBED_URL:-http://knowledge-embedder-local:11434}
+      - RECAP_SUBWORKER_OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-bge-m3}
       - RECAP_SUBWORKER_PIPELINE_MODE=inprocess
       # Single worker for CUDA compatibility (CUDA context survives fork only in single worker mode)
       - RECAP_SUBWORKER_GUNICORN_WORKERS=1

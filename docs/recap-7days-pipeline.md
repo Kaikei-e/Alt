@@ -115,7 +115,7 @@ A two-stage classification process assigns articles to genres (e.g., `ai`, `poli
 
 This phase converts raw text into structured evidence.
 
-1.  **Embedding**: Uses `intfloat/multilingual-e5-large` (or BGE-M3) to generate vector embeddings for sentences.
+1.  **Embedding**: Uses `bge-m3` (BAAI/bge-m3) to generate vector embeddings for sentences.
 2.  **Semantic Deduplication**:
     -   Unlike Phase 2 (Article-level), this stage performs **Sentence-level deduplication**.
     -   Removes sentences that are semantically identical (Cosine Similarity > 0.92) to ensure diversity in the evidence budget.

@@ -39,7 +39,7 @@ These documents share several recurring architectural principles:
 - **Backend**: Go, F# 10/.NET 10, Python 3.14+
 - **Frontend**: SvelteKit, Svelte 5 Runes
 - **Data**: PostgreSQL, Redis Streams, Meilisearch
-- **AI/ML**: Ollama (Gemma 4), LangGraph, mxbai-embed-large embeddings
+- **AI/ML**: Ollama (Gemma 4), LangGraph, bge-m3 embeddings
 - **Protocols**: Connect-RPC, SSE
 - **Infrastructure**: Docker Compose, nginx
 - **Patterns**: Event Sourcing, CQRS, Clean Architecture, Functional Core / Effectful Shell, Version-First Data Model

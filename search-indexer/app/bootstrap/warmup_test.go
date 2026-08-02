@@ -32,7 +32,7 @@ func (f *fakeWarmupEngine) Search(ctx context.Context, query string, limit int) 
 }
 
 // TestWarmupSearchEngine_CallsSearchOnce confirms warmup invokes Search exactly
-// once. The probe is what brings the qwen3 embedding model into Ollama's
+// once. The probe is what brings the embedding model into Ollama's
 // GPU-resident set so the first user query no longer pays the ~1100ms model-load
 // penalty.
 func TestWarmupSearchEngine_CallsSearchOnce(t *testing.T) {
@@ -83,7 +83,7 @@ func TestWarmupSearchEngine_RespectsCancellation(t *testing.T) {
 
 // TestRunWarmupLoop_ProbesImmediatelyThenOnInterval guards the fix for the
 // 2026-07-22 incident: a single startup-only probe is not enough because
-// gemma4 (chat/RAG) and qwen3-embedding (hybrid search) were observed to
+// gemma4 (chat/RAG) and the embedding model (hybrid search) were observed to
 // exclusively swap GPU residency on this host, so the embedder goes cold
 // again within minutes of the last chat request regardless of
 // OLLAMA_KEEP_ALIVE. The loop must re-probe on an interval, starting

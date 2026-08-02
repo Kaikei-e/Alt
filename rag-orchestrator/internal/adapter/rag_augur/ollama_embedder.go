@@ -121,7 +121,7 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 }
 
 func (e *OllamaEmbedder) Version() string {
-	return e.Model
+	return domain.EmbedderVersion(e.Model)
 }
 
 // classifyTransportError categorizes a transport error for structured logging.

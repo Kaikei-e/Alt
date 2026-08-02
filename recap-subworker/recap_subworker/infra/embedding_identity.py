@@ -27,6 +27,13 @@ _EMBEDDING_MODEL_ALIASES: dict[str, str] = {
     "bge-m3:latest": "baai/bge-m3",
 }
 
+# Fleet defaults live next to the alias table so a default can never name an
+# encoder the equivalence rules do not know about. Both resolve to the same
+# canonical id, so an operator who loses one env override still lands in the
+# vector space the classifier head was trained on.
+DEFAULT_OLLAMA_EMBED_MODEL = "bge-m3"
+DEFAULT_SENTENCE_TRANSFORMER_MODEL_ID = "BAAI/bge-m3"
+
 
 def canonicalize_embedding_id(name: str) -> str:
     """Lower-case and resolve known Ollama-tag ↔ HuggingFace-name aliases.

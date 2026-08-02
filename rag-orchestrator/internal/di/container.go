@@ -88,6 +88,10 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 
 	// External clients
 	embedder := rag_augur.NewOllamaEmbedder(cfg.Embedder.URL, cfg.Embedder.Model, cfg.Embedder.Timeout, log, embedderHTTP)
+	log.Info("embedder_configured",
+		slog.String("url", cfg.Embedder.URL),
+		slog.String("model", cfg.Embedder.Model),
+		slog.Int("expected_dimension", domain.EmbeddingDimension))
 	searchClient := rag_http.NewSearchIndexerClient(cfg.Search.IndexerURL, cfg.Search.Timeout, "")
 	queryExpander := rag_augur.NewQueryExpanderClient(cfg.QueryExpansion.URL, cfg.QueryExpansion.Timeout, log, queryExpanderHTTP)
 
