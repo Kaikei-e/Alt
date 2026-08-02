@@ -86,13 +86,16 @@ HTTP 404
 # this). cmd/datahub therefore ships datahubapi.LegacyNamespaceAlias, and this
 # block asserts the alias is alive: it must answer like the current name, not
 # 404 — a silent alias regression mid-transition would strand every deployed
-# consumer. GetSystemUser carries no request fields, so an empty JSON body is
-# a well-formed call and 200 proves the rewrite reached the mux.
+# consumer. The probe is GetLatestArticleTimestamp, the same call
+# 04-datahub-service.hurl pins to 200 on the canonical name, so a failure
+# here isolates the alias rather than the procedure. (GetSystemUser is not
+# usable as a probe: its answer depends on the identity stub, which is why 04
+# accepts any status for it.)
 #
 # When the alias is removed (every deployed consumer on services.datahub.v1),
 # flip this block to the 404 fence the services.backend.v1 block above uses.
 
-POST {{data_hub_url}}/alt.datahub.v1.DataHubService/GetSystemUser
+POST {{data_hub_url}}/alt.datahub.v1.DataHubService/GetLatestArticleTimestamp
 Content-Type: application/json
 {}
 HTTP 200
