@@ -1,6 +1,6 @@
 """Factory for creating a typed Connect-RPC client to alt-data-hub.
 
-Speaks ``alt.datahub.v1.DataHubService`` (ADR-000954 D7). The provider used
+Speaks ``services.datahub.v1.DataHubService`` (ADR-000954 D7). The provider used
 to be the alt-backend process serving
 ``services.backend.v1.BackendInternalService``; after the three-way split it
 is a separate binary owning alt_db, and Wave 2-B moved this consumer onto the
@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, cast
 import structlog
 from pyqwest import SyncClient, SyncHTTPTransport
 
-from tag_generator.gen.proto.alt.datahub.v1.datahub_connect import (
+from tag_generator.gen.proto.services.datahub.v1.datahub_connect import (
     DataHubServiceClientSync,
 )
 
@@ -187,7 +187,7 @@ def create_backend_client() -> tuple[DataHubServiceClientSync, dict[str, str]] |
         "Connect-RPC data-hub client initialized",
         base_url=base_url,
         mtls_enforce=mtls_enforce,
-        service="alt.datahub.v1.DataHubService",
+        service="services.datahub.v1.DataHubService",
     )
     return client, auth_headers
 

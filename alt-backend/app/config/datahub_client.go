@@ -23,7 +23,7 @@ const (
 )
 
 // DataHubClientConfig is what cmd/backend and cmd/harvester need to reach
-// alt.datahub.v1.DataHubService.
+// services.datahub.v1.DataHubService.
 //
 // alt-data-hub is not an optional upstream for either binary: after ADR-000954
 // Wave 3 it owns alt_db, so "no data-hub client" is "no database". There is

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.search.v2;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/search/v2;searchv2";
 
 // =============================================================================
@@ -9,6 +11,8 @@ option go_package = "alt/gen/proto/alt/search/v2;searchv2";
 // =============================================================================
 
 service GlobalSearchService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // SearchEverything performs a federated search across all content verticals.
   rpc SearchEverything(SearchEverythingRequest) returns (SearchEverythingResponse);
 }

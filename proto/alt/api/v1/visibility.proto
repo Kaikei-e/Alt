@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package alt.api.v1;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "alt/gen/proto/alt/api/v1;apiv1";
+
+// Visibility declares how a service may be reached from outside the mesh.
+//
+// This is the single source of truth for "what is public API". The BFF Go
+// allowlist and the frontend TypeScript allowlist are both generated from it
+// (see proto/tools/protovis), so the two gates on the browser path can no
+// longer disagree.
+enum Visibility {
+  // Unset. A service that carries this is a declaration bug, not a default —
+  // the generator rejects it rather than guessing a safe value.
+  VISIBILITY_UNSPECIFIED = 0;
+
+  // Browser-reachable through the generic /api/v2 proxy. The frontend may
+  // speak this service's procedures directly; its name is a public contract
+  // and renaming it is a wire-breaking change.
+  VISIBILITY_PUBLIC = 1;
+
+  // BFF-forwardable, but only through a dedicated gated route that applies
+  // its own authorization. Never reachable through the generic /api/v2 proxy.
+  VISIBILITY_ADMIN = 2;
+}
+
+extend google.protobuf.ServiceOptions {
+  // visibility declares the public-API status of a service.
+  //
+  // Required on every service under the alt.* root, which is the north-south
+  // (browser-facing) namespace. East-west services live under the services.*
+  // root, are reachable over mTLS between backends only, and MUST NOT carry
+  // this option at all — an east-west service with a visibility is a category
+  // error, and the generator fails on it.
+  //
+  // Extension number is in the 50000-99999 org-private range reserved by the
+  // protobuf spec for extensions that are never published to a public
+  // registry.
+  //
+  // This option is deliberately NOT declared with retention RETENTION_SOURCE:
+  // it must survive into the runtime descriptors so a generator (or a future
+  // runtime check) can read it back from a built descriptor set.
+  Visibility visibility = 50001;
+}

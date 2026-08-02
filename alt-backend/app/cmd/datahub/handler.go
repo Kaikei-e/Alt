@@ -7,18 +7,18 @@ import (
 
 // connectRPCPrefix is the URL path prefix served by the Connect-RPC mux.
 //
-// The one namespace this binary answers on, alt.datahub.v1.DataHubService,
-// falls under it. Routing is prefix-based rather than a list of procedures, so
-// adding a capability to the proto does not need a matching edit in this file
-// — the connect mux is what decides whether a procedure exists, and it 404s
-// the ones that do not.
+// The one namespace this binary answers on, services.datahub.v1, is the prefix
+// itself, and DataHubService falls under it. Routing is prefix-based rather
+// than a list of procedures, so adding a capability to the proto does not need
+// a matching edit in this file — the connect mux is what decides whether a
+// procedure exists, and it 404s the ones that do not.
 //
-// "/services." was here until ADR-000954 Wave 2-C, for
-// services.backend.v1.BackendInternalService. It is gone rather than kept as a
-// harmless leftover: a prefix in this list is a promise that something behind
-// it may answer, and a caller on the retired path should reach the same 404 as
-// a caller on a path that never existed.
-const connectRPCPrefix = "/alt."
+// It is the full namespace rather than the "/services." root ADR-000955 gives
+// every east-west contract, because services.backend.v1.BackendInternalService
+// shares that root and was retired by ADR-000954 Wave 2-C. A prefix here is a
+// promise that something behind it may answer, and a caller on the retired
+// path should reach the same 404 as a caller on a path that never existed.
+const connectRPCPrefix = "/services.datahub.v1."
 
 func isConnectRPCPath(path string) bool {
 	return strings.HasPrefix(path, connectRPCPrefix)

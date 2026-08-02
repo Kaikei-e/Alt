@@ -80,15 +80,15 @@ struct ListRecapArticlesRequest {
 /// (service-to-service RPC なので data-hub の DataHubService に居る)。
 ///
 /// ADR-000954 D7: 旧 `services.backend.v1.BackendInternalService` から
-/// `alt.datahub.v1.DataHubService` へ一本化。RPC 名と protojson の wire
+/// `services.datahub.v1.DataHubService` へ一本化。RPC 名と protojson の wire
 /// 形状は不変で、package / service prefix だけが移る。接続先 URL
 /// (`ALT_BACKEND_MTLS_URL`) は Wave 2-A で alt-data-hub へ付け替え済み。
-const LIST_RECAP_ARTICLES_PATH: &str = "alt.datahub.v1.DataHubService/ListRecapArticles";
+const LIST_RECAP_ARTICLES_PATH: &str = "services.datahub.v1.DataHubService/ListRecapArticles";
 
 /// Connect-RPC BatchGetTagsByArticleIDs RPC path. Replaces the legacy
 /// tag-generator /api/v1/tags/batch surface per ADR-000241 / ADR-000397.
 const BATCH_GET_TAGS_BY_ARTICLE_IDS_PATH: &str =
-    "alt.datahub.v1.DataHubService/BatchGetTagsByArticleIDs";
+    "services.datahub.v1.DataHubService/BatchGetTagsByArticleIDs";
 
 /// Server-side invariant mirrored here so the chunked loop below never
 /// sends more than what the provider enforces.
@@ -368,8 +368,9 @@ mod tests {
         }
     }
 
-    const RPC_PATH: &str = "/alt.datahub.v1.DataHubService/ListRecapArticles";
-    const BATCH_TAGS_RPC_PATH: &str = "/alt.datahub.v1.DataHubService/BatchGetTagsByArticleIDs";
+    const RPC_PATH: &str = "/services.datahub.v1.DataHubService/ListRecapArticles";
+    const BATCH_TAGS_RPC_PATH: &str =
+        "/services.datahub.v1.DataHubService/BatchGetTagsByArticleIDs";
 
     #[tokio::test]
     async fn fetch_articles_returns_single_page() {

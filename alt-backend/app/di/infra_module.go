@@ -3,7 +3,7 @@ package di
 import (
 	"alt/config"
 	"alt/domain"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/driver/search_indexer_connect"
 	"alt/orchestrator/gateway/config_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"

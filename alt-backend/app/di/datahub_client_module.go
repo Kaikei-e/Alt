@@ -4,11 +4,11 @@ import (
 	"log/slog"
 
 	"alt/config"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/shared/driver/datahub_client"
 )
 
-// newDataHubClient builds the alt.datahub.v1.DataHubService client shared by
+// newDataHubClient builds the services.datahub.v1.DataHubService client shared by
 // cmd/backend and cmd/harvester, and refuses to return without one.
 //
 // cmd/datahub does not call this. A process reaching its own RPC surface would

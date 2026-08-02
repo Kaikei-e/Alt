@@ -11,13 +11,13 @@
 |---|---|---|---|
 | `cmd/backend` | `alt-backend` | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102`（admin Connect 2 サービス、loopback）/ ops `:9110` |
 | `cmd/harvester` | `alt-harvester` | `orchestrator/job/` の 7 定期ジョブ | ops `:9110` のみ |
-| `cmd/datahub` | `alt-data-hub` | **alt-db の唯一のオーナー**。`alt.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。publish ゼロ |
+| `cmd/datahub` | `alt-data-hub` | **alt-db の唯一のオーナー**。`services.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。publish ゼロ |
 
 `cmd/fix_article_titles` は one-shot の運用スクリプト。root `main.go` は無い。
 共通の起動処理は `internal/bootstrap` にあり 3 バイナリで共有する。
 
 **内部 API は alt-data-hub にある。** `cmd/backend` / `cmd/harvester` は DB DSN も
-pgx も持たず、データは全て `alt.datahub.v1.DataHubService`（Connect-RPC / mTLS）
+pgx も持たず、データは全て `services.datahub.v1.DataHubService`（Connect-RPC / mTLS）
 経由で取る。これは `di/import_boundary_test.go` が `go list -deps` でリンクレベルに
 強制している。旧 `services.backend.v1.BackendInternalService` と `/v1/internal/*`
 REST は削除済みで、再追加してはいけない。

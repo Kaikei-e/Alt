@@ -2,11 +2,15 @@ syntax = "proto3";
 
 package alt.knowledge_home.v1;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/knowledge_home/v1;knowledgehomev1";
 
 // KnowledgeHomeAdminService provides admin operations for Knowledge Home.
 // Protected by ServiceAuthInterceptor (service-token authentication).
 service KnowledgeHomeAdminService {
+  option (alt.api.v1.visibility) = VISIBILITY_ADMIN;
+
   // TriggerBackfill starts a new backfill job for the given projection version.
   rpc TriggerBackfill(TriggerBackfillRequest) returns (TriggerBackfillResponse);
   // PauseBackfill pauses a running backfill job.

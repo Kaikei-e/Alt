@@ -75,7 +75,7 @@
           }
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/CreateArticle"
+        "path": "/services.datahub.v1.DataHubService/CreateArticle"
       },
       "response": {
         "body": {
@@ -126,7 +126,7 @@
           }
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/GetFeedID"
+        "path": "/services.datahub.v1.DataHubService/GetFeedID"
       },
       "response": {
         "body": {
@@ -163,7 +163,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/GetSystemUser"
+        "path": "/services.datahub.v1.DataHubService/GetSystemUser"
       },
       "response": {
         "body": {
@@ -214,7 +214,7 @@
           }
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListFeedURLs"
+        "path": "/services.datahub.v1.DataHubService/ListFeedURLs"
       },
       "response": {
         "body": {
@@ -296,7 +296,7 @@
           }
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListUnsummarizedArticles"
+        "path": "/services.datahub.v1.DataHubService/ListUnsummarizedArticles"
       },
       "response": {
         "body": {
@@ -442,7 +442,7 @@
           }
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/SaveArticleSummary"
+        "path": "/services.datahub.v1.DataHubService/SaveArticleSummary"
       },
       "response": {
         "body": {},

@@ -1,5 +1,6 @@
 version: v2
-# Code generation of alt.datahub.v1 for search-indexer (ADR-000954 Wave 2-B).
+# Code generation of services.datahub.v1 for search-indexer (ADR-000954
+# Wave 2-B).
 #
 # Why a second template instead of a target inside buf.gen.datahub.yaml:
 # search-indexer vendors its stubs under its own Go module path
@@ -18,12 +19,12 @@ managed:
   enabled: true
   override:
     - file_option: go_package
-      path: alt/datahub/v1/datahub.proto
-      value: search-indexer/gen/proto/alt/datahub/v1;datahubv1
+      path: services/datahub/v1/datahub.proto
+      value: search-indexer/gen/proto/services/datahub/v1;datahubv1
 inputs:
   - directory: .
     paths:
-      - alt/datahub
+      - services/datahub
 plugins:
   - local: protoc-gen-go
     out: ../search-indexer/app/gen/proto

@@ -3,7 +3,7 @@ package altdb
 import (
 	"net/http"
 
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 
 	"connectrpc.com/connect"
 )

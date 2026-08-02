@@ -1,0 +1,17 @@
+# protovis (proto/tools/protovis) links its own copy of the alt.api.v1 option
+# package so it can call proto.GetExtension with the typed E_Visibility
+# descriptor. Reading the option out of a descriptor set via dynamicpb instead
+# does NOT work: the dynamically-resolved extension has a different containing
+# message identity than the linked google.protobuf.ServiceOptions, and
+# proto.HasExtension silently reports false for every service.
+#
+# Only alt/api is generated here — protovis needs the option, not the API.
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - alt/api
+plugins:
+  - local: protoc-gen-go
+    out: tools/protovis/gen
+    opt: paths=source_relative

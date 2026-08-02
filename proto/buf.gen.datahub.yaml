@@ -1,13 +1,15 @@
 version: v2
-# Code generation for alt.datahub.v1 — the contract alt-data-hub serves
+# Code generation for services.datahub.v1 — the contract alt-data-hub serves
 # (ADR-000954 D3/D7).
 #
-# This lives in its own template, and is excluded from buf.gen.yaml, because
-# the default template also emits TypeScript into alt-frontend-sv, and
-# DataHubService is reachable only over
-# mutual TLS from a listener with no published port, so a browser bundle can
-# never call it; shipping client stubs for it would advertise a surface that
-# does not exist from the browser's side of the network.
+# This lives in its own template because the default one (buf.gen.yaml) covers
+# the alt/ root and emits TypeScript into alt-frontend-sv, and DataHubService is
+# reachable only over mutual TLS from a listener with no published port, so a
+# browser bundle can never call it; shipping client stubs for it would advertise
+# a surface that does not exist from the browser's side of the network. That is
+# the same distinction the root convention of ADR-000955 encodes — alt.* is
+# browser-reachable, services.* is east-west — so the separation is now
+# structural rather than an exclusion the default template has to remember.
 #
 # Only alt-backend is a target today because Wave 2-A only makes alt-data-hub
 # *serve* the new namespace. Wave 2-B adds one consumer target per peer PR
@@ -17,7 +19,7 @@ version: v2
 inputs:
   - directory: .
     paths:
-      - alt/datahub
+      - services/datahub
 plugins:
   # ============================================================================
   # alt-backend / alt-data-hub (server implementation)

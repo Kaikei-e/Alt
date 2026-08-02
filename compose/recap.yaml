@@ -106,7 +106,7 @@ services:
       # Outbound mTLS to the data plane. The recap article reads moved out of
       # alt-backend in the 3-binary split (ADR-000954); cmd/backend opens no
       # mTLS listener any more and cmd/datahub serves that surface alone, as
-      # `alt.datahub.v1.DataHubService` (the old
+      # `services.datahub.v1.DataHubService` (the old
       # `services.backend.v1.BackendInternalService` and the `/v1/internal`
       # REST pair were both deleted in Wave 2-C).
       # pipeline/orchestrator.rs and pipeline/morning.rs derive SNI from this

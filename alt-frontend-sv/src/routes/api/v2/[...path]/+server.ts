@@ -7,6 +7,7 @@
 
 import type { RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
+import { PUBLIC_SERVICES } from "$lib/gen/allowlist";
 
 const BACKEND_CONNECT_URL =
 	env.BACKEND_CONNECT_URL || "http://alt-backend:9101";
@@ -16,26 +17,15 @@ const BACKEND_CONNECT_URL =
  *
  * The proxy attaches a valid backend token to whatever path the caller chose,
  * so an unbounded path turns any account into a gateway to every upstream
- * service. Two families must never appear here: the `services.*` package,
- * which is alt-backend's service-to-service surface, and the admin services,
- * which have their own role-checked routes.
+ * service. The set stays positive-form and structurally closed: anything not
+ * listed is refused, so the service-to-service packages and the admin
+ * services — which have their own role-checked routes — can never leak in.
+ *
+ * The membership itself is generated from the `(alt.api.v1.visibility)` option
+ * on each proto service (ADR-000955), so a service becomes proxyable only by
+ * being annotated public in its proto, never by editing this file.
  */
-const PROXYABLE_SERVICES = new Set([
-	"alt.acolyte.v1.AcolyteService",
-	"alt.articles.v2.ArticleService",
-	"alt.augur.v2.AugurService",
-	"alt.feeds.v2.FeedService",
-	"alt.knowledge_home.v1.KnowledgeHomeService",
-	"alt.knowledge_trail.v1.KnowledgeTrailService",
-	"alt.morning_letter.v2.MorningLetterReadService",
-	"alt.morning_letter.v2.MorningLetterService",
-	"alt.recap.v2.JobStatusService",
-	"alt.recap.v2.RecapService",
-	"alt.rss.v2.RSSService",
-	"alt.search.v2.GlobalSearchService",
-	"alt.search.v2.SearchService",
-	"alt.tts.v1.TTSService",
-]);
+const PROXYABLE_SERVICES = new Set<string>(PUBLIC_SERVICES);
 
 function isProxyableService(path: string): boolean {
 	const [service, method, ...rest] = path.split("/");

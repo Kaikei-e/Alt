@@ -376,7 +376,8 @@ mod tests {
         }
     }
 
-    const BATCH_TAGS_RPC_PATH: &str = "/alt.datahub.v1.DataHubService/BatchGetTagsByArticleIDs";
+    const BATCH_TAGS_RPC_PATH: &str =
+        "/services.datahub.v1.DataHubService/BatchGetTagsByArticleIDs";
 
     /// RED→GREEN regression: the batch tag fetch in `AltBackendFetchStage`
     /// was fully swallowed on any error with zero retry, while the article

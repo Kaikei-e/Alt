@@ -45,7 +45,7 @@ import (
 )
 
 // DataHubComponents is cmd/datahub's component set: what
-// alt.datahub.v1.DataHubService needs to serve pre-processor, search-indexer,
+// services.datahub.v1.DataHubService needs to serve pre-processor, search-indexer,
 // tag-generator, rag-orchestrator and recap-worker over mTLS.
 //
 // It builds no crawler, no search indexer, no image pipeline and no admin

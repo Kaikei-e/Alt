@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.acolyte.v1;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/acolyte/v1;acolytev1";
 
 // =============================================================================
@@ -9,6 +11,8 @@ option go_package = "alt/gen/proto/alt/acolyte/v1;acolytev1";
 // =============================================================================
 
 service AcolyteService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // CreateReport creates a new report.
   rpc CreateReport(CreateReportRequest) returns (CreateReportResponse);
   // GetReport returns a report with its current version and sections.

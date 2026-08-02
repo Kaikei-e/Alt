@@ -2,7 +2,7 @@
 upstream alt-backend talks to during Hurl E2E:
 
   * search-indexer        (Connect-RPC /alt.search.v2.SearchService/*)
-  * pre-processor         (Connect-RPC /alt.preprocessor.v2.*)
+  * pre-processor         (Connect-RPC /services.preprocessor.v2.*, catch-all)
   * recap-worker          (HTTP/REST /morning-letter/*, /recap/*)
   * rag-orchestrator      (HTTP/REST + Connect-RPC /alt.augur.v2.*)
   * knowledge-sovereign   (Connect-RPC /services.sovereign.v1.*)
@@ -157,34 +157,29 @@ async def search_suggestions() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# pre-processor — Connect-RPC JSON. SummarizeArticle is the hot path for
-# POST /v1/feeds/fetch/summary; the streaming variant is out of scope for
-# the initial Hurl suite (Hurl can't consume chunked NDJSON meaningfully).
+# pre-processor — served by the catch-all, deliberately.
+#
+# Two hand-written routes lived here, SummarizeArticle and FetchArticle under
+# the package `alt.preprocessor.v2`. Neither the package nor either procedure
+# has ever existed. The contract is services.preprocessor.v2.PreProcessorService
+# with Summarize / StreamSummarize / QueueSummarize / GetSummarizeStatus
+# (proto/services/preprocessor/v2/preprocessor.proto). They were removed rather
+# than renamed, because renaming them would have produced a more convincing
+# version of the same lie:
+#
+#   * No scenario reaches them. /v1/feeds/fetch/summary goes to news-creator
+#     via FetchArticleSummariesUsecase, not to this client; /v1/feeds/
+#     summarize{,/queue} die in the SSRF guard inside EnsureArticle before
+#     the client is called (27-feeds-summarize-queue.hurl says so and pins
+#     only the 5xx band). GET /summarize/status/:id is the one call that
+#     lands here, and the catch-all below already answers it.
+#   * The client could not read the reply anyway. Unlike the search-indexer
+#     and data-hub clients, preprocessor_connect/client.go builds its client
+#     with no connect.WithProtoJSON(), so it negotiates application/proto
+#     (binary). Serving these procedures for real means generating Python
+#     bindings the way ./regenerate.sh does for sovereign — worth doing when
+#     a scenario needs a pinned summarization response, not before.
 # ---------------------------------------------------------------------------
-@app.post("/alt.preprocessor.v2.PreProcessorService/SummarizeArticle")
-async def preproc_summarize() -> dict[str, Any]:
-    return {
-        "summary": {
-            "title": "Stub summary title",
-            "bullets": ["Stub bullet 1.", "Stub bullet 2."],
-            "language": "en",
-        },
-        "metadata": {
-            "model": "stub-model",
-            "processingTimeMs": 5,
-        },
-    }
-
-
-@app.post("/alt.preprocessor.v2.PreProcessorService/FetchArticle")
-async def preproc_fetch_article() -> dict[str, Any]:
-    return {
-        "article": {
-            "title": "Stub article",
-            "content": "Synthetic article body extracted by the stub.",
-            "language": "en",
-        }
-    }
 
 
 # ---------------------------------------------------------------------------

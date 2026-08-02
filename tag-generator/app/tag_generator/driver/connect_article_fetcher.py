@@ -12,8 +12,8 @@ import structlog
 from connectrpc.errors import ConnectError
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from tag_generator.gen.proto.alt.datahub.v1 import datahub_pb2
-from tag_generator.gen.proto.alt.datahub.v1.datahub_connect import (
+from tag_generator.gen.proto.services.datahub.v1 import datahub_pb2
+from tag_generator.gen.proto.services.datahub.v1.datahub_connect import (
     DataHubServiceClientSync,
 )
 

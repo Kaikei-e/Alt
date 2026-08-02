@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.knowledge_home.v1;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/knowledge_home/v1;knowledgehomev1";
 
 // KnowledgeHomeService provides the Knowledge Home API.
@@ -13,6 +15,8 @@ option go_package = "alt/gen/proto/alt/knowledge_home/v1;knowledgehomev1";
 // kept in the file so unrelated migrations from the same proto file
 // keep applying cleanly; the rpc declarations themselves are gone.
 service KnowledgeHomeService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // GetKnowledgeHome returns the main Knowledge Home feed with today's digest.
   rpc GetKnowledgeHome(GetKnowledgeHomeRequest) returns (GetKnowledgeHomeResponse);
   // TrackHomeItemsSeen records batch impression events.

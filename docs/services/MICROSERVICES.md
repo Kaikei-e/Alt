@@ -41,7 +41,7 @@ all interfaces and are out of scope here.
 > |---|---|---|
 > | `alt-backend` (`cmd/backend`) | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102`（admin Connect 2 サービス、loopback バインド）/ ops `:9110` |
 > | `alt-harvester` (`cmd/harvester`) | `orchestrator/job/` の 7 定期ジョブ | ops `:9110` のみ（業務リスナーなし） |
-> | `alt-data-hub` (`cmd/datahub`) | alt-db の唯一のオーナー。`alt.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。**publish ゼロ** |
+> | `alt-data-hub` (`cmd/datahub`) | alt-db の唯一のオーナー。`services.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。**publish ゼロ** |
 >
 > `:9110` は 3 バイナリ共通の ops リスナー（`bootstrap.NewOpsHandler`）で、
 > `/health` と `/metrics` を出す。ホストには publish されない。
@@ -248,10 +248,10 @@ flowchart TB
 
     %% alt-db ownership (ADR-000241 + ADR-000954): alt-data-hub is the only
     %% process holding a DB DSN. Everyone else, alt-backend and alt-harvester
-    %% included, goes through alt.datahub.v1.DataHubService over mTLS :9443.
+    %% included, goes through services.datahub.v1.DataHubService over mTLS :9443.
     alt-data-hub --> db
-    alt-backend -->|"alt.datahub.v1 / mTLS"| alt-data-hub
-    alt-harvester -->|"alt.datahub.v1 / mTLS"| alt-data-hub
+    alt-backend -->|"services.datahub.v1 / mTLS"| alt-data-hub
+    alt-harvester -->|"services.datahub.v1 / mTLS"| alt-data-hub
     alt-data-hub -.->|"Knowledge Home\n(event sourcing)"| db
 
     %% Worker connections
@@ -599,8 +599,8 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 - Authentication via auth-hub X-Alt-* headers or JWT tokens
 - Service-to-service auth: mTLS のみ。`X-Service-Token` / `SERVICE_SECRET` は [[000743]] で全サービスから撤去済み
 - Event-driven via Redis Streams + mq-hub
-- **alt-data-hub is the sole data owner for alt-db** ([[000241]] の原則を [[000954]] がプロセス境界として物理化)。alt-backend / alt-harvester を含む全 consumer は `alt.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ alt-db に触れる。consumer は alt-backend / alt-harvester / pre-processor / search-indexer / tag-generator / recap-worker / rag-orchestrator の 7 主体で、`DATAHUB_ALLOWED_PEERS` が peer CN で fail-closed に検証する
+- **alt-data-hub is the sole data owner for alt-db** ([[000241]] の原則を [[000954]] がプロセス境界として物理化)。alt-backend / alt-harvester を含む全 consumer は `services.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ alt-db に触れる。consumer は alt-backend / alt-harvester / pre-processor / search-indexer / tag-generator / recap-worker / rag-orchestrator の 7 主体で、`DATAHUB_ALLOWED_PEERS` が peer CN で fail-closed に検証する
 - GPU requirements: news-creator, recap-subworker (NVIDIA GPU); tts-speaker, knowledge-augur (AMD ROCm iGPU, CPU fallback available)
 - Log aggregation: rask-log-forwarder → rask-log-aggregator → ClickHouse
-- Tag Verse (3D tag cloud): alt-backend `alt.articles.v2` `FetchTagCloud` RPC → Barnes-Hut O(n log n) server-side layout → alt-frontend-sv (Three.js/Threlte v8 WebGPU); tag co-occurrence data は alt-data-hub の `alt.datahub.v1` `FetchTagCloud` capability 経由（`feed_tags` × `article_tags` CTE query）、alt-backend 側で 30 min TTL キャッシュ。定期ジョブ `tag-cloud-cache-warmer` は [[000954]] Wave 1 で廃止され、初回リクエスト時の遅延ウォームに置き換わっている（プロセス内キャッシュを別プロセスから温めても効かないため）
+- Tag Verse (3D tag cloud): alt-backend `alt.articles.v2` `FetchTagCloud` RPC → Barnes-Hut O(n log n) server-side layout → alt-frontend-sv (Three.js/Threlte v8 WebGPU); tag co-occurrence data は alt-data-hub の `services.datahub.v1` `FetchTagCloud` capability 経由（`feed_tags` × `article_tags` CTE query）、alt-backend 側で 30 min TTL キャッシュ。定期ジョブ `tag-cloud-cache-warmer` は [[000954]] Wave 1 で廃止され、初回リクエスト時の遅延ウォームに置き換わっている（プロセス内キャッシュを別プロセスから温めても効かないため）
 - **Knowledge Home**: Event-sourced personalized feed (CQRS pattern). alt-backend hosts projector, backfill, and reproject jobs. 9 tables in alt-db (`knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_reproject_runs`, `knowledge_projection_audits`). Admin API accessible via alt-butterfly-facade（`KnowledgeHomeAdminService` は alt-backend の loopback オペレータリスナー `:9102` に残る。認証は到達可能性 + BFF の admin ロールチェックで、service token は使わない）。altctl provides CLI commands (`home reproject`, `home slo`). Frontend admin at `/admin/knowledge-home`. SLO framework with 5 SLIs and multi-window burn-rate alerting

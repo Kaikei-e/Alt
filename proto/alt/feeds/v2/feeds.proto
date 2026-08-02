@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.feeds.v2;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/feeds/v2;feedsv2";
 
 // =============================================================================
@@ -316,6 +318,8 @@ message UnsubscribeResponse {
 
 // FeedService provides feed-related operations
 service FeedService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // Unary RPCs (Phase 1)
 
   // GetFeedStats returns basic feed statistics (feed count, summarized count)

@@ -18,7 +18,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ClaimOutboxBatch"
+        "path": "/services.datahub.v1.DataHubService/ClaimOutboxBatch"
       },
       "response": {
         "body": {
@@ -97,7 +97,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListFeedLinkDomains"
+        "path": "/services.datahub.v1.DataHubService/ListFeedLinkDomains"
       },
       "response": {
         "body": {
@@ -158,7 +158,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListFeedsMissingOgImage"
+        "path": "/services.datahub.v1.DataHubService/ListFeedsMissingOgImage"
       },
       "response": {
         "body": {
@@ -218,7 +218,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListRSSFeedURLs"
+        "path": "/services.datahub.v1.DataHubService/ListRSSFeedURLs"
       },
       "response": {
         "body": {
@@ -280,7 +280,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListScrapingDomains"
+        "path": "/services.datahub.v1.DataHubService/ListScrapingDomains"
       },
       "response": {
         "body": {
@@ -351,7 +351,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListUnwarmedOgImageURLs"
+        "path": "/services.datahub.v1.DataHubService/ListUnwarmedOgImageURLs"
       },
       "response": {
         "body": {
@@ -395,7 +395,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/MarkOutboxProcessed"
+        "path": "/services.datahub.v1.DataHubService/MarkOutboxProcessed"
       },
       "response": {
         "body": {},
@@ -421,7 +421,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/MarkOutboxProcessed"
+        "path": "/services.datahub.v1.DataHubService/MarkOutboxProcessed"
       },
       "response": {
         "body": {},
@@ -446,7 +446,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/PruneOutboxEvents"
+        "path": "/services.datahub.v1.DataHubService/PruneOutboxEvents"
       },
       "response": {
         "body": {
@@ -485,7 +485,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/PurgeExpiredArticleHeads"
+        "path": "/services.datahub.v1.DataHubService/PurgeExpiredArticleHeads"
       },
       "response": {
         "body": {
@@ -524,7 +524,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/PurgeImageProxyCacheOlderThan"
+        "path": "/services.datahub.v1.DataHubService/PurgeImageProxyCacheOlderThan"
       },
       "response": {
         "body": {
@@ -565,7 +565,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/RecordFeedLinkFailure"
+        "path": "/services.datahub.v1.DataHubService/RecordFeedLinkFailure"
       },
       "response": {
         "body": {
@@ -653,7 +653,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/RecordFeedLinkFailure"
+        "path": "/services.datahub.v1.DataHubService/RecordFeedLinkFailure"
       },
       "response": {
         "body": {
@@ -740,7 +740,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/RegisterFeeds"
+        "path": "/services.datahub.v1.DataHubService/RegisterFeeds"
       },
       "response": {
         "body": {
@@ -802,7 +802,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ReleaseOutboxEvent"
+        "path": "/services.datahub.v1.DataHubService/ReleaseOutboxEvent"
       },
       "response": {
         "body": {},
@@ -827,7 +827,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ResetFeedLinkFailures"
+        "path": "/services.datahub.v1.DataHubService/ResetFeedLinkFailures"
       },
       "response": {
         "body": {},
@@ -914,7 +914,7 @@
           }
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/SaveScrapingDomain"
+        "path": "/services.datahub.v1.DataHubService/SaveScrapingDomain"
       },
       "response": {
         "body": {
@@ -1019,7 +1019,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/EvictExpiredImageProxyCache"
+        "path": "/services.datahub.v1.DataHubService/EvictExpiredImageProxyCache"
       },
       "response": {
         "body": {
@@ -1061,7 +1061,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/UpdateScrapingDomainPolicy"
+        "path": "/services.datahub.v1.DataHubService/UpdateScrapingDomainPolicy"
       },
       "response": {
         "body": {},

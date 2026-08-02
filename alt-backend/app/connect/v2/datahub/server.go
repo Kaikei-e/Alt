@@ -25,11 +25,11 @@ import (
 	"alt/connect/v2/muxutil"
 	"alt/dataplane/connect/datahubapi"
 	datahubdi "alt/di/datahub"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 )
 
 // SetupConnectHandlers registers the service-to-service API cmd/datahub serves
-// behind mutual TLS: alt.datahub.v1.DataHubService, and nothing else.
+// behind mutual TLS: services.datahub.v1.DataHubService, and nothing else.
 //
 // Through Wave 2 this mux carried a second mount,
 // services.backend.v1.BackendInternalService, so that peers migrated one PR at

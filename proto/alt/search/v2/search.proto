@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.search.v2;
 
+import "alt/api/v1/visibility.proto";
+
 // For search-indexer internal use, the go_package is set relative to search-indexer module.
 // For alt-backend client, use the generated code in alt-backend/app/gen/proto/alt/search/v2
 option go_package = "alt/gen/proto/alt/search/v2;searchv2";
@@ -48,6 +50,8 @@ message SearchArticlesResponse {
 
 // SearchService provides article search operations
 service SearchService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // SearchArticles searches for articles matching the query
   // Replaces GET /v1/search?q=<query>&user_id=<user_id>
   rpc SearchArticles(SearchArticlesRequest) returns (SearchArticlesResponse);

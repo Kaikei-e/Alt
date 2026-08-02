@@ -189,8 +189,9 @@ type BackendConfig struct {
 	RecapWorkerURL string // recap-worker REST base URL for letter fetching
 }
 
-// DataHubConfig holds the connection settings for alt.datahub.v1.DataHubService
-// on alt-data-hub (ADR-000954 D3/D7). This is the only route rag-orchestrator
+// DataHubConfig holds the connection settings for
+// services.datahub.v1.DataHubService on alt-data-hub (ADR-000954 D3/D7,
+// package renamed by ADR-000955). This is the only route rag-orchestrator
 // has to alt_db.
 //
 // Every field is required, and loadDataHub panics when one is missing. There

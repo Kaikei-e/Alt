@@ -1,11 +1,12 @@
 // Package backend_api provides a Connect-RPC client for alt-data-hub's
-// DataHubService (alt.datahub.v1).
+// DataHubService (services.datahub.v1).
 //
 // The package name still says "backend_api" because the host it dials has not
 // moved — alt-data-hub answers on the same address alt-backend's internal
 // listener used to. What changed in ADR-000954 D7 is the procedure namespace:
-// services.backend.v1.BackendInternalService became alt.datahub.v1.DataHubService
-// with identical RPC names and message fields.
+// services.backend.v1.BackendInternalService became
+// services.datahub.v1.DataHubService with identical RPC names and message
+// fields.
 package backend_api
 
 import (
@@ -14,7 +15,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"pre-processor/gen/proto/alt/datahub/v1/datahubv1connect"
+	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
 )
 
 // Client wraps the DataHubService Connect-RPC client.

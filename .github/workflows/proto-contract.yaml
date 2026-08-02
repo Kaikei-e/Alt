@@ -35,6 +35,7 @@ on:
       - '.github/workflows/proto-contract.yaml'
       - 'proto/**'
       - 'alt-frontend-sv/src/lib/gen/**'
+      - 'alt-butterfly-facade/internal/server/allowlist_gen.go'
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/orchestrator/driver/preprocessor_connect/contract/**'
       - 'alt-backend/app/dataplane/driver/contract/**'
@@ -58,6 +59,7 @@ on:
       - '.github/workflows/proto-contract.yaml'
       - 'proto/**'
       - 'alt-frontend-sv/src/lib/gen/**'
+      - 'alt-butterfly-facade/internal/server/allowlist_gen.go'
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/orchestrator/driver/preprocessor_connect/contract/**'
       - 'alt-backend/app/dataplane/driver/contract/**'
@@ -107,6 +109,45 @@ jobs:
         if: github.event_name == 'pull_request'
         working-directory: proto
         run: buf breaking --against 'https://github.com/Kaikei-e/Alt.git#branch=main,subdir=proto'
+
+      # The public-API allowlist gate lives in this job rather than a new one so
+      # it is blocking from the first run: "Buf Lint & Breaking Change Detection"
+      # is already a required status check, and a separate job would sit
+      # non-blocking until branch protection is re-wired.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.26"
+          cache: true
+          # Monorepo: no root go.mod, so point the cache at the tool's own sums.
+          cache-dependency-path: proto/tools/protovis/go.sum
+
+      - name: protovis unit tests
+        working-directory: proto/tools/protovis
+        run: go test ./...
+
+      # ADR-000955: the (alt.api.v1.visibility) option on each alt.* service is
+      # the single source of truth for what is public API. protovis derives the
+      # BFF Go allowlist and the frontend TS allowlist from it and exits
+      # non-zero on any alt.* service that declares nothing, so a new service
+      # cannot become browser-reachable by omission.
+      - name: Regenerate public-API allowlists
+        working-directory: proto
+        run: |
+          buf build --exclude-source-info -o "${RUNNER_TEMP}/descriptor.binpb"
+          cd tools/protovis
+          go run . -desc "${RUNNER_TEMP}/descriptor.binpb" -root "${GITHUB_WORKSPACE}"
+
+      # `git status --porcelain`, not `git diff --exit-code`: a newly declared
+      # service can produce a generated file that does not exist in the commit
+      # at all, and diff reports a clean tree while the artifact is untracked.
+      - name: Fail on allowlist drift
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "::error::Generated allowlists are stale. Re-run protovis and commit the result."
+            git status --porcelain
+            git diff
+            exit 1
+          fi
 
   contract-conformance:
     name: Contract Conformance Tests (FE)

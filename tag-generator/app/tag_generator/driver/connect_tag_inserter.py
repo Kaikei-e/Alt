@@ -11,8 +11,8 @@ from typing import Any
 import structlog
 from connectrpc.errors import ConnectError
 
-from tag_generator.gen.proto.alt.datahub.v1 import datahub_pb2
-from tag_generator.gen.proto.alt.datahub.v1.datahub_connect import (
+from tag_generator.gen.proto.services.datahub.v1 import datahub_pb2
+from tag_generator.gen.proto.services.datahub.v1.datahub_connect import (
     DataHubServiceClientSync,
 )
 from tag_inserter.upsert_tags import BatchResult

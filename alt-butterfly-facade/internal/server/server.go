@@ -201,10 +201,9 @@ func NewServerWithTransports(
 	// target only the Connect-RPC path without breaking plaintext REST
 	// proxies (see ADR-000727 / ADR-000729).
 	//
-	// NOTE: boundary enforcement (rejecting non-allowlisted /v1/* paths) is
-	// not implemented yet — see the warn-only handler below and
-	// ADR-000729 Phase 3. Every /v1/* path currently reaches the upstream
-	// Echo listener; allowRESTPath only drives the migration-candidate log.
+	// The plaintext REST surface is closed (ADR-000729 Phase 3): only the
+	// paths on the architectural allowlist reach the upstream Echo listener,
+	// everything else is refused here.
 	if cfg.BackendRESTURL != "" {
 		effectiveRESTTransport := restTransport
 		if effectiveRESTTransport == nil {
@@ -219,17 +218,21 @@ func NewServerWithTransports(
 		restProxy := handler.NewRESTProxyHandler(
 			restClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger, cfg.RequestTimeout,
 		)
-		// The BFF still forwards every /v1/* path, but logs a warning when
-		// a caller hits a prefix that is not on the architectural allowlist.
-		// This keeps user-facing traffic alive (numerous SSR helpers still
-		// speak REST) while surfacing every migration candidate for future
-		// Connect-RPC conversion — see ADR-000729.
+		// Only allowlisted /v1/* paths reach the plaintext Echo listener. The
+		// allowlist is the record of what deliberately stayed on REST after
+		// the Connect-RPC migration, so anything outside it is either already
+		// migrated or was never browser-facing — both are 404 here rather than
+		// a proxied request the BFF has no architectural reason to make.
 		mux.Handle("/v1/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !allowRESTPath(r.URL.Path) && logger != nil {
-				logger.WarnContext(r.Context(), "BFF plaintext REST path outside allowlist",
-					"path", r.URL.Path,
-					"hint", "migrate to Connect-RPC via /api/v2 or add to restAllowlistPrefixes",
-				)
+			if !allowRESTPath(r.URL.Path) {
+				if logger != nil {
+					logger.WarnContext(r.Context(), "BFF rejected plaintext REST path outside allowlist",
+						"path", r.URL.Path,
+						"hint", "migrate to Connect-RPC via /api/v2, or add to restAllowlistPrefixes / restAllowlistPatterns",
+					)
+				}
+				http.NotFound(w, r)
+				return
 			}
 			restProxy.ServeHTTP(w, r)
 		}))
@@ -326,19 +329,27 @@ func NewServerWithTransports(
 		mux.Handle("/alt.acolyte.v1.AcolyteService/", acolyteProxy)
 	}
 
-	// Register proxy handler for all other paths
+	// Register proxy handler for all other paths.
 	// Connect-RPC uses paths like /alt.feeds.v2.FeedService/GetFeedStats.
 	//
-	// The `services.*` and `alt.datahub.v1.*` proto packages are the
-	// service-to-service surface, which has no user-JWT interceptor on the far
-	// side. The BFF is a legitimate mTLS peer of alt-backend, so forwarding a
-	// caller-chosen path here would make it a confused deputy for any account
-	// that can obtain a session. Reject the whole package at the edge rather
-	// than trusting the upstream mux to have stopped serving it.
+	// The BFF is a legitimate mTLS peer of its upstreams, and the east-west
+	// RPC surface has no user-JWT interceptor on the far side. Forwarding a
+	// caller-chosen path here would therefore make the BFF a confused deputy
+	// for any account that can obtain a session. The invariant is unchanged —
+	// a caller-chosen path is never forwarded — but it is now enforced
+	// positively: only services present in the generated allowlist
+	// (allowlist_gen.go, derived by protovis from the (alt.api.v1.visibility)
+	// option on each proto service) get through. Absence denies by
+	// construction, so a new east-west service, or a public service that was
+	// never published, needs no hand-maintained deny prefix to be refused.
+	//
+	// The dedicated routes above (TTS, KnowledgeHomeAdminService,
+	// AdminMonitorService, Acolyte, /v1/…) are longer mux patterns and resolve
+	// before this one; they are unaffected.
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isServiceToServicePath(r.URL.Path) {
+		if !allowConnectPath(r.URL.Path) {
 			if logger != nil {
-				logger.WarnContext(r.Context(), "BFF rejected service-to-service Connect-RPC path",
+				logger.WarnContext(r.Context(), "BFF rejected Connect-RPC path outside the generated allowlist",
 					"path", r.URL.Path,
 				)
 			}

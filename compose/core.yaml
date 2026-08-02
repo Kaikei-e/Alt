@@ -188,7 +188,7 @@ services:
       # removing it from every other NIC.
       # The data plane and /v1/internal/* are NOT here: they moved to
       # alt-data-hub's mTLS listener in the split (ADR-000954) and are served
-      # as `alt.datahub.v1.DataHubService`, and
+      # as `services.datahub.v1.DataHubService`, and
       # e2e/hurl/alt-backend/03-topology-internal-surface-absent.hurl asserts
       # their absence.
       - "127.0.0.1:9102:9102"

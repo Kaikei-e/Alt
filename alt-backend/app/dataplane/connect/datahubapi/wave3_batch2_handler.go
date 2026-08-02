@@ -8,7 +8,7 @@ import (
 
 	"alt/dataplane/port/datahub_capability_port"
 	"alt/domain"
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/utils/safeconv"
 
 	"connectrpc.com/connect"

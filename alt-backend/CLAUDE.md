@@ -15,7 +15,7 @@
 |---|---|---|---|
 | `alt-backend` | `cmd/backend` | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102` / ops `:9110` |
 | `alt-harvester` | `cmd/harvester` | `orchestrator/job/` の 7 定期ジョブ | ops `:9110` のみ（業務リスナーなし） |
-| `alt-data-hub` | `cmd/datahub` | **alt-db の唯一のオーナー**。`alt.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。**publish ゼロ** |
+| `alt-data-hub` | `cmd/datahub` | **alt-db の唯一のオーナー**。`services.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。**publish ゼロ** |
 
 - `cmd/fix_article_titles` は one-shot の運用スクリプトで、常駐サービスではない。
 - 共通の起動処理（config ロード / logger / OTel / シグナル / supervisor / ops リスナー）は
@@ -26,7 +26,7 @@
 ### 内部 API は alt-data-hub にある
 
 - **DB に触るコードは `cmd/datahub` にしか無い。** `cmd/backend` / `cmd/harvester` は
-  DB DSN も pgx も持たず、必要なデータは全て `alt.datahub.v1.DataHubService`
+  DB DSN も pgx も持たず、必要なデータは全て `services.datahub.v1.DataHubService`
   （Connect-RPC / mTLS `:9443`）経由で取る。
 - これは `di/import_boundary_test.go` が `go list -deps` で**リンクレベルに**強制している。
   `alt/shared/driver/alt_db` と `github.com/jackc/pgx/v5` が `cmd/backend` /
@@ -126,7 +126,7 @@ HTTP entrypoint. Request validation, response formatting.
 
 - REST: `app/orchestrator/rest/`（`routes.go` が Echo のミドルウェアとルート登録）
 - Connect: `app/orchestrator/connect/` と `app/connect/v2/`
-- data plane: `app/dataplane/connect/datahubapi/`（`alt.datahub.v1.DataHubService` の実装）
+- data plane: `app/dataplane/connect/datahubapi/`（`services.datahub.v1.DataHubService` の実装）
 
 **Pattern:**
 ```go

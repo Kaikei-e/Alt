@@ -46,7 +46,7 @@
           ]
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/BatchUpsertArticleTags"
+        "path": "/services.datahub.v1.DataHubService/BatchUpsertArticleTags"
       },
       "response": {
         "body": {
@@ -108,7 +108,7 @@
           ]
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/GetArticleContent"
+        "path": "/services.datahub.v1.DataHubService/GetArticleContent"
       },
       "response": {
         "body": {
@@ -188,7 +188,7 @@
           ]
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListUntaggedArticles"
+        "path": "/services.datahub.v1.DataHubService/ListUntaggedArticles"
       },
       "response": {
         "body": {
@@ -308,7 +308,7 @@
           ]
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListUntaggedArticles"
+        "path": "/services.datahub.v1.DataHubService/ListUntaggedArticles"
       },
       "response": {
         "body": {
@@ -448,7 +448,7 @@
           ]
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/UpsertArticleTags"
+        "path": "/services.datahub.v1.DataHubService/UpsertArticleTags"
       },
       "response": {
         "body": {

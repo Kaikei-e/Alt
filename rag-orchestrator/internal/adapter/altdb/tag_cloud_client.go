@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"math"
 
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 
 	"rag-orchestrator/internal/domain"
 
@@ -15,7 +15,7 @@ import (
 )
 
 // DataHubTagCloudClient implements domain.TagCloudClient using
-// alt.datahub.v1.DataHubService/FetchTagCloud.
+// services.datahub.v1.DataHubService/FetchTagCloud.
 //
 // Origin: services.backend.v1.BackendInternalService/FetchTagCloud. The
 // request and response messages are wire-identical to the legacy pair

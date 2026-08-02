@@ -1,6 +1,6 @@
 version: v2
-# Code generation of alt.datahub.v1 for pre-processor — the Wave 2-B consumer
-# target of ADR-000954 D7.
+# Code generation of services.datahub.v1 for pre-processor — the Wave 2-B
+# consumer target of ADR-000954 D7.
 #
 # This is a separate template from buf.gen.datahub.yaml rather than a second
 # plugin pair inside it, because the two need different managed-mode overrides:
@@ -17,12 +17,12 @@ managed:
   enabled: true
   override:
     - file_option: go_package
-      path: alt/datahub/v1/datahub.proto
-      value: pre-processor/gen/proto/alt/datahub/v1;datahubv1
+      path: services/datahub/v1/datahub.proto
+      value: pre-processor/gen/proto/services/datahub/v1;datahubv1
 inputs:
   - directory: .
     paths:
-      - alt/datahub
+      - services/datahub
 plugins:
   - local: protoc-gen-go
     out: ../pre-processor/app/gen/proto

@@ -22,7 +22,7 @@ PostgreSQL 17 database serving as the central data store for RSS feeds, articles
 
 > **Note ([[000954]]):** [[000241]] の「唯一のデータオーナー」は、alt-backend という
 > 名前のプロセスから **alt-data-hub** へ移った。alt-backend / alt-harvester を含む
-> 全 consumer は `alt.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ
+> 全 consumer は `services.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ
 > alt-db に触れる。DB DSN を持つ env アンカー (`x-alt-db-env` in `compose/core.yaml`) の
 > consumer は alt-data-hub 1 つだけで、alt-backend / alt-harvester のイメージには
 > そもそも DB ドライバが含まれていない（`alt-backend/app/di/import_boundary_test.go` が

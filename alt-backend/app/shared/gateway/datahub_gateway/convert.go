@@ -1,5 +1,5 @@
 // Package datahub_gateway is the anti-corruption layer between the domain
-// types alt-backend and alt-harvester work in and the alt.datahub.v1 wire
+// types alt-backend and alt-harvester work in and the services.datahub.v1 wire
 // messages alt-data-hub serves (ADR-000954 D3).
 //
 // One package, several narrow gateways: each satisfies a port a usecase or a
@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"alt/domain"
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

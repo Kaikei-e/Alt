@@ -1,5 +1,5 @@
 // Command datahub serves alt-backend's service-to-service surface:
-// alt.datahub.v1.DataHubService over Connect-RPC, and nothing else.
+// services.datahub.v1.DataHubService over Connect-RPC, and nothing else.
 //
 // Two former names for the same capabilities were served alongside it through
 // ADR-000954 Wave 2 — services.backend.v1.BackendInternalService and the

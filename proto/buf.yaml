@@ -8,24 +8,22 @@ lint:
 breaking:
   use:
     - FILE
-  # One ignore, for a file that no longer exists.
+  # Two ignores, both for paths that no longer exist.
   #
-  # ADR-000954 Wave 2-C deleted services/backend/v1/internal.proto after all
-  # five consumers moved to alt.datahub.v1.DataHubService. That deletion is the
-  # point of the wave, and FILE_NO_DELETE reports it against the main baseline
-  # until this branch is main.
+  # ADR-000955 moved alt/datahub to services/datahub — alt.* is the public,
+  # browser-reachable root and services.* is east-west, and DataHubService is
+  # mTLS-only — and deleted alt/preprocessor, a dead duplicate of
+  # services/preprocessor with no callers. FILE_NO_DELETE reports both against
+  # the main baseline until this branch is main.
   #
-  # The Knowledge Loop retire ([[000940]]) once carried three entries here and
-  # they were wrong, so it is worth saying why this one is not the same
-  # mistake. Those named files that still existed — sovereign.proto and
-  # augur.proto among them — and `breaking.ignore` exempts a file from *every*
-  # breaking rule, so they went on hiding real field-number changes on live
-  # contracts long after the one report they were added for. This entry names a
-  # path with nothing at it. There is no future break it can conceal, because
-  # there is nothing left to break.
+  # Nothing lives at either path, so neither entry can conceal a future break:
+  # `breaking.ignore` exempts a file from every breaking rule, which is why the
+  # three entries the Knowledge Loop retire ([[000940]]) once carried were
+  # wrong — they named files that still existed and hid real field-number
+  # changes on live contracts for months.
   #
-  # It is still garbage, and the same garbage as last time in one respect: once
-  # this lands on main the baseline matches and the entry does nothing. Delete
-  # it in the first PR after the merge.
+  # Both entries do nothing the moment this lands on main and the baseline
+  # matches. Delete them in the first PR after the merge.
   ignore:
-    - services/backend/v1/internal.proto
+    - alt/datahub/v1/datahub.proto
+    - alt/preprocessor/v2/preprocessor.proto

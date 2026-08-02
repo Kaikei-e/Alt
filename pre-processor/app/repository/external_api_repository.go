@@ -16,8 +16,8 @@ import (
 	"pre-processor/config"
 	"pre-processor/domain"
 	"pre-processor/driver"
-	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
-	"pre-processor/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
+	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
 	"pre-processor/utils"
 )
 
@@ -236,8 +236,8 @@ func (r *externalAPIRepository) GetSystemUserID(ctx context.Context) (string, er
 //
 // This used to be GET /v1/internal/system-user on alt-backend. ADR-000954 D6
 // absorbed that REST route into alt-data-hub's Connect capability as the
-// GetSystemUser RPC, and D7 put it in the alt.datahub.v1 namespace. The host
-// is unchanged — only the protocol and the path moved.
+// GetSystemUser RPC, and D7 put it in the services.datahub.v1 namespace. The
+// host is unchanged — only the protocol and the path moved.
 func (r *externalAPIRepository) getSystemUserIDOnce(ctx context.Context) (string, error) {
 	// Authentication is established at the TLS transport layer (mTLS).
 	resp, err := r.dataHub.GetSystemUser(ctx, connect.NewRequest(&datahubv1.GetSystemUserRequest{}))

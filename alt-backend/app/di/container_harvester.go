@@ -8,7 +8,7 @@ import (
 	"alt/adapter/augur_adapter"
 	"alt/config"
 	"alt/domain"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/gateway/feed_link_domain_gateway"
 	"alt/orchestrator/gateway/fetch_article_gateway"
 	"alt/orchestrator/gateway/image_fetch_gateway"

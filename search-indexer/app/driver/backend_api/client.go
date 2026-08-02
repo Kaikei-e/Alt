@@ -1,7 +1,7 @@
 // Package backend_api provides a Connect-RPC client for alt-data-hub's
 // DataHubService (ADR-000954 D7). The package name is kept so the DI wiring
 // and its tests move in one step; the peer it talks to is alt-data-hub, which
-// serves alt.datahub.v1.DataHubService on the same mTLS listener the legacy
+// serves services.datahub.v1.DataHubService on the same mTLS listener the legacy
 // services.backend.v1.BackendInternalService was reached on.
 package backend_api
 
@@ -16,8 +16,8 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	datahubv1 "search-indexer/gen/proto/alt/datahub/v1"
-	"search-indexer/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "search-indexer/gen/proto/services/datahub/v1"
+	"search-indexer/gen/proto/services/datahub/v1/datahubv1connect"
 
 	"search-indexer/driver"
 )

@@ -19,7 +19,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/FetchArticlesByTag"
+        "path": "/services.datahub.v1.DataHubService/FetchArticlesByTag"
       },
       "response": {
         "body": {
@@ -98,7 +98,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/FetchTagCloud"
+        "path": "/services.datahub.v1.DataHubService/FetchTagCloud"
       },
       "response": {
         "body": {
@@ -160,7 +160,7 @@
           "Content-Type": "application/json"
         },
         "method": "POST",
-        "path": "/alt.datahub.v1.DataHubService/ListRecentArticles"
+        "path": "/services.datahub.v1.DataHubService/ListRecentArticles"
       },
       "response": {
         "body": {

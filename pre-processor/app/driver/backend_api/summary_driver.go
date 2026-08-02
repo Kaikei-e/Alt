@@ -8,7 +8,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
+	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 
 	"pre-processor/domain"
 )

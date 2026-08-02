@@ -1,5 +1,5 @@
 // Package outbox_usecase owns the outbox state machine on the provider side
-// of alt.datahub.v1 (ADR-000954 Wave 3, catalog §2.A).
+// of services.datahub.v1 (ADR-000954 Wave 3, catalog §2.A).
 //
 // The transitions used to be enforced nowhere. The driver took a
 // `status string` and wrote whatever it was given; the only reason a row never

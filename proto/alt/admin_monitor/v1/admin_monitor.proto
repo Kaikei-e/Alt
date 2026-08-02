@@ -2,12 +2,16 @@ syntax = "proto3";
 
 package alt.admin_monitor.v1;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/admin_monitor/v1;adminmonitorv1";
 
 // AdminMonitorService serves Prometheus-backed observability data to the Admin UI.
 // Queries are allowlisted on the server; clients may not submit raw PromQL.
 // Protected by the admin role middleware (role claim + service token at BFF).
 service AdminMonitorService {
+  option (alt.api.v1.visibility) = VISIBILITY_ADMIN;
+
   // Catalog lists allowlisted metric keys and their descriptors.
   rpc Catalog(CatalogRequest) returns (CatalogResponse);
 

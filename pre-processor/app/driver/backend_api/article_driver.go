@@ -14,7 +14,7 @@ import (
 
 	"pre-processor/domain"
 	"pre-processor/driver"
-	datahubv1 "pre-processor/gen/proto/alt/datahub/v1"
+	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 	"pre-processor/utils"
 )
 

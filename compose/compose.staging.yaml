@@ -943,8 +943,8 @@ services:
       alt-backend-deps-stub:
         condition: service_healthy
       # cmd/backend holds no DB pool after ADR-000954 Wave 3 — every read and
-      # write goes through alt.datahub.v1.DataHubService. Waiting for it here
-      # keeps a cold-start handshake failure out of the first scenario.
+      # write goes through services.datahub.v1.DataHubService. Waiting for it
+      # here keeps a cold-start handshake failure out of the first scenario.
       alt-data-hub:
         condition: service_healthy
     volumes:
@@ -1030,7 +1030,7 @@ services:
       #
       # --- the data plane (ADR-000954 Wave 3) -----------------------------
       # cmd/backend has no DB pool: alt-data-hub owns alt_db and answers
-      # alt.datahub.v1.DataHubService over mutual TLS. di.newDataHubClient
+      # services.datahub.v1.DataHubService over mutual TLS. di.newDataHubClient
       # panics when any of these four is missing — deliberately, because a
       # backend without this client is a backend without a database that would
       # still report healthy on :9000 (CLAUDE.md rules 8/9). That panic is

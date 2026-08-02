@@ -165,5 +165,5 @@ type RecapArticlesResponse struct {
 // RecentArticleMetadata / RecentArticlesResponse left with the /v1/internal
 // handlers when cmd/datahub took over that surface. Those handlers are gone
 // too: ADR-000954 D6 folded the pair into
-// alt.datahub.v1.DataHubService.ListRecentArticles, so the response shape is
+// services.datahub.v1.DataHubService.ListRecentArticles, so the response shape is
 // the generated proto message now.

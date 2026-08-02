@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.knowledge_trail.v1;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/knowledge_trail/v1;knowledgetrailv1";
 
 // KnowledgeTrailService is the front-facing API for the Knowledge Trail —
@@ -9,6 +11,8 @@ option go_package = "alt/gen/proto/alt/knowledge_trail/v1;knowledgetrailv1";
 // It currently exposes the read-only footprint spine; branch proposal and
 // resolution are separate RPCs.
 service KnowledgeTrailService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // GetTrail returns the user's footprint spine in reverse-chronological order.
   rpc GetTrail(GetTrailRequest) returns (GetTrailResponse);
   // ResolveBranch records the user's response to a proposed branch (taken or

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.articles.v2;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/articles/v2;articlesv2";
 
 // =============================================================================
@@ -326,6 +328,8 @@ message GetArticleSourceURLResponse {
 
 // ArticleService provides article-related operations
 service ArticleService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // FetchArticleContent fetches and extracts compliant article content
   // Replaces GET /v1/articles/fetch/content
   rpc FetchArticleContent(FetchArticleContentRequest) returns (FetchArticleContentResponse);

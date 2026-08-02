@@ -2,9 +2,13 @@ syntax = "proto3";
 
 package alt.tts.v1;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/tts/v1;ttsv1";
 
 service TTSService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   rpc Synthesize(SynthesizeRequest) returns (SynthesizeResponse);
   rpc SynthesizeStream(SynthesizeStreamRequest) returns (stream SynthesizeStreamResponse);
   rpc ListVoices(ListVoicesRequest) returns (ListVoicesResponse);

@@ -1,0 +1,2741 @@
+syntax = "proto3";
+
+// Package services.datahub.v1 is the contract alt-data-hub serves — the single
+// owner of alt_db (ADR-000954 D3).
+//
+// It supersedes services.backend.v1.BackendInternalService. That name was
+// accurate while the internal API lived inside the alt-backend process; after
+// the three-way split (ADR-000954 D1) the provider is a different binary with
+// a different failure domain, and "backend internal" describes neither the
+// owner nor the boundary. ADR-000954 D7 chose one namespace over a
+// keep-both split precisely so that "which package does a new capability go
+// in" stops being a per-PR judgement call: every alt_db capability goes here.
+//
+// MIGRATION STATE (ADR-000954 D7, Wave 2-A):
+// alt-data-hub serves this service *and* the legacy
+// services.backend.v1.BackendInternalService at the same time. Every RPC below
+// carries an `Origin:` comment naming the legacy procedure it replaces, and
+// every request/response message is wire-identical to its legacy counterpart —
+// same field numbers, same field names, same types, same cardinality. Only the
+// package and (where the legacy name was awkward) the message name differ.
+// That is what lets Wave 2-B move one peer at a time: a peer switches the URL
+// path and nothing else about the bytes it sends changes.
+//
+// alt-backend/app/dataplane/connect/datahubapi enforces the wire-identity
+// claim as a test rather than a promise — see wirecompat_test.go, which walks
+// both descriptor sets field by field. If you add a field here without adding
+// it to the legacy message, that test fails; that is deliberate for as long as
+// both namespaces are served. Wave 2-C deletes the legacy proto, the adapter
+// and that test together, and this file becomes free to evolve on its own.
+package services.datahub.v1;
+
+option go_package = "alt/gen/proto/services/datahub/v1;datahubv1";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Article Types
+// =============================================================================
+
+// ArticleWithTags represents an article with its associated tags.
+// Wire-identical to services.backend.v1.ArticleWithTags.
+message ArticleWithTags {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  repeated string tags = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string user_id = 6;
+  string feed_id = 7;
+  // BCP-47 short code ("ja", "en") or "und" when detection is unavailable.
+  string language = 8;
+  // Source publication timestamp from the feed. Unset when the article row
+  // has no published_at; consumers that need a date fall back to created_at.
+  google.protobuf.Timestamp published_at = 9;
+}
+
+// DeletedArticle represents a deleted article.
+// Wire-identical to services.backend.v1.DeletedArticle.
+message DeletedArticle {
+  string id = 1;
+  google.protobuf.Timestamp deleted_at = 2;
+}
+
+// =============================================================================
+// ListArticlesWithTags - Backward pagination for backfill
+// =============================================================================
+
+message ListArticlesWithTagsRequest {
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 1;
+  // Cursor: last article ID from previous page
+  string last_id = 2;
+  // Page size (max 500)
+  int32 limit = 3;
+}
+
+message ListArticlesWithTagsResponse {
+  repeated ArticleWithTags articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+// =============================================================================
+// ListArticlesWithTagsForward - Forward pagination for incremental indexing
+// =============================================================================
+
+message ListArticlesWithTagsForwardRequest {
+  // Incremental mark: only return articles created after this timestamp
+  google.protobuf.Timestamp incremental_mark = 1;
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 2;
+  // Cursor: last article ID from previous page
+  string last_id = 3;
+  // Page size (max 500)
+  int32 limit = 4;
+}
+
+message ListArticlesWithTagsForwardResponse {
+  repeated ArticleWithTags articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+// =============================================================================
+// ListDeletedArticles - For syncing deletions
+// =============================================================================
+
+message ListDeletedArticlesRequest {
+  // Cursor: last deleted_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_deleted_at = 1;
+  // Page size (max 500)
+  int32 limit = 2;
+}
+
+message ListDeletedArticlesResponse {
+  repeated DeletedArticle articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_deleted_at = 2;
+}
+
+// =============================================================================
+// GetLatestArticleTimestamp - For determining incremental mark
+// =============================================================================
+
+message GetLatestArticleTimestampRequest {}
+
+message GetLatestArticleTimestampResponse {
+  // Latest created_at timestamp, absent if no articles exist
+  optional google.protobuf.Timestamp latest_created_at = 1;
+}
+
+// =============================================================================
+// GetArticleByID
+// =============================================================================
+
+message GetArticleByIDRequest {
+  string article_id = 1;
+}
+
+message GetArticleByIDResponse {
+  ArticleWithTags article = 1;
+}
+
+// =============================================================================
+// Article Write Operations
+// =============================================================================
+
+message CheckArticleExistsRequest {
+  string url = 1;
+  string feed_id = 2;
+}
+
+message CheckArticleExistsResponse {
+  bool exists = 1;
+  string article_id = 2;
+}
+
+message CreateArticleRequest {
+  string title = 1;
+  string url = 2;
+  string content = 3;
+  string feed_id = 4;
+  string user_id = 5;
+  google.protobuf.Timestamp published_at = 6;
+  // BCP-47 short code ("ja", "en") or "und" when detection is unavailable.
+  string language = 7;
+}
+
+message CreateArticleResponse {
+  string article_id = 1;
+}
+
+// SummaryVersioning says whether SaveArticleSummary should also append a
+// summary_versions row and its SummaryVersionCreated knowledge event.
+//
+// The procedure has always done both, and whether that is right depends on who
+// is calling: pre-processor writes a summary and wants it versioned in the same
+// breath, while alt-backend's stream-summarise path appends its own version
+// (attributed to its own model) and would otherwise get two versions for one
+// summary. Making that a field is how the difference stops being a property of
+// which code path happened to reach the table.
+enum SummaryVersioning {
+  // Append one. The zero value, because it is what every caller predating this
+  // field already gets — changing the meaning of an unset field is how a
+  // silent regression happens.
+  SUMMARY_VERSIONING_UNSPECIFIED = 0;
+  // Write the article_summaries row and nothing else. For callers that append
+  // their own version through CreateSummaryVersion, or that deliberately do
+  // not version this write at all.
+  SUMMARY_VERSIONING_SKIP = 1;
+}
+
+message SaveArticleSummaryRequest {
+  string article_id = 1;
+  string summary = 2;
+  string language = 3;
+  string user_id = 4;
+  // The article's title as the writer knew it, copied into the
+  // article_summaries row.
+  //
+  // Added by ADR-000954 Wave 3 batch 5 to close the last direct alt_db write
+  // alt-backend held: its summarise paths passed a real title to the driver,
+  // and routing them through this procedure without the field would have
+  // overwritten every title with the empty string the existing callers send.
+  // Empty is therefore a valid value and means what it has always meant here —
+  // pre-processor does not know the title and sends none.
+  string article_title = 5;
+  SummaryVersioning summary_versioning = 6;
+}
+
+message SaveArticleSummaryResponse {
+  bool success = 1;
+}
+
+message GetArticleContentRequest {
+  string article_id = 1;
+}
+
+message GetArticleContentResponse {
+  string article_id = 1;
+  string title = 2;
+  string content = 3;
+  string url = 4;
+  string user_id = 5;
+}
+
+// =============================================================================
+// Feed Operations
+// =============================================================================
+
+message GetFeedIDRequest {
+  string feed_url = 1;
+}
+
+message GetFeedIDResponse {
+  string feed_id = 1;
+}
+
+message ListFeedURLsRequest {
+  // Cursor for pagination (omit for first page)
+  string cursor = 1;
+  // Page size (max 500)
+  int32 limit = 2;
+}
+
+message ListFeedURLsResponse {
+  repeated FeedURL feeds = 1;
+  // Cursor for next page (empty if no more)
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+message FeedURL {
+  string feed_id = 1;
+  string url = 2;
+}
+
+// =============================================================================
+// Tag Operations
+// =============================================================================
+
+message UpsertArticleTagsRequest {
+  string article_id = 1;
+  string feed_id = 2;
+  repeated TagItem tags = 3;
+}
+
+message TagItem {
+  string name = 1;
+  float confidence = 2;
+}
+
+message UpsertArticleTagsResponse {
+  bool success = 1;
+  int32 upserted_count = 2;
+}
+
+message BatchUpsertArticleTagsRequest {
+  repeated UpsertArticleTagsRequest items = 1;
+}
+
+message BatchUpsertArticleTagsResponse {
+  bool success = 1;
+  int32 total_upserted = 2;
+}
+
+message ListUntaggedArticlesRequest {
+  int32 limit = 1;
+  // DEPRECATED: offset pagination — use cursor fields instead.
+  int32 offset = 2;
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 3;
+  // Cursor: last article ID from previous page
+  string last_id = 4;
+}
+
+message ListUntaggedArticlesResponse {
+  repeated ArticleWithTags articles = 1;
+  int32 total_count = 2;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 3;
+  string next_id = 4;
+}
+
+message BatchGetTagsByArticleIDsRequest {
+  repeated string article_ids = 1;
+}
+
+message ArticleTagEntry {
+  string tag_name = 1;
+  float confidence = 2;
+  // Tag provenance (e.g. "ml_model", "classifier"). Empty when unknown.
+  string source = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message ArticleTagsEntry {
+  string article_id = 1;
+  repeated ArticleTagEntry tags = 2;
+}
+
+message BatchGetTagsByArticleIDsResponse {
+  repeated ArticleTagsEntry items = 1;
+}
+
+// =============================================================================
+// Summary Quality Operations
+// =============================================================================
+
+message DeleteArticleSummaryRequest {
+  string article_id = 1;
+}
+
+message DeleteArticleSummaryResponse {
+  bool success = 1;
+}
+
+message CheckArticleSummaryExistsRequest {
+  string article_id = 1;
+}
+
+message CheckArticleSummaryExistsResponse {
+  bool exists = 1;
+  string summary_id = 2;
+}
+
+message ArticleWithSummaryItem {
+  string article_id = 1;
+  string article_content = 2;
+  string article_url = 3;
+  string summary_id = 4;
+  string summary_japanese = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message FindArticlesWithSummariesRequest {
+  optional google.protobuf.Timestamp last_created_at = 1;
+  string last_id = 2;
+  int32 limit = 3;
+}
+
+message FindArticlesWithSummariesResponse {
+  repeated ArticleWithSummaryItem articles = 1;
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+// =============================================================================
+// ListUnsummarizedArticles - For summarization polling
+// =============================================================================
+
+message UnsummarizedArticle {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string url = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string user_id = 6;
+}
+
+message ListUnsummarizedArticlesRequest {
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 1;
+  // Cursor: last article ID from previous page
+  string last_id = 2;
+  // Page size (max 500)
+  int32 limit = 3;
+}
+
+message ListUnsummarizedArticlesResponse {
+  repeated UnsummarizedArticle articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+message HasUnsummarizedArticlesRequest {}
+
+message HasUnsummarizedArticlesResponse {
+  bool has_unsummarized = 1;
+}
+
+// =============================================================================
+// GetEmptyFeedID - For backfill empty-feed filtering (split-DB)
+// =============================================================================
+
+message GetEmptyFeedIDRequest {
+  string feed_url = 1;
+}
+
+message GetEmptyFeedIDResponse {
+  string feed_id = 1;  // empty string = no empty feed found
+}
+
+// =============================================================================
+// RAG Tool Operations (ADR-000617)
+// =============================================================================
+
+// FetchTagCloudRequest is the request for FetchTagCloud.
+// Wire-identical to
+// services.backend.v1.BackendInternalServiceFetchTagCloudRequest — the legacy
+// name carried the service name because that package already had a
+// FetchTagCloud pair belonging to a different service.
+message FetchTagCloudRequest {
+  // Maximum number of tags to return (default: 300, max: 500)
+  int32 limit = 1;
+}
+
+// FetchTagCloudResponse contains tag cloud entries.
+// Wire-identical to
+// services.backend.v1.BackendInternalServiceFetchTagCloudResponse.
+message FetchTagCloudResponse {
+  repeated TagCloudItem tags = 1;
+}
+
+// TagCloudItem represents a tag with its article count.
+// Wire-identical to services.backend.v1.TagCloudInternalItem.
+message TagCloudItem {
+  string tag_name = 1;
+  int32 article_count = 2;
+}
+
+// FetchArticlesByTagRequest is the request for FetchArticlesByTag.
+// Wire-identical to
+// services.backend.v1.BackendInternalServiceFetchArticlesByTagRequest.
+message FetchArticlesByTagRequest {
+  string tag_name = 1;
+  int32 limit = 2;
+}
+
+// FetchArticlesByTagResponse contains articles matching the tag.
+// Wire-identical to
+// services.backend.v1.BackendInternalServiceFetchArticlesByTagResponse.
+message FetchArticlesByTagResponse {
+  repeated ArticleByTagItem articles = 1;
+}
+
+// ArticleByTagItem represents a minimal article returned by tag search.
+message ArticleByTagItem {
+  string id = 1;
+  string title = 2;
+  string url = 3;
+  string published_at = 4;
+}
+
+// =============================================================================
+// ListRecapArticles — service-to-service paginated article window fetch
+// =============================================================================
+
+// ListRecapArticlesRequest is the request for paginated article fetch in a window
+message ListRecapArticlesRequest {
+  // Lower bound of the time window (RFC3339)
+  string from = 1;
+  // Upper bound of the time window (RFC3339)
+  string to = 2;
+  // 1-indexed page number (default 1)
+  optional int32 page = 3;
+  // Articles per page (default server-side)
+  optional int32 page_size = 4;
+  // Optional projection: "title" / "fulltext"; empty = all fields
+  repeated string fields = 5;
+  // Optional language filter: "ja" / "en"
+  optional string lang_hint = 6;
+}
+
+// RecapArticleRange echoes the window bounds in the response
+message RecapArticleRange {
+  string from = 1;
+  string to = 2;
+}
+
+// RecapArticleItem is a single article entry in the response
+message RecapArticleItem {
+  // Article UUID
+  string article_id = 1;
+  // Optional title
+  optional string title = 2;
+  // Full article text (may be empty if fields=title)
+  string fulltext = 3;
+  // Optional publication timestamp (RFC3339)
+  optional string published_at = 4;
+  // Optional source URL
+  optional string source_url = 5;
+  // Optional detected language
+  optional string lang_hint = 6;
+}
+
+// ListRecapArticlesResponse is the paginated response
+message ListRecapArticlesResponse {
+  // Echo of requested window
+  RecapArticleRange range = 1;
+  // Total matching articles in the window
+  int32 total = 2;
+  // Current page (1-indexed)
+  int32 page = 3;
+  // Page size used
+  int32 page_size = 4;
+  // Whether additional pages exist
+  bool has_more = 5;
+  // Articles on this page
+  repeated RecapArticleItem articles = 6;
+}
+
+// =============================================================================
+// Absorbed REST surface (ADR-000954 D6)
+//
+// The two /v1/internal REST routes are capabilities of the same owner, reached
+// over a different protocol only because ADR-000945 judged the extraction cost
+// too high at the time. They get RPCs here so that Wave 2-C can delete the
+// REST group rather than move it. Field names mirror the JSON bodies those
+// routes answer with, so a peer porting from REST to RPC changes the transport
+// and not the shape it parses.
+//
+// These two have no legacy BackendInternalService counterpart, so — unlike
+// every other message in this file — they are exempt from the wire-identity
+// test in datahubapi/wirecompat_test.go.
+// =============================================================================
+
+message GetSystemUserRequest {}
+
+message GetSystemUserResponse {
+  // Kratos identity id of the first identity, as GET /v1/internal/system-user
+  // returns in its `user_id` field.
+  string user_id = 1;
+}
+
+// RecentArticleItem mirrors one entry of GET /v1/internal/articles/recent.
+// published_at is an RFC3339 string rather than a Timestamp because that is
+// what the REST route emits and rag-orchestrator parses today; converting it
+// would make the RPC a re-shaping as well as a re-protocolling.
+message RecentArticleItem {
+  string id = 1;
+  string title = 2;
+  string url = 3;
+  string published_at = 4;
+  string feed_id = 5;
+  repeated string tags = 6;
+}
+
+message ListRecentArticlesRequest {
+  // Time window in hours. Unset means the server default (24); the maximum is
+  // 168. Explicitly optional so that "unset" stays distinguishable from a
+  // caller that means to send 0 — proto3 cannot tell those apart otherwise,
+  // and the REST route's zero handling differs between the two parameters.
+  optional int32 within_hours = 1;
+  // Maximum articles to return. Unset means the server default (100); an
+  // explicit 0 means "no count limit, time window only", which is the mode
+  // rag-orchestrator uses. That distinction is the reason for optional.
+  optional int32 limit = 2;
+}
+
+message ListRecentArticlesResponse {
+  repeated RecentArticleItem articles = 1;
+  // Window lower bound (RFC3339)
+  string since = 2;
+  // Window upper bound (RFC3339)
+  string until = 3;
+  int32 count = 4;
+}
+
+// =============================================================================
+// Outbox — the transactional outbox alt-harvester drains (ADR-000954 Wave 3,
+// catalog §2.A)
+// =============================================================================
+//
+// Three capabilities, four procedures. The extra procedure is deliberate: the
+// driver these replace took a bare `status string` and let the caller write
+// any of the four values, which is how "release an unattempted claim" and
+// "record a terminal outcome" ended up as the same call with different
+// arguments. They have different preconditions — a release is only ever legal
+// from PROCESSING, and only the terminal statuses stamp processed_at — so they
+// are separated here and the status is an enum rather than a string.
+
+// OutboxEventStatus is the outbox row's position in its state machine.
+//
+// PENDING → PROCESSING is ClaimOutboxBatch. PROCESSING → PROCESSED/FAILED is
+// MarkOutboxProcessed. PROCESSING → PENDING is ReleaseOutboxEvent. No other
+// transition exists, and none of them can be requested by name — the caller
+// picks a procedure, not a status string.
+enum OutboxEventStatus {
+  OUTBOX_EVENT_STATUS_UNSPECIFIED = 0;
+  OUTBOX_EVENT_STATUS_PENDING = 1;
+  OUTBOX_EVENT_STATUS_PROCESSING = 2;
+  OUTBOX_EVENT_STATUS_PROCESSED = 3;
+  OUTBOX_EVENT_STATUS_FAILED = 4;
+}
+
+// OutboxEvent is one claimed row of outbox_events.
+message OutboxEvent {
+  string id = 1;
+  string event_type = 2;
+  // Opaque to alt-data-hub. The producer wrote it inside the article-upsert
+  // transaction and the consumer parses it; the data hub only moves it.
+  bytes payload = 3;
+  OutboxEventStatus status = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message ClaimOutboxBatchRequest {
+  // Page size. Bounded server-side; 0 means the server default.
+  int32 limit = 1;
+}
+
+message ClaimOutboxBatchResponse {
+  // Rows this call — and no concurrent call — now owns. Already PROCESSING.
+  repeated OutboxEvent events = 1;
+}
+
+message MarkOutboxProcessedRequest {
+  string id = 1;
+  // PROCESSED or FAILED. Any other value is InvalidArgument: PENDING belongs
+  // to ReleaseOutboxEvent and PROCESSING belongs to ClaimOutboxBatch.
+  OutboxEventStatus status = 2;
+  string error_message = 3;
+}
+
+message MarkOutboxProcessedResponse {}
+
+message ReleaseOutboxEventRequest {
+  string id = 1;
+}
+
+message ReleaseOutboxEventResponse {}
+
+message PruneOutboxEventsRequest {
+  // Retention window. The caller owns this number — it is an operational
+  // policy of the pruning job, not an invariant of the table.
+  int64 older_than_seconds = 1;
+}
+
+message PruneOutboxEventsResponse {
+  int64 pruned_count = 1;
+}
+
+// =============================================================================
+// OG image / article_heads (catalog §2.D)
+// =============================================================================
+
+// ArticleHead is one row of article_heads: the scraped <head> of an article
+// page plus the og:image URL extracted from it.
+message ArticleHead {
+  string id = 1;
+  string article_id = 2;
+  string head_html = 3;
+  // Empty when the row exists but carries no og:image.
+  string og_image_url = 4;
+}
+
+message GetArticleHeadRequest {
+  string article_id = 1;
+}
+
+message GetArticleHeadResponse {
+  // Absent when no row exists. Distinct from a present head with empty
+  // fields, which means "scraped, nothing found" — the backfill job uses the
+  // difference to decide whether to re-scrape.
+  optional ArticleHead head = 1;
+}
+
+message BatchGetOgImageURLsRequest {
+  repeated string article_ids = 1;
+}
+
+message BatchGetOgImageURLsResponse {
+  // article_id → og:image URL. Article ids with no row, or with an empty
+  // og_image_url, are absent from the map rather than present-and-empty.
+  map<string, string> og_image_urls = 1;
+}
+
+// OgImageBackfillCandidate is an article whose feed has no RSS-supplied
+// og:image and which has not been scraped yet.
+message OgImageBackfillCandidate {
+  string article_id = 1;
+  string url = 2;
+}
+
+message ListFeedsMissingOgImageRequest {
+  // Per-run scraping budget. The caller owns it: this bounds outbound HTTP
+  // load on publishers, which is alt-harvester's concern, not the table's.
+  int32 limit = 1;
+}
+
+message ListFeedsMissingOgImageResponse {
+  repeated OgImageBackfillCandidate candidates = 1;
+}
+
+message ListUnwarmedOgImageURLsRequest {
+  int32 limit = 1;
+}
+
+message ListUnwarmedOgImageURLsResponse {
+  repeated string urls = 1;
+}
+
+message PurgeExpiredArticleHeadsRequest {
+  // Copyright retention window, owned by the caller (og-image-retention).
+  int64 ttl_seconds = 1;
+}
+
+message PurgeExpiredArticleHeadsResponse {
+  int64 purged_count = 1;
+}
+
+// =============================================================================
+// Image proxy cache (catalog §2.E)
+// =============================================================================
+
+// ImageProxyCacheEntry is one row of image_proxy_cache, image bytes included.
+//
+// The bytes travel over the RPC. That is the cost of the data hub owning
+// alt_db: the alternative — a capability that returns a handle the caller then
+// resolves against the database itself — is the thing ADR-000954 D3 exists to
+// remove. Entries are single processed images (a few hundred KB after the
+// resize and WebP encode the proxy applies before it saves), not originals.
+message ImageProxyCacheEntry {
+  string url_hash = 1;
+  string original_url = 2;
+  bytes data = 3;
+  string content_type = 4;
+  int32 width = 5;
+  int32 height = 6;
+  int64 size_bytes = 7;
+  string etag = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp expires_at = 10;
+}
+
+message GetImageProxyCacheRequest {
+  string url_hash = 1;
+}
+
+message GetImageProxyCacheResponse {
+  // Absent on both "no row" and "row expired". The caller treats them the
+  // same — it re-fetches — and collapsing them here keeps the TTL comparison
+  // on the side that owns the clock the rows were written against.
+  optional ImageProxyCacheEntry entry = 1;
+}
+
+message PutImageProxyCacheRequest {
+  ImageProxyCacheEntry entry = 1;
+}
+
+message PutImageProxyCacheResponse {}
+
+message EvictExpiredImageProxyCacheRequest {}
+
+message EvictExpiredImageProxyCacheResponse {
+  int64 evicted_count = 1;
+}
+
+message PurgeImageProxyCacheOlderThanRequest {
+  // Retention by first acquisition (created_at), independent of each entry's
+  // TTL. Copyright compliance, owned by the caller.
+  int64 ttl_seconds = 1;
+}
+
+message PurgeImageProxyCacheOlderThanResponse {
+  int64 purged_count = 1;
+}
+
+// =============================================================================
+// Scraping policy (catalog §2.L)
+// =============================================================================
+
+// ScrapingDomain is one row of scraping_domains: the cached robots.txt for a
+// publisher plus the local policy overlaid on it.
+//
+// Fetching robots.txt is an external HTTP call and stays in alt-harvester
+// (ADR-000954 D4). What crosses this boundary is only the result.
+message ScrapingDomain {
+  string id = 1;
+  string domain = 2;
+  string scheme = 3;
+  bool allow_fetch_body = 4;
+  bool allow_ml_training = 5;
+  int32 allow_cache_days = 6;
+  bool force_respect_robots = 7;
+  optional string robots_txt_url = 8;
+  optional string robots_txt_content = 9;
+  optional google.protobuf.Timestamp robots_txt_fetched_at = 10;
+  optional int32 robots_txt_last_status = 11;
+  optional int32 robots_crawl_delay_sec = 12;
+  repeated string robots_disallow_paths = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message GetScrapingDomainByDomainRequest {
+  string domain = 1;
+}
+
+message GetScrapingDomainByDomainResponse {
+  // Absent when the domain has never been seen. Callers treat that as "no
+  // policy recorded", which is not the same as a recorded permissive policy.
+  optional ScrapingDomain scraping_domain = 1;
+}
+
+message GetScrapingDomainByIDRequest {
+  string id = 1;
+}
+
+message GetScrapingDomainByIDResponse {
+  optional ScrapingDomain scraping_domain = 1;
+}
+
+message SaveScrapingDomainRequest {
+  ScrapingDomain scraping_domain = 1;
+}
+
+message SaveScrapingDomainResponse {
+  // The row as persisted. id, created_at and updated_at are assigned by the
+  // provider on insert, so the caller cannot know them from the request; the
+  // driver this replaces mutated the caller's struct in place, which stops
+  // working the moment there is a process boundary in between.
+  ScrapingDomain scraping_domain = 1;
+}
+
+message ListScrapingDomainsRequest {
+  int32 offset = 1;
+  int32 limit = 2;
+}
+
+message ListScrapingDomainsResponse {
+  repeated ScrapingDomain scraping_domains = 1;
+}
+
+// ScrapingPolicyUpdate is a partial update: an absent field leaves the stored
+// value alone (COALESCE), it does not clear it.
+message ScrapingPolicyUpdate {
+  optional bool allow_fetch_body = 1;
+  optional bool allow_ml_training = 2;
+  optional int32 allow_cache_days = 3;
+  optional bool force_respect_robots = 4;
+}
+
+message UpdateScrapingDomainPolicyRequest {
+  string id = 1;
+  ScrapingPolicyUpdate update = 2;
+}
+
+message UpdateScrapingDomainPolicyResponse {}
+
+message SaveDeclinedDomainRequest {
+  string user_id = 1;
+  string domain = 2;
+}
+
+message SaveDeclinedDomainResponse {}
+
+message IsDomainDeclinedRequest {
+  string user_id = 1;
+  string domain = 2;
+}
+
+message IsDomainDeclinedResponse {
+  bool declined = 1;
+}
+
+// =============================================================================
+// Automatic full-text fetch groundwork (catalog §2.O)
+// =============================================================================
+
+message ListSubscribedUserIDsByFeedLinkIDRequest {
+  string feed_link_id = 1;
+}
+
+message ListSubscribedUserIDsByFeedLinkIDResponse {
+  repeated string user_ids = 1;
+}
+
+message CheckArticleExistsByURLForUserRequest {
+  string url = 1;
+  string user_id = 2;
+}
+
+message CheckArticleExistsByURLForUserResponse {
+  bool exists = 1;
+  string article_id = 2;
+}
+
+// =============================================================================
+// Article writes (ADR-000954 Wave 3, catalog §2.B)
+// =============================================================================
+//
+// Every procedure in this section and the next one carries `user_id` as an
+// explicit field. The drivers they replace read it from the Go context, which
+// a request carries in-process and a Connect call does not: an mTLS peer
+// certificate identifies alt-backend, not the person whose article is being
+// written. Leaving it implicit would mean either fabricating a user context on
+// the provider side — a synthetic identity that satisfies UserContext.IsValid
+// while belonging to nobody — or silently dropping the tenant predicate from
+// the WHERE clause. Both turn a tenant-scoped read into a global one.
+
+// ArchiveArticleRequest asks for one article to be persisted and announced.
+message ArchiveArticleRequest {
+  string url = 1;
+  // Empty is allowed and becomes the URL, matching the driver this replaces.
+  string title = 2;
+  string content = 3;
+  // Owner of the row. Required: articles is keyed by (url, user_id).
+  string user_id = 4;
+}
+
+message ArchiveArticleResponse {
+  string article_id = 1;
+  // True when this call inserted the row rather than updating one, read from
+  // the upsert's `xmax = 0`. The caller uses it to tell a first sighting from
+  // a re-fetch.
+  bool created = 2;
+}
+
+message SaveArticleHeadRequest {
+  string article_id = 1;
+  // NOT NULL in the table. Callers with no markup to store send a
+  // `<head></head>` placeholder rather than an empty string, which is what the
+  // og-image backfill job does.
+  string head_html = 2;
+  string og_image_url = 3;
+}
+
+message SaveArticleHeadResponse {}
+
+// =============================================================================
+// Article reads (ADR-000954 Wave 3, catalog §2.C)
+// =============================================================================
+
+// ArticleContent is the narrow projection: one article's body and identity,
+// with no tags and no timestamps.
+//
+// It is a different message from ArticleWithTags rather than a subset of it
+// because the two answer different questions and have different consumers —
+// see the note on GetArticleContentByID for why they were not merged.
+message ArticleContent {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string url = 4;
+  // Empty when the article was archived before its feed was known. Not every
+  // article has one, so absence here is ordinary rather than an error.
+  string feed_id = 5;
+}
+
+// UserArticle is the wide projection the article-list surfaces render: body,
+// tags and both timestamps.
+message UserArticle {
+  string id = 1;
+  string feed_id = 2;
+  string title = 3;
+  string content = 4;
+  string url = 5;
+  repeated string tags = 6;
+  google.protobuf.Timestamp published_at = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message GetArticleByURLRequest {
+  string url = 1;
+  // Optional. When set the lookup is scoped to that user; when empty it
+  // matches any owner, which is the unauthenticated path the driver already
+  // had. The two are different queries and the caller chooses deliberately.
+  string user_id = 2;
+}
+
+message GetArticleByURLResponse {
+  // Unset when no article matches. "Not archived yet" is an ordinary answer
+  // on this path — the caller fetches the page — so it is not an error code.
+  ArticleContent article = 1;
+}
+
+message BatchGetArticlesByURLsRequest {
+  repeated string urls = 1;
+  string user_id = 2;
+}
+
+message BatchGetArticlesByURLsResponse {
+  // Keyed by URL. A URL with no archived article is absent from the map rather
+  // than present with an empty value.
+  map<string, ArticleContent> articles = 1;
+}
+
+message GetArticleContentByIDRequest {
+  string article_id = 1;
+}
+
+message GetArticleContentByIDResponse {
+  ArticleContent article = 1;
+}
+
+message ListArticlesCursorRequest {
+  // Required: this is a per-user timeline, not a global one.
+  string user_id = 1;
+  // Unset for the first page. Subsequent pages send the created_at of the last
+  // row they saw.
+  google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message ListArticlesCursorResponse {
+  repeated UserArticle articles = 1;
+}
+
+message ListArticleIDsCursorRequest {
+  string user_id = 1;
+  google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message ListArticleIDsCursorResponse {
+  repeated string article_ids = 1;
+}
+
+message BatchGetArticlesByIDsRequest {
+  repeated string article_ids = 1;
+}
+
+message BatchGetArticlesByIDsResponse {
+  // In the order of the requested ids, with unknown ids omitted. The caller
+  // renders this list positionally, so the ordering is part of the contract.
+  repeated UserArticle articles = 1;
+}
+
+message GetLatestArticleByFeedIDRequest {
+  string feed_id = 1;
+}
+
+message GetLatestArticleByFeedIDResponse {
+  // Unset when the feed has no articles yet, which is normal for a feed
+  // registered but not yet crawled.
+  ArticleContent article = 1;
+}
+
+message LookupArticleURLRequest {
+  string article_id = 1;
+  // Required. This procedure exists to resolve a URL for a Knowledge Trail
+  // action, and an unscoped lookup would disclose another tenant's URL.
+  string user_id = 2;
+}
+
+message LookupArticleURLResponse {
+  // Empty when the article does not exist within the user's tenant. The two
+  // cases are deliberately indistinguishable: telling them apart would confirm
+  // the existence of another tenant's article.
+  string url = 1;
+}
+
+// =============================================================================
+// Knowledge backfill reads (ADR-000954 Wave 3, catalog §2.N)
+// =============================================================================
+//
+// These four feed alt-backend's knowledge backfill jobs, which replay historic
+// articles and summary versions into knowledge-sovereign. Only the alt_db
+// reads are here: the sovereign append, the progress bookkeeping and the
+// reprojection stay with the caller, because talking to another service is the
+// caller's business under ADR-000954 D4.
+
+message BackfillArticle {
+  string article_id = 1;
+  string user_id = 2;
+  google.protobuf.Timestamp created_at = 3;
+  // Falls back to created_at when the source published no date, which is what
+  // the query the job has always run does.
+  google.protobuf.Timestamp published_at = 4;
+  string title = 5;
+  string url = 6;
+}
+
+message CountBackfillArticlesRequest {}
+
+message CountBackfillArticlesResponse {
+  int32 count = 1;
+}
+
+message ListBackfillArticlesRequest {
+  // Keyset cursor over (created_at, article_id) ascending. Both are unset on
+  // the first page and both must be set afterwards — a half-set cursor is
+  // rejected rather than silently restarting the walk, which would make the
+  // job replay from the beginning and re-emit every event.
+  google.protobuf.Timestamp last_created_at = 1;
+  string last_article_id = 2;
+  int32 limit = 3;
+}
+
+message ListBackfillArticlesResponse {
+  repeated BackfillArticle articles = 1;
+}
+
+message BackfillSummaryTitle {
+  string summary_version_id = 1;
+  string article_id = 2;
+  string user_id = 3;
+  string tenant_id = 4;
+  // Read from the articles row at backfill time. articles is mutable and there
+  // is no article_versions snapshot, so this is the title as of now, which the
+  // job then freezes into the event payload (ADR-000846).
+  string title = 5;
+  google.protobuf.Timestamp generated_at = 6;
+}
+
+message CountBackfillSummaryTitlesRequest {}
+
+message CountBackfillSummaryTitlesResponse {
+  int32 count = 1;
+}
+
+message ListBackfillSummaryTitlesRequest {
+  // Keyset cursor over (generated_at, summary_version_id) ascending, with the
+  // same all-or-nothing rule as ListBackfillArticlesRequest.
+  google.protobuf.Timestamp last_generated_at = 1;
+  string last_summary_version_id = 2;
+  int32 limit = 3;
+}
+
+message ListBackfillSummaryTitlesResponse {
+  repeated BackfillSummaryTitle entries = 1;
+}
+
+// =============================================================================
+// Feed link types (catalog §2.F / §2.G)
+// =============================================================================
+
+// FeedLink is one RSS subscription URL.
+//
+// Distinct from Feed: feed_links.url is the URL that is polled, feeds.website_url
+// is the site the poll produced entries for. The two were conflated by the
+// column name `link` until ADR-000868 renamed it, and keeping them apart in the
+// wire schema is what stops that conflation coming back over the RPC boundary.
+message FeedLink {
+  string id = 1;
+  string url = 2;
+}
+
+// FeedLinkAvailability is the poll health of one feed link.
+//
+// consecutive_failures resets to zero on the first successful poll, so it
+// counts a run and not a lifetime total; a caller reading it as "how broken is
+// this feed overall" would disable feeds that recovered.
+message FeedLinkAvailability {
+  string feed_link_id = 1;
+  bool is_active = 2;
+  int32 consecutive_failures = 3;
+  // Unset until the link has failed at least once since its last success.
+  google.protobuf.Timestamp last_failure_at = 4;
+  optional string last_failure_reason = 5;
+}
+
+// FeedLinkWithHealth pairs a link with its availability row.
+//
+// availability is absent — not zero-valued — for a link that has never been
+// polled. An admin screen renders "never checked" for the absence and
+// "0 failures, active" for the zero, and those are different facts.
+message FeedLinkWithHealth {
+  FeedLink feed_link = 1;
+  FeedLinkAvailability availability = 2;
+}
+
+// FeedLinkDomain is a host extracted from the subscription set, used to seed
+// the per-publisher scraping policy.
+message FeedLinkDomain {
+  string domain = 1;
+  string scheme = 2;
+}
+
+// FeedLinkExportEntry is one OPML outline row: the subscription URL plus the
+// most recent title seen for it.
+message FeedLinkExportEntry {
+  string url = 1;
+  // Empty when no feed has ever been collected for the link. The caller
+  // substitutes the hostname; doing it here would bake a presentation choice
+  // into the data plane.
+  string title = 2;
+}
+
+// =============================================================================
+// Feed types (catalog §2.H)
+// =============================================================================
+
+// Feed mirrors one row of the feeds table.
+//
+// Named Feed rather than FeedItem on purpose: domain.FeedItem is the RSS-spec
+// shape alt-backend serves to the browser, with a sanitised description and an
+// RFC3339 `published` string. That rendering stays with the caller (ADR-000954
+// D4 — sanitising and formatting are pure functions), so this message carries
+// the columns and nothing else.
+message Feed {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  // The website URL from the RSS <channel><link> element — feeds.website_url,
+  // renamed from `link` by ADR-000868.
+  string website_url = 4;
+  google.protobuf.Timestamp pub_date = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  // Absent when the feed has no undeleted article yet. The list surfaces use
+  // it to link a feed card to the article it should open.
+  optional string article_id = 8;
+  bool is_read = 9;
+  optional string feed_link_id = 10;
+  // Absent both when no image was ever found and when the feed has aged out of
+  // the 7-day copyright retention window — the provider does not distinguish
+  // them, and neither does the placeholder the frontend renders.
+  optional string og_image_url = 11;
+}
+
+// FeedRegistration is one RSS item to upsert into feeds.
+//
+// created_at and updated_at are supplied by the caller rather than defaulted
+// server-side. The collector stamps them once for a whole poll so that every
+// feed from one run sorts together, and letting the provider call now() per
+// row would interleave a slow batch with a fast one.
+message FeedRegistration {
+  string title = 1;
+  string description = 2;
+  string website_url = 3;
+  google.protobuf.Timestamp pub_date = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  optional string feed_link_id = 7;
+  optional string og_image_url = 8;
+}
+
+// FeedRegistrationResult reports one upsert outcome.
+//
+// created distinguishes an insert from an update — the `(xmax = 0)` trick the
+// driver has always used. Callers branch on it to decide whether a
+// registration is worth announcing.
+message FeedRegistrationResult {
+  string feed_id = 1;
+  bool created = 2;
+}
+
+// FeedSummary is the Japanese article summary a feed or article resolves to.
+message FeedSummary {
+  string summary = 1;
+}
+
+// FeedAndArticle joins an article back to the feed it came from.
+message FeedAndArticle {
+  // Empty string when the article has no feed — the LEFT JOIN's NULL, kept as
+  // "" because that is what the search result renderer already handles.
+  string feed_id = 1;
+  string article_id = 2;
+  string url = 3;
+  string feed_title = 4;
+  string article_title = 5;
+}
+
+// InoreaderSummary is one imported Inoreader article body.
+message InoreaderSummary {
+  string article_url = 1;
+  string title = 2;
+  optional string author = 3;
+  string content = 4;
+  string content_type = 5;
+  google.protobuf.Timestamp published_at = 6;
+  google.protobuf.Timestamp fetched_at = 7;
+  string inoreader_id = 8;
+}
+
+// FeedScope selects which slice of a user's feeds a cursor walk returns.
+//
+// An enum rather than four procedures because the four queries differ only in
+// their WHERE clause and share the cursor, the limit and the exclusion list;
+// four procedures would have to repeat all three and could drift apart.
+enum FeedScope {
+  FEED_SCOPE_UNSPECIFIED = 0;
+  // Every feed the user subscribes to, with is_read filled in.
+  FEED_SCOPE_ALL = 1;
+  // Only feeds with no read_status row for the user.
+  FEED_SCOPE_UNREAD = 2;
+  // Only feeds the user has marked read.
+  FEED_SCOPE_READ = 3;
+  // Only feeds in the user's favourites.
+  FEED_SCOPE_FAVORITE = 4;
+}
+
+// =============================================================================
+// Feed link messages (catalog §2.F)
+// =============================================================================
+
+message RegisterFeedLinkRequest {
+  string url = 1;
+}
+
+message RegisterFeedLinkResponse {
+  // True when the URL was already subscribed. Registration is idempotent —
+  // the driver has always swallowed SQLSTATE 23505 and answered success — but
+  // swallowing it silently made "you already have this" indistinguishable from
+  // "added", and the OPML import path had to re-query to tell them apart.
+  bool already_existed = 1;
+}
+
+message BulkRegisterFeedLinksRequest {
+  // Already validated and sanitised by the caller: SSRF checks and tracking
+  // parameter stripping are pure functions and stay there (ADR-000954 D4).
+  repeated string urls = 1;
+}
+
+message BulkRegisterFeedLinksResponse {
+  int32 registered = 1;
+  int32 skipped = 2;
+  // The URLs whose insert failed for a reason other than "already exists".
+  // Per-URL rather than a single error because the import is deliberately not
+  // atomic: one malformed outline in a 500-entry OPML file must not discard
+  // the other 499.
+  repeated string failed_urls = 3;
+}
+
+message ListFeedLinksRequest {}
+
+message ListFeedLinksResponse {
+  repeated FeedLink feed_links = 1;
+}
+
+message ListFeedLinksWithHealthRequest {}
+
+message ListFeedLinksWithHealthResponse {
+  repeated FeedLinkWithHealth feed_links = 1;
+}
+
+message DeleteFeedLinkRequest {
+  string id = 1;
+}
+
+message DeleteFeedLinkResponse {}
+
+message ResolveFeedLinkIDByURLRequest {
+  string feed_url = 1;
+}
+
+message ResolveFeedLinkIDByURLResponse {
+  // Absent when the URL is not subscribed. The registration flow reads the
+  // absence as "this is a new subscription" and continues, so an empty string
+  // here would make every feed look already-known.
+  optional string feed_link_id = 1;
+}
+
+message ListFeedLinkDomainsRequest {}
+
+message ListFeedLinkDomainsResponse {
+  repeated FeedLinkDomain domains = 1;
+}
+
+message ListRSSFeedURLsRequest {}
+
+message ListRSSFeedURLsResponse {
+  // Only links that are active or have never been assessed. A link auto
+  // disabled by RecordFeedLinkFailure disappears from this list, which is the
+  // whole mechanism by which the collector stops polling dead feeds.
+  repeated FeedLink feed_links = 1;
+}
+
+message ListFeedLinksForExportRequest {}
+
+message ListFeedLinksForExportResponse {
+  repeated FeedLinkExportEntry entries = 1;
+}
+
+// =============================================================================
+// Feed link availability messages (catalog §2.G)
+// =============================================================================
+
+message RecordFeedLinkFailureRequest {
+  string feed_url = 1;
+  string reason = 2;
+  // Consecutive failures after which the link is disabled in the same
+  // transaction. Non-positive means never disable — the threshold is the
+  // caller's operational policy (how patient the collector is), while
+  // applying it without a gap is the provider's invariant.
+  int32 disable_after_failures = 3;
+}
+
+message RecordFeedLinkFailureResponse {
+  // The row as it stands after the increment and any disable, so the caller
+  // never has to read back what it just wrote.
+  FeedLinkAvailability availability = 1;
+  // True when this call is the one that flipped is_active to false. Distinct
+  // from `!availability.is_active`, which is also true for every later failure
+  // on an already-disabled link — the caller logs the transition, not the
+  // state, and logging the state would repeat the alert on every poll.
+  bool disabled_now = 2;
+}
+
+message ResetFeedLinkFailuresRequest {
+  string feed_url = 1;
+}
+
+message ResetFeedLinkFailuresResponse {}
+
+// =============================================================================
+// Feed messages (catalog §2.H)
+// =============================================================================
+
+message RegisterFeedsRequest {
+  repeated FeedRegistration feeds = 1;
+}
+
+message RegisterFeedsResponse {
+  // One result per request entry, in request order.
+  repeated FeedRegistrationResult results = 1;
+}
+
+message ListFeedsCursorRequest {
+  FeedScope scope = 1;
+  // The user whose read state and subscriptions scope the walk. Required for
+  // every scope including ALL: "all feeds" means all of one user's feeds.
+  string user_id = 2;
+  // Absent for the first page. Feeds are walked by created_at descending.
+  google.protobuf.Timestamp cursor = 3;
+  int32 limit = 4;
+  // Feed links to leave out — the client-side "hide this source" filter.
+  repeated string exclude_feed_link_ids = 5;
+}
+
+message ListFeedsCursorResponse {
+  repeated Feed feeds = 1;
+}
+
+message ListFeedsPageRequest {
+  int32 page = 1;
+  // When true the page excludes feeds the user has read, and user_id is
+  // required. When false the page is the unscoped feed list and user_id is
+  // ignored — the two are different queries behind one legacy REST route.
+  bool unread_only = 2;
+  string user_id = 3;
+}
+
+message ListFeedsPageResponse {
+  repeated Feed feeds = 1;
+}
+
+message ListFeedsLimitRequest {
+  // Zero means the driver's standing 10000-row ceiling, which is what the
+  // unbounded list has always been. It is not "no limit".
+  int32 limit = 1;
+}
+
+message ListFeedsLimitResponse {
+  repeated Feed feeds = 1;
+}
+
+message GetSingleFeedRequest {}
+
+message GetSingleFeedResponse {
+  // Absent when the feeds table is empty.
+  Feed feed = 1;
+}
+
+message ListFeedsByFeedLinkIDRequest {
+  string feed_link_id = 1;
+}
+
+message ListFeedsByFeedLinkIDResponse {
+  repeated Feed feeds = 1;
+}
+
+message GetFeedSummaryRequest {
+  string feed_url = 1;
+  // Absent for the unscoped lookup used by service-to-service callers, which
+  // is a different query and not a default.
+  optional string user_id = 2;
+}
+
+message GetFeedSummaryResponse {
+  // Absent when no summary has been generated for the URL.
+  FeedSummary summary = 1;
+}
+
+message GetArticleSummaryByArticleIDRequest {
+  string article_id = 1;
+  optional string user_id = 2;
+}
+
+message GetArticleSummaryByArticleIDResponse {
+  FeedSummary summary = 1;
+}
+
+message SearchFeedsByTitleRequest {
+  string query = 1;
+  string user_id = 2;
+}
+
+message SearchFeedsByTitleResponse {
+  repeated Feed feeds = 1;
+}
+
+message GetRandomFeedRequest {}
+
+message GetRandomFeedResponse {
+  // Absent when no feed has any tags yet — the Tag Trail entry point reads
+  // that as "nothing to explore" rather than as an error.
+  Feed feed = 1;
+}
+
+message GetFeedURLsByArticleIDsRequest {
+  repeated string article_ids = 1;
+}
+
+message GetFeedURLsByArticleIDsResponse {
+  repeated FeedAndArticle pairs = 1;
+}
+
+message BatchGetFeedTitlesByIDsRequest {
+  repeated string feed_ids = 1;
+}
+
+message BatchGetFeedTitlesByIDsResponse {
+  // Unknown feed ids are absent rather than mapped to "". The Morning Letter
+  // enrichment defaults the byline itself, and an empty-string entry would
+  // claim the feed exists with no title.
+  map<string, string> titles = 1;
+}
+
+message GetInoreaderSummariesByURLsRequest {
+  repeated string urls = 1;
+}
+
+message GetInoreaderSummariesByURLsResponse {
+  repeated InoreaderSummary summaries = 1;
+}
+
+// =============================================================================
+// Read state / subscriptions / favorites (capability catalog §2.I)
+// =============================================================================
+
+// FeedSubscription is one row of the subscription screen: every known feed
+// link, and whether this user follows it.
+message FeedSubscription {
+  string feed_link_id = 1;
+  string url = 2;
+  bool is_subscribed = 3;
+  // Set only when is_subscribed. The screen shows "following since"; an unset
+  // field says there is no such date, where a zero timestamp would claim the
+  // user subscribed at the epoch.
+  optional google.protobuf.Timestamp subscribed_at = 4;
+}
+
+message MarkFeedReadRequest {
+  // The feed's website_url. Normalisation — tracking-parameter stripping,
+  // trailing slash — happens on the provider side, so two callers that
+  // normalise differently cannot write two read_status rows for one feed.
+  string feed_url = 1;
+  string user_id = 2;
+}
+
+message MarkFeedReadResponse {}
+
+message MarkArticleReadRequest {
+  string article_url = 1;
+  string user_id = 2;
+}
+
+message MarkArticleReadResponse {}
+
+message GetReadFeedIDsRequest {
+  string user_id = 1;
+  repeated string feed_ids = 2;
+}
+
+message GetReadFeedIDsResponse {
+  // The subset of the requested ids the user has read. Unread ids are absent
+  // rather than present with a false flag.
+  repeated string read_feed_ids = 1;
+}
+
+message GetAllReadFeedIDsRequest {
+  string user_id = 1;
+}
+
+message GetAllReadFeedIDsResponse {
+  repeated string read_feed_ids = 1;
+}
+
+message GetUserSubscribedFeedLinkIDsRequest {
+  string user_id = 1;
+}
+
+message GetUserSubscribedFeedLinkIDsResponse {
+  // feed_link ids, not feed ids. The driver method this replaces was named
+  // GetUserSubscriptions and the catalog listed it as
+  // GetUserSubscribedFeedIDs; both read as feeds. Subscriptions are held
+  // against feed_links — the URL somebody follows — and the exclusion list the
+  // caller builds from this is matched against feed.feed_link_id.
+  repeated string feed_link_ids = 1;
+}
+
+message ListSubscriptionsRequest {
+  string user_id = 1;
+}
+
+message ListSubscriptionsResponse {
+  repeated FeedSubscription subscriptions = 1;
+}
+
+message SubscribeRequest {
+  string user_id = 1;
+  string feed_link_id = 2;
+}
+
+// Idempotent: subscribing twice is a no-op, not an error.
+message SubscribeResponse {}
+
+message UnsubscribeRequest {
+  string user_id = 1;
+  string feed_link_id = 2;
+}
+
+// Idempotent in the other direction: unsubscribing from something the user
+// does not follow succeeds.
+message UnsubscribeResponse {}
+
+message AddFavoriteFeedRequest {
+  string feed_url = 1;
+  string user_id = 2;
+}
+
+message AddFavoriteFeedResponse {}
+
+message RemoveFavoriteFeedRequest {
+  string feed_url = 1;
+  string user_id = 2;
+}
+
+message RemoveFavoriteFeedResponse {}
+
+// =============================================================================
+// Tag reads (capability catalog §2.J)
+// =============================================================================
+
+// FeedTag is a row of feed_tags as the reads return it.
+//
+// Named for the table rather than for the caller: the same row is an
+// "article tag" when reached through article_tags and a "feed tag" when
+// reached by feed_id, and giving one row two message names would let the two
+// shapes drift.
+message FeedTag {
+  string id = 1;
+  string feed_id = 2;
+  string tag_name = 3;
+  double confidence = 4;
+  string tag_type = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message GetArticleTagsRequest {
+  string article_id = 1;
+}
+
+message GetArticleTagsResponse {
+  // Empty for an article nobody has tagged. That is not NotFound: the caller
+  // reads the empty list as "generate some", and an error would make an
+  // untagged article indistinguishable from a database fault.
+  repeated FeedTag tags = 1;
+}
+
+message GetFeedTagsRequest {
+  string feed_id = 1;
+  // Absent on the first page. Rows are walked newest first by
+  // (created_at, id).
+  optional google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message GetFeedTagsResponse {
+  repeated FeedTag tags = 1;
+}
+
+// TagCooccurrence is a pair of tags that appear on the same articles.
+message TagCooccurrence {
+  string tag_name_a = 1;
+  string tag_name_b = 2;
+  int32 shared_count = 3;
+}
+
+message GetTagCooccurrencesRequest {
+  repeated string tag_names = 1;
+}
+
+message GetTagCooccurrencesResponse {
+  repeated TagCooccurrence cooccurrences = 1;
+}
+
+// TagPrefixHit is one global-search suggestion: a tag and how many articles
+// carry it.
+message TagPrefixHit {
+  string tag_name = 1;
+  int32 article_count = 2;
+}
+
+message SearchTagsByPrefixRequest {
+  string prefix = 1;
+  int32 limit = 2;
+}
+
+message SearchTagsByPrefixResponse {
+  repeated TagPrefixHit hits = 1;
+}
+
+// TagArticleCount is how many of one user's articles carry a tag within a
+// window.
+message TagArticleCount {
+  string tag_name = 1;
+  int32 article_count = 2;
+}
+
+message GetTagArticleCountsRequest {
+  string user_id = 1;
+  // Lower bound on articles.created_at. Required: an unset value would count
+  // the user's entire history, which is a different and far more expensive
+  // query than the one the caller means.
+  google.protobuf.Timestamp since = 2;
+}
+
+message GetTagArticleCountsResponse {
+  repeated TagArticleCount counts = 1;
+}
+
+// =============================================================================
+// Tag Trail paging (capability catalog §2.J, ADR-000954 Wave 3 batch 6)
+// =============================================================================
+
+// TagTrailArticle is one row of the Tag Trail: an article reached through a
+// tag, carrying the feed it came from so the list can name its source without
+// a second round trip.
+//
+// It exists beside ArticleByTagItem rather than replacing it. That message is
+// the Wave 2 shape rag-orchestrator still calls FetchArticlesByTag with — four
+// fields, no feed, no cursor, published_at as a string — and widening it would
+// have changed the bytes an already-migrated peer receives. This one is the
+// shape alt-backend's own Tag Trail has always read (domain.TagTrailArticle),
+// which is why the two coexist.
+//
+// published_at carries articles.created_at, which is when this deployment
+// first saw the article rather than when its publisher dated it. That is the
+// column the cursor below orders by, so the two must be the same clock or
+// paging skips rows.
+message TagTrailArticle {
+  string id = 1;
+  string title = 2;
+  string url = 3;
+  google.protobuf.Timestamp published_at = 4;
+  string feed_id = 5;
+  string feed_title = 6;
+}
+
+message ListArticlesByTagIDRequest {
+  // feed_tags.id — one tag of one feed. See ListArticlesByTagNameRequest for
+  // why the two identifiers are separate procedures.
+  string tag_id = 1;
+  // Exclusive upper bound on published_at. Unset is the first page.
+  google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message ListArticlesByTagIDResponse {
+  repeated TagTrailArticle articles = 1;
+}
+
+message ListArticlesByTagNameRequest {
+  // feed_tags.tag_name — the same label across every feed that uses it.
+  string tag_name = 1;
+  // Exclusive upper bound on published_at. Unset is the first page.
+  google.protobuf.Timestamp cursor = 2;
+  int32 limit = 3;
+}
+
+message ListArticlesByTagNameResponse {
+  repeated TagTrailArticle articles = 1;
+}
+
+// =============================================================================
+// Article reference for the recall rail (capability catalog §2.C,
+// ADR-000954 Wave 3 batch 6)
+// =============================================================================
+
+message GetArticleTitleAndLinkRequest {
+  string article_id = 1;
+}
+
+message GetArticleTitleAndLinkResponse {
+  // found distinguishes "no such article" from "an article whose title is the
+  // empty string". The in-process driver could not: it returned an empty title
+  // for both, and the caller keyed on that emptiness. Over the wire proto3
+  // gives an unset string and an empty string the same bytes, so the
+  // distinction has to be its own field or it stops existing.
+  bool found = 1;
+  string title = 2;
+  string url = 3;
+  // Nullable in the table and nullable here: an article whose feed published
+  // no date has none, and the recall rail renders that case.
+  google.protobuf.Timestamp published_at = 4;
+}
+
+// =============================================================================
+// Versioned artifacts (capability catalog §2.K)
+// =============================================================================
+
+// SummaryVersion is one immutable row of summary_versions.
+//
+// The table is append-only: a re-summarised article gets a new row and the old
+// one is marked superseded, never rewritten (docs/wiki/architecture/
+// immutable-data-model.md). Every field here therefore describes a fact as of
+// generated_at, and a consumer that reads one back by id gets what was true
+// then rather than what is true now — which is what makes reprojection
+// deterministic.
+//
+// article_title is deliberately absent. domain.SummaryVersion carries one, but
+// it is transport for the SummaryVersionCreated event payload and is not a
+// column; putting it in this message would invite a provider to persist it and
+// a consumer to read it back.
+message SummaryVersion {
+  string summary_version_id = 1;
+  string article_id = 2;
+  string user_id = 3;
+  google.protobuf.Timestamp generated_at = 4;
+  string model = 5;
+  string prompt_version = 6;
+  string input_hash = 7;
+  // Absent when the generator produced no score. Absent and 0.0 are different
+  // answers — 0.0 is a graded summary that scored nothing — so this is
+  // optional rather than defaulted.
+  optional double quality_score = 8;
+  string summary_text = 9;
+  // Set once, by MarkSummaryVersionSuperseded. Absent means this is the
+  // current version.
+  optional string superseded_by = 10;
+}
+
+message CreateSummaryVersionRequest {
+  SummaryVersion version = 1;
+}
+
+message CreateSummaryVersionResponse {}
+
+message MarkSummaryVersionSupersededRequest {
+  string article_id = 1;
+  string new_version_id = 2;
+}
+
+message MarkSummaryVersionSupersededResponse {
+  // The version that was current before this call, or absent when the new
+  // version is the article's first. The caller emits SummarySuperseded only
+  // when it is present, so "no previous version" must not arrive as a zero
+  // message.
+  optional SummaryVersion previous_version = 1;
+}
+
+message GetSummaryVersionByIDRequest {
+  string summary_version_id = 1;
+}
+
+message GetSummaryVersionByIDResponse {
+  SummaryVersion version = 1;
+}
+
+message GetLatestSummaryVersionRequest {
+  string article_id = 1;
+}
+
+message GetLatestSummaryVersionResponse {
+  SummaryVersion version = 1;
+}
+
+// TagSetVersion is one immutable row of tag_set_versions — the same
+// append-only shape as SummaryVersion, for the tag set an article carried at a
+// moment in time.
+message TagSetVersion {
+  string tag_set_version_id = 1;
+  string article_id = 2;
+  string user_id = 3;
+  google.protobuf.Timestamp generated_at = 4;
+  string generator = 5;
+  string input_hash = 6;
+  // The tag set as the generator emitted it, verbatim. bytes rather than a
+  // repeated message: the column is jsonb written by whoever generated it, and
+  // re-encoding it through a schema here would make a reprojection return
+  // something the generator did not produce.
+  bytes tags_json = 7;
+  optional string superseded_by = 8;
+}
+
+message CreateTagSetVersionRequest {
+  TagSetVersion version = 1;
+}
+
+message CreateTagSetVersionResponse {}
+
+message MarkTagSetVersionSupersededRequest {
+  string article_id = 1;
+  string new_version_id = 2;
+}
+
+message MarkTagSetVersionSupersededResponse {
+  optional TagSetVersion previous_version = 1;
+}
+
+message GetTagSetVersionByIDRequest {
+  string tag_set_version_id = 1;
+}
+
+message GetTagSetVersionByIDResponse {
+  TagSetVersion version = 1;
+}
+
+// =============================================================================
+// Statistics / dashboard (capability catalog §2.M)
+// =============================================================================
+
+message GetFeedAmountRequest {}
+
+message GetFeedAmountResponse {
+  int32 count = 1;
+}
+
+message GetTotalArticlesCountRequest {
+  string user_id = 1;
+}
+
+message GetTotalArticlesCountResponse {
+  int32 count = 1;
+}
+
+message GetSummarizedArticlesCountRequest {
+  string user_id = 1;
+}
+
+message GetSummarizedArticlesCountResponse {
+  int32 count = 1;
+}
+
+message GetUnsummarizedArticlesCountRequest {
+  string user_id = 1;
+}
+
+message GetUnsummarizedArticlesCountResponse {
+  int32 count = 1;
+}
+
+message GetTodayUnreadArticlesCountRequest {
+  string user_id = 1;
+  // Lower bound on feeds.created_at. Required — see the RPC comment.
+  google.protobuf.Timestamp since = 2;
+}
+
+message GetTodayUnreadArticlesCountResponse {
+  int32 count = 1;
+}
+
+// TrendWindow is the set of windows this database will bucket for.
+//
+// An enum rather than a string because the window is not free text: it selects
+// both a lower bound and the date_trunc unit the query groups by, and those
+// two travel together inside the provider. A string field would let a caller
+// send "90d" and get a runtime error describing a value the contract had
+// implied was acceptable.
+enum TrendWindow {
+  TREND_WINDOW_UNSPECIFIED = 0;
+  TREND_WINDOW_4H = 1;
+  TREND_WINDOW_24H = 2;
+  TREND_WINDOW_3D = 3;
+  TREND_WINDOW_7D = 4;
+}
+
+// TrendGranularity is the bucket size the provider chose for a window.
+//
+// Reported rather than requested: which unit a window groups by is a property
+// of the query, and letting a caller ask for hourly buckets over 7 days would
+// be asking for a different and far more expensive question.
+enum TrendGranularity {
+  TREND_GRANULARITY_UNSPECIFIED = 0;
+  TREND_GRANULARITY_HOURLY = 1;
+  TREND_GRANULARITY_DAILY = 2;
+}
+
+// TrendDataPoint is one time bucket of the dashboard chart.
+message TrendDataPoint {
+  google.protobuf.Timestamp bucket = 1;
+  int32 articles = 2;
+  int32 summarized = 3;
+  int32 feed_activity = 4;
+}
+
+message GetTrendStatsRequest {
+  string user_id = 1;
+  TrendWindow window = 2;
+}
+
+message GetTrendStatsResponse {
+  // Ascending by bucket, and sparse: a bucket in which nothing happened is
+  // absent rather than present with zeros, which is what the query's FULL
+  // OUTER JOIN produces.
+  repeated TrendDataPoint points = 1;
+  TrendGranularity granularity = 2;
+}
+
+message ListUserFeedIDsRequest {
+  string user_id = 1;
+}
+
+message ListUserFeedIDsResponse {
+  repeated string feed_ids = 1;
+}
+
+// =============================================================================
+// DataHubService — every capability backed by alt_db
+// =============================================================================
+
+// DataHubService is the contract alt-data-hub serves behind mutual TLS.
+//
+// Authentication is the peer certificate; there is no per-RPC credential and
+// no tenant argument. Callers are the 10 principals on the provider's
+// allowlist (ADR-000954 D5), not end users.
+service DataHubService {
+  // ── Article reads (search-indexer) ──
+
+  // ListArticlesWithTags returns articles with tags using backward keyset pagination.
+  // Used by search-indexer for backfill indexing.
+  // Origin: services.backend.v1.BackendInternalService/ListArticlesWithTags
+  rpc ListArticlesWithTags(ListArticlesWithTagsRequest) returns (ListArticlesWithTagsResponse);
+
+  // ListArticlesWithTagsForward returns articles with tags using forward keyset pagination.
+  // Used by search-indexer for incremental indexing.
+  // Origin: services.backend.v1.BackendInternalService/ListArticlesWithTagsForward
+  rpc ListArticlesWithTagsForward(ListArticlesWithTagsForwardRequest) returns (ListArticlesWithTagsForwardResponse);
+
+  // ListDeletedArticles returns deleted articles for syncing deletions.
+  // Origin: services.backend.v1.BackendInternalService/ListDeletedArticles
+  rpc ListDeletedArticles(ListDeletedArticlesRequest) returns (ListDeletedArticlesResponse);
+
+  // GetLatestArticleTimestamp returns the latest article created_at timestamp.
+  // Origin: services.backend.v1.BackendInternalService/GetLatestArticleTimestamp
+  rpc GetLatestArticleTimestamp(GetLatestArticleTimestampRequest) returns (GetLatestArticleTimestampResponse);
+
+  // GetArticleByID returns a single article with tags.
+  // Origin: services.backend.v1.BackendInternalService/GetArticleByID
+  rpc GetArticleByID(GetArticleByIDRequest) returns (GetArticleByIDResponse);
+
+  // ── Article writes (pre-processor) ──
+
+  // CheckArticleExists checks if an article already exists by URL and feed.
+  // Origin: services.backend.v1.BackendInternalService/CheckArticleExists
+  rpc CheckArticleExists(CheckArticleExistsRequest) returns (CheckArticleExistsResponse);
+
+  // CreateArticle creates a new article and publishes ArticleCreated event.
+  // Origin: services.backend.v1.BackendInternalService/CreateArticle
+  rpc CreateArticle(CreateArticleRequest) returns (CreateArticleResponse);
+
+  // SaveArticleSummary saves an article summary.
+  // Origin: services.backend.v1.BackendInternalService/SaveArticleSummary
+  rpc SaveArticleSummary(SaveArticleSummaryRequest) returns (SaveArticleSummaryResponse);
+
+  // GetArticleContent returns article content for summarization.
+  // Origin: services.backend.v1.BackendInternalService/GetArticleContent
+  rpc GetArticleContent(GetArticleContentRequest) returns (GetArticleContentResponse);
+
+  // ── Feed operations (pre-processor, pre-processor-sidecar) ──
+
+  // GetFeedID returns the feed ID for a given feed URL.
+  // Origin: services.backend.v1.BackendInternalService/GetFeedID
+  rpc GetFeedID(GetFeedIDRequest) returns (GetFeedIDResponse);
+
+  // ListFeedURLs returns feed URLs with cursor pagination.
+  // Origin: services.backend.v1.BackendInternalService/ListFeedURLs
+  rpc ListFeedURLs(ListFeedURLsRequest) returns (ListFeedURLsResponse);
+
+  // ── Tag operations (tag-generator) ──
+
+  // UpsertArticleTags upserts tags for an article.
+  // Origin: services.backend.v1.BackendInternalService/UpsertArticleTags
+  rpc UpsertArticleTags(UpsertArticleTagsRequest) returns (UpsertArticleTagsResponse);
+
+  // BatchUpsertArticleTags upserts tags for multiple articles.
+  // Origin: services.backend.v1.BackendInternalService/BatchUpsertArticleTags
+  rpc BatchUpsertArticleTags(BatchUpsertArticleTagsRequest) returns (BatchUpsertArticleTagsResponse);
+
+  // ListUntaggedArticles returns articles without tags.
+  // Origin: services.backend.v1.BackendInternalService/ListUntaggedArticles
+  rpc ListUntaggedArticles(ListUntaggedArticlesRequest) returns (ListUntaggedArticlesResponse);
+
+  // BatchGetTagsByArticleIDs returns tags for a batch of article ids.
+  // Replaces tag-generator /api/v1/tags/batch (ADR-000241 / ADR-000397)
+  // so recap-worker fetches tags directly from the data owner instead
+  // of reading alt_db tables through tag-generator.
+  // Origin: services.backend.v1.BackendInternalService/BatchGetTagsByArticleIDs
+  rpc BatchGetTagsByArticleIDs(BatchGetTagsByArticleIDsRequest) returns (BatchGetTagsByArticleIDsResponse);
+
+  // ── Summary quality operations (quality checker) ──
+
+  // DeleteArticleSummary deletes an article summary by article ID.
+  // Origin: services.backend.v1.BackendInternalService/DeleteArticleSummary
+  //
+  // KNOWN CONFLICT with the append-first invariant (capability catalog §4-6).
+  // Recorded here rather than resolved, because resolving it is a behaviour
+  // change and this batch made none.
+  //
+  // This is a physical DELETE, and it is the only destructive write on the
+  // summary domain that this service offers. The versioned half —
+  // CreateSummaryVersion / MarkSummaryVersionSuperseded, added by Wave 3
+  // batch 5 — never overwrites and never removes: a bad summary is superseded
+  // and the old row stays readable so a reprojection can still resolve it. Two
+  // models for one concept now sit side by side in this contract:
+  // article_summaries is destructively mutable, summary_versions is
+  // append-only.
+  //
+  // The consequence is concrete, not stylistic. When the quality checker
+  // deletes a summary here, summary_versions still holds every version of it,
+  // so the two stores disagree about whether that article was ever
+  // summarised — and which one is right depends on which question is asked.
+  // A data plane whose job is to hold the append-first line should not also
+  // be the thing that breaks it.
+  //
+  // The resolution on the table (catalog §4-6) is to treat article_summaries
+  // as a disposable projection of summary_versions and retire this procedure,
+  // which would make the delete a supersede. That belongs to whoever owns
+  // article_summaries next; until then, this comment is the record that the
+  // contradiction is known rather than overlooked.
+  rpc DeleteArticleSummary(DeleteArticleSummaryRequest) returns (DeleteArticleSummaryResponse);
+
+  // CheckArticleSummaryExists checks if an article summary exists.
+  // Origin: services.backend.v1.BackendInternalService/CheckArticleSummaryExists
+  rpc CheckArticleSummaryExists(CheckArticleSummaryExistsRequest) returns (CheckArticleSummaryExistsResponse);
+
+  // FindArticlesWithSummaries returns articles with summaries for quality checking.
+  // Origin: services.backend.v1.BackendInternalService/FindArticlesWithSummaries
+  rpc FindArticlesWithSummaries(FindArticlesWithSummariesRequest) returns (FindArticlesWithSummariesResponse);
+
+  // ── Summarization polling (pre-processor) ──
+
+  // ListUnsummarizedArticles returns articles without summaries for polling-based summarization.
+  // Origin: services.backend.v1.BackendInternalService/ListUnsummarizedArticles
+  rpc ListUnsummarizedArticles(ListUnsummarizedArticlesRequest) returns (ListUnsummarizedArticlesResponse);
+
+  // HasUnsummarizedArticles checks if any articles lack summaries.
+  // Origin: services.backend.v1.BackendInternalService/HasUnsummarizedArticles
+  rpc HasUnsummarizedArticles(HasUnsummarizedArticlesRequest) returns (HasUnsummarizedArticlesResponse);
+
+  // ── Backfill operations (pre-processor split-DB) ──
+
+  // GetEmptyFeedID returns a feed ID that has no articles for the given feed URL.
+  // Returns empty feed_id if all feeds for this URL already have articles.
+  // Origin: services.backend.v1.BackendInternalService/GetEmptyFeedID
+  rpc GetEmptyFeedID(GetEmptyFeedIDRequest) returns (GetEmptyFeedIDResponse);
+
+  // ── RAG tool operations (ADR-000617: rag-orchestrator synthesis) ──
+
+  // FetchTagCloud returns tag names with article counts for topic exploration.
+  // Origin: services.backend.v1.BackendInternalService/FetchTagCloud
+  rpc FetchTagCloud(FetchTagCloudRequest) returns (FetchTagCloudResponse);
+
+  // FetchArticlesByTag returns articles filtered by tag name.
+  // Origin: services.backend.v1.BackendInternalService/FetchArticlesByTag
+  rpc FetchArticlesByTag(FetchArticlesByTagRequest) returns (FetchArticlesByTagResponse);
+
+  // ── Recap article window (recap-worker) ──
+
+  // ListRecapArticles returns paginated articles within a time window.
+  // Service-to-service only; auth is established at the mTLS transport layer.
+  // Origin: services.backend.v1.BackendInternalService/ListRecapArticles
+  rpc ListRecapArticles(ListRecapArticlesRequest) returns (ListRecapArticlesResponse);
+
+  // ── Absorbed REST surface (ADR-000954 D6) ──
+
+  // GetSystemUser returns the first Kratos identity id.
+  // Origin: GET /v1/internal/system-user (REST). Called by pre-processor.
+  rpc GetSystemUser(GetSystemUserRequest) returns (GetSystemUserResponse);
+
+  // ListRecentArticles returns articles published within a time window.
+  // Origin: GET /v1/internal/articles/recent (REST). Called by
+  // rag-orchestrator for its temporal topics feature.
+  rpc ListRecentArticles(ListRecentArticlesRequest) returns (ListRecentArticlesResponse);
+
+  // ── Outbox (alt-harvester: outbox-worker, outbox-prune) ──
+
+  // ClaimOutboxBatch takes ownership of up to `limit` PENDING rows and marks
+  // them PROCESSING, in one transaction, with FOR UPDATE SKIP LOCKED.
+  //
+  // The lock and the commit are both inside this RPC, and that is the whole
+  // point of the capability: exposing "select pending" and "mark processing"
+  // as two procedures would put a network round trip between them and let two
+  // harvesters claim the same event (ADR-000954 D3, case against the
+  // port-mirror shape).
+  rpc ClaimOutboxBatch(ClaimOutboxBatchRequest) returns (ClaimOutboxBatchResponse);
+
+  // MarkOutboxProcessed records a terminal outcome for a claimed row and
+  // stamps processed_at.
+  rpc MarkOutboxProcessed(MarkOutboxProcessedRequest) returns (MarkOutboxProcessedResponse);
+
+  // ReleaseOutboxEvent returns a claimed-but-unattempted row to PENDING.
+  //
+  // Callers invoke it on a context detached from the one that was cancelled,
+  // because the row is only reachable through this call: ClaimOutboxBatch
+  // reads PENDING only, so a PROCESSING row nobody releases is never fetched
+  // again by anyone.
+  rpc ReleaseOutboxEvent(ReleaseOutboxEventRequest) returns (ReleaseOutboxEventResponse);
+
+  // PruneOutboxEvents deletes PROCESSED rows older than the given window.
+  rpc PruneOutboxEvents(PruneOutboxEventsRequest) returns (PruneOutboxEventsResponse);
+
+  // ── OG image / article_heads (alt-backend reads, alt-harvester pipeline) ──
+
+  // GetArticleHead returns the scraped <head> record for an article.
+  rpc GetArticleHead(GetArticleHeadRequest) returns (GetArticleHeadResponse);
+
+  // BatchGetOgImageURLs resolves og:image URLs for many articles at once.
+  rpc BatchGetOgImageURLs(BatchGetOgImageURLsRequest) returns (BatchGetOgImageURLsResponse);
+
+  // ListFeedsMissingOgImage returns the og-image-backfill work list.
+  rpc ListFeedsMissingOgImage(ListFeedsMissingOgImageRequest) returns (ListFeedsMissingOgImageResponse);
+
+  // ListUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
+  rpc ListUnwarmedOgImageURLs(ListUnwarmedOgImageURLsRequest) returns (ListUnwarmedOgImageURLsResponse);
+
+  // PurgeExpiredArticleHeads enforces the article_heads retention window.
+  rpc PurgeExpiredArticleHeads(PurgeExpiredArticleHeadsRequest) returns (PurgeExpiredArticleHeadsResponse);
+
+  // ── Image proxy cache (alt-backend serving path, alt-harvester retention) ──
+
+  // GetImageProxyCache returns a live cache entry, or nothing.
+  rpc GetImageProxyCache(GetImageProxyCacheRequest) returns (GetImageProxyCacheResponse);
+
+  // PutImageProxyCache upserts a cache entry by url_hash.
+  rpc PutImageProxyCache(PutImageProxyCacheRequest) returns (PutImageProxyCacheResponse);
+
+  // EvictExpiredImageProxyCache deletes entries past their own TTL.
+  rpc EvictExpiredImageProxyCache(EvictExpiredImageProxyCacheRequest) returns (EvictExpiredImageProxyCacheResponse);
+
+  // PurgeImageProxyCacheOlderThan deletes entries past the copyright
+  // retention window, regardless of TTL.
+  rpc PurgeImageProxyCacheOlderThan(PurgeImageProxyCacheOlderThanRequest) returns (PurgeImageProxyCacheOlderThanResponse);
+
+  // ── Scraping policy (alt-harvester refresh, alt-backend enforcement) ──
+
+  // GetScrapingDomainByDomain returns the recorded policy for a hostname.
+  rpc GetScrapingDomainByDomain(GetScrapingDomainByDomainRequest) returns (GetScrapingDomainByDomainResponse);
+
+  // GetScrapingDomainByID returns the recorded policy by row id.
+  rpc GetScrapingDomainByID(GetScrapingDomainByIDRequest) returns (GetScrapingDomainByIDResponse);
+
+  // SaveScrapingDomain upserts a scraping domain by hostname.
+  rpc SaveScrapingDomain(SaveScrapingDomainRequest) returns (SaveScrapingDomainResponse);
+
+  // ListScrapingDomains pages through the recorded policies.
+  rpc ListScrapingDomains(ListScrapingDomainsRequest) returns (ListScrapingDomainsResponse);
+
+  // UpdateScrapingDomainPolicy applies a partial policy update. Unknown id is
+  // NotFound rather than a silent zero-row update.
+  rpc UpdateScrapingDomainPolicy(UpdateScrapingDomainPolicyRequest) returns (UpdateScrapingDomainPolicyResponse);
+
+  // SaveDeclinedDomain records that a user declined full-text fetch for a
+  // domain. Idempotent.
+  rpc SaveDeclinedDomain(SaveDeclinedDomainRequest) returns (SaveDeclinedDomainResponse);
+
+  // IsDomainDeclined reports whether a user declined full-text fetch for a
+  // domain.
+  rpc IsDomainDeclined(IsDomainDeclinedRequest) returns (IsDomainDeclinedResponse);
+
+  // ── Automatic full-text fetch groundwork ──
+
+  // ListSubscribedUserIDsByFeedLinkID returns the users subscribed to a feed
+  // link, so a fetched article can be fanned out to each of them.
+  rpc ListSubscribedUserIDsByFeedLinkID(ListSubscribedUserIDsByFeedLinkIDRequest) returns (ListSubscribedUserIDsByFeedLinkIDResponse);
+
+  // CheckArticleExistsByURLForUser is the tenant-scoped existence check.
+  rpc CheckArticleExistsByURLForUser(CheckArticleExistsByURLForUserRequest) returns (CheckArticleExistsByURLForUserResponse);
+
+  // ── Article writes (alt-backend serving path, catalog §2.B) ──
+
+  // ArchiveArticle upserts the article and appends its ARTICLE_UPSERT outbox
+  // row in one transaction.
+  //
+  // The outbox insert is inside this procedure rather than beside it, and
+  // that is the capability. Splitting them would put a network round trip
+  // between the write and its announcement: a crash in the gap leaves an
+  // article rag-orchestrator never indexes, or an event for an article that
+  // was never written. Neither is recoverable by retrying, because nothing
+  // records that the pair was meant to be atomic (ADR-000954 D3, catalog
+  // §4-2).
+  //
+  // The event payload's `updated_at` is stamped when the row is enqueued, not
+  // when it is drained, so replaying the outbox reproduces the same bytes —
+  // the reproject-safe rule in docs/wiki/architecture/immutable-data-model.md.
+  rpc ArchiveArticle(ArchiveArticleRequest) returns (ArchiveArticleResponse);
+
+  // SaveArticleHead upserts the scraped <head> and its og:image URL.
+  //
+  // Catalog §2.B lists this with the article write, but it lands in
+  // article_heads alongside the §2.D reads, and the scrape that produces the
+  // markup stays with the caller either way (ADR-000954 D4).
+  rpc SaveArticleHead(SaveArticleHeadRequest) returns (SaveArticleHeadResponse);
+
+  // ── Article reads (alt-backend serving path, catalog §2.C) ──
+
+  // GetArticleByURL returns the archived article for a URL, if there is one.
+  rpc GetArticleByURL(GetArticleByURLRequest) returns (GetArticleByURLResponse);
+
+  // BatchGetArticlesByURLs is the same read for many URLs in one query — the
+  // shape that replaced an N+1 loop on the summaries path.
+  rpc BatchGetArticlesByURLs(BatchGetArticlesByURLsRequest) returns (BatchGetArticlesByURLsResponse);
+
+  // GetArticleContentByID returns the narrow projection of one article.
+  //
+  // Not merged into GetArticleByID, which reads the same row (catalog §4-3
+  // raised the question). They differ in three ways that a merge would have
+  // to erase: GetArticleByID answers NotFound for a missing article while
+  // this one answers an unset field, GetArticleByID returns tags and
+  // timestamps but not the URL this one exists to provide, and the two have
+  // different consumers — search-indexer's pact pins the first, alt-backend's
+  // pins this. Widening one message and relaxing its missing-row behaviour to
+  // save a procedure would change a contract a peer already verifies against,
+  // to remove a duplication that costs nothing to keep.
+  rpc GetArticleContentByID(GetArticleContentByIDRequest) returns (GetArticleContentByIDResponse);
+
+  // ListArticlesCursor pages through one user's articles, newest first.
+  rpc ListArticlesCursor(ListArticlesCursorRequest) returns (ListArticlesCursorResponse);
+
+  // ListArticleIDsCursor is the same walk returning ids only.
+  //
+  // A separate procedure rather than a flag on the one above, because it is a
+  // different query and not a narrower rendering of the same one: it skips the
+  // tag join and the body columns entirely. The caller pages ids here and
+  // hydrates them from its own cache, so folding the two together would make
+  // the cheap query pay for the expensive one's work whenever a caller forgot
+  // the flag.
+  rpc ListArticleIDsCursor(ListArticleIDsCursorRequest) returns (ListArticleIDsCursorResponse);
+
+  // BatchGetArticlesByIDs hydrates ids into full articles with their tags.
+  rpc BatchGetArticlesByIDs(BatchGetArticlesByIDsRequest) returns (BatchGetArticlesByIDsResponse);
+
+  // GetLatestArticleByFeedID returns the newest article of one feed.
+  rpc GetLatestArticleByFeedID(GetLatestArticleByFeedIDRequest) returns (GetLatestArticleByFeedIDResponse);
+
+  // LookupArticleURL resolves an article's source URL within one tenant.
+  rpc LookupArticleURL(LookupArticleURLRequest) returns (LookupArticleURLResponse);
+
+  // ── Knowledge backfill reads (alt-backend admin jobs, catalog §2.N) ──
+
+  // CountBackfillArticles sizes the article replay.
+  rpc CountBackfillArticles(CountBackfillArticlesRequest) returns (CountBackfillArticlesResponse);
+
+  // ListBackfillArticles walks historic articles oldest first.
+  rpc ListBackfillArticles(ListBackfillArticlesRequest) returns (ListBackfillArticlesResponse);
+
+  // CountBackfillSummaryTitles sizes the summary-narrative replay.
+  rpc CountBackfillSummaryTitles(CountBackfillSummaryTitlesRequest) returns (CountBackfillSummaryTitlesResponse);
+
+  // ListBackfillSummaryTitles walks (summary_version, article) pairs oldest
+  // first.
+  rpc ListBackfillSummaryTitles(ListBackfillSummaryTitlesRequest) returns (ListBackfillSummaryTitlesResponse);
+
+  // ── Feed links (catalog §2.F) ──
+
+  // RegisterFeedLink subscribes to an RSS URL. Idempotent: an already
+  // subscribed URL answers already_existed rather than an error, which is the
+  // behaviour the driver's SQLSTATE 23505 branch has always had.
+  rpc RegisterFeedLink(RegisterFeedLinkRequest) returns (RegisterFeedLinkResponse);
+
+  // BulkRegisterFeedLinks subscribes to many URLs in one call — the OPML
+  // import.
+  //
+  // One procedure rather than a loop over RegisterFeedLink because the loop
+  // was two queries per URL (exists-check, then insert) and becomes two round
+  // trips per URL once a network sits between them: a 500-entry OPML file
+  // would cost a thousand. The batch is deliberately not one transaction —
+  // partial success is the documented outcome, and the per-URL results say
+  // which part.
+  rpc BulkRegisterFeedLinks(BulkRegisterFeedLinksRequest) returns (BulkRegisterFeedLinksResponse);
+
+  // ListFeedLinks returns every subscription URL.
+  rpc ListFeedLinks(ListFeedLinksRequest) returns (ListFeedLinksResponse);
+
+  // ListFeedLinksWithHealth is the same list joined to poll health, for the
+  // admin screen.
+  rpc ListFeedLinksWithHealth(ListFeedLinksWithHealthRequest) returns (ListFeedLinksWithHealthResponse);
+
+  // DeleteFeedLink unsubscribes. The cascade to feeds and articles is the
+  // database's, and it is the reason this is a capability and not a caller's
+  // DELETE: the blast radius belongs to whoever owns the schema.
+  rpc DeleteFeedLink(DeleteFeedLinkRequest) returns (DeleteFeedLinkResponse);
+
+  // ResolveFeedLinkIDByURL maps a subscription URL to its id.
+  rpc ResolveFeedLinkIDByURL(ResolveFeedLinkIDByURLRequest) returns (ResolveFeedLinkIDByURLResponse);
+
+  // ListFeedLinkDomains returns the distinct publisher hosts across the
+  // subscription set and the scraped og:image URLs — the work list the
+  // scraping policy job seeds itself from.
+  rpc ListFeedLinkDomains(ListFeedLinkDomainsRequest) returns (ListFeedLinkDomainsResponse);
+
+  // ListRSSFeedURLs returns the links the collector should poll: active, or
+  // never assessed.
+  rpc ListRSSFeedURLs(ListRSSFeedURLsRequest) returns (ListRSSFeedURLsResponse);
+
+  // ListFeedLinksForExport returns each subscription with its most recent feed
+  // title, for OPML export.
+  //
+  // A procedure of its own rather than a flag on ListFeedLinks: it is a
+  // different query — a LATERAL join picking the newest title per link — and
+  // folding it in would make the plain list pay for that join on every call.
+  // Its previous life was raw SQL issued through AltDBRepository.GetPool()
+  // from a gateway, the last such caller in the module (catalog §4-7); over
+  // an RPC there is no pool to reach for, so the layering violation cannot be
+  // reconstructed.
+  rpc ListFeedLinksForExport(ListFeedLinksForExportRequest) returns (ListFeedLinksForExportResponse);
+
+  // ── Feed link availability (catalog §2.G) ──
+
+  // RecordFeedLinkFailure increments the consecutive failure count and, in the
+  // same transaction, disables the link once it reaches the caller's
+  // threshold.
+  //
+  // This is one procedure where the catalog listed two (IncrementFeedLinkFailures
+  // and DisableFeedLink, §4-4). Splitting them put a read-modify-write in the
+  // caller: increment, look at the returned count, decide, disable. Two
+  // collectors polling the same feed could each read a count below the
+  // threshold and neither disable it, or both cross it and both write. That
+  // race exists today in-process; over an RPC the window widens from a few
+  // microseconds to a full network round trip, so preserving the split would
+  // have made a known defect materially worse in the commit that moved the
+  // process boundary. The threshold stays the caller's argument because how
+  // patient to be is operational policy; applying it without a gap is the
+  // provider's invariant (ADR-000954 D3).
+  rpc RecordFeedLinkFailure(RecordFeedLinkFailureRequest) returns (RecordFeedLinkFailureResponse);
+
+  // ResetFeedLinkFailures clears the failure run after a successful poll and
+  // re-activates the link.
+  rpc ResetFeedLinkFailures(ResetFeedLinkFailuresRequest) returns (ResetFeedLinkFailuresResponse);
+
+  // ── Feeds (catalog §2.H) ──
+
+  // RegisterFeeds upserts a batch of collected RSS items in one transaction.
+  //
+  // The transaction is the capability: a poll that half-registers a feed's
+  // items leaves the next poll unable to tell which half it already has. The
+  // upsert writes no articles row — that separation is ADR-000953's explicit
+  // contract, and it is why this procedure and ArchiveArticle are not merged.
+  rpc RegisterFeeds(RegisterFeedsRequest) returns (RegisterFeedsResponse);
+
+  // ListFeedsCursor pages one user's feeds newest first, in one of four
+  // scopes.
+  rpc ListFeedsCursor(ListFeedsCursorRequest) returns (ListFeedsCursorResponse);
+
+  // ListFeedsPage is the legacy offset pager still behind two REST routes.
+  rpc ListFeedsPage(ListFeedsPageRequest) returns (ListFeedsPageResponse);
+
+  // ListFeedsLimit returns the newest feeds across all users, unscoped.
+  rpc ListFeedsLimit(ListFeedsLimitRequest) returns (ListFeedsLimitResponse);
+
+  // GetSingleFeed returns the most recently created feed.
+  rpc GetSingleFeed(GetSingleFeedRequest) returns (GetSingleFeedResponse);
+
+  // ListFeedsByFeedLinkID returns the feeds one subscription produced — the
+  // read behind page-cache invalidation after a registration.
+  rpc ListFeedsByFeedLinkID(ListFeedsByFeedLinkIDRequest) returns (ListFeedsByFeedLinkIDResponse);
+
+  // GetFeedSummary returns the generated summary for the article at a URL.
+  rpc GetFeedSummary(GetFeedSummaryRequest) returns (GetFeedSummaryResponse);
+
+  // GetArticleSummaryByArticleID is the same summary looked up by article id.
+  rpc GetArticleSummaryByArticleID(GetArticleSummaryByArticleIDRequest) returns (GetArticleSummaryByArticleIDResponse);
+
+  // SearchFeedsByTitle is the SQL title search, scoped to one tenant.
+  rpc SearchFeedsByTitle(SearchFeedsByTitleRequest) returns (SearchFeedsByTitleResponse);
+
+  // GetRandomFeed returns a random feed that has at least one tag — the Tag
+  // Trail entry point.
+  rpc GetRandomFeed(GetRandomFeedRequest) returns (GetRandomFeedResponse);
+
+  // GetFeedURLsByArticleIDs resolves search hits back to their feeds.
+  rpc GetFeedURLsByArticleIDs(GetFeedURLsByArticleIDsRequest) returns (GetFeedURLsByArticleIDsResponse);
+
+  // BatchGetFeedTitlesByIDs attaches feed bylines to Morning Letter cards.
+  rpc BatchGetFeedTitlesByIDs(BatchGetFeedTitlesByIDsRequest) returns (BatchGetFeedTitlesByIDsResponse);
+
+  // GetInoreaderSummariesByURLs returns imported Inoreader bodies for URLs.
+  rpc GetInoreaderSummariesByURLs(GetInoreaderSummariesByURLsRequest) returns (GetInoreaderSummariesByURLsResponse);
+  // ── Read state, subscriptions, favorites (catalog §2.I) ──
+
+  // MarkFeedRead records that a user has read everything at a feed's URL.
+  //
+  // A URL with no feeds row answers NotFound, and the provider decides that
+  // from the zero rows the upsert affected — not from a SELECT issued first.
+  // That is the one semantics both this procedure and MarkArticleRead now
+  // use (catalog §4-5). They had two: this one resolved the feed with a
+  // SELECT and read pgx.ErrNoRows, its twin ran a single
+  // INSERT ... SELECT and read RowsAffected() == 0. Two ways to answer
+  // "there is no such feed" is one too many across a process boundary,
+  // because a consumer sees only the Connect code and cannot tell which
+  // implementation produced it; and the SELECT-first version also had a
+  // window in which the feed could be deleted between the check and the
+  // write, turning a NotFound into a silent no-op that reported success.
+  //
+  // The transaction stays inside this procedure. It wraps one statement now,
+  // so it commits nothing the statement would not have committed on its own;
+  // it is kept because collapsing a transaction boundary is a behaviour
+  // change independent of collapsing the round trips, and a commit that mixed
+  // both would be ambiguous in a bisect (ADR-000954 D3).
+  rpc MarkFeedRead(MarkFeedReadRequest) returns (MarkFeedReadResponse);
+
+  // MarkArticleRead records the same read against the feed an article's URL
+  // belongs to.
+  //
+  // Two procedures for one table, deliberately. The name is the caller's
+  // vocabulary — the browser marks an article read, and the driver comment
+  // has said "named MarkArticleAsRead but operates on feeds" since it was
+  // written — while MarkFeedRead is the feed list's bulk action. Merging them
+  // would make the request field mean "a URL, of one of two kinds", and the
+  // provider would have to guess which query the caller meant. What they now
+  // share is the part that was actually inconsistent: the missing-row answer
+  // is NotFound derived from RowsAffected() == 0 in both.
+  rpc MarkArticleRead(MarkArticleReadRequest) returns (MarkArticleReadResponse);
+
+  // GetReadFeedIDs filters a batch of feed ids down to the ones the user has
+  // read — the per-page overlay on a feed list.
+  rpc GetReadFeedIDs(GetReadFeedIDsRequest) returns (GetReadFeedIDsResponse);
+
+  // GetAllReadFeedIDs returns the user's whole read set, capped by the
+  // provider. The caller caches it for a few seconds and answers many pages
+  // from one call.
+  rpc GetAllReadFeedIDs(GetAllReadFeedIDsRequest) returns (GetAllReadFeedIDsResponse);
+
+  // GetUserSubscribedFeedLinkIDs returns the feed links a user follows.
+  rpc GetUserSubscribedFeedLinkIDs(GetUserSubscribedFeedLinkIDsRequest) returns (GetUserSubscribedFeedLinkIDsResponse);
+
+  // ListSubscriptions returns every feed link with this user's follow state —
+  // the subscription management screen, not just the followed subset.
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+
+  // Subscribe follows a feed link. Idempotent.
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse);
+
+  // Unsubscribe stops following a feed link. Idempotent.
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+
+  // AddFavoriteFeed stars the feed at a URL for one user.
+  //
+  // Unlike the two read-status writes above, this keeps its SELECT: the
+  // insert is ON CONFLICT DO NOTHING, so a zero RowsAffected() means either
+  // "no such feed" or "already a favourite", and those two answers are a
+  // NotFound and a success. The pair stays in one transaction because that is
+  // what a transaction is for — two statements whose combination the caller
+  // must not see half of — where MarkFeedRead's transaction wrapped one.
+  rpc AddFavoriteFeed(AddFavoriteFeedRequest) returns (AddFavoriteFeedResponse);
+
+  // RemoveFavoriteFeed unstars it. NotFound covers both a URL with no feed and
+  // a feed the user had not starred, which is the distinction the caller has
+  // never made.
+  rpc RemoveFavoriteFeed(RemoveFavoriteFeedRequest) returns (RemoveFavoriteFeedResponse);
+
+  // ── Tag reads (catalog §2.J) ──
+
+  // GetArticleTags returns an article's tags, and nothing else.
+  //
+  // The on-the-fly generation that used to sit behind this read — ask mq-hub
+  // for tags when there are none, then write them back — stays with the
+  // caller. Generating is a call to another service and orchestration around
+  // it (ADR-000954 D4); this procedure is the read, and UpsertArticleTags is
+  // the write-back.
+  rpc GetArticleTags(GetArticleTagsRequest) returns (GetArticleTagsResponse);
+
+  // GetFeedTags pages one feed's tags, newest first.
+  rpc GetFeedTags(GetFeedTagsRequest) returns (GetFeedTagsResponse);
+
+  // GetTagCooccurrences returns tag pairs sharing at least two articles — the
+  // edge set behind the tag cloud's layout.
+  //
+  // The layout itself is not here. The octree that turns counts and edges into
+  // 3D coordinates is a pure function with no database in it, and it stays
+  // with the caller for the same reason the RSS rendering did (ADR-000954 D4).
+  rpc GetTagCooccurrences(GetTagCooccurrencesRequest) returns (GetTagCooccurrencesResponse);
+
+  // SearchTagsByPrefix is the global search box's tag section.
+  rpc SearchTagsByPrefix(SearchTagsByPrefixRequest) returns (SearchTagsByPrefixResponse);
+
+  // GetTagArticleCounts counts one user's tagged articles since a timestamp.
+  //
+  // Counts, not "trending tags". Which tags count as trending is a comparison
+  // of two of these windows against thresholds the caller owns, and that
+  // arithmetic has no SQL in it — moving it here would put a product decision
+  // in the data plane, where changing it means redeploying the database owner.
+  rpc GetTagArticleCounts(GetTagArticleCountsRequest) returns (GetTagArticleCountsResponse);
+
+  // ── Tag Trail paging (catalog §2.J, ADR-000954 Wave 3 batch 6) ──
+
+  // ListArticlesByTagID pages the articles carrying one feed's tag, newest
+  // first, by an exclusive published_at cursor.
+  //
+  // FetchArticlesByTag above answers a different question and keeps answering
+  // it. That procedure takes a tag *name*, has no cursor and returns four
+  // fields; this one takes a feed_tags row id, pages, and carries the feed the
+  // article came from. Routing the Tag Trail through the older message would
+  // have compiled and would have silently dropped its paging — which is why
+  // this is a capability rather than a DI edit (ADR-000954 Wave 3 batch 6).
+  rpc ListArticlesByTagID(ListArticlesByTagIDRequest) returns (ListArticlesByTagIDResponse);
+
+  // ListArticlesByTagName is the cross-feed half: every article carrying a tag
+  // of this name, whichever feed tagged it, deduplicated.
+  //
+  // It is a separate procedure rather than a oneof on the request above
+  // because the two are different queries — this one joins through feed_tags
+  // and distinct-s the result — and because an unset oneof is a third case
+  // that would have to mean something. Two procedures have no such case.
+  rpc ListArticlesByTagName(ListArticlesByTagNameRequest) returns (ListArticlesByTagNameResponse);
+
+  // ── Article reference for the recall rail (catalog §2.C) ──
+
+  // GetArticleTitleAndLink returns just enough of an article to render it in
+  // the recall rail when the knowledge_home_items projection has not caught up
+  // yet: title, url, published_at.
+  //
+  // It exists beside GetArticleContentByID because that procedure carries no
+  // published_at, and the rail orders by it. It is not scoped to a user: the
+  // caller has already established that this article id came out of that
+  // user's own recall candidates, and the columns returned are the ones the
+  // rail would have rendered from the projection.
+  rpc GetArticleTitleAndLink(GetArticleTitleAndLinkRequest) returns (GetArticleTitleAndLinkResponse);
+
+  // ── Versioned artifacts (catalog §2.K) ──
+
+  // CreateSummaryVersion appends one row to summary_versions.
+  //
+  // Append-only, so there is no update procedure beside it and no way to ask
+  // for one: a re-summarised article gets a new version and the old one is
+  // marked superseded by the procedure below. The SummaryVersionCreated event
+  // that accompanies this write is *not* emitted here — appending to
+  // knowledge-sovereign is a call to another service, and ADR-000954 D4 keeps
+  // those with the caller. The caller therefore orders the two.
+  rpc CreateSummaryVersion(CreateSummaryVersionRequest) returns (CreateSummaryVersionResponse);
+
+  // MarkSummaryVersionSuperseded points every current version of an article at
+  // the new one and returns the version that was current before.
+  //
+  // The whole procedure is one transaction and it opens with
+  // `SELECT pg_advisory_xact_lock(hashtext(article_id))`. That lock is the
+  // capability: without it two summaries generated back-to-back for the same
+  // article can run this concurrently and each mark the *other* superseded,
+  // leaving the article with no current version at all. Row-level UPDATE
+  // locking does not prevent it, because each call's WHERE clause excludes
+  // only its own new id — the two candidate row sets are disjoint, so the two
+  // UPDATEs never contend for a row and Postgres serialises nothing. Keying
+  // the advisory lock on article_id rather than on the (changing) set of
+  // non-superseded rows is what makes the second call wait for the first to
+  // commit before it can even read `previous_version`.
+  //
+  // This is the reason the capability is one RPC rather than the SELECT and
+  // the UPDATE the port used to expose: an advisory *xact* lock is released at
+  // commit, so splitting the pair across a round trip would release the lock
+  // between them and reintroduce exactly the interleaving it exists to stop
+  // (ADR-000954 D3, catalog §2.K).
+  rpc MarkSummaryVersionSuperseded(MarkSummaryVersionSupersededRequest) returns (MarkSummaryVersionSupersededResponse);
+
+  // GetSummaryVersionByID reads one version by its own id.
+  //
+  // Reproject-safe: replaying a SummaryVersionCreated event from a year ago
+  // must resolve to the summary that event was about, not to whatever is
+  // current. That is why it exists separately from GetLatestSummaryVersion —
+  // the two answer different questions and a projector must never ask the
+  // second one.
+  rpc GetSummaryVersionByID(GetSummaryVersionByIDRequest) returns (GetSummaryVersionByIDResponse);
+
+  // GetLatestSummaryVersion reads the article's current version — the one no
+  // other version has superseded. NotFound when the article has never been
+  // summarised.
+  rpc GetLatestSummaryVersion(GetLatestSummaryVersionRequest) returns (GetLatestSummaryVersionResponse);
+
+  // CreateTagSetVersion appends one row to tag_set_versions. Append-only, for
+  // the same reason CreateSummaryVersion is.
+  rpc CreateTagSetVersion(CreateTagSetVersionRequest) returns (CreateTagSetVersionResponse);
+
+  // MarkTagSetVersionSuperseded is the tag-set twin of
+  // MarkSummaryVersionSuperseded, including the per-article
+  // pg_advisory_xact_lock and the reason for it. See that procedure's comment;
+  // the failure it prevents is the same one, and tag sets are regenerated more
+  // often than summaries are.
+  rpc MarkTagSetVersionSuperseded(MarkTagSetVersionSupersededRequest) returns (MarkTagSetVersionSupersededResponse);
+
+  // GetTagSetVersionByID reads one tag set version by its own id.
+  // Reproject-safe, like GetSummaryVersionByID.
+  rpc GetTagSetVersionByID(GetTagSetVersionByIDRequest) returns (GetTagSetVersionByIDResponse);
+
+  // ── Statistics / dashboard (catalog §2.M) ──
+
+  // GetFeedAmount counts every feed row. The only unscoped count in this
+  // group: it is the deployment's size, not a user's.
+  rpc GetFeedAmount(GetFeedAmountRequest) returns (GetFeedAmountResponse);
+
+  // GetTotalArticlesCount counts one user's live articles.
+  //
+  // user_id is a field on this and the three counts below it, where the
+  // in-process versions read it from the request context. That is not a
+  // translation detail: the provider serves these over mutual TLS, where the
+  // peer certificate names alt-backend, so a context-scoped user would resolve
+  // to the service account and every dashboard would show the same numbers.
+  rpc GetTotalArticlesCount(GetTotalArticlesCountRequest) returns (GetTotalArticlesCountResponse);
+
+  // GetSummarizedArticlesCount counts one user's article_summaries rows.
+  rpc GetSummarizedArticlesCount(GetSummarizedArticlesCountRequest) returns (GetSummarizedArticlesCountResponse);
+
+  // GetUnsummarizedArticlesCount counts one user's live articles with no
+  // summary. Not the difference of the two counts above — a summary can
+  // outlive its article — so it is its own query and its own procedure.
+  rpc GetUnsummarizedArticlesCount(GetUnsummarizedArticlesCountRequest) returns (GetUnsummarizedArticlesCountResponse);
+
+  // GetTodayUnreadArticlesCount counts feeds created since `since` that the
+  // user has not marked read.
+  //
+  // `since` is required and carries no default. "Today" is a wall-clock
+  // question and therefore the caller's: the provider does not know the
+  // reader's timezone, and defaulting to a server-side midnight would answer a
+  // different question convincingly.
+  rpc GetTodayUnreadArticlesCount(GetTodayUnreadArticlesCountRequest) returns (GetTodayUnreadArticlesCountResponse);
+
+  // GetTrendStats returns the admin dashboard's article/summary/feed series
+  // for one user over one window.
+  rpc GetTrendStats(GetTrendStatsRequest) returns (GetTrendStatsResponse);
+
+  // ListUserFeedIDs returns the feeds a user has read state against — the
+  // Morning Letter's candidate set.
+  rpc ListUserFeedIDs(ListUserFeedIDsRequest) returns (ListUserFeedIDsResponse);
+}

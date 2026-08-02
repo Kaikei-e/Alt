@@ -1,6 +1,6 @@
 version: v2
-# Code generation of alt.datahub.v1 for rag-orchestrator — Wave 2-B consumer
-# target (ADR-000954 D7).
+# Code generation of services.datahub.v1 for rag-orchestrator — Wave 2-B
+# consumer target (ADR-000954 D7).
 #
 # Why a separate template rather than a plugin block appended to
 # buf.gen.datahub.yaml: that file's head states the Wave 2-B rule — "one
@@ -12,20 +12,21 @@ version: v2
 # template and is not edited here.
 #
 # Why not buf.gen.yaml: that template emits TypeScript into alt-frontend-sv
-# and explicitly excludes alt/datahub, because DataHubService is only
-# reachable over mutual TLS from a listener with no published port. Adding
-# rag-orchestrator's Go client there would drag the browser bundle along.
+# and covers only the alt/ root, because DataHubService is only reachable over
+# mutual TLS from a listener with no published port. Adding rag-orchestrator's
+# Go client there would drag the browser bundle along.
 #
 # Output lands in rag-orchestrator/internal/gen/proto, which go.mod maps to
 # the module path `alt/gen/proto` via a replace directive — hence the import
-# path alt/gen/proto/alt/datahub/v1 rather than a rag-orchestrator-local one.
+# path alt/gen/proto/services/datahub/v1 rather than a rag-orchestrator-local
+# one.
 #
 # Regenerate with:
 #   cd proto && buf generate --template buf.gen.datahub-rag.yaml
 inputs:
   - directory: .
     paths:
-      - alt/datahub
+      - services/datahub
 plugins:
   # ============================================================================
   # rag-orchestrator (DataHubService client)

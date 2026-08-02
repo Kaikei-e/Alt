@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package alt.morning_letter.v2;
 
+import "alt/api/v1/visibility.proto";
 import "google/protobuf/timestamp.proto";
 
 option go_package = "alt/gen/proto/alt/morning_letter/v2;morningletterv2";
@@ -11,6 +12,8 @@ option go_package = "alt/gen/proto/alt/morning_letter/v2;morningletterv2";
 // =============================================================================
 
 service MorningLetterService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // StreamChat performs a streaming chat with RAG context, filtered by time window.
   // Returns a stream of events: delta (text chunks), meta (citations + time window), done (completion), or error.
   rpc StreamChat(StreamChatRequest) returns (stream StreamChatResponse);
@@ -23,6 +26,8 @@ service MorningLetterService {
 // MorningLetterServiceHandler implementation when adding read RPCs.
 
 service MorningLetterReadService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // GetLatestLetter returns the most recent morning letter (by edition timezone).
   rpc GetLatestLetter(GetLatestLetterRequest) returns (GetLatestLetterResponse);
 

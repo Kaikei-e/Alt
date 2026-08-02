@@ -206,7 +206,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Connect-RPC client for alt-data-hub — the single owner of alt_db
 	// (ADR-000954 D3) and the only route this service has to it. Every
 	// alt_db-backed adapter below shares this one client: they all speak
-	// alt.datahub.v1.DataHubService to the same mTLS listener.
+	// services.datahub.v1.DataHubService to the same mTLS listener.
 	//
 	// Failing to build the transport is fatal by design. The predecessor of
 	// this call dialled http://alt-backend:9102 in plaintext, and that

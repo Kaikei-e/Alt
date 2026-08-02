@@ -17,7 +17,7 @@ _Split note added: July 31, 2026_
 > |---|---|---|---|
 > | `alt-backend` | `cmd/backend` | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102` / ops `:9110` |
 > | `alt-harvester` | `cmd/harvester` | `orchestrator/job/` の 7 定期ジョブ | ops `:9110` のみ |
-> | `alt-data-hub` | `cmd/datahub` | **alt-db の唯一のオーナー**。`alt.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`、publish ゼロ |
+> | `alt-data-hub` | `cmd/datahub` | **alt-db の唯一のオーナー**。`services.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`、publish ゼロ |
 >
 > 本文を読むときに読み替えが必要な主な点:
 >
@@ -25,7 +25,7 @@ _Split note added: July 31, 2026_
 >   共通の起動処理は `internal/bootstrap` にある。
 > - **`:9102` は admin Connect サービス専用のオペレータリスナー。**
 >   `BackendInternalService` と `/v1/internal/*` REST は**削除済み**で、
->   その責務は alt-data-hub の `alt.datahub.v1.DataHubService` に移った。
+>   その責務は alt-data-hub の `services.datahub.v1.DataHubService` に移った。
 > - **alt-backend / alt-harvester は DB に触らない。** DB DSN と pgx を持つのは
 >   alt-data-hub だけで、`di/import_boundary_test.go` が `go list -deps` で
 >   リンクレベルに強制している。本文中の

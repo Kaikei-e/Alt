@@ -7,8 +7,8 @@ import (
 	"math"
 	"time"
 
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 
 	"rag-orchestrator/internal/domain"
 
@@ -17,7 +17,7 @@ import (
 )
 
 // DataHubArticleClient implements domain.ArticleClient on top of
-// alt.datahub.v1.DataHubService/ListRecentArticles.
+// services.datahub.v1.DataHubService/ListRecentArticles.
 //
 // It replaces the REST client that called
 // GET http://alt-backend:9102/v1/internal/articles/recent. That route did not

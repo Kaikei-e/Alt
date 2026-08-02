@@ -6,8 +6,8 @@ import (
 	"net/url"
 
 	"alt/domain"
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"

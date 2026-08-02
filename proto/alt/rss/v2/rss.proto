@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.rss.v2;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/rss/v2;rssv2";
 
 // =============================================================================
@@ -124,6 +126,8 @@ message RandomSubscriptionResponse {
 
 // RSSService provides RSS feed link management operations
 service RSSService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // RegisterRSSFeed registers a new RSS feed link
   // Replaces POST /v1/rss-feed-link/register
   rpc RegisterRSSFeed(RegisterRSSFeedRequest) returns (RegisterRSSFeedResponse);

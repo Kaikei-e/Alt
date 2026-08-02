@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"math"
 
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 
 	"rag-orchestrator/internal/domain"
 
@@ -15,7 +15,7 @@ import (
 )
 
 // DataHubArticlesByTagClient implements domain.ArticlesByTagClient using
-// alt.datahub.v1.DataHubService/FetchArticlesByTag.
+// services.datahub.v1.DataHubService/FetchArticlesByTag.
 //
 // Origin: services.backend.v1.BackendInternalService/FetchArticlesByTag,
 // wire-identical messages (ADR-000954 D7).

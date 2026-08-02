@@ -1,9 +1,9 @@
-// Package datahubapi implements alt.datahub.v1.DataHubService, the only name
+// Package datahubapi implements services.datahub.v1.DataHubService, the only name
 // alt-data-hub answers to for the data plane (ADR-000954 D7).
 //
 // The procedures here were served under two names for the length of Wave 2:
 // services.backend.v1.BackendInternalService, from when this code lived inside
-// alt-backend, and alt.datahub.v1.DataHubService. Wave 2-B moved the five
+// alt-backend, and services.datahub.v1.DataHubService. Wave 2-B moved the five
 // consumers one PR at a time; Wave 2-C deleted the old proto, so this package
 // now implements the DataHubService messages directly instead of re-encoding
 // each call onto a legacy twin. The adapter that did the re-encoding, and the
@@ -37,8 +37,8 @@ import (
 	"alt/dataplane/usecase/outbox_usecase"
 	"alt/dataplane/usecase/recap_articles_usecase"
 	"alt/domain"
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 	"alt/shared/port/event_publisher_port"
 	"alt/shared/port/knowledge_event_port"

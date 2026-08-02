@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"alt/domain"
-	datahubv1 "alt/gen/proto/alt/datahub/v1"
+	datahubv1 "alt/gen/proto/services/datahub/v1"
 
 	"github.com/google/uuid"
 )

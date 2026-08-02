@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.recap.v2;
 
+import "alt/api/v1/visibility.proto";
+
 option go_package = "alt/gen/proto/alt/recap/v2;recapv2";
 
 // =============================================================================
@@ -10,6 +12,8 @@ option go_package = "alt/gen/proto/alt/recap/v2;recapv2";
 
 // RecapService provides recap-related operations
 service RecapService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
   // GetSevenDayRecap returns 7-day recap summary (authentication required)
   // Replaces GET /api/v1/recap/7days
   rpc GetSevenDayRecap(GetSevenDayRecapRequest) returns (GetSevenDayRecapResponse);

@@ -130,13 +130,13 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	// SSE feed stats (/v1/sse/feeds/stats) は H-001 で削除し、Connect-RPC
 	// `StreamFeedStats` (port 9101) に一本化された。
 	// /v1/recap/articles も Connect-RPC
-	// `alt.datahub.v1.DataHubService/ListRecapArticles` に移行済。
+	// `services.datahub.v1.DataHubService/ListRecapArticles` に移行済。
 	registerScrapingDomainRoutes(v1, container, cfg)
 	registerDashboardRoutes(v1, container, cfg)
 	RegisterAugurRoutes(e, v1, container)
 	// /v1/internal/* is deliberately absent here — and no longer exists at all.
 	// It moved to cmd/datahub with the split, and ADR-000954 D6 then folded its
-	// two routes into alt.datahub.v1.DataHubService, so there is no handler
+	// two routes into services.datahub.v1.DataHubService, so there is no handler
 	// left for the browser-facing router to regain by someone adding one
 	// call.
 }

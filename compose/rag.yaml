@@ -128,7 +128,7 @@ services:
       # split: :9102 is alt-backend's admin-only operator listener now, and
       # neither /v1/internal/articles/recent nor any data-plane RPC is served
       # there. alt-data-hub is the sole owner of alt_db and answers
-      # alt.datahub.v1.DataHubService behind mutual TLS. (The
+      # services.datahub.v1.DataHubService behind mutual TLS. (The
       # `services.backend.v1.BackendInternalService` namespace that used to
       # carry these RPCs was deleted in Wave 2-C.)
       #

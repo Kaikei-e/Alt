@@ -240,7 +240,7 @@ services:
       # moved out of alt-backend in the 3-binary split
       # (ADR-000954): cmd/backend opens no mTLS listener at all, and
       # cmd/datahub is the only process serving that surface, as
-      # `alt.datahub.v1.DataHubService`. The leaf this
+      # `services.datahub.v1.DataHubService`. The leaf this
       # container presents has CN/SAN `pre-processor`, which is in
       # alt-data-hub's DATAHUB_ALLOWED_PEERS (compose/core.yaml).
       - MTLS_ENFORCE=${PRE_PROCESSOR_MTLS_ENFORCE:-true}
@@ -250,7 +250,7 @@ services:
       - BACKEND_MTLS_SERVER_NAME=alt-data-hub
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
       # alt-backend's operator listener and carries no data plane at all —
-      # `alt.datahub.v1.DataHubService` is alt-data-hub's, over mTLS only.
+      # `services.datahub.v1.DataHubService` is alt-data-hub's, over mTLS only.
       # See the note in compose/core.yaml.
       - BACKEND_API_URL=http://alt-backend:9102
       - ALT_BACKEND_HOST=http://alt-backend:9102

@@ -87,26 +87,32 @@ cd proto
 buf lint
 buf breaking --against '.git#branch=main'
 # Regenerate stubs for every consumer of the changed proto file and commit.
-# `buf.gen.yaml` is the default template and deliberately excludes alt/datahub
-# (browser bundles must not carry stubs for an mTLS-only surface), so the
-# alt.datahub.v1 contract has one template per module — the provider first,
-# then one per consumer (ADR-000954 D7):
+# `buf.gen.yaml` is the default template and its inputs cover the `alt/` root
+# only — the browser-reachable packages, which it also emits as TypeScript
+# into alt-frontend-sv. Under ADR-000955's root convention everything
+# east-west lives under `services/` and has its own per-module template, so
+# an mTLS-only surface cannot reach a browser bundle by default.
+#
+# services.datahub.v1 has one template per module — the provider first, then
+# one per consumer (ADR-000954 D7). All five take `services/datahub` as their
+# input path:
 buf generate --template buf.gen.datahub.yaml                  # alt-data-hub + alt-backend (provider)
 buf generate --template buf.gen.datahub-preprocessor.yaml     # pre-processor
 buf generate --template buf.gen.datahub-searchindexer.yaml    # search-indexer
 buf generate --template buf.gen.datahub-taggen.yaml           # tag-generator
 buf generate --template buf.gen.datahub-rag.yaml              # rag-orchestrator
-# The `services.*` packages that survive (mqhub / preprocessor / search /
-# sovereign) have their own per-module templates:
+# The other `services.*` packages (mqhub / preprocessor / search / sovereign)
+# have their own per-module templates too:
 buf generate --template buf.gen.alt-backend-services.yaml     # alt-backend
 buf generate --template buf.gen.pre-processor-services.yaml   # pre-processor
 buf generate --template buf.gen.search-indexer.yaml           # search-indexer
 # ... and the other buf.gen.<service>.yaml templates as needed
 ```
 
-`alt.datahub.v1` replaced `services.backend.v1.BackendInternalService`, whose
-template (`buf.gen.backend-internal.yaml`) was deleted with the namespace in
-ADR-000954 Wave 2-C.
+`services.datahub.v1` replaced `services.backend.v1.BackendInternalService`,
+whose template (`buf.gen.backend-internal.yaml`) was deleted with the namespace
+in ADR-000954 Wave 2-C. It was called `alt.datahub.v1` until ADR-000955 moved
+it under the `services.` root with the rest of the east-west contracts.
 
 ## Database migration
 

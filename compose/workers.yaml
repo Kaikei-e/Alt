@@ -82,8 +82,8 @@ services:
       - MTLS_ALLOWED_PEERS=${SEARCH_INDEXER_MTLS_ALLOWED_PEERS:-}
       # Outbound mTLS to the data plane. The data plane moved out of
       # alt-backend in the 3-binary split (ADR-000954) — cmd/backend opens no
-      # mTLS listener at all now, cmd/datahub serves `alt.datahub.v1.
-      # DataHubService` and nothing else, and the old
+      # mTLS listener at all now, cmd/datahub serves
+      # `services.datahub.v1.DataHubService` and nothing else, and the old
       # `services.backend.v1.BackendInternalService` namespace was deleted
       # outright in Wave 2-C. This container's leaf is CN/SAN `search-indexer`, which is in
       # alt-data-hub's DATAHUB_ALLOWED_PEERS (compose/core.yaml).
@@ -95,7 +95,7 @@ services:
       - BACKEND_MTLS_SERVER_NAME=alt-data-hub
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
       # alt-backend's operator listener and carries no data plane at all —
-      # `alt.datahub.v1.DataHubService` is alt-data-hub's, over mTLS only.
+      # `services.datahub.v1.DataHubService` is alt-data-hub's, over mTLS only.
       # See the note in compose/core.yaml.
       - BACKEND_API_URL=http://alt-backend:9102
       - MEILISEARCH_HOST=${MEILISEARCH_HOST}
@@ -168,7 +168,7 @@ services:
     environment:
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
       # alt-backend's operator listener and carries no data plane at all —
-      # `alt.datahub.v1.DataHubService` is alt-data-hub's. See the note in
+      # `services.datahub.v1.DataHubService` is alt-data-hub's. See the note in
       # compose/core.yaml. The data plane has no plaintext listener
       # (ADR-000954), so MTLS_ENFORCE defaults
       # to on; flipping it off breaks tag persistence, it is not a fallback.
@@ -182,7 +182,7 @@ services:
       - PEER_IDENTITY_TRUSTED=${TAG_GENERATOR_VERIFY_CLIENT:-on}
       # Outbound mTLS to the data plane. The data plane moved out of
       # alt-backend in the 3-binary split (ADR-000954); cmd/datahub serves it
-      # as `alt.datahub.v1.DataHubService`.
+      # as `services.datahub.v1.DataHubService`.
       # driver/connect_client_factory.py derives SNI from this URL's host, so
       # `alt-data-hub` must be a SAN of the leaf pki-agent-alt-data-hub mints
       # (CERT_SANS=alt-data-hub,localhost) — it is. This container's own leaf

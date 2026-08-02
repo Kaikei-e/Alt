@@ -1,4 +1,4 @@
-// Package datahub_client dials alt.datahub.v1.DataHubService, the contract
+// Package datahub_client dials services.datahub.v1.DataHubService, the contract
 // alt-data-hub serves for alt_db (ADR-000954 D3).
 //
 // It is the in-family counterpart of what rag-orchestrator, pre-processor and
@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"alt/config"
-	"alt/gen/proto/alt/datahub/v1/datahubv1connect"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/tlsutil"
 
 	"connectrpc.com/connect"
