@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"alt/dataplane/connect/datahubapi"
 )
 
 func sourceHandler(name string) http.Handler {
@@ -87,5 +89,35 @@ func TestDataHubHandler_UnknownConnectMethodReachesTheConnectMux(t *testing.T) {
 	}
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404 from the connect mux", rec.Code)
+	}
+}
+
+// Transitional coverage for the ADR-000955 big-bang rename: consumers
+// deployed before the rename still call alt.datahub.v1.DataHubService, and
+// the pact broker keeps selecting their pacts until a renamed version of each
+// consumer is recorded as deployed. The shipped handler is therefore wrapped
+// in datahubapi.LegacyNamespaceAlias so those callers reach the same connect
+// mux instead of a 404 mid-rollout. Delete this test together with the alias
+// once every deployed DataHubService consumer publishes pacts on
+// services.datahub.v1.
+func TestDataHubHandler_LegacyNamespaceAliasServesRetiredDataHubName(t *testing.T) {
+	connectMux := http.NewServeMux()
+	connectMux.Handle("/services.datahub.v1.DataHubService/", sourceHandler("connect"))
+
+	h := datahubapi.LegacyNamespaceAlias(dataHubHandler(connectMux))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/alt.datahub.v1.DataHubService/CreateArticle", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("legacy datahub path: status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Source"); got != "connect" {
+		t.Errorf("legacy datahub path: X-Source = %q, want %q", got, "connect")
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/services.backend.v1.BackendInternalService/CreateArticle", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("retired backend namespace: status = %d, want %d through the alias", rec.Code, http.StatusNotFound)
 	}
 }
