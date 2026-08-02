@@ -36,6 +36,8 @@ import (
 	"github.com/pact-foundation/pact-go/v2/models"
 	"github.com/pact-foundation/pact-go/v2/provider"
 	"github.com/stretchr/testify/require"
+
+	"alt/dataplane/connect/datahubapi"
 )
 
 const (
@@ -538,7 +540,15 @@ func startStubServer(t *testing.T) int {
 	t.Cleanup(func() { _ = ln.Close() })
 
 	go func() {
-		_ = http.Serve(ln, mux)
+		// Wrapped in the same alias the shipped listener uses: consumers
+		// deployed before the ADR-000955 rename publish pacts against
+		// alt.datahub.v1, and the broker's deployed-version selector keeps
+		// those pacts in this matrix until each renamed consumer is recorded
+		// as deployed (alt-deploy run 30769818431). Serving the stub through
+		// the alias verifies the shim that actually ships, procedure list
+		// included, instead of enumerating routes the way the
+		// services.backend.v1 block below does. Remove with the alias.
+		_ = http.Serve(ln, datahubapi.LegacyNamespaceAlias(mux))
 	}()
 
 	return ln.Addr().(*net.TCPAddr).Port

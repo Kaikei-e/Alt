@@ -21,6 +21,7 @@ import (
 
 	"alt/config"
 	datahubconnect "alt/connect/v2/datahub"
+	"alt/dataplane/connect/datahubapi"
 	datahubdi "alt/di/datahub"
 	"alt/internal/bootstrap"
 	"alt/internal/bootstrap/dbboot"
@@ -94,6 +95,15 @@ func main() {
 	)
 
 	handler := dataHubHandler(datahubconnect.CreateServer(container, cfg, log))
+	// Transitional (ADR-000955): consumers deployed before the namespace
+	// rename still call the retired name. Loud by design (Rule 8) — the log
+	// is the evidence the alias is a deliberate wiring state, and its absence
+	// after removal is the evidence the transition ended.
+	handler = datahubapi.LegacyNamespaceAlias(handler)
+	log.WarnContext(ctx, "datahub_legacy_namespace_alias_enabled",
+		"legacy_prefix", datahubapi.LegacyNamespacePrefix,
+		"removal_condition", "every deployed DataHubService consumer publishes pacts on services.datahub.v1",
+	)
 	// The allowlist is re-checked per request, not only at handshake time: a
 	// TLS terminator moving in front of this process would otherwise silently
 	// retire the handshake-time check. See middleware.RequirePeerIdentity.
