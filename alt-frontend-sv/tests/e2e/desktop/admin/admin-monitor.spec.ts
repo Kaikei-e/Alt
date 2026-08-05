@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 
 /**
  * /admin/monitor — In-Alt system-health dashboard.

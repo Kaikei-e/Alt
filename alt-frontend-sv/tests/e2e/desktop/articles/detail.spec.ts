@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { fulfillJson } from "../../utils/mockHelpers";
 
 const FETCH_CONTENT =

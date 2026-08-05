@@ -4,7 +4,7 @@
  * Automated accessibility testing using axe-playwright.
  * Tests WCAG 2.1 AA compliance for desktop pages.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/pomFixtures";
 import { gotoDesktopRoute } from "../helpers/navigation";
 import {
 	checkAccessibility,
@@ -79,7 +79,14 @@ const a11yOptions = {
 test.describe("Desktop Pages Accessibility", () => {
 	test.beforeEach(async ({ page }) => {
 		// Setup common mocks
+		// The feed grid calls GetAllFeeds or GetUnreadFeeds depending on the
+		// "unread only" toggle, so both have to answer with the fixture — stubbing
+		// only one let the other fall through to the mock backend and the fixture
+		// article never rendered.
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, MOCK_FEEDS),
+		);
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
 			fulfillJson(route, MOCK_FEEDS),
 		);
 		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
@@ -347,7 +354,14 @@ test.describe("Desktop Pages Accessibility", () => {
 
 test.describe("Desktop Layout Accessibility", () => {
 	test.beforeEach(async ({ page }) => {
+		// The feed grid calls GetAllFeeds or GetUnreadFeeds depending on the
+		// "unread only" toggle, so both have to answer with the fixture — stubbing
+		// only one let the other fall through to the mock backend and the fixture
+		// article never rendered.
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, MOCK_FEEDS),
+		);
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
 			fulfillJson(route, MOCK_FEEDS),
 		);
 		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>

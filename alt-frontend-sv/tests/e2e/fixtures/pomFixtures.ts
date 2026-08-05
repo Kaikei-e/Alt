@@ -1,9 +1,12 @@
 /**
  * Custom Playwright fixtures for POM injection.
- * Specs import { test, expect } from this file instead of @playwright/test.
- * Each POM is lazily created only when destructured in the test.
+ *
+ * Every spec imports { test, expect } from this file instead of
+ * @playwright/test, which is also how the hygiene auto-fixtures in `baseTest`
+ * (third-party request blocking, uncaught-exception detection) reach every
+ * test. Each POM is lazily created only when destructured in the test.
  */
-import { test as base } from "@playwright/test";
+import { test as base } from "./baseTest";
 
 // Auth POMs
 import { LoginPage } from "../pages/auth/LoginPage";
@@ -182,4 +185,4 @@ export const test = base.extend<PomFixtures>({
 	},
 });
 
-export { expect } from "@playwright/test";
+export { expect } from "./baseTest";

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../fixtures/pomFixtures";
 
 /**
  * Regression gate for the SSR preload-warning fix.

@@ -4,7 +4,7 @@
  * Tests for the swipe feed interface using Page Object Model pattern.
  * This demonstrates best practices for maintainable E2E tests.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import {
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 	CONNECT_MARK_AS_READ_RESPONSE,
@@ -205,9 +205,7 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			// SwipeFeedScreen renders its "No more feeds" empty state when
 			// there is no active feed and no error.
 			await expect(page.getByText("No more feeds")).toBeVisible();
-			await expect(
-				page.getByRole("button", { name: "Refresh" }),
-			).toBeVisible();
+			await expect(page.getByRole("button", { name: "Refresh" })).toBeVisible();
 			await expect(swipePage.swipeCard).not.toBeVisible();
 		});
 	});

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 
 /**
  * GetConversation now returns both `citations` (direct, grounded by the LLM)

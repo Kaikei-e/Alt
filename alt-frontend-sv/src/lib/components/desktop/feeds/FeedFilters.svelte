@@ -95,10 +95,15 @@ function handleClearExclusion() {
 	</div>
 
 	<div class="filter-group">
+		<!-- The visible control carries no text of its own, so the name has to
+		     come from aria-label — without it axe reports a critical
+		     `select-name` violation and a screen reader announces only the
+		     current value. -->
 		<select
 			value={localSortBy}
 			onchange={handleSortChange}
 			class="filter-select"
+			aria-label="Sort feeds"
 		>
 			<option value="date_desc">Date (Newest)</option>
 			<option value="date_asc">Date (Oldest)</option>

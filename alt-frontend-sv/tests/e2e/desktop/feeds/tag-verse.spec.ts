@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 
 test.describe("Desktop Tag Verse", () => {
 	test("renders Tag Verse page title", async ({ page }) => {

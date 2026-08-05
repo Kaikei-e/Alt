@@ -271,8 +271,12 @@ function isParentActive(children?: { href: string }[]): boolean {
 							<ul class="ml-6 mt-1 space-y-1">
 								{#each item.children as child}
 									<li>
+										<!-- The active link is distinguished only by colour and
+										     weight, which a screen reader cannot perceive.
+										     aria-current is what announces "you are here". -->
 										<a
 											href={child.href}
+											aria-current={isActive(child.href) ? "page" : undefined}
 											class={cn(
 												"flex items-center gap-2 px-3 py-2 text-sm transition-colors duration-200",
 												isActive(child.href)
@@ -293,6 +297,7 @@ function isParentActive(children?: { href: string }[]): boolean {
 					<li>
 						<a
 							href={item.href}
+							aria-current={isActive(item.href) ? "page" : undefined}
 							class={cn(
 								"flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors duration-200",
 								isActive(item.href)

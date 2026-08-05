@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../fixtures/pomFixtures";
 
 /**
  * Integration E2E: Search operations against real Meilisearch.

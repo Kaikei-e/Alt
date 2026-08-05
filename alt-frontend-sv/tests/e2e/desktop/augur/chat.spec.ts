@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopAugurPage } from "../../pages/desktop/DesktopAugurPage";
 import { fulfillConnectStream } from "../../utils/mockHelpers";
 import {

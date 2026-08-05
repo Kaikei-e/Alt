@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 
 /**
  * The internal alt-db UUID identifies an article on the wire (refId) and in

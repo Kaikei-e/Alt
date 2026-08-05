@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopRecapPage } from "../../pages/desktop/DesktopRecapPage";
 import { fulfillJson } from "../../utils/mockHelpers";
 import {

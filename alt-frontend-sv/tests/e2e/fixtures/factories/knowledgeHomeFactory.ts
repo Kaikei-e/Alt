@@ -146,11 +146,31 @@ export const DIGEST_WITHOUT_AVAILABILITY = {
 	eveningPulseAvailable: false,
 };
 
+const LENS_TIMESTAMP = "2026-01-15T00:00:00.000Z";
+
+/**
+ * ListLenses response in the shape the client actually consumes.
+ *
+ * `LensData` is `{ lensId, name, description, createdAt, updatedAt }`. This
+ * factory used to emit `{ id, name, filterSummary }`, so every lens reached
+ * `LensSelector`'s `{#each lenses as lens (lens.lensId)}` with an `undefined`
+ * key. Two lenses meant two `undefined` keys, which is a hard
+ * `each_key_duplicate` runtime error rather than a warning — invisible to a
+ * spec that only asserted the first lens name was on screen.
+ */
 export function buildListLensesResponse(
-	lenses: { id: string; name: string; filterSummary: string }[] = [],
+	lenses: { lensId: string; name: string; description?: string }[] = [],
 	activeLensId = "",
 ) {
-	return { lenses, activeLensId };
+	return {
+		lenses: lenses.map((lens) => ({
+			description: "",
+			createdAt: LENS_TIMESTAMP,
+			updatedAt: LENS_TIMESTAMP,
+			...lens,
+		})),
+		activeLensId,
+	};
 }
 
 export function buildGetKnowledgeHomeResponse(overrides?: {

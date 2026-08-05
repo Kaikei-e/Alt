@@ -11,6 +11,8 @@ vi.mock("$lib/connect", () => ({
 	trackHomeAction: vi.fn(),
 }));
 
+import { Code, ConnectError } from "@connectrpc/connect";
+import { goto } from "$app/navigation";
 import { getKnowledgeHome, trackHomeAction } from "$lib/connect";
 import { useKnowledgeHome } from "./useKnowledgeHome.svelte";
 
@@ -32,6 +34,36 @@ describe("useKnowledgeHome", () => {
 
 		expect(home.items.map((item) => item.itemKey)).toEqual(["article:2"]);
 		expect(trackHomeAction).not.toHaveBeenCalled();
+	});
+
+	// The signed-out branch of fetchData/loadMore had no coverage at any level:
+	// no unit test, and an E2E cannot construct the ConnectError the client
+	// raises without also mocking the wire format. A session outliving a tab is
+	// routine, so this is the path a user hits most often after the happy one.
+	it("sends the user to login when the backend reports Unauthenticated", async () => {
+		vi.mocked(getKnowledgeHome).mockRejectedValue(
+			new ConnectError("session expired", Code.Unauthenticated),
+		);
+
+		const home = useKnowledgeHome();
+		await home.fetchData(true);
+
+		expect(goto).toHaveBeenCalledWith("/login");
+		// It must bail out rather than fall through to the generic error branch,
+		// or the page paints a "something went wrong" state during the navigation.
+		expect(home.error).toBeNull();
+	});
+
+	it("keeps a non-auth failure on the page instead of redirecting", async () => {
+		vi.mocked(getKnowledgeHome).mockRejectedValue(
+			new ConnectError("boom", Code.Internal),
+		);
+
+		const home = useKnowledgeHome();
+		await home.fetchData(true);
+
+		expect(goto).not.toHaveBeenCalled();
+		expect(home.pageState).toBe("hard_error");
 	});
 
 	it("starts with initial_loading pageState", () => {
