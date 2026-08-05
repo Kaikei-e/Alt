@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/pomFixtures";
 import { fulfillJson } from "../utils/mockHelpers";
 
 // E2E for the Knowledge Trail spine (Wave 2, read-only). Pull-only: the page

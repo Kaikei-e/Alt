@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/pomFixtures";
 
 /**
  * Phase 5 regression: deploys rotate /_app/immutable/* hashes. When an
@@ -16,6 +16,13 @@ import { expect, test } from "@playwright/test";
  * `window.location.reload` is non-configurable on Chromium, so stubbing
  * it cross-browser is not viable; observing the persisted counter is.
  */
+// The synthetic chunk-load rejection below IS the stimulus, so the uncaught
+// exception it produces is expected rather than a defect the base fixture
+// should fail on.
+test.use({
+	allowedPageErrors: [/Failed to fetch dynamically imported module/],
+});
+
 test.describe("client chunk-load failure self-recovers via reload", () => {
 	test("hooks.client bumps the reload counter on a chunk-load rejection", async ({
 		page,

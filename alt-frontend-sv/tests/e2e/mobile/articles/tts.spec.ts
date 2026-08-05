@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { CONNECT_RPC_PATHS } from "../../fixtures/mockData";
 import { fulfillConnectStream, fulfillJson } from "../../utils/mockHelpers";
 

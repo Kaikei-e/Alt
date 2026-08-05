@@ -58,6 +58,28 @@ function buildAxeOptions(options: A11yOptions): RunOptions {
 }
 
 /**
+ * Freeze CSS animations and transitions before auditing.
+ *
+ * The feed list fades its rows in on a stagger. axe samples computed styles at
+ * one instant, so auditing mid-animation read three different greys off three
+ * elements sharing one class (`.dispatch-dateline`: #9c9c9c, #a1a1a1, #b8b7b7)
+ * — colours that exist for a few frames and are in nobody's stylesheet. Whether
+ * such a run reported a contrast violation came down to timing. Pinning
+ * animations to their end state makes the audit a function of the CSS instead.
+ */
+async function settleAnimations(page: Page): Promise<void> {
+	await page.addStyleTag({
+		content: `*, *::before, *::after {
+			animation-duration: 0s !important;
+			animation-delay: 0s !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0s !important;
+			transition-delay: 0s !important;
+		}`,
+	});
+}
+
+/**
  * Check page accessibility using axe-core.
  * Throws an error if violations are found.
  */
@@ -65,6 +87,7 @@ export async function checkAccessibility(
 	page: Page,
 	options: A11yOptions = {},
 ): Promise<void> {
+	await settleAnimations(page);
 	const axePage = page as AxeCompatiblePage;
 	await injectAxe(axePage);
 
@@ -83,6 +106,7 @@ export async function getAccessibilityViolations(
 	page: Page,
 	options: A11yOptions = {},
 ): Promise<A11yViolation[]> {
+	await settleAnimations(page);
 	const axePage = page as AxeCompatiblePage;
 	await injectAxe(axePage);
 

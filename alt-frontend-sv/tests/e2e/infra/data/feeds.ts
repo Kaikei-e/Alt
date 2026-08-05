@@ -110,6 +110,18 @@ export const CONNECT_FEEDS_RESPONSE: ConnectFeedsResponse = {
 	hasMore: true,
 };
 
+/**
+ * Terminal page for the cursor-paginated feed endpoints: what the mock backend
+ * answers once a cursor has been supplied. `CONNECT_FEEDS_RESPONSE` advertises
+ * `hasMore: true`, so without a real second page the client's infinite scroll
+ * would request forever.
+ */
+export const CONNECT_FEEDS_LAST_PAGE_RESPONSE: ConnectFeedsResponse = {
+	data: [],
+	nextCursor: "",
+	hasMore: false,
+};
+
 export const CONNECT_READ_FEEDS_RESPONSE: ConnectFeedsResponse = {
 	data: [],
 	nextCursor: "",

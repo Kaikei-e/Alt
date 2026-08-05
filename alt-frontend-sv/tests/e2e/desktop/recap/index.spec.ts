@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopRecapPage } from "../../pages/desktop/DesktopRecapPage";
 import { fulfillJson, fulfillConnectError } from "../../utils/mockHelpers";
 import {
@@ -61,9 +61,7 @@ test.describe("Desktop Recap", () => {
 		await expect(
 			page.getByText("Major developments in technology this week."),
 		).toBeVisible();
-		await expect
-			.poll(() => recapPage.isGenreSelected("Technology"))
-			.toBe(true);
+		await expect.poll(() => recapPage.isGenreSelected("Technology")).toBe(true);
 	});
 
 	test("switches genre when clicking another genre", async ({ page }) => {
@@ -163,9 +161,7 @@ test.describe("Desktop Recap - Genre Selection", () => {
 
 		// Final selection should be AI/ML, and the previously selected
 		// Technology genre should no longer show as selected.
-		await expect
-			.poll(() => recapPage.isGenreSelected("AI/ML"))
-			.toBe(true);
+		await expect.poll(() => recapPage.isGenreSelected("AI/ML")).toBe(true);
 		await expect
 			.poll(() => recapPage.isGenreSelected("Technology"))
 			.toBe(false);

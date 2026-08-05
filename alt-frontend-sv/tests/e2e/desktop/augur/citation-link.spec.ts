@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 
 /**
  * Citation links inside an Augur conversation must route to the canonical
@@ -141,7 +141,9 @@ test.describe("Augur Citation Link Routing", () => {
 		await expect(legacyTitle).toBeVisible();
 		await expect(legacyTitle).toHaveJSProperty("tagName", "BUTTON");
 		await expect(
-			page.locator(".citation-rail a.item-title").filter({ hasText: /^legacy$/ }),
+			page
+				.locator(".citation-rail a.item-title")
+				.filter({ hasText: /^legacy$/ }),
 		).toHaveCount(0);
 	});
 });

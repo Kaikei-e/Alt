@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { gotoMobileRoute } from "../../helpers/navigation";
 import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {

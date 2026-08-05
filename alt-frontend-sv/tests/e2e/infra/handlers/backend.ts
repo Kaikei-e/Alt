@@ -9,6 +9,7 @@ import {
 	CONNECT_ARTICLE_CONTENT,
 	CONNECT_DETAILED_STATS,
 	CONNECT_EVENING_PULSE,
+	CONNECT_FEEDS_LAST_PAGE_RESPONSE,
 	CONNECT_FEEDS_RESPONSE,
 	CONNECT_READ_FEEDS_RESPONSE,
 	CONNECT_TAG_TRAIL_ARTICLES,
@@ -46,6 +47,28 @@ export const BACKEND_PORT = 4003;
  */
 function log(msg: string) {
 	console.log(`[Mock Backend] ${msg}`);
+}
+
+/**
+ * Read and JSON-parse a request body. Returns `{}` for an empty or unparseable
+ * body so callers can treat "no cursor sent" and "first page" identically.
+ */
+function readJsonBody(
+	req: http.IncomingMessage,
+): Promise<Record<string, unknown>> {
+	return new Promise((resolve) => {
+		const chunks: Buffer[] = [];
+		req.on("data", (chunk: Buffer) => chunks.push(chunk));
+		req.on("end", () => {
+			try {
+				const raw = Buffer.concat(chunks).toString("utf-8");
+				resolve(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
+			} catch {
+				resolve({});
+			}
+		});
+		req.on("error", () => resolve({}));
+	});
 }
 
 function encodeConnectEnvelope(message: unknown, flags = 0x00): Buffer {
@@ -196,19 +219,28 @@ export function createBackendServer(): http.Server {
 		// Connect-RPC v2 Endpoints
 		// =============================================================================
 
-		// GetAllFeeds
-		if (path === "/alt.feeds.v2.FeedService/GetAllFeeds") {
-			res.setHeader("Content-Type", "application/json");
-			res.writeHead(200);
-			res.end(JSON.stringify(CONNECT_FEEDS_RESPONSE));
-			return;
-		}
-
-		// GetUnreadFeeds
-		if (path === "/alt.feeds.v2.FeedService/GetUnreadFeeds") {
-			res.setHeader("Content-Type", "application/json");
-			res.writeHead(200);
-			res.end(JSON.stringify(CONNECT_FEEDS_RESPONSE));
+		// GetAllFeeds / GetUnreadFeeds — cursor-paginated.
+		//
+		// These MUST honour the incoming cursor. Serving the same page with
+		// `hasMore: true` on every call regardless of cursor made the feed grid's
+		// infinite scroll never terminate: it appended the same two feeds
+		// hundreds of times per test, which Svelte reported as a stream of
+		// `each_key_duplicate` runtime errors and which burned real CPU in every
+		// spec that rendered a feed list without stubbing the endpoint itself.
+		if (
+			path === "/alt.feeds.v2.FeedService/GetAllFeeds" ||
+			path === "/alt.feeds.v2.FeedService/GetUnreadFeeds"
+		) {
+			readJsonBody(req).then((body) => {
+				const cursor = typeof body.cursor === "string" ? body.cursor : "";
+				res.setHeader("Content-Type", "application/json");
+				res.writeHead(200);
+				res.end(
+					JSON.stringify(
+						cursor ? CONNECT_FEEDS_LAST_PAGE_RESPONSE : CONNECT_FEEDS_RESPONSE,
+					),
+				);
+			});
 			return;
 		}
 

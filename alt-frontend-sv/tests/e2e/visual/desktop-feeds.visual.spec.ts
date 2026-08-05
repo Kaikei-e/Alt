@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../fixtures/pomFixtures";
 import {
 	CONNECT_FEEDS_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,

@@ -33,6 +33,25 @@ const connectionRecovery = getContext<ConnectionRecoveryStore | undefined>(
 
 const PAGE_SIZE = 20;
 
+/**
+ * Connect-RPC serialises an absent cursor as the empty string — proto3 has no
+ * nullable `string` — so a last page arrives as `{ next_cursor: "", has_more:
+ * false }` and the old `next_cursor !== null` check stayed true forever. The
+ * infinite-scroll sentinel then re-requested page one indefinitely. Prefer the
+ * explicit `has_more` flag; fall back to cursor truthiness when it is absent.
+ */
+function hasMorePages(response: {
+	next_cursor: string | null;
+	has_more?: boolean;
+}): boolean {
+	return response.has_more ?? Boolean(response.next_cursor);
+}
+
+/** Normalise the empty-string cursor to `null` so it is never sent back. */
+function nextCursorOf(response: { next_cursor: string | null }): string | null {
+	return response.next_cursor ? response.next_cursor : null;
+}
+
 // State
 let feeds = $state<SanitizedFeed[]>([]);
 let cursor = $state<string | null>(null);
@@ -135,8 +154,8 @@ const loadInitial = async () => {
 			feeds = response.data;
 		}
 
-		cursor = response.next_cursor;
-		hasMore = response.next_cursor !== null;
+		cursor = nextCursorOf(response);
+		hasMore = hasMorePages(response);
 	} catch (err) {
 		if (err instanceof Error && err.message.includes("404")) {
 			feeds = [];
@@ -171,18 +190,13 @@ const loadMore = async () => {
 		);
 
 		if (response.data.length === 0) {
-			hasMore = response.next_cursor !== null;
-			if (response.next_cursor) {
-				cursor = response.next_cursor;
-			} else {
-				hasMore = false;
-				cursor = null;
-			}
+			cursor = nextCursorOf(response);
+			hasMore = cursor !== null && hasMorePages(response);
 		} else {
 			// Add new feeds
 			feeds = [...feeds, ...response.data];
-			cursor = response.next_cursor;
-			hasMore = response.next_cursor !== null;
+			cursor = nextCursorOf(response);
+			hasMore = hasMorePages(response);
 		}
 	} catch (err) {
 		if (err instanceof Error && err.message.includes("404")) {
@@ -300,8 +314,21 @@ const renderFeeds = $derived.by(() => {
 		allFeeds.push(...fetchedRenderFeeds);
 	}
 
-	// Filter out read feeds using normalizedUrl
-	return allFeeds.filter((feed) => !readFeeds.has(feed.normalizedUrl));
+	// Filter out read feeds, and collapse repeats.
+	//
+	// The each block below is keyed by `feed.link`, and a keyed block cannot
+	// hold two siblings under the same key — a duplicate is a hard runtime
+	// error, not a warning (https://svelte.dev/e/each_key_duplicate). Only
+	// `loadInitial` deduped against `initialFeeds`; `loadMore` appends blind, so
+	// the guard belongs on the merge rather than at each append site. Same
+	// reason `appendUniqueById` exists on /feeds/search.
+	const seenLinks = new Set<string>();
+	return allFeeds.filter((feed) => {
+		if (readFeeds.has(feed.normalizedUrl)) return false;
+		if (seenLinks.has(feed.link)) return false;
+		seenLinks.add(feed.link);
+		return true;
+	});
 });
 
 const hasVisibleContent = $derived(initialFeeds.length > 0 || feeds.length > 0);

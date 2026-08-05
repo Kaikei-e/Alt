@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import {
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 	CONNECT_MARK_AS_READ_RESPONSE,

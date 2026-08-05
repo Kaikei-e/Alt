@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopKnowledgeHomePage } from "../../pages/desktop/DesktopKnowledgeHomePage";
 import { fulfillJson } from "../../utils/mockHelpers";
 import {
@@ -351,8 +351,8 @@ test.describe("Knowledge Home - Lens Switching", () => {
 			featureFlags: FEATURE_FLAGS_WITH_LENS,
 		});
 		const lensesResponse = buildListLensesResponse([
-			{ id: "lens-1", name: "Rust", filterSummary: "tag: rust" },
-			{ id: "lens-2", name: "AI", filterSummary: "tag: ai" },
+			{ lensId: "lens-1", name: "Rust", description: "tag: rust" },
+			{ lensId: "lens-2", name: "AI", description: "tag: ai" },
 		]);
 
 		await Promise.all([
