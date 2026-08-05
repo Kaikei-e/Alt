@@ -189,7 +189,7 @@ services:
       # The data plane and /v1/internal/* are NOT here: they moved to
       # alt-data-hub's mTLS listener in the split (ADR-000954) and are served
       # as `services.datahub.v1.DataHubService`, and
-      # e2e/hurl/alt-backend/03-topology-internal-surface-absent.hurl asserts
+      # e2e/playwright/alt-backend/tests/topology.spec.ts asserts
       # their absence.
       - "127.0.0.1:9102:9102"
       # No :9443. cmd/backend opens no mTLS listener at all — that surface is

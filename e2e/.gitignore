@@ -8,3 +8,11 @@ fixtures/alt-data-hub/pki/
 fixtures/alt-backend/pki/
 fixtures/alt-harvester/pki/
 fixtures/rag-orchestrator/pki/
+
+# Playwright API suite: dependencies are installed into the workspace by
+# e2e/playwright/<svc>/run.sh (the staging network has no egress, so the
+# install happens in a separate container on the default bridge and lands
+# here via the bind mount).
+playwright/*/node_modules/
+playwright/*/playwright-report/
+playwright/*/test-results/
