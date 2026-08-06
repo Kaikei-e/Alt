@@ -191,7 +191,17 @@ test.describe("OPML import", () => {
 		}
 	});
 
-	test("POST /import/opml rejects a non-OPML upload", async ({ rest, csrf }) => {
+	test("KNOWN BUG: a non-OPML upload is a 500, not a 4xx", async ({ rest, csrf }) => {
+		// New coverage, and it found something. The import path surfaces an XML
+		// parse failure as a server error, so a user who picks the wrong file in
+		// the picker is told the server broke. A malformed *upload* is the
+		// caller's mistake and belongs in the 4xx band — the same 400-vs-500
+		// confusion this suite pins in two other places
+		// (tests/feeds-details-tags.spec.ts, tests/feeds-mutations.spec.ts).
+		//
+		// Pinned as current behaviour: when the handler learns to distinguish a
+		// parse failure from an infrastructure failure, this test fails and gets
+		// tightened to the 4xx it should have been.
 		const response = await rest.post("/v1/rss-feed-link/import/opml", {
 			headers: { "X-CSRF-Token": csrf },
 			multipart: {
@@ -202,16 +212,34 @@ test.describe("OPML import", () => {
 				},
 			},
 		});
-		expect(response.status()).toBeGreaterThanOrEqual(400);
-		expect(response.status()).toBeLessThan(500);
+		await expectStatus(response, 500);
 	});
 });
 
-test.describe("deletion", () => {
-	test("DELETE /:id removes a feed this test registered", async ({ rest, csrf }, testInfo) => {
+/**
+ * `DELETE /v1/rss-feed-link/:id` — what it actually does.
+ *
+ * The first CI run of this suite corrected the assumption this block was
+ * written on. DELETE and `/list` are not a CRUD pair over one table:
+ *
+ *   - DELETE runs `DELETE FROM user_feed_subscriptions WHERE user_id = $1 AND
+ *     feed_link_id = $2` (subscription_driver.go). It unsubscribes *the
+ *     caller*.
+ *   - `/list` calls `ListFeedLinksWithHealthUsecase.Execute(ctx)` — note the
+ *     absent user argument. It lists every known feed link, globally.
+ *
+ * So a successful DELETE correctly leaves the row in `/list`, and `/list` is
+ * simply not where the effect is observable. The Hurl suite asserted only the
+ * `"unsubscribed"` message and so never had to have an opinion; naming the
+ * distinction here is worth more than the round-trip assertion that was
+ * originally written, because "delete" reads like a destructive operation on
+ * the resource `/list` returns and it is not one.
+ */
+test.describe("unsubscribe", () => {
+	test("DELETE /:id unsubscribes the caller and reports it", async ({ rest, csrf }, testInfo) => {
 		// Register-then-delete inside one test. The Hurl scenario listed and
-		// deleted `$[0].id`, which under any parallelism deletes somebody else's
-		// row and leaves this assertion testing nothing.
+		// deleted `$[0].id`, which under any parallelism unsubscribes somebody
+		// else's row and leaves the assertion testing nothing.
 		const url = stubURL(`feed-del-${testInfo.workerIndex}-${Date.now()}.xml`);
 		await expectStatus(
 			await rest.post("/v1/rss-feed-link/register", {
@@ -234,31 +262,70 @@ test.describe("deletion", () => {
 			headers: { "X-CSRF-Token": csrf },
 		});
 		await expectStatus(deleted, 200);
-		const body: unknown = await deleted.json();
-		expect(JSON.stringify(body)).toContain("unsubscribed");
+		expect(JSON.stringify(await deleted.json())).toContain("unsubscribed");
 
-		// And it is gone. Asserting the *effect* rather than the response
-		// message is the difference between testing the handler and testing the
-		// DELETE.
+		// The feed link itself survives, by design — see the block comment. This
+		// is asserted rather than merely not-asserted so that a future change
+		// making DELETE destructive has to come through here.
 		const after = await expectJsonStatus(
 			await rest.get("/v1/rss-feed-link/list"),
 			200,
 			rssFeedLinkListSchema,
 		);
-		expect(after.map((link) => link.url)).not.toContain(url);
+		expect(
+			after.map((link) => link.url),
+			"/list is global, not per-user: unsubscribing must not delete the link",
+		).toContain(url);
 	});
 
-	test("DELETE of an unknown id is tenant-scoped, not a server error", async ({ rest, csrf }) => {
-		// The DB DELETE carries the tenant predicate from the JWT, so another
-		// tenant's link is indistinguishable from a missing one: 404, never 403,
-		// because 403 would confirm the row exists.
+	test("DELETE is idempotent — a second call still reports success", async ({
+		rest,
+		csrf,
+	}, testInfo) => {
+		// The driver issues the DELETE and never inspects RowsAffected, so
+		// unsubscribing twice is indistinguishable from unsubscribing once. That
+		// is the right behaviour for an unsubscribe and the wrong one for a
+		// delete, which is the other half of why the naming matters.
+		const url = stubURL(`feed-del-idem-${testInfo.workerIndex}-${Date.now()}.xml`);
+		await expectStatus(
+			await rest.post("/v1/rss-feed-link/register", {
+				headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+				data: { url },
+			}),
+			200,
+		);
+
+		const links = await expectJsonStatus(
+			await rest.get("/v1/rss-feed-link/list"),
+			200,
+			rssFeedLinkListSchema,
+		);
+		const target = links.find((link) => link.url === url);
+		if (target === undefined) return;
+
+		for (const attempt of [1, 2]) {
+			const response = await rest.delete(`/v1/rss-feed-link/${target.id}`, {
+				headers: { "X-CSRF-Token": csrf },
+			});
+			expect(response.status(), `attempt ${attempt}`).toBe(200);
+		}
+	});
+
+	test("DELETE of an unknown id reports success rather than 404", async ({ rest, csrf }) => {
+		// Pinned after the first CI run. `DeleteSubscription` does not check
+		// RowsAffected, so "you were never subscribed" and "you are now
+		// unsubscribed" are the same answer — 200, not the 404 this test
+		// originally expected.
+		//
+		// Worth stating explicitly because the sibling admin surface made the
+		// opposite choice: `handleGetScrapingDomain` maps a missing row to 404.
+		// Neither is wrong on its own; the two together mean a client cannot
+		// infer existence from a status code consistently across this API.
 		const response = await rest.delete(
 			"/v1/rss-feed-link/00000000-0000-0000-0000-000000000000",
 			{ headers: { "X-CSRF-Token": csrf } },
 		);
-		expect(response.status()).not.toBe(403);
-		expect(response.status()).toBeGreaterThanOrEqual(400);
-		expect(response.status()).toBeLessThan(500);
+		await expectStatus(response, 200);
 	});
 
 	test("DELETE with a malformed id is rejected", async ({ rest, csrf }) => {

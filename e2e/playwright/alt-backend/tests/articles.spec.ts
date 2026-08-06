@@ -1,7 +1,11 @@
 import { test, expect, stubURL } from "../src/fixtures.js";
 import { expectJsonStatus, expectStatus, expectStatusIn } from "../src/http.js";
 import { ZERO_UUID } from "../src/env.js";
-import { articleTagsSchema, articlesByTagSchema, cursorPageSchema } from "../src/schemas.js";
+import {
+	articleTagsSchema,
+	articlesByTagSchema,
+	fullCursorPageSchema,
+} from "../src/schemas.js";
 
 /**
  * Articles surface — the port of `30-articles.hurl`.
@@ -29,7 +33,7 @@ test.describe("GET /v1/articles/fetch/cursor", () => {
 		await expectJsonStatus(
 			await rest.get("/v1/articles/fetch/cursor?limit=10"),
 			200,
-			cursorPageSchema,
+			fullCursorPageSchema,
 		);
 	});
 
@@ -114,10 +118,19 @@ test.describe("GET /v1/articles/search", () => {
 		expect(response.status()).toBeLessThan(500);
 	});
 
-	test("rejects a limit over the validator ceiling", async ({ rest }) => {
+	test("ignores `limit` entirely — it is not a parameter of this endpoint", async ({ rest }) => {
+		// Pinned after the first CI run disproved the assumption behind this
+		// test. `handleSearchArticles` reads `q` and nothing else: there is no
+		// limit parsing, and ValidationMiddleware's `validateArticleSearch` does
+		// not apply PaginationValidator to it either. So `limit=1001` is neither
+		// honoured nor rejected — it is silently dropped.
+		//
+		// That is worth pinning rather than deleting: `/v1/articles/fetch/cursor`
+		// and the feed cursors all take a `limit`, so a caller reasonably assumes
+		// this one does too and gets a full result set instead of a page.
 		const response = await rest.get("/v1/articles/search?q=ai&limit=1001");
-		expect(response.status()).toBeGreaterThanOrEqual(400);
-		expect(response.status()).toBeLessThan(500);
+		await expectStatus(response, 200);
+		expect(Array.isArray(await response.json())).toBe(true);
 	});
 });
 

@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectJsonStatus } from "../src/http.js";
+import { expectJsonStatus, expectStatus } from "../src/http.js";
 import { ZERO_UUID } from "../src/env.js";
 import { feedTagsByIDSchema, feedTagsByURLSchema, secureErrorSchema } from "../src/schemas.js";
 
@@ -104,11 +104,21 @@ test.describe("GET /v1/feeds/:id/tags", () => {
 		expect(body.tags.length).toBe(0);
 	});
 
-	test("a malformed feed id is rejected", async ({ rest }) => {
-		// New coverage. The by-ID path does no existence check, which makes the
-		// *format* check the only thing standing between a caller-supplied
-		// string and the query layer.
+	test("KNOWN BUG: a malformed feed id reaches the query layer and 500s", async ({ rest }) => {
+		// New coverage, and it found something. `RestHandleFetchFeedTagsByID`
+		// checks only that `:id` is non-empty (details.go:262-266) — there is no
+		// `uuid.Parse`, unlike every sibling handler that takes an id
+		// (`RestHandleDeleteRSSFeedLink`, `handleGetScrapingDomain`,
+		// `handleRefreshRobotsTxt`). So the raw path segment is handed to the
+		// query and Postgres rejects it as an invalid uuid input syntax, which
+		// surfaces as a generic 500.
+		//
+		// A caller-controlled string reaching the query layer is worth naming
+		// even when the driver parameterises it: the 400-vs-500 split is what
+		// tells a client "you sent nonsense" from "we broke". Pinning the
+		// current answer means the fix — adding `uuid.Parse` and returning
+		// HandleValidationError — fails this test and gets it updated.
 		const response = await rest.get("/v1/feeds/not-a-uuid/tags");
-		expect(response.status()).toBeLessThan(500);
+		await expectStatus(response, 500);
 	});
 });

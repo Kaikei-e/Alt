@@ -131,12 +131,23 @@ test.describe("body limits and compression", () => {
 		expect(response.headers()["content-encoding"]).toBeUndefined();
 	});
 
-	test("/metrics is never gzip-framed", async ({ ops }) => {
-		// The gzip Skipper special-cases `/metrics`: Prometheus 3.x reports a
-		// gzip-framed scrape as `expected a valid start token, got \\x1f`. This
-		// broke once; it is cheap to keep it from breaking twice.
+	test("/metrics stays scrapeable when the client negotiates gzip", async ({ ops }) => {
+		// Corrected after the first CI run. This test previously asserted
+		// `content-encoding` was absent, on the assumption that the gzip
+		// Skipper's `/metrics` special case meant the endpoint is never
+		// compressed. It answered `gzip` — and correctly so: `/metrics` no
+		// longer sits behind Echo at all, it is promhttp on the ops listener,
+		// and promhttp does its own content negotiation. Prometheus handles that
+		// fine.
+		//
+		// What the Echo skipper actually prevents is *double* framing — Echo
+		// gzipping a body promhttp had already gzipped, which is what produced
+		// `expected a valid start token, got \\x1f`. The observable form of that
+		// bug is a body that does not decode to Prometheus text, so that is what
+		// this asserts. tests/topology.spec.ts covers the other half by pinning
+		// that :9000 no longer serves /metrics at all.
 		const response = await ops.get("/metrics", { headers: { "Accept-Encoding": "gzip" } });
 		await expectStatus(response, 200);
-		expect(response.headers()["content-encoding"]).toBeUndefined();
+		expect(await response.text()).toContain("# HELP");
 	});
 });

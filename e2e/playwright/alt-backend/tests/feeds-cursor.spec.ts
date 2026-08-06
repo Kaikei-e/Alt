@@ -1,65 +1,119 @@
 import { test, expect } from "../src/fixtures.js";
 import { expectJsonStatus, expectStatus } from "../src/http.js";
-import { cursorPageSchema, unreadCountSchema } from "../src/schemas.js";
+import {
+	dataOnlyCursorPageSchema,
+	fullCursorPageSchema,
+	unreadCountSchema,
+} from "../src/schemas.js";
 
 /**
  * Cursor-paginated reads — the port of `21-feeds-fetch-cursor.hurl`.
  *
- * All three cursor endpoints share the `{data, has_more, next_cursor}`
- * envelope. `limit` is clamped to [1, 100] in the handler; above 1000 it is
- * rejected outright by ValidationMiddleware's PaginationValidator, which is a
- * different layer with a different answer — both are pinned below.
+ * The Hurl file's opening claim was that "all three cursor endpoints share the
+ * same response envelope: {data, has_more, next_cursor}". They do not, and the
+ * first CI run of this suite is what established it. The file asserted
+ * `jsonpath "$.data" isCollection` + `has_more isBoolean` on the *unread*
+ * endpoint only, and `jsonpath "$" exists` — true of any JSON whatsoever — on
+ * the other two, so the divergence was invisible.
  *
- * The Hurl file asserted `jsonpath "$" exists` on two of the three endpoints,
- * which passes for any JSON at all including an error envelope. Here every
- * response goes through `cursorPageSchema`, whose refinement carries the one
- * invariant that has to hold on every page: a page claiming `has_more` must
- * hand back a usable `next_cursor`.
+ * Two axes diverge, and each is pinned below rather than smoothed over:
+ *
+ * 1. **Envelope.** `/fetch/cursor` returns the typed
+ *    `ArticlesWithCursorResponse` (`{data, has_more, next_cursor?}`).
+ *    `/fetch/viewed/cursor` and `/fetch/favorites/cursor` build an untyped map
+ *    with `data` and a conditional `next_cursor`, and no `has_more`.
+ *
+ * 2. **Limit handling.** ValidationMiddleware's `validateRoute` matches
+ *    `strings.Contains(path, "/feeds/fetch/cursor")`, which
+ *    `/v1/feeds/fetch/viewed/cursor` does not contain. So only the unread
+ *    endpoint gets PaginationValidator's ceiling (reject above 1000); the
+ *    other two fall through to their handler, which silently clamps anything
+ *    over 100. Same-looking query, two different contracts.
+ *
+ * These are pins on current behaviour, not endorsements. Unifying the three is
+ * a product/API decision; when it happens these tests fail and say so.
  */
 
-const CURSOR_ENDPOINTS = [
+const ALL_CURSOR_ENDPOINTS = [
 	{ name: "unread", path: "/v1/feeds/fetch/cursor" },
 	{ name: "viewed", path: "/v1/feeds/fetch/viewed/cursor" },
 	{ name: "favorites", path: "/v1/feeds/fetch/favorites/cursor" },
 ] as const;
 
-test.describe("cursor envelope", () => {
-	for (const endpoint of CURSOR_ENDPOINTS) {
-		test(`${endpoint.name} returns a well-formed page`, async ({ rest }) => {
+/** The two that share the untyped, `has_more`-less envelope. */
+const DATA_ONLY_ENDPOINTS = ALL_CURSOR_ENDPOINTS.filter((e) => e.name !== "unread");
+
+test.describe("envelope", () => {
+	test("unread returns the typed {data, has_more, next_cursor?} envelope", async ({ rest }) => {
+		await expectJsonStatus(
+			await rest.get("/v1/feeds/fetch/cursor?limit=20"),
+			200,
+			fullCursorPageSchema,
+		);
+	});
+
+	for (const endpoint of DATA_ONLY_ENDPOINTS) {
+		test(`${endpoint.name} returns {data, next_cursor?} — no has_more`, async ({ rest }) => {
 			await expectJsonStatus(
 				await rest.get(`${endpoint.path}?limit=20`),
 				200,
-				cursorPageSchema,
+				dataOnlyCursorPageSchema,
 			);
-		});
-
-		test(`${endpoint.name} rejects a non-RFC3339 cursor`, async ({ rest }) => {
-			// New coverage for two of the three: the Hurl file only probed the
-			// unread endpoint's malformed-cursor branch, so the other two could
-			// have been parsing cursors with a different (or no) validator.
-			await expectStatus(await rest.get(`${endpoint.path}?cursor=not-rfc3339`), 400);
-		});
-
-		test(`${endpoint.name} rejects limit=0`, async ({ rest }) => {
-			// PaginationValidator: "Limit must be a positive integer".
-			await expectStatus(await rest.get(`${endpoint.path}?limit=0`), 400);
-		});
-
-		test(`${endpoint.name} rejects a limit over 1000`, async ({ rest }) => {
-			await expectStatus(await rest.get(`${endpoint.path}?limit=1001`), 400);
 		});
 	}
 });
 
-test.describe("cursor pagination behaviour", () => {
-	test("an oversized but legal limit is clamped, not rejected", async ({ rest }) => {
+test.describe("input validation", () => {
+	for (const endpoint of ALL_CURSOR_ENDPOINTS) {
+		test(`${endpoint.name} rejects a non-RFC3339 cursor`, async ({ rest }) => {
+			// The one rule all three do agree on, though they reach it by
+			// different routes: the unread endpoint via PaginationValidator, the
+			// other two via their own `time.Parse(time.RFC3339, ...)` check.
+			await expectStatus(await rest.get(`${endpoint.path}?cursor=not-rfc3339`), 400);
+		});
+
+		test(`${endpoint.name} rejects limit=0`, async ({ rest }) => {
+			await expectStatus(await rest.get(`${endpoint.path}?limit=0`), 400);
+		});
+
+		test(`${endpoint.name} rejects a non-numeric limit`, async ({ rest }) => {
+			await expectStatus(await rest.get(`${endpoint.path}?limit=abc`), 400);
+		});
+	}
+
+	test("unread rejects a limit above the validator ceiling", async ({ rest }) => {
+		// PaginationValidator: "Limit too large (maximum 1000)". This is the
+		// only one of the three that ValidationMiddleware sees.
+		await expectStatus(await rest.get("/v1/feeds/fetch/cursor?limit=1001"), 400);
+	});
+
+	for (const endpoint of DATA_ONLY_ENDPOINTS) {
+		test(`${endpoint.name} clamps a limit above 1000 instead of rejecting it`, async ({
+			rest,
+		}) => {
+			// The mirror image of the assertion above, and the reason this suite
+			// states both: ValidationMiddleware never matches this path, so the
+			// handler's own `else if parsedLimit > 100 { limit = 100 }` branch is
+			// the only rule in play and the request succeeds.
+			const page = await expectJsonStatus(
+				await rest.get(`${endpoint.path}?limit=1001`),
+				200,
+				dataOnlyCursorPageSchema,
+			);
+			expect(page.data?.length ?? 0).toBeLessThanOrEqual(100);
+		});
+	}
+});
+
+test.describe("pagination behaviour", () => {
+	test("an oversized but legal limit is clamped on the unread endpoint", async ({ rest }) => {
 		// 1000 passes the validator (its ceiling) and is then clamped to 100 by
 		// the handler. Two layers, two different numbers — a refactor that
 		// collapsed them into one would break exactly here.
 		const page = await expectJsonStatus(
 			await rest.get("/v1/feeds/fetch/cursor?limit=1000"),
 			200,
-			cursorPageSchema,
+			fullCursorPageSchema,
 		);
 		expect(page.data?.length ?? 0).toBeLessThanOrEqual(100);
 	});
@@ -74,7 +128,7 @@ test.describe("cursor pagination behaviour", () => {
 		const first = await expectJsonStatus(
 			await rest.get("/v1/feeds/fetch/cursor?limit=1"),
 			200,
-			cursorPageSchema,
+			fullCursorPageSchema,
 		);
 
 		test.skip(!first.has_more, "single page of results — nothing to advance to");
@@ -85,7 +139,7 @@ test.describe("cursor pagination behaviour", () => {
 		const second = await expectJsonStatus(
 			await rest.get(`/v1/feeds/fetch/cursor?limit=1&cursor=${encodeURIComponent(cursor ?? "")}`),
 			200,
-			cursorPageSchema,
+			fullCursorPageSchema,
 		);
 
 		// The second page must not repeat the first. Comparing serialised items

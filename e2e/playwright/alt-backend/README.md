@@ -124,7 +124,7 @@ a dedicated address, in `tests/rate-limit.spec.ts`.
 
 ## Coverage
 
-25 spec files, ~207 tests. Everything the Hurl suite asserted is preserved,
+25 spec files, ~211 tests. Everything the Hurl suite asserted is preserved,
 including its recorded known bugs. New surfaces:
 
 | Area | What was missing |
@@ -156,13 +156,34 @@ These assert **current** behaviour, not desired behaviour, and each carries the
 reasoning inline. When the underlying issue is fixed, the test fails — which is
 the intended signal.
 
+### Carried over from the Hurl suite
+
 | Where | What |
 |---|---|
-| `tests/augur-rag.spec.ts` | `GET /v1/rag/context` and `POST /sse/v1/rag/answer` are registered without `RequireAuth()`, unlike every other `/v1` group |
 | `tests/admin-scraping-domains.spec.ts` | GET and PATCH disagree on an unknown id (404 vs 500) because the driver returns a bare `errors.New` |
 | `tests/morning-letter.spec.ts` | deps-stub has no `/v1/morning/updates` route; the catch-all's object fails to decode into a slice |
 | `tests/augur-rag.spec.ts` | deps-stub has no `/v1/rag/retrieve` route; same drift |
 | `tests/admin-dashboard.spec.ts` | deps-stub has no `/v1/dashboard/recap_jobs` route |
+
+### Found by this suite
+
+The first two came out of reading the code during the port; the rest came out
+of the suite's first CI run, where an assertion written from the Hurl file's
+own description of the API turned out to disagree with the API.
+
+| Where | What |
+|---|---|
+| `tests/augur-rag.spec.ts` | `GET /v1/rag/context` and `POST /sse/v1/rag/answer` are registered without `RequireAuth()`, unlike every other `/v1` group |
+| `tests/connect-surface.spec.ts` | an unknown procedure on a known service 404s from Go's `http.NotFound`, so connect-es sees a transport error rather than a `ConnectError` code |
+| `tests/feeds-cursor.spec.ts` | the three cursor endpoints do not share an envelope — `/fetch/cursor` has `has_more`, `/viewed/cursor` and `/favorites/cursor` do not |
+| `tests/feeds-cursor.spec.ts` | ValidationMiddleware matches `/feeds/fetch/cursor` by substring, so the viewed and favorites variants get no pagination validation and silently clamp instead of rejecting |
+| `tests/rss-feed-link.spec.ts` | `DELETE /:id` unsubscribes the caller (`user_feed_subscriptions`) while `/list` is global — they read as a CRUD pair and are not one |
+| `tests/rss-feed-link.spec.ts` | `DELETE` of an unknown id answers 200, while the admin surface answers 404 for the same shape of miss |
+| `tests/feeds-details-tags.spec.ts` | `GET /v1/feeds/:id/tags` never parses `:id`, so a malformed one reaches the query and 500s |
+| `tests/feeds-mutations.spec.ts` | `POST /v1/feeds/read` runs no validator, so an empty `feed_url` 500s instead of 400 |
+| `tests/rss-feed-link.spec.ts` | a non-OPML upload to `/import/opml` 500s instead of 4xx |
+| `tests/articles.spec.ts` | `/v1/articles/search` silently ignores `limit`, unlike every neighbouring paginated read |
+| `tests/csrf.spec.ts` | the 403 body is not parseable as a single JSON document — something writes past the custom `HTTPErrorHandler`'s `c.JSON` |
 
 ## Fast CI
 

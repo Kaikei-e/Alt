@@ -59,13 +59,25 @@ test.describe("Connect-RPC service registration", () => {
 });
 
 test.describe("Connect-RPC error envelope", () => {
-	test("an unmounted procedure answers a Connect-shaped 404", async ({ connect }) => {
+	test("an unmounted procedure 404s from the Go mux, not the Connect layer", async ({
+		connect,
+	}) => {
+		// Pinned after the first CI run: the body is Go's plain-text
+		// `404 page not found`, not a Connect error envelope. connect-go's
+		// generated `NewFeedServiceHandler` routes only the procedures it knows
+		// and hands anything else to `http.NotFound`, so an unknown *procedure*
+		// on a known *service* never reaches the Connect codec at all.
+		//
+		// This matters to the frontend: connect-es surfaces this as a transport
+		// error rather than a `ConnectError` with a numeric code, so a
+		// client-side handler that switches on `ConnectError.code` will not see
+		// `unimplemented` here. Asserting the plain text keeps that fact
+		// visible instead of implying an envelope that does not exist.
 		const response = await connect.post("/alt.feeds.v2.FeedService/NoSuchProcedure", {
 			data: {},
 		});
 		await expectStatus(response, 404);
-		const body = await expectJson(response, connectErrorSchema);
-		expect(body.code).toBe("unimplemented");
+		expect(await response.text()).toContain("404 page not found");
 	});
 
 	test("an unauthenticated call answers a Connect-shaped 401", async ({ connectAnon }) => {

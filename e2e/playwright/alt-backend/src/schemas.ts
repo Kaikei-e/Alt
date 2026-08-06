@@ -73,16 +73,26 @@ export const feedItemSchema = z
 export const feedListSchema = z.array(feedItemSchema);
 
 /**
- * The shared cursor envelope: `{data, has_more, next_cursor?}`.
+ * The cursor envelope — in its two incompatible forms.
  *
- * `next_cursor` is `*string` with `omitempty` in Go, so it is absent — not
- * null — when the page is the last one. The Hurl suite asserted it always
- * "exists", which only held because the seeded fixture happened to produce a
- * non-final page. The invariant that actually holds for every page is the
- * refinement below: a page that claims `has_more` must hand back a cursor to
- * get the next one.
+ * There is no single shared envelope, which is what the first CI run of this
+ * suite established. `/v1/feeds/fetch/cursor` builds an
+ * `ArticlesWithCursorResponse` (`{data, has_more, next_cursor?}`), while
+ * `/fetch/viewed/cursor` and `/fetch/favorites/cursor` assemble a bare
+ * `map[string]interface{}` with `data` and — only when the page is non-empty —
+ * `next_cursor`. They have **no `has_more` field at all**
+ * (rest_feeds/fetch.go: RestHandleFetchReadFeedsCursor /
+ * RestHandleFetchFavoriteFeedsCursor).
+ *
+ * The Hurl suite could not see this: it asserted `jsonpath "$" exists` on the
+ * viewed and favorites endpoints, which is true of `{"data":[]}` and of
+ * everything else.
+ *
+ * `next_cursor` is `*string` with `omitempty` on the typed side and a
+ * conditionally-set map key on the untyped side, so in both forms it is
+ * *absent*, never null, on a final page.
  */
-export const cursorPageSchema = z
+export const fullCursorPageSchema = z
 	.object({
 		data: z.array(z.unknown()).nullable(),
 		has_more: z.boolean(),
@@ -93,6 +103,20 @@ export const cursorPageSchema = z
 		(page) => !page.has_more || (typeof page.next_cursor === "string" && page.next_cursor !== ""),
 		{ message: "has_more is true but next_cursor is missing or empty" },
 	);
+
+/**
+ * The viewed / favorites form. `has_more` is asserted absent rather than
+ * merely optional: making it optional would let the two shapes silently
+ * converge or diverge without the suite noticing, which is the whole thing
+ * this pair of schemas exists to prevent.
+ */
+export const dataOnlyCursorPageSchema = z
+	.object({
+		data: z.array(z.unknown()).nullable(),
+		next_cursor: z.string().nullable().optional(),
+		has_more: z.undefined(),
+	})
+	.passthrough();
 
 export const unreadCountSchema = z
 	.object({ count: z.number().int().nonnegative() })
