@@ -292,8 +292,16 @@ test.describe("read back", () => {
 			expect(event?.userId).toBe(principal.userId);
 			expect(event?.dedupeKey).toBe(`${principal.token}-list`);
 			expect(event?.aggregateId).toBe(`article:${articleId}`);
+			// Semantic equality, not byte identity. `knowledge_events.payload` is
+			// a `jsonb` column, and Postgres normalises on the way in — key
+			// separators lose their spacing, duplicate keys collapse, key order
+			// is not preserved. So `{"title":"x"}` comes back as `{"title": "x"}`
+			// and a `toBe(encodePayload(payload))` can never hold. Asserting the
+			// decoded value is the honest contract: what a projector reads out
+			// must be what the producer put in. Pinning the bytes would require
+			// the column to be `bytea`, which would give up every jsonb query the
+			// projections depend on.
 			expect(decodePayload(event?.payload ?? "")).toEqual(payload);
-			expect(event?.payload).toBe(encodePayload(payload));
 		},
 	);
 

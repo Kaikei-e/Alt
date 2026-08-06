@@ -171,7 +171,12 @@ jobs:
           name: blob-${{ matrix.suite }}
           path: e2e/reports/${{ matrix.suite }}/blob
           retention-days: 3
-          if-no-files-found: ignore
+          # `warn`, not `ignore`. A suite that ran and produced no blob is a
+          # broken report pipeline, and `ignore` is what let exactly that stay
+          # invisible: every suite wrote to a path the upload did not look at,
+          # nine of them green, and the only symptom was a merge job cheerfully
+          # reporting "no blob reports to merge".
+          if-no-files-found: warn
 
       - name: Wipe throwaway mTLS fixtures
         # run.sh's own trap skips this under KEEP_STACK=1 (the certificates are
@@ -270,7 +275,12 @@ jobs:
           name: blob-${{ matrix.suite }}-${{ matrix.index }}
           path: e2e/reports/${{ matrix.suite }}-shard-${{ matrix.index }}/blob
           retention-days: 3
-          if-no-files-found: ignore
+          # `warn`, not `ignore`. A suite that ran and produced no blob is a
+          # broken report pipeline, and `ignore` is what let exactly that stay
+          # invisible: every suite wrote to a path the upload did not look at,
+          # nine of them green, and the only symptom was a merge job cheerfully
+          # reporting "no blob reports to merge".
+          if-no-files-found: warn
 
       - name: Wipe throwaway mTLS fixtures
         if: always()

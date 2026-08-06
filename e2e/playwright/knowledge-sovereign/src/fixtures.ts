@@ -163,7 +163,16 @@ export function appendEventBody(input: AppendEventInput): Record<string, unknown
 		dedupeKey: input.dedupeKey,
 	};
 	if (input.userId !== undefined) event["userId"] = input.userId;
-	if (input.payload !== undefined) event["payload"] = encodePayload(input.payload);
+	// `payload` is always sent, defaulting to an empty object.
+	//
+	// `knowledge_events.payload` is NOT NULL, so omitting the field made the
+	// insert fail with a Postgres constraint violation surfaced as a Connect
+	// `internal` — and because `appendEvent` is a *precondition* for most of
+	// this suite, one missing default failed seventeen tests in places far from
+	// the cause. A seeding helper must produce a valid event; a test that wants
+	// to know what the service does with a malformed one should say so at the
+	// call site.
+	event["payload"] = encodePayload(input.payload ?? {});
 	return { event };
 }
 

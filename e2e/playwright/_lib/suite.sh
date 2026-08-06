@@ -47,8 +47,17 @@
 
 SUITE_NAME=""
 SUITE_DIR=""
-REPORT_DIR=""
 SUITE_PKI_DIR=""
+# REPORT_DIR is deliberately NOT initialised here. It is the one variable in
+# this file a *caller* is allowed to set — CI exports it so the upload step
+# knows where the blob landed without re-deriving suite.sh's naming — and
+# `REPORT_DIR=""` at source time silently overwrote it, because run.sh sources
+# this file before anything else runs. `suite_init`'s `${REPORT_DIR:-...}`
+# then always took the fallback, every suite wrote to
+# `e2e/reports/<suite>-<RUN_ID>`, and the workflow uploaded
+# `e2e/reports/<suite>/blob`, which never existed. Nine green suites uploaded
+# nothing and the merge job reported "no blob reports to merge" as though they
+# had all failed to start.
 # `-e NAME=value` pairs forwarded into the test container.
 declare -a SUITE_ENV_ARGS=()
 

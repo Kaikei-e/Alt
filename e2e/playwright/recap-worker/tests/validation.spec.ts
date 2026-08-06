@@ -88,9 +88,17 @@ test.describe("trigger validation", () => {
 		// distinction is the contract: a client retrying on 400 and giving up on
 		// 422 needs the two to mean "your bytes were broken" and "your bytes
 		// were fine but your schema was not".
+		// A Buffer, not a string. Playwright's APIRequestContext treats a string
+		// body under an `application/json` content type as a value to *encode*:
+		// if the string is not itself JSON-parsable it calls `JSON.stringify` on
+		// it, so `"{ this is not json"` reaches the server as the valid JSON
+		// document `"{ this is not json"` — a string where a struct was
+		// expected. axum then answers 422 (JsonDataError) instead of 400
+		// (JsonSyntaxError), and this test could never reach the branch it names.
+		// A Buffer is sent verbatim.
 		const response = await api.post("/v1/generate/recaps/7days", {
 			headers: { "Content-Type": "application/json" },
-			data: "{ this is not json",
+			data: Buffer.from("{ this is not json", "utf8"),
 		});
 		await expectStatus(response, 400);
 	});

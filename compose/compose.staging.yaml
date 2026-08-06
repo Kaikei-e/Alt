@@ -549,6 +549,13 @@ services:
       # Point the Ollama driver at the in-network stub.
       - LLM_SERVICE_URL=http://news-creator-ollama-stub:11435
       - LLM_MODEL=gemma3:4b-it-qat
+      # The RAG usecases do not read LLM_MODEL. `expand_query_usecase` and
+      # `plan_query_usecase` both take `config.rag_query_model`, which
+      # `model_routing_config.py` fills from MODEL_RAG_QUERY_NAME with a
+      # hardcoded `gemma4-e4b-12k` default — a model the ollama stub does not
+      # serve. MODEL_ROUTING_ENABLED=false does not gate that field, so without
+      # this line the two RAG endpoints report a model the slice never ran.
+      - MODEL_RAG_QUERY_NAME=gemma3:4b-it-qat
       # Keep lifespan startup cheap: skip warm-up (would hit /api/generate
       # which the Phase-1 stub doesn't implement) and disable model
       # routing so a single fixed model name is used everywhere.
