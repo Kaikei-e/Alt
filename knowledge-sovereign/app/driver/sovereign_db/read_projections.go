@@ -101,7 +101,7 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
 		khi.freshness_at, khi.published_at, khi.last_interacted_at, khi.generated_at, khi.updated_at,
 		khi.dismissed_at, khi.summary_state, COALESCE(khi.url, '') AS url,
-		khi.supersede_state, khi.superseded_at, khi.previous_ref_json
+		khi.supersede_state, khi.superseded_at, khi.previous_ref_json, khi.projection_version
 		FROM knowledge_home_items khi
 		WHERE khi.user_id = $1
 		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
@@ -175,7 +175,7 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 			&item.Title, &item.SummaryExcerpt, &tagsJSON, &whyJSON, &item.Score,
 			&item.FreshnessAt, &item.PublishedAt, &item.LastInteractedAt, &item.GeneratedAt, &item.UpdatedAt,
 			&item.DismissedAt, &item.SummaryState, &item.URL,
-			&supersedeState, &item.SupersededAt, &previousRefJSON,
+			&supersedeState, &item.SupersededAt, &previousRefJSON, &item.ProjectionVersion,
 		); err != nil {
 			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems scan: %w", err)
 		}

@@ -1,7 +1,7 @@
 import { test as base } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
 import { uuid } from "../../_shared/ids.js";
-import { expectJsonStatus } from "../../_shared/http.js";
+import { expectJsonStatus, expectStatus } from "../../_shared/http.js";
 import { env, procedure } from "./env.js";
 import { appendEventSchema } from "./schemas.js";
 
@@ -193,4 +193,47 @@ export async function appendEvent(
 	});
 	const body = await expectJsonStatus(response, 200, appendEventSchema);
 	return body.eventSeq;
+}
+
+/** Decodes a base64 `bytes` payload back into the value that produced it. */
+export function decodePayload(encoded: string): unknown {
+	return JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+}
+
+export type AppendRecallSignalInput = {
+	readonly userId: string;
+	readonly itemKey: string;
+	readonly occurredAt: string;
+	readonly signalId?: string;
+	readonly signalType?: string;
+	readonly signalStrength?: number;
+	readonly payload?: unknown;
+};
+
+/**
+ * Appends one recall signal, asserting it landed.
+ *
+ * Same contract as `appendEvent`, and it exists for the same reason — with a
+ * sharper example behind it. Two tests here used to POST this procedure and
+ * never look at the status. Both appends were failing with a 500, and both
+ * tests still passed: one asserted the subsequent read was empty, which it
+ * was, for entirely the wrong reason. A seeding call that cannot fail loudly
+ * turns into a test that cannot fail at all.
+ */
+export async function appendRecallSignal(
+	rpc: APIRequestContext,
+	input: AppendRecallSignalInput,
+): Promise<void> {
+	const signal: Record<string, unknown> = {
+		signalId: input.signalId ?? uuid(),
+		userId: input.userId,
+		itemKey: input.itemKey,
+		signalType: input.signalType ?? "view",
+		signalStrength: input.signalStrength ?? 1.0,
+		occurredAt: input.occurredAt,
+	};
+	if (input.payload !== undefined) signal["payload"] = encodePayload(input.payload);
+
+	const response = await rpc.post(procedure("AppendRecallSignal"), { data: { signal } });
+	await expectStatus(response, 200);
 }

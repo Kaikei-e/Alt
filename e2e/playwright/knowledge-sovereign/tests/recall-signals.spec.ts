@@ -3,7 +3,7 @@ import { expectJsonStatus } from "../../_shared/http.js";
 import { expectUnaryError } from "../../_shared/connect.js";
 import { uuid } from "../../_shared/ids.js";
 import { procedure } from "../src/env.js";
-import { encodePayload, instant } from "../src/fixtures.js";
+import { appendRecallSignal, decodePayload, encodePayload, instant } from "../src/fixtures.js";
 import { listRecallSignalsSchema } from "../src/schemas.js";
 
 /**
@@ -63,7 +63,12 @@ test.describe("recall signals", () => {
 			// The payload column is opaque to the service and is only ever read
 			// back by the scorer, so a truncation or an encoding change here is
 			// silent everywhere except a round trip.
-			expect(signal?.payload).toBe(encodePayload(payload));
+			//
+			// Compared decoded, not byte-for-byte: `recall_signals.payload` is
+			// `jsonb`, so Postgres re-serialises it with its own separators and
+			// key order and the base64 cannot match what we sent. What the
+			// scorer needs is the value, and that is what this asserts.
+			expect(decodePayload(signal?.payload ?? "")).toEqual(payload);
 		},
 	);
 
@@ -102,17 +107,10 @@ test.describe("recall signals", () => {
 			// listener — so it is worth an explicit negative rather than an
 			// inference from the positive test above.
 			const { occurredAt } = instant();
-			await rpc.post(procedure("AppendRecallSignal"), {
-				data: {
-					signal: {
-						signalId: uuid(),
-						userId: principal.userId,
-						itemKey: `article:${uuid()}`,
-						signalType: "view",
-						signalStrength: 1.0,
-						occurredAt,
-					},
-				},
+			await appendRecallSignal(rpc, {
+				userId: principal.userId,
+				itemKey: `article:${uuid()}`,
+				occurredAt,
 			});
 
 			const response = await rpc.post(procedure("ListRecallSignals"), {
@@ -139,17 +137,11 @@ test.describe("recall signals", () => {
 				[recentKey, instant().occurredAt],
 				[staleKey, twoDaysAgo.occurredAt],
 			] as const) {
-				await rpc.post(procedure("AppendRecallSignal"), {
-					data: {
-						signal: {
-							signalId: uuid(),
-							userId: principal.userId,
-							itemKey,
-							signalType: "view",
-							signalStrength: 0.5,
-							occurredAt: at,
-						},
-					},
+				await appendRecallSignal(rpc, {
+					userId: principal.userId,
+					itemKey,
+					signalStrength: 0.5,
+					occurredAt: at,
 				});
 			}
 
