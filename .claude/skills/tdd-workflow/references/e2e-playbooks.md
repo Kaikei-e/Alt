@@ -4,7 +4,11 @@ Where the outermost tests live and how to write them. Load the section matching 
 scope Phase 0's decision tree selected.
 
 - [Playwright — browser user journeys](#playwright--browser-user-journeys)
-- [Hurl — API and service-boundary scenarios](#hurl--api-and-service-boundary-scenarios)
+- [Playwright — API and service-boundary scenarios](#playwright--api-and-service-boundary-scenarios)
+
+Both layers are Playwright now. The Hurl suites were retired once every service had an
+API suite under `e2e/playwright/<service>/`; ADR-000766's dispatch contract
+(`bash e2e/<framework>/<svc>/run.sh`) is unchanged, only the framework directory moved.
 
 ## Playwright — browser user journeys
 
@@ -33,43 +37,60 @@ Per [playwright.dev best practices](https://playwright.dev/docs/best-practices):
 - Mock third-party dependencies through the MSW server wired in `global-setup.ts`
 - Seed Kratos sessions and backend fixtures so specs do not depend on whatever is in the DB
 
-## Hurl — API and service-boundary scenarios
+## Playwright — API and service-boundary scenarios
 
-- Specs: `e2e/hurl/<service>/*.hurl` (one file per scenario)
-- Runner: `e2e/hurl/<service>/run.sh` — boots the right `compose/compose.staging.yaml` profile, runs
-  Hurl inside the alt-staging Docker network, writes reports to `e2e/reports/<service>-<run_id>/`
-- Staging profiles: `search-indexer` / `mq-hub` / `knowledge-sovereign` in `compose/compose.staging.yaml`
-- CI: `.github/workflows/e2e-hurl.yml`
+HTTP-only: no spec touches `page`, `browser` or `context`, so Playwright never launches a browser.
+
+- Specs: `e2e/playwright/<service>/tests/*.spec.ts`, grouped by surface
+- Config: `e2e/playwright/<service>/playwright.config.ts` — one call to `defineApiSuite`
+- Runner: `e2e/playwright/<service>/run.sh` — renders an isolated `compose.staging.yaml` slice, mints
+  any mTLS material, brings the stack up with retries, runs the suite *inside* the staging network,
+  tears it down. Reports land in `e2e/reports/<service>-<run_id>/`
+- Shared helpers: `e2e/playwright/_shared/` — read these before writing a spec
+- CI: `.github/workflows/e2e-playwright.yml`
+
+**Read `e2e/playwright/README.md` first.** Its "rules that are not negotiable" section is binding.
 
 ```bash
-bash e2e/hurl/search-indexer/run.sh
-bash e2e/hurl/mq-hub/run.sh
-bash e2e/hurl/knowledge-sovereign/run.sh
+python3 e2e/playwright/_lib/build-images.py <service>   # build first, or you test the old image
+bash e2e/playwright/<service>/run.sh
+KEEP_STACK=1 bash e2e/playwright/<service>/run.sh       # leave the stack up to poke at it
+PW_GREP='@smoke' bash e2e/playwright/<service>/run.sh   # a subset
+
+bash e2e/playwright/_lib/check-suites.sh                # typecheck + load every suite, no Docker
 ```
 
-Per [hurl.dev asserting-response](https://hurl.dev/docs/asserting-response.html),
-[hurl.dev CI/CD](https://hurl.dev/docs/tutorial/ci-cd-integration.html) and ADRs 000763 / 000764 / 000765:
+The idioms that matter, and the failure each one prevents:
 
-- **Parameterize** hosts and tokens with `--variable host=...` so one scenario runs against
-  local, staging and CI. A hardcoded `http://localhost:...` pins the scenario to one environment
-- **Health-gate** scenarios with `--retry` before exercising business endpoints
-- **CI flags**: `--test --report-junit <dir>/junit.xml --report-html <dir>/html`
-- **DB-backed scenarios run with `--jobs 1`.** FK and sequence ordering breaks under parallel
-  execution — this is what ADR-000765 (`knowledge-sovereign`) established
-- Pass `--file-root` whenever scenarios reference fixtures via `file,e2e/fixtures/...;`
-- **Assertions**: implicit version/status/headers first, then explicit `jsonpath` / `xpath` with
-  predicates (`contains`, `matches /regex/`, `isIsoDate`, `isUuid`, `isInteger`, `not exists`)
-- **Connect-RPC idiom** (ADR-000764): `POST /services.<package>.v1.<Service>/<Method>` with
-  `Content-Type: application/json`; int64 fields arrive as JSON strings; empty repeated fields are omitted
-- **Chain requests** with `[Captures]` and reference them via `{{var}}` in later entries rather than
-  duplicating setup across files
-- Section order inside an entry: request → `[Captures]` → implicit response (status/headers) → `[Asserts]` → body
+- **Every endpoint comes from `src/env.ts` via `requiredEnv`, which has no defaults.** A suite
+  pointed at a host that does not exist must fail by name, not report "connection refused" on
+  scenario 1 — and a suite pointed at the *wrong* host must not report green (CLAUDE.md rule 9)
+- **Assert the whole envelope with a zod schema**, not one field at a time. The Hurl suites were full
+  of `jsonpath "$" exists`, which passes for `null`, `[]`, `{}` and `{"error": …}` alike
+- **Every test seeds what it reads**, under a `workerToken` / `testToken` name nothing else uses.
+  `fullyParallel: true` distributes individual tests across workers and shards, so no test may assume
+  another ran first. Isolation is by naming, not teardown — teardown still races a sibling worker's
+  `list`, and the stack is destroyed per dispatch anyway
+- **Never sleep for a side effect.** Redis Streams consumers, event projectors and Meilisearch
+  indexing are eventually consistent by construction; use `eventually` / `eventuallyValue` from
+  `_shared/eventual.ts`, which assert the actual condition. Note `toPass` defaults to an *unbounded*
+  timeout, so always pass one (the shared config sets a backstop)
+- **A status band needs a reason.** `expectStatusIn(res, [200, 404])` claims both answers are correct;
+  without a comment naming why each is in the set it is a test that cannot fail
+- **Discriminate 404 from everything else.** `expectProcedureMounted` in `_shared/connect.ts` is
+  CLAUDE.md rule 8 at the E2E boundary: a handler whose DI dependency came back nil and skipped
+  registration is invisible to unit tests and to any "not 2xx" assertion
+- **Connect-RPC**: `POST /<package>.<Service>/<Method>` with `Content-Type: application/json`. On the
+  wire the error code is the *string* spelling (`not_found`), not the numeric enum the connect-es
+  client exposes. int64 fields arrive as JSON strings; empty repeated fields are omitted by protojson
+- **Tags**: `@smoke` / `@contract` / `@authz` / `@slow`, matched by `--grep` (there is no `--tag` flag)
 
 ## Further reading
 
 - Playwright: Writing tests — https://playwright.dev/docs/writing-tests
 - Playwright: Continuous Integration — https://playwright.dev/docs/ci
-- Hurl: Chaining Requests — https://hurl.dev/docs/tutorial/chaining-requests.html
-- ADR-000763 (Hurl framework inception — search-indexer phase 1)
-- ADR-000764 (Hurl mq-hub phase 2 — Connect-RPC over HTTP/1.1+JSON)
-- ADR-000765 (Hurl knowledge-sovereign phase 1 — DB state machine, `--jobs 1`)
+- Playwright: API testing — https://playwright.dev/docs/api-testing
+- `e2e/playwright/README.md` — the fleet's conventions
+- ADR-000766 (the `e2e/<framework>/<svc>/run.sh` dispatch contract)
+- ADRs 000763 / 000764 / 000765 — the retired Hurl suites, kept for the design history of the
+  staging slice, the Connect-RPC-over-JSON idiom and the DB state-machine scenarios

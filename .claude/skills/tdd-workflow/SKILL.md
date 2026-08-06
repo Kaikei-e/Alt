@@ -1,6 +1,6 @@
 ---
 name: tdd-workflow
-description: Drive Alt changes test-first in outside-in order — E2E (Playwright/Hurl) → CDC (Pact) → Unit (RED-GREEN-REFACTOR) — and close with a local CI parity sweep (format/lint/type/security) for every touched microservice. Use when implementing a feature, fixing a bug, or refactoring, when deciding what test to write first, or when the user says "TDDで". Also use before declaring work complete, since "tests pass" is not "CI will pass".
+description: Drive Alt changes test-first in outside-in order — E2E (Playwright) → CDC (Pact) → Unit (RED-GREEN-REFACTOR) — and close with a local CI parity sweep (format/lint/type/security) for every touched microservice. Use when implementing a feature, fixing a bug, or refactoring, when deciding what test to write first, or when the user says "TDDで". Also use before declaring work complete, since "tests pass" is not "CI will pass".
 allowed-tools: Bash, Read, Glob, Grep, Edit, Write
 argument-hint: <feature-description> [--service=<dir>]
 ---
@@ -16,7 +16,7 @@ Three layers, with the designated tool in this repo:
 
 - **E2E (outermost)** — *does the user journey / cross-service flow work?*
   - Browser user journeys → **Playwright** (`alt-frontend-sv/tests/e2e/`)
-  - HTTP / Connect-RPC service scenarios → **Hurl** (`e2e/hurl/<service>/`)
+  - HTTP / Connect-RPC service scenarios → **Playwright API suites** (`e2e/playwright/<service>/`)
 - **CDC** — *do consumer and provider still understand each other?* → **Pact** at every boundary the change crosses
 - **Unit** — *does each component work?* → per-layer tests under each service (Handler / Usecase / Gateway / Driver)
 
@@ -34,12 +34,13 @@ cross-service behavior the change is supposed to deliver. It drives everything b
 ### Decision tree
 
 - Touches browser UI (Svelte component, page, user flow) → **Playwright**
-- Touches an HTTP endpoint, Connect-RPC method, or service-to-service flow → **Hurl**
-- Full-stack (FE calls a new BE endpoint) → **both**: one Playwright journey + one Hurl scenario
+- Touches an HTTP endpoint, Connect-RPC method, or service-to-service flow → **a Playwright API suite**
+- Full-stack (FE calls a new BE endpoint) → **both**: one browser journey + one API spec
 - Pure inner-layer refactor with no external behavior change → skip to Phase 2
 
-For where the specs live, the runner commands, and the Playwright/Hurl idioms this repo relies on,
-read [references/e2e-playbooks.md](references/e2e-playbooks.md).
+For where the specs live, the runner commands, and the Playwright idioms this repo relies on, read
+[references/e2e-playbooks.md](references/e2e-playbooks.md) and `e2e/playwright/README.md` — the
+latter's "rules that are not negotiable" section is binding on any new API spec.
 
 ### Steps
 
@@ -194,7 +195,7 @@ drift, or a golangci-lint rule that only runs in CI.
 |-------|------|---------|
 | E2E (UI) | Playwright | `cd alt-frontend-sv && bun run test:e2e:integration` |
 | E2E (UI debug) | Playwright | `cd alt-frontend-sv && bun run test:e2e:ui` |
-| E2E (API) | Hurl | `bash e2e/hurl/<service>/run.sh` |
+| E2E (API) | Playwright | `bash e2e/playwright/<service>/run.sh` |
 
 | Language | Detection | Unit test | CDC consumer test |
 |----------|-----------|-----------|-------------------|
@@ -259,8 +260,12 @@ Failure modes this repo has actually hit. The generic TDD rules are assumed.
     auto-waiting, so it flakes. Use `await expect(locator).toBeVisible()`.
 12. **CSS / XPath selectors in Playwright** where `getByRole` / `getByLabel` / `getByText` /
     `getByTestId` work — user-facing locators survive DOM refactors.
-13. **Hardcoding `http://localhost:...` in `.hurl` files** — pins the scenario to one environment.
-14. **Running DB-backed Hurl scenarios with `--jobs >1`** — FK / sequence ordering breaks
+13. **Hardcoding a URL in a spec** — every endpoint comes from `src/env.ts` via `requiredEnv`, which
+    has no defaults on purpose: a suite pointed at the wrong host must fail by name, not report green.
+14. **Writing a spec that depends on another spec having run** — `fullyParallel: true` distributes
+    individual tests across workers and shards. Seed what you read, under a `workerToken`/`testToken`
+    name nothing else uses. The Hurl suites needed `--jobs 1` for exactly this reason; the port was
+    the occasion to remove the dependency, not to carry it over
     (ADR-000765, `knowledge-sovereign`).
 15. **Declaring work complete without Phase 5.** Formatters, linters and scanners block the PR in
     the same commit you thought was finished.

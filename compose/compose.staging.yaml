@@ -67,7 +67,7 @@
 #     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
 #     alt-data-hub
 #     (the mTLS data plane of the 3-binary split. run.sh mints a throwaway
-#     PKI via e2e/hurl/_lib/mint-staging-pki.sh and mounts it at /certs and
+#     PKI via e2e/_lib/mint-staging-pki.sh and mounts it at /certs and
 #     /trust, so the production DATAHUB_TLS_* paths are used verbatim. The
 #     mount path comes from $STAGING_PKI_DIR, which every suite that needs
 #     a client leaf sets to its own directory.)
