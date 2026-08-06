@@ -10,7 +10,7 @@
  * still races with a sibling worker's `list`, and the staging stack is torn
  * down with `docker compose down -v` per dispatch anyway.
  */
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { runId } from "./env.js";
 
 /** RFC 4122 v4 UUID. Services that validate UUID-shaped IDs need real ones. */
@@ -27,9 +27,14 @@ export function uuid(): string {
  * inherits the previous run's rows.
  */
 export function workerToken(workerIndex: number): string {
-	const random = Math.floor(Math.random() * 0xffffff)
-		.toString(16)
-		.padStart(6, "0");
+	// `randomBytes`, not `Math.random()`. Two reasons, and the weaker one is
+	// that CodeQL flags Math.random() wherever the value reaches something it
+	// reads as an identity — `usr-${nonce}` in the search-indexer corpus, for
+	// instance. The stronger reason is that this token is the *only* thing
+	// keeping twelve suites' workers from colliding in a shared database:
+	// Math.random() offers no collision guarantee across processes, and
+	// Playwright workers are separate processes.
+	const random = randomBytes(3).toString("hex");
 	return `${runId()}-w${workerIndex}-${random}`
 		.toLowerCase()
 		.replace(/[^a-z0-9-]/g, "");

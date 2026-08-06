@@ -1,3 +1,4 @@
+import { randomBytes, randomInt } from "node:crypto";
 import { test as base } from "@playwright/test";
 import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test";
 import { env } from "./env.js";
@@ -70,9 +71,10 @@ function emailFor(token: string): string {
 
 /** Lowercase, URL- and email-safe, unique to (dispatch, worker, call). */
 function seedToken(workerIndex: number): string {
-	const random = Math.floor(Math.random() * 0xffffffff)
-		.toString(16)
-		.padStart(8, "0");
+	// Crypto randomness rather than Math.random(): this token is what keeps
+	// parallel workers from colliding in a shared database, and Playwright
+	// workers are separate processes with no shared PRNG state.
+	const random = randomBytes(4).toString("hex");
 	return `${env.runId}-w${workerIndex}-${random}`.toLowerCase().replace(/[^a-z0-9-]/g, "");
 }
 
@@ -88,8 +90,8 @@ function seedToken(workerIndex: number): string {
  */
 export function syntheticClientIP(workerIndex: number): string {
 	const second = 64 + (workerIndex % 64);
-	const third = Math.floor(Math.random() * 256);
-	const fourth = 1 + Math.floor(Math.random() * 254);
+	const third = randomInt(0, 256);
+	const fourth = 1 + randomInt(0, 254);
 	return `100.${second}.${third}.${fourth}`;
 }
 
