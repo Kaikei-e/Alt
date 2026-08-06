@@ -268,6 +268,11 @@ services:
     build:
       context: ../knowledge-sovereign
       dockerfile: Dockerfile.sovereign
+    # `image:` alongside `build:` — the shape every other built service here
+    # has. Without it compose named the built image after the project and
+    # ignored the tag CI had already produced with buildx and the registry
+    # layer cache, so every E2E run rebuilt this service from scratch.
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-knowledge-sovereign:${KNOWLEDGE_SOVEREIGN_IMAGE_TAG:-main}
     container_name: alt-staging-knowledge-sovereign
     profiles: [knowledge-sovereign]
     depends_on:

@@ -30,6 +30,15 @@
 # ------
 #   images   image names. A name that appears in services.yaml is built from
 #            that entry; otherwise it must appear under `stubs:` below.
+#   unpinnedImages
+#            optional. Compose services in this profile that stay on `:main` on
+#            purpose, rather than being pinned to this suite's IMAGE_TAG. A
+#            dependency that is not co-versioned with the service under test
+#            belongs here: pinning it would demand a build the dispatch SHA may
+#            never have produced and turn an unrelated green build into
+#            `manifest unknown`. Recording it is what lets
+#            _lib/audit-suite-wiring.py tell "deliberately on main" apart from
+#            "someone forgot", which is CLAUDE.md rule 8 applied to CI wiring.
 #   shards   optional. Split the suite across N parallel CI jobs. Only worth it
 #            past roughly eight minutes of wall clock — each shard pays the
 #            full compose-slice startup cost, so over-sharding makes a suite
@@ -59,6 +68,13 @@ suites:
 
   knowledge-sovereign:
     images: [knowledge-sovereign]
+    notes: >-
+      compose.staging.yaml had `build:` and no `image:` for this service, so the
+      GHCR-tagged image the Hurl job built with buildx and the registry cache
+      was never used — compose rebuilt it from source on every run, from
+      scratch. An `image:` key was added alongside the `build:` (the shape
+      every other service in that file already has) so the cached build is what
+      actually runs.
 
   mq-hub:
     images: [mq-hub]
@@ -87,12 +103,19 @@ suites:
       (compose/news-creator-ollama-stub) and needs no entry here.
 
   acolyte-orchestrator:
-    images: [acolyte-orchestrator, search-indexer]
+    images: []
+    unpinnedImages: [search-indexer]
     notes: >-
-      acolyte-orchestrator itself is new to this list. Its Hurl job built no
-      images, so every PR ran the suite against ghcr `:main` — a change to the
-      service under test could not fail its own E2E suite. search-indexer is
-      in the profile and is reached over the wire, so it is under test too.
+      Nothing to build here, and both halves of that are deliberate.
+      acolyte-orchestrator, acolyte-db-migrator and news-creator-ollama-stub
+      are local build contexts in compose.staging.yaml with no GHCR image, so
+      run.sh passes `--build` and compose builds them from the working tree.
+      search-indexer is a GHCR image, but it is a *dependency* of this flow
+      rather than the system under test, and it is not co-versioned with
+      acolyte-orchestrator — pinning it to this suite's IMAGE_TAG would demand
+      a tag the dispatch SHA may never have built and turn an unrelated green
+      build into `manifest unknown` on pull. It keeps `:main`, and its own
+      suite is what covers it.
 
   recap-worker:
     images: [recap-worker, recap-pipeline-stub]

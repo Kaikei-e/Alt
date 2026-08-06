@@ -1,5 +1,6 @@
 import { test, expect } from "../src/fixtures.js";
 import { expectUnaryError } from "../../_shared/connect.js";
+import { nowRFC3339, uuid } from "../../_shared/ids.js";
 import { procedure } from "../src/env.js";
 
 /**
@@ -92,34 +93,67 @@ const INVALID_ARGUMENT_ON_EMPTY: readonly string[] = [
 /**
  * The remaining procedures, whose answer to an empty request is legitimately
  * open — a list handler returns 200, `ActivateProjectionVersion(0)` reports
- * "version 0 not found" as `internal`, `CreateBackfillJob` writes a zero-UUID
- * row. For these the claim is narrower but still the one that matters: the
- * path resolves and the real handler, not the embedded Unimplemented stub, is
- * behind it.
+ * "version 0 not found" as `internal`. For these the claim is narrower but
+ * still the one that matters: the path resolves and the real handler, not the
+ * embedded Unimplemented stub, is behind it.
+ *
+ * Two carry a hand-written `request` rather than `{}`. `CreateReprojectRun`
+ * and `CreateBackfillJob` reach `protoToReprojectRun(nil)` /
+ * `protoToBackfillJob(nil)`, which return a **zero-valued struct and a nil
+ * error** — so an empty probe would insert a row keyed on the all-zero UUID
+ * with Go's zero `time.Time` in its timestamp columns. That row then flows
+ * back through protojson in tests/projection-infra.spec.ts, where a
+ * `0001-01-01T00:00:00Z` timestamp sits exactly on the boundary
+ * `timestamppb.CheckValid` accepts. Probing with a real request keeps this
+ * file from seeding a trap for another one.
  */
-const MOUNTED_ONLY: readonly string[] = [
-	"ListDistinctUserIDs",
-	"ListKnowledgeEvents",
-	"GetActiveProjectionVersion",
-	"ListProjectionVersions",
-	"ActivateProjectionVersion",
-	"GetProjectionCheckpoint",
-	"UpdateProjectionCheckpoint",
-	"GetProjectionFreshness",
-	"GetProjectionLag",
-	"ListReprojectRuns",
-	"CreateReprojectRun",
-	"UpdateReprojectRun",
-	"CompareProjections",
-	"ListProjectionAudits",
-	"ListBackfillJobs",
-	"CreateBackfillJob",
-	"UpdateBackfillJob",
+const MOUNTED_ONLY: readonly { readonly method: string; readonly request?: unknown }[] = [
+	{ method: "ListDistinctUserIDs" },
+	{ method: "ListKnowledgeEvents" },
+	{ method: "GetActiveProjectionVersion" },
+	{ method: "ListProjectionVersions" },
+	{ method: "ActivateProjectionVersion" },
+	{ method: "GetProjectionCheckpoint" },
+	{ method: "UpdateProjectionCheckpoint" },
+	{ method: "GetProjectionFreshness" },
+	{ method: "GetProjectionLag" },
+	{ method: "ListReprojectRuns" },
+	{
+		method: "CreateReprojectRun",
+		request: {
+			run: {
+				reprojectRunId: uuid(),
+				projectionName: "pw-connect-surface-probe",
+				fromVersion: "1",
+				toVersion: "1",
+				mode: "shadow",
+				status: "probe",
+				createdAt: nowRFC3339(),
+			},
+		},
+	},
+	{ method: "UpdateReprojectRun" },
+	{ method: "CompareProjections" },
+	{ method: "ListProjectionAudits" },
+	{ method: "ListBackfillJobs" },
+	{
+		method: "CreateBackfillJob",
+		request: {
+			job: {
+				jobId: uuid(),
+				status: "probe",
+				projectionVersion: 1,
+				createdAt: nowRFC3339(),
+				updatedAt: nowRFC3339(),
+			},
+		},
+	},
+	{ method: "UpdateBackfillJob" },
 	// Server-streaming. A unary `Content-Type: application/json` is the wrong
 	// protocol for it, so connect-go answers 415/400 — which is still proof
 	// the procedure resolved. Only 404 (unregistered) or 501 (the embedded
 	// stub) would be findings, and those are exactly what is asserted.
-	"WatchProjectorEvents",
+	{ method: "WatchProjectorEvents" },
 ];
 
 test.describe("every declared procedure is registered and implemented", () => {
@@ -133,9 +167,9 @@ test.describe("every declared procedure is registered and implemented", () => {
 		);
 	}
 
-	for (const method of MOUNTED_ONLY) {
+	for (const { method, request } of MOUNTED_ONLY) {
 		test(`${method} is mounted`, { tag: "@contract" }, async ({ rpc }) => {
-			const response = await rpc.post(procedure(method), { data: {} });
+			const response = await rpc.post(procedure(method), { data: request ?? {} });
 			const body = (await response.text()).slice(0, 500);
 
 			expect(
@@ -169,6 +203,8 @@ test.describe("procedure count", () => {
 		// 46 is the count in proto/services/sovereign/v1/sovereign.proto. When
 		// it changes, add the new procedure to the list its empty-request
 		// behaviour belongs in and bump this number in the same commit.
-		expect(new Set([...INVALID_ARGUMENT_ON_EMPTY, ...MOUNTED_ONLY]).size).toBe(46);
+		expect(
+			new Set([...INVALID_ARGUMENT_ON_EMPTY, ...MOUNTED_ONLY.map((p) => p.method)]).size,
+		).toBe(46);
 	});
 });

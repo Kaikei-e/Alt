@@ -131,6 +131,23 @@ done
 
 echo
 echo "=============================================================="
+echo "== suite wiring"
+echo "=============================================================="
+# Catches the wiring mistakes that leave every test green: an image built but
+# not consumed, an image tag never forwarded (so the suite runs against the
+# *previous* release of the service it is testing), a suite that exists in
+# suites.yaml or on disk but not both. Only run when checking the whole fleet —
+# a partial invocation would report the suites the caller did not ask about.
+if [[ "$#" -eq 0 ]]; then
+  if ! python3 "$ROOT/e2e/playwright/_lib/audit-suite-wiring.py"; then
+    failed+=("suite wiring audit")
+  fi
+else
+  echo "(skipped: only run for the whole fleet)"
+fi
+
+echo
+echo "=============================================================="
 if [[ "${#failed[@]}" -gt 0 ]]; then
   echo "FAILED (${#failed[@]}):"
   printf '  - %s\n' "${failed[@]}"
