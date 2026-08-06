@@ -1,10 +1,10 @@
 # compose/compose.staging.yaml
 #
-# Ephemeral E2E staging stack — brought up per run of the Hurl suite and
+# Ephemeral E2E staging stack — brought up per run of a Playwright suite and
 # torn down at the end. Project name `alt-staging` keeps it isolated from
 # any prod compose stack that may be running on the same host.
 #
-# Services are tagged with Compose profiles so each Hurl suite brings up
+# Services are tagged with Compose profiles so each E2E suite brings up
 # only its own dependencies:
 #   search-indexer suite       → profile `search-indexer`
 #     meilisearch, stub-backend, search-indexer
@@ -15,7 +15,7 @@
 #   tag-generator suite        → profile `tag-generator`
 #     redis-streams, stub-backend, mq-hub, tag-generator
 #     (round-trips through mq-hub's GenerateTagsForArticle RPC because
-#     Hurl cannot XREAD Redis directly)
+#     the E2E suite speaks HTTP only and cannot XREAD Redis directly)
 #   news-creator suite         → profile `news-creator`
 #     news-creator-ollama-stub, news-creator
 #     (real Ollama needs a GPU; the stub returns a fixed `/api/tags`
@@ -283,12 +283,12 @@ services:
       - ARCHIVE_DIR=/tmp/archives
       - BUILD_REF=staging
       - LOG_LEVEL=info
-      # The Hurl suite calls /admin/* directly on the metrics port, so the
+      # The E2E suite calls /admin/* directly on the metrics port, so the
       # ephemeral staging slice runs with the Bearer gate off. Production
       # supplies ADMIN_TOKEN_FILE (compose/sovereign.yaml); an unset token
       # is a startup failure there, never an open surface.
       - ADMIN_AUTH=disabled
-      # Tighten cron cadence so the Hurl suite (22-surface-planner-cron)
+      # Tighten cron cadence so the E2E suite's surface-planner scenario
       # can observe a SurfacePlanRecomputed emission within its 45 s
       # retry budget (30 retries × 1.5 s). Production defaults stay at
       # 60 s / 5 s.
@@ -297,7 +297,7 @@ services:
       - KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE=1024
       - KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK=4
       # ADR-000914 §Δ5: loop projector throughput. Staging keeps the cap
-      # low since the Hurl suite seeds bounded fixtures; the production
+      # low since the E2E suite seeds bounded fixtures; the production
       # default lives in compose/sovereign.yaml with a ${VAR:-default}
       # substitution so a reproject run can bump it without a redeploy.
       - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE=200
@@ -406,7 +406,7 @@ services:
       - LLM_BACKEND=ollama
       - LOG_LEVEL=info
       # Explicit opt-out for the *inbound* listener: this suite speaks plain
-      # h2c to :9011, so no client certificate is demanded of Hurl.
+      # h2c to :9011, so no client certificate is demanded of the test client.
       - PEER_IDENTITY_MODE=disabled
       # The *outbound* data-hub client is not covered by that opt-out.
       # config.loadDataHub panics on an unset or non-https DATAHUB_MTLS_URL,
@@ -493,7 +493,7 @@ services:
       # FastAPI lifespan blocks on SBERT warm-up + Redis consumer join.
       # The SBERT cache is baked into the image so this is bounded, but
       # on GitHub-hosted 2-core runners TagExtractor.warmup() has been
-      # observed to run past 20 s. The Hurl scenarios carry their own
+      # observed to run past 20 s. The E2E scenarios carry their own
       # retry budgets for the same reason; this just keeps the Compose
       # up --wait gate from declaring the container unhealthy while
       # FastAPI's lifespan background thread is still warming the ML
@@ -963,7 +963,7 @@ services:
       - DB_NAME=alt
       - SERVER_PORT=9000
       - CONNECT_PORT=9101
-      # render-slice.sh strips every `ports:` key, so the Hurl container
+      # render-slice.sh strips every `ports:` key, so the test container
       # reaches this service by DNS name on the staging network — a listener
       # bound to loopback inside the container would be unreachable and the
       # suite would fail at connect rather than at an assertion. Both of these
@@ -992,14 +992,14 @@ services:
       - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
       - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
       # auth-hub is only hit by the internal /system-user handler (not
-      # exercised by the Hurl suite), but the alias keeps config parity
+      # exercised by the E2E suite), but the alias keeps config parity
       # with prod and unblocks that handler if ever probed.
       - AUTH_HUB_URL=http://auth-hub/
       - MQHUB_CONNECT_URL=http://mq-hub/
       - MQHUB_ENABLED=false
       # The image proxy is off in staging, stated explicitly because
       # IMAGE_PROXY_ENABLED defaults to true and config.validateImageProxyConfig
-      # exits non-zero when it is enabled without a secret. The Hurl suite only
+      # exits non-zero when it is enabled without a secret. The E2E suite only
       # pins that /v1/images/proxy sits behind auth (50-images.hurl asserts 401
       # with no token, which the group's auth middleware answers whether or not
       # the route is registered) — signature validation is not exercised, so
@@ -1110,7 +1110,7 @@ services:
       - DB_PASSWORD=alt-staging-test-postgres-password
       - DB_NAME=alt
       # The only socket this binary opens. render-slice.sh strips every
-      # `ports:` key, so the Hurl container reaches it by DNS name on the
+      # `ports:` key, so the test container reaches it by DNS name on the
       # staging network — a loopback bind would make the suite fail at connect
       # instead of at an assertion. It is also what `/app-entry healthcheck`
       # self-probes.
