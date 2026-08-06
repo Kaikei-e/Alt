@@ -17,9 +17,17 @@ import { z } from "zod";
  * change to that literal and worth failing on.
  */
 
-export { timestampSchema } from "../../_shared/schemas.js";
 export { connectErrorSchema } from "../../_shared/connect.js";
-import { nonEmptyArray, timestampSchema } from "../../_shared/schemas.js";
+import {
+	asInt64,
+	ERROR_ENVELOPE_MESSAGE,
+	int64Schema,
+	nonEmptyArray,
+	notAnErrorEnvelope,
+	timestampSchema,
+} from "../../_shared/schemas.js";
+
+export { asInt64, int64Schema, timestampSchema };
 
 // ---------------------------------------------------------------------------
 // REST :9300
@@ -120,21 +128,17 @@ export const nonEmptySearchResponseSchema = z
 // Connect-RPC :9301
 // ---------------------------------------------------------------------------
 
-/**
- * A proto `int64` as protojson encodes it: a **string**, not a number.
+/*
+ * `int64Schema` / `asInt64` are re-exported from `_shared/schemas.ts` (see the
+ * import block above) rather than re-derived here.
  *
- * connect-go's default JSON codec is plain `protojson`, with no
- * `EmitUnpopulated` and no numeric int64 escape hatch, so
- * `estimated_total_hits` arrives as `"5"`. A suite that asserted
- * `z.number()` here would fail against a perfectly correct service; one that
- * asserted `z.unknown()` would not notice the day it changes.
+ * A proto `int64` arrives over connect-go's default JSON codec as a **string**:
+ * plain `protojson`, no `EmitUnpopulated`, no numeric int64 escape hatch, so
+ * `estimated_total_hits` is `"5"`. The local copy this file used to carry
+ * accepted `z.number().int()` as well, which defeated the point — the whole
+ * reason to spell the type out is to fail the day the encoding changes, and a
+ * union that admits both forms cannot.
  */
-export const int64Schema = z.union([z.string().regex(/^-?\d+$/), z.number().int()]);
-
-/** Narrows the two int64 wire forms to one number for arithmetic assertions. */
-export function asInt64(value: string | number): number {
-	return typeof value === "number" ? value : Number.parseInt(value, 10);
-}
 
 /**
  * `services.search.v2.SearchHit`.
@@ -186,9 +190,14 @@ export const connectSearchResponseSchema = z
  * `recaps` index is created by `bootstrap`'s `EnsureRecapIndex` but nothing in
  * this slice writes documents to it (`RECAP_WORKER_URL` points at the nginx
  * stub, whose HTML the recap index loop fails to decode), so a correct
- * response really is `{}`. What the test built on it asserts is the *status* —
- * 200 rather than the 501 an unconfigured recap path returns — and that
- * whatever `hits` is, it is a list.
+ * response really is `{}`.
+ *
+ * That leniency is what makes the `refine` mandatory rather than decorative:
+ * every field is `.optional()` on a `.passthrough()` object, so without it the
+ * schema accepts *any* JSON object — including the Connect error envelope
+ * `{"code":"internal","message":"…"}` that a handler sorting on an unsortable
+ * attribute would return under a 200, which is the exact regression the test
+ * built on this schema exists to catch.
  */
 export const connectRecapResponseSchema = z
 	.object({
@@ -209,7 +218,8 @@ export const connectRecapResponseSchema = z
 			.optional(),
 		estimatedTotalHits: int64Schema.optional(),
 	})
-	.passthrough();
+	.passthrough()
+	.refine(notAnErrorEnvelope, ERROR_ENVELOPE_MESSAGE);
 
 // ---------------------------------------------------------------------------
 // Meilisearch

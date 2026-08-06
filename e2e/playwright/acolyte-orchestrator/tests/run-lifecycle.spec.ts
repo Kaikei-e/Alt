@@ -131,7 +131,16 @@ test.describe("a run that succeeds", () => {
 		const read = await fetchReport(acolyte, completedRun.reportId);
 
 		expect(read.report.reportId).toBe(completedRun.reportId);
-		expect(read.report.currentVersion ?? 0).toBeGreaterThanOrEqual(1);
+		// Exactly 1, not "at least 1". `completedRun` is a report the fixture
+		// created and drove through one run, nothing else writes to it, and
+		// `FinalizerNode` is the graph's single terminal node (report_graph.py:204)
+		// calling `bump_version` once (finalizer_node.py:98). So one succeeded run
+		// leaves current_version at 1. `>= 1` passes just as happily for a finalizer
+		// that ran twice, or a `bump_version` whose optimistic-concurrency guard
+		// (`WHERE current_version = %s`, postgres_report_gw.py:147-150) stopped
+		// refusing a stale write — which is a double-committed version the SPA shows
+		// as two identical entries in the history.
+		expect(read.report.currentVersion, "one succeeded run commits exactly one version").toBe(1);
 
 		const sections = read.sections ?? [];
 		expect(sections.length, "the finalizer committed no sections").toBeGreaterThanOrEqual(1);
@@ -195,12 +204,16 @@ test.describe("a run that succeeds", () => {
 		);
 
 		const list = versions.versions ?? [];
-		expect(list.length, "a succeeded run must leave a report_versions row").toBeGreaterThanOrEqual(
-			1,
-		);
-		// Ordered `version_no DESC` (postgres_report_gw.py:230), so the head is
-		// the newest and must be at least 1. The schema already refuses a 0.
-		expect(list[0]?.versionNo ?? 0).toBeGreaterThanOrEqual(1);
+		// One run, one `bump_version`, one `report_versions` INSERT
+		// (postgres_report_gw.py:158-166) — so the count is known, not bounded.
+		// `>= 1` would report green on the duplicate row a lost optimistic-
+		// concurrency guard writes, which is the failure worth catching here:
+		// `report_versions` is append-only and a spurious row is not recoverable
+		// by re-reading.
+		expect(list, "one succeeded run leaves exactly one report_versions row").toHaveLength(1);
+		// Ordered `version_no DESC` (postgres_report_gw.py:230), so the head is the
+		// newest — and with a single run it is version 1.
+		expect(list[0]?.versionNo).toBe(1);
 
 		// The same report answered an empty page before the run — see
 		// tests/reports-crud.spec.ts. The pair is what makes this an assertion
@@ -224,7 +237,12 @@ test.describe("a run that succeeds", () => {
 		const mine = (page.reports ?? []).find((r) => r.reportId === completedRun.reportId);
 		expect(mine, `${completedRun.reportId} should appear in the listing`).toBeDefined();
 		expect(mine?.latestRunStatus).toBe("succeeded");
-		expect(mine?.currentVersion ?? 0).toBeGreaterThanOrEqual(1);
+		// The same value `GetReport` reports for this report, and it must be the
+		// same number: `ReportSummary` is built from a separate read path
+		// (connect_service.py:150-163) and a projection that drifted from
+		// `GetReport` is exactly what this test exists to catch. `>= 1` could not
+		// see the drift.
+		expect(mine?.currentVersion, "one succeeded run commits exactly one version").toBe(1);
 	});
 
 	test("RerunSection regenerates a committed section @slow", async ({ acolyte }, testInfo) => {

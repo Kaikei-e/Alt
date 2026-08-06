@@ -1,7 +1,6 @@
 import { test, expect } from "../src/fixtures.js";
 import {
 	expectHeader,
-	expectHeaderContains,
 	expectJsonStatus,
 	expectNoHeader,
 	expectPrometheusText,
@@ -127,13 +126,22 @@ test.describe("the operator listener answers", () => {
 			// instead of at Prometheus.
 			const response = await ops.get("/metrics");
 			const body = await response.text();
+			// 200 exactly, not merely "not 503": a negative status assertion is
+			// satisfied by 404, 500, 502 and every other wrong answer, which makes
+			// it a test that reports green for a /metrics route that has stopped
+			// working in some other way.
 			expect(
 				response.status(),
-				`/metrics answered 503. NewOpsHandler serves that only when ` +
-					`OpenTelemetry returned no Prometheus handler — check OTEL_ENABLED ` +
-					`and the OTLP endpoint, not the scrape config.\n${body.slice(0, 300)}`,
-			).not.toBe(503);
-			expect(body).not.toContain("metrics exporter is not wired");
+				`/metrics must answer 200 with the exporter's own output. NewOpsHandler ` +
+					`serves the 503 fallback only when OpenTelemetry returned no Prometheus ` +
+					`handler — if this is a 503, check OTEL_ENABLED and the OTLP endpoint, ` +
+					`not the scrape config.\n${body.slice(0, 300)}`,
+			).toBe(200);
+			expect(
+				body,
+				`/metrics is serving the unwired-exporter prose from ops.go with a 200 status, ` +
+					`which is worse than the 503: Prometheus would record a successful scrape`,
+			).not.toContain("metrics exporter is not wired");
 		},
 	);
 
@@ -164,18 +172,27 @@ test.describe("the operator listener answers", () => {
 	);
 
 	test(
-		"GET /metrics is unauthenticated, like the scrape job assumes",
+		"GET /metrics ignores a credential rather than validating one",
 		{ tag: "@contract" },
 		async ({ ops }) => {
 			// Prometheus scrapes alt-harvester over alt-network with no credential
 			// of any kind (observability/prometheus/prometheus.yml). The bargain —
 			// documented on both this listener and alt-data-hub's — is that the
 			// surface carries nothing worth authenticating, which is what the
-			// absent-surface suite next door is for. This asserts the other half:
-			// no header is required to read it.
-			const response = await ops.get("/metrics");
-			await expectStatus(response, 200);
-			expectHeaderContains(response, "Content-Type", "text/plain");
+			// absent-surface suite next door is for.
+			//
+			// Every other request in this file is credential-free, so none of them
+			// can tell "this listener authenticates nobody" apart from "it never
+			// saw a credential". This one sends one that could not possibly be
+			// valid: an auth middleware put in front of the ops mux would answer
+			// 401/403 here while the credential-free tests all stayed green.
+			const response = await ops.get("/metrics", {
+				headers: {
+					Authorization: "Bearer nonsense",
+					Cookie: "ory_kratos_session=nonsense",
+				},
+			});
+			await expectPrometheusText(response);
 		},
 	);
 });

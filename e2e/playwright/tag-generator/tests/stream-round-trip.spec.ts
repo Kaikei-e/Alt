@@ -123,10 +123,22 @@ test.describe("tag generation over Redis Streams", () => {
 		).toBe(200);
 
 		// A 200 carrying something other than a reply envelope would mean
-		// mq-hub answered without ever hearing from the consumer.
+		// mq-hub answered without ever hearing from the consumer — and mq-hub
+		// has arms that produce exactly that: `parseReply` answers 200 with
+		// `errorMessage: "empty reply"` or `"parse reply: …"` when the reply
+		// stream yielded nothing usable (generate_tags_usecase.go:165-193).
+		// Asserting merely that *some* error message is present would accept
+		// both of those, so the wiring gate would stay green with no consumer
+		// on the other end. The consumer's own validation arm is the only
+		// thing that writes "Invalid payload"
+		// (stream_event_handler.py:158-166), so that substring is the proof
+		// that tag-generator answered.
 		const body = await expectJsonStatus(response, 200, generateTagsResponseSchema);
+		expect(body.success ?? false, "a payload with no article id must not report success").toBe(
+			false,
+		);
 		expect(body.errorMessage, "the reply did not come from the consumer's validation arm")
-			.toBeDefined();
+			.toContain("Invalid payload");
 	});
 
 	test("an over-long article id comes back as a validation failure, not a timeout", {

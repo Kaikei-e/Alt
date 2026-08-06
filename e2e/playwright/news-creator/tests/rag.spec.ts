@@ -92,12 +92,33 @@ test.describe("plan-query", () => {
 		// with nothing. `min(1)` in the schema covers empty, this covers blank.
 		expect(body.plan.resolved_query.trim().length).toBeGreaterThan(0);
 
-		// The three policy fields are declared as free strings in Pydantic —
-		// their allowed values live only in the field descriptions, because a
-		// small model has to be coaxed rather than constrained. The schema pins
-		// membership, which is the check Pydantic cannot make and the Hurl
-		// suite's `isString` did not attempt.
-		expect(body.plan.search_queries.length).toBeGreaterThanOrEqual(1);
+		// The enum membership of `intent` / `retrieval_policy` / `answer_format`
+		// is asserted by `queryPlanSchema` above — those three fields are free
+		// strings in Pydantic, so the schema is the only thing checking them, and
+		// `expectJsonStatus` has already run it. Nothing to repeat here.
+		//
+		// What the schema cannot see is *which code path* produced a
+		// schema-valid plan. `_plan_with_llm` swallows every JSONDecodeError,
+		// ValidationError, TypeError and KeyError into `_fallback_plan` under a
+		// 200 (plan_query_usecase.py:139-149), and `PlanQueryResponse.model` is
+		// stamped from config rather than read off the reply
+		// (plan_query_usecase.py:109-114), so a completely broken structured-
+		// output round trip answers a perfect envelope naming the right model.
+		// `_fallback_plan` is the one thing that identifies itself: it hard-codes
+		// `reasoning="Fallback: LLM planning failed, using original query
+		// directly."` (plan_query_usecase.py:198-208). Refusing that prefix is
+		// what makes this test fail when `_extract_json` stops finding the JSON
+		// the chat content carries.
+		expect(
+			body.plan.reasoning,
+			"the plan came from _fallback_plan — the LLM round trip failed and was " +
+				"swallowed into a 200",
+		).not.toMatch(/^Fallback:/);
+
+		// And the fallback's other signature, in case its wording drifts: it
+		// searches with nothing but the caller's own query, which would make
+		// planning a no-op while still answering a well-formed plan.
+		expect(body.plan.search_queries).not.toEqual([body.plan.resolved_query]);
 	});
 
 	test("plan-query rejects an unknown priority @contract", async ({ api, seed }) => {

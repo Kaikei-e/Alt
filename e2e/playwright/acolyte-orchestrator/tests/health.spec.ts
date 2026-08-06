@@ -1,6 +1,6 @@
 import { callUnary } from "../../_shared/connect.js";
 import { expectHeaderContains, expectJsonStatus, expectStatus } from "../../_shared/http.js";
-import { P, expect, test } from "../src/fixtures.js";
+import { P, test } from "../src/fixtures.js";
 import { healthCheckResponseSchema, restHealthSchema } from "../src/schemas.js";
 
 /**
@@ -53,22 +53,28 @@ test.describe("liveness", () => {
 });
 
 test.describe("peer identity", () => {
-	test("a spoofed X-Alt-Peer-Identity is stripped, not honoured @authz", async ({ acolyte }) => {
+	test("an unrecognised X-Alt-Peer-Identity does not turn a staging call into a 401 @authz", async ({
+		acolyte,
+	}) => {
 		// PEER_IDENTITY_TRUSTED=off in the staging slice
 		// (compose.staging.yaml:832). peer_identity.py:100-102 then forces
 		// `peer = ""` regardless of what the caller sent, and lines 119-120
 		// delete the header before the handler sees it.
 		//
-		// What this can observe from outside is narrow but real: the call must
-		// still succeed. The two regressions it catches are the ones that would
-		// otherwise reach production silently — a middleware that throws when
-		// the header is present (MutableHeaders misuse), and a strict-mode
-		// default that turns an unauthenticated staging caller into a 401/403.
-		// Whether the *value* was believed is unobservable over HTTP by design;
-		// that half is unit-tested at the middleware.
-		const response = await callUnary(acolyte, P.healthCheck, {});
-		await expectStatus(response, 200);
-
+		// The title says only what the assertion proves, and the two are now the
+		// same size. The regressions this catches are a middleware that throws when
+		// the header is present (MutableHeaders misuse) and a strict-mode default
+		// that turns an unauthenticated staging caller into a 401/403 — both of
+		// which would take the container healthcheck down with them.
+		//
+		// It deliberately does NOT claim the header was *stripped*. `health_check`
+		// returns the constant `HealthCheckResponse(status="ok")`
+		// (connect_service.py:439-442), so comparing a spoofed response body to an
+		// unspoofed one compares one literal to itself: it holds under every
+		// possible middleware behaviour short of a 500, including a middleware that
+		// believed the value. Nothing on this listener echoes
+		// `request.state.peer_identity`, so stripping is unobservable over HTTP by
+		// design; that half is unit-tested at the middleware.
 		const spoofed = await acolyte.post(`/${P.healthCheck}`, {
 			headers: {
 				"Content-Type": "application/json",
@@ -76,10 +82,6 @@ test.describe("peer identity", () => {
 			},
 			data: {},
 		});
-		await expectStatus(spoofed, 200);
-		expect(
-			await spoofed.json(),
-			"a spoofed peer header must not change the answer",
-		).toEqual(await response.json());
+		await expectJsonStatus(spoofed, 200, healthCheckResponseSchema);
 	});
 });

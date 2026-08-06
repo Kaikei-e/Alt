@@ -42,10 +42,10 @@ test.describe("SearchArticles", () => {
 
 		// `estimated_total_hits` is a proto `int64`, so protojson puts it on the
 		// wire as the *string* `"5"` — connect-go installs no
-		// `EmitUnpopulatedJSONCodec` and no numeric-int64 option. A suite
-		// asserting `z.number()` here would fail against a correct service, and
-		// one asserting nothing would not notice the day it changes. `asInt64`
-		// narrows the two legal forms so the count itself can be asserted.
+		// `EmitUnpopulatedJSONCodec` and no numeric-int64 option. The shared
+		// `int64Schema` admits that one form only, so a codec swapped for one
+		// emitting a JSON number fails here rather than passing quietly;
+		// `asInt64` then reads it back for the count assertion.
 		expect(asInt64(body.estimatedTotalHits)).toBe(corpus.docs.length);
 
 		// The hit body, not just its id: `SearchHit` carries title, content and
@@ -153,7 +153,10 @@ test.describe("SearchArticles", () => {
 			connectEmptySearchResponseSchema,
 		);
 		expect(body.hits ?? []).toHaveLength(0);
-		expect(asInt64(body.estimatedTotalHits ?? 0)).toBe(0);
+		// `"0"` and not `0`: protojson omits a zero-valued int64 entirely, and
+		// the default stands in for the field it omitted — in the same *string*
+		// encoding the field would have arrived in had it been present.
+		expect(asInt64(body.estimatedTotalHits ?? "0")).toBe(0);
 	});
 
 	test("does not return the shared corpus to a corpus owner", { tag: "@authz" }, async ({

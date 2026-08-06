@@ -38,8 +38,15 @@ PW_GREP='@smoke' bash e2e/playwright/search-indexer/run.sh
 
 # Debug: leave the stack up for inspection
 KEEP_STACK=1 bash e2e/playwright/search-indexer/run.sh
-curl -s -H 'Authorization: Bearer alt-staging-test-master-key' \
-  'http://localhost:17700/indexes/articles/settings' | jq .filterableAttributes
+
+# …then talk to it from *inside* the network, not from the host. `suite_up`
+# runs `render_slice`, which strips every `ports:` key out of the rendered
+# slice before compose ever sees it (e2e/_lib/render-slice.sh), so the stack
+# KEEP_STACK leaves behind publishes nothing at all — 17700 and 19300 are
+# closed under this recipe.
+docker run --rm --network alt-staging-search-indexer curlimages/curl -s \
+  -H 'Authorization: Bearer alt-staging-test-master-key' \
+  'http://meilisearch:7700/indexes/articles/settings' | jq .filterableAttributes
 ```
 
 Reports land in `e2e/reports/search-indexer-<RUN_ID>/` — HTML + JUnit for a
@@ -52,14 +59,27 @@ The script expects the image to exist as
 python3 e2e/playwright/_lib/build-images.py search-indexer
 ```
 
-### Iterating without Docker
+### Iterating from the host
 
-Every endpoint is read from the environment, so a run against an
-already-running stack needs no container. `17700` and `19300` are the host
-ports `compose.staging.yaml` publishes; `:9301` and `:9443` are not published,
-so the Connect and topology specs need the in-network form.
+Every endpoint is read from the environment, so the suite can be pointed at an
+already-running stack. What it cannot be pointed at is `localhost` alone:
+`compose.staging.yaml` publishes exactly two host ports for this profile —
+`17700:7700` (meilisearch) and `19300:9300` (search-indexer REST). **`:9301`
+and `:9443` are published by nothing**, on any host port, in any configuration.
+
+That rules the host-only loop out entirely rather than partially, because
+`setup/global-setup.ts` probes `CONNECT_URL/health` as a readiness gate before
+a single spec runs. So bringing the stack up by hand needs its own override
+publishing 9301:
 
 ```bash
+docker compose -f compose/compose.staging.yaml --profile search-indexer \
+  -f - up -d <<'YAML'
+services:
+  search-indexer:
+    ports: ["19301:9301"]
+YAML
+
 cd e2e/playwright/search-indexer
 BASE_URL=http://localhost:19300 \
 CONNECT_URL=http://localhost:19301 \
@@ -67,8 +87,19 @@ MTLS_ABSENT_URL=http://localhost:19443 \
 MEILI_URL=http://localhost:17700 \
 MEILI_MASTER_KEY_FILE=../../fixtures/staging-secrets/meili_master_key.txt \
 MEILI_SEED_DOCS=../../fixtures/search-indexer/seed-docs.json \
-  npx playwright test
+  npx playwright test --grep-invert 'MTLS_LISTEN'
 ```
+
+`--grep-invert` is not optional, and this is the trap worth spelling out.
+`topology.spec.ts` › "nothing answers on `:9443` when MTLS_LISTEN is false"
+asserts a **refused connection**. A host port nothing ever binds refuses
+unconditionally, so run from the host that assertion reports green whether or
+not search-indexer is binding its mutual-TLS mux — a passing test that proves
+nothing about the service. It is only meaningful against
+`http://search-indexer:9443`, i.e. from inside the staging network, which is
+what `run.sh` does. Note also that `run.sh` never publishes anything (see the
+`KEEP_STACK` note above): this recipe is for a stack brought up by hand from
+`compose.staging.yaml`, not for one `run.sh` left behind.
 
 ## Where each Hurl scenario landed
 
@@ -151,7 +182,7 @@ is named in the spec.
 |---|---|
 | **Connect-RPC on `:9301`** | The Hurl README listed the entire listener as out of scope ("HTTP/2 h2c, not practical to drive from Hurl"). `h2c.NewHandler` passes an ordinary HTTP/1.1 request through to the mux, which is what `APIRequestContext` sends, so all of it is now covered. |
 | Connect service registration | Nothing distinguished "this procedure errored" from "this path does not exist" — CLAUDE.md rule 8 at the E2E boundary. Both procedures are probed against 404, with an unknown method and an unknown service as the controls. |
-| `SearchRecaps` wiring | `bootstrap.Run` treats a failed `EnsureRecapIndex` as **non-fatal** and leaves `searchRecapsUsecase` nil, which the handler reports as `unimplemented`. "DI never wired it" and "it is intentionally off" are indistinguishable from that alone, so one test asserts it is mounted (400 or 501) and a second asserts it actually answers 200. |
+| `SearchRecaps` wiring | `bootstrap.Run` treats a failed `EnsureRecapIndex` as **non-fatal** and leaves `searchRecapsUsecase` nil, which the handler reports as `unimplemented`. "DI never wired it" and "it is intentionally off" are indistinguishable from that alone, so one test asserts it is mounted (400 — *not* 501, which is the unwired state itself) and a second asserts it answers 200 with a `SearchRecapsResponse` rather than a Connect error envelope under a 200. |
 | Connect pagination | `offset` exists only on the RPC. Three pages are walked and asserted disjoint, reassembling into the whole corpus, with a short final page. |
 | `estimated_total_hits` | The RPC reports Meilisearch's estimate where REST reports `len(hits)` — the divergence the Hurl README told clients about and never tested. Also the first place the int64-as-**string** protojson encoding is pinned. |
 | Omitted `limit` | protojson drops a zero `limit`, and `SearchByUserIDWithPagination` is what turns 0 into 20. Forward the literal 0 to Meilisearch and every caller that omits the field gets zero hits — a total outage under a 200. |

@@ -83,11 +83,23 @@ test.describe("the operator listener is the only socket", () => {
 	test(
 		"control: :9110 does answer, so a refusal elsewhere is a topology fact",
 		{ tag: "@smoke" },
-		async ({ ops }) => {
+		async ({ probe }) => {
 			// Without this, every refusal below would also be satisfied by a
 			// container that is not running at all — which is the single most
 			// likely way this file could report green while proving nothing.
-			await expectStatus(await ops.get("/health"), 200);
+			//
+			// Dialled through `probe` at an absolute URL, the same shape the
+			// closed-port tests use, so this also controls for the probe client
+			// itself: an unresolvable DNS name or a broken fixture fails here with
+			// a named URL instead of reading as "the boundary is closed" five
+			// times below.
+			//
+			// Reaching it this way is the bind-address claim too. OPS_LISTEN=":9110"
+			// has an empty host — bind-side shorthand for every interface in the
+			// container's netns — and this request crosses a container boundary
+			// (suite.sh runs the suite in its own container on the staging
+			// network), so a listener that came back bound to loopback fails here.
+			await expectStatus(await probe.get(harvesterURL(9110, "/health")), 200);
 		},
 	);
 
@@ -98,35 +110,35 @@ test.describe("the operator listener is the only socket", () => {
 	}
 
 	test(
-		"the ops listener is reachable by DNS name, not only by loopback",
+		"OPS_URL names the harvester's :9110 and nothing else",
 		{ tag: "@contract" },
-		async ({ probe }) => {
-			// OPS_LISTEN=":9110" — an empty host, which is bind-side shorthand for
-			// every interface in the container's netns. That is what lets Prometheus
-			// scrape over alt-network and what lets this suite reach it at all; a
-			// loopback bind would make every test here fail at connect rather than
-			// at an assertion, and would look identical to the service being down.
+		async ({ ops }) => {
+			// Guards the guard. If OPS_URL were ever pointed somewhere other than
+			// the harvester, the control test above would still pass (it dials
+			// HARVESTER_HOST directly) while every /health and /metrics assertion
+			// in ops-surface.spec.ts ran against the wrong process, and the suite
+			// would be green and meaningless.
 			//
-			// Asserted through the `probe` client (no baseURL) so it is the DNS name
-			// under test rather than whatever OPS_URL happens to be set to.
-			await expectStatus(await probe.get(harvesterURL(9110, "/health")), 200);
-		},
-	);
+			// Asserted on the configuration rather than by comparing two response
+			// bodies: run.sh points both endpoints at the same container, so the
+			// bodies are the same two-field constant either way and comparing them
+			// proves nothing. The two variables disagreeing is the failure worth
+			// catching, and it is only visible before the requests are sent.
+			const configured = new URL(env.opsURL);
+			expect(
+				configured.hostname,
+				`OPS_URL=${env.opsURL} does not address HARVESTER_HOST=${env.harvesterHost}, ` +
+					`so this suite's positive and negative halves are testing two different hosts`,
+			).toBe(env.harvesterHost);
+			expect(
+				configured.port,
+				`OPS_URL=${env.opsURL} is not the ops listener's :9110 — the port every ` +
+					`closed-port assertion below is defined against`,
+			).toBe("9110");
 
-	test(
-		"OPS_URL and the DNS-name probe address the same listener",
-		{ tag: "@contract" },
-		async ({ probe, ops }) => {
-			// Guards the guard: if OPS_URL were ever pointed somewhere other than
-			// the harvester, the control tests above would pass against the wrong
-			// process while the closed-port assertions passed against the right
-			// one, and the suite would be green and meaningless.
-			const viaEnv = await ops.get("/health");
-			const viaName = await probe.get(harvesterURL(9110, "/health"));
-			await expectStatus(viaEnv, 200);
-			await expectStatus(viaName, 200);
-			const [a, b] = [await viaEnv.text(), await viaName.text()];
-			expect(a, `${env.opsURL} and ${harvesterURL(9110)} disagree`).toBe(b);
+			// And the listener the whole positive half of the suite talks to
+			// through this fixture is the one that just got pinned.
+			await expectStatus(await ops.get("/health"), 200);
 		},
 	);
 });

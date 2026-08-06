@@ -28,6 +28,21 @@ test.describe("generate pass-through", () => {
 		// model (MODEL_ROUTING_ENABLED is false in this slice, so it must not)
 		// shows up here and nowhere else.
 		expect(body.model).toBe(env.stubModel);
+
+		// The three counters are `.optional()` in the schema because real Ollama
+		// omits them on some paths — which means the schema alone accepts a
+		// handler that stopped appending them altogether. The staging stub always
+		// supplies all three (compose/news-creator-ollama-stub/app.py, the
+		// non-streaming `/api/generate` branch), and `OllamaGateway.generate`
+		// forwards them verbatim, so against *this* slice their exact values are
+		// pinnable. That is what keeps `generate_handler`'s
+		// `if llm_response.<counter> is not None` block from going dead: a
+		// gateway that stopped reading them off the upstream body would still
+		// answer a schema-valid envelope, and recap-worker's token accounting
+		// would silently read zeros.
+		expect(body.prompt_eval_count).toBe(16);
+		expect(body.eval_count).toBe(32);
+		expect(body.total_duration).toBe(1_000_000);
 	});
 
 	test("strips num_ctx from options without failing the request @contract", async ({
@@ -48,12 +63,36 @@ test.describe("generate pass-through", () => {
 		await expectJsonStatus(response, 200, generateResponseSchema);
 	});
 
-	test("accepts a num_predict override in options @contract", async ({ api, seed }) => {
-		// New coverage. `num_predict` is popped and coerced with `int()`; a
-		// non-integer is logged and ignored rather than raised
-		// (generate_handler.py:57-70). Both branches must answer 200 — the
-		// tolerant branch especially, because a caller that sends a string is a
-		// bug we degrade through rather than a request we reject.
+	test("accepts an integer num_predict override in options @contract", async ({ api, seed }) => {
+		// New coverage, and the branch that actually carries the override
+		// through: `num_predict` is popped out of `options` and coerced with
+		// `int()`, then handed to `llm_provider.generate(num_predict=...)`
+		// (generate_handler.py:53-60, 79-86). A regression that started
+		// *rejecting* a well-formed override — the only way a caller can cap
+		// generation length on this endpoint — fails here.
+		const response = await api.post("/api/generate", {
+			data: {
+				...generateBody(`num_predict probe ${seed.token}`),
+				options: { num_predict: 64 },
+			},
+		});
+		await expectJsonStatus(response, 200, generateResponseSchema);
+	});
+
+	test("ignores a non-integer num_predict rather than rejecting the request @contract", async ({
+		api,
+		seed,
+	}) => {
+		// The tolerant half. `int(raw_num_predict)` is wrapped in
+		// `except (TypeError, ValueError)`, which logs and leaves the override
+		// unset (generate_handler.py:56-60) — so the request reaches the provider
+		// exactly as if no `options` had been sent at all. That is deliberate: a
+		// caller that sends a string is a bug we degrade through rather than a
+		// request we reject.
+		//
+		// Note what this does *not* prove, since the discarded value makes the
+		// request indistinguishable from an un-optioned one: the accept path is
+		// gated by the test above, not by this 200.
 		const response = await api.post("/api/generate", {
 			data: {
 				...generateBody(`num_predict probe ${seed.token}`),

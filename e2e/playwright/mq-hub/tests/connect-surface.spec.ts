@@ -4,7 +4,7 @@ import {
 	expectProcedureMounted,
 	procedurePath,
 } from "../../_shared/connect.js";
-import { expectJson, expectStatus } from "../../_shared/http.js";
+import { expectJson, expectMethodNotAllowed, expectStatus } from "../../_shared/http.js";
 import { MQHUB_SERVICE, Procedure } from "../src/env.js";
 import { connectErrorSchema } from "../src/schemas.js";
 
@@ -53,13 +53,14 @@ const MOUNTED = [
 	{
 		name: "CreateConsumerGroup",
 		procedure: Procedure.createConsumerGroup,
-		// The empty `startId` is not a valid stream ID, so Redis rejects it and
+		// The empty `startId` is not a valid stream ID, so Redis answers `ERR
+		// Invalid stream ID specified as stream command argument` and
 		// handler.go:126 maps anything that is not BUSYGROUP to CodeUnavailable
-		// (503). 200 is in the band only because it is the answer if a future
-		// Redis ever accepts the degenerate arguments — both mean the handler
-		// ran, which is the whole claim. Anything else, and 404 in particular,
-		// is a wiring failure.
-		expected: [200, 503],
+		// (503). Exactly 503, not a band: 200 would mean `XGROUP CREATE "" ""
+		// "" MKSTREAM` had been accepted and the empty-string key created,
+		// which is the state the sibling "GetStreamInfo is mounted" asserts is
+		// impossible by expecting 500 (`no such key`) on that same key.
+		expected: [503],
 	},
 	{
 		name: "GetStreamInfo",
@@ -114,9 +115,11 @@ test.describe("Connect-RPC protocol contract", () => {
 		// an `Allow` header. Worth pinning because the alternative — a GET that
 		// reached `Publish` — would make every stream writable from a browser
 		// address bar and from any link preview crawler.
-		const response = await bare.get(procedurePath(Procedure.publish));
-		await expectStatus(response, 405);
-		expect(response.headers()["allow"] ?? "").toContain("POST");
+		//
+		// `expectMethodNotAllowed` is the shared spelling of this: it refuses a
+		// 404 (route gone, a different failure) and requires the Allow header
+		// RFC 9110 §15.5.6 makes mandatory, rather than defaulting it to "".
+		expectMethodNotAllowed(await bare.get(procedurePath(Procedure.publish)), ["POST"]);
 	});
 
 	test("a malformed JSON body is invalid_argument, not a 500", { tag: "@contract" }, async ({ api }) => {

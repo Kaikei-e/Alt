@@ -4,7 +4,7 @@ import { expectConnectionRefused } from "../../_shared/net.js";
 import { expectJsonStatus, expectStatus } from "../../_shared/http.js";
 import { env, Procedure } from "../src/env.js";
 import { articleCreatedEvent, publishRequest } from "../src/events.js";
-import { publishResponseSchema } from "../src/schemas.js";
+import { int64, publishResponseSchema, streamInfoSchema } from "../src/schemas.js";
 
 /**
  * Listener topology and the security posture that follows from it — new
@@ -96,20 +96,50 @@ test.describe("access control posture", () => {
 		// nothing downstream reads it, which is what makes the current state
 		// safe rather than merely undefended.
 		//
-		// The assertion is that supplying it makes no difference. If a future
-		// change starts *trusting* the header without an mTLS listener in front
-		// to overwrite it, an attacker sets their own identity by typing it —
-		// the classic proxy-header-spoofing bug. That change would have to make
-		// this request behave differently from the one above, and this is the
-		// test that notices.
-		const response = await bare.post(`/${Procedure.publish}`, {
-			headers: {
-				"Content-Type": "application/json",
-				"X-Alt-Peer-Identity": "pre-processor",
-			},
-			data: publishRequest(stream, articleCreatedEvent()),
-		});
-		const body = await expectJsonStatus(response, 200, publishResponseSchema);
-		expect(body.success).toBe(true);
+		// The claim is a *comparison*, so the test has to make both calls. One
+		// publish carrying the header and a `success: true` assertion is the
+		// preceding test with an extra header attached, and it cannot fail —
+		// publishResponseSchema already pins `success` to the literal. Two
+		// publishes onto the same per-test stream, differing only in the
+		// header, is what makes "changes nothing" observable: same HTTP status,
+		// two distinct entries, and both of them actually in the stream.
+		//
+		// If a future change starts *trusting* the header without an mTLS
+		// listener in front to overwrite it, an attacker sets their own
+		// identity by typing it — the classic proxy-header-spoofing bug. The
+		// first thing such a change does is treat the two requests differently.
+		const spoofed = await callUnary(
+			bare,
+			Procedure.publish,
+			publishRequest(stream, articleCreatedEvent()),
+			{ headers: { "X-Alt-Peer-Identity": "pre-processor" } },
+		);
+		const plain = await callUnary(
+			bare,
+			Procedure.publish,
+			publishRequest(stream, articleCreatedEvent()),
+		);
+
+		expect(
+			spoofed.status(),
+			"a client-supplied peer identity changed the outcome of a publish; the header " +
+				"is untrusted input on this listener and nothing may read it",
+		).toBe(plain.status());
+
+		const spoofedBody = await expectJsonStatus(spoofed, 200, publishResponseSchema);
+		const plainBody = await expectJsonStatus(plain, 200, publishResponseSchema);
+		expect(spoofedBody.messageId).not.toBe(plainBody.messageId);
+
+		// Both landed. A rejection that still answered 200, or a silent drop of
+		// the header-bearing request, would show up here as a length of 1.
+		const info = await expectJsonStatus(
+			await callUnary(bare, Procedure.getStreamInfo, { stream }),
+			200,
+			streamInfoSchema,
+		);
+		expect(
+			int64(info.length),
+			"both publishes must be in the stream — the header may not gate the write",
+		).toBe(2);
 	});
 });

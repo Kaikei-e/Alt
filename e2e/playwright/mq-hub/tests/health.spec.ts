@@ -7,7 +7,13 @@ import {
 } from "../../_shared/http.js";
 import { callUnary } from "../../_shared/connect.js";
 import { Procedure } from "../src/env.js";
-import { int64, restHealthSchema, rpcHealthSchema } from "../src/schemas.js";
+import {
+	int64,
+	restHealthSchema,
+	restHealthShapeSchema,
+	rpcHealthSchema,
+	rpcHealthShapeSchema,
+} from "../src/schemas.js";
 
 /**
  * Health, on both of the surfaces that expose it — the port of
@@ -52,20 +58,40 @@ test.describe("health", () => {
 		expectHeaderContains(response, "Content-Type", "application/json");
 	});
 
-	test("HealthCheck reports an uptime that advances", { tag: "@contract" }, async ({ api }) => {
-		// 03-healthcheck-rpc.hurl asserted `uptimeSeconds exists`, which is
-		// satisfied by a hardcoded constant — and by protojson's omission of a
-		// zero value it is not even satisfied reliably. Reading it twice and
-		// requiring the second to be no smaller pins that the field is derived
-		// from `time.Since(u.startTime)` and actually moves.
+	test("HealthCheck reports a non-zero uptime that never goes backwards", { tag: "@contract" }, async ({
+		api,
+	}) => {
+		// 03-healthcheck-rpc.hurl asserted `uptimeSeconds exists`, which a
+		// hardcoded constant satisfies. rpcHealthSchema restores the presence
+		// half (the field is required there, not optional); these two
+		// assertions are the value half.
 		//
-		// `>=` not `>`: the field is whole seconds, so two calls a millisecond
-		// apart legitimately report the same number.
+		// The absolute check is the one with teeth. It fails for a handler that
+		// answers a hardcoded 0, and — because protojson omits zero values, so
+		// "0" and "gone" are the same wire shape — for one that stopped
+		// deriving the field from `time.Since(u.startTime)`
+		// (publish_usecase.go:169) at all. It is safe because mq-hub is only
+		// reported healthy after a /health probe passes (compose start_period
+		// 5s plus a 3s interval) and setup/global-setup.ts probes again before
+		// the first test runs, so the process is several seconds old here.
+		//
+		// The `>=` below is deliberately weak, and the title says so rather
+		// than claiming "advances": the field is whole seconds and the two
+		// calls are issued back to back, so equality is the expected outcome
+		// and a genuinely advancing value could only be observed by sleeping a
+		// second — a cost this suite does not pay. What it still catches is a
+		// clock stepping backwards over `time.Since`.
 		const first = await expectJsonStatus(
 			await callUnary(api, Procedure.healthCheck, {}),
 			200,
 			rpcHealthSchema,
 		);
+		expect(
+			int64(first.uptimeSeconds),
+			"uptimeSeconds must be derived from the process start time; 0 (or an " +
+				"omitted field, which is the same thing on the wire) means it is not",
+		).toBeGreaterThan(0);
+
 		const second = await expectJsonStatus(
 			await callUnary(api, Procedure.healthCheck, {}),
 			200,
@@ -81,14 +107,25 @@ test.describe("health", () => {
 		// built from `health.RedisStatus` while `/health` recomputes the string
 		// from `health.Healthy`. They are genuinely two code paths in main.go
 		// and handler.go, and only a cross-check catches that.
-		const rest = await expectJsonStatus(await api.get("/health"), 200, restHealthSchema);
+		//
+		// Parsed with the *shape* schemas on purpose. restHealthSchema and
+		// rpcHealthSchema pin both fields to literals, so parsing with them
+		// would make the two comparisons below `true === true` and
+		// `"connected" === "connected"` — a test that cannot fail, and one
+		// whose claim its two siblings already make independently. Un-pinning
+		// the values is what leaves the cross-check load-bearing.
+		const rest = await expectJsonStatus(await api.get("/health"), 200, restHealthShapeSchema);
 		const rpc = await expectJsonStatus(
 			await callUnary(api, Procedure.healthCheck, {}),
 			200,
-			rpcHealthSchema,
+			rpcHealthShapeSchema,
 		);
-		expect(rpc.healthy).toBe(rest.healthy);
-		expect(rpc.redisStatus).toBe(rest.redis_status);
+		expect(rpc.healthy, "HealthCheck and GET /health disagree on `healthy`").toBe(rest.healthy);
+		expect(
+			rpc.redisStatus,
+			"HealthCheck's redisStatus is passed through from usecase.HealthStatus while " +
+				"GET /health recomputes the string from health.Healthy — they have drifted",
+		).toBe(rest.redis_status);
 	});
 
 	test("GET /health needs no credentials", { tag: "@authz" }, async ({ bare }) => {

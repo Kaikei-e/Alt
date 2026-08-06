@@ -82,6 +82,23 @@ export const reportSchema = z
 		title: z.string(),
 		reportType: z.string(),
 		currentVersion: z.number().int().positive().optional(),
+		/**
+		 * `.optional()` here is **not** proto3's zero-value omission — it records a
+		 * gap in the read path, so nobody reads the loose schema as laxity.
+		 *
+		 * `acolyte.proto:205` declares `optional string latest_successful_run_id`
+		 * (explicit presence, so protojson emits it whenever it is set) and
+		 * `postgres_job_gw.complete_run` writes the column. But
+		 * `connect_service.get_report` builds its `Report` message without the
+		 * field at all — report_id, title, report_type, current_version, created_at,
+		 * scope and nothing else — so it is permanently absent on the wire even
+		 * after a succeeded run, and `postgres_report_gw` reading `r[4]` into the
+		 * domain object goes nowhere.
+		 *
+		 * No test asserts it, deliberately: the assertion would be red against a
+		 * service bug rather than against a test bug. Requiring the field here is
+		 * the change to make once `get_report` populates it.
+		 */
 		latestSuccessfulRunId: z.string().optional(),
 		createdAt: timestampSchema,
 		/**

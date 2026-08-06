@@ -136,7 +136,7 @@ non-empty, and `language === "und"` implies `tags`, `confidence` and
 |---|---|
 | Route registration | `/openapi.json` is generated from the live route table; a deleted decorator or a module that failed to import now fails here rather than in production |
 | `/api/v1/generate-tags`, `/api/v1/user-preferences` | never probed at all — both now asserted to be mounted *and* to refuse anonymous callers |
-| Peer-identity forgery | a self-written `X-Alt-Peer-Identity` must not unlock anything |
+| Peer-identity forgery | a self-written `X-Alt-Peer-Identity` changes nothing about the answer — same status, same body. "The middleware discarded it" is not observable in this slice (`strict=False`, no handler reads `request.state.peer_identity`); that would need a `strict=True` stack |
 | mTLS sidecar port | asserted closed, so the plaintext trust model is checked rather than assumed |
 | Japanese pipeline | `_detect_language` → the fugashi/unidic path was completely uncovered |
 | Sanitizer branches | below-minimum-length input, the repetition DoS guard, HTML/script stripping |
@@ -168,7 +168,7 @@ When the underlying issue is fixed, the test fails — which is the signal.
 | Where | What |
 |---|---|
 | `tests/authz.spec.ts` | `/api/v1/extract-tags` authenticates nobody on `:9400`. `verify_service_token` is a documented no-op; reachability is the entire control |
-| `tests/authz.spec.ts` | the two authenticated routes answer 422 *or* 503 — the fail-closed `require_auth` wrapper is reached only when FastAPI's own validation of the wrapped signature passes first |
+| `tests/authz.spec.ts` | the two authenticated routes answer `503 Authentication is unavailable`. Reaching that wrapper at all takes a body shaped for the *undecorated* signature — `@wraps` sets `__wrapped__` and FastAPI follows it — so the specs send `{request, user_context}` / `{}`; without it FastAPI 422s before the decorator runs and the fail-closed check is never exercised |
 | `tests/route-surface.spec.ts` | `/docs` is served, because `FastAPI(...)` is constructed without `docs_url=None` |
 
 ## Out of scope

@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectJsonStatus, expectStatus } from "../../_shared/http.js";
+import { expectJson, expectMethodNotAllowed, expectJsonStatus, expectStatus } from "../../_shared/http.js";
 import { methodNotAllowedSchema, notFoundSchema, openApiSchema } from "../src/schemas.js";
 
 /**
@@ -73,15 +73,24 @@ test.describe("route registration", () => {
 		// though only POST is registered. A 404 here would mean the route is
 		// gone; a 200 would mean someone added a GET handler that bypasses the
 		// request model and therefore all of its validation.
-		await expectJsonStatus(await api.get("/api/v1/extract-tags"), 405, methodNotAllowedSchema);
+		//
+		// `expectMethodNotAllowed` rather than a bare status check, because it
+		// also pins the `Allow` header RFC 9110 §15.5.6 requires. Starlette
+		// sets it at the raise site, so a router change that drops it is a
+		// real client-breaking regression — and one only this test is
+		// positioned to see.
+		const response = await api.get("/api/v1/extract-tags");
+		expectMethodNotAllowed(response, ["POST"]);
+		await expectJson(response, methodNotAllowedSchema);
 	});
 
 	test("POST /health is 405, not 404", { tag: "@contract" }, async ({ api }) => {
-		await expectJsonStatus(
-			await api.post("/health", { data: {} }),
-			405,
-			methodNotAllowedSchema,
-		);
+		// `Allow` names GET (and HEAD, which Starlette adds for every GET
+		// route); asserting GET is in it is what proves the router still knows
+		// the verb this path *does* answer.
+		const response = await api.post("/health", { data: {} });
+		expectMethodNotAllowed(response, ["GET"]);
+		await expectJson(response, methodNotAllowedSchema);
 	});
 
 	test("the interactive docs are served from the same route table", {

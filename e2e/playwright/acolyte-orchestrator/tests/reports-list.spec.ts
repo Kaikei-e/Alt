@@ -114,17 +114,29 @@ test.describe("ListReports", () => {
 		const seen = new Set<string>();
 		const found = new Set<string>();
 		let cursor: string | undefined;
-		// A bound, not a guess: the whole suite creates well under 100 reports,
-		// and running off the end would otherwise mean an infinite loop rather
-		// than a failure.
-		const MAX_PAGES = 20;
+		const cursorsUsed: string[] = [];
+		// `limit: 1`, not a page size that could swallow all three seeded rows at
+		// once. With `limit: 5` the three rows are the three newest at that
+		// instant, so they all land on page 1, `found.size === mine.size` on the
+		// first iteration and the loop breaks *before* a cursor is ever sent —
+		// `WHERE created_at < %s` and `next_cursor = reports[-1].created_at` go
+		// unexercised and the cross-page duplicate check inspects a single page,
+		// where a duplicate is impossible by construction. One row per page forces
+		// the boundary row to be re-read on every request, which is exactly where a
+		// `<=` predicate emits the duplicate this test claims to catch.
+		//
+		// The bound is generous rather than tight: page 1 starts at the globally
+		// newest row, so the walk also has to descend past whatever sibling workers
+		// created in the window between this test's seeding and its first request.
+		// Running off the end must be a failure, not an infinite loop.
+		const MAX_PAGES = 60;
 		let pages = 0;
 
 		while (pages < MAX_PAGES) {
 			pages += 1;
 			const page: ListReportsResponse = await list(
 				acolyte,
-				cursor === undefined ? { limit: 5 } : { limit: 5, cursor },
+				cursor === undefined ? { limit: 1 } : { limit: 1, cursor },
 			);
 			for (const report of page.reports ?? []) {
 				expect(
@@ -138,31 +150,56 @@ test.describe("ListReports", () => {
 			if (page.hasMore !== true) break;
 			cursor = page.nextCursor;
 			expect(cursor, "hasMore was true, so a cursor must be supplied").toBeTruthy();
+			if (cursor !== undefined) cursorsUsed.push(cursor);
 		}
 
 		expect(
 			[...found].sort(),
 			`paged through ${pages} page(s) and ${seen.size} report(s) without finding every seeded id`,
 		).toEqual([...mine].sort());
+
+		// The paging itself is part of the claim, not a means to it. Three seeded
+		// rows at one row per page cannot be collected in fewer than three
+		// requests, two of which must have carried a cursor. Without these the
+		// test still passes when a regression makes `nextCursor` unusable and every
+		// id happens to arrive on the first page.
+		expect(
+			pages,
+			"three seeded reports at limit: 1 cannot be reached in fewer than three pages",
+		).toBeGreaterThanOrEqual(3);
+		expect(
+			cursorsUsed.length,
+			"the cursor predicate was never exercised — no page was requested with a cursor",
+		).toBeGreaterThanOrEqual(2);
 	});
 
-	test("an omitted limit falls back to a page of 20 @contract", async ({ acolyte }) => {
+	test("an omitted limit falls back to a page of 20 @contract", async ({ acolyte }, testInfo) => {
 		// New coverage for connect_service.py:145 (`limit if limit > 0 else 20`).
 		// int32 zero is indistinguishable from "not sent" on the wire, so the
 		// default is the only thing standing between an unbounded client and a
 		// full table scan.
 		//
-		// The assertion is only meaningful once the database holds more than one
-		// page, which depends on how far through the run this test lands. Rather
-		// than assert a ceiling that passes vacuously, it skips and says so — a
-		// vacuous green is worse than an honest skip.
-		const everything = await list(acolyte, { limit: 200 });
-		const total = (everything.reports ?? []).length;
-		test.skip(
-			total <= 20,
-			`only ${total} report(s) exist, so a 20-row default page is indistinguishable ` +
-				`from "everything"`,
-		);
+		// The precondition — more rows than one default page — is seeded here
+		// rather than sampled from whatever the rest of the suite happens to have
+		// left behind. Sampling was both vacuous and racy: it skipped in any run
+		// that reached this test early (and always under PW_GREP), and when it did
+		// not skip it read the total once and then asserted against a *second*
+		// call, across which sibling workers' DeleteReport tests could drop the
+		// total to exactly 20 — at which point the `LIMIT limit + 1` over-fetch
+		// returns 20 rows, `next_cursor` stays None, `has_more` is omitted and
+		// `hasMore === true` fails red for a reason that has nothing to do with the
+		// default page size. These 21 rows belong to this test and no test deletes
+		// them, so both assertions are unconditional.
+		//
+		// Twenty-one sequential inserts against a Python handler that four workers
+		// may already be driving LangGraph pipelines through. The work is real, so
+		// the budget is raised rather than the seeding being trimmed to fit.
+		test.slow();
+
+		const title = testToken(testInfo.workerIndex, "default-page");
+		for (let n = 0; n < 21; n += 1) {
+			await createReport(acolyte, { title: `${title}-${n}`, reportType: "weekly_briefing" });
+		}
 
 		const defaulted = await list(acolyte, {});
 		expect(defaulted.reports ?? [], "the default page size is 20").toHaveLength(20);

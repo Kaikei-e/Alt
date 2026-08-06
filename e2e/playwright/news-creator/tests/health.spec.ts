@@ -31,13 +31,26 @@ test.describe("health", () => {
 		expect(body.models.map((model) => model.name)).toContain(env.stubModel);
 	});
 
-	test("GET /health needs no credential @smoke @authz", async ({ api }) => {
+	test("a junk credential does not turn /health into a 401 @smoke @authz", async ({ api }) => {
 		// news-creator carries no auth middleware other than
-		// `PeerIdentityMiddleware`, which runs with `strict=False` (main.py), so
-		// the listener answers anonymously by design. The container healthcheck
+		// `PeerIdentityMiddleware`, which runs with `strict=False` (main.py:239),
+		// so the listener answers anonymously by design. The container healthcheck
 		// (`urllib.request.urlopen('http://127.0.0.1:11434/health')`) sends no
 		// headers at all and would deadlock the whole slice if that changed.
-		const response = await api.get("/health", { headers: {} });
+		//
+		// Sending credentials the service must ignore rather than sending none is
+		// what makes this a claim: an *absent* header proves nothing here, because
+		// no test in this suite ever sends one — omitting it is the same request
+		// the @smoke test above already makes. A bearer token and a Kratos session
+		// cookie are the two shapes an accidentally-mounted auth middleware would
+		// try to validate, and a middleware that rejected them would answer
+		// 401/403 rather than the healthy envelope.
+		const response = await api.get("/health", {
+			headers: {
+				Authorization: "Bearer not-a-real-token",
+				Cookie: "ory_kratos_session=not-a-real-session",
+			},
+		});
 		await expectJsonStatus(response, 200, healthSchema);
 	});
 
@@ -50,17 +63,24 @@ test.describe("health", () => {
 		// header must be inert: a caller supplying one gets byte-for-byte the
 		// same answer as a caller supplying none.
 		//
-		// Two failures this catches. If `strict` were ever flipped to True in
-		// main.py without the sidecar in front, the forged call would start
-		// answering 401/403 and every unauthenticated caller in staging would
-		// break. If the trust checks were dropped, the forged identity would be
-		// accepted — a caller reaching the plaintext port could name itself
-		// whatever it liked (infra/peer_identity.py).
-		const [forged, plain] = await Promise.all([
-			api.get("/health", { headers: { "X-Alt-Peer-Identity": "alt-backend" } }),
-			api.get("/health"),
-		]);
-		expect(forged.status(), "the forged identity changed the answer").toBe(plain.status());
+		// One failure this catches, and only one. If `strict` were ever flipped to
+		// True in main.py without the sidecar in front, the forged call would
+		// start answering 401/403 (infra/peer_identity.py:79-87) and every
+		// unauthenticated caller in staging would break.
+		//
+		// The other half — "the trust checks were dropped, so the forgery was
+		// *accepted*" — is deliberately not asserted, because it is not
+		// observable from outside. `dispatch` writes the peer onto
+		// `request.state.peer_identity` and onto the *request* headers, and
+		// `/health` builds its `{status, service, models}` dict without reading
+		// either (handler/health_handler.py:44-60), so an accepted forgery is
+		// byte-identical to a rejected one. Comparing this response's status to
+		// an unforged one's is likewise not a claim: both traverse the same
+		// branch, so they agree even when both have regressed together. Gating
+		// acceptance needs a surface that echoes the peer.
+		const forged = await api.get("/health", {
+			headers: { "X-Alt-Peer-Identity": "alt-backend" },
+		});
 		await expectJsonStatus(forged, 200, healthSchema);
 	});
 });

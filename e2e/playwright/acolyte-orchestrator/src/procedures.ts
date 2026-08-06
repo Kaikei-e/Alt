@@ -1,9 +1,17 @@
 import { expect } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
+import type { z } from "zod";
 import { ConnectCode, callUnary, connectErrorSchema } from "../../_shared/connect.js";
 import type { ConnectCodeName } from "../../_shared/connect.js";
+import { ERROR_ENVELOPE_MESSAGE, notAnErrorEnvelope } from "../../_shared/schemas.js";
 import { ZERO_UUID } from "./env.js";
 import { P } from "./fixtures.js";
+import {
+	createReportResponseSchema,
+	healthCheckResponseSchema,
+	listReportVersionsResponseSchema,
+	listReportsResponseSchema,
+} from "./schemas.js";
 
 /**
  * Service-registration probes — CLAUDE.md rule 8 at the E2E boundary.
@@ -35,6 +43,12 @@ import { P } from "./fixtures.js";
  * dropped a handler could not keep answering `not_found` for `GetReport` and
  * `invalid_argument` for `RerunSection` from the same generic fallback.
  *
+ * The four procedures that answer 2xx are held to the same standard from the
+ * other side: each carries its own response schema and the probe parses the
+ * body against it, plus `notAnErrorEnvelope`. A status-only check there would
+ * have let anything that could answer 200 — a shim, a catch-all route, a
+ * Connect error envelope under a 200 — stand in for a registered handler.
+ *
  * The two genuinely-unimplemented procedures (`GetReportVersion`,
  * `DiffReportVersions`) are the honest exception: `unimplemented` is both their
  * contract and the most likely fallback, so for them the probe proves the
@@ -42,7 +56,14 @@ import { P } from "./fixtures.js";
  */
 
 export type ProcedureExpectation =
-	| { readonly kind: "ok" }
+	/**
+	 * A 2xx plus the schema its *body* must satisfy. The schema is not optional,
+	 * and that is the whole point of this branch: the module docstring above
+	 * argues the discriminator for this service is the body, so an ok probe that
+	 * asserted only `status() === 200` would contradict it — a shim answering 200
+	 * with `{}`, or with a Connect error envelope under a 200, would pass.
+	 */
+	| { readonly kind: "ok"; readonly schema: z.ZodType<unknown> }
 	| { readonly kind: "error"; readonly code: ConnectCodeName };
 
 export type ProcedureProbe = {
@@ -71,7 +92,7 @@ export const PROCEDURE_PROBES: readonly ProcedureProbe[] = [
 	{
 		procedure: P.healthCheck,
 		request: {},
-		expectation: { kind: "ok" },
+		expectation: { kind: "ok", schema: healthCheckResponseSchema },
 		why: "connect_service.py:439 — HealthCheckRequest has no fields",
 	},
 	{
@@ -79,7 +100,10 @@ export const PROCEDURE_PROBES: readonly ProcedureProbe[] = [
 		// Titled rather than `{}` so the probe does not leave an anonymous row
 		// behind that tests/reports-list.spec.ts would then have to tolerate.
 		request: { title: "acolyte-e2e-registration-probe", reportType: "probe" },
-		expectation: { kind: "ok" },
+		// The strongest ok probe in the table: the schema requires a real UUID, so
+		// only CreateReport's own handler — which has just written a row — can
+		// satisfy it.
+		expectation: { kind: "ok", schema: createReportResponseSchema },
 		why: "connect_service.py:74 — CreateReport accepts any title/report_type",
 	},
 	{
@@ -91,7 +115,7 @@ export const PROCEDURE_PROBES: readonly ProcedureProbe[] = [
 	{
 		procedure: P.listReports,
 		request: { limit: 1 },
-		expectation: { kind: "ok" },
+		expectation: { kind: "ok", schema: listReportsResponseSchema },
 		why: "connect_service.py:141 — ListReports always answers, empty or not",
 	},
 	{
@@ -106,7 +130,7 @@ export const PROCEDURE_PROBES: readonly ProcedureProbe[] = [
 		// queries, and returns an empty page — so this reaches the repository
 		// rather than bouncing off argument validation.
 		request: { reportId: ZERO_UUID, limit: 1 },
-		expectation: { kind: "ok" },
+		expectation: { kind: "ok", schema: listReportVersionsResponseSchema },
 		why: "connect_service.py:177 — an unknown report_id yields an empty page, not an error",
 	},
 	{
@@ -144,6 +168,22 @@ export const PROCEDURE_PROBES: readonly ProcedureProbe[] = [
 ];
 
 /**
+ * A non-JSON body is the same finding on both branches: the request never
+ * reached the Connect codec, so the path is almost certainly unregistered.
+ */
+function parseJsonBody(status: number, text: string, probe: ProcedureProbe): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		throw new Error(
+			`${probe.procedure} answered ${status} with a non-JSON body, so it ` +
+				`is not reaching the Connect codec at all — the path is almost certainly ` +
+				`unregistered (${probe.why}).\nbody: ${text.slice(0, 500)}`,
+		);
+	}
+}
+
+/**
  * Asserts a procedure is registered *and* answers with the code its source says
  * it should.
  *
@@ -164,19 +204,31 @@ export async function assertProcedureRegistered(
 				`endpoint table in acolyte_connect.py never registered it — check the ` +
 				`generated handler and main.py's Mount, not the request.\nbody: ${text.slice(0, 500)}`,
 		).toBe(200);
+
+		const okBody = parseJsonBody(response.status(), text, probe);
+
+		// Both `ListReportsResponse` and `ListReportVersionsResponse` are
+		// all-optional passthrough objects — an empty page really is `{}` on the
+		// wire — so their schemas accept any JSON object, including an error
+		// envelope arriving under a 200. This is the check that separates them.
+		expect(
+			notAnErrorEnvelope(okBody),
+			`${probe.procedure} answered 200 but ${ERROR_ENVELOPE_MESSAGE} (${probe.why}).` +
+				`\nbody: ${text.slice(0, 500)}`,
+		).toBe(true);
+
+		const shape = probe.expectation.schema.safeParse(okBody);
+		expect(
+			shape.success,
+			`${probe.procedure} answered 200 with a body its own response schema refuses, so ` +
+				`something other than its handler produced it (${probe.why}).` +
+				`\nissues: ${shape.success ? "" : shape.error.issues.map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`).join("; ")}` +
+				`\nbody: ${text.slice(0, 500)}`,
+		).toBe(true);
 		return;
 	}
 
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text);
-	} catch {
-		throw new Error(
-			`${probe.procedure} answered ${response.status()} with a non-JSON body, so it ` +
-				`is not reaching the Connect codec at all — the path is almost certainly ` +
-				`unregistered (${probe.why}).\nbody: ${text.slice(0, 500)}`,
-		);
-	}
+	const parsed = parseJsonBody(response.status(), text, probe);
 
 	const envelope = connectErrorSchema.safeParse(parsed);
 	expect(

@@ -44,13 +44,25 @@ export default defineApiSuite({
 	 * `_has_preemptable_be()` has no minimum-runtime guard, so the only thing
 	 * bounding it is how briefly a request holds the slot
 	 * (hybrid_priority_semaphore.py:253-282). The staging stub answers in
-	 * milliseconds, so the window is tiny, but it is not zero: an
-	 * `expand-query`/`plan-query` spec (priority `high` by default) can in
-	 * principle cancel a concurrent `summarize`/recap generation, which
-	 * surfaces as a 500/502 rather than a wrong answer. That is exactly what
-	 * `retries` + `retryStrategy: "isolated"` in `_shared/config.ts` exist for
-	 * — the retry runs alone, where no other worker can preempt it. If it ever
-	 * becomes noisy rather than rare, `PW_WORKERS=1` is the escape hatch.
+	 * milliseconds, so the window is tiny, but it is not zero: a high-priority
+	 * acquire can cancel a concurrent `summarize`/recap generation, which
+	 * surfaces as a 500/502 rather than a wrong answer.
+	 *
+	 * The set of high-priority acquirers is larger than it looks, so count it
+	 * rather than guessing: `chat_generate` defaults to `priority: "high"`
+	 * (ollama_gateway.py:969), which covers chat.spec.ts, the NDJSON half of
+	 * streaming.spec.ts, plan-query and the recap path; and
+	 * `OllamaGateway.generate` sets `is_high_priority = stream or priority ==
+	 * "high"` (ollama_gateway.py:257), so streaming.spec.ts's SSE test acquires
+	 * high despite sending `priority: "low"`. Only the non-streaming
+	 * summarize/recap work is preemptable.
+	 *
+	 * That is what `retries` + `retryStrategy: "isolated"` in
+	 * `_shared/config.ts` exist for — the retry runs alone, where no other
+	 * worker can preempt it. If it ever becomes noisy rather than rare,
+	 * `PW_WORKERS=1` is the escape hatch. queue-drain.spec.ts does not rely on
+	 * either: it sends `priority: "high"` so its three requests cannot be
+	 * preemption candidates at all (see the comment there).
 	 */
 	workers: 4,
 

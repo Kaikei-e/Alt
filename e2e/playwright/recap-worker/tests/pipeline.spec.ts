@@ -37,14 +37,14 @@ import {
  * is not "the pipeline finished", and the next trigger is the one that would
  * silently evaporate.
  *
- * What is *not* preserved from the Hurl suite is its capture-and-carry: 05
- * captured `job_id` from the trigger and 06 captured its own, and neither ever
- * compared a captured id with the one the fetch returned. Correlating them is
- * not possible from outside anyway — `get_latest_completed_job` returns the
- * newest completed job for a window with no way to ask for a specific one — so
- * what is asserted here is what the reads actually promise: a completed recap
- * for the right window, with every field a real value rather than merely
- * present.
+ * The Hurl suite's capture-and-carry is not only preserved, it is finally
+ * used: 05 and 06 each captured `job_id` from their trigger and neither ever
+ * compared it with the id the fetch returned. `get_latest_completed_job` has
+ * no "give me this job" predicate, but it does not need one here — this
+ * project is `workers: 1` + `mode: "serial"` and every test drains the lock,
+ * so the newest completed job for a window is unambiguously the one the test
+ * just triggered. That correlation is the drive's real assertion; see the
+ * comment on it for why the window-span arithmetic it replaced could not fail.
  */
 
 test.describe.configure({ mode: "serial" });
@@ -60,7 +60,12 @@ test.describe("the recap pipeline", () => {
 		test(`triggering the ${drive.label} window produces a completed recap @slow @contract`, async ({
 			api,
 		}) => {
-			test.setTimeout(PIPELINE_BUDGET_MS + 60_000);
+			// Two sequential waits, each allowed the full budget: the convergence
+			// poll below (120s) and then the drain (120s). Budgeting only one of
+			// them meant a slow-but-healthy stack died at 180s with Playwright's
+			// generic "Test timeout exceeded" instead of the `eventually` message
+			// naming what never became true.
+			test.setTimeout(2 * PIPELINE_BUDGET_MS + 60_000);
 
 			const before = await readTotalJobs(api);
 
@@ -96,20 +101,28 @@ test.describe("the recap pipeline", () => {
 						200,
 						recapSummarySchema,
 					);
-					// `window_end - window_start` is the window the scheduler was
-					// asked for. The 3-day drive is the whole reason this
-					// assertion exists: `get_latest_completed_job` filters on
-					// `window_days`, so a `JobContext::new_manual(id, genres, 7)`
-					// hard-coded into `trigger_3days` would make the 3-day fetch
-					// either 404 forever or hand back the 7-day job — and the
-					// Hurl suite, which only checked that four fields existed,
-					// would have passed either way.
-					const span =
-						Date.parse(recap.window_end) - Date.parse(recap.window_start);
+					// Identity, not arithmetic. Asserting
+					// `window_end - window_start === drive.days` cannot fail:
+					// neither timestamp comes from the row.
+					// `get_latest_completed_job` derives both from the
+					// `window_days` argument the handler was called with — the
+					// literal 7 or 3 (store/dao/output.rs:174-177,
+					// api/fetch.rs:382-390) — so the span equals the requested
+					// window for *any* row the query returns, including one whose
+					// stored `window_days` is wrong.
+					//
+					// What is falsifiable is *which* row came back. A
+					// `JobContext::new_manual(id, genres, 7)` hard-coded into
+					// `trigger_3days` would file the job under `window_days = 7`,
+					// so `/v1/recaps/3days` would either stay 404 until the budget
+					// runs out or serve some other job's id — and the span check
+					// passed for either.
 					expect(
-						Math.round(span / 86_400_000),
-						`the ${drive.label} recap must cover ${drive.days} days`,
-					).toBe(drive.days);
+						recap.job_id,
+						`GET /v1/recaps/${drive.window} must serve the job this test ` +
+							`just triggered — the newest completed ${drive.label} job ` +
+							`is unambiguous in this serial, single-worker project`,
+					).toBe(accepted.job_id);
 
 					// The genre the trigger asked for is the genre that came
 					// back. `normalize_genres` lowercases, and `recap_outputs`
@@ -166,6 +179,12 @@ test.describe("the recap pipeline", () => {
 	});
 
 	test("POST /admin/jobs/retry never reports success for a no-op @contract", async ({ api }) => {
+		// The same budget as the two drives above, for the same reason: the 202
+		// branch below drains the pipeline, and under the suite-wide 45s timeout
+		// that drain could never finish — a healthy-but-slow retry died on a
+		// generic Playwright timeout instead of the drain's own message.
+		test.setTimeout(PIPELINE_BUDGET_MS + 60_000);
+
 		// New coverage, and the highest-value assertion in this file: it is the
 		// regression fence for the rule-8 bug api/admin.rs's own unit tests were
 		// written for. The old handler built an empty-`genres` JobContext
@@ -190,6 +209,16 @@ test.describe("the recap pipeline", () => {
 		//
 		// Anything else — a 200, or a 202 that cannot name what it is retrying
 		// — is the no-op wearing a success status again.
+		//
+		// The baseline is read *before* the POST because the drain in the 202
+		// branch needs it. A literal `1` is already satisfied by the drives
+		// above, which degrades `waitForPipelineIdle` to "running_jobs === 0"
+		// — true the instant the 202 lands, because the retried run has not
+		// inserted its `recap_jobs` row yet. That is the exact race the
+		// `minTotalJobs` argument exists to close, and losing it leaves the
+		// suite tearing the stack down on top of a run still holding the
+		// permit.
+		const before = await readTotalJobs(api);
 		const response = await api.post("/admin/jobs/retry", { data: {} });
 		await expectStatusIn(response, [202, 404, 409]);
 		expectHeaderContains(response, "Content-Type", "application/json");
@@ -201,7 +230,7 @@ test.describe("the recap pipeline", () => {
 				"a 202 must name the failed job it is retrying, and it must not be the new one",
 			).not.toBe(body.job_id);
 			// Started a run; hand the lock back before the next test.
-			await waitForPipelineIdle(api, 1, PIPELINE_BUDGET_MS);
+			await waitForPipelineIdle(api, before + 1, PIPELINE_BUDGET_MS);
 		} else if (response.status() === 404) {
 			const body = await expectJsonStatus(response, 404, errorSchema);
 			expect(body.error).toBe("no failed recap job to retry");

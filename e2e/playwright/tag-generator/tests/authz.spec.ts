@@ -1,5 +1,6 @@
+import type { APIRequestContext, APIResponse } from "@playwright/test";
 import { expect, extractTags, test } from "../src/fixtures.js";
-import { expectStatusIn } from "../../_shared/http.js";
+import { expectStatus } from "../../_shared/http.js";
 import { expectConnectionRefused } from "../../_shared/net.js";
 import { env } from "../src/env.js";
 
@@ -26,21 +27,71 @@ import { env } from "../src/env.js";
  *     correct signal — not because the state of affairs is desirable.
  */
 
-/** The two routes wrapped by the fail-closed `require_auth` decorator. */
+/**
+ * The two routes wrapped by the fail-closed `require_auth` decorator, each
+ * with a body FastAPI will actually accept.
+ *
+ * The body is the whole difficulty of this file. `@require_auth` is applied
+ * *under* `@app.post` / `@app.get`, and its wrappers use `@wraps`, which sets
+ * `__wrapped__`; FastAPI's `get_typed_signature` calls `inspect.signature`
+ * with the default `follow_wrapped=True`, so FastAPI builds its dependant from
+ * the **undecorated** signature. Both endpoints therefore still declare their
+ * `UserContext` parameter as a request body, and a request that does not
+ * satisfy it is rejected by validation with a 422 *before the decorator ever
+ * runs* — i.e. before the thing these tests exist to check.
+ *
+ *   - `generate_tags_endpoint(request: TagGenerationRequest,
+ *     user_context: UserContext)` has two non-scalar params, so FastAPI embeds
+ *     them under their parameter names (auth_service.py:453-455).
+ *   - `get_user_preferences(user_context: UserContext)` has one, so the bare
+ *     object *is* the body (auth_service.py:511-512).
+ *
+ * Every `UserContext` field carries a default (auth_service.py:33-37), so `{}`
+ * validates.
+ */
 const AUTHENTICATED_ROUTES = [
-	{ method: "POST" as const, path: "/api/v1/generate-tags", source: "auth_service.py:453" },
-	{ method: "GET" as const, path: "/api/v1/user-preferences", source: "auth_service.py:511" },
+	{
+		method: "POST" as const,
+		path: "/api/v1/generate-tags",
+		source: "auth_service.py:453",
+		body: {
+			request: { article_id: "x", title: "t", content: "c" },
+			user_context: {},
+		} as Record<string, unknown>,
+	},
+	{
+		method: "GET" as const,
+		path: "/api/v1/user-preferences",
+		source: "auth_service.py:511",
+		body: {} as Record<string, unknown>,
+	},
 ];
 
+type AuthenticatedRoute = (typeof AUTHENTICATED_ROUTES)[number];
+
+/** Issues the route's request on an arbitrary client, body included. */
+function callRoute(client: APIRequestContext, route: AuthenticatedRoute): Promise<APIResponse> {
+	return route.method === "POST"
+		? client.post(route.path, { data: route.body })
+		: client.get(route.path, { data: route.body });
+}
+
+/**
+ * The one string only the fail-closed branch emits
+ * (auth_service.py:71-73). Matching on it — rather than on the status alone —
+ * is what separates "the wrapper refused" from "something else answered 503",
+ * e.g. the readiness 503 that `/api/v1/extract-tags` raises.
+ */
+const FAIL_CLOSED_DETAIL = "Authentication is unavailable";
+
 test.describe("authenticated routes fail closed", () => {
-	for (const { method, path, source } of AUTHENTICATED_ROUTES) {
+	for (const route of AUTHENTICATED_ROUTES) {
+		const { method, path, source } = route;
+
 		test(`${method} ${path} never serves data anonymously`, {
 			tag: "@authz",
 		}, async ({ api }) => {
-			const response =
-				method === "POST"
-					? await api.post(path, { data: { article_id: "x", title: "t", content: "c" } })
-					: await api.get(path);
+			const response = await callRoute(api, route);
 
 			// Mounted, first. A 404 would mean the route vanished, and every
 			// other assertion in this test would then pass for the wrong
@@ -54,43 +105,44 @@ test.describe("authenticated routes fail closed", () => {
 					`caller was rejected`,
 			).not.toBe(404);
 
-			// The safety property: no 2xx, ever, without a credential.
-			expect(
-				response.status(),
-				`${path} answered ${response.status()} to an unauthenticated caller`,
-			).toBeGreaterThanOrEqual(400);
+			// Exactly 503, not a band. A 422 here would mean the request never
+			// reached the decorator, so the test would be reporting green on a
+			// body-shape mismatch of its own making — and would keep doing so
+			// if someone swapped the fail-closed wrapper for the anonymous
+			// `UserContext` no-op that .claude/rules/di-wiring.md forbids.
+			await expectStatus(response, 503);
 
-			// Two answers are correct here, for two different reasons, and both
-			// are refusals:
-			//
-			//   503 — the fail-closed `require_auth` wrapper ran and rejected
-			//         the call because `alt_auth.client` is not installed.
-			//   422 — FastAPI never got that far. The wrapper carries the
-			//         wrapped function's signature through `@wraps`, so the
-			//         `user_context: UserContext` parameter is still visible to
-			//         FastAPI as a request-body model, and request validation
-			//         runs before the endpoint callable does.
-			//
-			// Anything outside the pair — and in particular a 200 — would mean
-			// the route is being served without authentication.
-			await expectStatusIn(response, [422, 503]);
+			// The detail string is the assertion that discriminates the
+			// *reason*: a 503 from anywhere else in the app (a readiness check,
+			// a proxy) would satisfy the status and not this.
+			expect(
+				await response.text(),
+				`${path} answered 503 for some reason other than the fail-closed auth wrapper`,
+			).toContain(FAIL_CLOSED_DETAIL);
 		});
 
-		test(`${method} ${path} is not unlocked by a forged peer identity`, {
+		test(`${method} ${path} answers a forged peer identity exactly as it answers an anonymous caller`, {
 			tag: "@authz",
-		}, async ({ playwright }) => {
+		}, async ({ api, playwright }) => {
 			// `X-Alt-Peer-Identity` is set by the nginx mTLS sidecar and is the
 			// only caller identity this service has. `PeerIdentityMiddleware`
 			// honours it under two conditions — `PEER_IDENTITY_TRUSTED=on` *and*
 			// a loopback transport peer — and this slice satisfies neither
-			// (compose.staging.yaml sets it to `off`, and the suite connects
-			// over the bridge network). A header written by the client is
-			// therefore discarded before it reaches any handler
-			// (peer_identity.py:88-96).
+			// (compose.staging.yaml:468-469 sets it to `off`, and the suite
+			// connects over the bridge network), so the header is blanked at
+			// peer_identity.py:88-94.
 			//
-			// This is the forgery negative that makes the whole peer-identity
-			// design meaningful: without it, "authenticated" would mean
-			// "willing to type a header".
+			// What this slice can and cannot prove, stated plainly: the
+			// middleware runs with `strict=False` (auth_service.py:445) and no
+			// handler reads `request.state.peer_identity`, so whether the
+			// header was honoured or discarded is *not directly observable in
+			// the response*. Proving "discarded" would need a stack with
+			// `strict=True`. What is observable, and what this test asserts, is
+			// the weaker but still falsifiable claim: writing the header
+			// changes nothing about the answer. If it ever does — a middleware
+			// that starts trusting the client-written value while `strict` is
+			// on would answer the forged request differently from the plain one
+			// — this fails.
 			const forged = await playwright.request.newContext({
 				baseURL: env.baseURL,
 				extraHTTPHeaders: {
@@ -99,14 +151,24 @@ test.describe("authenticated routes fail closed", () => {
 				},
 			});
 			try {
-				const response =
-					method === "POST"
-						? await forged.post(path, { data: { article_id: "x", title: "t", content: "c" } })
-						: await forged.get(path);
+				const forgedResponse = await callRoute(forged, route);
+				const plainResponse = await callRoute(api, route);
+
 				expect(
-					response.status(),
-					`${path} served a caller whose only credential was a self-written header`,
-				).toBeGreaterThanOrEqual(400);
+					forgedResponse.status(),
+					`${path} answered a self-written X-Alt-Peer-Identity with a different status ` +
+						`than it answered the same request without one`,
+				).toBe(plainResponse.status());
+				expect(
+					await forgedResponse.text(),
+					`${path} answered a self-written X-Alt-Peer-Identity with a different body ` +
+						`than it answered the same request without one`,
+				).toBe(await plainResponse.text());
+
+				// And the answer both of them got is still the refusal — the
+				// equality above would also hold if both had been served.
+				await expectStatus(forgedResponse, 503);
+				expect(await forgedResponse.text()).toContain(FAIL_CLOSED_DETAIL);
 			} finally {
 				await forged.dispose();
 			}

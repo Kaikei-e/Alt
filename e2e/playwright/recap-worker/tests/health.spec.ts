@@ -70,32 +70,45 @@ test.describe("health probes", () => {
 });
 
 test.describe("metrics", () => {
-	test("GET /metrics serves Prometheus exposition text @smoke @contract", async ({ api }) => {
+	test("GET /metrics answers 200 text/plain with a currently-mute exporter @smoke @contract", async ({
+		api,
+	}) => {
 		// Port of 02-metrics-shape.hurl, which asserted 200 + text/plain and
 		// stopped there because recap-worker's exporter is currently mute. The
 		// reason is a real registry-binding bug, spelled out in
 		// src/assertions.ts — `_shared/http.ts`'s `expectPrometheusText` would
-		// fail here, and pinning the bug in place with a "body is empty"
-		// assertion would be worse than useless.
+		// fail here.
 		//
-		// What is asserted instead survives the fix: the envelope the scraper
-		// depends on, plus the syntax of whatever lines are present. The day the
-		// families reach the default registry this still passes, and the
-		// family-name assertion belongs in that change.
+		// The title says "mute" because that is what this proves. A per-line
+		// exposition regex reads like a strengthening over the Hurl scenario,
+		// but with an empty body it never runs a single iteration, so the
+		// emptiness itself is asserted: it is the observable consequence of the
+		// bug, and it fails loudly the day the exporter starts publishing —
+		// which is when the family-name assertion becomes possible.
 		const response = await api.get("/metrics");
 		await expectStatus(response, 200);
 		expectHeaderContains(response, "Content-Type", "text/plain");
 		expectPrometheusExposition(await response.text(), response.url());
 	});
 
-	test("GET /metrics needs no authentication @authz", async ({ api }) => {
+	test("GET /metrics ignores a caller credential rather than rejecting it @authz", async ({
+		api,
+	}) => {
 		// Not a gap — a fact worth pinning. The staging slice runs
 		// `PEER_IDENTITY_TRUSTED=off` and `api::router` installs no auth layer
 		// at all (api.rs:17-70), so /metrics is reachable by anyone who can
 		// reach the port. That is only safe because the port never faces the
 		// internet; tests/topology.spec.ts asserts the other listener is closed.
-		// If an auth layer is ever added, this test is where the decision to
-		// exempt (or not exempt) the scrape path gets made explicitly.
-		await expectStatus(await api.get("/metrics"), 200);
+		//
+		// The request carries a credential the service has no way to validate,
+		// which is what makes this something other than the test above run
+		// twice: a bearer token must be *inert* here, not a 401 and not a 403.
+		// The day an auth layer is added, this is where the decision to exempt
+		// (or not exempt) the scrape path gets made explicitly — the same shape
+		// tests/topology.spec.ts uses for X-Alt-Peer-Identity on the dashboard.
+		const response = await api.get("/metrics", {
+			headers: { Authorization: "Bearer definitely-invalid" },
+		});
+		await expectStatus(response, 200);
 	});
 });

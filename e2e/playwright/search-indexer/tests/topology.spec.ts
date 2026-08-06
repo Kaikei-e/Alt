@@ -6,8 +6,8 @@ import {
 	expectStatusIn,
 } from "../../_shared/http.js";
 import { expectConnectionRefused } from "../../_shared/net.js";
-import { env, Procedure } from "../src/env.js";
-import { searchResponseSchema } from "../src/schemas.js";
+import { env, Procedure, SharedCorpus } from "../src/env.js";
+import { nonEmptySearchResponseSchema } from "../src/schemas.js";
 
 /**
  * Listener topology and the access-control posture that follows from it — new
@@ -150,11 +150,21 @@ test.describe("access-control posture on the plaintext ports", () => {
 		// which is what "pending retirement of the listener itself" in
 		// bootstrap/servers.go anticipates — this test fails. That is the
 		// intended signal, not a bug in the test.
-		await expectJsonStatus(
-			await bare.get(`${env.baseURL}/v1/search?q=rust&limit=1`),
+		//
+		// The posture claim is that the credential-free path is *served*, not
+		// merely un-rejected, so the hit is asserted rather than the status
+		// alone. `q=rust` matches exactly the two shared-corpus documents
+		// globalSetup indexed before any worker started, and `limit=1` caps the
+		// page at one — so `hits: []` under a 200, which is what a search path
+		// that stopped reaching Meilisearch returns forever, fails here.
+		const body = await expectJsonStatus(
+			await bare.get(
+				`${env.baseURL}/v1/search?q=${SharedCorpus.rustQuery}&limit=1`,
+			),
 			200,
-			searchResponseSchema,
+			nonEmptySearchResponseSchema,
 		);
+		expect(body.hits).toHaveLength(1);
 	});
 
 	test("a spoofed peer-identity header changes nothing", { tag: "@authz" }, async ({
@@ -171,14 +181,26 @@ test.describe("access-control posture on the plaintext ports", () => {
 		// the header without an mTLS listener in front to overwrite it, this
 		// test breaks — which is exactly the alarm worth having, because the
 		// header is trivially forgeable over plaintext.
+		//
+		// Both sides are parsed as non-empty and the honest side is pinned to
+		// the whole seeded corpus first: an equality between two empty lists is
+		// trivially true, so a search path that had stopped reaching
+		// Meilisearch would otherwise satisfy "the header changed nothing" while
+		// changing everything.
 		const path = `/v1/search?q=${corpus.nonce}&user_id=${corpus.userId}&limit=10`;
-		const honest = await expectJsonStatus(await rest.get(path), 200, searchResponseSchema);
+		const honest = await expectJsonStatus(
+			await rest.get(path),
+			200,
+			nonEmptySearchResponseSchema,
+		);
+		expect(honest.hits).toHaveLength(corpus.docs.length);
+
 		const spoofed = await expectJsonStatus(
 			await bare.get(`${env.baseURL}${path}`, {
 				headers: { "X-Alt-Peer-Identity": "alt-backend" },
 			}),
 			200,
-			searchResponseSchema,
+			nonEmptySearchResponseSchema,
 		);
 		expect(spoofed.hits.map((hit) => hit.id).sort()).toEqual(
 			honest.hits.map((hit) => hit.id).sort(),

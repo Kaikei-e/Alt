@@ -5,10 +5,14 @@ import { queueStatusSchema, summarizeResponseSchema } from "../src/schemas.js";
 
 /**
  * The semaphore's global counters — the half of `02-queue-status.hurl` that
- * genuinely cannot be made order-free, plus the backpressure coverage the
- * Hurl suite explicitly deferred ("Queue-saturation (HTTP 429) deferred to a
- * follow-up Phase, since reliably triggering QueueFullError from a serial
- * Hurl suite needs parallel client orchestration").
+ * genuinely cannot be made order-free.
+ *
+ * This is the parallel-client orchestration the Hurl suite could not do, but
+ * it is *not* the queue-saturation coverage that suite deferred: three
+ * concurrent requests against `MAX_QUEUE_DEPTH=10` never reach
+ * `QueueFullError`, so the 429 + `Retry-After: 30` path is still ungated. See
+ * the header of tests/queue.spec.ts for why closing that needs its own
+ * compose slice rather than a bigger number here.
  *
  * There is exactly one `HybridPrioritySemaphore` per uvicorn process, so
  * `rt_queue` / `be_queue` / `acquired_slots` are process-global state that no
@@ -24,7 +28,7 @@ import { queueStatusSchema, summarizeResponseSchema } from "../src/schemas.js";
  * the same test with a worse failure message.
  */
 test.describe("semaphore drains back to idle", () => {
-	test("concurrent low-priority work completes and releases every slot @slow @contract", async ({
+	test("concurrent work completes and releases every slot @slow @contract", async ({
 		api,
 		seed,
 	}) => {
@@ -38,13 +42,31 @@ test.describe("semaphore drains back to idle", () => {
 		 * MAX_QUEUE_DEPTH=10 even with the `api` project's batch spec running
 		 * (arithmetic in playwright.config.ts), so a 429 here is a real
 		 * regression rather than this test tripping its own ceiling.
+		 *
+		 * `priority: "high"`, and that is load-bearing rather than incidental.
+		 * These were low-priority, which made them **preemptable by a sibling
+		 * project**: `workers: 1` bounds this project alone and neither project
+		 * declares `dependencies`, so the `api` project runs alongside it, and
+		 * `chat_generate` defaults to `priority: "high"`
+		 * (ollama_gateway.py:969) — chat, the streaming specs and plan-query all
+		 * acquire high. With `SCHEDULING_RT_RESERVED_SLOTS=1` and one total slot
+		 * `be_slots == 0`, so a low-priority request holds the single RT slot by
+		 * fallback (hybrid_priority_semaphore.py:421-429) — precisely the state
+		 * where an arriving RT caller finds `_rt_available == 0` and runs
+		 * `_preempt_oldest_be()`, which has no minimum-runtime guard
+		 * (hybrid_priority_semaphore.py:253-282, 400-405). The victim is
+		 * cancelled mid-generation and surfaces as a non-200, which the loop
+		 * below would report as a queueing regression it is not. High-priority
+		 * requests are never preemption candidates (`_has_preemptable_be` looks
+		 * only at `not req.is_high_priority`), and they still serialize and
+		 * still queue, so the enqueue path this spec exists for is unchanged.
 		 */
 		const CONCURRENCY = 3;
 
 		const responses = await Promise.all(
 			Array.from({ length: CONCURRENCY }, (_, index) =>
 				api.post("/api/v1/summarize", {
-					data: summarizeBody(`${seed.articleId}-${index}`, { priority: "low" }),
+					data: summarizeBody(`${seed.articleId}-${index}`, { priority: "high" }),
 				}),
 			),
 		);

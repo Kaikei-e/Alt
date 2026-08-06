@@ -49,6 +49,11 @@ test.describe("indexable genres (the search-indexer contract)", () => {
 		// `==` makes has_more permanently false and search-indexer silently
 		// indexes the first page only; `>=` on an over-fetch makes it
 		// permanently true and the loop never terminates.
+		//
+		// The limit=1 form only discriminates once a row exists, and this
+		// project cannot guarantee one: it depends on `cold-start` (which
+		// asserts an empty database) and runs alongside `pipeline` rather than
+		// after it. So the `limit=0` probe below carries the falsifiable half.
 		const body = await expectJsonStatus(
 			await api.get("/v1/recaps/genres/indexable?limit=1"),
 			200,
@@ -56,6 +61,24 @@ test.describe("indexable genres (the search-indexer contract)", () => {
 		);
 		expect(body.results.length).toBeLessThanOrEqual(1);
 		expect(body.has_more).toBe(body.results.length === 1);
+
+		// `limit=0` states the same rule at a population every run has: `LIMIT
+		// 0` selects nothing, and nothing *is* a full page, so `hits.len() ==
+		// limit` holds and has_more must be true. That is a quirk being pinned
+		// rather than endorsed — but it is the one form of this assertion that
+		// fails on an empty database when someone rewrites the comparison as
+		// `>`, which is the variant that costs search-indexer every page after
+		// the first.
+		const emptyPage = await expectJsonStatus(
+			await api.get("/v1/recaps/genres/indexable?limit=0"),
+			200,
+			indexableGenresSchema,
+		);
+		expect(emptyPage.results).toEqual([]);
+		expect(
+			emptyPage.has_more,
+			"a page requested with limit=0 is full at zero rows: hits.len() == limit",
+		).toBe(true);
 	});
 
 	test("a future `since` returns nothing @contract", async ({ api }) => {
@@ -89,8 +112,31 @@ test.describe("indexable genres (the search-indexer contract)", () => {
 		// decision to change it to a 400 would have to be made deliberately.
 		// The neighbouring /v1/morning/updates test asserts the opposite choice
 		// on the same kind of parameter.
-		const response = await api.get("/v1/recaps/genres/indexable?since=not-a-timestamp");
-		await expectJsonStatus(response, 200, indexableGenresSchema);
+		//
+		// A status alone would pass just as happily if the malformed cursor were
+		// coerced to "now" and filtered everything out — which is the one thing
+		// that changes if somebody "fixes" the `.ok()`. So the malformed call is
+		// compared with the unfiltered one: "no lower bound" means it must serve
+		// at least what a call with no `since` at all serves. Issued in this
+		// order deliberately — the `pipeline` project may commit a row between
+		// the two requests, and a row that lands in between can only widen the
+		// second result, never the first.
+		const good = await expectJsonStatus(
+			await api.get("/v1/recaps/genres/indexable"),
+			200,
+			indexableGenresSchema,
+		);
+		const bad = await expectJsonStatus(
+			await api.get("/v1/recaps/genres/indexable?since=not-a-timestamp"),
+			200,
+			indexableGenresSchema,
+		);
+		const key = (hit: { job_id: string; genre: string }): string =>
+			`${hit.job_id}:${hit.genre}`;
+		expect(
+			bad.results.map(key),
+			"a malformed `since` must mean no lower bound, not a cursor at now",
+		).toEqual(expect.arrayContaining(good.results.map(key)));
 	});
 
 	test("limit is clamped rather than trusted @contract", async ({ api }) => {
@@ -146,27 +192,23 @@ test.describe("morning updates", () => {
 		await expectStatus(await api.get("/v1/morning/updates?since=not-a-timestamp"), 400);
 	});
 
-	test("the default window is applied when `since` is omitted @contract", async ({ api }) => {
-		// `query.since.unwrap_or_else(|| Utc::now() - Duration::hours(24))`
-		// (api/fetch.rs:663-665). The observable consequence is that the
-		// unfiltered call can never return more than the 24h window does — which
-		// is checkable at any population, including zero.
-		const [defaulted, explicit] = await Promise.all([
-			api.get("/v1/morning/updates"),
-			api.get(
-				`/v1/morning/updates?since=${encodeURIComponent(
-					new Date(Date.now() - 24 * 3_600_000).toISOString(),
-				)}`,
-			),
-		]);
-		const a = await expectJsonStatus(defaulted, 200, morningUpdatesSchema);
-		const b = await expectJsonStatus(explicit, 200, morningUpdatesSchema);
-		// Not an equality: rows can land between the two requests, and the
-		// explicit window is computed a few milliseconds earlier. The invariant
-		// that holds regardless is that neither is a superset of the other by
-		// more than what arrived in between — asserted as "both are the same
-		// order of magnitude", i.e. the default is a 24h window and not, say,
-		// the epoch.
-		expect(Math.abs(a.length - b.length)).toBeLessThanOrEqual(1);
-	});
+	// The 24h default — `query.since.unwrap_or_else(|| Utc::now() -
+	// Duration::hours(24))`, api/fetch.rs:663-665 — is deliberately NOT
+	// asserted here, and this comment is the record of why rather than an
+	// oversight to be re-filled with a passing test.
+	//
+	// `morning_article_groups` has exactly one writer,
+	// `save_morning_article_groups` (pipeline/morning.rs:182), reachable only
+	// from `Scheduler::run_morning_update` — which this slice never calls: the
+	// morning daemon is off (`MORNING_DAEMON_ENABLED` unset, main.rs:174-175)
+	// and `POST /v1/morning/letters/regenerate` is only probed for mounting
+	// (tests/validation.spec.ts). Every response above is `[]`, so any
+	// comparison between a defaulted and an explicit window is 0 vs 0 — and
+	// even with rows, comparing two lengths cannot tell a 24h default from an
+	// epoch default, which is the claim worth making.
+	//
+	// Testing it needs a fixture that inserts `morning_article_groups` rows
+	// with `created_at` on both sides of the boundary, which needs DB access
+	// this suite does not have. Until then the falsifiable half is the
+	// parameter's rejection behaviour, asserted above.
 });

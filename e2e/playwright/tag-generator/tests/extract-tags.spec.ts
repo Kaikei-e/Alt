@@ -170,6 +170,24 @@ test.describe("extract-tags", () => {
 				"used for indexing documents.</p></div>",
 		});
 
+		// Both preconditions for the loop below, and neither is decoration.
+		// `tags: []` is a legal response — it is what both early returns
+		// produce — so an empty list would make the loop assert nothing and
+		// report green on exactly the regression this test names (markup
+		// handling broke, the sanitizer rejected the body, or
+		// `_extract_readable_text` fell into its `except Exception` fallback).
+		// `"und"` is the only externally visible marker of those early
+		// returns, so pinning "en" is what keeps them from masquerading as a
+		// pass.
+		expect(
+			body.language,
+			"the pipeline declined the markup instead of extracting readable text from it",
+		).toBe("en");
+		expect(
+			body.tags.length,
+			"HTML content produced no tags at all, so the markup assertions below checked nothing",
+		).toBeGreaterThan(0);
+
 		for (const tag of body.tags) {
 			expect(tag, `tag "${tag}" carries markup`).not.toMatch(/[<>]/);
 			expect(tag.toLowerCase(), `tag "${tag}" came from a stripped element`).not.toContain(

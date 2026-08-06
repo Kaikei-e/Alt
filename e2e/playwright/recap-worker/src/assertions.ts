@@ -69,23 +69,28 @@ export async function expectRouteMounted(
 const EXPOSITION_LINE = /^(#|[a-zA-Z_:][a-zA-Z0-9_:]*(\{.*\})?\s)/;
 
 /**
- * Asserts `/metrics` serves the exposition format — without requiring it to
- * be non-empty.
+ * Asserts `/metrics` serves an exposition body that is **currently empty**,
+ * and that every line it does serve is valid exposition.
  *
  * `_shared/http.ts`'s `expectPrometheusText` demands a `# HELP` line, which is
  * the right assertion for a service whose exporter works. recap-worker's does
  * not, and the reason is a real, known bug rather than a gap in this suite:
  * `Metrics::new` registers all sixty-odd families into a freshly constructed
- * `Registry` (observability/metrics.rs:68+, observability.rs:23-24), while
- * `Telemetry::render_prometheus` encodes `prometheus::gather()` — the process
- * -wide *default* registry, which nothing in this service ever writes to
- * (observability.rs:76-82). The endpoint therefore answers 200 with an empty
- * body and every recap dashboard stays blank while the scrape reports success.
+ * `Registry` (observability/metrics.rs:68+, observability.rs:22-23), while
+ * `Telemetry::render_prometheus` encodes `prometheus::gather()` — the
+ * process-wide *default* registry, which nothing in this service ever writes
+ * to (observability.rs:65-71). The `prometheus` dependency is declared
+ * `default-features = false` (Cargo.toml:88), so not even the crate's own
+ * process collector lands there. The endpoint answers 200 with the empty
+ * string, and every recap dashboard stays blank while the scrape reports
+ * success.
  *
- * Asserting "200, text/plain, and every non-empty line is valid exposition"
- * pins the envelope the scraper depends on and stays true either way: the day
- * the registry binding is fixed, the families appear and this still passes.
- * The stronger family-name assertion belongs in the same change that fixes it.
+ * That makes the per-line check below vacuous today — `"".split("\n")` is one
+ * empty entry, the loop `continue`s, and the regex never runs. So the line
+ * count is asserted rather than assumed: the emptiness is the observable
+ * consequence of the bug, and pinning it turns "this test quietly checks
+ * nothing" into a tripwire that fails the moment the registry binding is
+ * fixed, pointing at the assertion that should replace it.
  */
 export function expectPrometheusExposition(body: string, url: string): void {
 	expect(
@@ -94,12 +99,22 @@ export function expectPrometheusExposition(body: string, url: string): void {
 			`error envelope instead of the text encoder: ${body.slice(0, 300)}`,
 	).toBe(false);
 
-	for (const line of body.split("\n")) {
-		if (line.trim() === "") continue;
+	const lines = body.split("\n").filter((line) => line.trim() !== "");
+	for (const line of lines) {
 		expect(line, `${url} served a line that is not Prometheus exposition`).toMatch(
 			EXPOSITION_LINE,
 		);
 	}
+
+	expect(
+		lines.length,
+		`${url} published ${lines.length} metric line(s). recap-worker's exporter is ` +
+			`mute by construction (observability.rs:67 gathers the default registry while ` +
+			`observability.rs:22 registers into a private one), so this is either that bug ` +
+			`fixed — in which case replace this call with _shared/http.ts's ` +
+			`expectPrometheusText and name the families recap-worker must publish — or a ` +
+			`second exporter writing to the default registry.\n${body.slice(0, 300)}`,
+	).toBe(0);
 }
 
 // ---------------------------------------------------------------------------

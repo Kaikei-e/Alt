@@ -72,7 +72,11 @@ depends on), `@authz` (negatives), `@slow` (drives the LangGraph pipeline).
 ## What changed on the way across
 
 **The ordering is gone.** The Hurl suite ran `--jobs 1` because captures are
-file-scoped and scenarios 04-07 consumed a `report_id` produced by 02. Here
+file-scoped and later scenarios consumed a `report_id` an earlier entry had
+produced. (The prose here previously named a `04-07` range; the mapping table
+above accounts for `04` and no `05`/`06`/`07`, and the `.hurl` files are no
+longer in the tree to check against, so the claim is stated without a range
+rather than with one nothing corroborates.) Here
 every test mints its own title from `testToken` and creates what it reads, so
 four workers drive independent lifecycles through one acolyte-db. Nothing in
 this suite needs a `serial` describe or a `workers: 1` project.

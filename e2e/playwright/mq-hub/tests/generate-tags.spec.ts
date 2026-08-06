@@ -1,8 +1,13 @@
-import { expect, expectMountedWith, test } from "../src/fixtures.js";
-import { callUnary, ConnectCode, expectUnaryError } from "../../_shared/connect.js";
-import { expectJsonStatus } from "../../_shared/http.js";
+import { compareEntryIds, expect, test } from "../src/fixtures.js";
+import {
+	callUnary,
+	ConnectCode,
+	expectProcedureMounted,
+	expectUnaryError,
+} from "../../_shared/connect.js";
+import { expectJson, expectJsonStatus } from "../../_shared/http.js";
 import { CanonicalStream, Procedure } from "../src/env.js";
-import { int64, streamInfoSchema } from "../src/schemas.js";
+import { streamInfoSchema } from "../src/schemas.js";
 
 /**
  * `GenerateTagsForArticle` — the port of `14-generate-tags-timeout.hurl`.
@@ -82,11 +87,30 @@ test.describe("GenerateTagsForArticle", () => {
 		// tag-generator would never be asked, and every call would time out in
 		// exactly this way.
 		//
-		// `alt:events:tags` is shared with any other worker running this file,
-		// so the assertion is containment ("at least one entry"), never a
-		// count. It is still a real signal: the timed-out call below is
-		// synchronous, so by the time it returns generate_tags_usecase.go:131
-		// has either published or failed.
+		// The observation is a *delta* on `lastEntryId`, not `length >= 1`.
+		// `alt:events:tags` is the one stream this file cannot own — every test
+		// in it drives the same RPC, which publishes to
+		// domain.StreamKeyTags (generate_tags_usecase.go:131) — so under
+		// `workers: 4` a non-empty stream proves only that somebody, sometime,
+		// published. An entry ID that moved across this call proves an XADD
+		// landed while it was running.
+		//
+		// What that does not prove is which call wrote it: a sibling test
+		// publishing concurrently advances the same ID. That is acceptable
+		// because the failure being caught is "this code path never XADDs at
+		// all", which would leave the ID pinned for every worker at once.
+		const before = await callUnary(api, Procedure.getStreamInfo, {
+			stream: CanonicalStream.tags,
+		});
+		// The stream may not exist yet — this file's four tests are the only
+		// writers, and GetStreamInfo answers 500 `no such key` until the first
+		// of them publishes. That is a legitimate starting point, not a
+		// failure, so it stands in for "no entries at all".
+		const lastBefore =
+			before.status() === 200
+				? (await expectJson(before, streamInfoSchema)).lastEntryId
+				: undefined;
+
 		await expectUnaryError(
 			api,
 			Procedure.generateTagsForArticle,
@@ -99,11 +123,20 @@ test.describe("GenerateTagsForArticle", () => {
 			200,
 			streamInfoSchema,
 		);
+		const lastAfter = info.lastEntryId;
 		expect(
-			int64(info.length),
-			`${CanonicalStream.tags} should carry the TagGenerationRequested event ` +
-				`this test's call published`,
-		).toBeGreaterThanOrEqual(1);
+			lastAfter,
+			`${CanonicalStream.tags} has no entries at all after a call that must have ` +
+				`published a TagGenerationRequested event before blocking on its reply`,
+		).toBeDefined();
+		if (lastBefore !== undefined) {
+			expect(
+				compareEntryIds(lastBefore, lastAfter ?? ""),
+				`${CanonicalStream.tags} lastEntryId did not move across the call ` +
+					`(${lastBefore} → ${lastAfter}), so nothing was published — the RPC ` +
+					`timed out without ever asking a tag-generator`,
+			).toBeLessThan(0);
+		}
 	});
 
 	test("is mounted even though the slice has no tag-generator", { tag: "@contract" }, async ({ api }) => {
@@ -113,19 +146,20 @@ test.describe("GenerateTagsForArticle", () => {
 		// `NewHandler` leaves the field nil. main.go:90 uses the former, so 501
 		// here would mean the composition root regressed to the other one.
 		//
-		// The probe carries a request rather than `{}` because an empty body
-		// takes the `timeoutMs <= 0` branch and blocks for the 60s default —
-		// see expectMountedWith in src/fixtures.ts.
-		await expectMountedWith(
+		// The probe carries a request rather than the `{}` expectProcedureMounted
+		// defaults to, because an empty body takes the `timeoutMs <= 0` branch
+		// and blocks for the 60s default — well past this suite's 30s per-test
+		// budget. That is what the helper's fourth parameter is for.
+		await expectProcedureMounted(
 			api,
 			Procedure.generateTagsForArticle,
-			request("e2e-mounted"),
 			// 504 is the only correct answer while nothing consumes
 			// alt:events:tags: the procedure is registered, the usecase is
 			// wired, and the reply never comes. 404 would be a missing mux
 			// entry and 501 an unwired usecase — both wiring failures, both
 			// excluded.
 			[504],
+			request("e2e-mounted"),
 		);
 	});
 });

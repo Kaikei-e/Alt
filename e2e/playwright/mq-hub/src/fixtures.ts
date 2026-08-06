@@ -1,6 +1,6 @@
 import { test as base, expect } from "@playwright/test";
-import type { APIRequestContext, APIResponse } from "@playwright/test";
-import { callUnary, ConnectCode, expectUnaryError } from "../../_shared/connect.js";
+import type { APIRequestContext } from "@playwright/test";
+import { ConnectCode, expectUnaryError } from "../../_shared/connect.js";
 import { testToken } from "../../_shared/ids.js";
 import { env, Procedure } from "./env.js";
 
@@ -104,36 +104,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 });
 
 export { expect };
-
-/**
- * Asserts a procedure is mounted, for a procedure whose *empty* request is not
- * a safe probe.
- *
- * `_shared/connect.ts:expectProcedureMounted` always posts `{}`, which is
- * right for almost everything — but `GenerateTagsForArticle` with an empty
- * body takes the `timeoutMs <= 0` branch in generate_tags_usecase.go and
- * blocks on XREAD for the 60s default, well past the suite's 30s per-test
- * budget. So the probe has to be able to carry a request. Everything else is
- * the same claim: 404 means the handler was never registered, which is
- * CLAUDE.md rule 8 at the E2E boundary.
- */
-export async function expectMountedWith(
-	api: APIRequestContext,
-	procedure: string,
-	request: unknown,
-	expected: readonly number[],
-): Promise<APIResponse> {
-	const response = await callUnary(api, procedure, request);
-	expect(
-		response.status(),
-		`${procedure} answered ${response.status()}. 404 means the handler was never ` +
-			`registered — check NewMQHubServiceHandler and the mux.Handle in main.go, ` +
-			`not the request. Expected one of [${expected.join(", ")}].\n` +
-			`body: ${(await response.text()).slice(0, 500)}`,
-	).not.toBe(404);
-	expect(expected, `${procedure} answered ${response.status()}`).toContain(response.status());
-	return response;
-}
 
 /**
  * Asserts a stream key does not exist in Redis.

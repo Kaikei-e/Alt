@@ -107,11 +107,21 @@ in `news-creator/app/`, named in the spec's comments.
   binds 8001, the image binds 11434; `expectConnectionRefused` pins that,
   which Hurl could not express at all.
 - **Semaphore slot accounting** (`queue.spec.ts`). `available_slots +
-  acquired_slots == total_slots` is the invariant behind the class's own leak
-  watchdog, and it holds under load — so it is assertable from a parallel
-  worker. `acquired_slots` was never read by the Hurl suite.
+  acquired_slots` versus `total_slots` is the invariant behind the class's own
+  leak watchdog. From a parallel worker it is asserted as a band —
+  `total_slots - 1 <= sum <= total_slots` — because `release()` documents a
+  legal "in transit" reading while a woken waiter has not yet re-tracked the
+  slot it was handed (`hybrid_priority_semaphore.py:630-643`). The strict
+  equality is asserted at rest, in `queue-drain.spec.ts`. `acquired_slots` was
+  never read by the Hurl suite.
 - **Concurrent queueing and drain** (`queue-drain.spec.ts`). The
-  parallel-client orchestration the Hurl README explicitly deferred.
+  parallel-client orchestration the Hurl README explicitly deferred. Note that
+  this is the *queueing* half only: three concurrent requests against
+  `MAX_QUEUE_DEPTH=10` never trip `QueueFullError`, so the 429 +
+  `Retry-After: 30` backpressure path the Hurl suite deferred is **still not
+  gated by E2E** — closing it needs a slice with `MAX_QUEUE_DEPTH=1` and no
+  concurrently-running sibling project, since the semaphore is process-global.
+  The header of `queue.spec.ts` records the reasoning.
 - **The morning-letter degraded branch** (`morning-letter.spec.ts`), and
   `is_degraded` / `model != "extractive-fallback"` on the happy path. Every
   failure in that usecase answers **200** with an extractive fallback, so

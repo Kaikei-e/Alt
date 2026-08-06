@@ -49,12 +49,20 @@ test.describe("morning letter", () => {
 		);
 		expect(body.metadata.summary_length_bullets).toBe(bulletCount);
 
-		// Section keys are constrained by a Pydantic `pattern` and the schema
-		// repeats it; `_parse_content` filters out sections whose key does not
-		// match, so a drifting key is dropped rather than rejected. Asserting at
-		// least one survived is what keeps that filter from quietly emptying the
-		// letter.
-		expect(body.content.sections.length).toBeGreaterThanOrEqual(1);
+		// `_parse_content` *filters* sections whose key does not match the
+		// Pydantic pattern rather than rejecting them
+		// (morning_letter_usecase.py:170-200), so a drifting key is dropped
+		// silently. "At least one survived" says nothing — `sections` is
+		// `min(1)` in the schema above and `min_length=1` in Pydantic, so a
+		// letter that lost every section would already have failed as a
+		// ValidationError and come back as the extractive fallback the
+		// `is_degraded` assertion catches. Naming the key the stub actually
+		// sends (`MORNING_LETTER_PAYLOAD` in
+		// compose/news-creator-ollama-stub/app.py carries exactly one `top3`
+		// section) is what catches a filter that dropped a *legitimately* keyed
+		// section — the case where the letter is shorter than the model wrote it
+		// and nothing anywhere reports a failure.
+		expect(body.content.sections.map((section) => section.key)).toEqual(["top3"]);
 	});
 
 	test("reports the degraded branch when no recap summaries are supplied @contract", async ({
@@ -79,13 +87,16 @@ test.describe("morning letter", () => {
 		expect(body.metadata.is_degraded).toBe(true);
 		expect(body.metadata.degradation_reason ?? "").toMatch(/no recap summaries available/i);
 
-		// Still a real letter: the degraded path is a narrower letter, not an
-		// empty one. `MorningLetterContent.sections` is `min_length=1`, so an
-		// empty result would have been a ValidationError — which would have been
-		// caught and turned into the *extractive* fallback, a different state
-		// that this assertion distinguishes.
+		// Still a real letter, and specifically still the *LLM* one. The degraded
+		// branch and the extractive fallback both answer 200 with
+		// `is_degraded=True`, so the flag above cannot tell them apart; only the
+		// model name can (`_fallback_with_reason` stamps
+		// `model="extractive-fallback"`, morning_letter_usecase.py:369-376).
+		// Asserting `sections.length >= 1` alongside it would add nothing —
+		// `sections` is `min(1)` in the schema and `min_length=1` in Pydantic, so
+		// an empty result could only have arrived *as* the extractive fallback
+		// this line already excludes.
 		expect(body.metadata.model).not.toBe("extractive-fallback");
-		expect(body.content.sections.length).toBeGreaterThanOrEqual(1);
 	});
 
 	test("rejects a request with no overnight groups @contract", async ({ api }) => {

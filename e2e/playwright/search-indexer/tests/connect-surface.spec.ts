@@ -6,9 +6,18 @@ import {
 	expectUnaryError,
 	procedurePath,
 } from "../../_shared/connect.js";
-import { expectJson, expectStatus } from "../../_shared/http.js";
-import { Procedure } from "../src/env.js";
-import { connectErrorSchema } from "../src/schemas.js";
+import {
+	expectJson,
+	expectJsonStatus,
+	expectMethodNotAllowed,
+	expectStatus,
+} from "../../_shared/http.js";
+import { Procedure, SharedCorpus } from "../src/env.js";
+import {
+	connectErrorSchema,
+	connectRecapResponseSchema,
+	connectSearchResponseSchema,
+} from "../src/schemas.js";
 
 /**
  * The Connect-RPC mux on :9301 — entirely new coverage.
@@ -42,24 +51,23 @@ test.describe("SearchService registration", () => {
 	});
 
 	test("SearchRecaps is mounted", { tag: "@contract" }, async ({ connect }) => {
-		// Two answers are correct here and they mean different things, so both
-		// are in the band:
+		// 400 and only 400. `searchRecapsUsecase` is wired in this slice —
+		// compose.staging.yaml sets `RECAP_WORKER_URL=http://stub-backend`, so
+		// `bootstrap.Run` builds the recap gateway and `EnsureRecapIndex` runs
+		// against the Meilisearch globalSetup already proved healthy — and the
+		// handler rejects a request carrying neither `query` nor `tag_name` with
+		// `invalid_argument`.
 		//
-		//   400  `searchRecapsUsecase` is wired (compose.staging.yaml sets
-		//        `RECAP_WORKER_URL=http://stub-backend`, so `bootstrap.Run`
-		//        builds the recap gateway and `EnsureRecapIndex` succeeded), and
-		//        the handler rejects a request carrying neither `query` nor
-		//        `tag_name` with `invalid_argument`.
-		//   501  `EnsureRecapIndex` failed at boot — a deliberately non-fatal
-		//        branch — leaving the usecase nil, which the handler reports as
-		//        `unimplemented`.
+		// 501 was previously in the band, on the reading that `EnsureRecapIndex`
+		// failing at boot (a deliberately non-fatal branch) leaves the usecase
+		// nil and the handler answers `unimplemented`. That is the CLAUDE.md
+		// rule 8 regression itself, not a second correct answer, and the next
+		// test asserts a 200 on the same procedure — so admitting it here meant
+		// this test declaring acceptable a state its neighbour declares wrong.
 		//
-		// A 404 is not in the band because it means something entirely
-		// different: the *service* is unregistered, which would also take
-		// SearchArticles down with it. The stronger claim — that recap search is
-		// actually wired, not merely mounted — is asserted separately below, so
-		// this test stays honest about which of the two states it accepts.
-		await expectProcedureMounted(connect, Procedure.searchRecaps, [400, 501]);
+		// A 404 remains the discrimination that matters: it means the *service*
+		// is unregistered, which would take SearchArticles down with it.
+		await expectProcedureMounted(connect, Procedure.searchRecaps, [400]);
 	});
 
 	test(
@@ -74,14 +82,23 @@ test.describe("SearchService registration", () => {
 			//
 			// The `recaps` index exists (EnsureRecapIndex creates it) but holds no
 			// documents — the recap index loop reads the nginx stub and cannot
-			// decode its HTML — so an empty hit list is the right answer. What is
-			// being asserted is the status and the fact that the engine was
-			// reached at all.
+			// decode its HTML — so an empty hit list is the right answer, which
+			// is why `connectRecapResponseSchema` is the lenient one in
+			// src/schemas.ts.
+			//
+			// The body is parsed all the same, and the schema carries
+			// `notAnErrorEnvelope`. A 200 alone would be satisfied by an HTML
+			// body, or by `{"code":"internal","message":"…"}` written under a
+			// 200 — and that second shape is the live risk here, because
+			// `driver/meilisearch_recap_driver.go` searches with
+			// `Sort: ["executed_at:desc"]` while `EnsureIndex` enqueues
+			// `UpdateSortableAttributes` without awaiting the task, so the sort
+			// attribute can be unregistered at the moment of the first query.
 			const response = await callUnary(connect, Procedure.searchRecaps, {
 				query: "zzqqxxnorecapmatches",
 				limit: 5,
 			});
-			await expectStatus(response, 200);
+			await expectJsonStatus(response, 200, connectRecapResponseSchema);
 		},
 	);
 
@@ -181,9 +198,12 @@ test.describe("Connect protocol conformance", () => {
 		// only. Worth pinning because a GET that reached `SearchArticles` would
 		// make every tenant's index queryable from a browser address bar and
 		// from any link-preview crawler that follows a pasted URL.
+		// `expectMethodNotAllowed` rather than a local status-plus-header pair:
+		// it also fails when the `Allow` header is missing outright, which the
+		// `?? ""` form this replaced could not distinguish from a header that
+		// simply did not name POST.
 		const response = await connectBare.get(procedurePath(Procedure.searchArticles));
-		await expectStatus(response, 405);
-		expect(response.headers()["allow"] ?? "").toContain("POST");
+		expectMethodNotAllowed(response, ["POST"]);
 	});
 
 	test("a malformed JSON body is invalid_argument, not a 500", { tag: "@contract" }, async ({
@@ -225,12 +245,19 @@ test.describe("Connect protocol conformance", () => {
 		// nothing else in the tree would notice.
 		const response = await connectBare.post(procedurePath(Procedure.searchArticles), {
 			headers: { "Content-Type": "application/json" },
-			data: { query: "rust", userId: "alice" },
+			data: { query: SharedCorpus.rustQuery, userId: SharedCorpus.aliceUser },
 		});
 		// A real request, not an empty one: a 400 from the validation guards
 		// would also prove the call was accepted, but it would prove it for a
 		// request that never reached the handler. `alice` owns `doc-rust-tokio`
-		// in the shared fixture corpus, so the correct answer is a 200.
-		await expectStatus(response, 200);
+		// in the shared fixture corpus, so the correct answer is that document.
+		//
+		// Naming the document is what collects on that reasoning. A bare 200 is
+		// also what a handler answering `{}` — or answering anything at all that
+		// is not a `SearchArticlesResponse` — would produce, and then the
+		// header-less request would have been shown to be *accepted* without
+		// being shown to be *served*.
+		const body = await expectJsonStatus(response, 200, connectSearchResponseSchema);
+		expect(body.hits.map((hit) => hit.id)).toContain(SharedCorpus.aliceDocId);
 	});
 });

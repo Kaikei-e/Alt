@@ -1,4 +1,4 @@
-import { expect, test } from "../src/fixtures.js";
+import { test } from "../src/fixtures.js";
 import { expectHeader, expectJsonStatus, expectStatus } from "../../_shared/http.js";
 import { env } from "../src/env.js";
 import { connectHealthSchema, restHealthSchema } from "../src/schemas.js";
@@ -50,30 +50,32 @@ test.describe("liveness", () => {
 		},
 	);
 
-	test(
-		"the two /health routes are distinct handlers, not one mux served twice",
-		{ tag: "@contract" },
-		async ({ rest, bare }) => {
-			// The bodies differ by construction. If they ever match, either the
-			// muxes were merged — which would also put `/v1/search` on the
-			// Connect port, and tests/topology.spec.ts asserts it is not there —
-			// or one listener is proxying the other, in which case every
-			// topology assertion in this suite is proving nothing.
-			const restBody = await expectJsonStatus(await rest.get("/health"), 200, restHealthSchema);
-			const connectBody = await expectJsonStatus(
-				await bare.get(`${env.connectURL}/health`),
-				200,
-				connectHealthSchema,
-			);
-			expect(restBody.status).not.toBe(connectBody.status);
-		},
-	);
+	// There is deliberately no third test asserting the two bodies differ from
+	// each other. Both schemas above are `.strict()` on a literal `status`, so
+	// `"ok" !== "healthy"` holds by construction the moment both parses succeed
+	// — a comparison between them cannot fail in any way the two tests above do
+	// not already fail. The claim it was reaching for, that the muxes were not
+	// merged, is a routing claim and is owned by tests/topology.spec.ts, which
+	// asserts `/v1/search` 404s on :9301 and the Connect procedure 404s on
+	// :9300.
 
 	test("health is not gated behind any credential", { tag: "@authz" }, async ({ bare }) => {
-		// Stated as a test rather than left implicit: this is what makes the
-		// compose healthcheck and any blackbox probe work at all, and it is the
-		// baseline the `/v1/search` posture assertion in topology.spec.ts is
-		// measured against. `bare` sends no headers whatsoever.
+		// The `rest` fixture already sends no headers, so "an anonymous request
+		// is served" is not news on its own — the first test in this file
+		// establishes it. What is asserted here is the stronger posture: a
+		// request carrying a *malformed* credential is served identically.
+		//
+		// That is the discriminating case. An auth middleware added in front of
+		// this mux would most likely admit anonymous callers (the compose
+		// healthcheck and every blackbox probe depend on it) while rejecting a
+		// bearer token it cannot parse — which breaks nothing at boot and
+		// everything for a caller that still has a stale token in its config.
 		await expectStatus(await bare.get(`${env.baseURL}/health`), 200);
+		await expectStatus(
+			await bare.get(`${env.baseURL}/health`, {
+				headers: { Authorization: "Bearer not-a-real-token" },
+			}),
+			200,
+		);
 	});
 });
