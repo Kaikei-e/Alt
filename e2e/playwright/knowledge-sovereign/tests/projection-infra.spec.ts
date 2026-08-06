@@ -181,8 +181,23 @@ test.describe("checkpoints", () => {
 			200,
 			projectionLagSchema,
 		);
-		expect(body.lagSeconds ?? 0).toBeGreaterThanOrEqual(0);
-		expect(body.ageSeconds ?? 0).toBeGreaterThanOrEqual(0);
+		// `x ?? 0` followed by `>= 0` is true for every possible answer,
+		// including an empty body — the earlier form of this test could not
+		// fail. Assert what protojson's omission rule actually promises: a
+		// field is either absent (meaning exactly 0) or a finite number. A
+		// handler that started emitting null, a string, or NaN now fails, and
+		// so does one that answers with a body of the wrong shape.
+		for (const [name, value] of [
+			["lagSeconds", body.lagSeconds],
+			["ageSeconds", body.ageSeconds],
+		] as const) {
+			if (value === undefined) continue;
+			expect(
+				Number.isFinite(value),
+				`${name} was present but not a finite number: ${JSON.stringify(value)}`,
+			).toBe(true);
+			expect(value, `${name} is a duration and cannot be negative`).toBeGreaterThanOrEqual(0);
+		}
 	});
 });
 
@@ -258,9 +273,15 @@ test.describe("projection census", () => {
 	test("CompareProjections answers a diff summary", { tag: "@contract" }, async ({ rpc }) => {
 		// New coverage. This is the read a reproject cutover depends on:
 		// "does the shadow version produce the same shape as the live one".
-		// Comparing version 1 with itself must be a no-op diff, which is the
-		// only comparison whose answer is knowable without seeding a second
-		// projection version.
+		//
+		// Comparing version 1 with itself is the only comparison whose answer
+		// is knowable without seeding a second projection version — but it is
+		// also self-fulfilling: both sides run the same query over the same
+		// rows, so `fromCount === toCount` holds even if the handler read the
+		// wrong version for one side. The assertion that carries weight here is
+		// therefore the *shape*: both counts must actually be present and
+		// finite. A handler returning `{"summary":{}}` satisfied the old
+		// equality (0 === 0) and fails this.
 		const body = await expectJsonStatus(
 			await rpc.post(procedure("CompareProjections"), {
 				data: { fromVersion: "1", toVersion: "1" },
@@ -268,6 +289,15 @@ test.describe("projection census", () => {
 			200,
 			compareProjectionsSchema,
 		);
+
+		// protojson omits a zero count, so absent means 0 — but both sides must
+		// agree on being absent. One side present and the other not is the
+		// asymmetry a wrong-version read would produce.
+		expect(
+			body.summary.fromCount === undefined,
+			"one side of the comparison reported a count and the other did not, for a " +
+				"comparison of a version with itself",
+		).toBe(body.summary.toCount === undefined);
 		expect(body.summary.fromCount ?? 0).toBe(body.summary.toCount ?? 0);
 		expect(body.summary.fromAvgScore ?? 0).toBe(body.summary.toAvgScore ?? 0);
 	});

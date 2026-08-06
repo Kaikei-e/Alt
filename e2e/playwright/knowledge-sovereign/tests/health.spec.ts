@@ -57,16 +57,30 @@ test.describe("health", () => {
 	);
 
 	test(
-		"GET /health is unauthenticated on the operator listener",
+		"GET /health answers identically with and without an Authorization header",
 		{ tag: "@authz" },
 		async ({ admin }) => {
 			// `requireAdminToken` in main.go gates only paths under `/admin/`,
 			// and deliberately so: the compose healthcheck and Prometheus
-			// blackbox probes carry no token. If a future change moved the gate
-			// up to the whole mux, every deployment would fail its healthcheck
-			// — this is the fence.
-			const response = await admin.get("/health", { headers: { Authorization: "" } });
-			await expectJsonStatus(response, 200, healthSchema);
+			// blackbox probes carry no token.
+			//
+			// The honest scope of this test, stated plainly: the staging slice
+			// runs ADMIN_AUTH=disabled, and `requireAdminToken` returns `next`
+			// untouched when it is, so nothing here can distinguish "the gate
+			// exempts /health" from "there is no gate". What it *can* do is
+			// prove the route ignores the header rather than varying on it —
+			// so it sends a credential and asserts the answer is byte-identical
+			// to the anonymous one. Pinning the `/admin/` prefix branch itself
+			// needs a slice with ADMIN_AUTH enabled, which this suite does not
+			// have; that is recorded as a gap rather than implied by a test
+			// that would pass either way.
+			const [anonymous, credentialled] = await Promise.all([
+				admin.get("/health"),
+				admin.get("/health", { headers: { Authorization: "Bearer not-a-real-token" } }),
+			]);
+			const a = await expectJsonStatus(anonymous, 200, healthSchema);
+			const b = await expectJsonStatus(credentialled, 200, healthSchema);
+			expect(b, "/health varied its answer on an Authorization header").toEqual(a);
 		},
 	);
 });

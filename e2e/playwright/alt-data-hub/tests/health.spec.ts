@@ -62,15 +62,31 @@ test.describe("health", () => {
 		);
 	});
 
-	test("ops /health needs no credential", { tag: "@authz" }, async ({ ops }) => {
+	test("ops /health ignores a credential rather than requiring one", { tag: "@authz" }, async ({
+		ops,
+	}) => {
 		// The bargain the plaintext operator listener rests on: Prometheus
 		// scrapes alt-data-hub over alt-network, and giving it a client
 		// certificate would mean putting a monitoring identity into
 		// DATAHUB_ALLOWED_PEERS — diluting the data plane's entire
-		// authorisation decision to buy a gauge (cmd/datahub/main.go). The
-		// `ops` fixture carries no certificate and no token, so a 200 here is
-		// that bargain holding. tests/topology.spec.ts asserts the other half:
-		// that nothing else is reachable through this door.
-		await expectStatus(await ops.get("/health"), 200);
+		// authorisation decision to buy a gauge (cmd/datahub/main.go).
+		//
+		// An earlier form of this test just asserted 200 through the `ops`
+		// fixture, which carries no credential — making it a strict subset of
+		// the two tests above it and unable to fail while they passed. It never
+		// varied a credential, so it could not observe anything about
+		// credentials. Sending one and requiring the same answer is the weakest
+		// form of the claim that is still a claim: the route must not start
+		// treating an Authorization header as meaningful.
+		const [bare, credentialled] = await Promise.all([
+			ops.get("/health"),
+			ops.get("/health", { headers: { Authorization: "Bearer not-a-real-token" } }),
+		]);
+		await expectStatus(bare, 200);
+		await expectStatus(credentialled, 200);
+		expect(
+			await credentialled.text(),
+			"the operator health route varied its answer on an Authorization header",
+		).toBe(await bare.text());
 	});
 });

@@ -127,3 +127,28 @@ export function asInt64(value: string): number {
 	}
 	return Number(big);
 }
+
+/**
+ * True unless `body` looks like a Connect error envelope.
+ *
+ * Most success-response schemas in this fleet are `.passthrough()` objects
+ * whose every field is `.optional()` — which is honest, because protojson
+ * omits zero-valued fields, so a genuinely empty result really is `{}`. The
+ * cost is that such a schema accepts *any* JSON object, including
+ * `{"code":"internal","message":"..."}` arriving under a 200. Several suites
+ * carried a comment promising that case would fail; none of them actually
+ * checked it.
+ *
+ * Compose it where the promise is worth keeping:
+ *
+ *   z.object({ latestCreatedAt: timestampSchema.optional() })
+ *     .passthrough()
+ *     .refine(notAnErrorEnvelope, ERROR_ENVELOPE_MESSAGE)
+ */
+export function notAnErrorEnvelope(body: unknown): boolean {
+	if (typeof body !== "object" || body === null) return true;
+	return !("code" in body && "message" in body);
+}
+
+export const ERROR_ENVELOPE_MESSAGE =
+	"a Connect error envelope ({code, message}) arrived under a 2xx status";

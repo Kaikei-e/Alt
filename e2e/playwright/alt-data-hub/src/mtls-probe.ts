@@ -52,7 +52,16 @@ export type MTLSProbeResult =
 			readonly statusLine: string;
 			readonly status: number;
 	  }
-	| { readonly kind: "refused"; readonly error: string };
+	| { readonly kind: "refused"; readonly error: string }
+	/**
+	 * The socket went quiet without answering and without erroring.
+	 *
+	 * A distinct kind, not a flavour of "refused": a rejected handshake is
+	 * instant, so a timeout means the listener is hung or starved, not that it
+	 * turned this identity away. Folding the two together would let a
+	 * pool-exhausted alt-data-hub satisfy every authz negative in the suite.
+	 */
+	| { readonly kind: "timeout"; readonly afterMs: number };
 
 export type MTLSProbeOptions = {
 	readonly host: string;
@@ -131,7 +140,7 @@ export function probeMTLS(options: MTLSProbeOptions): Promise<MTLSProbeResult> {
 		});
 
 		socket.on("timeout", () => {
-			finish({ kind: "refused", error: `no answer within ${timeoutMs}ms` });
+			finish({ kind: "timeout", afterMs: timeoutMs });
 		});
 
 		// A clean close before any byte arrived is still a refusal — Go closes
@@ -160,6 +169,41 @@ const NOT_LISTENING_PATTERNS: readonly RegExp[] = [
 	/EAI_AGAIN/i,
 ];
 
+/**
+ * Errors that actually mean **the peer rejected this client's certificate**.
+ *
+ * An allowlist, not a denylist, and that distinction is the whole point.
+ * Listing only the failures to *reject* leaves every unanticipated error
+ * counting as a pass — including a server-leaf verification failure, which is
+ * reachable here because `probeMTLS` always supplies the CA and leaves
+ * verification on. An expired or wrong-SAN server certificate is a
+ * misconfiguration on the *server* side; reading it as "the allowlist turned
+ * me away" is the same silent-pass shape `_shared/net.ts` was written to
+ * avoid, and this helper had inverted it.
+ */
+const HANDSHAKE_REJECTED_PATTERNS: readonly RegExp[] = [
+	/EPROTO/i,
+	/ECONNRESET/i,
+	/SSL routines/i,
+	/alert (handshake failure|bad certificate|certificate required|unknown ca|certificate unknown)/i,
+	/socket hang up/i,
+	// What `probeMTLS` reports when Go closes the connection after a failed
+	// VerifyConnection rather than sending an alert — the common case here.
+	/closed the connection without answering/i,
+];
+
+/**
+ * Client-side verification failures. These are about the *server's* leaf, so
+ * they can never evidence a decision about the client's identity.
+ */
+const SERVER_CERT_PATTERNS: readonly RegExp[] = [
+	/unable to verify the first certificate/i,
+	/self.signed certificate/i,
+	/certificate has expired/i,
+	/altnames/i,
+	/Hostname\/IP does not match/i,
+];
+
 /** Asserts the peer refused this client at the transport, not at HTTP. */
 export function assertRefusedAtHandshake(result: MTLSProbeResult, what: string): void {
 	if (result.kind === "answered") {
@@ -178,6 +222,13 @@ export function assertRefusedAtHandshake(result: MTLSProbeResult, what: string):
 				`  actual:   the server answered "${result.statusLine}" — this boundary is open`,
 		);
 	}
+	if (result.kind === "timeout") {
+		throw new Error(
+			`${what}\n  the socket went quiet for ${result.afterMs}ms without answering and ` +
+				`without erroring. A rejected handshake is instant, so this is a hung or ` +
+				`starved listener — it says nothing about who the listener admits.`,
+		);
+	}
 	for (const pattern of NOT_LISTENING_PATTERNS) {
 		if (pattern.test(result.error)) {
 			throw new Error(
@@ -185,6 +236,22 @@ export function assertRefusedAtHandshake(result: MTLSProbeResult, what: string):
 					`about who the listener admits.\n  error: ${result.error}`,
 			);
 		}
+	}
+	for (const pattern of SERVER_CERT_PATTERNS) {
+		if (pattern.test(result.error)) {
+			throw new Error(
+				`${what}\n  the probe rejected the *server's* certificate, so it never got far ` +
+					`enough to learn what the server thinks of this client.\n  error: ${result.error}`,
+			);
+		}
+	}
+	if (!HANDSHAKE_REJECTED_PATTERNS.some((pattern) => pattern.test(result.error))) {
+		throw new Error(
+			`${what}\n  the connection failed, but not with an error this probe recognises as a ` +
+				`rejected handshake, so it proves nothing about the peer allowlist. If this is a ` +
+				`legitimate rejection shape, add it to HANDSHAKE_REJECTED_PATTERNS with a note ` +
+				`saying which stack produces it.\n  error: ${result.error}`,
+		);
 	}
 }
 
@@ -197,6 +264,12 @@ export function assertAnswered(
 	if (result.kind === "refused") {
 		throw new Error(
 			`${what}\n  expected: HTTP ${status}\n  actual:   the connection was refused: ${result.error}`,
+		);
+	}
+	if (result.kind === "timeout") {
+		throw new Error(
+			`${what}\n  expected: HTTP ${status}\n  actual:   no answer within ${result.afterMs}ms. ` +
+				`The handshake may have succeeded; the listener did not reply.`,
 		);
 	}
 	if (result.status !== status) {

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { timestampSchema, uuidSchema } from "../../_shared/schemas.js";
+import {
+	ERROR_ENVELOPE_MESSAGE,
+	notAnErrorEnvelope,
+	timestampSchema,
+	uuidSchema,
+} from "../../_shared/schemas.js";
 
 /**
  * Response envelopes, as Zod schemas.
@@ -67,10 +72,15 @@ export const opsHealthSchema = z
  * shape: a `null` here, or a body that is an array, or a `{"code":...}`
  * envelope leaking through with a 200, all fail — which is everything
  * `jsonpath "$" exists` accepted.
+ *
+ * The error-envelope half of that claim needs the explicit refine: an object
+ * whose every field is optional accepts any object at all, so the promise in
+ * the paragraph above was not true of the code until this line existed.
  */
 export const latestArticleTimestampSchema = z
 	.object({ latestCreatedAt: timestampSchema.optional() })
-	.passthrough();
+	.passthrough()
+	.refine(notAnErrorEnvelope, ERROR_ENVELOPE_MESSAGE);
 
 /** One row of `ListArticlesWithTags` / `...Forward`. */
 const articleWithTagsSchema = z
@@ -89,6 +99,11 @@ const articleWithTagsSchema = z
  *
  * `next_created_at` / `next_id` are the cursor, and they are set only when the
  * page was full — so on an empty table this too is `{}`.
+ *
+ * The `nextDeletedAt` refine is what actually keeps this envelope distinct
+ * from `deletedArticlesPageSchema`. Without it both schemas accept both
+ * bodies — they share no required field — and a handler that returned the
+ * deleted-articles cursor here would satisfy either one.
  */
 export const articlesWithTagsPageSchema = z
 	.object({
@@ -96,7 +111,12 @@ export const articlesWithTagsPageSchema = z
 		nextCreatedAt: timestampSchema.optional(),
 		nextId: z.string().optional(),
 	})
-	.passthrough();
+	.passthrough()
+	.refine(notAnErrorEnvelope, ERROR_ENVELOPE_MESSAGE)
+	.refine(
+		(body) => !("nextDeletedAt" in body),
+		"this page carries the deleted-articles cursor (next_deleted_at) instead of its own",
+	);
 
 export const deletedArticlesPageSchema = z
 	.object({
@@ -105,7 +125,12 @@ export const deletedArticlesPageSchema = z
 			.optional(),
 		nextDeletedAt: timestampSchema.optional(),
 	})
-	.passthrough();
+	.passthrough()
+	.refine(notAnErrorEnvelope, ERROR_ENVELOPE_MESSAGE)
+	.refine(
+		(body) => !("nextCreatedAt" in body) && !("nextId" in body),
+		"this page carries the articles-with-tags cursor (next_created_at / next_id) instead of its own",
+	);
 
 /**
  * `CheckArticleExistsResponse`.
@@ -123,7 +148,8 @@ export const checkArticleExistsSchema = z
 	.passthrough()
 	.refine((body) => body.exists !== true || (body.articleId ?? "") !== "", {
 		message: "exists is true but articleId is missing — the caller has nothing to dedupe against",
-	});
+	})
+	.refine(notAnErrorEnvelope, ERROR_ENVELOPE_MESSAGE);
 
 /** One row of `ListRecentArticles` — rag-orchestrator's reader. */
 const recentArticleSchema = z

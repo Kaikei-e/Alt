@@ -101,11 +101,14 @@ test.describe("DataHubService reads", () => {
 		// codec cannot omit, so they are present on every answer — which makes
 		// them the assertion that survives an empty database. The old REST route
 		// and the Hurl port of it could only say "200".
-		const body = await expectJsonStatus(
-			await callUnary(dataHub, `${SVC}/ListRecentArticles`, {}),
-			200,
-			recentArticlesSchema,
-		);
+		const response = await callUnary(dataHub, `${SVC}/ListRecentArticles`, {});
+		// Ports `04-datahub-service.hurl`'s Content-Type assertion, which was
+		// the one entry whose header check did not carry over. It matters here
+		// for the same reason it does on the sibling procedures: the JSON codec
+		// is what every generated client negotiates against, and a handler that
+		// answered 200 with a protobuf body would satisfy a status-only check.
+		expectHeaderContains(response, "Content-Type", "application/json");
+		const body = await expectJsonStatus(response, 200, recentArticlesSchema);
 		expect(
 			Date.parse(body.until),
 			"until must not precede since — the window would be inverted",

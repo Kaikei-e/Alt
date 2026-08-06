@@ -146,7 +146,18 @@ test.describe("snapshot reads", () => {
 				200,
 				snapshotListSchema,
 			);
-			expect(body.snapshots.map((s) => s.snapshot_id)).toContain(metadata.snapshot_id);
+			// Ports `19-admin-snapshot-list.hurl`'s `$.snapshots[0].status == "valid"`
+			// as a claim about *this run's* snapshot rather than about whatever
+			// happens to sort first. This is the only path that reads the
+			// persisted status: the create response reports an in-memory struct,
+			// and /latest filters `WHERE status = 'valid'` in the driver, so a
+			// row written with the wrong status is invisible everywhere else.
+			const stored = body.snapshots.find((s) => s.snapshot_id === metadata.snapshot_id);
+			expect(stored, "the snapshot just created is missing from the list").toBeDefined();
+			expect(
+				stored?.status,
+				"a snapshot created in this run must be listed as valid, not invalidated",
+			).toBe("valid");
 			// Ordered by **event_seq_boundary** DESC, not by time — and the
 			// distinction is the point. `GetLatestValidSnapshot` uses the same
 			// ordering, so "latest" in this API means "covers the most of the
