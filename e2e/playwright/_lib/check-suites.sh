@@ -89,9 +89,20 @@ for suite in "${suites[@]}"; do
   env_args=()
   env_file="$suite/src/env.ts"
   if [[ -f "$env_file" ]]; then
+    # Each helper needs a placeholder of its own shape. `requiredIntEnv` parses
+    # its value, so handing it the URL placeholder makes env.ts throw and the
+    # whole suite reports "No tests found" — a gate failing on its own fixture
+    # rather than on the suite.
+    #
+    # `requiredEnv(` and `requiredIntEnv(` do not overlap as substrings, so
+    # matching each literally keeps the two sets disjoint without a lookahead.
     while IFS= read -r name; do
       env_args+=("$name=$PLACEHOLDER")
-    done < <(grep -oE 'required(Int)?Env\("[A-Z0-9_]+"' "$env_file" \
+    done < <(grep -oE 'requiredEnv\("[A-Z0-9_]+"' "$env_file" \
+             | grep -oE '"[A-Z0-9_]+"' | tr -d '"' | sort -u)
+    while IFS= read -r name; do
+      env_args+=("$name=1")
+    done < <(grep -oE 'requiredIntEnv\("[A-Z0-9_]+"' "$env_file" \
              | grep -oE '"[A-Z0-9_]+"' | tr -d '"' | sort -u)
     while IFS= read -r name; do
       env_args+=("$name=$SECRET_FILE")
