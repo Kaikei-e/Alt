@@ -1,6 +1,6 @@
 # alt-backend E2E fixtures
 
-Test fixtures consumed by `e2e/hurl/alt-backend/*.hurl` and the compose
+Test fixtures consumed by `e2e/playwright/alt-backend/` and the compose
 `alt-backend` profile in `compose/compose.staging.yaml`. Every value here is
 committed on purpose — these are only meaningful inside the ephemeral
 `alt-staging` Docker network.
@@ -10,8 +10,6 @@ committed on purpose — these are only meaningful inside the ephemeral
 | File | Purpose |
 |------|---------|
 | `test-jwt.txt` | HS256 JWT (role=admin) signed with `../staging-secrets/alt_backend_token_secret.txt`. Passed via the `X-Alt-Backend-Token` header. Issuer `alt-staging-auth-hub`, audience `alt-backend`, sub/tenant_id are fixed non-nil UUIDs, exp=2099-01-01 |
-| `sample-feeds.opml` | OPML document with 3 feed URLs — exercised by the `/v1/rss-feed-link/import/opml` multipart scenario |
-| `register-feed-1.json` … `register-feed-3.json` | JSON bodies for `POST /v1/rss-feed-link/register` (referenced via `file,` in Hurl) |
 
 ## Regenerating the JWT
 

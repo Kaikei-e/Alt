@@ -72,9 +72,10 @@ async def health() -> dict[str, str]:
 
 # ---------------------------------------------------------------------------
 # stub.invalid hostname — feed registration + article/image fetches.
-# alt-backend fetches these URLs during RSS registration and summary flows;
-# paths below match what the e2e/fixtures/alt-backend/register-feed-*.json
-# and sample-feeds.opml documents reference.
+# alt-backend fetches these URLs during RSS registration and summary flows.
+# The slug is a wildcard on purpose: e2e/playwright/alt-backend mints a fresh
+# feed slug per worker so parallel workers never share a row, so this has to
+# serve any name rather than a fixed fixture list.
 # ---------------------------------------------------------------------------
 _RSS_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
