@@ -90,3 +90,37 @@ func TestActivateProjectionVersion_DeactivateAndActivateAreAtomic(t *testing.T) 
 	require.NotNil(t, mock.lastTx)
 	assert.True(t, mock.lastTx.committed, "both UPDATEs must be committed together")
 }
+
+// TestAppendRecallSignal_DefaultsEmptyPayload pins that an omitted payload
+// reaches Postgres as `{}` rather than as an explicit NULL.
+//
+// `recall_signals.payload` is `JSONB NOT NULL DEFAULT '{}'` — the schema saying
+// the field is optional. But AppendRecallSignal names `payload` in the INSERT
+// column list and binds it unconditionally, so a proto request that omits the
+// field (arriving as a nil []byte) sends an explicit NULL, the column DEFAULT
+// never applies, and the insert dies on the NOT NULL constraint. The handler
+// then surfaces it as Connect `internal` — a malformed-looking request reported
+// as a broken service.
+//
+// Contrast knowledge_events.payload, which is NOT NULL with *no* default: there
+// the payload is genuinely required and the caller must supply one.
+func TestAppendRecallSignal_DefaultsEmptyPayload(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	err := repo.AppendRecallSignal(context.Background(), RecallSignal{
+		SignalID:   uuid.New(),
+		UserID:     uuid.New(),
+		ItemKey:    "article:1",
+		SignalType: "open",
+		Payload:    nil,
+	})
+	require.NoError(t, err)
+	require.Len(t, mock.execCalls, 1)
+
+	args := mock.execCalls[0].Args
+	require.Len(t, args, 7, "the INSERT binds seven columns")
+	assert.EqualValues(t, []byte("{}"), args[6],
+		"an omitted payload must be bound as an empty JSON object; binding nil sends an "+
+			"explicit NULL, which defeats the column's own DEFAULT and violates NOT NULL")
+}

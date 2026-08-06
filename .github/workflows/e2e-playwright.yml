@@ -1,0 +1,369 @@
+# End-to-end Playwright suites, one job per service.
+#
+# Replaces e2e-hurl.yml (nine hand-written per-service jobs) and
+# e2e-playwright-alt-backend.yml (the pilot's own file). Every suite under
+# e2e/playwright/ now runs here.
+#
+# Shape
+# -----
+#
+#   plan ──┬── single    (matrix over the unsharded suites: build + run)   ──┐
+#          │                                                                │
+#          └── build ──> sharded (matrix over suite × shard)              ──┴─> merge
+#
+# `plan` derives all three matrices from e2e/playwright/suites.yaml, so the
+# shard count lives next to the suite it describes rather than being duplicated
+# here where it would drift.
+#
+# A suite that fans out gets its images built once and handed to its shards as
+# an artifact; an unsharded suite builds in the job that runs it. Without that
+# split a four-shard suite repeats the same three image builds four times —
+# the dominant cost of the job, and one that does not parallelise away.
+#
+# No path filtering, deliberately
+# -------------------------------
+# Every suite runs on every PR and every push to main. Selective skipping by
+# touched path lets a shared-wiring regression (compose.staging.yaml, a
+# fixture, an upstream Go package, proto) land green because it matched no
+# service path. Cost is bounded by importing the registry layer cache, not by
+# skipping suites.
+
+name: E2E Playwright
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-playwright-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_TAG: ci
+  GHCR_OWNER: kaikei-e
+  # No spec in any of these suites touches `page`/`browser`/`context`, so
+  # Playwright never launches a browser. A node image is ~150MB against the
+  # Playwright image's ~1.7GB, and skipping the browser download removes the
+  # largest single item from cold start.
+  NODE_IMAGE: node:22-bookworm-slim
+
+jobs:
+  # A typo should cost one minute of CI, not twenty. This needs no Docker
+  # daemon, no compose slice and no stack startup: it typechecks every suite
+  # and runs `playwright test --list`, which loads each config, imports every
+  # spec, resolves every fixture and reports the test tree. That catches a bad
+  # import, an invalid project matcher, a missing fixture and a duplicate
+  # title — everything except whether the assertions are true.
+  check:
+    name: Typecheck + load every suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/playwright/package-lock.json
+
+      - name: Install
+        working-directory: e2e/playwright
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+        run: npm ci --no-audit --no-fund
+
+      - name: Check
+        run: bash e2e/playwright/_lib/check-suites.sh
+
+  plan:
+    name: Plan matrices
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      single: ${{ steps.matrix.outputs.single }}
+      shardedBuild: ${{ steps.matrix.outputs.shardedBuild }}
+      shardedRun: ${{ steps.matrix.outputs.shardedRun }}
+      hasSingle: ${{ steps.matrix.outputs.hasSingle }}
+      hasSharded: ${{ steps.matrix.outputs.hasSharded }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Derive matrices from e2e/playwright/suites.yaml
+        id: matrix
+        run: python3 e2e/playwright/_lib/ci-matrix.py --github
+
+  # ---------------------------------------------------------------------------
+  # Unsharded suites: build the images and run the suite in one job.
+  # ---------------------------------------------------------------------------
+  single:
+    name: ${{ matrix.suite }}
+    needs: plan
+    if: needs.plan.outputs.hasSingle == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.plan.outputs.single) }}
+    env:
+      # A distinct compose project per suite: the network is named after the
+      # project, so this is what stops two jobs from fighting over a network
+      # name if they ever share a daemon.
+      STAGING_PROJECT_NAME: alt-staging-${{ matrix.suite }}
+      # Leave the stack up on failure so the dump step below can reach it; the
+      # runner VM is discarded after the job anyway.
+      KEEP_STACK: 1
+      PW_BLOB: 1
+      RUN_ID: ${{ matrix.suite }}
+      # suite.sh honours REPORT_DIR when it is already set. Pinning it here
+      # keeps the upload path below from having to reconstruct the
+      # `<suite>-<RUN_ID>` name suite.sh would otherwise derive.
+      REPORT_DIR: ${{ github.workspace }}/e2e/reports/${{ matrix.suite }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build images
+        # Reads suites.yaml for which images, services.yaml for how to build
+        # each. The same command reproduces a CI build locally, which is the
+        # point of it being a script rather than a workflow step.
+        run: python3 e2e/playwright/_lib/build-images.py "${{ matrix.suite }}"
+
+      - name: Warm the rust-bert model cache
+        # recap-worker only. The staging stack runs on an `internal: true`
+        # network, so rust-bert cannot reach HuggingFace from inside it.
+        # Populate /opt/rustbert-cache on the runner host first; compose mounts
+        # the same path read-only. recap's uid/gid are pinned to 999 in the
+        # image, so the host directory must be chown'd to 999:999 for the
+        # warmup container to write to it.
+        if: matrix.suite == 'recap-worker'
+        run: |
+          sudo mkdir -p /opt/rustbert-cache
+          sudo chown -R 999:999 /opt/rustbert-cache
+          docker run --rm \
+            -v /opt/rustbert-cache:/opt/rustbert-cache \
+            "ghcr.io/${GHCR_OWNER}/alt-recap-worker:${IMAGE_TAG}" warmup
+
+      - name: Pre-pull node image
+        run: docker pull "$NODE_IMAGE"
+
+      - name: Run suite
+        run: bash "e2e/playwright/${{ matrix.suite }}/run.sh"
+
+      - name: Dump staging logs on failure
+        if: failure()
+        run: bash e2e/_lib/dump-project-logs.sh "$STAGING_PROJECT_NAME"
+
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: blob-${{ matrix.suite }}
+          path: e2e/reports/${{ matrix.suite }}/blob
+          retention-days: 3
+          # `warn`, not `ignore`. A suite that ran and produced no blob is a
+          # broken report pipeline, and `ignore` is what let exactly that stay
+          # invisible: every suite wrote to a path the upload did not look at,
+          # nine of them green, and the only symptom was a merge job cheerfully
+          # reporting "no blob reports to merge".
+          if-no-files-found: warn
+
+      - name: Wipe throwaway mTLS fixtures
+        # run.sh's own trap skips this under KEEP_STACK=1 (the certificates are
+        # still bind-mounted into a live container). The runner is ephemeral,
+        # but private keys under the workspace would otherwise be in scope for
+        # the artifact upload step of any later job.
+        if: always()
+        run: rm -rf "e2e/fixtures/${{ matrix.suite }}/pki"
+
+      - name: Tear down staging stack
+        if: always()
+        run: bash e2e/_lib/teardown-project.sh "$STAGING_PROJECT_NAME"
+
+  # ---------------------------------------------------------------------------
+  # Sharded suites: build once, hand the images to every shard.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.suite }} images
+    needs: plan
+    if: needs.plan.outputs.hasSharded == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.plan.outputs.shardedBuild) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build images
+        run: python3 e2e/playwright/_lib/build-images.py "${{ matrix.suite }}"
+
+      - name: Export images
+        run: |
+          # The image list comes back out of the same manifest that drove the
+          # build, so a suite that grows a fourth image needs no edit here for
+          # that image to reach its shards.
+          images="$(python3 e2e/playwright/_lib/build-images.py "${{ matrix.suite }}" --print-images)"
+          echo "exporting: $images"
+          # shellcheck disable=SC2086  # splitting the list into args is the point
+          docker save $images | zstd -T0 -3 -o "/tmp/${{ matrix.suite }}-images.tar.zst"
+
+      - name: Upload images
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: images-${{ matrix.suite }}
+          path: /tmp/${{ matrix.suite }}-images.tar.zst
+          retention-days: 1
+          compression-level: 0  # already zstd-compressed
+
+  sharded:
+    name: ${{ matrix.suite }} shard ${{ matrix.shard }}
+    needs: [plan, build]
+    if: needs.plan.outputs.hasSharded == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.shardedRun) }}
+    env:
+      STAGING_PROJECT_NAME: alt-staging-${{ matrix.suite }}-${{ matrix.index }}
+      KEEP_STACK: 1
+      PW_BLOB: 1
+      SHARD: ${{ matrix.shard }}
+      RUN_ID: ${{ matrix.suite }}-shard-${{ matrix.index }}
+      REPORT_DIR: ${{ github.workspace }}/e2e/reports/${{ matrix.suite }}-shard-${{ matrix.index }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Download images
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: images-${{ matrix.suite }}
+          path: /tmp
+
+      - name: Load images
+        run: zstd -dc "/tmp/${{ matrix.suite }}-images.tar.zst" | docker load
+
+      - name: Pre-pull node image
+        run: docker pull "$NODE_IMAGE"
+
+      - name: Run shard
+        run: bash "e2e/playwright/${{ matrix.suite }}/run.sh"
+
+      - name: Dump staging logs on failure
+        if: failure()
+        run: bash e2e/_lib/dump-project-logs.sh "$STAGING_PROJECT_NAME"
+
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: blob-${{ matrix.suite }}-${{ matrix.index }}
+          path: e2e/reports/${{ matrix.suite }}-shard-${{ matrix.index }}/blob
+          retention-days: 3
+          # `warn`, not `ignore`. A suite that ran and produced no blob is a
+          # broken report pipeline, and `ignore` is what let exactly that stay
+          # invisible: every suite wrote to a path the upload did not look at,
+          # nine of them green, and the only symptom was a merge job cheerfully
+          # reporting "no blob reports to merge".
+          if-no-files-found: warn
+
+      - name: Wipe throwaway mTLS fixtures
+        if: always()
+        run: rm -rf "e2e/fixtures/${{ matrix.suite }}/pki"
+
+      - name: Tear down staging stack
+        if: always()
+        run: bash e2e/_lib/teardown-project.sh "$STAGING_PROJECT_NAME"
+
+  # ---------------------------------------------------------------------------
+  # One report for the whole fleet.
+  # ---------------------------------------------------------------------------
+  merge:
+    name: Merge reports
+    # `always()` so a failing suite still produces a merged report — that
+    # report is the primary debugging artifact, and it is needed exactly when
+    # the run is red.
+    if: always()
+    needs: [single, sharded]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Download every blob report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: blob-*
+          path: all-blob-reports
+          merge-multiple: true
+
+      - name: Merge into one HTML + JUnit report
+        run: |
+          if [ -z "$(ls -A all-blob-reports 2>/dev/null)" ]; then
+            echo "no blob reports to merge (every suite failed before running)" >&2
+            exit 0
+          fi
+          # Two separate things make a twelve-suite merge work.
+          #
+          # `tag: '@<service>'` in each suite's config (Playwright 1.57+) feeds
+          # the blob filename hash, so twelve artifacts flattened into one
+          # directory by `merge-multiple: true` do not overwrite each other.
+          #
+          # `-c merge.config.ts` handles the other half: merge-reports refuses
+          # blobs "recorded with different test directories", which assumes
+          # blobs from shards of ONE config. Twelve suites have twelve
+          # testDirs, so the merge needs a config naming where the tests really
+          # live. Without it this job fails outright — as it did the first time
+          # the blob uploads actually worked.
+          #
+          # The `github` reporter is emitted HERE and nowhere else. Playwright's
+          # docs advise against it under a matrix strategy: with a dozen suites
+          # in the matrix, one shared-fixture breakage would emit dozens of
+          # duplicate inline annotations on the same lines. Merging first yields
+          # exactly one annotation per real failure.
+          #
+          # Output locations go through the reporters' own env vars rather than
+          # a config file: merge-reports does not load a config unless passed
+          # `-c`, so relying on one here would silently write to the defaults.
+          docker run --rm \
+            -v "$PWD:$PWD" -w "$PWD/e2e/playwright" \
+            -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+            -e PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report \
+            -e PLAYWRIGHT_HTML_OPEN=never \
+            -e PLAYWRIGHT_JUNIT_OUTPUT_NAME=results.xml \
+            -e PLAYWRIGHT_JUNIT_STRIP_ANSI=1 \
+            "$NODE_IMAGE" \
+            sh -euc '
+              npm ci --no-audit --no-fund
+              npx playwright merge-reports \
+                -c merge.config.ts \
+                --reporter html,junit,github \
+                ../../all-blob-reports
+            '
+
+      - name: Upload merged report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright/playwright-report
+            e2e/playwright/results.xml
+          retention-days: 7
+          if-no-files-found: ignore

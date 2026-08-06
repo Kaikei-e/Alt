@@ -1,4 +1,4 @@
-"""Ollama-compatible stub for news-creator Hurl staging.
+"""Ollama-compatible stub for the news-creator E2E staging slice.
 
 Surface implemented (current = Phase 4):
 
@@ -29,7 +29,7 @@ Out of scope of this Phase:
   by the staging network's `internal: true` flag).
 - Queue saturation control endpoint (`/admin/set-delay`). Triggering
   the HybridPrioritySemaphore's QueueFullError reliably from a serial
-  Hurl suite would need either parallel client orchestration or per-
+  E2E suite would need either parallel client orchestration or per-
   invocation env overrides; both add machinery the present scope can't
   justify yet.
 """
@@ -100,7 +100,7 @@ QUERY_PLAN_PAYLOAD = {
 
 # Streaming token sequence — chosen to be ASCII, distinct enough to
 # avoid summarize_usecase's repetition guard, and short enough that
-# the full NDJSON body fits in a single Hurl body assertion. Three
+# the full NDJSON body fits in a single body assertion. Three
 # tokens give two `done: false` lines + one `done: true` final line.
 STREAM_TOKENS = ("stub-token-alpha ", "stub-token-beta ", "stub-token-gamma")
 

@@ -33,7 +33,7 @@
   `cmd/harvester` の依存グラフに現れたらテストが落ちる。grep でも DI 検査でもなく、
   リンカが決める。
 - 旧 `services.backend.v1.BackendInternalService` と `/v1/internal/*` REST は**削除済み**。
-  同名の面を再追加してはいけない（e2e/hurl の topology スイートが 404 を assert している）。
+  同名の面を再追加してはいけない（e2e/playwright の topology スイートが 404 を assert している）。
 - `cmd/backend` は mTLS リスナーを一切開かない。`config.RejectBackendMTLSListenerEnv` が
   古い `MTLS_LISTEN` / `MTLS_PORT` の再出現を起動エラーにする。
 

@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectJsonStatus, expectStatus } from "../src/http.js";
+import { expectJsonStatus, expectStatus } from "../../_shared/http.js";
 import { augurAnswerSchema, secureErrorSchema } from "../src/schemas.js";
 
 /**

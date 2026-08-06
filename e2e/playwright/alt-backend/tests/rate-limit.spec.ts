@@ -1,6 +1,6 @@
 import { test, expect } from "../src/fixtures.js";
 import { env } from "../src/env.js";
-import { expectStatus } from "../src/http.js";
+import { expectStatus } from "../../_shared/http.js";
 
 /**
  * DoS-protection middleware — entirely new coverage.

@@ -1,5 +1,5 @@
 import { test } from "../src/fixtures.js";
-import { expectStatus } from "../src/http.js";
+import { expectStatus } from "../../_shared/http.js";
 import { WRONG_SIGNATURE_JWT, ZERO_UUID } from "../src/env.js";
 
 /**

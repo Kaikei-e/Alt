@@ -1,6 +1,6 @@
 # recap-pipeline-stub — minimal FastAPI service that masquerades as
 # recap-worker's four upstream neighbours during Hurl E2E. Built in CI
-# alongside recap-worker; never deployed outside e2e/hurl/recap-worker/.
+# alongside recap-worker; never deployed outside e2e/playwright/recap-worker/.
 FROM python:3.13-alpine
 
 WORKDIR /app

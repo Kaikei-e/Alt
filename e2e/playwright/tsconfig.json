@@ -1,0 +1,5 @@
+{
+  "//": "Typechecks the shared harness and the merge config on their own, so a break in either is reported once here rather than twelve times across the suites. Each suite's tsconfig.json also includes _shared, which is what catches a helper used in a way its own module never exercises.",
+  "extends": "./tsconfig.base.json",
+  "include": ["_shared/**/*.ts", "merge.config.ts"]
+}

@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectJson, expectStatus, expectStatusIn } from "../src/http.js";
+import { expectJson, expectStatus, expectStatusIn } from "../../_shared/http.js";
 import { ZERO_UUID } from "../src/env.js";
 import { connectErrorSchema } from "../src/schemas.js";
 

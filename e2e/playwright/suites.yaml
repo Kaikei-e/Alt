@@ -1,0 +1,133 @@
+# Playwright E2E suite registry.
+#
+# Declares, for each suite under e2e/playwright/, which container images its
+# staging slice needs built **from the working tree** rather than pulled from
+# GHCR at `:main`.
+#
+# Why this file exists
+# --------------------
+# The image builds used to live only inside the CI workflow, one hand-written
+# `docker buildx build` step per service. Three things went wrong with that:
+#
+#   1. There was no way to reproduce a CI run locally. `run.sh` brings the
+#      stack up but assumes the images already exist, so a developer running it
+#      after a source change silently tested the *previous* image — the exact
+#      failure mode CLAUDE.md rule 3 warns about, moved from `docker compose`
+#      into the E2E harness.
+#   2. A suite whose CI job listed no build at all (acolyte-orchestrator) ran
+#      every PR against `:main`, so changes to the service under test were
+#      never exercised. Nothing in the workflow made that visible.
+#   3. Build metadata was duplicated from services.yaml, so the alt-backend
+#      trio's `--build-arg BINARY=` lived in two places.
+#
+# `_lib/build-images.py` reads this file, resolves each image against
+# services.yaml (the existing source of truth for dir / dockerfile / args), and
+# builds it. CI and a developer's laptop then run the same command.
+#
+#   python3 e2e/playwright/_lib/build-images.py <suite>
+#
+# Fields
+# ------
+#   images   image names. A name that appears in services.yaml is built from
+#            that entry; otherwise it must appear under `stubs:` below.
+#   unpinnedImages
+#            optional. Compose services in this profile that stay on `:main` on
+#            purpose, rather than being pinned to this suite's IMAGE_TAG. A
+#            dependency that is not co-versioned with the service under test
+#            belongs here: pinning it would demand a build the dispatch SHA may
+#            never have produced and turn an unrelated green build into
+#            `manifest unknown`. Recording it is what lets
+#            _lib/audit-suite-wiring.py tell "deliberately on main" apart from
+#            "someone forgot", which is CLAUDE.md rule 8 applied to CI wiring.
+#   shards   optional. Split the suite across N parallel CI jobs. Only worth it
+#            past roughly eight minutes of wall clock — each shard pays the
+#            full compose-slice startup cost, so over-sharding makes a suite
+#            slower, not faster. Absent means one job.
+#   notes    why the image list is what it is, where that is not obvious.
+
+suites:
+  alt-backend:
+    images: [alt-backend, alt-data-hub, alt-backend-deps-stub]
+    shards: 4
+    notes: >-
+      The largest suite in the fleet (200+ tests). alt-data-hub is the real
+      data plane, not a stub: ADR-000954 Wave 3 made it the only owner of
+      alt_db, so cmd/backend reaches every row through it over mutual TLS.
+
+  alt-harvester:
+    images: [alt-harvester, alt-data-hub, alt-backend-deps-stub]
+    notes: >-
+      cmd/harvester holds no DB pool either — every job reads and writes
+      through DataHubService, so the slice runs the real data plane.
+
+  alt-data-hub:
+    images: [alt-data-hub, alt-backend-deps-stub]
+
+  auth-hub:
+    images: [auth-hub]
+
+  knowledge-sovereign:
+    images: [knowledge-sovereign]
+    notes: >-
+      compose.staging.yaml had `build:` and no `image:` for this service, so the
+      GHCR-tagged image the Hurl job built with buildx and the registry cache
+      was never used — compose rebuilt it from source on every run, from
+      scratch. An `image:` key was added alongside the `build:` (the shape
+      every other service in that file already has) so the cached build is what
+      actually runs.
+
+  mq-hub:
+    images: [mq-hub]
+
+  rag-orchestrator:
+    images: [rag-orchestrator]
+
+  search-indexer:
+    images: [search-indexer]
+    notes: >-
+      This suite had no CI job at all before the Playwright migration — the
+      scenarios existed under e2e/hurl/search-indexer/ and ran only when
+      someone invoked run.sh by hand. Meilisearch and stub-backend come from
+      Docker Hub and need no build.
+
+  tag-generator:
+    images: [tag-generator, mq-hub]
+    notes: >-
+      One scenario round-trips through mq-hub's GenerateTagsForArticle RPC, so
+      mq-hub is part of the system under test rather than a fixture.
+
+  news-creator:
+    images: [news-creator]
+    notes: >-
+      news-creator-ollama-stub is built by compose from its own context
+      (compose/news-creator-ollama-stub) and needs no entry here.
+
+  acolyte-orchestrator:
+    images: []
+    unpinnedImages: [search-indexer]
+    notes: >-
+      Nothing to build here, and both halves of that are deliberate.
+      acolyte-orchestrator, acolyte-db-migrator and news-creator-ollama-stub
+      are local build contexts in compose.staging.yaml with no GHCR image, so
+      run.sh passes `--build` and compose builds them from the working tree.
+      search-indexer is a GHCR image, but it is a *dependency* of this flow
+      rather than the system under test, and it is not co-versioned with
+      acolyte-orchestrator — pinning it to this suite's IMAGE_TAG would demand
+      a tag the dispatch SHA may never have built and turn an unrelated green
+      build into `manifest unknown` on pull. It keeps `:main`, and its own
+      suite is what covers it.
+
+  recap-worker:
+    images: [recap-worker, recap-pipeline-stub]
+    notes: >-
+      Also needs the rust-bert model cache warmed on the runner host before the
+      stack starts: the staging network is `internal: true`, so the container
+      cannot reach HuggingFace from inside. See the warmup step in
+      .github/workflows/e2e-playwright.yml.
+
+# Images built from a context that is not a registered service.
+stubs:
+  alt-backend-deps-stub:
+    context: e2e/stubs/alt-backend-deps-stub
+  recap-pipeline-stub:
+    context: e2e/stubs/recap-pipeline-stub

@@ -1,10 +1,10 @@
 # compose/compose.staging.yaml
 #
-# Ephemeral E2E staging stack — brought up per run of the Hurl suite and
+# Ephemeral E2E staging stack — brought up per run of a Playwright suite and
 # torn down at the end. Project name `alt-staging` keeps it isolated from
 # any prod compose stack that may be running on the same host.
 #
-# Services are tagged with Compose profiles so each Hurl suite brings up
+# Services are tagged with Compose profiles so each E2E suite brings up
 # only its own dependencies:
 #   search-indexer suite       → profile `search-indexer`
 #     meilisearch, stub-backend, search-indexer
@@ -15,7 +15,7 @@
 #   tag-generator suite        → profile `tag-generator`
 #     redis-streams, stub-backend, mq-hub, tag-generator
 #     (round-trips through mq-hub's GenerateTagsForArticle RPC because
-#     Hurl cannot XREAD Redis directly)
+#     the E2E suite speaks HTTP only and cannot XREAD Redis directly)
 #   news-creator suite         → profile `news-creator`
 #     news-creator-ollama-stub, news-creator
 #     (real Ollama needs a GPU; the stub returns a fixed `/api/tags`
@@ -67,7 +67,7 @@
 #     alt-backend-db, alt-backend-db-migrator, alt-backend-deps-stub,
 #     alt-data-hub
 #     (the mTLS data plane of the 3-binary split. run.sh mints a throwaway
-#     PKI via e2e/hurl/_lib/mint-staging-pki.sh and mounts it at /certs and
+#     PKI via e2e/_lib/mint-staging-pki.sh and mounts it at /certs and
 #     /trust, so the production DATAHUB_TLS_* paths are used verbatim. The
 #     mount path comes from $STAGING_PKI_DIR, which every suite that needs
 #     a client leaf sets to its own directory.)
@@ -268,6 +268,11 @@ services:
     build:
       context: ../knowledge-sovereign
       dockerfile: Dockerfile.sovereign
+    # `image:` alongside `build:` — the shape every other built service here
+    # has. Without it compose named the built image after the project and
+    # ignored the tag CI had already produced with buildx and the registry
+    # layer cache, so every E2E run rebuilt this service from scratch.
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-knowledge-sovereign:${KNOWLEDGE_SOVEREIGN_IMAGE_TAG:-main}
     container_name: alt-staging-knowledge-sovereign
     profiles: [knowledge-sovereign]
     depends_on:
@@ -283,12 +288,12 @@ services:
       - ARCHIVE_DIR=/tmp/archives
       - BUILD_REF=staging
       - LOG_LEVEL=info
-      # The Hurl suite calls /admin/* directly on the metrics port, so the
+      # The E2E suite calls /admin/* directly on the metrics port, so the
       # ephemeral staging slice runs with the Bearer gate off. Production
       # supplies ADMIN_TOKEN_FILE (compose/sovereign.yaml); an unset token
       # is a startup failure there, never an open surface.
       - ADMIN_AUTH=disabled
-      # Tighten cron cadence so the Hurl suite (22-surface-planner-cron)
+      # Tighten cron cadence so the E2E suite's surface-planner scenario
       # can observe a SurfacePlanRecomputed emission within its 45 s
       # retry budget (30 retries × 1.5 s). Production defaults stay at
       # 60 s / 5 s.
@@ -297,7 +302,7 @@ services:
       - KNOWLEDGE_SOVEREIGN_PLANNER_BATCH_SIZE=1024
       - KNOWLEDGE_SOVEREIGN_PLANNER_MAX_BATCHES_PER_TICK=4
       # ADR-000914 §Δ5: loop projector throughput. Staging keeps the cap
-      # low since the Hurl suite seeds bounded fixtures; the production
+      # low since the E2E suite seeds bounded fixtures; the production
       # default lives in compose/sovereign.yaml with a ${VAR:-default}
       # substitution so a reproject run can bump it without a redeploy.
       - KNOWLEDGE_SOVEREIGN_LOOP_PROJECTOR_BATCH_SIZE=200
@@ -406,7 +411,7 @@ services:
       - LLM_BACKEND=ollama
       - LOG_LEVEL=info
       # Explicit opt-out for the *inbound* listener: this suite speaks plain
-      # h2c to :9011, so no client certificate is demanded of Hurl.
+      # h2c to :9011, so no client certificate is demanded of the test client.
       - PEER_IDENTITY_MODE=disabled
       # The *outbound* data-hub client is not covered by that opt-out.
       # config.loadDataHub panics on an unset or non-https DATAHUB_MTLS_URL,
@@ -429,7 +434,7 @@ services:
     # rag-orchestrator ships on distroless/static — no wget/curl/shell,
     # and the binary exposes no `healthcheck` subcommand. `up --wait`
     # without a container healthcheck still waits until the process is
-    # in `running` state; 00-readiness.hurl's per-request retry block
+    # in `running` state; the suite's readiness gate (setup/global-setup.ts)
     # then polls /readyz until the DB pool is live. That keeps the wait
     # inside the test runner where a failed readiness is a named test
     # failure rather than an opaque "unhealthy" state.
@@ -493,7 +498,7 @@ services:
       # FastAPI lifespan blocks on SBERT warm-up + Redis consumer join.
       # The SBERT cache is baked into the image so this is bounded, but
       # on GitHub-hosted 2-core runners TagExtractor.warmup() has been
-      # observed to run past 20 s. The Hurl scenarios carry their own
+      # observed to run past 20 s. The E2E scenarios carry their own
       # retry budgets for the same reason; this just keeps the Compose
       # up --wait gate from declaring the container unhealthy while
       # FastAPI's lifespan background thread is still warming the ML
@@ -544,6 +549,13 @@ services:
       # Point the Ollama driver at the in-network stub.
       - LLM_SERVICE_URL=http://news-creator-ollama-stub:11435
       - LLM_MODEL=gemma3:4b-it-qat
+      # The RAG usecases do not read LLM_MODEL. `expand_query_usecase` and
+      # `plan_query_usecase` both take `config.rag_query_model`, which
+      # `model_routing_config.py` fills from MODEL_RAG_QUERY_NAME with a
+      # hardcoded `gemma4-e4b-12k` default — a model the ollama stub does not
+      # serve. MODEL_ROUTING_ENABLED=false does not gate that field, so without
+      # this line the two RAG endpoints report a model the slice never ran.
+      - MODEL_RAG_QUERY_NAME=gemma3:4b-it-qat
       # Keep lifespan startup cheap: skip warm-up (would hit /api/generate
       # which the Phase-1 stub doesn't implement) and disable model
       # routing so a single fixed model name is used everywhere.
@@ -963,18 +975,18 @@ services:
       - DB_NAME=alt
       - SERVER_PORT=9000
       - CONNECT_PORT=9101
-      # render-slice.sh strips every `ports:` key, so the Hurl container
+      # render-slice.sh strips every `ports:` key, so the test container
       # reaches this service by DNS name on the staging network — a listener
       # bound to loopback inside the container would be unreachable and the
       # suite would fail at connect rather than at an assertion. Both of these
       # are spelled out for that reason; the production defaults differ
       # (see compose/core.yaml).
       #
-      # :9102 is where 72-admin-emit-article-url-backfill.hurl and
-      # 03-topology-internal-surface-absent.hurl address {{internal_url}}.
+      # :9102 is what the alt-backend suite reaches as INTERNAL_URL — see
+      # tests/admin-url-backfill.spec.ts and tests/topology.spec.ts.
       - OPERATOR_LISTEN_ADDR=:9102
       # :9110 is {{ops_url}} — /health and /metrics, asserted by
-      # 01-health-csrf.hurl — and the address the `healthcheck` subcommand
+      # tests/health.spec.ts — and the address the `healthcheck` subcommand
       # self-probes.
       - OPS_LISTEN=:9110
       # HS256 JWT validation. The secret is read from a file mounted
@@ -992,15 +1004,15 @@ services:
       - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
       - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
       # auth-hub is only hit by the internal /system-user handler (not
-      # exercised by the Hurl suite), but the alias keeps config parity
+      # exercised by the E2E suite), but the alias keeps config parity
       # with prod and unblocks that handler if ever probed.
       - AUTH_HUB_URL=http://auth-hub/
       - MQHUB_CONNECT_URL=http://mq-hub/
       - MQHUB_ENABLED=false
       # The image proxy is off in staging, stated explicitly because
       # IMAGE_PROXY_ENABLED defaults to true and config.validateImageProxyConfig
-      # exits non-zero when it is enabled without a secret. The Hurl suite only
-      # pins that /v1/images/proxy sits behind auth (50-images.hurl asserts 401
+      # exits non-zero when it is enabled without a secret. The E2E suite only
+      # pins that /v1/images/proxy sits behind auth (tests/images.spec.ts asserts 401
       # with no token, which the group's auth middleware answers whether or not
       # the route is registered) — signature validation is not exercised, so
       # there is nothing here for a secret to buy.
@@ -1010,7 +1022,7 @@ services:
       # back to `enabled=false` and short-circuits every call with a
       # benign "reserved=true" — which masks real idempotency semantics
       # and makes the Knowledge Loop replay e2e (25-knowledge-loop-
-      # transition.hurl Test 3) see accepted=true on the duplicate
+      # the deps-stub's transition fixture) see accepted=true on the duplicate
       # client_transition_id. Point it at the stub so the stateful
       # ReserveKnowledgeLoopTransition handler there drives the
       # dedupe-barrier branch of the usecase.
@@ -1077,7 +1089,7 @@ services:
   # Shares alt-backend-db / alt-backend-db-migrator / alt-backend-deps-stub
   # with the alt-backend profile: same module, same schema, same upstream
   # aliases. What differs is the listener set, and that is the whole point of
-  # e2e/hurl/alt-harvester/ — :9110 answers /health and /metrics, and nothing
+  # e2e/playwright/alt-harvester/ — :9110 answers /health and /metrics, and nothing
   # is bound on :9000 / :9101 / :9102 / :9443.
   alt-harvester:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-harvester:${ALT_HARVESTER_IMAGE_TAG:-main}
@@ -1110,14 +1122,15 @@ services:
       - DB_PASSWORD=alt-staging-test-postgres-password
       - DB_NAME=alt
       # The only socket this binary opens. render-slice.sh strips every
-      # `ports:` key, so the Hurl container reaches it by DNS name on the
+      # `ports:` key, so the test container reaches it by DNS name on the
       # staging network — a loopback bind would make the suite fail at connect
       # instead of at an assertion. It is also what `/app-entry healthcheck`
       # self-probes.
       - OPS_LISTEN=:9110
       # SERVER_PORT / CONNECT_PORT / OPERATOR_LISTEN_ADDR / MTLS_LISTEN are
       # deliberately absent: this binary opens none of those listeners, and
-      # 01-operator-surface-only.hurl asserts the ports stay closed.
+      # e2e/playwright/alt-harvester/tests/absent-surfaces.spec.ts asserts the
+      # ports stay closed.
       #
       # Upstreams the jobs call — every alias resolves to
       # alt-backend-deps-stub. SOVEREIGN_URL and RAG_ORCHESTRATOR_URL are
@@ -1171,7 +1184,7 @@ services:
 
   # alt-data-hub suite — the mTLS data plane of the 3-binary split.
   #
-  # The certificates are minted per run by e2e/hurl/alt-data-hub/run.sh into
+  # The certificates are minted per run by e2e/playwright/alt-data-hub/run.sh into
   # e2e/fixtures/alt-data-hub/pki and mounted at both /certs and /trust, so
   # this slice can use the production DATAHUB_TLS_* paths verbatim. Staging
   # TLS wiring that differs from production is TLS wiring that can rot.
@@ -1227,7 +1240,7 @@ services:
       - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-pre-processor},alt-backend,alt-harvester
       # --- ops listener ---------------------------------------------------
       # Plaintext, unauthenticated, /health + /metrics only — the surface
-      # 03-ops-listener.hurl pins. It exists so the probe and Prometheus do
+      # tests/topology.spec.ts pins. It exists so the probe and Prometheus do
       # not need a client certificate, which would put a monitoring identity
       # in the allowlist above.
       - OPS_LISTEN=:9110

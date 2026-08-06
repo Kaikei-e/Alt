@@ -575,7 +575,18 @@ func (r *Repository) ListRecallSignalsByUser(ctx context.Context, userID uuid.UU
 func (r *Repository) AppendRecallSignal(ctx context.Context, s RecallSignal) error {
 	query := `INSERT INTO recall_signals (signal_id, user_id, item_key, signal_type, signal_strength, occurred_at, payload)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	_, err := r.pool.Exec(ctx, query, s.SignalID, s.UserID, s.ItemKey, s.SignalType, s.SignalStrength, s.OccurredAt, s.Payload)
+	// `payload` is JSONB NOT NULL DEFAULT '{}' — the schema saying the field is
+	// optional. Because the INSERT names the column unconditionally, a request
+	// that omits it (nil on the wire) would bind an explicit NULL, the DEFAULT
+	// would never apply, and the insert would die on the NOT NULL constraint —
+	// surfacing to the caller as Connect `internal`, i.e. a malformed-looking
+	// request reported as a broken service. Default here so the column's own
+	// contract holds.
+	payload := s.Payload
+	if len(payload) == 0 {
+		payload = []byte("{}")
+	}
+	_, err := r.pool.Exec(ctx, query, s.SignalID, s.UserID, s.ItemKey, s.SignalType, s.SignalStrength, s.OccurredAt, payload)
 	if err != nil {
 		return fmt.Errorf("AppendRecallSignal: %w", err)
 	}

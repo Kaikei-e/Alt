@@ -1,6 +1,6 @@
 [![ADR supersedes graph](https://github.com/Kaikei-e/Alt/actions/workflows/adr-graph.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/adr-graph.yml)
 [![altctl Tests](https://github.com/Kaikei-e/Alt/actions/workflows/altctl-go.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/altctl-go.yaml)
-[![E2E Hurl](https://github.com/Kaikei-e/Alt/actions/workflows/e2e-hurl.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/e2e-hurl.yml)
+[![E2E Playwright](https://github.com/Kaikei-e/Alt/actions/workflows/e2e-playwright.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/e2e-playwright.yml)
 [![compose-audit](https://github.com/Kaikei-e/Alt/actions/workflows/compose-audit.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/compose-audit.yaml)
 [![pki-agent Go Tests](https://github.com/Kaikei-e/Alt/actions/workflows/pki-agent-go.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/pki-agent-go.yaml)
 [![BFF Tests](https://github.com/Kaikei-e/Alt/actions/workflows/alt-butterfly-facade-go.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/alt-butterfly-facade-go.yaml)

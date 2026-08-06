@@ -1,18 +1,18 @@
 reports/
-# Throwaway mTLS material minted per run by e2e/hurl/_lib/mint-staging-pki.sh.
-# The directories have to sit under fixtures/ so compose can mount them, which
-# also puts private keys one `git add e2e/` away from being committed. One per
-# suite that needs a client leaf for alt-data-hub's mutual-TLS listener, so
-# parallel matrix jobs on a shared daemon never write to the same directory.
-fixtures/alt-data-hub/pki/
-fixtures/alt-backend/pki/
-fixtures/alt-harvester/pki/
-fixtures/rag-orchestrator/pki/
 
-# Playwright API suite: dependencies are installed into the workspace by
-# e2e/playwright/<svc>/run.sh (the staging network has no egress, so the
-# install happens in a separate container on the default bridge and lands
-# here via the bind mount).
-playwright/*/node_modules/
+# Throwaway mTLS material minted per run by e2e/_lib/mint-staging-pki.sh.
+# The directories have to sit under fixtures/ so compose can bind-mount them,
+# which also puts private keys one `git add e2e/` away from being committed.
+# One per suite that needs a client leaf for a mutual-TLS listener, so parallel
+# matrix jobs on a shared daemon never write to the same directory. The glob is
+# deliberately broad: a suite that grows an mTLS hop must not have to remember
+# to add a line here for its private keys to stay out of the tree.
+fixtures/*/pki/
+
+# Playwright dependencies are installed into the workspace by
+# e2e/playwright/_lib/install-suite-deps.sh (the staging network has no egress,
+# so the install happens in a separate container on the default bridge and
+# lands here via the bind mount). One install root for the whole fleet.
+playwright/node_modules/
 playwright/*/playwright-report/
 playwright/*/test-results/

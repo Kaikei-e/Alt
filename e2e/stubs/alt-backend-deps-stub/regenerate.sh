@@ -9,7 +9,7 @@
 # real proto decoding/encoding, the stub cannot answer Connect-RPC calls in
 # the wire format the prod client negotiates — which is exactly what the
 # e2e exercise is meant to faithfully exercise (see 25-knowledge-loop-
-# transition.hurl, and the alt-backend sovereign_client.NewClient call site).
+# the stub's transition fixture, and the alt-backend sovereign_client.NewClient call site).
 #
 # Committed rather than generated at image build because:
 #   1. No new Docker build dependency (protoc/buf) on the stub host

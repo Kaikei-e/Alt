@@ -13,10 +13,21 @@ import { z } from "zod";
  * alt-backend promises, not a freeze on the ones it may add.
  */
 
-/** RFC 4122 textual UUID, any version. */
-export const uuidSchema = z
-	.string()
-	.regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+/**
+ * Primitives every suite shares live in `_shared/schemas.ts`; they are
+ * re-exported here so a spec keeps one import for "the shapes alt-backend
+ * answers with" and does not have to know which of them are fleet-wide.
+ */
+export {
+	uuidSchema,
+	timestampSchema,
+	/** `utils/errors.SecureHTTPResponse` — what HandleError writes for a typed AppContextError. */
+	secureErrorSchema,
+	/** Handlers answering with `echo.NewHTTPError` write a bare `{"error": "..."}`. */
+	plainErrorSchema,
+} from "../../_shared/schemas.js";
+export { connectErrorSchema } from "../../_shared/connect.js";
+import { uuidSchema } from "../../_shared/schemas.js";
 
 export const healthSchema = z
 	.object({
@@ -32,27 +43,7 @@ export const csrfTokenSchema = z
 	})
 	.passthrough();
 
-/**
- * `utils/errors.SecureHTTPResponse` — what HandleError writes for every typed
- * AppContextError.
- */
-export const secureErrorSchema = z
-	.object({
-		error: z
-			.object({
-				code: z.string().min(1),
-				message: z.string(),
-				error_id: z.string().optional(),
-				retryable: z.boolean().optional(),
-			})
-			.passthrough(),
-	})
-	.passthrough();
 
-/** Handlers that answer with echo.NewHTTPError write a bare `{"error": "..."}`. */
-export const plainErrorSchema = z
-	.object({ error: z.string() })
-	.passthrough();
 
 export const rssFeedLinkSchema = z
 	.object({
@@ -167,13 +158,6 @@ export const detailedFeedStatsSchema = z
 	})
 	.passthrough();
 
-/** Connect-RPC error envelope (connectrpc.com/docs/protocol#error-end-stream). */
-export const connectErrorSchema = z
-	.object({
-		code: z.string().min(1),
-		message: z.string().optional(),
-	})
-	.passthrough();
 
 /**
  * `KnowledgeHomeAdminService.EmitArticleUrlBackfill`.

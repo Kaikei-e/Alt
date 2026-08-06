@@ -196,11 +196,15 @@ def render_alt_deploy_service_paths(registry: dict[str, Any]) -> str:
         # that directory, not in a directory named after itself that may not
         # exist. e2e paths stay keyed by name — those fixtures are per
         # pacticipant, not per source tree.
+        #
+        # The suite path is e2e/playwright/<name>/ since the Hurl suites were
+        # retired; ADR-000766's dispatch contract (`e2e/<framework>/<svc>/run.sh`)
+        # is unchanged, only the framework directory moved.
         source_dir = build_spec(s)["dir"]
         lines = [
             f"  '{name}': [",
             f"    '{source_dir}/',",
-            f"    'e2e/hurl/{name}/',",
+            f"    'e2e/playwright/{name}/',",
             f"    'e2e/fixtures/{name}/',",
         ]
         for cf in compose_files:
