@@ -10,7 +10,7 @@
  * Mirrors the proto-shape style used by `knowledge-loop-contract.test.ts`:
  * vitest-driven `create()` + `toBinary()` + `fromBinary()` round-trips on
  * the generated schemas. The wire-level Hurl scenario at
- * `e2e/hurl/alt-backend/31-articles-source-url.hurl` covers status codes
+ * `e2e/playwright/alt-backend/tests/articles-source-url.spec.ts` covers status codes
  * (400 / 404 / 200) end-to-end against alt-backend.
  */
 import { describe, it, expect } from "vitest";

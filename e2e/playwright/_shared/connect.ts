@@ -84,6 +84,15 @@ export function procedurePath(procedure: string): string {
 }
 
 /**
+ * Per-call overrides. Headers are merged over the JSON content type rather
+ * than replacing it, so a caller adding a tenant header cannot accidentally
+ * drop the codec and get a 415 that looks like a routing failure.
+ */
+export type UnaryOptions = {
+	readonly headers?: Readonly<Record<string, string>>;
+};
+
+/**
  * Invokes a unary procedure with the JSON codec.
  *
  * `request` defaults to `{}` because the most common probe in these suites is
@@ -95,9 +104,10 @@ export function callUnary(
 	api: APIRequestContext,
 	procedure: string,
 	request: unknown = {},
+	options: UnaryOptions = {},
 ): Promise<APIResponse> {
 	return api.post(procedurePath(procedure), {
-		headers: { "Content-Type": "application/json" },
+		headers: { "Content-Type": "application/json", ...options.headers },
 		data: request,
 	});
 }
@@ -108,8 +118,9 @@ export async function expectUnaryOk<T>(
 	procedure: string,
 	request: unknown,
 	schema: z.ZodType<T>,
+	options: UnaryOptions = {},
 ): Promise<T> {
-	const response = await callUnary(api, procedure, request);
+	const response = await callUnary(api, procedure, request, options);
 	await expectStatus(response, 200);
 	return expectJson(response, schema);
 }
@@ -123,8 +134,9 @@ export async function expectUnaryError(
 	procedure: string,
 	request: unknown,
 	code: ConnectCodeName,
+	options: UnaryOptions = {},
 ): Promise<ConnectErrorBody> {
-	const response = await callUnary(api, procedure, request);
+	const response = await callUnary(api, procedure, request, options);
 	const expectedStatus = STATUS_FOR_CODE[code];
 
 	const body = await response.text();
@@ -164,8 +176,10 @@ export async function expectProcedureMounted(
 	api: APIRequestContext,
 	procedure: string,
 	expected: readonly number[],
+	request: unknown = {},
+	options: UnaryOptions = {},
 ): Promise<void> {
-	const response = await callUnary(api, procedure, {});
+	const response = await callUnary(api, procedure, request, options);
 	expect(
 		response.status(),
 		`${procedure} answered ${response.status()}. 404 means the handler was never ` +
@@ -179,17 +193,28 @@ export async function expectProcedureMounted(
  * Asserts a procedure is **not** reachable on this listener.
  *
  * The mirror of `expectProcedureMounted`, for the admin/operator procedures
- * that must never appear on a user-facing port. 404 (never registered) and
- * 501/`unimplemented` are both acceptable answers; a 2xx or a 401 are not,
- * because both prove the mux resolved the path.
+ * that must never appear on a user-facing port.
+ *
+ * The default is 404 and only 404, deliberately. An earlier version also
+ * accepted 501/`unimplemented` on the theory that a mux which knows a
+ * procedure and refuses to implement it is a legitimate way to be absent —
+ * but for a listener built on a plain `http.ServeMux` (every operator
+ * listener in this fleet) 501 is never a correct answer: it would mean
+ * something *did* resolve the path, which is precisely the regression the
+ * assertion exists to catch. Accepting it by default let a future
+ * compatibility shim mount a real handler and still report green.
+ *
+ * Pass `allow` where the permissive reading is genuinely right — a Connect mux
+ * that registers a service and returns `unimplemented` per method.
  */
 export async function expectProcedureAbsent(
 	api: APIRequestContext,
 	procedure: string,
+	allow: readonly number[] = [404],
 ): Promise<void> {
 	const response = await callUnary(api, procedure, {});
 	expect(
-		[404, 501],
+		allow,
 		`${procedure} is reachable on ${response.url()} with status ${response.status()}; ` +
 			`this listener must not expose it`,
 	).toContain(response.status());

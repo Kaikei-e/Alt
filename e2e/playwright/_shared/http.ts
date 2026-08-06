@@ -162,3 +162,38 @@ export async function expectPrometheusText(
 	}
 	return body;
 }
+
+/**
+ * Asserts a path exists but refuses this verb — 405 plus an `Allow` header
+ * naming the verbs it does accept.
+ *
+ * The REST analogue of `expectProcedureMounted`, and it exists for the same
+ * reason: 404 and 405 mean opposite things. 405 says the router matched the
+ * path and rejected the method; 404 says the route is not registered at all. A
+ * test that accepted either would pass just as happily against a service that
+ * had lost the endpoint entirely, which is exactly the wiring regression worth
+ * catching (CLAUDE.md rule 8).
+ *
+ * Asserting `Allow` rather than only the status is what makes the failure
+ * legible: a router answering 405 without it is a client-breaking bug of its
+ * own, since RFC 9110 §15.5.6 requires the header.
+ */
+export function expectMethodNotAllowed(
+	response: APIResponse,
+	allowed: readonly string[],
+): void {
+	expect(
+		response.status(),
+		`${response.url()} should answer 405 for this verb. A 404 would mean the route is ` +
+			`not registered at all — a different failure, and the one worth catching.`,
+	).toBe(405);
+
+	const allow = response.headers()["allow"];
+	expect(
+		allow,
+		`${response.url()} answered 405 without an Allow header (RFC 9110 §15.5.6)`,
+	).toBeDefined();
+	for (const verb of allowed) {
+		expect(allow, `Allow header of ${response.url()}`).toContain(verb);
+	}
+}

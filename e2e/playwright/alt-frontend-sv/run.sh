@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# RECLAIM_NETWORK_POOL: skip (this suite creates no compose network — it runs
+# on --network host against a webServer and mock listeners inside the test
+# process, so there is no address pool for it to exhaust or reclaim)
 # e2e/playwright/alt-frontend-sv/run.sh
 #
 # Dispatches the alt-frontend-sv Playwright E2E suite inside a Playwright

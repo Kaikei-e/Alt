@@ -150,6 +150,23 @@ done
 
 echo
 echo "=============================================================="
+echo "== shared lifecycle self-tests"
+echo "=============================================================="
+# e2e/_lib/reclaim-network-pool.test.sh was in the tree but in no workflow, so
+# nothing ran it — and it had been failing on its first assertion since the
+# helper gained its STAGING_PROJECT_NAME guard. A self-test nobody runs is a
+# comment. Running it here makes the network-reclaim ordering (PM-2026-046) an
+# enforced property again.
+if [[ "$#" -eq 0 ]]; then
+  if ! bash "$ROOT/e2e/_lib/reclaim-network-pool.test.sh"; then
+    failed+=("reclaim-network-pool self-test")
+  fi
+else
+  echo "(skipped: only run for the whole fleet)"
+fi
+
+echo
+echo "=============================================================="
 echo "== suite wiring"
 echo "=============================================================="
 # Catches the wiring mistakes that leave every test green: an image built but

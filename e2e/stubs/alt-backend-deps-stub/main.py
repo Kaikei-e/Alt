@@ -171,7 +171,7 @@ async def search_suggestions() -> dict[str, Any]:
 #   * No scenario reaches them. /v1/feeds/fetch/summary goes to news-creator
 #     via FetchArticleSummariesUsecase, not to this client; /v1/feeds/
 #     summarize{,/queue} die in the SSRF guard inside EnsureArticle before
-#     the client is called (27-feeds-summarize-queue.hurl says so and pins
+#     the client is called (the alt-backend suite's feeds-summarize spec says so and pins
 #     only the 5xx band). GET /summarize/status/:id is the one call that
 #     lands here, and the catch-all below already answers it.
 #   * The client could not read the reply anyway. Unlike the search-indexer

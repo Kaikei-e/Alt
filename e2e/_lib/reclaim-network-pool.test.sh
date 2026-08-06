@@ -9,11 +9,19 @@
 # "until=2h"` invocation. We must never call the real Docker daemon from
 # unit tests — pruning live networks would race with concurrent CI jobs.
 #
-# Structural: scan every `e2e/hurl/<service>/run.sh` and refuse to merge
-# the change unless every script either sources the helper and calls it,
-# or is exempt with a top-of-file comment "# RECLAIM_NETWORK_POOL: skip
-# (<reason>)" (no current exemptions; field reserved for the rare case
-# where a service intentionally needs orphaned networks).
+# Structural: scan every `e2e/playwright/<service>/run.sh` and refuse to
+# merge the change unless the reclaim is reached before compose brings the
+# stack up — either because the script goes through `suite_up` (which calls
+# the helper itself, see e2e/playwright/_lib/suite.sh) or because it calls
+# `reclaim_network_pool` directly. A script may opt out with a top-of-file
+# comment "# RECLAIM_NETWORK_POOL: skip (<reason>)" for the rare case where
+# a service intentionally needs orphaned networks.
+#
+# This scan globbed `e2e/hurl/*/run.sh` until the Playwright migration moved
+# the suites and this helper. With `nullglob` the loop then matched nothing
+# and the structural half reported green without checking anything — the
+# exact silent-pass failure PM-2026-046 was written about. The zero-script
+# guard below is why it cannot happen twice.
 #
 # Run:
 #   bash e2e/_lib/reclaim-network-pool.test.sh
@@ -22,7 +30,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HURL_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+E2E_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SUITE_ROOT="$E2E_ROOT/playwright"
 
 PASS=0
 FAIL=0
@@ -43,6 +52,14 @@ assert() {
 # ---------------------------------------------------------------------------
 
 echo "[behavioural] reclaim_network_pool calls docker network prune correctly"
+
+# PM-2026-046 Fix 1 made the helper refuse to run without this — reclaiming by
+# the `alt-staging-` prefix was what let one matrix leg delete a sibling's
+# freshly created network. The test was never updated to set it, so from that
+# commit until the Playwright migration the whole file exited non-zero on its
+# first assertion and the structural half below never ran at all.
+STAGING_PROJECT_NAME="alt-staging-selftest-$$"
+export STAGING_PROJECT_NAME
 
 # Capture invocations into a temp file. We need a file (not a bash array)
 # because the helper uses `$(docker ...)` / `< <(docker ...)` patterns that
@@ -84,12 +101,16 @@ assert "performs network listing or pruning" \
 # scoping must be present somewhere in the docker invocation chain.
 assert "scopes the cleanup to alt-staging-* (label or name filter)" \
   bash -c "[[ '$ALL_INVOCATIONS' == *'alt-staging'* ]]"
+# The regression PM-2026-046 was written about: a prefix match reclaimed a
+# sibling matrix leg's network. Scoping must be to THIS project, exactly.
+assert "scopes the name filter to this project exactly, not by prefix" \
+  bash -c "[[ '$ALL_INVOCATIONS' == *'name=^${STAGING_PROJECT_NAME}\$'* ]]"
 assert "uses --force (CI must not prompt) when prune is invoked" \
   bash -c "[[ '$ALL_INVOCATIONS' != *'network prune'* || '$ALL_INVOCATIONS' == *'--force'* ]]"
 
 # Failure resilience: a `docker` exit non-zero must NOT propagate. The
 # whole point of this helper is best-effort cleanup; failing it would
-# block the actual Hurl run.
+# block the actual E2E run.
 docker() {
   echo "$*" >> "$DOCKER_LOG"
   return 1
@@ -117,7 +138,16 @@ export -f docker
 echo "[structural] every run.sh invokes reclaim_network_pool before compose up"
 
 shopt -s nullglob
-for script in "$HURL_ROOT"/*/run.sh; do
+scripts=("$SUITE_ROOT"/*/run.sh)
+shopt -u nullglob
+
+# A scan that matches nothing must be a failure, not a pass. See the header.
+if [[ "${#scripts[@]}" -eq 0 ]]; then
+  echo "  FAIL  no run.sh found under $SUITE_ROOT — this scan is checking nothing"
+  FAIL=$((FAIL + 1))
+fi
+
+for script in ${scripts[@]+"${scripts[@]}"}; do
   service="$(basename "$(dirname "$script")")"
 
   # Allow explicit opt-out for a service that genuinely needs orphans.
@@ -126,8 +156,18 @@ for script in "$HURL_ROOT"/*/run.sh; do
     continue
   fi
 
+  # `suite_up` calls reclaim_network_pool before `compose up` on the caller's
+  # behalf (e2e/playwright/_lib/suite.sh), so a script built on the shared
+  # lifecycle satisfies this by construction — and asserting the ordering
+  # inside suite.sh once is stronger than asserting it in twelve run.sh files.
+  if grep -qE '^[[:space:]]*suite_up' "$script"; then
+    echo "  PASS  $service (via suite_up)"
+    PASS=$((PASS + 1))
+    continue
+  fi
+
   if ! grep -qE 'reclaim_network_pool' "$script"; then
-    echo "  FAIL  $service: run.sh does not call reclaim_network_pool"
+    echo "  FAIL  $service: run.sh neither calls suite_up nor reclaim_network_pool"
     FAIL=$((FAIL + 1))
     continue
   fi
@@ -156,6 +196,33 @@ for script in "$HURL_ROOT"/*/run.sh; do
     FAIL=$((FAIL + 1))
   fi
 done
+
+# The shared lifecycle is now where the ordering actually lives, so assert it
+# there too — otherwise every "PASS (via suite_up)" above rests on an unchecked
+# assumption.
+echo
+echo "[structural] suite.sh reclaims the pool before bringing the stack up"
+SUITE_SH="$SUITE_ROOT/_lib/suite.sh"
+if [[ ! -f "$SUITE_SH" ]]; then
+  echo "  FAIL  $SUITE_SH does not exist"
+  FAIL=$((FAIL + 1))
+else
+  reclaim_line=$(grep -nE '^[[:space:]]*reclaim_network_pool' "$SUITE_SH" | head -1 | cut -d: -f1 || true)
+  up_line=$(grep -nE '^[[:space:]]*if ! compose_up_with_retry' "$SUITE_SH" | head -1 | cut -d: -f1 || true)
+  if [[ -z "$reclaim_line" ]]; then
+    echo "  FAIL  suite.sh never calls reclaim_network_pool"
+    FAIL=$((FAIL + 1))
+  elif [[ -z "$up_line" ]]; then
+    echo "  FAIL  suite.sh never calls compose_up_with_retry"
+    FAIL=$((FAIL + 1))
+  elif (( reclaim_line < up_line )); then
+    echo "  PASS  suite.sh (reclaim at line $reclaim_line, compose up at line $up_line)"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL  suite.sh reclaims at line $reclaim_line, after compose up at line $up_line"
+    FAIL=$((FAIL + 1))
+  fi
+fi
 
 echo
 echo "Total: PASS=$PASS FAIL=$FAIL"

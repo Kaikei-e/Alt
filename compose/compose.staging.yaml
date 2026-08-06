@@ -434,7 +434,7 @@ services:
     # rag-orchestrator ships on distroless/static — no wget/curl/shell,
     # and the binary exposes no `healthcheck` subcommand. `up --wait`
     # without a container healthcheck still waits until the process is
-    # in `running` state; 00-readiness.hurl's per-request retry block
+    # in `running` state; the suite's readiness gate (setup/global-setup.ts)
     # then polls /readyz until the DB pool is live. That keeps the wait
     # inside the test runner where a failed readiness is a named test
     # failure rather than an opaque "unhealthy" state.
@@ -975,11 +975,11 @@ services:
       # are spelled out for that reason; the production defaults differ
       # (see compose/core.yaml).
       #
-      # :9102 is where 72-admin-emit-article-url-backfill.hurl and
-      # 03-topology-internal-surface-absent.hurl address {{internal_url}}.
+      # :9102 is what the alt-backend suite reaches as INTERNAL_URL — see
+      # tests/admin-url-backfill.spec.ts and tests/topology.spec.ts.
       - OPERATOR_LISTEN_ADDR=:9102
       # :9110 is {{ops_url}} — /health and /metrics, asserted by
-      # 01-health-csrf.hurl — and the address the `healthcheck` subcommand
+      # tests/health.spec.ts — and the address the `healthcheck` subcommand
       # self-probes.
       - OPS_LISTEN=:9110
       # HS256 JWT validation. The secret is read from a file mounted
@@ -1005,7 +1005,7 @@ services:
       # The image proxy is off in staging, stated explicitly because
       # IMAGE_PROXY_ENABLED defaults to true and config.validateImageProxyConfig
       # exits non-zero when it is enabled without a secret. The E2E suite only
-      # pins that /v1/images/proxy sits behind auth (50-images.hurl asserts 401
+      # pins that /v1/images/proxy sits behind auth (tests/images.spec.ts asserts 401
       # with no token, which the group's auth middleware answers whether or not
       # the route is registered) — signature validation is not exercised, so
       # there is nothing here for a secret to buy.
@@ -1015,7 +1015,7 @@ services:
       # back to `enabled=false` and short-circuits every call with a
       # benign "reserved=true" — which masks real idempotency semantics
       # and makes the Knowledge Loop replay e2e (25-knowledge-loop-
-      # transition.hurl Test 3) see accepted=true on the duplicate
+      # the deps-stub's transition fixture) see accepted=true on the duplicate
       # client_transition_id. Point it at the stub so the stateful
       # ReserveKnowledgeLoopTransition handler there drives the
       # dedupe-barrier branch of the usecase.
@@ -1082,7 +1082,7 @@ services:
   # Shares alt-backend-db / alt-backend-db-migrator / alt-backend-deps-stub
   # with the alt-backend profile: same module, same schema, same upstream
   # aliases. What differs is the listener set, and that is the whole point of
-  # e2e/hurl/alt-harvester/ — :9110 answers /health and /metrics, and nothing
+  # e2e/playwright/alt-harvester/ — :9110 answers /health and /metrics, and nothing
   # is bound on :9000 / :9101 / :9102 / :9443.
   alt-harvester:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-harvester:${ALT_HARVESTER_IMAGE_TAG:-main}
@@ -1122,7 +1122,8 @@ services:
       - OPS_LISTEN=:9110
       # SERVER_PORT / CONNECT_PORT / OPERATOR_LISTEN_ADDR / MTLS_LISTEN are
       # deliberately absent: this binary opens none of those listeners, and
-      # 01-operator-surface-only.hurl asserts the ports stay closed.
+      # e2e/playwright/alt-harvester/tests/absent-surfaces.spec.ts asserts the
+      # ports stay closed.
       #
       # Upstreams the jobs call — every alias resolves to
       # alt-backend-deps-stub. SOVEREIGN_URL and RAG_ORCHESTRATOR_URL are
@@ -1176,7 +1177,7 @@ services:
 
   # alt-data-hub suite — the mTLS data plane of the 3-binary split.
   #
-  # The certificates are minted per run by e2e/hurl/alt-data-hub/run.sh into
+  # The certificates are minted per run by e2e/playwright/alt-data-hub/run.sh into
   # e2e/fixtures/alt-data-hub/pki and mounted at both /certs and /trust, so
   # this slice can use the production DATAHUB_TLS_* paths verbatim. Staging
   # TLS wiring that differs from production is TLS wiring that can rot.
@@ -1232,7 +1233,7 @@ services:
       - DATAHUB_ALLOWED_PEERS=${ALLOWED_PEER:-pre-processor},alt-backend,alt-harvester
       # --- ops listener ---------------------------------------------------
       # Plaintext, unauthenticated, /health + /metrics only — the surface
-      # 03-ops-listener.hurl pins. It exists so the probe and Prometheus do
+      # tests/topology.spec.ts pins. It exists so the probe and Prometheus do
       # not need a client certificate, which would put a monitoring identity
       # in the allowlist above.
       - OPS_LISTEN=:9110

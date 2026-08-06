@@ -1,6 +1,6 @@
 # alt-backend-deps-stub — minimal FastAPI service that masquerades as
 # every upstream alt-backend talks to during the Hurl E2E suite. Built in
-# CI alongside alt-backend; never deployed outside e2e/hurl/alt-backend/.
+# CI alongside alt-backend; never deployed outside e2e/playwright/alt-backend/.
 FROM python:3.13-alpine
 
 WORKDIR /app

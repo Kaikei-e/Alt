@@ -95,3 +95,35 @@ export const fastapiErrorSchema = z
 export function nonEmptyArray<T>(element: z.ZodType<T>): z.ZodType<T[]> {
 	return z.array(element).min(1, "expected at least one element, got an empty list");
 }
+
+/**
+ * An int64 as it actually arrives over Connect's JSON codec: a **string**.
+ *
+ * proto3 JSON maps 64-bit integers to strings, because a JavaScript number
+ * cannot hold them without loss. Every Connect-speaking suite in this fleet
+ * re-derived that fact independently, and each one that reached for
+ * `z.number()` first got a schema failure that reads like a wrong value rather
+ * than a wrong type.
+ */
+export const int64Schema = z.string().regex(/^-?\d+$/, "expected an int64 as a JSON string");
+
+/** The same, restricted to values greater than zero. */
+export const positiveInt64Schema = int64Schema.refine(
+	(value) => BigInt(value) > 0n,
+	"expected a positive int64",
+);
+
+/**
+ * Reads an int64-as-string into a number for comparison.
+ *
+ * Throws above `Number.MAX_SAFE_INTEGER` rather than silently rounding — a
+ * sequence number that quietly loses its low bits makes two different events
+ * compare equal, which is the one failure this type exists to prevent.
+ */
+export function asInt64(value: string): number {
+	const big = BigInt(value);
+	if (big > BigInt(Number.MAX_SAFE_INTEGER) || big < -BigInt(Number.MAX_SAFE_INTEGER)) {
+		throw new Error(`${value} exceeds Number.MAX_SAFE_INTEGER; compare it as a BigInt`);
+	}
+	return Number(big);
+}

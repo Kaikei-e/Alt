@@ -478,7 +478,7 @@ services:
   #       data plane. The admin Connect services stayed on alt-backend, so
   #       there is no unauthenticated surface here for a container on
   #       alt-network to reach by DNS name. Pinned from outside by
-  #       e2e/hurl/alt-data-hub/03-ops-listener.hurl (everything but those two
+  #       e2e/playwright/alt-data-hub/tests/topology.spec.ts (everything but those two
   #       routes must 404) and run.sh (:9000 / :9101 / :9102 refused).
   #   L3  DATAHUB_ALLOWED_PEERS. cmd/datahub always requires *and verifies* a
   #       client certificate — there is no knob to turn that off — so this
@@ -540,13 +540,13 @@ services:
       # giving Prometheus a client cert for :9443 instead would put a
       # monitoring identity in DATAHUB_ALLOWED_PEERS, which is the data
       # plane's whole authorisation decision.
-      # e2e/hurl/alt-data-hub/03-ops-listener.hurl asserts that everything
+      # e2e/playwright/alt-data-hub/tests/topology.spec.ts asserts that everything
       # else 404s here.
       OPS_LISTEN: ":9110"
       # OPERATOR_LISTEN_ADDR is deliberately absent: the admin Connect
       # services did NOT move here (di/datahub builds no admin
       # surface), so cmd/datahub opens no operator listener and reads no such
-      # variable. e2e/hurl/alt-data-hub/run.sh proves :9102 is refused from
+      # variable. e2e/playwright/alt-data-hub/ proves :9102 is refused from
       # another container.
       # SERVER_PORT / CONNECT_PORT are deliberately absent too: this binary has
       # no user-facing listener and exits non-zero if handed one.
