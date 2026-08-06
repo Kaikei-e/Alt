@@ -45,7 +45,13 @@ fi
 # A placeholder that is non-empty, parses as a URL, and cannot resolve. If a
 # spec ever reaches the network during --list, .invalid guarantees a loud
 # failure rather than a request to something real (RFC 6761).
-PLACEHOLDER="http://placeholder.invalid:9/e2e-static-check"
+#
+# Two schemes, tried in turn, because some suites validate the scheme at load:
+# alt-data-hub's env.ts rejects a non-https DATA_HUB_URL (the service has no
+# plaintext data-plane listener at all), while a suite asserting a plaintext
+# port would reject https. Neither is wrong, and hardcoding one scheme here
+# would make the gate fail on its own fixture rather than on the suite.
+PLACEHOLDER_SCHEMES=("http" "https")
 
 SECRET_FILE="$(mktemp)"
 printf 'e2e-static-check-placeholder\n' > "$SECRET_FILE"
@@ -86,6 +92,7 @@ for suite in "${suites[@]}"; do
   fi
 
   # Collect the env var names the suite declares, from its own source.
+  url_vars=()
   env_args=()
   env_file="$suite/src/env.ts"
   if [[ -f "$env_file" ]]; then
@@ -97,7 +104,7 @@ for suite in "${suites[@]}"; do
     # `requiredEnv(` and `requiredIntEnv(` do not overlap as substrings, so
     # matching each literally keeps the two sets disjoint without a lookahead.
     while IFS= read -r name; do
-      env_args+=("$name=$PLACEHOLDER")
+      url_vars+=("$name")
     done < <(grep -oE 'requiredEnv\("[A-Z0-9_]+"' "$env_file" \
              | grep -oE '"[A-Z0-9_]+"' | tr -d '"' | sort -u)
     while IFS= read -r name; do
@@ -110,8 +117,20 @@ for suite in "${suites[@]}"; do
              | grep -oE '"[A-Z0-9_]+"' | tr -d '"' | sort -u)
   fi
 
-  echo "-- playwright test --list (${#env_args[@]} placeholder env vars)"
-  if ! ( cd "$suite" && env "${env_args[@]}" npx playwright test --list > /tmp/pw-list-$$.txt 2>&1 ); then
+  echo "-- playwright test --list ($(( ${#env_args[@]} + ${#url_vars[@]} )) placeholder env vars)"
+  listed=0
+  for scheme in "${PLACEHOLDER_SCHEMES[@]}"; do
+    url_args=()
+    for name in ${url_vars[@]+"${url_vars[@]}"}; do
+      url_args+=("$name=$scheme://placeholder.invalid:9/e2e-static-check")
+    done
+    if ( cd "$suite" && env ${env_args[@]+"${env_args[@]}"} ${url_args[@]+"${url_args[@]}"} \
+           npx playwright test --list > /tmp/pw-list-$$.txt 2>&1 ); then
+      listed=1
+      break
+    fi
+  done
+  if [[ "$listed" -ne 1 ]]; then
     cat /tmp/pw-list-$$.txt >&2
     rm -f /tmp/pw-list-$$.txt
     failed+=("$suite (--list)")
