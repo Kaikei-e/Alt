@@ -319,10 +319,18 @@ jobs:
             echo "no blob reports to merge (every suite failed before running)" >&2
             exit 0
           fi
-          # Each suite's config sets `tag: '@<service>'` (Playwright 1.57+),
-          # which the blob reporter folds into the blob filename — that is what
-          # lets twelve services' blobs merge without collision and what labels
-          # each test in the merged report with the service it came from.
+          # Two separate things make a twelve-suite merge work.
+          #
+          # `tag: '@<service>'` in each suite's config (Playwright 1.57+) feeds
+          # the blob filename hash, so twelve artifacts flattened into one
+          # directory by `merge-multiple: true` do not overwrite each other.
+          #
+          # `-c merge.config.ts` handles the other half: merge-reports refuses
+          # blobs "recorded with different test directories", which assumes
+          # blobs from shards of ONE config. Twelve suites have twelve
+          # testDirs, so the merge needs a config naming where the tests really
+          # live. Without it this job fails outright — as it did the first time
+          # the blob uploads actually worked.
           #
           # The `github` reporter is emitted HERE and nowhere else. Playwright's
           # docs advise against it under a matrix strategy: with a dozen suites
@@ -344,6 +352,7 @@ jobs:
             sh -euc '
               npm ci --no-audit --no-fund
               npx playwright merge-reports \
+                -c merge.config.ts \
                 --reporter html,junit,github \
                 ../../all-blob-reports
             '
