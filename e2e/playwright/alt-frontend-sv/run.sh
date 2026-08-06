@@ -12,7 +12,9 @@
 # the test process. No compose.staging.yaml profile is required.
 #
 # Environment overrides:
-#   PLAYWRIGHT_IMAGE  — container image (default: mcr.microsoft.com/playwright:v1.59.1-jammy)
+#   PLAYWRIGHT_IMAGE  — container image. Defaults to the tag matching the
+#                       @playwright/test version in alt-frontend-sv/package.json,
+#                       read at runtime rather than pinned (see below).
 #   BUN_VERSION       — bun toolchain (default: 1.2.14; matches alt-frontend-sv.yml)
 #   SHARD             — Playwright --shard value (default: 1/1; matrix sets 1/3|2/3|3/3)
 #   PROJECTS          — space-separated --project flags (default: auth + desktop-chromium + mobile-chrome)
@@ -24,7 +26,21 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 
-: "${PLAYWRIGHT_IMAGE:=mcr.microsoft.com/playwright:v1.59.1-jammy}"
+# The container image tag MUST match the @playwright/test version the suite
+# installs: the image ships browser binaries at a revision the driver pins, and
+# a driver that finds the wrong revision either refuses to start ("Executable
+# doesn't exist") or downloads ~400MB mid-run on a network the container may
+# not have.
+#
+# This was pinned by hand and drifted: the workflow moved to v1.62.1-jammy
+# while this file — the one alt-deploy actually invokes at release time — sat
+# on v1.59.1-jammy. Reading the version out of package.json means the two
+# cannot disagree again, and a bump in one place is a bump everywhere.
+PLAYWRIGHT_VERSION="$(
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["devDependencies"]["@playwright/test"].lstrip("^~"))' \
+    "$ROOT/alt-frontend-sv/package.json"
+)"
+: "${PLAYWRIGHT_IMAGE:=mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-jammy}"
 : "${BUN_VERSION:=1.2.14}"
 : "${SHARD:=1/1}"
 : "${PROJECTS:=--project=auth --project=desktop-chromium --project=mobile-chrome}"

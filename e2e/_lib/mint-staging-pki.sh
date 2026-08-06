@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# e2e/hurl/_lib/mint-staging-pki.sh
+# e2e/_lib/mint-staging-pki.sh
 #
 # Mint a throwaway CA plus one leaf per peer for the staging slices that speak
 # to alt-data-hub over mutual TLS.
@@ -16,7 +16,7 @@
 #
 # Usage
 # -----
-#   source "$ROOT/e2e/hurl/_lib/mint-staging-pki.sh"
+#   source "$ROOT/e2e/_lib/mint-staging-pki.sh"
 #   mint_staging_pki "$PKI_DIR" alt-data-hub alt-backend alt-harvester
 #
 # The first peer name is the *server*: it gets a serverAuth leaf, and its

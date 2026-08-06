@@ -1,23 +1,10 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ES2023"],
-    "types": ["node"],
-
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "exactOptionalPropertyTypes": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "noEmit": true
-  },
-  "include": ["playwright.config.ts", "src/**/*.ts", "setup/**/*.ts", "tests/**/*.ts"]
+  "extends": "../tsconfig.base.json",
+  "include": [
+    "playwright.config.ts",
+    "src/**/*.ts",
+    "setup/**/*.ts",
+    "tests/**/*.ts",
+    "../_shared/**/*.ts"
+  ]
 }

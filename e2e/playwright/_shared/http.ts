@@ -3,13 +3,17 @@ import type { APIResponse } from "@playwright/test";
 import type { z } from "zod";
 
 /**
- * Assertion helpers.
+ * Assertion helpers shared by every Alt Playwright suite.
  *
- * The single most useful thing these add over raw `expect(response.status())`
- * is the response body in the failure message. A bare status assertion that
+ * The single most useful thing these add over raw `expect(res.status())` is
+ * the response body in the failure message. A bare status assertion that
  * reports "expected 200, received 500" sends you to `docker compose logs`;
  * the same assertion carrying `{"error":{"code":"FEED_NOT_FOUND"}}` usually
  * ends the investigation on the spot.
+ *
+ * They are plain `async` functions rather than custom matchers on purpose:
+ * a matcher would have to swallow the body read to stay synchronous, and the
+ * body is the whole point.
  */
 
 const BODY_PREVIEW_LIMIT = 2_000;
@@ -40,11 +44,10 @@ export async function expectStatus(response: APIResponse, expected: number): Pro
 /**
  * Asserts the status is one of `expected`.
  *
- * Used only where the Hurl suite already documented a legitimately bounded
- * outcome — e.g. a path whose success depends on whether the deps-stub has
- * grown a route yet. A band is a statement that *both* answers are correct,
- * never a shrug: every use of it in this suite carries a comment naming why
- * each member is in the set and why everything outside it is a regression.
+ * A band is a statement that *both* answers are correct, never a shrug.
+ * Every use of it must carry a comment naming why each member is in the set
+ * and why everything outside it is a regression — otherwise it is a test that
+ * cannot fail, which is worse than no test because it reports green.
  */
 export async function expectStatusIn(
 	response: APIResponse,
@@ -69,7 +72,8 @@ export async function expectJson<T>(
 		parsed = JSON.parse(text);
 	} catch {
 		throw new Error(
-			`expected a JSON body\n${response.url()} -> ${response.status()}\n${text.slice(0, BODY_PREVIEW_LIMIT)}`,
+			`expected a JSON body\n${response.url()} -> ${response.status()}\n` +
+				`${text.slice(0, BODY_PREVIEW_LIMIT)}`,
 		);
 	}
 
@@ -78,7 +82,9 @@ export async function expectJson<T>(
 		throw new Error(
 			`response body did not match its schema\n` +
 				`${response.url()} -> ${response.status()}\n` +
-				`${result.error.issues.map((issue) => `  - ${issue.path.join(".") || "<root>"}: ${issue.message}`).join("\n")}\n` +
+				`${result.error.issues
+					.map((issue) => `  - ${issue.path.join(".") || "<root>"}: ${issue.message}`)
+					.join("\n")}\n` +
 				`body: ${text.slice(0, BODY_PREVIEW_LIMIT)}`,
 		);
 	}
@@ -115,4 +121,44 @@ export function expectHeaderContains(
 export function expectHeader(response: APIResponse, name: string, value: string): void {
 	const actual = response.headers()[name.toLowerCase()];
 	expect(actual, `header "${name}" of ${response.url()}`).toBe(value);
+}
+
+/**
+ * Asserts a response header is absent.
+ *
+ * The negative direction matters as much as the positive one for the headers
+ * that leak: `Server`, `X-Powered-By`, and any listener that should not be
+ * answering at all.
+ */
+export function expectNoHeader(response: APIResponse, name: string): void {
+	const actual = response.headers()[name.toLowerCase()];
+	expect(
+		actual,
+		`header "${name}" should not be present on ${response.url()}`,
+	).toBeUndefined();
+}
+
+/**
+ * Asserts the body is Prometheus exposition text carrying at least one of the
+ * named metric families.
+ *
+ * A `/metrics` endpoint that answers 200 with an empty body is the classic
+ * silent-observability failure: the scrape succeeds, the dashboards stay
+ * blank, and nothing alerts. Naming the families turns "it answered" into "it
+ * is publishing what this service is supposed to publish".
+ */
+export async function expectPrometheusText(
+	response: APIResponse,
+	families: readonly string[] = [],
+): Promise<string> {
+	await expectStatus(response, 200);
+	expectHeaderContains(response, "Content-Type", "text/plain");
+	const body = await response.text();
+	expect(body, `${response.url()} served no HELP lines`).toContain("# HELP");
+	for (const family of families) {
+		expect(body, `${response.url()} is not publishing metric family "${family}"`).toContain(
+			family,
+		);
+	}
+	return body;
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# e2e/hurl/_lib/compose-up-with-retry.sh
+# e2e/_lib/compose-up-with-retry.sh
 #
 # Defense-in-depth for the libnetwork race that PM-2026-046 chased.
 # Even after [[reclaim-network-pool]] was made concurrency-safe
@@ -21,7 +21,7 @@
 #
 # Usage
 # -----
-#   source "$ROOT/e2e/hurl/_lib/compose-up-with-retry.sh"
+#   source "$ROOT/e2e/_lib/compose-up-with-retry.sh"
 #   compose_up_with_retry meilisearch stub-backend search-indexer
 #
 # The caller must have already exported / set:

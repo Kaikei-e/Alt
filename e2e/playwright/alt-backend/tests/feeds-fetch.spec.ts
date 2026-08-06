@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectHeaderContains, expectJsonStatus, expectStatus } from "../src/http.js";
+import { expectHeaderContains, expectJsonStatus, expectStatus } from "../../_shared/http.js";
 import { feedListSchema } from "../src/schemas.js";
 
 /**

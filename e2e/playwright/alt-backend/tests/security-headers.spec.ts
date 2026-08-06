@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectHeader, expectHeaderContains, expectStatus } from "../src/http.js";
+import { expectHeader, expectHeaderContains, expectStatus } from "../../_shared/http.js";
 
 /**
  * Security response headers and body limits — new coverage.

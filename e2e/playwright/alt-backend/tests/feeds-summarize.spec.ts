@@ -1,5 +1,5 @@
 import { test, expect, stubURL } from "../src/fixtures.js";
-import { expectStatus, expectStatusIn } from "../src/http.js";
+import { expectStatus, expectStatusIn } from "../../_shared/http.js";
 import { ZERO_UUID } from "../src/env.js";
 
 /**

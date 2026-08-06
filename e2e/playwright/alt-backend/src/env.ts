@@ -9,49 +9,28 @@
  * of "you forgot to export BASE_URL", and a suite pointed at the *wrong* host
  * reports green. `run.sh` is the single place these are set.
  */
-import { readFileSync } from "node:fs";
-
-function required(name: string): string {
-	const value = process.env[name];
-	if (value === undefined || value.trim() === "") {
-		throw new Error(
-			`${name} is not set. The alt-backend Playwright suite reads every ` +
-				`endpoint from the environment and has no defaults; run it through ` +
-				`e2e/playwright/alt-backend/run.sh, which exports them.`,
-		);
-	}
-	return value.trim();
-}
-
-/**
- * The JWT arrives as a path rather than a value so it never lands in
- * `docker inspect` output or a compose slice. Header values must not contain
- * CR/LF, hence the trim.
- */
-function requiredSecretFile(name: string): string {
-	const path = required(name);
-	const value = readFileSync(path, "utf8").trim();
-	if (value === "") {
-		throw new Error(`${name} points at ${path}, which is empty.`);
-	}
-	return value;
-}
+import { optionalEnv, requiredEnv, requiredSecretFile, runId } from "../../_shared/env.js";
 
 export const env = {
 	/** User-facing REST listener (Echo). */
-	baseURL: required("BASE_URL"),
+	baseURL: requiredEnv("BASE_URL"),
 	/** User-facing Connect-RPC listener. */
-	connectURL: required("CONNECT_URL"),
+	connectURL: requiredEnv("CONNECT_URL"),
 	/** Loopback-bound operator listener that keeps the admin Connect services. */
-	internalURL: required("INTERNAL_URL"),
+	internalURL: requiredEnv("INTERNAL_URL"),
 	/** Shared operator listener: /health + /metrics for all three split binaries. */
-	opsURL: required("OPS_URL"),
+	opsURL: requiredEnv("OPS_URL"),
 	/** Hostname alt-backend's SSRF allowlist (FEED_ALLOWED_HOSTS) admits. */
-	stubHost: process.env.STUB_HOST?.trim() || "stub.invalid",
-	/** Pre-minted HS256 token: role=admin, exp=2099-01-01. */
+	stubHost: optionalEnv("STUB_HOST", "stub.invalid"),
+	/**
+	 * Pre-minted HS256 token: role=admin, exp=2099-01-01.
+	 *
+	 * Arrives as a path rather than a value so it never lands in `docker
+	 * inspect` output or a compose slice.
+	 */
 	jwt: requiredSecretFile("JWT_FILE"),
 	/** Unique per dispatch; only used to keep report/artifact paths apart. */
-	runId: process.env.RUN_ID?.trim() || "local",
+	runId: runId(),
 } as const;
 
 /** A JWT that parses but was signed with a different secret. */
@@ -60,5 +39,4 @@ export const WRONG_SIGNATURE_JWT =
 	"eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0ZW5hbnRfaWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJpc3MiOiJhbHQtc3RhZ2luZy1hdXRoLWh1YiIsImF1ZCI6ImFsdC1iYWNrZW5kIiwiZXhwIjo0MDcwOTA4ODAwfQ." +
 	"WRONG_SIGNATURE_xxxx";
 
-/** The all-zero UUID: a stable "definitely not a row of mine" probe. */
-export const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+export { ZERO_UUID } from "../../_shared/env.js";

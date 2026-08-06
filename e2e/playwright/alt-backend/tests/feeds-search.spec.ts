@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectStatus } from "../src/http.js";
+import { expectStatus } from "../../_shared/http.js";
 
 /**
  * Feed search — the port of `23-feeds-search.hurl`.

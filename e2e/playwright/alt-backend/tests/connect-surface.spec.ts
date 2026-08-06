@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectJson, expectStatus } from "../src/http.js";
+import { expectJson, expectStatus } from "../../_shared/http.js";
 import { connectErrorSchema } from "../src/schemas.js";
 
 /**

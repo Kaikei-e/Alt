@@ -1,5 +1,5 @@
 import { test, expect, stubURL } from "../src/fixtures.js";
-import { expectJsonStatus, expectStatus, expectStatusIn } from "../src/http.js";
+import { expectJsonStatus, expectStatus, expectStatusIn } from "../../_shared/http.js";
 import { ZERO_UUID } from "../src/env.js";
 import {
 	articleTagsSchema,

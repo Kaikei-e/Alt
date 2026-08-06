@@ -1,5 +1,5 @@
 import { test, expect, stubURL } from "../src/fixtures.js";
-import { expectStatusIn } from "../src/http.js";
+import { expectStatusIn } from "../../_shared/http.js";
 
 /**
  * State-mutating feed endpoints — the port of `22-feeds-read-favorite.hurl`.

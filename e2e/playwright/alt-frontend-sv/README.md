@@ -57,7 +57,7 @@ ls e2e/reports/alt-frontend-sv-*/
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `PLAYWRIGHT_IMAGE` | `mcr.microsoft.com/playwright:v1.59.1-jammy` | container image; matches `alt-frontend-sv.yml` |
+| `PLAYWRIGHT_IMAGE` | `mcr.microsoft.com/playwright:v<version>-jammy` | container image. The tag is read from `@playwright/test` in `alt-frontend-sv/package.json` at runtime, not pinned here — the image ships browser binaries at a revision the driver pins, so the two must match. It was pinned by hand once and drifted to three minor versions behind CI. |
 | `BUN_VERSION` | `1.2.14` | bun toolchain version installed inside the container |
 | `SHARD` | `1/1` | Playwright `--shard` value; matrix sets `1/3`, `2/3`, `3/3` |
 | `PROJECTS` | `--project=auth --project=desktop-chromium --project=mobile-chrome` | space-separated `--project` flags |

@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectJsonStatus, expectStatus } from "../src/http.js";
+import { expectJsonStatus, expectStatus } from "../../_shared/http.js";
 import { stubURL } from "../src/fixtures.js";
 import { csrfTokenSchema } from "../src/schemas.js";
 

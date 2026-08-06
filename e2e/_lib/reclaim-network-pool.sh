@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# e2e/hurl/_lib/reclaim-network-pool.sh
+# e2e/_lib/reclaim-network-pool.sh
 #
 # Best-effort reclaim of Docker's pre-defined address pool from networks
 # left behind by prior runs. The default Docker daemon ships with ~31
@@ -49,7 +49,7 @@
 # Usage
 # -----
 #   STAGING_PROJECT_NAME=alt-staging-search-indexer-12345
-#   source "$ROOT/e2e/hurl/_lib/reclaim-network-pool.sh"
+#   source "$ROOT/e2e/_lib/reclaim-network-pool.sh"
 #   reclaim_network_pool
 #
 # Env

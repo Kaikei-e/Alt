@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# e2e/hurl/_lib/reclaim-network-pool.test.sh
+# e2e/_lib/reclaim-network-pool.test.sh
 #
 # Behavioural + structural test for reclaim-network-pool.sh.
 #
@@ -16,7 +16,7 @@
 # where a service intentionally needs orphaned networks).
 #
 # Run:
-#   bash e2e/hurl/_lib/reclaim-network-pool.test.sh
+#   bash e2e/_lib/reclaim-network-pool.test.sh
 # Exit 0 on green, non-zero on red.
 
 set -euo pipefail

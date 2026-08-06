@@ -1,5 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectJsonStatus } from "../src/http.js";
+import { expectJsonStatus } from "../../_shared/http.js";
 import { articleUrlBackfillSchema } from "../src/schemas.js";
 
 /**
