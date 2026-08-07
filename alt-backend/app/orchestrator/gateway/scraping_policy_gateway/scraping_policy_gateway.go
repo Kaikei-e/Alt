@@ -3,6 +3,7 @@ package scraping_policy_gateway
 import (
 	"alt/domain"
 	"alt/orchestrator/port/scraping_domain_port"
+	"alt/orchestrator/port/scraping_policy_port"
 	"context"
 	"fmt"
 	"log/slog"
@@ -118,7 +119,11 @@ func (g *ScrapingPolicyGateway) CanFetchArticle(ctx context.Context, articleURL 
 					"domain", domainName,
 					"delay", delay,
 					"time_since_last", timeSinceLastRequest)
-				return false, nil
+				// Transient, not a policy refusal — see ErrCrawlDelayNotElapsed.
+				return false, &scraping_policy_port.CrawlDelayError{
+					Domain:     domainName,
+					RetryAfter: delay - timeSinceLastRequest,
+				}
 			}
 		}
 		g.lastRequestTime[domainKey] = time.Now()

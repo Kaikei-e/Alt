@@ -1,15 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Code, ConnectError } from "@connectrpc/connect";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the client API to prevent transitive $app/* resolution
 vi.mock("$lib/api/client", () => ({
 	getFeedContentOnTheFlyClient: vi.fn(),
 }));
 
-import { ArticlePrefetcher } from "./articlePrefetcher";
-import type { RenderFeed } from "$lib/schema/feed";
-import type { FeedContentOnTheFlyResponse } from "$lib/api/client/articles";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client";
+import type { FeedContentOnTheFlyResponse } from "$lib/api/client/articles";
+import type { RenderFeed } from "$lib/schema/feed";
+import { ArticlePrefetcher } from "./articlePrefetcher";
 
 const mockedGetContent = vi.mocked(getFeedContentOnTheFlyClient);
 
@@ -409,6 +409,229 @@ describe("ArticlePrefetcher", () => {
 			});
 
 			expect(callback).not.toHaveBeenCalled();
+		});
+	});
+
+	// Regression: swiping a few cards stopped fetching article bodies for the
+	// rest of the session. SwipeFeedScreen's batch-image path seeds the cache
+	// with `getCachedContent(url) || ""` for feeds it has never fetched, which
+	// wrote an empty body. `contentCache.has()` then reported a hit and
+	// suppressed every future prefetch, while getCachedContent() kept reporting
+	// a miss — so the card fell back to "Source content unavailable" forever.
+	describe("empty-body cache poisoning", () => {
+		it("does not treat an image-only seed as cached content", () => {
+			const url = "https://example.com/image-only";
+
+			// This is exactly what triggerBatchImagePrefetch passes for a feed
+			// whose body has never been fetched.
+			prefetcher.seedCache(url, "", "art-1", null, "https://proxy/1.jpg");
+
+			expect(prefetcher.getCachedContent(url)).toBeNull();
+			// The image metadata is the point of that seed and must survive.
+			expect(prefetcher.getCachedOgImage(url)).toBe("https://proxy/1.jpg");
+		});
+
+		it("still prefetches a feed whose image metadata was seeded first", async () => {
+			const url = "https://example.com/image-only";
+			prefetcher.seedCache(url, "", "art-1", null, "https://proxy/1.jpg");
+
+			mockedGetContent.mockResolvedValueOnce({
+				content: "<p>Body</p>",
+				article_id: "art-1",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", url),
+			];
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(600);
+
+			await vi.waitFor(() => {
+				expect(prefetcher.getCachedContent(url)).toBe("<p>Body</p>");
+			});
+		});
+
+		it("never overwrites a real body with an empty one", () => {
+			const url = "https://example.com/article";
+			prefetcher.seedCache(url, "<p>Real</p>", "art-1", null);
+			prefetcher.seedCache(url, "", "art-1", null, "https://proxy/1.jpg");
+
+			expect(prefetcher.getCachedContent(url)).toBe("<p>Real</p>");
+		});
+	});
+
+	describe("ensureContent (visible-card fetch)", () => {
+		it("joins an in-flight prefetch instead of issuing a duplicate request", async () => {
+			let resolveFetch: (value: FeedContentOnTheFlyResponse) => void = () => {};
+			mockedGetContent.mockImplementationOnce(
+				() =>
+					new Promise<FeedContentOnTheFlyResponse>((resolve) => {
+						resolveFetch = resolve;
+					}),
+			);
+
+			const url = "https://zenn.dev/article-1";
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", url),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(600);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
+			// The card mounts while the prefetch is still in flight. Before the
+			// fix it saw getCachedContent() === null (the "loading" sentinel
+			// reads as a miss) and fired its own request into the host limiter.
+			const fromCard = prefetcher.ensureContent(url);
+
+			resolveFetch({
+				content: "<p>Body</p>",
+				article_id: "art-1",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			await expect(fromCard).resolves.toBe("<p>Body</p>");
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+		});
+
+		it("returns cached content without touching the network", async () => {
+			const url = "https://example.com/cached";
+			prefetcher.seedCache(url, "<p>Cached</p>", "art-1", null);
+
+			await expect(prefetcher.ensureContent(url)).resolves.toBe(
+				"<p>Cached</p>",
+			);
+			expect(mockedGetContent).not.toHaveBeenCalled();
+		});
+
+		it("resolves null during a host cooldown instead of issuing a doomed request", async () => {
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError("rate limited", Code.ResourceExhausted),
+			);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-1"),
+			];
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(600);
+			await vi.waitFor(() => {
+				expect(mockedGetContent).toHaveBeenCalledTimes(1);
+			});
+
+			await expect(
+				prefetcher.ensureContent("https://dev.to/article-2"),
+			).resolves.toBeNull();
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+		});
+
+		it("fetches when nothing is cached or in flight", async () => {
+			mockedGetContent.mockResolvedValueOnce({
+				content: "<p>Fresh</p>",
+				article_id: "art-1",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			await expect(
+				prefetcher.ensureContent("https://example.com/fresh"),
+			).resolves.toBe("<p>Fresh</p>");
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("triggerPrefetch scheduling", () => {
+		it("does not starve a scheduled prefetch when re-triggered inside the delay window", async () => {
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Body</p>",
+				article_id: "art-1",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://example.com/next-1"),
+			];
+
+			// SwipeFeedScreen's prefetch $effect re-runs on every `feeds`
+			// reassignment (handleArticleIdResolved rebuilds the array), which
+			// happens more often than PREFETCH_DELAY. Clearing and re-arming the
+			// timer each time meant it never fired.
+			for (let i = 0; i < 5; i++) {
+				prefetcher.triggerPrefetch(feeds, 0, 1);
+				await vi.advanceTimersByTimeAsync(400);
+			}
+
+			await vi.waitFor(() => {
+				expect(mockedGetContent).toHaveBeenCalledWith(
+					"https://example.com/next-1",
+				);
+			});
+		});
+
+		it("cancels a scheduled prefetch once its feed leaves the lookahead window", async () => {
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Body</p>",
+				article_id: "art-1",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/a"),
+				makeFeed("1", "https://example.com/b"),
+				makeFeed("2", "https://example.com/c"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 1); // schedules /b
+			await vi.advanceTimersByTimeAsync(100);
+			prefetcher.triggerPrefetch(feeds, 1, 1); // window moves to /c
+			await vi.advanceTimersByTimeAsync(1_000);
+
+			await vi.waitFor(() => {
+				expect(mockedGetContent).toHaveBeenCalledWith("https://example.com/c");
+			});
+			expect(mockedGetContent).not.toHaveBeenCalledWith(
+				"https://example.com/b",
+			);
+		});
+	});
+
+	describe("eviction", () => {
+		it("evicts the oldest entry once the cache exceeds its cap", () => {
+			for (let i = 0; i < 31; i++) {
+				prefetcher.seedCache(
+					`https://example.com/feed-${i}`,
+					`<p>Feed ${i}</p>`,
+					`art-${i}`,
+					`https://og/${i}.png`,
+				);
+			}
+
+			expect(
+				prefetcher.getCachedContent("https://example.com/feed-0"),
+			).toBeNull();
+			expect(prefetcher.getCachedContent("https://example.com/feed-30")).toBe(
+				"<p>Feed 30</p>",
+			);
+		});
+
+		it("evicts the article id alongside the body it belongs to", () => {
+			for (let i = 0; i < 31; i++) {
+				prefetcher.seedCache(
+					`https://example.com/feed-${i}`,
+					`<p>Feed ${i}</p>`,
+					`art-${i}`,
+					`https://og/${i}.png`,
+				);
+			}
+
+			// articleIdCache grew unbounded because eviction only pruned
+			// contentCache and ogImageCache.
+			expect(
+				prefetcher.getCachedArticleId("https://example.com/feed-0"),
+			).toBeNull();
 		});
 	});
 });

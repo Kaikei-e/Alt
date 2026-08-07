@@ -29,6 +29,12 @@ interface Props {
 	thumbnailUrl: string | null;
 	getCachedContent?: (feedUrl: string) => string | null;
 	getCachedArticleId?: (feedUrl: string) => string | null;
+	/**
+	 * Fetch the body through the shared prefetcher, which dedupes against an
+	 * in-flight prefetch for the same URL and honors the host cooldown.
+	 * Resolves null when the body is unavailable right now (retryable).
+	 */
+	requestContent?: (feedUrl: string) => Promise<string | null>;
 	isBusy?: boolean;
 	initialArticleContent?: string | null;
 	onArticleIdResolved?: (feedLink: string, articleId: string) => void;
@@ -42,6 +48,7 @@ const {
 	thumbnailUrl,
 	getCachedContent,
 	getCachedArticleId,
+	requestContent,
 	isBusy = false,
 	initialArticleContent,
 	onArticleIdResolved,
@@ -116,6 +123,28 @@ const publishedLabel = $derived.by(() => {
 	}
 });
 
+/**
+ * Fetch the body for this card. Goes through the shared prefetcher when one is
+ * supplied so a card mounting mid-prefetch joins that request instead of firing
+ * a second, unserialized one at the same host.
+ */
+async function fetchBody(): Promise<string | null> {
+	if (requestContent) {
+		const content = await requestContent(feed.normalizedUrl);
+		if (content && onArticleIdResolved) {
+			const articleId = getCachedArticleId?.(feed.normalizedUrl);
+			if (articleId) onArticleIdResolved(feed.link, articleId);
+		}
+		return content;
+	}
+
+	const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
+	if (res.article_id && onArticleIdResolved) {
+		onArticleIdResolved(feed.link, res.article_id);
+	}
+	return res.content || null;
+}
+
 // Auto-fetch content
 onMount(() => {
 	if (initialArticleContent) {
@@ -130,20 +159,19 @@ onMount(() => {
 			onArticleIdResolved(feed.link, cachedArticleId);
 		}
 	} else if (!fullContent) {
-		getFeedContentOnTheFlyClient(feed.normalizedUrl)
-			.then((res) => {
-				if (res.content) {
-					fullContent = res.content;
-				}
-				if (res.article_id && onArticleIdResolved) {
-					onArticleIdResolved(feed.link, res.article_id);
+		fetchBody()
+			.then((content) => {
+				if (content) {
+					fullContent = content;
+				} else {
+					// ADR-000884: surface the unified fallback notice so the
+					// manual-tap and auto paths converge on the same
+					// "Source content unavailable" markup.
+					contentError = "Source content unavailable.";
 				}
 			})
 			.catch((err) => {
 				console.warn("[VisualPreviewCard] Error auto-fetching content:", err);
-				// ADR-000884: surface the unified fallback notice on auto-fetch
-				// failure so the manual-tap and auto paths converge on the same
-				// "Source content unavailable" markup.
 				contentError = "Source content unavailable.";
 			});
 	}
@@ -194,40 +222,45 @@ $effect(() => {
 	};
 });
 
-async function handleToggleContent() {
-	if (!isContentExpanded && !fullContent) {
-		const cached = getCachedContent?.(feed.normalizedUrl);
-		if (cached) {
-			fullContent = cached;
-			isContentExpanded = true;
-			return;
-		}
-
-		// Auto-fetch already failed and surfaced an error — expand straight
-		// to the fallback markup instead of issuing another doomed request.
-		if (contentError) {
-			isContentExpanded = true;
-			return;
-		}
-
-		isLoadingContent = true;
+async function loadContent() {
+	const cached = getCachedContent?.(feed.normalizedUrl);
+	if (cached) {
+		fullContent = cached;
 		contentError = null;
+		return;
+	}
 
-		try {
-			const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
-			if (res.content) {
-				fullContent = res.content;
-			} else {
-				contentError = "Source content unavailable.";
-			}
-		} catch (err) {
-			console.warn("Error fetching content:", err);
+	isLoadingContent = true;
+	contentError = null;
+
+	try {
+		const content = await fetchBody();
+		if (content) {
+			fullContent = content;
+		} else {
 			contentError = "Source content unavailable.";
-		} finally {
-			isLoadingContent = false;
 		}
+	} catch (err) {
+		console.warn("Error fetching content:", err);
+		contentError = "Source content unavailable.";
+	} finally {
+		isLoadingContent = false;
+	}
+}
+
+async function handleToggleContent() {
+	// A previous failure is not permanent: the host cooldown that caused it
+	// lifts, and requestContent() short-circuits while it has not. Latching
+	// contentError here pinned the card to the summary for its whole lifetime.
+	if (!isContentExpanded && !fullContent) {
+		await loadContent();
 	}
 	isContentExpanded = !isContentExpanded;
+}
+
+async function handleRetryContent() {
+	if (isLoadingContent) return;
+	await loadContent();
 }
 
 function handleGenerateAISummary() {
@@ -503,6 +536,15 @@ function handleImgError() {
               <p class="fallback-notice" data-testid="source-unavailable-notice">
                 {contentError} Showing summary.
               </p>
+              <button
+                type="button"
+                class="retry-btn"
+                onclick={handleRetryContent}
+                disabled={isLoadingContent}
+                data-testid="retry-content"
+              >
+                Try again
+              </button>
               {#if hasDescription}
                 <div
                   class="summary-prose article-prose"
@@ -881,6 +923,32 @@ function handleImgError() {
     color: var(--alt-ash);
     margin: 0 0 0.5rem;
     padding: 0;
+  }
+
+  .retry-btn {
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--alt-charcoal);
+    background: transparent;
+    border: 1.5px solid var(--alt-charcoal);
+    padding: 0.4rem 1rem;
+    min-height: 44px;
+    margin: 0 0 0.75rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .retry-btn:active:not(:disabled) {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  .retry-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   /* ── Footer ── */

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,6 +123,20 @@ func (h *Handler) FetchArticleContent(
 	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
 	content, articleID, ogImageURL, err := h.deps.Article.FetchCompliantArticleWithRefresh(ctx, parsedURL, *user, forceRefresh)
 	if err != nil {
+		// Checked before ComplianceError: a politeness gate that has not
+		// elapsed is transient and must reach the client as a retryable 429,
+		// not as the permanent 403 that tells it to stop asking.
+		var rateErr *domain.RateLimitedError
+		if errors.As(err, &rateErr) {
+			connectErr := connect.NewError(connect.CodeResourceExhausted,
+				fmt.Errorf("%s", rateErr.Message))
+			if rateErr.RetryAfter > 0 {
+				connectErr.Meta().Set("Retry-After",
+					strconv.Itoa(int(math.Ceil(rateErr.RetryAfter.Seconds()))))
+			}
+			return nil, connectErr
+		}
+
 		var complianceErr *domain.ComplianceError
 		if errors.As(err, &complianceErr) {
 			return nil, connect.NewError(connect.CodePermissionDenied,
