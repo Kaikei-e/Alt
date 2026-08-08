@@ -1,6 +1,7 @@
 // Command harvester runs alt-backend's scheduled background jobs: feed
 // collection, the outbox worker, the OGP image pipeline, scraping-policy
-// refresh and outbox pruning.
+// refresh, outbox pruning and the daily "today's entrance is ready"
+// notification.
 //
 // It serves no API. The one listener it opens is the ops listener shared by
 // all three binaries — /health for the compose probe, /metrics for Prometheus

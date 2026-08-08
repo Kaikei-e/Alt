@@ -1007,6 +1007,59 @@
       }
     },
     {
+      "description": "an EnqueueNotification request from alt-harvester for the daily entrance",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts notification enqueues"
+        }
+      ],
+      "request": {
+        "body": {
+          "dedupeKey": "digest:3f2504e0-4f89-11d3-9a0c-0305e82c3301:2026-08-08",
+          "expiresAt": "2026-08-09T23:00:00Z",
+          "kind": "today_entrance_ready",
+          "occurredAt": "2026-08-08T23:00:00Z",
+          "payload": "eyJraW5kIjoidG9kYXlfZW50cmFuY2VfcmVhZHkiLCJ1cmwiOiIvaG9tZSIsImNvdW50Ijo1fQ==",
+          "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/EnqueueNotification"
+      },
+      "response": {
+        "body": {
+          "deliveryCount": 2,
+          "supersededCount": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.deliveryCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.supersededCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an EvictExpiredImageProxyCache request from alt-harvester",
       "providerStates": [
         {

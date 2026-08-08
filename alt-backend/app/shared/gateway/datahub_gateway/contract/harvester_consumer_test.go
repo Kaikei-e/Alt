@@ -568,3 +568,85 @@ func TestUpdateScrapingDomainPolicyContract(t *testing.T) {
 		})
 	require.NoError(t, err)
 }
+
+// ---------------------------------------------------------------------------
+// Push delivery queue (harvester producer half)
+// ---------------------------------------------------------------------------
+
+// TestHarvesterEnqueueTodayEntranceNotificationContract pins the one write the
+// today-entrance-notifier makes.
+//
+// alt-backend already has an EnqueueNotification interaction, but the pact is
+// per consumer and this producer is a different process with a different
+// failure mode: it runs unattended once a day, so nobody is watching when it
+// sends. Three things are recorded here rather than left to the unit test.
+//
+//   - The dedupe key is derived from the business fact — this user's entrance
+//     for this UTC calendar day. The job ticks every ten minutes and fires
+//     several times inside the trigger hour, so the provider's idempotency on
+//     (dedupe_key, subscription_id) is what turns those into one delivery.
+//   - The payload carries a trigger and not content: kind, a same-origin url
+//     and a count, and nothing else. A title or an excerpt here would end up
+//     on a lock screen.
+//   - supersededCount is a real field of the answer. The daily digest is the
+//     only kind the provider supersedes, so this is the interaction that
+//     exercises it — yesterday's undelivered entrance is expired by today's
+//     enqueue rather than both arriving.
+func TestHarvesterEnqueueTodayEntranceNotificationContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerHarvester)
+
+	const digestUserID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+	// 23:00 UTC on the day being summarised: late enough that the UTC day is
+	// nearly complete, which is the whole reason for the hour.
+	occurredAt := time.Date(2026, 8, 8, 23, 0, 0, 0, time.UTC)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub accepts notification enqueues").
+		UponReceiving("an EnqueueNotification request from alt-harvester for the daily entrance").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/EnqueueNotification"),
+			Headers: jsonHeaders(),
+			Body: map[string]interface{}{
+				"dedupeKey": "digest:" + digestUserID + ":2026-08-08",
+				"userId":    digestUserID,
+				"kind":      "today_entrance_ready",
+				// bytes over protoJSON is base64; this decodes to
+				// {"kind":"today_entrance_ready","url":"/home","count":5}.
+				"payload":    "eyJraW5kIjoidG9kYXlfZW50cmFuY2VfcmVhZHkiLCJ1cmwiOiIvaG9tZSIsImNvdW50Ijo1fQ==",
+				"occurredAt": "2026-08-08T23:00:00Z",
+				// One day. The next evening's enqueue supersedes an unsent
+				// digest anyway, and an entrance delivered a day late lies
+				// about which day it describes.
+				"expiresAt": "2026-08-09T23:00:00Z",
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body: matchers.MapMatcher{
+				"deliveryCount":   matchers.Like(2),
+				"supersededCount": matchers.Like(1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewPushDeliveryGateway(newDataHubServiceClient(config))
+
+			delivered, superseded, err := gw.Enqueue(context.Background(), domain.NotificationEnqueue{
+				DedupeKey:  "digest:" + digestUserID + ":2026-08-08",
+				UserID:     digestUserID,
+				Kind:       domain.NotificationKindTodayEntranceReady,
+				Payload:    []byte(`{"kind":"today_entrance_ready","url":"/home","count":5}`),
+				OccurredAt: occurredAt,
+				ExpiresAt:  occurredAt.Add(24 * time.Hour),
+			})
+			if err != nil {
+				return fmt.Errorf("Enqueue failed: %w", err)
+			}
+			assert.Equal(t, 2, delivered, "one enqueue fans out to every device that still wants this kind")
+			assert.Equal(t, 1, superseded, "an undelivered earlier digest is expired rather than also arriving")
+			return nil
+		})
+	require.NoError(t, err)
+}

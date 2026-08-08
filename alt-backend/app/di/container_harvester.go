@@ -83,6 +83,11 @@ type HarvesterComponents struct {
 	// outbox-worker
 	RagIntegration  rag_integration_port.RagIntegrationPort
 	SovereignClient *sovereign_client.Client
+
+	// today-entrance-notifier. The daily trigger is written to push_deliveries
+	// through alt-data-hub like every other write from this process; the
+	// harvester never sends a push itself, which is cmd/notifier's job.
+	PushDeliveryGateway *datahub_gateway.PushDeliveryGateway
 }
 
 // NewHarvesterComponents is cmd/harvester's composition root.
@@ -116,6 +121,7 @@ func NewHarvesterComponents(cfg *config.Config) *HarvesterComponents {
 	outboxGw := datahub_gateway.NewOutboxGateway(dataHubClient)
 	ogImageGw := datahub_gateway.NewOgImageGateway(dataHubClient)
 	imageProxyCacheGw := datahub_gateway.NewImageProxyCacheGateway(dataHubClient)
+	pushDeliveryGw := datahub_gateway.NewPushDeliveryGateway(dataHubClient)
 	scrapingDomainGw := datahub_gateway.NewScrapingDomainGateway(dataHubClient)
 	feedLinkGw := datahub_gateway.NewFeedLinkGateway(dataHubClient)
 	feedCollectorGw := &harvesterFeedCollectorGateway{
@@ -188,6 +194,7 @@ func NewHarvesterComponents(cfg *config.Config) *HarvesterComponents {
 		FetchTagCloudUsecase:   fetchTagCloudUC,
 		RagIntegration:         ragAdapter,
 		SovereignClient:        sovereignCli,
+		PushDeliveryGateway:    pushDeliveryGw,
 	}
 }
 

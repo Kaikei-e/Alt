@@ -56,8 +56,40 @@ func RegisterHarvesterJobs(scheduler *JobScheduler, container *di.HarvesterCompo
 		Fn:       OutboxPruneJob(container.OutboxGateway),
 	})
 
+	registerTodayEntranceNotifier(scheduler, container)
 	registerImageJobs(scheduler, container)
 	logTagCloudWarmerDisabled()
+}
+
+// registerTodayEntranceNotifier adds the once-a-day "today's entrance is
+// ready" trigger.
+//
+// The tick interval is not the notification cadence. JobScheduler is
+// interval-only and runs each job immediately on start, so a 24h interval
+// would fire whenever the container last restarted; the job instead ticks
+// every ten minutes and returns immediately unless the UTC hour is the
+// trigger hour. Repeats inside that hour — six of them, plus any restart —
+// collapse provider-side on the dedupe key, which is where correctness comes
+// from here rather than from the schedule.
+//
+// Both dependencies are unconditional (NewHarvesterComponents constructs each
+// or panics), so this is registered unconditionally and says so once at
+// startup: there is no configuration under which the daily notification is
+// meant to be absent, and silence would be indistinguishable from a wiring
+// bug (CLAUDE.md rule 8).
+func registerTodayEntranceNotifier(scheduler *JobScheduler, container *di.HarvesterComponents) {
+	slog.Info("harvester.today_entrance_notifier_enabled",
+		"job", "today-entrance-notifier",
+		"trigger_hour_utc", todayEntranceTriggerHourUTC,
+		"tick_interval", todayEntranceTickInterval.String(),
+		"reason", "the digest counts a UTC calendar day, so the send hour is a UTC hour and no per-user timezone is consulted")
+
+	scheduler.Add(Job{
+		Name:     "today-entrance-notifier",
+		Interval: todayEntranceTickInterval,
+		Timeout:  10 * time.Minute,
+		Fn:       TodayEntranceNotificationJob(container.SovereignClient, container.PushDeliveryGateway),
+	})
 }
 
 // registerImageJobs adds the two jobs that drive the OGP image pipeline, or

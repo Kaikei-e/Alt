@@ -50,6 +50,7 @@ func TestRegisterHarvesterJobs_RegistersTheCoreJobs(t *testing.T) {
 		"outbox-worker",
 		"og-image-retention",
 		"outbox-prune",
+		"today-entrance-notifier",
 	} {
 		if !names[want] {
 			t.Errorf("%s must be registered", want)
