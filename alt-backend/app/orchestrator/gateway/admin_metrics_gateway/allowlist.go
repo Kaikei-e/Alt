@@ -40,11 +40,18 @@ var allowlist = []allowEntry{
 		// reads "up" whenever a healthy sibling happens to be last. Guarded by
 		// TestAllowlist_AvailabilityAggregatesMultiTargetJobs.
 		//
-		// alt-harvester and alt-data-hub are the two binaries split out of
-		// alt-backend. They are listed as separate jobs, not folded into
+		// alt-harvester, alt-data-hub and alt-notifier are the binaries split out
+		// of alt-backend. They are listed as separate jobs, not folded into
 		// alt-backend's, precisely because `min by (job)` would then hide
-		// which of the three processes is down.
-		promql:     `min by (job) (up{job=~"prometheus|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-data-hub|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
+		// which of the processes is down.
+		//
+		// The two *-relay jobs scrape the notification outbox relays, which live
+		// inside pre-processor and acolyte-orchestrator rather than in their own
+		// containers. Their `up` therefore tracks the host service, and the
+		// relay's own liveness is the last-tick gauge instead — but omitting
+		// them here would leave the admin monitor with no row at all for a
+		// scraped target, which is the failure this list exists to prevent.
+		promql:     `min by (job) (up{job=~"prometheus|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-data-hub|alt-notifier|pre-processor-relay|acolyte-orchestrator-relay|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
 		grafanaURL: "/d/otel-overview",
 	},
 	{
