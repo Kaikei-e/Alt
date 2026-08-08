@@ -466,6 +466,76 @@ services:
     labels:
       - rask.group=alt-harvester
 
+  # alt-notifier — the Web Push dispatcher.
+  #
+  # A fourth binary rather than an eighth harvester job, for three reasons that
+  # all point the same way. The VAPID private key is mounted here and nowhere
+  # else, so its blast radius is one container. An outbound call to a third
+  # party is the one thing in this stack that can hang for minutes, and here it
+  # hangs alone instead of starving six unrelated jobs. And most of all, this is
+  # the delivery path whose *silence* is the failure mode — `up{job=…}`, an
+  # isolated restart counter and a per-process log stream come free with a
+  # process boundary, whereas inside a multiplexed binary "the process is up"
+  # would say nothing about whether notifications are still going out.
+  #
+  # No `ports:` and no listener but ops: it claims work over mTLS and posts to
+  # push services. Nothing calls in.
+  alt-notifier:
+    <<: *alt-go-common
+    env_file:
+      - ../.env
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-alt-notifier:${IMAGE_TAG:-main}
+    build:
+      context: ../alt-backend
+      dockerfile: Dockerfile.backend
+      args:
+        BINARY: notifier
+    volumes:
+      - alt_notifier_certs:/certs:ro
+      - pki_trust_bundle:/trust:ro
+    depends_on:
+      alt-data-hub:
+        condition: service_healthy
+      pki-agent-alt-notifier:
+        condition: service_healthy
+    environment:
+      # No DB_* block: cmd/notifier does not link the driver, same as the other
+      # two non-datahub binaries.
+      OPS_LISTEN: ":9110"
+      # --- outbound mTLS to the data plane ---------------------------------
+      DATA_HUB_MTLS_URL: https://alt-data-hub:9443
+      DATA_HUB_SERVER_NAME: alt-data-hub
+      MTLS_CERT_FILE: /certs/svc-cert.pem
+      MTLS_KEY_FILE: /certs/svc-key.pem
+      MTLS_CA_FILE: /trust/ca-bundle.pem
+      # --- Web Push ---------------------------------------------------------
+      # RFC 8292 requires a contact URI in the JWT's `sub` claim so a push
+      # service can reach the operator. Apple rejects a `sub` that is neither a
+      # mailto: nor an https: URI, and does so only on its own endpoints — the
+      # kind of partial failure that looks like "iOS stopped working".
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:ops@localhost}
+      VAPID_PRIVATE_KEY_FILE: /run/secrets/vapid_private_key
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
+      OTEL_SERVICE_NAME: alt-notifier
+    secrets:
+      - vapid_private_key
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "/app-entry", "healthcheck"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - rask.group=alt-notifier
+
   # alt-data-hub — the data plane. Reachable over mTLS and nothing else.
   #
   # Three layers keep that true, and only the first is expressible here:
@@ -532,7 +602,11 @@ services:
       # verifies a peer certificate. This list is the whole authorisation
       # decision, so wave 2 widens it *before* repointing each worker — the
       # receiving side must never be the thing that breaks.
-      DATAHUB_ALLOWED_PEERS: ${ALT_DATA_HUB_ALLOWED_PEERS:-alt-backend,alt-harvester,pre-processor,search-indexer,tag-generator,recap-worker,rag-orchestrator}
+      # alt-notifier claims deliveries and reports outcomes; acolyte-orchestrator
+      # relays its own notification outbox. Both are widened here *before* the
+      # callers are wired, for the same reason wave 2 did: the receiving side
+      # must never be the thing that breaks.
+      DATAHUB_ALLOWED_PEERS: ${ALT_DATA_HUB_ALLOWED_PEERS:-alt-backend,alt-harvester,alt-notifier,pre-processor,search-indexer,tag-generator,recap-worker,rag-orchestrator,acolyte-orchestrator}
       # --- ops listener (never published) ----------------------------------
       # The only other socket this binary opens, and it carries nothing worth
       # authenticating: /health for the healthcheck below, /metrics for the

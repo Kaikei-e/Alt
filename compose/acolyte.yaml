@@ -106,10 +106,24 @@ services:
       - HYDE_TIMEOUT_S=${ACOLYTE_HYDE_TIMEOUT_S:-30.0}
       - HYDE_MAX_CHARS=${ACOLYTE_HYDE_MAX_CHARS:-600}
       - HYDE_NUM_PREDICT=${ACOLYTE_HYDE_NUM_PREDICT:-400}
-      - MTLS_ENFORCE=${ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE:-false}
+      # Now defaults on: the notification relay is an outbound mTLS client of
+      # alt-data-hub, and with MTLS_ENFORCE off acolyte/infra/mtls_client.py
+      # presents no client certificate at all — the data plane's peer allowlist
+      # is its entire authorisation decision, so the relay would simply be
+      # refused, quietly, on every tick.
+      - MTLS_ENFORCE=${ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE:-true}
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      # --- notification outbox relay ---------------------------------------
+      # acolyte-db carries no owner column on reports, report_runs or
+      # report_briefs, so there is no row to derive a recipient from and the
+      # user has to be supplied. Unset means the relay logs
+      # notification_outbox_relay_disabled and does not run; a malformed value
+      # is a startup failure rather than a relay that forwards to nobody.
+      - NOTIFICATIONS_ENABLED=${ACOLYTE_NOTIFICATIONS_ENABLED:-false}
+      - NOTIFICATION_USER_ID=${ALT_NOTIFICATION_USER_ID:-}
+      - DATAHUB_URL=https://alt-data-hub:9443
       # trust X-Alt-Peer-Identity header iff the perimeter sidecar
       # enforces client certs. Must track VERIFY_CLIENT above.
       - PEER_IDENTITY_TRUSTED=${ACOLYTE_ORCHESTRATOR_VERIFY_CLIENT:-on}

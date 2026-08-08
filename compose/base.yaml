@@ -51,6 +51,14 @@ secrets:
     file: ../secrets/pp_db_password.txt
   image_proxy_secret:
     file: ../secrets/image_proxy_secret.txt
+  # VAPID signing key for Web Push. Mounted into alt-notifier and nowhere else:
+  # it is the only process that talks to a push service, and rotating this key
+  # invalidates every existing browser subscription with no server-side
+  # migration (RFC 8292 §4.2), so its blast radius is worth keeping to one
+  # container. The matching public key is not a secret — it is handed to every
+  # browser — and reaches alt-backend as ordinary config.
+  vapid_private_key:
+    file: ../secrets/vapid_private_key.txt
   step_ca_root_password:
     file: ../secrets/step_ca_root_password.txt
   pact_broker_basic_auth_password:
@@ -89,6 +97,7 @@ volumes:
   # three CNs, and MTLS_ALLOWED_PEERS could no longer tell the callers apart.
   alt_harvester_certs:
   alt_data_hub_certs:
+  alt_notifier_certs:
   auth_hub_certs:
   pre_processor_certs:
   search_indexer_certs:
