@@ -22,7 +22,7 @@ Direction reads `A → B` as "A consumes B" (so `A`'s `pacts/A-B.json` is the co
 | mq-hub → search-indexer, tag-generator | Go | `mq-hub/app/driver/contract/` |
 | recap-worker → news-creator, recap-subworker, alt-backend, tag-generator | Rust | `recap-worker/recap-worker/src/clients/*_contract.rs` |
 | recap-evaluator → recap-worker | Python | `recap-evaluator/tests/contract/` |
-| alt-butterfly-facade → alt-backend, tts-speaker | Go | `alt-butterfly-facade/internal/handler/contract/` |
+| alt-butterfly-facade → alt-backend | Go | `alt-butterfly-facade/internal/handler/contract/` |
 | auth-hub → kratos | Go | `auth-hub/internal/adapter/gateway/contract/` |
 | acolyte-orchestrator → search-indexer | Python | `acolyte-orchestrator/tests/contract/` |
 
@@ -37,7 +37,6 @@ Use this for a **provider-side** change to confirm every consumer is under contr
 | news-creator | pre-processor, rag-orchestrator, recap-worker, acolyte-orchestrator | `news-creator/app/tests/contract/` |
 | recap-subworker | recap-worker | `recap-subworker/tests/contract/` |
 | tag-generator | recap-worker, mq-hub | `tag-generator/app/tests/contract/` |
-| tts-speaker | alt-butterfly-facade | `tts-speaker/tests/contract/` |
 | kratos | auth-hub | (external — consumer-only) |
 
 ## Commands
