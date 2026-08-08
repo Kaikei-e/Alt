@@ -14,6 +14,8 @@ type mockRecapSearchEngine struct {
 	err            error
 	lastQuery      string
 	lastLimit      int
+	indexCalls     int
+	indexedDocs    []domain.RecapDocument // accumulated across every IndexRecapDocuments call
 }
 
 func (m *mockRecapSearchEngine) EnsureRecapIndex(ctx context.Context) error {
@@ -21,7 +23,12 @@ func (m *mockRecapSearchEngine) EnsureRecapIndex(ctx context.Context) error {
 }
 
 func (m *mockRecapSearchEngine) IndexRecapDocuments(ctx context.Context, docs []domain.RecapDocument) error {
-	return m.err
+	m.indexCalls++
+	if m.err != nil {
+		return m.err
+	}
+	m.indexedDocs = append(m.indexedDocs, docs...)
+	return nil
 }
 
 func (m *mockRecapSearchEngine) SearchRecaps(ctx context.Context, query string, limit int) ([]domain.RecapDocument, int64, error) {
