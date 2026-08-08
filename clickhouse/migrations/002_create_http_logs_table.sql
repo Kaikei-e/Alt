@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS http_logs (
     ip_address String,
     user_agent String,
 
+    -- Request latency (added in 003 via ALTER for already-deployed
+    -- clusters; declared here too so fresh installs get it directly)
+    duration_ms Float64 DEFAULT 0,
+
     -- Service metadata
     service_name LowCardinality(String),
     container_id String

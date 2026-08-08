@@ -72,25 +72,16 @@ PARTITION BY toDate(timestamp)
 ORDER BY (timestamp)
 TTL timestamp + INTERVAL 1 DAY DELETE
 SETTINGS ttl_only_drop_parts = 1, index_granularity = 8192;
-CREATE MATERIALIZED VIEW IF NOT EXISTS http_logs_mv
-TO http_logs
-AS
-SELECT
-    generateUUIDv4() AS log_id,
-    timestamp,
-    fields['http_method'] AS method,
-    fields['http_path'] AS path,
-    toUInt16OrZero(fields['http_status']) AS status_code,
-    toUInt64OrZero(fields['http_size']) AS response_size,
-    fields['http_ip'] AS ip_address,
-    fields['http_ua'] AS user_agent,
-    service_name,
-    container_id
-FROM logs
-WHERE service_name = 'nginx'
-  AND mapContains(fields, 'http_method')
-  AND fields['http_method'] != '';
 SQL
+    # http_logs_mv was just dropped above because it pointed at the old
+    # `logs` table's UUID. Re-source the migration file instead of
+    # embedding a second copy of its DDL here: a duplicate copy is what let
+    # this view silently drift out of sync with 003 for ~4 weeks after the
+    # nginx -> plecto-proxy cutover (003 alone was fixed, but this file's
+    # own copy ran after the migrations loop and always won).
+    echo "Re-applying http_logs_mv from migrations/003_create_http_logs_mv.sql..."
+    clickhouse-client --user "${CLICKHOUSE_USER}" --password "$(cat /run/secrets/clickhouse_password)" \
+        --database "${CLICKHOUSE_DB}" --multiquery < /migrations/003_create_http_logs_mv.sql
     echo "'logs' table rebuilt with date-aligned partition."
     ;;
 esac
