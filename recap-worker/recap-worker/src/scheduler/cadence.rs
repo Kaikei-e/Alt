@@ -8,9 +8,8 @@ pub(crate) struct DailyCadence {
 
 impl DailyCadence {
     pub(crate) fn new(tz: FixedOffset, hour: u32, minute: u32) -> Result<Self, String> {
-        let target = NaiveTime::from_hms_opt(hour, minute, 0).ok_or_else(|| {
-            format!("invalid time: {hour:02}:{minute:02}")
-        })?;
+        let target = NaiveTime::from_hms_opt(hour, minute, 0)
+            .ok_or_else(|| format!("invalid time: {hour:02}:{minute:02}"))?;
         Ok(Self { tz, target })
     }
 

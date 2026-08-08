@@ -897,3 +897,326 @@ async fn update_job_status_with_history_records_error_reason() -> anyhow::Result
 
     Ok(())
 }
+
+// ============================================================================
+// Notification outbox producer tests
+// ============================================================================
+
+/// Mirrors `recap-migration-atlas/migrations/20260808000100_create_notification_outbox.sql`
+/// so the suite can run against a database that has not had the migration
+/// applied yet, matching the `CREATE TABLE IF NOT EXISTS` convention the rest
+/// of this file uses.
+async fn setup_notification_outbox_table(pool: &PgPool) -> anyhow::Result<()> {
+    // `setup_job_tables` predates the user-scoped recap job, so top up the
+    // column the producer reads rather than widening a helper every other
+    // test in this file already depends on.
+    pool.execute("ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS user_id UUID;")
+        .await?;
+    pool.execute(
+        r"
+        CREATE TABLE IF NOT EXISTS notification_outbox (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            dedupe_key      TEXT NOT NULL UNIQUE,
+            user_id         UUID NOT NULL,
+            kind            TEXT NOT NULL,
+            payload         JSONB NOT NULL,
+            occurred_at     TIMESTAMPTZ NOT NULL,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+            state           TEXT NOT NULL DEFAULT 'pending'
+                              CHECK (state IN ('pending', 'forwarding', 'forwarded', 'dead')),
+            attempts        INT NOT NULL DEFAULT 0,
+            next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+            locked_by       TEXT,
+            last_error      TEXT,
+            forwarded_at    TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS notification_outbox_claim_idx
+            ON notification_outbox (next_attempt_at, id)
+            WHERE state IN ('pending', 'forwarding');
+        ",
+    )
+    .await?;
+    Ok(())
+}
+
+/// The outbox only provides its guarantee when the notification row and the
+/// completion share one commit. Asserting that means driving the completion
+/// inside a transaction the test controls: both rows must be visible before
+/// the commit, and rolling back must take both away. A producer that opened
+/// its own connection would leave the outbox row behind here, which is the
+/// dual write the outbox pattern exists to remove.
+#[tokio::test]
+async fn recap_completion_enqueues_outbox_row_in_the_same_transaction() -> anyhow::Result<()> {
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await?;
+    setup_job_tables(&pool).await?;
+    setup_status_history_tables(&pool).await?;
+    setup_notification_outbox_table(&pool).await?;
+
+    let job_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let dedupe_key = format!("recap:{job_id}");
+
+    sqlx::query(
+        r"INSERT INTO recap_jobs (job_id, status, kicked_at, updated_at, user_id)
+          VALUES ($1, 'pending', NOW(), NOW(), $2)",
+    )
+    .bind(job_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await?;
+
+    let mut tx = pool.begin().await?;
+    super::job::RecapDao::update_job_status_with_history_tx(
+        &mut tx,
+        job_id,
+        JobStatus::Completed,
+        Some("persist"),
+        None,
+    )
+    .await?;
+
+    let job_row = sqlx::query("SELECT status, updated_at FROM recap_jobs WHERE job_id = $1")
+        .bind(job_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    let status: String = job_row.get("status");
+    assert_eq!(status, "completed");
+    let completed_at: chrono::DateTime<Utc> = job_row.get("updated_at");
+
+    let outbox_row = sqlx::query(
+        r"SELECT user_id, kind, payload, occurred_at, state, attempts
+          FROM notification_outbox WHERE dedupe_key = $1",
+    )
+    .bind(&dedupe_key)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let outbox_user_id: Uuid = outbox_row.get("user_id");
+    assert_eq!(
+        outbox_user_id, user_id,
+        "the notification belongs to whoever owns the recap"
+    );
+    let kind: String = outbox_row.get("kind");
+    assert_eq!(kind, "recap_ready");
+    let state: String = outbox_row.get("state");
+    assert_eq!(state, "pending");
+    let attempts: i32 = outbox_row.get("attempts");
+    assert_eq!(attempts, 0);
+
+    let occurred_at: chrono::DateTime<Utc> = outbox_row.get("occurred_at");
+    assert_eq!(
+        occurred_at, completed_at,
+        "occurred_at must be the completion the row describes, not a second clock read"
+    );
+
+    let payload: Value = outbox_row.get("payload");
+    assert_eq!(
+        payload.get("kind").and_then(Value::as_str),
+        Some("recap_ready")
+    );
+    assert_eq!(payload.get("url").and_then(Value::as_str), Some("/recap"));
+    assert_eq!(
+        payload.as_object().map(serde_json::Map::len),
+        Some(2),
+        "the payload is a signal to come and look; recap text must never ride along: {payload}"
+    );
+
+    tx.rollback().await?;
+
+    let after_status: String = sqlx::query("SELECT status FROM recap_jobs WHERE job_id = $1")
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await?
+        .get("status");
+    assert_eq!(
+        after_status, "pending",
+        "rolling back must undo the completion"
+    );
+
+    let orphan_count: i64 =
+        sqlx::query("SELECT COUNT(*) as count FROM notification_outbox WHERE dedupe_key = $1")
+            .bind(&dedupe_key)
+            .fetch_one(&pool)
+            .await?
+            .get("count");
+    assert_eq!(
+        orphan_count, 0,
+        "a notification survived a rolled-back completion: the enqueue is not in the same transaction"
+    );
+
+    sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .bind(job_id)
+        .execute(&pool)
+        .await?;
+    Ok(())
+}
+
+/// A retry of the completion must land on the same `dedupe_key`, so the second
+/// commit is a no-op rather than a second notification. Nothing downstream can
+/// recover from a per-attempt key: the provider collapses duplicates on the key
+/// it is given.
+#[tokio::test]
+async fn recap_completion_enqueue_is_idempotent_across_retries() -> anyhow::Result<()> {
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await?;
+    setup_job_tables(&pool).await?;
+    setup_status_history_tables(&pool).await?;
+    setup_notification_outbox_table(&pool).await?;
+    let dao = UnifiedDao::new(pool.clone());
+
+    let job_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let dedupe_key = format!("recap:{job_id}");
+
+    sqlx::query(
+        r"INSERT INTO recap_jobs (job_id, status, kicked_at, updated_at, user_id)
+          VALUES ($1, 'pending', NOW(), NOW(), $2)",
+    )
+    .bind(job_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await?;
+
+    dao.update_job_status_with_history(job_id, JobStatus::Completed, Some("persist"), None)
+        .await?;
+    dao.update_job_status_with_history(job_id, JobStatus::Completed, Some("persist"), None)
+        .await?;
+
+    let count: i64 =
+        sqlx::query("SELECT COUNT(*) as count FROM notification_outbox WHERE dedupe_key = $1")
+            .bind(&dedupe_key)
+            .fetch_one(&pool)
+            .await?
+            .get("count");
+    assert_eq!(
+        count, 1,
+        "a re-run of the completion must not fan out twice"
+    );
+
+    sqlx::query("DELETE FROM notification_outbox WHERE dedupe_key = $1")
+        .bind(&dedupe_key)
+        .execute(&pool)
+        .await?;
+    sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .bind(job_id)
+        .execute(&pool)
+        .await?;
+    Ok(())
+}
+
+/// A batch recap with no owning user has nobody to notify. Enqueuing anyway
+/// would need a user_id the row does not have, and the column is NOT NULL for
+/// exactly that reason — so the completion still commits, with no notification.
+#[tokio::test]
+async fn recap_completion_without_user_enqueues_nothing() -> anyhow::Result<()> {
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await?;
+    setup_job_tables(&pool).await?;
+    setup_status_history_tables(&pool).await?;
+    setup_notification_outbox_table(&pool).await?;
+    let dao = UnifiedDao::new(pool.clone());
+
+    let job_id = Uuid::new_v4();
+    let dedupe_key = format!("recap:{job_id}");
+
+    sqlx::query(
+        r"INSERT INTO recap_jobs (job_id, status, kicked_at, updated_at)
+          VALUES ($1, 'pending', NOW(), NOW())",
+    )
+    .bind(job_id)
+    .execute(&pool)
+    .await?;
+
+    dao.update_job_status_with_history(job_id, JobStatus::Completed, Some("persist"), None)
+        .await?;
+
+    let status: String = sqlx::query("SELECT status FROM recap_jobs WHERE job_id = $1")
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await?
+        .get("status");
+    assert_eq!(
+        status, "completed",
+        "the completion itself must still commit"
+    );
+
+    let count: i64 =
+        sqlx::query("SELECT COUNT(*) as count FROM notification_outbox WHERE dedupe_key = $1")
+            .bind(&dedupe_key)
+            .fetch_one(&pool)
+            .await?
+            .get("count");
+    assert_eq!(count, 0);
+
+    sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .bind(job_id)
+        .execute(&pool)
+        .await?;
+    Ok(())
+}
+
+/// Only a completion is a reason to notify. A job moving to `running` or
+/// `failed` must leave the outbox untouched, otherwise the user is pinged to
+/// come and look at a recap that is not there.
+#[tokio::test]
+async fn non_completion_transitions_enqueue_nothing() -> anyhow::Result<()> {
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await?;
+    setup_job_tables(&pool).await?;
+    setup_status_history_tables(&pool).await?;
+    setup_notification_outbox_table(&pool).await?;
+    let dao = UnifiedDao::new(pool.clone());
+
+    let job_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let dedupe_key = format!("recap:{job_id}");
+
+    sqlx::query(
+        r"INSERT INTO recap_jobs (job_id, status, kicked_at, updated_at, user_id)
+          VALUES ($1, 'pending', NOW(), NOW(), $2)",
+    )
+    .bind(job_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await?;
+
+    dao.update_job_status_with_history(job_id, JobStatus::Running, Some("fetch"), None)
+        .await?;
+    dao.update_job_status_with_history(job_id, JobStatus::Failed, Some("dispatch"), Some("boom"))
+        .await?;
+
+    let count: i64 =
+        sqlx::query("SELECT COUNT(*) as count FROM notification_outbox WHERE dedupe_key = $1")
+            .bind(&dedupe_key)
+            .fetch_one(&pool)
+            .await?
+            .get("count");
+    assert_eq!(count, 0);
+
+    sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .bind(job_id)
+        .execute(&pool)
+        .await?;
+    Ok(())
+}

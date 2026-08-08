@@ -6,6 +6,7 @@ pub mod genre_learning;
 pub mod job;
 pub mod metrics;
 pub mod morning;
+pub mod notification_outbox;
 pub mod output;
 pub mod pulse;
 pub mod stage;

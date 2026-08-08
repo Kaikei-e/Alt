@@ -109,6 +109,41 @@ fn spawn_shutdown_signal_task(token: CancellationToken) {
     });
 }
 
+/// Bind the mTLS listener when `MTLS_ENFORCE` asks for it.
+///
+/// Fail-closed: a TLS config that is requested but unloadable refuses startup
+/// rather than serving the same router over plaintext only. The plaintext
+/// listener stays up either way, so dev stacks without step-ca keep working.
+fn spawn_mtls_listener(
+    router: axum::Router,
+    handle: axum_server::Handle<std::net::SocketAddr>,
+) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
+    let Some(server_config) = recap_worker::tls::load_server_tls_config().inspect_err(|e| {
+        error!(error = %e, "failed to load mTLS config (fail-closed); refusing to start");
+    })?
+    else {
+        info!("MTLS_ENFORCE!=true — mTLS listener disabled");
+        return Ok(None);
+    };
+
+    let mtls_port = env::var("MTLS_PORT").unwrap_or_else(|_| "9443".to_string());
+    let mtls_addr: std::net::SocketAddr = format!("0.0.0.0:{mtls_port}")
+        .parse()
+        .with_context(|| format!("parse mTLS bind addr for port {mtls_port}"))?;
+    info!(%mtls_addr, "mTLS listener enabled");
+
+    Ok(Some(tokio::spawn(async move {
+        let tls_cfg = axum_server::tls_rustls::RustlsConfig::from_config(server_config);
+        if let Err(e) = axum_server::bind_rustls(mtls_addr, tls_cfg)
+            .handle(handle)
+            .serve(router.into_make_service())
+            .await
+        {
+            error!(error = %e, "mTLS server exited with error");
+        }
+    })))
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Install rustls default crypto provider (required by rustls 0.23 when
@@ -183,6 +218,13 @@ async fn main() -> anyhow::Result<()> {
     } else {
         info!("morning daemon disabled (set MORNING_DAEMON_ENABLED=true to enable)");
     }
+
+    // Carries completed-recap notifications from recap-db's notification_outbox
+    // to alt-data-hub. Without it the outbox accumulates rows nobody forwards,
+    // so the handle is awaited at shutdown rather than dropped: an aborted
+    // forward would leave a claimed row waiting out its whole lease.
+    let notification_relay_task = registry.spawn_notification_relay(shutdown_token.clone());
+
     let router = build_router(registry);
 
     // When MTLS_ENFORCE=true, bind the axum router to a rustls-backed
@@ -190,35 +232,7 @@ async fn main() -> anyhow::Result<()> {
     // signed by the alt-CA. The existing plaintext listener stays up so
     // dev/test stacks without step-ca keep working.
     let mtls_handle = axum_server::Handle::new();
-    let mtls_listener_task = match recap_worker::tls::load_server_tls_config() {
-        Ok(Some(server_config)) => {
-            let mtls_port = std::env::var("MTLS_PORT").unwrap_or_else(|_| "9443".to_string());
-            let mtls_addr: std::net::SocketAddr = format!("0.0.0.0:{mtls_port}")
-                .parse()
-                .with_context(|| format!("parse mTLS bind addr for port {mtls_port}"))?;
-            let mtls_router = router.clone();
-            let handle = mtls_handle.clone();
-            info!(%mtls_addr, "mTLS listener enabled");
-            Some(tokio::spawn(async move {
-                let tls_cfg = axum_server::tls_rustls::RustlsConfig::from_config(server_config);
-                if let Err(e) = axum_server::bind_rustls(mtls_addr, tls_cfg)
-                    .handle(handle)
-                    .serve(mtls_router.into_make_service())
-                    .await
-                {
-                    error!(error = %e, "mTLS server exited with error");
-                }
-            }))
-        }
-        Ok(None) => {
-            info!("MTLS_ENFORCE!=true — mTLS listener disabled");
-            None
-        }
-        Err(e) => {
-            error!(error = %e, "failed to load mTLS config (fail-closed); refusing to start");
-            return Err(e);
-        }
-    };
+    let mtls_listener_task = spawn_mtls_listener(router.clone(), mtls_handle.clone())?;
 
     let listener = TcpListener::bind(bind_addr)
         .await
@@ -244,6 +258,9 @@ async fn main() -> anyhow::Result<()> {
     shutdown_token.cancel();
     mtls_handle.graceful_shutdown(Some(Duration::from_secs(10)));
     if let Some(task) = mtls_listener_task {
+        let _ = task.await;
+    }
+    if let Some(task) = notification_relay_task {
         let _ = task.await;
     }
 

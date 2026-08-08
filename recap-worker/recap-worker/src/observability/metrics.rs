@@ -60,6 +60,12 @@ pub struct Metrics {
     // ゲージ
     pub active_jobs: Gauge,
     pub queue_size: Gauge,
+
+    // Notification outbox relay. Named identically across the three
+    // producers (pre-processor, acolyte-orchestrator, recap-worker) so one
+    // alert covers all of them.
+    pub notification_outbox_oldest_pending_age: Gauge,
+    pub notification_outbox_last_tick_timestamp: Gauge,
 }
 
 impl Metrics {
@@ -282,6 +288,20 @@ impl Metrics {
             queue_size: register_gauge_with_registry!(
                 "recap_queue_size",
                 "Number of jobs in queue",
+                registry
+            )?,
+            // Set on every relay tick, including the tick that finds an empty
+            // backlog: a gauge nobody writes keeps serving its last value, so
+            // skipping the zero would make a wedged relay indistinguishable
+            // from an idle one.
+            notification_outbox_oldest_pending_age: register_gauge_with_registry!(
+                "notification_outbox_oldest_pending_age_seconds",
+                "Age of the oldest notification still waiting to be forwarded",
+                registry
+            )?,
+            notification_outbox_last_tick_timestamp: register_gauge_with_registry!(
+                "notification_outbox_last_tick_timestamp_seconds",
+                "Unix time of the last notification outbox relay tick",
                 registry
             )?,
         })

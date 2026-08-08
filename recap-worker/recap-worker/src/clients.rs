@@ -1,4 +1,5 @@
 pub(crate) mod alt_backend;
+pub(crate) mod datahub;
 pub(crate) mod knowledge_sovereign;
 pub(crate) mod mtls;
 pub(crate) mod news_creator;

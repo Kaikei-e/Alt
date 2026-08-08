@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     api,
-    clients::{NewsCreatorClient, SubworkerClient},
+    clients::{NewsCreatorClient, SubworkerClient, datahub::DataHubClient},
     config::Config,
+    notification::{NotificationRelay, RelayConfig},
     observability::Telemetry,
     pipeline::PipelineOrchestrator,
     queue::{ClassificationJobQueue, QueueStore},
@@ -28,6 +31,11 @@ pub struct ComponentRegistry {
     subworker_client: Arc<SubworkerClient>,
     recap_dao: Arc<dyn RecapDao>,
     recap_pool: sqlx::PgPool,
+    /// `None` only when `RECAP_NOTIFICATION_RELAY_ENABLED` explicitly turned
+    /// it off. A construction failure fails startup instead of landing here,
+    /// so "nobody wired the relay" can never masquerade as "it is off on
+    /// purpose" (CLAUDE.md rule 8).
+    notification_relay: Option<Arc<NotificationRelay>>,
 }
 
 impl AppState {
@@ -80,22 +88,8 @@ impl ComponentRegistry {
         let mtls_paths = crate::clients::mtls::MtlsPaths::from_env()
             .context("resolving mTLS env for outbound clients")?;
 
-        let news_creator_client = Arc::new(if let Some(paths) = mtls_paths.as_ref() {
-            let client = crate::clients::mtls::build_mtls_client(
-                paths,
-                std::time::Duration::from_secs(5),
-                config.llm_summary_timeout(),
-            )?;
-            NewsCreatorClient::new_with_client(
-                config.news_creator_base_url(),
-                config.llm_summary_timeout(),
-                client,
-            )
-            .await?
-        } else {
-            NewsCreatorClient::new(config.news_creator_base_url(), config.llm_summary_timeout())
-                .await?
-        });
+        let news_creator_client =
+            Arc::new(build_news_creator_client(&config, mtls_paths.as_ref()).await?);
 
         let subworker_client = Arc::new(
             if let Some(paths) = mtls_paths.as_ref() {
@@ -165,6 +159,13 @@ impl ComponentRegistry {
             Arc::clone(&subworker_client),
         );
 
+        let notification_relay = build_notification_relay(
+            &config,
+            mtls_paths.as_ref(),
+            recap_pool.clone(),
+            telemetry.metrics_arc(),
+        )?;
+
         Ok(Self {
             config,
             telemetry,
@@ -173,7 +174,19 @@ impl ComponentRegistry {
             subworker_client,
             recap_dao,
             recap_pool,
+            notification_relay,
         })
+    }
+
+    /// Start the notification outbox relay, if it is enabled.
+    ///
+    /// Returns the task handle so the caller can await it during shutdown
+    /// rather than letting an in-flight forward be aborted mid-write.
+    /// `None` means the relay is off by explicit configuration — which the
+    /// startup log already said out loud.
+    pub fn spawn_notification_relay(&self, cancel: CancellationToken) -> Option<JoinHandle<()>> {
+        let relay = Arc::clone(self.notification_relay.as_ref()?);
+        Some(tokio::spawn(async move { relay.run(cancel).await }))
     }
 
     #[must_use]
@@ -190,6 +203,111 @@ impl ComponentRegistry {
     pub fn telemetry(&self) -> &Telemetry {
         &self.telemetry
     }
+}
+
+async fn build_news_creator_client(
+    config: &Config,
+    mtls_paths: Option<&crate::clients::mtls::MtlsPaths>,
+) -> Result<NewsCreatorClient> {
+    let Some(paths) = mtls_paths else {
+        return Ok(NewsCreatorClient::new(
+            config.news_creator_base_url(),
+            config.llm_summary_timeout(),
+        )
+        .await?);
+    };
+    let client = crate::clients::mtls::build_mtls_client(
+        paths,
+        std::time::Duration::from_secs(5),
+        config.llm_summary_timeout(),
+    )?;
+    Ok(NewsCreatorClient::new_with_client(
+        config.news_creator_base_url(),
+        config.llm_summary_timeout(),
+        client,
+    )
+    .await?)
+}
+
+/// Env flag deciding whether the outbox relay runs. Read strictly: an
+/// unparseable value fails startup rather than silently resolving to a
+/// default, because "the relay is off" and "the operator fat-fingered the
+/// flag" must not look the same from the outside.
+const RELAY_ENABLED_ENV: &str = "RECAP_NOTIFICATION_RELAY_ENABLED";
+
+fn relay_enabled() -> Result<bool> {
+    let Ok(raw) = std::env::var(RELAY_ENABLED_ENV) else {
+        return Ok(true);
+    };
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        other => Err(anyhow!(
+            "{RELAY_ENABLED_ENV} must be a boolean, got {other:?}"
+        )),
+    }
+}
+
+/// Build the relay, or state plainly that it is disabled.
+///
+/// The data-hub URL resolution mirrors `pipeline::orchestrator`: under
+/// `MTLS_ENFORCE` the east-west URL (`ALT_BACKEND_MTLS_URL`, pointed at
+/// alt-data-hub since ADR-000954 Wave 2-A) wins, otherwise the plaintext base
+/// URL. Building the client is fail-closed — an enabled relay that cannot
+/// construct its client is a startup failure, never a quiet `None`.
+fn build_notification_relay(
+    config: &Config,
+    mtls_paths: Option<&crate::clients::mtls::MtlsPaths>,
+    pool: sqlx::PgPool,
+    metrics: Arc<crate::observability::metrics::Metrics>,
+) -> Result<Option<Arc<NotificationRelay>>> {
+    if !relay_enabled()? {
+        tracing::info!(
+            "notification_outbox_relay_disabled: {RELAY_ENABLED_ENV} is off; completed \
+             recaps will enqueue outbox rows that nothing forwards"
+        );
+        return Ok(None);
+    }
+
+    let base_url = if mtls_paths.is_some() {
+        std::env::var("ALT_BACKEND_MTLS_URL")
+            .unwrap_or_else(|_| config.alt_backend_base_url().to_string())
+    } else {
+        config.alt_backend_base_url().to_string()
+    };
+
+    let client = if let Some(paths) = mtls_paths {
+        let http = crate::clients::mtls::build_mtls_client(
+            paths,
+            config.alt_backend_connect_timeout(),
+            config.alt_backend_total_timeout(),
+        )
+        .context("failed to build alt-data-hub mTLS client for the notification relay")?;
+        DataHubClient::new_with_client(base_url, http)
+    } else {
+        DataHubClient::new(
+            base_url,
+            config.alt_backend_connect_timeout(),
+            config.alt_backend_total_timeout(),
+        )
+    }
+    .context("failed to build alt-data-hub client for the notification relay")?;
+
+    // Identifies the lease holder in `locked_by`; the pid distinguishes two
+    // relays that shared a hostname across a restart.
+    let locked_by = format!(
+        "{}:{}",
+        std::env::var("HOSTNAME").unwrap_or_else(|_| "recap-worker".to_string()),
+        std::process::id()
+    );
+
+    Ok(Some(Arc::new(NotificationRelay::new(
+        pool,
+        Arc::new(client),
+        metrics,
+        locked_by,
+        RelayConfig::default(),
+    ))))
 }
 
 pub fn build_router(registry: ComponentRegistry) -> Router {

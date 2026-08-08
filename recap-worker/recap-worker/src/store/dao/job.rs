@@ -3,6 +3,7 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use super::JobStatus;
+use super::notification_outbox::NotificationOutboxDao;
 use super::types::{JobStatusTransition, StatusTransitionActor};
 use crate::util::idempotency::try_acquire_job_lock;
 
@@ -407,6 +408,30 @@ impl RecapDao {
             .await
             .map_err(|e| RecapError::Db(format!("failed to begin transaction: {e}")))?;
 
+        Self::update_job_status_with_history_tx(&mut tx, job_id, status, last_stage, reason)
+            .await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to commit transaction: {e}")))?;
+        Ok(())
+    }
+
+    /// Transaction-bound body of [`RecapDao::update_job_status_with_history`].
+    ///
+    /// Split out so the caller owns the unit of commit. The notification the
+    /// completion produces is written here, in this transaction, and that is
+    /// the entire outbox guarantee: the user is told the recap is ready if and
+    /// only if the recap actually completed. Enqueuing from a second
+    /// connection after the commit would be a dual write, and the
+    /// notification would vanish whenever that second write failed.
+    pub(crate) async fn update_job_status_with_history_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        job_id: Uuid,
+        status: JobStatus,
+        last_stage: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<()> {
         // 1. Insert to immutable history table
         sqlx::query(
             r"
@@ -418,7 +443,7 @@ impl RecapDao {
         .bind(status.as_ref())
         .bind(last_stage)
         .bind(reason)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
         .map_err(|e| {
             RecapError::Db(format!(
@@ -426,36 +451,53 @@ impl RecapDao {
             ))
         })?;
 
-        // 2. Update denormalized status on recap_jobs (for backward compatibility)
-        let result = sqlx::query(
+        // 2. Update denormalized status on recap_jobs (for backward compatibility).
+        //    `RETURNING` carries the owning user and the completion instant
+        //    back out so step 3 describes the transition this statement just
+        //    made, rather than re-reading either from a second query.
+        let updated = sqlx::query(
             r"
             UPDATE recap_jobs
             SET status = $2,
                 last_stage = COALESCE($3, last_stage),
                 updated_at = NOW()
             WHERE job_id = $1
+            RETURNING user_id, updated_at
             ",
         )
         .bind(job_id)
         .bind(status.as_ref())
         .bind(last_stage)
-        .execute(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await
         .map_err(|e| RecapError::Db(format!("failed to update job status: {e}")))?;
 
-        if result.rows_affected() == 0 {
+        let Some(row) = updated else {
             tracing::warn!(
                 %job_id,
                 ?status,
                 ?last_stage,
                 "update_job_status_with_history affected 0 rows - job may not exist"
             );
+            return Ok(());
+        };
+
+        // 3. A completed recap is the one transition worth waking the user
+        //    for. `morning_completed` is the editorial projector's tick and
+        //    surfaces elsewhere, and running/failed have nothing to look at.
+        if !matches!(status, JobStatus::Completed) {
+            return Ok(());
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| RecapError::Db(format!("failed to commit transaction: {e}")))?;
-        Ok(())
+        // A batch recap with no owning user has nobody to notify; the
+        // completion still commits.
+        let user_id: Option<Uuid> = row.try_get("user_id")?;
+        let Some(user_id) = user_id else {
+            return Ok(());
+        };
+        let completed_at: chrono::DateTime<chrono::Utc> = row.try_get("updated_at")?;
+
+        NotificationOutboxDao::enqueue_recap_ready(tx, job_id, user_id, completed_at).await
     }
 
     /// 指定されたジョブのステータス履歴を取得する。

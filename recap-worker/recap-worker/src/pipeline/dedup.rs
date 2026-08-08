@@ -269,9 +269,8 @@ impl DedupStage for HashDedupStage {
         let mut articles = corpus.articles;
         // Timestamp prioritized: Sort by published_at descending (newest first).
         // None sorts as oldest so dated articles win representative selection.
-        articles.sort_by_key(|b| {
-            std::cmp::Reverse(b.published_at.unwrap_or(DateTime::<Utc>::MIN_UTC))
-        });
+        articles
+            .sort_by_key(|b| std::cmp::Reverse(b.published_at.unwrap_or(DateTime::<Utc>::MIN_UTC)));
 
         let signatures = build_signatures(&articles, self.window_size);
 

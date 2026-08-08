@@ -14,6 +14,7 @@ pub mod evaluation;
 // `classification::tokenizer`, so it doesn't need to be reachable
 // crate-externally.
 pub(crate) mod language_detection;
+pub(crate) mod notification;
 pub mod observability;
 pub mod pipeline;
 pub(crate) mod queue;
