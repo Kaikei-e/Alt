@@ -8,7 +8,8 @@ no way back short of recreating the container.
 """
 
 import asyncio
-from typing import cast
+import json
+from typing import Any, cast
 
 import pytest
 import redis.asyncio as redis
@@ -144,3 +145,249 @@ def test_start_gives_the_redis_client_a_socket_timeout_above_block_timeout(
     socket_timeout = captured_kwargs.get("socket_timeout")
     assert isinstance(socket_timeout, (int, float)), "socket_timeout must be passed explicitly"
     assert socket_timeout > config.block_timeout_ms / 1000
+
+
+@pytest.mark.parametrize("block_timeout_ms", [1000, 5000, 30000])
+def test_socket_timeout_margin_is_real_and_bounded_at_any_block_timeout(
+    monkeypatch: pytest.MonkeyPatch, block_timeout_ms: int
+) -> None:
+    """The socket deadline must clear block_timeout_ms by enough to absorb
+    network/scheduling jitter (a sub-second margin re-creates the intermittent
+    idle TimeoutError noise this fix removed) while staying close enough that a
+    genuinely hung Redis still surfaces within tens of seconds of the block
+    window, not hours (a ms-as-seconds slip makes it ~83 minutes). Parametrized
+    across the tags cadence (1s), the articles default (5s), and an operator
+    raising CONSUMER_BLOCK_TIMEOUT_MS (30s) -- a hardcoded socket timeout
+    passes at the defaults and reintroduces the outage at the last one.
+    """
+    captured_kwargs: dict[str, Any] = {}
+
+    def fake_from_url(url: str, **kwargs: Any) -> _FakeClientForStart:
+        captured_kwargs.update(kwargs)
+        return _FakeClientForStart()
+
+    monkeypatch.setattr(redis, "from_url", fake_from_url)
+
+    config = ConsumerConfig(enabled=True, block_timeout_ms=block_timeout_ms)
+    consumer = StreamConsumer(config, handler=EventHandler())
+    consumer.stop()
+
+    asyncio.run(consumer.start())
+
+    margin = captured_kwargs["socket_timeout"] - block_timeout_ms / 1000
+    assert margin >= 1.0, "margin must exceed worst-case reply round-trip jitter"
+    assert margin <= 60.0, "a hung Redis must surface soon after the block window"
+
+
+class _BlockRecordingClient:
+    """Fake for a full start(): records what XREADGROUP is actually given."""
+
+    def __init__(self, stop: Any) -> None:
+        self._stop = stop
+        self.xreadgroup_kwargs: dict[str, Any] | None = None
+
+    async def xgroup_create(self, *args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+
+    async def xreadgroup(self, **kwargs: Any) -> list[Any]:
+        self.xreadgroup_kwargs = kwargs
+        self._stop()
+        return []
+
+    async def xautoclaim(self, **kwargs: Any) -> tuple[str, list[Any], int]:
+        del kwargs
+        return ("0-0", [], 0)
+
+    async def close(self) -> None:
+        pass
+
+
+def test_socket_deadline_clears_the_block_the_server_is_actually_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The invariant lives between two call sites: the socket_timeout handed to
+    from_url and the `block` handed to XREADGROUP. Asserting each against the
+    config would let them drift apart (e.g. a hardcoded block), so this pins
+    the deadline against the block value the server is actually sent.
+    """
+    client_by_url: dict[str, _BlockRecordingClient] = {}
+    captured_kwargs: dict[str, Any] = {}
+
+    config = ConsumerConfig(enabled=True, block_timeout_ms=5000, reclaim_interval_seconds=0.01)
+    consumer = StreamConsumer(config, handler=EventHandler())
+    client = _BlockRecordingClient(consumer.stop)
+
+    def fake_from_url(url: str, **kwargs: Any) -> _BlockRecordingClient:
+        captured_kwargs.update(kwargs)
+        client_by_url[url] = client
+        return client
+
+    monkeypatch.setattr(redis, "from_url", fake_from_url)
+
+    asyncio.run(consumer.start())
+
+    assert client.xreadgroup_kwargs is not None, "consume loop never polled"
+    block_ms = client.xreadgroup_kwargs["block"]
+    assert captured_kwargs["socket_timeout"] > block_ms / 1000
+
+
+class _ScriptedReadClient:
+    """Replays scripted XREADGROUP batches and records XACK calls."""
+
+    def __init__(self, batches: list[list[Any]]) -> None:
+        self.batches = list(batches)
+        self.acks: list[tuple[str, str, str]] = []
+
+    async def xreadgroup(self, **kwargs: Any) -> list[Any]:
+        del kwargs
+        return self.batches.pop(0) if self.batches else []
+
+    async def xack(self, stream: str, group: str, message_id: str) -> None:
+        self.acks.append((stream, group, message_id))
+
+
+class _RecordingHandler(EventHandler):
+    def __init__(self, error: Exception | None = None) -> None:
+        self.events: list[Any] = []
+        self._error = error
+
+    async def handle_event(self, event: Any) -> None:
+        self.events.append(event)
+        if self._error is not None:
+            raise self._error
+
+
+def _delivery(message_id: str) -> list[Any]:
+    fields = {
+        "event_id": f"evt-{message_id}",
+        "event_type": "ArticleCreated",
+        "source": "pre-processor",
+        "payload": json.dumps({"article_id": "a1"}),
+    }
+    return [("alt:events:articles", [(message_id, fields)])]
+
+
+def test_delivered_message_is_handled_then_acked() -> None:
+    """An idle poll (empty read) must be a no-op, and a delivered message must
+    reach the handler and only then be XACKed -- the guard between the two is
+    exactly the branch a blocking read that times out client-side never got to
+    take during the outage.
+    """
+    config = ConsumerConfig(enabled=True)
+    handler = _RecordingHandler()
+    consumer = StreamConsumer(config, handler)
+    client = _ScriptedReadClient([[], _delivery("1-0")])
+    consumer.client = cast(redis.Redis, client)
+
+    asyncio.run(consumer._read_and_process())  # idle poll
+    assert handler.events == []
+    assert client.acks == []
+
+    asyncio.run(consumer._read_and_process())  # real delivery
+    assert [e.event_id for e in handler.events] == ["evt-1-0"]
+    assert client.acks == [(config.stream_key, config.group_name, "1-0")]
+
+
+def test_failed_message_is_left_pending_not_acked() -> None:
+    """At-least-once: a handler failure must leave the entry in the PEL for the
+    reclaim loop. ACKing it anyway silently drops the event (at-most-once).
+    """
+    config = ConsumerConfig(enabled=True)
+    handler = _RecordingHandler(error=RuntimeError("model not loaded"))
+    consumer = StreamConsumer(config, handler)
+    client = _ScriptedReadClient([_delivery("2-0")])
+    consumer.client = cast(redis.Redis, client)
+
+    asyncio.run(consumer._read_and_process())
+
+    assert len(handler.events) == 1, "the handler must still be attempted"
+    assert client.acks == []
+
+
+class _ClaimedClient:
+    """Serves one reclaimed entry and records XACK calls."""
+
+    def __init__(self, times_delivered: int = 1) -> None:
+        self.acks: list[tuple[str, str, str]] = []
+        self._times_delivered = times_delivered
+
+    async def xpending_range(self, *args: Any, **kwargs: Any) -> list[Any]:
+        del args, kwargs
+        return [{"times_delivered": self._times_delivered}]
+
+    async def xack(self, stream: str, group: str, message_id: str) -> None:
+        self.acks.append((stream, group, message_id))
+
+
+def test_reclaimed_message_is_acked_only_after_the_handler_succeeds() -> None:
+    """The reclaim path carries the same at-least-once obligation as the
+    delivery path, and it is the one that exists specifically so a crashed
+    consumer's entries are not lost. ACKing a reclaimed entry before or
+    regardless of the handler drops exactly the messages the loop was added
+    to rescue.
+    """
+    config = ConsumerConfig(enabled=True)
+    handler = _RecordingHandler(error=RuntimeError("model not loaded"))
+    consumer = StreamConsumer(config, handler)
+    client = _ClaimedClient()
+    consumer.client = cast(redis.Redis, client)
+
+    _stream, entries = _delivery("3-0")[0]
+    asyncio.run(consumer._process_claimed_messages(entries))
+
+    assert len(handler.events) == 1, "the handler must still be attempted"
+    assert client.acks == [], "a failed reclaim must leave the entry in the PEL"
+
+
+def test_reclaimed_message_is_acked_once_the_handler_succeeds() -> None:
+    """The companion to the above: a reclaimed entry that processes cleanly
+    must leave the PEL, or the reclaim loop re-serves it forever.
+    """
+    config = ConsumerConfig(enabled=True)
+    handler = _RecordingHandler()
+    consumer = StreamConsumer(config, handler)
+    client = _ClaimedClient()
+    consumer.client = cast(redis.Redis, client)
+
+    _stream, entries = _delivery("4-0")[0]
+    asyncio.run(consumer._process_claimed_messages(entries))
+
+    assert len(handler.events) == 1
+    assert client.acks == [(config.stream_key, config.group_name, "4-0")]
+
+
+def test_consume_loop_survives_an_error_and_backs_off_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A raising poll (e.g. TimeoutError from a genuinely hung Redis) must not
+    kill the loop, and must back off before the next poll -- without the
+    backoff, a persistent error becomes a hot spin flooding the log, which is
+    the noise signature this incident was diagnosed by. An idle empty poll must
+    NOT back off, so exactly one sleep is expected here.
+    """
+    delays: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    config = ConsumerConfig(enabled=True)
+    consumer = StreamConsumer(config, handler=EventHandler())
+    calls = {"n": 0}
+
+    class _FlakyClient:
+        async def xreadgroup(self, **kwargs: Any) -> list[Any]:
+            del kwargs
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise redis.TimeoutError("Timeout reading from socket")
+            consumer.stop()
+            return []
+
+    consumer.client = cast(redis.Redis, _FlakyClient())
+
+    asyncio.run(consumer._consume_loop())
+
+    assert calls["n"] == 2, "the loop must poll again after an error"
+    assert delays == [1], "exactly one backoff: after the error, not after the idle poll"
