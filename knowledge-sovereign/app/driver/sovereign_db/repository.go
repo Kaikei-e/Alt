@@ -40,6 +40,15 @@ func NewRepository(pool PgxIface) *Repository {
 // ErrDismissTargetNotFound is returned when the dismiss target does not exist.
 var ErrDismissTargetNotFound = fmt.Errorf("dismiss target not found")
 
+// score_op values recognized by UpsertKnowledgeHomeItem's merge-safe UPSERT
+// (see the score CASE below). Mirrored by knowledge_home_projector's
+// scoreOpMax/scoreOpSet — duplicated rather than imported because driver/
+// must not depend on usecase/ (Clean Architecture layer direction).
+const (
+	scoreOpMax = "max"
+	scoreOpSet = "set"
+)
+
 // UpsertKnowledgeHomeItem inserts or updates a knowledge home item.
 func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.RawMessage) error {
 	var item struct {
@@ -55,7 +64,12 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 			Code   string `json:"code"`
 			Reason string `json:"reason"`
 		} `json:"why_reasons"`
-		Score             float64    `json:"score"`
+		Score float64 `json:"score"`
+		// ScoreOp is a pointer so a payload that omits the key entirely
+		// (nil) can be told apart from one that sets it to the empty
+		// string (a deliberate "leave score untouched", used by folds that
+		// never affect score — see the validation below).
+		ScoreOp           *string    `json:"score_op"`
 		FreshnessAt       *time.Time `json:"freshness_at"`
 		PublishedAt       *time.Time `json:"published_at"`
 		LastInteractedAt  *time.Time `json:"last_interacted_at"`
@@ -71,6 +85,26 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 	}
 	if err := json.Unmarshal(payload, &item); err != nil {
 		return fmt.Errorf("UpsertKnowledgeHomeItem: unmarshal: %w", err)
+	}
+
+	// score_op must be present and recognized. A payload that omits the key
+	// entirely comes from a caller unaware of the field (e.g. a producer
+	// built against an older schema) and cannot be told apart from one that
+	// deliberately chose "leave score untouched" — silently falling back to
+	// the latter would drop that caller's score writes forever with no
+	// error anywhere (Alt Rule 8: no silent fallback for an unwired write
+	// path). An unrecognized non-empty value is rejected the same way
+	// rather than falling through to "untouched", so a typo doesn't
+	// silently become a permanent no-op either.
+	if item.ScoreOp == nil {
+		return fmt.Errorf("UpsertKnowledgeHomeItem: score_op is required")
+	}
+	scoreOp := *item.ScoreOp
+	switch scoreOp {
+	case "", scoreOpMax, scoreOpSet:
+	default:
+		return fmt.Errorf("UpsertKnowledgeHomeItem: unrecognized score_op %q (want \"\", %q, or %q)",
+			scoreOp, scoreOpMax, scoreOpSet)
 	}
 
 	tags := item.Tags
@@ -111,6 +145,9 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 		 supersede_state, superseded_at, previous_ref_json, url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 		ON CONFLICT (user_id, item_key, projection_version) DO UPDATE SET
+		 -- $23 (score_op) is control metadata for the merge below, not a
+		 -- business fact — it has no knowledge_home_items column and is
+		 -- bound as a bare parameter rather than through EXCLUDED.
 		 -- Merge-safe upsert (memory feedback_merge_safe_upsert.md +
 		 -- .claude/rules/knowledge-home.md): "preserve previous on
 		 -- empty new" is encoded with COALESCE/NULLIF rather than
@@ -145,7 +182,19 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 				 ) AS merged
 			 )
 		 END,
-		 score = GREATEST(EXCLUDED.score, knowledge_home_items.score),
+		 -- Explicit per-write merge operator, not a blanket GREATEST: a
+		 -- floor-only merge can never let a fold legitimately lower a score
+		 -- (e.g. HomeItemOpened's suppressed 0.1 was unreachable once any
+		 -- higher score had ever been written for the item). $23 carries
+		 -- the fold's intent — 'set' overwrites unconditionally, 'max' keeps
+		 -- the floor semantics the baseline/boost folds rely on, anything
+		 -- else (including a fold that never touches score) leaves the
+		 -- stored value untouched.
+		 score = CASE
+			 WHEN $23 = 'set' THEN EXCLUDED.score
+			 WHEN $23 = 'max' THEN GREATEST(EXCLUDED.score, knowledge_home_items.score)
+			 ELSE knowledge_home_items.score
+		 END,
 		 freshness_at = COALESCE(EXCLUDED.freshness_at, knowledge_home_items.freshness_at),
 		 published_at = COALESCE(EXCLUDED.published_at, knowledge_home_items.published_at),
 		 last_interacted_at = COALESCE(EXCLUDED.last_interacted_at, knowledge_home_items.last_interacted_at),
@@ -172,6 +221,7 @@ func (r *Repository) UpsertKnowledgeHomeItem(ctx context.Context, payload json.R
 		item.FreshnessAt, item.PublishedAt, item.LastInteractedAt, item.GeneratedAt, item.UpdatedAt, item.DismissedAt,
 		item.ProjectionVersion, item.SummaryState,
 		supersedeState, item.SupersededAt, previousRefJSON, item.URL,
+		scoreOp,
 	)
 	if err != nil {
 		return fmt.Errorf("UpsertKnowledgeHomeItem: %w", err)

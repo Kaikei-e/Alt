@@ -43,6 +43,7 @@ type capturedHomeItem struct {
 		Reason string `json:"reason"`
 	} `json:"why_reasons"`
 	Score             float64    `json:"score"`
+	ScoreOp           string     `json:"score_op"`
 	FreshnessAt       *time.Time `json:"freshness_at"`
 	PublishedAt       *time.Time `json:"published_at"`
 	LastInteractedAt  *time.Time `json:"last_interacted_at"`
@@ -324,21 +325,6 @@ func homeEvent(seq int64, eventType, aggregateID string, occurredAt time.Time, t
 	}
 }
 
-// expectedFreshnessScore replicates the freshness decay formula from
-// alt-backend's projectArticleCreated so the test doesn't hardcode a magic
-// float literal that would silently drift from the documented formula.
-func expectedFreshnessScore(occurredAt, publishedAt time.Time) float64 {
-	hoursOld := occurredAt.Sub(publishedAt).Hours()
-	switch {
-	case hoursOld < 24:
-		return 1.0 - (hoursOld / 48.0)
-	case hoursOld > 0:
-		return 0.5 / (hoursOld / 24.0)
-	default:
-		return 1.0
-	}
-}
-
 // ── ArticleCreated ──
 
 func TestProjector_FoldsArticleCreated(t *testing.T) {
@@ -377,12 +363,55 @@ func TestProjector_FoldsArticleCreated(t *testing.T) {
 	assert.True(t, occurredAt.Equal(*item.FreshnessAt), "freshness_at must derive from event.OccurredAt, not wall clock")
 	assert.True(t, occurredAt.Equal(item.GeneratedAt), "generated_at must derive from event.OccurredAt")
 	assert.True(t, occurredAt.Equal(item.UpdatedAt), "updated_at must derive from event.OccurredAt")
-	assert.InDelta(t, expectedFreshnessScore(occurredAt, publishedAt), item.Score, 1e-9)
+	assert.Equal(t, 0.5, item.Score, "score must be a fixed quality baseline, not a freshness decay computed once at ingest")
+	assert.Equal(t, "max", item.ScoreOp, "a baseline quality score must only ever raise the stored floor, never overwrite a higher one")
 
 	digest, ok := repo.digests[user.String()]
 	require.True(t, ok, "ArticleCreated must upsert today_digest_view (new_articles/unsummarized_articles)")
 	assert.Equal(t, 1, digest.NewArticles)
 	assert.Equal(t, 1, digest.UnsummarizedArticles)
+}
+
+// TestProjector_ArticleCreated_ScoreIsIndependentOfIngestTimeStaleness pins
+// the fix for the frozen-ranking defect: the old formula computed a decay of
+// (event.OccurredAt - published_at) — i.e. how stale the article already was
+// AT INGEST — and baked that one-time snapshot into the stored score forever
+// (score merge only ever ratchets up, see repository.go). Two articles
+// ingested at the same instant must get the identical score regardless of
+// how old their published_at already was, because staleness-since-publish is
+// now a read-time concern (GetKnowledgeHomeItems), not a stored fact.
+func TestProjector_ArticleCreated_ScoreIsIndependentOfIngestTimeStaleness(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	occurredAt := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
+
+	freshArticle := uuid.New()
+	staleArticle := uuid.New()
+
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "ArticleCreated", freshArticle.String(), occurredAt, tenant, user, mustJSON(t, map[string]any{
+			"article_id":   freshArticle.String(),
+			"title":        "Published seconds ago",
+			"published_at": occurredAt.Add(-10 * time.Second).Format(time.RFC3339),
+			"url":          "https://example.com/fresh",
+		})),
+		homeEvent(2, "ArticleCreated", staleArticle.String(), occurredAt, tenant, user, mustJSON(t, map[string]any{
+			"article_id":   staleArticle.String(),
+			"title":        "Published 90 days ago",
+			"published_at": occurredAt.Add(-90 * 24 * time.Hour).Format(time.RFC3339),
+			"url":          "https://example.com/stale",
+		})),
+	}
+	repo := newFakeRepo(events)
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	fresh, ok := repo.homeItems[fmt.Sprintf("article:%s", freshArticle)]
+	require.True(t, ok)
+	stale, ok := repo.homeItems[fmt.Sprintf("article:%s", staleArticle)]
+	require.True(t, ok)
+	assert.Equal(t, fresh.Score, stale.Score,
+		"score must not depend on published_at's age at ingest time — that is a read-time ranking concern")
 }
 
 func TestProjector_ArticleCreated_TodayDigestFailureIsNonFatal(t *testing.T) {
@@ -493,6 +522,7 @@ func TestProjector_FoldsSummaryVersionCreated_UsesPayloadSummaryTextDirectly(t *
 	require.True(t, ok)
 	assert.Equal(t, longText, item.SummaryExcerpt, "summary_text from the payload must be used as-is (no alt-db GetSummaryVersionByID round trip, no truncation)")
 	assert.Equal(t, "ready", item.SummaryState)
+	assert.Equal(t, "max", item.ScoreOp, "a summary-ready boost must only ever raise the stored floor, never overwrite a higher one")
 	var codes []string
 	for _, r := range item.WhyReasons {
 		codes = append(codes, r.Code)
@@ -554,6 +584,7 @@ func TestProjector_FoldsTagSetVersionCreated_UsesPayloadTagsDirectly(t *testing.
 	item, ok := repo.homeItems[itemKey]
 	require.True(t, ok)
 	assert.Equal(t, []string{"rust", "async"}, item.Tags, "tags from the payload must be used as-is (no alt-db GetTagSetVersionByID round trip, no parseTagNames)")
+	assert.Equal(t, "max", item.ScoreOp, "a tagged boost must only ever raise the stored floor, never overwrite a higher one")
 
 	digest, ok := repo.digests[user.String()]
 	require.True(t, ok, "non-empty tags must surface into today_digest_view.top_tags")
@@ -603,6 +634,9 @@ func TestProjector_FoldsHomeItemOpened(t *testing.T) {
 	item, ok := repo.homeItems[itemKey]
 	require.True(t, ok)
 	assert.Equal(t, 0.1, item.Score, "opening an item suppresses its score")
+	assert.Equal(t, "set", item.ScoreOp,
+		"suppression must be authoritative (score_op=set) — under the blanket GREATEST merge repository.go used to "+
+			"apply, a 0.1 suppressed score could never overwrite a higher stored score and the suppression was unreachable")
 	require.NotNil(t, item.LastInteractedAt)
 	assert.True(t, occurredAt.Equal(*item.LastInteractedAt))
 
@@ -840,6 +874,11 @@ func TestProjector_FoldsReasonMerged(t *testing.T) {
 	var prevRef map[string][]string
 	require.NoError(t, json.Unmarshal([]byte(item.PreviousRefJSON), &prevRef))
 	assert.Equal(t, []string{"new_unread"}, prevRef["previous_why_codes"])
+
+	require.Len(t, item.WhyReasons, 1,
+		"payload.added_codes must populate why_reasons — CountNeedToKnowItems filters why_json for "+
+			"pulse_need_to_know, a code only ReasonMerged can deliver, so dropping it here makes the count permanently 0")
+	assert.Equal(t, "pulse_need_to_know", item.WhyReasons[0].Code)
 }
 
 func TestProjector_ReasonMerged_FallsBackToArticleItemKeyWhenPayloadItemKeyEmpty(t *testing.T) {
@@ -862,8 +901,10 @@ func TestProjector_ReasonMerged_FallsBackToArticleItemKeyWhenPayloadItemKeyEmpty
 	require.NoError(t, p.RunBatch(context.Background()))
 
 	itemKey := fmt.Sprintf("article:%s", articleID)
-	_, ok := repo.homeItems[itemKey]
+	item, ok := repo.homeItems[itemKey]
 	assert.True(t, ok, "an empty payload.item_key must fall back to article:<article_id>")
+	require.Len(t, item.WhyReasons, 1, "the item_key fallback must not come at the cost of dropping added_codes")
+	assert.Equal(t, "pulse_need_to_know", item.WhyReasons[0].Code)
 }
 
 // ── RecallSnoozed / RecallDismissed ──
@@ -1065,6 +1106,16 @@ func TestProjector_ReprojectIsDeterministic(t *testing.T) {
 	assert.Equal(t, first.recallCandidates, second.recallCandidates)
 	assert.Equal(t, first.urlPatches, second.urlPatches)
 	assert.Equal(t, first.checkpoint, second.checkpoint)
+
+	// The equality checks above only prove both replays drop added_codes
+	// the same way — they would still pass if why_reasons were empty in
+	// both. Assert the content directly: event #8's ReasonMerged must have
+	// actually reached why_reasons, not just replayed consistently as empty.
+	var codes []string
+	for _, r := range first.homeItems[itemKey].WhyReasons {
+		codes = append(codes, r.Code)
+	}
+	assert.Contains(t, codes, "pulse_need_to_know", "ReasonMerged's added_codes must reach why_reasons on the folded item")
 }
 
 // ── active projection version resolution ──

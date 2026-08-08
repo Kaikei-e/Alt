@@ -48,6 +48,24 @@ const (
 	supersedeReasonUpdated  = "reason_updated"
 
 	recallReasonOpenedNotRevisited = "opened_before_but_not_revisited"
+
+	// baseQualityScore is the flat, time-invariant floor a freshly-created
+	// article starts at. It intentionally carries no freshness/decay
+	// component — see the score_op doc comment on homeItemWrite for why.
+	baseQualityScore = 0.5
+
+	// scoreOp values tell sovereign_db.Repository's merge-safe UPSERT how to
+	// combine an incoming score with whatever is already stored:
+	//   - scoreOpMax:   floor semantics — raise the stored score to this
+	//     value if it is currently lower, never lower it. Used for the
+	//     baseline/boost signals below, which only ever add information.
+	//   - scoreOpSet:   authoritative overwrite — replace the stored score
+	//     unconditionally, including downward. Used for HomeItemOpened's
+	//     suppression, which must be able to lower a score.
+	//   - "" (zero value, left unset by folds that never touch score, e.g.
+	//     the supersede folds): leave the stored score untouched.
+	scoreOpMax = "max"
+	scoreOpSet = "set"
 )
 
 // Repository is the narrow surface the projector needs. Every write method
@@ -232,28 +250,34 @@ type whyReasonWire struct {
 }
 
 type homeItemWrite struct {
-	UserID            uuid.UUID       `json:"user_id"`
-	TenantID          uuid.UUID       `json:"tenant_id"`
-	ItemKey           string          `json:"item_key"`
-	ItemType          string          `json:"item_type"`
-	PrimaryRefID      *uuid.UUID      `json:"primary_ref_id"`
-	Title             string          `json:"title"`
-	SummaryExcerpt    string          `json:"summary_excerpt"`
-	Tags              []string        `json:"tags"`
-	WhyReasons        []whyReasonWire `json:"why_reasons"`
-	Score             float64         `json:"score"`
-	FreshnessAt       *time.Time      `json:"freshness_at"`
-	PublishedAt       *time.Time      `json:"published_at"`
-	LastInteractedAt  *time.Time      `json:"last_interacted_at"`
-	GeneratedAt       time.Time       `json:"generated_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
-	DismissedAt       *time.Time      `json:"dismissed_at"`
-	ProjectionVersion int             `json:"projection_version"`
-	SummaryState      string          `json:"summary_state"`
-	SupersedeState    string          `json:"supersede_state"`
-	SupersededAt      *time.Time      `json:"superseded_at"`
-	PreviousRefJSON   string          `json:"previous_ref_json"`
-	URL               string          `json:"url"`
+	UserID         uuid.UUID       `json:"user_id"`
+	TenantID       uuid.UUID       `json:"tenant_id"`
+	ItemKey        string          `json:"item_key"`
+	ItemType       string          `json:"item_type"`
+	PrimaryRefID   *uuid.UUID      `json:"primary_ref_id"`
+	Title          string          `json:"title"`
+	SummaryExcerpt string          `json:"summary_excerpt"`
+	Tags           []string        `json:"tags"`
+	WhyReasons     []whyReasonWire `json:"why_reasons"`
+	Score          float64         `json:"score"`
+	// ScoreOp selects how the merge-safe UPSERT combines Score with whatever
+	// is already stored for this item_key (see the scoreOp* consts above).
+	// A blanket GREATEST(EXCLUDED.score, knowledge_home_items.score) can
+	// only ever ratchet a score up, which made HomeItemOpened's suppressed
+	// 0.1 score unreachable once any higher score had ever been written.
+	ScoreOp           string     `json:"score_op"`
+	FreshnessAt       *time.Time `json:"freshness_at"`
+	PublishedAt       *time.Time `json:"published_at"`
+	LastInteractedAt  *time.Time `json:"last_interacted_at"`
+	GeneratedAt       time.Time  `json:"generated_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	DismissedAt       *time.Time `json:"dismissed_at"`
+	ProjectionVersion int        `json:"projection_version"`
+	SummaryState      string     `json:"summary_state"`
+	SupersedeState    string     `json:"supersede_state"`
+	SupersededAt      *time.Time `json:"superseded_at"`
+	PreviousRefJSON   string     `json:"previous_ref_json"`
+	URL               string     `json:"url"`
 }
 
 type dismissWrite struct {
@@ -360,6 +384,7 @@ type tagSetSupersededPayload struct {
 type reasonMergedPayload struct {
 	ArticleID        string   `json:"article_id"`
 	ItemKey          string   `json:"item_key"`
+	AddedCodes       []string `json:"added_codes"`
 	PreviousWhyCodes []string `json:"previous_why_codes"`
 }
 
@@ -436,30 +461,25 @@ func (p *Projector) foldArticleCreated(ctx context.Context, evt sovereign_db.Kno
 		}
 	}
 
-	// Freshness decay: newer publishedAt = higher score. Anchored on
-	// event.OccurredAt (not wall-clock) so replay is bit-identical.
-	score := 1.0
-	if publishedAt != nil {
-		hoursOld := occurredAt.Sub(*publishedAt).Hours()
-		switch {
-		case hoursOld < 24:
-			score = 1.0 - (hoursOld / 48.0)
-		case hoursOld > 0:
-			score = 0.5 / (hoursOld / 24.0)
-		}
-	}
-
 	userID := resolveUserID(evt)
 	item := homeItemWrite{
-		UserID:            userID,
-		TenantID:          evt.TenantID,
-		ItemKey:           fmt.Sprintf("article:%s", articleID),
-		ItemType:          itemTypeArticle,
-		PrimaryRefID:      &articleID,
-		Title:             payload.Title,
-		URL:               payload.URL,
-		WhyReasons:        []whyReasonWire{{Code: whyNewUnread}},
-		Score:             score,
+		UserID:       userID,
+		TenantID:     evt.TenantID,
+		ItemKey:      fmt.Sprintf("article:%s", articleID),
+		ItemType:     itemTypeArticle,
+		PrimaryRefID: &articleID,
+		Title:        payload.Title,
+		URL:          payload.URL,
+		WhyReasons:   []whyReasonWire{{Code: whyNewUnread}},
+		// baseQualityScore is time-invariant by design: how stale
+		// published_at already was at ingest is not a fact worth freezing
+		// into the stored score forever (the old (occurredAt-publishedAt)
+		// decay formula did exactly that, and the merge-safe UPSERT's
+		// GREATEST held the winning value permanently — read-time recency
+		// ranking belongs in GetKnowledgeHomeItems, over the published_at
+		// column stored below, not here).
+		Score:             baseQualityScore,
+		ScoreOp:           scoreOpMax,
 		FreshnessAt:       &occurredAt,
 		PublishedAt:       publishedAt,
 		GeneratedAt:       occurredAt,
@@ -570,6 +590,7 @@ func (p *Projector) foldSummaryVersionCreated(ctx context.Context, evt sovereign
 		SummaryState:      summaryState,
 		WhyReasons:        whyReasons,
 		Score:             0.8, // boost for having a summary
+		ScoreOp:           scoreOpMax,
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
 		ProjectionVersion: version,
@@ -619,6 +640,7 @@ func (p *Projector) foldTagSetVersionCreated(ctx context.Context, evt sovereign_
 		Tags:              payload.Tags,
 		WhyReasons:        []whyReasonWire{{Code: whyNewUnread}},
 		Score:             0.7,
+		ScoreOp:           scoreOpMax,
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
 		ProjectionVersion: version,
@@ -659,7 +681,8 @@ func (p *Projector) foldHomeItemOpened(ctx context.Context, evt sovereign_db.Kno
 		ItemKey:           payload.ItemKey,
 		ItemType:          itemTypeArticle,
 		WhyReasons:        []whyReasonWire{{Code: whyNewUnread}},
-		Score:             0.1, // suppressed: opening an item lowers its resurfacing score
+		Score:             0.1,        // suppressed: opening an item lowers its resurfacing score
+		ScoreOp:           scoreOpSet, // must be authoritative — a floor merge could never lower the score
 		LastInteractedAt:  &occurredAt,
 		GeneratedAt:       occurredAt,
 		UpdatedAt:         occurredAt,
@@ -835,12 +858,24 @@ func (p *Projector) foldReasonMerged(ctx context.Context, evt sovereign_db.Knowl
 		return fmt.Errorf("marshal previous_why_codes ref: %w", err)
 	}
 
+	// why_reasons is deliberately built even when empty (an explicit empty
+	// slice, not nil — see foldSummarySuperseded) rather than left as the
+	// homeItemWrite zero value: the merge-safe UPSERT's why_json CASE
+	// (repository.go) already treats an empty '[]' as "add nothing", so an
+	// event that adds no codes correctly no-ops while one that does gets
+	// unioned into the stored why_json instead of silently dropped.
+	whyReasons := make([]whyReasonWire, 0, len(payload.AddedCodes))
+	for _, code := range payload.AddedCodes {
+		whyReasons = append(whyReasons, whyReasonWire{Code: code})
+	}
+
 	occurredAt := evt.OccurredAt
 	item := homeItemWrite{
 		UserID:            resolveUserID(evt),
 		TenantID:          evt.TenantID,
 		ItemKey:           itemKey,
 		ItemType:          itemTypeArticle,
+		WhyReasons:        whyReasons,
 		SupersedeState:    supersedeReasonUpdated,
 		SupersededAt:      &occurredAt,
 		PreviousRefJSON:   string(prevRef),

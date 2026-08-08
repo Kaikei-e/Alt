@@ -92,13 +92,46 @@ type RecallReason struct {
 
 // GetKnowledgeHomeItems returns paginated items for a user.
 // No articles JOIN — url is stored directly in knowledge_home_items.
+//
+// Ranking decays over time (homeItemRankScoreSQL), so the keyset cursor
+// cannot simply carry a rank value computed by a previous call: "now" must
+// be anchored to a single instant for the whole pagination session, or the
+// page-boundary row's rank strictly drops between requests and re-satisfies
+// its own keyset predicate on every later page (each_key_duplicate in the
+// Knowledge Home stream). The first page lets Postgres's own `now()`
+// (transaction start time, stable for the whole query) act as the anchor
+// and reports it back via rankAsOf/nextCursor; every later page rebinds
+// that exact instant as a query parameter instead of calling `now()` again.
 func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int, filter *LensFilter) ([]KnowledgeHomeItem, string, bool, error) {
 	var query strings.Builder
 	args := []interface{}{userID}
 	fetchLimit := limit + 1
+	argPos := 2
+
+	var cursorRankScore float64
+	var cursorPublishedAt *time.Time
+	var cursorItemKey string
+	var cursorAsOf time.Time
+	hasCursor := cursor != ""
+	if hasCursor {
+		var err error
+		cursorRankScore, cursorPublishedAt, cursorItemKey, cursorAsOf, err = decodeCursor(cursor)
+		if err != nil {
+			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems: invalid cursor: %w", err)
+		}
+	}
+
+	rankAsOfExpr := "now()"
+	if hasCursor {
+		rankAsOfExpr = fmt.Sprintf("$%d::timestamptz", argPos)
+		args = append(args, cursorAsOf)
+		argPos++
+	}
+	rankScoreSQL := homeItemRankScoreSQL(rankAsOfExpr)
 
 	query.WriteString(`SELECT khi.user_id, khi.tenant_id, khi.item_key, khi.item_type, khi.primary_ref_id,
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
+		` + rankScoreSQL + ` AS rank_score, ` + rankAsOfExpr + ` AS rank_as_of,
 		khi.freshness_at, khi.published_at, khi.last_interacted_at, khi.generated_at, khi.updated_at,
 		khi.dismissed_at, khi.summary_state, COALESCE(khi.url, '') AS url,
 		khi.supersede_state, khi.superseded_at, khi.previous_ref_json, khi.projection_version
@@ -107,7 +140,6 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 		  AND khi.projection_version = ` + activeProjectionVersionSQL + `
 		  AND khi.dismissed_at IS NULL`)
 
-	argPos := 2
 	if filter != nil {
 		if filter.QueryText != "" || len(filter.TagNames) > 0 || filter.TimeWindow != "" {
 			query.WriteString(` AND khi.item_type = 'article'`)
@@ -143,20 +175,21 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 		}
 	}
 
-	if cursor != "" {
-		cursorScore, cursorPublishedAt, cursorItemKey, err := decodeCursor(cursor)
-		if err != nil {
-			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems: invalid cursor: %w", err)
-		}
+	if hasCursor {
+		// Must restate rankScoreSQL rather than reference the `rank_score`
+		// SELECT alias — Postgres resolves WHERE before SELECT list aliases
+		// exist, so only ORDER BY can use the alias. rankScoreSQL already
+		// carries the anchored rankAsOfExpr, so this predicate ranks by the
+		// exact same instant as the SELECT/ORDER BY above.
 		query.WriteString(fmt.Sprintf(
-			` AND (khi.score, COALESCE(khi.published_at, '-infinity'), khi.item_key) < ($%d, COALESCE($%d::timestamptz, '-infinity'), $%d)`,
+			` AND (`+rankScoreSQL+`, COALESCE(khi.published_at, '-infinity'), khi.item_key) < ($%d, COALESCE($%d::timestamptz, '-infinity'), $%d)`,
 			argPos, argPos+1, argPos+2))
-		args = append(args, cursorScore, cursorPublishedAt, cursorItemKey)
+		args = append(args, cursorRankScore, cursorPublishedAt, cursorItemKey)
 		argPos += 3
 	}
 
 	query.WriteString(fmt.Sprintf(
-		` ORDER BY khi.score DESC, COALESCE(khi.published_at, '-infinity') DESC, khi.item_key DESC LIMIT $%d`, argPos))
+		` ORDER BY rank_score DESC, COALESCE(khi.published_at, '-infinity') DESC, khi.item_key DESC LIMIT $%d`, argPos))
 	args = append(args, fetchLimit)
 
 	rows, err := r.pool.Query(ctx, query.String(), args...)
@@ -166,13 +199,26 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 	defer rows.Close()
 
 	var items []KnowledgeHomeItem
+	// rankScores mirrors items 1:1 — it is the read-time decayed value
+	// (homeItemRankScoreSQL), not item.Score (the stored, time-invariant
+	// quality signal). The next-page cursor must carry the decayed value
+	// since that is what the keyset WHERE clause above compares against.
+	var rankScores []float64
+	// rankAsOf is the single instant rankAsOfExpr resolved to for this
+	// entire query (identical on every row — either Postgres's own now()
+	// or the rebound cursor anchor). It must be forwarded into the next
+	// cursor unchanged so later pages keep ranking against the same
+	// instant instead of drifting forward with each request.
+	var rankAsOf time.Time
 	for rows.Next() {
 		var item KnowledgeHomeItem
 		var tagsJSON, whyJSON []byte
 		var supersedeState, previousRefJSON *string
+		var rankScore float64
 		if err := rows.Scan(
 			&item.UserID, &item.TenantID, &item.ItemKey, &item.ItemType, &item.PrimaryRefID,
 			&item.Title, &item.SummaryExcerpt, &tagsJSON, &whyJSON, &item.Score,
+			&rankScore, &rankAsOf,
 			&item.FreshnessAt, &item.PublishedAt, &item.LastInteractedAt, &item.GeneratedAt, &item.UpdatedAt,
 			&item.DismissedAt, &item.SummaryState, &item.URL,
 			&supersedeState, &item.SupersededAt, &previousRefJSON, &item.ProjectionVersion,
@@ -188,6 +234,7 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 			item.PreviousRefJSON = *previousRefJSON
 		}
 		items = append(items, item)
+		rankScores = append(rankScores, rankScore)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems rows: %w", err)
@@ -196,12 +243,13 @@ func (r *Repository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID
 	hasMore := len(items) > limit
 	if hasMore {
 		items = items[:limit]
+		rankScores = rankScores[:limit]
 	}
 
 	var nextCursor string
 	if hasMore && len(items) > 0 {
 		last := items[len(items)-1]
-		nextCursor = encodeCursor(last.Score, last.PublishedAt, last.ItemKey)
+		nextCursor = encodeCursor(rankScores[len(rankScores)-1], last.PublishedAt, last.ItemKey, rankAsOf)
 	}
 
 	return items, nextCursor, hasMore, nil
@@ -375,38 +423,54 @@ func (r *Repository) GetProjectionFreshness(ctx context.Context, projectorName s
 }
 
 // --- cursor helpers ---
+//
+// The float64 carried by the cursor is the read-time decayed rank_score
+// (homeItemRankScoreSQL), not the stored knowledge_home_items.score — it
+// must match whatever GetKnowledgeHomeItems' ORDER BY / keyset WHERE clause
+// actually ranks on for pagination to stay consistent page to page.
+//
+// asOf is the instant homeItemRankScoreSQL decayed against to produce
+// rankScore. It must round-trip through every page of one pagination
+// session unchanged (see GetKnowledgeHomeItems's rankAsOfExpr) — decay
+// strictly shrinks with elapsed time, so re-deriving "now" independently on
+// each page would make the boundary row's rank drop below its own cursor
+// value and re-satisfy the keyset predicate against itself.
 
-func encodeCursor(score float64, publishedAt *time.Time, itemKey string) string {
+func encodeCursor(rankScore float64, publishedAt *time.Time, itemKey string, asOf time.Time) string {
 	pub := ""
 	if publishedAt != nil {
 		pub = publishedAt.Format(time.RFC3339Nano)
 	}
-	raw := fmt.Sprintf("%v|%s|%s", score, pub, itemKey)
+	raw := fmt.Sprintf("%v|%s|%s|%s", rankScore, pub, itemKey, asOf.UTC().Format(time.RFC3339Nano))
 	return base64.URLEncoding.EncodeToString([]byte(raw))
 }
 
-func decodeCursor(cursor string) (float64, *time.Time, string, error) {
+func decodeCursor(cursor string) (float64, *time.Time, string, time.Time, error) {
 	raw, err := base64.URLEncoding.DecodeString(cursor)
 	if err != nil {
-		return 0, nil, "", fmt.Errorf("decode base64: %w", err)
+		return 0, nil, "", time.Time{}, fmt.Errorf("decode base64: %w", err)
 	}
-	parts := strings.SplitN(string(raw), "|", 3)
-	if len(parts) != 3 {
-		return 0, nil, "", fmt.Errorf("invalid cursor format")
+	parts := strings.SplitN(string(raw), "|", 4)
+	if len(parts) != 4 {
+		return 0, nil, "", time.Time{}, fmt.Errorf("invalid cursor format")
 	}
-	var score float64
-	if _, err := fmt.Sscanf(parts[0], "%g", &score); err != nil {
-		return 0, nil, "", fmt.Errorf("parse score: %w", err)
+	var rankScore float64
+	if _, err := fmt.Sscanf(parts[0], "%g", &rankScore); err != nil {
+		return 0, nil, "", time.Time{}, fmt.Errorf("parse rank_score: %w", err)
 	}
 	var publishedAt *time.Time
 	if parts[1] != "" {
 		t, err := time.Parse(time.RFC3339Nano, parts[1])
 		if err != nil {
-			return 0, nil, "", fmt.Errorf("parse published_at: %w", err)
+			return 0, nil, "", time.Time{}, fmt.Errorf("parse published_at: %w", err)
 		}
 		publishedAt = &t
 	}
-	return score, publishedAt, parts[2], nil
+	asOf, err := time.Parse(time.RFC3339Nano, parts[3])
+	if err != nil {
+		return 0, nil, "", time.Time{}, fmt.Errorf("parse rank_as_of: %w", err)
+	}
+	return rankScore, publishedAt, parts[2], asOf, nil
 }
 
 func cutoffFromTimeWindow(window string) (time.Time, error) {

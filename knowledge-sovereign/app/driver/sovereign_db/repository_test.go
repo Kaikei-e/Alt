@@ -3,6 +3,7 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -69,8 +70,10 @@ func TestUpsertRecallCandidate_PreservesReasonTypeAndDescription(t *testing.T) {
 //   - the jsonb tags array uses
 //     COALESCE(NULLIF(EXCLUDED.tags_json, <EMPTY-ARRAY>::jsonb), <table>.tags_json);
 //   - summary_state uses GREATEST(<table>.summary_state, EXCLUDED.summary_state)
-//     (lexicographic monotonic latch: empty < missing < pending < ready;
-//     same pattern used for score = GREATEST(...) already in this file).
+//     (lexicographic monotonic latch: empty < missing < pending < ready).
+//     score's merge follows the same floor idea for its 'max' branch, but
+//     is selected via the score_op parameter rather than applied
+//     unconditionally — see TestUpsertKnowledgeHomeItem_ScoreMergeHonorsScoreOp.
 //
 // Inline placeholders <EMPTY> and <EMPTY-ARRAY> stand for the SQL empty
 // string literal and the JSONB empty array literal respectively — the
@@ -98,6 +101,7 @@ func TestUpsertKnowledgeHomeItem_UsesMergeSafeSQL(t *testing.T) {
 		"tags": ["go", "event-sourcing"],
 		"why_reasons": [{"code": "new_unread", "reason": "."}],
 		"score": 0.5,
+		"score_op": "max",
 		"freshness_at": "` + now + `",
 		"generated_at": "` + now + `",
 		"updated_at": "` + now + `",
@@ -136,6 +140,142 @@ func TestUpsertKnowledgeHomeItem_UsesMergeSafeSQL(t *testing.T) {
 		assert.True(t, strings.Contains(sql, required),
 			"merge-safe rule requires canonical expression %q — actual SQL omits it", required)
 	}
+}
+
+// scoreOpUpsertPayload builds a minimal UpsertKnowledgeHomeItem payload with
+// the given score_op. A nil scoreOp omits the JSON key entirely (simulating
+// a caller unaware of the field, like the ApplyProjectionMutation RPC
+// producer); a non-nil scoreOp — including "" — emits the key explicitly.
+func scoreOpUpsertPayload(t *testing.T, scoreOp *string) []byte {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	fields := map[string]any{
+		"user_id":            "11111111-1111-4111-8111-111111111111",
+		"tenant_id":          "22222222-2222-4222-8222-222222222222",
+		"item_key":           "article:33333333-3333-4333-8333-333333333333",
+		"item_type":          "article",
+		"score":              0.1,
+		"generated_at":       now,
+		"updated_at":         now,
+		"projection_version": 1,
+	}
+	if scoreOp != nil {
+		fields["score_op"] = *scoreOp
+	}
+	raw, err := json.Marshal(fields)
+	require.NoError(t, err)
+	return raw
+}
+
+// scoreCasePattern extracts the two score_op-gated WHEN/THEN branches from
+// the UPSERT's `score = CASE ... END` clause: WHEN $23 = '<op1>' THEN
+// <expr1>, WHEN $23 = '<op2>' THEN <expr2>, ELSE <expr3>.
+var scoreCasePattern = regexp.MustCompile(
+	`(?s)score = CASE\s*WHEN \$23 = '([a-z]*)' THEN (EXCLUDED\.score)\s*` +
+		`WHEN \$23 = '([a-z]*)' THEN (GREATEST\(EXCLUDED\.score, knowledge_home_items\.score\))\s*` +
+		`ELSE (knowledge_home_items\.score)\s*END,`)
+
+// TestUpsertKnowledgeHomeItem_ScoreMergeHonorsScoreOp pins the fix for the
+// unreachable-suppression defect: a blanket `score = GREATEST(EXCLUDED.score,
+// knowledge_home_items.score)` can only ever ratchet a score up, so
+// HomeItemOpened's suppressed 0.1 score could never overwrite any higher
+// stored score. The merge must instead branch on the payload's score_op:
+// "set" overwrites unconditionally (including downward), "max" keeps the
+// floor semantics the other folds rely on.
+//
+// A prior version of this test only checked for the bare presence of the
+// strings "GREATEST(...)" / "EXCLUDED.score" anywhere in the SQL and that
+// args[22] == "set" — none of which ties the literal "set" to the overwrite
+// branch specifically. Mutation-proven: collapsing the CASE back to
+// `WHEN $23 = 'never' THEN EXCLUDED.score ELSE GREATEST(...) END`
+// (score_op='set' can then never match, so every write silently falls
+// through to the floor-only branch — the exact pre-fix bug) left all of
+// those assertions passing. This version extracts the WHEN/THEN pairs with
+// scoreCasePattern and asserts which score_op literal is wired to which
+// branch, so that regression is caught. See mutationProofs for the
+// captured failure output.
+func TestUpsertKnowledgeHomeItem_ScoreMergeHonorsScoreOp(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	setOp := "set"
+	require.NoError(t, repo.UpsertKnowledgeHomeItem(context.Background(), scoreOpUpsertPayload(t, &setOp)))
+	require.Len(t, mock.execCalls, 1)
+	sql := mock.execCalls[0].SQL
+	args := mock.execCalls[0].Args
+
+	m := scoreCasePattern.FindStringSubmatch(sql)
+	require.NotNil(t, m, "expected a score CASE with two $23-gated WHEN branches (set -> EXCLUDED.score, "+
+		"max -> GREATEST(...)); got SQL:\n%s", sql)
+	assert.Equal(t, "set", m[1], "the branch that overwrites with EXCLUDED.score unconditionally must be gated on score_op == 'set'")
+	assert.Equal(t, "max", m[3], "the branch that applies floor semantics (GREATEST) must be gated on score_op == 'max'")
+
+	require.Len(t, args, 23, "score_op must be bound as its own parameter")
+	assert.Equal(t, "set", args[22], "score_op must be bound from the payload, not hardcoded")
+}
+
+// TestUpsertKnowledgeHomeItem_ScoreOpMaxBindsMaxLiteral is the "max" half of
+// the args-binding check above: proves the bound parameter reflects
+// whichever score_op the payload actually carried, not a value fixed by
+// whichever branch happened to run first.
+func TestUpsertKnowledgeHomeItem_ScoreOpMaxBindsMaxLiteral(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	maxOp := "max"
+	require.NoError(t, repo.UpsertKnowledgeHomeItem(context.Background(), scoreOpUpsertPayload(t, &maxOp)))
+	require.Len(t, mock.execCalls, 1)
+	args := mock.execCalls[0].Args
+	require.Len(t, args, 23)
+	assert.Equal(t, "max", args[22])
+}
+
+// TestUpsertKnowledgeHomeItem_EmptyScoreOpIsAcceptedAsExplicitNoop pins that
+// score_op present-but-empty (what folds that never touch score, e.g. the
+// supersede folds, emit — see homeItemWrite in knowledge_home_projector) is
+// a legitimate "leave score untouched" and must not be rejected the same
+// way an absent key is.
+func TestUpsertKnowledgeHomeItem_EmptyScoreOpIsAcceptedAsExplicitNoop(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	emptyOp := ""
+	err := repo.UpsertKnowledgeHomeItem(context.Background(), scoreOpUpsertPayload(t, &emptyOp))
+	require.NoError(t, err, "an explicitly empty score_op must be accepted (it is how no-touch folds signal intent)")
+	require.Len(t, mock.execCalls, 1)
+	assert.Equal(t, "", mock.execCalls[0].Args[22])
+}
+
+// TestUpsertKnowledgeHomeItem_RejectsMissingScoreOp pins the fix for the
+// silent-fallback defect (Alt Rule 8): a payload whose score_op key is
+// absent entirely — the exact shape the ApplyProjectionMutation RPC
+// producer sends, since its wire type carries no score_op field at all —
+// used to unmarshal to the Go zero value "" and take the CASE's ELSE
+// branch, silently discarding the caller's intended score forever with no
+// error anywhere. An absent key is now indistinguishable from neither
+// "leave untouched" nor a recognized operator, so the write must be
+// refused rather than guessed at.
+func TestUpsertKnowledgeHomeItem_RejectsMissingScoreOp(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	err := repo.UpsertKnowledgeHomeItem(context.Background(), scoreOpUpsertPayload(t, nil))
+	require.Error(t, err, "a payload with no score_op key at all must fail loudly, not silently discard the score")
+	assert.Empty(t, mock.execCalls, "no write should reach the database with an unresolved score_op")
+}
+
+// TestUpsertKnowledgeHomeItem_RejectsUnrecognizedScoreOp guards against a
+// typo'd score_op silently falling through to "leave untouched" the same
+// way an absent key would — e.g. a producer that meant "set" but sent
+// "sett" must be told loudly, not have its write vanish.
+func TestUpsertKnowledgeHomeItem_RejectsUnrecognizedScoreOp(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	bogusOp := "increment"
+	err := repo.UpsertKnowledgeHomeItem(context.Background(), scoreOpUpsertPayload(t, &bogusOp))
+	require.Error(t, err, "an unrecognized score_op must fail loudly, not silently discard the score")
+	assert.Empty(t, mock.execCalls)
 }
 
 // TestUpsertTodayDigest_PreservesPulseRefsFromPayload pins the contract
