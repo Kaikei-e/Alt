@@ -91,11 +91,34 @@ export class MobileSwipePage extends BasePage {
 	}
 
 	/**
+	 * Measure the card a gesture is about to act on.
+	 *
+	 * The active card is wrapped in `{#key activeFeed.id}`, so dismissing one
+	 * destroys it and mounts its replacement. boundingBox() does not wait
+	 * through that gap — it reports null for a card that is between mounts —
+	 * so a gesture issued after a dismissal has to wait for the replacement
+	 * first. Without this, a loaded CI runner fails as "Swipe card not found"
+	 * rather than on the assertion the test is actually making.
+	 */
+	private async cardBox(): Promise<{
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	}> {
+		await this.waitForNextCard();
+
+		const box = await this.swipeCard.boundingBox();
+		if (!box) throw new Error("Swipe card not found");
+
+		return box;
+	}
+
+	/**
 	 * Perform a swipe left gesture (dismiss/skip)
 	 */
 	async swipeLeft(): Promise<void> {
-		const box = await this.swipeCard.boundingBox();
-		if (!box) throw new Error("Swipe card not found");
+		const box = await this.cardBox();
 
 		const centerX = box.x + box.width / 2;
 		const centerY = box.y + box.height / 2;
@@ -110,8 +133,7 @@ export class MobileSwipePage extends BasePage {
 	 * Perform a swipe right gesture (mark as read/save)
 	 */
 	async swipeRight(): Promise<void> {
-		const box = await this.swipeCard.boundingBox();
-		if (!box) throw new Error("Swipe card not found");
+		const box = await this.cardBox();
 
 		const centerX = box.x + box.width / 2;
 		const centerY = box.y + box.height / 2;
