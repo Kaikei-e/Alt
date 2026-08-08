@@ -28,6 +28,7 @@ type Config struct {
 	AdminMonitor  AdminMonitorConfig  `json:"admin_monitor"`
 	Sovereign     SovereignConfig     `json:"sovereign"`
 	Meilisearch   MeilisearchConfig   `json:"meilisearch"`
+	WebPush       WebPushConfig       `json:"web_push"`
 
 	// AppEnv drives the remaining environment-keyed checks (e.g. Knowledge
 	// Sovereign wiring, BACKEND_TOKEN_SECRET length). It must be one of
@@ -109,6 +110,43 @@ type ImageProxyConfig struct {
 	CacheTTLMin int    `json:"cache_ttl_min" env:"IMAGE_PROXY_CACHE_TTL_MINUTES" default:"10080"`
 	MaxWidth    int    `json:"max_width" env:"IMAGE_PROXY_MAX_WIDTH" default:"600"`
 	WebPQuality int    `json:"webp_quality" env:"IMAGE_PROXY_WEBP_QUALITY" default:"80"`
+}
+
+// WebPushConfig holds the VAPID identity.
+//
+// The two halves are read by different binaries and neither reads both.
+// cmd/backend needs only PublicKey, to hand to the browser; it sends no pushes,
+// and giving it the signing credential would put one in the process with the
+// largest attack surface for a capability it never exercises. cmd/notifier
+// needs PrivateKey and Subject, and its container is the only one the secret is
+// mounted into. ValidateBackendConfig and ValidateNotifierConfig each require
+// only their own half, so neither binary can be started with a credential it
+// has no use for.
+//
+// PublicKey is served rather than baked into the frontend bundle so that a key
+// change does not require a frontend rebuild, and so a client can compare the
+// served key against the one its live subscription was created under —
+// rotating the keypair invalidates every existing subscription, and that
+// comparison is how a browser notices.
+//
+// There is no Enabled flag and no default. Web Push either has an identity or
+// it does not, and config.ValidateBackendConfig rejects an empty one at
+// startup rather than letting GetPushConfig answer with an empty string that
+// the browser would pass to pushManager.subscribe and fail on
+// (CLAUDE.md rule 9).
+type WebPushConfig struct {
+	PublicKey     string `json:"vapid_public_key" env:"VAPID_PUBLIC_KEY"`
+	PublicKeyFile string `json:"-" env:"VAPID_PUBLIC_KEY_FILE"`
+	// PrivateKey never appears in JSON: this struct is reachable from a config
+	// dump, and a signing key that leaks into a log is a key that has to be
+	// rotated — which invalidates every existing browser subscription.
+	PrivateKey     string `json:"-" env:"VAPID_PRIVATE_KEY"`
+	PrivateKeyFile string `json:"-" env:"VAPID_PRIVATE_KEY_FILE"`
+	// Subject is the RFC 8292 `sub` claim: a contact URI a push service can use
+	// to reach the operator. Apple rejects anything that is not a mailto: or
+	// https: URI, and only Apple does — so a malformed value here presents as
+	// "iOS stopped receiving notifications" rather than as a broken deploy.
+	Subject string `json:"vapid_subject" env:"VAPID_SUBJECT"`
 }
 
 // KnowledgeHomeConfig holds configuration for Knowledge Home feature flags.
@@ -269,6 +307,28 @@ func NewConfig() (*Config, error) {
 		content, err := os.ReadFile(config.ImageProxy.SecretFile)
 		if err == nil {
 			config.ImageProxy.Secret = strings.TrimSpace(string(content))
+		}
+	}
+
+	// Load the VAPID public key from file if configured (Docker Secrets
+	// support). A read failure leaves the env value in place, and
+	// ValidateBackendConfig rejects an empty result — so a mounted-but-broken
+	// secret fails startup rather than serving an empty key.
+	if config.WebPush.PublicKeyFile != "" {
+		content, err := os.ReadFile(config.WebPush.PublicKeyFile)
+		if err == nil {
+			config.WebPush.PublicKey = strings.TrimSpace(string(content))
+		}
+	}
+
+	// Same pattern for the signing key, read only by cmd/notifier.
+	// ValidateNotifierConfig rejects an empty result, so a secret that is
+	// mounted but unreadable fails startup instead of producing a dispatcher
+	// that answers every send with a 401 nobody looks at.
+	if config.WebPush.PrivateKeyFile != "" {
+		content, err := os.ReadFile(config.WebPush.PrivateKeyFile)
+		if err == nil {
+			config.WebPush.PrivateKey = strings.TrimSpace(string(content))
 		}
 	}
 

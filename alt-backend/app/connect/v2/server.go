@@ -15,6 +15,7 @@ import (
 	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
 	"alt/gen/proto/alt/knowledge_trail/v1/knowledgetrailv1connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
+	"alt/gen/proto/alt/push/v1/pushv1connect"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
 	"alt/gen/proto/alt/search/v2/searchv2connect"
@@ -34,6 +35,7 @@ import (
 	"alt/orchestrator/connect/v2/knowledge_home_admin"
 	knowledge_trail "alt/orchestrator/connect/v2/knowledge_trail"
 	"alt/orchestrator/connect/v2/morning_letter"
+	"alt/orchestrator/connect/v2/push"
 	"alt/orchestrator/connect/v2/recap"
 	"alt/orchestrator/connect/v2/rss"
 )
@@ -178,6 +180,26 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	ktPath, ktServiceHandler := knowledgetrailv1connect.NewKnowledgeTrailServiceHandler(knowledgeTrailHandler, opts)
 	mux.Handle(ktPath, ktServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeTrailService", "path", ktPath)
+
+	// Register PushService — the browser-facing Web Push surface.
+	//
+	// Mounted unconditionally, and its two dependencies are refused at
+	// construction rather than defaulted. An unmounted or half-wired push
+	// surface is invisible from the server side: the browser holds the
+	// subscription, so the failure appears only as a toggle that will not stay
+	// on. config.ValidateBackendConfig has already rejected an empty
+	// VAPID_PUBLIC_KEY by the time this runs (cmd/backend/main.go), so reaching
+	// NewHandler's panic means the startup guard was bypassed.
+	//
+	// The fingerprint, not the key, goes in the log: it identifies which key
+	// this process is serving so a rotation is visible at startup, without
+	// writing the key into the log store (CLAUDE.md rule 8).
+	pushHandler := push.NewHandler(container.Infra.PushSubscriptionGateway, cfg.WebPush.PublicKey, logger)
+	pushPath, pushServiceHandler := pushv1connect.NewPushServiceHandler(pushHandler, opts)
+	mux.Handle(pushPath, pushServiceHandler)
+	logger.Info("web_push_enabled",
+		"path", pushPath,
+		"vapid_key_fingerprint", push.VAPIDFingerprint(cfg.WebPush.PublicKey))
 
 	// Register GlobalSearchService
 	if container.Search != nil {

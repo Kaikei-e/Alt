@@ -246,6 +246,15 @@ func requiredEnv(name string) (string, error) {
 }
 
 // ValidateBackendConfig checks the upstreams cmd/backend calls.
+//
+// VAPID_PUBLIC_KEY is on this list rather than treated as an optional feature
+// switch. alt.push.v1.PushService.GetPushConfig has exactly one job — hand the
+// browser the key to pass as applicationServerKey — and an empty one is not a
+// disabled feature: pushManager.subscribe rejects it, so every user who
+// opened the notification settings would see a failure whose only trace is in
+// their browser console. Missing required config exits non-zero
+// (CLAUDE.md rule 9); an intentional opt-out is a compose file that does not
+// start cmd/backend's push surface, not an unset variable.
 func ValidateBackendConfig(cfg *Config) error {
 	required := []struct {
 		env   string
@@ -257,6 +266,7 @@ func ValidateBackendConfig(cfg *Config) error {
 		{"RAG_ORCHESTRATOR_CONNECT_URL", cfg.Rag.OrchestratorConnectURL},
 		{"PRE_PROCESSOR_URL", cfg.PreProcessor.URL},
 		{"PRE_PROCESSOR_CONNECT_URL", cfg.PreProcessor.ConnectURL},
+		{"VAPID_PUBLIC_KEY", cfg.WebPush.PublicKey},
 	}
 	return requireAll("backend", required)
 }
@@ -268,6 +278,38 @@ func ValidateBackendConfig(cfg *Config) error {
 // the sovereign client, and a disabled client no-ops every append while the
 // worker still marks the outbox row PROCESSED. That silently violates the
 // append-first invariant instead of failing visibly.
+// ValidateNotifierConfig rejects a dispatcher that could start but not deliver.
+//
+// Every value here fails silently at runtime if it is absent. A missing signing
+// key produces a 401 from every push service; a missing or malformed subject
+// produces a 403 from Apple alone, which reads as "iOS stopped working". None
+// of it raises an error anyone sees, and the queue drains into nothing while
+// every dashboard stays green — so this is a startup failure instead
+// (CLAUDE.md rule 9).
+func ValidateNotifierConfig(cfg *Config) error {
+	required := []struct {
+		env   string
+		value string
+	}{
+		{"VAPID_PRIVATE_KEY", cfg.WebPush.PrivateKey},
+		{"VAPID_SUBJECT", cfg.WebPush.Subject},
+	}
+	if err := requireAll("notifier", required); err != nil {
+		return err
+	}
+
+	// RFC 8292 §2: `sub` SHOULD be a contact URI. Apple enforces it, and does
+	// so only on its own endpoints, so an unchecked value here becomes a
+	// partial outage that looks platform-specific rather than a config error.
+	subject := strings.TrimSpace(cfg.WebPush.Subject)
+	if !strings.HasPrefix(subject, "mailto:") && !strings.HasPrefix(subject, "https://") {
+		return fmt.Errorf(
+			"VAPID_SUBJECT must be a mailto: or https: URI (RFC 8292 §2); Apple rejects anything else and Google and Mozilla do not, so this fails on iOS only")
+	}
+
+	return nil
+}
+
 func ValidateHarvesterConfig(cfg *Config) error {
 	required := []struct {
 		env   string

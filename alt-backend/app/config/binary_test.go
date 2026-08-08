@@ -23,6 +23,7 @@ func baseConfig() *Config {
 		AuthHub:       AuthHubConfig{URL: "http://auth-hub:8888"},
 		Auth:          AuthConfig{BackendTokenSecret: "a-backend-token-secret-value"},
 		Sovereign:     SovereignConfig{URL: "http://knowledge-sovereign:9500"},
+		WebPush:       WebPushConfig{PublicKey: "a-vapid-public-key-value"},
 	}
 }
 
@@ -267,6 +268,11 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.Rag.OrchestratorConnectURL = "" }, wantErr: "RAG_ORCHESTRATOR_CONNECT_URL"},
 		{name: "backend needs the pre-processor", validate: ValidateBackendConfig,
 			mutate: func(c *Config) { c.PreProcessor.ConnectURL = "" }, wantErr: "PRE_PROCESSOR_CONNECT_URL"},
+		// An empty applicationServerKey makes pushManager.subscribe reject in the
+		// browser, so an unset key is a startup failure rather than a quietly
+		// disabled notification surface.
+		{name: "backend needs the vapid public key", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.WebPush.PublicKey = "" }, wantErr: "VAPID_PUBLIC_KEY"},
 
 		{name: "harvester accepts a complete config", validate: ValidateHarvesterConfig, mutate: func(*Config) {}},
 		{name: "harvester needs sovereign in every environment", validate: ValidateHarvesterConfig,

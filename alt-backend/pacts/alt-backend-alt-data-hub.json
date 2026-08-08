@@ -398,6 +398,172 @@
       }
     },
     {
+      "description": "a ClaimNotificationBatch request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has due push deliveries"
+        }
+      ],
+      "request": {
+        "body": {
+          "leaseSeconds": "60",
+          "limit": 10,
+          "lockedBy": "push-dispatcher-1"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/ClaimNotificationBatch"
+      },
+      "response": {
+        "body": {
+          "deliveries": [
+            {
+              "attempts": 1,
+              "auth": "tBHItJI5svbpez7KI4CCXg",
+              "dedupeKey": "recap:7d2a1c34-0a5f-4e51-9b1f-1a2b3c4d5e6f",
+              "endpoint": "https://push.example.com/subscription/AAAA-BBBB-CCCC",
+              "expiresAt": "2026-08-02T09:30:00Z",
+              "id": "9c858901-8a57-4791-81fe-4c455b099bc9",
+              "kind": "recap_ready",
+              "nextAttemptAt": "2026-08-01T09:31:00Z",
+              "occurredAt": "2026-08-01T09:30:00Z",
+              "p256dh": "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTtF71JbFw",
+              "payload": "eyJyZWNhcF9pZCI6InIxIn0=",
+              "state": "NOTIFICATION_STATE_SENDING",
+              "subscriptionId": "1b4e28ba-2fa1-4d3b-a3f5-ccee1bf27e11",
+              "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.deliveries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.deliveries[*].attempts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].auth": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].dedupeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].endpoint": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].expiresAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.deliveries[*].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].nextAttemptAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].p256dh": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveries[*].subscriptionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.deliveries[*].userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a CountBackfillArticles request from alt-backend",
       "providerStates": [
         {
@@ -556,6 +722,46 @@
         "body": {},
         "headers": {
           "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a DeletePushSubscription request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a push subscription for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "endpoint": "https://push.example.com/subscription/AAAA-BBBB-CCCC",
+          "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/DeletePushSubscription"
+      },
+      "response": {
+        "body": {
+          "deleted": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.deleted": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
         },
         "status": 200
       }
@@ -1737,6 +1943,165 @@
               ]
             }
           }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetPushSubscription request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a push subscription for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "endpoint": "https://push.example.com/subscription/AAAA-BBBB-CCCC",
+          "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/GetPushSubscription"
+      },
+      "response": {
+        "body": {
+          "subscription": {
+            "auth": "tBHItJI5svbpez7KI4CCXg",
+            "createdAt": "2026-08-01T00:00:00Z",
+            "endpoint": "https://push.example.com/subscription/AAAA-BBBB-CCCC",
+            "p256dh": "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTtF71JbFw",
+            "preferences": {
+              "recapReady": true,
+              "summaryReady": true
+            },
+            "updatedAt": "2026-08-01T00:00:00Z",
+            "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+            "vapidKeyFingerprint": "b0a1c2d3e4f5"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.subscription": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscription.auth": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscription.createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscription.endpoint": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscription.p256dh": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscription.preferences": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscription.preferences.recapReady": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscription.preferences.summaryReady": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscription.updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscription.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.subscription.vapidKeyFingerprint": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetPushSubscription request from alt-backend for an unregistered endpoint",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has no push subscription for the endpoint"
+        }
+      ],
+      "request": {
+        "body": {
+          "endpoint": "https://push.example.com/subscription/UNKNOWN",
+          "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/GetPushSubscription"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
         },
         "status": 200
       }
@@ -3824,6 +4189,113 @@
       }
     },
     {
+      "description": "a ListPushSubscriptionsForUser request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has push subscriptions for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/ListPushSubscriptionsForUser"
+      },
+      "response": {
+        "body": {
+          "subscriptions": [
+            {
+              "auth": "tBHItJI5svbpez7KI4CCXg",
+              "createdAt": "2026-08-01T00:00:00Z",
+              "endpoint": "https://push.example.com/subscription/AAAA-BBBB-CCCC",
+              "p256dh": "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTtF71JbFw",
+              "updatedAt": "2026-08-01T00:00:00Z",
+              "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+              "vapidKeyFingerprint": "b0a1c2d3e4f5"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.subscriptions": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.subscriptions[*].auth": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscriptions[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscriptions[*].endpoint": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscriptions[*].p256dh": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscriptions[*].updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscriptions[*].userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.subscriptions[*].vapidKeyFingerprint": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a ListSubscribedUserIDsByFeedLinkID request from alt-backend",
       "providerStates": [
         {
@@ -4169,6 +4641,59 @@
       }
     },
     {
+      "description": "a MarkNotificationDead request from alt-backend after an unrecoverable failure",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a claimed push delivery"
+        }
+      ],
+      "request": {
+        "body": {
+          "errorMessage": "payload too large",
+          "id": "9c858901-8a57-4791-81fe-4c455b099bc9",
+          "statusCode": 413
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/MarkNotificationDead"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a MarkNotificationSent request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a claimed push delivery"
+        }
+      ],
+      "request": {
+        "body": {
+          "id": "9c858901-8a57-4791-81fe-4c455b099bc9",
+          "statusCode": 201
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/MarkNotificationSent"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a MarkSummaryVersionSuperseded request from alt-backend",
       "providerStates": [
         {
@@ -4498,6 +5023,33 @@
         },
         "method": "POST",
         "path": "/services.datahub.v1.DataHubService/RegisterFeedLink"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ReleaseNotification request from alt-backend after a retryable failure",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a claimed push delivery"
+        }
+      ],
+      "request": {
+        "body": {
+          "errorMessage": "push service refused: 503",
+          "id": "9c858901-8a57-4791-81fe-4c455b099bc9",
+          "nextAttemptAt": "2026-08-01T09:45:00Z"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/ReleaseNotification"
       },
       "response": {
         "body": {},
@@ -4906,6 +5458,59 @@
       }
     },
     {
+      "description": "an EnqueueNotification request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts notification enqueues"
+        }
+      ],
+      "request": {
+        "body": {
+          "dedupeKey": "recap:7d2a1c34-0a5f-4e51-9b1f-1a2b3c4d5e6f",
+          "expiresAt": "2026-08-02T09:30:00Z",
+          "kind": "recap_ready",
+          "occurredAt": "2026-08-01T09:30:00Z",
+          "payload": "eyJyZWNhcF9pZCI6InIxIn0=",
+          "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/EnqueueNotification"
+      },
+      "response": {
+        "body": {
+          "deliveryCount": 2,
+          "supersededCount": 0
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.deliveryCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.supersededCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an IsDomainDeclined request from alt-backend",
       "providerStates": [
         {
@@ -4972,6 +5577,51 @@
       }
     },
     {
+      "description": "an UpdatePushSubscriptionPreferences request from alt-backend turning the digest off",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a push subscription for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "endpoint": "https://push.example.com/subscription/AAAA-BBBB-CCCC",
+          "preferences": {
+            "acolyteReportReady": true,
+            "recapReady": true,
+            "summaryReady": true
+          },
+          "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/UpdatePushSubscriptionPreferences"
+      },
+      "response": {
+        "body": {
+          "updated": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.updated": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an UpsertArticleTags request from alt-backend",
       "providerStates": [
         {
@@ -5014,6 +5664,57 @@
               ]
             },
             "$.upsertedCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an UpsertPushSubscription request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts push subscription writes"
+        }
+      ],
+      "request": {
+        "body": {
+          "subscription": {
+            "auth": "tBHItJI5svbpez7KI4CCXg",
+            "endpoint": "https://push.example.com/subscription/AAAA-BBBB-CCCC",
+            "p256dh": "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTtF71JbFw",
+            "preferences": {
+              "acolyteReportReady": true,
+              "recapReady": true,
+              "summaryReady": true,
+              "todayEntranceReady": true
+            },
+            "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+            "vapidKeyFingerprint": "b0a1c2d3e4f5"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/UpsertPushSubscription"
+      },
+      "response": {
+        "body": {
+          "created": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.created": {
               "combine": "AND",
               "matchers": [
                 {

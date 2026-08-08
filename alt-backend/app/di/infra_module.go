@@ -7,6 +7,7 @@ import (
 	"alt/orchestrator/driver/search_indexer_connect"
 	"alt/orchestrator/gateway/config_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
+	"alt/orchestrator/port/push_port"
 	"alt/orchestrator/port/search_indexer_port"
 	"alt/shared/driver/mqhub_connect"
 	"alt/shared/gateway/datahub_gateway"
@@ -104,6 +105,17 @@ type InfraModule struct {
 	// field here is the recall rail's fallback — the last read this binary
 	// performed against a database it owned.
 	ArticleRefGateway *datahub_gateway.ArticleRefGateway
+
+	// PushSubscriptionGateway is alt.push.v1.PushService's only route to
+	// push_subscriptions.
+	//
+	// Declared as the port rather than as *datahub_gateway.PushSubscriptionGateway
+	// so that an unwired module fails the nil check in push.NewHandler. A
+	// concrete pointer field would arrive there as a non-nil interface holding a
+	// nil pointer, which is precisely the shape rule 8 exists to prevent: the
+	// guard would pass and the first user to grant notification permission would
+	// take the panic instead of the composition root.
+	PushSubscriptionGateway push_port.PushSubscriptionPort
 }
 
 // newInfraModule wires infrastructure components from the single Config
@@ -183,6 +195,8 @@ func newInfraModule(cfg *config.Config) *InfraModule {
 		StatsGateway:   datahub_gateway.NewStatsGateway(dataHubClient),
 
 		ArticleRefGateway: datahub_gateway.NewArticleRefGateway(dataHubClient),
+
+		PushSubscriptionGateway: datahub_gateway.NewPushSubscriptionGateway(dataHubClient),
 	}
 }
 

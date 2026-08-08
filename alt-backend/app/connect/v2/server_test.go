@@ -8,6 +8,8 @@ import (
 
 	"alt/config"
 	"alt/di"
+	"alt/gen/proto/services/datahub/v1/datahubv1connect"
+	"alt/shared/gateway/datahub_gateway"
 )
 
 // dataHubServicePaths are the service-to-service surfaces. They carry no
@@ -29,6 +31,7 @@ var publicServicePaths = []string{
 	"/alt.feeds.v2.FeedService/GetFeedStats",
 	"/alt.articles.v2.ArticleService/GetArticle",
 	"/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome",
+	"/alt.push.v1.PushService/GetPushConfig",
 }
 
 // testDeps returns the smallest container SetupConnectHandlers accepts.
@@ -37,9 +40,21 @@ var publicServicePaths = []string{
 // there since ADR-000954 Wave 3 moved article_heads to alt-data-hub, and these
 // tests assert routing rather than behaviour, so a zero-valued module is
 // enough.
+// PushSubscriptionGateway and VAPID_PUBLIC_KEY are the exception to that: both
+// are refused at construction, because a nil port or an empty key produces a
+// push surface that answers on the wire and fails only in the browser. They are
+// wired to a client pointed at an address nothing resolves, which is enough for
+// routing assertions and would fail loudly if one of these tests ever made a
+// call.
 func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
-	return &di.ApplicationComponents{Infra: &di.InfraModule{}},
-		&config.Config{},
+	pushGateway := datahub_gateway.NewPushSubscriptionGateway(
+		datahubv1connect.NewDataHubServiceClient(http.DefaultClient, "http://datahub.invalid"))
+
+	cfg := &config.Config{}
+	cfg.WebPush.PublicKey = "a-vapid-public-key-value"
+
+	return &di.ApplicationComponents{Infra: &di.InfraModule{PushSubscriptionGateway: pushGateway}},
+		cfg,
 		slog.New(slog.NewTextHandler(io_Discard{}, nil))
 }
 
