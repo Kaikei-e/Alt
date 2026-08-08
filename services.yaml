@@ -119,6 +119,23 @@ services:
       dir: alt-backend
       dockerfile: alt-backend/Dockerfile.backend
       args: {BINARY: datahub}
+  # alt-notifier is the fourth binary of the same module — the Web Push
+  # dispatcher. `runtime` for the same reason as its two siblings: it owns no
+  # pact of its own. It claims deliveries from alt-data-hub over mTLS, and that
+  # contract is published under the alt-backend / alt-data-hub pacticipants
+  # that already exist.
+  #
+  # Registering it here is what makes the image exist at all. compose refers to
+  # ghcr.io/<owner>/alt-alt-notifier, so without this entry docker-build never
+  # produces one, alt-deploy never rolls it, and the container fails to pull —
+  # a notification path that is absent rather than broken, which is the shape
+  # this whole feature is built to avoid.
+  - name: alt-notifier
+    kind: runtime
+    build:
+      dir: alt-backend
+      dockerfile: alt-backend/Dockerfile.backend
+      args: {BINARY: notifier}
 
   - name: alt-frontend-sv
     kind: runtime
