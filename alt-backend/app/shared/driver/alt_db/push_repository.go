@@ -271,7 +271,11 @@ func (r *PushRepository) EnqueueNotification(ctx context.Context, in domain.Noti
 	if err != nil {
 		return 0, 0, fmt.Errorf("begin enqueue notification tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	// Rollback after a successful Commit is a no-op that returns
+	// pgx.ErrTxClosed, so the error is discarded rather than checked — there is
+	// no outcome it could change. Written as a closure because errcheck cannot
+	// tell that apart from a rollback whose failure matters.
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var superseded int64
 	if in.Kind == domain.NotificationKindTodayEntranceReady {

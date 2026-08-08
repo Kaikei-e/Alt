@@ -129,7 +129,10 @@ func (c *Client) Send(ctx context.Context, sub Subscription, msg Message) (SendR
 		// delivered; retrying is the safe choice for an at-least-once sender.
 		return SendResult{Retryable: true}, fmt.Errorf("webpush post to %s: %w", sub.Endpoint, err)
 	}
-	defer resp.Body.Close()
+	// Closing a response body cannot fail in a way the caller can act on: the
+	// status has already been read, and the only cost of a failed close is a
+	// connection that will not be reused.
+	defer func() { _ = resp.Body.Close() }()
 
 	result := c.classify(resp)
 	if result.Gone || result.Retryable || resp.StatusCode >= 300 {

@@ -17,22 +17,15 @@ import (
 )
 
 const (
-	// dispatchInterval is how often the dispatcher looks for work. A user who
-	// just watched a job finish is looking at the screen, so seconds matter;
-	// the cost of an empty pass is one indexed probe against a partial index
-	// sized by backlog rather than by history.
-	dispatchInterval = 2 * time.Second
-
-	// dispatchTimeout bounds one pass. It has to stay well under the claim
-	// lease, or a pass that overruns would still be sending rows another
-	// dispatcher has already re-claimed.
-	dispatchTimeout = 30 * time.Second
-
-	dispatchBatchSize = 50
-
 	// pushClientTimeout bounds a single request to a push service. Left at the
 	// zero value an http.Client waits forever, and a wedged connection to one
 	// device would hold the whole pass hostage.
+	//
+	// The dispatcher's own interval, timeout and batch size live beside the job
+	// registration in orchestrator/job, not here: registering the job from this
+	// file would close an import cycle, so the schedule belongs where the
+	// schedule is actually declared. Keeping a second copy here was how they
+	// came to disagree in the first place.
 	pushClientTimeout = 10 * time.Second
 )
 

@@ -462,7 +462,7 @@ func TestClient_Send_ClosesResponseBody(t *testing.T) {
 // race, where a payload slice shared across concurrent sends is written in place.
 func TestClient_Send_DoesNotMutateCallerPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(io.Discard, r.Body)
+		_, _ = io.Copy(io.Discard, r.Body)
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer server.Close()
