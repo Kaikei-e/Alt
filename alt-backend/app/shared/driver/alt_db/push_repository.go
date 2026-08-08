@@ -216,6 +216,15 @@ type pushRowScanner interface {
 // subscription_id) idempotency key — and one INSERT cannot resolve two
 // different unique indexes two different ways. Both statements run in one
 // transaction, so the RPC is still one transaction boundary.
+// The incoming key is excluded, and that exclusion is load-bearing rather than
+// defensive. The daily job ticks every ten minutes and gates on the UTC hour,
+// so six firings share one date and therefore one dedupe key. Without the
+// exclusion the second firing expires the rows the first created and then
+// inserts nothing, because the fan-out's ON CONFLICT DO NOTHING sees the same
+// key — the digest destroys itself, and does so precisely when delivery is
+// slow enough for the rows to still be pending, which is when it was most
+// needed. A retryable send failure puts a row back in 'pending' too, so this
+// is reachable well beyond the trigger hour.
 const supersedePendingDigestQuery = `
 	UPDATE push_deliveries d
 	SET state = 'expired',
@@ -224,6 +233,7 @@ const supersedePendingDigestQuery = `
 	WHERE d.user_id = $1
 	  AND d.kind = 'today_entrance_ready'
 	  AND d.state = 'pending'
+	  AND d.dedupe_key <> $2
 `
 
 // fanOutNotificationQuery creates one row per device that still wants this
@@ -265,7 +275,7 @@ func (r *PushRepository) EnqueueNotification(ctx context.Context, in domain.Noti
 
 	var superseded int64
 	if in.Kind == domain.NotificationKindTodayEntranceReady {
-		tag, err := tx.Exec(ctx, supersedePendingDigestQuery, in.UserID)
+		tag, err := tx.Exec(ctx, supersedePendingDigestQuery, in.UserID, in.DedupeKey)
 		if err != nil {
 			return 0, 0, fmt.Errorf("supersede pending digest: %w", err)
 		}
