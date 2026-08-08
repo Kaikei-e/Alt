@@ -30,6 +30,18 @@ _GROUP_CREATE_MAX_ATTEMPTS = 5
 _GROUP_CREATE_BACKOFF_BASE_SECONDS = 0.5
 _GROUP_CREATE_BACKOFF_CAP_SECONDS = 5.0
 
+# `XREADGROUP ... BLOCK <block_timeout_ms>` only bounds how long the *server*
+# waits before replying with an empty result; the reply still needs a network
+# round trip back. redis-py's own client-side socket read deadline is a
+# separate timer (defaults to 5s when unset) that starts at roughly the same
+# moment, so if it isn't held comfortably above block_timeout_ms it fires
+# first and every idle poll raises `redis.exceptions.TimeoutError` instead of
+# returning the empty read it was blocking for. The margin below is sized to
+# absorb normal network/scheduling jitter, not to bound a real outage -- a
+# hung Redis still surfaces as a TimeoutError, just after `_read_and_process`
+# waited the full block window rather than seconds short of it.
+_SOCKET_TIMEOUT_MARGIN_SECONDS = 10.0
+
 
 def is_group_already_exists(error: redis.ResponseError) -> bool:
     """Whether `XGROUP CREATE` failed only because the group is already there."""
@@ -199,8 +211,15 @@ class StreamConsumer:
             logger.info("consumer_disabled", message="Consumer is disabled, not starting")
             return
 
-        # decode_responses=True to get string keys instead of bytes
-        self.client = redis.from_url(self.config.redis_url, decode_responses=True)
+        # decode_responses=True to get string keys instead of bytes.
+        # socket_timeout must clear block_timeout_ms by a wide margin -- see
+        # _SOCKET_TIMEOUT_MARGIN_SECONDS above for why.
+        socket_timeout_seconds = self.config.block_timeout_ms / 1000 + _SOCKET_TIMEOUT_MARGIN_SECONDS
+        self.client = redis.from_url(
+            self.config.redis_url,
+            decode_responses=True,
+            socket_timeout=socket_timeout_seconds,
+        )
 
         # Ensure consumer group exists
         await self._ensure_consumer_group()

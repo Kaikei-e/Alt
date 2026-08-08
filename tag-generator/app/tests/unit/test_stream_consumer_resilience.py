@@ -102,3 +102,45 @@ def test_gives_up_after_exhausting_attempts() -> None:
         asyncio.run(consumer._ensure_consumer_group())
 
     assert 1 < client.calls < 50
+
+
+class _FakeClientForStart:
+    """Minimal client covering the calls `start()` makes before creating tasks."""
+
+    async def xgroup_create(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    async def close(self) -> None:
+        pass
+
+
+def test_start_gives_the_redis_client_a_socket_timeout_above_block_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A blocking XREADGROUP only bounds the *server's* wait; the empty reply
+    still has to make a network round trip back. If the client's own
+    socket-level read deadline is not comfortably larger than block_timeout_ms,
+    the client times itself out before that reply lands and every idle poll
+    raises `redis.exceptions.TimeoutError` instead of returning cleanly --
+    reproduced live against redis-streams: block=5000ms with the redis-py
+    default socket_timeout (5s) raises `TimeoutError` after 5.01s every time,
+    while block=1000ms returns `[]` after 1.02s.
+    """
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_from_url(url: str, **kwargs: object) -> _FakeClientForStart:
+        captured_kwargs["url"] = url
+        captured_kwargs.update(kwargs)
+        return _FakeClientForStart()
+
+    monkeypatch.setattr(redis, "from_url", fake_from_url)
+
+    config = ConsumerConfig(enabled=True, block_timeout_ms=5000)
+    consumer = StreamConsumer(config, handler=EventHandler())
+    consumer.stop()  # loops exit on their first `while not self._shutdown` check
+
+    asyncio.run(consumer.start())
+
+    socket_timeout = captured_kwargs.get("socket_timeout")
+    assert isinstance(socket_timeout, (int, float)), "socket_timeout must be passed explicitly"
+    assert socket_timeout > config.block_timeout_ms / 1000
