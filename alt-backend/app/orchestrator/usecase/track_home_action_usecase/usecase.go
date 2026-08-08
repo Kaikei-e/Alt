@@ -104,6 +104,12 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 
 	now := time.Now()
 
+	// One action is one fact, so both appends below carry the same key.
+	// sovereign rejects an empty dedupe_key outright: it gates a
+	// `WHERE dedupe_key != ''` partial unique index, so an empty value would
+	// silently disable at-least-once dedup rather than fail.
+	dedupeKey := fmt.Sprintf("%s:%s:%s:%d", userID, actionType, itemKey, now.UnixMilli())
+
 	// Record user event
 	payload, _ := json.Marshal(map[string]string{
 		"action_type":   actionType,
@@ -118,6 +124,7 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		EventType:   actionType,
 		ItemKey:     itemKey,
 		Payload:     payload,
+		DedupeKey:   dedupeKey,
 	}
 
 	if err := u.userEventPort.AppendKnowledgeUserEvent(ctx, userEvent); err != nil {
@@ -195,7 +202,7 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		EventType:     eventType,
 		AggregateType: domain.AggregateHomeSession,
 		AggregateID:   itemKey,
-		DedupeKey:     fmt.Sprintf("%s:%s:%s:%d", userID, actionType, itemKey, now.UnixMilli()),
+		DedupeKey:     dedupeKey,
 		Payload:       knowledgePayload,
 	}
 

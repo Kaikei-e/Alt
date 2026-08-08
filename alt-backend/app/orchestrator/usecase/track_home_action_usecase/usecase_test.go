@@ -455,3 +455,53 @@ func TestTrackHomeActionUsecase_ArticleURLRetry(t *testing.T) {
 			"payload must not carry an empty 'url' field; absence is the contract")
 	})
 }
+
+func TestTrackHomeActionUsecase_UserEventCarriesDedupeKey(t *testing.T) {
+	userID := uuid.New()
+	tenantID := uuid.New()
+
+	// knowledge-sovereign rejects an empty dedupe_key with InvalidArgument: the
+	// value gates a `WHERE dedupe_key != ''` partial unique index, so an empty
+	// one silently disables at-least-once dedup instead of failing. A user event
+	// appended without it therefore never lands, which is what made every home
+	// action fail in production while the fire-and-forget client swallowed it.
+	for _, actionType := range []string{"dismiss", "open", "ask", "tag_click"} {
+		t.Run(actionType, func(t *testing.T) {
+			userPort := &mockUserEventPort{}
+			uc := NewTrackHomeActionUsecase(userPort, &mockKnowledgeEventPort{}, nil, nil, nil, nil, nil)
+
+			err := uc.Execute(context.Background(), userID, tenantID, actionType, "item-1", "")
+			require.NoError(t, err)
+
+			require.Len(t, userPort.appendedEvents, 1)
+			assert.NotEmpty(t, userPort.appendedEvents[0].DedupeKey,
+				"user event must carry a dedupe key or sovereign rejects the append")
+		})
+	}
+
+	t.Run("both appends of one action share the key", func(t *testing.T) {
+		userPort := &mockUserEventPort{}
+		knPort := &mockKnowledgeEventPort{}
+		uc := NewTrackHomeActionUsecase(userPort, knPort, nil, nil, nil, nil, nil)
+
+		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", "item-1", ""))
+
+		require.Len(t, userPort.appendedEvents, 1)
+		require.Len(t, knPort.appendedEvents, 1)
+		// One user action is one fact. Two keys for it would let a retry
+		// deduplicate one append and duplicate the other.
+		assert.Equal(t, knPort.appendedEvents[0].DedupeKey, userPort.appendedEvents[0].DedupeKey)
+	})
+
+	t.Run("distinct items do not collide", func(t *testing.T) {
+		userPort := &mockUserEventPort{}
+		uc := NewTrackHomeActionUsecase(userPort, &mockKnowledgeEventPort{}, nil, nil, nil, nil, nil)
+
+		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", "item-1", ""))
+		require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", "item-2", ""))
+
+		require.Len(t, userPort.appendedEvents, 2)
+		assert.NotEqual(t, userPort.appendedEvents[0].DedupeKey, userPort.appendedEvents[1].DedupeKey,
+			"dismissing two items must produce two events, not one deduped away")
+	})
+}
