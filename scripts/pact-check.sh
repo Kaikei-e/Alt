@@ -378,13 +378,21 @@ STEPS_PROVIDER=(
   "Python: recap-subworker provider|uv|recap-subworker|uv run pytest tests/contract/ -v"
   "Python: tag-generator provider|uv|tag-generator/app|uv run pytest tests/contract/ -v"
   # dataplane/driver/contract holds both provider names ADR-000954 left this
-  # binary serving, so the two legs partition it by the DataHubContract suffix
-  # on the test name rather than by enumerating tests. Enumeration is not
-  # available anyway — a `-run a|b` alternation would be split as a field
-  # separator by the registry parser — and it is the wrong shape besides: an
-  # allowlist silently drops the next verification somebody adds, which is the
-  # gap these two lines close.
-  "Go: alt-backend provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract -skip DataHubContract ./dataplane/driver/contract/ -v"
+  # binary serving. The alt-backend leg runs the WHOLE package, alt-data-hub
+  # verifications included, and that is load-bearing rather than lazy.
+  #
+  # alt-deploy has no PACTICIPANT_ROLES entry for alt-data-hub and says why in
+  # release-deploy.yaml:508 — "its verifications are published by alt-backend's
+  # pact-check.sh leg". So nothing in the release pipeline ever invokes
+  # `--services alt-data-hub`, and narrowing this leg to `-skip DataHubContract`
+  # stopped those verifications being published at all: can-i-deploy then
+  # resolved alt-data-hub to `unknown` and blocked every release.
+  #
+  # The alt-data-hub leg below re-runs the same tests under its own label so an
+  # operator can target them directly. Republishing an identical verification is
+  # a no-op at the broker, and the overlap is the price of not depending on a
+  # second repository invoking a leg it does not know exists.
+  "Go: alt-backend provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./dataplane/driver/contract/ -v"
   "Go: alt-data-hub provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract -run DataHubContract ./dataplane/driver/contract/ -v"
   "Go: search-indexer provider|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v"
   "Go: pre-processor provider|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v"

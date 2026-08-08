@@ -249,6 +249,35 @@ assert_contains "$out" "WOULD PUBLISH: consumer=recap-evaluator" \
 assert_contains "$out" "WOULD PUBLISH: consumer=rag-orchestrator" \
   "unfiltered: rag-orchestrator pacts are published"
 
+# --- cross-repo assumption: alt-data-hub verifications ride alt-backend's leg ---
+#
+# alt-deploy's release-deploy.yaml has no PACTICIPANT_ROLES entry for
+# alt-data-hub and says why: "its verifications are published by alt-backend's
+# pact-check.sh leg". Nothing in the release pipeline ever runs
+# `--services alt-data-hub`, so the moment this leg is narrowed with -run/-skip
+# the broker stops receiving alt-data-hub verifications entirely, can-i-deploy
+# resolves it to `unknown`, and the all_or_nothing gate blocks every release —
+# with a failure message that points at alt-deploy rather than at this file.
+#
+# This is a source-level assertion because the dry-run prints labels, not
+# commands: the bug lives in the go-test selector, which no amount of filter
+# exercise can observe.
+echo "== cross-repo: alt-backend provider leg must run the whole contract package =="
+backend_leg=$(grep -F '"Go: alt-backend provider|go|' "$SCRIPT")
+TESTS=$((TESTS + 1))
+if [[ -n "$backend_leg" ]]; then
+  echo "  PASS: alt-backend provider leg is present"
+else
+  echo "  FAIL: alt-backend provider leg is present"
+  FAILS=$((FAILS + 1))
+fi
+assert_contains "$backend_leg" "./dataplane/driver/contract/" \
+  "alt-backend provider leg targets the shared contract package"
+assert_not_contains "$backend_leg" " -run " \
+  "alt-backend provider leg must not narrow with -run (drops alt-data-hub verifications)"
+assert_not_contains "$backend_leg" " -skip " \
+  "alt-backend provider leg must not narrow with -skip (drops alt-data-hub verifications)"
+
 if [[ $FAILS -gt 0 ]]; then
   echo ""
   echo "FAILED: $FAILS of $TESTS assertions failed"

@@ -57,6 +57,11 @@ on:
       - 'recap-worker/recap-worker/src/clients/**/contract.rs'
       - 'alt-butterfly-facade/internal/handler/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
+      # The deploy host runs its provider legs out of pact-check.sh, not out
+      # of this workflow, so a change there is invisible here unless the
+      # script and its filter tests are watched paths.
+      - 'scripts/pact-check.sh'
+      - 'scripts/tests/**'
   pull_request:
     branches: [main]
     paths:
@@ -87,6 +92,11 @@ on:
       - 'recap-worker/recap-worker/src/clients/**/contract.rs'
       - 'alt-butterfly-facade/internal/handler/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
+      # The deploy host runs its provider legs out of pact-check.sh, not out
+      # of this workflow, so a change there is invisible here unless the
+      # script and its filter tests are watched paths.
+      - 'scripts/pact-check.sh'
+      - 'scripts/tests/**'
 
 # Superseded PR runs are cancelled; main-branch runs are not, because they
 # publish pacts and a half-cancelled publish leaves the broker inconsistent.
@@ -316,6 +326,19 @@ jobs:
           swap-storage: true
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # Runs here rather than in a job of its own: this one already feeds the
+      # "Pact Publish & Provider Verification" required check, so the assertions
+      # are blocking from the first run instead of waiting on a branch-protection
+      # rewire. Bash only, no toolchain, and it runs before the broker work so a
+      # leg-selection regression fails in seconds.
+      #
+      # What it guards is a cross-repository assumption CI cannot otherwise see:
+      # alt-deploy publishes alt-data-hub's verifications by invoking
+      # pact-check.sh's alt-backend provider leg, so narrowing that leg silently
+      # strands alt-data-hub at verifications=0 and blocks every release.
+      - name: pact-check.sh leg-selection guard
+        run: ./scripts/tests/test-pact-check-filter.sh
 
       - name: Download all pact artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
