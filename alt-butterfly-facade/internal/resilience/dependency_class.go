@@ -13,6 +13,9 @@ const (
 	// ClassExternalContent is RPCs whose upstream hop leaves the cluster for a
 	// third-party publisher site.
 	ClassExternalContent
+	// ClassTelemetry is fire-and-forget analytics writes whose result the
+	// caller discards, so a failure carries no signal about read-path health.
+	ClassTelemetry
 )
 
 func (c DependencyClass) String() string {
@@ -23,6 +26,8 @@ func (c DependencyClass) String() string {
 		return "unread_projection"
 	case ClassExternalContent:
 		return "external_content"
+	case ClassTelemetry:
+		return "telemetry"
 	default:
 		return "non_critical"
 	}
@@ -48,8 +53,30 @@ var externalContentEndpoints = map[string]struct{}{
 	"/alt.articles.v2.ArticleService/FetchArticleContent": {},
 }
 
+// telemetryEndpoints are fire-and-forget analytics writes: the frontend
+// issues them and discards the result (.catch(() => {})), so their failures
+// carry no signal about backend health and must never be charged to — or
+// gated by — a shared breaker (postmortem: a burst of TrackHomeAction 500s
+// tripped the non-critical breaker and blacked out unrelated reads).
+var telemetryEndpoints = map[string]struct{}{
+	"/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction":    {},
+	"/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeItemsSeen": {},
+	"/alt.knowledge_trail.v1.KnowledgeTrailService/EmitTrailOutcome": {},
+}
+
 // ClassForEndpoint returns the dependency class for a Connect-RPC path.
 // Unclassified endpoints default to ClassNonCritical.
+//
+// Unlike the other classes, ClassNonCritical is not a semantic grouping of
+// endpoints that are meant to share a failure budget -- it is everything
+// nobody has classified yet, an open-ended and ever-growing set. Enumerating
+// each new read endpoint into its own class does not scale and reliably
+// leaves gaps (adversarial review: only the three telemetry endpoints were
+// carved out here, leaving KnowledgeHome / Search / FetchArticlesByTag and
+// everything else still sharing one budget). The caller (BFFHandler) is
+// therefore required to give every ClassNonCritical endpoint its own,
+// independent circuit breaker instance rather than one shared per class, so
+// this label is a log/metrics grouping only, never a shared-budget one.
 func ClassForEndpoint(endpoint string) DependencyClass {
 	if _, ok := criticalMutationEndpoints[endpoint]; ok {
 		return ClassCriticalMutation
@@ -59,6 +86,9 @@ func ClassForEndpoint(endpoint string) DependencyClass {
 	}
 	if _, ok := externalContentEndpoints[endpoint]; ok {
 		return ClassExternalContent
+	}
+	if _, ok := telemetryEndpoints[endpoint]; ok {
+		return ClassTelemetry
 	}
 	return ClassNonCritical
 }
@@ -77,6 +107,12 @@ func UnreadProjectionEndpointCount() int {
 // external-content breaker.
 func ExternalContentEndpointCount() int {
 	return len(externalContentEndpoints)
+}
+
+// TelemetryEndpointCount returns how many fire-and-forget endpoints are
+// exempt from breaker gating.
+func TelemetryEndpointCount() int {
+	return len(telemetryEndpoints)
 }
 
 // CriticalEndpointCount is mutation + projection opt-in endpoints (for startup

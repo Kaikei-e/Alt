@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -57,9 +58,68 @@ type BFFHandler struct {
 	cacheConfig       *cache.CacheConfig
 	mutationCB        *resilience.CircuitBreaker
 	projectionCB      *resilience.CircuitBreaker
-	nonCriticalCB     *resilience.CircuitBreaker
+	nonCritical       *nonCriticalBreakers
 	externalContentCB *resilience.CircuitBreaker
+	telemetryHealth   *resilience.TelemetryHealth
 	deduplicator      *RequestDeduplicator
+}
+
+// nonCriticalBreakers lazily creates one circuit breaker per endpoint in the
+// default (ClassNonCritical) dependency class, all built from the same
+// threshold config. ClassNonCritical is not a semantic grouping the way the
+// other classes are -- it is every endpoint nobody has classified yet -- so a
+// single shared instance here let five 500s on any unclassified endpoint
+// blackout every other one, KnowledgeHome / Search / FetchArticlesByTag
+// included (adversarial review). Per-endpoint isolation fixes that by
+// construction: no enumeration of "which endpoints are related" is needed,
+// because none of them share anything.
+type nonCriticalBreakers struct {
+	mu         sync.Mutex
+	cfg        resilience.CircuitBreakerConfig
+	byEndpoint map[string]*resilience.CircuitBreaker
+}
+
+func newNonCriticalBreakers(cfg resilience.CircuitBreakerConfig) *nonCriticalBreakers {
+	return &nonCriticalBreakers{cfg: cfg, byEndpoint: make(map[string]*resilience.CircuitBreaker)}
+}
+
+// forEndpoint returns endpoint's breaker, creating it on first use.
+func (n *nonCriticalBreakers) forEndpoint(endpoint string) *resilience.CircuitBreaker {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if cb, ok := n.byEndpoint[endpoint]; ok {
+		return cb
+	}
+	cb := resilience.NewCircuitBreaker(n.cfg)
+	n.byEndpoint[endpoint] = cb
+	return cb
+}
+
+// stats rolls every endpoint's breaker up into one summary for
+// /v1/bff/stats: State is worst-of (Open beats HalfOpen beats Closed) so an
+// operator sees "something in this class is degraded" at a glance, and the
+// totals are straight sums. An endpoint never queried yet is absent from
+// byEndpoint and so does not exist for this rollup -- consistent with it
+// having made zero requests.
+func (n *nonCriticalBreakers) stats() resilience.CircuitBreakerStats {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	rollup := resilience.CircuitBreakerStats{State: resilience.StateClosed}
+	for _, cb := range n.byEndpoint {
+		s := cb.Stats()
+		rollup.TotalSuccesses += s.TotalSuccesses
+		rollup.TotalFailures += s.TotalFailures
+		rollup.TotalRejections += s.TotalRejections
+		switch {
+		case s.State == resilience.StateOpen:
+			rollup.State = resilience.StateOpen
+		case s.State == resilience.StateHalfOpen && rollup.State != resilience.StateOpen:
+			rollup.State = resilience.StateHalfOpen
+		}
+	}
+	return rollup
 }
 
 // NewBFFHandler creates a new BFF handler with all features.
@@ -94,10 +154,14 @@ func NewBFFHandler(
 			FailureThreshold: config.CBFailureThreshold,
 			SuccessThreshold: config.CBSuccessThreshold,
 			OpenTimeout:      config.CBOpenTimeout,
+			OnTransition:     h.logCircuitTransition,
 		}
+		cbCfg.Class = resilience.ClassCriticalMutation
 		h.mutationCB = resilience.NewCircuitBreaker(cbCfg)
+		cbCfg.Class = resilience.ClassUnreadProjection
 		h.projectionCB = resilience.NewCircuitBreaker(cbCfg)
-		h.nonCriticalCB = resilience.NewCircuitBreaker(cbCfg)
+		cbCfg.Class = resilience.ClassNonCritical
+		h.nonCritical = newNonCriticalBreakers(cbCfg)
 		// The external-content class talks to the open internet, so it gets a
 		// looser budget than an internal dependency: a rate-limited or
 		// unreachable publisher is not an alt-backend outage, and it re-probes
@@ -106,12 +170,23 @@ func NewBFFHandler(
 			FailureThreshold: config.CBExternalContentFailureThreshold,
 			SuccessThreshold: config.CBSuccessThreshold,
 			OpenTimeout:      config.CBExternalContentOpenTimeout,
+			Class:            resilience.ClassExternalContent,
+			OnTransition:     h.logCircuitTransition,
+		})
+		// ClassTelemetry is exempt from gating (breakerFor returns nil for
+		// it below), but exempt from gating must not mean silent:
+		// DegradedThreshold reuses the same failure budget as a reporting
+		// cadence rather than an admission one.
+		h.telemetryHealth = resilience.NewTelemetryHealth(resilience.TelemetryHealthConfig{
+			DegradedThreshold: config.CBFailureThreshold,
+			OnChange:          h.logTelemetryHealth,
 		})
 		if logger != nil {
 			logger.Info("circuit_breaker_classes",
 				"critical_mutation", resilience.CriticalMutationEndpointCount(),
 				"unread_projection", resilience.UnreadProjectionEndpointCount(),
 				"external_content", resilience.ExternalContentEndpointCount(),
+				"telemetry_exempt", resilience.TelemetryEndpointCount(),
 				"non_critical", "default",
 				"unclassified_as", "non_critical",
 			)
@@ -176,7 +251,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// and so records no outcome, and a half-open trial permit that is never
 	// handed back rejects the whole class until the process restarts.
 	if cb := h.breakerFor(endpoint); cb != nil {
-		permit, allowed := cb.Acquire()
+		permit, allowed := cb.Acquire(endpoint)
 		if !allowed {
 			h.handleCircuitOpen(w, endpoint, requestID)
 			return
@@ -237,7 +312,7 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 
 	endpoint := r.URL.Path
 	if cb := h.breakerFor(endpoint); cb != nil {
-		permit, allowed := cb.Acquire()
+		permit, allowed := cb.Acquire(endpoint)
 		if !allowed {
 			h.handleCircuitOpen(w, endpoint, requestID)
 			return
@@ -498,6 +573,13 @@ func (h *BFFHandler) handleCircuitOpen(w http.ResponseWriter, endpoint, requestI
 }
 
 // breakerFor returns the circuit breaker for the endpoint's dependency class.
+// ClassTelemetry deliberately has none: those RPCs are fire-and-forget writes
+// whose result the caller discards, so a nil breaker here means their
+// failures never charge a shared budget and no other class's open breaker
+// ever blocks them either (their outcomes are still counted and logged, see
+// telemetryHealth / logTelemetryHealth). The default (ClassNonCritical)
+// branch hands back that endpoint's own breaker, never a shared one — see
+// nonCriticalBreakers.
 func (h *BFFHandler) breakerFor(endpoint string) *resilience.CircuitBreaker {
 	switch resilience.ClassForEndpoint(endpoint) {
 	case resilience.ClassCriticalMutation:
@@ -506,8 +588,13 @@ func (h *BFFHandler) breakerFor(endpoint string) *resilience.CircuitBreaker {
 		return h.projectionCB
 	case resilience.ClassExternalContent:
 		return h.externalContentCB
+	case resilience.ClassTelemetry:
+		return nil
 	default:
-		return h.nonCriticalCB
+		if h.nonCritical == nil {
+			return nil
+		}
+		return h.nonCritical.forEndpoint(endpoint)
 	}
 }
 
@@ -534,18 +621,97 @@ func (h *BFFHandler) recordOutcome(endpoint string, statusCode int) {
 	}
 }
 
-// recordSuccess records a successful request for the endpoint's circuit breaker.
+// recordSuccess records a successful request for the endpoint's circuit
+// breaker, or — for ClassTelemetry, which has no breaker — for telemetryHealth.
 func (h *BFFHandler) recordSuccess(endpoint string) {
+	if resilience.ClassForEndpoint(endpoint) == resilience.ClassTelemetry {
+		if h.telemetryHealth != nil {
+			h.telemetryHealth.RecordSuccess(endpoint)
+		}
+		return
+	}
 	if cb := h.breakerFor(endpoint); cb != nil {
-		cb.RecordSuccess()
+		cb.RecordSuccess(endpoint)
 	}
 }
 
-// recordFailure records a failed request for the endpoint's circuit breaker.
+// recordFailure records a failed request for the endpoint's circuit breaker,
+// or — for ClassTelemetry, which has no breaker — for telemetryHealth. This is
+// the fix for the class being otherwise completely silent: exempt from
+// gating must not mean exempt from observability (adversarial review).
 func (h *BFFHandler) recordFailure(endpoint string) {
-	if cb := h.breakerFor(endpoint); cb != nil {
-		cb.RecordFailure()
+	if resilience.ClassForEndpoint(endpoint) == resilience.ClassTelemetry {
+		if h.telemetryHealth != nil {
+			h.telemetryHealth.RecordFailure(endpoint)
+		}
+		return
 	}
+	if cb := h.breakerFor(endpoint); cb != nil {
+		cb.RecordFailure(endpoint)
+	}
+}
+
+// logCircuitTransition is the breakers' transition observer. The breaker
+// package stays free of a logging dependency: it hands over a value describing
+// the change, captured under its own lock and delivered after that lock is
+// released, and this is where it becomes a log line.
+//
+// Rejections are deliberately not logged one by one — an open breaker refuses
+// every request in its class, which during the incident that motivated this
+// would have been thousands of lines a minute. The count rides
+// rejected_since_last_report on the next transition instead, so the volume of
+// user-visible 503s is still recorded, bounded to two lines per OpenTimeout
+// (the probe and the trial that fails behind it) while a dependency stays down.
+func (h *BFFHandler) logCircuitTransition(t resilience.StateTransition) {
+	if h.logger == nil {
+		return
+	}
+
+	attrs := []any{
+		"transition_seq", t.Seq,
+		"class", t.Class.String(),
+		"endpoint", t.Endpoint,
+		"from", t.From.String(),
+		"to", t.To.String(),
+		"consecutive_failures", t.ConsecFailures,
+		"consecutive_successes", t.ConsecSuccesses,
+		"failure_threshold", t.FailureThreshold,
+		"success_threshold", t.SuccessThreshold,
+		"open_timeout_seconds", t.OpenTimeout.Seconds(),
+		"rejected_since_last_report", t.RejectedSinceLastReport,
+	}
+
+	// OPEN is user-visible degradation: every request in the class is being
+	// refused from here until the breaker re-probes.
+	if t.To == resilience.StateOpen {
+		h.logger.Warn("circuit_breaker_transition", attrs...)
+		return
+	}
+	h.logger.Info("circuit_breaker_transition", attrs...)
+}
+
+// logTelemetryHealth is telemetryHealth's OnChange observer, ClassTelemetry's
+// counterpart to logCircuitTransition. It fires only on the two edges an
+// operator needs to act on — an endpoint crossing into degraded, and its
+// first success after — not on every call, so a 100%-failing endpoint still
+// logs once instead of flooding.
+func (h *BFFHandler) logTelemetryHealth(o resilience.TelemetryOutcome) {
+	if h.logger == nil {
+		return
+	}
+
+	attrs := []any{
+		"endpoint", o.Endpoint,
+		"consecutive_failures", o.ConsecFailures,
+		"total_failures", o.TotalFailures,
+		"total_successes", o.TotalSuccesses,
+	}
+
+	if o.Degraded {
+		h.logger.Warn("telemetry_endpoint_degraded", attrs...)
+		return
+	}
+	h.logger.Info("telemetry_endpoint_recovered", attrs...)
 }
 
 // invalidateUnreadProjectionOnMutation drops cached Unread Projection Reads
@@ -595,6 +761,7 @@ func (h *BFFHandler) GetCircuitBreakerStats() *resilience.CircuitBreakerStats {
 		}
 		rollup.TotalSuccesses += s.TotalSuccesses
 		rollup.TotalFailures += s.TotalFailures
+		rollup.TotalRejections += s.TotalRejections
 		switch {
 		case s.State == resilience.StateOpen:
 			rollup.State = resilience.StateOpen
@@ -611,11 +778,14 @@ type CircuitBreakerClassStats struct {
 	Projection      *resilience.CircuitBreakerStats
 	NonCritical     *resilience.CircuitBreakerStats
 	ExternalContent *resilience.CircuitBreakerStats
+	// Telemetry has no CircuitState -- ClassTelemetry endpoints are never
+	// gated -- so it is a separate, simpler shape from the other classes.
+	Telemetry *resilience.TelemetryHealthStats
 }
 
 // GetCircuitBreakerClassStats returns per-dependency-class CB stats.
 func (h *BFFHandler) GetCircuitBreakerClassStats() *CircuitBreakerClassStats {
-	if h.mutationCB == nil && h.projectionCB == nil && h.nonCriticalCB == nil && h.externalContentCB == nil {
+	if h.mutationCB == nil && h.projectionCB == nil && h.nonCritical == nil && h.externalContentCB == nil && h.telemetryHealth == nil {
 		return nil
 	}
 	out := &CircuitBreakerClassStats{}
@@ -627,13 +797,17 @@ func (h *BFFHandler) GetCircuitBreakerClassStats() *CircuitBreakerClassStats {
 		s := h.projectionCB.Stats()
 		out.Projection = &s
 	}
-	if h.nonCriticalCB != nil {
-		s := h.nonCriticalCB.Stats()
+	if h.nonCritical != nil {
+		s := h.nonCritical.stats()
 		out.NonCritical = &s
 	}
 	if h.externalContentCB != nil {
 		s := h.externalContentCB.Stats()
 		out.ExternalContent = &s
+	}
+	if h.telemetryHealth != nil {
+		s := h.telemetryHealth.Stats()
+		out.Telemetry = &s
 	}
 	return out
 }

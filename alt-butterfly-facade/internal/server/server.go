@@ -156,40 +156,52 @@ func NewServerWithTransports(
 					stats.CircuitBreaker.State = rollup.State.String()
 					stats.CircuitBreaker.TotalSuccesses = rollup.TotalSuccesses
 					stats.CircuitBreaker.TotalFailures = rollup.TotalFailures
+					stats.CircuitBreaker.TotalRejections = rollup.TotalRejections
 				}
 				if classStats.Mutation != nil {
 					stats.CircuitBreaker.Mutation = &CircuitBreakerClassSlice{
-						State:          classStats.Mutation.State.String(),
-						TotalSuccesses: classStats.Mutation.TotalSuccesses,
-						TotalFailures:  classStats.Mutation.TotalFailures,
+						State:           classStats.Mutation.State.String(),
+						TotalSuccesses:  classStats.Mutation.TotalSuccesses,
+						TotalFailures:   classStats.Mutation.TotalFailures,
+						TotalRejections: classStats.Mutation.TotalRejections,
 					}
 				}
 				if classStats.Projection != nil {
 					stats.CircuitBreaker.Projection = &CircuitBreakerClassSlice{
-						State:          classStats.Projection.State.String(),
-						TotalSuccesses: classStats.Projection.TotalSuccesses,
-						TotalFailures:  classStats.Projection.TotalFailures,
+						State:           classStats.Projection.State.String(),
+						TotalSuccesses:  classStats.Projection.TotalSuccesses,
+						TotalFailures:   classStats.Projection.TotalFailures,
+						TotalRejections: classStats.Projection.TotalRejections,
 					}
 				}
 				if classStats.NonCritical != nil {
 					stats.CircuitBreaker.NonCritical = &CircuitBreakerClassSlice{
-						State:          classStats.NonCritical.State.String(),
-						TotalSuccesses: classStats.NonCritical.TotalSuccesses,
-						TotalFailures:  classStats.NonCritical.TotalFailures,
+						State:           classStats.NonCritical.State.String(),
+						TotalSuccesses:  classStats.NonCritical.TotalSuccesses,
+						TotalFailures:   classStats.NonCritical.TotalFailures,
+						TotalRejections: classStats.NonCritical.TotalRejections,
 					}
 				}
 				if classStats.ExternalContent != nil {
 					stats.CircuitBreaker.ExternalContent = &CircuitBreakerClassSlice{
-						State:          classStats.ExternalContent.State.String(),
-						TotalSuccesses: classStats.ExternalContent.TotalSuccesses,
-						TotalFailures:  classStats.ExternalContent.TotalFailures,
+						State:           classStats.ExternalContent.State.String(),
+						TotalSuccesses:  classStats.ExternalContent.TotalSuccesses,
+						TotalFailures:   classStats.ExternalContent.TotalFailures,
+						TotalRejections: classStats.ExternalContent.TotalRejections,
+					}
+				}
+				if classStats.Telemetry != nil {
+					stats.CircuitBreaker.Telemetry = &TelemetryStatsSlice{
+						TotalSuccesses: classStats.Telemetry.TotalSuccesses,
+						TotalFailures:  classStats.Telemetry.TotalFailures,
 					}
 				}
 			} else if cbStats := bffHandler.GetCircuitBreakerStats(); cbStats != nil {
 				stats.CircuitBreaker = &CircuitBreakerStatsResponse{
-					State:          cbStats.State.String(),
-					TotalSuccesses: cbStats.TotalSuccesses,
-					TotalFailures:  cbStats.TotalFailures,
+					State:           cbStats.State.String(),
+					TotalSuccesses:  cbStats.TotalSuccesses,
+					TotalFailures:   cbStats.TotalFailures,
+					TotalRejections: cbStats.TotalRejections,
 				}
 			}
 		}
@@ -362,10 +374,15 @@ type CircuitBreakerStatsResponse struct {
 	State           string                    `json:"state"`
 	TotalSuccesses  int64                     `json:"total_successes"`
 	TotalFailures   int64                     `json:"total_failures"`
+	TotalRejections int64                     `json:"total_rejections"`
 	Mutation        *CircuitBreakerClassSlice `json:"mutation,omitempty"`
 	Projection      *CircuitBreakerClassSlice `json:"projection,omitempty"`
 	NonCritical     *CircuitBreakerClassSlice `json:"non_critical,omitempty"`
 	ExternalContent *CircuitBreakerClassSlice `json:"external_content,omitempty"`
+	// Telemetry is ClassTelemetry's outcome counters. Those endpoints are
+	// exempt from breaker gating (fire-and-forget writes), so there is no
+	// state/rejections to report, only whether they are succeeding.
+	Telemetry *TelemetryStatsSlice `json:"telemetry,omitempty"`
 }
 
 // CircuitBreakerClassSlice is per-dependency-class CB stats.
@@ -373,6 +390,17 @@ type CircuitBreakerClassSlice struct {
 	State          string `json:"state"`
 	TotalSuccesses int64  `json:"total_successes"`
 	TotalFailures  int64  `json:"total_failures"`
+	// TotalRejections is the requests this class refused while open — the
+	// user-visible 503 volume that the transition log deliberately does not
+	// emit a line for.
+	TotalRejections int64 `json:"total_rejections"`
+}
+
+// TelemetryStatsSlice is ClassTelemetry's outcome counters in the API
+// response.
+type TelemetryStatsSlice struct {
+	TotalSuccesses int64 `json:"total_successes"`
+	TotalFailures  int64 `json:"total_failures"`
 }
 
 // createQueryFetcher creates a query fetcher function for the aggregation handler.

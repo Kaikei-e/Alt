@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -52,8 +53,9 @@ func TestNewBFFHandler(t *testing.T) {
 	assert.NotNil(t, handler.responseCache)
 	assert.NotNil(t, handler.mutationCB)
 	assert.NotNil(t, handler.projectionCB)
-	assert.NotNil(t, handler.nonCriticalCB)
+	assert.NotNil(t, handler.nonCritical)
 	assert.NotNil(t, handler.externalContentCB)
+	assert.NotNil(t, handler.telemetryHealth)
 	assert.NotNil(t, handler.deduplicator)
 }
 
@@ -85,8 +87,9 @@ func TestNewBFFHandler_DisabledFeatures(t *testing.T) {
 	assert.Nil(t, handler.responseCache)
 	assert.Nil(t, handler.mutationCB)
 	assert.Nil(t, handler.projectionCB)
-	assert.Nil(t, handler.nonCriticalCB)
+	assert.Nil(t, handler.nonCritical)
 	assert.Nil(t, handler.externalContentCB)
+	assert.Nil(t, handler.telemetryHealth)
 	assert.Nil(t, handler.deduplicator)
 }
 
@@ -161,7 +164,7 @@ func TestBFFHandler_CircuitBreaker_OpensOnFailures(t *testing.T) {
 	}
 
 	// Non-critical circuit should be open now
-	assert.Equal(t, resilience.StateOpen, handler.nonCriticalCB.State())
+	assert.Equal(t, resilience.StateOpen, handler.nonCritical.forEndpoint("/alt.feeds.v2.FeedService/GetFeedStats").State())
 
 	// Next non-critical request should fail immediately without hitting backend
 	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
@@ -202,7 +205,7 @@ func TestBFFHandler_CircuitBreaker_NonCriticalOpenDoesNotBlockMarkAsRead(t *test
 		handler.ServeHTTP(rec, req)
 	}
 
-	assert.Equal(t, resilience.StateOpen, handler.nonCriticalCB.State())
+	assert.Equal(t, resilience.StateOpen, handler.nonCritical.forEndpoint("/alt.article.v2.ArticleService/FetchArticleContent").State())
 	assert.Equal(t, resilience.StateClosed, handler.mutationCB.State())
 	assert.Equal(t, resilience.StateClosed, handler.projectionCB.State())
 
@@ -887,10 +890,11 @@ func TestBFFHandler_CircuitBreaker_ClientErrorIsNeutralForFailureBudget(t *testi
 
 	assert.Equal(t, int32(4), backendHits.Load(),
 		"the 404 must not charge the failure budget: the breaker may not open before the fourth 500")
-	assert.Equal(t, resilience.StateOpen, handler.nonCriticalCB.State(),
+	nonCriticalCB := handler.nonCritical.forEndpoint("/alt.feeds.v2.FeedService/GetFeedStats")
+	assert.Equal(t, resilience.StateOpen, nonCriticalCB.State(),
 		"the 404 must not reset the failure budget either: three 5xx still open the breaker")
-	assert.Equal(t, int64(3), handler.nonCriticalCB.Stats().TotalFailures)
-	assert.Equal(t, int64(0), handler.nonCriticalCB.Stats().TotalSuccesses)
+	assert.Equal(t, int64(3), nonCriticalCB.Stats().TotalFailures)
+	assert.Equal(t, int64(0), nonCriticalCB.Stats().TotalSuccesses)
 }
 
 // TestBFFHandler_CircuitBreaker_RateLimitedUpstreamNeverOpensBreaker is the
@@ -927,9 +931,10 @@ func TestBFFHandler_CircuitBreaker_RateLimitedUpstreamNeverOpensBreaker(t *testi
 				require.Equal(t, status, rec.Code, "the upstream status must reach the client, not a breaker 503")
 			}
 
-			assert.Equal(t, resilience.StateClosed, handler.nonCriticalCB.State())
-			assert.Equal(t, int64(0), handler.nonCriticalCB.Stats().TotalFailures)
-			assert.Equal(t, int64(0), handler.nonCriticalCB.Stats().TotalSuccesses)
+			nonCriticalCB := handler.nonCritical.forEndpoint("/alt.feeds.v2.FeedService/GetFeedStats")
+			assert.Equal(t, resilience.StateClosed, nonCriticalCB.State())
+			assert.Equal(t, int64(0), nonCriticalCB.Stats().TotalFailures)
+			assert.Equal(t, int64(0), nonCriticalCB.Stats().TotalSuccesses)
 		})
 	}
 }
@@ -956,7 +961,7 @@ func TestBFFHandler_StreamingProcedure_ClientErrorIsNeutral(t *testing.T) {
 	req.Header.Set("X-Alt-Backend-Token", token)
 	handler.ServeHTTP(httptest.NewRecorder(), req)
 
-	stats := handler.nonCriticalCB.Stats()
+	stats := handler.nonCritical.forEndpoint("/alt.augur.v2.AugurService/StreamChat").Stats()
 	assert.Equal(t, int64(0), stats.TotalFailures, "a streamed 404 is an answer, not an outage")
 	assert.Equal(t, int64(0), stats.TotalSuccesses, "nor may it reset the failure budget")
 }
@@ -990,7 +995,7 @@ func TestBFFHandler_CircuitOpen_EmitsWireValidConnectError(t *testing.T) {
 		req.Header.Set("X-Alt-Backend-Token", token)
 		handler.ServeHTTP(httptest.NewRecorder(), req)
 	}
-	require.Equal(t, resilience.StateOpen, handler.nonCriticalCB.State())
+	require.Equal(t, resilience.StateOpen, handler.nonCritical.forEndpoint("/alt.feeds.v2.FeedService/GetFeedStats").State())
 
 	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("X-Alt-Backend-Token", token)
@@ -1045,7 +1050,8 @@ func TestBFFHandler_CircuitBreaker_ExternalContentOpenDoesNotBlockOtherRPCs(t *t
 	}
 
 	assert.Equal(t, resilience.StateOpen, handler.externalContentCB.State())
-	assert.Equal(t, resilience.StateClosed, handler.nonCriticalCB.State())
+	assert.Equal(t, resilience.StateClosed, handler.nonCritical.stats().State,
+		"nothing has hit a non-critical endpoint yet, so the class-wide rollup must stay closed")
 	assert.Equal(t, resilience.StateClosed, handler.mutationCB.State())
 	assert.Equal(t, resilience.StateClosed, handler.projectionCB.State())
 
@@ -1060,6 +1066,144 @@ func TestBFFHandler_CircuitBreaker_ExternalContentOpenDoesNotBlockOtherRPCs(t *t
 		handler.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code, ep)
 	}
+}
+
+// TestBFFHandler_CircuitBreaker_UnclassifiedEndpointDoesNotBlackoutOtherReads
+// reproduces the finding this whole change exists to fix, literally: five
+// 500s on an unclassified endpoint nobody has ever heard of must not black
+// out KnowledgeHome / FetchArticlesByTag / Search for OpenTimeout. Before
+// per-endpoint isolation, every one of these shared a single nonCriticalCB
+// instance, so this is exactly the collateral-damage scenario the adversarial
+// review reproduced against the prior fix (which only carved out the three
+// telemetry endpoints and left this shared budget in place).
+func TestBFFHandler_CircuitBreaker_UnclassifiedEndpointDoesNotBlackoutOtherReads(t *testing.T) {
+	const obscureEndpoint = "/alt.feeds.v2.FeedService/GetFeedStats"
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == obscureEndpoint {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   5,
+		CBSuccessThreshold:   2,
+		CBOpenTimeout:        30 * time.Second,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", obscureEndpoint, bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	}
+	require.Equal(t, resilience.StateOpen, handler.nonCritical.forEndpoint(obscureEndpoint).State(),
+		"the obscure endpoint's own breaker must have tripped")
+
+	for _, ep := range []string{
+		"/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome",
+		"/alt.articles.v2.ArticleService/FetchArticlesByTag",
+		"/alt.search.v2.SearchService/SearchArticles",
+	} {
+		req := httptest.NewRequest("POST", ep, bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code, "%s must not blackout as collateral damage from %s", ep, obscureEndpoint)
+	}
+}
+
+// TestBFFHandler_CircuitBreaker_TelemetryFailuresDoNotOpenNonCriticalBreaker
+// reproduces the incident directly: TrackHomeAction is fire-and-forget
+// telemetry the frontend discards (.catch(() => {})), so five failing calls
+// must not trip the shared non-critical breaker and black out unrelated
+// reads such as FetchArticlesByTag.
+func TestBFFHandler_CircuitBreaker_TelemetryFailuresDoNotOpenNonCriticalBreaker(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   5,
+		CBSuccessThreshold:   2,
+		CBOpenTimeout:        1 * time.Hour,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	}
+
+	assert.Equal(t, resilience.StateClosed,
+		handler.nonCritical.forEndpoint("/alt.articles.v2.ArticleService/FetchArticlesByTag").State(),
+		"discarded telemetry failures must not open FetchArticlesByTag's breaker")
+
+	req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticlesByTag", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code, "an unrelated read must not black out as collateral damage")
+}
+
+// TestBFFHandler_CircuitBreaker_NonCriticalOpenDoesNotBlockTelemetry is the
+// bulkhead in the other direction: an unrelated read tripping the shared
+// non-critical breaker must not stop fire-and-forget telemetry writes either.
+func TestBFFHandler_CircuitBreaker_NonCriticalOpenDoesNotBlockTelemetry(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/alt.feeds.v2.FeedService/GetFeedStats" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   3,
+		CBSuccessThreshold:   1,
+		CBOpenTimeout:        1 * time.Hour,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	require.Equal(t, resilience.StateOpen, handler.nonCritical.forEndpoint("/alt.feeds.v2.FeedService/GetFeedStats").State())
+
+	req := httptest.NewRequest("POST", "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code, "telemetry must not be gated by an unrelated class's breaker")
 }
 
 // TestBFFHandler_ExternalContentBreaker_UsesItsOwnBudget proves the class is
@@ -1154,4 +1298,205 @@ func TestBFFHandler_GetCircuitBreakerClassStats_IncludesExternalContent(t *testi
 	require.NotNil(t, stats)
 	require.NotNil(t, stats.ExternalContent)
 	assert.Equal(t, resilience.StateClosed, stats.ExternalContent.State)
+}
+
+// decodeLogRecords parses the slog JSON stream a test captured.
+func decodeLogRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(buf.Bytes()))
+	var out []map[string]any
+	for {
+		var rec map[string]any
+		err := dec.Decode(&rec)
+		if err != nil {
+			break
+		}
+		out = append(out, rec)
+	}
+	return out
+}
+
+func circuitTransitionRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, rec := range decodeLogRecords(t, buf) {
+		if rec["msg"] == "circuit_breaker_transition" {
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
+// TestBFFHandler_CircuitBreaker_LogsTransitionsAndAggregatesRejections is the
+// wiring pin for the defect this observability work addresses: the BFF used to
+// open a breaker, serve 503s, and recover without writing a single line. Every
+// transition must now be logged with the class and endpoint that caused it,
+// OPEN at WARN because it is user-visible degradation, and the requests
+// refused while open must be summarised rather than logged one by one.
+func TestBFFHandler_CircuitBreaker_LogsTransitionsAndAggregatesRejections(t *testing.T) {
+	var failing atomic.Bool
+	failing.Store(true)
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer mockBackend.Close()
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	secret := []byte("test-secret-key")
+	backendClient := client.NewBackendClientWithTransport(
+		mockBackend.URL, 30*time.Second, 5*time.Minute, http.DefaultTransport,
+	)
+	handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", logger, BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   3,
+		CBSuccessThreshold:   1,
+		CBOpenTimeout:        80 * time.Millisecond,
+
+		CBExternalContentFailureThreshold: 20,
+		CBExternalContentOpenTimeout:      5 * time.Second,
+	})
+	token := createTestToken(t, secret)
+
+	const endpoint = "/alt.feeds.v2.FeedService/GetFeedStats"
+	call := func() int {
+		req := httptest.NewRequest("POST", endpoint, bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	for i := 0; i < 3; i++ {
+		call()
+	}
+	require.Equal(t, resilience.StateOpen, handler.nonCritical.forEndpoint(endpoint).State())
+
+	const rejections = 50
+	for i := 0; i < rejections; i++ {
+		require.Equal(t, http.StatusServiceUnavailable, call())
+	}
+
+	tripped := circuitTransitionRecords(t, &logs)
+	require.Len(t, tripped, 1, "an open breaker must not log one line per rejected request")
+	assert.Equal(t, "WARN", tripped[0]["level"], "OPEN is user-visible degradation")
+	assert.Equal(t, "CLOSED", tripped[0]["from"])
+	assert.Equal(t, "OPEN", tripped[0]["to"])
+	assert.Equal(t, "non_critical", tripped[0]["class"])
+	assert.Equal(t, endpoint, tripped[0]["endpoint"])
+	assert.Equal(t, float64(3), tripped[0]["consecutive_failures"])
+	assert.Equal(t, float64(3), tripped[0]["failure_threshold"])
+	assert.Equal(t, float64(0.08), tripped[0]["open_timeout_seconds"])
+
+	// Backend recovers: the probe and the return to CLOSED must both be visible
+	// so an operator sees recovery without polling /v1/bff/stats.
+	failing.Store(false)
+	time.Sleep(100 * time.Millisecond)
+	require.Equal(t, http.StatusOK, call())
+
+	all := circuitTransitionRecords(t, &logs)
+	require.Len(t, all, 3)
+	assert.Equal(t, "INFO", all[1]["level"])
+	assert.Equal(t, "HALF_OPEN", all[1]["to"])
+	assert.Equal(t, float64(rejections), all[1]["rejected_since_last_report"],
+		"the rejections an operator never saw individually must be summarised here")
+	assert.Equal(t, "INFO", all[2]["level"])
+	assert.Equal(t, "CLOSED", all[2]["to"])
+	assert.Equal(t, float64(0), all[2]["rejected_since_last_report"])
+}
+
+// TestBFFHandler_TelemetryFailures_AreLoggedAndCounted is the wiring pin for
+// the second defect the adversarial review found: ClassTelemetry has no
+// breaker (by design — see breakerFor), but that used to also mean no counter
+// and no log, so a 100%-failing TrackHomeAction — including the snooze /
+// dismiss_recall writes it carries — was completely invisible at the BFF.
+// This proves both halves of the fix: a single WARN line once the endpoint
+// crosses DegradedThreshold (not one per discarded request), and the totals
+// surfacing on GetCircuitBreakerClassStats().Telemetry.
+func TestBFFHandler_TelemetryFailures_AreLoggedAndCounted(t *testing.T) {
+	var failing atomic.Bool
+	failing.Store(true)
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer mockBackend.Close()
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	secret := []byte("test-secret-key")
+	backendClient := client.NewBackendClientWithTransport(
+		mockBackend.URL, 30*time.Second, 5*time.Minute, http.DefaultTransport,
+	)
+	handler := NewBFFHandler(backendClient, secret, "auth-hub", "alt-backend", logger, BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   3,
+		CBSuccessThreshold:   1,
+		CBOpenTimeout:        time.Hour,
+	})
+	token := createTestToken(t, secret)
+
+	const endpoint = "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction"
+	call := func() int {
+		req := httptest.NewRequest("POST", endpoint, bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	for i := 0; i < 3; i++ {
+		require.Equal(t, http.StatusInternalServerError, call(),
+			"ClassTelemetry has no breaker: every request must still reach the backend")
+	}
+
+	degraded := telemetryHealthRecords(t, &logs, "telemetry_endpoint_degraded")
+	require.Len(t, degraded, 1, "a run of telemetry failures must log once, not once per discarded write")
+	assert.Equal(t, "WARN", degraded[0]["level"])
+	assert.Equal(t, endpoint, degraded[0]["endpoint"])
+	assert.Equal(t, float64(3), degraded[0]["consecutive_failures"])
+	assert.Equal(t, float64(3), degraded[0]["total_failures"])
+
+	stats := handler.GetCircuitBreakerClassStats()
+	require.NotNil(t, stats.Telemetry, "telemetry outcomes must be countable, not just logged")
+	assert.Equal(t, int64(3), stats.Telemetry.TotalFailures)
+	assert.Equal(t, int64(0), stats.Telemetry.TotalSuccesses)
+
+	// One more failure while already degraded must not log again.
+	call()
+	degraded = telemetryHealthRecords(t, &logs, "telemetry_endpoint_degraded")
+	require.Len(t, degraded, 1)
+
+	failing.Store(false)
+	require.Equal(t, http.StatusOK, call())
+
+	recovered := telemetryHealthRecords(t, &logs, "telemetry_endpoint_recovered")
+	require.Len(t, recovered, 1, "the first success after a degraded run must be reported")
+	assert.Equal(t, "INFO", recovered[0]["level"])
+	assert.Equal(t, endpoint, recovered[0]["endpoint"])
+
+	stats = handler.GetCircuitBreakerClassStats()
+	assert.Equal(t, int64(1), stats.Telemetry.TotalSuccesses)
+}
+
+func telemetryHealthRecords(t *testing.T, buf *bytes.Buffer, msg string) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, rec := range decodeLogRecords(t, buf) {
+		if rec["msg"] == msg {
+			out = append(out, rec)
+		}
+	}
+	return out
 }

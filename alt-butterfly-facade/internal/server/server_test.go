@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"alt-butterfly-facade/internal/handler"
 )
 
 func TestNewServer(t *testing.T) {
@@ -370,4 +372,127 @@ func createValidToken(t *testing.T, secret []byte) string {
 		t.Fatalf("failed to create test token: %v", err)
 	}
 	return tokenStr
+}
+
+// TestServer_BFFStats_KeepsItsShapeAndReportsRejections pins /v1/bff/stats as
+// a contract: it is consumed elsewhere, so the per-class keys must survive.
+// total_rejections is the additive part — the volume of requests an open
+// breaker refused, which the transition log deliberately never emits a line
+// per occurrence of.
+func TestServer_BFFStats_KeepsItsShapeAndReportsRejections(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer backend.Close()
+
+	secret := []byte("test-secret")
+	cfg := Config{
+		BackendURL:       backend.URL,
+		Secret:           secret,
+		Issuer:           "auth-hub",
+		Audience:         "alt-backend",
+		RequestTimeout:   30 * time.Second,
+		StreamingTimeout: 5 * time.Minute,
+		BFFConfig: handler.BFFConfig{
+			EnableCircuitBreaker: true,
+			CBFailureThreshold:   2,
+			CBSuccessThreshold:   1,
+			CBOpenTimeout:        time.Hour,
+
+			CBExternalContentFailureThreshold: 20,
+			CBExternalContentOpenTimeout:      5 * time.Second,
+		},
+	}
+	srv := NewServerWithTransport(cfg, nil, http.DefaultTransport)
+
+	const endpoint = "/alt.feeds.v2.FeedService/GetUnreadFeeds"
+	for i := 0; i < 4; i++ {
+		req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{}`))
+		req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, secret))
+		srv.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	statsReq := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
+	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, secret))
+	statsRec := httptest.NewRecorder()
+	srv.ServeHTTP(statsRec, statsReq)
+	require.Equal(t, http.StatusOK, statsRec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(statsRec.Body.Bytes(), &body))
+
+	cb, ok := body["circuit_breaker"].(map[string]any)
+	require.True(t, ok, "circuit_breaker must stay a top-level object")
+	for _, key := range []string{"state", "total_successes", "total_failures", "total_rejections"} {
+		assert.Contains(t, cb, key)
+	}
+	for _, class := range []string{"mutation", "projection", "non_critical", "external_content"} {
+		slice, ok := cb[class].(map[string]any)
+		require.True(t, ok, "per-class stats key %q must stay present", class)
+		for _, key := range []string{"state", "total_successes", "total_failures", "total_rejections"} {
+			assert.Contains(t, slice, key, "class %q", class)
+		}
+	}
+
+	projection := cb["projection"].(map[string]any)
+	assert.Equal(t, "OPEN", projection["state"])
+	assert.Equal(t, float64(2), projection["total_failures"])
+	assert.Equal(t, float64(2), projection["total_rejections"],
+		"requests refused by the open breaker must be countable without reading the log")
+	assert.Equal(t, float64(2), cb["total_rejections"], "the rollup sums every class")
+}
+
+// TestServer_BFFStats_TelemetryOutcomesAreCountable pins the counter half of
+// the ClassTelemetry observability fix end to end, through the real HTTP
+// stats endpoint rather than the handler's Go API: a fire-and-forget write's
+// failures must be visible in /v1/bff/stats even though the endpoint has no
+// breaker and so no state/rejections to report.
+func TestServer_BFFStats_TelemetryOutcomesAreCountable(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer backend.Close()
+
+	secret := []byte("test-secret")
+	cfg := Config{
+		BackendURL:       backend.URL,
+		Secret:           secret,
+		Issuer:           "auth-hub",
+		Audience:         "alt-backend",
+		RequestTimeout:   30 * time.Second,
+		StreamingTimeout: 5 * time.Minute,
+		BFFConfig: handler.BFFConfig{
+			EnableCircuitBreaker: true,
+			CBFailureThreshold:   2,
+			CBSuccessThreshold:   1,
+			CBOpenTimeout:        time.Hour,
+		},
+	}
+	srv := NewServerWithTransport(cfg, nil, http.DefaultTransport)
+
+	const endpoint = "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction"
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{}`))
+		req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, secret))
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusInternalServerError, rec.Code,
+			"ClassTelemetry has no breaker: every request must reach the backend, none short-circuited")
+	}
+
+	statsReq := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
+	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, secret))
+	statsRec := httptest.NewRecorder()
+	srv.ServeHTTP(statsRec, statsReq)
+	require.Equal(t, http.StatusOK, statsRec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(statsRec.Body.Bytes(), &body))
+
+	cb, ok := body["circuit_breaker"].(map[string]any)
+	require.True(t, ok)
+	telemetry, ok := cb["telemetry"].(map[string]any)
+	require.True(t, ok, "telemetry must be visible in /v1/bff/stats, not silently dropped")
+	assert.Equal(t, float64(3), telemetry["total_failures"])
+	assert.Equal(t, float64(0), telemetry["total_successes"])
 }

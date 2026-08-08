@@ -47,6 +47,22 @@ func TestClassForEndpoint_ArticleSiblingsStayNonCritical(t *testing.T) {
 	}
 }
 
+// TestClassForEndpoint_Telemetry guards the fire-and-forget write endpoints:
+// the frontend discards their result (.catch(() => {})), so a run of backend
+// 5xx on one of them carries no signal about read-path health and must not
+// be charged to any breaker.
+func TestClassForEndpoint_Telemetry(t *testing.T) {
+	for _, ep := range []string{
+		"/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction",
+		"/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeItemsSeen",
+		"/alt.knowledge_trail.v1.KnowledgeTrailService/EmitTrailOutcome",
+	} {
+		assert.Equal(t, ClassTelemetry, ClassForEndpoint(ep), ep)
+	}
+	assert.Equal(t, "telemetry", ClassTelemetry.String())
+	assert.Equal(t, 3, TelemetryEndpointCount())
+}
+
 func TestClassForEndpoint_UnclassifiedDefaultsNonCritical(t *testing.T) {
 	nonCritical := []string{
 		"/alt.feeds.v2.FeedService/GetFeedStats",

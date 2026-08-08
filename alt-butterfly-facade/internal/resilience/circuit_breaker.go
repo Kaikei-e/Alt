@@ -37,6 +37,46 @@ func (s CircuitState) String() string {
 	}
 }
 
+// StateTransition is one circuit state change, described well enough for an
+// operator to act on it without reading any other service's logs: which
+// dependency class degraded, which endpoint's outcome moved it, and how that
+// compares to the configured budget.
+//
+// It is built at the point the state field is written, under the breaker's
+// lock, so it is produced exactly once per transition and never inferred by a
+// reader racing the writer. It is delivered afterwards, with the lock
+// released, so a slow observer cannot put itself on every request's path.
+type StateTransition struct {
+	// Seq is a per-breaker counter assigned under the lock. Observers run
+	// unlocked and so may be called out of order under concurrency; Seq is
+	// how a reader (or a test) orders reports and spots a dropped one.
+	Seq              uint64
+	Class            DependencyClass
+	Endpoint         string
+	From             CircuitState
+	To               CircuitState
+	ConsecFailures   int
+	ConsecSuccesses  int
+	FailureThreshold int
+	SuccessThreshold int
+	OpenTimeout      time.Duration
+	// RejectedSinceLastReport is how many requests this breaker refused since
+	// the previous transition was reported. Rejections are counted rather than
+	// reported individually: an open breaker can refuse thousands of requests
+	// a second, and one report each turns an outage into a log flood. The
+	// tally rides the next transition instead, which bounds reporting to the
+	// state changes themselves — during a sustained outage that is the
+	// OPEN -> HALF_OPEN probe (at most once per OpenTimeout) and the failed
+	// trial behind it, so the summary is also effectively periodic.
+	RejectedSinceLastReport int64
+}
+
+// TransitionObserver receives every state change. It is called on the
+// goroutine whose call caused the transition, with the breaker's lock
+// released, so it may read the breaker back and may block without stalling
+// other requests' admission decisions.
+type TransitionObserver func(StateTransition)
+
 // CircuitBreakerConfig holds the configuration for a circuit breaker.
 type CircuitBreakerConfig struct {
 	// FailureThreshold is the number of consecutive failures before opening the circuit.
@@ -45,6 +85,12 @@ type CircuitBreakerConfig struct {
 	SuccessThreshold int
 	// OpenTimeout is how long the circuit stays open before transitioning to half-open.
 	OpenTimeout time.Duration
+	// Class labels this breaker's dependency class in transition reports.
+	Class DependencyClass
+	// OnTransition, when set, receives every state change. Left nil the
+	// breaker is silent — which is what the incident this reporting exists for
+	// looked like, so production wiring must always set it.
+	OnTransition TransitionObserver
 }
 
 // DefaultCircuitBreakerConfig returns a configuration with sensible defaults.
@@ -61,6 +107,7 @@ type CircuitBreakerStats struct {
 	State            CircuitState
 	TotalSuccesses   int64
 	TotalFailures    int64
+	TotalRejections  int64
 	ConsecFailures   int
 	ConsecSuccesses  int
 	HalfOpenInFlight int
@@ -89,6 +136,15 @@ type CircuitBreaker struct {
 	// halfOpenSeq increments on every trial permit handed out, so a Release
 	// arriving after the permit was already resolved or superseded is a no-op.
 	halfOpenSeq uint64
+
+	// transitionSeq numbers state changes so an observer running unlocked can
+	// still tell the order they happened in, and notice a missing one.
+	transitionSeq uint64
+	// rejectedSinceReport is the rejection tally carried by the next
+	// transition report; totalRejections is the cumulative count exposed by
+	// Stats for /v1/bff/stats. Both are written under mu.
+	rejectedSinceReport int64
+	totalRejections     int64
 
 	// Stats
 	totalSuccesses int64
@@ -152,25 +208,34 @@ func (p Permit) Release() {
 // successful acquisition so the half-open trial slot is handed back on every
 // exit path — including the ones that never reach the dependency and so never
 // record an outcome.
-func (cb *CircuitBreaker) Acquire() (Permit, bool) {
+func (cb *CircuitBreaker) Acquire(endpoint string) (Permit, bool) {
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
+	permit, allowed, transition := cb.acquireLocked(endpoint)
+	cb.mu.Unlock()
 
+	cb.report(transition)
+	return permit, allowed
+}
+
+// acquireLocked makes the admission decision and captures the state change it
+// caused, if any. Callers must hold cb.mu and must report the transition only
+// after releasing it.
+func (cb *CircuitBreaker) acquireLocked(endpoint string) (Permit, bool, *StateTransition) {
 	now := time.Now()
 
 	switch cb.state {
 	case StateClosed:
-		return Permit{}, true
+		return Permit{}, true, nil
 
 	case StateOpen:
 		// Check if we should transition to half-open
 		if now.Sub(cb.lastFailure) > cb.config.OpenTimeout {
-			cb.state = StateHalfOpen
 			cb.consecSuccesses = 0
 			cb.halfOpenInFlight = 0
-			return cb.grantTrialLocked(now), true
+			transition := cb.transitionLocked(StateHalfOpen, endpoint)
+			return cb.grantTrialLocked(now), true, transition
 		}
-		return Permit{}, false
+		return cb.rejectLocked()
 
 	case StateHalfOpen:
 		// Only one trial call is permitted at a time while the circuit
@@ -180,14 +245,64 @@ func (cb *CircuitBreaker) Acquire() (Permit, bool) {
 		// and reclaimed — a permit nobody hands back must not reject the whole
 		// dependency class until the process restarts.
 		if cb.halfOpenInFlight >= 1 && now.Sub(cb.halfOpenSince) <= cb.config.OpenTimeout {
-			return Permit{}, false
+			return cb.rejectLocked()
 		}
 		cb.halfOpenInFlight = 0
-		return cb.grantTrialLocked(now), true
+		return cb.grantTrialLocked(now), true, nil
 
 	default:
-		return Permit{}, false
+		return cb.rejectLocked()
 	}
+}
+
+// rejectLocked refuses a request and tallies it. Callers must hold cb.mu.
+func (cb *CircuitBreaker) rejectLocked() (Permit, bool, *StateTransition) {
+	cb.rejectedSinceReport++
+	cb.totalRejections++
+	return Permit{}, false, nil
+}
+
+// transitionLocked moves the circuit to `to` and captures the report for the
+// change. Every write to cb.state goes through here, which is what makes a
+// transition reported exactly once: it is recorded by the goroutine that
+// performed it, at the instant it performed it, instead of being deduced
+// afterwards by a reader that may have missed an intervening state.
+// Callers must hold cb.mu and must deliver the report after releasing it.
+func (cb *CircuitBreaker) transitionLocked(to CircuitState, endpoint string) *StateTransition {
+	from := cb.state
+	cb.state = to
+
+	cb.transitionSeq++
+	rejected := cb.rejectedSinceReport
+	cb.rejectedSinceReport = 0
+
+	if cb.config.OnTransition == nil {
+		return nil
+	}
+	return &StateTransition{
+		Seq:                     cb.transitionSeq,
+		Class:                   cb.config.Class,
+		Endpoint:                endpoint,
+		From:                    from,
+		To:                      to,
+		ConsecFailures:          cb.consecFailures,
+		ConsecSuccesses:         cb.consecSuccesses,
+		FailureThreshold:        cb.config.FailureThreshold,
+		SuccessThreshold:        cb.config.SuccessThreshold,
+		OpenTimeout:             cb.config.OpenTimeout,
+		RejectedSinceLastReport: rejected,
+	}
+}
+
+// report hands a captured transition to the observer. cb.config is fixed at
+// construction, so reading it without the lock is safe — and reporting here,
+// after the caller released cb.mu, keeps a slow observer off the admission
+// path of every other goroutine.
+func (cb *CircuitBreaker) report(transition *StateTransition) {
+	if transition == nil {
+		return
+	}
+	cb.config.OnTransition(*transition)
 }
 
 // Allow checks if a request should be allowed through, discarding the permit.
@@ -195,8 +310,8 @@ func (cb *CircuitBreaker) Acquire() (Permit, bool) {
 // A half-open trial taken this way is released only by RecordSuccess /
 // RecordFailure or by Acquire's reclaim; callers with exit paths that record
 // no outcome must use Acquire and release the permit themselves.
-func (cb *CircuitBreaker) Allow() bool {
-	_, allowed := cb.Acquire()
+func (cb *CircuitBreaker) Allow(endpoint string) bool {
+	_, allowed := cb.Acquire(endpoint)
 	return allowed
 }
 
@@ -209,47 +324,55 @@ func (cb *CircuitBreaker) grantTrialLocked(now time.Time) Permit {
 	return Permit{cb: cb, seq: cb.halfOpenSeq}
 }
 
-// RecordSuccess records a successful operation.
-func (cb *CircuitBreaker) RecordSuccess() {
+// RecordSuccess records a successful operation against the endpoint that
+// produced it; the endpoint is what a resulting transition is attributed to.
+func (cb *CircuitBreaker) RecordSuccess(endpoint string) {
 	atomic.AddInt64(&cb.totalSuccesses, 1)
 
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
 
 	cb.consecFailures = 0
 	cb.consecSuccesses++
 
+	var transition *StateTransition
 	if cb.state == StateHalfOpen {
 		if cb.halfOpenInFlight > 0 {
 			cb.halfOpenInFlight--
 		}
 		if cb.consecSuccesses >= cb.config.SuccessThreshold {
-			cb.state = StateClosed
+			transition = cb.transitionLocked(StateClosed, endpoint)
 			cb.consecSuccesses = 0
 		}
 	}
+
+	cb.mu.Unlock()
+	cb.report(transition)
 }
 
-// RecordFailure records a failed operation.
-func (cb *CircuitBreaker) RecordFailure() {
+// RecordFailure records a failed operation against the endpoint that produced
+// it; the endpoint is what a resulting transition is attributed to.
+func (cb *CircuitBreaker) RecordFailure(endpoint string) {
 	atomic.AddInt64(&cb.totalFailures, 1)
 
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
 
 	cb.consecSuccesses = 0
 	cb.consecFailures++
 	cb.lastFailure = time.Now()
 
+	var transition *StateTransition
 	if cb.state == StateClosed {
 		if cb.consecFailures >= cb.config.FailureThreshold {
-			cb.state = StateOpen
+			transition = cb.transitionLocked(StateOpen, endpoint)
 		}
 	} else if cb.state == StateHalfOpen {
 		// Any failure in half-open state trips the circuit again
-		cb.state = StateOpen
+		transition = cb.transitionLocked(StateOpen, endpoint)
 		cb.halfOpenInFlight = 0
 	}
+
+	cb.mu.Unlock()
+	cb.report(transition)
 }
 
 // Stats returns the current statistics.
@@ -261,32 +384,42 @@ func (cb *CircuitBreaker) Stats() CircuitBreakerStats {
 		State:            cb.state,
 		TotalSuccesses:   atomic.LoadInt64(&cb.totalSuccesses),
 		TotalFailures:    atomic.LoadInt64(&cb.totalFailures),
+		TotalRejections:  cb.totalRejections,
 		ConsecFailures:   cb.consecFailures,
 		ConsecSuccesses:  cb.consecSuccesses,
 		HalfOpenInFlight: cb.halfOpenInFlight,
 	}
 }
 
+// resetEndpoint attributes the transition Reset causes: it is an operator
+// escape hatch rather than an outcome, so no request endpoint triggered it.
+const resetEndpoint = "(reset)"
+
 // Reset resets the circuit breaker to closed state.
 func (cb *CircuitBreaker) Reset() {
 	cb.mu.Lock()
-	defer cb.mu.Unlock()
 
-	cb.state = StateClosed
+	var transition *StateTransition
+	if cb.state != StateClosed {
+		transition = cb.transitionLocked(StateClosed, resetEndpoint)
+	}
 	cb.consecFailures = 0
 	cb.consecSuccesses = 0
 	cb.halfOpenInFlight = 0
 	// Stale outstanding permits must not decrement a future trial slot.
 	cb.halfOpenSeq++
 	cb.halfOpenSince = time.Time{}
+
+	cb.mu.Unlock()
+	cb.report(transition)
 }
 
 // Execute runs the given function if the circuit breaker allows it.
 // It automatically records success or failure based on the returned error.
-func Execute[T any](cb *CircuitBreaker, fn func() (T, error)) (T, error) {
+func Execute[T any](cb *CircuitBreaker, endpoint string, fn func() (T, error)) (T, error) {
 	var zero T
 
-	permit, allowed := cb.Acquire()
+	permit, allowed := cb.Acquire(endpoint)
 	if !allowed {
 		return zero, ErrCircuitOpen
 	}
@@ -296,10 +429,10 @@ func Execute[T any](cb *CircuitBreaker, fn func() (T, error)) (T, error) {
 
 	result, err := fn()
 	if err != nil {
-		cb.RecordFailure()
+		cb.RecordFailure(endpoint)
 		return result, err
 	}
 
-	cb.RecordSuccess()
+	cb.RecordSuccess(endpoint)
 	return result, nil
 }
