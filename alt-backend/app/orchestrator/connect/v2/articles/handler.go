@@ -173,7 +173,7 @@ func (h *Handler) FetchArticleContent(
 				fmt.Errorf("the source site did not respond; please try again later"))
 		}
 
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleContent")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchArticleContent")
 	}
 
 	// Content is already sanitized by usecase (ExtractArticleHTML)
@@ -227,7 +227,7 @@ func (h *Handler) ArchiveArticle(
 
 	// Call usecase
 	if err := h.deps.ArchiveArticle.Execute(ctx, input); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ArchiveArticle")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "ArchiveArticle")
 	}
 
 	return connect.NewResponse(&articlesv2.ArchiveArticleResponse{
@@ -273,7 +273,7 @@ func (h *Handler) FetchArticlesCursor(
 	articles, err := h.deps.FetchArticlesCursor.Execute(ctx, cursor, limit+1)
 	stopUsecase()
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticlesCursor")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchArticlesCursor")
 	}
 
 	// Determine hasMore and trim result
@@ -377,7 +377,7 @@ func (h *Handler) FetchArticlesByTag(
 	}
 
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticlesByTag")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchArticlesByTag")
 	}
 
 	// Determine hasMore and trim result
@@ -432,7 +432,7 @@ func (h *Handler) FetchArticleTags(
 
 	tags, err := h.deps.FetchArticleTags.Execute(ctx, articleID)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleTags")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchArticleTags")
 	}
 
 	// Convert to proto
@@ -465,7 +465,7 @@ func (h *Handler) FetchRandomFeed(
 
 	feed, err := h.deps.FetchRandomSubscription.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchRandomFeed")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchRandomFeed")
 	}
 
 	// Fetch tags for the feed's latest article (ADR-173)
@@ -607,7 +607,7 @@ func (h *Handler) FetchTagCloud(
 
 	items, err := h.deps.FetchTagCloud.Execute(ctx, limit)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchTagCloud")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchTagCloud")
 	}
 
 	protoItems := make([]*articlesv2.TagCloudItem, 0, len(items))
@@ -657,7 +657,7 @@ func (h *Handler) BatchPrefetchImages(
 	// Fetch OGP URLs from article_heads, through alt-data-hub.
 	ogURLs, err := h.deps.OgImageURLs.FetchOgImageURLsByArticleIDs(ctx, articleIDs)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "BatchPrefetchImages")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "BatchPrefetchImages")
 	}
 
 	// Generate proxy URLs
@@ -763,7 +763,7 @@ func (h *Handler) FetchArticleSummary(
 	// Fallback: Fetch summaries from inoreader_summaries using existing usecase
 	summaries, err := h.deps.FetchInoreaderSummary.Execute(ctx, feedUrls)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleSummary")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchArticleSummary")
 	}
 
 	// Convert to proto response

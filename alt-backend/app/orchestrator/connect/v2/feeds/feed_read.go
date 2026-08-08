@@ -96,7 +96,7 @@ func (h *Handler) GetUnreadFeeds(
 	feeds, hasMore, err := h.deps.CachedFeedList.FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 	stopUsecase()
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetUnreadFeeds")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetUnreadFeeds")
 	}
 
 	h.enrichWithProxyURLs(feeds)
@@ -159,7 +159,7 @@ func (h *Handler) GetAllFeeds(
 	feeds, err := h.deps.CachedFeedList.FetchAllFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 	stopUsecase()
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetAllFeeds")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetAllFeeds")
 	}
 
 	// Determine hasMore based on result count vs requested limit
@@ -220,7 +220,7 @@ func (h *Handler) GetReadFeeds(
 	feeds, err := h.deps.FetchReadFeedsCursor.Execute(ctx, cursor, limit)
 	stopUsecase()
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetReadFeeds")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetReadFeeds")
 	}
 
 	// Determine hasMore based on result count vs requested limit
@@ -279,7 +279,7 @@ func (h *Handler) GetFavoriteFeeds(
 	feeds, err := h.deps.FetchFavoriteFeedsCursor.Execute(ctx, cursor, limit)
 	stopUsecase()
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetFavoriteFeeds")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetFavoriteFeeds")
 	}
 
 	// Determine hasMore based on result count vs requested limit
@@ -345,7 +345,7 @@ func (h *Handler) SearchFeeds(
 	results, hasMore, err := h.deps.FeedSearch.ExecuteWithPagination(
 		ctx, req.Msg.Query, offset, limit)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "SearchFeeds")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "SearchFeeds")
 	}
 
 	// Compute next cursor
@@ -378,7 +378,7 @@ func (h *Handler) ListSubscriptions(
 
 	sources, err := h.deps.ListSubscriptions.Execute(ctx, userCtx.UserID)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListSubscriptions")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "ListSubscriptions")
 	}
 
 	protoSources := make([]*feedsv2.FeedSource, 0, len(sources))

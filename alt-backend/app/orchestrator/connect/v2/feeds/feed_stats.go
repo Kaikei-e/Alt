@@ -49,12 +49,12 @@ func (h *Handler) GetFeedStats(
 
 	feedCount, err := h.deps.FeedAmount.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetFeedStats.FeedAmount")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetFeedStats.FeedAmount")
 	}
 
 	summarizedCount, err := h.deps.SummarizedCount.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetFeedStats.SummarizedCount")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetFeedStats.SummarizedCount")
 	}
 
 	return connect.NewResponse(&feedsv2.GetFeedStatsResponse{
@@ -75,17 +75,17 @@ func (h *Handler) GetDetailedFeedStats(
 
 	feedCount, err := h.deps.FeedAmount.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetDetailedFeedStats.FeedAmount")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetDetailedFeedStats.FeedAmount")
 	}
 
 	articleCount, err := h.deps.TotalCount.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetDetailedFeedStats.ArticleCount")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetDetailedFeedStats.ArticleCount")
 	}
 
 	unsummarizedCount, err := h.deps.UnsummarizedCount.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetDetailedFeedStats.UnsummarizedCount")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetDetailedFeedStats.UnsummarizedCount")
 	}
 
 	return connect.NewResponse(&feedsv2.GetDetailedFeedStatsResponse{
@@ -111,7 +111,7 @@ func (h *Handler) GetUnreadCount(
 
 	count, err := h.deps.TodayUnreadCount.Execute(ctx, since)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetUnreadCount")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetUnreadCount")
 	}
 
 	return connect.NewResponse(&feedsv2.GetUnreadCountResponse{

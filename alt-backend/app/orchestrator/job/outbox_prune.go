@@ -16,10 +16,13 @@ type outboxPruneRepository interface {
 	Prune(ctx context.Context, olderThan time.Duration) (int64, error)
 }
 
-// outboxPruneRetention is how long a PROCESSED/FAILED outbox_events row is
-// kept before deletion. Rows are the append-first audit trail for
-// at-least-once RAG-upsert delivery; 7 days gives ample time to investigate a
-// delivery incident before the row is gone.
+// outboxPruneRetention is how long a PROCESSED outbox_events row is kept
+// before deletion. FAILED rows are not pruned by this job at all — the SQL
+// behind Prune (save_outbox_event_driver.go PruneOutboxEvents) only ever
+// matched status='PROCESSED', so they are retained indefinitely as the
+// append-first audit trail for a delivery incident until an operator clears
+// them deliberately. 7 days gives ample time to investigate a PROCESSED row
+// before it is gone.
 const outboxPruneRetention = 7 * 24 * time.Hour
 
 // OutboxPruneJob returns a JobScheduler function that deletes terminal

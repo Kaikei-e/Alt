@@ -71,7 +71,7 @@ func (h *Handler) StreamChat(
 
 	upstreamStream, err := h.streamChat.StreamChat(ctx, req.Msg.Messages, withinHours)
 	if err != nil {
-		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.ConnectUpstream")
+		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamChat.ConnectUpstream")
 	}
 	defer func() {
 		if closeErr := upstreamStream.Close(); closeErr != nil {
@@ -89,7 +89,7 @@ func (h *Handler) StreamChat(
 	}
 
 	if err := upstreamStream.Err(); err != nil {
-		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.UpstreamError")
+		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamChat.UpstreamError")
 	}
 
 	h.logger.InfoContext(ctx, "MorningLetter.StreamChat completed",
@@ -112,7 +112,7 @@ func (h *Handler) GetLatestLetter(
 
 	doc, err := h.morningLetterUC.GetLatestLetter(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetLatestLetter")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetLatestLetter")
 	}
 	if doc == nil {
 		return nil, connect.NewError(connect.CodeNotFound, nil)
@@ -137,7 +137,7 @@ func (h *Handler) GetLetterByDate(
 
 	doc, err := h.morningLetterUC.GetLetterByDate(ctx, req.Msg.TargetDate)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetLetterByDate")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetLetterByDate")
 	}
 	if doc == nil {
 		return nil, connect.NewError(connect.CodeNotFound, nil)
@@ -165,7 +165,7 @@ func (h *Handler) GetLetterEnrichment(
 		ctx, req.Msg.LetterId, user.UserID.String(),
 	)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetLetterEnrichment")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetLetterEnrichment")
 	}
 
 	out := make([]*morningletterv2.MorningLetterBulletEnrichment, len(enrichments))
@@ -213,7 +213,7 @@ func (h *Handler) RegenerateLatest(
 
 	doc, regenerated, retryAfter, err := h.morningLetterUC.RegenerateLatest(ctx, user.UserID.String(), tz)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RegenerateLatest")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RegenerateLatest")
 	}
 	if doc == nil {
 		return nil, connect.NewError(connect.CodeNotFound, nil)
@@ -240,7 +240,7 @@ func (h *Handler) GetLetterSources(
 
 	sources, err := h.morningLetterUC.GetLetterSources(ctx, req.Msg.LetterId)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetLetterSources")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetLetterSources")
 	}
 
 	protoSources := make([]*morningletterv2.MorningLetterSourceProto, len(sources))

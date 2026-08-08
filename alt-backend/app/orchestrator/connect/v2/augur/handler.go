@@ -89,7 +89,7 @@ func (h *Handler) StreamChat(
 	// Call rag-orchestrator directly via Connect-RPC
 	ragStream, err := h.ragStreamPort.StreamChat(ctx, req)
 	if err != nil {
-		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.RagConnectClient")
+		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamChat.RagConnectClient")
 	}
 	defer ragStream.Close()
 
@@ -110,7 +110,7 @@ func (h *Handler) StreamChat(
 	}
 
 	if err := ragStream.Err(); err != nil {
-		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.RagStreamError")
+		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamChat.RagStreamError")
 	}
 
 	h.logger.InfoContext(ctx, "stream chat completed")
@@ -170,7 +170,7 @@ func (h *Handler) RetrieveContext(
 	// Call usecase
 	contexts, err := h.retrieveContextUsecase.Execute(ctx, query)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RetrieveContext")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RetrieveContext")
 	}
 
 	// Convert to protobuf response
@@ -211,7 +211,7 @@ func (h *Handler) ListConversations(
 		if connect.CodeOf(err) == connect.CodeNotFound {
 			return nil, connect.NewError(connect.CodeNotFound, err)
 		}
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListConversations")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "ListConversations")
 	}
 	return resp, nil
 }
@@ -242,7 +242,7 @@ func (h *Handler) GetConversation(
 		if connect.CodeOf(err) == connect.CodeNotFound {
 			return nil, connect.NewError(connect.CodeNotFound, err)
 		}
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetConversation")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetConversation")
 	}
 	return resp, nil
 }
@@ -263,7 +263,7 @@ func (h *Handler) DeleteConversation(
 		if connect.CodeOf(err) == connect.CodeNotFound {
 			return nil, connect.NewError(connect.CodeNotFound, err)
 		}
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "DeleteConversation")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "DeleteConversation")
 	}
 	return resp, nil
 }

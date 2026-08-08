@@ -1,5 +1,7 @@
 package augur_adapter
 
+//go:generate go run go.uber.org/mock/mockgen -source=augur_adapter.go -destination=mock_rag_client_interface_test.go -package=augur_adapter
+
 import (
 	"alt/orchestrator/gateway/rag_gateway"
 	"alt/orchestrator/port/rag_integration_port"
@@ -43,11 +45,33 @@ func (a *AugurAdapter) UpsertArticle(ctx context.Context, input rag_integration_
 
 	resp, err := a.client.UpsertIndexWithResponse(ctx, reqBody)
 	if err != nil {
-		return fmt.Errorf("failed to call UpsertIndex: %w", err)
+		if ctx.Err() != nil {
+			// The caller's own deadline (the outbox worker's per-tick job
+			// timeout) expired mid-request, not a rag-orchestrator failure.
+			// Classifying this transient would have the outbox worker
+			// release the row and retry it through the same job timeout
+			// again — for an article that legitimately takes this long,
+			// that stalls the whole worker for another full timeout window
+			// per attempt instead of once, head-of-line blocking every
+			// event behind it.
+			return fmt.Errorf("failed to call UpsertIndex: %w", err)
+		}
+		// A transport failure (dial/timeout/DNS) has the same chance of
+		// succeeding on retry as a 5xx below — the request never reached
+		// rag-orchestrator's handler either way.
+		return fmt.Errorf("%w: failed to call UpsertIndex: %w", rag_integration_port.ErrRagUpsertTransient, err)
 	}
 
 	if resp.StatusCode() != http.StatusOK {
 		logger.Logger.ErrorContext(ctx, "RAG UpsertIndex failed", "status", resp.StatusCode(), "body", string(resp.Body))
+		if resp.StatusCode() >= http.StatusInternalServerError {
+			// 5xx: rag-orchestrator itself failed to complete the request.
+			// Retrying is the same request against a server that may have
+			// recovered, not a repeat of a request it already rejected.
+			return fmt.Errorf("%w: RAG UpsertIndex returned status %d", rag_integration_port.ErrRagUpsertTransient, resp.StatusCode())
+		}
+		// 4xx: rag-orchestrator rejected this payload. Retrying the same
+		// bytes will not change its answer.
 		return fmt.Errorf("RAG UpsertIndex returned non-OK status: %d", resp.StatusCode())
 	}
 

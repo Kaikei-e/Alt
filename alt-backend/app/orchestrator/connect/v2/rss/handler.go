@@ -75,7 +75,7 @@ func (h *Handler) RegisterRSSFeed(
 
 	// Call usecase
 	if err := h.container.RegisterFeedsUsecase.Execute(ctx, req.Msg.Url); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RegisterRSSFeed")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RegisterRSSFeed")
 	}
 
 	return connect.NewResponse(&rssv2.RegisterRSSFeedResponse{
@@ -97,7 +97,7 @@ func (h *Handler) ListRSSFeedLinks(
 	// Call usecase (with health data)
 	links, err := h.container.ListFeedLinksWithHealthUsecase.Execute(ctx)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListRSSFeedLinks")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "ListRSSFeedLinks")
 	}
 
 	// Convert to proto
@@ -148,7 +148,7 @@ func (h *Handler) DeleteRSSFeedLink(
 
 	// Call usecase
 	if err := h.container.DeleteFeedLinkUsecase.Execute(ctx, userCtx.UserID, linkID); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "DeleteRSSFeedLink")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "DeleteRSSFeedLink")
 	}
 
 	return connect.NewResponse(&rssv2.DeleteRSSFeedLinkResponse{
@@ -176,7 +176,7 @@ func (h *Handler) RegisterFavoriteFeed(
 
 	// Call usecase
 	if err := h.container.RegisterFavoriteFeedUsecase.Execute(ctx, req.Msg.Url); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RegisterFavoriteFeed")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RegisterFavoriteFeed")
 	}
 
 	return connect.NewResponse(&rssv2.RegisterFavoriteFeedResponse{
@@ -204,7 +204,7 @@ func (h *Handler) RandomSubscription(
 			return nil, connect.NewError(connect.CodeNotFound,
 				fmt.Errorf("no subscriptions available"))
 		}
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RandomSubscription")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RandomSubscription")
 	}
 	return connect.NewResponse(&rssv2.RandomSubscriptionResponse{
 		Id:          feed.ID.String(),
@@ -231,7 +231,7 @@ func (h *Handler) RemoveFavoriteFeed(
 	}
 
 	if err := h.container.RemoveFavoriteFeedUsecase.Execute(ctx, req.Msg.Url); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RemoveFavoriteFeed")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RemoveFavoriteFeed")
 	}
 
 	return connect.NewResponse(&rssv2.RemoveFavoriteFeedResponse{

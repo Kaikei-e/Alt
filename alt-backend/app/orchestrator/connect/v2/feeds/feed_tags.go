@@ -53,7 +53,7 @@ func (h *Handler) GetFeedTags(
 
 	tags, err := h.deps.FeedTagStore.FetchFeedTags(ctx, req.Msg.FeedId, cursor, limit)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetFeedTags")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetFeedTags")
 	}
 
 	protoTags := make([]*feedsv2.FeedTag, 0, len(tags))

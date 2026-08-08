@@ -46,7 +46,7 @@ func (h *Handler) TrackHomeItemsSeen(
 				h.metrics.Snapshot.RecordTrackingFailed()
 			}
 		}
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeItemsSeen")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "TrackHomeItemsSeen")
 	}
 
 	if h.metrics != nil {
@@ -104,7 +104,7 @@ func (h *Handler) TrackHomeAction(
 			}
 		}
 		if err := h.recallSnoozeUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKey, snoozeHours); err != nil {
-			return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeAction.snooze")
+			return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "TrackHomeAction.snooze")
 		}
 	case "dismiss_recall":
 		if h.recallDismissUsecase == nil {
@@ -112,11 +112,11 @@ func (h *Handler) TrackHomeAction(
 				fmt.Errorf("recall dismiss is not enabled on this deployment"))
 		}
 		if err := h.recallDismissUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKey); err != nil {
-			return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeAction.dismiss_recall")
+			return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "TrackHomeAction.dismiss_recall")
 		}
 	default:
 		if err := h.trackActionUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ActionType, req.Msg.ItemKey, metadataJSON); err != nil {
-			return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeAction")
+			return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "TrackHomeAction")
 		}
 	}
 

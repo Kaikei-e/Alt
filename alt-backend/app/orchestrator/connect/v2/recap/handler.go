@@ -95,7 +95,7 @@ func (h *Handler) GetSevenDayRecap(
 		if errors.Is(err, domain.ErrRecapNotFound) {
 			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "No 7-day recap available yet", "GetSevenDayRecap")
 		}
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetSevenDayRecap")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetSevenDayRecap")
 	}
 
 	// Convert domain to proto
@@ -132,7 +132,7 @@ func (h *Handler) GetThreeDayRecap(
 		if errors.Is(err, domain.ErrRecapNotFound) {
 			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "No 3-day recap available yet", "GetThreeDayRecap")
 		}
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetThreeDayRecap")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetThreeDayRecap")
 	}
 
 	// Convert domain to proto
@@ -318,7 +318,7 @@ func (h *Handler) GetEveningPulse(
 		if errors.Is(err, domain.ErrEveningPulseNotFound) {
 			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "Evening Pulse not available", "GetEveningPulse")
 		}
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetEveningPulse")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetEveningPulse")
 	}
 
 	// Convert domain to proto
@@ -473,7 +473,7 @@ func (h *Handler) SearchRecapsByTag(
 	}
 
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "SearchRecapsByTag")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "SearchRecapsByTag")
 	}
 
 	protoResults := make([]*recapv2.RecapSearchResultItem, len(results))

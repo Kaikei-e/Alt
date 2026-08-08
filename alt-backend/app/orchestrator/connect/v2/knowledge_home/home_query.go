@@ -68,7 +68,7 @@ func (h *Handler) GetKnowledgeHome(
 
 	result, err := h.getHomeUsecase.Execute(ctx, user.UserID, cursor, limit, date, lensID)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetKnowledgeHome")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetKnowledgeHome")
 	}
 
 	// Convert items to proto
@@ -222,7 +222,7 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 
 	lastSeq, err := h.initialStreamSeq(ctx, user.TenantID, user.UserID)
 	if err != nil {
-		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamKnowledgeHomeUpdates")
+		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamKnowledgeHomeUpdates")
 	}
 
 	if h.metrics != nil {

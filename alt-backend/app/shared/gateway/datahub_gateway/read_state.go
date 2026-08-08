@@ -209,9 +209,13 @@ func (g *ReadStateGateway) RemoveFavoriteFeed(ctx context.Context, feedURL strin
 // the split, one of them raised domain.ErrFeedNotFound and another raised
 // pgx.ErrNoRows for the identical situation, and each caller had learned which
 // — this is the point where that stops being something a caller has to know.
+//
+// Both the domain error and the upstream error stay in the chain: dropping the
+// latter would strip the Connect code, and a caller that does not branch on
+// domain.ErrFeedNotFound would then report an absence as an internal fault.
 func feedAbsenceError(err error, action string) error {
 	if connect.CodeOf(err) == connect.CodeNotFound {
-		return fmt.Errorf("%s: %w", action, domain.ErrFeedNotFound)
+		return fmt.Errorf("%s: %w: %w", action, domain.ErrFeedNotFound, err)
 	}
 	return fmt.Errorf("%s: %w", action, err)
 }

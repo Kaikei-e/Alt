@@ -52,7 +52,7 @@ func (h *Handler) MarkAsRead(
 		}
 
 		// All other errors are internal server errors
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "MarkAsRead")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "MarkAsRead")
 	}
 
 	h.logger.InfoContext(ctx, "feed marked as read", "article_url", req.Msg.ArticleUrl)
@@ -84,7 +84,7 @@ func (h *Handler) Subscribe(
 	}
 
 	if err := h.deps.Subscribe.Execute(ctx, userCtx.UserID, feedLinkID); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "Subscribe")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "Subscribe")
 	}
 
 	return connect.NewResponse(&feedsv2.SubscribeResponse{
@@ -114,7 +114,7 @@ func (h *Handler) Unsubscribe(
 	}
 
 	if err := h.deps.Unsubscribe.Execute(ctx, userCtx.UserID, feedLinkID); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "Unsubscribe")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "Unsubscribe")
 	}
 
 	return connect.NewResponse(&feedsv2.UnsubscribeResponse{

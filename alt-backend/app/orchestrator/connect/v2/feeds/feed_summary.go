@@ -68,7 +68,7 @@ func (h *Handler) StreamSummarize(
 	// Resolve article ID and content
 	resolvedArticleID, resolvedTitle, resolvedContent, err := h.resolveArticle(ctx, feedURL, articleID, content, title)
 	if err != nil {
-		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamSummarize.ResolveArticle")
+		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamSummarize.ResolveArticle")
 	}
 
 	if resolvedContent == "" {
@@ -138,7 +138,7 @@ waitLoop:
 						"message", connectErr.Message())
 					return connectErr
 				}
-				return errorhandler.HandleInternalError(ctx, h.logger, result.err, "StreamSummarize.StartStream")
+				return errorhandler.HandleUpstreamError(ctx, h.logger, result.err, "StreamSummarize.StartStream")
 			}
 			preProcessorStream = result.stream
 			break waitLoop
@@ -167,7 +167,7 @@ waitLoop:
 	// streamAndCaptureWithHeartbeat sends heartbeats while waiting for first LLM token.
 	fullSummary, err := h.streamAndCaptureWithHeartbeat(ctx, stream, preProcessorStream, resolvedArticleID)
 	if err != nil {
-		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamSummarize.Streaming")
+		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamSummarize.Streaming")
 	}
 
 	// Save summary to database

@@ -33,7 +33,7 @@ func RegisterHarvesterJobs(scheduler *JobScheduler, container *di.HarvesterCompo
 	})
 	scheduler.Add(Job{
 		Name:     "outbox-worker",
-		Interval: 5 * time.Second,
+		Interval: outboxWorkerTickInterval,
 		// A batch of up to 10 ARTICLE_UPSERT events can each take 10-30s on the
 		// local CPU/GPU embedder for heavy articles (500+KB, 100+ chunks), so
 		// 30s was not enough headroom for a full batch. Runs never overlap:

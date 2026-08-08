@@ -56,7 +56,7 @@ func (h *Handler) CreateLens(
 
 	result, err := h.createLensUsecase.Execute(ctx, input)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "CreateLens")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "CreateLens")
 	}
 
 	return connect.NewResponse(&knowledgehomev1.CreateLensResponse{
@@ -101,7 +101,7 @@ func (h *Handler) UpdateLens(
 
 	version, err := h.updateLensUsecase.Execute(ctx, input)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "UpdateLens")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "UpdateLens")
 	}
 
 	return connect.NewResponse(&knowledgehomev1.UpdateLensResponse{
@@ -133,7 +133,7 @@ func (h *Handler) DeleteLens(
 	}
 
 	if err := h.archiveLensUsecase.Execute(ctx, user.UserID, lensID); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "DeleteLens")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "DeleteLens")
 	}
 
 	return connect.NewResponse(&knowledgehomev1.DeleteLensResponse{}), nil
@@ -156,7 +156,7 @@ func (h *Handler) ListLenses(
 
 	result, err := h.listLensesUsecase.Execute(ctx, user.UserID)
 	if err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListLenses")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "ListLenses")
 	}
 
 	protoLenses := make([]*knowledgehomev1.Lens, 0, len(result.Lenses))
@@ -197,7 +197,7 @@ func (h *Handler) SelectLens(
 	}
 
 	if err := h.selectLensUsecase.Execute(ctx, user.UserID, lensID); err != nil {
-		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "SelectLens")
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "SelectLens")
 	}
 
 	return connect.NewResponse(&knowledgehomev1.SelectLensResponse{}), nil
