@@ -54,6 +54,19 @@ type SummarizeJobRepository interface {
 	// updated_at is newer than the given cutoff. Stale rows are excluded so a
 	// crashed worker cannot block re-enqueue indefinitely.
 	HasInFlightJob(ctx context.Context, articleID string, since time.Time) (bool, error)
+	// HasDeadLetterJob reports whether the article's most recent job row is in
+	// the terminal dead_letter status — written only for the explicit
+	// domain.ErrContentNotProcessable classification, a genuinely permanent
+	// failure. There is no time cutoff, but the check is scoped to the
+	// latest row per article_id so a stale dead_letter row cannot out-vote a
+	// later, more current row (e.g. after InvalidateCompletedJobSummary).
+	HasDeadLetterJob(ctx context.Context, articleID string) (bool, error)
+	// HasRecentFailedJob reports whether the article has a retry-exhausted
+	// ('failed') job newer than the given cutoff. Unlike HasDeadLetterJob,
+	// 'failed' covers retry exhaustion for any error — including transient
+	// infrastructure failures — so the block is bounded by since, not
+	// permanent.
+	HasRecentFailedJob(ctx context.Context, articleID string, since time.Time) (bool, error)
 	GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error)
 	UpdateJobStatus(ctx context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMessage string) error
 	GetPendingJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error)

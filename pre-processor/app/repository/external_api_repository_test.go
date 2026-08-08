@@ -71,6 +71,13 @@ func testLoggerExternalAPI() *slog.Logger {
 	}))
 }
 
+// testDataHubHTTPClient stands in for the mTLS-configured *http.Client
+// bootstrap/wire.go injects in production. Its Transport is swapped per-test
+// via setRepoTransport, so the client's own settings don't matter here.
+func testDataHubHTTPClient() *http.Client {
+	return &http.Client{}
+}
+
 func testConfig() *config.Config {
 	return &config.Config{
 		NewsCreator: config.NewsCreatorConfig{
@@ -89,7 +96,7 @@ func testConfig() *config.Config {
 func TestExternalAPIRepository_InterfaceCompliance(t *testing.T) {
 	t.Run("should implement ExternalAPIRepository interface", func(t *testing.T) {
 		// RED PHASE: Test that repository implements interface
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		// Verify interface compliance at compile time
 		var _ = repo
@@ -150,7 +157,7 @@ func TestExternalAPIRepository_SummarizeArticle(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// GREEN PHASE: Test minimal implementation
 
-			repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+			repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 			summary, err := repo.SummarizeArticle(context.Background(), tc.article, "low")
 
@@ -224,7 +231,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 
 			// Setup mock transport if provided and update URL
 			serviceURL := tc.serviceURL
-			repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+			repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 			if tc.handler != nil {
 				setRepoTransport(repo, newHandlerTransport(tc.handler, 0))
@@ -249,7 +256,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 
 	t.Run("should handle connection errors without external calls", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 		setRepoTransport(repo, newErrorTransport(errors.New("dial error")))
 
 		err := repo.CheckHealth(context.Background(), testServiceURL)
@@ -261,7 +268,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 	t.Run("should handle context cancellation in SummarizeArticle", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel context immediately
@@ -280,7 +287,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 
 	t.Run("should handle context cancellation in CheckHealth", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel context immediately
@@ -295,7 +302,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 
 	t.Run("should handle context timeout", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 		defer cancel()
@@ -312,7 +319,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 	t.Run("should handle very long article content", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		// Create article with very long content
 		longContent := make([]byte, 1024*1024) // 1MB
@@ -335,7 +342,7 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 
 	t.Run("should handle URL with special characters", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		// Test various problematic URLs using mock servers
 		tests := map[string]struct {
@@ -390,7 +397,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			name:      "summarize with all fields populated",
 			operation: "summarize",
 			setup: func() (ExternalAPIRepository, interface{}) {
-				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 				article := &domain.Article{
 					ID:        "article-456",
 					Title:     "Complete Article",
@@ -409,7 +416,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			name:      "health check with mock HTTPS server",
 			operation: "health",
 			setup: func() (ExternalAPIRepository, interface{}) {
-				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 				setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
 				}, 0))
@@ -423,7 +430,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			name:      "summarize with minimal article",
 			operation: "summarize",
 			setup: func() (ExternalAPIRepository, interface{}) {
-				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 				article := &domain.Article{
 					ID:      "minimal-123",
 					Content: "Minimal content",
@@ -438,7 +445,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 			name:      "health check with mock server and port",
 			operation: "health",
 			setup: func() (ExternalAPIRepository, interface{}) {
-				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+				repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 				setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
 				}, 0))
@@ -474,7 +481,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 // Benchmark tests with mock servers.
 func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 
-	repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+	repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 	article := &domain.Article{
 		ID:      "bench-test",
@@ -493,7 +500,7 @@ func BenchmarkExternalAPIRepository_SummarizeArticle(b *testing.B) {
 
 func BenchmarkExternalAPIRepository_CheckHealth(b *testing.B) {
 
-	repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+	repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 	setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}, 0))
@@ -508,12 +515,12 @@ func BenchmarkExternalAPIRepository_CheckHealth(b *testing.B) {
 func TestExternalAPIRepository_HelperFunctions(t *testing.T) {
 	t.Run("should validate constructor parameters", func(t *testing.T) {
 		// Test that NewExternalAPIRepository handles nil logger gracefully
-		repo := NewExternalAPIRepository(testConfig(), nil)
+		repo := NewExternalAPIRepository(testConfig(), nil, testDataHubHTTPClient(), testServiceURL)
 		assert.NotNil(t, repo)
 	})
 
 	t.Run("should handle HTTP client configuration", func(t *testing.T) {
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -527,7 +534,7 @@ func TestExternalAPIRepository_HelperFunctions(t *testing.T) {
 func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 	t.Run("should handle network timeouts gracefully", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		// Use context timeout instead of server sleep to test timeout behavior
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -544,7 +551,7 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 
 	t.Run("should handle malformed response gracefully", func(t *testing.T) {
 
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 			// Return malformed response
@@ -575,7 +582,7 @@ func writeSystemUserResponse(t *testing.T, w http.ResponseWriter, userID string)
 
 func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 	t.Run("should return user_id on successful response", func(t *testing.T) {
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 			// ADR-000954 D6/D7: GET /v1/internal/system-user was absorbed
@@ -594,7 +601,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 	// GetSystemUserID no longer sends an X-Service-Token application header.
 	t.Run("should not send X-Service-Token header", func(t *testing.T) {
 		cfg := testConfig()
-		repo := NewExternalAPIRepository(cfg, testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(cfg, testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		var headerSeen bool
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
@@ -609,7 +616,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 	})
 
 	t.Run("should return error on empty user_id", func(t *testing.T) {
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 			writeSystemUserResponse(t, w, "")
@@ -625,7 +632,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 	// status code. It must still be a hard failure: an empty system user id
 	// would be stamped onto every backfilled article.
 	t.Run("should return error on upstream failure", func(t *testing.T) {
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -639,7 +646,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 
 	t.Run("should retry on transient failure and succeed", func(t *testing.T) {
 		// RED PHASE: This test expects retry logic that doesn't exist yet
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		callCount := 0
 		setRepoTransport(repo, roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -662,7 +669,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 
 	t.Run("should fail after max retries exceeded", func(t *testing.T) {
 		// RED PHASE: This test expects retry logic that doesn't exist yet
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		callCount := 0
 		setRepoTransport(repo, roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -678,7 +685,7 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 	})
 
 	t.Run("should respect context cancellation during retry", func(t *testing.T) {
-		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
+		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI(), testDataHubHTTPClient(), testServiceURL)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -696,5 +703,65 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 		userID, err := repo.GetSystemUserID(ctx)
 		assert.Error(t, err, "should fail due to context cancellation")
 		assert.Empty(t, userID)
+	})
+
+	// Pins the URL half of the ADR-000954 wiring bug: the DataHub Connect-RPC
+	// client must be built from the base URL the caller (bootstrap/wire.go)
+	// injects, not from cfg.AltService.Host. In production that field
+	// resolves to ALT_BACKEND_HOST, alt-backend's plaintext operator
+	// listener, which does not serve DataHubService at all and 404s every
+	// call. Point AltService.Host at an address nothing listens on: if the
+	// DataHub client construction ever falls back to it again, this call
+	// fails to connect instead of reaching the real handler below.
+	//
+	// This does NOT pin the client half: httptest.NewServer is plain HTTP,
+	// so any *http.Client — including one the constructor builds fresh
+	// instead of using the injected argument — can reach it. See the
+	// following test for that half.
+	t.Run("should reach alt-data-hub via the injected base URL, not cfg.AltService.Host", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/services.datahub.v1.DataHubService/GetSystemUser", r.URL.Path)
+			writeSystemUserResponse(t, w, "injected-url-user")
+		}))
+		defer server.Close()
+
+		cfg := testConfig()
+		cfg.AltService.Host = "http://127.0.0.1:1" // nothing listens here
+
+		repo := NewExternalAPIRepository(cfg, testLoggerExternalAPI(), server.Client(), server.URL)
+
+		userID, err := repo.GetSystemUserID(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "injected-url-user", userID)
+	})
+
+	// Pins the client half: in production alt-data-hub accepts nothing but
+	// mTLS from the pre-processor leaf cert (compose/core.yaml
+	// DATAHUB_ALLOWED_PEERS), so it's the injected *http.Client's Transport
+	// — not the URL string — that actually makes the call succeed.
+	// Discarding dataHubClient in favor of a freshly built &http.Client{}
+	// would use the default Transport, which for a loopback address nothing
+	// listens on fails to connect (connection refused) instead of hitting
+	// the synthetic response below. The base URL is deliberately also a
+	// dead loopback address: this test must fail if EITHER the client or
+	// the URL falls back to a working default, not just one of them.
+	t.Run("should reach alt-data-hub via the injected client, not a freshly built http.Client", func(t *testing.T) {
+		dataHubClient := testDataHubHTTPClient()
+		dataHubClient.Transport = newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/services.datahub.v1.DataHubService/GetSystemUser", r.URL.Path)
+			writeSystemUserResponse(t, w, "injected-transport-user")
+		}, 0)
+
+		cfg := testConfig()
+		cfg.AltService.Host = "http://127.0.0.1:1" // nothing listens here
+
+		repo := NewExternalAPIRepository(cfg, testLoggerExternalAPI(), dataHubClient, "http://127.0.0.1:1")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		userID, err := repo.GetSystemUserID(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, "injected-transport-user", userID)
 	})
 }

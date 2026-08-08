@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -51,11 +52,26 @@ func buildBackendHTTPClient(log *slog.Logger) (*http.Client, error) {
 	log.Info("backend API client: mTLS enforce enabled",
 		"server_name", tlsCfg.ServerName,
 	)
+	// This client is shared by the backend_api driver (article/feed/summary
+	// repos) and, since ADR-000954's DataHub client wiring fix, by
+	// repository.ExternalAPIRepository's GetSystemUserID too — which runs on
+	// a JobRunner ticker loop that reuses the same context.Context for every
+	// tick and so never carries a per-run deadline of its own (see
+	// orchestrator.JobRunner.run). Without Client.Timeout and the Transport
+	// phase timeouts below, a peer that accepts the TCP/TLS handshake but
+	// then stalls would hang this client's calls indefinitely and — because
+	// JobRunner invokes r.fn synchronously — permanently wedge that job's
+	// ticker loop. Values mirror utils.HTTPClientManager's defaultClient.
 	return &http.Client{
+		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig:     tlsCfg,
-			IdleConnTimeout:     30 * time.Second,
-			MaxIdleConnsPerHost: 4,
+			TLSClientConfig:       tlsCfg,
+			DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ResponseHeaderTimeout: 20 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			IdleConnTimeout:       30 * time.Second,
+			MaxIdleConnsPerHost:   4,
 		},
 	}, nil
 }
@@ -123,7 +139,14 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	articleRepo := backend_api.NewArticleRepository(client, ppDBPool)
 	summaryRepo := backend_api.NewSummaryRepository(client)
 
-	apiRepo := repository.NewExternalAPIRepository(cfg, log)
+	// GetSystemUserID (repository.ExternalAPIRepository) must reach
+	// alt-data-hub over the same mTLS-configured client and resolved URL as
+	// the backend_api driver above — passing cfg here and letting the
+	// constructor rebuild its own client/URL from cfg.AltService.Host is
+	// exactly the wiring bug ADR-000954 left behind (that field targets
+	// alt-backend's plaintext operator listener, which does not serve
+	// DataHubService).
+	apiRepo := repository.NewExternalAPIRepository(cfg, log, backendHTTPClient, backendAPIURL)
 	jobRepo := repository.NewSummarizeJobRepository(ppDBPool, log)
 
 	// Initialize services

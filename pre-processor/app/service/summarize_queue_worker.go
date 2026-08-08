@@ -305,19 +305,22 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 			"retry_count", job.RetryCount,
 			"max_retries", job.MaxRetries)
 
-		// Log whether this will be retried or moved to dead_letter
+		// Log whether this will be retried or moved to the retry-exhausted
+		// 'failed' terminal status.
 		// Note: The repository handles the status transition:
-		// - If retry_count + 1 >= max_retries -> dead_letter
+		// - If retry_count + 1 >= max_retries -> failed (bounded cooldown via
+		//   HasRecentFailedJob, NOT dead_letter — this path covers any error,
+		//   including transient ones, so it must not block re-enqueue forever)
 		// - Otherwise -> pending (will be retried)
 		nextRetryCount := job.RetryCount + 1
 		if nextRetryCount >= job.MaxRetries {
 			// When the upstream is busy, an earlier concurrent request for the
 			// same article may have succeeded while the client timed out.
-			// Before escalating to dead_letter, re-check whether a summary
-			// was actually persisted; if so, close the job as Completed.
+			// Before exhausting retries, re-check whether a summary was
+			// actually persisted; if so, close the job as Completed.
 			if w.summaryRepo != nil {
 				if exists, existsErr := w.summaryRepo.Exists(ctx, job.ArticleID); existsErr == nil && exists {
-					w.logger.WarnContext(ctx, "upstream already persisted summary; closing job as completed instead of dead_letter",
+					w.logger.WarnContext(ctx, "upstream already persisted summary; closing job as completed instead of failed",
 						"job_id", job.JobID,
 						"article_id", job.ArticleID,
 						"upstream_error", err)
@@ -329,12 +332,12 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 					}
 					return nil
 				} else if existsErr != nil {
-					w.logger.WarnContext(ctx, "failed to recheck summary existence before dead_letter",
+					w.logger.WarnContext(ctx, "failed to recheck summary existence before exhausting retries",
 						"error", existsErr, "article_id", job.ArticleID)
 				}
 			}
 
-			w.logger.WarnContext(ctx, "job exceeded max retries, moving to dead_letter",
+			w.logger.WarnContext(ctx, "job exceeded max retries, moving to failed",
 				"job_id", job.JobID,
 				"article_id", job.ArticleID,
 				"retry_count", nextRetryCount,

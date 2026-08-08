@@ -315,6 +315,14 @@ func (m *stubJobRepoForEnqueue) HasInFlightJob(_ context.Context, _ string, _ ti
 	return false, nil
 }
 
+func (m *stubJobRepoForEnqueue) HasDeadLetterJob(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (m *stubJobRepoForEnqueue) HasRecentFailedJob(_ context.Context, _ string, _ time.Time) (bool, error) {
+	return false, nil
+}
+
 func (m *stubJobRepoForEnqueue) CreateJob(_ context.Context, _ string) (string, error) {
 	m.createJobCalls++
 	return "new-job-id", nil

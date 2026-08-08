@@ -18,7 +18,6 @@ import (
 	"pre-processor/driver"
 	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
-	"pre-processor/utils"
 )
 
 // maxInternalResponseBytes bounds response bodies read from internal services
@@ -35,20 +34,26 @@ type externalAPIRepository struct {
 	config  *config.Config
 }
 
-// NewExternalAPIRepository creates a new external API repository. The HTTP
-// client uses the hardened transport (DialContext, TLSHandshake and
-// ResponseHeader timeouts) shared across the service.
+// NewExternalAPIRepository creates a new external API repository.
 //
-// The alt-data-hub client is built over that same *http.Client, so the
-// transport hardening — and the transport substitution the tests rely on —
-// applies to the Connect-RPC calls too.
-func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger) ExternalAPIRepository {
-	httpClient := utils.NewHTTPClientManager().GetDefaultClient()
+// dataHubClient and dataHubBaseURL must be the exact same *http.Client and
+// base URL bootstrap/wire.go passes to backend_api.NewClient. alt-data-hub
+// only accepts mTLS connections from the pre-processor leaf cert
+// (compose/core.yaml DATAHUB_ALLOWED_PEERS); building an independently
+// configured client/URL here previously pointed GetSystemUser at
+// cfg.AltService.Host — alt-backend's plaintext operator listener, which
+// does not serve services.datahub.v1.DataHubService at all (ADR-000954
+// moved that RPC to alt-data-hub).
+//
+// r.client (used by CheckHealth) shares the same *http.Client, so the
+// transport substitution the tests rely on applies to both the REST health
+// check and the Connect-RPC calls.
+func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger, dataHubClient *http.Client, dataHubBaseURL string) ExternalAPIRepository {
 	return &externalAPIRepository{
 		logger: logger,
 		config: cfg,
-		client: httpClient,
-		dataHub: datahubv1connect.NewDataHubServiceClient(httpClient, cfg.AltService.Host,
+		client: dataHubClient,
+		dataHub: datahubv1connect.NewDataHubServiceClient(dataHubClient, dataHubBaseURL,
 			connect.WithReadMaxBytes(maxInternalResponseBytes)),
 	}
 }

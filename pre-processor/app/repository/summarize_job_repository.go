@@ -12,12 +12,25 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// dbExecutor is the subset of *pgxpool.Pool this repository uses. Scoping it
+// down to an interface lets tests exercise the SQL this repository sends
+// (predicates, argument binding) against pgxmock instead of only reaching
+// the nil-db early return — a raw *pgxpool.Pool field cannot be swapped for
+// a test double.
+type dbExecutor interface {
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+	BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error)
+}
+
 // summarizeJobRepository implementation.
 type summarizeJobRepository struct {
-	db     *pgxpool.Pool
+	db     dbExecutor
 	logger *slog.Logger
 }
 
@@ -31,11 +44,18 @@ const getPendingJobsQuery = `
 	`
 
 // NewSummarizeJobRepository creates a new summarize job repository.
+//
+// db is taken as the concrete *pgxpool.Pool (not dbExecutor) and only
+// assigned into the interface-typed field when non-nil: assigning a nil
+// *pgxpool.Pool directly into an interface field produces a non-nil
+// interface wrapping a nil pointer, which would make every `r.db == nil`
+// guard below false and defeat the nil-database error path.
 func NewSummarizeJobRepository(db *pgxpool.Pool, logger *slog.Logger) SummarizeJobRepository {
-	return &summarizeJobRepository{
-		db:     db,
-		logger: logger,
+	repo := &summarizeJobRepository{logger: logger}
+	if db != nil {
+		repo.db = db
 	}
+	return repo
 }
 
 // CreateJob creates a new summarization job in the queue.
@@ -173,6 +193,87 @@ func (r *summarizeJobRepository) HasInFlightJob(ctx context.Context, articleID s
 	return exists, nil
 }
 
+// HasDeadLetterJob reports whether the article's most recent job row is in
+// the terminal dead_letter status. dead_letter is written only for the
+// explicit domain.ErrContentNotProcessable classification (see
+// UpdateJobStatus's SummarizeJobStatusDeadLetter case) — content the model
+// has declared it can never summarize — so this has no time cutoff.
+//
+// The check looks at the LATEST row for the article, not "any row ever":
+// article_id is not unique, and a stale dead_letter row from an earlier
+// attempt must not out-vote a later row (e.g. a subsequent completed job,
+// or one invalidated by the quality-checker's compensating transaction —
+// see InvalidateCompletedJobSummary) that shows the article is no longer
+// permanently stuck.
+func (r *summarizeJobRepository) HasDeadLetterJob(ctx context.Context, articleID string) (bool, error) {
+	if articleID == "" {
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
+		return false, fmt.Errorf("article ID cannot be empty")
+	}
+
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return false, fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		SELECT status
+		FROM summarize_job_queue
+		WHERE article_id = $1
+		ORDER BY created_at DESC, id DESC
+		LIMIT 1
+	`
+
+	var status string
+	err := r.db.QueryRow(ctx, query, articleID).Scan(&status)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		r.logger.ErrorContext(ctx, "failed to check dead-lettered job", "error", err, "article_id", articleID)
+		return false, fmt.Errorf("check dead-lettered job: %w", err)
+	}
+
+	return status == string(domain.SummarizeJobStatusDeadLetter), nil
+}
+
+// HasRecentFailedJob reports whether the article has a job that exhausted
+// its retries (status = 'failed') within the cooldown window. UpdateJobStatus
+// writes 'failed' for retry exhaustion on ANY error — including transient
+// infrastructure failures (DB errors, network timeouts, upstream 5xxs) — so
+// unlike HasDeadLetterJob this block is time-bounded, not permanent: once
+// the window elapses, a fresh attempt is allowed in case the underlying
+// failure has since cleared.
+func (r *summarizeJobRepository) HasRecentFailedJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
+	if articleID == "" {
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
+		return false, fmt.Errorf("article ID cannot be empty")
+	}
+
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return false, fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM summarize_job_queue
+			WHERE article_id = $1
+			  AND status = 'failed'
+			  AND completed_at >= $2
+		)
+	`
+
+	var exists bool
+	if err := r.db.QueryRow(ctx, query, articleID, since).Scan(&exists); err != nil {
+		r.logger.ErrorContext(ctx, "failed to check recently failed job", "error", err, "article_id", articleID)
+		return false, fmt.Errorf("check recently failed job: %w", err)
+	}
+
+	return exists, nil
+}
+
 // GetJob retrieves a summarization job by job ID.
 func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error) {
 	if jobID == "" {
@@ -276,13 +377,18 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 		args = []interface{}{string(status), summary, now, errorMessage, jobID}
 	case domain.SummarizeJobStatusFailed:
 		// When a job fails:
-		// - If retry_count + 1 >= max_retries: move to dead_letter (permanent failure)
+		// - If retry_count + 1 >= max_retries: move to failed (retry-exhausted
+		//   terminal state — HasRecentFailedJob applies a bounded cooldown, not
+		//   a permanent block, because this branch fires for any error
+		//   including transient ones). dead_letter is reserved for the
+		//   explicit domain.ErrContentNotProcessable classification, set
+		//   directly via the SummarizeJobStatusDeadLetter case below.
 		// - Otherwise: set status to pending (will be retried)
 		query = `
 			UPDATE summarize_job_queue
 			SET
 				status = CASE
-					WHEN retry_count + 1 >= max_retries THEN 'dead_letter'
+					WHEN retry_count + 1 >= max_retries THEN 'failed'
 					ELSE 'pending'
 				END,
 				error_message = $1,

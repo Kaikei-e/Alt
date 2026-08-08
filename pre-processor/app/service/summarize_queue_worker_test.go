@@ -681,6 +681,14 @@ func (m *stubJobRepoWithEnqueue) HasInFlightJob(_ context.Context, _ string, _ t
 	return false, nil
 }
 
+func (m *stubJobRepoWithEnqueue) HasDeadLetterJob(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (m *stubJobRepoWithEnqueue) HasRecentFailedJob(_ context.Context, _ string, _ time.Time) (bool, error) {
+	return false, nil
+}
+
 func (m *stubJobRepoWithEnqueue) CreateJob(_ context.Context, articleID string) (string, error) {
 	m.createJobCalls = append(m.createJobCalls, articleID)
 	return uuid.New().String(), nil
@@ -1114,7 +1122,7 @@ func TestSummarizeQueueWorker_ProcessQueue_DeadLetterRechecksSummaryExists(t *te
 
 		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusFailed, jobRepo.updateCalls[0].status,
-			"should mark as Failed (repository promotes to dead_letter) when no persisted summary")
+			"should mark as Failed (repository promotes retry-exhausted jobs to the 'failed' terminal status, not dead_letter) when no persisted summary")
 	})
 }
 

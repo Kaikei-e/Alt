@@ -93,12 +93,68 @@ func TestShouldQueueSummarizeJob(t *testing.T) {
 		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-3").Return(false, nil)
 		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-3", gomock.Any()).Return(false, nil)
 		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-3", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-3").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-3", gomock.Any()).Return(false, nil)
 
 		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-3", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
 
 		require.NoError(t, err)
 		require.True(t, shouldQueue)
 		require.Empty(t, reason)
+	})
+
+	// DEFECT: an article whose model call the LLM can never process
+	// (dead_letter = permanent failure per UpdateJobStatus) satisfied none
+	// of the first three guards and was re-enqueued every sweep — the same
+	// article was dead-lettered 28 times in 6 hours in production. dead_letter
+	// jobs must block re-enqueue like an in-flight or completed job does.
+	t.Run("skips when a dead_letter job already exists for the article", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-dead").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-dead", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-dead", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-dead").Return(true, nil)
+		// No HasRecentFailedJob expectation: must not be reached once dead_letter blocks.
+
+		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-dead", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
+
+		require.NoError(t, err)
+		require.False(t, shouldQueue)
+		require.Equal(t, "dead_letter_exists", reason)
+	})
+
+	// Guards the failedJobCooldownWindow split from dead_letter: a job that
+	// exhausted its retries for a possibly-transient reason (status
+	// 'failed', not the explicit ErrContentNotProcessable dead_letter path)
+	// must only block re-enqueue for a bounded cooldown, not forever.
+	t.Run("skips when the article recently exhausted retries (cooldown)", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-recent-fail").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-recent-fail", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-recent-fail", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-recent-fail").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-recent-fail", gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, since time.Time) (bool, error) {
+				require.WithinDuration(t, time.Now().Add(-1*time.Hour), since, 2*time.Second)
+				return true, nil
+			},
+		)
+
+		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-recent-fail", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
+
+		require.NoError(t, err)
+		require.False(t, shouldQueue)
+		require.Equal(t, "recent_failure_cooldown", reason)
 	})
 
 	t.Run("propagates the underlying error and stops checking when summaryRepo.Exists fails", func(t *testing.T) {
@@ -148,8 +204,49 @@ func TestShouldQueueSummarizeJob(t *testing.T) {
 		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-err-3").Return(false, nil)
 		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-err-3", gomock.Any()).Return(false, nil)
 		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-err-3", gomock.Any()).Return(false, assert.AnError)
+		// No HasDeadLetterJob expectation: must not be reached once this errors.
 
 		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-err-3", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
+
+		require.ErrorIs(t, err, assert.AnError)
+		require.False(t, shouldQueue)
+		require.Empty(t, reason)
+	})
+
+	t.Run("propagates the underlying error when HasDeadLetterJob fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-err-4").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-err-4", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-err-4", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-err-4").Return(false, assert.AnError)
+		// No HasRecentFailedJob expectation: must not be reached once this errors.
+
+		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-err-4", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
+
+		require.ErrorIs(t, err, assert.AnError)
+		require.False(t, shouldQueue)
+		require.Empty(t, reason)
+	})
+
+	t.Run("propagates the underlying error when HasRecentFailedJob fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-err-5").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-err-5", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-err-5", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-err-5").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-err-5", gomock.Any()).Return(false, assert.AnError)
+
+		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-err-5", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
 
 		require.ErrorIs(t, err, assert.AnError)
 		require.False(t, shouldQueue)

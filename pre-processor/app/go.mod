@@ -13,6 +13,7 @@ require (
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/pact-foundation/pact-go/v2 v2.5.1
+	github.com/pashagolub/pgxmock/v5 v5.1.0
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/bridges/otelslog v0.19.0

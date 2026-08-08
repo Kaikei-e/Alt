@@ -482,6 +482,21 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) GetPendingJobs(ctx, limit any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPendingJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).GetPendingJobs), ctx, limit)
 }
 
+// HasDeadLetterJob mocks base method.
+func (m *MockSummarizeJobRepository) HasDeadLetterJob(ctx context.Context, articleID string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasDeadLetterJob", ctx, articleID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasDeadLetterJob indicates an expected call of HasDeadLetterJob.
+func (mr *MockSummarizeJobRepositoryMockRecorder) HasDeadLetterJob(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasDeadLetterJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).HasDeadLetterJob), ctx, articleID)
+}
+
 // HasInFlightJob mocks base method.
 func (m *MockSummarizeJobRepository) HasInFlightJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
 	m.ctrl.T.Helper()
@@ -495,6 +510,21 @@ func (m *MockSummarizeJobRepository) HasInFlightJob(ctx context.Context, article
 func (mr *MockSummarizeJobRepositoryMockRecorder) HasInFlightJob(ctx, articleID, since any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasInFlightJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).HasInFlightJob), ctx, articleID, since)
+}
+
+// HasRecentFailedJob mocks base method.
+func (m *MockSummarizeJobRepository) HasRecentFailedJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasRecentFailedJob", ctx, articleID, since)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasRecentFailedJob indicates an expected call of HasRecentFailedJob.
+func (mr *MockSummarizeJobRepositoryMockRecorder) HasRecentFailedJob(ctx, articleID, since any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasRecentFailedJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).HasRecentFailedJob), ctx, articleID, since)
 }
 
 // HasRecentSuccessfulJob mocks base method.
