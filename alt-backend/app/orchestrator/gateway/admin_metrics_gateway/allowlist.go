@@ -45,13 +45,16 @@ var allowlist = []allowEntry{
 		// alt-backend's, precisely because `min by (job)` would then hide
 		// which of the processes is down.
 		//
-		// The two *-relay jobs scrape the notification outbox relays, which live
-		// inside pre-processor and acolyte-orchestrator rather than in their own
-		// containers. Their `up` therefore tracks the host service, and the
-		// relay's own liveness is the last-tick gauge instead — but omitting
-		// them here would leave the admin monitor with no row at all for a
-		// scraped target, which is the failure this list exists to prevent.
-		promql:     `min by (job) (up{job=~"prometheus|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-data-hub|alt-notifier|pre-processor-relay|acolyte-orchestrator-relay|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
+		// pre-processor's collector listener carries the notification-outbox
+		// relay gauges. Its `up` tracks the listener rather than the relay loop —
+		// the relay's own liveness is the last-tick gauge — but omitting a
+		// scraped job here leaves the admin monitor with no row at all for it,
+		// which is the failure this list exists to prevent.
+		//
+		// acolyte-orchestrator has no relay job: its API listener authenticates
+		// nobody, so a /metrics route on it would be a new unauthenticated
+		// surface, and a topology test asserts the route's absence.
+		promql:     `min by (job) (up{job=~"prometheus|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-data-hub|alt-notifier|pre-processor|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
 		grafanaURL: "/d/otel-overview",
 	},
 	{

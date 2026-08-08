@@ -12,7 +12,7 @@ import structlog
 from psycopg_pool import AsyncConnectionPool
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 import acolyte.gen  # noqa: F401 — must precede generated imports
@@ -32,7 +32,6 @@ from acolyte.gateway.vllm_gw import VllmGateway
 from acolyte.gen.proto.alt.acolyte.v1.acolyte_connect import AcolyteServiceASGIApplication
 from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.infra.logging import configure_logging
-from acolyte.infra.metrics import RelayMetrics
 from acolyte.infra.peer_identity import PeerIdentityMiddleware, allowed_peers_from_env
 from acolyte.usecase.graph.report_graph import build_report_graph
 from acolyte.usecase.reconcile_orphaned_runs_uc import ReconcileOrphanedRunsUsecase
@@ -60,7 +59,6 @@ _report_repo = PostgresReportGateway(_pool)
 # anything — a relay that limps along without a target or a client certificate
 # only shows up as an outbox that quietly grows.
 _relay_config = settings.resolve_notification_relay_config()
-_relay_metrics: RelayMetrics | None = None
 _relay: RelayNotificationsUsecase | None = None
 if _relay_config is None:
     logger.warning(
@@ -68,7 +66,6 @@ if _relay_config is None:
         reason="NOTIFICATIONS_ENABLED is not true — report completions enqueue no notifications",
     )
 else:
-    _relay_metrics = RelayMetrics()
     _relay = RelayNotificationsUsecase(
         PostgresNotificationOutboxGateway(_pool),
         DataHubNotificationGateway(
@@ -80,7 +77,6 @@ else:
             ),
             ttl_seconds=_relay_config.ttl_seconds,
         ),
-        _relay_metrics,
         worker_id=settings.worker_id,
         batch_size=_relay_config.batch_size,
     )
@@ -172,17 +168,6 @@ async def health_endpoint(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "acolyte-orchestrator"})
 
 
-async def metrics_endpoint(request: Request) -> PlainTextResponse:
-    """Prometheus exposition for the notification outbox relay.
-
-    Empty when the relay is off: an absent series says "not running", where a
-    zero would read as a healthy relay with nothing to do.
-    """
-    if _relay_metrics is None:
-        return PlainTextResponse("")
-    return PlainTextResponse(_relay_metrics.render())
-
-
 def create_app() -> Starlette:
     """Create Starlette ASGI application instance."""
     initial_graph = None if settings.checkpoint_enabled else _compile_graph()
@@ -248,9 +233,11 @@ def create_app() -> Starlette:
     app = Starlette(
         lifespan=lifespan,
         middleware=[peer_identity_middleware],
+        # /health plus the Connect mount, and nothing else. This listener
+        # authenticates nobody, so every route added here is an unauthenticated
+        # route — the relay's own signals go out as log fields for that reason.
         routes=[
             Route("/health", health_endpoint),
-            Route("/metrics", metrics_endpoint),
             Mount(asgi_app.path, app=asgi_app),
         ],
     )

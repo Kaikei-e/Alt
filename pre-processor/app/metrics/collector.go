@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -16,6 +17,23 @@ import (
 
 	"pre-processor/config"
 )
+
+// metricsListenerEnabledLog and metricsListenerDisabledLog state the metrics
+// listener's wiring on one loud line. Exactly one of them is emitted at
+// startup, so "nothing is scraping this service" can never be inferred from
+// silence (CLAUDE.md rule 8).
+const (
+	metricsListenerEnabledLog  = "metrics_listener_enabled"
+	metricsListenerDisabledLog = "metrics_listener_disabled"
+)
+
+// PrometheusExporter renders extra series in Prometheus text exposition
+// format. Subsystems that own their own gauges (the notification-outbox relay,
+// for one) register themselves here instead of hanging a route off the service
+// API listener, whose access control is only "who can open a socket".
+type PrometheusExporter interface {
+	Prometheus() string
+}
 
 // DomainMetrics tracks performance metrics for a specific domain
 type DomainMetrics struct {
@@ -67,8 +85,13 @@ type Collector struct {
 	metrics map[string]*DomainMetrics
 	mu      sync.RWMutex
 
+	// Extra exposition sources appended to the Prometheus endpoint
+	exporters   map[string]PrometheusExporter
+	exportersMu sync.RWMutex
+
 	// HTTP server
 	server   *http.Server
+	listener net.Listener
 	serverMu sync.Mutex
 	serverWg sync.WaitGroup
 }
@@ -95,6 +118,7 @@ func NewCollector(cfg config.MetricsConfig, logger *slog.Logger) (*Collector, er
 		idleTimeout:       cfg.IdleTimeout,
 		logger:            logger,
 		metrics:           make(map[string]*DomainMetrics),
+		exporters:         make(map[string]PrometheusExporter),
 	}
 
 	if cfg.Path == "" {
@@ -108,6 +132,49 @@ func NewCollector(cfg config.MetricsConfig, logger *slog.Logger) (*Collector, er
 		"update_interval", cfg.UpdateInterval)
 
 	return collector, nil
+}
+
+// RegisterExporter attaches an extra exposition source under name. It fails on
+// a missing exporter or a duplicate name rather than accepting them, because
+// both produce a scrape target that looks alive while the series it was added
+// for is absent or doubled.
+func (c *Collector) RegisterExporter(name string, exporter PrometheusExporter) error {
+	if name == "" {
+		return errors.New("metrics exporter: name is required")
+	}
+	if exporter == nil {
+		return fmt.Errorf("metrics exporter %q is not wired", name)
+	}
+
+	c.exportersMu.Lock()
+	defer c.exportersMu.Unlock()
+
+	if _, exists := c.exporters[name]; exists {
+		return fmt.Errorf("metrics exporter %q is already registered", name)
+	}
+	c.exporters[name] = exporter
+
+	c.logger.Info("metrics exporter registered", "exporter", name)
+	return nil
+}
+
+// exportRegistered renders every registered exporter, sorted by name so the
+// exposition is stable across scrapes.
+func (c *Collector) exportRegistered() string {
+	c.exportersMu.RLock()
+	defer c.exportersMu.RUnlock()
+
+	names := make([]string, 0, len(c.exporters))
+	for name := range c.exporters {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var builder strings.Builder
+	for _, name := range names {
+		builder.WriteString(c.exporters[name].Prometheus())
+	}
+	return builder.String()
 }
 
 // RecordRequest records a request metric for a domain
@@ -299,6 +366,8 @@ func (c *Collector) ExportPrometheus() string {
 	builder.WriteString(fmt.Sprintf("preprocessor_success_rate{domain=\"_aggregate\"} %.4f\n",
 		aggregate.SuccessRate))
 
+	builder.WriteString(c.exportRegistered())
+
 	return builder.String()
 }
 
@@ -342,10 +411,25 @@ func (c *Collector) Cleanup() {
 	}
 }
 
-// Start starts the HTTP metrics server
-func (c *Collector) Start(ctx context.Context) error {
+// Start binds the dedicated metrics listener and serves it in the background.
+//
+// The listener is deliberately separate from the service API listener: the API
+// listener's access control is "who can open a socket", so a metrics route on
+// it is a new unauthenticated surface on the API.
+//
+// The bind is synchronous, so a port that is already taken fails the caller
+// instead of leaving the process running with nothing to scrape. errCh is
+// required and carries any serve failure after a successful bind.
+func (c *Collector) Start(ctx context.Context, errCh chan<- error) error {
 	if !c.enabled {
+		c.logger.Warn(metricsListenerDisabledLog,
+			"reason", "METRICS_ENABLED=false",
+			"consequence", "no scrape target for this service, including the notification-outbox relay gauges")
 		return nil
+	}
+
+	if errCh == nil {
+		return errors.New("metrics server: an error channel is required so a serve failure reaches the composition root")
 	}
 
 	c.serverMu.Lock()
@@ -389,8 +473,9 @@ func (c *Collector) Start(ctx context.Context) error {
 		}
 	})
 
+	addr := fmt.Sprintf(":%d", c.port)
 	server := &http.Server{
-		Addr:              fmt.Sprintf(":%d", c.port),
+		Addr:              addr,
 		Handler:           mux,
 		ReadHeaderTimeout: c.readHeaderTimeout,
 		ReadTimeout:       c.readTimeout,
@@ -398,24 +483,45 @@ func (c *Collector) Start(ctx context.Context) error {
 		IdleTimeout:       c.idleTimeout,
 	}
 
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("metrics listener on %s: %w", addr, err)
+	}
+
 	c.server = server
+	c.listener = listener
 	c.serverWg.Add(1)
+
+	c.logger.Info(metricsListenerEnabledLog,
+		"addr", listener.Addr().String(),
+		"prometheus_path", c.path+"/prometheus",
+		"json_path", c.path)
 
 	go func() {
 		defer c.serverWg.Done()
 
-		c.logger.Info("starting metrics server",
-			"port", c.port,
-			"path", c.path)
-
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			c.logger.Error("metrics server failed", "error", err)
+			errCh <- fmt.Errorf("metrics server: %w", err)
 		}
 
 		c.logger.Info("metrics server stopped")
 	}()
 
 	return nil
+}
+
+// Addr reports the address the metrics listener bound to, or the empty string
+// when it is not running. A port-0 bind only resolves at listen time, so this
+// is how a caller learns where to scrape.
+func (c *Collector) Addr() string {
+	c.serverMu.Lock()
+	defer c.serverMu.Unlock()
+
+	if c.listener == nil {
+		return ""
+	}
+	return c.listener.Addr().String()
 }
 
 // Stop stops the HTTP metrics server
@@ -433,8 +539,11 @@ func (c *Collector) Stop(ctx context.Context) error {
 
 	c.logger.Info("stopping metrics server")
 
+	// Shutdown closes the listener it was serving on, so dropping the
+	// reference here is enough to make Addr report "not running".
 	err := c.server.Shutdown(ctx)
 	c.server = nil
+	c.listener = nil
 
 	if err != nil {
 		c.logger.Error("error stopping metrics server", "error", err)

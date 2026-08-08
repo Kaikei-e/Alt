@@ -47,42 +47,24 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: /metrics
 
-  # pre-processor: /metrics/prometheus is defined in code (metrics/collector.go)
-  # but not wired into bootstrap/server.go yet — nothing listens on :9201 inside
-  # the container. Re-enable this job when the collector is started by main.
-  # Tracked as a follow-up to ADR-000704 (Admin Observability UI).
+  # pre-processor: the collector on :9201 is now started by bootstrap, so this
+  # job is live. It carries the notification-outbox relay gauges among the rest.
+  # Deliberately not on :9200 — that is the API listener, whose access control
+  # is "who can open a socket", so a metrics route there would be a new
+  # unauthenticated surface.
   #
-  # - job_name: 'pre-processor'
-  #   static_configs:
-  #     - targets: ['pre-processor:9201']
-  #       labels:
-  #         service: 'pre-processor'
-  #   scrape_interval: 15s
-  #   metrics_path: /metrics/prometheus
-
-  # The notification-outbox relays are scraped separately from the collector
-  # above: they publish on each service's existing HTTP server rather than on
-  # the unwired :9201 listener. Both expose the same two series
-  # (notification_outbox_oldest_pending_age_seconds and
-  # notification_outbox_last_tick_timestamp_seconds) under a `service` label, so
-  # one alert rule covers every producer. Without these targets the relay half
-  # of the delivery path is unobservable — and a relay that stops forwarding
-  # produces no errors at all, only silence.
-  - job_name: 'pre-processor-relay'
+  # acolyte-orchestrator has no counterpart here for the same reason, and it has
+  # no second listener to move to: its relay is observable through its logs
+  # only, so NotificationRelayStalled has no series for it. An accepted gap,
+  # not a covered one.
+  - job_name: 'pre-processor'
     static_configs:
-      - targets: ['pre-processor:9200']
+      - targets: ['pre-processor:9201']
         labels:
           service: 'pre-processor'
     scrape_interval: 15s
-    metrics_path: /metrics
+    metrics_path: /metrics/prometheus
 
-  - job_name: 'acolyte-orchestrator-relay'
-    static_configs:
-      - targets: ['acolyte-orchestrator:8090']
-        labels:
-          service: 'acolyte-orchestrator'
-    scrape_interval: 15s
-    metrics_path: /metrics
 
   # recap-worker recap pipeline metrics (Rust/Axum)
   - job_name: 'recap-worker'

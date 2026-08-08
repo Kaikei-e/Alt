@@ -66,15 +66,11 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
 	})
 
-	// Prometheus exposition for the notification-outbox relay. The gauges are
-	// only useful if something can scrape them; without this route the relay
-	// would publish into a variable nobody reads.
-	e.GET("/metrics", func(c echo.Context) error {
-		if deps.OutboxMetrics == nil {
-			panic("metrics endpoint served without an outbox metrics holder: the composition root did not wire it")
-		}
-		return c.String(http.StatusOK, deps.OutboxMetrics.Prometheus())
-	})
+	// No /metrics route here. This listener's access control is "who can open
+	// a socket", so anything hung off it is a new unauthenticated surface on
+	// the service API. Prometheus exposition — including the
+	// notification-outbox relay gauges — is served by the dedicated metrics
+	// listener (metrics.Collector, :9201, /metrics/prometheus).
 
 	// Summarize endpoints are service-to-service only. Authentication is
 	// established at the TLS transport layer (mTLS on :9443).

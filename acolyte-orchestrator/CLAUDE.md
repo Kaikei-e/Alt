@@ -75,7 +75,7 @@ PATH=/home/koko/go/bin:$PATH \
 
 `complete_run` writes a `notification_outbox` row inside the completion
 transaction; a relay task forwards it to `DataHubService/EnqueueNotification`
-over mTLS and exposes `/metrics`. One switch, fail-fast when half-configured:
+over mTLS. One switch, fail-fast when half-configured:
 
 ```
 NOTIFICATIONS_ENABLED=true
@@ -83,3 +83,9 @@ NOTIFICATION_USER_ID=<kratos identity uuid>   # acolyte-db has no owner column
 DATAHUB_URL=https://alt-data-hub:9443
 MTLS_ENFORCE=true                             # alt-data-hub always verifies the client cert
 ```
+
+The relay adds no HTTP route. :8090 authenticates nobody, so it stays `/health`
+plus the Connect mount; every tick logs `notification_relay_tick` carrying
+`notification_outbox_oldest_pending_age_seconds` and
+`notification_outbox_last_tick_timestamp_seconds`, which is the only place
+those two values surface here — Prometheus has no series for this service.

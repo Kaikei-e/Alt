@@ -37,6 +37,10 @@ on:
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/orchestrator/driver/preprocessor_connect/contract/**'
       - 'alt-backend/app/dataplane/driver/contract/**'
+      # The alt-data-hub consumer legs. Omitting this is how a commit that
+      # changes a datahub pact ships without republishing it, leaving the
+      # deploy gate to resolve alt-data-hub as unknown.
+      - 'alt-backend/app/shared/gateway/datahub_gateway/contract/**'
       - 'alt-backend/app/shared/driver/sovereign_client/contract/**'
       - 'pre-processor/app/driver/contract/**'
       - 'rag-orchestrator/internal/adapter/contract/**'
@@ -48,6 +52,9 @@ on:
       - 'tag-generator/app/tests/contract/**'
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
+      # The glob above matches only files directly under clients/; the datahub
+      # contract lives a directory deeper.
+      - 'recap-worker/recap-worker/src/clients/**/contract.rs'
       - 'alt-butterfly-facade/internal/handler/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
   pull_request:
@@ -60,6 +67,10 @@ on:
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/orchestrator/driver/preprocessor_connect/contract/**'
       - 'alt-backend/app/dataplane/driver/contract/**'
+      # The alt-data-hub consumer legs. Omitting this is how a commit that
+      # changes a datahub pact ships without republishing it, leaving the
+      # deploy gate to resolve alt-data-hub as unknown.
+      - 'alt-backend/app/shared/gateway/datahub_gateway/contract/**'
       - 'alt-backend/app/shared/driver/sovereign_client/contract/**'
       - 'pre-processor/app/driver/contract/**'
       - 'rag-orchestrator/internal/adapter/contract/**'
@@ -71,6 +82,9 @@ on:
       - 'tag-generator/app/tests/contract/**'
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
+      # The glob above matches only files directly under clients/; the datahub
+      # contract lives a directory deeper.
+      - 'recap-worker/recap-worker/src/clients/**/contract.rs'
       - 'alt-butterfly-facade/internal/handler/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
 

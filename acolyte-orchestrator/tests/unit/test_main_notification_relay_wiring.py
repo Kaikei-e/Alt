@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 import main as main_module
-from acolyte.infra.metrics import RelayMetrics
 
 
 def test_producer_and_relay_share_one_enabled_decision() -> None:
@@ -22,31 +21,22 @@ def test_producer_and_relay_share_one_enabled_decision() -> None:
     assert (main_module._relay is None) == (main_module._relay_config is None)
 
 
-def test_metrics_route_is_mounted() -> None:
+def test_no_metrics_route_is_mounted() -> None:
+    """The API listener must not gain a metrics surface.
+
+    Its access control is "who can open a socket", so a route added here is a
+    new unauthenticated surface — and run counts and model names are exactly
+    what a scraped /metrics would publish. This service is observed through the
+    rask log pipeline instead (OTEL_EXPORTER_OTLP_ENDPOINT in
+    compose/acolyte.yaml).
+
+    e2e/playwright/acolyte-orchestrator/tests/topology.spec.ts asserts the same
+    thing against a running container. This is the cheap copy that fails in a
+    unit run rather than after a stack boots.
+    """
     app = main_module.create_app()
-    assert "/metrics" in {getattr(route, "path", None) for route in app.routes}
 
-
-@pytest.mark.asyncio
-async def test_metrics_endpoint_renders_both_relay_gauges(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(main_module, "_relay_metrics", RelayMetrics())
-
-    response = await main_module.metrics_endpoint(None)  # type: ignore[arg-type]
-
-    body = bytes(response.body).decode()
-    assert "notification_outbox_oldest_pending_age_seconds 0.0" in body
-    assert "notification_outbox_last_tick_timestamp_seconds 0.0" in body
-
-
-@pytest.mark.asyncio
-async def test_metrics_endpoint_exposes_nothing_when_the_relay_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    # An absent series is an unambiguous "this relay is not running"; a zero
-    # would read as a healthy relay with an empty backlog.
-    monkeypatch.setattr(main_module, "_relay_metrics", None)
-
-    response = await main_module.metrics_endpoint(None)  # type: ignore[arg-type]
-
-    assert bytes(response.body) == b""
+    assert "/metrics" not in {getattr(route, "path", None) for route in app.routes}
 
 
 @pytest.mark.asyncio

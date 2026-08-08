@@ -97,10 +97,37 @@ type Dependencies struct {
 	ArticleRepo repository.ArticleRepository
 	JobRepo     repository.SummarizeJobRepository
 
-	// OutboxMetrics is exposed so the HTTP server can publish the relay's
-	// gauges; without a scrape target the numbers exist but nobody can see a
-	// wedged relay.
-	OutboxMetrics *metrics.OutboxRelayMetrics
+	// MetricsCollector owns the dedicated metrics listener. The relay's gauges
+	// are registered on it; without a scrape target the numbers exist but
+	// nobody can see a wedged relay.
+	MetricsCollector *metrics.Collector
+}
+
+// buildMetricsCollector wires the dedicated metrics listener and registers the
+// notification-outbox relay's gauges on it.
+//
+// The gauges deliberately do not live on the Echo API listener: that listener
+// authenticates nothing beyond "who can open a socket", so a route on it is a
+// new unauthenticated surface on the service API.
+func buildMetricsCollector(
+	cfg config.MetricsConfig,
+	relayMetrics *metrics.OutboxRelayMetrics,
+	log *slog.Logger,
+) (*metrics.Collector, error) {
+	if relayMetrics == nil {
+		return nil, fmt.Errorf("metrics collector: outbox relay metrics are required")
+	}
+
+	collector, err := metrics.NewCollector(cfg, log)
+	if err != nil {
+		return nil, fmt.Errorf("metrics collector: %w", err)
+	}
+
+	if err := collector.RegisterExporter("notification_outbox_relay", relayMetrics); err != nil {
+		return nil, fmt.Errorf("metrics collector: %w", err)
+	}
+
+	return collector, nil
 }
 
 // buildNotificationRelay wires the notification_outbox relay over the same
@@ -213,6 +240,12 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		return nil, nil, fmt.Errorf("failed to build notification relay: %w", err)
 	}
 
+	promCollector, err := buildMetricsCollector(cfg.Metrics, outboxMetrics, log)
+	if err != nil {
+		ppDBPoolCleanup()
+		return nil, nil, fmt.Errorf("failed to build metrics collector: %w", err)
+	}
+
 	// Initialize handlers
 	jobHandler := handler.NewJobHandler(
 		ctx,
@@ -250,7 +283,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		SummaryRepo:      summaryRepo,
 		ArticleRepo:      articleRepo,
 		JobRepo:          jobRepo,
-		OutboxMetrics:    outboxMetrics,
+		MetricsCollector: promCollector,
 	}, cleanup, nil
 }
 

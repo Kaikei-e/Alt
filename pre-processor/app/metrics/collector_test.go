@@ -4,8 +4,12 @@ package metrics
 
 import (
 	"context"
+	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -392,12 +396,10 @@ func TestMetricsCollector_Server(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
 
-		// Start server (should not block)
-		err = collector.Start(ctx)
-		if err != nil {
-			// Server start may fail in test environment, that's okay
-			t.Logf("Server start failed (expected in test): %v", err)
-		}
+		// The bind is synchronous, so a listener that cannot come up is an
+		// error here rather than a process that runs with nothing to scrape.
+		require.NoError(t, collector.Start(ctx, make(chan error, 1)))
+		assert.NotEmpty(t, collector.Addr())
 
 		// Stop server
 		err = collector.Stop(ctx)
@@ -427,7 +429,7 @@ func TestMetricsCollector_Server(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_ = collector.Start(ctx)
+				_ = collector.Start(ctx, make(chan error, 1))
 			}()
 
 			// Stop server immediately in another goroutine
@@ -465,7 +467,7 @@ func TestMetricsCollector_Server(t *testing.T) {
 
 			go func() {
 				defer wg.Done()
-				_ = collector.Start(ctx)
+				_ = collector.Start(ctx, make(chan error, 1))
 			}()
 
 			go func() {
@@ -477,4 +479,128 @@ func TestMetricsCollector_Server(t *testing.T) {
 
 		wg.Wait()
 	})
+}
+
+// serveTestConfig is a metrics config bound to an ephemeral port, with the
+// four HTTP timeouts set so the listener under test is the same shape as the
+// production one.
+func serveTestConfig() config.MetricsConfig {
+	return config.MetricsConfig{
+		Enabled:           true,
+		Port:              0,
+		Path:              "/metrics",
+		UpdateInterval:    10 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+		IdleTimeout:       30 * time.Second,
+	}
+}
+
+// localURL rewrites a listener address onto the loopback interface, since a
+// port-0 bind reports the unspecified host.
+func localURL(t *testing.T, addr, path string) string {
+	t.Helper()
+	_, port, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+	return "http://127.0.0.1:" + port + path
+}
+
+func TestMetricsCollector_RegisterExporter(t *testing.T) {
+	t.Run("appends the registered series to the Prometheus export", func(t *testing.T) {
+		collector, err := NewCollector(serveTestConfig(), testLogger())
+		require.NoError(t, err)
+
+		relay := NewOutboxRelayMetrics()
+		relay.ObserveTick(90*time.Second, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+		require.NoError(t, collector.RegisterExporter("notification_outbox_relay", relay))
+
+		exposition := collector.ExportPrometheus()
+		assert.Contains(t, exposition, "notification_outbox_oldest_pending_age_seconds 90")
+		assert.Contains(t, exposition, "notification_outbox_last_tick_timestamp_seconds")
+		assert.Contains(t, exposition, "preprocessor_requests_total")
+	})
+
+	t.Run("refuses an unwired exporter", func(t *testing.T) {
+		collector, err := NewCollector(serveTestConfig(), testLogger())
+		require.NoError(t, err)
+
+		require.Error(t, collector.RegisterExporter("notification_outbox_relay", nil))
+	})
+
+	t.Run("refuses a duplicate registration", func(t *testing.T) {
+		collector, err := NewCollector(serveTestConfig(), testLogger())
+		require.NoError(t, err)
+
+		require.NoError(t, collector.RegisterExporter("notification_outbox_relay", NewOutboxRelayMetrics()))
+		require.Error(t, collector.RegisterExporter("notification_outbox_relay", NewOutboxRelayMetrics()),
+			"a second registration under the same name would emit the series twice")
+	})
+}
+
+// TestMetricsCollector_ServesRegisteredExportersOnItsOwnListener pins the
+// placement the observability side scrapes: the relay gauges are served from
+// the dedicated metrics listener under /metrics/prometheus, not from the
+// service API listener.
+func TestMetricsCollector_ServesRegisteredExportersOnItsOwnListener(t *testing.T) {
+	collector, err := NewCollector(serveTestConfig(), testLogger())
+	require.NoError(t, err)
+
+	relay := NewOutboxRelayMetrics()
+	relay.ObserveTick(0, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	require.NoError(t, collector.RegisterExporter("notification_outbox_relay", relay))
+
+	require.NoError(t, collector.Start(context.Background(), make(chan error, 1)))
+	t.Cleanup(func() { require.NoError(t, collector.Stop(context.Background())) })
+
+	addr := collector.Addr()
+	require.NotEmpty(t, addr)
+
+	resp, err := http.Get(localURL(t, addr, "/metrics/prometheus")) // #nosec G107 -- loopback address of the listener under test
+	require.NoError(t, err)
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, string(body), "notification_outbox_oldest_pending_age_seconds 0")
+	assert.Contains(t, string(body), "notification_outbox_last_tick_timestamp_seconds")
+}
+
+// TestMetricsCollector_StartFailsWhenThePortIsAlreadyBound is the fail-fast
+// guard: a listener that cannot bind must surface as an error the composition
+// root can exit on, not a background log nobody reads while the scrape target
+// stays dark.
+func TestMetricsCollector_StartFailsWhenThePortIsAlreadyBound(t *testing.T) {
+	// Loopback rather than ":0": the test only needs a port that is already
+	// spoken for, and binding every interface on a CI runner is both wider than
+	// necessary and what gosec G102 objects to.
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, taken.Close()) }()
+
+	_, portStr, err := net.SplitHostPort(taken.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+
+	cfg := serveTestConfig()
+	cfg.Port = port
+
+	collector, err := NewCollector(cfg, testLogger())
+	require.NoError(t, err)
+
+	require.Error(t, collector.Start(context.Background(), make(chan error, 1)))
+	assert.Empty(t, collector.Addr())
+}
+
+// TestMetricsCollector_StartRequiresAnErrorChannel keeps a serve failure from
+// being swallowed: without a sink, a listener that dies mid-flight would leave
+// the process running with nothing to scrape and no signal.
+func TestMetricsCollector_StartRequiresAnErrorChannel(t *testing.T) {
+	collector, err := NewCollector(serveTestConfig(), testLogger())
+	require.NoError(t, err)
+
+	require.Error(t, collector.Start(context.Background(), nil))
 }

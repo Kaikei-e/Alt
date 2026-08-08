@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from acolyte.port.notification_outbox import (
         NotificationForwarderPort,
         NotificationOutboxPort,
-        RelayMetricsPort,
     )
 
 logger = structlog.get_logger(__name__)
@@ -31,14 +30,12 @@ class RelayNotificationsUsecase:
         self,
         outbox: NotificationOutboxPort,
         forwarder: NotificationForwarderPort,
-        metrics: RelayMetricsPort,
         *,
         worker_id: str,
         batch_size: int,
     ) -> None:
         self._outbox = outbox
         self._forwarder = forwarder
-        self._metrics = metrics
         self._worker_id = worker_id
         self._batch_size = batch_size
 
@@ -62,10 +59,20 @@ class RelayNotificationsUsecase:
                 await self._outbox.mark_forwarded(notification.notification_id)
                 forwarded += 1
 
-        self._metrics.set_oldest_pending_age_seconds(await self._outbox.oldest_pending_age_seconds())
-        # Stamped last and only on a completed tick: a liveness gauge that a
-        # half-failed tick still advances cannot show a wedged relay.
-        self._metrics.set_last_tick_timestamp_seconds(time.time())
+        oldest_pending_age = await self._outbox.oldest_pending_age_seconds()
+        # This log line is the whole observability surface of the relay: this
+        # service publishes no /metrics endpoint (the listener authenticates
+        # nobody, so every route on it is public) and wires no OTLP metrics
+        # exporter, so the two fields below reach an operator only through the
+        # rask log pipeline. Emitted last and on every completed tick, including
+        # ticks that moved nothing — a liveness signal that stops being written,
+        # or that a half-failed tick still advances, cannot show a wedged relay.
+        logger.info(
+            "notification_relay_tick",
+            forwarded=forwarded,
+            notification_outbox_oldest_pending_age_seconds=oldest_pending_age,
+            notification_outbox_last_tick_timestamp_seconds=time.time(),
+        )
         return forwarded
 
     async def run_forever(self, interval_seconds: float) -> None:

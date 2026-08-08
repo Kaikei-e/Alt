@@ -30,11 +30,3 @@ class NotificationForwarderPort(Protocol):
     """
 
     async def forward(self, notification: PendingNotification) -> None: ...
-
-
-class RelayMetricsPort(Protocol):
-    """Gauges the relay stamps on every successful tick."""
-
-    def set_oldest_pending_age_seconds(self, value: float) -> None: ...
-
-    def set_last_tick_timestamp_seconds(self, value: float) -> None: ...

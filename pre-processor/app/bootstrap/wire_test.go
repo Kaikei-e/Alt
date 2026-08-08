@@ -17,7 +17,50 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"pre-processor/config"
+	"pre-processor/metrics"
 )
+
+// metricsTestConfig mirrors the shipped defaults: the dedicated listener on
+// :9201, whose Prometheus exposition lives at /metrics/prometheus.
+func metricsTestConfig() config.MetricsConfig {
+	return config.MetricsConfig{
+		Enabled:           true,
+		Port:              9201,
+		Path:              "/metrics",
+		UpdateInterval:    10 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
+// TestBuildMetricsCollector_RegistersTheRelayGauges pins the placement: the
+// notification-outbox gauges are served by the dedicated metrics listener, so
+// the composition root has to register them there. A collector built without
+// them is a scrape target that reports on everything except the relay.
+func TestBuildMetricsCollector_RegistersTheRelayGauges(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	relayMetrics := metrics.NewOutboxRelayMetrics()
+	relayMetrics.ObserveTick(0, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+
+	collector, err := buildMetricsCollector(metricsTestConfig(), relayMetrics, log)
+	require.NoError(t, err)
+
+	exposition := collector.ExportPrometheus()
+	require.Contains(t, exposition, "notification_outbox_oldest_pending_age_seconds 0")
+	require.Contains(t, exposition, "notification_outbox_last_tick_timestamp_seconds")
+}
+
+func TestBuildMetricsCollector_RefusesUnwiredRelayMetrics(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	_, err := buildMetricsCollector(metricsTestConfig(), nil, log)
+	require.Error(t, err)
+}
 
 // TestBuildRedisConsumer_DisabledIsNotAnError verifies the deliberate
 // CONSUMER_ENABLED=false opt-out path succeeds (no construction/start attempted

@@ -996,6 +996,14 @@ services:
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
       - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
+      # ValidateBackendConfig requires this, so its absence stops the process
+      # rather than letting GetPushConfig answer with an empty string a browser
+      # would then fail on. Inline rather than a fixture file: only the public
+      # half reaches this binary, it is handed to every subscriber anyway, and
+      # nothing in the staging stack sends a push. It is a real uncompressed
+      # P-256 point in base64url so anything that decodes it gets 65 bytes
+      # rather than a parse error.
+      - VAPID_PUBLIC_KEY=BA1Hxzyi1RUM1b5wjxsn7nGxAszw2u61m164i3MrAIxHF6YK5h4SDYic-dRuU_RCPCfA5aq9ojSwk5Y2EmClBPs
       # Upstream targets — every alias resolves to alt-backend-deps-stub.
       - SEARCH_INDEXER_CONNECT_URL=http://search-indexer/
       - PRE_PROCESSOR_URL=http://pre-processor/
