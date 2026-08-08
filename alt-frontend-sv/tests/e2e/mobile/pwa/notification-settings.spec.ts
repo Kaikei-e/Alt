@@ -26,9 +26,32 @@ import { expect, test } from "../../fixtures/pomFixtures";
  */
 
 const REGISTER_RPC = "**/api/v2/alt.push.v1.PushService/RegisterSubscription";
+const CONFIG_RPC = "**/api/v2/alt.push.v1.PushService/GetPushConfig";
 
 /** Matches the four notification kinds the settings page exposes. */
 const RECAP_TOGGLE = "notification-toggle-recap-ready";
+
+/**
+ * A syntactically real VAPID public key — an uncompressed P-256 point in
+ * base64url. The client decodes it before calling `subscribe`, so a placeholder
+ * string would fail in the decoder rather than exercising the flow.
+ */
+const VAPID_PUBLIC_KEY =
+	"BA1Hxzyi1RUM1b5wjxsn7nGxAszw2u61m164i3MrAIxHF6YK5h4SDYic-dRuU_RCPCfA5aq9ojSwk5Y2EmClBPs";
+
+/** The mock backend at :4003 has no push service, so the config call is stubbed. */
+async function stubPushConfig(page: import("@playwright/test").Page) {
+	await page.route(CONFIG_RPC, async (route) => {
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify({
+				vapidPublicKey: VAPID_PUBLIC_KEY,
+				hasSubscription: false,
+			}),
+		});
+	});
+}
 
 /**
  * Stands in for a browser that has a service worker and will grant permission.
@@ -75,6 +98,7 @@ test.describe("notification settings", () => {
 		page,
 	}) => {
 		await stubPushCapableBrowser(page);
+		await stubPushConfig(page);
 
 		let registrationCalls = 0;
 		await page.route(REGISTER_RPC, async (route) => {
@@ -114,6 +138,7 @@ test.describe("notification settings", () => {
 
 	test("keeps the toggle off when registration fails", async ({ page }) => {
 		await stubPushCapableBrowser(page);
+		await stubPushConfig(page);
 
 		await page.route(REGISTER_RPC, async (route) => {
 			await route.fulfill({ status: 500, body: "" });
@@ -136,6 +161,7 @@ test.describe("notification settings", () => {
 		page,
 	}) => {
 		await stubPushCapableBrowser(page);
+		await stubPushConfig(page);
 
 		await page.goto("/settings/notifications");
 		await page.waitForLoadState("domcontentloaded");

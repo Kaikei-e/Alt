@@ -73,7 +73,14 @@ sw.addEventListener("notificationclick", (event) => {
 
 	const data = event.notification.data as { url?: unknown } | undefined;
 	const target = typeof data?.url === "string" ? data.url : "/";
-	const href = new URL(target, sw.location.origin).href;
+
+	// Second gate, on the parsed URL rather than on the string. The payload was
+	// already filtered by `parsePushPayload`, but `.claude/rules/security-boundaries.md`
+	// is explicit that prefix checks alone are not sufficient here — WHATWG
+	// parsing normalises `/\` into `//`, so only the resolved origin settles it.
+	const resolved = new URL(target, sw.location.origin);
+	const href =
+		resolved.origin === sw.location.origin ? resolved.href : sw.location.origin;
 
 	event.waitUntil(
 		(async () => {

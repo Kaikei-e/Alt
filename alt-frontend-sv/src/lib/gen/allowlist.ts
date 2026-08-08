@@ -11,6 +11,7 @@ export const PUBLIC_SERVICES = [
 	"alt.knowledge_trail.v1.KnowledgeTrailService",
 	"alt.morning_letter.v2.MorningLetterReadService",
 	"alt.morning_letter.v2.MorningLetterService",
+	"alt.push.v1.PushService",
 	"alt.recap.v2.JobStatusService",
 	"alt.recap.v2.RecapService",
 	"alt.rss.v2.RSSService",

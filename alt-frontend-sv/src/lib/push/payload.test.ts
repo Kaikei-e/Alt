@@ -94,6 +94,17 @@ describe("parsePushPayload", () => {
 		expect(parsed.url).toBe("/");
 	});
 
+	it("refuses the backslash form of a protocol-relative target", () => {
+		// `new URL("/\\evil.example/x", origin)` resolves to https://evil.example/x
+		// — WHATWG parsing normalises the backslash for special schemes, so a
+		// guard that only looks for a leading "//" lets this through.
+		const parsed = parsePushPayload(
+			declarative({ title: "Recap ready", navigate: "/\\evil.example/x" }),
+		);
+
+		expect(parsed.url).toBe("/");
+	});
+
 	it("keeps a relative path with a query string intact", () => {
 		const parsed = parsePushPayload(
 			declarative({ title: "Recap ready", navigate: "/recap?window=3days" }),

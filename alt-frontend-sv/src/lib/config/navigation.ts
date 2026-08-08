@@ -1,6 +1,8 @@
+import type { IconProps } from "@lucide/svelte";
 import {
 	Activity,
 	BarChart3,
+	Bell,
 	Bird,
 	CalendarRange,
 	Compass,
@@ -24,7 +26,6 @@ import {
 	Sparkles,
 	Tag,
 } from "@lucide/svelte";
-import type { IconProps } from "@lucide/svelte";
 import type { Component } from "svelte";
 
 type IconComponent = Component<IconProps>;
@@ -114,6 +115,7 @@ export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 		title: "Settings",
 		items: [
 			{ label: "Manage Feed Links", href: "/settings/feeds", icon: LinkIcon },
+			{ label: "Notifications", href: "/settings/notifications", icon: Bell },
 		],
 	},
 	{

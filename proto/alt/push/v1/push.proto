@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package alt.push.v1;
+
+import "alt/api/v1/visibility.proto";
+
+option go_package = "alt/gen/proto/alt/push/v1;pushv1";
+
+// =============================================================================
+// Messages
+// =============================================================================
+
+// NotificationPreferences is the per-kind on/off state for one subscription.
+//
+// The kinds are separate booleans rather than a repeated enum because the user
+// asked for "turn the daily digest off but keep job completions" — a shape that
+// a single global switch cannot express, and the reason a subscription row is
+// not simply present-or-absent.
+message NotificationPreferences {
+  // A summarization job the user started has finished.
+  bool summary_ready = 1;
+  // An Acolyte report the user requested has finished.
+  bool acolyte_report_ready = 2;
+  // A Recap generation the user requested has finished.
+  bool recap_ready = 3;
+  // Today's entrance is assembled. Sent once per day, not per item.
+  bool today_entrance_ready = 4;
+}
+
+// PushSubscriptionKeys carries the two RFC 8291 key material fields the browser
+// hands out with a subscription. Both are base64url.
+message PushSubscriptionKeys {
+  // The user agent's P-256 public key, uncompressed point form (65 octets).
+  string p256dh = 1;
+  // The 16-octet subscription-scoped auth secret.
+  string auth = 2;
+}
+
+message GetPushConfigRequest {
+  // The endpoint of a subscription this browser already holds, if any. Sending
+  // it lets one round trip answer both "which key do I subscribe with" and
+  // "what are my current settings", which is what the settings page needs on
+  // load.
+  //
+  // The endpoint is a capability URL: anyone holding it can push to this
+  // device. It must never be logged.
+  string endpoint = 1;
+}
+
+message GetPushConfigResponse {
+  // The VAPID public key the browser must pass as `applicationServerKey`.
+  // Served rather than baked into the bundle so that a key change does not
+  // require a frontend rebuild, and so the client can compare it against the
+  // key its live subscription was created with — rotating the key invalidates
+  // every existing subscription, and this comparison is how a client notices.
+  string vapid_public_key = 1;
+  // Whether the endpoint in the request is currently registered.
+  bool has_subscription = 2;
+  // Populated only when has_subscription is true.
+  NotificationPreferences preferences = 3;
+}
+
+message RegisterSubscriptionRequest {
+  string endpoint = 1;
+  PushSubscriptionKeys keys = 2;
+  NotificationPreferences preferences = 3;
+}
+
+message RegisterSubscriptionResponse {}
+
+message UpdatePreferencesRequest {
+  string endpoint = 1;
+  NotificationPreferences preferences = 2;
+}
+
+message UpdatePreferencesResponse {}
+
+message DeleteSubscriptionRequest {
+  string endpoint = 1;
+}
+
+message DeleteSubscriptionResponse {}
+
+// =============================================================================
+// Service
+// =============================================================================
+
+// PushService manages this user's Web Push subscriptions.
+//
+// A subscription is per device, not per user: the same person subscribing from
+// a phone and a desktop produces two endpoints, and both receive. Rows are
+// removed either by DeleteSubscription or by the dispatcher when a push service
+// answers 404/410, which is the only signal that a device has gone away.
+service PushService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
+  // Returns the VAPID public key, plus the current settings for the supplied
+  // endpoint when one is already registered.
+  rpc GetPushConfig(GetPushConfigRequest) returns (GetPushConfigResponse);
+
+  // Stores a browser subscription for the calling user. Idempotent on endpoint:
+  // re-registering the same endpoint replaces its key material and settings
+  // rather than creating a second row, because a browser may hand out the same
+  // endpoint again after a permission re-prompt.
+  rpc RegisterSubscription(RegisterSubscriptionRequest) returns (RegisterSubscriptionResponse);
+
+  // Changes which kinds are delivered without re-subscribing in the browser.
+  rpc UpdatePreferences(UpdatePreferencesRequest) returns (UpdatePreferencesResponse);
+
+  // Removes a subscription. Called when the user turns every kind off, so that
+  // a device that wants nothing is not carried in the fan-out.
+  rpc DeleteSubscription(DeleteSubscriptionRequest) returns (DeleteSubscriptionResponse);
+}
