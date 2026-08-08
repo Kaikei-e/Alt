@@ -51,6 +51,10 @@ type fetchResult struct {
 // state is preserved for the next attempt.
 const defaultExternalFetchTimeout = 8 * time.Second
 
+// defaultCrawlDelayRetryAfter is the backoff advertised when the policy gate
+// reports a crawl-delay miss without saying how much of it is left.
+const defaultCrawlDelayRetryAfter = 10 * time.Second
+
 type ArticleUsecaseImpl struct {
 	articleFetcher       fetch_article_port.FetchArticlePort
 	robotsTxt            robots_txt_port.RobotsTxtPort
@@ -171,10 +175,27 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 	var isAllowed bool
 	if u.scrapingPolicyPort != nil {
 		allowed, policyErr := u.scrapingPolicyPort.CanFetchArticle(ctx, urlStr)
-		if policyErr != nil {
+		switch {
+		case errors.Is(policyErr, scraping_policy_port.ErrCrawlDelayNotElapsed):
+			// Transient. Returning here — rather than falling into the
+			// !isAllowed branch below — is what keeps the domain out of
+			// declined_domains, which has no expiry and would 403 this
+			// publisher for this user permanently.
+			retryAfter := defaultCrawlDelayRetryAfter
+			var crawlErr *scraping_policy_port.CrawlDelayError
+			if errors.As(policyErr, &crawlErr) && crawlErr.RetryAfter > 0 {
+				retryAfter = crawlErr.RetryAfter
+			}
+			logger.Logger.InfoContext(ctx, "Crawl delay not elapsed, asking the client to retry",
+				"url", urlStr, "domain", domainStr, "retry_after", retryAfter)
+			return "", "", "", &domain.RateLimitedError{
+				Message:    "This site asks us to wait between requests. Please try again shortly.",
+				RetryAfter: retryAfter,
+			}
+		case policyErr != nil:
 			logger.Logger.WarnContext(ctx, "ScrapingPolicy check failed, defaulting to ALLOWED", "error", policyErr, "url", urlStr)
 			isAllowed = true
-		} else {
+		default:
 			isAllowed = allowed
 		}
 	} else {

@@ -15,14 +15,14 @@ import {
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
 } from "$lib/api/client";
-import type { RenderFeed } from "$lib/schema/feed";
-import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
-import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
-import { isTransientError } from "$lib/utils/errorClassification";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
+import type { RenderFeed } from "$lib/schema/feed";
+import { isTransientError } from "$lib/utils/errorClassification";
+import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
+import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
 
 interface Props {
 	feed: RenderFeed;
@@ -30,6 +30,12 @@ interface Props {
 	onDismiss: (direction: number) => Promise<void> | void;
 	getCachedContent?: (feedUrl: string) => string | null;
 	getCachedArticleId?: (feedUrl: string) => string | null;
+	/**
+	 * Fetch the body through the shared prefetcher, which dedupes against an
+	 * in-flight prefetch for the same URL and honors the host cooldown.
+	 * Resolves null when the body is unavailable right now (retryable).
+	 */
+	requestContent?: (feedUrl: string) => Promise<string | null>;
 	isBusy?: boolean;
 	initialArticleContent?: string | null;
 	/** Callback when articleId is resolved (e.g., after fetching content creates an article) */
@@ -42,6 +48,7 @@ const {
 	onDismiss,
 	getCachedContent,
 	getCachedArticleId,
+	requestContent,
 	isBusy = false,
 	initialArticleContent,
 	onArticleIdResolved,
@@ -147,7 +154,19 @@ onMount(() => {
 		// Background fetch using normalizedUrl
 		contentAbortController = new AbortController();
 		const signal = contentAbortController.signal;
-		getFeedContentOnTheFlyClient(feed.normalizedUrl, { signal })
+
+		// Prefer the shared prefetcher: a card mounting mid-prefetch joins that
+		// request instead of firing a second, unserialized one at the same host.
+		// The shared promise is deliberately not abortable — other joiners and
+		// the cache depend on it — so unmount just stops applying the result.
+		const pending = requestContent
+			? requestContent(feed.normalizedUrl).then((content) => ({
+					content: content ?? "",
+					article_id: getCachedArticleId?.(feed.normalizedUrl) ?? "",
+				}))
+			: getFeedContentOnTheFlyClient(feed.normalizedUrl, { signal });
+
+		pending
 			.then((res) => {
 				if (signal.aborted) return;
 				if (res.content) {
@@ -403,7 +422,8 @@ function handleGenerateAISummary(forceRefresh = false) {
 				return;
 			}
 
-			if (debug) console.log("[StreamSummarize] Falling back to legacy endpoint");
+			if (debug)
+				console.log("[StreamSummarize] Falling back to legacy endpoint");
 			try {
 				const res = await summarizeArticleClient(feed.link);
 				if (res.success && res.summary) {

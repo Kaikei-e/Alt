@@ -272,10 +272,18 @@ describe("VisualPreviewCard", () => {
 
 	// The two tests below exercise the click-driven async error path in
 	// handleToggleContent. They consistently hit Svelte 5 `track_reactivity_loss`
-	// because the existing component runs `getFeedContentOnTheFlyClient` via
+	// because the component ran `getFeedContentOnTheFlyClient` via
 	// `.then().catch()` outside a reactive scope, so the post-rejection state
-	// update is not flushed in the browser test runner. The markup change is
-	// covered by Playwright e2e in tests/e2e/feeds-visual-preview.spec.ts.
+	// update was not flushed in the browser test runner.
+	//
+	// The previous note here claimed the markup was instead covered by
+	// tests/e2e/feeds-visual-preview.spec.ts. That file does not exist and never
+	// did, so this path currently has NO coverage at any level.
+	//
+	// handleToggleContent now awaits loadContent() inside the handler rather
+	// than detaching a promise chain, which is likely to lift the original
+	// blocker — un-skip and confirm on a runner with the browser project
+	// available (`bun run test:client`).
 	describe.skip("article content fallback when source fetch fails", () => {
 		it("shows 'Source content unavailable' notice and full summary when Article fetch errors", async () => {
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(

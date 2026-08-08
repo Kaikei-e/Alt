@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 var (
@@ -53,6 +54,20 @@ type ComplianceError struct {
 }
 
 func (e *ComplianceError) Error() string {
+	return e.Message
+}
+
+// RateLimitedError is a transient refusal: a politeness gate (robots.txt
+// Crawl-delay, host rate limiter) has not elapsed yet.
+//
+// Deliberately distinct from ComplianceError, which is permanent. Collapsing
+// the two is what let a timing condition be recorded as a user decision.
+type RateLimitedError struct {
+	Message    string
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitedError) Error() string {
 	return e.Message
 }
 

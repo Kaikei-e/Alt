@@ -223,10 +223,38 @@ func TestScrapingPolicyGateway_CanFetchArticle_CrawlDelay(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, canFetch)
 
-	// Second request immediately should be denied (crawl delay not elapsed)
+	// Second request immediately is denied — but as a *transient* refusal.
+	// Reporting it as a bare (false, nil) made it indistinguishable from a
+	// robots.txt disallow, and the caller recorded the domain as declined by
+	// the user, permanently. It has to carry ErrCrawlDelayNotElapsed.
 	canFetch, err = gateway.CanFetchArticle(ctx, "https://example.com/article/2")
-	require.NoError(t, err)
 	assert.False(t, canFetch, "should be denied due to crawl delay")
+	require.ErrorIs(t, err, scraping_policy_port.ErrCrawlDelayNotElapsed,
+		"a crawl-delay denial must be distinguishable from a policy disallow")
+}
+
+func TestScrapingPolicyGateway_CanFetchArticle_DisallowIsNotCrawlDelay(t *testing.T) {
+	mockRepo := new(MockScrapingDomainPort)
+
+	mockDomain := &domain.ScrapingDomain{
+		ID:                  uuid.New(),
+		Domain:              "example.com",
+		Scheme:              "https",
+		AllowFetchBody:      false,
+		ForceRespectRobots:  false,
+		RobotsDisallowPaths: []string{},
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+
+	mockRepo.On("GetByDomain", mock.Anything, "example.com").Return(mockDomain, nil)
+
+	gateway := NewScrapingPolicyGateway(mockRepo)
+
+	canFetch, err := gateway.CanFetchArticle(context.Background(), "https://example.com/article/1")
+	assert.False(t, canFetch)
+	require.NotErrorIs(t, err, scraping_policy_port.ErrCrawlDelayNotElapsed,
+		"a permanent policy refusal must not be reported as a transient one")
 }
 
 func TestScrapingPolicyGateway_ConcurrentAccess(t *testing.T) {

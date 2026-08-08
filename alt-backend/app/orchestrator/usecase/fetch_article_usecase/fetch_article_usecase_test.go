@@ -3,6 +3,7 @@ package fetch_article_usecase
 import (
 	"alt/domain"
 	"alt/mocks"
+	"alt/orchestrator/port/scraping_policy_port"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -287,6 +288,58 @@ func TestFetchCompliantArticle_ScrapingPolicyDenied(t *testing.T) {
 	var complianceErr *domain.ComplianceError
 	if !errors.As(err, &complianceErr) {
 		t.Errorf("Expected ComplianceError, got %T: %v", err, err)
+	}
+}
+
+// A crawl-delay miss is a timing condition, not a user decision. Recording it
+// in declined_domains — a table with no expiry and no delete path — permanently
+// 403'd every later article from that host for that user. Swiping fast through
+// a publisher's feed reproduced it within two cards.
+func TestFetchCompliantArticle_CrawlDelayIsTransientAndNotDeclined(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+	mockScrapingPolicy := mocks.NewMockScrapingPolicyPort(ctrl)
+
+	usecase := NewArticleUsecaseWithScrapingPolicy(
+		mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag, mockScrapingPolicy,
+	)
+
+	articleURLStr := "https://example.com/article"
+	articleURL, _ := url.Parse(articleURLStr)
+	userContext := domain.UserContext{
+		UserID: uuid.MustParse("00000000-0000-0000-0000-000000000001"),
+	}
+
+	mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(nil, nil)
+	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
+
+	mockScrapingPolicy.EXPECT().
+		CanFetchArticle(gomock.Any(), articleURLStr).
+		Return(false, scraping_policy_port.ErrCrawlDelayNotElapsed)
+
+	// The assertion that matters: the domain must NOT be declined. gomock fails
+	// the test on any unexpected call, so the absence of an EXPECT is the check.
+
+	_, _, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+
+	if err == nil {
+		t.Fatal("expected a transient rate-limit error, got nil")
+	}
+	var rateErr *domain.RateLimitedError
+	if !errors.As(err, &rateErr) {
+		t.Fatalf("expected *domain.RateLimitedError, got %T: %v", err, err)
+	}
+	var complianceErr *domain.ComplianceError
+	if errors.As(err, &complianceErr) {
+		t.Error("a crawl-delay miss must not surface as a permanent ComplianceError")
+	}
+	if rateErr.RetryAfter <= 0 {
+		t.Errorf("expected a positive RetryAfter so the client can back off, got %v", rateErr.RetryAfter)
 	}
 }
 

@@ -381,8 +381,20 @@ function getCachedArticleId(url: string) {
 	return articlePrefetcher.getCachedArticleId(url);
 }
 
+// Single entry point for the visible card's body fetch. Routing it through the
+// prefetcher makes a card that mounts mid-prefetch join that request instead of
+// issuing a duplicate one that skips the per-host gate and the 429 cooldown.
+function requestContent(url: string) {
+	return articlePrefetcher.ensureContent(url);
+}
+
 function handleArticleIdResolved(feedLink: string, articleId: string) {
-	feeds = feeds.map((f) => (f.link === feedLink ? { ...f, articleId } : f));
+	// Only reassign when something actually changed: `feeds` drives the prefetch
+	// $effect, and every card called this on mount, so an unconditional rebuild
+	// re-ran the effect (and rescheduled the prefetch ladder) for nothing.
+	const index = feeds.findIndex((f) => f.link === feedLink);
+	if (index === -1 || feeds[index]?.articleId === articleId) return;
+	feeds = feeds.map((f, i) => (i === index ? { ...f, articleId } : f));
 }
 </script>
 
@@ -444,6 +456,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
             thumbnailUrl={currentOgImage}
             {getCachedContent}
             {getCachedArticleId}
+            {requestContent}
             isBusy={isLoading}
             initialArticleContent={activeIndex === 0
               ? initialArticleContent
@@ -458,6 +471,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
             onDismiss={handleDismiss}
             {getCachedContent}
             {getCachedArticleId}
+            {requestContent}
             isBusy={isLoading}
             initialArticleContent={activeIndex === 0
               ? initialArticleContent
