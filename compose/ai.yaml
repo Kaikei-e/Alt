@@ -171,8 +171,6 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=news-creator
-    extra_hosts:
-      - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     restart: unless-stopped
     ports:
       - "127.0.0.1:11434:11434"

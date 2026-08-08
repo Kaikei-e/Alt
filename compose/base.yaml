@@ -94,7 +94,6 @@ volumes:
   search_indexer_certs:
   alt_butterfly_facade_certs:
   tag_generator_certs:
-  tts_speaker_certs:
   acolyte_orchestrator_certs:
   recap_worker_certs:
   recap_subworker_certs:
