@@ -128,6 +128,50 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # One-shot ClickHouse schema applier, the ClickHouse counterpart of the Atlas
+  # migrator sidecars. alt-deploy's playbooks/apply-migrations.yml runs
+  # `docker compose run --rm clickhouse-migrator apply` before it rolls any
+  # service, so a changed clickhouse/migrations/ file is applied in the same
+  # migrate-then-deploy order every other database follows.
+  #
+  # Without it, ClickHouse DDL only reached production when a human restarted
+  # the container: clickhouse runs an upstream image, so no service's roll set
+  # contains it and the pipeline never recreates it. That is how a corrected
+  # http_logs_mv definition could sit merged but unapplied.
+  #
+  # It runs the clickhouse container's own entrypoint script in `apply` mode
+  # against the same bind-mounted migrations directory — one implementation, so
+  # applying here and replaying on the next container start cannot disagree.
+  # A separate copy of the DDL is the exact root cause this pair already has a
+  # history with.
+  clickhouse-migrator:
+    image: clickhouse/clickhouse-server:25.9
+    entrypoint: ["/entrypoint-wrapper.sh"]
+    command: ["apply"]
+    # Short-lived schema apply job: streams the .sql files through
+    # clickhouse-client, holds no server state.
+    mem_limit: 256m
+    environment:
+      # Applies to the running server over the network rather than to a local
+      # one; this also stops the script from starting a server here.
+      CLICKHOUSE_MIGRATE_HOST: clickhouse
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-rask_logs}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-rask_user}
+      CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password
+    secrets:
+      - clickhouse_password
+    volumes:
+      - ../clickhouse/entrypoint-wrapper.sh:/entrypoint-wrapper.sh:ro
+      - ../clickhouse/migrations:/migrations:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: "no"
+    labels:
+      - rask.group=clickhouse-migrator
+
   # Pre-processor dedicated database (ADR-000246)
   pre-processor-db:
     image: postgres:17-alpine

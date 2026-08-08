@@ -22,7 +22,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MV_FILE="${REPO_ROOT}/clickhouse/migrations/003_create_http_logs_mv.sql"
-ENTRYPOINT="${REPO_ROOT}/clickhouse/entrypoint-wrapper.sh"
 
 fail=0
 
@@ -97,23 +96,28 @@ check "http_logs gains a duration_ms column for latency SLIs" \
 check "http_logs_mv migration drops the view before recreating it" \
   'grep -qi "DROP VIEW IF EXISTS http_logs_mv" <<<"$mv_code"'
 
-# entrypoint-wrapper.sh must not carry its own separate copy of this DDL:
-# that copy ran AFTER the migrations loop on every restart and silently
-# won, which is why re-running migrations alone could never fix this. Match
-# CREATE MATERIALIZED VIEW ... http_logs_mv with the `IF NOT EXISTS` clause
-# optional and whitespace/case-insensitive -- a duplicate copy re-pasted
-# without "IF NOT EXISTS" (or with different spacing/casing) is the same
-# root cause and must still be caught.
+# No shell script that talks to ClickHouse may carry its own separate copy
+# of this DDL: that copy ran AFTER the migrations loop on every restart and
+# silently won, which is why re-running migrations alone could never fix
+# this. Match CREATE MATERIALIZED VIEW ... http_logs_mv with the `IF NOT
+# EXISTS` clause optional and whitespace/case-insensitive -- a duplicate
+# copy re-pasted without "IF NOT EXISTS" (or with different spacing/casing)
+# is the same root cause and must still be caught.
+#
+# The glob covers every clickhouse/*.sh, not just entrypoint-wrapper.sh:
+# the migrations loop is now shared with the clickhouse-migrator one-shot
+# (which runs the entrypoint in `apply` mode), and a re-pasted copy could
+# land in any script added alongside it.
 # shellcheck disable=SC2034  # used inside eval'd check() conditions below
-entrypoint_code="$(sed -E 's/#.*$//' "$ENTRYPOINT")"
-check "entrypoint-wrapper.sh does not embed its own http_logs_mv CREATE" \
-  '! grep -qiE "CREATE[[:space:]]+MATERIALIZED[[:space:]]+VIEW([[:space:]]+IF[[:space:]]+NOT[[:space:]]+EXISTS)?[[:space:]]+http_logs_mv" <<<"$entrypoint_code"'
+shell_code="$(sed -E 's/#.*$//' "${REPO_ROOT}"/clickhouse/*.sh)"
+check "clickhouse/*.sh does not embed its own http_logs_mv CREATE" \
+  '! grep -qiE "CREATE[[:space:]]+MATERIALIZED[[:space:]]+VIEW([[:space:]]+IF[[:space:]]+NOT[[:space:]]+EXISTS)?[[:space:]]+http_logs_mv" <<<"$shell_code"'
 # Belt-and-suspenders: also reject a duplicate SELECT body even if it were
 # ever pasted in outside a CREATE MATERIALIZED VIEW statement (e.g. inside
 # an INSERT ... SELECT). generateUUIDv4() AS log_id is unique to this MV's
 # SELECT list in this file.
-check "entrypoint-wrapper.sh does not embed the http_logs_mv SELECT body" \
-  '! grep -qF "generateUUIDv4() AS log_id" <<<"$entrypoint_code"'
+check "clickhouse/*.sh does not embed the http_logs_mv SELECT body" \
+  '! grep -qF "generateUUIDv4() AS log_id" <<<"$shell_code"'
 
 if [ "$fail" -ne 0 ]; then
   echo "HTTP LOGS MV SHAPE: VIOLATIONS FOUND"
