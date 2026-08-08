@@ -370,7 +370,6 @@ STEPS_PROVIDER=(
   "Python: news-creator provider|uv|news-creator/app|uv run pytest tests/contract/ -v"
   "Python: recap-subworker provider|uv|recap-subworker|uv run pytest tests/contract/ -v"
   "Python: tag-generator provider|uv|tag-generator/app|uv run pytest tests/contract/ -v"
-  "Python: tts-speaker provider|uv|tts-speaker|uv run pytest tests/contract/ -v"
   "Go: alt-backend provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./dataplane/driver/contract/ -v"
   "Go: search-indexer provider|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v"
   "Go: pre-processor provider|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v"

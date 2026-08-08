@@ -19,8 +19,8 @@
 #                   * runtime: built via docker-build but not a Pact
 #                     pacticipant (no alt-deploy deploy gate)
 #                   * external: Pact pacticipant that lives on another
-#                     host (e.g. tts-speaker on a GPU box) — enters
-#                     c2quay.yml only, no local build
+#                     host (e.g. a service on a dedicated GPU box) —
+#                     enters c2quay.yml only, no local build
 #   compose_files — production compose include files that define or
 #                   reference this service; their paths seed alt-deploy
 #                   SERVICE_PATHS so compose-layer edits trigger the
@@ -134,7 +134,3 @@ services:
     kind: runtime
   - name: dashboard
     kind: runtime
-
-  # --- External pacticipants (not built here; referenced for gate only) ---
-  - name: tts-speaker
-    kind: external

@@ -154,7 +154,7 @@ def render_c2quay_block(registry: dict[str, Any]) -> str:
     """YAML fragment for c2quay.yml environments.production.services.
 
     Entries with `kind: external` (services gated via Pact but not run by
-    docker compose on this host, e.g. tts-speaker on a remote GPU host) are
+    docker compose on this host, e.g. one living on a remote GPU host) are
     emitted with `gate_only: true` so c2quay includes them in the Pact
     can-i-deploy gate and records their deployment, without attempting to
     start/recreate them via compose. See docs/adr/0013-gate-only-services.md

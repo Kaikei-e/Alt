@@ -10,15 +10,8 @@
 #        → can-i-deploy gate × 13 pacticipants (parallel, HAL)
 #        → docker compose up -d --wait --remove-orphans
 #        → scripts/smoke.sh
-#        → record-deployment × 13 (including gate_only services, e.g.
-#          tts-speaker on the remote GPU host -- ADR 0013)
+#        → record-deployment × 13 (including gate_only services -- ADR 0013)
 #   3. scripts/cascade-pki-sidecars.sh            (netns-sharing sidecar cascade)
-#
-# scripts/record-remote-pacticipant.sh is NOT run here: c2quay now records
-# gate_only pacticipants itself (ADR 0013), so an unconditional step-4 call
-# double-recorded tts-speaker on every deploy (M3). The script stays on disk
-# as a documented manual fallback -- see its own header comment -- for the
-# rare case c2quay's recording needs to be redone by hand.
 #
 # Any step failing aborts the chain. Recovery is manual: git revert → re-commit
 # → re-run this script. See docs/runbooks/deploy.md for details.
