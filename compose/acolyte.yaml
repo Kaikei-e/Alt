@@ -55,6 +55,16 @@ services:
       dockerfile: docker/Dockerfile
     container_name: acolyte-db-migrator
     # Short-lived Atlas apply job.
+    #
+    # This is a `restart: "no"` one-shot that acolyte-orchestrator gates on
+    # with `service_completed_successfully`, which is the shape PM-2026-037
+    # burned us on: a per-service roll runs `up -d --no-deps
+    # acolyte-orchestrator` and the migrator is never started, so a pending
+    # migration stays pending while the deploy reports success. It is the same
+    # shape as `migrate` in core.yaml, and it is not self-healing — the
+    # migrator has to be invoked by name (`make acolyte-migrate`) whenever
+    # acolyte-migration-atlas/migrations/ gains a file. The bind mount below
+    # is what makes that invocation sufficient on its own.
     mem_limit: 256m
     command: ["apply"]
     environment:
@@ -63,8 +73,18 @@ services:
       - ACOLYTE_DB_USER=${ACOLYTE_DB_USER:-acolyte_user}
       - ACOLYTE_DB_NAME=${ACOLYTE_DB_NAME:-acolyte}
       - ACOLYTE_DB_PASSWORD_FILE=/run/secrets/acolyte_db_password
+      - ATLAS_REVISIONS_SCHEMA=public
+      # Empty means "no baseline". migrate.sh exits non-zero rather than
+      # guessing when it meets a non-clean database with this unset.
+      - MIGRATE_BASELINE_VERSION=${ACOLYTE_MIGRATE_BASELINE_VERSION:-}
     secrets:
       - acolyte_db_password
+    volumes:
+      # Serve the migration set from the working tree, as `migrate` and
+      # recap-db-migrator do. The Dockerfile also COPYs it, so without this
+      # mount the image is the only carrier and a new .sql file needs an
+      # image rebuild before it can be applied.
+      - ../acolyte-migration-atlas/migrations:/migrations:ro
     depends_on:
       acolyte-db:
         condition: service_healthy

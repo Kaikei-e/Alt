@@ -143,6 +143,32 @@ recap-migrate-status:
 	@echo "Checking recap-worker database migration status..."
 	@docker compose --profile recap run --rm recap-db-migrator status
 
+# acolyte-db is gated behind `acolyte-orchestrator: service_completed_successfully`,
+# so a per-service roll never starts the migrator (PM-2026-037). These targets are
+# the by-name invocation that closes that hole; run acolyte-migrate whenever
+# acolyte-migration-atlas/migrations/ gains a file.
+acolyte-migrate-hash:
+	@echo "Regenerating acolyte-db atlas.sum checksum file..."
+	@docker compose -f compose/compose.yaml -p alt build acolyte-db-migrator
+	@docker run --rm \
+		-v $(PWD)/acolyte-migration-atlas/migrations:/migrations:rw \
+		--user 0:0 \
+		--entrypoint /scripts/hash.sh \
+		alt-acolyte-db-migrator
+	@echo "atlas.sum regenerated successfully. You can now run 'make acolyte-migrate'."
+
+acolyte-migrate:
+	@echo "Applying acolyte-db database migrations..."
+	@docker compose -f compose/compose.yaml -p alt run --rm -T acolyte-db-migrator apply
+
+acolyte-migrate-status:
+	@echo "Checking acolyte-db migration status..."
+	@docker compose -f compose/compose.yaml -p alt run --rm -T acolyte-db-migrator status
+
+acolyte-migrate-validate:
+	@echo "Validating acolyte-db migration files (offline check)..."
+	@docker compose -f compose/compose.yaml -p alt run --rm -T --no-deps acolyte-db-migrator syntax-check
+
 # Docker disk space management targets
 docker-cleanup:
 	@echo "Running Docker disk space cleanup..."
@@ -339,4 +365,4 @@ install-c2quay:
 	  rm -rf "$$tmp"
 	@c2quay version
 
-.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability rust-clean install-c2quay
+.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability rust-clean install-c2quay
