@@ -10,8 +10,11 @@
 //	search-indexer      alt-backend
 //	pre-processor       alt-backend
 //	tag-generator       alt-backend
-//	rag-orchestrator    alt-data-hub
 //	alt-butterfly-facade alt-backend
+//	rag-orchestrator    alt-data-hub
+//	alt-backend         alt-data-hub
+//	alt-harvester       alt-data-hub
+//	recap-worker        alt-data-hub
 //
 // Two provider names for one binary is a naming debt, not a second surface:
 // alt-data-hub is the deployment that serves DataHubService after the
@@ -66,6 +69,11 @@ const (
 	ragOrchestratorPactFile     = "rag-orchestrator-alt-data-hub.json"
 	altBackendDataHubPactFile   = "alt-backend-alt-data-hub.json"
 	altHarvesterDataHubPactFile = "alt-harvester-alt-data-hub.json"
+	// recap-worker holds two pacts against this binary under two provider
+	// names: the recap window reads still name alt-backend, the notification
+	// enqueue names alt-data-hub. The Broker keys a pact on the (consumer,
+	// provider) pair, so they are two files rather than two interactions.
+	recapWorkerDataHubPactFile = "recap-worker-alt-data-hub.json"
 )
 
 // recapArticleResponse mirrors the Connect-RPC JSON shape produced by
@@ -534,6 +542,7 @@ func startStubServer(t *testing.T) int {
 		})
 
 	mountWave3Procedures(mux)
+	mountPushProcedures(mux)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -844,14 +853,21 @@ func TestVerifyTagGeneratorContract(t *testing.T) {
 		))
 }
 
-// TestVerifyRAGOrchestratorContract verifies the RAG tool surface (ADR-000617)
-// and ListRecentArticles.
+// TestVerifyRAGOrchestratorDataHubContract verifies the RAG tool surface
+// (ADR-000617) and ListRecentArticles.
 //
 // It names alt-data-hub as the provider because that is the pacticipant
 // rag-orchestrator published against — see the package comment. The stub is
 // the same one every other verification here runs against, which is the honest
 // arrangement: one binary serves both names.
-func TestVerifyRAGOrchestratorContract(t *testing.T) {
+//
+// The DataHubContract suffix is load-bearing, not decoration: scripts/pact-check.sh
+// partitions this package between its "alt-backend provider" and "alt-data-hub
+// provider" steps on that substring, because the step registry splits on `|`
+// and so cannot hold an alternation of test names. A verification whose
+// provider pacticipant is alt-data-hub must carry the suffix or it runs under
+// the wrong service's leg.
+func TestVerifyRAGOrchestratorDataHubContract(t *testing.T) {
 	verifyConsumer(t, "rag-orchestrator", dataHubProviderName,
 		filepath.Join(ragPactDir, ragOrchestratorPactFile),
 		noopStates(
@@ -959,6 +975,16 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub has articles carrying the tag name across feeds",
 			"alt-data-hub has the article",
 			"alt-data-hub has no article with that id",
+
+			// Web Push: the subscription registry and the dispatcher's half of
+			// the delivery queue.
+			"alt-data-hub accepts push subscription writes",
+			"alt-data-hub has a push subscription for the user",
+			"alt-data-hub has no push subscription for the endpoint",
+			"alt-data-hub has push subscriptions for the user",
+			"alt-data-hub accepts notification enqueues",
+			"alt-data-hub has due push deliveries",
+			"alt-data-hub has a claimed push delivery",
 		))
 }
 
@@ -984,7 +1010,22 @@ func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
 			"alt-data-hub has a feed link with failures below the threshold",
 			"alt-data-hub has a feed link at the failure threshold",
 			"alt-data-hub accepts feed registrations",
+
+			// The daily-entrance digest the today-entrance job enqueues.
+			"alt-data-hub accepts notification enqueues",
 		))
+}
+
+// TestVerifyRecapWorkerDataHubContract verifies the notification enqueue the
+// recap worker's outbox relay makes once a recap is ready.
+//
+// recap-worker is the third caller of EnqueueNotification and the only one
+// outside this Go module, which is what makes its pact worth a file of its
+// own: the other two would still compile against a renamed field.
+func TestVerifyRecapWorkerDataHubContract(t *testing.T) {
+	verifyConsumer(t, "recap-worker", dataHubProviderName,
+		filepath.Join(pactDir, recapWorkerDataHubPactFile),
+		noopStates("alt-data-hub accepts notification enqueues"))
 }
 
 // mountWave3Procedures adds the capabilities ADR-000954 Wave 3 moved off the
@@ -1817,4 +1858,118 @@ func mountWave3Batch5Procedures(mux *http.ServeMux) {
 	dataHubProcedure(mux, "ListUserFeedIDs", jsonPost(map[string]interface{}{
 		"feedIds": []string{stubStatsFeedID},
 	}))
+}
+
+// mountPushProcedures adds the Web Push surface: the subscription registry the
+// browser writes through alt-backend, and the delivery queue the dispatcher
+// claims from. It is the one part of DataHubService with three consumers —
+// alt-backend registers and dispatches, alt-harvester and recap-worker only
+// enqueue — so a shape change here breaks in three places at once.
+//
+// Three things below are contract rather than stub filler:
+//
+//   - GetPushSubscription answers `{}` for an endpoint this user never
+//     registered. The proto makes that deliberately indistinguishable from
+//     "no such endpoint at all", and the caller re-prompts on the absence, so
+//     a stub that always found a row would verify a provider that had dropped
+//     the distinction.
+//   - deliveryCount and supersededCount are JSON numbers. They are int32,
+//     unlike the int64 retention counts above that protojson renders as
+//     strings.
+//   - A claimed delivery comes back SENDING, not PENDING. The claim and the
+//     state change are one provider-side transaction; PENDING here would
+//     describe a provider whose lease never took, and every dispatcher would
+//     re-claim the same row.
+func mountPushProcedures(mux *http.ServeMux) {
+	const (
+		stubPushUser         = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+		stubEndpoint         = "https://push.example.com/subscription/AAAA-BBBB-CCCC"
+		stubP256dh           = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTtF71JbFw"
+		stubAuth             = "tBHItJI5svbpez7KI4CCXg"
+		stubVAPIDFingerprint = "b0a1c2d3e4f5"
+		stubDeliveryID       = "9c858901-8a57-4791-81fe-4c455b099bc9"
+		stubSubscriptionID   = "1b4e28ba-2fa1-4d3b-a3f5-ccee1bf27e11"
+		stubDedupeKey        = "recap:7d2a1c34-0a5f-4e51-9b1f-1a2b3c4d5e6f"
+	)
+
+	subscription := map[string]interface{}{
+		"userId":              stubPushUser,
+		"endpoint":            stubEndpoint,
+		"p256dh":              stubP256dh,
+		"auth":                stubAuth,
+		"vapidKeyFingerprint": stubVAPIDFingerprint,
+		"preferences": map[string]interface{}{
+			"summaryReady":       true,
+			"acolyteReportReady": true,
+			"recapReady":         true,
+			"todayEntranceReady": true,
+		},
+		"createdAt": "2026-08-01T00:00:00Z",
+		"updatedAt": "2026-08-01T00:00:00Z",
+	}
+
+	// ---- Subscription registry ---------------------------------------------
+	dataHubProcedure(mux, "UpsertPushSubscription", jsonPost(map[string]interface{}{
+		"created": true,
+	}))
+	dataHubProcedure(mux, "GetPushSubscription", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Endpoint string `json:"endpoint"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "application/json")
+		if req.Endpoint != stubEndpoint {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"subscription": subscription})
+	})
+	dataHubProcedure(mux, "UpdatePushSubscriptionPreferences", jsonPost(map[string]interface{}{
+		"updated": true,
+	}))
+	dataHubProcedure(mux, "DeletePushSubscription", jsonPost(map[string]interface{}{
+		"deleted": true,
+	}))
+	dataHubProcedure(mux, "ListPushSubscriptionsForUser", jsonPost(map[string]interface{}{
+		"subscriptions": []map[string]interface{}{subscription},
+	}))
+
+	// ---- Delivery queue ----------------------------------------------------
+	//
+	// supersededCount is non-zero for every caller, including the two whose
+	// pact records a zero: all three pin it with a type matcher, and the
+	// harvester's daily digest is the one that actually collapses older rows.
+	dataHubProcedure(mux, "EnqueueNotification", jsonPost(map[string]interface{}{
+		"deliveryCount":   2,
+		"supersededCount": 1,
+	}))
+	dataHubProcedure(mux, "ClaimNotificationBatch", jsonPost(map[string]interface{}{
+		"deliveries": []map[string]interface{}{{
+			"id":             stubDeliveryID,
+			"dedupeKey":      stubDedupeKey,
+			"subscriptionId": stubSubscriptionID,
+			"userId":         stubPushUser,
+			"kind":           "recap_ready",
+			"payload":        "eyJyZWNhcF9pZCI6InIxIn0=",
+			"occurredAt":     "2026-08-01T09:30:00Z",
+			"state":          "NOTIFICATION_STATE_SENDING",
+			"attempts":       1,
+			"nextAttemptAt":  "2026-08-01T09:31:00Z",
+			"expiresAt":      "2026-08-02T09:30:00Z",
+			"endpoint":       stubEndpoint,
+			"p256dh":         stubP256dh,
+			"auth":           stubAuth,
+		}},
+	}))
+
+	// The three terminal transitions report nothing: the row id was the
+	// caller's, so there is no server-assigned value to hand back.
+	dataHubProcedure(mux, "MarkNotificationSent", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "ReleaseNotification", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "MarkNotificationDead", jsonPost(map[string]interface{}{}))
 }

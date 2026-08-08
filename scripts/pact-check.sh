@@ -354,6 +354,13 @@ need_tool() {
 STEPS_CONSUMER=(
   "Go: alt-backend consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./orchestrator/driver/preprocessor_connect/contract/ -v"
   "Go: alt-backend sovereign consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./shared/driver/sovereign_client/contract/ -v"
+  # One package, two labels, same command: alt-backend and alt-harvester are two
+  # binaries of one Go module and their interactions are interleaved across the
+  # files, so there is no honest way to run half of it. The labels exist because
+  # the filter is per-pacticipant — each leg has to select something, and the
+  # publish block then picks the pact file whose .consumer.name is its own.
+  "Go: alt-backend datahub consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./shared/gateway/datahub_gateway/contract/ -v"
+  "Go: alt-harvester datahub consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./shared/gateway/datahub_gateway/contract/ -v"
   "Go: pre-processor consumer|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
   "Go: rag-orchestrator consumer|go|rag-orchestrator|CGO_ENABLED=1 go test -tags=contract ./internal/adapter/contract/ -v"
   "Go: search-indexer consumer|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
@@ -370,7 +377,15 @@ STEPS_PROVIDER=(
   "Python: news-creator provider|uv|news-creator/app|uv run pytest tests/contract/ -v"
   "Python: recap-subworker provider|uv|recap-subworker|uv run pytest tests/contract/ -v"
   "Python: tag-generator provider|uv|tag-generator/app|uv run pytest tests/contract/ -v"
-  "Go: alt-backend provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./dataplane/driver/contract/ -v"
+  # dataplane/driver/contract holds both provider names ADR-000954 left this
+  # binary serving, so the two legs partition it by the DataHubContract suffix
+  # on the test name rather than by enumerating tests. Enumeration is not
+  # available anyway — a `-run a|b` alternation would be split as a field
+  # separator by the registry parser — and it is the wrong shape besides: an
+  # allowlist silently drops the next verification somebody adds, which is the
+  # gap these two lines close.
+  "Go: alt-backend provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract -skip DataHubContract ./dataplane/driver/contract/ -v"
+  "Go: alt-data-hub provider|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract -run DataHubContract ./dataplane/driver/contract/ -v"
   "Go: search-indexer provider|go|search-indexer/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v"
   "Go: pre-processor provider|go|pre-processor/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v"
   "Go: mq-hub provider (pre-processor message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyPreProcessorMqHubMessagePact ./driver/contract/ -v"

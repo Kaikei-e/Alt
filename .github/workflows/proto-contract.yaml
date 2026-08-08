@@ -180,8 +180,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Two packages in one leg rather than two matrix entries: both write
+          # into alt-backend/pacts, and the upload step names its artifact after
+          # sparse-checkout, so a second alt-backend entry would collide on
+          # `pacts-alt-backend`. The datahub package is the in-family pair
+          # (alt-backend and alt-harvester against alt-data-hub) — without it
+          # the job uploads the committed snapshot of those two pact files and
+          # a consumer-side change to them never regenerates in CI.
           - service: alt-backend/app
-            test-path: ./orchestrator/driver/preprocessor_connect/contract/
+            test-path: >-
+              ./orchestrator/driver/preprocessor_connect/contract/
+              ./shared/gateway/datahub_gateway/contract/
             sparse-checkout: alt-backend
             pact-dir: alt-backend/pacts
           - service: pre-processor/app
