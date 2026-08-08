@@ -34,6 +34,14 @@ func (m *mockInclusiveBoundaryRecapRepo) GetIndexableGenres(ctx context.Context,
 		if err != nil {
 			panic("mockInclusiveBoundaryRecapRepo: invalid since: " + err.Error())
 		}
+		// Postgres timestamptz carries microsecond resolution, so any
+		// finer-grained bound the client sends is collapsed to the µs grid
+		// before the comparison happens server-side. Reproducing that here
+		// matters: a cursor nudged by less than one microsecond (e.g. 1ns)
+		// collapses back onto the boundary value and the inclusive bound
+		// re-matches the whole boundary batch — the exact reindex loop the
+		// fix exists to stop.
+		sinceTS = sinceTS.Truncate(time.Microsecond)
 	}
 
 	var out []domain.RecapDocument
@@ -319,4 +327,112 @@ func TestIndexRecapsUsecase_MalformedTimestampFailsBeforeIndexing(t *testing.T) 
 			t.Fatalf("IndexRecapDocuments was called %d time(s) before the timestamp parse failure was returned", engine.indexCalls)
 		}
 	})
+
+	// The first doc's timestamp is parsed on a separate code path from the
+	// rest of the batch, so a guard that fails on docs[0] but skips a
+	// malformed docs[1:] entry (advancing the cursor past data it never
+	// validated) would pass the single-doc cases above.
+	t.Run("malformed doc not first in batch", func(t *testing.T) {
+		repo := &staticRecapRepo{docs: []domain.RecapDocument{
+			{ID: "job-ok__tech", JobID: "job-ok", ExecutedAt: "2026-08-07T17:00:05Z", Genre: "tech"},
+			{ID: "job-x__tech", JobID: "job-x", ExecutedAt: "not-a-timestamp", Genre: "tech"},
+		}}
+		engine := &mockRecapSearchEngine{}
+		u := NewIndexRecapsUsecase(repo, engine)
+
+		if _, err := u.ExecuteIncremental(context.Background(), "", 200); err == nil {
+			t.Fatal("expected error for malformed ExecutedAt in docs[1:], got nil")
+		}
+		if engine.indexCalls != 0 {
+			t.Fatalf("IndexRecapDocuments was called %d time(s) despite a malformed timestamp in the batch", engine.indexCalls)
+		}
+	})
+}
+
+// TestIndexRecapsUsecase_ExecuteIncremental_MixedPrecisionTimestampsConverge
+// pins the cursor's max selection to chronological order. RFC3339Nano allows
+// the same instant family to serialize with different fractional-digit
+// counts, and lexicographic order disagrees with chronological order across
+// them: "...:05Z" > "...:05.000100Z" as strings ('Z' > '.') but is 100µs
+// EARLIER as a time. A cursor that picks the string-max would nudge from the
+// older timestamp and leave the true newest doc inside the inclusive bound,
+// re-indexing it on every poll forever.
+func TestIndexRecapsUsecase_ExecuteIncremental_MixedPrecisionTimestampsConverge(t *testing.T) {
+	docs := []domain.RecapDocument{
+		{ID: "job-frac__tech", JobID: "job-frac", ExecutedAt: "2026-08-07T17:00:05.000100Z", Genre: "tech"},
+		{ID: "job-whole__tech", JobID: "job-whole", ExecutedAt: "2026-08-07T17:00:05Z", Genre: "tech"},
+	}
+	repo := &mockInclusiveBoundaryRecapRepo{docs: docs}
+	engine := &mockRecapSearchEngine{}
+	u := NewIndexRecapsUsecase(repo, engine)
+
+	result, err := u.ExecuteIncremental(context.Background(), "", 200)
+	if err != nil {
+		t.Fatalf("ExecuteIncremental (first call): %v", err)
+	}
+	if result.IndexedCount != 2 {
+		t.Fatalf("first call IndexedCount = %d, want 2", result.IndexedCount)
+	}
+
+	result, err = u.ExecuteIncremental(context.Background(), result.LastSince, 200)
+	if err != nil {
+		t.Fatalf("ExecuteIncremental (second call): %v", err)
+	}
+	if result.IndexedCount != 0 {
+		t.Fatalf("second call re-indexed %d doc(s): cursor picked the lexicographic max instead of the chronological max and left the newest doc inside the inclusive bound", result.IndexedCount)
+	}
+}
+
+// TestIndexRecapsUsecase_ExecuteBackfill_PaginatesUntilComplete drives the
+// backfill loop the way bootstrap does: keep calling with the returned
+// cursor while HasMore is true. HasMore is load-bearing output — reporting
+// false for a truncated page would end Phase 1 with part of the corpus
+// unindexed until incremental happens to walk past it.
+func TestIndexRecapsUsecase_ExecuteBackfill_PaginatesUntilComplete(t *testing.T) {
+	docs := []domain.RecapDocument{
+		{ID: "job-1__tech", JobID: "job-1", ExecutedAt: "2026-08-07T17:00:00Z", Genre: "tech"},
+		{ID: "job-2__tech", JobID: "job-2", ExecutedAt: "2026-08-07T17:00:01Z", Genre: "tech"},
+		{ID: "job-3__tech", JobID: "job-3", ExecutedAt: "2026-08-07T17:00:02Z", Genre: "tech"},
+		{ID: "job-4__tech", JobID: "job-4", ExecutedAt: "2026-08-07T17:00:03Z", Genre: "tech"},
+	}
+	repo := &mockInclusiveBoundaryRecapRepo{docs: docs}
+	engine := &mockRecapSearchEngine{}
+	u := NewIndexRecapsUsecase(repo, engine)
+
+	first, err := u.ExecuteBackfill(context.Background(), "", 2)
+	if err != nil {
+		t.Fatalf("ExecuteBackfill (first page): %v", err)
+	}
+	if first.IndexedCount != 2 {
+		t.Fatalf("first page IndexedCount = %d, want 2", first.IndexedCount)
+	}
+	if !first.HasMore {
+		t.Fatal("first page HasMore = false, want true: the page was truncated at the limit, so backfill must continue")
+	}
+
+	since := first.LastSince
+	hasMore := true
+	for polls := 0; hasMore; polls++ {
+		if polls > 10 {
+			t.Fatalf("backfill did not complete within 10 pages (stuck at since=%q)", since)
+		}
+		result, err := u.ExecuteBackfill(context.Background(), since, 2)
+		if err != nil {
+			t.Fatalf("ExecuteBackfill (since=%q): %v", since, err)
+		}
+		hasMore = result.HasMore
+		if result.LastSince != "" {
+			since = result.LastSince
+		}
+	}
+
+	seenIDs := make(map[string]bool, len(engine.indexedDocs))
+	for _, d := range engine.indexedDocs {
+		seenIDs[d.ID] = true
+	}
+	for _, d := range docs {
+		if !seenIDs[d.ID] {
+			t.Fatalf("doc %q was never indexed by the backfill loop", d.ID)
+		}
+	}
 }

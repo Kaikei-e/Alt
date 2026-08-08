@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -250,6 +251,10 @@ func TestSearch_NullEmbedding_DoesNotPanic(t *testing.T) {
 	require.Len(t, results, 1)
 	assert.Equal(t, "chunk content", results[0].Chunk.Content)
 	assert.Equal(t, "article-1", results[0].ArticleID)
+	// Score must be derived from the Stage 1 distance (1.0 - 0.1), not a
+	// zero-value fallback: losing the distanceMap lookup flattens every
+	// result to Score 1.0 and destroys ranking without failing any scan.
+	assert.InDelta(t, 0.9, results[0].Score, 1e-6)
 }
 
 // TestSearchWithinArticles_NullEmbedding_DoesNotPanic is the RED case for
@@ -277,4 +282,147 @@ func TestSearchWithinArticles_NullEmbedding_DoesNotPanic(t *testing.T) {
 	require.Len(t, results, 1)
 	assert.Equal(t, "chunk content", results[0].Chunk.Content)
 	assert.Equal(t, "article-1", results[0].ArticleID)
+	// Score must come from the scanned distance column (1.0 - 0.1). Dropping
+	// the &distance destination leaves distance at its zero value, silently
+	// reporting every chunk as a perfect match.
+	assert.InDelta(t, 0.9, results[0].Score, 1e-6)
+}
+
+// multiStage1Rows is a multi-row pgx.Rows fake for Search()'s Stage 1
+// query: one (id, distance) pair per row, served in slice order.
+type multiStage1Rows struct {
+	pgx.Rows
+	ids       []uuid.UUID
+	distances []float32
+	i         int
+}
+
+func (r *multiStage1Rows) Next() bool {
+	if r.i >= len(r.ids) {
+		return false
+	}
+	r.i++
+	return true
+}
+
+func (r *multiStage1Rows) Scan(dest ...any) error {
+	*dest[0].(*uuid.UUID) = r.ids[r.i-1]
+	*dest[1].(*float32) = r.distances[r.i-1]
+	return nil
+}
+
+func (r *multiStage1Rows) Close()     {}
+func (r *multiStage1Rows) Err() error { return nil }
+
+// multiEnrichedRows is a multi-row pgx.Rows fake for Search()'s Stage 2
+// query. Rows are served in the given id order — deliberately NOT the
+// Stage 1 distance order, because a real Stage 2 query has no ORDER BY and
+// Postgres returns join results in whatever order it likes; the usecase
+// contract is that Search() itself re-sorts by score.
+type multiEnrichedRows struct {
+	pgx.Rows
+	ids []uuid.UUID
+	i   int
+}
+
+func (r *multiEnrichedRows) Next() bool {
+	if r.i >= len(r.ids) {
+		return false
+	}
+	r.i++
+	return true
+}
+
+func (r *multiEnrichedRows) Scan(dest ...any) error {
+	uuidsSeen := 0
+	for _, d := range dest {
+		switch v := d.(type) {
+		case *uuid.UUID:
+			if uuidsSeen == 0 {
+				*v = r.ids[r.i-1]
+			} else {
+				*v = uuid.Nil
+			}
+			uuidsSeen++
+		case *int:
+			*v = 0
+		case *string:
+			*v = "content"
+		case *sql.NullString:
+			*v = sql.NullString{String: "value", Valid: true}
+		case *time.Time:
+			*v = fixedCreatedAt
+		}
+	}
+	return nil
+}
+
+func (r *multiEnrichedRows) Close()     {}
+func (r *multiEnrichedRows) Err() error { return nil }
+
+// errScanBoom stands in for any driver-level row decode failure (type
+// mismatch, connection loss mid-row).
+var errScanBoom = errors.New("scan boom")
+
+// erroringRow is a single-row pgx.Rows fake whose Scan always fails.
+type erroringRow struct {
+	pgx.Rows
+	served bool
+}
+
+func (r *erroringRow) Next() bool {
+	if r.served {
+		return false
+	}
+	r.served = true
+	return true
+}
+
+func (r *erroringRow) Scan(dest ...any) error { return errScanBoom }
+func (r *erroringRow) Close()                 {}
+func (r *erroringRow) Err() error             { return nil }
+
+// TestGetChunksByVersionID_ScanErrorPropagates guards the error path the
+// NULL-embedding fakes cannot reach (their Scan either panics or succeeds):
+// a row that fails to decode must surface as an error, not as a silently
+// empty chunk list — an empty list here makes the chunk diff treat the
+// whole article as brand new and rewrite every chunk.
+func TestGetChunksByVersionID_ScanErrorPropagates(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+	ctx := InjectTx(context.Background(), &fakeTxQueryOnly{rows: &erroringRow{}})
+
+	chunks, err := repo.GetChunksByVersionID(ctx, uuid.New())
+
+	require.ErrorIs(t, err, errScanBoom)
+	assert.Nil(t, chunks)
+}
+
+// TestSearch_OrdersByScoreAndTruncatesToLimit pins the observable ranking
+// contract of the two-stage search: each result's Score is 1.0 minus its
+// own Stage 1 distance (per-chunk, via the distance map), results are
+// returned best-first even though Stage 2 rows arrive unordered, and the
+// result set is cut to the requested limit only after sorting.
+func TestSearch_OrdersByScoreAndTruncatesToLimit(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+
+	idA, idB, idC := uuid.New(), uuid.New(), uuid.New()
+	tx := &multiCallTx{rows: []pgx.Rows{
+		&multiStage1Rows{
+			ids:       []uuid.UUID{idA, idB, idC},
+			distances: []float32{0.1, 0.3, 0.2},
+		},
+		// Stage 2 serves the rows in a different order than Stage 1 ranked
+		// them, so the final ordering can only come from Search()'s own sort.
+		&multiEnrichedRows{ids: []uuid.UUID{idB, idA, idC}},
+	}}
+	ctx := InjectTx(context.Background(), tx)
+
+	results, err := repo.Search(ctx, []float32{0.1, 0.2}, 2)
+
+	require.NoError(t, err)
+	require.Len(t, results, 2, "results must be truncated to the requested limit after sorting")
+	assert.Equal(t, idA, results[0].Chunk.ID, "best-scoring chunk (distance 0.1) must rank first")
+	assert.Equal(t, idC, results[1].Chunk.ID, "second-best chunk (distance 0.2) must rank second")
+	assert.InDelta(t, 0.9, results[0].Score, 1e-6)
+	assert.InDelta(t, 0.8, results[1].Score, 1e-6)
 }
