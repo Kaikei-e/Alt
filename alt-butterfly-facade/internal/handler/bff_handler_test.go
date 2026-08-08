@@ -53,6 +53,7 @@ func TestNewBFFHandler(t *testing.T) {
 	assert.NotNil(t, handler.mutationCB)
 	assert.NotNil(t, handler.projectionCB)
 	assert.NotNil(t, handler.nonCriticalCB)
+	assert.NotNil(t, handler.externalContentCB)
 	assert.NotNil(t, handler.deduplicator)
 }
 
@@ -85,6 +86,7 @@ func TestNewBFFHandler_DisabledFeatures(t *testing.T) {
 	assert.Nil(t, handler.mutationCB)
 	assert.Nil(t, handler.projectionCB)
 	assert.Nil(t, handler.nonCriticalCB)
+	assert.Nil(t, handler.externalContentCB)
 	assert.Nil(t, handler.deduplicator)
 }
 
@@ -842,4 +844,314 @@ func TestBFFHandler_CircuitBreaker_HalfOpenParallelRequestsReleasePermits(t *tes
 		"parallel half-open requests must all hand their trial permit back")
 	assert.Equal(t, 0, handler.projectionCB.Stats().HalfOpenInFlight,
 		"no trial permit may be stranded after the storm")
+}
+
+// TestBFFHandler_CircuitBreaker_ClientErrorIsNeutralForFailureBudget pins the
+// two-sided rule for a 4xx: it is neither a dependency failure nor a
+// dependency success. The backend answered; it just answered "no".
+//
+// Recording it as a failure lets one rate-limited or paywalled publisher
+// (alt-backend maps a publisher 429 / 404 / 403 straight through) open the
+// breaker for every endpoint sharing the class. Recording it as a success
+// resets consecFailures and hides a genuine backend outage. The sequence
+// below (500, 404, 500, 500 against a threshold of 3) distinguishes all three
+// semantics: under "4xx is a failure" the breaker opens on the third request
+// and the fourth never reaches the backend; under "4xx is a success" the
+// breaker is still closed after the fourth.
+func TestBFFHandler_CircuitBreaker_ClientErrorIsNeutralForFailureBudget(t *testing.T) {
+	var backendHits atomic.Int32
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if backendHits.Add(1) == 2 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   3,
+		CBSuccessThreshold:   1,
+		CBOpenTimeout:        1 * time.Hour,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 4; i++ {
+		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	assert.Equal(t, int32(4), backendHits.Load(),
+		"the 404 must not charge the failure budget: the breaker may not open before the fourth 500")
+	assert.Equal(t, resilience.StateOpen, handler.nonCriticalCB.State(),
+		"the 404 must not reset the failure budget either: three 5xx still open the breaker")
+	assert.Equal(t, int64(3), handler.nonCriticalCB.Stats().TotalFailures)
+	assert.Equal(t, int64(0), handler.nonCriticalCB.Stats().TotalSuccesses)
+}
+
+// TestBFFHandler_CircuitBreaker_RateLimitedUpstreamNeverOpensBreaker is the
+// user-visible half of the same rule: swiping past article after article from
+// a publisher that answers 429 must never take the class down.
+func TestBFFHandler_CircuitBreaker_RateLimitedUpstreamNeverOpensBreaker(t *testing.T) {
+	for _, status := range []int{
+		http.StatusTooManyRequests,
+		http.StatusNotFound,
+		http.StatusForbidden,
+		http.StatusBadRequest,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer mockBackend.Close()
+
+			secret := []byte("test-secret-key")
+			config := BFFConfig{
+				EnableCircuitBreaker: true,
+				CBFailureThreshold:   3,
+				CBSuccessThreshold:   1,
+				CBOpenTimeout:        1 * time.Hour,
+			}
+			handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+			token := createTestToken(t, secret)
+
+			for i := 0; i < 10; i++ {
+				req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
+				req.Header.Set("X-Alt-Backend-Token", token)
+				rec := httptest.NewRecorder()
+				handler.ServeHTTP(rec, req)
+				require.Equal(t, status, rec.Code, "the upstream status must reach the client, not a breaker 503")
+			}
+
+			assert.Equal(t, resilience.StateClosed, handler.nonCriticalCB.State())
+			assert.Equal(t, int64(0), handler.nonCriticalCB.Stats().TotalFailures)
+			assert.Equal(t, int64(0), handler.nonCriticalCB.Stats().TotalSuccesses)
+		})
+	}
+}
+
+// TestBFFHandler_StreamingProcedure_ClientErrorIsNeutral applies the same rule
+// to serveStreaming's initial-status decision.
+func TestBFFHandler_StreamingProcedure_ClientErrorIsNeutral(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer backend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker: true,
+		CBFailureThreshold:   5,
+		CBSuccessThreshold:   2,
+		CBOpenTimeout:        30 * time.Second,
+	}
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	req := httptest.NewRequest("POST", "/alt.augur.v2.AugurService/StreamChat", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	stats := handler.nonCriticalCB.Stats()
+	assert.Equal(t, int64(0), stats.TotalFailures, "a streamed 404 is an answer, not an outage")
+	assert.Equal(t, int64(0), stats.TotalSuccesses, "nor may it reset the failure budget")
+}
+
+// TestBFFHandler_CircuitOpen_EmitsWireValidConnectError locks the shape of the
+// rejection the client actually sees. connect-es parses the unary error body
+// with codeFromString, which only accepts the protocol's lowercase snake_case
+// code names; anything else parses as undefined and the client silently falls
+// back to the HTTP-status-derived code, dropping every non-standard field on
+// the floor. Retry guidance therefore has to travel in Retry-After, which
+// connect-es surfaces as ConnectError.metadata.
+func TestBFFHandler_CircuitOpen_EmitsWireValidConnectError(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker:     true,
+		EnableErrorNormalization: true,
+		CBFailureThreshold:       2,
+		CBSuccessThreshold:       1,
+		CBOpenTimeout:            30 * time.Second,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	require.Equal(t, resilience.StateOpen, handler.nonCriticalCB.State())
+
+	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	assert.Equal(t, "30", rec.Header().Get("Retry-After"),
+		"the open timeout must reach the client somewhere it can read it")
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "unavailable", body["code"],
+		"Connect codes are lowercase snake_case; SCREAMING_SNAKE parses as undefined in connect-es")
+	assert.Contains(t, body["message"], "circuit breaker")
+}
+
+// TestBFFHandler_CircuitBreaker_ExternalContentOpenDoesNotBlockOtherRPCs is
+// ADR-000950's argument applied to the class it left behind. That ADR split
+// Critical Feed Mutations and Unread Projection Reads out of the shared
+// breaker, but FetchArticleContent — whose upstream hop leaves the cluster for
+// a publisher — stayed in the non-critical megabucket, so a slow or hostile
+// third-party site still rejects every other unclassified RPC.
+func TestBFFHandler_CircuitBreaker_ExternalContentOpenDoesNotBlockOtherRPCs(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/alt.articles.v2.ArticleService/FetchArticleContent" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker:              true,
+		CBFailureThreshold:                3,
+		CBSuccessThreshold:                1,
+		CBOpenTimeout:                     1 * time.Hour,
+		CBExternalContentFailureThreshold: 3,
+		CBExternalContentOpenTimeout:      1 * time.Hour,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	assert.Equal(t, resilience.StateOpen, handler.externalContentCB.State())
+	assert.Equal(t, resilience.StateClosed, handler.nonCriticalCB.State())
+	assert.Equal(t, resilience.StateClosed, handler.mutationCB.State())
+	assert.Equal(t, resilience.StateClosed, handler.projectionCB.State())
+
+	for _, ep := range []string{
+		"/alt.feeds.v2.FeedService/GetFeedStats",
+		"/alt.feeds.v2.FeedService/MarkAsRead",
+		"/alt.feeds.v2.FeedService/GetAllFeeds",
+	} {
+		req := httptest.NewRequest("POST", ep, bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code, ep)
+	}
+}
+
+// TestBFFHandler_ExternalContentBreaker_UsesItsOwnBudget proves the class is
+// wired to its own tuning and not to the internal defaults: it survives past
+// the internal threshold, and it re-probes after the shorter open timeout.
+func TestBFFHandler_ExternalContentBreaker_UsesItsOwnBudget(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker:              true,
+		CBFailureThreshold:                2,
+		CBSuccessThreshold:                1,
+		CBOpenTimeout:                     1 * time.Hour,
+		CBExternalContentFailureThreshold: 4,
+		CBExternalContentOpenTimeout:      20 * time.Millisecond,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	fetch := func() {
+		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	for i := 0; i < 3; i++ {
+		fetch()
+	}
+	assert.Equal(t, resilience.StateClosed, handler.externalContentCB.State(),
+		"the internal failure threshold must not govern the external-content class")
+
+	fetch()
+	require.Equal(t, resilience.StateOpen, handler.externalContentCB.State())
+
+	time.Sleep(40 * time.Millisecond)
+	assert.Equal(t, resilience.StateHalfOpen, handler.externalContentCB.State(),
+		"the external-content class must re-probe on its own shorter open timeout")
+}
+
+// TestBFFHandler_CircuitOpen_RetryAfterUsesTheRejectingClassTimeout keeps the
+// client's back-off hint honest: the external-content class re-probes sooner
+// than the internal classes, so telling the client to wait CBOpenTimeout would
+// keep Visual Preview dark long after the breaker reopened.
+func TestBFFHandler_CircuitOpen_RetryAfterUsesTheRejectingClassTimeout(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker:              true,
+		EnableErrorNormalization:          true,
+		CBFailureThreshold:                2,
+		CBSuccessThreshold:                1,
+		CBOpenTimeout:                     30 * time.Second,
+		CBExternalContentFailureThreshold: 2,
+		CBExternalContentOpenTimeout:      5 * time.Second,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		req.Header.Set("Connect-Protocol-Version", "1")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if i == 2 {
+			require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+			assert.Equal(t, "5", rec.Header().Get("Retry-After"))
+		}
+	}
+}
+
+func TestBFFHandler_GetCircuitBreakerClassStats_IncludesExternalContent(t *testing.T) {
+	config := BFFConfig{
+		EnableCircuitBreaker:              true,
+		CBFailureThreshold:                5,
+		CBSuccessThreshold:                2,
+		CBOpenTimeout:                     30 * time.Second,
+		CBExternalContentFailureThreshold: 20,
+		CBExternalContentOpenTimeout:      5 * time.Second,
+	}
+	handler := createTestBFFHandler(t, config)
+
+	stats := handler.GetCircuitBreakerClassStats()
+	require.NotNil(t, stats)
+	require.NotNil(t, stats.ExternalContent)
+	assert.Equal(t, resilience.StateClosed, stats.ExternalContent.State)
 }

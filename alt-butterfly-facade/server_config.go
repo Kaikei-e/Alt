@@ -6,6 +6,7 @@ import (
 
 	"alt-butterfly-facade/config"
 	"alt-butterfly-facade/internal/handler"
+	"alt-butterfly-facade/internal/resilience"
 	"alt-butterfly-facade/internal/server"
 )
 
@@ -45,7 +46,11 @@ func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, ttsUR
 			CBFailureThreshold:       cfg.CBFailureThreshold,
 			CBSuccessThreshold:       cfg.CBSuccessThreshold,
 			CBOpenTimeout:            cfg.CBOpenTimeout,
-			DedupWindow:              cfg.DedupWindow,
+
+			CBExternalContentFailureThreshold: cfg.CBExternalContentFailureThreshold,
+			CBExternalContentOpenTimeout:      cfg.CBExternalContentOpenTimeout,
+
+			DedupWindow: cfg.DedupWindow,
 		},
 	}
 }
@@ -58,7 +63,16 @@ func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, ttsUR
 // legacy ProxyHandler behavior in server.go's feature switch.
 func logBFFFeatureWiring(ctx context.Context, cfg *config.Config) {
 	slog.InfoContext(ctx, "bff.cache.wiring", "enabled", cfg.EnableCache)
-	slog.InfoContext(ctx, "bff.circuit_breaker.wiring", "enabled", cfg.EnableCircuitBreaker)
+	slog.InfoContext(ctx, "bff.circuit_breaker.wiring",
+		"enabled", cfg.EnableCircuitBreaker,
+		"critical_mutation_endpoints", resilience.CriticalMutationEndpointCount(),
+		"unread_projection_endpoints", resilience.UnreadProjectionEndpointCount(),
+		"external_content_endpoints", resilience.ExternalContentEndpointCount(),
+		"failure_threshold", cfg.CBFailureThreshold,
+		"open_timeout", cfg.CBOpenTimeout.String(),
+		"external_content_failure_threshold", cfg.CBExternalContentFailureThreshold,
+		"external_content_open_timeout", cfg.CBExternalContentOpenTimeout.String(),
+	)
 	slog.InfoContext(ctx, "bff.dedup.wiring", "enabled", cfg.EnableDedup)
 	slog.InfoContext(ctx, "bff.error_normalization.wiring", "enabled", cfg.EnableErrorNormalization)
 }

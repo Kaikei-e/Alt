@@ -148,3 +148,36 @@ func (e *NormalizedError) ToJSON() ([]byte, error) {
 func IsErrorResponse(statusCode int) bool {
 	return statusCode >= 400
 }
+
+// IsDependencyFailure reports whether a status code is evidence that the
+// dependency itself is unhealthy, and so should charge its circuit-breaker
+// failure budget. Only 5xx qualifies. A 4xx means the dependency answered —
+// it just answered "no", which for content fetches usually reflects the
+// third-party publisher (rate limited, paywalled, removed), not alt-backend.
+// This is deliberately narrower than IsErrorResponse, which decides what to
+// report to the client.
+func IsDependencyFailure(statusCode int) bool {
+	return statusCode >= 500
+}
+
+// ConnectError is the Connect protocol's unary error body. It is not
+// NormalizedError: connect-es resolves the JSON `code` with codeFromString,
+// which accepts only the protocol's lowercase snake_case names, so
+// NormalizedError's SCREAMING_SNAKE codes resolve to undefined and the client
+// silently falls back to the HTTP-status-derived code — discarding every
+// non-standard field with it. Retry guidance therefore travels in the
+// Retry-After header, which connect-es surfaces as ConnectError.metadata.
+type ConnectError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// Connect error codes (lowercase snake_case, as they appear on the wire).
+const (
+	ConnectCodeUnavailable = "unavailable"
+)
+
+// ToJSON serializes the Connect error body.
+func (e *ConnectError) ToJSON() ([]byte, error) {
+	return json.Marshal(e)
+}

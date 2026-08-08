@@ -179,6 +179,13 @@ func NewServerWithTransports(
 						TotalFailures:  classStats.NonCritical.TotalFailures,
 					}
 				}
+				if classStats.ExternalContent != nil {
+					stats.CircuitBreaker.ExternalContent = &CircuitBreakerClassSlice{
+						State:          classStats.ExternalContent.State.String(),
+						TotalSuccesses: classStats.ExternalContent.TotalSuccesses,
+						TotalFailures:  classStats.ExternalContent.TotalFailures,
+					}
+				}
 			} else if cbStats := bffHandler.GetCircuitBreakerStats(); cbStats != nil {
 				stats.CircuitBreaker = &CircuitBreakerStatsResponse{
 					State:          cbStats.State.String(),
@@ -378,12 +385,13 @@ type CacheStatsResponse struct {
 
 // CircuitBreakerStatsResponse represents circuit breaker statistics in the API response.
 type CircuitBreakerStatsResponse struct {
-	State          string                    `json:"state"`
-	TotalSuccesses int64                     `json:"total_successes"`
-	TotalFailures  int64                     `json:"total_failures"`
-	Mutation       *CircuitBreakerClassSlice `json:"mutation,omitempty"`
-	Projection     *CircuitBreakerClassSlice `json:"projection,omitempty"`
-	NonCritical    *CircuitBreakerClassSlice `json:"non_critical,omitempty"`
+	State           string                    `json:"state"`
+	TotalSuccesses  int64                     `json:"total_successes"`
+	TotalFailures   int64                     `json:"total_failures"`
+	Mutation        *CircuitBreakerClassSlice `json:"mutation,omitempty"`
+	Projection      *CircuitBreakerClassSlice `json:"projection,omitempty"`
+	NonCritical     *CircuitBreakerClassSlice `json:"non_critical,omitempty"`
+	ExternalContent *CircuitBreakerClassSlice `json:"external_content,omitempty"`
 }
 
 // CircuitBreakerClassSlice is per-dependency-class CB stats.

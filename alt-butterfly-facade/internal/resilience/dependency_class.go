@@ -10,6 +10,9 @@ const (
 	ClassCriticalMutation
 	// ClassUnreadProjection is Unread Projection Reads (list/count views).
 	ClassUnreadProjection
+	// ClassExternalContent is RPCs whose upstream hop leaves the cluster for a
+	// third-party publisher site.
+	ClassExternalContent
 )
 
 func (c DependencyClass) String() string {
@@ -18,6 +21,8 @@ func (c DependencyClass) String() string {
 		return "critical_mutation"
 	case ClassUnreadProjection:
 		return "unread_projection"
+	case ClassExternalContent:
+		return "external_content"
 	default:
 		return "non_critical"
 	}
@@ -34,6 +39,15 @@ var unreadProjectionEndpoints = map[string]struct{}{
 	"/alt.feeds.v2.FeedService/GetAllFeeds":    {},
 }
 
+// externalContentEndpoints are RPCs whose response status and latency are
+// dominated by a publisher site rather than by alt-backend: the request leaves
+// the cluster, so what comes back reports the publisher's health, not ours.
+// Membership requires an outbound fetch on the response path — an RPC that
+// merely returns a URL pointing at a third party stays non-critical.
+var externalContentEndpoints = map[string]struct{}{
+	"/alt.articles.v2.ArticleService/FetchArticleContent": {},
+}
+
 // ClassForEndpoint returns the dependency class for a Connect-RPC path.
 // Unclassified endpoints default to ClassNonCritical.
 func ClassForEndpoint(endpoint string) DependencyClass {
@@ -42,6 +56,9 @@ func ClassForEndpoint(endpoint string) DependencyClass {
 	}
 	if _, ok := unreadProjectionEndpoints[endpoint]; ok {
 		return ClassUnreadProjection
+	}
+	if _, ok := externalContentEndpoints[endpoint]; ok {
+		return ClassExternalContent
 	}
 	return ClassNonCritical
 }
@@ -56,7 +73,15 @@ func UnreadProjectionEndpointCount() int {
 	return len(unreadProjectionEndpoints)
 }
 
-// CriticalEndpointCount is mutation + projection opt-in endpoints (for startup logs).
+// ExternalContentEndpointCount returns how many endpoints share the
+// external-content breaker.
+func ExternalContentEndpointCount() int {
+	return len(externalContentEndpoints)
+}
+
+// CriticalEndpointCount is mutation + projection opt-in endpoints (for startup
+// logs). External content is a bulkhead, not a criticality tier, so it is
+// counted separately.
 func CriticalEndpointCount() int {
 	return CriticalMutationEndpointCount() + UnreadProjectionEndpointCount()
 }

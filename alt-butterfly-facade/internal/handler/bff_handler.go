@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,6 +35,10 @@ type BFFConfig struct {
 	CBSuccessThreshold int
 	CBOpenTimeout      time.Duration
 
+	// Circuit breaker configuration for the external-content class
+	CBExternalContentFailureThreshold int
+	CBExternalContentOpenTimeout      time.Duration
+
 	// Dedup configuration
 	DedupWindow time.Duration
 }
@@ -48,12 +53,13 @@ type BFFHandler struct {
 	streamingTimeout time.Duration
 
 	// BFF components
-	responseCache *cache.ResponseCache
-	cacheConfig   *cache.CacheConfig
-	mutationCB    *resilience.CircuitBreaker
-	projectionCB  *resilience.CircuitBreaker
-	nonCriticalCB *resilience.CircuitBreaker
-	deduplicator  *RequestDeduplicator
+	responseCache     *cache.ResponseCache
+	cacheConfig       *cache.CacheConfig
+	mutationCB        *resilience.CircuitBreaker
+	projectionCB      *resilience.CircuitBreaker
+	nonCriticalCB     *resilience.CircuitBreaker
+	externalContentCB *resilience.CircuitBreaker
+	deduplicator      *RequestDeduplicator
 }
 
 // NewBFFHandler creates a new BFF handler with all features.
@@ -92,10 +98,20 @@ func NewBFFHandler(
 		h.mutationCB = resilience.NewCircuitBreaker(cbCfg)
 		h.projectionCB = resilience.NewCircuitBreaker(cbCfg)
 		h.nonCriticalCB = resilience.NewCircuitBreaker(cbCfg)
+		// The external-content class talks to the open internet, so it gets a
+		// looser budget than an internal dependency: a rate-limited or
+		// unreachable publisher is not an alt-backend outage, and it re-probes
+		// sooner because the next article is usually a different domain.
+		h.externalContentCB = resilience.NewCircuitBreaker(resilience.CircuitBreakerConfig{
+			FailureThreshold: config.CBExternalContentFailureThreshold,
+			SuccessThreshold: config.CBSuccessThreshold,
+			OpenTimeout:      config.CBExternalContentOpenTimeout,
+		})
 		if logger != nil {
 			logger.Info("circuit_breaker_classes",
 				"critical_mutation", resilience.CriticalMutationEndpointCount(),
 				"unread_projection", resilience.UnreadProjectionEndpointCount(),
+				"external_content", resilience.ExternalContentEndpointCount(),
 				"non_critical", "default",
 				"unclassified_as", "non_critical",
 			)
@@ -162,7 +178,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if cb := h.breakerFor(endpoint); cb != nil {
 		permit, allowed := cb.Acquire()
 		if !allowed {
-			h.handleCircuitOpen(w, requestID)
+			h.handleCircuitOpen(w, endpoint, requestID)
 			return
 		}
 		defer permit.Release()
@@ -223,7 +239,7 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 	if cb := h.breakerFor(endpoint); cb != nil {
 		permit, allowed := cb.Acquire()
 		if !allowed {
-			h.handleCircuitOpen(w, requestID)
+			h.handleCircuitOpen(w, endpoint, requestID)
 			return
 		}
 		defer permit.Release()
@@ -237,11 +253,7 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	if IsErrorResponse(resp.StatusCode) {
-		h.recordFailure(endpoint)
-	} else {
-		h.recordSuccess(endpoint)
-	}
+	h.recordOutcome(endpoint, resp.StatusCode)
 
 	// Error-normalization only ever rewrites the initial status; once we
 	// decide to stream (below), the body is copied verbatim and untouched.
@@ -309,12 +321,8 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	defer resp.Body.Close()
 
 	// Record success/failure for the endpoint's dependency-class circuit breaker
-	if IsErrorResponse(resp.StatusCode) {
-		h.recordFailure(endpoint)
-	} else {
-		h.recordSuccess(endpoint)
-		h.invalidateUnreadProjectionOnMutation(userID, endpoint, resp.StatusCode)
-	}
+	h.recordOutcome(endpoint, resp.StatusCode)
+	h.invalidateUnreadProjectionOnMutation(userID, endpoint, resp.StatusCode)
 
 	// Read response body
 	respBody, _ := io.ReadAll(resp.Body)
@@ -468,24 +476,25 @@ func (h *BFFHandler) handleBackendError(w http.ResponseWriter, err error, reques
 	http.Error(w, "Bad Gateway", http.StatusBadGateway)
 }
 
-// handleCircuitOpen handles a circuit open error.
-func (h *BFFHandler) handleCircuitOpen(w http.ResponseWriter, requestID string) {
-	if h.config.EnableErrorNormalization {
-		normalized := &NormalizedError{
-			Code:        CodeServiceUnavailable,
-			Message:     "Service temporarily unavailable due to circuit breaker",
-			IsRetryable: true,
-			RetryAfter:  int(h.config.CBOpenTimeout.Seconds()),
-			RequestID:   requestID,
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		jsonBytes, _ := normalized.ToJSON()
-		w.Write(jsonBytes)
-		return
+// handleCircuitOpen rejects a request whose dependency class has an open
+// breaker. Unlike a proxied backend error this response is authored by the
+// BFF, so it is emitted as a Connect error envelope regardless of the
+// normalization flag: the caller is always a Connect client, and only that
+// shape survives its parser. Retry guidance rides the Retry-After header
+// because Connect has no wire slot for it in the error body, and it carries
+// the rejecting class's own open timeout — external content re-probes sooner
+// than the internal classes.
+func (h *BFFHandler) handleCircuitOpen(w http.ResponseWriter, endpoint, requestID string) {
+	connectErr := &ConnectError{
+		Code:    ConnectCodeUnavailable,
+		Message: "Service temporarily unavailable due to circuit breaker",
 	}
-
-	http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", strconv.Itoa(int(h.openTimeoutFor(endpoint).Seconds())))
+	w.Header().Set("X-Request-Id", requestID)
+	w.WriteHeader(http.StatusServiceUnavailable)
+	jsonBytes, _ := connectErr.ToJSON()
+	w.Write(jsonBytes)
 }
 
 // breakerFor returns the circuit breaker for the endpoint's dependency class.
@@ -495,8 +504,33 @@ func (h *BFFHandler) breakerFor(endpoint string) *resilience.CircuitBreaker {
 		return h.mutationCB
 	case resilience.ClassUnreadProjection:
 		return h.projectionCB
+	case resilience.ClassExternalContent:
+		return h.externalContentCB
 	default:
 		return h.nonCriticalCB
+	}
+}
+
+// openTimeoutFor is the open-state duration of the endpoint's dependency-class
+// breaker, used as the client's back-off hint.
+func (h *BFFHandler) openTimeoutFor(endpoint string) time.Duration {
+	if resilience.ClassForEndpoint(endpoint) == resilience.ClassExternalContent {
+		return h.config.CBExternalContentOpenTimeout
+	}
+	return h.config.CBOpenTimeout
+}
+
+// recordOutcome charges the endpoint's dependency-class breaker for a backend
+// response. A 4xx is deliberately neither: recorded as a failure, one
+// rate-limited or paywalled publisher opens the breaker for every endpoint in
+// the class; recorded as a success, it resets consecFailures and masks a real
+// backend outage.
+func (h *BFFHandler) recordOutcome(endpoint string, statusCode int) {
+	switch {
+	case IsDependencyFailure(statusCode):
+		h.recordFailure(endpoint)
+	case !IsErrorResponse(statusCode):
+		h.recordSuccess(endpoint)
 	}
 }
 
@@ -555,7 +589,7 @@ func (h *BFFHandler) GetCircuitBreakerStats() *resilience.CircuitBreakerStats {
 		return nil
 	}
 	rollup := resilience.CircuitBreakerStats{State: resilience.StateClosed}
-	for _, s := range []*resilience.CircuitBreakerStats{class.Mutation, class.Projection, class.NonCritical} {
+	for _, s := range []*resilience.CircuitBreakerStats{class.Mutation, class.Projection, class.NonCritical, class.ExternalContent} {
 		if s == nil {
 			continue
 		}
@@ -573,14 +607,15 @@ func (h *BFFHandler) GetCircuitBreakerStats() *resilience.CircuitBreakerStats {
 
 // CircuitBreakerClassStats holds per-class circuit breaker statistics.
 type CircuitBreakerClassStats struct {
-	Mutation    *resilience.CircuitBreakerStats
-	Projection  *resilience.CircuitBreakerStats
-	NonCritical *resilience.CircuitBreakerStats
+	Mutation        *resilience.CircuitBreakerStats
+	Projection      *resilience.CircuitBreakerStats
+	NonCritical     *resilience.CircuitBreakerStats
+	ExternalContent *resilience.CircuitBreakerStats
 }
 
-// GetCircuitBreakerClassStats returns mutation / projection / non-critical CB stats.
+// GetCircuitBreakerClassStats returns per-dependency-class CB stats.
 func (h *BFFHandler) GetCircuitBreakerClassStats() *CircuitBreakerClassStats {
-	if h.mutationCB == nil && h.projectionCB == nil && h.nonCriticalCB == nil {
+	if h.mutationCB == nil && h.projectionCB == nil && h.nonCriticalCB == nil && h.externalContentCB == nil {
 		return nil
 	}
 	out := &CircuitBreakerClassStats{}
@@ -595,6 +630,10 @@ func (h *BFFHandler) GetCircuitBreakerClassStats() *CircuitBreakerClassStats {
 	if h.nonCriticalCB != nil {
 		s := h.nonCriticalCB.Stats()
 		out.NonCritical = &s
+	}
+	if h.externalContentCB != nil {
+		s := h.externalContentCB.Stats()
+		out.ExternalContent = &s
 	}
 	return out
 }

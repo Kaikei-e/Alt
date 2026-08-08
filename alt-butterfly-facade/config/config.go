@@ -61,6 +61,12 @@ type Config struct {
 	CBSuccessThreshold int
 	// CBOpenTimeout is how long the circuit stays open
 	CBOpenTimeout time.Duration
+	// CBExternalContentFailureThreshold is the number of failures before
+	// opening the circuit of the external-content dependency class
+	CBExternalContentFailureThreshold int
+	// CBExternalContentOpenTimeout is how long the external-content circuit
+	// stays open
+	CBExternalContentOpenTimeout time.Duration
 
 	// Dedup Configuration
 	// DedupWindow is the time window for deduplicating requests
@@ -98,6 +104,15 @@ func NewConfig() *Config {
 		CBFailureThreshold: 5,
 		CBSuccessThreshold: 2,
 		CBOpenTimeout:      30 * time.Second,
+
+		// The external-content class fetches third-party publisher sites, so
+		// its budget is deliberately looser than an internal dependency's: a
+		// paywalled or rate-limited domain is not an alt-backend outage, and
+		// tripping after 5 of them would black out article reading. It also
+		// re-probes 6x sooner, because the next article is usually a
+		// different publisher and 30s of blackout is a whole reading session.
+		CBExternalContentFailureThreshold: 20,
+		CBExternalContentOpenTimeout:      5 * time.Second,
 
 		// Dedup Configuration (hardcoded defaults)
 		DedupWindow: 100 * time.Millisecond,

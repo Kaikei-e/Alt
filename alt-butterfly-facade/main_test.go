@@ -35,6 +35,8 @@ func TestBuildServerConfig_WiresBFFConfigFromAppConfig(t *testing.T) {
 	assert.Equal(t, cfg.CBFailureThreshold, serverCfg.BFFConfig.CBFailureThreshold)
 	assert.Equal(t, cfg.CBSuccessThreshold, serverCfg.BFFConfig.CBSuccessThreshold)
 	assert.Equal(t, cfg.CBOpenTimeout, serverCfg.BFFConfig.CBOpenTimeout)
+	assert.Equal(t, cfg.CBExternalContentFailureThreshold, serverCfg.BFFConfig.CBExternalContentFailureThreshold)
+	assert.Equal(t, cfg.CBExternalContentOpenTimeout, serverCfg.BFFConfig.CBExternalContentOpenTimeout)
 	assert.Equal(t, cfg.DedupWindow, serverCfg.BFFConfig.DedupWindow)
 }
 
@@ -59,6 +61,7 @@ func TestBuildServerConfig_ResultingServer_UsesBFFHandler(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), `"cache"`, "expected BFFHandler cache stats; got %s", rec.Body.String())
 	assert.Contains(t, rec.Body.String(), `"circuit_breaker"`, "expected BFFHandler circuit breaker stats; got %s", rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"external_content"`, "every dependency class must be observable on /stats; got %s", rec.Body.String())
 }
 
 // adminToken creates a valid admin-role JWT for the /v1/bff/stats auth check.

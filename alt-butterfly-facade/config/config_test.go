@@ -179,6 +179,14 @@ func TestNewConfig_BFFFeatureFlags_Defaults(t *testing.T) {
 	assert.Equal(t, 2, cfg.CBSuccessThreshold)
 	assert.Equal(t, 30*time.Second, cfg.CBOpenTimeout)
 
+	// Third-party content fetches carry their own, deliberately looser budget
+	assert.Equal(t, 20, cfg.CBExternalContentFailureThreshold)
+	assert.Equal(t, 5*time.Second, cfg.CBExternalContentOpenTimeout)
+	assert.Greater(t, cfg.CBExternalContentFailureThreshold, cfg.CBFailureThreshold,
+		"a publisher outage is not an alt-backend outage: it must take more failures to trip")
+	assert.Less(t, cfg.CBExternalContentOpenTimeout, cfg.CBOpenTimeout,
+		"the next article is usually a different publisher, so re-probe sooner")
+
 	// Hardcoded dedup configuration
 	assert.Equal(t, 100*time.Millisecond, cfg.DedupWindow)
 }

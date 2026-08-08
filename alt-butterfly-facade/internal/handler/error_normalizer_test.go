@@ -247,3 +247,33 @@ func TestIsErrorResponse(t *testing.T) {
 		})
 	}
 }
+
+// TestIsDependencyFailure separates circuit-breaker accounting from error
+// normalization: normalization treats every 4xx as an error to report, but
+// only a 5xx is evidence that the dependency itself is unhealthy.
+func TestIsDependencyFailure(t *testing.T) {
+	tests := []struct {
+		statusCode int
+		expected   bool
+	}{
+		{200, false},
+		{201, false},
+		{204, false},
+		{302, false},
+		{400, false},
+		{401, false},
+		{403, false},
+		{404, false},
+		{429, false},
+		{500, true},
+		{502, true},
+		{503, true},
+		{504, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.statusCode), func(t *testing.T) {
+			assert.Equal(t, tt.expected, IsDependencyFailure(tt.statusCode))
+		})
+	}
+}
