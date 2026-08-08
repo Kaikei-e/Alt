@@ -5,8 +5,6 @@ import { page } from "$app/state";
 import Sidebar from "$lib/components/desktop/layout/Sidebar.svelte";
 import { isImmersiveRoute } from "$lib/components/mobile/bottom-nav";
 import MobileBottomNav from "$lib/components/mobile/MobileBottomNav.svelte";
-import TtsMiniPlayer from "$lib/components/mobile/tts/TtsMiniPlayer.svelte";
-import { getTtsPlaybackStore } from "$lib/stores/ttsPlayback.svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import { cn } from "$lib/utils";
 
@@ -14,7 +12,6 @@ let { children, class: className = "" }: { children: Snippet; class?: string } =
 	$props();
 
 const { isDesktop } = useViewport();
-const ttsPlayback = getTtsPlaybackStore();
 
 const FULL_BLEED_PATHS = ["/feeds/tag-verse"];
 
@@ -61,7 +58,6 @@ afterNavigate(() => {
 		>
 			{@render children()}
 		</main>
-		<TtsMiniPlayer store={ttsPlayback} />
 		{#if !isImmersive}
 			<MobileBottomNav pathname={page.url.pathname} />
 		{/if}

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { BirdIcon, ExternalLink, Headphones, X } from "@lucide/svelte";
+import { BirdIcon, ExternalLink, X } from "@lucide/svelte";
 
 interface Props {
 	itemKey: string;
@@ -13,7 +13,6 @@ const { onAction }: Props = $props();
 const primaryActions = $derived([
 	{ type: "open", icon: ExternalLink, label: "Open" },
 	{ type: "ask", icon: BirdIcon, label: "Ask" },
-	{ type: "listen", icon: Headphones, label: "Listen" },
 ]);
 </script>
 

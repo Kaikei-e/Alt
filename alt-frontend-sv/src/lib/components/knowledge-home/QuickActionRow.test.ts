@@ -5,12 +5,11 @@ import { describe, expect, it } from "vitest";
  * Component rendering is tested via browser tests (*.svelte.test.ts).
  */
 describe("QuickActionRow", () => {
-	const actionTypes = ["open", "ask", "listen", "dismiss"] as const;
+	const actionTypes = ["open", "ask", "dismiss"] as const;
 
 	it("supports all expected action types", () => {
 		expect(actionTypes).toContain("open");
 		expect(actionTypes).toContain("ask");
-		expect(actionTypes).toContain("listen");
 		expect(actionTypes).toContain("dismiss");
 	});
 
@@ -18,7 +17,6 @@ describe("QuickActionRow", () => {
 		const primaryActions = [
 			{ type: "open", label: "Open" },
 			{ type: "ask", label: "Ask" },
-			{ type: "listen", label: "Listen" },
 		];
 		for (const action of primaryActions) {
 			expect(action.label).toBeTruthy();
@@ -26,7 +24,7 @@ describe("QuickActionRow", () => {
 	});
 
 	it("dismiss is separated from primary actions", () => {
-		const primaryActions = ["open", "ask", "listen"];
+		const primaryActions = ["open", "ask"];
 		const secondaryActions = ["dismiss"];
 		expect(primaryActions).not.toContain("dismiss");
 		expect(secondaryActions).toContain("dismiss");

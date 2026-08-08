@@ -28,7 +28,6 @@ describe("buildHomeActionMetadata", () => {
 		"open_recap",
 		"open_search",
 		"ask",
-		"listen",
 	])("returns undefined for %s so article content never reaches the POST body", (type) => {
 		expect(buildHomeActionMetadata(type, makeItem())).toBeUndefined();
 	});

@@ -16,5 +16,4 @@ export const PUBLIC_SERVICES = [
 	"alt.rss.v2.RSSService",
 	"alt.search.v2.GlobalSearchService",
 	"alt.search.v2.SearchService",
-	"alt.tts.v1.TTSService",
 ] as const;

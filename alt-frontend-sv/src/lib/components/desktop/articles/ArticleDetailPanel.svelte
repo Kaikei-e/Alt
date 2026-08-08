@@ -7,15 +7,12 @@ import {
 } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
-import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 import { articleContentErrorMessage } from "$lib/utils/errorClassification";
 import {
 	X,
 	ExternalLink,
 	FileText,
 	Sparkles,
-	Volume2,
-	Square,
 	Loader2,
 	RefreshCw,
 } from "@lucide/svelte";
@@ -33,7 +30,6 @@ let contentError = $state<string | null>(null);
 let fetchAbortController: AbortController | null = null;
 
 const summarizer = useSummarize();
-const tts = useTtsPlayback();
 
 const articleContent = $derived(fetchedResponse?.content ?? null);
 const fetchedArticleId = $derived(fetchedResponse?.article_id ?? null);
@@ -47,7 +43,6 @@ const fetchButtonState = $derived.by(() => {
 
 onDestroy(() => {
 	summarizer.abort();
-	tts.stop();
 	fetchAbortController?.abort();
 });
 
@@ -58,7 +53,6 @@ $effect(() => {
 		fetchedResponse = null;
 		contentError = null;
 		summarizer.reset();
-		tts.stop();
 		fetchContent();
 	}
 });
@@ -102,14 +96,6 @@ function handleSummarize() {
 		article.title,
 		summarizer.buttonState === "success",
 	);
-}
-
-function handleTts() {
-	if (tts.isPlaying || tts.isLoading) {
-		tts.stop();
-	} else if (summarizer.summary) {
-		tts.play(summarizer.summary, { speed: 1.25 });
-	}
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -213,23 +199,6 @@ function handleKeydown(e: KeyboardEvent) {
 			{/if}
 			Summarize
 		</button>
-
-		{#if summarizer.summary}
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
-				style="border-color: var(--surface-border); color: var(--text-primary); background: var(--action-surface);"
-				onclick={handleTts}
-			>
-				{#if tts.isPlaying || tts.isLoading}
-					<Square class="h-3.5 w-3.5" />
-					Stop
-				{:else}
-					<Volume2 class="h-3.5 w-3.5" />
-					Listen
-				{/if}
-			</button>
-		{/if}
 	</div>
 
 	<!-- Content Area -->

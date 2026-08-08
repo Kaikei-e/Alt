@@ -18,18 +18,11 @@ import {
 } from "$lib/api/client/articles";
 import ArticleEndBranches from "$lib/components/knowledge-trail/ArticleEndBranches.svelte";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
-import ArticleOverflowMenu from "$lib/components/mobile/tts/ArticleOverflowMenu.svelte";
-import TtsSetupSheet from "$lib/components/mobile/tts/TtsSetupSheet.svelte";
 import PageKicker from "$lib/components/recap/job-status/PageKicker.svelte";
 import { Button } from "$lib/components/ui/button";
 import { useArticleEndBranches } from "$lib/hooks/useArticleEndBranches.svelte";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
 import { useTrailOutcome } from "$lib/hooks/useTrailOutcome.svelte";
-import {
-	getTtsPlaybackStore,
-	type TtsSource,
-} from "$lib/stores/ttsPlayback.svelte";
-import { getTtsPreferences } from "$lib/stores/ttsPreferences.svelte";
 import { articleContentErrorMessage } from "$lib/utils/errorClassification";
 import { safeArticleHref } from "$lib/utils/safeHref";
 
@@ -92,48 +85,6 @@ let contentError = $state<string | null>(null);
 let previousUrl = $state<string | null>(null);
 
 const summarizer = useSummarize();
-
-const ttsPlayback = getTtsPlaybackStore();
-const ttsPreferences = getTtsPreferences();
-
-let ttsSheetOpen = $state(false);
-
-// `RenderFeedDetails` re-renders the HTML body; for TTS we strip tags to
-// avoid the synthesizer reading angle brackets and entities aloud.
-const articleBodyText = $derived.by<string>(() => {
-	if (!articleContent) return "";
-	return articleContent
-		.replace(/<[^>]+>/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
-});
-
-const summaryText = $derived(summarizer.summary ?? "");
-
-const hasSummaryForTts = $derived(summaryText.trim().length > 0);
-const hasBodyForTts = $derived(articleBodyText.length > 0);
-
-function handleListenSelect() {
-	ttsSheetOpen = true;
-}
-
-function handleTtsClose() {
-	ttsSheetOpen = false;
-}
-
-function handleTtsStart(source: TtsSource, speed: number) {
-	const text = source === "summary" ? summaryText : articleBodyText;
-	if (text.trim().length === 0) return;
-	ttsPreferences.setSpeed(speed);
-	ttsSheetOpen = false;
-	const trackId = fetchedArticleId ?? articleId ?? "";
-	const trackTitle = articleTitle ?? sourceHost ?? "Article";
-	void ttsPlayback.play(
-		{ articleId: trackId, title: trackTitle, source },
-		text,
-		{ speed },
-	);
-}
 
 const railQuery = new MediaQuery("(min-width: 1024px)", false);
 const hasRail = $derived(railQuery.current);
@@ -335,8 +286,6 @@ $effect(() => {
 				<span class="action-label">Open original</span>
 			</a>
 		{/if}
-
-		<ArticleOverflowMenu onListenSelect={handleListenSelect} />
 	</div>
 {/snippet}
 
@@ -428,16 +377,6 @@ $effect(() => {
 				</div>
 			{/if}
 		</article>
-
-		<TtsSetupSheet
-			open={ttsSheetOpen}
-			hasSummary={hasSummaryForTts}
-			hasBody={hasBodyForTts}
-			speed={ttsPreferences.speed}
-			speedChoices={ttsPreferences.speedChoices}
-			onClose={handleTtsClose}
-			onStart={handleTtsStart}
-		/>
 
 		{#if hasRail}
 			<aside

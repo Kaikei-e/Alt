@@ -6,7 +6,6 @@ import { page } from "$app/state";
 import AskSheet from "$lib/components/knowledge-home/AskSheet.svelte";
 import DegradedModeBanner from "$lib/components/knowledge-home/DegradedModeBanner.svelte";
 import KnowledgeStream from "$lib/components/knowledge-home/KnowledgeStream.svelte";
-import ListenQueueBar from "$lib/components/knowledge-home/ListenQueueBar.svelte";
 import Toast from "$lib/components/knowledge-home/Toast.svelte";
 import LensModal from "$lib/components/knowledge-home/lens/LensModal.svelte";
 import LensSelector from "$lib/components/knowledge-home/lens/LensSelector.svelte";
@@ -31,7 +30,6 @@ import { useKnowledgeHome } from "$lib/hooks/useKnowledgeHome.svelte";
 import { useLens } from "$lib/hooks/useLens.svelte";
 import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
 import { useStreamUpdates } from "$lib/hooks/useStreamUpdates.svelte";
-import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 import { useToastStore } from "$lib/stores/toast.svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import { buildHomeActionMetadata } from "./home-actions";
@@ -41,7 +39,6 @@ const { isDesktop } = useViewport();
 const home = useKnowledgeHome();
 const recall = useRecallRail();
 const lens = useLens();
-const tts = useTtsPlayback();
 const toast = useToastStore();
 
 let revealed = $state(false);
@@ -54,8 +51,6 @@ let askScopeContext = $state("");
 let askScopeArticleId = $state<string | undefined>(undefined);
 let askScopeTags = $state<string[]>([]);
 let searchQuery = $state("");
-let listenQueue = $state<{ id: string; title: string; text: string }[]>([]);
-let isQueueProcessing = $state(false);
 let lensSources = $state<ConnectFeedSource[]>([]);
 let lensSourcesLoading = $state(false);
 let lensDraft = $state<Omit<LensVersionData, "versionId">>({
@@ -87,7 +82,6 @@ const emptyReason = $derived.by(() => {
 	}
 	return home.emptyReason;
 });
-const currentQueueTitle = $derived(listenQueue[0]?.title ?? null);
 const lensTagSuggestions = $derived.by((): TagSuggestion[] => {
 	const tagCounts = new Map<string, number>();
 	for (const item of home.items) {
@@ -119,34 +113,6 @@ const stream = useStreamUpdates({
 	},
 	onRefresh: () => refreshHomeWithRecallSync(home, recall, lens.activeLensId),
 });
-
-async function processQueue() {
-	if (isQueueProcessing || listenQueue.length === 0) return;
-	isQueueProcessing = true;
-
-	while (listenQueue.length > 0) {
-		const current = listenQueue[0]!;
-		try {
-			await tts.play(current.text);
-		} catch {
-			toast.push("Listen playback failed.", "error", 3000);
-			break;
-		}
-		listenQueue = listenQueue.slice(1);
-	}
-
-	isQueueProcessing = false;
-}
-
-function enqueueListen(title: string, text: string) {
-	if (!text.trim()) {
-		toast.push("No audio-ready summary is available yet.", "error", 3000);
-		return;
-	}
-	listenQueue = [...listenQueue, { id: crypto.randomUUID(), title, text }];
-	toast.push("Added to listen queue.", "success");
-	void processQueue();
-}
 
 async function syncLensQuery(lensId: string | null) {
 	const url = new URL(page.url);
@@ -194,11 +160,6 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 		askScopeArticleId = item.articleId;
 		askScopeTags = item.tags?.slice(0, 3) ?? [];
 		askSheetOpen = true;
-		return;
-	}
-
-	if (type === "listen") {
-		enqueueListen(item.title, item.summaryExcerpt || item.title);
 	}
 }
 
@@ -539,25 +500,6 @@ onMount(async () => {
 		if (typeof history !== "undefined") {
 			history.replaceState(history.state, "", `/augur/${id}`);
 		}
-	}}
-/>
-
-<ListenQueueBar
-	queue={listenQueue}
-	currentTitle={currentQueueTitle}
-	isPlaying={tts.isPlaying || isQueueProcessing}
-	onToggle={() => {
-		if (tts.isPlaying) {
-			tts.stop();
-			isQueueProcessing = false;
-		} else {
-			void processQueue();
-		}
-	}}
-	onClear={() => {
-		tts.stop();
-		listenQueue = [];
-		isQueueProcessing = false;
 	}}
 />
 

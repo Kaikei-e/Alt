@@ -156,17 +156,6 @@ export {
 // Evening Pulse client
 export { getEveningPulse } from "./evening_pulse";
 
-// TTSService client
-export {
-	createTtsClient,
-	synthesizeSpeech,
-	synthesizeSpeechStream,
-	listVoices,
-	type SynthesizeResult,
-	type SynthesizeOptions,
-	type TtsVoice,
-} from "./tts";
-
 // KnowledgeHomeService client
 export {
 	createKnowledgeHomeClient,

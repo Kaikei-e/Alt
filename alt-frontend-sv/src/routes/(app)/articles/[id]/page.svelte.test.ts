@@ -1,6 +1,7 @@
-import { render } from "vitest-browser-svelte";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page as testPage } from "vitest/browser";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { render } from "vitest-browser-svelte";
+import { goto } from "$app/navigation";
 
 vi.mock("$app/state", () => ({
 	page: {
@@ -16,17 +17,19 @@ vi.mock("$app/state", () => ({
 // `beforeNavigate` to flush on leave. A factory that enumerates a subset
 // replaces the *whole* module, so any binding it omits becomes an import-time
 // "does not provide an export named ..." SyntaxError and the file collects
-// zero tests. Enumerating one more name just moves the next rot one import
-// away, so spread the real module instead: every current and future export
-// stays bound, and only what must not really run is overridden. `goto` is the
-// one such binding — real navigation would steer the browser-mode page away
-// mid-test. `beforeNavigate` is safe to keep real; it is a thin
-// `onMount(() => callbacks.add(cb))` whose callbacks only fire on an actual
-// client-router navigation, which never happens here.
-vi.mock("$app/navigation", async (importOriginal) => ({
-	...(await importOriginal<typeof import("$app/navigation")>()),
-	goto: vi.fn(),
-}));
+// zero tests. Spy-mode automocking wraps the real module instead: every
+// current and future export stays bound, and only what must not really run is
+// overridden below. `goto` is the one such binding — real navigation would
+// steer the browser-mode page away mid-test. `beforeNavigate` is safe to keep
+// real; it is a thin `onMount(() => callbacks.add(cb))` whose callbacks only
+// fire on an actual client-router navigation, which never happens here.
+//
+// Spy mode rather than an `importOriginal` spread because that spread makes
+// the mock a manually resolved module: the browser provider has to round-trip
+// to this worker before it can answer the page's request for it, and when the
+// round trip loses the race the run dies with "route.fulfill: The object has
+// been collected" before a single test reports.
+vi.mock("$app/navigation", { spy: true });
 
 const mockGetFeedContent = vi.fn();
 const mockGetArticleSourceURL = vi.fn().mockResolvedValue("");
@@ -57,35 +60,16 @@ vi.mock("$lib/hooks/useSummarize.svelte", () => ({
 	}),
 }));
 
-import {
-	createTtsPlaybackStore,
-	TTS_PLAYBACK_KEY,
-} from "$lib/stores/ttsPlayback.svelte";
-import {
-	createTtsPreferences,
-	TTS_PREFERENCES_KEY,
-} from "$lib/stores/ttsPreferences.svelte";
 import Page from "./+page.svelte";
 
-// +page.svelte reads the TTS playback and preferences stores out of context,
-// and their only provider is (app)/+layout.svelte — a layout this spec does
-// not mount. Rendered bare, getContext() yields undefined and the first
-// `ttsPreferences.speed` read throws before any assertion runs. Reproduce the
-// layout's own wiring with the real factories (both constructors are inert:
-// field initialisers plus one localStorage read) instead of stubbing the
-// stores, so the page is exercised against the objects it gets in production.
 function renderPage() {
-	return render(Page, {
-		context: new Map<symbol, unknown>([
-			[TTS_PLAYBACK_KEY, createTtsPlaybackStore()],
-			[TTS_PREFERENCES_KEY, createTtsPreferences()],
-		]),
-	});
+	return render(Page);
 }
 
 describe("Article page fetch button", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
 	});
 
@@ -169,6 +153,7 @@ describe("Article page fetch button", () => {
 describe("Article page Alt-Paper mobile layout", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
 	});
 

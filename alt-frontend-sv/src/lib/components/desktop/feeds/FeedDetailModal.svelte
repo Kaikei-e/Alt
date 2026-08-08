@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ChevronLeft, ChevronRight, Volume2, Square } from "@lucide/svelte";
+import { ChevronLeft, ChevronRight } from "@lucide/svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import { Dialog as DialogPrimitive } from "bits-ui";
@@ -18,7 +18,6 @@ import {
 	buildSummaryRendererOptions,
 	processArticleFetchResponse,
 } from "./FeedDetailModal.logic";
-import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 
 interface Props {
 	open: boolean;
@@ -45,17 +44,6 @@ let {
 	currentIndex,
 	footerActions,
 }: Props = $props();
-
-// TTS playback
-const tts = useTtsPlayback();
-
-function handleTtsClick() {
-	if (tts.isPlaying || tts.isLoading) {
-		tts.stop();
-	} else if (summary) {
-		tts.play(summary, { speed: 1.25 });
-	}
-}
 
 // Content fetching state
 let isFetchingContent = $state(false);
@@ -97,8 +85,6 @@ let previousFeedUrl = $state<string | null>(null);
 // Cleanup on modal close
 $effect(() => {
 	if (!open) {
-		// Stop TTS playback
-		tts.stop();
 		// Cancel any ongoing content fetch request
 		if (contentAbortController) {
 			contentAbortController.abort();
@@ -142,8 +128,6 @@ $effect(() => {
 
 	previousFeedUrl = currentFeedUrl;
 
-	// Stop TTS playback
-	tts.stop();
 	// Cancel any ongoing content fetch request
 	if (contentAbortController) {
 		contentAbortController.abort();
@@ -495,29 +479,8 @@ async function handleSummarize(forceRefresh = false) {
 
 							{#if summary}
 								<section class="rail-section">
-									<div class="flex items-center justify-between">
-										<h3 class="section-label">AI SUMMARY</h3>
-										{#if !isSummarizing}
-											<button
-												onclick={handleTtsClick}
-												class="tts-button"
-												aria-label={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
-												title={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
-											>
-												{#if tts.isLoading}
-													<span class="loading-pulse"></span>
-												{:else if tts.isPlaying}
-													<Square class="h-4 w-4" />
-												{:else}
-													<Volume2 class="h-4 w-4" />
-												{/if}
-											</button>
-										{/if}
-									</div>
+									<h3 class="section-label">AI SUMMARY</h3>
 									<div class="section-prose rail-prose">{summary}</div>
-									{#if tts.error}
-										<p class="tts-error">{tts.error}</p>
-									{/if}
 								</section>
 							{:else if summaryError}
 								<section class="rail-section rail-section--error" role="alert">
@@ -761,26 +724,6 @@ async function handleSummarize(forceRefresh = false) {
 		font-family: var(--font-body);
 		font-size: 0.85rem;
 		color: var(--alt-terracotta);
-	}
-
-	.tts-button {
-		padding: 0.4rem;
-		background: transparent;
-		border: none;
-		color: var(--alt-ash);
-		cursor: pointer;
-		transition: color 0.15s;
-	}
-
-	.tts-button:hover {
-		color: var(--alt-charcoal);
-	}
-
-	.tts-error {
-		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		color: var(--alt-terracotta);
-		margin-top: 0.4rem;
 	}
 
 	.modal-footer {
