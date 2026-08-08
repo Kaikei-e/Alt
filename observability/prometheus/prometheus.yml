@@ -60,6 +60,30 @@ scrape_configs:
   #   scrape_interval: 15s
   #   metrics_path: /metrics/prometheus
 
+  # The notification-outbox relays are scraped separately from the collector
+  # above: they publish on each service's existing HTTP server rather than on
+  # the unwired :9201 listener. Both expose the same two series
+  # (notification_outbox_oldest_pending_age_seconds and
+  # notification_outbox_last_tick_timestamp_seconds) under a `service` label, so
+  # one alert rule covers every producer. Without these targets the relay half
+  # of the delivery path is unobservable — and a relay that stops forwarding
+  # produces no errors at all, only silence.
+  - job_name: 'pre-processor-relay'
+    static_configs:
+      - targets: ['pre-processor:9200']
+        labels:
+          service: 'pre-processor'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'acolyte-orchestrator-relay'
+    static_configs:
+      - targets: ['acolyte-orchestrator:8090']
+        labels:
+          service: 'acolyte-orchestrator'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
   # recap-worker recap pipeline metrics (Rust/Axum)
   - job_name: 'recap-worker'
     static_configs:
@@ -121,6 +145,14 @@ scrape_configs:
       - targets: ['alt-harvester:9110']
         labels:
           service: 'alt-harvester'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'alt-notifier'
+    static_configs:
+      - targets: ['alt-notifier:9110']
+        labels:
+          service: 'alt-notifier'
     scrape_interval: 15s
     metrics_path: /metrics
 

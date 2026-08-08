@@ -1,0 +1,178 @@
+# Prometheus alerting rules for the Web Push delivery path.
+#
+# This path has no delivery receipt. RFC 8030 specifies one, but neither
+# Mozilla nor Google nor Apple implements it, so a 201 means only that a push
+# service accepted the message — not that a device received it, not that the
+# payload decrypted, not that anything was shown. Every rule below is therefore
+# about *absence*, not about errors.
+#
+# The reason that framing matters here is specific rather than general. This
+# stack has already lost a delivery path for four weeks (PM-2026-045): the
+# wiring was dead, nothing threw, and every error-rate panel stayed green
+# because there were no errors to count. An alert on "too many failures" cannot
+# see that. An alert on "suspiciously few successes" can.
+#
+# Metric sources:
+#   alt-notifier                       — push_* below
+#   pre-processor / acolyte-orchestrator / recap-worker
+#                                      — notification_outbox_* (one relay each)
+
+groups:
+  - name: push_delivery_liveness
+    interval: 30s
+    rules:
+      # PAGE: the dispatcher loop stopped ticking.
+      #
+      # `absent()` is not decoration. If alt-notifier disappears from service
+      # discovery entirely — removed from compose, never scheduled, crash
+      # looping past its start period — the left-hand comparison evaluates over
+      # an empty vector and never fires. The alert would then be silent for
+      # exactly the outage it exists to catch.
+      - alert: PushDispatcherStalled
+        expr: |
+          (time() - push_dispatcher_last_tick_timestamp_seconds > 300)
+          or absent(push_dispatcher_last_tick_timestamp_seconds)
+        for: 5m
+        labels:
+          severity: page
+          stack: push
+        annotations:
+          summary: "alt-notifier has not ticked for 5m"
+          description: |
+            The dispatcher publishes its tick timestamp on every pass,
+            including passes that claim zero rows, so this fires on a wedged
+            loop and not merely on an idle one.
+            Check: docker compose -f compose/compose.yaml -p alt logs alt-notifier
+
+      # PAGE: a relay stopped forwarding its own outbox.
+      #
+      # One rule covers all three producers via the `service` label. A relay can
+      # die without its service dying — the notification path is a small loop
+      # inside a much larger process — so process liveness does not imply this.
+      - alert: NotificationRelayStalled
+        expr: |
+          (time() - notification_outbox_last_tick_timestamp_seconds > 300)
+          or absent(notification_outbox_last_tick_timestamp_seconds)
+        for: 5m
+        labels:
+          severity: page
+          stack: push
+        annotations:
+          summary: "{{ $labels.service }} notification relay has not ticked for 5m"
+          description: |
+            Rows are still being written into that service's notification_outbox
+            in the same transaction as the job completions, but nothing is
+            forwarding them to alt-data-hub.
+
+  - name: push_delivery_freshness
+    interval: 30s
+    rules:
+      # WARN then PAGE on queue age, which is the workhorse signal: it rises
+      # whether the cause is the relay, the dispatcher, the push service or a
+      # lock, and it rises without anyone having to classify the failure.
+      #
+      # The emitting side has two obligations that make or break this rule, and
+      # both are stated where the metric is produced: the age query must count
+      # rows in 'sending' as well as 'pending' (otherwise rows orphaned by a
+      # crashed sender are invisible and the age reads 0 forever), and the gauge
+      # must be set on every tick including to 0 (a gauge you stop setting keeps
+      # reporting its last value for as long as the target is up).
+      - alert: PushDeliveryBacklogAging
+        expr: push_delivery_oldest_pending_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          stack: push
+        annotations:
+          summary: "oldest undelivered push is {{ humanizeDuration $value }} old"
+
+      - alert: PushDeliveryBacklogStuck
+        expr: push_delivery_oldest_pending_age_seconds > 900
+        for: 5m
+        labels:
+          severity: page
+          stack: push
+        annotations:
+          summary: "oldest undelivered push is {{ humanizeDuration $value }} old"
+          description: |
+            Nothing is draining push_deliveries. Notifications that do go out
+            after this point are likely to be stale enough to be worse than
+            none — expires_at exists to stop that, so expect a rise in
+            result="expired" as this clears.
+
+      - alert: NotificationOutboxBacklogAging
+        expr: notification_outbox_oldest_pending_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          stack: push
+        annotations:
+          summary: "{{ $labels.service }} outbox oldest pending is {{ humanizeDuration $value }} old"
+
+  - name: push_delivery_correctness
+    interval: 30s
+    rules:
+      # PAGE on the first occurrence, deliberately without a `for` clause.
+      #
+      # 401/403 means the VAPID configuration is broken, and it breaks *every*
+      # send rather than a fraction of them. The classic shape is a JWT signed
+      # once at process start: RFC 8292 caps `exp` at 24h, so the service works
+      # perfectly for a day and then rejects everything forever, with no crash,
+      # no restart and no error rate to speak of. Waiting for a duration here
+      # would only delay the page.
+      - alert: PushVapidRejected
+        expr: increase(push_send_total{status_code=~"401|403"}[10m]) > 0
+        labels:
+          severity: page
+          stack: push
+        annotations:
+          summary: "push service rejected our VAPID credentials ({{ $labels.host }})"
+          description: |
+            Every send to this host is failing authentication. Likely causes,
+            in the order worth checking: the signing key was rotated without
+            the public key following it; `sub` is not a mailto: or https: URI
+            (Apple enforces this and the others do not, so this presents as
+            "iOS stopped working"); `aud` includes a path rather than just
+            scheme and host; or `exp` is more than 24h out.
+
+      - alert: PushDeliveryDeadLetters
+        expr: increase(push_delivery_dead_total[1h]) > 0
+        labels:
+          severity: warning
+          stack: push
+        annotations:
+          summary: "{{ $value }} push deliveries went to dead letter in the last hour"
+          description: |
+            A dead-letter store nobody looks at is itself a silent failure, so
+            this fires on any occurrence rather than on a threshold.
+
+      # The rule most teams never write. Everything above still reads healthy
+      # when the pipeline is intact but has nothing to carry — which is exactly
+      # what a frontend regression that stops registering subscriptions, or a
+      # VAPID public key change that invalidates all of them, looks like from
+      # the server. Guarded by jobs actually completing, so a genuinely quiet
+      # six hours does not page anyone.
+      - alert: PushDeliverySuspiciouslyQuiet
+        expr: |
+          (sum(increase(push_send_total{result="sent"}[6h])) == 0)
+          and (sum(increase(notification_outbox_rows_created_total[6h])) > 0)
+        for: 30m
+        labels:
+          severity: page
+          stack: push
+        annotations:
+          summary: "producers enqueued notifications for 6h and nothing was sent"
+
+      # Population collapse. A subscription is per device and is removed only by
+      # the user or by a 404/410 from the push service, so a fifth of them
+      # disappearing inside a day is a client-side regression rather than churn.
+      - alert: PushSubscriptionsCollapsing
+        expr: |
+          push_subscriptions_active > 0
+          and delta(push_subscriptions_active[24h]) / push_subscriptions_active < -0.2
+        for: 1h
+        labels:
+          severity: warning
+          stack: push
+        annotations:
+          summary: "active push subscriptions fell by more than 20% in 24h"
