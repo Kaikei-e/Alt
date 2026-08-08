@@ -71,9 +71,9 @@ jobs:
           # pull-based deploy has an image per gate check) plus the runtime
           # services referenced by compose that need versioned images
           # (pki-agent, knowledge-sovereign, dashboard, etc.). Migration
-          # containers, DB containers, and local perf tooling are excluded.
-          # tts-speaker is external (separate GPU host); it is in c2quay
-          # but not here.
+          # containers, DB containers, and local perf tooling are excluded,
+          # as are `kind: external` registry entries, which reach c2quay but
+          # are not built here.
           # <<<SERVICES-REGISTRY-BEGIN>>>
           SERVICES=(
             # --- 13 Pact pacticipants (mirrors c2quay.yml) ---

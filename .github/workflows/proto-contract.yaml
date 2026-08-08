@@ -15,9 +15,7 @@
 # `pact-verify-go` and `pact-verify-python` (matrix). Those two jobs carry the
 # actual publish + verify work; the aggregator keeps the historical required-
 # check name stable so branch-protection does not need to be re-wired on every
-# split. tts-speaker provider verification is not run in CI by design — it is
-# hosted separately and its can-i-deploy record is published via
-# scripts/pact-check.sh against the persistent deploy-host broker.
+# split.
 #
 # Enforcement: see docs/runbooks/pact-broker-ops.md for the branch-protection
 # recipe. PR-level verification here is paired with a local `can-i-deploy`
@@ -51,7 +49,6 @@ on:
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
       - 'alt-butterfly-facade/internal/handler/contract/**'
-      - 'tts-speaker/tests/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
   pull_request:
     branches: [main]
@@ -75,7 +72,6 @@ on:
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
       - 'alt-butterfly-facade/internal/handler/contract/**'
-      - 'tts-speaker/tests/contract/**'
       - 'acolyte-orchestrator/tests/contract/**'
 
 # Superseded PR runs are cancelled; main-branch runs are not, because they
@@ -539,10 +535,6 @@ jobs:
   pact-publish-and-verify:
     # Aggregator that preserves the existing required-status-check name.
     # Actual work happens in pact-verify-go and pact-verify-python (matrix).
-    # tts-speaker's provider verification is intentionally not included: the
-    # service runs on a separate GPU host (see c2quay.yml) and its verification
-    # is handled via manual publish in scripts/pact-check.sh against the
-    # persistent deploy-host broker, not the ephemeral CI broker.
     name: Pact Publish & Provider Verification
     runs-on: ubuntu-latest
     timeout-minutes: 25
