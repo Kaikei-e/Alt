@@ -71,7 +71,9 @@ async def _conn_cm(conn: _FakeConnection) -> AsyncIterator[_FakeConnection]:
 
 
 def _gw(conn: _FakeConnection) -> PostgresJobGateway:
-    return PostgresJobGateway(_FakePool(conn))  # type: ignore[arg-type]
+    # Notifications off — the outbox producer has its own module,
+    # tests/unit/test_notification_outbox_producer.py.
+    return PostgresJobGateway(_FakePool(conn), notification_user_id=None)  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
@@ -97,7 +99,9 @@ async def test_mark_running_sets_status_started_at_and_model_names() -> None:
 async def test_complete_run_updates_reports_latest_successful_run_id_same_transaction() -> None:
     run_id = uuid4()
     report_id = uuid4()
-    conn = _FakeConnection(rows=[(report_id,), None])
+    # The completion also returns finished_at, which the outbox producer uses
+    # as business time (see test_notification_outbox_producer.py).
+    conn = _FakeConnection(rows=[(report_id, datetime(2026, 8, 8, tzinfo=UTC)), None])
     gw = _gw(conn)
 
     await gw.complete_run(run_id)

@@ -3,10 +3,26 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
+from uuid import UUID
 
 from pydantic_settings import BaseSettings
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationRelayConfig:
+    """Everything the relay needs, validated once at startup."""
+
+    user_id: UUID
+    datahub_url: str
+    interval_seconds: float
+    batch_size: int
+    ttl_seconds: int
+    cert_file: str
+    key_file: str
+    ca_file: str
 
 
 def _safe_load_quota_json(raw: str) -> dict[str, object] | None:
@@ -104,7 +120,79 @@ class Settings(BaseSettings):
     hyde_max_chars: int = 600
     hyde_num_predict: int = 400
 
+    # Notification outbox — the producer (report completion) and the relay to
+    # alt-data-hub are one switch: a producer without a relay only grows a
+    # backlog, and a relay without a producer has nothing to forward.
+    notifications_enabled: bool = False
+    # acolyte-db has no owner column — reports are not per-user here — so the
+    # recipient of a report-ready ping is configuration, not a row.
+    notification_user_id: str = ""
+    datahub_url: str = ""
+    notification_relay_interval_seconds: float = 5.0
+    notification_relay_batch_size: int = 20
+    # A report-ready ping nobody delivered within a day is not worth waking a
+    # device for; DataHub expires it instead.
+    notification_ttl_seconds: int = 86400
+
+    # Outbound mTLS material (also read directly by acolyte.infra.mtls_client
+    # for the httpx callers).
+    mtls_enforce: bool = False
+    mtls_cert_file: str = ""
+    mtls_key_file: str = ""
+    mtls_ca_file: str = ""
+
     model_config = {"env_prefix": "", "case_sensitive": False}
+
+    def resolve_notification_relay_config(self) -> NotificationRelayConfig | None:
+        """Validate the relay configuration, or explain exactly what is missing.
+
+        Returns None when notifications are switched off — an answer, not a
+        failure. Everything else raises: a relay that boots without a target,
+        without a recipient or without a client certificate cannot forward
+        anything, and the only symptom would be an outbox that quietly grows.
+        """
+        if not self.notifications_enabled:
+            return None
+
+        try:
+            user_id = UUID(self.notification_user_id)
+        except ValueError as exc:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                f"NOTIFICATIONS_ENABLED=true requires NOTIFICATION_USER_ID to be a UUID "
+                f"(got {self.notification_user_id!r})"
+            ) from exc
+
+        if not self.datahub_url:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                "NOTIFICATIONS_ENABLED=true requires DATAHUB_URL (e.g. https://alt-data-hub:9443)"
+            )
+
+        if not self.mtls_enforce:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                "NOTIFICATIONS_ENABLED=true requires MTLS_ENFORCE=true: alt-data-hub always "
+                "verifies a client certificate, so an unauthenticated relay fails every handshake"
+            )
+
+        for env_name, value in (
+            ("MTLS_CERT_FILE", self.mtls_cert_file),
+            ("MTLS_KEY_FILE", self.mtls_key_file),
+            ("MTLS_CA_FILE", self.mtls_ca_file),
+        ):
+            if not value or not Path(value).is_file():
+                raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                    f"NOTIFICATIONS_ENABLED=true requires a readable {env_name} (got {value!r})"
+                )
+
+        return NotificationRelayConfig(
+            user_id=user_id,
+            datahub_url=self.datahub_url.rstrip("/"),
+            interval_seconds=self.notification_relay_interval_seconds,
+            batch_size=self.notification_relay_batch_size,
+            ttl_seconds=self.notification_ttl_seconds,
+            cert_file=self.mtls_cert_file,
+            key_file=self.mtls_key_file,
+            ca_file=self.mtls_ca_file,
+        )
 
     def get_language_quota(
         self,

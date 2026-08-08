@@ -12,26 +12,31 @@ import structlog
 from psycopg_pool import AsyncConnectionPool
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Mount, Route
 
 import acolyte.gen  # noqa: F401 — must precede generated imports
 from acolyte.config.settings import Settings
 from acolyte.domain.fusion import RRFFusion
+from acolyte.driver.datahub_client import DataHubClientFactory
 from acolyte.gateway.checkpoint_factory import create_checkpointer
+from acolyte.gateway.datahub_notification_gw import DataHubNotificationGateway
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.news_creator_hyde_gw import build_hyde_generator
 from acolyte.gateway.ollama_gw import OllamaGateway
 from acolyte.gateway.postgres_job_gw import PostgresJobGateway
+from acolyte.gateway.postgres_notification_outbox_gw import PostgresNotificationOutboxGateway
 from acolyte.gateway.postgres_report_gw import PostgresReportGateway
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
 from acolyte.gateway.vllm_gw import VllmGateway
 from acolyte.gen.proto.alt.acolyte.v1.acolyte_connect import AcolyteServiceASGIApplication
 from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.infra.logging import configure_logging
+from acolyte.infra.metrics import RelayMetrics
 from acolyte.infra.peer_identity import PeerIdentityMiddleware, allowed_peers_from_env
 from acolyte.usecase.graph.report_graph import build_report_graph
 from acolyte.usecase.reconcile_orphaned_runs_uc import ReconcileOrphanedRunsUsecase
+from acolyte.usecase.relay_notifications_uc import RelayNotificationsUsecase
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -48,10 +53,52 @@ logger = structlog.get_logger(__name__)
 _dsn = settings.resolve_db_dsn()
 _pool = AsyncConnectionPool(_dsn, min_size=settings.db_pool_min_size, max_size=settings.db_pool_max_size, open=False)
 _report_repo = PostgresReportGateway(_pool)
+
+# Notification outbox. One switch drives both halves: the producer writes the
+# row inside the run-completion transaction, the relay forwards it to
+# alt-data-hub. Missing configuration raises here, before the process serves
+# anything — a relay that limps along without a target or a client certificate
+# only shows up as an outbox that quietly grows.
+_relay_config = settings.resolve_notification_relay_config()
+_relay_metrics: RelayMetrics | None = None
+_relay: RelayNotificationsUsecase | None = None
+if _relay_config is None:
+    logger.warning(
+        "notification_outbox_relay_disabled",
+        reason="NOTIFICATIONS_ENABLED is not true — report completions enqueue no notifications",
+    )
+else:
+    _relay_metrics = RelayMetrics()
+    _relay = RelayNotificationsUsecase(
+        PostgresNotificationOutboxGateway(_pool),
+        DataHubNotificationGateway(
+            DataHubClientFactory(
+                base_url=_relay_config.datahub_url,
+                cert_file=_relay_config.cert_file,
+                key_file=_relay_config.key_file,
+                ca_file=_relay_config.ca_file,
+            ),
+            ttl_seconds=_relay_config.ttl_seconds,
+        ),
+        _relay_metrics,
+        worker_id=settings.worker_id,
+        batch_size=_relay_config.batch_size,
+    )
+    logger.info(
+        "notification_outbox_relay_enabled",
+        datahub_url=_relay_config.datahub_url,
+        notification_user_id=str(_relay_config.user_id),
+        batch_size=_relay_config.batch_size,
+        interval_seconds=_relay_config.interval_seconds,
+    )
+
 # Persistent job queue — must stay consistent with PostgresReportGateway.has_active_run
 # (which reads report_runs), or the delete_report in-progress guard is always False
 # after a restart. MemoryJobGateway is test-only (see tests/conftest.py).
-_job_queue = PostgresJobGateway(_pool)
+_job_queue = PostgresJobGateway(
+    _pool,
+    notification_user_id=None if _relay_config is None else _relay_config.user_id,
+)
 
 
 # HTTP client for Ollama and search-indexer (600s timeout for 26B model with 8192 num_predict).
@@ -125,6 +172,17 @@ async def health_endpoint(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "acolyte-orchestrator"})
 
 
+async def metrics_endpoint(request: Request) -> PlainTextResponse:
+    """Prometheus exposition for the notification outbox relay.
+
+    Empty when the relay is off: an absent series says "not running", where a
+    zero would read as a healthy relay with nothing to do.
+    """
+    if _relay_metrics is None:
+        return PlainTextResponse("")
+    return PlainTextResponse(_relay_metrics.render())
+
+
 def create_app() -> Starlette:
     """Create Starlette ASGI application instance."""
     initial_graph = None if settings.checkpoint_enabled else _compile_graph()
@@ -150,6 +208,12 @@ def create_app() -> Starlette:
                 watch_cert_rotation(_mtls_reloader, interval_seconds=30.0),
                 name="mtls-cert-rotation-watch",
             )
+        relay_task: asyncio.Task[None] | None = None
+        if _relay is not None and _relay_config is not None:
+            relay_task = asyncio.create_task(
+                _relay.run_forever(_relay_config.interval_seconds),
+                name="notification-outbox-relay",
+            )
         try:
             if settings.checkpoint_enabled:
                 async with create_checkpointer(_dsn) as checkpointer:
@@ -160,10 +224,11 @@ def create_app() -> Starlette:
                 logger.info("LangGraph checkpointing disabled")
                 yield
         finally:
-            if cert_watch_task is not None:
-                cert_watch_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await cert_watch_task
+            for task in (relay_task, cert_watch_task):
+                if task is not None:
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
             await _http_client.aclose()
             await _pool.close()
             logger.info("Shutting down acolyte-orchestrator")
@@ -185,6 +250,7 @@ def create_app() -> Starlette:
         middleware=[peer_identity_middleware],
         routes=[
             Route("/health", health_endpoint),
+            Route("/metrics", metrics_endpoint),
             Mount(asgi_app.path, app=asgi_app),
         ],
     )

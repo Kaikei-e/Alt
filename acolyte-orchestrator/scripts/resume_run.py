@@ -105,7 +105,14 @@ async def _resume(run_id: str) -> None:
 
     async with AsyncConnectionPool(dsn, min_size=1, max_size=3) as pool:
         repo = PostgresReportGateway(pool)
-        job_gw = PostgresJobGateway(pool)
+        # Same notification decision as main.py: a run resumed here completes
+        # through the same gateway, so it must enqueue the same outbox row.
+        # The service process's relay drains it.
+        relay_config = settings.resolve_notification_relay_config()
+        job_gw = PostgresJobGateway(
+            pool,
+            notification_user_id=None if relay_config is None else relay_config.user_id,
+        )
         report_id, brief_dict = await _resolve_run_brief(job_gw, repo, run_id)
 
         # Mirror main.py: mTLS context + LLM provider selection

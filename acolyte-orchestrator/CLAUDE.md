@@ -66,5 +66,20 @@ Connect-RPC (AcolyteConnectService) → Usecase → Port ← Gateway → Driver
 ## Proto Code Generation
 
 ```bash
-cd proto && buf generate --template buf.gen.acolyte.yaml
+cd proto && buf generate --template buf.gen.acolyte.yaml            # AcolyteService (server)
+PATH=/home/koko/go/bin:$PATH \
+  buf generate --template buf.gen.datahub-acolyte.yaml              # DataHubService (client)
+```
+
+## Notification Outbox
+
+`complete_run` writes a `notification_outbox` row inside the completion
+transaction; a relay task forwards it to `DataHubService/EnqueueNotification`
+over mTLS and exposes `/metrics`. One switch, fail-fast when half-configured:
+
+```
+NOTIFICATIONS_ENABLED=true
+NOTIFICATION_USER_ID=<kratos identity uuid>   # acolyte-db has no owner column
+DATAHUB_URL=https://alt-data-hub:9443
+MTLS_ENFORCE=true                             # alt-data-hub always verifies the client cert
 ```

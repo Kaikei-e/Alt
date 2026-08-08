@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
 
+from acolyte.domain.notification import (
+    REPORT_READY_KIND,
+    report_ready_dedupe_key,
+    report_ready_payload,
+)
 from acolyte.domain.run import ReportJob, ReportRun
 
 if TYPE_CHECKING:
@@ -18,8 +24,13 @@ logger = structlog.get_logger(__name__)
 class PostgresJobGateway:
     """Job queue and run lifecycle backed by PostgreSQL."""
 
-    def __init__(self, pool: AsyncConnectionPool) -> None:
+    def __init__(self, pool: AsyncConnectionPool, *, notification_user_id: UUID | None) -> None:
+        """*notification_user_id* is keyword-required so no caller can leave the
+        outbox unwired by omission: ``None`` is the composition root saying
+        notifications are off (and logging it at startup), not a forgotten
+        argument."""
         self._pool = pool
+        self._notification_user_id = notification_user_id
 
     async def create_run(self, report_id: UUID, target_version_no: int) -> ReportRun:
         async with self._pool.connection() as conn, conn.transaction():
@@ -269,16 +280,45 @@ class PostgresJobGateway:
         async with self._pool.connection() as conn, conn.transaction():
             cur = await conn.execute(
                 "UPDATE report_runs SET run_status = 'succeeded', finished_at = NOW() "
-                "WHERE run_id = %s RETURNING report_id",
+                "WHERE run_id = %s RETURNING report_id, finished_at",
                 [run_id],
             )
             row = await cur.fetchone()
             if row is None:
                 return
+            report_id, finished_at = row[0], row[1]
             await conn.execute(
                 "UPDATE reports SET latest_successful_run_id = %s WHERE report_id = %s",
-                [run_id, row[0]],
+                [run_id, report_id],
             )
+            if self._notification_user_id is not None:
+                await self._enqueue_report_ready(conn, run_id, report_id, finished_at)
+
+    async def _enqueue_report_ready(
+        self,
+        conn: object,
+        run_id: UUID,
+        report_id: UUID,
+        finished_at: object,
+    ) -> None:
+        """Write the outbox row inside the caller's transaction.
+
+        Sharing the commit is the whole guarantee: the notification is enqueued
+        if and only if the completion lands. A separate connection here would
+        be the dual write the outbox exists to remove.
+        """
+        await conn.execute(  # type: ignore[attr-defined]
+            "INSERT INTO notification_outbox (dedupe_key, user_id, kind, payload, occurred_at) "
+            "VALUES (%s, %s, %s, %s::jsonb, %s) "
+            "ON CONFLICT (dedupe_key) DO NOTHING",
+            [
+                report_ready_dedupe_key(run_id),
+                self._notification_user_id,
+                REPORT_READY_KIND,
+                json.dumps(report_ready_payload(report_id), separators=(",", ":"), sort_keys=True),
+                finished_at,
+            ],
+        )
 
     async def fail_run(self, run_id: UUID, failure_code: str, failure_message: str) -> None:
         async with self._pool.connection() as conn:
