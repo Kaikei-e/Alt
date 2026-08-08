@@ -9,7 +9,6 @@ import (
 	"math"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -161,9 +160,17 @@ func (h *Handler) FetchArticleContent(
 			}
 		}
 
-		if strings.Contains(err.Error(), "rate limit wait failed") {
-			return nil, connect.NewError(connect.CodeResourceExhausted,
-				fmt.Errorf("rate limited: please wait before fetching another article from this site"))
+		// The publisher never answered — a slow site, a dead host, or a wait
+		// that ran out. alt-backend is healthy, so this is neither an internal
+		// fault to the client nor an ERROR line for whoever reads the log.
+		var upstreamErr *domain.UpstreamFetchError
+		if errors.As(err, &upstreamErr) {
+			h.logger.WarnContext(ctx, "upstream site did not complete the fetch",
+				"url", upstreamErr.URL,
+				"cause", upstreamErr.Cause,
+				"operation", "FetchArticleContent")
+			return nil, connect.NewError(connect.CodeUnavailable,
+				fmt.Errorf("the source site did not respond; please try again later"))
 		}
 
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleContent")

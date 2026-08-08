@@ -1,6 +1,7 @@
 package articles
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -622,26 +623,85 @@ func (m *mockArticleUsecase) FetchCompliantArticleWithRefresh(ctx context.Contex
 	return m.content, m.articleID, m.ogImageURL, nil
 }
 
-func TestFetchArticleContent_RateLimitWaitFailed_ReturnsResourceExhausted(t *testing.T) {
-	mockUsecase := &mockArticleUsecase{
-		err: fmt.Errorf("fetch failed: rate limit wait failed for %q: %w", "https://zenn.dev/article", context.DeadlineExceeded),
+func TestFetchArticleContent_UpstreamFetchError_ReturnsUnavailableAndLogsWarn(t *testing.T) {
+	tests := []struct {
+		name  string
+		cause error
+	}{
+		{"publisher timed out", context.DeadlineExceeded},
+		{"host slot wait ran out", errors.New("rate: Wait(n=1) would exceed context deadline")},
 	}
-	deps := ArticleHandlerDeps{
-		Article: mockUsecase,
-	}
-	handler := NewHandler(deps, &config.Config{}, slog.Default())
-	ctx := createAuthContext()
 
-	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
-		Url: "https://zenn.dev/article",
-	})
-	_, err := handler.FetchArticleContent(ctx, req)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const articleURL = "https://www3.nhk.or.jp/news/article"
+			mockUsecase := &mockArticleUsecase{
+				err: fmt.Errorf("fetch failed: %w", &domain.UpstreamFetchError{URL: articleURL, Cause: tt.cause}),
+			}
+			var logBuf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			handler := NewHandler(ArticleHandlerDeps{Article: mockUsecase}, &config.Config{}, logger)
+
+			req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{Url: articleURL})
+			_, err := handler.FetchArticleContent(createAuthContext(), req)
+
+			require.Error(t, err)
+			var connectErr *connect.Error
+			require.ErrorAs(t, err, &connectErr)
+			assert.Equal(t, connect.CodeUnavailable, connectErr.Code())
+			assert.Contains(t, connectErr.Message(), "site")
+			// HandleInternalError stamps an error id onto its safe message; a
+			// slow publisher must not go through it.
+			assert.NotContains(t, connectErr.Message(), "Error ID")
+
+			logged := logBuf.String()
+			assert.Contains(t, logged, `"level":"WARN"`)
+			assert.NotContains(t, logged, `"level":"ERROR"`)
+			assert.Contains(t, logged, articleURL)
+			assert.Contains(t, logged, tt.cause.Error())
+		})
+	}
+}
+
+func TestFetchArticleContent_HostSlotBusy_ReturnsResourceExhaustedWithRetryAfter(t *testing.T) {
+	// Our own politeness gate held the turn, so the publisher was never
+	// contacted. The client gets a retryable 429 with timing it can act on —
+	// and nothing that would count as a dependency failure downstream.
+	mockUsecase := &mockArticleUsecase{
+		err: fmt.Errorf("fetch failed: %w", &domain.RateLimitedError{
+			Message:    "This site is busy with another request. Please try again shortly.",
+			RetryAfter: 10 * time.Second,
+		}),
+	}
+	handler := NewHandler(ArticleHandlerDeps{Article: mockUsecase}, &config.Config{}, slog.Default())
+
+	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{Url: "https://www3.nhk.or.jp/news/article"})
+	_, err := handler.FetchArticleContent(createAuthContext(), req)
 
 	require.Error(t, err)
 	var connectErr *connect.Error
 	require.ErrorAs(t, err, &connectErr)
 	assert.Equal(t, connect.CodeResourceExhausted, connectErr.Code())
-	assert.Contains(t, connectErr.Message(), "rate limited")
+	assert.Equal(t, "10", connectErr.Meta().Get("Retry-After"))
+	assert.NotContains(t, connectErr.Message(), "did not respond")
+}
+
+func TestFetchArticleContent_UnclassifiedError_StaysInternal(t *testing.T) {
+	// The text names the old string-sniffed condition, but nothing typed is
+	// wrapped: classification is by type now, and whatever we have not
+	// positively classified is still our fault and must stay loud.
+	mockUsecase := &mockArticleUsecase{
+		err: errors.New(`fetch failed: rate limit wait failed for "https://zenn.dev/article": boom`),
+	}
+	handler := NewHandler(ArticleHandlerDeps{Article: mockUsecase}, &config.Config{}, slog.Default())
+
+	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{Url: "https://zenn.dev/article"})
+	_, err := handler.FetchArticleContent(createAuthContext(), req)
+
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeInternal, connectErr.Code())
 }
 
 func TestFetchArticleContent_ExternalHTTPError_404_ReturnsNotFound(t *testing.T) {

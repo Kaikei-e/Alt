@@ -71,6 +71,27 @@ func (e *RateLimitedError) Error() string {
 	return e.Message
 }
 
+// UpstreamFetchError means a request to a third-party site never completed:
+// its deadline expired, the host did not resolve, the connection failed, or the
+// politeness wait for that host ran out before its turn came.
+//
+// Deliberately distinct from ExternalHTTPError, which is the site answering
+// with a status we did not want. Here there is no answer at all — and nothing
+// in this system is broken, so it must not reach the client as an internal
+// fault or reach the error log as one.
+type UpstreamFetchError struct {
+	URL   string
+	Cause error
+}
+
+func (e *UpstreamFetchError) Error() string {
+	return fmt.Sprintf("upstream fetch did not complete for %q: %v", e.URL, e.Cause)
+}
+
+func (e *UpstreamFetchError) Unwrap() error {
+	return e.Cause
+}
+
 // ExternalHTTPError represents an unexpected HTTP status from an external site.
 type ExternalHTTPError struct {
 	StatusCode int

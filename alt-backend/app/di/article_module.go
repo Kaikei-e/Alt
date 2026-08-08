@@ -28,6 +28,7 @@ import (
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
 	"alt/utils/batch_article_fetcher"
+	"log/slog"
 	"time"
 )
 
@@ -58,14 +59,37 @@ type ArticleModule struct {
 	FetchArticleGateway     *fetch_article_gateway.FetchArticleGateway
 }
 
+// logInteractiveSlotWait states, once at startup, how long a user-facing
+// article fetch will queue for a host. Zero is a legitimate setting — it makes
+// the interactive path queue like a background job — but it is the setting
+// that reintroduces the priority inversion, so it must never be reachable by
+// silence (CLAUDE.md rules 8 and 9).
+func logInteractiveSlotWait(budget time.Duration) {
+	if budget <= 0 {
+		slog.Warn("fetch_article_gateway.interactive_slot_wait_disabled",
+			"reason", "RATE_LIMIT_INTERACTIVE_SLOT_WAIT is zero",
+			"impact", "a user-facing article fetch queues for its turn at a host until its own deadline expires, behind any background job holding that host")
+		return
+	}
+
+	slog.Info("fetch_article_gateway.interactive_slot_wait_enabled", "budget", budget)
+}
+
 func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integration_port.RagIntegrationPort) *ArticleModule {
 	// No alt_db handle. The two that were left here through batch 5 — the Tag
 	// Trail's paged read and RecallRailUsecase's article fallback — became
 	// procedures of their own in ADR-000954 Wave 3 batch 6, which is what let
 	// cmd/backend stop opening a pool at all.
 
-	// Fetch article gateway / usecase
-	fetchArticleGw := fetch_article_gateway.NewFetchArticleGateway(infra.RateLimiter, infra.HTTPClient)
+	// Fetch article gateway / usecase. These are the fetches a user is waiting
+	// on, so they bound how long they queue for a host and hand back a
+	// retry-after instead of spending the request deadline behind the
+	// harvester's collector. cmd/harvester and the batch fetcher build their
+	// own gateways and keep queueing — they have nobody waiting.
+	slotWait := infra.Config.RateLimit.InteractiveSlotWait
+	logInteractiveSlotWait(slotWait)
+	fetchArticleGw := fetch_article_gateway.NewInteractiveFetchArticleGateway(
+		infra.RateLimiter, infra.HTTPClient, slotWait)
 	archiveArticleGw := archive_article_gateway.NewArchiveArticleGateway(infra.ArticleStoreGateway)
 	archiveArticleUC := archive_article_usecase.NewArchiveArticleUsecase(fetchArticleGw, archiveArticleGw)
 

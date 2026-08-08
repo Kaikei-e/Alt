@@ -193,6 +193,21 @@ type RateLimitConfig struct {
 	// mistaken for wiring that silently went missing (rules 8 and 9).
 	CoordinationRedisURL string `json:"coordination_redis_url" env:"HOST_RATE_LIMITER_REDIS_URL" default:""`
 
+	// InteractiveSlotWait bounds how long a request a user is waiting on may
+	// queue for its turn at a host before giving the turn up and telling the
+	// client when to come back. Without it, a Visual Preview swipe queues
+	// behind the harvester's collector on the same publisher and spends its
+	// whole deadline waiting to fail — a background job blocking an
+	// interactive one.
+	//
+	// This never widens the interval above. Giving the turn up early can only
+	// make a publisher see fewer requests, so CLAUDE.md rule 2 is untouched:
+	// the fix is to give up faster, never to fetch more often.
+	//
+	// Zero is the explicit "queue like a background job" setting, logged at
+	// startup so it cannot be confused with wiring that went missing.
+	InteractiveSlotWait time.Duration `json:"interactive_slot_wait" env:"RATE_LIMIT_INTERACTIVE_SLOT_WAIT" default:"2s"`
+
 	// DOS Protection Configuration
 	DOSProtection DOSProtectionConfig `json:"dos_protection"`
 }

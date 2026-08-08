@@ -10,11 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -118,6 +120,169 @@ func TestFetchArticleGateway_NonSuccessStatus_ReturnsExternalHTTPError(t *testin
 				t.Error("expected non-empty URL in ExternalHTTPError")
 			}
 		})
+	}
+}
+
+func TestFetchArticleGateway_UnreachableUpstream_ReturnsUpstreamFetchError(t *testing.T) {
+	tests := []struct {
+		name  string
+		cause error
+	}{
+		{"deadline exceeded", context.DeadlineExceeded},
+		{"dns lookup failed", &net.DNSError{Err: "no such host", Name: "www3.nhk.or.jp", IsNotFound: true}},
+		{"connection refused", &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}},
+		{"connection reset", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rl := rate_limiter.NewHostRateLimiter(1 * time.Millisecond)
+			rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				return nil, tt.cause
+			})
+			httpClient := &http.Client{Timeout: 2 * time.Second, Transport: rt}
+			gw := NewFetchArticleGatewayWithDeps(rl, httpClient, security.NewSSRFValidator())
+
+			_, err := gw.FetchArticleContents(context.Background(), "https://93.184.216.34/article")
+
+			var upstreamErr *domain.UpstreamFetchError
+			if !errors.As(err, &upstreamErr) {
+				t.Fatalf("expected *domain.UpstreamFetchError, got %T: %v", err, err)
+			}
+			if upstreamErr.URL == "" {
+				t.Error("expected the fetched URL to be carried on the error")
+			}
+			if !errors.Is(err, tt.cause) {
+				t.Errorf("expected the transport cause to stay unwrappable, got: %v", err)
+			}
+		})
+	}
+}
+
+// okTransport answers every request with a short HTML body.
+func okTransport() roundTripperFunc {
+	return func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(strings.NewReader("<p>OK</p>")),
+			Header:     http.Header{"Content-Type": []string{"text/html"}},
+		}, nil
+	}
+}
+
+func TestFetchArticleGateway_HostSlotWaitExpires_ReturnsRateLimitedError(t *testing.T) {
+	// One token, then a ten-second refill: the second caller's turn at the host
+	// never comes. Nothing is sent, so this is our own politeness gate working
+	// as designed — a transient "come back shortly", not a failed dependency
+	// and not something the publisher did.
+	rl := rate_limiter.NewHostRateLimiter(10 * time.Second)
+	httpClient := &http.Client{Timeout: 2 * time.Second, Transport: okTransport()}
+	gw := NewFetchArticleGatewayWithDeps(rl, httpClient, security.NewSSRFValidator())
+
+	if _, err := gw.FetchArticleContents(context.Background(), "https://93.184.216.34/first"); err != nil {
+		t.Fatalf("first fetch should consume the host's only token: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := gw.FetchArticleContents(ctx, "https://93.184.216.34/second")
+
+	var rateErr *domain.RateLimitedError
+	if !errors.As(err, &rateErr) {
+		t.Fatalf("expected *domain.RateLimitedError, got %T: %v", err, err)
+	}
+	if rateErr.RetryAfter <= 0 {
+		t.Errorf("expected an actionable Retry-After, got %v", rateErr.RetryAfter)
+	}
+
+	var upstreamErr *domain.UpstreamFetchError
+	if errors.As(err, &upstreamErr) {
+		t.Fatalf("our own queue must not be reported as the publisher failing: %v", err)
+	}
+}
+
+func TestFetchArticleGateway_InteractiveSlotBudget_GivesUpTheTurnPromptly(t *testing.T) {
+	// A caller with a user waiting bounds its own wait. Without the budget this
+	// call would sit on the ten-second refill; with it, it gives the turn up
+	// and hands the client something to act on.
+	rl := rate_limiter.NewHostRateLimiter(10 * time.Second)
+	httpClient := &http.Client{Timeout: 2 * time.Second, Transport: okTransport()}
+	gw := NewFetchArticleGatewayWithDeps(rl, httpClient, security.NewSSRFValidator())
+	gw.slotWaitBudget = 50 * time.Millisecond
+
+	if _, err := gw.FetchArticleContents(context.Background(), "https://93.184.216.34/first"); err != nil {
+		t.Fatalf("first fetch should consume the host's only token: %v", err)
+	}
+
+	start := time.Now()
+	_, err := gw.FetchArticleContents(context.Background(), "https://93.184.216.34/second")
+	elapsed := time.Since(start)
+
+	var rateErr *domain.RateLimitedError
+	if !errors.As(err, &rateErr) {
+		t.Fatalf("expected *domain.RateLimitedError, got %T: %v", err, err)
+	}
+	if rateErr.RetryAfter <= 0 {
+		t.Errorf("expected an actionable Retry-After, got %v", rateErr.RetryAfter)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("expected the caller to give up promptly, waited %v", elapsed)
+	}
+}
+
+func TestFetchArticleGateway_BackgroundCaller_WaitsForItsTurn(t *testing.T) {
+	// No budget: a job with nobody waiting keeps the turn it queued for, which
+	// is what keeps the per-host interval a promise rather than a preference.
+	const interval = 300 * time.Millisecond
+	rl := rate_limiter.NewHostRateLimiter(interval)
+	httpClient := &http.Client{Timeout: 2 * time.Second, Transport: okTransport()}
+	gw := NewFetchArticleGatewayWithDeps(rl, httpClient, security.NewSSRFValidator())
+
+	if _, err := gw.FetchArticleContents(context.Background(), "https://93.184.216.34/first"); err != nil {
+		t.Fatalf("first fetch should consume the host's only token: %v", err)
+	}
+
+	start := time.Now()
+	content, err := gw.FetchArticleContents(context.Background(), "https://93.184.216.34/second")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("expected the background caller to wait for its turn and succeed, got %v", err)
+	}
+	if content == nil || *content == "" {
+		t.Fatal("expected content once the turn came")
+	}
+	if elapsed < interval-50*time.Millisecond {
+		t.Errorf("expected the caller to wait out the host interval, returned after %v", elapsed)
+	}
+}
+
+func TestNewInteractiveFetchArticleGateway_CarriesTheSlotWaitBudget(t *testing.T) {
+	gw := NewInteractiveFetchArticleGateway(
+		rate_limiter.NewHostRateLimiter(1*time.Millisecond),
+		&http.Client{Timeout: 2 * time.Second},
+		3*time.Second,
+	)
+
+	if gw.slotWaitBudget != 3*time.Second {
+		t.Errorf("expected the interactive gateway to bound its slot wait, got %v", gw.slotWaitBudget)
+	}
+}
+
+func TestFetchArticleGateway_SSRFBlocked_IsNotUpstreamFetchError(t *testing.T) {
+	// A refused address is a decision of ours, not a publisher that went quiet.
+	// Keeping it unclassified is what keeps it an internal fault.
+	rl := rate_limiter.NewHostRateLimiter(1 * time.Millisecond)
+	gw := NewFetchArticleGateway(rl, &http.Client{Timeout: 2 * time.Second})
+
+	_, err := gw.FetchArticleContents(context.Background(), "http://169.254.169.254/latest/meta-data/")
+	if err == nil {
+		t.Fatal("expected error for metadata endpoint, got nil")
+	}
+
+	var upstreamErr *domain.UpstreamFetchError
+	if errors.As(err, &upstreamErr) {
+		t.Fatalf("SSRF refusal must not be reported as an upstream fetch failure: %v", err)
 	}
 }
 

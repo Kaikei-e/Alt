@@ -235,7 +235,20 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 		defer fetchCancel()
 		contentPtr, fetchErr := u.articleFetcher.FetchArticleContents(fetchCtx, urlStr)
 		if fetchErr != nil {
-			logger.Logger.ErrorContext(ctx, "Failed to fetch article content", "error", fetchErr, "url", urlStr)
+			// Neither a publisher that never answered nor our own host slot
+			// being busy is a fault of ours; keeping both out of the error log
+			// is what lets the lines left in there still mean something.
+			var upstreamErr *domain.UpstreamFetchError
+			var rateErr *domain.RateLimitedError
+			switch {
+			case errors.As(fetchErr, &upstreamErr):
+				logger.Logger.WarnContext(ctx, "Upstream site did not complete the fetch", "error", fetchErr, "url", urlStr)
+			case errors.As(fetchErr, &rateErr):
+				logger.Logger.InfoContext(ctx, "Host slot busy, asking the client to retry",
+					"url", urlStr, "retry_after", rateErr.RetryAfter)
+			default:
+				logger.Logger.ErrorContext(ctx, "Failed to fetch article content", "error", fetchErr, "url", urlStr)
+			}
 			return nil, fmt.Errorf("fetch failed: %w", fetchErr)
 		}
 		if contentPtr == nil || *contentPtr == "" {

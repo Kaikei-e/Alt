@@ -115,6 +115,19 @@ func (h *HostRateLimiter) getLimiterForHost(host string) *rate.Limiter {
 	return limiter
 }
 
+// RetryAfterFor reports how long a caller that just failed to get its turn
+// should wait before asking again: the host's current interval, which is the
+// base one unless a 429 widened it. Unlike a publisher that went quiet, a host
+// slot knows roughly when it frees, and that timing is worth handing to the
+// client instead of discarding.
+func (h *HostRateLimiter) RetryAfterFor(urlStr string) time.Duration {
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil || parsedURL.Host == "" {
+		return h.interval
+	}
+	return h.slotTTL(parsedURL.Host)
+}
+
 // RecordRateLimitHit increases backoff for a host after a 429 response.
 // It respects the Retry-After duration if provided, otherwise doubles the
 // host's current interval (the base interval on the first hit, then whatever
