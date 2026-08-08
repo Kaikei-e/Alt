@@ -10,7 +10,10 @@ import {
 import { tick, type Snippet } from "svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
-import { isTransientError } from "$lib/utils/errorClassification";
+import {
+	articleContentErrorMessage,
+	isTransientError,
+} from "$lib/utils/errorClassification";
 import {
 	buildSummaryRendererOptions,
 	processArticleFetchResponse,
@@ -301,17 +304,13 @@ async function handleFetchFullArticle(forceRefresh = false) {
 						return;
 				}
 				if (feed.normalizedUrl === targetFeedUrl) {
-					contentError =
-						retryErr instanceof Error
-							? retryErr.message
-							: "Failed to fetch article";
+					contentError = articleContentErrorMessage(retryErr);
 				}
 				return;
 			}
 		}
 
-		contentError =
-			err instanceof Error ? err.message : "Failed to fetch article";
+		contentError = articleContentErrorMessage(err);
 	} finally {
 		isFetchingContent = false;
 		contentAbortController = null;

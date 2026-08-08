@@ -8,6 +8,7 @@ import {
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
+import { articleContentErrorMessage } from "$lib/utils/errorClassification";
 import {
 	X,
 	ExternalLink,
@@ -79,8 +80,7 @@ async function fetchContent(forceRefresh = false) {
 		fetchedResponse = response;
 	} catch (err) {
 		if (article.id !== requestedId || controller.signal.aborted) return;
-		contentError =
-			err instanceof Error ? err.message : "Failed to fetch article";
+		contentError = articleContentErrorMessage(err);
 	} finally {
 		if (article.id === requestedId) {
 			isFetchingContent = false;

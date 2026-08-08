@@ -30,6 +30,7 @@ import {
 	type TtsSource,
 } from "$lib/stores/ttsPlayback.svelte";
 import { getTtsPreferences } from "$lib/stores/ttsPreferences.svelte";
+import { articleContentErrorMessage } from "$lib/utils/errorClassification";
 import { safeArticleHref } from "$lib/utils/safeHref";
 
 const articleId = $derived(page.params.id);
@@ -211,8 +212,7 @@ async function fetchContent(forceRefresh = false) {
 		articleContent = response.content || null;
 		fetchedArticleId = response.article_id || null;
 	} catch (err) {
-		contentError =
-			err instanceof Error ? err.message : "Failed to fetch article";
+		contentError = articleContentErrorMessage(err);
 	} finally {
 		isFetching = false;
 	}

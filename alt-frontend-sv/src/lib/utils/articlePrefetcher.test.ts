@@ -328,6 +328,145 @@ describe("ArticlePrefetcher", () => {
 		});
 	});
 
+	// A 503 from the BFF means its circuit breaker is open (or the backend is
+	// down): nothing the client asks for can be served, whatever the host. The
+	// per-host 429 cooldown would have let every other host through and burned
+	// the whole lookahead ladder against the open breaker.
+	describe("global pause on Unavailable (circuit breaker / 503)", () => {
+		const breakerError = () =>
+			new ConnectError(
+				"Service temporarily unavailable due to circuit breaker",
+				Code.Unavailable,
+			);
+
+		it("pauses prefetch on every host, not just the one that returned 503", async () => {
+			mockedGetContent.mockRejectedValueOnce(breakerError());
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-a"),
+				makeFeed("2", "https://zenn.dev/article-b"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 2);
+			await vi.advanceTimersByTimeAsync(1_100);
+
+			// zenn.dev is a different host: a per-host cooldown would have let it
+			// through on the second rung of the ladder.
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+			expect(mockedGetContent).toHaveBeenCalledWith("https://dev.to/article-a");
+		});
+
+		it("retries an article queued during the pause once it lifts", async () => {
+			mockedGetContent.mockRejectedValueOnce(breakerError());
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Later</p>",
+				article_id: "art-later",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-a"),
+				makeFeed("2", "https://zenn.dev/article-b"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 2);
+			await vi.advanceTimersByTimeAsync(1_100);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
+			// No further triggerPrefetch(): the queued article must come back on
+			// its own rather than latch into the card's error state until the
+			// reader happens to swipe again.
+			await vi.advanceTimersByTimeAsync(35_000);
+
+			await vi.waitFor(() => {
+				expect(prefetcher.getCachedContent("https://zenn.dev/article-b")).toBe(
+					"<p>Later</p>",
+				);
+			});
+		});
+
+		it("resolves ensureContent null during the pause instead of issuing a doomed request", async () => {
+			mockedGetContent.mockRejectedValueOnce(breakerError());
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-a"),
+			];
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(600);
+			await vi.waitFor(() => {
+				expect(mockedGetContent).toHaveBeenCalledTimes(1);
+			});
+
+			await expect(
+				prefetcher.ensureContent("https://unrelated.example/article"),
+			).resolves.toBeNull();
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+		});
+
+		it("serves the visible card again once the pause window has elapsed", async () => {
+			mockedGetContent.mockRejectedValueOnce(breakerError());
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Back</p>",
+				article_id: "art-back",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-a"),
+			];
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(600);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
+			await vi.advanceTimersByTimeAsync(15_000);
+			await expect(
+				prefetcher.ensureContent("https://unrelated.example/article"),
+			).resolves.toBeNull();
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
+			await vi.advanceTimersByTimeAsync(16_000);
+			await expect(
+				prefetcher.ensureContent("https://unrelated.example/article"),
+			).resolves.toBe("<p>Back</p>");
+		});
+
+		it("honors a Retry-After shorter than the default pause", async () => {
+			const meta = new Headers({ "Retry-After": "2" });
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError("breaker open", Code.Unavailable, meta),
+			);
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Back</p>",
+				article_id: "art-back",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-a"),
+			];
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(600);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
+			await vi.advanceTimersByTimeAsync(1_000);
+			await expect(
+				prefetcher.ensureContent("https://unrelated.example/article"),
+			).resolves.toBeNull();
+
+			// Well inside the 30s default, but past the 2s the server asked for.
+			await vi.advanceTimersByTimeAsync(1_500);
+			await expect(
+				prefetcher.ensureContent("https://unrelated.example/article"),
+			).resolves.toBe("<p>Back</p>");
+		});
+	});
+
 	describe("onArticleIdCached callback", () => {
 		it("fires when prefetchContent resolves with an article_id", async () => {
 			const callback = vi.fn();

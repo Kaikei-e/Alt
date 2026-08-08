@@ -10,6 +10,12 @@ const DISMISSED_CLEANUP_DELAY = 3000; // ms
 // ADR-000884: matches the typical reset window of the backend host rate limiter
 // (5 rps). When the server returns Retry-After, that value wins.
 const HOST_COOLDOWN_MS = 30_000;
+// Pause applied to every host after an Unavailable (HTTP 503). Unlike a 429,
+// which is one host's rate limiter, 503 means the BFF's circuit breaker is open
+// or the backend is down — a global condition that no other host can route
+// around. The breaker's own open timeout is 30s, so a comparable client pause
+// keeps the ladder from re-opening it the moment it half-opens.
+const GLOBAL_COOLDOWN_MS = 30_000;
 
 export class ArticlePrefetcher {
 	private contentCache = new Map<string, string | "loading">();
@@ -29,6 +35,8 @@ export class ArticlePrefetcher {
 	private inflight = new Map<string, Promise<string | null>>();
 	// Per-host cooldown (epoch ms when the cooldown ends). Set on 429.
 	private hostCooldown = new Map<string, number>();
+	// Epoch ms when the all-hosts pause ends, 0 when there is none. Set on 503.
+	private globalCooldownUntil = 0;
 	private onContentFetched:
 		| ((feedUrl: string, content: string) => void)
 		| null = null;
@@ -51,6 +59,15 @@ export class ArticlePrefetcher {
 		cb: ((feedUrl: string, articleId: string) => void) | null,
 	): void {
 		this.onArticleIdCached = cb;
+	}
+
+	/** Milliseconds left on the all-hosts pause, 0 when it is not active. */
+	private globalPauseRemaining(): number {
+		if (this.globalCooldownUntil === 0) return 0;
+		const remaining = this.globalCooldownUntil - Date.now();
+		if (remaining > 0) return remaining;
+		this.globalCooldownUntil = 0;
+		return 0;
 	}
 
 	/**
@@ -114,6 +131,8 @@ export class ArticlePrefetcher {
 		const pending = this.inflight.get(feedUrl);
 		if (pending) return pending;
 
+		if (this.globalPauseRemaining() > 0) return Promise.resolve(null);
+
 		let host: string;
 		try {
 			host = new URL(feedUrl).host;
@@ -168,6 +187,7 @@ export class ArticlePrefetcher {
 	): Promise<string | null> {
 		// A cooldown may have been set by a peer chained behind us — re-check
 		// once the chain reaches our turn so we do not issue a doomed call.
+		if (this.globalPauseRemaining() > 0) return null;
 		const cooldownUntil = this.hostCooldown.get(host);
 		if (cooldownUntil !== undefined && Date.now() < cooldownUntil) return null;
 		// Another path may have populated the cache while we waited.
@@ -199,12 +219,17 @@ export class ArticlePrefetcher {
 		} catch (error) {
 			this.contentCache.delete(cacheKey);
 			const connectErr = ConnectError.from(error);
+			const retryAfterMs = parseRetryAfter(
+				connectErr.metadata.get("Retry-After"),
+			);
 			if (connectErr.code === Code.ResourceExhausted) {
-				const retryAfterMs = parseRetryAfter(
-					connectErr.metadata.get("Retry-After"),
+				this.hostCooldown.set(
+					host,
+					Date.now() + (retryAfterMs ?? HOST_COOLDOWN_MS),
 				);
-				const cooldown = retryAfterMs ?? HOST_COOLDOWN_MS;
-				this.hostCooldown.set(host, Date.now() + cooldown);
+			} else if (connectErr.code === Code.Unavailable) {
+				this.globalCooldownUntil =
+					Date.now() + (retryAfterMs ?? GLOBAL_COOLDOWN_MS);
 			}
 			console.warn(
 				`[ArticlePrefetcher] Failed to prefetch content: ${cacheKey}`,
@@ -265,12 +290,31 @@ export class ArticlePrefetcher {
 			if (this.prefetchTimeouts.has(cacheKey)) continue;
 			if (this.hasBodyOrPending(cacheKey)) continue;
 
-			const timeout = setTimeout(() => {
-				this.prefetchTimeouts.delete(cacheKey);
-				void this.prefetchContent(nextFeed);
-			}, PREFETCH_DELAY * i);
-			this.prefetchTimeouts.set(cacheKey, timeout);
+			this.schedulePrefetch(nextFeed, cacheKey, PREFETCH_DELAY * i);
 		}
+	}
+
+	private schedulePrefetch(
+		feed: RenderFeed,
+		cacheKey: string,
+		delay: number,
+	): void {
+		const timeout = setTimeout(() => {
+			this.prefetchTimeouts.delete(cacheKey);
+
+			// The breaker is open for every host, so this rung of the ladder
+			// cannot succeed. Re-arm rather than drop it: dropping left the
+			// queued articles unfetched until the reader happened to swipe again,
+			// which is what latched their cards into the error state.
+			const pause = this.globalPauseRemaining();
+			if (pause > 0) {
+				this.schedulePrefetch(feed, cacheKey, pause + PREFETCH_DELAY);
+				return;
+			}
+
+			void this.prefetchContent(feed);
+		}, delay);
+		this.prefetchTimeouts.set(cacheKey, timeout);
 	}
 
 	/**
