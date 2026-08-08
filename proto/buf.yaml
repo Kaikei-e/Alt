@@ -8,22 +8,25 @@ lint:
 breaking:
   use:
     - FILE
-  # Two ignores, both for paths that no longer exist.
+  # Three ignores, all for paths that no longer exist.
   #
   # ADR-000955 moved alt/datahub to services/datahub — alt.* is the public,
   # browser-reachable root and services.* is east-west, and DataHubService is
   # mTLS-only — and deleted alt/preprocessor, a dead duplicate of
-  # services/preprocessor with no callers. FILE_NO_DELETE reports both against
-  # the main baseline until this branch is main.
+  # services/preprocessor with no callers. alt/tts went with the tts-speaker
+  # retirement: the service, its provider verification and every consumer of
+  # alt.tts.v1 are gone. FILE_NO_DELETE reports all three against the main
+  # baseline until this branch is main.
   #
-  # Nothing lives at either path, so neither entry can conceal a future break:
-  # `breaking.ignore` exempts a file from every breaking rule, which is why the
-  # three entries the Knowledge Loop retire ([[000940]]) once carried were
-  # wrong — they named files that still existed and hid real field-number
+  # Nothing lives at any of the three paths, so no entry can conceal a future
+  # break: `breaking.ignore` exempts a file from every breaking rule, which is
+  # why the three entries the Knowledge Loop retire ([[000940]]) once carried
+  # were wrong — they named files that still existed and hid real field-number
   # changes on live contracts for months.
   #
-  # Both entries do nothing the moment this lands on main and the baseline
+  # All three do nothing the moment this lands on main and the baseline
   # matches. Delete them in the first PR after the merge.
   ignore:
     - alt/datahub/v1/datahub.proto
     - alt/preprocessor/v2/preprocessor.proto
+    - alt/tts/v1/tts.proto

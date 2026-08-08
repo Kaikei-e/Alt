@@ -3,7 +3,6 @@ inputs:
   - directory: .
     paths:
       - alt
-      - alt/tts
       - alt/knowledge_home
       - alt/knowledge_trail
       - alt/admin_monitor
