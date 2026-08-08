@@ -77,13 +77,8 @@ graph LR
     KR["kratos"]
   end
 
-  subgraph TTS
-    TS["tts-speaker"]
-  end
-
   FE_SV -->|"Connect-RPC (JSON)<br/>Proto Conformance"| BF
   BF -->|"Connect-RPC (h2c)<br/>✅ Pact CDC"| AB
-  BF -->|"Connect-RPC (HTTP/1.1)<br/>✅ Pact CDC"| TS
   AH -->|"HTTP/REST<br/>✅ Pact CDC"| KR
   AB -->|"Connect-RPC (Proto)<br/>✅ Buf + Pact"| PP
   PP -->|"HTTP/REST<br/>✅ Pact CDC"| NC
@@ -166,10 +161,8 @@ Consumer（呼び出し側）が期待するリクエスト/レスポンス形�
 | — | recap-subworker (Provider) | — | — | `recap-subworker/tests/contract/test_provider_verification.py` |
 | — | tag-generator (Provider) | — | — | `tag-generator/app/tests/contract/test_provider_verification.py` |
 | alt-butterfly-facade | alt-backend | Connect-RPC (h2c proxy) | 3 | `alt-butterfly-facade/internal/handler/contract/backend_consumer_test.go` |
-| alt-butterfly-facade | tts-speaker | Connect-RPC (HTTP/1.1) | 2 | `alt-butterfly-facade/internal/handler/contract/tts_consumer_test.go` |
 | auth-hub | kratos | HTTP/REST | 3 | `auth-hub/internal/adapter/gateway/contract/kratos_consumer_test.go` |
 | — | alt-backend (Provider) | — | — | `alt-backend/app/driver/contract/provider_test.go` |
-| — | tts-speaker (Provider) | — | — | `tts-speaker/tests/contract/test_provider_verification.py` |
 
 #### Pact Consumer テスト（Go）
 
@@ -465,5 +458,5 @@ proto/
 - **Pact Broker**: `compose/pact.yaml` default profile で常時稼働 ([[000736]])。Docker secret 認証、Restic バックアップ対象
 - **CI gate**: `.github/workflows/proto-contract.yaml` が PR 必須 gate、`release-gate.yaml` が deploy 前に `can-i-deploy` を強制
 - **pact-check.sh**: 15 検証 (consumer + provider) が 0 failed で pass
-- **Provider coverage**: alt-backend (3 consumers), search-indexer (3 consumers), mq-hub (1 async), news-creator (4), recap-subworker (1), tag-generator (2), tts-speaker (1)
+- **Provider coverage**: alt-backend (3 consumers), search-indexer (3 consumers), mq-hub (1 async), news-creator (4), recap-subworker (1), tag-generator (2)
 - **Auth**: REST `/v1/search` は X-Service-Token (Phase C で撤去予定)、Connect-RPC は peer-identity allowlist ([[000737]])

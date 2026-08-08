@@ -1,6 +1,6 @@
 # Inference Topology — Context Glossary
 
-GPU 推論ワークロード (要約 / embedding / rerank / Acolyte / TTS) を **どのマシンで動かしてよいか**、
+GPU 推論ワークロード (要約 / embedding / rerank / Acolyte) を **どのマシンで動かしてよいか**、
 そしてリモートが不在のとき機能がどう振る舞うべきかの正準語を固定する境界。
 どのモデルをどこに置くかの個別決定は持たない (それは ADR / wiki/decisions/inference 側)。
 

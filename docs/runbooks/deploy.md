@@ -79,7 +79,7 @@ ADR が無い通常のドキュメント変更だけの場合は `--only` で当
 1. **Infra** `step-ca`
 2. **Auth** `kratos`, `auth-hub`
 3. **Core** `alt-backend`, `search-indexer`, `mq-hub`, `pre-processor`
-4. **Workers/AI** `news-creator`, `tag-generator`, `recap-*`, `acolyte-orchestrator`, `rag-orchestrator`, `tts-speaker`
+4. **Workers/AI** `news-creator`, `tag-generator`, `recap-*`, `acolyte-orchestrator`, `rag-orchestrator`
 5. **Edge** `alt-butterfly-facade`, `alt-frontend-sv`, `nginx`
 
 DB (`db`, `kratos-db`, `pre-processor-db`, `rag-db`, `meilisearch`, `clickhouse`, `pact-db`) は **recreate 対象外**。schema 変更は Atlas (`cd migrations-atlas && atlas migrate apply`) で単独実行する (後述)。

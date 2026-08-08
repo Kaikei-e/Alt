@@ -39,7 +39,6 @@
   - [5.2 tag-generator (Python) — Tag Generation](#52-tag-generator-python--tag-generation)
   - [5.3 pre-processor (Go) — Article Preprocessing](#53-pre-processor-go--article-preprocessing)
   - [5.4 search-indexer (Go) — Search Index](#54-search-indexer-go--search-index)
-  - [5.5 tts-speaker (Python) — Japanese TTS](#55-tts-speaker-python--japanese-tts)
   - [5.6 rerank-server (Python) — Reranking](#56-rerank-server-python--reranking)
 - [6. Recap and RAG Pipeline](#6-recap-and-rag-pipeline)
   - [6.1 Recap Pipeline Overview](#61-recap-pipeline-overview)
@@ -80,7 +79,6 @@ Key features:
 - **Full-Text Search**: Japanese-capable search using Meilisearch + MeCab tokenizer
 - **Recap Reports**: AI-curated periodic reports for 7-day and 3-day windows
 - **RAG Question Answering**: Article-based answer generation using pgvector vector search + LLM
-- **TTS Speech Synthesis**: Japanese article read-aloud using Qwen3-TTS-12Hz-0.6B-CustomVoice (Apache 2.0)
 - **Observability**: High-performance log collection and analysis based on SIMD parsers
 
 ### 1.2 Technology Stack
@@ -88,7 +86,7 @@ Key features:
 | Language | Version | Target Services | Test Command |
 |----------|---------|-----------------|--------------|
 | Go | 1.24+ / 1.25+ | alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, altctl, alt-butterfly-facade, rag-orchestrator, pre-processor-sidecar | `go test ./...` |
-| Python | 3.11+ ~ 3.13+ | news-creator, tag-generator, metrics, recap-subworker, recap-evaluator, dashboard, tts-speaker, rerank-server | `uv run pytest` |
+| Python | 3.11+ ~ 3.13+ | news-creator, tag-generator, metrics, recap-subworker, recap-evaluator, dashboard, rerank-server | `uv run pytest` |
 | Rust | 1.87+ | rask-log-aggregator, rask-log-forwarder, recap-worker | `cargo test` |
 | TypeScript | SvelteKit 2.x / Next.js 15 | alt-frontend-sv, alt-frontend | `pnpm test` / `bun test` |
 | Deno | 2.x | auth-token-manager, alt-perf | `deno test` |
@@ -158,7 +156,6 @@ graph TB
         TagGen[tag-generator :9400]
         PreProc[pre-processor :9200]
         SearchIdx[search-indexer :9300]
-        TTS[tts-speaker :9700]
     end
 
     subgraph "Recap Pipeline"
@@ -220,7 +217,6 @@ graph TB
 | tag-generator | Python 3.14+ | 9400 | REST | Tag generation |
 | pre-processor | Go 1.26+ | 9200, 9202 | REST, Connect-RPC | Article preprocessing |
 | search-indexer | Go 1.26+ | 9300, 9301 | REST, Connect-RPC | Search index |
-| tts-speaker | Python 3.14 | 9700 | Connect-RPC | Japanese TTS |
 | rerank-server | Python | 8080 | REST | Reranking |
 | recap-worker | Rust 1.94+ | 9005 | HTTP | Recap 8-stage pipeline |
 | recap-subworker | Python 3.14+ | 8002 | HTTP | ML clustering |
@@ -793,7 +789,6 @@ All service `.proto` definitions are stored in `proto/alt/`.
 | `augur/v2/augur.proto` | AugurService |
 | `morning_letter/v2/morning_letter.proto` | MorningLetterService |
 | `recap/v2/recap.proto` | RecapService |
-| `tts/v1/tts.proto` | TTSService |
 | `mqhub/v1/mqhub.proto` | MQHubService |
 
 **Common Message Types:**
@@ -926,30 +921,6 @@ Provides document indexing to Meilisearch and Japanese full-text search.
 - Tag → morpheme-level synonym conversion
 
 **Batch Size:** 200 documents/batch, 15-second timeout/operation
-
-### 5.5 tts-speaker (Python) — Japanese TTS
-
-Japanese text-to-speech synthesis using Qwen3-TTS-12Hz-0.6B-CustomVoice (Apache 2.0).
-
-**Voice List:**
-
-| ID | Name | Gender |
-|----|------|--------|
-| `qwen-ja-1` | JA Voice 1 | Female (default) |
-| `qwen-ja-2` | JA Voice 2 | Female |
-| `qwen-ja-3` | JA Voice 3 | Female |
-
-**Audio Specification:** 24kHz float32 WAV (dynamic — value reported in `sampleRate`)
-
-**GPU Support:** ROCm 7.2 (AMD), with CPU fallback. `attn_implementation="sdpa"` — `flash-attn` is not used.
-
-**Endpoints:**
-
-| Path | Method | Description |
-|------|--------|-------------|
-| `/alt.tts.v1.TTSService/Synthesize` | POST | Text → WAV |
-| `/alt.tts.v1.TTSService/ListVoices` | GET | Available voice list |
-| `/health` | GET | Model status + device info |
 
 ### 5.6 rerank-server (Python) — Reranking
 
@@ -1506,7 +1477,6 @@ E2E performance measurement using Astral browser automation.
 | 9400 | tag-generator | HTTP |
 | 9500 | mq-hub | Connect-RPC |
 | 9600 | rask-log-aggregator | HTTP |
-| 9700 | tts-speaker | Connect-RPC |
 | 11434 | news-creator / knowledge-embedder | HTTP |
 | 11435 | news-creator-backend / knowledge-augur | HTTP |
 

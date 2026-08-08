@@ -8,7 +8,6 @@ _Last reviewed: July 7, 2026_
 - Backend for Frontend (BFF) サービス。`alt-frontend-sv` と `alt-backend` 間の透過的プロキシ
 - HTTP/2 (h2c) を使用した Connect-RPC リクエストの中継
 - JWT トークン検証による認証ゲートウェイ
-- TTS サービスへの Connect-RPC ルーティング (HTTP/1.1)
 - レスポンスキャッシュ、リクエスト重複排除、サーキットブレーカー、エラー正規化
 
 ## Architecture & Flow
@@ -33,13 +32,11 @@ flowchart LR
     FE[alt-frontend-sv :4173]
     BFF[alt-butterfly-facade :9200]
     BE[alt-backend :9101]
-    TTS[tts-speaker]
     AH[auth-hub]
 
     FE -->|"X-Alt-Backend-Token"| BFF
     BFF -->|"JWT検証"| BFF
     BFF -->|"HTTP/2 h2c"| BE
-    BFF -->|"HTTP/1.1 + X-Service-Token"| TTS
     AH -.->|"JWT発行"| FE
 ```
 
@@ -47,7 +44,6 @@ flowchart LR
 - `GET /health` - ヘルスチェック
 - `GET /v1/bff/stats` - BFF 機能統計 (キャッシュ hit/miss、サーキットブレーカー状態)
 - `POST /v1/aggregate` - 複数クエリ並列集約 (最大 10 クエリ)
-- `/alt.tts.v1.TTSService/*` - TTS サービスへのルーティング (TTS_CONNECT_URL 設定時のみ)
 - `/alt.knowledge_home.v1.KnowledgeHomeAdminService/*` - Knowledge Home Admin API routing to alt-backend (service-token authentication)
 - `/* (proxy)` - All other Connect-RPC requests forwarded to alt-backend
 
@@ -57,7 +53,6 @@ flowchart LR
 - `/alt.feeds.v2.FeedService/StreamSummarize`
 - `/alt.augur.v2.AugurService/StreamChat`
 - `/alt.morning_letter.v2.MorningLetterService/StreamChat`
-- `/alt.tts.v1.TTSService/SynthesizeStream`
 - `/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates`
 - `/alt.knowledge_home.v1.KnowledgeHomeService/StreamRecallRailUpdates`
 
@@ -75,8 +70,6 @@ flowchart LR
 | `BACKEND_TOKEN_AUDIENCE` | alt-backend | 期待する JWT audience |
 | `BFF_REQUEST_TIMEOUT` | 30s | 単発リクエストタイムアウト |
 | `BFF_STREAMING_TIMEOUT` | 5m | ストリーミングタイムアウト |
-| `TTS_CONNECT_URL` | (empty) | TTS サービス URL (例: http://tts-external:9700)。空の場合 TTS ルーティング無効 |
-| `TTS_SERVICE_SECRET` | (empty) | TTS サービス認証用共有シークレット (X-Service-Token ヘッダーに設定) |
 | `AUTH_HUB_INTERNAL_URL` | http://auth-hub:8888 | Auth Hub 内部 URL |
 | `LOG_LEVEL` | info | ログレベル (debug, info, warn, error) |
 
@@ -119,17 +112,6 @@ type BackendClaims struct {
 | `SessionID` | string | セッション ID (JWT sid claim) |
 | `LoginAt` | time.Time | ログイン日時 (JWT iat から取得) |
 | `ExpiresAt` | time.Time | 有効期限 (JWT exp から取得) |
-
-## TTS Integration
-
-TTS (Text-to-Speech) サービスへの Connect-RPC リクエストを中継する。
-
-- **ルーティング**: `/alt.tts.v1.TTSService/` プレフィックスのリクエストを `TTS_CONNECT_URL` へ転送
-- **プロトコル**: HTTP/1.1 (tts-speaker の uvicorn が h2c 非対応のため)
-- **認証**: `TTS_SERVICE_SECRET` が設定されている場合、`X-Service-Token` ヘッダーを付与
-- **タイムアウト**: `BFF_STREAMING_TIMEOUT` (デフォルト 5分) を使用 (音声合成は時間がかかるため)
-- **有効化条件**: `TTS_CONNECT_URL` が空でない場合のみルーティング登録
-- **Compose 設定**: `compose/bff.yaml` で `TTS_CONNECT_URL` と `TTS_SERVICE_SECRET` を環境変数として渡し、`extra_hosts` で `tts-external` を解決
 
 ## Request Deduplication
 
@@ -243,6 +225,5 @@ Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
 - `replace` ディレクティブは使用せず、BFF 独自の型を定義
 - h2c (HTTP/2 cleartext) が Connect-RPC ストリーミングに必須
 - JWT トークンは auth-hub が発行、BFF で検証後バックエンドへ転送
-- TTS ルーティングは HTTP/1.1 (uvicorn が h2c 非対応)
 - BFF 機能フラグが全て無効の場合、レガシー ProxyHandler にフォールバック
 - Dockerfile は `gcr.io/distroless/static-debian12:nonroot` ベース、EXPOSE 9200

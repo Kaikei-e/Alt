@@ -105,7 +105,6 @@ flowchart TB
         recap-worker["recap-worker<br/>(Tokio / Rust 1.94+)"]
         recap-subworker["recap-subworker<br/>(FastAPI / Python)"]
         recap-evaluator["recap-evaluator<br/>(FastAPI / Python)"]
-        tts-speaker["tts-speaker<br/>(Python TTS Service)"]
         dashboard-streamlit["dashboard<br/>(Streamlit / Python)"]
     end
 
@@ -147,7 +146,6 @@ flowchart TB
     alt-butterfly-facade -->|"Connect-RPC"| acolyte-orchestrator
     acolyte-orchestrator --> acolyte-db & search-indexer & news-creator
     alt-backend --> rag-orchestrator --> rag-db & search-indexer
-    alt-butterfly-facade -.-> tts-speaker
 
     %% Recap batch execution
     recap-worker --> recap-db & recap-subworker & news-creator
@@ -157,7 +155,7 @@ flowchart TB
     rask-log-forwarder --> rask-log-aggregator --> clickhouse
 ```
 
-Six layers: **Edge & Auth** (plecto-proxy, auth-hub, Kratos) · **Product Surface** (SvelteKit frontend, BFF) · **Core Platform** (alt-backend, mq-hub, knowledge-sovereign) · **Ingestion & Enrichment** (pre-processor, news-creator, tag-generator, search-indexer) · **Intelligence** (rag-orchestrator, acolyte-orchestrator, recap-worker, tts-speaker) · **Observability & Data** (PostgreSQL x7, Meilisearch, ClickHouse, Redis x2, Grafana, Prometheus)
+Six layers: **Edge & Auth** (plecto-proxy, auth-hub, Kratos) · **Product Surface** (SvelteKit frontend, BFF) · **Core Platform** (alt-backend, mq-hub, knowledge-sovereign) · **Ingestion & Enrichment** (pre-processor, news-creator, tag-generator, search-indexer) · **Intelligence** (rag-orchestrator, acolyte-orchestrator, recap-worker) · **Observability & Data** (PostgreSQL x7, Meilisearch, ClickHouse, Redis x2, Grafana, Prometheus)
 
 Services communicate via REST, Connect-RPC (Protobuf), and Redis Streams. For the full service reference with ports, health endpoints, and dependency graph, see [`docs/services/MICROSERVICES.md`](./docs/services/MICROSERVICES.md).
 

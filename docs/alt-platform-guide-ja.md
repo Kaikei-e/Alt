@@ -39,7 +39,6 @@
   - [5.2 tag-generator (Python) — タグ生成](#52-tag-generator-python--タグ生成)
   - [5.3 pre-processor (Go) — 記事前処理](#53-pre-processor-go--記事前処理)
   - [5.4 search-indexer (Go) — 検索インデックス](#54-search-indexer-go--検索インデックス)
-  - [5.5 tts-speaker (Python) — 日本語 TTS](#55-tts-speaker-python--日本語-tts)
   - [5.6 rerank-server (Python) — リランキング](#56-rerank-server-python--リランキング)
 - [6. Recap・RAG パイプライン](#6-recaprag-パイプライン)
   - [6.1 Recap パイプライン概要](#61-recap-パイプライン概要)
@@ -80,7 +79,6 @@ Alt は AI 拡張型 RSS ナレッジプラットフォームである。RSS フ
 - **全文検索**: Meilisearch + MeCab トークナイザーによる日本語対応検索
 - **Recap レポート**: 7 日間・3 日間の AI キュレーション定期レポート
 - **RAG 質問応答**: pgvector ベクトル検索 + LLM による記事ベースの回答生成
-- **TTS 音声合成**: Qwen3-TTS-12Hz-0.6B-CustomVoice (Apache 2.0) による日本語記事の読み上げ
 - **オブザーバビリティ**: SIMD パーサーベースの高速ログ収集・分析
 
 ### 1.2 技術スタック一覧
@@ -88,7 +86,7 @@ Alt は AI 拡張型 RSS ナレッジプラットフォームである。RSS フ
 | 言語 | バージョン | 対象サービス | テストコマンド |
 |------|-----------|-------------|--------------|
 | Go | 1.24+ / 1.25+ | alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, altctl, alt-butterfly-facade, rag-orchestrator, pre-processor-sidecar | `go test ./...` |
-| Python | 3.11+ ~ 3.13+ | news-creator, tag-generator, metrics, recap-subworker, recap-evaluator, dashboard, tts-speaker, rerank-server | `uv run pytest` |
+| Python | 3.11+ ~ 3.13+ | news-creator, tag-generator, metrics, recap-subworker, recap-evaluator, dashboard, rerank-server | `uv run pytest` |
 | Rust | 1.87+ | rask-log-aggregator, rask-log-forwarder, recap-worker | `cargo test` |
 | TypeScript | SvelteKit 2.x / Next.js 15 | alt-frontend-sv, alt-frontend | `pnpm test` / `bun test` |
 | Deno | 2.x | auth-token-manager, alt-perf | `deno test` |
@@ -158,7 +156,6 @@ graph TB
         TagGen[tag-generator :9400]
         PreProc[pre-processor :9200]
         SearchIdx[search-indexer :9300]
-        TTS[tts-speaker :9700]
     end
 
     subgraph "Recap パイプライン"
@@ -220,7 +217,6 @@ graph TB
 | tag-generator | Python 3.14+ | 9400 | REST | タグ生成 |
 | pre-processor | Go 1.26+ | 9200, 9202 | REST, Connect-RPC | 記事前処理 |
 | search-indexer | Go 1.26+ | 9300, 9301 | REST, Connect-RPC | 検索インデックス |
-| tts-speaker | Python 3.14 | 9700 | Connect-RPC | 日本語 TTS |
 | rerank-server | Python | 8080 | REST | リランキング |
 | recap-worker | Rust 1.94+ | 9005 | HTTP | Recap 8 ステージパイプライン |
 | recap-subworker | Python 3.14+ | 8002 | HTTP | ML クラスタリング |
@@ -793,7 +789,6 @@ Next.js 15 + React 19 + Chakra UI によるレガシーフロントエンド。�
 | `augur/v2/augur.proto` | AugurService |
 | `morning_letter/v2/morning_letter.proto` | MorningLetterService |
 | `recap/v2/recap.proto` | RecapService |
-| `tts/v1/tts.proto` | TTSService |
 | `mqhub/v1/mqhub.proto` | MQHubService |
 
 **共通メッセージ型:**
@@ -926,30 +921,6 @@ Meilisearch への文書インデックスと日本語全文検索を提供。
 - タグ → 形態素レベルシノニム変換
 
 **バッチサイズ:** 200 ドキュメント/バッチ、15 秒タイムアウト/操作
-
-### 5.5 tts-speaker (Python) — 日本語 TTS
-
-Qwen3-TTS-12Hz-0.6B-CustomVoice (Apache 2.0) による日本語テキスト音声合成。
-
-**音声一覧:**
-
-| ID | 名前 | 性別 |
-|----|------|------|
-| `qwen-ja-1` | JA Voice 1 | 女性 (デフォルト) |
-| `qwen-ja-2` | JA Voice 2 | 女性 |
-| `qwen-ja-3` | JA Voice 3 | 女性 |
-
-**音声仕様:** 24kHz float32 WAV (動的、`sampleRate` フィールドで通知)
-
-**GPU 対応:** ROCm 7.2 (AMD)、CPU フォールバック対応。`attn_implementation="sdpa"` — `flash-attn` は使用しない。
-
-**エンドポイント:**
-
-| パス | メソッド | 説明 |
-|------|---------|------|
-| `/alt.tts.v1.TTSService/Synthesize` | POST | テキスト → WAV |
-| `/alt.tts.v1.TTSService/ListVoices` | GET | 利用可能音声一覧 |
-| `/health` | GET | モデル状態 + デバイス情報 |
 
 ### 5.6 rerank-server (Python) — リランキング
 
@@ -1506,7 +1477,6 @@ Astral ブラウザ自動化による E2E パフォーマンス測定。
 | 9400 | tag-generator | HTTP |
 | 9500 | mq-hub | Connect-RPC |
 | 9600 | rask-log-aggregator | HTTP |
-| 9700 | tts-speaker | Connect-RPC |
 | 11434 | news-creator / knowledge-embedder | HTTP |
 | 11435 | news-creator-backend / knowledge-augur | HTTP |
 

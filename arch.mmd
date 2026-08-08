@@ -69,13 +69,11 @@ flowchart TD
     subgraph AI["AI / LLM"]
         NC[news-creator :11434]:::ai
         NCB[news-creator-backend :11435]:::ai
-        TTS[tts-speaker :9700]:::ai
         RedisCache[(redis-cache :6379)]:::data
     end
     NC --> NCB
     NC --> RedisCache
     PP --> NC
-    BFF -.->|Connect-RPC| TTS
     ATM -.->|OAuthトークン| PPSidecar
 
     subgraph RC["Recapパイプライン"]

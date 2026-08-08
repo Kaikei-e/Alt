@@ -12,7 +12,7 @@ Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームで�
 
 ### Core Services
 Host ports below are what the stacks included by `compose/compose.yaml` publish, plus
-the optional `compose.augur.yaml` / `compose.tts.yaml` overlays. Most are bound to
+the optional `compose.augur.yaml` overlay. Most are bound to
 `127.0.0.1` and so answer on the Docker host only — east-west callers use the container
 DNS name and the in-container port. The exceptions are exactly the rows flagged
 `[all NICs]` in [Quick Reference - Ports](#quick-reference---ports), plus `pact-broker`,
@@ -57,7 +57,6 @@ all interfaces and are out of scope here.
 | search-indexer | Go 1.26+ | 9300, 9301 | workers.yaml | `/search-indexer healthcheck` |
 | tag-generator | Python 3.14+ (FastAPI) | 9400 | workers.yaml | `/health` |
 | news-creator | Python 3.14+ (FastAPI + Ollama) | 11434 | ai.yaml | `/health` |
-| tts-speaker | Python 3.12 (Starlette + Qwen3-TTS-12Hz-0.6B-CustomVoice) | 9700 | compose.tts.yaml | `/health` |
 | knowledge-augur | Ollama (Swallow-8B) | 11435 | compose.augur.yaml | `/api/tags` |
 
 ### Auth Services
@@ -152,7 +151,6 @@ all interfaces and are out of scope here.
 | pki.yaml | step-ca, step-ca-bootstrap, per-service pki-agent sidecars | - |
 | logging.yaml | rask-log-aggregator, 16x rask-log-forwarder | logging |
 | perf.yaml | alt-perf | perf |
-| compose.tts.yaml | tts-speaker | standalone |
 | compose.augur.yaml | knowledge-augur, knowledge-augur-volume-init, knowledge-embedder, knowledge-embedder-volume-init | standalone |
 
 ---
@@ -218,10 +216,6 @@ flowchart TB
         acolyte-orchestrator
     end
 
-    subgraph TTS["TTS"]
-        tts-speaker
-    end
-
     subgraph Augur["Knowledge Augur"]
         knowledge-augur
     end
@@ -260,9 +254,6 @@ flowchart TB
     pre-processor --> alt-data-hub & redis-streams
     news-creator --> redis-cache
     mq-hub --> redis-streams
-
-    %% BFF -> TTS
-    alt-butterfly-facade -.-> tts-speaker
 
     %% Pre-processor -> pre-processor-db
     pre-processor --> pre-processor-db
@@ -322,9 +313,6 @@ flowchart TB
 
     %% Styling - Acolyte (lime)
     style acolyte-orchestrator fill:#f0f4c3,stroke:#afb42b,color:#827717,stroke-width:2px
-
-    %% Styling - TTS (cyan)
-    style tts-speaker fill:#e0f7fa,stroke:#00838f,color:#004d40,stroke-width:2px
 
     %% Styling - Knowledge Augur (deep orange)
     style knowledge-augur fill:#fbe9e7,stroke:#e64a19,color:#bf360c,stroke-width:2px
@@ -391,7 +379,6 @@ and nowhere else. `(→ N)` is the in-container port when it differs from the ho
 9500    → mq-hub
 9510    → knowledge-sovereign (RPC, → 9500)
 9511    → knowledge-sovereign (metrics/health, → 9501)
-9700    → tts-speaker (compose.tts.yaml)             [all NICs]
 11434   → news-creator (Ollama API)
 11435   → news-creator-backend (Ollama, ai.yaml)
 11435   → knowledge-augur (compose.augur.yaml, → 11434)  [all NICs, conflicts with the row above]
@@ -525,7 +512,6 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 | news_creator_models | news-creator | Ollama models |
 | pre_processor_db_data | pre-processor-db | Pre-processor feed data |
 | oauth_token_data | auth-token-manager | OAuth2 tokens |
-| tts_models | tts-speaker | Qwen3-TTS model + tokenizer cache |
 | knowledge_augur_models | knowledge-augur | Ollama Swallow models |
 
 ---
@@ -581,7 +567,6 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 | acolyte-orchestrator | [docs/acolyte-orchestrator.md](./acolyte-orchestrator.md) |
 | acolyte-db | [docs/acolyte-db.md](./acolyte-db.md) |
 | rask-log-aggregator | [docs/rask-log-aggregator.md](./rask-log-aggregator.md) |
-| tts-speaker | [docs/tts-speaker.md](./tts-speaker.md) |
 | knowledge-augur | [docs/knowledge-augur.md](./knowledge-augur.md) |
 | rask-log-forwarder | [docs/rask-log-forwarder.md](./rask-log-forwarder.md) |
 | rask-logging-architecture | [docs/rask-logging-architecture.md](./rask-logging-architecture.md) |
@@ -600,7 +585,7 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 - Service-to-service auth: mTLS のみ。`X-Service-Token` / `SERVICE_SECRET` は [[000743]] で全サービスから撤去済み
 - Event-driven via Redis Streams + mq-hub
 - **alt-data-hub is the sole data owner for alt-db** ([[000241]] の原則を [[000954]] がプロセス境界として物理化)。alt-backend / alt-harvester を含む全 consumer は `services.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ alt-db に触れる。consumer は alt-backend / alt-harvester / pre-processor / search-indexer / tag-generator / recap-worker / rag-orchestrator の 7 主体で、`DATAHUB_ALLOWED_PEERS` が peer CN で fail-closed に検証する
-- GPU requirements: news-creator, recap-subworker (NVIDIA GPU); tts-speaker, knowledge-augur (AMD ROCm iGPU, CPU fallback available)
+- GPU requirements: news-creator, recap-subworker (NVIDIA GPU); knowledge-augur (AMD ROCm iGPU, CPU fallback available)
 - Log aggregation: rask-log-forwarder → rask-log-aggregator → ClickHouse
 - Tag Verse (3D tag cloud): alt-backend `alt.articles.v2` `FetchTagCloud` RPC → Barnes-Hut O(n log n) server-side layout → alt-frontend-sv (Three.js/Threlte v8 WebGPU); tag co-occurrence data は alt-data-hub の `services.datahub.v1` `FetchTagCloud` capability 経由（`feed_tags` × `article_tags` CTE query）、alt-backend 側で 30 min TTL キャッシュ。定期ジョブ `tag-cloud-cache-warmer` は [[000954]] Wave 1 で廃止され、初回リクエスト時の遅延ウォームに置き換わっている（プロセス内キャッシュを別プロセスから温めても効かないため）
 - **Knowledge Home**: Event-sourced personalized feed (CQRS pattern). alt-backend hosts projector, backfill, and reproject jobs. 9 tables in alt-db (`knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_reproject_runs`, `knowledge_projection_audits`). Admin API accessible via alt-butterfly-facade（`KnowledgeHomeAdminService` は alt-backend の loopback オペレータリスナー `:9102` に残る。認証は到達可能性 + BFF の admin ロールチェックで、service token は使わない）。altctl provides CLI commands (`home reproject`, `home slo`). Frontend admin at `/admin/knowledge-home`. SLO framework with 5 SLIs and multi-window burn-rate alerting
