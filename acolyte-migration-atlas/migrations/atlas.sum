@@ -1,4 +1,5 @@
-h1:eEGGNIDYTmYCrMFktTlejCiaO9nGjDCWJgNgc52lHno=
+h1:oM1ZAuk/6yjHj5n0Pnp3//ZflvbqNVEtPToApJ7+IYc=
 20260409000000_create_acolyte_tables.sql h1:Fam9BQMga+Tm451XwX7mAovP1skVmhq6Bo6nwXE3A+w=
 20260410000000_create_report_briefs.sql h1:i7O0RPXzLZ7Ndz/SLvwP0/ORpZ5niuH02/LxIDoYumQ=
 20260413000000_cascade_delete_reports.sql h1:aVTZM1uHEWqua2SeTEHgSP4rMbk35aN6NNyXEGyO5OY=
+20260808000100_create_notification_outbox.sql h1:UtLoS9p3J/r0TNEYCex6VMl+bRsn0Ot0PdhueV5lT+I=

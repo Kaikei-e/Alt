@@ -1,3 +1,4 @@
-h1:sMtYD0w9+G3K5FnC49j870SnHGjuExlTJT25n6UAOvw=
+h1:8RcvUGZm8SWUhozYigj0Dbp+av/pTewnqXYDF/JWM9o=
 20260215000001_initial.sql h1:9gCL24L8nxjHNhHcM2fbElFZ3wZNU8mTIkDRUeurHVQ=
 20260314000001_add_dead_letter_status.sql h1:TiN1BlHRO8ggXVsrA3jYAwSCN0CRb3wOLSlo3GpMR2I=
+20260808000100_create_notification_outbox.sql h1:ZZQsoK7XYJm2wv7KFZ6l/RwKh2BrWtZWl4cdevg+aV8=
