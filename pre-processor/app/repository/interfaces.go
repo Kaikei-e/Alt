@@ -69,6 +69,12 @@ type SummarizeJobRepository interface {
 	HasRecentFailedJob(ctx context.Context, articleID string, since time.Time) (bool, error)
 	GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error)
 	UpdateJobStatus(ctx context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMessage string) error
+	// CompleteJobWithNotification completes the job and enqueues its
+	// summary_ready notification_outbox row in one local transaction, so the
+	// notification exists if and only if the completion committed. Callers
+	// that have a real summary and a recipient must use this instead of
+	// UpdateJobStatus(..., Completed, ...).
+	CompleteJobWithNotification(ctx context.Context, jobID, summary, userID, articleID string) error
 	GetPendingJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error)
 	// DequeueJobs atomically selects pending jobs and transitions them to running
 	// in a single transaction, preventing duplicate processing under concurrency.

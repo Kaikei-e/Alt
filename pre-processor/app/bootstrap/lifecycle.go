@@ -101,6 +101,9 @@ func startJobs(ctx context.Context, deps *Dependencies, log *slog.Logger) error 
 	if err := deps.JobHandler.StartSummarizeQueueWorker(ctx); err != nil {
 		return fmt.Errorf("failed to start summarize queue worker: %w", err)
 	}
+	if err := deps.JobHandler.StartNotificationRelayJob(ctx); err != nil {
+		return fmt.Errorf("failed to start notification relay: %w", err)
+	}
 
 	// Non-fatal dependency health check
 	if err := deps.HealthHandler.CheckDependencies(ctx); err != nil {

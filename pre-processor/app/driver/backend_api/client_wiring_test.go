@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -123,6 +124,19 @@ func TestClientRoutesToDataHubNamespace(t *testing.T) {
 			call: func(ctx context.Context, c *Client) error {
 				_, err := NewSummaryRepository(c).Exists(ctx, "art-001")
 				return err
+			},
+		},
+		{
+			name: "EnqueueNotification",
+			want: "/services.datahub.v1.DataHubService/EnqueueNotification",
+			call: func(ctx context.Context, c *Client) error {
+				return NewNotificationForwarder(c).EnqueueNotification(ctx, domain.NotificationOutboxRow{
+					DedupeKey:  "summary:job-001",
+					UserID:     "user-001",
+					Kind:       string(domain.NotificationKindSummaryReady),
+					Payload:    []byte(`{"kind":"summary_ready","url":"/articles/art-001"}`),
+					OccurredAt: time.Unix(1786320000, 0).UTC(),
+				}, time.Unix(1786406400, 0).UTC())
 			},
 		},
 	}

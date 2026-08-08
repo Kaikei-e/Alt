@@ -68,6 +68,20 @@ func (mr *MockJobHandlerMockRecorder) StartBackfillJob(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartBackfillJob", reflect.TypeOf((*MockJobHandler)(nil).StartBackfillJob), ctx)
 }
 
+// StartNotificationRelayJob mocks base method.
+func (m *MockJobHandler) StartNotificationRelayJob(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartNotificationRelayJob", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StartNotificationRelayJob indicates an expected call of StartNotificationRelayJob.
+func (mr *MockJobHandlerMockRecorder) StartNotificationRelayJob(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartNotificationRelayJob", reflect.TypeOf((*MockJobHandler)(nil).StartNotificationRelayJob), ctx)
+}
+
 // StartQualityCheckJob mocks base method.
 func (m *MockJobHandler) StartQualityCheckJob(ctx context.Context) error {
 	m.ctrl.T.Helper()

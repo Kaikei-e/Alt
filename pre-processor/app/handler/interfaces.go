@@ -13,6 +13,11 @@ type JobHandler interface {
 	StartArticleSyncJob(ctx context.Context) error
 	StartBackfillJob(ctx context.Context) error
 	StartSummarizeQueueWorker(ctx context.Context) error
+	// StartNotificationRelayJob starts the notification_outbox relay. It
+	// returns an error rather than skipping when the relay is unwired, so a
+	// composition-root omission fails startup instead of leaving every
+	// notification stuck in the outbox.
+	StartNotificationRelayJob(ctx context.Context) error
 	Stop() error
 }
 

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -32,6 +33,11 @@ type dbExecutor interface {
 type summarizeJobRepository struct {
 	db     dbExecutor
 	logger *slog.Logger
+	// clock supplies the completion instant written to both summarize_job_queue
+	// and the notification_outbox row derived from it. It is a field rather
+	// than a direct wall-clock read so a test can pin the two to one value and
+	// prove the outbox carries the job's completion time, not a later read.
+	clock func() time.Time
 }
 
 const getPendingJobsQuery = `
@@ -51,7 +57,7 @@ const getPendingJobsQuery = `
 // interface wrapping a nil pointer, which would make every `r.db == nil`
 // guard below false and defeat the nil-database error path.
 func NewSummarizeJobRepository(db *pgxpool.Pool, logger *slog.Logger) SummarizeJobRepository {
-	repo := &summarizeJobRepository{logger: logger}
+	repo := &summarizeJobRepository{logger: logger, clock: time.Now}
 	if db != nil {
 		repo.db = db
 	}
@@ -369,12 +375,8 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 		`
 		args = []interface{}{string(status), now, jobID}
 	case domain.SummarizeJobStatusCompleted:
-		query = `
-			UPDATE summarize_job_queue
-			SET status = $1, summary = $2, completed_at = $3, error_message = $4
-			WHERE job_id = $5
-		`
-		args = []interface{}{string(status), summary, now, errorMessage, jobID}
+		query = completeJobQuery
+		args = []interface{}{summary, now, errorMessage, jobID}
 	case domain.SummarizeJobStatusFailed:
 		// When a job fails:
 		// - If retry_count + 1 >= max_retries: move to failed (retry-exhausted
@@ -432,6 +434,129 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 		"status", status,
 		"timestamp", now.UnixNano(),
 		"committed_at", time.Now().UnixNano())
+	return nil
+}
+
+// completeJobQuery is the single definition of what completing a job means,
+// shared by UpdateJobStatus and by CompleteJobWithNotification so the outbox
+// row can never be attached to a different notion of "completed".
+const completeJobQuery = `
+		UPDATE summarize_job_queue
+		SET status = 'completed', summary = $1, completed_at = $2, error_message = $3
+		WHERE job_id = $4
+	`
+
+// enqueueNotificationQuery inserts the outbox row that a relay later forwards
+// to alt-data-hub.
+//
+// ON CONFLICT DO NOTHING because dedupe_key is derived from the job id: a
+// second completion of the same job — a redelivered event, a retried call —
+// must be a no-op on the outbox rather than an error that rolls the whole
+// completion back.
+const enqueueNotificationQuery = `
+		INSERT INTO notification_outbox (dedupe_key, user_id, kind, payload, occurred_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (dedupe_key) DO NOTHING
+	`
+
+// summaryReadyDedupeKey derives the outbox key from the business fact. Every
+// retry of the same completion produces the same key, which is what lets the
+// at-least-once relay and the downstream fan-out collapse duplicates.
+func summaryReadyDedupeKey(jobID string) string {
+	return "summary:" + jobID
+}
+
+// summaryReadyPayload builds the notification body: a discriminator and where
+// to go. No title, no summary text, nothing about the article's content — the
+// notification is a trigger, and the device fetches what it needs behind the
+// user's own session.
+func summaryReadyPayload(articleID string) ([]byte, error) {
+	payload := struct {
+		Kind string `json:"kind"`
+		URL  string `json:"url"`
+	}{
+		Kind: string(domain.NotificationKindSummaryReady),
+		URL:  "/articles/" + articleID,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("encode summary_ready payload: %w", err)
+	}
+	return encoded, nil
+}
+
+// CompleteJobWithNotification transitions a job to completed and enqueues its
+// summary_ready notification in the same local transaction.
+//
+// That single commit is the entire reason notification_outbox lives in
+// pre-processor-db: the notification is enqueued if and only if the completion
+// commits. Splitting the two — completing here and calling alt-data-hub
+// separately — would be a dual write, and every failure of the second half
+// would silently lose a user-visible notification.
+func (r *summarizeJobRepository) CompleteJobWithNotification(ctx context.Context, jobID, summary, userID, articleID string) error {
+	if jobID == "" {
+		return fmt.Errorf("job ID cannot be empty")
+	}
+	if userID == "" {
+		return fmt.Errorf("user ID cannot be empty: a notification with no recipient cannot be enqueued")
+	}
+	if articleID == "" {
+		return fmt.Errorf("article ID cannot be empty: the notification has no navigate target")
+	}
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return fmt.Errorf("database connection is nil")
+	}
+
+	payload, err := summaryReadyPayload(articleID)
+	if err != nil {
+		return err
+	}
+
+	completedAt := r.clock()
+
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		r.logger.ErrorContext(ctx, "failed to begin completion transaction", "error", err, "job_id", jobID)
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	result, err := tx.Exec(ctx, completeJobQuery, summary, completedAt, "", jobID)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "failed to complete summarization job", "error", err, "job_id", jobID)
+		return fmt.Errorf("failed to complete summarization job: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		r.logger.WarnContext(ctx, "no rows affected when completing job", "job_id", jobID)
+		return fmt.Errorf("summarization job not found")
+	}
+
+	// occurred_at is completedAt, not a second clock read: the notification
+	// describes when the summary became ready, which is the instant recorded
+	// on the job row one statement above.
+	if _, err := tx.Exec(ctx, enqueueNotificationQuery,
+		summaryReadyDedupeKey(jobID),
+		userID,
+		string(domain.NotificationKindSummaryReady),
+		payload,
+		completedAt,
+	); err != nil {
+		r.logger.ErrorContext(ctx, "failed to enqueue summary_ready notification", "error", err, "job_id", jobID)
+		return fmt.Errorf("failed to enqueue summary_ready notification: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		r.logger.ErrorContext(ctx, "failed to commit job completion", "error", err, "job_id", jobID)
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	r.logger.InfoContext(ctx, "summarization job completed and notification enqueued",
+		"job_id", jobID,
+		"article_id", articleID,
+		"dedupe_key", summaryReadyDedupeKey(jobID))
 	return nil
 }
 

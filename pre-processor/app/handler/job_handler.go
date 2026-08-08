@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -17,6 +18,7 @@ type jobHandler struct {
 	articleSync             service.ArticleSyncService
 	healthChecker           service.HealthCheckerService
 	queueWorker             *service.SummarizeQueueWorker
+	notificationRelay       *service.NotificationRelay
 	logger                  *slog.Logger
 	jobGroup                *orchestrator.JobGroup
 	batchSize               int
@@ -32,6 +34,7 @@ func NewJobHandler(
 	articleSync service.ArticleSyncService,
 	healthChecker service.HealthCheckerService,
 	queueWorker *service.SummarizeQueueWorker,
+	notificationRelay *service.NotificationRelay,
 	batchSize int,
 	logger *slog.Logger,
 ) JobHandler {
@@ -41,6 +44,7 @@ func NewJobHandler(
 		articleSync:             articleSync,
 		healthChecker:           healthChecker,
 		queueWorker:             queueWorker,
+		notificationRelay:       notificationRelay,
 		logger:                  logger,
 		jobGroup:                orchestrator.NewJobGroup(ctx, logger),
 		batchSize:               batchSize,
@@ -60,6 +64,27 @@ func (h *jobHandler) StartArticleSyncJob(ctx context.Context) error {
 	}, func(ctx context.Context) error {
 		return h.articleSync.SyncArticles(ctx)
 	}, h.logger))
+
+	return nil
+}
+
+// StartNotificationRelayJob starts the notification_outbox relay loop.
+//
+// An unwired relay is an error, not a skipped job: the producer keeps writing
+// outbox rows either way, so a silently absent relay looks exactly like a
+// healthy system right up until someone notices nobody got a notification.
+func (h *jobHandler) StartNotificationRelayJob(ctx context.Context) error {
+	if h.notificationRelay == nil {
+		return fmt.Errorf("notification relay is not wired: notification_outbox would grow unbounded with nothing forwarding it")
+	}
+
+	h.notificationRelay.LogStartup(ctx)
+
+	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
+		Name:           "notification-outbox-relay",
+		Interval:       h.notificationRelay.Interval(),
+		RunImmediately: true,
+	}, h.notificationRelay.Tick, h.logger))
 
 	return nil
 }

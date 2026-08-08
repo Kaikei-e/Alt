@@ -17,11 +17,14 @@ import (
 	"pre-processor/driver"
 	backend_api "pre-processor/driver/backend_api"
 	"pre-processor/handler"
+	"pre-processor/metrics"
 	qualitychecker "pre-processor/quality-checker"
 	"pre-processor/repository"
 	"pre-processor/service"
 	"pre-processor/tlsutil"
 	logger "pre-processor/utils/logger"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // buildBackendHTTPClient returns an *http.Client the Connect-RPC backend
@@ -93,6 +96,48 @@ type Dependencies struct {
 	SummaryRepo repository.SummaryRepository
 	ArticleRepo repository.ArticleRepository
 	JobRepo     repository.SummarizeJobRepository
+
+	// OutboxMetrics is exposed so the HTTP server can publish the relay's
+	// gauges; without a scrape target the numbers exist but nobody can see a
+	// wedged relay.
+	OutboxMetrics *metrics.OutboxRelayMetrics
+}
+
+// buildNotificationRelay wires the notification_outbox relay over the same
+// pre-processor-db pool the producer writes to and the same mTLS alt-data-hub
+// client the article/feed/summary repositories already use.
+//
+// Every collaborator is required. There is no "relay disabled" branch: the
+// producer writes outbox rows unconditionally as part of completing a job, so
+// a pre-processor running without a relay is not a degraded mode, it is a
+// backlog nobody drains.
+func buildNotificationRelay(
+	ppDBPool *pgxpool.Pool,
+	client *backend_api.Client,
+	relayMetrics *metrics.OutboxRelayMetrics,
+	log *slog.Logger,
+) (*service.NotificationRelay, error) {
+	if ppDBPool == nil {
+		return nil, fmt.Errorf("notification relay: pre-processor-db pool is required")
+	}
+	if client == nil {
+		return nil, fmt.Errorf("notification relay: alt-data-hub client is required")
+	}
+
+	// locked_by has to identify the process, so a stuck row points at
+	// something an operator can go look at.
+	name, err := os.Hostname()
+	if err != nil || name == "" {
+		return nil, fmt.Errorf("notification relay: cannot determine hostname for locked_by: %w", err)
+	}
+
+	return service.NewNotificationRelay(
+		repository.NewNotificationOutboxRepository(ppDBPool, log),
+		backend_api.NewNotificationForwarder(client),
+		relayMetrics,
+		name,
+		log,
+	)
 }
 
 // BuildDependencies constructs all application dependencies.
@@ -161,6 +206,13 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	contextLogger := logger.NewContextLoggerWithOTel(logger.LoadLoggerConfigFromEnv(), otelEnabled)
 	metricsCollector := service.NewHealthMetricsCollector(contextLogger)
 
+	outboxMetrics := metrics.NewOutboxRelayMetrics()
+	notificationRelay, err := buildNotificationRelay(ppDBPool, client, outboxMetrics, log)
+	if err != nil {
+		ppDBPoolCleanup()
+		return nil, nil, fmt.Errorf("failed to build notification relay: %w", err)
+	}
+
 	// Initialize handlers
 	jobHandler := handler.NewJobHandler(
 		ctx,
@@ -169,6 +221,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		articleSyncService,
 		healthCheckerService,
 		summarizeQueueWorker,
+		notificationRelay,
 		batchSize,
 		log,
 	)
@@ -197,6 +250,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		SummaryRepo:      summaryRepo,
 		ArticleRepo:      articleRepo,
 		JobRepo:          jobRepo,
+		OutboxMetrics:    outboxMetrics,
 	}, cleanup, nil
 }
 

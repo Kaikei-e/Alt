@@ -173,6 +173,20 @@ func (m *stubJobRepoTracking) UpdateJobStatus(_ context.Context, jobID string, s
 	return nil
 }
 
+// CompleteJobWithNotification records the same completion fact as
+// UpdateJobStatus does, since from this stub's point of view both are "the job
+// was marked completed" — only the transactional guarantee differs.
+func (m *stubJobRepoTracking) CompleteJobWithNotification(_ context.Context, jobID, summary, _, _ string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.updateCalls = append(m.updateCalls, updateJobStatusCall{
+		jobID:   jobID,
+		status:  domain.SummarizeJobStatusCompleted,
+		summary: summary,
+	})
+	return nil
+}
+
 func (m *stubJobRepoTracking) RecoverStuckJobs(_ context.Context) (int64, error) {
 	m.recoverCalls++
 	return 0, nil

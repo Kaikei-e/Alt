@@ -320,6 +320,10 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 			// actually persisted; if so, close the job as Completed.
 			if w.summaryRepo != nil {
 				if exists, existsErr := w.summaryRepo.Exists(ctx, job.ArticleID); existsErr == nil && exists {
+					// No summary_ready notification here: the request that
+					// actually produced this summary owns that notification,
+					// and enqueuing a second one under this job's dedupe key
+					// would ping the user twice for one article.
 					w.logger.WarnContext(ctx, "upstream already persisted summary; closing job as completed instead of failed",
 						"job_id", job.JobID,
 						"article_id", job.ArticleID,
@@ -390,10 +394,13 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 		"article_id", job.ArticleID,
 		"save_duration_ms", saveSummaryDuration.Milliseconds())
 
-	// Update job status to completed
+	// Complete the job through the transactional path: this is the only
+	// completion that produced a summary the user asked for, so it is the one
+	// that owes them a notification. The outbox row and the completion share
+	// one commit — see repository.CompleteJobWithNotification.
 	updateStatusStartTime := time.Now()
-	if err := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, summarized.SummaryJapanese, ""); err != nil {
-		w.logger.ErrorContext(ctx, "failed to update job status to completed", "error", err, "job_id", job.JobID)
+	if err := w.jobRepo.CompleteJobWithNotification(ctx, job.JobID.String(), summarized.SummaryJapanese, article.UserID, job.ArticleID); err != nil {
+		w.logger.ErrorContext(ctx, "failed to complete job and enqueue notification", "error", err, "job_id", job.JobID)
 		return fmt.Errorf("failed to update job status: %w", err)
 	}
 	updateStatusDuration := time.Since(updateStatusStartTime)

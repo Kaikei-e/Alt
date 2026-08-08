@@ -422,6 +422,20 @@ func (m *MockSummarizeJobRepository) EXPECT() *MockSummarizeJobRepositoryMockRec
 	return m.recorder
 }
 
+// CompleteJobWithNotification mocks base method.
+func (m *MockSummarizeJobRepository) CompleteJobWithNotification(ctx context.Context, jobID, summary, userID, articleID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompleteJobWithNotification", ctx, jobID, summary, userID, articleID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CompleteJobWithNotification indicates an expected call of CompleteJobWithNotification.
+func (mr *MockSummarizeJobRepositoryMockRecorder) CompleteJobWithNotification(ctx, jobID, summary, userID, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteJobWithNotification", reflect.TypeOf((*MockSummarizeJobRepository)(nil).CompleteJobWithNotification), ctx, jobID, summary, userID, articleID)
+}
+
 // CreateJob mocks base method.
 func (m *MockSummarizeJobRepository) CreateJob(ctx context.Context, articleID string) (string, error) {
 	m.ctrl.T.Helper()
