@@ -1,10 +1,18 @@
-# One build recipe for the three binaries of the alt-backend module.
+# One build recipe for the binaries of the alt-backend module.
 # `BINARY` selects ./cmd/<BINARY>:
 #
 #   BINARY=backend    alt-backend    user-facing API — :9000 REST / :9101 Connect
 #                                    / :9102 internal / :9443 mTLS
 #   BINARY=harvester  alt-harvester  scheduled jobs — :9110 operator listener only
 #   BINARY=datahub    alt-data-hub   mTLS-only data plane — :9443, zero published ports
+#   BINARY=notifier   alt-notifier   Web Push dispatcher — no listener, outbound only
+#
+# alt-notifier is a separate process rather than an eighth harvester job so that
+# the VAPID private key is mounted into exactly one container, and so that
+# `up{job="alt-notifier"}` plus its own restart counter answer "are notifications
+# still going out" for free. A delivery path that stopped silently is the failure
+# this feature is built around, and a multiplexed binary would hide it behind a
+# process that is still up.
 #
 # Three Dockerfiles were rejected: the recipes drift independently (this repo
 # has been burnt by build-recipe drift before), and each would get its own
@@ -32,7 +40,7 @@ ARG BINARY
 # an unset BINARY must be a build failure, not "whichever binary happens to
 # come first". The directory check turns a typo into a build-time error with
 # the list of valid targets instead of an image that runs the wrong process.
-RUN test -n "${BINARY}" || { echo "BINARY build-arg is required (backend | harvester | datahub)" >&2; exit 1; }
+RUN test -n "${BINARY}" || { echo "BINARY build-arg is required (backend | harvester | datahub | notifier)" >&2; exit 1; }
 RUN test -d "./cmd/${BINARY}" || { echo "no such command: ./cmd/${BINARY}" >&2; echo "available:" >&2; ls ./cmd >&2; exit 1; }
 
 # Optimised build: symbols stripped, statically linked.
