@@ -270,6 +270,12 @@ services:
       # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml).
       - RAG_ORCHESTRATOR_CONNECT_URL=${RAG_ORCHESTRATOR_CONNECT_URL:-https://rag-orchestrator:9011}
       - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret
+      # Served by alt.push.v1.PushService.GetPushConfig so the browser can pass
+      # it to pushManager.subscribe, and so a client can compare it against the
+      # key its live subscription was created under. Required: an empty value
+      # would fail inside the browser, one layer away from anything that could
+      # explain it, so ValidateBackendConfig refuses to start without it.
+      - VAPID_PUBLIC_KEY_FILE=/run/secrets/vapid_public_key
       # Cross-process per-host rate limiting (CLAUDE.md rule 2). The interval
       # is a promise to the publisher's server, and this binary polls the same
       # hosts alt-harvester does — feed-registration validation vs the hourly
@@ -320,6 +326,9 @@ services:
       - backend_token_secret
       - csrf_secret
       - image_proxy_secret
+      # Public half only. This process serves the key to browsers and sends no
+      # pushes, so the signing key stays out of it — see alt-notifier below.
+      - vapid_public_key
     deploy:
       resources:
         limits:

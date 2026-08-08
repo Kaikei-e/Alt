@@ -59,6 +59,14 @@ secrets:
   # browser — and reaches alt-backend as ordinary config.
   vapid_private_key:
     file: ../secrets/vapid_private_key.txt
+  # Not actually secret — it is handed to every browser that subscribes, and it
+  # rides in the `k=` parameter of every push request. It uses the secrets
+  # mechanism only because that mechanism is how a file gets into a container,
+  # and keeping the pair in one place is what stops the halves drifting: a
+  # public key that does not match the signing key invalidates every
+  # subscription created under it, silently, from the browser's side.
+  vapid_public_key:
+    file: ../secrets/vapid_public_key.txt
   step_ca_root_password:
     file: ../secrets/step_ca_root_password.txt
   pact_broker_basic_auth_password:
