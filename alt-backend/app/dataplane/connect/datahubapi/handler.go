@@ -35,6 +35,7 @@ import (
 	"alt/dataplane/port/internal_tag_port"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/dataplane/usecase/outbox_usecase"
+	"alt/dataplane/usecase/push_delivery_usecase"
 	"alt/dataplane/usecase/recap_articles_usecase"
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
@@ -179,6 +180,17 @@ type Handler struct {
 	// working-looking product with two features quietly missing.
 	tagTrail   datahub_capability_port.TagTrailPort
 	articleRef datahub_capability_port.ArticleRefPort
+
+	// Web Push storage. Required, and WithPushCapabilities panics on nil: the
+	// subscription table is the only route alt.push.v1.PushService has, and an
+	// unwired delivery queue answers a dispatcher's claim exactly the way a
+	// drained one does.
+	//
+	// The delivery queue gets a usecase and the subscription table does not,
+	// for the reason the outbox did: there is a state machine here spread
+	// across several driver calls, and there is none over there.
+	pushSubscriptions datahub_capability_port.PushSubscriptionPort
+	pushDeliveries    *push_delivery_usecase.PushDeliveryUsecase
 
 	logger *slog.Logger
 }

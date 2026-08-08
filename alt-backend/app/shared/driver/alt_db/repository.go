@@ -41,6 +41,7 @@ type AltDBRepository struct {
 	*OutboxRepository
 	*DashboardRepository
 	*TenantRepository
+	*PushRepository
 }
 
 func NewAltDBRepository(pool PgxIface) *AltDBRepository {
@@ -62,6 +63,7 @@ func NewAltDBRepository(pool PgxIface) *AltDBRepository {
 		OutboxRepository:       NewOutboxRepository(pool),
 		DashboardRepository:    NewDashboardRepository(pool),
 		TenantRepository:       NewTenantRepository(pool),
+		PushRepository:         NewPushRepository(pool),
 	}
 }
 
@@ -91,6 +93,7 @@ func NewAltDBRepositoryForTest() *AltDBRepository {
 		OutboxRepository:       &OutboxRepository{},
 		DashboardRepository:    &DashboardRepository{},
 		TenantRepository:       &TenantRepository{},
+		PushRepository:         &PushRepository{},
 	}
 }
 

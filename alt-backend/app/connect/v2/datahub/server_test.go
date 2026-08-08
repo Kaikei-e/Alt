@@ -11,6 +11,7 @@ import (
 	"alt/dataplane/driver/kratos_client"
 	"alt/dataplane/gateway/datahub_capability_gateway"
 	"alt/dataplane/usecase/outbox_usecase"
+	"alt/dataplane/usecase/push_delivery_usecase"
 	datahubdi "alt/di/datahub"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 )
@@ -67,6 +68,13 @@ func components() *datahubdi.DataHubComponents {
 		// thing standing between the Tag Trail / recall rail and nothing.
 		TagTrailGateway:   datahub_capability_gateway.NewTagTrailGateway(nil),
 		ArticleRefGateway: datahub_capability_gateway.NewArticleRefGateway(nil),
+
+		// Web Push storage, same rule: push_subscriptions is the only route
+		// alt.push.v1.PushService has, and an unwired delivery queue answers a
+		// dispatcher's claim exactly the way a drained one does.
+		PushSubscriptionGateway: datahub_capability_gateway.NewPushSubscriptionGateway(nil),
+		PushDeliveryUsecase: push_delivery_usecase.NewPushDeliveryUsecase(
+			datahub_capability_gateway.NewPushDeliveryGateway(nil)),
 	}
 }
 

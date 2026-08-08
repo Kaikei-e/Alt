@@ -139,6 +139,16 @@ func SetupConnectHandlers(mux *http.ServeMux, container *datahubdi.DataHubCompon
 			container.TagTrailGateway,
 			container.ArticleRefGateway,
 		),
+		// Web Push storage, and the rule once more: push_subscriptions is the
+		// only route alt.push.v1.PushService has, so a nil here would let a
+		// user grant notification permission and watch the toggle fail with
+		// nothing in any log saying the storage was never wired. The delivery
+		// queue is quieter still — an unwired one answers a dispatcher's claim
+		// exactly the way a drained one does.
+		datahubapi.WithPushCapabilities(
+			container.PushSubscriptionGateway,
+			container.PushDeliveryUsecase,
+		),
 	)
 	datahubPath, datahubServiceHandler := datahubv1connect.NewDataHubServiceHandler(datahubHandler, datahubOpts)
 	mux.Handle(datahubPath, datahubServiceHandler)

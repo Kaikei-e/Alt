@@ -29,6 +29,7 @@ import (
 	"alt/dataplane/port/datahub_capability_port"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
 	"alt/dataplane/usecase/outbox_usecase"
+	"alt/dataplane/usecase/push_delivery_usecase"
 	"alt/dataplane/usecase/recap_articles_usecase"
 	"alt/di"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
@@ -146,6 +147,17 @@ type DataHubComponents struct {
 	// between them.
 	TagTrailGateway   datahub_capability_port.TagTrailPort
 	ArticleRefGateway datahub_capability_port.ArticleRefPort
+
+	// Web Push storage: push_subscriptions (one row per device) and
+	// push_deliveries (the dispatcher's queue, one row per notification per
+	// device).
+	//
+	// The delivery queue gets a usecase for the same reason the outbox did —
+	// a state machine spread across several driver calls — and the
+	// subscription table does not, because each of its operations is a single
+	// statement whose invariants are already in the SQL.
+	PushSubscriptionGateway datahub_capability_port.PushSubscriptionPort
+	PushDeliveryUsecase     *push_delivery_usecase.PushDeliveryUsecase
 }
 
 // NewDataHubComponents is cmd/datahub's composition root.
@@ -285,6 +297,20 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		"procedures", 3,
 		"adr", "ADR-000954 Wave 3 batch 6")
 
+	// Web Push storage. Built unconditionally for the same reason the Wave 3
+	// batches are: alt-backend has no database pool, so this is the only route
+	// alt.push.v1.PushService has to a subscription, and there is no
+	// configuration under which leaving it unwired is a valid deployment. The
+	// feature flag for Web Push lives in front of the browser-facing service,
+	// not here — a data hub that stored no subscription while reporting
+	// healthy is the ADR-000928 shape.
+	pushSubscriptionGw := datahub_capability_gateway.NewPushSubscriptionGateway(altDB)
+	pushDeliveryUC := push_delivery_usecase.NewPushDeliveryUsecase(
+		datahub_capability_gateway.NewPushDeliveryGateway(altDB))
+	slog.Info("datahub.push_storage_enabled",
+		"groups", "push_subscriptions,push_deliveries",
+		"procedures", 10)
+
 	return &DataHubComponents{
 		Config:                      cfg,
 		AltDBRepository:             altDB,
@@ -323,5 +349,8 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 
 		TagTrailGateway:   tagTrailGw,
 		ArticleRefGateway: articleRefGw,
+
+		PushSubscriptionGateway: pushSubscriptionGw,
+		PushDeliveryUsecase:     pushDeliveryUC,
 	}
 }

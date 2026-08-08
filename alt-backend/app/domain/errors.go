@@ -46,6 +46,13 @@ var (
 	// Knowledge Home 関連エラー
 	ErrKnowledgeEventNotFound = errors.New("knowledge event not found")
 	ErrProjectionStale        = errors.New("projection is stale")
+
+	// Web Push 関連エラー
+	//
+	// The message names neither the endpoint nor the owning user. A push
+	// endpoint is a capability URL, and an error that echoed it back would
+	// turn a rejected write into a disclosure of who else holds it.
+	ErrPushSubscriptionOwnedByAnotherUser = errors.New("push subscription endpoint belongs to a different user")
 )
 
 type ComplianceError struct {

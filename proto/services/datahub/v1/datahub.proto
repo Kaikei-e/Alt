@@ -2025,6 +2025,259 @@ message ListUserFeedIDsResponse {
 }
 
 // =============================================================================
+// Web Push — subscription storage and the notification outbox
+// =============================================================================
+//
+// Two tables and two very different shapes. push_subscriptions is resource
+// state, one row per device, replaced in place when a browser hands out the
+// same endpoint after a permission re-prompt. notification_outbox is a
+// delivery queue with a claim lease, drained by a dispatcher.
+//
+// The endpoint is a capability URL: anyone holding it can push to that device.
+// It travels on this service because the storage lives behind it, and for no
+// other reason — it must never be logged, traced or echoed in an error.
+//
+// NotificationPreferences is declared here rather than imported from
+// alt.push.v1. The two messages carry the same four booleans today and are
+// still separate types on purpose: alt.push.v1 is the browser's contract and
+// this is alt-db's, and folding them together would let a change made for the
+// settings screen alter what the database is asked to store.
+
+// NotificationPreferences is the per-kind on/off state of one subscription.
+message NotificationPreferences {
+  bool summary_ready = 1;
+  bool acolyte_report_ready = 2;
+  bool recap_ready = 3;
+  bool today_entrance_ready = 4;
+}
+
+// PushSubscription is one row of push_subscriptions.
+message PushSubscription {
+  string user_id = 1;
+  // Capability URL and primary key. Never log it.
+  string endpoint = 2;
+  // RFC 8291 key material, base64url, as the browser handed it out.
+  string p256dh = 3;
+  string auth = 4;
+  NotificationPreferences preferences = 5;
+  // Which VAPID keypair this subscription was created under. Rotating the
+  // keypair invalidates every existing subscription and there is no
+  // server-side migration for that, so the row records the key it belongs to.
+  string vapid_key_fingerprint = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  // Unset until the dispatcher has succeeded / failed against this endpoint
+  // at least once.
+  google.protobuf.Timestamp last_success_at = 9;
+  google.protobuf.Timestamp last_failure_at = 10;
+}
+
+message UpsertPushSubscriptionRequest {
+  // user_id, endpoint, p256dh, auth and vapid_key_fingerprint are required.
+  // The timestamps on the message are ignored: the row's own clock owns them.
+  PushSubscription subscription = 1;
+}
+
+message UpsertPushSubscriptionResponse {
+  // True when this call inserted the row rather than replacing an existing
+  // one. The caller uses it to tell a first subscription from a re-prompt.
+  bool created = 1;
+}
+
+message GetPushSubscriptionRequest {
+  // Both are required. The endpoint alone identifies the row, but a lookup
+  // scoped to one user is what stops a caller holding a leaked endpoint from
+  // reading another person's settings through this service.
+  string user_id = 1;
+  string endpoint = 2;
+}
+
+message GetPushSubscriptionResponse {
+  // Unset when this user has no subscription at that endpoint — which is
+  // deliberately the same answer as "no such endpoint at all".
+  PushSubscription subscription = 1;
+}
+
+message UpdatePushSubscriptionPreferencesRequest {
+  string user_id = 1;
+  string endpoint = 2;
+  NotificationPreferences preferences = 3;
+}
+
+message UpdatePushSubscriptionPreferencesResponse {
+  // False when the (user_id, endpoint) pair matched no row. The caller turns
+  // that into NotFound rather than reporting a settings change that did not
+  // happen.
+  bool updated = 1;
+}
+
+message DeletePushSubscriptionRequest {
+  string user_id = 1;
+  string endpoint = 2;
+}
+
+message DeletePushSubscriptionResponse {
+  // False when there was nothing to delete. Deleting twice is not an error —
+  // the dispatcher calls this on a 410 that may race a user's own removal.
+  bool deleted = 1;
+}
+
+message ListPushSubscriptionsForUserRequest {
+  string user_id = 1;
+}
+
+message ListPushSubscriptionsForUserResponse {
+  // Every device of one user — the fan-out list.
+  repeated PushSubscription subscriptions = 1;
+}
+
+// NotificationState is a push_deliveries row's position in its state machine.
+//
+// pending → sending is ClaimNotificationBatch. sending → sent is
+// MarkNotificationSent. sending → pending is ReleaseNotification.
+// sending → dead is MarkNotificationDead. `expired` is reached by the claim
+// query itself when a row passes expires_at before anyone sends it, and has no
+// procedure of its own: nobody decides to expire a notification.
+enum NotificationState {
+  NOTIFICATION_STATE_UNSPECIFIED = 0;
+  NOTIFICATION_STATE_PENDING = 1;
+  NOTIFICATION_STATE_SENDING = 2;
+  NOTIFICATION_STATE_SENT = 3;
+  NOTIFICATION_STATE_DEAD = 4;
+  NOTIFICATION_STATE_EXPIRED = 5;
+}
+
+// PushDelivery is one claimed row of push_deliveries: one notification bound
+// for one device.
+//
+// It carries the device's endpoint and key material because a claim that did
+// not would hand the dispatcher a row it cannot act on, and the round trip to
+// resolve it would be one lookup per delivery inside the lease window.
+message PushDelivery {
+  string id = 1;
+  string dedupe_key = 2;
+  // The push_subscriptions surrogate id. The dispatcher passes it back when a
+  // push service answers 404/410, so the dead device can be removed without
+  // the caller having to quote the endpoint.
+  string subscription_id = 3;
+  string user_id = 4;
+  string kind = 5;
+  // Opaque to alt-data-hub. The producer wrote it beside the business fact;
+  // the dispatcher renders it.
+  bytes payload = 6;
+  // Business time — when the fact happened, not when the row was written.
+  google.protobuf.Timestamp occurred_at = 7;
+  NotificationState state = 8;
+  int32 attempts = 9;
+  google.protobuf.Timestamp next_attempt_at = 10;
+  google.protobuf.Timestamp expires_at = 11;
+  // Capability URL. Present because the dispatcher cannot send without it, and
+  // for no other reason: it must not be logged or traced.
+  string endpoint = 12;
+  // RFC 8291 key material, base64url.
+  string p256dh = 13;
+  string auth = 14;
+}
+
+message EnqueueNotificationRequest {
+  // Derived from the business fact ("recap:<job_id>"), never minted at send
+  // time: a relayed retry must land on the same key so the (dedupe_key,
+  // subscription_id) constraint collapses it into one delivery per device.
+  string dedupe_key = 1;
+  // Whose devices to fan out to. One enqueue becomes one row per subscription
+  // this user has registered that still wants this kind.
+  string user_id = 2;
+  string kind = 3;
+  bytes payload = 4;
+  // Required. The provider does not substitute its own clock — that would
+  // record when the row was written, which is a different fact.
+  google.protobuf.Timestamp occurred_at = 5;
+  // Required. A notification nobody delivered before this instant is not worth
+  // delivering afterwards, and the window is the producer's judgement: a
+  // job-finished ping and a daily digest go stale at very different rates.
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message EnqueueNotificationResponse {
+  // How many device rows this call created. Zero is an ordinary answer, not an
+  // error: the user may have no subscription, may have turned this kind off,
+  // or the enqueue may have been relayed twice.
+  int32 delivery_count = 1;
+  // How many older unsent daily digests this enqueue superseded. Reported
+  // rather than inferred, so "the digest collapsed" is visible in the caller's
+  // metrics instead of only as a delivery that never happened.
+  int32 superseded_count = 2;
+}
+
+message ClaimNotificationBatchRequest {
+  // Identifies the dispatcher taking the lease, recorded in locked_by.
+  // Required: it is the only forensic link from a stuck row to the process
+  // holding it.
+  string locked_by = 1;
+  // Page size. Bounded server-side; 0 means the server default.
+  int32 limit = 2;
+  // How long the claim holds. The claim pushes next_attempt_at this far
+  // forward, so an orphaned row re-enters the same claim query when it
+  // expires — there is no separate reclaim sweeper. 0 means the server
+  // default.
+  int64 lease_seconds = 3;
+}
+
+message ClaimNotificationBatchResponse {
+  // Rows this call — and no concurrent call — now owns. Already SENDING.
+  repeated PushDelivery deliveries = 1;
+}
+
+message MarkNotificationSentRequest {
+  string id = 1;
+  // The push service's HTTP status. Recorded even on success: a 201 and a 200
+  // from different push services are the forensic record of which one took it.
+  int32 status_code = 2;
+}
+
+message MarkNotificationSentResponse {}
+
+message ReleaseNotificationRequest {
+  string id = 1;
+  // When to try again. Required: releasing without a schedule would return the
+  // row to a claim that fires immediately, which is a retry loop rather than a
+  // backoff.
+  google.protobuf.Timestamp next_attempt_at = 2;
+  // Why the attempt did not complete. Recorded on the row, not only in the
+  // dispatcher's log.
+  string error_message = 3;
+}
+
+message ReleaseNotificationResponse {}
+
+message MarkNotificationDeadRequest {
+  string id = 1;
+  // The push service's status, when there was one. 0 means the attempt never
+  // reached a response — a dial failure, a timeout, a context cancellation.
+  int32 status_code = 2;
+  string error_message = 3;
+}
+
+message MarkNotificationDeadResponse {}
+
+// GetNotificationBacklogAgeRequest takes no argument: the queue is global to
+// the deployment, and a per-user or per-kind backlog is not a thing anyone
+// pages on.
+message GetNotificationBacklogAgeRequest {}
+
+message GetNotificationBacklogAgeResponse {
+  // How stale the oldest thing a user has not been told about is, measured
+  // from occurred_at — business time — rather than from when the row reached
+  // this database, so relay lag is inside the number rather than hidden behind
+  // it. 0 when the queue holds nothing, which is a real reading and not a
+  // missing one.
+  double oldest_pending_age_seconds = 1;
+  // How many non-terminal rows there are, so a rising age can be told apart
+  // from one row that is stuck.
+  int64 pending_count = 2;
+}
+
+// =============================================================================
 // DataHubService — every capability backed by alt_db
 // =============================================================================
 
@@ -2738,4 +2991,84 @@ service DataHubService {
   // ListUserFeedIDs returns the feeds a user has read state against — the
   // Morning Letter's candidate set.
   rpc ListUserFeedIDs(ListUserFeedIDsRequest) returns (ListUserFeedIDsResponse);
+
+  // ── Web Push subscriptions (alt-backend's alt.push.v1.PushService) ──
+  //
+  // user_id is a field on every one of these, never read from the transport.
+  // The peer certificate here names alt-backend; the person whose devices are
+  // being read is identified by the X-Alt-Backend-Token subject that
+  // alt-backend already validated, and it has to travel explicitly.
+
+  // UpsertPushSubscription stores a browser subscription, replacing the key
+  // material and preferences of an endpoint already registered.
+  //
+  // Idempotent on endpoint rather than insert-or-fail: a browser hands out the
+  // same endpoint again after a permission re-prompt, and a second row for one
+  // device would push to it twice.
+  rpc UpsertPushSubscription(UpsertPushSubscriptionRequest) returns (UpsertPushSubscriptionResponse);
+
+  // GetPushSubscription reads one device's subscription, scoped to its owner.
+  rpc GetPushSubscription(GetPushSubscriptionRequest) returns (GetPushSubscriptionResponse);
+
+  // UpdatePushSubscriptionPreferences changes which kinds are delivered
+  // without touching the key material, so the browser need not re-subscribe.
+  rpc UpdatePushSubscriptionPreferences(UpdatePushSubscriptionPreferencesRequest) returns (UpdatePushSubscriptionPreferencesResponse);
+
+  // DeletePushSubscription removes one device. Idempotent: the dispatcher
+  // calls it on a 404/410 from the push service, which can race the user's own
+  // removal.
+  rpc DeletePushSubscription(DeletePushSubscriptionRequest) returns (DeletePushSubscriptionResponse);
+
+  // ListPushSubscriptionsForUser returns every device of one user — the
+  // fan-out list.
+  rpc ListPushSubscriptionsForUser(ListPushSubscriptionsForUserRequest) returns (ListPushSubscriptionsForUserResponse);
+
+  // ── Push delivery queue (the Web Push dispatcher) ──
+  //
+  // push_deliveries is the dispatcher's queue, not a producer outbox. The
+  // three producers' business state lives in pre-processor-db, acolyte-db and
+  // recap-db, so each keeps its own notification_outbox beside the state it
+  // describes and a relay forwards to here; a producer writing into alt-db
+  // would be the dual write the outbox pattern exists to remove.
+
+  // EnqueueNotification fans one notification out to every device of one user
+  // that still wants that kind, in one transaction.
+  //
+  // Idempotent per device on (dedupe_key, subscription_id), so a relayed retry
+  // is a no-op rather than a second push, and superseding: an unsent daily
+  // digest for a device is expired by the next day's enqueue instead of both
+  // being delivered.
+  rpc EnqueueNotification(EnqueueNotificationRequest) returns (EnqueueNotificationResponse);
+
+  // ClaimNotificationBatch takes ownership of due rows and marks them SENDING
+  // in one statement.
+  //
+  // The statement covers fresh work and crash reclaim together: it matches
+  // `state IN ('pending','sending') AND next_attempt_at <= clock_timestamp()`,
+  // and the claim pushes next_attempt_at forward by the lease. A row orphaned
+  // by a dispatcher that died mid-attempt therefore re-enters this same query
+  // when its lease expires, which is why there is no reclaim procedure here —
+  // and no reclaim sweeper anyone can forget to deploy.
+  rpc ClaimNotificationBatch(ClaimNotificationBatchRequest) returns (ClaimNotificationBatchResponse);
+
+  // MarkNotificationSent records delivery and stamps finalized_at.
+  rpc MarkNotificationSent(MarkNotificationSentRequest) returns (MarkNotificationSentResponse);
+
+  // ReleaseNotification returns a claimed row to PENDING with the caller's
+  // backoff, for a failure worth retrying.
+  rpc ReleaseNotification(ReleaseNotificationRequest) returns (ReleaseNotificationResponse);
+
+  // MarkNotificationDead ends delivery for a failure that will not improve —
+  // a malformed payload, or a push service refusing the subscription itself.
+  rpc MarkNotificationDead(MarkNotificationDeadRequest) returns (MarkNotificationDeadResponse);
+
+  // GetNotificationBacklogAge reports how stale the delivery queue is, for the
+  // dispatcher's backlog gauge.
+  //
+  // It counts `sending` alongside `pending`, and that is the whole procedure.
+  // A row orphaned by a dispatcher that died mid-attempt sits in `sending`
+  // until its lease expires; a query that looked only at `pending` would report
+  // an age of 0 while the backlog was in fact stuck, which is precisely the
+  // outage the alert over this metric exists to notice.
+  rpc GetNotificationBacklogAge(GetNotificationBacklogAgeRequest) returns (GetNotificationBacklogAgeResponse);
 }
