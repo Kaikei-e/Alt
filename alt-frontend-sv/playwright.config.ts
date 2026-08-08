@@ -18,6 +18,18 @@ import { defineConfig, devices } from "@playwright/test";
 
 const isCI = !!process.env.CI;
 
+/**
+ * Preview-server port. Defaults to 4174 so CI and every existing invocation
+ * behave exactly as before; override with ALT_E2E_PORT when 4174 is already
+ * claimed on a developer machine by something unrelated to this repo. The
+ * value has to reach four places at once — Playwright's baseURL, the
+ * readiness probe, and the server's own PORT/ORIGIN — because adapter-node
+ * checks ORIGIN on every form POST, so a mismatch fails as a CSRF rejection
+ * rather than as a connection error.
+ */
+const previewPort = process.env.ALT_E2E_PORT || "4174";
+const previewOrigin = `http://127.0.0.1:${previewPort}`;
+
 export default defineConfig({
 	testDir: "./tests/e2e",
 	fullyParallel: true,
@@ -76,7 +88,7 @@ export default defineConfig({
 
 		testIdAttribute: "data-testid",
 
-		baseURL: "http://127.0.0.1:4174/",
+		baseURL: `${previewOrigin}/`,
 		storageState: "tests/e2e/.auth/storage.json",
 	},
 
@@ -161,19 +173,22 @@ export default defineConfig({
 
 	// The integration project targets an already-running stack (ALT_RUNTIME_URL /
 	// :4173) and does not need the local preview server; PW_NO_WEBSERVER=1 skips
-	// it when :4174 is unavailable (e.g. taken by an unrelated container).
+	// it when the preview port is unavailable (e.g. taken by an unrelated
+	// container). Prefer ALT_E2E_PORT over PW_NO_WEBSERVER in that case: skipping
+	// the server leaves baseURL pointing at whatever else is on the port, so the
+	// suite runs green or red against a foreign app instead of failing loudly.
 	webServer: process.env.PW_NO_WEBSERVER
 		? undefined
 		: {
 				command: "bun run build && node build",
-				url: "http://127.0.0.1:4174/health",
+				url: `${previewOrigin}/health`,
 				reuseExistingServer: !isCI,
 				stdout: "pipe",
 				stderr: "pipe",
 				timeout: 120 * 1000,
 				env: {
-					PORT: "4174",
-					ORIGIN: "http://127.0.0.1:4174",
+					PORT: previewPort,
+					ORIGIN: previewOrigin,
 					E2E_TEST_MODE: "true",
 					KRATOS_INTERNAL_URL: "http://127.0.0.1:4001",
 					KRATOS_PUBLIC_URL: "http://127.0.0.1:4001",

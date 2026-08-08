@@ -22,12 +22,28 @@ function log(msg: string) {
 	console.log(`[Mock Kratos] ${msg}`);
 }
 
+/**
+ * ALT_E2E_PORT で preview サーバのポートを差し替えたときも auth フローが通るよう、
+ * 設定値をそのまま allow-list に載せる。値は開発者が設定する env であってリクエスト
+ * 由来ではないが、origin 文字列に混入させる以上は数字のみに限定する — ここが緩むと
+ * CWE-601 の allow-list そのものが入力で書き換え可能になる。
+ */
+const configuredPreviewPort = /^\d+$/.test(process.env.ALT_E2E_PORT ?? "")
+	? (process.env.ALT_E2E_PORT as string)
+	: null;
+
 /** E2Eテストで許可されるリダイレクト先オリジン */
 const ALLOWED_REDIRECT_ORIGINS = [
 	"http://127.0.0.1:5173",
 	"http://127.0.0.1:4174",
 	"http://localhost:5173",
 	"http://localhost:4174",
+	...(configuredPreviewPort
+		? [
+				`http://127.0.0.1:${configuredPreviewPort}`,
+				`http://localhost:${configuredPreviewPort}`,
+			]
+		: []),
 ];
 
 /**
