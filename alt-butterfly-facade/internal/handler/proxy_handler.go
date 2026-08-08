@@ -28,7 +28,6 @@ var streamingProcedures = map[string]bool{
 	"/alt.feeds.v2.FeedService/StreamSummarize":                              true,
 	"/alt.augur.v2.AugurService/StreamChat":                                  true,
 	"/alt.morning_letter.v2.MorningLetterService/StreamChat":                 true,
-	"/alt.tts.v1.TTSService/SynthesizeStream":                                true,
 	"/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates": true,
 }
 

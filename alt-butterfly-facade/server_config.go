@@ -24,7 +24,7 @@ import (
 // ProxyHandler regardless of the configured flags. See
 // TestBuildServerConfig_WiresBFFConfigFromAppConfig and
 // TestBuildServerConfig_ResultingServer_UsesBFFHandler in main_test.go.
-func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, ttsURL, acolyteURL string, secret []byte) server.Config {
+func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, acolyteURL string, secret []byte) server.Config {
 	return server.Config{
 		BackendURL:         backendURL,
 		BackendInternalURL: internalBackendURL,
@@ -34,7 +34,6 @@ func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, ttsUR
 		Audience:           cfg.BackendTokenAudience,
 		RequestTimeout:     cfg.RequestTimeout,
 		StreamingTimeout:   cfg.StreamingTimeout,
-		TTSConnectURL:      ttsURL,
 		AcolyteConnectURL:  acolyteURL,
 		BFFConfig: handler.BFFConfig{
 			EnableCache:              cfg.EnableCache,

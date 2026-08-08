@@ -20,8 +20,8 @@ import (
 
 // newMTLSBackendTransport builds an HTTP/2 RoundTripper that presents the
 // alt-butterfly-facade leaf cert on every handshake. The transport is used
-// for every mTLS upstream (alt-backend, acolyte-orchestrator, tts-speaker
-// nginx sidecars). ServerName is intentionally left empty so the HTTP
+// for every mTLS upstream (alt-backend, acolyte-orchestrator nginx
+// sidecars). ServerName is intentionally left empty so the HTTP
 // client derives SNI from each request's URL host — required because the
 // same transport is reused across multiple internal hostnames.
 func newMTLSBackendTransport() (http.RoundTripper, error) {
@@ -64,7 +64,6 @@ func main() {
 		"port", cfg.Port,
 		"backend_url", cfg.BackendConnectURL,
 		"backend_rest_url", cfg.BackendRESTURL,
-		"tts_url", cfg.TTSConnectURL,
 		"acolyte_url", cfg.AcolyteConnectURL,
 		"issuer", cfg.BackendTokenIssuer,
 		"audience", cfg.BackendTokenAudience)
@@ -84,7 +83,6 @@ func main() {
 	// proxies follow the same URL as everything else.
 	internalBackendURL := cfg.BackendInternalConnectURL
 	acolyteURL := cfg.AcolyteConnectURL
-	ttsURL := cfg.TTSConnectURL
 	var backendTransport http.RoundTripper
 	if os.Getenv("MTLS_ENFORCE") == "true" {
 		backendTransport, err = newMTLSBackendTransport()
@@ -96,17 +94,14 @@ func main() {
 			backendURL = v
 			internalBackendURL = v
 		}
-		// Acolyte and TTS each expose their own nginx mTLS sidecar on :9443.
-		// When MTLS_ENFORCE is on, route BFF → Acolyte/TTS through those TLS
-		// listeners so the whole east-west fabric stays off plaintext.
+		// Acolyte exposes its own nginx mTLS sidecar on :9443. When
+		// MTLS_ENFORCE is on, route BFF → Acolyte through that TLS listener
+		// so the whole east-west fabric stays off plaintext.
 		if v := os.Getenv("ACOLYTE_CONNECT_MTLS_URL"); v != "" {
 			acolyteURL = v
 		}
-		if v := os.Getenv("TTS_CONNECT_MTLS_URL"); v != "" {
-			ttsURL = v
-		}
 		slog.InfoContext(ctx, "BFF outbound clients: mtls_enforce_enabled",
-			"backend", backendURL, "acolyte", acolyteURL, "tts", ttsURL)
+			"backend", backendURL, "acolyte", acolyteURL)
 	} else {
 		// Admin proxy routes (KnowledgeHomeAdminService, AdminMonitorService)
 		// authenticate the caller via JWT role check at the BFF boundary but
@@ -116,7 +111,7 @@ func main() {
 		// with no service-level auth at all — surface that loudly instead of
 		// letting it default silently.
 		slog.WarnContext(ctx, "BFF outbound clients: mtls_enforce_disabled — admin RPCs to alt-backend run over plaintext h2c with no service-level auth",
-			"backend", backendURL, "acolyte", acolyteURL, "tts", ttsURL)
+			"backend", backendURL, "acolyte", acolyteURL)
 	}
 
 	// Loud wiring log per BFF feature (cache / circuit breaker / dedup /
@@ -125,7 +120,7 @@ func main() {
 	logBFFFeatureWiring(ctx, cfg)
 
 	// Create server configuration
-	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, ttsURL, acolyteURL, secret)
+	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, acolyteURL, secret)
 
 	// Connect-RPC uses the mTLS transport when enforcement is on; REST
 	// proxies always stay on the default plaintext transport so that

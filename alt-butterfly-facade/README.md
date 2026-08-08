@@ -62,7 +62,6 @@ The following endpoints use server streaming with extended timeout:
 - `/alt.feeds.v2.FeedService/StreamSummarize`
 - `/alt.augur.v2.AugurService/StreamChat`
 - `/alt.morning_letter.v2.MorningLetterService/StreamChat`
-- `/alt.tts.v1.TTSService/SynthesizeStream`
 - `/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates`
 - `/alt.knowledge_home.v1.KnowledgeHomeService/StreamRecallRailUpdates`
 

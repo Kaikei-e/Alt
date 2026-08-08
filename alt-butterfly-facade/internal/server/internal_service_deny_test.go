@@ -45,7 +45,6 @@ func TestAllowConnectPath(t *testing.T) {
 		// PublicServices — browser-reachable
 		{"public feeds", "/alt.feeds.v2.FeedService/GetFeedStats", true},
 		{"public articles", "/alt.articles.v2.ArticleService/ListArticles", true},
-		{"public tts", "/alt.tts.v1.TTSService/Synthesize", true},
 		// AdminServices — resolved by their dedicated gated routes, but the
 		// catch-all must not be what refuses them.
 		{"admin knowledge home", "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth", true},

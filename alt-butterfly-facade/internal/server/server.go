@@ -37,7 +37,6 @@ type Config struct {
 	Audience           string
 	RequestTimeout     time.Duration
 	StreamingTimeout   time.Duration
-	TTSConnectURL      string
 	AcolyteConnectURL  string
 
 	// BFF Feature Configuration
@@ -245,31 +244,6 @@ func NewServerWithTransports(
 		}))
 	}
 
-	// TTS service routing (before catch-all).
-	// tts-speaker (uvicorn) does not support h2c; always use HTTP/1.1.
-	// When MTLS_ENFORCE=true, transport is &http2.Transport{TLSClientConfig}
-	// which rejects http:// URLs. Fall back to DefaultTransport for plaintext.
-	if cfg.TTSConnectURL != "" {
-		ttsTransport := transport
-		if ttsTransport == nil || strings.HasPrefix(cfg.TTSConnectURL, "http://") {
-			ttsTransport = http.DefaultTransport
-		}
-		// Use streaming timeout for TTS since synthesis can be slow
-		ttsClient := client.NewBackendClientWithTransport(
-			cfg.TTSConnectURL,
-			cfg.StreamingTimeout,
-			cfg.StreamingTimeout,
-			ttsTransport,
-		)
-		ttsProxy := handler.NewProxyHandler(
-			ttsClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger, cfg.StreamingTimeout, cfg.StreamingTimeout,
-		)
-		// BFF validates JWT before forwarding (authInterceptor, line ~115).
-		// mTLS transport-layer auth is available when TTS_CONNECT_MTLS_URL is set.
-		// Without it, traffic runs HTTP/1.1 over the operator's overlay network.
-		mux.Handle("/alt.tts.v1.TTSService/", ttsProxy)
-	}
-
 	// Knowledge Home admin routing (before catch-all).
 	// The admin-role check on the caller's JWT happens here, at the BFF
 	// boundary — alt-backend's admin services do not repeat it. They live on
@@ -350,7 +324,7 @@ func NewServerWithTransports(
 	// construction, so a new east-west service, or a public service that was
 	// never published, needs no hand-maintained deny prefix to be refused.
 	//
-	// The dedicated routes above (TTS, KnowledgeHomeAdminService,
+	// The dedicated routes above (KnowledgeHomeAdminService,
 	// AdminMonitorService, Acolyte, /v1/…) are longer mux patterns and resolve
 	// before this one; they are unaffected.
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
