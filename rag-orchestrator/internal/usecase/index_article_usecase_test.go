@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"rag-orchestrator/internal/domain"
@@ -661,4 +662,36 @@ func TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx(t *testing.T) {
 	mockChunkRepo.AssertNotCalled(t, "GetChunksByVersionID", mock.Anything, mock.Anything)
 	mockChunkRepo.AssertNotCalled(t, "BulkInsertChunks", mock.Anything, mock.Anything)
 	mockChunkRepo.AssertNotCalled(t, "InsertEvents", mock.Anything, mock.Anything)
+}
+
+// TestIndexArticle_Upsert_RejectsBlankArticleID is the RED case for
+// rag-null-embedding-panic's second defect: the HTTP handler's blank
+// article_id guard only protects the HTTP entry point. JobWorker's
+// processBackfillArticle and DirectIndexer's IndexArticle both call
+// IndexArticleUsecase.Upsert directly, bypassing it. rag_documents.article_id
+// is text NOT NULL UNIQUE, so an empty string is a value the DB accepts —
+// and every blank caller collapses onto that one row. The invariant must
+// therefore live in Upsert itself, the one choke point all three entry
+// points share, not only at the HTTP boundary.
+func TestIndexArticle_Upsert_RejectsBlankArticleID(t *testing.T) {
+	for _, articleID := range []string{"", "   ", "\t\n"} {
+		t.Run(fmt.Sprintf("articleID=%q", articleID), func(t *testing.T) {
+			mockDocRepo := new(MockRagDocumentRepository)
+			mockChunkRepo := new(MockRagChunkRepository)
+			mockTxManager := new(MockTransactionManager)
+			hasher := domain.NewSourceHashPolicy()
+			chunker := domain.NewChunker()
+
+			uc := usecase.NewIndexArticleUsecase(
+				mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+			)
+
+			err := uc.Upsert(context.Background(), articleID, "Title", "https://example.com", "Body")
+
+			assert.ErrorIs(t, err, usecase.ErrBlankArticleID)
+			mockDocRepo.AssertNotCalled(t, "GetByArticleID", mock.Anything, mock.Anything)
+			mockDocRepo.AssertNotCalled(t, "CreateDocument", mock.Anything, mock.Anything)
+			mockChunkRepo.AssertNotCalled(t, "BulkInsertChunks", mock.Anything, mock.Anything)
+		})
+	}
 }

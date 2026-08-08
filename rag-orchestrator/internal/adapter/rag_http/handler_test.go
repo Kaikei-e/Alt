@@ -182,15 +182,19 @@ func TestHandler_AnswerWithRAGStream(t *testing.T) {
 
 // dummyIndexUsecase captures the parameters passed to Upsert
 type dummyIndexUsecase struct {
-	capturedURL   string
-	capturedTitle string
-	capturedCtx   context.Context
-	returnError   error
+	capturedURL       string
+	capturedTitle     string
+	capturedArticleID string
+	capturedCtx       context.Context
+	called            bool
+	returnError       error
 }
 
 func (d *dummyIndexUsecase) Upsert(ctx context.Context, articleID, title, url, body string) error {
+	d.called = true
 	d.capturedURL = url
 	d.capturedTitle = title
+	d.capturedArticleID = articleID
 	d.capturedCtx = ctx
 	return d.returnError
 }
@@ -229,6 +233,70 @@ func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "https://example.com/test-article", dummy.capturedURL, "URL should be passed from request to usecase")
 	assert.Equal(t, "Test Article Title", dummy.capturedTitle, "Title should be passed correctly")
+}
+
+// TestUpsertIndex_RejectsBlankArticleID is the RED case for
+// rag-null-embedding-panic's second defect: an empty article_id is legal
+// against rag_documents.article_id (text NOT NULL UNIQUE), so every
+// caller that fails to populate it collapses onto the same document row
+// instead of failing loudly. The handler must reject it with 400 before
+// it ever reaches the usecase.
+func TestUpsertIndex_RejectsBlankArticleID(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	reqBody := openapi.UpsertIndexRequest{
+		ArticleId: "",
+		Title:     "Test Article",
+		Url:       "https://example.com/article",
+		Body:      "Content",
+		UserId:    "user-456",
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	assert.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = handler.UpsertIndex(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.False(t, dummy.called, "Upsert usecase must not be invoked for a blank article_id")
+}
+
+// TestUpsertIndex_RejectsWhitespaceOnlyArticleID guards the same defect
+// against a caller that sends whitespace instead of an empty string.
+func TestUpsertIndex_RejectsWhitespaceOnlyArticleID(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	reqBody := openapi.UpsertIndexRequest{
+		ArticleId: "   ",
+		Title:     "Test Article",
+		Url:       "https://example.com/article",
+		Body:      "Content",
+		UserId:    "user-456",
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	assert.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = handler.UpsertIndex(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.False(t, dummy.called, "Upsert usecase must not be invoked for a whitespace-only article_id")
 }
 
 func TestUpsertIndex_ReturnsErrorWhenUsecaseFails(t *testing.T) {

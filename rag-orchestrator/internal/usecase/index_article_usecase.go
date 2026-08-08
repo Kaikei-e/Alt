@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"rag-orchestrator/internal/domain"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,6 +48,16 @@ func NewIndexArticleUsecase(
 	}
 }
 
+// ErrBlankArticleID is returned when Upsert is called with an article ID
+// that is empty or whitespace-only. rag_documents.article_id is a
+// non-nullable but otherwise unconstrained text column, so an empty
+// string is a value the DB will happily accept — and dedupe every blank
+// caller onto, since it's UNIQUE. Enforced here, not only at the HTTP
+// handler, because JobWorker.processBackfillArticle and
+// DirectIndexer.IndexArticle also call Upsert directly, bypassing any
+// handler-level check.
+var ErrBlankArticleID = errors.New("indexArticleUsecase: article_id is required")
+
 // Upsert indexes an article: (1) a read-only pre-check skips the work
 // entirely when the article hasn't changed, (2) chunking, (3) embedding —
 // a network call to the encoder that can take 10-60s for large articles —
@@ -55,6 +67,10 @@ func NewIndexArticleUsecase(
 // across the embedder network call previously caused idle-in-transaction
 // timeouts (SQLSTATE 25P03) on rag-db for the largest articles.
 func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url, body string) error {
+	if strings.TrimSpace(articleID) == "" {
+		return ErrBlankArticleID
+	}
+
 	sourceHash := u.hasher.Compute(title, body)
 	chunkerVersion := string(u.chunker.Version())
 	embedderVersion := ""

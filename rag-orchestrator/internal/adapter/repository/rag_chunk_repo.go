@@ -67,9 +67,18 @@ func (r *ragChunkRepository) BulkInsertChunks(ctx context.Context, chunks []doma
 	return nil
 }
 
+// GetChunksByVersionID retrieves chunks for a version. Callers (chunk-diff
+// computation in indexArticleUsecase.Upsert, retrieval context assembly in
+// articleScopedStrategy) only ever read ID/Ordinal/Content — never
+// Embedding — so the embedding column is deliberately excluded from both
+// the SELECT and the scan. Scanning it into the non-nullable
+// domain.RagChunk.Embedding would panic on any row with a NULL embedding
+// (pgvector-go's Vector.DecodeBinary does not guard against a nil/empty
+// buffer), which is the state of every pre-existing chunk after a
+// dimension-widening migration re-nulls the column.
 func (r *ragChunkRepository) GetChunksByVersionID(ctx context.Context, versionID uuid.UUID) ([]domain.RagChunk, error) {
 	query := `
-		SELECT id, version_id, ordinal, content, embedding, created_at
+		SELECT id, version_id, ordinal, content, created_at
 		FROM rag_chunks
 		WHERE version_id = $1
 		ORDER BY ordinal ASC
@@ -83,7 +92,7 @@ func (r *ragChunkRepository) GetChunksByVersionID(ctx context.Context, versionID
 	var chunks []domain.RagChunk
 	for rows.Next() {
 		var c domain.RagChunk
-		if err := rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.Embedding, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan chunk: %w", err)
 		}
 		chunks = append(chunks, c)
@@ -189,10 +198,13 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		distanceMap[c.id] = c.distance
 	}
 
-	// Stage 2: Enrich with metadata, filter by current version only
+	// Stage 2: Enrich with metadata, filter by current version only.
+	// c.embedding is intentionally excluded — see SearchWithinArticles for
+	// why scanning it into domain.RagChunk.Embedding is unsafe, and note
+	// no caller of Search() ever reads SearchResult.Chunk.Embedding.
 	stage2Query := `
 		SELECT
-			c.id, c.version_id, c.ordinal, c.content, c.embedding, c.created_at,
+			c.id, c.version_id, c.ordinal, c.content, c.created_at,
 			d.article_id,
 			v.version_number,
 			v.title,
@@ -216,7 +228,7 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		var articleID string
 		var versionNumber int
 		var title, url sql.NullString
-		if err := stage2Rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.Embedding, &c.CreatedAt, &articleID, &versionNumber, &title, &url); err != nil {
+		if err := stage2Rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.CreatedAt, &articleID, &versionNumber, &title, &url); err != nil {
 			return nil, fmt.Errorf("failed to scan stage 2 result: %w", err)
 		}
 
@@ -256,9 +268,18 @@ func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVect
 	// Single-pass query with pre-filtering by article IDs
 	// Note: HNSW index cannot be used efficiently with this approach,
 	// but since we're filtering to a small subset of articles, performance is acceptable.
+	//
+	// c.embedding is selected only inside the "(c.embedding <=> $1) as distance"
+	// projection, never as its own column: scanning it into the non-nullable
+	// domain.RagChunk.Embedding (pgvector.Vector) would panic on any row whose
+	// embedding is NULL, exactly like the bug fixed in GetChunksByVersionID.
+	// This query has no "embedding IS NOT NULL" filter — a NULL embedding
+	// still produces a NULL distance and sorts last, it does not exclude the
+	// row — so a NULL-embedding chunk for a requested article reaches Scan.
+	// No caller reads SearchResult.Chunk.Embedding, so the column is dropped.
 	query := `
 		SELECT
-			c.id, c.version_id, c.ordinal, c.content, c.embedding, c.created_at,
+			c.id, c.version_id, c.ordinal, c.content, c.created_at,
 			d.article_id,
 			v.version_number,
 			v.title,
@@ -286,7 +307,7 @@ func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVect
 		var versionNumber int
 		var title, url sql.NullString
 		var distance float32
-		if err := rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.Embedding, &c.CreatedAt, &articleID, &versionNumber, &title, &url, &distance); err != nil {
+		if err := rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.CreatedAt, &articleID, &versionNumber, &title, &url, &distance); err != nil {
 			return nil, fmt.Errorf("failed to scan search result: %w", err)
 		}
 

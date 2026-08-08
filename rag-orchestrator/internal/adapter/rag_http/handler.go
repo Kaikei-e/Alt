@@ -177,6 +177,14 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
+	// rag_documents.article_id is text NOT NULL UNIQUE, so an empty string
+	// is a legal value the DB will happily accept and dedupe every blank
+	// caller onto — silently collapsing unrelated articles onto one
+	// document row instead of failing loudly.
+	if strings.TrimSpace(req.ArticleId) == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "article_id is required"})
+	}
+
 	// Server-side timeout decoupled from caller's context
 	timeoutCtx, cancel := context.WithTimeout(ctx.Request().Context(), upsertTimeout)
 	defer cancel()
