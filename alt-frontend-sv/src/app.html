@@ -6,6 +6,18 @@
 		<meta name="format-detection" content="telephone=no, date=no, address=no, email=no" />
 		<meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)" />
 		<meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)" />
+		<!-- Installability. iOS only delivers Web Push to a Home Screen web app,
+		     so `display: standalone` in the manifest is what keeps PushManager
+		     available at all — a launch with browser chrome silently removes it.
+		     The capable meta tags are redundant with the manifest on current iOS
+		     but are kept because a chrome-ful launch on an older device would
+		     disable notifications with no error anywhere; `mobile-web-app-capable`
+		     is the non-prefixed form Chrome asks for. -->
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="Alt" />
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
