@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -127,6 +128,20 @@ type capturedRecallDismiss struct {
 type fakeRepo struct {
 	events     []sovereign_db.KnowledgeEvent
 	checkpoint int64
+	// checkpointAt is the stored row's updated_at — the witness the real
+	// repository's compare-and-set matches on. Modelling it here is what makes
+	// "the projector handed back the token it actually read" checkable: a
+	// fabricated token has the wrong witness and is refused, exactly as
+	// Postgres would refuse it.
+	checkpointAt     time.Time
+	checkpointExists bool
+	// advances records every compare-and-set attempt, so a test can assert both
+	// the value passed and that a rejected advance is not retried in a loop.
+	advances []fakeAdvance
+	// advanceRejected simulates another writer (an operator's rebuild, the
+	// reproject swap RPC) having moved the row since the batch read it.
+	advanceRejected bool
+	listCalls       int
 
 	homeItems        map[string]capturedHomeItem
 	dismissed        map[string]capturedDismiss
@@ -159,11 +174,23 @@ type fakeRepo struct {
 	dismissHomeErr    error
 }
 
+// fakeAdvance is one recorded compare-and-set attempt.
+type fakeAdvance struct {
+	From  sovereign_db.ProjectionCheckpoint
+	ToSeq int64
+}
+
+// fakeCheckpointAt is the fake's initial stored updated_at. Fixed, never wall
+// clock: it is compared for equality, not for recency.
+var fakeCheckpointAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
 var _ Repository = (*fakeRepo)(nil)
 
 func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
 	return &fakeRepo{
 		events:                  events,
+		checkpointAt:            fakeCheckpointAt,
+		checkpointExists:        true,
 		homeItems:               map[string]capturedHomeItem{},
 		dismissed:               map[string]capturedDismiss{},
 		clearedSupersede:        map[string]int{},
@@ -177,16 +204,38 @@ func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
 	}
 }
 
-func (f *fakeRepo) GetProjectionCheckpoint(_ context.Context, _ string) (int64, error) {
-	return f.checkpoint, nil
+func (f *fakeRepo) ReadProjectionCheckpointForAdvance(_ context.Context, _ string) (sovereign_db.ProjectionCheckpoint, error) {
+	if !f.checkpointExists {
+		return sovereign_db.ProjectionCheckpoint{}, nil
+	}
+	return sovereign_db.ProjectionCheckpoint{
+		LastEventSeq: f.checkpoint,
+		UpdatedAt:    f.checkpointAt,
+		Exists:       true,
+	}, nil
 }
 
-func (f *fakeRepo) UpdateProjectionCheckpoint(_ context.Context, _ string, lastSeq int64) error {
-	f.checkpoint = lastSeq
-	return nil
+// AdvanceProjectionCheckpointIfUnchanged mirrors the driver's guarded UPDATE:
+// it applies only when the token still describes the stored row, and every
+// applied advance moves the witness, so a token read before it is dead.
+func (f *fakeRepo) AdvanceProjectionCheckpointIfUnchanged(
+	_ context.Context, _ string, from sovereign_db.ProjectionCheckpoint, toSeq int64,
+) (bool, error) {
+	f.advances = append(f.advances, fakeAdvance{From: from, ToSeq: toSeq})
+	if f.advanceRejected {
+		return false, nil
+	}
+	if from.Exists != f.checkpointExists || from.LastEventSeq != f.checkpoint || !from.UpdatedAt.Equal(f.checkpointAt) {
+		return false, nil
+	}
+	f.checkpoint = toSeq
+	f.checkpointAt = f.checkpointAt.Add(time.Second)
+	f.checkpointExists = true
+	return true, nil
 }
 
 func (f *fakeRepo) ListKnowledgeEventsSince(_ context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error) {
+	f.listCalls++
 	var out []sovereign_db.KnowledgeEvent
 	for _, e := range f.events {
 		if e.EventSeq > afterSeq {
@@ -1247,4 +1296,105 @@ func TestProjector_FoldEventUsesExplicitlyPassedVersionRegardlessOfActive(t *tes
 	d, ok := repo.dismissed[itemKey]
 	require.True(t, ok)
 	assert.Equal(t, 6, d.ProjectionVersion, "an explicitly-passed fold version must win over the repo's active version")
+}
+
+// ── checkpoint advance ──
+
+// recordingHandler captures log records so a test can assert that a condition
+// was reported, and at a level an operator will actually see.
+type recordingHandler struct {
+	records []recordedLog
+}
+
+type recordedLog struct {
+	Level   slog.Level
+	Message string
+	Attrs   map[string]any
+}
+
+func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *recordingHandler) Handle(_ context.Context, r slog.Record) error {
+	attrs := map[string]any{}
+	r.Attrs(func(a slog.Attr) bool {
+		attrs[a.Key] = a.Value.Any()
+		return true
+	})
+	h.records = append(h.records, recordedLog{Level: r.Level, Message: r.Message, Attrs: attrs})
+	return nil
+}
+
+func (h *recordingHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *recordingHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *recordingHandler) find(message string) (recordedLog, bool) {
+	for _, r := range h.records {
+		if r.Message == message {
+			return r, true
+		}
+	}
+	return recordedLog{}, false
+}
+
+// The checkpoint must be advanced with the state the batch actually read, not
+// with a value assembled at write time. The fake refuses any other token, the
+// same way the guarded UPDATE refuses a row that has moved.
+func TestProjector_AdvancesTheCheckpointWithTheStateItReadAtTheStartOfTheBatch(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	occurredAt := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
+
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(11, "SomeFutureEventType", "whatever", occurredAt, tenant, user, mustJSON(t, map[string]any{})),
+		homeEvent(12, "SomeFutureEventType", "whatever", occurredAt, tenant, user, mustJSON(t, map[string]any{})),
+	}
+	repo := newFakeRepo(events)
+	repo.checkpoint = 10
+
+	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
+
+	require.Len(t, repo.advances, 1)
+	assert.EqualValues(t, 10, repo.advances[0].From.LastEventSeq, "the token must carry the sequence the batch folded from")
+	assert.True(t, repo.advances[0].From.UpdatedAt.Equal(fakeCheckpointAt), "the token must carry the witness that was read")
+	assert.True(t, repo.advances[0].From.Exists)
+	assert.EqualValues(t, 12, repo.advances[0].ToSeq)
+	assert.EqualValues(t, 12, repo.checkpoint)
+}
+
+// PM-2026-010's ending, at unit level: something else wrote the checkpoint
+// while this batch was folding. The advance is refused, and the projector must
+// not carry on as if it had landed — it stops the tick, says so loudly, and
+// lets the next tick re-read whatever the other writer decided.
+func TestProjector_RejectedCheckpointAdvanceStopsTheTickAndIsReportedLoudly(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	occurredAt := time.Date(2026, 7, 14, 9, 0, 0, 0, time.UTC)
+
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "SomeFutureEventType", "a", occurredAt, tenant, user, mustJSON(t, map[string]any{})),
+		homeEvent(2, "SomeFutureEventType", "b", occurredAt, tenant, user, mustJSON(t, map[string]any{})),
+		homeEvent(3, "SomeFutureEventType", "c", occurredAt, tenant, user, mustJSON(t, map[string]any{})),
+		homeEvent(4, "SomeFutureEventType", "d", occurredAt, tenant, user, mustJSON(t, map[string]any{})),
+	}
+	repo := newFakeRepo(events)
+	repo.advanceRejected = true
+
+	logs := &recordingHandler{}
+	// Batches of two, four allowed per tick: without an explicit stop the loop
+	// would fold the same events again and again behind an unmoving checkpoint.
+	p := NewProjector(repo, slog.New(logs), Config{BatchSize: 2, MaxBatchesPerTick: 4})
+
+	require.NoError(t, p.RunBatch(context.Background()),
+		"losing the checkpoint race is a recoverable outcome, not a batch failure")
+
+	assert.Zero(t, repo.checkpoint, "a refused advance must leave the stored checkpoint exactly as the other writer left it")
+	assert.Len(t, repo.advances, 1, "a refused advance must not be retried in a loop")
+	assert.Equal(t, 1, repo.listCalls, "the tick must stop instead of folding the next batch on a checkpoint it could not move")
+
+	rec, ok := logs.find("knowledge_home_projector.checkpoint_advance_rejected")
+	require.True(t, ok, "a refused advance must be reported, never swallowed")
+	assert.Equal(t, slog.LevelError, rec.Level, "the batch's work was abandoned; that is error-level")
+	assert.EqualValues(t, 0, rec.Attrs["expected_seq"])
+	assert.EqualValues(t, 2, rec.Attrs["attempted_seq"])
+	assert.Equal(t, projectorName, rec.Attrs["projector"])
 }

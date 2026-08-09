@@ -131,9 +131,26 @@ type ProjectionRebuildResult struct {
 // The single transaction is the point. PM-2026-010 was caused by running the
 // TRUNCATE and the checkpoint reset as two statements: the always-running
 // projector advanced the checkpoint in the gap, and every event in that gap was
-// never folded into the rebuilt model (~326 articles). The checkpoint row is
-// locked first so that the projector's own checkpoint write serialises behind
-// the rebuild rather than landing in the middle of it.
+// never folded into the rebuilt model (~326 articles).
+//
+// The checkpoint row is locked first, but that lock is narrower than it looks
+// and is not what makes the reset survive a running projector:
+//
+//   - FOR UPDATE makes a concurrent writer wait. It does not make it re-read. A
+//     projector batch that read the checkpoint before this transaction began
+//     and writes it after this one commits lands on top of the reset rather
+//     than behind it, restoring the pre-rebuild sequence over the tables just
+//     emptied — the same end state PM-2026-010 had.
+//   - When the projector has never run there is no row at all, so the
+//     FOR UPDATE below locks nothing and the window is wide open.
+//
+// What closes both is on the projector's side: it advances its checkpoint with
+// AdvanceProjectionCheckpointIfUnchanged, a compare-and-set against the
+// (last_event_seq, updated_at, row-exists) state it read at the start of its
+// batch. That makes the updated_at written by the reset below load-bearing
+// rather than decorative — it is the witness that invalidates an in-flight
+// batch even when the sequence is 0 on both sides of the rebuild, which is what
+// a second, idempotent rebuild looks like.
 //
 // TRUNCATE is issued without CASCADE on purpose: should a foreign key ever be
 // added from a table that is not disposable, the rebuild must fail loudly
@@ -170,8 +187,9 @@ func (r *Repository) RebuildProjection(ctx context.Context, target ProjectionReb
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return ProjectionRebuildResult{}, fmt.Errorf("RebuildProjection lock checkpoint %q: %w", target.projectorName, err)
 		}
-		// No checkpoint row yet: the projector has never run. Nothing to lock,
-		// and the reset below inserts it.
+		// No checkpoint row yet: the projector has never run. Nothing to lock —
+		// see the note above on why the lock is not what protects the reset —
+		// and the reset below inserts the row.
 		checkpointBefore = 0
 	}
 

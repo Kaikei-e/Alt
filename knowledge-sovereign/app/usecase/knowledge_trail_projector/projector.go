@@ -8,6 +8,7 @@ package knowledge_trail_projector
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -48,8 +49,15 @@ var verbByEventType = map[string]string{
 
 // Repository is the narrow surface the projector needs.
 type Repository interface {
-	GetProjectionCheckpoint(ctx context.Context, projectorName string) (int64, error)
-	UpdateProjectionCheckpoint(ctx context.Context, projectorName string, lastSeq int64) error
+	// The checkpoint is read as a token and advanced with a compare-and-set
+	// against it. The seq-only pair (GetProjectionCheckpoint /
+	// UpdateProjectionCheckpoint) is deliberately not in this surface: its
+	// write is unconditional, so a batch that read the checkpoint before a
+	// concurrent RebuildProjection would restore the pre-rebuild sequence over
+	// the read models the rebuild had just emptied, and every event below it
+	// would never be folded again (PM-2026-010).
+	ReadProjectionCheckpointForAdvance(ctx context.Context, projectorName string) (sovereign_db.ProjectionCheckpoint, error)
+	AdvanceProjectionCheckpointIfUnchanged(ctx context.Context, projectorName string, from sovereign_db.ProjectionCheckpoint, toSeq int64) (bool, error)
 	ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
 	UpsertTrailFootprint(ctx context.Context, fp sovereign_db.TrailFootprint, projectionVersion int) error
 	UpsertTrailBranch(ctx context.Context, userID, tenantID uuid.UUID, b sovereign_db.TrailBranch, createdAt time.Time, projectionVersion int) error
@@ -85,13 +93,18 @@ func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 
 // RunBatch drains up to MaxBatchesPerTick batches from the event log, folding
 // each act event into a footprint and advancing the checkpoint.
+//
+// The checkpoint is advanced with a compare-and-set against the state read at
+// the start of the batch. If another writer moved it in the meantime the
+// advance is refused, this tick's work is abandoned, and the next tick starts
+// again from whatever that writer left behind.
 func (p *Projector) RunBatch(ctx context.Context) error {
 	for i := 0; i < p.cfg.MaxBatchesPerTick; i++ {
-		lastSeq, err := p.repo.GetProjectionCheckpoint(ctx, projectorName)
+		checkpoint, err := p.repo.ReadProjectionCheckpointForAdvance(ctx, projectorName)
 		if err != nil {
-			return err
+			return fmt.Errorf("read checkpoint: %w", err)
 		}
-		events, err := p.repo.ListKnowledgeEventsSince(ctx, lastSeq, p.cfg.BatchSize)
+		events, err := p.repo.ListKnowledgeEventsSince(ctx, checkpoint.LastEventSeq, p.cfg.BatchSize)
 		if err != nil {
 			return err
 		}
@@ -131,8 +144,27 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			}
 		}
 
-		if err := p.repo.UpdateProjectionCheckpoint(ctx, projectorName, maxSeq); err != nil {
-			return err
+		applied, err := p.repo.AdvanceProjectionCheckpointIfUnchanged(ctx, projectorName, checkpoint, maxSeq)
+		if err != nil {
+			return fmt.Errorf("advance checkpoint: %w", err)
+		}
+		if !applied {
+			// Somebody else wrote the checkpoint while this batch was folding:
+			// an operator's RebuildProjection, or another service's reproject
+			// swap. Their value is the authoritative one and this batch is
+			// working from a stale view of where the projection stands, so the
+			// tick ends here and the next one re-reads. Retrying with a fresh
+			// token would re-apply exactly the write the other writer was
+			// trying to prevent, and the rebuilt spine would be left empty
+			// behind a checkpoint at the tip (PM-2026-010). Nothing is lost by
+			// stopping: the events are still in the append-only log and the
+			// folds are idempotent, so the next tick re-folds them.
+			p.logger.ErrorContext(ctx, "trail.checkpoint_advance_rejected",
+				slog.String("projector", projectorName),
+				slog.Int64("expected_seq", checkpoint.LastEventSeq),
+				slog.Int64("attempted_seq", maxSeq),
+				slog.Int("batch_events", len(events)))
+			return nil
 		}
 		if len(events) < p.cfg.BatchSize {
 			return nil

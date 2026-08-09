@@ -190,7 +190,35 @@ func (r *Repository) ActivateProjectionVersion(ctx context.Context, version int)
 
 // === Projection checkpoints ===
 
-// GetProjectionCheckpoint returns the last processed event sequence for a projector.
+// ProjectionCheckpoint is one projector's cursor read as an
+// optimistic-concurrency token: the sequence it stands at, plus enough of the
+// row's identity to tell whether anybody has written it since.
+//
+// UpdatedAt is that witness, and it is load-bearing rather than informational.
+// last_event_seq on its own cannot distinguish "still the 0 I read" from "reset
+// to 0 again by a second rebuild while I was folding" — and re-running a
+// rebuild is exactly what the reproject runbooks tell an operator to do when
+// they are unsure the first one landed. Exists is the second witness: a
+// projector that has never run has no row at all, and a rebuild inserts the row
+// it did not find, so "absent" and "present holding 0" are different states.
+//
+// Obtain one from ReadProjectionCheckpointForAdvance; a hand-built value
+// describes a row nobody read.
+type ProjectionCheckpoint struct {
+	LastEventSeq int64
+	UpdatedAt    time.Time
+	Exists       bool
+}
+
+// GetProjectionCheckpoint returns the last processed event sequence for a
+// projector, reporting one that has never run as 0. This is the WIRE-level
+// form: the GetProjectionCheckpoint RPC forwards the value verbatim.
+//
+// In-process projectors MUST read with ReadProjectionCheckpointForAdvance
+// instead. A bare int64 collapses "no row yet" into 0 and carries nothing that
+// says when the row was last written, so it cannot be paired with a
+// compare-and-set — see AdvanceProjectionCheckpointIfUnchanged for why a
+// projector needs one.
 func (r *Repository) GetProjectionCheckpoint(ctx context.Context, projectorName string) (int64, error) {
 	query := `SELECT last_event_seq FROM knowledge_projection_checkpoints WHERE projector_name = $1`
 	var seq int64
@@ -204,7 +232,19 @@ func (r *Repository) GetProjectionCheckpoint(ctx context.Context, projectorName 
 	return seq, nil
 }
 
-// UpdateProjectionCheckpoint upserts the projection checkpoint.
+// UpdateProjectionCheckpoint upserts the projection checkpoint unconditionally.
+// This is the WIRE-level form: the UpdateProjectionCheckpoint RPC forwards the
+// sequence verbatim, and alt-backend's reproject swap calls it to *set* a
+// checkpoint it chose, which is only expressible as an unconditional write.
+//
+// In-process projectors MUST use ReadProjectionCheckpointForAdvance +
+// AdvanceProjectionCheckpointIfUnchanged instead. Unconditional here means a
+// batch that read the checkpoint before a concurrent RebuildProjection will
+// cheerfully restore the pre-rebuild sequence on top of the read models that
+// rebuild just emptied, and the projector then only ever fetches events beyond
+// it: PM-2026-010, ~326 articles left unprojected behind a checkpoint standing
+// at a tip the projection had never reached. RebuildProjection's
+// SELECT ... FOR UPDATE makes such a write wait. It does not make it re-read.
 func (r *Repository) UpdateProjectionCheckpoint(ctx context.Context, projectorName string, lastSeq int64) error {
 	query := `INSERT INTO knowledge_projection_checkpoints (projector_name, last_event_seq, updated_at)
 		VALUES ($1, $2, now())
@@ -214,6 +254,78 @@ func (r *Repository) UpdateProjectionCheckpoint(ctx context.Context, projectorNa
 		return fmt.Errorf("UpdateProjectionCheckpoint: %w", err)
 	}
 	return nil
+}
+
+// ReadProjectionCheckpointForAdvance reads a projector's checkpoint as the
+// token AdvanceProjectionCheckpointIfUnchanged compares against. A projector
+// that has never run yields the zero token (Exists false), which is a state in
+// its own right and not a stored 0.
+func (r *Repository) ReadProjectionCheckpointForAdvance(ctx context.Context, projectorName string) (ProjectionCheckpoint, error) {
+	query := `SELECT last_event_seq, updated_at FROM knowledge_projection_checkpoints WHERE projector_name = $1`
+	var cp ProjectionCheckpoint
+	err := r.pool.QueryRow(ctx, query, projectorName).Scan(&cp.LastEventSeq, &cp.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ProjectionCheckpoint{}, nil
+		}
+		return ProjectionCheckpoint{}, fmt.Errorf("ReadProjectionCheckpointForAdvance %q: %w", projectorName, err)
+	}
+	cp.Exists = true
+	return cp, nil
+}
+
+// AdvanceProjectionCheckpointIfUnchanged moves a projector's checkpoint to
+// toSeq only if the stored row is still exactly the state `from` was read from,
+// and reports whether it applied. It is the in-process counterpart of the
+// wire-facing UpdateProjectionCheckpoint, in the same relation
+// AppendKnowledgeEventIfNew stands in to AppendKnowledgeEvent.
+//
+// A projector reads its checkpoint, spends a batch folding events, and only
+// then writes the new sequence back. Anything that writes the row inside that
+// window — an operator's RebuildProjection, another service's reproject swap —
+// has decided where the projector should stand, and a batch working from the
+// older view must not overwrite that decision. Guarding on the sequence *and*
+// the updated_at witness makes both a reset to a different sequence and a reset
+// to the same sequence visible; guarding on the row's absence makes the
+// first-ever batch safe against a rebuild that created the row underneath it,
+// which is the case RebuildProjection's row lock cannot cover because there is
+// no row to lock.
+//
+// A rejected advance is a normal outcome, not a failure: it is reported as
+// (false, nil) rather than an error, so callers must branch on applied rather
+// than on err — the same shape, and the same reason, as
+// AppendKnowledgeEventIfNew. Callers must not retry; the stored checkpoint is
+// authoritative and the next batch re-reads it.
+//
+// Two writes would have to land in the same microsecond *and* choose the same
+// sequence for the witness to mistake them for no write at all.
+func (r *Repository) AdvanceProjectionCheckpointIfUnchanged(
+	ctx context.Context,
+	projectorName string,
+	from ProjectionCheckpoint,
+	toSeq int64,
+) (bool, error) {
+	if !from.Exists {
+		// Insert-only. ON CONFLICT DO UPDATE here would overwrite precisely
+		// the row a concurrent rebuild had just created.
+		insertQuery := `INSERT INTO knowledge_projection_checkpoints (projector_name, last_event_seq, updated_at)
+			VALUES ($1, $2, now())
+			ON CONFLICT (projector_name) DO NOTHING`
+		tag, err := r.pool.Exec(ctx, insertQuery, projectorName, toSeq)
+		if err != nil {
+			return false, fmt.Errorf("AdvanceProjectionCheckpointIfUnchanged insert %q: %w", projectorName, err)
+		}
+		return tag.RowsAffected() == 1, nil
+	}
+
+	casQuery := `UPDATE knowledge_projection_checkpoints
+		SET last_event_seq = $3, updated_at = now()
+		WHERE projector_name = $1 AND last_event_seq = $2 AND updated_at = $4`
+	tag, err := r.pool.Exec(ctx, casQuery, projectorName, from.LastEventSeq, toSeq, from.UpdatedAt)
+	if err != nil {
+		return false, fmt.Errorf("AdvanceProjectionCheckpointIfUnchanged %q: %w", projectorName, err)
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // GetProjectionLag returns how many events the farthest-behind projector
