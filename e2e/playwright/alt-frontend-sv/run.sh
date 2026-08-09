@@ -64,12 +64,18 @@ fi
 # while `webServer` binds 4174. The in-container sequence mirrors
 # .github/workflows/alt-frontend-sv.yml step-for-step so CI green and
 # local run.sh green cannot diverge.
+# ALT_E2E_PORT is forwarded because --network host makes the preview port a
+# host-global resource: a developer whose 4174 is held by an unrelated
+# container cannot run this suite at all unless the escape hatch
+# playwright.config.ts documents actually reaches the container. Unset stays
+# unset, the config falls back to 4174, and CI is unchanged.
 echo "==> running Playwright ($SHARD) in $PLAYWRIGHT_IMAGE" >&2
 docker run --rm \
   --network host \
   -v "$ROOT:$ROOT" \
   -w "$ROOT/alt-frontend-sv" \
   -e CI=true \
+  -e ALT_E2E_PORT="${ALT_E2E_PORT:-}" \
   -e FORCE_COLOR=1 \
   -e PLAYWRIGHT_SKIP_GIT_INFO=1 \
   -e BUN_INSTALL=/root/.bun \
