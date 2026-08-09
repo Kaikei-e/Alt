@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"rag-orchestrator/internal/domain"
 	"strings"
+	"unicode/utf8"
 )
 
 // TemplateRegistry dispatches prompt building to intent-specific templates.
@@ -90,13 +91,8 @@ func (r *TemplateRegistry) buildMultiTurn(tmpl intentTemplate, input PromptInput
 	msgs = append(msgs, domain.Message{Role: "system", Content: sb.String()})
 
 	// Past turns
-	maxMsgs := 6
-	start := 0
-	if len(input.ConversationHistory) > maxMsgs {
-		start = len(input.ConversationHistory) - maxMsgs
-	}
-	for _, msg := range input.ConversationHistory[start:] {
-		msgs = append(msgs, domain.Message{Role: msg.Role, Content: runeTruncate(msg.Content, 3000)})
+	for _, msg := range recentConversationTurns(input.ConversationHistory) {
+		msgs = append(msgs, domain.Message{Role: msg.Role, Content: runeTruncate(msg.Content, conversationTurnRuneLimit)})
 	}
 
 	// User message
@@ -180,8 +176,54 @@ func buildUserMessage(input PromptInput) string {
 }
 
 // estimateTokens estimates token count from character count.
-// Japanese: ~2 chars per token, English: ~4 chars per token.
-// We use ~3 as a conservative average for bilingual content.
+//
+// Measured against the Gemma 4 tokenizer this pipeline runs on: Japanese costs
+// about 1.7 runes per token, English about 6. One blended divisor cannot serve
+// both, and the two errors are not symmetric — overestimating only wastes
+// budget, while underestimating overflows num_ctx, and an overflowing prompt is
+// truncated by Ollama rather than rejected. With news-creator's num_keep the
+// end of the prompt is what gets dropped, which is the user's own question, so
+// the model answers a question it can no longer see.
 func estimateTokens(text string) int {
-	return len([]rune(text)) / 3
+	var wide, narrow int
+	for _, r := range text {
+		if r < utf8.RuneSelf {
+			narrow++
+		} else {
+			wide++
+		}
+	}
+	// Deliberately conservative rates — 1.65 runes/token wide, 5.5 narrow,
+	// against measured 1.69 and 6.0 — and both divisions round up, so the
+	// estimate errs toward overcounting and never reports a string as free.
+	return (wide*20+32)/33 + (narrow*2+10)/11
+}
+
+const (
+	// conversationMaxTurns and conversationTurnRuneLimit bound how much history
+	// is replayed to the model. They live here, next to the code that applies
+	// them, because the token budget has to predict exactly what gets sent.
+	conversationMaxTurns      = 6
+	conversationTurnRuneLimit = 3000
+)
+
+// recentConversationTurns returns the tail of history that will actually be
+// replayed to the model.
+func recentConversationTurns(history []domain.Message) []domain.Message {
+	if len(history) <= conversationMaxTurns {
+		return history
+	}
+	return history[len(history)-conversationMaxTurns:]
+}
+
+// estimateConversationTokens estimates what the replayed history costs, applying
+// the same truncation buildMultiTurn does. Leaving history out of the budget is
+// how a prompt that "fits" still overflows num_ctx once the conversation is a
+// few turns deep.
+func estimateConversationTokens(history []domain.Message) int {
+	total := 0
+	for _, msg := range recentConversationTurns(history) {
+		total += estimateTokens(runeTruncate(msg.Content, conversationTurnRuneLimit))
+	}
+	return total
 }

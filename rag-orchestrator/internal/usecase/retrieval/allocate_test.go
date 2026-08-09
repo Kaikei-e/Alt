@@ -181,3 +181,73 @@ func makeContextItem(title string, score float32) retrieval.ContextItem {
 		Score:     score,
 	}
 }
+
+// TestAllocate_DynamicMode_KeepsBM25OnlyHitsDistinct pins the degraded-mode
+// contract. When vector search yields nothing, every hit comes from BM25, and
+// BM25 hits are article-level with no chunk id at all — search_indexer_client.go
+// sets ChunkID: "" because Meilisearch indexes articles, not chunks. Keying
+// dedupe on Chunk.ID alone therefore collapses the whole result set onto
+// uuid.Nil, and the relevance gate downstream sees a single context, calls the
+// retrieval insufficient, and Augur answers nothing at all. fuseHybridResults
+// already keys on article id; this stage must not regress to a coarser one.
+func TestAllocate_DynamicMode_KeepsBM25OnlyHitsDistinct(t *testing.T) {
+	sc := &retrieval.StageContext{
+		RetrievalID:   "bm25-degraded",
+		QuotaOriginal: 10,
+		QuotaExpanded: 10,
+		HitsOriginal: []domain.SearchResult{
+			{Chunk: domain.RagChunk{Content: "first"}, ArticleID: "art-1", Title: "Article 1", Score: 0.033},
+			{Chunk: domain.RagChunk{Content: "second"}, ArticleID: "art-2", Title: "Article 2", Score: 0.022},
+			{Chunk: domain.RagChunk{Content: "third"}, ArticleID: "art-3", Title: "Article 3", Score: 0.011},
+		},
+	}
+
+	contexts := retrieval.Allocate(sc, retrieval.AllocateConfig{
+		DynamicLanguageAllocationEnabled: true,
+	}, discardLogger())
+
+	assert.Len(t, contexts, 3,
+		"BM25-only hits carry no chunk id and must stay distinct by article instead of collapsing onto uuid.Nil")
+}
+
+// TestAllocate_LegacyMode_KeepsBM25OnlyHitsDistinct is the same contract for
+// the non-dynamic allocator, which shares the Chunk.ID-keyed dedupe.
+func TestAllocate_LegacyMode_KeepsBM25OnlyHitsDistinct(t *testing.T) {
+	sc := &retrieval.StageContext{
+		RetrievalID:   "bm25-degraded-legacy",
+		QuotaOriginal: 10,
+		QuotaExpanded: 10,
+		HitsOriginal: []domain.SearchResult{
+			{Chunk: domain.RagChunk{Content: "first"}, ArticleID: "art-1", Title: "Article 1", Score: 0.033},
+			{Chunk: domain.RagChunk{Content: "second"}, ArticleID: "art-2", Title: "Article 2", Score: 0.022},
+		},
+	}
+
+	contexts := retrieval.Allocate(sc, retrieval.AllocateConfig{
+		DynamicLanguageAllocationEnabled: false,
+	}, discardLogger())
+
+	assert.Len(t, contexts, 2,
+		"BM25-only hits carry no chunk id and must stay distinct by article instead of collapsing onto uuid.Nil")
+}
+
+// TestAllocate_StillDeduplicatesRepeatedArticleWithoutChunkID guards the other
+// direction: falling back to the article id must still collapse two hits that
+// really are the same article.
+func TestAllocate_StillDeduplicatesRepeatedArticleWithoutChunkID(t *testing.T) {
+	sc := &retrieval.StageContext{
+		RetrievalID:   "bm25-dupe",
+		QuotaOriginal: 10,
+		QuotaExpanded: 10,
+		HitsOriginal: []domain.SearchResult{
+			{Chunk: domain.RagChunk{Content: "first"}, ArticleID: "art-1", Title: "Article 1", Score: 0.033},
+			{Chunk: domain.RagChunk{Content: "first again"}, ArticleID: "art-1", Title: "Article 1", Score: 0.022},
+		},
+	}
+
+	contexts := retrieval.Allocate(sc, retrieval.AllocateConfig{
+		DynamicLanguageAllocationEnabled: true,
+	}, discardLogger())
+
+	assert.Len(t, contexts, 1, "the same article without a chunk id is still a duplicate")
+}

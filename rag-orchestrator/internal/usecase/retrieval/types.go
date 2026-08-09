@@ -56,3 +56,25 @@ type ContextItem struct {
 	// citations without falling back to a UUID-in-URL guess.
 	ArticleID string
 }
+
+// hitIdentity names a retrieval hit for deduplication and rerank bookkeeping.
+//
+// A chunk id is the natural identity, but BM25 hits are article-level and
+// carry none — search_indexer_client.go sets ChunkID: "" because Meilisearch
+// indexes articles, not chunks — so every BM25 hit shares uuid.Nil. Keying on
+// the chunk id alone therefore collapses a whole BM25-only result set into a
+// single hit, which is exactly what the pipeline degrades to whenever vector
+// search returns nothing. Falling back to the article id keeps those hits
+// apart at the same granularity fuseHybridResults already fuses on.
+//
+// Returns "" when the hit carries neither id; callers must treat that as
+// "cannot be identified" rather than as a shared key.
+func hitIdentity(chunkID uuid.UUID, articleID string) string {
+	if chunkID != uuid.Nil {
+		return "chunk:" + chunkID.String()
+	}
+	if articleID != "" {
+		return "article:" + articleID
+	}
+	return ""
+}

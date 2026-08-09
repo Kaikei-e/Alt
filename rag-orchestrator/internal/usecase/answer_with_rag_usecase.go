@@ -1219,7 +1219,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		allowEmpty = true
 	}
 	if len(contexts) == 0 && !allowEmpty {
-		return result, errors.New("no context returned from retrieval")
+		return result, ErrNoContextRetrieved
 	}
 
 	promptContexts := u.toPromptContexts(contexts)
@@ -1539,7 +1539,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 		return result, fmt.Errorf("failed to retrieve context: %w", err)
 	}
 	if retrieved == nil {
-		return result, errors.New("no context returned from retrieval")
+		return result, ErrNoContextRetrieved
 	}
 
 	// Quality gate: prefer RelevanceGate (cross-encoder score based),
@@ -1554,7 +1554,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 		result.retrievalQuality = verdict
 
 		if verdict == QualityInsufficient {
-			return result, errors.New("retrieval quality insufficient: context relevance too low")
+			return result, ErrRelevanceInsufficient
 		}
 	}
 
@@ -1563,9 +1563,15 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 		contexts = contexts[:maxChunks]
 	}
 
-	// Token-based limiting
+	// Token-based limiting. The budget has to cover everything that reaches the
+	// model, not just the system prompt and the chunks: the query and the
+	// replayed conversation turns are sent too, and omitting them is how a
+	// prompt that "fits" still overflows num_ctx — at which point Ollama
+	// truncates rather than rejects, and the tail it drops is the question.
 	maxPromptTokens := u.maxPromptTokens
-	estimatedTokens := EstimateSystemPromptTokens(u.promptVersion, result.intentType, u.templateRegistry)
+	estimatedTokens := EstimateSystemPromptTokens(u.promptVersion, result.intentType, u.templateRegistry) +
+		estimateTokens(input.Query) +
+		estimateConversationTokens(input.ConversationHistory)
 	var limitedContexts []ContextItem
 	for _, ctx := range contexts {
 		chunkTokens := estimateTokens(ctx.ChunkText)
@@ -1583,7 +1589,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	}
 
 	if len(contexts) == 0 && qPlan.RetrievalPolicy != "tool_only" && qPlan.RetrievalPolicy != "no_retrieval" {
-		return result, errors.New("no context returned from retrieval")
+		return result, ErrNoContextRetrieved
 	}
 
 	// Build prompt messages

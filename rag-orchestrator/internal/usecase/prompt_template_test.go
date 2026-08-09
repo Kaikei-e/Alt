@@ -368,3 +368,33 @@ func TestTemplateRegistry_ArticleScoped_DefaultSubIntent(t *testing.T) {
 	// Should NOT use generic 回答構造 section header
 	assert.NotContains(t, system, "## 回答構造")
 }
+
+func TestEstimateTokens_DoesNotUnderestimateJapanese(t *testing.T) {
+	// Measured against the Gemma 4 tokenizer this pipeline actually runs on:
+	// Japanese is about 1.69 runes per token, English about 6.0. A single
+	// blended divisor cannot serve both, and underestimating is the dangerous
+	// direction — the prompt then overflows num_ctx, Ollama truncates it, and
+	// with news-creator's num_keep the tail that gets dropped is the user's own
+	// question, leaving a one-token answer.
+	japanese := strings.Repeat("イランとアメリカの対立の理由について説明してください。", 100)
+	runes := len([]rune(japanese))
+	actualTokens := int(float64(runes) / 1.69)
+
+	estimate := estimateTokens(japanese)
+
+	assert.GreaterOrEqual(t, estimate, actualTokens,
+		"a Japanese prompt must never be estimated at fewer tokens than it really costs")
+	assert.LessOrEqual(t, estimate, actualTokens*3/2,
+		"the estimate must stay close enough to be usable as a budget")
+}
+
+func TestEstimateTokens_StaysCloseForEnglish(t *testing.T) {
+	english := strings.Repeat("Explain why the conflict escalated and what it means. ", 100)
+	runes := len([]rune(english))
+	actualTokens := runes / 6
+
+	estimate := estimateTokens(english)
+
+	assert.GreaterOrEqual(t, estimate, actualTokens*4/5)
+	assert.LessOrEqual(t, estimate, actualTokens*3/2)
+}

@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"rag-orchestrator/internal/domain"
-
-	"github.com/google/uuid"
 )
 
 // RerankConfig holds reranking stage parameters.
@@ -32,31 +30,49 @@ func Rerank(
 
 	rerankStart := time.Now()
 
-	// Prepare candidates from all unique hits (original + expanded)
-	candidateMap := make(map[uuid.UUID]domain.SearchResult)
-	for _, res := range sc.HitsOriginal {
-		candidateMap[res.Chunk.ID] = res
-	}
-	for _, item := range sc.HitsExpanded {
-		if _, exists := candidateMap[item.ChunkID]; !exists {
-			candidateMap[item.ChunkID] = domain.SearchResult{
-				Chunk: domain.RagChunk{
-					ID:      item.ChunkID,
-					Content: item.ChunkText,
-				},
-				Score:           item.Score,
-				Title:           item.Title,
-				URL:             item.URL,
-				DocumentVersion: item.DocumentVersion,
-			}
+	// Prepare candidates from all unique hits (original + expanded), keyed by
+	// hitIdentity rather than chunk id: BM25 hits all carry uuid.Nil, and
+	// keying on that collapses an entire BM25-only result set into one
+	// candidate. A hit that can be identified by neither id is left at its
+	// retrieval score instead — there would be no way to map a cross-encoder
+	// score back onto it alone.
+	candidateMap := make(map[string]domain.SearchResult)
+	candidateOrder := make([]string, 0, len(sc.HitsOriginal)+len(sc.HitsExpanded))
+	addCandidate := func(key string, res domain.SearchResult) {
+		if key == "" {
+			return
 		}
+		if _, exists := candidateMap[key]; exists {
+			return
+		}
+		candidateMap[key] = res
+		candidateOrder = append(candidateOrder, key)
 	}
 
-	// Convert to rerank candidates
-	candidates := make([]domain.RerankCandidate, 0, len(candidateMap))
-	for id, res := range candidateMap {
+	for _, res := range sc.HitsOriginal {
+		addCandidate(hitIdentity(res.Chunk.ID, res.ArticleID), res)
+	}
+	for _, item := range sc.HitsExpanded {
+		addCandidate(hitIdentity(item.ChunkID, item.ArticleID), domain.SearchResult{
+			Chunk: domain.RagChunk{
+				ID:      item.ChunkID,
+				Content: item.ChunkText,
+			},
+			Score:           item.Score,
+			ArticleID:       item.ArticleID,
+			Title:           item.Title,
+			URL:             item.URL,
+			DocumentVersion: item.DocumentVersion,
+		})
+	}
+
+	// Convert to rerank candidates in insertion order, so which candidates
+	// survive the cap below does not depend on map iteration order.
+	candidates := make([]domain.RerankCandidate, 0, len(candidateOrder))
+	for _, key := range candidateOrder {
+		res := candidateMap[key]
 		candidates = append(candidates, domain.RerankCandidate{
-			ID:      id.String(),
+			ID:      key,
 			Content: res.Chunk.Content,
 			Score:   res.Score,
 		})
@@ -102,22 +118,14 @@ func Rerank(
 	sc.RerankApplied = true
 
 	// Apply reranked scores
-	rerankScores := make(map[uuid.UUID]float32)
+	rerankScores := make(map[string]float32, len(reranked))
 	for _, r := range reranked {
-		id, err := uuid.Parse(r.ID)
-		if err != nil {
-			logger.Warn("rerank_invalid_chunk_id",
-				slog.String("retrieval_id", sc.RetrievalID),
-				slog.String("id", r.ID),
-				slog.String("error", err.Error()))
-			continue
-		}
-		rerankScores[id] = r.Score
+		rerankScores[r.ID] = r.Score
 	}
 
 	// Update original hits scores
 	for i := range sc.HitsOriginal {
-		if score, ok := rerankScores[sc.HitsOriginal[i].Chunk.ID]; ok {
+		if score, ok := rerankScores[hitIdentity(sc.HitsOriginal[i].Chunk.ID, sc.HitsOriginal[i].ArticleID)]; ok {
 			sc.HitsOriginal[i].Score = score
 		}
 	}
@@ -127,7 +135,7 @@ func Rerank(
 
 	// Update expanded hits scores and propagate rerank scores
 	for i := range sc.HitsExpanded {
-		if score, ok := rerankScores[sc.HitsExpanded[i].ChunkID]; ok {
+		if score, ok := rerankScores[hitIdentity(sc.HitsExpanded[i].ChunkID, sc.HitsExpanded[i].ArticleID)]; ok {
 			sc.HitsExpanded[i].Score = score
 			sc.HitsExpanded[i].RerankScore = score
 			sc.HitsExpanded[i].RerankApplied = true

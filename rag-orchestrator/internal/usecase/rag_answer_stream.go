@@ -119,7 +119,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				if result.err != nil {
 					u.sendStreamEvent(ctx, events, StreamEvent{
 						Kind:    StreamEventKindFallback,
-						Payload: result.err.Error(),
+						Payload: classifyRetrievalFallback(result.err),
 					})
 					finalOutput.Fallback = true
 					finalOutput.Reason = result.err.Error()
@@ -231,7 +231,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					reason := fmt.Sprintf("llm chat stream setup failed: %v", result.err)
 					u.sendStreamEvent(ctx, events, StreamEvent{
 						Kind:    StreamEventKindFallback,
-						Payload: reason,
+						Payload: FallbackCodeLLMUnavailable,
 					})
 					finalOutput.Fallback = true
 					finalOutput.Reason = reason
@@ -301,7 +301,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				reason := fmt.Sprintf("llm stream failed: %v", streamErr)
 				u.sendStreamEvent(ctx, events, StreamEvent{
 					Kind:    StreamEventKindFallback,
-					Payload: reason,
+					Payload: FallbackCodeLLMStreamFailed,
 				})
 				finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
 				finalOutput.Fallback = true
@@ -332,7 +332,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			const reason = "llm stream produced no data"
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: reason,
+				Payload: FallbackCodeLLMNoOutput,
 			})
 			finalOutput.Fallback = true
 			finalOutput.Reason = reason
@@ -363,7 +363,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			reason := fmt.Sprintf("validation failed: %v", err)
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: reason,
+				Payload: FallbackCodeValidationFailed,
 			})
 			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
 			finalOutput.Fallback = true
@@ -400,7 +400,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				slog.String("llm_raw_response", truncate(builder.String(), 500)))
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: parsedAnswer.Reason,
+				Payload: FallbackCodeAnswerDeclined,
 			})
 			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
 			finalOutput.Fallback = true
@@ -415,7 +415,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			reason := fmt.Sprintf("generation failed: %v", err)
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: reason,
+				Payload: FallbackCodeGenerationFailed,
 			})
 			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
 			finalOutput.Fallback = true
@@ -427,9 +427,13 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			if finalAnswer != nil && finalAnswer.Fallback {
 				fallbackReason = finalAnswer.Reason
 			}
+			fallbackCode := FallbackCodeAnswerRejected
+			if finalPromptData != nil && finalPromptData.intentType == IntentCausalExplanation {
+				fallbackCode = FallbackCodeCausalTrailWeak
+			}
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: fallbackReason,
+				Payload: fallbackCode,
 			})
 			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
 			finalOutput.Fallback = true

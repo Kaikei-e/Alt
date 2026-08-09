@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"rag-orchestrator/internal/domain"
-
-	"github.com/google/uuid"
 )
 
 // AllocateConfig holds allocation stage parameters.
@@ -51,11 +49,12 @@ func Allocate(
 
 // SelectContextsDynamic merges and selects top N contexts from all sources by score.
 func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []ContextItem, totalQuota int, rerankApplied bool) []ContextItem {
-	seen := make(map[uuid.UUID]bool)
+	seen := make(map[string]bool)
 	allCandidates := make([]ContextItem, 0, len(hitsOriginal)+len(hitsExpanded))
 
 	for _, res := range hitsOriginal {
-		if seen[res.Chunk.ID] {
+		key := hitIdentity(res.Chunk.ID, res.ArticleID)
+		if key != "" && seen[key] {
 			continue
 		}
 		item := ContextItem{
@@ -73,15 +72,16 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 			item.RerankApplied = true
 		}
 		allCandidates = append(allCandidates, item)
-		seen[res.Chunk.ID] = true
+		seen[key] = true
 	}
 
 	for _, item := range hitsExpanded {
-		if seen[item.ChunkID] {
+		key := hitIdentity(item.ChunkID, item.ArticleID)
+		if key != "" && seen[key] {
 			continue
 		}
 		allCandidates = append(allCandidates, item)
-		seen[item.ChunkID] = true
+		seen[key] = true
 	}
 
 	sort.Slice(allCandidates, func(i, j int) bool {
@@ -97,14 +97,15 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 
 func allocateLegacy(hitsOriginal []domain.SearchResult, hitsExpanded []ContextItem, quotaOriginal, quotaExpanded int) []ContextItem {
 	contexts := make([]ContextItem, 0, quotaOriginal+quotaExpanded)
-	seen := make(map[uuid.UUID]bool)
+	seen := make(map[string]bool)
 
 	countOriginal := 0
 	for _, res := range hitsOriginal {
 		if countOriginal >= quotaOriginal {
 			break
 		}
-		if !seen[res.Chunk.ID] {
+		key := hitIdentity(res.Chunk.ID, res.ArticleID)
+		if key == "" || !seen[key] {
 			contexts = append(contexts, ContextItem{
 				ChunkText:       res.Chunk.Content,
 				URL:             res.URL,
@@ -115,7 +116,7 @@ func allocateLegacy(hitsOriginal []domain.SearchResult, hitsExpanded []ContextIt
 				ChunkID:         res.Chunk.ID,
 				ArticleID:       res.ArticleID,
 			})
-			seen[res.Chunk.ID] = true
+			seen[key] = true
 			countOriginal++
 		}
 	}
@@ -127,12 +128,13 @@ func allocateLegacy(hitsOriginal []domain.SearchResult, hitsExpanded []ContextIt
 		if countExpanded >= quotaExpanded {
 			break
 		}
-		if seen[item.ChunkID] {
+		key := hitIdentity(item.ChunkID, item.ArticleID)
+		if key != "" && seen[key] {
 			continue
 		}
 		if !IsJapanese(item.Title) {
 			contexts = append(contexts, item)
-			seen[item.ChunkID] = true
+			seen[key] = true
 			countExpanded++
 		}
 	}
@@ -142,11 +144,12 @@ func allocateLegacy(hitsOriginal []domain.SearchResult, hitsExpanded []ContextIt
 		if countExpanded >= quotaExpanded {
 			break
 		}
-		if seen[item.ChunkID] {
+		key := hitIdentity(item.ChunkID, item.ArticleID)
+		if key != "" && seen[key] {
 			continue
 		}
 		contexts = append(contexts, item)
-		seen[item.ChunkID] = true
+		seen[key] = true
 		countExpanded++
 	}
 
