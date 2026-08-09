@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -510,4 +511,64 @@ func TestHandleUpsertFailure_ReleaseRPCFailure_NotCountedAsRetried(t *testing.T)
 		"a failed Release RPC must not be counted as a successful retry")
 	assert.Equal(t, int64(1), sumCounterValue(rm, "alt_harvester_outbox_events_release_failed_total"),
 		"a failed Release RPC must surface on its own counter so the PROCESSING zombie it leaves behind is observable")
+}
+
+// TestProcessOutboxEvents_EnqueuedPayloadReachesUpsertIntact pins the wire
+// contract between the payload save_article_driver enqueues (snake_case map
+// keys) and the body augur_adapter sends to rag-orchestrator, by driving the
+// real adapter with the raw bytes rather than a Go-native input struct.
+//
+// encoding/json's case-insensitive fallback does not cross underscores, so a
+// field whose JSON key differs from its Go name by more than case arrives
+// empty instead of erroring. rag-orchestrator answers a blank article_id with
+// 400, which the outbox classifies terminal — every article stops reaching
+// the index, and Augur retrieves nothing. Every other test in this file
+// either builds UpsertArticleInput in Go or discards it, so this is the only
+// place that boundary is crossed.
+func TestProcessOutboxEvents_EnqueuedPayloadReachesUpsertIntact(t *testing.T) {
+	logger.InitLogger()
+
+	eventID := uuid.New().String()
+	articleID := uuid.New().String()
+	userID := uuid.New().String()
+	updatedAt := time.Now().UTC().Truncate(time.Second)
+
+	payload, err := json.Marshal(map[string]any{
+		"article_id": articleID,
+		"url":        "https://example.com/article",
+		"title":      "Test Article",
+		"body":       "article body",
+		"user_id":    userID,
+		"updated_at": updatedAt.Format(time.RFC3339),
+	})
+	require.NoError(t, err)
+
+	repo := &mockOutboxRepo{events: []domain.OutboxEvent{{
+		ID:        eventID,
+		EventType: "ARTICLE_UPSERT",
+		Payload:   payload,
+		Status:    domain.OutboxProcessing,
+	}}}
+
+	var sent rag_gateway.UpsertIndexJSONRequestBody
+	client := &fakeRagClient{
+		upsertIndex: func(_ context.Context, body rag_gateway.UpsertIndexJSONRequestBody, _ ...rag_gateway.RequestEditorFn) (*rag_gateway.UpsertIndexResponse, error) {
+			sent = body
+			return &rag_gateway.UpsertIndexResponse{HTTPResponse: &http.Response{StatusCode: http.StatusOK}}, nil
+		},
+	}
+
+	require.NoError(t, processOutboxEvents(context.Background(), repo,
+		augur_adapter.NewAugurAdapter(client), &stubKnowledgeEventPort{}, newOutboxRetryTracker()))
+
+	assert.Equal(t, articleID, sent.ArticleId,
+		"article_id must survive the enqueued-payload round-trip: rag-orchestrator rejects a blank one with 400, and the outbox treats that 4xx as terminal")
+	assert.Equal(t, userID, sent.UserId,
+		"user_id must survive: it is the only tenant scoping the RAG index has")
+	require.NotNil(t, sent.UpdatedAt, "updated_at must survive: it is the article-upsert fact's own timestamp")
+	assert.Equal(t, updatedAt, sent.UpdatedAt.UTC())
+	assert.Equal(t, "https://example.com/article", sent.Url)
+	assert.Equal(t, "Test Article", sent.Title)
+	assert.Equal(t, "article body", sent.Body)
+	assert.Equal(t, "PROCESSED", repo.statusOf(eventID))
 }

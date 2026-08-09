@@ -27,14 +27,22 @@ type RagContext struct {
 	DocumentVersion int64
 }
 
+// UpsertArticleInput carries an article from the outbox row that recorded it
+// to rag-orchestrator's index. The JSON tags are load-bearing, not
+// decoration: the outbox worker unmarshals the enqueued payload
+// (save_article_driver.go writes snake_case keys) straight into this struct,
+// and encoding/json's case-insensitive fallback does not cross underscores.
+// Without a tag, article_id lands in no field at all and arrives blank —
+// silently, since an unmatched key is not an error — which rag-orchestrator
+// rejects with a 400 the outbox then treats as terminal.
 type UpsertArticleInput struct {
-	ArticleID   string
-	Body        string
-	PublishedAt *time.Time
-	Title       string
-	UpdatedAt   *time.Time
-	URL         string
-	UserID      string
+	ArticleID   string     `json:"article_id"`
+	Body        string     `json:"body"`
+	PublishedAt *time.Time `json:"published_at"`
+	Title       string     `json:"title"`
+	UpdatedAt   *time.Time `json:"updated_at"`
+	URL         string     `json:"url"`
+	UserID      string     `json:"user_id"`
 }
 
 type RagIntegrationPort interface {
