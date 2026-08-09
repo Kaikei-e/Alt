@@ -328,15 +328,20 @@ describe("ArticlePrefetcher", () => {
 		});
 	});
 
-	// A 503 from the BFF means its circuit breaker is open (or the backend is
-	// down): nothing the client asks for can be served, whatever the host. The
-	// per-host 429 cooldown would have let every other host through and burned
-	// the whole lookahead ladder against the open breaker.
+	// A breaker rejection from the BFF means nothing the client asks for can be
+	// served, whatever the host. The per-host 429 cooldown would have let every
+	// other host through and burned the whole lookahead ladder against the open
+	// breaker.
+	//
+	// It has to say so, though. CodeUnavailable on its own does not mean this —
+	// alt-backend returns the same code for a single publisher that never
+	// answered — so the pause is armed by the declared scope, not by the code.
 	describe("global pause on Unavailable (circuit breaker / 503)", () => {
 		const breakerError = () =>
 			new ConnectError(
 				"Service temporarily unavailable due to circuit breaker",
 				Code.Unavailable,
+				new Headers({ "X-Alt-Failure-Scope": "global" }),
 			);
 
 		it("pauses prefetch on every host, not just the one that returned 503", async () => {
@@ -358,7 +363,7 @@ describe("ArticlePrefetcher", () => {
 			expect(mockedGetContent).toHaveBeenCalledWith("https://dev.to/article-a");
 		});
 
-		it("retries an article queued during the pause once it lifts", async () => {
+		it("holds a queued article for the whole window, then fires it", async () => {
 			mockedGetContent.mockRejectedValueOnce(breakerError());
 			mockedGetContent.mockResolvedValue({
 				content: "<p>Later</p>",
@@ -376,11 +381,13 @@ describe("ArticlePrefetcher", () => {
 			await vi.advanceTimersByTimeAsync(1_100);
 			expect(mockedGetContent).toHaveBeenCalledTimes(1);
 
+			await vi.advanceTimersByTimeAsync(15_000);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
 			// No further triggerPrefetch(): the queued article must come back on
 			// its own rather than latch into the card's error state until the
 			// reader happens to swipe again.
-			await vi.advanceTimersByTimeAsync(35_000);
-
+			await vi.advanceTimersByTimeAsync(20_000);
 			await vi.waitFor(() => {
 				expect(prefetcher.getCachedContent("https://zenn.dev/article-b")).toBe(
 					"<p>Later</p>",
@@ -388,30 +395,104 @@ describe("ArticlePrefetcher", () => {
 			});
 		});
 
-		it("resolves ensureContent null during the pause instead of issuing a doomed request", async () => {
-			mockedGetContent.mockRejectedValueOnce(breakerError());
+		it("honors a Retry-After shorter than the default pause", async () => {
+			const meta = new Headers({
+				"Retry-After": "2",
+				"X-Alt-Failure-Scope": "global",
+			});
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError("breaker open", Code.Unavailable, meta),
+			);
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Back</p>",
+				article_id: "art-back",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-a"),
+				makeFeed("2", "https://zenn.dev/article-b"),
+			];
+			prefetcher.triggerPrefetch(feeds, 0, 2);
+			await vi.advanceTimersByTimeAsync(1_100);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
+			// Well inside the 30s default, but past the 2s the gateway asked for.
+			await vi.advanceTimersByTimeAsync(3_000);
+			await vi.waitFor(() => {
+				expect(prefetcher.getCachedContent("https://zenn.dev/article-b")).toBe(
+					"<p>Back</p>",
+				);
+			});
+		});
+	});
+
+	// The other half of Unavailable, and by far the commoner one: a publisher
+	// that did not answer. alt-backend maps that to CodeUnavailable too, so
+	// arming the all-hosts pause on the code alone let a single dead link black
+	// the reader out for a full cooldown — every card after it fell straight to
+	// "Source content unavailable" without a request ever being sent.
+	describe("host-scoped Unavailable (one publisher, not the gateway)", () => {
+		const publisherError = (headers?: Record<string, string>) =>
+			new ConnectError(
+				"the source site did not respond; please try again later",
+				Code.Unavailable,
+				new Headers({ "X-Alt-Failure-Scope": "host", ...headers }),
+			);
+
+		it("keeps prefetching other hosts when only the publisher failed", async () => {
+			mockedGetContent.mockRejectedValueOnce(publisherError());
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Other host</p>",
+				article_id: "art-b",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-a"),
+				makeFeed("2", "https://zenn.dev/article-b"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 2);
+			await vi.advanceTimersByTimeAsync(1_100);
+
+			await vi.waitFor(() => {
+				expect(prefetcher.getCachedContent("https://zenn.dev/article-b")).toBe(
+					"<p>Other host</p>",
+				);
+			});
+			expect(mockedGetContent).toHaveBeenCalledWith(
+				"https://zenn.dev/article-b",
+			);
+		});
+
+		it("still holds off the host that failed", async () => {
+			mockedGetContent.mockRejectedValue(publisherError());
 
 			const feeds = [
 				makeFeed("0", "https://example.com/active"),
 				makeFeed("1", "https://dev.to/article-a"),
 			];
+
 			prefetcher.triggerPrefetch(feeds, 0, 1);
 			await vi.advanceTimersByTimeAsync(600);
-			await vi.waitFor(() => {
-				expect(mockedGetContent).toHaveBeenCalledTimes(1);
-			});
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
 
-			await expect(
-				prefetcher.ensureContent("https://unrelated.example/article"),
-			).resolves.toBeNull();
+			// A second article on the same host must wait out that host's
+			// cooldown rather than walk into the same refusal.
+			const more = [...feeds, makeFeed("2", "https://dev.to/article-b")];
+			prefetcher.triggerPrefetch(more, 1, 1);
+			await vi.advanceTimersByTimeAsync(1_000);
 			expect(mockedGetContent).toHaveBeenCalledTimes(1);
 		});
 
-		it("serves the visible card again once the pause window has elapsed", async () => {
-			mockedGetContent.mockRejectedValueOnce(breakerError());
+		it("serves a different host's card immediately", async () => {
+			mockedGetContent.mockRejectedValueOnce(publisherError());
 			mockedGetContent.mockResolvedValue({
-				content: "<p>Back</p>",
-				article_id: "art-back",
+				content: "<p>Elsewhere</p>",
+				article_id: "art-elsewhere",
 				og_image_url: null,
 			} as unknown as FeedContentOnTheFlyResponse);
 
@@ -423,22 +504,41 @@ describe("ArticlePrefetcher", () => {
 			await vi.advanceTimersByTimeAsync(600);
 			expect(mockedGetContent).toHaveBeenCalledTimes(1);
 
-			await vi.advanceTimersByTimeAsync(15_000);
 			await expect(
 				prefetcher.ensureContent("https://unrelated.example/article"),
-			).resolves.toBeNull();
-			expect(mockedGetContent).toHaveBeenCalledTimes(1);
-
-			await vi.advanceTimersByTimeAsync(16_000);
-			await expect(
-				prefetcher.ensureContent("https://unrelated.example/article"),
-			).resolves.toBe("<p>Back</p>");
+			).resolves.toBe("<p>Elsewhere</p>");
 		});
 
-		it("honors a Retry-After shorter than the default pause", async () => {
-			const meta = new Headers({ "Retry-After": "2" });
+		it("treats an Unavailable that declares no scope as host-scoped", async () => {
+			// Nothing downstream can tell an unstamped CodeUnavailable apart from
+			// a per-article one, so the ambiguous case takes the cheaper mistake:
+			// pausing one host wrongly costs one card, pausing every host wrongly
+			// costs the session — and the BFF's breaker still bounds the load.
 			mockedGetContent.mockRejectedValueOnce(
-				new ConnectError("breaker open", Code.Unavailable, meta),
+				new ConnectError("external site returned 503", Code.Unavailable),
+			);
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Elsewhere</p>",
+				article_id: "art-elsewhere",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://dev.to/article-a"),
+			];
+			prefetcher.triggerPrefetch(feeds, 0, 1);
+			await vi.advanceTimersByTimeAsync(600);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
+			await expect(
+				prefetcher.ensureContent("https://unrelated.example/article"),
+			).resolves.toBe("<p>Elsewhere</p>");
+		});
+
+		it("honors a Retry-After on the host cooldown", async () => {
+			mockedGetContent.mockRejectedValueOnce(
+				publisherError({ "Retry-After": "2" }),
 			);
 			mockedGetContent.mockResolvedValue({
 				content: "<p>Back</p>",
@@ -454,16 +554,143 @@ describe("ArticlePrefetcher", () => {
 			await vi.advanceTimersByTimeAsync(600);
 			expect(mockedGetContent).toHaveBeenCalledTimes(1);
 
-			await vi.advanceTimersByTimeAsync(1_000);
-			await expect(
-				prefetcher.ensureContent("https://unrelated.example/article"),
-			).resolves.toBeNull();
-
 			// Well inside the 30s default, but past the 2s the server asked for.
-			await vi.advanceTimersByTimeAsync(1_500);
+			await vi.advanceTimersByTimeAsync(2_500);
+			await expect(
+				prefetcher.ensureContent("https://dev.to/article-a"),
+			).resolves.toBe("<p>Back</p>");
+		});
+	});
+
+	// A cooldown exists to stop the lookahead ladder from walking into a gate it
+	// has already been refused at. The card the reader is looking at is not the
+	// ladder — it is one request they explicitly asked for, and answering it
+	// without ever sending anything is what turned a few seconds of backoff into
+	// a card that read as permanently broken, retry button included.
+	describe("foreground probe across an active cooldown", () => {
+		const breakerError = () =>
+			new ConnectError(
+				"Service temporarily unavailable due to circuit breaker",
+				Code.Unavailable,
+				new Headers({ "X-Alt-Failure-Scope": "global" }),
+			);
+
+		async function armGlobalPause() {
+			mockedGetContent.mockRejectedValueOnce(breakerError());
+			prefetcher.triggerPrefetch(
+				[
+					makeFeed("0", "https://example.com/active"),
+					makeFeed("1", "https://dev.to/article-a"),
+				],
+				0,
+				1,
+			);
+			await vi.advanceTimersByTimeAsync(600);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+		}
+
+		it("sends the visible card's request even while every host is paused", async () => {
+			await armGlobalPause();
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Probed</p>",
+				article_id: "art-probe",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
 			await expect(
 				prefetcher.ensureContent("https://unrelated.example/article"),
-			).resolves.toBe("<p>Back</p>");
+			).resolves.toBe("<p>Probed</p>");
+			expect(mockedGetContent).toHaveBeenCalledTimes(2);
+		});
+
+		it("sends it while only that article's host is cooling down", async () => {
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError(
+					"the source site did not respond",
+					Code.Unavailable,
+					new Headers({ "X-Alt-Failure-Scope": "host" }),
+				),
+			);
+			prefetcher.triggerPrefetch(
+				[
+					makeFeed("0", "https://example.com/active"),
+					makeFeed("1", "https://dev.to/article-a"),
+				],
+				0,
+				1,
+			);
+			await vi.advanceTimersByTimeAsync(600);
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Probed</p>",
+				article_id: "art-probe",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			// Same host that just refused: the reader swiped onto it and tapped.
+			await expect(
+				prefetcher.ensureContent("https://dev.to/article-b"),
+			).resolves.toBe("<p>Probed</p>");
+		});
+
+		it("spaces repeated attempts so a held retry button cannot hammer", async () => {
+			await armGlobalPause();
+			mockedGetContent.mockRejectedValue(breakerError());
+
+			await expect(
+				prefetcher.ensureContent("https://a.example/article"),
+			).resolves.toBeNull();
+			expect(mockedGetContent).toHaveBeenCalledTimes(2);
+
+			// Straight after the probe: refused without a request, which is what
+			// the cooldown is for once the reader has had their attempt.
+			await expect(
+				prefetcher.ensureContent("https://b.example/article"),
+			).resolves.toBeNull();
+			expect(mockedGetContent).toHaveBeenCalledTimes(2);
+
+			await vi.advanceTimersByTimeAsync(5_500);
+			await expect(
+				prefetcher.ensureContent("https://c.example/article"),
+			).resolves.toBeNull();
+			expect(mockedGetContent).toHaveBeenCalledTimes(3);
+		});
+
+		it("leaves the background ladder suppressed while the foreground probes", async () => {
+			await armGlobalPause();
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Probed</p>",
+				article_id: "art-probe",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			// The probe is the reader's request, not a licence for the ladder:
+			// only the one call goes out, from ensureContent.
+			await prefetcher.ensureContent("https://unrelated.example/article");
+			expect(mockedGetContent).toHaveBeenCalledTimes(2);
+			expect(mockedGetContent).toHaveBeenLastCalledWith(
+				"https://unrelated.example/article",
+			);
+		});
+
+		it("lifts the pause when a probe gets through", async () => {
+			await armGlobalPause();
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Probed</p>",
+				article_id: "art-probe",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			await prefetcher.ensureContent("https://unrelated.example/article");
+
+			// A request just completed, so whatever the pause was guarding is
+			// over. Sitting out the rest of the window would keep the ladder
+			// suppressed and the next card blank for no reason.
+			await expect(
+				prefetcher.ensureContent("https://another.example/article"),
+			).resolves.toBe("<p>Probed</p>");
+			expect(mockedGetContent).toHaveBeenCalledTimes(3);
 		});
 	});
 
@@ -646,8 +873,8 @@ describe("ArticlePrefetcher", () => {
 			expect(mockedGetContent).not.toHaveBeenCalled();
 		});
 
-		it("resolves null during a host cooldown instead of issuing a doomed request", async () => {
-			mockedGetContent.mockRejectedValueOnce(
+		it("rations rather than refuses the visible card during a host cooldown", async () => {
+			mockedGetContent.mockRejectedValue(
 				new ConnectError("rate limited", Code.ResourceExhausted),
 			);
 
@@ -661,10 +888,18 @@ describe("ArticlePrefetcher", () => {
 				expect(mockedGetContent).toHaveBeenCalledTimes(1);
 			});
 
+			// The reader swiped onto this host and asked for the body: one
+			// attempt goes out, even though the ladder is held off.
 			await expect(
 				prefetcher.ensureContent("https://dev.to/article-2"),
 			).resolves.toBeNull();
-			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+			expect(mockedGetContent).toHaveBeenCalledTimes(2);
+
+			// Asking again straight away is the case the cooldown is for.
+			await expect(
+				prefetcher.ensureContent("https://dev.to/article-3"),
+			).resolves.toBeNull();
+			expect(mockedGetContent).toHaveBeenCalledTimes(2);
 		});
 
 		it("fetches when nothing is cached or in flight", async () => {

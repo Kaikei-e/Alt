@@ -1500,3 +1500,117 @@ func telemetryHealthRecords(t *testing.T, buf *bytes.Buffer, msg string) []map[s
 	}
 	return out
 }
+
+// TestBFFHandler_UpstreamAttributed5xx_DoesNotChargeTheBreaker closes the half
+// of ADR-000959 §1 that the 4xx rule left open.
+//
+// That decision made client errors neutral so one paywalled publisher could
+// not open the class breaker. But a publisher that never answers at all — the
+// commonest failure a feed reader meets — reaches the client as CodeUnavailable,
+// which is a 5xx, so it kept charging the very budget the ADR meant to protect.
+// The status code cannot distinguish "the site is dead" from "alt-backend is
+// dead"; only the attribution header can.
+func TestBFFHandler_UpstreamAttributed5xx_DoesNotChargeTheBreaker(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(FailureScopeHeader, FailureScopeHost)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker:              true,
+		CBFailureThreshold:                2,
+		CBSuccessThreshold:                1,
+		CBOpenTimeout:                     30 * time.Second,
+		CBExternalContentFailureThreshold: 2,
+		CBExternalContentOpenTimeout:      5 * time.Second,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code,
+			"the reader still learns this article is unavailable")
+	}
+
+	stats := handler.externalContentCB.Stats()
+	assert.Equal(t, int64(0), stats.TotalFailures,
+		"five dead publishers are not evidence that alt-backend is unhealthy")
+	assert.Equal(t, int64(0), stats.TotalSuccesses,
+		"nor may they reset the budget and mask a real outage")
+	assert.Equal(t, resilience.StateClosed, handler.externalContentCB.State())
+}
+
+// TestBFFHandler_Unattributed5xx_StillChargesTheBreaker is the safety half.
+// The header excuses a failure from the budget, so an unstamped 5xx has to
+// keep counting — otherwise a backend that stopped stamping, or one broken in
+// a way it cannot classify, would look healthy right up until it fell over.
+func TestBFFHandler_Unattributed5xx_StillChargesTheBreaker(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker:              true,
+		CBFailureThreshold:                2,
+		CBSuccessThreshold:                1,
+		CBOpenTimeout:                     30 * time.Second,
+		CBExternalContentFailureThreshold: 2,
+		CBExternalContentOpenTimeout:      5 * time.Second,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	assert.Equal(t, resilience.StateOpen, handler.externalContentCB.State())
+}
+
+// TestBFFHandler_CircuitOpen_DeclaresGlobalFailureScope names the one condition
+// that genuinely reaches every host, so the client can stop guessing.
+//
+// The frontend pauses all hosts on this and only this: a breaker rejection is
+// a state of the gateway, and no other publisher can be routed around it. A
+// per-article failure wearing the same CodeUnavailable must never trigger it.
+func TestBFFHandler_CircuitOpen_DeclaresGlobalFailureScope(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockBackend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCircuitBreaker:              true,
+		EnableErrorNormalization:          true,
+		CBFailureThreshold:                2,
+		CBSuccessThreshold:                1,
+		CBOpenTimeout:                     30 * time.Second,
+		CBExternalContentFailureThreshold: 2,
+		CBExternalContentOpenTimeout:      5 * time.Second,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	var rec *httptest.ResponseRecorder
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("POST", "/alt.articles.v2.ArticleService/FetchArticleContent", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Equal(t, FailureScopeGlobal, rec.Header().Get(FailureScopeHeader))
+	assert.Equal(t, "5", rec.Header().Get("Retry-After"))
+}

@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -807,6 +810,115 @@ func TestFetchArticleContent_ExternalHTTPError_500_ReturnsUnavailable(t *testing
 	var connectErr *connect.Error
 	require.ErrorAs(t, err, &connectErr)
 	assert.Equal(t, connect.CodeUnavailable, connectErr.Code())
+}
+
+// TestFetchArticleContent_PublisherAttributableErrors_CarryHostFailureScope pins
+// the wire signal that tells downstream how far a failure reaches.
+//
+// CodeUnavailable alone is ambiguous: alt-backend emits it when one publisher
+// did not answer, and the BFF emits it when its own breaker is open for every
+// host. A client that cannot tell the two apart has to guess, and guessing
+// "global" turned a single dead link into a 30-second blackout of the whole
+// reader. The header names the blast radius so nobody has to guess.
+func TestFetchArticleContent_PublisherAttributableErrors_CarryHostFailureScope(t *testing.T) {
+	const articleURL = "https://example.com/article"
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"publisher never answered", &domain.UpstreamFetchError{URL: articleURL, Cause: context.DeadlineExceeded}},
+		{"publisher returned 500", &domain.ExternalHTTPError{StatusCode: 500, URL: articleURL}},
+		{"publisher returned 406", &domain.ExternalHTTPError{StatusCode: 406, URL: articleURL}},
+		{"publisher removed the article", &domain.ExternalHTTPError{StatusCode: 404, URL: articleURL}},
+		{"publisher denied access", &domain.ExternalHTTPError{StatusCode: 403, URL: articleURL}},
+		{"publisher rate limited us", &domain.ExternalHTTPError{StatusCode: 429, URL: articleURL}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockUsecase := &mockArticleUsecase{err: fmt.Errorf("fetch failed: %w", tt.err)}
+			handler := NewHandler(ArticleHandlerDeps{Article: mockUsecase}, &config.Config{}, slog.Default())
+
+			req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{Url: articleURL})
+			_, err := handler.FetchArticleContent(createAuthContext(), req)
+
+			require.Error(t, err)
+			var connectErr *connect.Error
+			require.ErrorAs(t, err, &connectErr)
+			assert.Equal(t, FailureScopeHost, connectErr.Meta().Get(FailureScopeHeader))
+		})
+	}
+}
+
+// TestFetchArticleContent_OurOwnFailures_CarryNoFailureScope is the safety half
+// of the signal. The header excuses a failure from the BFF's circuit-breaker
+// budget, so stamping it on anything we have not positively attributed to a
+// publisher would hide a real alt-backend outage behind "the site is slow".
+//
+// The politeness gate is ours too: it is already a retryable 429 that no
+// breaker counts, and claiming a host's health for our own scheduling decision
+// would be a lie in the one place the client trusts us to be literal.
+func TestFetchArticleContent_OurOwnFailures_CarryNoFailureScope(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"unclassified fault", errors.New("boom")},
+		{"our host slot was busy", &domain.RateLimitedError{Message: "busy", RetryAfter: 10 * time.Second}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockUsecase := &mockArticleUsecase{err: fmt.Errorf("fetch failed: %w", tt.err)}
+			handler := NewHandler(ArticleHandlerDeps{Article: mockUsecase}, &config.Config{}, slog.Default())
+
+			req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{Url: "https://example.com/article"})
+			_, err := handler.FetchArticleContent(createAuthContext(), req)
+
+			require.Error(t, err)
+			var connectErr *connect.Error
+			require.ErrorAs(t, err, &connectErr)
+			assert.Empty(t, connectErr.Meta().Get(FailureScopeHeader))
+		})
+	}
+}
+
+// TestFailureScope_ReachesTheWireAsAResponseHeader verifies the assumption the
+// whole signal rests on: that Connect error metadata leaves the process as an
+// ordinary HTTP response header.
+//
+// It is asserted rather than assumed because the failure this fixes was itself
+// an unverified wire assumption — the BFF's SCREAMING_SNAKE error code, which
+// connect-es silently dropped (ADR-000959). A header the proxy cannot read is
+// a signal that does not exist, and nothing else in the chain would say so.
+func TestFailureScope_ReachesTheWireAsAResponseHeader(t *testing.T) {
+	handler := connect.NewUnaryHandler(
+		"/test.v1.Service/Method",
+		func(context.Context, *connect.Request[articlesv2.FetchArticleContentRequest]) (*connect.Response[articlesv2.FetchArticleContentResponse], error) {
+			return nil, withFailureScope(
+				connect.NewError(connect.CodeUnavailable, errors.New("the source site did not respond")),
+				FailureScopeHost,
+			)
+		},
+	)
+
+	mux := http.NewServeMux()
+	mux.Handle("/test.v1.Service/Method", handler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	resp, err := server.Client().Post(
+		server.URL+"/test.v1.Service/Method",
+		"application/json",
+		strings.NewReader(`{"url":"https://example.com/article"}`),
+	)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	// A transparent proxy sees exactly this much: the status and the headers.
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	assert.Equal(t, FailureScopeHost, resp.Header.Get(FailureScopeHeader))
 }
 
 // =============================================================================
