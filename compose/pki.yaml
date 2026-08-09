@@ -410,8 +410,14 @@ services:
       - CERT_SANS=acolyte-orchestrator,localhost
       - CERT_PATH=/certs/svc-cert.pem
       - KEY_PATH=/certs/svc-key.pem
-      - CERT_OWNER_UID=0
-      - CERT_OWNER_GID=0
+      # acolyte-orchestrator runs as appuser (uid 1000). The key is written
+      # 0400, so owning it as root made it unreadable to the process — which
+      # went unnoticed while the sidecar was the only party that touched it
+      # (the proxy terminates mTLS on the way in, and it runs as root). The
+      # moment the app itself became a data-hub client it started reading the
+      # key at import and crash-looped on PermissionError.
+      - CERT_OWNER_UID=1000
+      - CERT_OWNER_GID=1000
       - RENEW_AT_FRACTION=0.66
       - TICK_INTERVAL=5m
       - METRICS_ADDR=:9510

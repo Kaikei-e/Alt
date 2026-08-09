@@ -524,6 +524,15 @@ services:
       # kind of partial failure that looks like "iOS stopped working".
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:ops@localhost}
       VAPID_PRIVATE_KEY_FILE: /run/secrets/vapid_private_key
+      # Same line, same reason, as alt-data-hub above: IMAGE_PROXY_ENABLED
+      # defaults to true, env_file pulls it in from the shared .env, and
+      # validateImageProxyConfig then demands a signing secret at boot. This
+      # binary neither serves the proxy nor mints its URLs, so disable it
+      # explicitly (CLAUDE.md rule 9) rather than mounting a secret it would
+      # never read. Omitting it crashlooped alt-data-hub on the first rollout
+      # of the three-binary split, and omitting it here crashlooped
+      # alt-notifier on the first rollout of the fourth.
+      IMAGE_PROXY_ENABLED: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
       OTEL_SERVICE_NAME: alt-notifier
     secrets:
