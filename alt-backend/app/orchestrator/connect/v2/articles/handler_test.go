@@ -914,7 +914,7 @@ func TestFailureScope_ReachesTheWireAsAResponseHeader(t *testing.T) {
 		strings.NewReader(`{"url":"https://example.com/article"}`),
 	)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// A transparent proxy sees exactly this much: the status and the headers.
 	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
