@@ -128,6 +128,20 @@ test.describe("PWA installability", () => {
 			/manifest\.webmanifest$/,
 		);
 
+		// Chromium takes this fetch's credentials mode from the attribute alone,
+		// never from same-origin-ness, so a bare link sends no cookie and the
+		// Cloudflare Access edge in front of the deployed origin redirects it to
+		// its login domain — no manifest, no WebAPK, just a bookmark shortcut.
+		//
+		// This stack has no Access, so the assertion can pass here while
+		// production is broken; `src/app-html.source.spec.ts` is the gate that
+		// can actually catch the regression. It is stated here too because this
+		// file is where the installability contract is read.
+		await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+			"crossorigin",
+			"use-credentials",
+		);
+
 		// iOS still takes its Home Screen icon from this tag rather than the
 		// manifest, so a manifest-only icon set installs with a screenshot.
 		await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);

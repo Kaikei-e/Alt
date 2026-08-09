@@ -13,7 +13,18 @@
 		     but are kept because a chrome-ful launch on an older device would
 		     disable notifications with no error anywhere; `mobile-web-app-capable`
 		     is the non-prefixed form Chrome asks for. -->
-		<link rel="manifest" href="/manifest.webmanifest" />
+		<!-- crossorigin="use-credentials" is what makes this reachable behind
+		     Cloudflare Access. Chromium picks this fetch's credentials mode from
+		     the attribute alone and never from same-origin-ness
+		     (ManifestManager::ManifestUseCredentials tests for the literal
+		     string; manifest_fetcher.cc maps anything else to kOmit), so a bare
+		     link sends no cookie even to our own origin. Access answers that the
+		     way it answers any anonymous request — a redirect to its login
+		     domain — and the browser never parses a manifest, so Android offers
+		     a bookmark shortcut instead of installing a WebAPK. The attribute
+		     widens nothing: same-origin, already served anonymously as a static
+		     asset, and Access still decides. -->
+		<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
 		<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 		<meta name="mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
