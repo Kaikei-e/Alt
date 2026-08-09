@@ -65,9 +65,26 @@ func (r *Repository) GetLatestKnowledgeEventSeqForUser(ctx context.Context, tena
 	return seq, nil
 }
 
-// AppendKnowledgeEvent inserts a new knowledge event using a dedupe registry
-// for idempotency. The dedupe registry is a non-partitioned table that holds
-// the global UNIQUE constraint on dedupe_key, which cannot be placed on the
+// AppendKnowledgeEvent inserts a knowledge event and returns its sequence, or
+// 0 when the dedupe registry already held the key. This is the WIRE-level form:
+// the AppendKnowledgeEvent RPC forwards the sequence verbatim and alt-backend's
+// URL-backfill SkippedDuplicate counter (ADR-000869) reads seq > 0 as
+// "genuinely appended" and seq == 0 as a dedupe hit, so the shape is pinned by
+// the provider pact.
+//
+// In-process callers that act on the outcome (log it, count it, chain further
+// work off it) MUST use AppendKnowledgeEventIfNew instead: a bare 0 is
+// indistinguishable from "the caller never looked", which is exactly how the
+// trail planner came to report every rejected re-proposal as an emission.
+func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEvent) (int64, error) {
+	seq, _, err := r.AppendKnowledgeEventIfNew(ctx, event)
+	return seq, err
+}
+
+// AppendKnowledgeEventIfNew inserts a new knowledge event using a dedupe
+// registry for idempotency, and reports whether the event was actually
+// appended. The dedupe registry is a non-partitioned table that holds the
+// global UNIQUE constraint on dedupe_key, which cannot be placed on the
 // partitioned knowledge_events table directly (PostgreSQL requires partition
 // key in all UNIQUE constraints).
 //
@@ -78,13 +95,17 @@ func (r *Repository) GetLatestKnowledgeEventSeqForUser(ctx context.Context, tena
 //
 // Flow:
 //  1. INSERT into knowledge_event_dedupes (ON CONFLICT DO NOTHING)
-//  2. If dedupe INSERT affected 0 rows → duplicate, return 0 (idempotent)
+//  2. If dedupe INSERT affected 0 rows → duplicate, report appended=false
 //  3. Otherwise INSERT into knowledge_events and return event_seq
 //  4. Commit both together
-func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEvent) (int64, error) {
+//
+// A dedupe rejection is a normal outcome, not a failure — it is reported as
+// (0, false, nil) rather than an error, so callers must branch on appended
+// rather than on err. The compiler makes that branch impossible to skip.
+func (r *Repository) AppendKnowledgeEventIfNew(ctx context.Context, event KnowledgeEvent) (int64, bool, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("AppendKnowledgeEvent begin: %w", err)
+		return 0, false, fmt.Errorf("AppendKnowledgeEvent begin: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit has succeeded
 
@@ -95,10 +116,10 @@ func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEv
 
 	tag, err := tx.Exec(ctx, dedupeQuery, event.DedupeKey, event.EventID, event.OccurredAt)
 	if err != nil {
-		return 0, fmt.Errorf("AppendKnowledgeEvent dedupe check: %w", err)
+		return 0, false, fmt.Errorf("AppendKnowledgeEvent dedupe check: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return 0, nil // duplicate, idempotent — nothing to commit
+		return 0, false, nil // duplicate, idempotent — nothing to commit
 	}
 
 	// Step 2: Insert event
@@ -118,13 +139,13 @@ func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEv
 		event.DedupeKey, event.Payload,
 	).Scan(&eventSeq)
 	if err != nil {
-		return 0, fmt.Errorf("AppendKnowledgeEvent insert: %w", err)
+		return 0, false, fmt.Errorf("AppendKnowledgeEvent insert: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return 0, fmt.Errorf("AppendKnowledgeEvent commit: %w", err)
+		return 0, false, fmt.Errorf("AppendKnowledgeEvent commit: %w", err)
 	}
-	return eventSeq, nil
+	return eventSeq, true, nil
 }
 
 // ListKnowledgeEventsForUserInWindow returns events scoped strictly to the

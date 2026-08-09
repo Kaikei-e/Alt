@@ -75,8 +75,63 @@ func TestAppendKnowledgeEvent_RollsBackOnEventInsertFailure(t *testing.T) {
 	assert.False(t, mock.lastTx.committed, "must not commit a half-applied transaction")
 }
 
+// TestAppendKnowledgeEventIfNew_ReportsGenuineAppend pins the unambiguous
+// in-process append contract: a fresh dedupe key lands the event, and the
+// caller is told so explicitly alongside the assigned sequence.
+func TestAppendKnowledgeEventIfNew_ReportsGenuineAppend(t *testing.T) {
+	mock := &mockPgx{}
+	mock.queryRowFunc = func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		return &mockRow{scanFunc: func(dest ...interface{}) error {
+			if p, ok := dest[0].(*int64); ok {
+				*p = 7
+			}
+			return nil
+		}}
+	}
+
+	repo := NewRepository(mock)
+	seq, appended, err := repo.AppendKnowledgeEventIfNew(context.Background(), newTestEvent())
+
+	require.NoError(t, err)
+	assert.True(t, appended, "a fresh dedupe key must report a genuine append")
+	assert.Equal(t, int64(7), seq)
+}
+
+// TestAppendKnowledgeEventIfNew_DedupeRejectionIsNotAnAppend pins the contract
+// that makes "rejected" distinguishable from "appended" at the repository
+// boundary. The seq-only form cannot express it (0 is also a valid "nothing
+// happened" for a caller that never looks), which is exactly how the trail
+// planner came to log a proposal for every rejected re-proposal.
+func TestAppendKnowledgeEventIfNew_DedupeRejectionIsNotAnAppend(t *testing.T) {
+	mock := &mockPgx{}
+	eventInserted := false
+	mock.execFunc = func(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
+		if containsSQL(sql, "knowledge_event_dedupes") {
+			return pgconn.NewCommandTag("INSERT 0 0"), nil // ON CONFLICT DO NOTHING
+		}
+		return pgconn.NewCommandTag("INSERT 0 1"), nil
+	}
+	mock.queryRowFunc = func(_ context.Context, sql string, _ ...interface{}) pgx.Row {
+		if containsSQL(sql, "knowledge_events") {
+			eventInserted = true
+		}
+		return &mockRow{}
+	}
+
+	repo := NewRepository(mock)
+	seq, appended, err := repo.AppendKnowledgeEventIfNew(context.Background(), newTestEvent())
+
+	require.NoError(t, err, "a dedupe rejection is a normal outcome, not a failure")
+	assert.False(t, appended, "an already-registered dedupe key must not report an append")
+	assert.Zero(t, seq, "no row was written, so there is no sequence to report")
+	assert.False(t, eventInserted, "a rejected append must not touch knowledge_events")
+}
+
 // TestAppendKnowledgeEvent_DuplicateReturnsZero verifies the existing
-// idempotency contract still holds: a duplicate dedupe key returns 0.
+// idempotency contract still holds: a duplicate dedupe key returns 0. This is
+// the wire-level contract (ADR-000869): alt-backend's URL-backfill
+// SkippedDuplicate counter reads seq > 0 as "genuinely appended" and seq == 0
+// as a dedupe hit, so the seq-only form must keep returning (0, nil).
 func TestAppendKnowledgeEvent_DuplicateReturnsZero(t *testing.T) {
 	mock := &mockPgx{}
 	mock.execFunc = func(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {

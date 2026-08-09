@@ -31,6 +31,14 @@ const continuationStaleAfter = 3 * 24 * time.Hour
 // as gone cold rather than merely quiet, and Continuation stops proposing it.
 const continuationExpireAfter = 21 * 24 * time.Hour
 
+// EngagementVerbs are the footprint verbs a branch's why can truthfully name —
+// "Because you read / listened to / asked about this" (core-concept §C4,
+// anchored why). They are the only verbs that may anchor a branch or count as
+// contact with a thread. `dismissed` is deliberately absent: it is a refusal,
+// so it neither backs a why nor evidences interest in picking a thread back
+// up. Exported so the planner can pin its why phrasing to the same set.
+var EngagementVerbs = []string{"read", "asked", "listened"}
+
 // TrailFootprint is the domain representation of one footprint on the trail
 // spine. verb / item_key / occurred_at are projected from the event log;
 // title / excerpt / tags are enriched at read time from knowledge_home_items.
@@ -246,6 +254,17 @@ type TrailContinuationCandidate struct {
 	TargetItemKey string
 	TargetTitle   string
 	LastContactAt time.Time
+	// Verb is the engagement verb of the latest qualifying contact, so the
+	// branch's why names the act that actually happened (§C4).
+	Verb string
+}
+
+// FootprintAnchor is the spine point a branch forks from: the item the why
+// names, the tenant that owns it, and the verb that makes the why true.
+type FootprintAnchor struct {
+	ItemKey  string
+	TenantID uuid.UUID
+	Verb     string
 }
 
 // UpsertTrailBranch folds a branch_proposed event into the read model. It never
@@ -392,19 +411,26 @@ func (r *Repository) GetItemTitle(ctx context.Context, userID uuid.UUID, itemKey
 	return title, strings.TrimSpace(title) != "", nil
 }
 
-// GetLatestFootprintAnchor returns the user's most recent footprint item_key and
-// tenant — the spine point a freshly proposed branch forks from.
-func (r *Repository) GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (itemKey string, tenantID uuid.UUID, ok bool, err error) {
-	const q = `SELECT item_key, tenant_id FROM knowledge_trail_footprints
-		WHERE user_id = $1 ORDER BY occurred_at DESC, footprint_key DESC LIMIT 1`
-	row := r.pool.QueryRow(ctx, q, userID)
-	if scanErr := row.Scan(&itemKey, &tenantID); scanErr != nil {
+// GetLatestFootprintAnchor returns the user's most recent footprint that can
+// anchor a branch — the spine point a freshly proposed branch forks from. Only
+// EngagementVerbs qualify: the why must name the act that happened, and a
+// dismissal cannot back "Because you read this" (core-concept §C4). The verb
+// travels with the anchor so the caller phrases the why from it rather than
+// assuming a read. ok=false means the spine holds nothing that can truthfully
+// anchor a why — the caller must suppress, never invent one.
+func (r *Repository) GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (FootprintAnchor, bool, error) {
+	const q = `SELECT item_key, tenant_id, verb FROM knowledge_trail_footprints
+		WHERE user_id = $1 AND verb = ANY($2::text[])
+		ORDER BY occurred_at DESC, footprint_key DESC LIMIT 1`
+	var a FootprintAnchor
+	row := r.pool.QueryRow(ctx, q, userID, EngagementVerbs)
+	if scanErr := row.Scan(&a.ItemKey, &a.TenantID, &a.Verb); scanErr != nil {
 		if errors.Is(scanErr, pgx.ErrNoRows) {
-			return "", uuid.Nil, false, nil
+			return FootprintAnchor{}, false, nil
 		}
-		return "", uuid.Nil, false, fmt.Errorf("GetLatestFootprintAnchor: %w", scanErr)
+		return FootprintAnchor{}, false, fmt.Errorf("GetLatestFootprintAnchor: %w", scanErr)
 	}
-	return itemKey, tenantID, true, nil
+	return a, true, nil
 }
 
 // DeriveTrailClusterCandidates finds articles that share a tag with the user's
@@ -466,6 +492,11 @@ LIMIT $2`
 // past engagement with the SAME item is what qualifies it, not tag overlap
 // with a new item (contrast DeriveTrailClusterCandidates).
 //
+// Contact means engagement (EngagementVerbs) — a dismissal is the opposite of
+// wanting a thread back, so it neither counts as a contact nor sets the quiet
+// clock, and an item the user dismissed from Home is never proposed at all
+// (the dismissed_at gate the sibling cluster query has always had).
+//
 // "Not deep" is a simplified, faithful read of the wear CASE in
 // GetTrailFootprints: 1-3 raw contacts, no 'asked' verb, no engaged
 // act-outcome. The last contact must sit strictly between
@@ -488,31 +519,34 @@ item_contacts AS (
   SELECT item_key,
          count(*) AS contact_count,
          bool_or(verb = 'asked') AS has_ask,
-         max(occurred_at) AS last_contact_at
+         max(occurred_at) AS last_contact_at,
+         (array_agg(verb ORDER BY occurred_at DESC, footprint_key DESC))[1] AS last_verb
   FROM knowledge_trail_footprints
   WHERE user_id = $1
+    AND verb = ANY($2::text[])
   GROUP BY item_key
 ),
 item_engagement AS (
   SELECT item_key, TRUE AS engaged
   FROM knowledge_trail_act_outcomes
   WHERE user_id = $1
-    AND ((dwell_ms IS NOT NULL AND dwell_ms >= $2)
+    AND ((dwell_ms IS NOT NULL AND dwell_ms >= $3)
          OR legacy_outcome IN ('engaged', 'deep_engagement'))
   GROUP BY item_key
 )
-SELECT ic.item_key, khi.title, ic.last_contact_at
+SELECT ic.item_key, khi.title, ic.last_contact_at, ic.last_verb
 FROM item_contacts ic
 JOIN knowledge_home_items khi
   ON khi.user_id = $1
  AND khi.item_key = ic.item_key
  AND khi.projection_version = (SELECT v FROM active_version)
+ AND khi.dismissed_at IS NULL
 LEFT JOIN item_engagement ie ON ie.item_key = ic.item_key
 WHERE ic.contact_count BETWEEN 1 AND 3
   AND NOT ic.has_ask
   AND NOT COALESCE(ie.engaged, FALSE)
-  AND ic.last_contact_at <= $3
-  AND ic.last_contact_at >= $4
+  AND ic.last_contact_at <= $4
+  AND ic.last_contact_at >= $5
   AND coalesce(khi.title, '') <> ''
   AND NOT EXISTS (
     SELECT 1 FROM knowledge_trail_branches btb
@@ -521,8 +555,8 @@ WHERE ic.contact_count BETWEEN 1 AND 3
       AND btb.target_item_key = ic.item_key
   )
 ORDER BY ic.last_contact_at DESC
-LIMIT $5`
-	rows, err := r.pool.Query(ctx, q, userID, EngagedDwellMs, staleCutoff, expireCutoff, limit)
+LIMIT $6`
+	rows, err := r.pool.Query(ctx, q, userID, EngagementVerbs, EngagedDwellMs, staleCutoff, expireCutoff, limit)
 	if err != nil {
 		return nil, fmt.Errorf("DeriveTrailContinuationCandidates: %w", err)
 	}
@@ -531,7 +565,7 @@ LIMIT $5`
 	var out []TrailContinuationCandidate
 	for rows.Next() {
 		var c TrailContinuationCandidate
-		if err := rows.Scan(&c.TargetItemKey, &c.TargetTitle, &c.LastContactAt); err != nil {
+		if err := rows.Scan(&c.TargetItemKey, &c.TargetTitle, &c.LastContactAt, &c.Verb); err != nil {
 			return nil, fmt.Errorf("DeriveTrailContinuationCandidates scan: %w", err)
 		}
 		out = append(out, c)

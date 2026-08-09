@@ -1,8 +1,10 @@
 package trail_planner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 type fakePlannerRepo struct {
 	users      []uuid.UUID
 	anchor     string
+	anchorVerb string
 	anchorOK   bool
 	candidates []sovereign_db.TrailClusterCandidate
 	emitted    []sovereign_db.KnowledgeEvent
@@ -32,18 +35,26 @@ type fakePlannerRepo struct {
 	// rely on the planner itself enforcing the "at most one per run" cap
 	// rather than trusting the repository to have already done so.
 	continuationCandidates []sovereign_db.TrailContinuationCandidate
+
+	// dedupeRejects makes every append report "already registered" — the
+	// production shape in which the planner emitted nothing for 13 days.
+	dedupeRejects bool
 }
 
 func (f *fakePlannerRepo) ListDistinctUserIDs(context.Context) ([]uuid.UUID, error) {
 	return f.users, nil
 }
-func (f *fakePlannerRepo) GetLatestFootprintAnchor(_ context.Context, userID uuid.UUID) (string, uuid.UUID, bool, error) {
+func (f *fakePlannerRepo) GetLatestFootprintAnchor(_ context.Context, userID uuid.UUID) (sovereign_db.FootprintAnchor, bool, error) {
 	if f.anchorErr != nil {
 		if err, ok := f.anchorErr[userID]; ok {
-			return "", uuid.Nil, false, err
+			return sovereign_db.FootprintAnchor{}, false, err
 		}
 	}
-	return f.anchor, uuid.New(), f.anchorOK, nil
+	verb := f.anchorVerb
+	if verb == "" {
+		verb = "read" // the ordinary case; tests that care set it explicitly
+	}
+	return sovereign_db.FootprintAnchor{ItemKey: f.anchor, TenantID: uuid.New(), Verb: verb}, f.anchorOK, nil
 }
 func (f *fakePlannerRepo) GetItemTitle(_ context.Context, _ uuid.UUID, _ string) (string, bool, error) {
 	if f.titleErr != nil {
@@ -57,13 +68,186 @@ func (f *fakePlannerRepo) DeriveTrailClusterCandidates(context.Context, uuid.UUI
 func (f *fakePlannerRepo) DeriveTrailContinuationCandidates(context.Context, uuid.UUID, int) ([]sovereign_db.TrailContinuationCandidate, error) {
 	return f.continuationCandidates, nil
 }
-func (f *fakePlannerRepo) AppendKnowledgeEvent(_ context.Context, e sovereign_db.KnowledgeEvent) (int64, error) {
+func (f *fakePlannerRepo) AppendKnowledgeEventIfNew(_ context.Context, e sovereign_db.KnowledgeEvent) (int64, bool, error) {
+	if f.dedupeRejects {
+		return 0, false, nil
+	}
 	f.emitted = append(f.emitted, e)
-	return int64(len(f.emitted)), nil
+	return int64(len(f.emitted)), true, nil
+}
+
+// captureLogger returns a logger whose records are readable as JSON text, so a
+// test can assert on what the planner claimed to have done.
+func captureLogger() (*slog.Logger, *bytes.Buffer) {
+	var buf bytes.Buffer
+	return slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})), &buf
+}
+
+// TestPlanner_DedupeRejectedBranchIsNotClaimedAsProposed pins the invariant
+// that the planner may only claim work the event log actually accepted: when
+// the append is rejected by the dedupe registry, no trail.branch_proposed may
+// be logged. Re-proposal being rejected is correct behaviour; reporting it as
+// an emission is what produced ~600 false claims/hour against zero appended
+// events.
+func TestPlanner_DedupeRejectedBranchIsNotClaimedAsProposed(t *testing.T) {
+	logger, buf := captureLogger()
+	repo := &fakePlannerRepo{
+		users:         []uuid.UUID{uuid.New()},
+		anchor:        "article:a",
+		anchorOK:      true,
+		anchorTitle:   "US military courts in the UK",
+		anchorTitleOK: true,
+		candidates: []sovereign_db.TrailClusterCandidate{
+			{TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust"}},
+		},
+		dedupeRejects: true,
+	}
+	p := NewPlanner(repo, logger, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	logs := buf.String()
+	assert.NotContains(t, logs, "trail.branch_proposed",
+		"a dedupe-rejected append must never be logged as a proposal")
+	assert.Contains(t, logs, "trail.branch_dedupe_rejected",
+		"the rejection must still be observable — silence is indistinguishable from a dead planner")
+}
+
+// TestPlanner_GenuineAppendLogsProposedWithEventSeq pins the other half: a
+// branch that really landed is logged at INFO and carries the assigned event
+// sequence as evidence that the append happened.
+func TestPlanner_GenuineAppendLogsProposedWithEventSeq(t *testing.T) {
+	logger, buf := captureLogger()
+	repo := &fakePlannerRepo{
+		users:         []uuid.UUID{uuid.New()},
+		anchor:        "article:a",
+		anchorOK:      true,
+		anchorTitle:   "US military courts in the UK",
+		anchorTitleOK: true,
+		candidates: []sovereign_db.TrailClusterCandidate{
+			{TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust"}},
+		},
+	}
+	p := NewPlanner(repo, logger, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	logs := buf.String()
+	assert.Contains(t, logs, "trail.branch_proposed")
+	assert.Contains(t, logs, `"event_seq":1`, "the claim must carry the sequence the append returned")
+	assert.NotContains(t, logs, "trail.branch_dedupe_rejected")
+}
+
+// readAnchor is the common case: the user read the anchor item.
+func readAnchor(itemKey, title string) anchorRef {
+	phrase, ok := whyPhraseForVerb("read")
+	if !ok {
+		panic("read must be an engagement verb")
+	}
+	return anchorRef{itemKey: itemKey, title: title, whyPhrase: phrase}
+}
+
+// TestWhyPhraseForVerb_CoversEveryEngagementVerb pins the two halves of the
+// anchored-why contract to each other: every verb the derivation layer admits
+// as an anchor or as continuation contact must have a phrase that makes the
+// why true, and no other verb may. Divergence here is how "Because you read X"
+// ended up on articles the user dismissed.
+func TestWhyPhraseForVerb_CoversEveryEngagementVerb(t *testing.T) {
+	for _, verb := range sovereign_db.EngagementVerbs {
+		phrase, ok := whyPhraseForVerb(verb)
+		assert.True(t, ok, "engagement verb %q has no why phrase", verb)
+		assert.NotEmpty(t, phrase)
+	}
+	_, ok := whyPhraseForVerb("dismissed")
+	assert.False(t, ok, "a dismissal can never phrase a why — it is a refusal")
+	_, ok = whyPhraseForVerb("")
+	assert.False(t, ok)
+}
+
+// TestBuildClusterBranch_WhyNamesTheActThatHappened pins that the why is
+// phrased from the anchor's own verb rather than a hard-coded "you read".
+func TestBuildClusterBranch_WhyNamesTheActThatHappened(t *testing.T) {
+	tests := []struct {
+		name string
+		verb string
+		want string
+	}{
+		{name: "read", verb: "read", want: "Because you read"},
+		{name: "asked", verb: "asked", want: "Because you asked about"},
+		{name: "listened", verb: "listened", want: "Because you listened to"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			phrase, ok := whyPhraseForVerb(tt.verb)
+			require.True(t, ok)
+			b := buildClusterBranch(uuid.New(),
+				anchorRef{itemKey: "article:a", title: "US military courts in the UK", whyPhrase: phrase},
+				sovereign_db.TrailClusterCandidate{
+					TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust"},
+				})
+			assert.Contains(t, b.Why, tt.want)
+			assert.Contains(t, b.Why, `"US military courts in the UK"`)
+		})
+	}
+}
+
+// TestBuildContinuationBranch_WhyNamesTheActThatHappened pins the same
+// contract on the self-referential branch: the why is phrased from the verb of
+// the contact that qualified the thread.
+func TestBuildContinuationBranch_WhyNamesTheActThatHappened(t *testing.T) {
+	phrase, ok := whyPhraseForVerb("listened")
+	require.True(t, ok)
+	b := buildContinuationBranch(uuid.New(), phrase, sovereign_db.TrailContinuationCandidate{
+		TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "listened",
+	})
+	assert.Contains(t, b.Why, "Because you listened to")
+	assert.Contains(t, b.Why, `"Async Rust"`)
+}
+
+// TestPlanner_NoEligibleAnchorSuppressesAndSaysSo pins the fall-through: when
+// the user's spine holds nothing that can truthfully anchor a why (e.g. only
+// dismissals), the planner proposes nothing and says why, rather than
+// inventing an anchor.
+func TestPlanner_NoEligibleAnchorSuppressesAndSaysSo(t *testing.T) {
+	logger, buf := captureLogger()
+	repo := &fakePlannerRepo{
+		users:    []uuid.UUID{uuid.New()},
+		anchorOK: false, // no footprint carries an engagement verb
+		candidates: []sovereign_db.TrailClusterCandidate{
+			{TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust"}},
+		},
+	}
+	p := NewPlanner(repo, logger, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.Empty(t, repo.emitted, "no truthful anchor → no branch")
+	assert.Contains(t, buf.String(), "trail.branch_anchor_unresolved",
+		"suppression must be observable, not silent")
+}
+
+// TestPlanner_AnchorVerbWithoutPhraseSuppresses pins the belt-and-braces gate:
+// if the derivation layer ever admits a verb the why cannot phrase, the
+// planner suppresses instead of emitting a claim it cannot back.
+func TestPlanner_AnchorVerbWithoutPhraseSuppresses(t *testing.T) {
+	logger, buf := captureLogger()
+	repo := &fakePlannerRepo{
+		users:         []uuid.UUID{uuid.New()},
+		anchor:        "article:a",
+		anchorOK:      true,
+		anchorVerb:    "dismissed",
+		anchorTitle:   "US military courts in the UK",
+		anchorTitleOK: true,
+		candidates: []sovereign_db.TrailClusterCandidate{
+			{TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust"}},
+		},
+	}
+	p := NewPlanner(repo, logger, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.Empty(t, repo.emitted, "a verb the why cannot name must not produce a branch")
+	assert.Contains(t, buf.String(), "trail.branch_anchor_unresolved")
 }
 
 func TestBuildClusterBranch_AlwaysPopulatesFourTuple(t *testing.T) {
-	b := buildClusterBranch(uuid.New(), "article:a", "US military courts in the UK", sovereign_db.TrailClusterCandidate{
+	b := buildClusterBranch(uuid.New(), readAnchor("article:a", "US military courts in the UK"), sovereign_db.TrailClusterCandidate{
 		TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust", "async"},
 	})
 	assert.True(t, b.Valid(), "a derived branch must always carry the four-tuple")
@@ -73,7 +257,7 @@ func TestBuildClusterBranch_AlwaysPopulatesFourTuple(t *testing.T) {
 }
 
 func TestBuildClusterBranch_SingleTagIsPlausible(t *testing.T) {
-	b := buildClusterBranch(uuid.New(), "article:a", "US military courts in the UK", sovereign_db.TrailClusterCandidate{
+	b := buildClusterBranch(uuid.New(), readAnchor("article:a", "US military courts in the UK"), sovereign_db.TrailClusterCandidate{
 		TargetItemKey: "article:z", SharedTags: []string{"rust"},
 	})
 	assert.Equal(t, "plausible", b.Confidence)
@@ -84,7 +268,7 @@ func TestBuildClusterBranch_SingleTagIsPlausible(t *testing.T) {
 // the why from the anchor's title, quoted, so the contract is enforced by
 // construction.
 func TestBuildClusterBranch_WhyReferencesAnchorTitleInQuotes(t *testing.T) {
-	b := buildClusterBranch(uuid.New(), "article:a", "US military courts in the UK", sovereign_db.TrailClusterCandidate{
+	b := buildClusterBranch(uuid.New(), readAnchor("article:a", "US military courts in the UK"), sovereign_db.TrailClusterCandidate{
 		TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust"},
 	})
 	assert.Contains(t, b.Why, `"US military courts in the UK"`, "why must reference the anchor title in quotes")
@@ -220,7 +404,7 @@ func TestPlanner_EmitsContinuationBranchWithAnchoredWhy(t *testing.T) {
 		anchorTitle:   "US military courts in the UK",
 		anchorTitleOK: true,
 		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
-			{TargetItemKey: "article:q", TargetTitle: "Async Rust", LastContactAt: time.Unix(0, 0)},
+			{TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "read", LastContactAt: time.Unix(0, 0)},
 		},
 	}
 	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
@@ -252,8 +436,8 @@ func TestPlanner_EmitsAtMostOneContinuationPerUserPerRun(t *testing.T) {
 		anchorTitle:   "US military courts in the UK",
 		anchorTitleOK: true,
 		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
-			{TargetItemKey: "article:q", TargetTitle: "Async Rust", LastContactAt: time.Unix(100, 0)},
-			{TargetItemKey: "article:r", TargetTitle: "Distributed Systems", LastContactAt: time.Unix(50, 0)},
+			{TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "read", LastContactAt: time.Unix(100, 0)},
+			{TargetItemKey: "article:r", TargetTitle: "Distributed Systems", Verb: "read", LastContactAt: time.Unix(50, 0)},
 		},
 	}
 	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
@@ -302,7 +486,7 @@ func TestPlanner_ContinuationDedupeKeyIsDeterministicBranchKey(t *testing.T) {
 		anchorTitle:   "US military courts in the UK",
 		anchorTitleOK: true,
 		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
-			{TargetItemKey: "article:q", TargetTitle: "Async Rust", LastContactAt: time.Unix(0, 0)},
+			{TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "read", LastContactAt: time.Unix(0, 0)},
 		},
 	}
 	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})

@@ -79,7 +79,9 @@ func (p BranchProposedPayload) Valid() bool {
 // Repository is the narrow surface the planner needs.
 type Repository interface {
 	ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error)
-	GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (string, uuid.UUID, bool, error)
+	// GetLatestFootprintAnchor yields only anchors a why can truthfully name
+	// (§C4); ok=false means the spine holds no such act.
+	GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (sovereign_db.FootprintAnchor, bool, error)
 	// GetItemTitle resolves the anchor's display title (D28 — anchored why):
 	// a branch's why must reference it, so an unresolvable title suppresses
 	// emission rather than falling back to a generic why.
@@ -89,7 +91,11 @@ type Repository interface {
 	// engaged that has gone quiet without going deep (Wave 11, D27) — the
 	// self-referential raw material for a Continuation branch.
 	DeriveTrailContinuationCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.TrailContinuationCandidate, error)
-	AppendKnowledgeEvent(ctx context.Context, event sovereign_db.KnowledgeEvent) (int64, error)
+	// AppendKnowledgeEventIfNew reports whether the event was actually
+	// appended. The planner may only claim a proposal the log accepted, so
+	// the seq-only form (whose 0 means either "rejected" or "you did not
+	// look") is deliberately not in this surface.
+	AppendKnowledgeEventIfNew(ctx context.Context, event sovereign_db.KnowledgeEvent) (int64, bool, error)
 }
 
 // Config tunes the planner.
@@ -151,27 +157,46 @@ func (p *Planner) RunBatch(ctx context.Context) error {
 }
 
 func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
-	anchor, tenantID, ok, err := p.repo.GetLatestFootprintAnchor(ctx, userID)
+	anchor, ok, err := p.repo.GetLatestFootprintAnchor(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("trail_planner anchor: %w", err)
 	}
 	if !ok {
-		return nil // no footprints yet → nothing to anchor a branch on
+		// Either no footprints yet, or none the why can name (a spine of
+		// dismissals). Both mean the same thing here: nothing to fork from.
+		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
+			slog.String("user_id", userID.String()),
+			slog.String("reason", "no_eligible_footprint"))
+		return nil
+	}
+
+	// §C4: the why names the act that happened. A verb with no phrase is a
+	// verb the why cannot back, so it suppresses rather than borrowing "read".
+	whyPhrase, phraseOK := whyPhraseForVerb(anchor.Verb)
+	if !phraseOK {
+		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
+			slog.String("user_id", userID.String()),
+			slog.String("anchor_item_key", anchor.ItemKey),
+			slog.String("reason", "unphrasable_verb"),
+			slog.String("verb", anchor.Verb))
+		return nil
 	}
 
 	// D28(a): a branch whose why does not reference its anchor is forbidden.
 	// The anchor's title is that reference, so an unresolvable title must
 	// suppress emission for this user — never fall back to a generic why.
-	anchorTitle, titleOK, err := p.repo.GetItemTitle(ctx, userID, anchor)
+	anchorTitle, titleOK, err := p.repo.GetItemTitle(ctx, userID, anchor.ItemKey)
 	if err != nil {
 		return fmt.Errorf("trail_planner anchor title: %w", err)
 	}
 	if !titleOK {
 		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
 			slog.String("user_id", userID.String()),
-			slog.String("anchor_item_key", anchor))
+			slog.String("anchor_item_key", anchor.ItemKey),
+			slog.String("reason", "title_unresolved"))
 		return nil
 	}
+	ref := anchorRef{itemKey: anchor.ItemKey, title: anchorTitle, whyPhrase: whyPhrase}
 
 	candidates, err := p.repo.DeriveTrailClusterCandidates(ctx, userID, p.cfg.MaxBranchesPerUser)
 	if err != nil {
@@ -186,13 +211,13 @@ func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
 		if strings.TrimSpace(c.TargetTitle) == "" {
 			continue
 		}
-		payload := buildClusterBranch(userID, anchor, anchorTitle, c)
-		if err := p.emitBranch(ctx, userID, tenantID, payload); err != nil {
+		payload := buildClusterBranch(userID, ref, c)
+		if err := p.emitBranch(ctx, userID, anchor.TenantID, payload); err != nil {
 			return err
 		}
 	}
 
-	if err := p.planContinuationBranch(ctx, userID, tenantID); err != nil {
+	if err := p.planContinuationBranch(ctx, userID, anchor.TenantID); err != nil {
 		return err
 	}
 	return nil
@@ -218,11 +243,48 @@ func (p *Planner) planContinuationBranch(ctx context.Context, userID, tenantID u
 	if strings.TrimSpace(c.TargetTitle) == "" {
 		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
 			slog.String("user_id", userID.String()),
-			slog.String("anchor_item_key", c.TargetItemKey))
+			slog.String("anchor_item_key", c.TargetItemKey),
+			slog.String("reason", "title_unresolved"))
 		return nil
 	}
-	payload := buildContinuationBranch(userID, c)
+	// Self-referential anchor: the why is phrased from the contact that
+	// qualified this thread, not from the user's latest footprint.
+	whyPhrase, ok := whyPhraseForVerb(c.Verb)
+	if !ok {
+		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
+			slog.String("user_id", userID.String()),
+			slog.String("anchor_item_key", c.TargetItemKey),
+			slog.String("reason", "unphrasable_verb"),
+			slog.String("verb", c.Verb))
+		return nil
+	}
+	payload := buildContinuationBranch(userID, whyPhrase, c)
 	return p.emitBranch(ctx, userID, tenantID, payload)
+}
+
+// anchorRef is the resolved spine anchor a branch's why points back to: the
+// item it forks from, the title that names it, and the verb phrase that makes
+// the claim true.
+type anchorRef struct {
+	itemKey   string
+	title     string
+	whyPhrase string
+}
+
+// whyPhraseByVerb renders each engagement verb as the subject-verb half of an
+// anchored why. It is deliberately total over sovereign_db.EngagementVerbs and
+// empty of everything else: a verb with no entry is a verb the why cannot
+// truthfully name, and the caller suppresses the branch instead of borrowing
+// another verb's claim (§C4).
+var whyPhraseByVerb = map[string]string{
+	"read":     "you read",
+	"asked":    "you asked about",
+	"listened": "you listened to",
+}
+
+func whyPhraseForVerb(verb string) (string, bool) {
+	phrase, ok := whyPhraseByVerb[verb]
+	return phrase, ok
 }
 
 // emitBranch appends a validated branch_proposed event and logs its relation
@@ -254,22 +316,35 @@ func (p *Planner) emitBranch(ctx context.Context, userID, tenantID uuid.UUID, pa
 		DedupeKey:     EventTrailBranchProposed + ":" + payload.BranchKey,
 		Payload:       body,
 	}
-	if _, err := p.repo.AppendKnowledgeEvent(ctx, evt); err != nil {
+	seq, appended, err := p.repo.AppendKnowledgeEventIfNew(ctx, evt)
+	if err != nil {
 		return fmt.Errorf("trail_planner emit: %w", err)
+	}
+	if !appended {
+		// The branch was already proposed once; re-proposal is correctly
+		// rejected by the dedupe registry. Record it as a rejection — logging
+		// it as a proposal would claim work the event log never accepted.
+		p.logger.InfoContext(ctx, "trail.branch_dedupe_rejected",
+			slog.String("user_id", userID.String()),
+			slog.String("relation_kind", payload.RelationKind),
+			slog.String("branch_key", payload.BranchKey))
+		return nil
 	}
 	p.logger.InfoContext(ctx, "trail.branch_proposed",
 		slog.String("user_id", userID.String()),
 		slog.String("relation_kind", payload.RelationKind),
-		slog.String("branch_key", payload.BranchKey))
+		slog.String("branch_key", payload.BranchKey),
+		slog.Int64("event_seq", seq))
 	return nil
 }
 
 // buildClusterBranch turns a Cluster candidate into a fully-populated branch:
 // a new item that situates into a topic the user already follows. The
 // four-tuple is always set, and the why is anchored (D28(a)): it names the
-// anchor item's title in quotes, never a generic "a topic you follow" claim
-// with no concrete reference back to what the user just read.
-func buildClusterBranch(userID uuid.UUID, anchorItemKey, anchorTitle string, c sovereign_db.TrailClusterCandidate) BranchProposedPayload {
+// anchor item's title in quotes, phrased from the act that actually happened,
+// never a generic "a topic you follow" claim with no concrete reference back
+// to what the user did.
+func buildClusterBranch(userID uuid.UUID, anchor anchorRef, c sovereign_db.TrailClusterCandidate) BranchProposedPayload {
 	refs := make([]EvidenceRef, 0, len(c.SharedTags)+1)
 	for _, tag := range c.SharedTags {
 		refs = append(refs, EvidenceRef{RefID: tag, Label: tag, Kind: "tag"})
@@ -283,9 +358,9 @@ func buildClusterBranch(userID uuid.UUID, anchorItemKey, anchorTitle string, c s
 
 	return BranchProposedPayload{
 		BranchKey:      "cluster:" + userID.String() + ":" + c.TargetItemKey,
-		AnchorItemKey:  anchorItemKey,
+		AnchorItemKey:  anchor.itemKey,
 		RelationKind:   "cluster",
-		Why:            fmt.Sprintf("Because you read %q — joins %s", anchorTitle, strings.Join(c.SharedTags, ", ")),
+		Why:            fmt.Sprintf("Because %s %q — joins %s", anchor.whyPhrase, anchor.title, strings.Join(c.SharedTags, ", ")),
 		EvidenceRefs:   refs,
 		Confidence:     confidence,
 		TargetItemKey:  c.TargetItemKey,
@@ -300,12 +375,12 @@ func buildClusterBranch(userID uuid.UUID, anchorItemKey, anchorTitle string, c s
 // material, not a new item situating into a followed topic (contrast
 // buildClusterBranch). The why is anchored on the candidate's own title,
 // quoted, per the same D28(a) contract.
-func buildContinuationBranch(userID uuid.UUID, c sovereign_db.TrailContinuationCandidate) BranchProposedPayload {
+func buildContinuationBranch(userID uuid.UUID, whyPhrase string, c sovereign_db.TrailContinuationCandidate) BranchProposedPayload {
 	return BranchProposedPayload{
 		BranchKey:     "continuation:" + userID.String() + ":" + c.TargetItemKey,
 		AnchorItemKey: c.TargetItemKey,
 		RelationKind:  "continuation",
-		Why:           fmt.Sprintf("Because you read %q and the thread went quiet — pick it back up.", c.TargetTitle),
+		Why:           fmt.Sprintf("Because %s %q and the thread went quiet — pick it back up.", whyPhrase, c.TargetTitle),
 		EvidenceRefs: []EvidenceRef{
 			{RefID: c.TargetItemKey, Label: c.TargetTitle, Kind: "article"},
 		},

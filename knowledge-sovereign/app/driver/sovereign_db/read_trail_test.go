@@ -113,6 +113,70 @@ func TestGetItemTitle_NoRowsReturnsNotOK(t *testing.T) {
 	assert.Empty(t, title)
 }
 
+// TestGetLatestFootprintAnchor_OnlyEngagementVerbsCanAnchor pins core-concept
+// §C4 (anchored why): the anchor a branch forks from must be an act the why
+// can truthfully name — "you read / listened to / asked about this". A
+// `dismissed` footprint is a refusal, so it can never anchor a branch, no
+// matter how recent it is. The verb travels with the anchor so the why can be
+// phrased from the act that actually happened.
+func TestGetLatestFootprintAnchor_OnlyEngagementVerbsCanAnchor(t *testing.T) {
+	mock := &mockPgx{}
+	var gotSQL string
+	var gotArgs []interface{}
+	mock.queryRowFunc = func(_ context.Context, sql string, args ...interface{}) pgx.Row {
+		gotSQL = sql
+		gotArgs = args
+		return &mockRow{scanFunc: func(dest ...interface{}) error {
+			if p, ok := dest[0].(*string); ok {
+				*p = "article:1"
+			}
+			if p, ok := dest[2].(*string); ok {
+				*p = "asked"
+			}
+			return nil
+		}}
+	}
+	repo := &Repository{pool: mock}
+
+	userID := uuid.New()
+	anchor, ok, err := repo.GetLatestFootprintAnchor(context.Background(), userID)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Contains(t, gotSQL, "verb = ANY($2::text[])",
+		"only verbs that can support an anchored why may anchor a branch")
+	require.Len(t, gotArgs, 2)
+	assert.Equal(t, userID, gotArgs[0])
+	assert.Equal(t, EngagementVerbs, gotArgs[1])
+	assert.NotContains(t, EngagementVerbs, "dismissed",
+		"a dismissal is a refusal — it can never back a 'because you read this' claim")
+
+	assert.Equal(t, "article:1", anchor.ItemKey)
+	assert.Equal(t, "asked", anchor.Verb, "the why must be phrased from the act that happened")
+}
+
+// TestDeriveTrailContinuationCandidates_DismissalsAreNotContact pins the two
+// halves of the continuation truthfulness gate: a dismissal must not count as
+// contact with a thread (it is the opposite), and an item the user dismissed
+// from Home must not be proposed back to them. The sibling cluster query has
+// carried the dismissed_at gate all along; its absence here is what put 386 of
+// 391 continuation branches on dismissed articles.
+func TestDeriveTrailContinuationCandidates_DismissalsAreNotContact(t *testing.T) {
+	mock := &mockPgx{}
+	repo := &Repository{pool: mock}
+
+	_, err := repo.DeriveTrailContinuationCandidates(context.Background(), uuid.New(), 1)
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1, "expected one continuation-candidates query")
+
+	call := mock.queryCalls[0]
+	assert.Contains(t, call.SQL, "verb = ANY($2::text[])",
+		"only engagement verbs count as contact with a thread")
+	assert.Contains(t, call.SQL, "khi.dismissed_at IS NULL",
+		"a dismissed item must never be proposed back to the user")
+	assert.Equal(t, EngagementVerbs, call.Args[1])
+}
+
 // TestDeriveTrailContinuationCandidates_PinsStaleWindowNotDeepAndAlreadyProposed
 // pins the Wave 11 (D27/D28) Continuation derivation shape: only items with
 // 1-3 raw contacts, no 'asked' verb, and no engaged act-outcome ("not deep")
@@ -137,26 +201,27 @@ func TestDeriveTrailContinuationCandidates_PinsStaleWindowNotDeepAndAlreadyPropo
 	assert.Contains(t, sql, "contact_count BETWEEN 1 AND 3", "not-deep gate: 1-3 raw contacts, not 0 and not 4+")
 	assert.Contains(t, sql, "NOT ic.has_ask", "an asked verb already reads as deep — not continuation material")
 	assert.Contains(t, sql, "NOT COALESCE(ie.engaged, FALSE)", "an engaged act-outcome already reads as deep")
-	assert.Contains(t, sql, "ic.last_contact_at <= $3", "must be older than the stale-after cutoff")
-	assert.Contains(t, sql, "ic.last_contact_at >= $4", "must be newer than the expire-after cutoff (quiet, not cold)")
+	assert.Contains(t, sql, "ic.last_contact_at <= $4", "must be older than the stale-after cutoff")
+	assert.Contains(t, sql, "ic.last_contact_at >= $5", "must be newer than the expire-after cutoff (quiet, not cold)")
 	assert.Contains(t, sql, "coalesce(khi.title, '') <> ''", "title must be resolvable — no unnameable proposals")
 	assert.Contains(t, sql, "relation_kind = 'continuation'", "excludes items that already carry a continuation branch")
 	assert.Contains(t, sql, "NOT EXISTS", "already-proposed continuation branches must not be re-proposed")
 	assert.Contains(t, sql, "ORDER BY ic.last_contact_at DESC", "most recent last-contact first")
-	assert.Contains(t, sql, "LIMIT $5")
+	assert.Contains(t, sql, "LIMIT $6")
 
-	require.Len(t, call.Args, 5)
+	require.Len(t, call.Args, 6)
 	assert.Equal(t, userID, call.Args[0])
-	assert.Equal(t, EngagedDwellMs, call.Args[1])
+	assert.Equal(t, EngagementVerbs, call.Args[1])
+	assert.Equal(t, EngagedDwellMs, call.Args[2])
 
-	staleCutoff, ok := call.Args[2].(time.Time)
-	require.True(t, ok, "arg[2] must be the stale-after cutoff timestamp")
-	expireCutoff, ok := call.Args[3].(time.Time)
-	require.True(t, ok, "arg[3] must be the expire-after cutoff timestamp")
+	staleCutoff, ok := call.Args[3].(time.Time)
+	require.True(t, ok, "arg[3] must be the stale-after cutoff timestamp")
+	expireCutoff, ok := call.Args[4].(time.Time)
+	require.True(t, ok, "arg[4] must be the expire-after cutoff timestamp")
 
 	// The cutoffs are wall-clock "now" at call time offset by the named
 	// constants — bracket against the call window rather than an exact instant.
 	assert.WithinDuration(t, before.Add(-continuationStaleAfter), staleCutoff, after.Sub(before)+time.Second)
 	assert.WithinDuration(t, before.Add(-continuationExpireAfter), expireCutoff, after.Sub(before)+time.Second)
-	assert.Equal(t, 1, call.Args[4])
+	assert.Equal(t, 1, call.Args[5])
 }
