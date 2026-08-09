@@ -11,7 +11,29 @@ import { execSync } from "node:child_process";
 // to an identifier that only changes when the code actually changes: an
 // explicit build id, then the git commit SHA (CI passes it as an env var
 // because `.git` is dockerignored), then the timestamp as a last resort.
+//
+// One `vite build` re-imports this file once per pass (client, then server),
+// each time with a cache-busting query, so the resolved value has to be
+// memoised somewhere that outlives a module instance. Without that, the
+// timestamp branch hands each pass a different name: the client bundle is
+// compiled against `globalThis.__sveltekit_<hash of pass A>` while the SSR'd
+// HTML defines `<hash of pass B>`, and the client runtime dies dereferencing
+// the missing global on the first statement of `start()` — before hydration,
+// before `onMount`, on every route. `process.env` is the only channel the
+// passes share. (SvelteKit's own default avoids this by evaluating its
+// `Date.now()` once at module scope, inside a module Node caches.)
+const RESOLVED_VERSION_ENV = "ALT_RESOLVED_BUILD_VERSION";
+
 function resolveVersionName() {
+	const memoised = process.env[RESOLVED_VERSION_ENV];
+	if (memoised) return memoised;
+
+	const resolved = readVersionName();
+	process.env[RESOLVED_VERSION_ENV] = resolved;
+	return resolved;
+}
+
+function readVersionName() {
 	const fromEnv =
 		process.env.PUBLIC_BUILD_ID ??
 		process.env.GIT_COMMIT_SHA ??
