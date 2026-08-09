@@ -1,7 +1,7 @@
 # Makefile.local for alt-backend/app
 # Test-Driven Development focused commands
 
-.PHONY: generate test coverage clean lint fmt build help
+.PHONY: generate test test-integration coverage clean lint fmt build help
 
 # Default target
 all: fmt lint test
@@ -17,6 +17,14 @@ test:
 	@echo "Running tests..."
 	@go test ./... -v
 	@echo "✅ All tests completed"
+
+# Run the driver suites against a real PostgreSQL carrying the real Atlas
+# migration history. Needs a reachable Docker daemon; the containers are
+# started and dropped by the test binary.
+test-integration:
+	@echo "Running integration tests (real PostgreSQL)..."
+	@go test -race -tags integration ./shared/driver/alt_db/... ./test_utils/pgtest/...
+	@echo "✅ Integration tests completed"
 
 # Run tests with coverage
 coverage:

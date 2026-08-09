@@ -3,7 +3,9 @@ package alt_db
 import (
 	"alt/domain"
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -31,13 +33,15 @@ func (r *TagRepository) CreateTagSetVersion(ctx context.Context, tsv domain.TagS
 	return nil
 }
 
-// MarkTagSetVersionSuperseded marks all non-superseded tag set versions for an article as superseded
-// by the new version. Returns the previous latest version before marking, or nil if none existed.
+// MarkTagSetVersionSuperseded points every tag set version of an article that
+// is older than newVersionID at it. Returns the newest version it superseded,
+// or nil when the new one arrived already beaten and superseded nothing.
 //
 // Same per-article advisory-lock transaction pattern as
 // SummaryRepository.MarkSummaryVersionSuperseded — see its doc comment for
 // why row-level UPDATE locking alone cannot serialize two concurrent calls
-// for the same article.
+// for the same article, and for why the age comparison is what keeps the
+// serialized calls from undoing each other.
 func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.TagSetVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.MarkTagSetVersionSuperseded")
 	defer span.End()
@@ -52,27 +56,70 @@ func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, article
 		return nil, fmt.Errorf("MarkTagSetVersionSuperseded advisory lock: %w", err)
 	}
 
-	// First, get the current latest version (before superseding)
+	// Age of the incoming version, read under the lock. A caller naming a
+	// version that does not exist is a wiring fault, and answering it with a
+	// silent no-op would leave the article's tags frozen with nothing said.
+	var newGeneratedAt time.Time
+	err = tx.QueryRow(ctx,
+		`SELECT generated_at FROM tag_set_versions WHERE tag_set_version_id = $1`,
+		newVersionID).Scan(&newGeneratedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("MarkTagSetVersionSuperseded: tag set version %s does not exist", newVersionID)
+		}
+		return nil, fmt.Errorf("MarkTagSetVersionSuperseded read new version: %w", err)
+	}
+
+	// Age decides, with the id breaking ties so two versions stamped in the
+	// same instant still order deterministically. The old predicate was
+	// "everything that is not me", which let a version supersede one generated
+	// after it: two regenerations racing on one article each superseded the
+	// other and the article was left with no current tag set at all.
+	//
+	// A version can also arrive after a newer one has already won — the batch
+	// job's rows are older than what the on-the-fly path produces while it
+	// runs. It loses, and says so by pointing at the winner. Either way the
+	// article comes out of this transaction with exactly one version that no
+	// other supersedes.
+	var winner uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT tag_set_version_id FROM tag_set_versions
+		WHERE article_id = $1 AND superseded_by IS NULL
+		  AND (generated_at, tag_set_version_id) > ($2, $3)
+		ORDER BY generated_at DESC, tag_set_version_id DESC
+		LIMIT 1`, articleID, newGeneratedAt, newVersionID).Scan(&winner)
+	switch {
+	case err == nil:
+		if _, err := tx.Exec(ctx, `UPDATE tag_set_versions SET superseded_by = $1
+			WHERE tag_set_version_id = $2 AND superseded_by IS NULL`, winner, newVersionID); err != nil {
+			return nil, fmt.Errorf("MarkTagSetVersionSuperseded yield to newer: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("MarkTagSetVersionSuperseded commit: %w", err)
+		}
+		// Superseded nothing, so it has no predecessor to announce.
+		return nil, nil
+	case !errors.Is(err, pgx.ErrNoRows):
+		return nil, fmt.Errorf("MarkTagSetVersionSuperseded select newer: %w", err)
+	}
+
+	const olderThanNew = `article_id = $1 AND superseded_by IS NULL
+		AND (generated_at, tag_set_version_id) < ($2, $3)`
+
 	var prev domain.TagSetVersion
-	selectQuery := `SELECT tag_set_version_id, article_id, user_id, generated_at,
+	err = tx.QueryRow(ctx, `SELECT tag_set_version_id, article_id, user_id, generated_at,
 		generator, input_hash, tags_json, superseded_by
 		FROM tag_set_versions
-		WHERE article_id = $1 AND superseded_by IS NULL AND tag_set_version_id != $2
-		ORDER BY generated_at DESC
-		LIMIT 1`
-
-	err = tx.QueryRow(ctx, selectQuery, articleID, newVersionID).Scan(
+		WHERE `+olderThanNew+`
+		ORDER BY generated_at DESC, tag_set_version_id DESC
+		LIMIT 1`, articleID, newGeneratedAt, newVersionID).Scan(
 		&prev.TagSetVersionID, &prev.ArticleID, &prev.UserID, &prev.GeneratedAt,
 		&prev.Generator, &prev.InputHash, &prev.TagsJSON, &prev.SupersededBy,
 	)
-	switch err {
-	case nil:
-		// Mark all non-superseded versions (except the new one) as superseded
-		updateQuery := `UPDATE tag_set_versions
-			SET superseded_by = $1
-			WHERE article_id = $2 AND superseded_by IS NULL AND tag_set_version_id != $1`
-
-		if _, err := tx.Exec(ctx, updateQuery, newVersionID, articleID); err != nil {
+	switch {
+	case err == nil:
+		if _, err := tx.Exec(ctx, `UPDATE tag_set_versions
+			SET superseded_by = $4
+			WHERE `+olderThanNew, articleID, newGeneratedAt, newVersionID, newVersionID); err != nil {
 			return nil, fmt.Errorf("MarkTagSetVersionSuperseded update: %w", err)
 		}
 
@@ -80,11 +127,11 @@ func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, article
 			return nil, fmt.Errorf("MarkTagSetVersionSuperseded commit: %w", err)
 		}
 		return &prev, nil
-	case pgx.ErrNoRows:
+	case errors.Is(err, pgx.ErrNoRows):
 		if err := tx.Commit(ctx); err != nil {
 			return nil, fmt.Errorf("MarkTagSetVersionSuperseded commit: %w", err)
 		}
-		return nil, nil // No previous version
+		return nil, nil // First version of this article; nothing to supersede.
 	default:
 		return nil, fmt.Errorf("MarkTagSetVersionSuperseded select: %w", err)
 	}

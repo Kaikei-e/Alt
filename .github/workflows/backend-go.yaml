@@ -15,12 +15,21 @@ on:
       # proxy wiring breaks a deployment without touching alt-backend/.
       # TestComposeAltBackendImageProxyIsExplicitlyWired guards that.
       - 'compose/**'
+      # The integration job applies this history to a real PostgreSQL, so a
+      # migration that no longer applies from empty breaks alt-backend's
+      # schema without touching alt-backend/. Same for the role fixture the
+      # cluster is seeded with — the migrations GRANT to roles it never
+      # creates, and the fixture is what supplies them.
+      - 'migrations-atlas/**'
+      - 'e2e/fixtures/alt-backend/db-init/**'
   pull_request:
     branches: [ main, master ]
     paths:
       - 'alt-backend/**'
       - 'observability/prometheus/**'
       - 'compose/**'
+      - 'migrations-atlas/**'
+      - 'e2e/fixtures/alt-backend/db-init/**'
   workflow_dispatch:
 
 concurrency:
@@ -63,6 +72,55 @@ jobs:
         proto
         observability
         compose
+
+  # The `test` job above runs the driver suites against pgxmock, which
+  # replays a recorded script: it proves the query and its arguments are what
+  # the caller meant, and says nothing about what a server does with them.
+  # Locking, constraint enforcement, transaction visibility and the migrated
+  # schema itself are all outside its reach, so the properties that depend on
+  # them run here instead — one real PostgreSQL, carrying the real Atlas
+  # history, per test binary.
+  #
+  # Its own job rather than a flag on `test`: this one needs Docker, the
+  # migration tree and the role fixture in the checkout, and minutes rather
+  # than seconds. Folding it in would slow the fast suite for every caller of
+  # the reusable workflow, none of whom asked for a database.
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (sparse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          # migrations-atlas and the db-init fixture are read by the harness
+          # at run time, not vendored into it, so both have to be on disk.
+          sparse-checkout: |
+            alt-backend
+            migrations-atlas
+            e2e/fixtures
+          sparse-checkout-cone-mode: true
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: 'alt-backend/app/go.mod'
+          check-latest: true
+          cache: true
+
+      - name: Integration tests (real PostgreSQL + Atlas migrations)
+        working-directory: alt-backend/app
+        env:
+          CGO_ENABLED: "1"
+        # Scoped to the packages that carry the harness rather than `./...`.
+        # `integration_tests/` also sits behind this build tag but has never
+        # been run by any workflow, and does not currently pass — it asks a
+        # Connect handler for feeds with no backend token and expects success.
+        # Naming the scope keeps that exclusion visible; reviving that package
+        # is its own change, not a side effect of this one.
+        run: go test -race -tags integration ./shared/driver/alt_db/... ./test_utils/pgtest/...
 
   # M-001: govulncheck と gosec を SARIF として GitHub Code Scanning に
   # アップロードして PR 時点で依存 CVE / コードの脆弱性を検出する。

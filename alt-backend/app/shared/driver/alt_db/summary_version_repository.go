@@ -3,7 +3,9 @@ package alt_db
 import (
 	"alt/domain"
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,18 +35,24 @@ func (r *SummaryRepository) CreateSummaryVersion(ctx context.Context, sv domain.
 	return nil
 }
 
-// MarkSummaryVersionSuperseded marks all non-superseded summary versions for an article as superseded
-// by the new version. Returns the previous latest version before marking, or nil if none existed.
+// MarkSummaryVersionSuperseded points every summary version of an article that
+// is older than newVersionID at it. Returns the newest version it superseded,
+// or nil when the new one arrived already beaten and superseded nothing.
 //
 // The select-then-update pair runs inside a transaction guarded by a
 // per-article pg_advisory_xact_lock. Without it, two summary versions
 // created back-to-back for the same article can each run this method
-// concurrently and mark the OTHER as superseded: each call's WHERE clause
-// excludes only its own new version id, so the two candidate row sets are
-// disjoint and row-level UPDATE locking alone does not serialize them. The
-// advisory lock is keyed on article_id (not on the changing set of
-// non-superseded rows) so the second concurrent call fully waits for the
-// first transaction to commit before it can even read "prev".
+// concurrently and read a "prev" the other is about to change: row-level
+// UPDATE locking alone does not serialize them, because the candidate row
+// sets are computed before either UPDATE runs. The advisory lock is keyed on
+// article_id (not on the changing set of non-superseded rows) so the second
+// call fully waits for the first transaction to commit before it reads.
+//
+// Serializing is necessary but not sufficient. The predicate below compares
+// generation age, and the earlier "everything that is not me" form is what
+// made two serialized calls undo each other: each superseded the other's row,
+// and the article ended up with every version pointing at a successor and no
+// current summary at all.
 func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.MarkSummaryVersionSuperseded")
 	defer span.End()
@@ -59,29 +67,64 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 		return nil, fmt.Errorf("MarkSummaryVersionSuperseded advisory lock: %w", err)
 	}
 
-	// First, get the current latest version (before superseding)
+	// Age of the incoming version, read under the lock. A caller naming a
+	// version that does not exist is a wiring fault, and answering it with a
+	// silent no-op would leave the article's summary frozen with nothing said.
+	var newGeneratedAt time.Time
+	err = tx.QueryRow(ctx,
+		`SELECT generated_at FROM summary_versions WHERE summary_version_id = $1`,
+		newVersionID).Scan(&newGeneratedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("MarkSummaryVersionSuperseded: summary version %s does not exist", newVersionID)
+		}
+		return nil, fmt.Errorf("MarkSummaryVersionSuperseded read new version: %w", err)
+	}
+
+	// A version can arrive after a newer one has already won. It loses, and
+	// says so by pointing at the winner, so the article leaves this
+	// transaction with exactly one version that no other supersedes.
+	var winner uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT summary_version_id FROM summary_versions
+		WHERE article_id = $1 AND superseded_by IS NULL
+		  AND (generated_at, summary_version_id) > ($2, $3)
+		ORDER BY generated_at DESC, summary_version_id DESC
+		LIMIT 1`, articleID, newGeneratedAt, newVersionID).Scan(&winner)
+	switch {
+	case err == nil:
+		if _, err := tx.Exec(ctx, `UPDATE summary_versions SET superseded_by = $1
+			WHERE summary_version_id = $2 AND superseded_by IS NULL`, winner, newVersionID); err != nil {
+			return nil, fmt.Errorf("MarkSummaryVersionSuperseded yield to newer: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("MarkSummaryVersionSuperseded commit: %w", err)
+		}
+		// Superseded nothing, so it has no predecessor to announce.
+		return nil, nil
+	case !errors.Is(err, pgx.ErrNoRows):
+		return nil, fmt.Errorf("MarkSummaryVersionSuperseded select newer: %w", err)
+	}
+
+	const olderThanNew = `article_id = $1 AND superseded_by IS NULL
+		AND (generated_at, summary_version_id) < ($2, $3)`
+
 	var prev domain.SummaryVersion
-	selectQuery := `SELECT summary_version_id, article_id, user_id, generated_at,
+	err = tx.QueryRow(ctx, `SELECT summary_version_id, article_id, user_id, generated_at,
 		model, prompt_version, input_hash, quality_score,
 		summary_text, superseded_by
 		FROM summary_versions
-		WHERE article_id = $1 AND superseded_by IS NULL AND summary_version_id != $2
-		ORDER BY generated_at DESC
-		LIMIT 1`
-
-	err = tx.QueryRow(ctx, selectQuery, articleID, newVersionID).Scan(
+		WHERE `+olderThanNew+`
+		ORDER BY generated_at DESC, summary_version_id DESC
+		LIMIT 1`, articleID, newGeneratedAt, newVersionID).Scan(
 		&prev.SummaryVersionID, &prev.ArticleID, &prev.UserID, &prev.GeneratedAt,
 		&prev.Model, &prev.PromptVersion, &prev.InputHash, &prev.QualityScore,
 		&prev.SummaryText, &prev.SupersededBy,
 	)
-	switch err {
-	case nil:
-		// Mark all non-superseded versions (except the new one) as superseded
-		updateQuery := `UPDATE summary_versions
-			SET superseded_by = $1
-			WHERE article_id = $2 AND superseded_by IS NULL AND summary_version_id != $1`
-
-		if _, err := tx.Exec(ctx, updateQuery, newVersionID, articleID); err != nil {
+	switch {
+	case err == nil:
+		if _, err := tx.Exec(ctx, `UPDATE summary_versions
+			SET superseded_by = $4
+			WHERE `+olderThanNew, articleID, newGeneratedAt, newVersionID, newVersionID); err != nil {
 			return nil, fmt.Errorf("MarkSummaryVersionSuperseded update: %w", err)
 		}
 
@@ -89,11 +132,11 @@ func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, ar
 			return nil, fmt.Errorf("MarkSummaryVersionSuperseded commit: %w", err)
 		}
 		return &prev, nil
-	case pgx.ErrNoRows:
+	case errors.Is(err, pgx.ErrNoRows):
 		if err := tx.Commit(ctx); err != nil {
 			return nil, fmt.Errorf("MarkSummaryVersionSuperseded commit: %w", err)
 		}
-		return nil, nil // No previous version
+		return nil, nil // First version of this article; nothing to supersede.
 	default:
 		return nil, fmt.Errorf("MarkSummaryVersionSuperseded select: %w", err)
 	}
