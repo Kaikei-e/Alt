@@ -328,7 +328,7 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	h.recordOutcome(endpoint, resp.StatusCode)
+	h.recordOutcome(endpoint, resp.StatusCode, resp.Header)
 
 	// Error-normalization only ever rewrites the initial status; once we
 	// decide to stream (below), the body is copied verbatim and untouched.
@@ -396,7 +396,7 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	defer resp.Body.Close()
 
 	// Record success/failure for the endpoint's dependency-class circuit breaker
-	h.recordOutcome(endpoint, resp.StatusCode)
+	h.recordOutcome(endpoint, resp.StatusCode, resp.Header)
 	h.invalidateUnreadProjectionOnMutation(userID, endpoint, resp.StatusCode)
 
 	// Read response body
@@ -566,6 +566,11 @@ func (h *BFFHandler) handleCircuitOpen(w http.ResponseWriter, endpoint, requestI
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Retry-After", strconv.Itoa(int(h.openTimeoutFor(endpoint).Seconds())))
+	// The one condition that really does reach every host: a breaker rejection
+	// is a state of this gateway, and no publisher can be routed around it.
+	// Declaring it lets the client stop inferring the same thing from a bare
+	// CodeUnavailable, which a single dead article also produces.
+	w.Header().Set(FailureScopeHeader, FailureScopeGlobal)
 	w.Header().Set("X-Request-Id", requestID)
 	w.WriteHeader(http.StatusServiceUnavailable)
 	jsonBytes, _ := connectErr.ToJSON()
@@ -612,9 +617,15 @@ func (h *BFFHandler) openTimeoutFor(endpoint string) time.Duration {
 // rate-limited or paywalled publisher opens the breaker for every endpoint in
 // the class; recorded as a success, it resets consecFailures and masks a real
 // backend outage.
-func (h *BFFHandler) recordOutcome(endpoint string, statusCode int) {
+//
+// A 5xx the backend attributed to a publisher gets that same neutrality, and
+// for the same reason. The status code alone cannot tell "the site never
+// answered" from "alt-backend fell over" — both are 503 — so without the
+// attribution header the commonest failure a feed reader meets was charged to
+// alt-backend's budget, which is the budget ADR-000959 set out to protect.
+func (h *BFFHandler) recordOutcome(endpoint string, statusCode int, respHeader http.Header) {
 	switch {
-	case IsDependencyFailure(statusCode):
+	case IsDependencyFailure(statusCode) && !IsUpstreamAttributed(respHeader):
 		h.recordFailure(endpoint)
 	case !IsErrorResponse(statusCode):
 		h.recordSuccess(endpoint)

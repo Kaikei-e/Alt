@@ -89,6 +89,35 @@ func NewHandler(deps ArticleHandlerDeps, cfg *config.Config, logger *slog.Logger
 // Verify interface implementation at compile time.
 var _ articlesv2connect.ArticleServiceHandler = (*Handler)(nil)
 
+const (
+	// FailureScopeHeader names how far a failure reaches. Connect error
+	// metadata is merged into the unary response headers, so it survives the
+	// BFF's transparent proxy and reaches connect-es as ConnectError.metadata.
+	//
+	// It exists because CodeUnavailable is issued by two parties that mean
+	// opposite things by it: alt-backend for a single publisher that did not
+	// answer, and the BFF for a breaker that is open against every host. A
+	// client that cannot tell them apart must guess, and guessing "global"
+	// let one dead link black the whole reader out for a full cooldown.
+	FailureScopeHeader = "X-Alt-Failure-Scope"
+
+	// FailureScopeHost means the failure belongs to one third-party host.
+	// Every other host is still reachable and alt-backend is healthy, so this
+	// must not charge a shared failure budget or pause unrelated work.
+	//
+	// Only stamp it on errors positively attributed to a publisher. Our own
+	// politeness gate is not a publisher's health, and an unclassified fault
+	// is still ours — excusing either from the breaker would hide a real
+	// outage behind "the site is slow".
+	FailureScopeHost = "host"
+)
+
+// withFailureScope stamps the blast radius onto a Connect error.
+func withFailureScope(err *connect.Error, scope string) *connect.Error {
+	err.Meta().Set(FailureScopeHeader, scope)
+	return err
+}
+
 // FetchArticleContent fetches and extracts compliant article content.
 // Replaces GET /v1/articles/fetch/content
 func (h *Handler) FetchArticleContent(
@@ -142,21 +171,25 @@ func (h *Handler) FetchArticleContent(
 				fmt.Errorf("%s", complianceErr.Message))
 		}
 
+		// The publisher answered, just not with what we wanted. Whatever the
+		// status, the verdict is about that one site — hence FailureScopeHost
+		// on every branch, including the CodeUnavailable default that is
+		// otherwise indistinguishable from the BFF's own breaker rejection.
 		var httpErr *domain.ExternalHTTPError
 		if errors.As(err, &httpErr) {
 			switch {
 			case httpErr.StatusCode == 404 || httpErr.StatusCode == 410:
-				return nil, connect.NewError(connect.CodeNotFound,
-					fmt.Errorf("article not found"))
+				return nil, withFailureScope(connect.NewError(connect.CodeNotFound,
+					fmt.Errorf("article not found")), FailureScopeHost)
 			case httpErr.StatusCode == 403 || httpErr.StatusCode == 401:
-				return nil, connect.NewError(connect.CodePermissionDenied,
-					fmt.Errorf("access denied by external site"))
+				return nil, withFailureScope(connect.NewError(connect.CodePermissionDenied,
+					fmt.Errorf("access denied by external site")), FailureScopeHost)
 			case httpErr.StatusCode == 429:
-				return nil, connect.NewError(connect.CodeResourceExhausted,
-					fmt.Errorf("rate limited by external site"))
+				return nil, withFailureScope(connect.NewError(connect.CodeResourceExhausted,
+					fmt.Errorf("rate limited by external site")), FailureScopeHost)
 			default:
-				return nil, connect.NewError(connect.CodeUnavailable,
-					fmt.Errorf("external site returned %d", httpErr.StatusCode))
+				return nil, withFailureScope(connect.NewError(connect.CodeUnavailable,
+					fmt.Errorf("external site returned %d", httpErr.StatusCode)), FailureScopeHost)
 			}
 		}
 
@@ -169,8 +202,9 @@ func (h *Handler) FetchArticleContent(
 				"url", upstreamErr.URL,
 				"cause", upstreamErr.Cause,
 				"operation", "FetchArticleContent")
-			return nil, connect.NewError(connect.CodeUnavailable,
-				fmt.Errorf("the source site did not respond; please try again later"))
+			return nil, withFailureScope(connect.NewError(connect.CodeUnavailable,
+				fmt.Errorf("the source site did not respond; please try again later")),
+				FailureScopeHost)
 		}
 
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "FetchArticleContent")

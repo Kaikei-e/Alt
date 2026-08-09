@@ -249,13 +249,26 @@ async function loadContent() {
 }
 
 async function handleToggleContent() {
+	if (isContentExpanded) {
+		isContentExpanded = false;
+		return;
+	}
+
+	// Open first, then fetch. Awaiting the body before expanding meant the
+	// panel's loading state could never be reached on a first tap: the reader
+	// waited on a disabled button and the panel arrived already in its final
+	// state. When that state was the fallback, the card read as permanently
+	// broken from the instant it appeared, with nothing to show an attempt had
+	// been made at all.
+	isContentExpanded = true;
+
 	// A previous failure is not permanent: the host cooldown that caused it
-	// lifts, and requestContent() short-circuits while it has not. Latching
-	// contentError here pinned the card to the summary for its whole lifetime.
-	if (!isContentExpanded && !fullContent) {
+	// lifts, and requestContent() rations rather than refuses while it has not.
+	// Latching contentError here pinned the card to the summary for its whole
+	// lifetime.
+	if (!fullContent) {
 		await loadContent();
 	}
-	isContentExpanded = !isContentExpanded;
 }
 
 async function handleRetryContent() {

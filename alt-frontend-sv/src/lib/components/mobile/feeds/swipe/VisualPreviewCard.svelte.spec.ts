@@ -270,21 +270,55 @@ describe("VisualPreviewCard", () => {
 		});
 	});
 
-	// The two tests below exercise the click-driven async error path in
-	// handleToggleContent. They consistently hit Svelte 5 `track_reactivity_loss`
-	// because the component ran `getFeedContentOnTheFlyClient` via
-	// `.then().catch()` outside a reactive scope, so the post-rejection state
-	// update was not flushed in the browser test runner.
-	//
-	// The previous note here claimed the markup was instead covered by
-	// tests/e2e/feeds-visual-preview.spec.ts. That file does not exist and never
-	// did, so this path currently has NO coverage at any level.
-	//
-	// handleToggleContent now awaits loadContent() inside the handler rather
-	// than detaching a promise chain, which is likely to lift the original
-	// blocker — un-skip and confirm on a runner with the browser project
-	// available (`bun run test:client`).
-	describe.skip("article content fallback when source fetch fails", () => {
+	describe("expanding the article panel", () => {
+		// The panel used to be opened only after the fetch settled, so its
+		// loading state could not be reached on a first tap: the reader waited
+		// on a disabled button and then got a panel that was already in its
+		// final state. When that state was the fallback, the card looked
+		// permanently broken the instant it appeared, with no sign anything had
+		// been attempted — which is how a few seconds of backoff read as a dead
+		// article.
+		it("opens on its loading state instead of after the fetch settles", async () => {
+			let settle: (value: { content: string; article_id: string }) => void =
+				() => {};
+			vi.mocked(getFeedContentOnTheFlyClient).mockImplementation(
+				() =>
+					new Promise((resolve) => {
+						settle = resolve as typeof settle;
+					}),
+			);
+
+			render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+
+			await page.getByRole("button", { name: /^article$/i }).click();
+
+			await expect
+				.element(page.getByTestId("content-section"))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByText(/loading article/i))
+				.toBeInTheDocument();
+
+			settle({ content: "<p>Full body.</p>", article_id: "article-123" });
+
+			await expect.element(page.getByText("Full body.")).toBeInTheDocument();
+		});
+	});
+
+	// These exercise the click-driven async error path in handleToggleContent.
+	// They were skipped after hitting Svelte 5 `track_reactivity_loss`: the
+	// component ran `getFeedContentOnTheFlyClient` through a detached
+	// `.then().catch()` chain, so the post-rejection state update was not
+	// flushed in the browser runner. The handler awaits inside the handler now,
+	// and the panel opens before the fetch rather than after it, so both the
+	// notice and the summary are reachable from a first tap.
+	describe("article content fallback when source fetch fails", () => {
 		it("shows 'Source content unavailable' notice and full summary when Article fetch errors", async () => {
 			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
 				new Error("[unavailable] HTTP 500"),

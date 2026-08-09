@@ -277,3 +277,31 @@ func TestIsDependencyFailure(t *testing.T) {
 		})
 	}
 }
+
+// TestIsUpstreamAttributed reads the blast-radius header alt-backend stamps on
+// errors it has positively attributed to a third-party publisher.
+//
+// The header is a claim about whose health the response reports, and it is
+// only ever believed downward: it can excuse a failure from a budget, never
+// charge one. Anything unrecognized therefore has to read as "not attributed"
+// so an unstamped or garbled response keeps counting as our own failure.
+func TestIsUpstreamAttributed(t *testing.T) {
+	tests := []struct {
+		name     string
+		header   http.Header
+		expected bool
+	}{
+		{"absent", http.Header{}, false},
+		{"nil header", nil, false},
+		{"host", http.Header{FailureScopeHeader: []string{FailureScopeHost}}, true},
+		{"global", http.Header{FailureScopeHeader: []string{"global"}}, false},
+		{"unknown value", http.Header{FailureScopeHeader: []string{"planet"}}, false},
+		{"empty value", http.Header{FailureScopeHeader: []string{""}}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, IsUpstreamAttributed(tt.header))
+		})
+	}
+}

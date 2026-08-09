@@ -160,6 +160,40 @@ func IsDependencyFailure(statusCode int) bool {
 	return statusCode >= 500
 }
 
+const (
+	// FailureScopeHeader carries how far a failure reaches. alt-backend stamps
+	// it on Connect errors via error metadata, which the unary protocol merges
+	// into the response headers, so it arrives here as an ordinary header and
+	// travels on to the client untouched.
+	//
+	// It exists because CodeUnavailable is issued by two parties that mean
+	// opposite things by it. This BFF returns it when its own breaker is open
+	// against every host; alt-backend returns it when one publisher did not
+	// answer. Nothing in the status code separates them.
+	FailureScopeHeader = "X-Alt-Failure-Scope"
+
+	// FailureScopeHost means the failure belongs to one third-party publisher.
+	FailureScopeHost = "host"
+
+	// FailureScopeGlobal means the failure is a state of this gateway and no
+	// host can be routed around it. Only a breaker rejection qualifies.
+	FailureScopeGlobal = "global"
+)
+
+// IsUpstreamAttributed reports whether the backend named a third-party
+// publisher as the party at fault. Such a response says nothing about
+// alt-backend's health, so it is neutral for circuit-breaker accounting for
+// exactly the reason a 4xx is: charging it opens the class breaker on one dead
+// link, and crediting it resets the budget and masks a real outage.
+//
+// Only the exact host claim counts. The header can excuse a failure from a
+// budget but never charge one, so anything absent, unknown, or malformed has
+// to read as unattributed and keep counting as ours — a backend that stopped
+// stamping must look broken, not healthy.
+func IsUpstreamAttributed(header http.Header) bool {
+	return header.Get(FailureScopeHeader) == FailureScopeHost
+}
+
 // ConnectError is the Connect protocol's unary error body. It is not
 // NormalizedError: connect-es resolves the JSON `code` with codeFromString,
 // which accepts only the protocol's lowercase snake_case names, so
