@@ -29,6 +29,11 @@ SUBJECTS=(
   # compose/pki.yaml and cannot start without a signed leaf.
   alt-harvester
   alt-data-hub
+  # The fourth binary of the same module: the Web Push dispatcher, an mTLS
+  # client of alt-data-hub. Same sidecar shape, same hard dependency on a
+  # signed leaf — di.newDataHubClient is fail-closed and panics on a missing
+  # cert, so an unlisted CN here is a crash loop, not a degraded mode.
+  alt-notifier
   alt-butterfly-facade
   auth-hub
   pre-processor

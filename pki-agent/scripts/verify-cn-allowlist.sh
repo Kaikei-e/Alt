@@ -19,6 +19,7 @@ EXPECTED_CNS=(
   # Keep in lockstep with SUBJECTS in bootstrap-pki-provisioner.sh.
   alt-harvester
   alt-data-hub
+  alt-notifier
   alt-butterfly-facade
   auth-hub
   pre-processor
