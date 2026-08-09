@@ -126,7 +126,7 @@ class TestChatGenerateOptionsMerge:
 
         sent_options = captured["json"]["options"]
         assert sent_options["num_batch"] == 1024
-        assert sent_options["num_keep"] == -1
+        assert sent_options["num_keep"] == 0
         assert "<turn|>" in sent_options["stop"]
 
     @pytest.mark.asyncio

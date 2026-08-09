@@ -36,7 +36,12 @@ class LLMConfig:
     top_p: float = 0.85
     top_k: int = 40
     repeat_penalty: float = 1.15
-    num_keep: int = -1
+    # num_keep bounds what Ollama protects when a prompt overflows num_ctx.
+    # A negative value resolves to len(tokens) (llm/llama_server.go), which keeps
+    # the head and discards the tail — and the tail is the user's question and
+    # the generation cue. Measured on a 22800-rune prompt that produced a
+    # one-token reply with done_reason "length". Truncation must eat the middle.
+    num_keep: int = 0
     stop_tokens: tuple[str, ...] = ("<turn|>",)
     # Summary-specific settings
     summary_num_predict: int = 1000
@@ -106,7 +111,7 @@ class LLMConfig:
             top_p=_get_float("LLM_TOP_P", 0.85),
             top_k=_get_int("LLM_TOP_K", 40),
             repeat_penalty=_get_float("LLM_REPEAT_PENALTY", 1.15),
-            num_keep=_get_int("LLM_NUM_KEEP", -1),
+            num_keep=_get_int("LLM_NUM_KEEP", 0),
             stop_tokens=stop_tokens,
             summary_num_predict=_get_int("SUMMARY_NUM_PREDICT", 1000),
             summary_temperature=_get_float("SUMMARY_TEMPERATURE", 0.5),

@@ -256,3 +256,21 @@ def test_preemption_wait_threshold_can_be_customized(monkeypatch):
     config = NewsCreatorConfig()
 
     assert config.scheduling_preemption_wait_threshold_seconds == 10.0
+
+
+def test_llm_options_do_not_discard_the_end_of_the_prompt(monkeypatch):
+    """num_keep must never ask Ollama to keep the whole prompt head.
+
+    Ollama resolves a negative num_keep to len(tokens) (llm/llama_server.go),
+    so on context overflow it keeps the head and discards the tail. The tail is
+    where the user's question and the generation cue live, so the model is left
+    answering a question it can no longer see, with the remaining budget spent:
+    measured on a 22800-rune prompt, eval_count came back as 1 token with
+    done_reason "length". Truncation has to eat the middle, never the question.
+    """
+    monkeypatch.delenv("LLM_NUM_KEEP", raising=False)
+
+    config = NewsCreatorConfig()
+
+    assert config.llm.num_keep >= 0
+    assert config.llm.get_options()["num_keep"] >= 0
