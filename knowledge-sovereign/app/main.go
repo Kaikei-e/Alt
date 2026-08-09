@@ -59,6 +59,12 @@ func main() {
 	snapshotHandler := handler.NewSnapshotHandler(repo, cfg.SnapshotDir, cfg.BuildRef, cfg.SchemaVersion)
 	retentionHandler := handler.NewRetentionHandler(repo, cfg.ArchiveDir)
 	storageHandler := handler.NewStorageHandler(repo)
+	// Projection rebuild: truncate an allowlisted read-model set and reset its
+	// projector checkpoint in one transaction, so the in-process projectors
+	// below re-fold the event log from the beginning. Codifies the procedure
+	// that lived as raw SQL in docs/runbooks/knowledge-trail-reproject.md,
+	// including the PM-2026-010 invariant that the two steps are inseparable.
+	projectionRebuildHandler := handler.NewProjectionRebuildHandler(repo)
 
 	// Metrics / health server
 	metricsMux := http.NewServeMux()
@@ -70,6 +76,7 @@ func main() {
 	snapshotHandler.RegisterRoutes(metricsMux)
 	retentionHandler.RegisterRoutes(metricsMux)
 	storageHandler.RegisterRoutes(metricsMux)
+	projectionRebuildHandler.RegisterRoutes(metricsMux)
 
 	if cfg.AdminAuthEnabled {
 		slog.Info("admin_auth_enabled")
