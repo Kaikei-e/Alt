@@ -22,6 +22,10 @@ type Message = {
 	role: "user" | "assistant";
 	content: string;
 	citations?: Citation[];
+	// failed marks a bubble whose text we wrote ourselves (a fallback notice or
+	// an error), so it can be shown to the reader without being replayed to the
+	// model as something it said.
+	failed?: boolean;
 };
 
 interface Props {
@@ -163,10 +167,13 @@ const handleSubmit = async (messageOverride?: string) => {
 		const transport = createClientTransport();
 
 		// Prepare messages for Connect-RPC (exclude empty placeholder)
-		const chatMessages = messages.slice(0, -1).map((m) => ({
-			role: m.role,
-			content: m.content,
-		}));
+		const chatMessages = messages
+			.slice(0, -1)
+			.filter((m) => !m.failed)
+			.map((m) => ({
+				role: m.role,
+				content: m.content,
+			}));
 
 		currentAbortController = streamAugurChat(
 			transport,
@@ -221,6 +228,7 @@ const handleSubmit = async (messageOverride?: string) => {
 				messages[currentAssistantMessageIndex] = {
 					...currentMsg,
 					content: formatAugurFallbackMessage(code),
+					failed: true,
 				};
 				isLoading = false;
 				progressStage = "";
@@ -236,6 +244,7 @@ const handleSubmit = async (messageOverride?: string) => {
 				messages[currentAssistantMessageIndex] = {
 					...currentMsg,
 					content: "Sorry, something went wrong. Please try again.",
+					failed: true,
 				};
 				isLoading = false;
 				progressStage = "";

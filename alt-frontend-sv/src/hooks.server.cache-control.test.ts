@@ -152,6 +152,8 @@ describe("applyApiCacheControl", () => {
 	it("does not throw when headers are frozen — soft fail tolerated", () => {
 		const res = jsonResponse();
 		const frozen = Object.freeze(res);
-		expect(() => applyApiCacheControl(frozen, "/api/v1/dashboard/metrics")).not.toThrow();
+		expect(() =>
+			applyApiCacheControl(frozen, "/api/v1/dashboard/metrics"),
+		).not.toThrow();
 	});
 });

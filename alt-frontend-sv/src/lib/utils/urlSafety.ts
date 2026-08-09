@@ -7,7 +7,9 @@
  * links, RAG/Recap citations) and would otherwise let a malicious citation
  * URL execute script on click.
  */
-export function sanitizeHrefUrl(url: string | null | undefined): string | undefined {
+export function sanitizeHrefUrl(
+	url: string | null | undefined,
+): string | undefined {
 	if (!url) return undefined;
 	const urlPattern = /^https?:\/\//i;
 	if (!urlPattern.test(url)) return undefined;

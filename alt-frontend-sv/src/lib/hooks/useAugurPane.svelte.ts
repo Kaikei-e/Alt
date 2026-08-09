@@ -155,11 +155,19 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 		isLoading = true;
 		progressStage = "";
 
-		// Build history excluding the empty assistant placeholder
-		const chatHistory = messages.slice(0, -1).map((m) => ({
-			role: m.role,
-			content: m.message,
-		}));
+		// Build history excluding the empty assistant placeholder, and excluding
+		// any turn that failed. A fallback or error bubble is our own apology
+		// text, not something the model produced; replaying it as assistant
+		// history teaches the model that declining to answer is the expected
+		// shape of a reply, so one infrastructure failure degrades every later
+		// turn in the conversation.
+		const chatHistory = messages
+			.slice(0, -1)
+			.filter((m) => !m.retryable)
+			.map((m) => ({
+				role: m.role,
+				content: m.message,
+			}));
 
 		let bufferedContent = "";
 

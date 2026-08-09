@@ -29,6 +29,10 @@ type Message = {
 	timestamp: string;
 	citations?: Citation[];
 	relatedCitations?: Citation[];
+	// failed marks a bubble whose text we wrote ourselves (a fallback notice or
+	// an error), so it can be shown to the reader without being replayed to the
+	// model as something it said.
+	failed?: boolean;
 };
 
 interface Props {
@@ -203,10 +207,13 @@ async function handleSend(messageText: string) {
 		const transport = createClientTransport();
 
 		// Build message history (excluding the empty placeholder)
-		const chatHistory = messages.slice(0, -1).map((m) => ({
-			role: m.role as "user" | "assistant",
-			content: m.message,
-		}));
+		const chatHistory = messages
+			.slice(0, -1)
+			.filter((m) => !m.failed)
+			.map((m) => ({
+				role: m.role as "user" | "assistant",
+				content: m.message,
+			}));
 
 		currentAbortController = streamAugurChat(
 			transport,
@@ -262,6 +269,7 @@ async function handleSend(messageText: string) {
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex]!,
 					message: formatAugurFallbackMessage(code),
+					failed: true,
 				};
 				isLoading = false;
 				progressStage = "";
@@ -276,6 +284,7 @@ async function handleSend(messageText: string) {
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex]!,
 					message: `Error: ${error.message}. Please try again.`,
+					failed: true,
 				};
 				isLoading = false;
 				progressStage = "";
@@ -304,6 +313,7 @@ async function handleSend(messageText: string) {
 		messages[currentAssistantMessageIndex] = {
 			...messages[currentAssistantMessageIndex]!,
 			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
+			failed: true,
 		};
 		isLoading = false;
 		statusText = "";

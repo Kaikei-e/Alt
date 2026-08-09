@@ -183,7 +183,9 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 			const classified =
 				error instanceof Error
 					? error
-					: new Error(typeof error === "string" ? error : "stream update failed");
+					: new Error(
+							typeof error === "string" ? error : "stream update failed",
+						);
 			console.error("[useStreamUpdates] stream error", {
 				name: classified.name,
 				message: classified.message,

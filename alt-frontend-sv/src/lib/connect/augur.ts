@@ -266,15 +266,24 @@ export function streamAugurChat(
 						}
 						break;
 
+					// fallback and error are terminal — the server returns right
+					// after emitting one, so no `done` follows. Dispatching on the
+					// payload's presence rather than its truthiness is what keeps an
+					// empty notice from stranding the caller with no callback at all,
+					// leaving the UI spinning on a request that already finished.
 					case "fallbackCode":
-						if (onFallback && payload.value) {
-							onFallback(payload.value);
+						if (onFallback) {
+							onFallback(payload.value ?? "");
 						}
 						break;
 
 					case "errorMessage":
-						if (onError && payload.value) {
-							onError(new Error(payload.value));
+						if (onError) {
+							onError(
+								new Error(
+									payload.value || "Augur stream failed without a message",
+								),
+							);
 						}
 						break;
 				}

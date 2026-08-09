@@ -5,9 +5,7 @@
 
 import { ConnectError, Code } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
-import type {
-	StreamSummarizeResponse,
-} from "$lib/gen/alt/feeds/v2/feeds_pb";
+import type { StreamSummarizeResponse } from "$lib/gen/alt/feeds/v2/feeds_pb";
 import { createFeedClient } from "./client";
 
 // =============================================================================
@@ -46,13 +44,15 @@ export async function streamFeedStats(
 	// Start streaming in background
 	(async () => {
 		try {
-			if (debug) console.log("[streamFeedStats] Calling client.streamFeedStats()...");
+			if (debug)
+				console.log("[streamFeedStats] Calling client.streamFeedStats()...");
 			const stream = client.streamFeedStats(
 				{},
 				{ signal: abortController.signal },
 			);
 
-			if (debug) console.log("[streamFeedStats] Stream created, waiting for data...");
+			if (debug)
+				console.log("[streamFeedStats] Stream created, waiting for data...");
 			for await (const response of stream) {
 				const isHeartbeat = response.metadata?.isHeartbeat ?? false;
 				if (debug) {
@@ -76,7 +76,8 @@ export async function streamFeedStats(
 		} catch (error) {
 			// Check abort BEFORE logging to suppress navigation-related errors
 			if (abortController.signal.aborted) {
-				if (debug) console.log("[streamFeedStats] Stream closed due to navigation");
+				if (debug)
+					console.log("[streamFeedStats] Stream closed due to navigation");
 				return;
 			}
 			console.error("[streamFeedStats] Stream error:", error);

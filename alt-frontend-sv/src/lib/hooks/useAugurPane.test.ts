@@ -180,6 +180,46 @@ describe("useAugurPane", () => {
 			]);
 			expect(options.conversationId).toBe("");
 		});
+
+		it("does not replay a failed turn as assistant history", () => {
+			// A fallback or error bubble is our own apology text, not something the
+			// model produced. Sending it back as an assistant turn teaches the model
+			// that declining to answer is the expected shape of a reply, so one
+			// infrastructure failure degrades every later turn in the conversation.
+			const pane = useAugurPane();
+
+			pane.sendMessage("What is RSS?");
+			capturedCallbacks.onFallback?.("no context returned from retrieval");
+
+			pane.sendMessage("Tell me more");
+
+			const secondCall = mockStreamAugurChat.mock.calls[1]!;
+			const options = secondCall[1] as {
+				messages: Array<{ role: string; content: string }>;
+			};
+			expect(options.messages).toEqual([
+				{ role: "user", content: "What is RSS?" },
+				{ role: "user", content: "Tell me more" },
+			]);
+		});
+
+		it("does not replay an errored turn as assistant history", () => {
+			const pane = useAugurPane();
+
+			pane.sendMessage("What is RSS?");
+			capturedCallbacks.onError?.(new Error("stream aborted"));
+
+			pane.sendMessage("Tell me more");
+
+			const secondCall = mockStreamAugurChat.mock.calls[1]!;
+			const options = secondCall[1] as {
+				messages: Array<{ role: string; content: string }>;
+			};
+			expect(options.messages).toEqual([
+				{ role: "user", content: "What is RSS?" },
+				{ role: "user", content: "Tell me more" },
+			]);
+		});
 	});
 
 	describe("abort()", () => {
@@ -281,7 +321,9 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onFallback?.("insufficient_context");
 
-			expect(pane.messages[1]!.message).toContain("Not enough indexed evidence");
+			expect(pane.messages[1]!.message).toContain(
+				"Not enough indexed evidence",
+			);
 			expect(pane.isLoading).toBe(false);
 		});
 
@@ -494,7 +536,9 @@ describe("useAugurPane", () => {
 				"retrieval quality insufficient: context relevance too low",
 			);
 
-			expect(pane.messages[1]!.message).toContain("Not enough indexed evidence");
+			expect(pane.messages[1]!.message).toContain(
+				"Not enough indexed evidence",
+			);
 		});
 
 		it("shows generic message for technical fallback codes", () => {
@@ -508,13 +552,15 @@ describe("useAugurPane", () => {
 			);
 		});
 
-		it("shows Japanese fallback reasons as-is", () => {
+		it("explains a weak causal trail from the code, not from the script the reason was written in", () => {
+			// This used to be selected by testing the reason text for CJK
+			// characters, so any Japanese reason — including infrastructure
+			// failures — became a causal-explanation notice. The server now names
+			// the case explicitly.
 			const pane = useAugurPane();
 			pane.sendMessage("Hello");
 
-			capturedCallbacks.onFallback?.(
-				"十分に一貫した根拠が取れなかったため、因果関係を断定できません。より具体的な質問をお試しください。",
-			);
+			capturedCallbacks.onFallback?.("CAUSAL_TRAIL_INSUFFICIENT");
 
 			expect(pane.messages[1]!.message).toContain(
 				"I couldn't establish a consistent enough evidence trail",
