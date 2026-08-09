@@ -5,14 +5,30 @@ import (
 	"alt/orchestrator/port/knowledge_backfill_port"
 	"alt/shared/port/knowledge_event_port"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+// ErrNoBackfillExecutor is returned when a backfill is requested and no
+// component is wired to carry it out.
+//
+// The scheduled job that drained these rows was deleted by ADR-000944 along
+// with the reproject one, and neither was given a new owner. Recording a job
+// nothing will run leaves Pause and Resume operating on work that never
+// started, and leaves the operator unable to tell a stalled backfill from an
+// absent one. See knowledge_reproject_usecase.ErrNoReprojectExecutor.
+var ErrNoBackfillExecutor = errors.New("no backfill executor is wired: a job would stay pending forever")
+
 // Usecase orchestrates backfill job lifecycle.
 type Usecase struct {
+	// executor names the component that drains backfill jobs. Empty means none
+	// is wired; the ports below are all live, so their presence says nothing
+	// about whether the work can actually happen.
+	executor string
+
 	createPort knowledge_backfill_port.CreateBackfillJobPort
 	getPort    knowledge_backfill_port.GetBackfillJobPort
 	updatePort knowledge_backfill_port.UpdateBackfillJobPort
@@ -40,8 +56,22 @@ func NewUsecase(
 	}
 }
 
+// WithExecutor declares which component drains backfill jobs. Without it
+// StartBackfill refuses.
+func (u *Usecase) WithExecutor(name string) *Usecase {
+	u.executor = name
+	return u
+}
+
+// ExecutorWired reports whether a component is declared to drain jobs.
+func (u *Usecase) ExecutorWired() bool { return u.executor != "" }
+
 // StartBackfill creates a new pending backfill job for the given projection version.
 func (u *Usecase) StartBackfill(ctx context.Context, projectionVersion int) (*domain.KnowledgeBackfillJob, error) {
+	if !u.ExecutorWired() {
+		return nil, ErrNoBackfillExecutor
+	}
+
 	now := time.Now()
 	totalEvents := 0
 	if u.countPort != nil {

@@ -144,6 +144,14 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	knowledgeProjectionHealthUC := knowledge_projection_health_usecase.NewUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli)
 
 	// Reproject, SLO, Audit
+	//
+	// No WithExecutor call: nothing currently advances a reproject run past
+	// pending. ADR-000421 put that job in this service; ADR-000944 deleted it
+	// while re-owning the projectors to knowledge-sovereign and did not name a
+	// replacement, so the capability has been absent since 2026-07-15. Leaving
+	// the declaration off is what makes StartReproject refuse instead of
+	// recording work nobody will do. Whoever rebuilds the executor wires it
+	// here by name.
 	reprojectUC := knowledge_reproject_usecase.NewUsecase(
 		sovereignCli,
 		sovereignCli,
@@ -154,6 +162,17 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		sovereignCli,
 		sovereignCli,
 	).WithUpdateCheckpointPort(sovereignCli)
+	// Rule 8: say the capability's state out loud at startup, so "the executor
+	// was never rebuilt" is visible before an operator presses the button
+	// rather than after a run has sat at pending for an hour.
+	slog.Info("knowledge.reproject.executor.wiring",
+		"enabled", reprojectUC.ExecutorWired(),
+		"reason", "ADR-000944 removed the scheduled executor without naming a new owner; runs would stay pending",
+		"effect", "StartReproject rejects with FAILED_PRECONDITION")
+	slog.Info("knowledge.backfill.executor.wiring",
+		"enabled", knowledgeBackfillUC.ExecutorWired(),
+		"reason", "ADR-000944 removed the scheduled executor without naming a new owner; jobs would stay pending",
+		"effect", "TriggerBackfill rejects with FAILED_PRECONDITION")
 	sloUC := knowledge_slo_usecase.NewUsecase(sovereignCli)
 	auditUC := knowledge_audit_usecase.NewUsecase(sovereignCli, sovereignCli)
 

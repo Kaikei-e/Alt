@@ -95,12 +95,54 @@ func (m *mockUpdateCheckpointPort) UpdateProjectionCheckpoint(_ context.Context,
 
 // --- tests ---
 
+// A run row is a request for work, not the work. Something has to pick it up
+// and drive pending → running → swappable; between 2026-03-18 and 2026-07-15
+// that was a scheduled job in this service, and ADR-000421 still describes it
+// as the mechanism. ADR-000944 removed the job as part of re-owning the
+// projectors to knowledge-sovereign and did not say where it should land, so
+// today nothing anywhere advances a run.
+//
+// Recording the row anyway is the failure ADR-000928 is about: the operator's
+// button appears to work, the run sits at pending, and "the executor was never
+// rebuilt" is indistinguishable from "the reproject is still going". Refusing
+// up front is what makes the missing capability visible at the moment it is
+// asked for. The executor's identity is explicit configuration — never
+// inferred from a port that happens to be non-nil — so that wiring one back up
+// is a deliberate act.
+func TestStartReproject_RefusesWhenNoExecutorIsWired(t *testing.T) {
+	logger.InitLogger()
+
+	createPort := &mockCreateReprojectRunPort{}
+	uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil)
+
+	_, err := uc.StartReproject(context.Background(), domain.ReprojectModeFull, "v1", "v2", nil, nil)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrNoReprojectExecutor)
+	assert.Nil(t, createPort.created, "a run nothing will execute must not be recorded")
+}
+
+// The refusal is about the capability, not the arguments. An operator whose
+// request is rejected for a bad mode would go and fix the mode, learning
+// nothing about the executor being gone.
+func TestStartReproject_ExecutorCheckPrecedesArgumentValidation(t *testing.T) {
+	logger.InitLogger()
+
+	createPort := &mockCreateReprojectRunPort{}
+	uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil)
+
+	_, err := uc.StartReproject(context.Background(), "invalid_mode", "v1", "v2", nil, nil)
+
+	require.ErrorIs(t, err, ErrNoReprojectExecutor)
+	assert.Nil(t, createPort.created)
+}
+
 func TestStartReproject(t *testing.T) {
 	logger.InitLogger()
 
 	t.Run("creates pending run with valid mode", func(t *testing.T) {
 		createPort := &mockCreateReprojectRunPort{}
-		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil)
+		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil).WithExecutor("test-executor")
 
 		run, err := uc.StartReproject(context.Background(), domain.ReprojectModeFull, "v1", "v2", nil, nil)
 		require.NoError(t, err)
@@ -114,7 +156,7 @@ func TestStartReproject(t *testing.T) {
 
 	t.Run("returns error with invalid mode", func(t *testing.T) {
 		createPort := &mockCreateReprojectRunPort{}
-		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil)
+		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil).WithExecutor("test-executor")
 
 		_, err := uc.StartReproject(context.Background(), "invalid_mode", "v1", "v2", nil, nil)
 		require.Error(t, err)
@@ -124,7 +166,7 @@ func TestStartReproject(t *testing.T) {
 
 	t.Run("time_range mode requires range_start and range_end", func(t *testing.T) {
 		createPort := &mockCreateReprojectRunPort{}
-		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil)
+		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil).WithExecutor("test-executor")
 
 		_, err := uc.StartReproject(context.Background(), domain.ReprojectModeTimeRange, "v1", "v2", nil, nil)
 		require.Error(t, err)
@@ -134,7 +176,7 @@ func TestStartReproject(t *testing.T) {
 
 	t.Run("time_range mode succeeds with range provided", func(t *testing.T) {
 		createPort := &mockCreateReprojectRunPort{}
-		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil)
+		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil).WithExecutor("test-executor")
 
 		start := time.Now().Add(-24 * time.Hour)
 		end := time.Now()
@@ -147,7 +189,7 @@ func TestStartReproject(t *testing.T) {
 
 	t.Run("returns error when create port fails", func(t *testing.T) {
 		createPort := &mockCreateReprojectRunPort{err: assert.AnError}
-		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil)
+		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil).WithExecutor("test-executor")
 
 		_, err := uc.StartReproject(context.Background(), domain.ReprojectModeFull, "v1", "v2", nil, nil)
 		require.Error(t, err)
@@ -163,7 +205,7 @@ func TestStartReproject(t *testing.T) {
 	// production hit this on /admin/knowledge-home Start Reproject (502).
 	t.Run("seeds empty-object JSON into checkpoint_payload / stats_json / diff_summary_json", func(t *testing.T) {
 		createPort := &mockCreateReprojectRunPort{}
-		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil)
+		uc := NewUsecase(createPort, nil, nil, nil, nil, nil, nil).WithExecutor("test-executor")
 
 		_, err := uc.StartReproject(context.Background(), domain.ReprojectModeFull, "v3", "v4", nil, nil)
 		require.NoError(t, err)

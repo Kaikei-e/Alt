@@ -4,6 +4,7 @@ package knowledge_home_admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
 	"alt/orchestrator/usecase/knowledge_backfill_usecase"
 	"alt/orchestrator/usecase/knowledge_projection_health_usecase"
+	"alt/orchestrator/usecase/knowledge_reproject_usecase"
 	"alt/orchestrator/usecase/knowledge_url_backfill_usecase"
 	"alt/utils/safeconv"
 )
@@ -156,6 +158,10 @@ func (h *Handler) TriggerBackfill(
 
 	job, err := h.backfillUsecase.StartBackfill(ctx, version)
 	if err != nil {
+		if errors.Is(err, knowledge_backfill_usecase.ErrNoBackfillExecutor) {
+			h.logger.ErrorContext(ctx, "backfill requested but no executor is wired", "error", err)
+			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+		}
 		h.logger.ErrorContext(ctx, "failed to trigger backfill", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("trigger backfill: %w", err))
 	}
@@ -301,6 +307,14 @@ func (h *Handler) StartReproject(
 
 	run, err := h.reprojectUsecase.StartReproject(ctx, req.Msg.Mode, req.Msg.FromVersion, req.Msg.ToVersion, rangeStart, rangeEnd)
 	if err != nil {
+		// A missing executor is a fact about the deployment, not a fault in
+		// this request. Internal would read as transient and invite a retry
+		// that cannot succeed; FailedPrecondition tells the operator the
+		// system has to change first.
+		if errors.Is(err, knowledge_reproject_usecase.ErrNoReprojectExecutor) {
+			h.logger.ErrorContext(ctx, "reproject requested but no executor is wired", "error", err)
+			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+		}
 		h.logger.ErrorContext(ctx, "failed to start reproject", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("start reproject: %w", err))
 	}

@@ -77,13 +77,31 @@ func (m *mockAppendKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, e
 	return int64(len(m.events)), nil
 }
 
+// The backfill job that drained these rows was deleted alongside the reproject
+// one (ADR-000944, 2026-07-15) and, like it, was never given a new owner. A job
+// row recorded now is a request nothing will pick up, and Pause/Resume would
+// then operate on work that was never running. Refuse at the point of asking.
+func TestStartBackfill_RefusesWhenNoExecutorIsWired(t *testing.T) {
+	logger.InitLogger()
+
+	createPort := &mockCreateBackfillJobPort{}
+	countPort := &mockCountBackfillArticlesPort{count: 42}
+	uc := NewUsecase(createPort, nil, nil, nil, countPort, nil)
+
+	_, err := uc.StartBackfill(context.Background(), 1)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrNoBackfillExecutor)
+	assert.Nil(t, createPort.created, "a job nothing will execute must not be recorded")
+}
+
 func TestStartBackfill(t *testing.T) {
 	logger.InitLogger()
 
 	t.Run("creates pending job", func(t *testing.T) {
 		createPort := &mockCreateBackfillJobPort{}
 		countPort := &mockCountBackfillArticlesPort{count: 42}
-		uc := NewUsecase(createPort, nil, nil, nil, countPort, nil)
+		uc := NewUsecase(createPort, nil, nil, nil, countPort, nil).WithExecutor("test-executor")
 
 		job, err := uc.StartBackfill(context.Background(), 1)
 		require.NoError(t, err)
@@ -97,7 +115,7 @@ func TestStartBackfill(t *testing.T) {
 	t.Run("returns error when create fails", func(t *testing.T) {
 		createPort := &mockCreateBackfillJobPort{err: assert.AnError}
 		countPort := &mockCountBackfillArticlesPort{count: 1}
-		uc := NewUsecase(createPort, nil, nil, nil, countPort, nil)
+		uc := NewUsecase(createPort, nil, nil, nil, countPort, nil).WithExecutor("test-executor")
 
 		_, err := uc.StartBackfill(context.Background(), 1)
 		require.Error(t, err)
@@ -106,7 +124,7 @@ func TestStartBackfill(t *testing.T) {
 	t.Run("returns error when count fails", func(t *testing.T) {
 		createPort := &mockCreateBackfillJobPort{}
 		countPort := &mockCountBackfillArticlesPort{err: assert.AnError}
-		uc := NewUsecase(createPort, nil, nil, nil, countPort, nil)
+		uc := NewUsecase(createPort, nil, nil, nil, countPort, nil).WithExecutor("test-executor")
 
 		_, err := uc.StartBackfill(context.Background(), 1)
 		require.Error(t, err)

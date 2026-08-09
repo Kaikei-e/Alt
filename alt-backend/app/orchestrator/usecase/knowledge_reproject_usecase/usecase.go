@@ -7,6 +7,7 @@ import (
 	"alt/orchestrator/port/knowledge_reproject_port"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -19,8 +20,26 @@ import (
 // projectorName is the checkpoint key used by the knowledge home projector.
 const projectorName = "knowledge-home-projector"
 
+// ErrNoReprojectExecutor is returned when a reproject is requested and no
+// component is wired to carry it out.
+//
+// A run row is a request for work, not the work. Something has to advance it
+// through pending → running → swappable; ADR-000421 specified a scheduled job
+// in this service for that, and ADR-000944 removed the job while re-owning the
+// projectors to knowledge-sovereign without naming a new home for it. Until
+// one is named and wired, recording the request would leave the operator
+// unable to tell "the executor was never rebuilt" from "the reproject is still
+// running" — the confusion ADR-000928 exists to prevent.
+var ErrNoReprojectExecutor = errors.New("no reproject executor is wired: a run would stay pending forever")
+
 // Usecase orchestrates reproject run lifecycle.
 type Usecase struct {
+	// executor names the component that advances runs. Empty means none is
+	// wired. Deliberately a name rather than a port: the ports below are all
+	// present and working, so a nil check on any of them would report the
+	// capability as available. See ErrNoReprojectExecutor.
+	executor string
+
 	createRunPort        knowledge_reproject_port.CreateReprojectRunPort
 	getRunPort           knowledge_reproject_port.GetReprojectRunPort
 	updateRunPort        knowledge_reproject_port.UpdateReprojectRunPort
@@ -65,8 +84,27 @@ func (u *Usecase) WithUpdateCheckpointPort(port knowledge_projection_port.Update
 	return u
 }
 
+// WithExecutor declares which component advances reproject runs. Without it
+// StartReproject refuses, so wiring an executor back up is a deliberate act
+// rather than something a non-nil port implies.
+func (u *Usecase) WithExecutor(name string) *Usecase {
+	u.executor = name
+	return u
+}
+
+// ExecutorWired reports whether a component is declared to advance runs. The
+// composition root logs this at startup so the capability's state is visible
+// before anyone presses the button.
+func (u *Usecase) ExecutorWired() bool { return u.executor != "" }
+
 // StartReproject validates the mode and creates a pending reproject run.
 func (u *Usecase) StartReproject(ctx context.Context, mode, fromVersion, toVersion string, rangeStart, rangeEnd *time.Time) (*domain.ReprojectRun, error) {
+	// Before the arguments: a rejection naming the mode would send the operator
+	// off to fix the mode and teach them nothing about the missing executor.
+	if !u.ExecutorWired() {
+		return nil, ErrNoReprojectExecutor
+	}
+
 	if !domain.IsValidReprojectMode(mode) {
 		return nil, fmt.Errorf("invalid reproject mode %q", mode)
 	}
