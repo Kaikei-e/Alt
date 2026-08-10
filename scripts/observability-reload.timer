@@ -1,0 +1,17 @@
+[Unit]
+Description=Periodically reconcile the observability config with the Alt checkout
+Requires=observability-reload.service
+
+[Timer]
+# 3 minutes after boot: late enough that Prometheus has come up, early enough
+# that a host restart is not itself a window of stale config.
+OnBootSec=3min
+# Every 5 minutes. The work is three loopback HTTP calls and a YAML parse when
+# nothing changed, and a single POST /-/reload when something did.
+OnUnitActiveSec=5min
+AccuracySec=30s
+# Catch up after downtime rather than waiting for the next natural tick.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

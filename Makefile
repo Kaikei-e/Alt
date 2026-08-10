@@ -317,21 +317,73 @@ clean-tag-onnx:
 	@rm -rf $(TAG_ONNX_DIR) $(TAG_ONNX_VENV)
 	@echo "tag-generator ONNX assets cleaned."
 
-# Observability stack (nginx-exporter + Prometheus + Grafana)
+# Observability stack.
+#
+# The service list is read from compose/observability.yaml rather than spelled
+# out here. The previous hardcoded list still named nginx-exporter, which the
+# plecto-proxy migration removed, so every one of these targets aborted with
+# "no such service" — the only Make path to bring Prometheus up had been dead
+# since that migration.
+OBSERVABILITY_SERVICES := $(shell grep -oE '^  (prometheus|alertmanager|grafana):' compose/observability.yaml | tr -d ' :')
+
 up-observability:
-	@echo "Starting observability stack (nginx-exporter + Prometheus + Grafana)..."
-	@echo "Note: Requires core stack (nginx) to be running"
-	docker compose -p alt -f compose/compose.yaml up -d nginx-exporter prometheus grafana
+	@echo "Starting observability stack ($(OBSERVABILITY_SERVICES))..."
+	docker compose -p alt -f compose/compose.yaml up -d $(OBSERVABILITY_SERVICES)
 	@echo "Prometheus available at http://localhost:9090"
 	@echo "Grafana available at http://localhost:3001"
 
 down-observability:
-	@echo "Stopping observability stack..."
-	docker compose -p alt -f compose/compose.yaml stop nginx-exporter prometheus grafana
-	docker compose -p alt -f compose/compose.yaml rm -f nginx-exporter prometheus grafana
+	@echo "Stopping observability stack ($(OBSERVABILITY_SERVICES))..."
+	docker compose -p alt -f compose/compose.yaml stop $(OBSERVABILITY_SERVICES)
+	docker compose -p alt -f compose/compose.yaml rm -f $(OBSERVABILITY_SERVICES)
 
 logs-observability:
-	docker compose -p alt -f compose/compose.yaml logs -f nginx-exporter prometheus grafana
+	docker compose -p alt -f compose/compose.yaml logs -f $(OBSERVABILITY_SERVICES)
+
+# Observability configuration lifecycle.
+# See docs/runbooks/observability-config-reload.md.
+
+# Static validation — promtool / amtool / structural audit. No running stack
+# needed; this is what CI runs.
+observability-validate:
+	@./scripts/observability-validate.sh
+
+# Report the difference between the config on disk and the config the running
+# Prometheus has actually loaded. Exits non-zero when they disagree.
+observability-drift-check:
+	@./scripts/observability-reload.sh --check
+
+# Validate, then reload Prometheus (and Alertmanager, when deployed), then
+# verify the running config converged on the tree.
+observability-reload:
+	@./scripts/observability-reload.sh
+
+# Install the reconcile timer so a config change stops depending on someone
+# remembering to reload. The unit files are templates; the repo path and the
+# invoking user are substituted here so no host path is committed.
+observability-reload-install:
+	@echo "Installing observability reload timer (repo: $(CURDIR), user: $(shell id -un))..."
+	@sed -e 's|@ALT_REPO_ROOT@|$(CURDIR)|g' -e 's|@ALT_RUN_USER@|$(shell id -un)|g' \
+		scripts/observability-reload.service \
+		| sudo tee /etc/systemd/system/observability-reload.service >/dev/null
+	@sudo cp scripts/observability-reload.timer /etc/systemd/system/
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable --now observability-reload.timer
+	@echo "Installed. Status: sudo systemctl list-timers observability-reload.timer"
+	@echo "Logs:           sudo journalctl -u observability-reload.service"
+
+observability-reload-uninstall:
+	@echo "Uninstalling observability reload timer..."
+	@sudo systemctl disable --now observability-reload.timer || true
+	@sudo rm -f /etc/systemd/system/observability-reload.timer
+	@sudo rm -f /etc/systemd/system/observability-reload.service
+	@sudo systemctl daemon-reload
+	@echo "Uninstalled."
+
+observability-reload-status:
+	@sudo systemctl list-timers observability-reload.timer --no-pager || true
+	@echo ""
+	@sudo journalctl -u observability-reload.service -n 30 --no-pager || true
 
 # Rust build artifact cleanup
 rust-clean:
@@ -365,4 +417,4 @@ install-c2quay:
 	  rm -rf "$$tmp"
 	@c2quay version
 
-.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability rust-clean install-c2quay
+.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean install-c2quay

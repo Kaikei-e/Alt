@@ -37,6 +37,7 @@ tags:
 | Pact Broker 401 / verification failure / can-i-deploy ブロック | [[pact-broker-ops]] |
 | データ喪失・破損 / restore が必要 | [[backup-restore]] |
 | Admin 監視画面の異常 | [[admin-observability]] |
+| 追加したアラート / scrape job が有効にならない、通知が来ない | [[observability-config-reload]] |
 
 ## カテゴリ別索引
 
@@ -85,10 +86,11 @@ tags:
 | [[acolyte-manual-regeneration]] | operation | レポート手動再生成 (full / scope / batch) + 品質 SQL |
 | [[acolyte-pipeline-recovery]] | incident | orphaned runs / checkpoint 破損 / stuck job の系統復旧 |
 
-### 6. プラットフォーム横断 (4)
+### 6. プラットフォーム横断 (5)
 | ランブック | 型 | 一言 |
 |---|---|---|
 | [[admin-observability]] | operation | Admin UI Observability タブの運用 (flag / trust boundary / metric allowlist) |
+| [[observability-config-reload]] | operation | Prometheus / Alertmanager / Grafana 設定の検証 → reload → 反映確認 → ドリフト点検 |
 | [[backup-restore]] ⚠️ | operation + incident | 3-2-1 バックアップ、restore 4 シナリオ、DR 訓練 |
 | [[connect-rpc-streaming-checklist]] | checklist | 新規 streaming service の 5 軸チェック + 月次 audit |
 | [[knowledge-home-gameday-checklist]] ⚠️ | checklist | chaos 訓練 5 シナリオの台本 |

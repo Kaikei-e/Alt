@@ -1,0 +1,145 @@
+# observability-validate — validate the monitoring configuration before it
+# reaches the host, not after an incident proves it never loaded.
+#
+# The stack under observability/ has no compile step and no test binary. A
+# malformed rule file, a scrape job that never matches, a Grafana provisioning
+# typo — all of these are accepted by git, land on the host, and are discovered
+# only when the alert that should have fired doesn't. promtool tests already
+# exist in observability/prometheus/tests/, but nothing ran them: before this
+# workflow the repository had zero CI references to promtool, so the tests were
+# documentation of an intent rather than an enforced one.
+#
+# What is checked (see scripts/observability-validate.sh for the ordering):
+#   promtool check config / check rules / test rules
+#   amtool check-config — only when observability/alertmanager/alertmanager.yml
+#     exists, so a tree without Alertmanager stays green
+#   scripts/observability-config-audit.py — the structural invariants no
+#     upstream tool covers: rule-glob coverage against the compose bind mount,
+#     Grafana provisioning YAML, dashboard uid collisions
+#
+# Tooling is downloaded from the upstream GitHub releases at exactly the
+# versions compose/observability.yaml runs, so validation and production never
+# disagree about what a file means. GitHub releases rather than Docker Hub:
+# the image pull is rate limited per ADR-caught incidents on the self-hosted
+# builder, and this job has no other reason to touch a registry.
+#
+# Not covered here: whether the running Prometheus has actually loaded any of
+# this. That is a host-side property — scripts/observability-reload.sh --check
+# and docs/runbooks/observability-config-reload.md own it.
+
+name: observability-validate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'observability/**'
+      - 'compose/observability.yaml'
+      - 'scripts/observability-validate.sh'
+      - 'scripts/observability-config-audit.py'
+      - '.github/workflows/observability-validate.yaml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'observability/**'
+      - 'compose/observability.yaml'
+      - 'scripts/observability-validate.sh'
+      - 'scripts/observability-config-audit.py'
+      - '.github/workflows/observability-validate.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observability-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        # ubuntu-latest ships python3 but not PyYAML. Same 6.x pin as
+        # workflow-safety-lint so supply-chain drift is bounded.
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Resolve tool versions from compose/observability.yaml
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=compose/observability.yaml
+
+          prom="$(grep -oE 'image:[[:space:]]*prom/prometheus:v[0-9.]+' "$compose" \
+            | head -1 | sed -E 's#.*:v##')"
+          if [[ -z "$prom" ]]; then
+            echo "::error::could not read a pinned prom/prometheus version from $compose."
+            echo "::error::Validation must run the version production runs; refusing to guess."
+            exit 1
+          fi
+          echo "prometheus=$prom" >> "$GITHUB_OUTPUT"
+          echo "Prometheus tooling: v$prom"
+
+          am=""
+          if [[ -f observability/alertmanager/alertmanager.yml ]]; then
+            am="$(grep -oE 'image:[[:space:]]*prom/alertmanager:v[0-9.]+' "$compose" \
+              | head -1 | sed -E 's#.*:v##')"
+            if [[ -z "$am" ]]; then
+              echo "::error::observability/alertmanager/alertmanager.yml exists but $compose"
+              echo "::error::pins no prom/alertmanager version — amtool cannot be matched to production."
+              exit 1
+            fi
+            echo "Alertmanager tooling: v$am"
+          else
+            echo "observability/alertmanager/alertmanager.yml absent — amtool not needed"
+          fi
+          echo "alertmanager=$am" >> "$GITHUB_OUTPUT"
+
+      - name: Cache promtool and amtool
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          # Outside the workspace: the tools are build inputs, not repository
+          # content, and nothing should have to gitignore them.
+          path: ~/.cache/alt-observability-tools
+          key: observability-tools-p${{ steps.versions.outputs.prometheus }}-a${{ steps.versions.outputs.alertmanager }}
+
+      - name: Install promtool and amtool
+        shell: bash
+        env:
+          PROM_VERSION: ${{ steps.versions.outputs.prometheus }}
+          AM_VERSION: ${{ steps.versions.outputs.alertmanager }}
+        run: |
+          set -euo pipefail
+          tools="$HOME/.cache/alt-observability-tools"
+          mkdir -p "$tools"
+
+          if [[ ! -x "$tools/promtool" ]]; then
+            url="https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/prometheus.tar.gz" "$url"
+            tar -xzf "$RUNNER_TEMP/prometheus.tar.gz" --strip-components=1 \
+              -C "$tools" "prometheus-${PROM_VERSION}.linux-amd64/promtool"
+          fi
+          "$tools/promtool" --version
+          # Exported rather than passed as a step env so the validation step
+          # never falls back to pulling a container image for the tools.
+          echo "PROMTOOL=$tools/promtool" >> "$GITHUB_ENV"
+
+          if [[ -n "$AM_VERSION" ]]; then
+            if [[ ! -x "$tools/amtool" ]]; then
+              url="https://github.com/prometheus/alertmanager/releases/download/v${AM_VERSION}/alertmanager-${AM_VERSION}.linux-amd64.tar.gz"
+              curl -fsSL --retry 3 -o "$RUNNER_TEMP/alertmanager.tar.gz" "$url"
+              tar -xzf "$RUNNER_TEMP/alertmanager.tar.gz" --strip-components=1 \
+                -C "$tools" "alertmanager-${AM_VERSION}.linux-amd64/amtool"
+            fi
+            "$tools/amtool" --version
+            echo "AMTOOL=$tools/amtool" >> "$GITHUB_ENV"
+          fi
+
+      - name: Validate observability configuration
+        run: scripts/observability-validate.sh

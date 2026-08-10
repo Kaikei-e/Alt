@@ -1,0 +1,22 @@
+[Unit]
+# Installed by `make observability-reload-install`, which substitutes the
+# @ALT_REPO_ROOT@ and @ALT_RUN_USER@ placeholders below. The file is kept as a
+# template rather than a ready-to-copy unit so no host path is committed to the
+# repository.
+Description=Reconcile the running observability config with the Alt checkout
+Documentation=file://@ALT_REPO_ROOT@/docs/runbooks/observability-config-reload.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@ALT_REPO_ROOT@
+ExecStart=@ALT_REPO_ROOT@/scripts/observability-reload.sh --if-changed
+# No privilege is required: the script reads the checkout and talks to the
+# loopback-published admin ports. It never restarts a container.
+User=@ALT_RUN_USER@
+# A reload that fails should be loud in the journal, not retried into a loop —
+# the next timer tick retries it anyway.
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=120
