@@ -17,6 +17,7 @@
 - ADR参照は必ず `[[000NNN]]` wikilink形式を使う
 - ADRが既存ADRを置き換える場合、新ADR側のfrontmatterに `supersedes:` リストを書く（キー省略可。空の `supersedes: -` stub は禁止）。旧ADR側への逆方向記入は不要（DocDag が算出）。循環・dangling・status ドリフト・空 stub は `docdag validate` で検出する（設定はリポジトリルートの `docdag.yaml`）
 - frontmatter は厳密 YAML。バッククォートや `: ` を含む値（特に `affected_services` の項目）はシングルクォートで囲む — `docdag validate` が invalid_frontmatter ERROR で検出する
+- **このリポジトリは public。新規に書く文書に private リポジトリの内部識別子を書かない** — デプロイ側の workflow 名 / job 名 / 変数名 / ゲート条件など。振る舞い（何が起きるか、運用者が何をすべきか）で記述する。ホスト名・ハードウェア構成・本番ドメイン・絶対パス・認証情報も同様に書かない。既存文書の遡及修正はしない（ADR 本文は改変不可であり、git 履歴にも残るため実効性が薄い）
 
 ## 検索ガイドライン
 - **まず `wiki/HOME.md` を見る** — 結晶化された navigation layer。ADR / runbook / plan の入口
