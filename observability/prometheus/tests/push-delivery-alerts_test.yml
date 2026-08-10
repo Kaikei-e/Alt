@@ -1,0 +1,309 @@
+# promtool unit tests for the Web Push delivery alerts.
+#
+#   docker exec alt-prometheus-1 promtool test rules \
+#     /etc/prometheus/tests/push-delivery-alerts_test.yml
+#
+# Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
+# test file parsed as a rule group is a fatal config error, not a skip.
+#
+# These tests exist because this file is about to be delivered somewhere for the
+# first time. An alert that cannot fire and an alert that always fires are the
+# same bug wearing different clothes, and both are invisible while the rules sit
+# in a repository that nothing loads. Every case below is therefore one of two
+# shapes: "this fires on the real failure" or "this stays quiet on the real
+# steady state".
+#
+# Every test uses interval: 1m, matching evaluation_interval, and that is not a
+# style choice. promtool steps rule evaluation by the top-level
+# evaluation_interval while input_series are spaced by the per-test interval, so
+# a test that samples more slowly than it evaluates lets each sample go stale
+# after the 5m lookback. The expression then flickers between "true" and "no
+# data" and no `for:` clause can ever be satisfied — a green test that proves
+# nothing. Long windows are spelled out in minutes here instead.
+
+rule_files:
+  - ../rules/push-delivery-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # --- PushDispatcherStalled -------------------------------------------------
+
+  # No series at all. This is the outage the absent() arm exists for: a
+  # dispatcher removed from compose or crash-looping past its start period takes
+  # its own staleness signal with it.
+  - interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PushDispatcherStalled
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: push
+            exp_annotations:
+              summary: "alt-notifier has not ticked for 5m"
+              description: |
+                The dispatcher publishes its tick timestamp on every pass,
+                including passes that claim zero rows, so this fires on a wedged
+                loop and not merely on an idle one.
+                Check: docker compose -f compose/compose.yaml -p alt logs alt-notifier
+
+  # A dispatcher ticking every minute — the current production steady state. The
+  # gauge tracks wall clock, so time() minus it is 0. This is the case that must
+  # stay silent on the first day the channel is wired.
+  - interval: 1m
+    input_series:
+      - series: 'push_dispatcher_last_tick_timestamp_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '0+60x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PushDispatcherStalled
+        exp_alerts: []
+
+  # --- NotificationRelayStalled ----------------------------------------------
+
+  # A relay ticking normally. pre-processor withholds the series entirely until
+  # its first tick, so a live series always carries a real timestamp.
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_last_tick_timestamp_seconds{job="pre-processor",service="pre-processor"}'
+        values: '0+60x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NotificationRelayStalled
+        exp_alerts: []
+
+  # A gauge registered with the client library but never written reads 0
+  # forever, which is what recap-worker's register_gauge_with_registry! will
+  # publish the moment its /metrics body stops coming back empty. It must page:
+  # "the relay never ran" is the same outage as "the relay stopped".
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_last_tick_timestamp_seconds{job="recap-worker",service="recap-worker"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NotificationRelayStalled
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: push
+              job: recap-worker
+              service: recap-worker
+            exp_annotations:
+              summary: "recap-worker notification relay has not ticked for 5m"
+              description: |
+                Rows are still being written into that service's notification_outbox
+                in the same transaction as the job completions, but nothing is
+                forwarding them to alt-data-hub.
+
+  # --- push_delivery_freshness -----------------------------------------------
+
+  # An empty, healthy queue. Both backlog alerts must be silent.
+  - interval: 1m
+    input_series:
+      - series: 'push_delivery_oldest_pending_age_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PushDeliveryBacklogAging
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: PushDeliveryBacklogStuck
+        exp_alerts: []
+
+  # A backlog past the warning threshold but short of the page threshold.
+  - interval: 1m
+    input_series:
+      - series: 'push_delivery_oldest_pending_age_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '400x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PushDeliveryBacklogAging
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              stack: push
+              job: alt-notifier
+              service: alt-notifier
+            exp_annotations:
+              summary: "oldest undelivered push is 6m 40s old"
+      - eval_time: 20m
+        alertname: PushDeliveryBacklogStuck
+        exp_alerts: []
+
+  # The pre-processor outbox as it actually stands while the data-hub fan-out
+  # rejects every enqueue: a row aging past the warning threshold and climbing.
+  # Pinned so nobody later reads this alert's first delivery as noise.
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
+        values: '440+60x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NotificationOutboxBacklogAging
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              stack: push
+              job: pre-processor
+              service: pre-processor
+            exp_annotations:
+              summary: "pre-processor outbox oldest pending is 27m 20s old"
+
+  # --- PushVapidRejected -----------------------------------------------------
+
+  # One 401 inside the window pages immediately, with no `for`. The summary must
+  # name a label the counter actually carries: push_send_total is emitted with
+  # `result` and `status_code` and nothing else, so a template reaching for a
+  # host label renders an empty parenthetical.
+  - interval: 1m
+    input_series:
+      - series: 'push_send_total{job="alt-notifier",service="alt-notifier",result="failed",status_code="401"}'
+        values: '0 0 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: PushVapidRejected
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: push
+              job: alt-notifier
+              service: alt-notifier
+              result: failed
+              status_code: "401"
+            exp_annotations:
+              summary: "push service rejected our VAPID credentials (HTTP 401)"
+              description: |
+                Every send to this push service is failing authentication. Likely
+                causes, in the order worth checking: the signing key was rotated
+                without the public key following it; `sub` is not a mailto: or
+                https: URI (Apple enforces this and the others do not, so this
+                presents as "iOS stopped working"); `aud` includes a path rather
+                than just scheme and host; or `exp` is more than 24h out.
+
+                Which push service is rejecting us is not in this metric. Read it
+                off the alt-notifier logs until push_send_total carries the
+                endpoint host as an attribute.
+
+  # A healthy send stream must not trip the VAPID page.
+  - interval: 1m
+    input_series:
+      - series: 'push_send_total{job="alt-notifier",service="alt-notifier",result="sent",status_code="201"}'
+        values: '0+3x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: PushVapidRejected
+        exp_alerts: []
+
+  # --- PushDeliverySuspiciouslyQuiet -----------------------------------------
+
+  # The rule the whole file is built around, in the exact state production is in
+  # right now: the outbox has held rows for hours and push_send_total has never
+  # been observed at all. An untouched counter is absent rather than zero, so
+  # without the vector(0) fallback the "nothing was sent" half evaluates over an
+  # empty vector and the alert silently cannot fire.
+  #
+  # 460 minutes of samples, evaluated at 7h, so the 6h window is full.
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
+        values: '480x460'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: PushDeliverySuspiciouslyQuiet
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: push
+            exp_annotations:
+              summary: "the notification outbox held rows for 6h and nothing was sent"
+              description: |
+                Producers are still enqueuing notifications and the delivery side
+                has sent nothing in six hours. Everything else in this file still
+                reads healthy in that state, which is what a frontend regression
+                that stops registering subscriptions, or a fan-out that rejects
+                every enqueue, looks like from the server.
+
+  # A genuinely quiet six hours: the outbox is empty because nothing was
+  # produced. This must not page anyone, and it is the case that decides whether
+  # the channel gets trusted or muted.
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
+        values: '0x460'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: PushDeliverySuspiciouslyQuiet
+        exp_alerts: []
+
+  # Producers enqueuing and the dispatcher sending — the healthy pipeline.
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
+        values: '480x460'
+      - series: 'push_send_total{job="alt-notifier",service="alt-notifier",result="sent",status_code="201"}'
+        values: '0+2x460'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: PushDeliverySuspiciouslyQuiet
+        exp_alerts: []
+
+  # Sends are happening but every one of them fails, so no series carries
+  # result="sent". The selector is empty for the same reason an untouched
+  # counter is, and the alert must still fire.
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
+        values: '480x460'
+      - series: 'push_send_total{job="alt-notifier",service="alt-notifier",result="failed",status_code="500"}'
+        values: '0+2x460'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: PushDeliverySuspiciouslyQuiet
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: push
+            exp_annotations:
+              summary: "the notification outbox held rows for 6h and nothing was sent"
+              description: |
+                Producers are still enqueuing notifications and the delivery side
+                has sent nothing in six hours. Everything else in this file still
+                reads healthy in that state, which is what a frontend regression
+                that stops registering subscriptions, or a fan-out that rejects
+                every enqueue, looks like from the server.
+
+  # --- PushSubscriptionsCollapsing -------------------------------------------
+
+  # A 30% drop across a day: 100 devices for 25h, then 70 for the rest. Nothing
+  # emits push_subscriptions_active today, so this case is the specification the
+  # emitting side has to satisfy rather than a regression pin — but the
+  # expression itself is exercised here, so wiring the gauge cannot land on a
+  # rule that never matched.
+  - interval: 1m
+    input_series:
+      - series: 'push_subscriptions_active{job="alt-notifier",service="alt-notifier"}'
+        values: '100x1500 70x400'
+    alert_rule_test:
+      - eval_time: 29h
+        alertname: PushSubscriptionsCollapsing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              stack: push
+              job: alt-notifier
+              service: alt-notifier
+            exp_annotations:
+              summary: "active push subscriptions fell by more than 20% in 24h"
+
+  # Ordinary growth must not warn.
+  - interval: 1m
+    input_series:
+      - series: 'push_subscriptions_active{job="alt-notifier",service="alt-notifier"}'
+        values: '100x1500 130x400'
+    alert_rule_test:
+      - eval_time: 29h
+        alertname: PushSubscriptionsCollapsing
+        exp_alerts: []

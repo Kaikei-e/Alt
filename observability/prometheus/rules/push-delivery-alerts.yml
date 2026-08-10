@@ -16,6 +16,31 @@
 #   alt-notifier                       — push_* below
 #   pre-processor / acolyte-orchestrator / recap-worker
 #                                      — notification_outbox_* (one relay each)
+#
+# What is actually emitted today, because a rule written against a metric no
+# process produces is indistinguishable from a rule that is simply never true:
+#
+#   push_dispatcher_last_tick_timestamp_seconds   alt-backend/app/orchestrator/job/push_dispatcher.go
+#   push_delivery_oldest_pending_age_seconds      same file
+#   push_delivery_pending_count                   same file
+#   push_send_total                               same file — declared, and absent
+#   push_delivery_dead_total                      same file — until the first send
+#   notification_outbox_last_tick_timestamp_seconds
+#   notification_outbox_oldest_pending_age_seconds
+#                                                 pre-processor/app/metrics/notification_outbox.go
+#                                                 recap-worker/.../observability/metrics.rs
+#                                                 acolyte-orchestrator publishes the
+#                                                 same two names as LOG FIELDS only
+#                                                 (relay_notifications_uc.py); it has
+#                                                 no /metrics endpoint, so nothing
+#                                                 below can see its relay.
+#   push_subscriptions_active                     NOTHING EMITS THIS — see the
+#                                                 rule at the bottom of the file.
+#
+# A counter that has never been incremented is absent rather than zero. Rules
+# that only ever compare it upward (PushVapidRejected, PushDeliveryDeadLetters)
+# are correct against an empty vector; rules that need to assert an absence of
+# increase are not, and have to say so explicitly.
 
 groups:
   - name: push_delivery_liveness
@@ -126,14 +151,21 @@ groups:
           severity: page
           stack: push
         annotations:
-          summary: "push service rejected our VAPID credentials ({{ $labels.host }})"
+          # push_send_total carries `result` and `status_code` and nothing else.
+          # A template reaching for a host label renders an empty parenthetical
+          # on the one page in this file that has to be readable at 3am.
+          summary: "push service rejected our VAPID credentials (HTTP {{ $labels.status_code }})"
           description: |
-            Every send to this host is failing authentication. Likely causes,
-            in the order worth checking: the signing key was rotated without
-            the public key following it; `sub` is not a mailto: or https: URI
-            (Apple enforces this and the others do not, so this presents as
-            "iOS stopped working"); `aud` includes a path rather than just
-            scheme and host; or `exp` is more than 24h out.
+            Every send to this push service is failing authentication. Likely
+            causes, in the order worth checking: the signing key was rotated
+            without the public key following it; `sub` is not a mailto: or
+            https: URI (Apple enforces this and the others do not, so this
+            presents as "iOS stopped working"); `aud` includes a path rather
+            than just scheme and host; or `exp` is more than 24h out.
+
+            Which push service is rejecting us is not in this metric. Read it
+            off the alt-notifier logs until push_send_total carries the
+            endpoint host as an attribute.
 
       - alert: PushDeliveryDeadLetters
         expr: increase(push_delivery_dead_total[1h]) > 0
@@ -149,23 +181,63 @@ groups:
       # The rule most teams never write. Everything above still reads healthy
       # when the pipeline is intact but has nothing to carry — which is exactly
       # what a frontend regression that stops registering subscriptions, or a
-      # VAPID public key change that invalidates all of them, looks like from
-      # the server. Guarded by jobs actually completing, so a genuinely quiet
-      # six hours does not page anyone.
+      # fan-out that rejects every enqueue, looks like from the server. Guarded
+      # by producers actually enqueuing, so a genuinely quiet six hours does not
+      # page anyone.
+      #
+      # Two things about this expression are load-bearing and neither is
+      # cosmetic, because the version that read most naturally could not fire.
+      #
+      # `or vector(0)` on the left. push_send_total has never been incremented
+      # in this deployment, and an untouched counter is absent, not zero. Over
+      # an empty vector `sum(...) == 0` yields an empty vector rather than
+      # true — so the plain form went silent for precisely the never-sent-
+      # anything state it was written to catch.
+      #
+      # The right-hand guard is the outbox's oldest-pending age rather than a
+      # rows-created counter. No relay emits a rows-created counter, and the
+      # ones that would have to (pre-processor, recap-worker,
+      # acolyte-orchestrator) each own their own transaction with the job
+      # completion, so adding it is three producer changes and a CDC round. The
+      # age gauge is already scraped from pre-processor and recap-worker and is
+      # non-zero exactly while a row sits unforwarded, which is the same claim:
+      # producers put work in. It is the weaker of the two in two ways, both of
+      # which lose coverage rather than invent a page: a row created and
+      # forwarded entirely between two scrapes is never sampled, and
+      # acolyte-orchestrator's relay is invisible to Prometheus altogether.
+      # Being wrong quietly is the right direction for a rule whose whole
+      # purpose is to be believed when it does fire.
       - alert: PushDeliverySuspiciouslyQuiet
         expr: |
-          (sum(increase(push_send_total{result="sent"}[6h])) == 0)
-          and (sum(increase(notification_outbox_rows_created_total[6h])) > 0)
+          (sum(increase(push_send_total{result="sent"}[6h])) or vector(0)) == 0
+          and on()
+          (max_over_time(notification_outbox_oldest_pending_age_seconds[6h]) > 0)
         for: 30m
         labels:
           severity: page
           stack: push
         annotations:
-          summary: "producers enqueued notifications for 6h and nothing was sent"
+          summary: "the notification outbox held rows for 6h and nothing was sent"
+          description: |
+            Producers are still enqueuing notifications and the delivery side
+            has sent nothing in six hours. Everything else in this file still
+            reads healthy in that state, which is what a frontend regression
+            that stops registering subscriptions, or a fan-out that rejects
+            every enqueue, looks like from the server.
 
       # Population collapse. A subscription is per device and is removed only by
       # the user or by a 404/410 from the push service, so a fifth of them
       # disappearing inside a day is a client-side regression rather than churn.
+      #
+      # INERT: nothing in the repository emits push_subscriptions_active, so
+      # this rule cannot fire today. It is kept rather than deleted because the
+      # expression is exercised against synthetic series in
+      # tests/push-delivery-alerts_test.yml, so the gauge can be wired without
+      # also having to get a never-run rule right on the first try. Wiring it
+      # needs a DataHubService capability that counts live rows in
+      # push_subscriptions and a gauge published from alt-notifier's dispatch
+      # pass — a cross-service producer change, which per CLAUDE.md rule 7 owes
+      # a Pact CDC RED before the producer GREEN.
       - alert: PushSubscriptionsCollapsing
         expr: |
           push_subscriptions_active > 0

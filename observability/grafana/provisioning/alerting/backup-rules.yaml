@@ -1,11 +1,29 @@
 # Grafana alerting rules for Alt Platform Backup Monitoring
 # Note: These rules are designed for Grafana Unified Alerting
-# Import via Grafana UI: Alerting > Alert rules > Import
+# Provisioned from disk; see compose/observability.yaml for the mount.
 #
 # Prerequisites:
 # - Prometheus datasource configured
 # - backup_metrics.prom exposed via node_exporter textfile collector
 #   or custom metrics endpoint
+#
+# THAT SECOND PREREQUISITE IS NOT MET. There is no textfile collector in
+# compose/ and no scrape job for one in observability/prometheus/prometheus.yml,
+# so none of the backup_* series below has ever existed in Prometheus.
+#
+# Four of these rules used to carry `noDataState: Alerting`, which made them
+# fire permanently — and, crucially, fire identically whether backups were
+# healthy or dead. Backups on this host stopped on 2026-02-28 and those rules
+# reported exactly the same thing before and after. A signal with the same value
+# in both states is not a detector; it is a constant that teaches whoever
+# receives it to stop reading the channel. They are `noDataState: OK` now, which
+# makes all nine consistent, and the fact they were standing in for — "we cannot
+# see the backups at all" — is asserted by backup-signal-missing below, as a
+# real query with a real result rather than as a rule engine default.
+#
+# The nine value rules below only start working once the exporter is scraped.
+# Until then backup-signal-missing is the only one that can fire, and it is the
+# only one that should.
 
 apiVersion: 1
 
@@ -15,6 +33,97 @@ groups:
     folder: Backup
     interval: 5m
     rules:
+      # Warning: the backup exporter is not reaching Prometheus at all.
+      #
+      # This rule gates every other rule in the group, so it is first. It asks
+      # the one question the eight value rules cannot ask about themselves: is
+      # there any backup telemetry here at all?
+      #
+      # backup_repository_initialized is the sentinel because
+      # scripts/backup/backup-metrics.sh writes it down both branches — the
+      # normal path and the early exit taken when the Restic repository
+      # directory is missing — so it is present exactly when the exporter
+      # pipeline works, and absent exactly when it does not.
+      #
+      # absent() returns a value whenever the datasource answers, so this rule
+      # cannot itself enter NoData except when Prometheus is unreachable, which
+      # is what execErrState covers. It is the one rule in this file where
+      # `noDataState: OK` is a statement rather than a concession. It clears by
+      # itself the moment the textfile collector starts being scraped.
+      - uid: backup-signal-missing
+        title: Backup Metrics Not Reaching Prometheus
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: absent(backup_repository_initialized)
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: "Backup monitoring is blind — no backup_* metrics in Prometheus"
+          description: |
+            Prometheus holds no backup_repository_initialized series, so every
+            other rule in the Backup folder is evaluating against nothing and
+            none of them can tell you whether backups are running.
+
+            This is a monitoring gap, not a backup failure — but it hides
+            backup failures, which is worse. Check in this order:
+
+            1. Is the exporter running? The restic-backup container sits behind
+               the `backup` compose profile and does not start with the default
+               stack.
+            2. Has backup-metrics.sh run? It writes
+               /backups/metrics/backup_metrics.prom every 30 minutes from the
+               container crontab. A leftover .prom.tmp beside it means the last
+               run died mid-write.
+            3. Is anything scraping that file? It needs a node_exporter with
+               --collector.textfile.directory pointed at /backups/metrics and a
+               matching job in observability/prometheus/prometheus.yml. Neither
+               exists yet.
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: warning
+          team: platform
+          component: backup
+
       # Critical: No backup in 2 hours (Restic)
       - uid: backup-missing-restic
         title: Restic Backup Missing (2 hours)
@@ -59,7 +168,10 @@ groups:
                   type: query
               expression: B
               type: threshold
-        noDataState: Alerting
+        # No data here means the exporter is not reporting, which
+        # backup-signal-missing already says once. It does not mean a backup
+        # was missed — that claim needs the timestamp this query cannot see.
+        noDataState: OK
         execErrState: Error
         for: 10m
         annotations:
@@ -118,7 +230,11 @@ groups:
                   type: query
               expression: B
               type: threshold
-        noDataState: Alerting
+        # backup-metrics.sh writes this series for every database in its list,
+        # using 0 when no dump is found — so a genuinely missing dump arrives as
+        # a value and fires on the threshold. No data means the exporter is
+        # silent, which is backup-signal-missing's job, not this rule's.
+        noDataState: OK
         execErrState: Error
         for: 10m
         annotations:
@@ -435,7 +551,16 @@ groups:
                   type: query
               expression: B
               type: threshold
-        noDataState: Alerting
+        # The one rule where dropping Alerting costs real coverage, and it is
+        # worth naming rather than burying. restore-verify.sh only creates
+        # backup_restore_verify.prom after its first successful run, so "has
+        # never been verified" presents as no data and is now unreported once
+        # the exporter itself is healthy. Closing that needs the script to write
+        # a backup_restore_verify_last_timestamp 0 sentinel at install time, the
+        # same shape pre-processor's relay uses to keep "never ticked"
+        # distinguishable from "ticked and reported zero". Until then this rule
+        # covers stale verification but not absent verification.
+        noDataState: OK
         execErrState: Error
         for: 30m
         annotations:
@@ -558,7 +683,11 @@ groups:
                   type: query
               expression: B
               type: threshold
-        noDataState: Alerting
+        # This rule and backup-signal-missing watch the same series from
+        # opposite sides: absent means the exporter is down, 0 means the
+        # exporter ran and found no repository. Leaving Alerting here would
+        # merge the two answers back into one page.
+        noDataState: OK
         execErrState: Error
         for: 5m
         annotations:
