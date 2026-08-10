@@ -2,15 +2,7 @@
 
 ## WHAT
 
-Monorepo with 20+ microservices. Docker Compose-first orchestration, TDD-first development.
-
-| Language | Services | Test | Build |
-|----------|----------|------|-------|
-| Go 1.26+ | alt-backend, **alt-harvester**, **alt-data-hub**, auth-hub, pre-processor, search-indexer, mq-hub, altctl | `go test ./...` | `go build ./...` |
-| Python 3.14+ | news-creator, tag-generator, metrics, recap-subworker, recap-evaluator | `uv run pytest` | — |
-| Rust 1.94+ | rask-log-aggregator, rask-log-forwarder, recap-worker | `cargo test` | `cargo build` |
-| TypeScript | alt-frontend-sv | `bun test` | `bun run build` |
-| Deno 2.x | auth-token-manager, alt-perf | `deno test` | — |
+Monorepo with 20+ microservices (Go, Python, Rust, TypeScript, Deno). Docker Compose-first orchestration, TDD-first development.
 
 Each service has its own `CLAUDE.md` with service-specific guidance. See `docs/services/MICROSERVICES.md` for the full reference.
 
@@ -40,7 +32,7 @@ docker compose -f compose/compose.yaml -p alt logs <service> -f
 docker compose -f compose/compose.yaml -p alt down
 ```
 
-Compose stacks via **`include:`** (not Compose profiles): `compose/db.yaml` | `auth.yaml` | `core.yaml` | `workers.yaml` | `ai.yaml` | `rag.yaml` | `recap.yaml` | `logging.yaml` | `observability.yaml` | `sovereign.yaml` | … — see [`compose/compose.yaml`](compose/compose.yaml).
+Compose stacks are wired via **`include:`**, not Compose profiles — see [`compose/compose.yaml`](compose/compose.yaml).
 
 ### Verifying changes
 
@@ -49,11 +41,6 @@ curl http://localhost/health             # Frontend (via nginx)
 curl http://localhost:9000/v1/health    # Backend
 curl http://localhost:9250/health       # BFF
 curl http://localhost:7700/health       # Meilisearch
-```
-
-After code changes to compiled services (Go, Rust, TypeScript), always rebuild:
-```bash
-docker compose -f compose/compose.yaml up --build -d <service>
 ```
 
 ## Critical Rules
@@ -69,21 +56,10 @@ docker compose -f compose/compose.yaml up --build -d <service>
 9. **Fail-fast startup config** — Missing required config (secrets, upstream URLs, auth tokens) = exit non-zero at startup. Never warn-and-limp. "Disabled" must be an explicit config value with a startup log, never inferred from an unset variable.
 10. **Stream consumers: ACK after durable write + reclaim loop** — XACK only after the side effect is durable (not on buffer-in). Every XREADGROUP consumer MUST run an XAUTOCLAIM reclaim loop, or crashed-consumer messages are lost forever and DLQ conditions never fire. Details: `.claude/rules/event-stream-consumer.md`.
 
-## Planning with Obsidian
+## Planning
 
-Obsidian vault (docs/) contains 466+ ADRs, plans, runbooks, reviews.
-When planning or designing features:
-
-1. Search relevant ADRs via Obsidian MCP (`mcp__obsidian__get_workspace_files`, `mcp__obsidian__view`)
-2. Check canonical contracts in `docs/plan/` for the affected domain
-3. Read `docs/review/` for known issues and remediation directives
-4. Read latest `docs/daily/` notes for current work context
-
-Key documents:
-- `docs/plan/knowledge-trail-core-concept.md` — Knowledge Trail 北極星（不変条件 §C）
-- `docs/plan/knowledge-trail-implementation-plan.md` — Trail wave 計画
-- `docs/wiki/architecture/immutable-data-model.md` — append-first / reproject-safe / versioned artifacts
-- `docs/plan/knowledge-home-value-position-plan.md` — Knowledge Home value position（今日の入口）
+Obsidian vault (`docs/`) — 466+ ADRs, plans, runbooks, reviews. Run `/plan-context-loader`
+before designing; it loads the canonical contracts and searches `docs/ADR/` directly.
 
 ## Immutable Data Model Invariants
 
@@ -93,13 +69,4 @@ Key documents:
 - **Why as first-class**: Home items and Trail branches must explain why they were surfaced / proposed.
 - **Disposable projections**: Read models (`knowledge_trail_footprints`, `knowledge_trail_branches`, `knowledge_home_items`, `today_digest_view`, `recall_candidate_view`) can be rebuilt from the event log.
 
-## Common Pitfalls
-
-| Issue | Fix |
-|-------|-----|
-| Stack won't start | `docker compose down` then `up -d` |
-| Tests failing on mocks | Check mock interfaces match current implementations |
-| Rate limit errors from external APIs | Verify 5-second intervals between calls |
-| Import cycles (Go) | Check Clean Architecture layer dependencies |
-| Changes not taking effect | Forgot `--build` — rebuild the service |
-| Planning without ADR context | Run `/plan-context-loader` to load relevant ADRs first |
+Before planning, run `/plan-context-loader` to load the relevant ADRs first.
