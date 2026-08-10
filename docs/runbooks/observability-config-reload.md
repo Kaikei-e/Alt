@@ -73,24 +73,22 @@ make observability-reload-install
 
 `observability/` 配下の変更は **デプロイパイプラインのどこにも到達しない**。
 
-1. `.github/workflows/dispatch-deploy.yaml` は push 差分を全部列挙して
-   alt-deploy に `repository_dispatch` する。ここまでは `observability/prometheus/rules/`
-   も含まれている。
-2. alt-deploy 側 `release-deploy.yaml` の resolve job が、その変更パス集合を
-   `SERVICE_PATHS` (サービス名 → パス prefix のマップ) と突き合わせてサービスを決める。
-   **`observability/` を含む prefix は 1 つも無い** ため `services=(none)` になる。
-3. `has_work=false` となり、build / gate / e2e / **deploy の全 job が丸ごと skip** される。
-4. 仮に deploy が走っても、roll される対象は resolve が返したサービスだけであり、
-   `prometheus` / `grafana` / `alertmanager` はどのサービスのエントリにも属していない。
+1. `.github/workflows/dispatch-deploy.yaml` は push 差分を全部列挙してデプロイ側へ
+   通知する。ここまでは `observability/prometheus/rules/` も含まれている。
+2. デプロイ側は受け取った変更パス集合をサービスへ解決する。
+   **`observability/` 配下に解決されるサービスは 1 つも定義されていない**ため、
+   対象サービスが空になる。
+3. 対象が空だと build / gate / e2e / **deploy の全 job が丸ごと skip** される。
+4. 仮に deploy が走っても、roll される対象は解決されたサービスだけであり、
+   `prometheus` / `grafana` / `alertmanager` はどのサービスにも属していない。
 5. 手動デプロイ経路 (`scripts/deploy.sh` → c2quay) も同じで、`c2quay.yml` の
    `environments.production.services` に observability 系は存在しない。
 
 さらに、稼働中の `prometheus` / `grafana` コンテナと、CI が roll するサービスとでは
 **compose の working directory が異なる**。前者は開発者のチェックアウトを bind mount
-しており、後者は runner のワークスペースを bind mount している。つまり
-`observability/` を `SERVICE_PATHS` に追加するだけでは不十分で、
-「どのチェックアウトが本番の observability 設定なのか」を先に一本化する必要がある
-(§7 参照)。
+しており、後者は runner のワークスペースを bind mount している。つまりデプロイ側に
+observability のサービス定義を足すだけでは不十分で、「どのチェックアウトが本番の
+observability 設定なのか」を先に一本化する必要がある (§7 参照)。
 
 → **結論**: 反映はホスト側の責務である。だからこの Runbook と
 `scripts/observability-reload.sh` がある。
@@ -462,9 +460,9 @@ make observability-reload
 
 | 課題 | 必要な変更 | 所在 |
 |---|---|---|
-| observability 変更がパイプラインに届かない | `SERVICE_PATHS` に observability 系のエントリを追加し、resolve が `has_work=true` を返すようにする | alt-deploy `release-deploy.yaml` |
-| 本番の observability 設定がどのチェックアウトか曖昧 | `prometheus` / `grafana` / `alertmanager` の bind mount 元を一本化する。現状 CI が roll するサービスとは working directory が異なる | alt-deploy + 運用取り決め |
-| reload がパイプラインに無い | deploy の最後に `scripts/observability-reload.sh` を呼ぶ step を足す (timer と併用しても冪等) | alt-deploy `release-deploy.yaml` |
+| observability 変更がパイプラインに届かない | `observability/` 配下が解決されるサービス定義をデプロイ側に追加する | デプロイ側リポジトリ |
+| 本番の observability 設定がどのチェックアウトか曖昧 | `prometheus` / `grafana` / `alertmanager` の bind mount 元を一本化する。現状 CI が roll するサービスとは working directory が異なる | デプロイ側 + 運用取り決め |
+| reload がパイプラインに無い | deploy の最後に `scripts/observability-reload.sh` を呼ぶ step を足す (timer と併用しても冪等) | デプロイ側リポジトリ |
 | ドリフト検知アラート | §5 のルールを `rules/` に追加し、`tests/` に promtool テストを添える | `observability/prometheus/` |
 
 ---
