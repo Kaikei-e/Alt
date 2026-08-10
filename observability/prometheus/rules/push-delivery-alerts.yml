@@ -25,6 +25,12 @@
 #   push_delivery_pending_count                   same file
 #   push_send_total                               same file — declared, and absent
 #   push_delivery_dead_total                      same file — until the first send
+#   push_subscriptions_active                     same file — from the same
+#                                                 data-plane read as the backlog
+#                                                 gauges, so the device count and
+#                                                 the queue it qualifies are one
+#                                                 sample apart rather than one
+#                                                 round trip apart.
 #   notification_outbox_last_tick_timestamp_seconds
 #   notification_outbox_oldest_pending_age_seconds
 #                                                 pre-processor/app/metrics/notification_outbox.go
@@ -34,8 +40,6 @@
 #                                                 (relay_notifications_uc.py); it has
 #                                                 no /metrics endpoint, so nothing
 #                                                 below can see its relay.
-#   push_subscriptions_active                     NOTHING EMITS THIS — see the
-#                                                 rule at the bottom of the file.
 #
 # A counter that has never been incremented is absent rather than zero. Rules
 # that only ever compare it upward (PushVapidRejected, PushDeliveryDeadLetters)
@@ -180,64 +184,130 @@ groups:
 
       # The rule most teams never write. Everything above still reads healthy
       # when the pipeline is intact but has nothing to carry — which is exactly
-      # what a frontend regression that stops registering subscriptions, or a
-      # fan-out that rejects every enqueue, looks like from the server. Guarded
-      # by producers actually enqueuing, so a genuinely quiet six hours does not
-      # page anyone.
+      # what a frontend regression that stops registering subscriptions looks
+      # like from the server.
       #
-      # Two things about this expression are load-bearing and neither is
-      # cosmetic, because the version that read most naturally could not fire.
+      # Three things about this expression are load-bearing and none is
+      # cosmetic, because each names a way the earlier versions were wrong.
       #
-      # `or vector(0)` on the left. push_send_total has never been incremented
-      # in this deployment, and an untouched counter is absent, not zero. Over
-      # an empty vector `sum(...) == 0` yields an empty vector rather than
-      # true — so the plain form went silent for precisely the never-sent-
-      # anything state it was written to catch.
+      # `or vector(0)` on the left. push_send_total is absent until the first
+      # send, and an untouched counter is absent rather than zero. Over an empty
+      # vector `sum(...) == 0` yields an empty vector rather than true — so the
+      # plain form went silent for precisely the never-sent-anything state it
+      # was written to catch.
       #
-      # The right-hand guard is the outbox's oldest-pending age rather than a
-      # rows-created counter. No relay emits a rows-created counter, and the
-      # ones that would have to (pre-processor, recap-worker,
-      # acolyte-orchestrator) each own their own transaction with the job
-      # completion, so adding it is three producer changes and a CDC round. The
-      # age gauge is already scraped from pre-processor and recap-worker and is
-      # non-zero exactly while a row sits unforwarded, which is the same claim:
-      # producers put work in. It is the weaker of the two in two ways, both of
-      # which lose coverage rather than invent a page: a row created and
-      # forwarded entirely between two scrapes is never sampled, and
-      # acolyte-orchestrator's relay is invisible to Prometheus altogether.
-      # Being wrong quietly is the right direction for a rule whose whole
-      # purpose is to be believed when it does fire.
+      # The first guard is the device population, and it replaced the outbox's
+      # oldest-pending age. The age gauge answered "producers put work in",
+      # which is a different question from "there was anywhere to send it": a
+      # deployment nobody has subscribed to enqueues normally, delivers nothing,
+      # and is perfectly healthy. Four ordinary product states read that way —
+      # no devices yet, every device with the kind switched off, everything
+      # deduped, notifications addressed to users with no device — and the old
+      # expression paged for all four. `min_over_time` rather than
+      # `max_over_time` because the claim is about the whole window: a device
+      # registered ten minutes ago is not evidence that six hours of silence
+      # was wrong.
+      #
+      # The second guard is that fan-out actually produced deliverable rows.
+      # push_delivery_pending_count rises the moment a row is created and falls
+      # as it is sent, so a window that never saw it above zero is a window with
+      # nothing for the dispatcher to do. A break upstream of the queue —
+      # relays that cannot reach the data plane, a fan-out that rejects every
+      # enqueue — leaves this at zero and is deliberately *not* this rule's
+      # business: NotificationOutboxNeverDrains below is the detector for that,
+      # and one alert that fires for two unrelated causes sends whoever reads it
+      # to the wrong half of the system. The 2026-08-09 outage was exactly that
+      # upstream break, and the annotation on the old rule sent the operator to
+      # the healthy dispatcher.
+      #
+      # The third guard is that six hours were observed rather than assumed.
+      # `increase(...[6h])` cannot tell a genuine six-hour zero from one minute
+      # of history, and `or vector(0)` turns the latter into a confident zero;
+      # `for: 30m` does not help, because both halves are 6h aggregates that do
+      # not move on a 30-minute timescale. A Prometheus restart, a retention
+      # expiry, a renamed job or a target scraped for the first time therefore
+      # paged 30 minutes later regardless of system health — which is how this
+      # rule announced itself, 28 seconds after a config reload added the two
+      # jobs it reads. The comparison is a ratio against a recent window rather
+      # than a sample count against a constant, so that changing a scrape
+      # interval cannot silently make the threshold unreachable and disable the
+      # rule. 6h/10m is 36, so >20 asks for roughly half the window.
       - alert: PushDeliverySuspiciouslyQuiet
         expr: |
           (sum(increase(push_send_total{result="sent"}[6h])) or vector(0)) == 0
           and on()
-          (max_over_time(notification_outbox_oldest_pending_age_seconds[6h]) > 0)
+          (min_over_time(push_subscriptions_active[6h]) > 0)
+          and on()
+          (max_over_time(push_delivery_pending_count[6h]) > 0)
+          and on()
+          (
+            count_over_time(push_dispatcher_last_tick_timestamp_seconds[6h])
+            > 20 * count_over_time(push_dispatcher_last_tick_timestamp_seconds[10m])
+          )
         for: 30m
         labels:
           severity: page
           stack: push
         annotations:
-          summary: "the notification outbox held rows for 6h and nothing was sent"
+          summary: "deliveries were queued to registered devices for 6h and none was sent"
           description: |
-            Producers are still enqueuing notifications and the delivery side
-            has sent nothing in six hours. Everything else in this file still
-            reads healthy in that state, which is what a frontend regression
-            that stops registering subscriptions, or a fan-out that rejects
-            every enqueue, looks like from the server.
+            Devices are registered, fan-out put rows in push_deliveries, and
+            the dispatcher has sent nothing in six hours. Everything else in
+            this file still reads healthy in that state.
+
+            The break is between the claim and the push service: check
+            alt-notifier's logs for send attempts, and push_send_total for a
+            result other than "sent". If push_delivery_pending_count is rising
+            at the same time, rows are being claimed and never settled.
+
+      # The detector this file did not have on 2026-08-09, when every enqueue
+      # failed for two days and nothing paged.
+      #
+      # A producer's outbox row is non-terminal until it is forwarded or until
+      # it dies, and the age gauge counts only non-terminal rows. So a relay
+      # whose forwards all fail sheds its own backlog by dead-lettering: the age
+      # sawtooths, resets, and NotificationOutboxBacklogAging never completes
+      # its `for`. Dead-lettering acts as a pressure-release valve on the very
+      # alert meant to catch the stall.
+      #
+      # `min_over_time` is what closes that. A healthy relay empties its outbox
+      # between bursts, so some scrape in any hour reads 0; one that forwards
+      # nothing never does, whatever the sawtooth is doing on top. The rule
+      # therefore says "this outbox has not been empty once in an hour", which
+      # no ordinary traffic pattern produces and no amount of dead-lettering
+      # hides.
+      #
+      # Warning rather than page: it is new, its false-positive shape is a
+      # genuinely saturated hour, and a page that has not earned trust yet is a
+      # page that gets muted. Promote it once it has been quiet through a normal
+      # week.
+      - alert: NotificationOutboxNeverDrains
+        expr: min_over_time(notification_outbox_oldest_pending_age_seconds[1h]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          stack: push
+        annotations:
+          summary: "{{ $labels.service }} outbox has not been empty once in an hour"
+          description: |
+            Rows are entering this producer's notification_outbox faster than
+            they leave, or they are not leaving at all. A relay that cannot
+            reach alt-data-hub looks like this and nothing else in this file
+            sees it, because rows that exhaust their attempts leave the gauge
+            and reset the backlog age.
+
+            Check the relay's logs for forward failures, and count the rows in
+            that service's notification_outbox by state: a rising `dead` count
+            with no `forwarded_at` ever set is a broken enqueue rather than a
+            slow one.
 
       # Population collapse. A subscription is per device and is removed only by
       # the user or by a 404/410 from the push service, so a fifth of them
       # disappearing inside a day is a client-side regression rather than churn.
       #
-      # INERT: nothing in the repository emits push_subscriptions_active, so
-      # this rule cannot fire today. It is kept rather than deleted because the
-      # expression is exercised against synthetic series in
-      # tests/push-delivery-alerts_test.yml, so the gauge can be wired without
-      # also having to get a never-run rule right on the first try. Wiring it
-      # needs a DataHubService capability that counts live rows in
-      # push_subscriptions and a gauge published from alt-notifier's dispatch
-      # pass — a cross-service producer change, which per CLAUDE.md rule 7 owes
-      # a Pact CDC RED before the producer GREEN.
+      # Live since push_subscriptions_active was wired: alt-notifier publishes
+      # it from the same data-plane read that answers the backlog gauges, so the
+      # device count and the queue it qualifies are sampled in one pass.
       - alert: PushSubscriptionsCollapsing
         expr: |
           push_subscriptions_active > 0

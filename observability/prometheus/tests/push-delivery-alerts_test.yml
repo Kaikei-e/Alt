@@ -198,18 +198,25 @@ tests:
         exp_alerts: []
 
   # --- PushDeliverySuspiciouslyQuiet -----------------------------------------
-
-  # The rule the whole file is built around, in the exact state production is in
-  # right now: the outbox has held rows for hours and push_send_total has never
-  # been observed at all. An untouched counter is absent rather than zero, so
-  # without the vector(0) fallback the "nothing was sent" half evaluates over an
-  # empty vector and the alert silently cannot fire.
   #
-  # 460 minutes of samples, evaluated at 7h, so the 6h window is full.
-  - interval: 1m
+  # These cases sample at 15s rather than 1m, matching alt-notifier's scrape
+  # interval, because the rule's last guard counts samples. Sampling coarser
+  # than production here would understate the observed history and make the
+  # firing cases unreachable — the mirror image of the staleness trap in the
+  # header, and just as green.
+
+  # The failure the rule is for: devices registered throughout, fan-out
+  # producing deliverable rows, dispatcher observed for the whole window, and
+  # not one send. 460 minutes of samples, evaluated at 7h so the 6h window is
+  # full and the 10m reference window sits inside it.
+  - interval: 15s
     input_series:
-      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
-        values: '480x460'
+      - series: 'push_subscriptions_active{job="alt-notifier",service="alt-notifier"}'
+        values: '3x1840'
+      - series: 'push_delivery_pending_count{job="alt-notifier",service="alt-notifier"}'
+        values: '5x1840'
+      - series: 'push_dispatcher_last_tick_timestamp_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '0+15x1840'
     alert_rule_test:
       - eval_time: 7h
         alertname: PushDeliverySuspiciouslyQuiet
@@ -218,47 +225,30 @@ tests:
               severity: page
               stack: push
             exp_annotations:
-              summary: "the notification outbox held rows for 6h and nothing was sent"
+              summary: "deliveries were queued to registered devices for 6h and none was sent"
               description: |
-                Producers are still enqueuing notifications and the delivery side
-                has sent nothing in six hours. Everything else in this file still
-                reads healthy in that state, which is what a frontend regression
-                that stops registering subscriptions, or a fan-out that rejects
-                every enqueue, looks like from the server.
+                Devices are registered, fan-out put rows in push_deliveries, and
+                the dispatcher has sent nothing in six hours. Everything else in
+                this file still reads healthy in that state.
 
-  # A genuinely quiet six hours: the outbox is empty because nothing was
-  # produced. This must not page anyone, and it is the case that decides whether
-  # the channel gets trusted or muted.
-  - interval: 1m
-    input_series:
-      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
-        values: '0x460'
-    alert_rule_test:
-      - eval_time: 7h
-        alertname: PushDeliverySuspiciouslyQuiet
-        exp_alerts: []
-
-  # Producers enqueuing and the dispatcher sending — the healthy pipeline.
-  - interval: 1m
-    input_series:
-      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
-        values: '480x460'
-      - series: 'push_send_total{job="alt-notifier",service="alt-notifier",result="sent",status_code="201"}'
-        values: '0+2x460'
-    alert_rule_test:
-      - eval_time: 7h
-        alertname: PushDeliverySuspiciouslyQuiet
-        exp_alerts: []
+                The break is between the claim and the push service: check
+                alt-notifier's logs for send attempts, and push_send_total for a
+                result other than "sent". If push_delivery_pending_count is rising
+                at the same time, rows are being claimed and never settled.
 
   # Sends are happening but every one of them fails, so no series carries
   # result="sent". The selector is empty for the same reason an untouched
   # counter is, and the alert must still fire.
-  - interval: 1m
+  - interval: 15s
     input_series:
-      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
-        values: '480x460'
+      - series: 'push_subscriptions_active{job="alt-notifier",service="alt-notifier"}'
+        values: '3x1840'
+      - series: 'push_delivery_pending_count{job="alt-notifier",service="alt-notifier"}'
+        values: '5x1840'
+      - series: 'push_dispatcher_last_tick_timestamp_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '0+15x1840'
       - series: 'push_send_total{job="alt-notifier",service="alt-notifier",result="failed",status_code="500"}'
-        values: '0+2x460'
+        values: '0+2x1840'
     alert_rule_test:
       - eval_time: 7h
         alertname: PushDeliverySuspiciouslyQuiet
@@ -267,13 +257,155 @@ tests:
               severity: page
               stack: push
             exp_annotations:
-              summary: "the notification outbox held rows for 6h and nothing was sent"
+              summary: "deliveries were queued to registered devices for 6h and none was sent"
               description: |
-                Producers are still enqueuing notifications and the delivery side
-                has sent nothing in six hours. Everything else in this file still
-                reads healthy in that state, which is what a frontend regression
-                that stops registering subscriptions, or a fan-out that rejects
-                every enqueue, looks like from the server.
+                Devices are registered, fan-out put rows in push_deliveries, and
+                the dispatcher has sent nothing in six hours. Everything else in
+                this file still reads healthy in that state.
+
+                The break is between the claim and the push service: check
+                alt-notifier's logs for send attempts, and push_send_total for a
+                result other than "sent". If push_delivery_pending_count is rising
+                at the same time, rows are being claimed and never settled.
+
+  # Nobody has subscribed. The queue is empty because there is nowhere to
+  # deliver, which is the state every new deployment is in and the state the
+  # previous version of this rule paged for. It must stay silent, and it is the
+  # case that decides whether the channel gets trusted or muted.
+  - interval: 15s
+    input_series:
+      - series: 'push_subscriptions_active{job="alt-notifier",service="alt-notifier"}'
+        values: '0x1840'
+      - series: 'push_delivery_pending_count{job="alt-notifier",service="alt-notifier"}'
+        values: '0x1840'
+      - series: 'push_dispatcher_last_tick_timestamp_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '0+15x1840'
+      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
+        values: '480x1840'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: PushDeliverySuspiciouslyQuiet
+        exp_alerts: []
+
+  # A device registered part-way through the window. Six hours of silence is
+  # not evidence of a fault when there was nowhere to send for most of them,
+  # which is why the guard is min_over_time and not max_over_time.
+  - interval: 15s
+    input_series:
+      - series: 'push_subscriptions_active{job="alt-notifier",service="alt-notifier"}'
+        values: '0x1200 1x640'
+      - series: 'push_delivery_pending_count{job="alt-notifier",service="alt-notifier"}'
+        values: '0x1200 2x640'
+      - series: 'push_dispatcher_last_tick_timestamp_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '0+15x1840'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: PushDeliverySuspiciouslyQuiet
+        exp_alerts: []
+
+  # Cold start: a target scraped for the first time on an otherwise healthy
+  # deployment. Ten minutes of history, all of it consistent with the firing
+  # case, and the rule must not page — this is the sequence that woke someone
+  # at 20:51 on 2026-08-10, 28 seconds after a config reload added the job.
+  - interval: 15s
+    input_series:
+      - series: 'push_subscriptions_active{job="alt-notifier",service="alt-notifier"}'
+        values: '3x40'
+      - series: 'push_delivery_pending_count{job="alt-notifier",service="alt-notifier"}'
+        values: '5x40'
+      - series: 'push_dispatcher_last_tick_timestamp_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '0+15x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: PushDeliverySuspiciouslyQuiet
+        exp_alerts: []
+
+  # Producers enqueuing and the dispatcher sending — the healthy pipeline.
+  - interval: 15s
+    input_series:
+      - series: 'push_subscriptions_active{job="alt-notifier",service="alt-notifier"}'
+        values: '3x1840'
+      - series: 'push_delivery_pending_count{job="alt-notifier",service="alt-notifier"}'
+        values: '5x1840'
+      - series: 'push_dispatcher_last_tick_timestamp_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '0+15x1840'
+      - series: 'push_send_total{job="alt-notifier",service="alt-notifier",result="sent",status_code="201"}'
+        values: '0+2x1840'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: PushDeliverySuspiciouslyQuiet
+        exp_alerts: []
+
+  # The 2026-08-09 outage, replayed: every enqueue rejected, so no row ever
+  # reached push_deliveries. This rule must stay silent — the dispatcher is
+  # healthy and has nothing to do — and NotificationOutboxNeverDrains below is
+  # the one that has to fire on the same series.
+  - interval: 15s
+    input_series:
+      - series: 'push_subscriptions_active{job="alt-notifier",service="alt-notifier"}'
+        values: '3x1840'
+      - series: 'push_delivery_pending_count{job="alt-notifier",service="alt-notifier"}'
+        values: '0x1840'
+      - series: 'push_dispatcher_last_tick_timestamp_seconds{job="alt-notifier",service="alt-notifier"}'
+        values: '0+15x1840'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: PushDeliverySuspiciouslyQuiet
+        exp_alerts: []
+
+  # --- NotificationOutboxNeverDrains -----------------------------------------
+
+  # The failing relay, sawtooth and all: the age climbs, dead-lettering drops
+  # it, and it never reaches zero. NotificationOutboxBacklogAging is defeated by
+  # the resets; this rule is not.
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
+        values: '157+60x19 157+60x19 157+60x19 157+60x19'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: NotificationOutboxNeverDrains
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              stack: push
+              job: pre-processor
+              service: pre-processor
+            exp_annotations:
+              summary: "pre-processor outbox has not been empty once in an hour"
+              description: |
+                Rows are entering this producer's notification_outbox faster than
+                they leave, or they are not leaving at all. A relay that cannot
+                reach alt-data-hub looks like this and nothing else in this file
+                sees it, because rows that exhaust their attempts leave the gauge
+                and reset the backlog age.
+
+                Check the relay's logs for forward failures, and count the rows in
+                that service's notification_outbox by state: a rising `dead` count
+                with no `forwarded_at` ever set is a broken enqueue rather than a
+                slow one.
+
+  # A busy but healthy relay: bursts that raise the age, each fully drained
+  # before the next. One zero sample in the hour is all it takes to stay quiet,
+  # which is what separates "slow" from "stuck".
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
+        values: '0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180 0 60 120 180'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: NotificationOutboxNeverDrains
+        exp_alerts: []
+
+  # An idle relay. Nothing produced, nothing pending, nothing to say.
+  - interval: 1m
+    input_series:
+      - series: 'notification_outbox_oldest_pending_age_seconds{job="pre-processor",service="pre-processor"}'
+        values: '0x80'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: NotificationOutboxNeverDrains
+        exp_alerts: []
 
   # --- PushSubscriptionsCollapsing -------------------------------------------
 
