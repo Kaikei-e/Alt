@@ -63,7 +63,7 @@ func (g *DeliveryGateway) Release(ctx context.Context, deliveryID string, retryA
 	return g.inner.Release(ctx, deliveryID, g.nowFn().Add(retryAfter), message)
 }
 
-func (g *DeliveryGateway) BacklogAge(ctx context.Context) (time.Duration, int64, error) {
+func (g *DeliveryGateway) BacklogAge(ctx context.Context) (time.Duration, int64, int64, error) {
 	return g.inner.BacklogAge(ctx)
 }
 

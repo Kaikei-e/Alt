@@ -50,35 +50,49 @@ func TestPushDeliveryBacklogAgeQueryCountsSendingRows(t *testing.T) {
 
 func TestPushRepository_PushDeliveryBacklogAge(t *testing.T) {
 	tests := []struct {
-		name        string
-		seconds     float64
-		pending     int64
-		wantOldest  time.Duration
-		wantPending int64
+		name          string
+		seconds       float64
+		pending       int64
+		subscriptions int64
+		wantOldest    time.Duration
+		wantPending   int64
 	}{
 		{
-			name:        "backlog reports age and depth",
-			seconds:     123.5,
-			pending:     7,
-			wantOldest:  123500 * time.Millisecond,
-			wantPending: 7,
+			name:          "backlog reports age, depth and the device population",
+			seconds:       123.5,
+			pending:       7,
+			subscriptions: 3,
+			wantOldest:    123500 * time.Millisecond,
+			wantPending:   7,
 		},
 		{
-			name:        "empty queue is zero rather than absent",
-			seconds:     0,
-			pending:     0,
-			wantOldest:  0,
-			wantPending: 0,
+			name:          "empty queue is zero rather than absent",
+			seconds:       0,
+			pending:       0,
+			subscriptions: 2,
+			wantOldest:    0,
+			wantPending:   0,
+		},
+		{
+			// The reading that separates an idle deployment from a broken one.
+			// Every other number here is identical in the two cases.
+			name:          "an unsubscribed deployment reports zero devices",
+			seconds:       0,
+			pending:       0,
+			subscriptions: 0,
+			wantOldest:    0,
+			wantPending:   0,
 		},
 		{
 			// occurred_at is the producer's business time and nothing pins it
 			// to the past, so a post-dated fact or a skewed producer clock
 			// would otherwise publish a negative age.
-			name:        "a future occurred_at clamps to zero",
-			seconds:     -42,
-			pending:     1,
-			wantOldest:  0,
-			wantPending: 1,
+			name:          "a future occurred_at clamps to zero",
+			seconds:       -42,
+			pending:       1,
+			subscriptions: 1,
+			wantOldest:    0,
+			wantPending:   1,
 		},
 	}
 
@@ -89,14 +103,16 @@ func TestPushRepository_PushDeliveryBacklogAge(t *testing.T) {
 			defer mock.Close()
 
 			mock.ExpectQuery(regexp.QuoteMeta(pushDeliveryBacklogAgeQuery)).
-				WillReturnRows(pgxmock.NewRows([]string{"oldest_pending_age_seconds", "pending_count"}).
-					AddRow(tt.seconds, tt.pending))
+				WillReturnRows(pgxmock.NewRows([]string{
+					"oldest_pending_age_seconds", "pending_count", "active_subscription_count",
+				}).AddRow(tt.seconds, tt.pending, tt.subscriptions))
 
 			repo := &PushRepository{pool: mock}
-			oldest, pending, err := repo.PushDeliveryBacklogAge(context.Background())
+			oldest, pending, subscriptions, err := repo.PushDeliveryBacklogAge(context.Background())
 			require.NoError(t, err)
 			require.Equal(t, tt.wantOldest, oldest)
 			require.Equal(t, tt.wantPending, pending)
+			require.Equal(t, tt.subscriptions, subscriptions)
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
@@ -111,11 +127,12 @@ func TestPushRepository_PushDeliveryBacklogAge_QueryError(t *testing.T) {
 		WillReturnError(errors.New("db failed"))
 
 	repo := &PushRepository{pool: mock}
-	oldest, pending, err := repo.PushDeliveryBacklogAge(context.Background())
+	oldest, pending, subscriptions, err := repo.PushDeliveryBacklogAge(context.Background())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "read push delivery backlog age")
 	require.Zero(t, oldest)
 	require.Zero(t, pending)
+	require.Zero(t, subscriptions)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -479,7 +496,7 @@ func TestPushRepository_EnqueueNotification_DigestSupersedesBeforeItFansOut(t *t
 		WithArgs(in.UserID, in.DedupeKey).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 2))
 	mock.ExpectExec(regexp.QuoteMeta(fanOutNotificationQuery)).
-		WithArgs(in.DedupeKey, in.UserID, in.Kind, in.Payload, in.OccurredAt, in.ExpiresAt).
+		WithArgs(in.DedupeKey, in.UserID, in.Kind, string(in.Payload), in.OccurredAt, in.ExpiresAt).
 		WillReturnResult(pgxmock.NewResult("INSERT", 3))
 	mock.ExpectCommit()
 
@@ -522,7 +539,7 @@ func TestPushRepository_EnqueueNotification_OtherKindsNeverSupersede(t *testing.
 
 			mock.ExpectBegin()
 			mock.ExpectExec(regexp.QuoteMeta(fanOutNotificationQuery)).
-				WithArgs(in.DedupeKey, in.UserID, in.Kind, in.Payload, in.OccurredAt, in.ExpiresAt).
+				WithArgs(in.DedupeKey, in.UserID, in.Kind, string(in.Payload), in.OccurredAt, in.ExpiresAt).
 				WillReturnResult(pgxmock.NewResult("INSERT", 2))
 			mock.ExpectCommit()
 
@@ -573,7 +590,7 @@ func TestPushRepository_EnqueueNotification_ReportsWhatItExpiredWithoutInserting
 		WithArgs(in.UserID, in.DedupeKey).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 2))
 	mock.ExpectExec(regexp.QuoteMeta(fanOutNotificationQuery)).
-		WithArgs(in.DedupeKey, in.UserID, in.Kind, in.Payload, in.OccurredAt, in.ExpiresAt).
+		WithArgs(in.DedupeKey, in.UserID, in.Kind, string(in.Payload), in.OccurredAt, in.ExpiresAt).
 		WillReturnResult(pgxmock.NewResult("INSERT", 0))
 	mock.ExpectCommit()
 
@@ -653,7 +670,7 @@ func TestPushRepository_EnqueueNotification_FanOutErrorRollsBack(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(fanOutNotificationQuery)).
-		WithArgs(in.DedupeKey, in.UserID, in.Kind, in.Payload, in.OccurredAt, in.ExpiresAt).
+		WithArgs(in.DedupeKey, in.UserID, in.Kind, string(in.Payload), in.OccurredAt, in.ExpiresAt).
 		WillReturnError(errors.New("unique violation"))
 	mock.ExpectRollback()
 
@@ -690,7 +707,7 @@ func TestPushRepository_EnqueueNotification_CommitErrorReportsNothingEnqueued(t 
 		WithArgs(in.UserID, in.DedupeKey).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectExec(regexp.QuoteMeta(fanOutNotificationQuery)).
-		WithArgs(in.DedupeKey, in.UserID, in.Kind, in.Payload, in.OccurredAt, in.ExpiresAt).
+		WithArgs(in.DedupeKey, in.UserID, in.Kind, string(in.Payload), in.OccurredAt, in.ExpiresAt).
 		WillReturnResult(pgxmock.NewResult("INSERT", 2))
 	mock.ExpectCommit().WillReturnError(errors.New("server closed the connection"))
 

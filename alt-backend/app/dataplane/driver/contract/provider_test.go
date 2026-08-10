@@ -33,6 +33,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -765,6 +766,17 @@ func noopStates(names ...string) models.StateHandlers {
 	return handlers
 }
 
+// withStates adds the states that do something to a set of declared no-ops. A
+// state that has to change what the stub answers cannot go through noopStates,
+// and every state a pact names still has to be declared or the verification
+// fails, so the two lists are merged rather than kept apart.
+func withStates(base models.StateHandlers, extra models.StateHandlers) models.StateHandlers {
+	for name, handler := range extra {
+		base[name] = handler
+	}
+	return base
+}
+
 // verifyConsumer runs one consumer's pact against the stub, in file mode
 // locally and against the Broker in CI.
 //
@@ -896,7 +908,7 @@ func TestVerifyRAGOrchestratorDataHubContract(t *testing.T) {
 func TestVerifyAltBackendDataHubContract(t *testing.T) {
 	verifyConsumer(t, "alt-backend", dataHubProviderName,
 		filepath.Join(altBackendPactDir, altBackendDataHubPactFile),
-		noopStates(
+		withStates(noopStates(
 			"alt-data-hub has a scraped article head",
 			"alt-data-hub has no article head for the article",
 			"alt-data-hub has og images for the articles",
@@ -985,7 +997,7 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub accepts notification enqueues",
 			"alt-data-hub has due push deliveries",
 			"alt-data-hub has a claimed push delivery",
-		))
+		), backlogStates()))
 }
 
 func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
@@ -1967,9 +1979,59 @@ func mountPushProcedures(mux *http.ServeMux) {
 		}},
 	}))
 
+	// The backlog read is the one procedure whose two agreed answers differ in
+	// value rather than in shape, so it is the one that cannot be a constant.
+	// A deployment with devices and one without return the same fields; the
+	// difference is the whole content of the contract, and protoJSON omits a
+	// zero, so the unsubscribed reading is the empty object. Answering a fixed
+	// populated body would verify the interaction that matters least.
+	dataHubProcedure(mux, "GetNotificationBacklogAge", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+
+		body := map[string]interface{}{
+			"oldestPendingAgeSeconds": 42.5,
+			"pendingCount":            "3",
+			"activeSubscriptionCount": "2",
+		}
+		if unsubscribedDeployment.Load() {
+			body = map[string]interface{}{}
+		}
+		_ = json.NewEncoder(w).Encode(body)
+	})
+
 	// The three terminal transitions report nothing: the row id was the
 	// caller's, so there is no server-assigned value to hand back.
 	dataHubProcedure(mux, "MarkNotificationSent", jsonPost(map[string]interface{}{}))
 	dataHubProcedure(mux, "ReleaseNotification", jsonPost(map[string]interface{}{}))
 	dataHubProcedure(mux, "MarkNotificationDead", jsonPost(map[string]interface{}{}))
+}
+
+// unsubscribedDeployment selects which of the two agreed backlog readings the
+// stub returns.
+//
+// The verifier drives states and requests on its own goroutines, hence the
+// atomic. It is the only piece of state in this stub: every other procedure
+// answers the same body for every interaction because every other procedure's
+// contract is about shape.
+var unsubscribedDeployment atomic.Bool
+
+// backlogStates toggles the flag above from the two provider states that name
+// the difference, and resets it on teardown so a state left set cannot leak
+// into the next interaction.
+func backlogStates() models.StateHandlers {
+	set := func(unsubscribed bool) models.StateHandler {
+		return func(setUp bool, _ models.ProviderState) (models.ProviderStateResponse, error) {
+			unsubscribedDeployment.Store(setUp && unsubscribed)
+			return nil, nil
+		}
+	}
+	return models.StateHandlers{
+		"alt-data-hub has a push delivery queue with pending rows and registered devices": set(false),
+		"alt-data-hub has a drained push delivery queue and no registered devices":        set(true),
+	}
 }

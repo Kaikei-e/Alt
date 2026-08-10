@@ -45,13 +45,14 @@ type DeliveryPort interface {
 	MarkDead(ctx context.Context, deliveryID string, statusCode int, reason string) error
 	// Release returns a row to the queue with a new attempt time.
 	Release(ctx context.Context, deliveryID string, retryAfter time.Duration, statusCode int, reason string) error
-	// BacklogAge reports how old the oldest undelivered row is.
+	// BacklogAge reports how old the oldest undelivered row is, how many are
+	// waiting, and how many devices are registered to receive them.
 	//
 	// The dispatcher cannot answer this from what it claimed: a backlog that is
 	// not being drained is precisely the case where this process claims
 	// nothing, so deriving the age from a claimed batch would report zero for
 	// the outage it is meant to reveal.
-	BacklogAge(ctx context.Context) (oldestAge time.Duration, pending int64, err error)
+	BacklogAge(ctx context.Context) (oldestAge time.Duration, pending, subscriptions int64, err error)
 }
 
 // SubscriptionPort is the subscription registry, for the delete-on-gone path.

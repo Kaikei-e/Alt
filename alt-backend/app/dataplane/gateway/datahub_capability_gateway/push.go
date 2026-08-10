@@ -85,7 +85,7 @@ type pushDeliveryDriver interface {
 	MarkPushDeliverySent(ctx context.Context, id string, statusCode int) error
 	ReleasePushDelivery(ctx context.Context, id string, nextAttemptAt time.Time, errorMessage string) error
 	MarkPushDeliveryDead(ctx context.Context, id string, statusCode int, errorMessage string) error
-	PushDeliveryBacklogAge(ctx context.Context) (time.Duration, int64, error)
+	PushDeliveryBacklogAge(ctx context.Context) (time.Duration, int64, int64, error)
 }
 
 // PushDeliveryGateway implements datahub_capability_port.PushDeliveryPort.
@@ -134,10 +134,10 @@ func (g *PushDeliveryGateway) MarkDead(ctx context.Context, id string, statusCod
 	return nil
 }
 
-func (g *PushDeliveryGateway) BacklogAge(ctx context.Context) (time.Duration, int64, error) {
-	oldest, pending, err := g.db.PushDeliveryBacklogAge(ctx)
+func (g *PushDeliveryGateway) BacklogAge(ctx context.Context) (time.Duration, int64, int64, error) {
+	oldest, pending, subscriptions, err := g.db.PushDeliveryBacklogAge(ctx)
 	if err != nil {
-		return 0, 0, fmt.Errorf("read push delivery backlog age: %w", err)
+		return 0, 0, 0, fmt.Errorf("read push delivery backlog age: %w", err)
 	}
-	return oldest, pending, nil
+	return oldest, pending, subscriptions, nil
 }

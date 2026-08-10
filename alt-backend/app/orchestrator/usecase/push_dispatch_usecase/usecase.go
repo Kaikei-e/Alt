@@ -245,7 +245,7 @@ func (u *Usecase) settle(ctx context.Context, delivery domain.PushDelivery, stat
 // on every pass, including passes that claim nothing — a gauge that stops being
 // written keeps serving its last value, so a silent dispatcher would read
 // healthy indefinitely.
-func (u *Usecase) BacklogAge(ctx context.Context) (time.Duration, int64, error) {
+func (u *Usecase) BacklogAge(ctx context.Context) (time.Duration, int64, int64, error) {
 	return u.deliveries.BacklogAge(ctx)
 }
 

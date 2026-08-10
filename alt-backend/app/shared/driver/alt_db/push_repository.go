@@ -286,8 +286,13 @@ func (r *PushRepository) EnqueueNotification(ctx context.Context, in domain.Noti
 		superseded = tag.RowsAffected()
 	}
 
+	// Payload goes as a string so pgx encodes it as text and the JSONB column
+	// parses it. The pool runs simple protocol for PgBouncer transaction
+	// pooling (init.go), which interpolates arguments client-side: a []byte
+	// there is a bytea, and `\x7b22...` is not JSON. Same reason as
+	// scraping_domain_driver.go and saveOutboxEventWithTx.
 	tag, err := tx.Exec(ctx, fanOutNotificationQuery,
-		in.DedupeKey, in.UserID, in.Kind, in.Payload, in.OccurredAt, in.ExpiresAt)
+		in.DedupeKey, in.UserID, in.Kind, string(in.Payload), in.OccurredAt, in.ExpiresAt)
 	if err != nil {
 		return 0, 0, fmt.Errorf("fan out notification %s: %w", in.DedupeKey, err)
 	}
@@ -438,22 +443,32 @@ func (r *PushRepository) MarkPushDeliveryDead(ctx context.Context, id string, st
 // COALESCE turns the NULL that MIN() over no rows produces into 0, so the
 // caller always has a value to publish rather than a reason to skip the gauge —
 // and a gauge that stops being set keeps reporting its last value.
+//
+// The device count is a scalar subquery over a second table rather than a
+// join: joining would multiply the queue rows by the devices and turn both
+// aggregates into the wrong number, and two round trips would sample the two
+// facts at different instants, which is exactly the comparison the caller
+// needs to be able to make.
 const pushDeliveryBacklogAgeQuery = `
 	SELECT COALESCE(EXTRACT(EPOCH FROM (clock_timestamp() - MIN(occurred_at))), 0),
-	       COUNT(*)
+	       COUNT(*),
+	       (SELECT COUNT(*) FROM push_subscriptions)
 	FROM push_deliveries
 	WHERE state IN ('pending', 'sending')
 `
 
-// PushDeliveryBacklogAge returns the age of the oldest non-terminal row and how
-// many non-terminal rows there are. An empty queue is (0, 0) and not an error.
-func (r *PushRepository) PushDeliveryBacklogAge(ctx context.Context) (time.Duration, int64, error) {
+// PushDeliveryBacklogAge returns the age of the oldest non-terminal row, how
+// many non-terminal rows there are, and how many devices are registered to
+// receive anything. An empty queue on an unsubscribed deployment is (0, 0, 0)
+// and not an error.
+func (r *PushRepository) PushDeliveryBacklogAge(ctx context.Context) (time.Duration, int64, int64, error) {
 	var (
-		seconds float64
-		pending int64
+		seconds       float64
+		pending       int64
+		subscriptions int64
 	)
-	if err := r.pool.QueryRow(ctx, pushDeliveryBacklogAgeQuery).Scan(&seconds, &pending); err != nil {
-		return 0, 0, fmt.Errorf("read push delivery backlog age: %w", err)
+	if err := r.pool.QueryRow(ctx, pushDeliveryBacklogAgeQuery).Scan(&seconds, &pending, &subscriptions); err != nil {
+		return 0, 0, 0, fmt.Errorf("read push delivery backlog age: %w", err)
 	}
 	// occurred_at is the producer's business time and nothing constrains it to
 	// the past, so a post-dated fact or a skewed producer clock would otherwise
@@ -461,7 +476,7 @@ func (r *PushRepository) PushDeliveryBacklogAge(ctx context.Context) (time.Durat
 	if seconds < 0 {
 		seconds = 0
 	}
-	return time.Duration(seconds * float64(time.Second)), pending, nil
+	return time.Duration(seconds * float64(time.Second)), pending, subscriptions, nil
 }
 
 // nullableText keeps an empty message out of last_error, so "no reason

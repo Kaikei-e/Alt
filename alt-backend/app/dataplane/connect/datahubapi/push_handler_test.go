@@ -40,10 +40,11 @@ func (f *fakePushSubscriptionPort) ListForUser(context.Context, string) ([]domai
 }
 
 type fakePushDeliveryPort struct {
-	oldest  time.Duration
-	pending int64
-	err     error
-	calls   int
+	oldest        time.Duration
+	pending       int64
+	subscriptions int64
+	err           error
+	calls         int
 }
 
 func (f *fakePushDeliveryPort) Enqueue(context.Context, domain.NotificationEnqueue) (int, int, error) {
@@ -60,12 +61,12 @@ func (f *fakePushDeliveryPort) Release(context.Context, string, time.Time, strin
 
 func (f *fakePushDeliveryPort) MarkDead(context.Context, string, int, string) error { return nil }
 
-func (f *fakePushDeliveryPort) BacklogAge(context.Context) (time.Duration, int64, error) {
+func (f *fakePushDeliveryPort) BacklogAge(context.Context) (time.Duration, int64, int64, error) {
 	f.calls++
 	if f.err != nil {
-		return 0, 0, f.err
+		return 0, 0, 0, f.err
 	}
-	return f.oldest, f.pending, nil
+	return f.oldest, f.pending, f.subscriptions, nil
 }
 
 func newPushTestHandler(t *testing.T, deliveries *fakePushDeliveryPort) *Handler {
@@ -78,35 +79,52 @@ func newPushTestHandler(t *testing.T, deliveries *fakePushDeliveryPort) *Handler
 
 func TestGetNotificationBacklogAge(t *testing.T) {
 	tests := []struct {
-		name        string
-		oldest      time.Duration
-		pending     int64
-		wantSeconds float64
-		wantPending int64
+		name          string
+		oldest        time.Duration
+		pending       int64
+		subscriptions int64
+		wantSeconds   float64
+		wantPending   int64
 	}{
 		{
-			name:        "a backlog reports its age and depth",
-			oldest:      90*time.Second + 500*time.Millisecond,
-			pending:     4,
-			wantSeconds: 90.5,
-			wantPending: 4,
+			name:          "a backlog reports its age, depth and device population",
+			oldest:        90*time.Second + 500*time.Millisecond,
+			pending:       4,
+			subscriptions: 3,
+			wantSeconds:   90.5,
+			wantPending:   4,
 		},
 		{
 			// A drained queue is a reading, not an absence. The dispatcher
 			// publishes the gauge on every tick including this one, because a
 			// gauge that stops being set keeps reporting its last value for as
 			// long as the target is up.
-			name:        "an empty queue answers zero rather than an error",
-			oldest:      0,
-			pending:     0,
-			wantSeconds: 0,
-			wantPending: 0,
+			name:          "an empty queue answers zero rather than an error",
+			oldest:        0,
+			pending:       0,
+			subscriptions: 2,
+			wantSeconds:   0,
+			wantPending:   0,
+		},
+		{
+			// The pair the alert reads together. Identical to the row above in
+			// every field the queue owns, and the opposite conclusion.
+			name:          "an unsubscribed deployment reports zero devices",
+			oldest:        0,
+			pending:       0,
+			subscriptions: 0,
+			wantSeconds:   0,
+			wantPending:   0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			port := &fakePushDeliveryPort{oldest: tt.oldest, pending: tt.pending}
+			port := &fakePushDeliveryPort{
+				oldest:        tt.oldest,
+				pending:       tt.pending,
+				subscriptions: tt.subscriptions,
+			}
 			h := newPushTestHandler(t, port)
 
 			resp, err := h.GetNotificationBacklogAge(context.Background(),
@@ -115,6 +133,7 @@ func TestGetNotificationBacklogAge(t *testing.T) {
 			require.Equal(t, 1, port.calls)
 			require.InDelta(t, tt.wantSeconds, resp.Msg.GetOldestPendingAgeSeconds(), 1e-9)
 			require.Equal(t, tt.wantPending, resp.Msg.GetPendingCount())
+			require.Equal(t, tt.subscriptions, resp.Msg.GetActiveSubscriptionCount())
 		})
 	}
 }

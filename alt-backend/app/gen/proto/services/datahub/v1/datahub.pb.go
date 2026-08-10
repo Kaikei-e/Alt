@@ -16657,9 +16657,23 @@ type GetNotificationBacklogAgeResponse struct {
 	OldestPendingAgeSeconds float64 `protobuf:"fixed64,1,opt,name=oldest_pending_age_seconds,json=oldestPendingAgeSeconds,proto3" json:"oldest_pending_age_seconds,omitempty"`
 	// How many non-terminal rows there are, so a rising age can be told apart
 	// from one row that is stuck.
-	PendingCount  int64 `protobuf:"varint,2,opt,name=pending_count,json=pendingCount,proto3" json:"pending_count,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	PendingCount int64 `protobuf:"varint,2,opt,name=pending_count,json=pendingCount,proto3" json:"pending_count,omitempty"`
+	// How many devices are registered to receive anything at all.
+	//
+	// It rides on this response rather than on a procedure of its own because it
+	// is only ever useful at the same instant as the two fields above. "Nothing
+	// has been sent" describes a broken delivery path when devices exist and an
+	// idle one when they do not, and the two readings have to come from one pass
+	// to be compared; a separate procedure would sample them at different times
+	// and add a round trip to a loop that runs every two seconds.
+	//
+	// 0 is a real reading — a deployment nobody has subscribed to — and the
+	// caller publishes it as such. A gauge left unset instead would report its
+	// last value for as long as the process stays up, which is the failure this
+	// field exists to make visible.
+	ActiveSubscriptionCount int64 `protobuf:"varint,3,opt,name=active_subscription_count,json=activeSubscriptionCount,proto3" json:"active_subscription_count,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *GetNotificationBacklogAgeResponse) Reset() {
@@ -16702,6 +16716,13 @@ func (x *GetNotificationBacklogAgeResponse) GetOldestPendingAgeSeconds() float64
 func (x *GetNotificationBacklogAgeResponse) GetPendingCount() int64 {
 	if x != nil {
 		return x.PendingCount
+	}
+	return 0
+}
+
+func (x *GetNotificationBacklogAgeResponse) GetActiveSubscriptionCount() int64 {
+	if x != nil {
+		return x.ActiveSubscriptionCount
 	}
 	return 0
 }
@@ -17811,10 +17832,11 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"statusCode\x12#\n" +
 	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\"\x1e\n" +
 	"\x1cMarkNotificationDeadResponse\"\"\n" +
-	" GetNotificationBacklogAgeRequest\"\x85\x01\n" +
+	" GetNotificationBacklogAgeRequest\"\xc1\x01\n" +
 	"!GetNotificationBacklogAgeResponse\x12;\n" +
 	"\x1aoldest_pending_age_seconds\x18\x01 \x01(\x01R\x17oldestPendingAgeSeconds\x12#\n" +
-	"\rpending_count\x18\x02 \x01(\x03R\fpendingCount*T\n" +
+	"\rpending_count\x18\x02 \x01(\x03R\fpendingCount\x12:\n" +
+	"\x19active_subscription_count\x18\x03 \x01(\x03R\x17activeSubscriptionCount*T\n" +
 	"\x11SummaryVersioning\x12\"\n" +
 	"\x1eSUMMARY_VERSIONING_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17SUMMARY_VERSIONING_SKIP\x10\x01*\xc0\x01\n" +

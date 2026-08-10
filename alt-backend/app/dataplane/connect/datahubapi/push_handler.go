@@ -318,14 +318,15 @@ func (h *Handler) MarkNotificationDead(ctx context.Context, req *connect.Request
 	return connect.NewResponse(&datahubv1.MarkNotificationDeadResponse{}), nil
 }
 
-// GetNotificationBacklogAge answers the dispatcher's backlog gauge: how stale
-// the oldest undelivered notification is, and how many are waiting.
+// GetNotificationBacklogAge answers the dispatcher's gauges: how stale the
+// oldest undelivered notification is, how many are waiting, and how many
+// devices exist to receive them.
 //
 // A failed read is an error rather than a zero age. Zero is what a healthy
 // drained queue reports, so answering it here would turn a broken data plane
 // into a gauge saying there is nothing to deliver.
 func (h *Handler) GetNotificationBacklogAge(ctx context.Context, _ *connect.Request[datahubv1.GetNotificationBacklogAgeRequest]) (*connect.Response[datahubv1.GetNotificationBacklogAgeResponse], error) {
-	oldest, pending, err := h.pushDeliveries.BacklogAge(ctx)
+	oldest, pending, subscriptions, err := h.pushDeliveries.BacklogAge(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "GetNotificationBacklogAge failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to read notification backlog age"))
@@ -334,6 +335,7 @@ func (h *Handler) GetNotificationBacklogAge(ctx context.Context, _ *connect.Requ
 	return connect.NewResponse(&datahubv1.GetNotificationBacklogAgeResponse{
 		OldestPendingAgeSeconds: oldest.Seconds(),
 		PendingCount:            pending,
+		ActiveSubscriptionCount: subscriptions,
 	}), nil
 }
 

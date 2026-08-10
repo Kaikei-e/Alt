@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
@@ -100,7 +101,20 @@ func NewDB(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("pgtest: clone template into %s: %v", name, err)
 	}
 
-	pool, err := pgxpool.New(ctx, dsn(shared.adminDSN, name))
+	cfg, err := pgxpool.ParseConfig(dsn(shared.adminDSN, name))
+	if err != nil {
+		t.Fatalf("pgtest: parse dsn for %s: %v", name, err)
+	}
+	// The deployed pools run simple protocol for PgBouncer transaction pooling
+	// (alt_db/init.go), and the protocol decides how arguments are encoded:
+	// under simple protocol pgx interpolates them client-side, so a []byte
+	// bound to a JSONB column becomes a bytea hex literal rather than JSON.
+	// A harness left on the extended-protocol default accepts statements the
+	// deployed stack rejects, which is how the push fan-out reached production
+	// failing every insert with a green suite behind it.
+	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("pgtest: connect %s: %v", name, err)
 	}

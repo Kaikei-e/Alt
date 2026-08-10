@@ -1948,6 +1948,84 @@
       }
     },
     {
+      "description": "a GetNotificationBacklogAge request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a push delivery queue with pending rows and registered devices"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/GetNotificationBacklogAge"
+      },
+      "response": {
+        "body": {
+          "activeSubscriptionCount": "2",
+          "oldestPendingAgeSeconds": 42.5,
+          "pendingCount": "3"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.activeSubscriptionCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.oldestPendingAgeSeconds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pendingCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetNotificationBacklogAge request from alt-backend against an unsubscribed deployment",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has a drained push delivery queue and no registered devices"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/GetNotificationBacklogAge"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetPushSubscription request from alt-backend",
       "providerStates": [
         {

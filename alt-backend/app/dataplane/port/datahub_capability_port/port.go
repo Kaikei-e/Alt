@@ -496,12 +496,15 @@ type PushDeliveryPort interface {
 	Release(ctx context.Context, id string, nextAttemptAt time.Time, errorMessage string) error
 	// MarkDead is terminal for a failure that will not improve.
 	MarkDead(ctx context.Context, id string, statusCode int, errorMessage string) error
-	// BacklogAge reports how stale the queue is and how deep it is, for the
-	// dispatcher's gauge. It counts rows in `sending` as well as `pending`:
-	// a row orphaned by a crashed dispatcher stays `sending` until its lease
-	// elapses, and a reading blind to those would answer 0 for a queue that
-	// is stuck. An empty queue is (0, 0) and not an error.
-	BacklogAge(ctx context.Context) (oldest time.Duration, pending int64, err error)
+	// BacklogAge reports how stale the queue is, how deep it is, and how many
+	// devices are registered to receive anything, for the dispatcher's gauges.
+	// It counts rows in `sending` as well as `pending`: a row orphaned by a
+	// crashed dispatcher stays `sending` until its lease elapses, and a reading
+	// blind to those would answer 0 for a queue that is stuck. The device count
+	// comes from the same pass because "nothing was sent" only means a broken
+	// pipeline when there was somewhere to send it. An empty queue on an
+	// unsubscribed deployment is (0, 0, 0) and not an error.
+	BacklogAge(ctx context.Context) (oldest time.Duration, pending, subscriptions int64, err error)
 }
 
 // ArticleRefPort is the recall rail's projection fallback (catalog §2.C,

@@ -564,3 +564,85 @@ func TestMarkNotificationDeadContract(t *testing.T) {
 		})
 	require.NoError(t, err)
 }
+
+// The backlog read is what the dispatcher publishes its gauges from, and it
+// carries the device population alongside the queue depth.
+//
+// activeSubscriptionCount rides on this response rather than on a procedure of
+// its own because it answers a question only ever asked at the same instant:
+// "nothing was sent" means a broken pipeline when devices exist and an idle one
+// when they do not, and the two readings have to come from the same pass to be
+// compared. int64 on the wire, so it travels as a JSON string — the same trap
+// leaseSeconds carries.
+func TestGetNotificationBacklogAgeContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerBackend)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub has a push delivery queue with pending rows and registered devices").
+		UponReceiving("a GetNotificationBacklogAge request from alt-backend").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetNotificationBacklogAge"),
+			Headers: jsonHeaders(),
+			Body:    map[string]interface{}{},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body: matchers.StructMatcher{
+				"oldestPendingAgeSeconds": matchers.Like(42.5),
+				"pendingCount":            matchers.Like("3"),
+				"activeSubscriptionCount": matchers.Like("2"),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewPushDeliveryGateway(newDataHubServiceClient(config))
+			age, pending, subscriptions, err := gw.BacklogAge(context.Background())
+			if err != nil {
+				return err
+			}
+			assert.Equal(t, 42500*time.Millisecond, age)
+			assert.Equal(t, int64(3), pending)
+			assert.Equal(t, int64(2), subscriptions,
+				"the device population has to reach the caller, or a quiet queue "+
+					"cannot be told apart from one nobody is subscribed to")
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+// A deployment nobody has subscribed to is an ordinary reading, not an error,
+// and it is the one the alert has to be able to see: an empty queue with zero
+// devices is idle, the same numbers with devices present are a broken pipeline.
+func TestGetNotificationBacklogAgeWithNoDevicesContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerBackend)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub has a drained push delivery queue and no registered devices").
+		UponReceiving("a GetNotificationBacklogAge request from alt-backend against an unsubscribed deployment").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetNotificationBacklogAge"),
+			Headers: jsonHeaders(),
+			Body:    map[string]interface{}{},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body:    matchers.MapMatcher{},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewPushDeliveryGateway(newDataHubServiceClient(config))
+			age, pending, subscriptions, err := gw.BacklogAge(context.Background())
+			if err != nil {
+				return err
+			}
+			assert.Zero(t, age)
+			assert.Zero(t, pending)
+			assert.Zero(t, subscriptions)
+			return nil
+		})
+	require.NoError(t, err)
+}

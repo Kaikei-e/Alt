@@ -35,8 +35,8 @@ func (f *fakeDeliveries) ClaimBatch(_ context.Context, _ int) ([]domain.PushDeli
 	return f.batch, nil
 }
 
-func (f *fakeDeliveries) BacklogAge(_ context.Context) (time.Duration, int64, error) {
-	return 0, 0, nil
+func (f *fakeDeliveries) BacklogAge(_ context.Context) (time.Duration, int64, int64, error) {
+	return 0, 0, 0, nil
 }
 
 func (f *fakeDeliveries) MarkSent(_ context.Context, id string, _ int) error {

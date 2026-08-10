@@ -232,7 +232,8 @@ func (g *PushDeliveryGateway) MarkDead(ctx context.Context, id string, statusCod
 	return nil
 }
 
-// BacklogAge reports how stale the delivery queue is and how deep it is.
+// BacklogAge reports how stale the delivery queue is, how deep it is, and how
+// many devices are registered to receive from it.
 //
 // The provider counts rows in `sending` as well as `pending`, which is what
 // makes the number usable: a row orphaned by a dispatcher that died mid-attempt
@@ -242,13 +243,16 @@ func (g *PushDeliveryGateway) MarkDead(ctx context.Context, id string, statusCod
 // (0, 0) is a drained queue, not a failed read — the caller publishes the gauge
 // on every tick including that one, because a gauge that stops being set keeps
 // reporting its last value for as long as the process is up.
-func (g *PushDeliveryGateway) BacklogAge(ctx context.Context) (oldestAge time.Duration, pending int64, err error) {
+func (g *PushDeliveryGateway) BacklogAge(ctx context.Context) (oldestAge time.Duration, pending, subscriptions int64, err error) {
 	resp, err := g.client.GetNotificationBacklogAge(ctx,
 		connect.NewRequest(&datahubv1.GetNotificationBacklogAgeRequest{}))
 	if err != nil {
-		return 0, 0, fmt.Errorf("read push delivery backlog age: %w", err)
+		return 0, 0, 0, fmt.Errorf("read push delivery backlog age: %w", err)
 	}
-	return time.Duration(resp.Msg.GetOldestPendingAgeSeconds() * float64(time.Second)), resp.Msg.GetPendingCount(), nil
+	return time.Duration(resp.Msg.GetOldestPendingAgeSeconds() * float64(time.Second)),
+		resp.Msg.GetPendingCount(),
+		resp.Msg.GetActiveSubscriptionCount(),
+		nil
 }
 
 // ---------------------------------------------------------------------------

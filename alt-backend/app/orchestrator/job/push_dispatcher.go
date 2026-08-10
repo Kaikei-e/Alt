@@ -39,6 +39,7 @@ var (
 	pushLastTickGauge   metric.Float64Gauge
 	pushBacklogAgeGauge metric.Float64Gauge
 	pushPendingGauge    metric.Float64Gauge
+	pushSubscriptions   metric.Float64Gauge
 )
 
 func initDispatchMetrics() {
@@ -56,6 +57,8 @@ func initDispatchMetrics() {
 			metric.WithDescription("Age of the oldest non-terminal push delivery, counting rows in 'sending' as well as 'pending' so a row orphaned by a crashed dispatcher is not invisible"))
 		pushPendingGauge, _ = meter.Float64Gauge("push_delivery_pending_count",
 			metric.WithDescription("Non-terminal push deliveries. Read alongside the age gauge: a rising count with a flat age means the producers sped up, a flat count with a rising age means nothing is draining"))
+		pushSubscriptions, _ = meter.Float64Gauge("push_subscriptions_active",
+			metric.WithDescription("Devices registered to receive Web Push. It is what separates a delivery path that is broken from one that has nobody to deliver to — both send nothing, and every other gauge here reads identically in the two cases"))
 	})
 }
 
@@ -130,18 +133,25 @@ func recordDispatchPass(ctx context.Context, stats push_dispatch_usecase.Stats, 
 	}
 }
 
-// publishBacklogAge asks the data plane how stale the queue is and records it.
+// publishBacklogAge asks the data plane how stale the queue is, how deep it is
+// and how many devices exist, and records all three.
 //
-// A read failure is logged and leaves the gauge unwritten rather than recording
-// a zero: a fabricated zero would say "the queue is fresh" at the moment we
-// stopped being able to tell, which is the one answer that must never be
-// guessed. The staleness that follows is caught by the tick alert instead.
+// A read failure is logged and leaves the gauges unwritten rather than
+// recording a zero: a fabricated zero would say "the queue is fresh" at the
+// moment we stopped being able to tell, which is the one answer that must never
+// be guessed. The staleness that follows is caught by the tick alert instead.
+//
+// A genuine zero device count, on the other hand, is recorded like any other
+// reading. It is the whole point of the gauge: nothing sent with devices
+// registered is a broken delivery path, and nothing sent with no devices is an
+// idle one, and no other signal in this file tells them apart.
 func publishBacklogAge(ctx context.Context, dispatch *push_dispatch_usecase.Usecase) {
-	age, pending, err := dispatch.BacklogAge(ctx)
+	age, pending, subscriptions, err := dispatch.BacklogAge(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, "push_backlog_age_unavailable", "error", err)
 		return
 	}
 	pushBacklogAgeGauge.Record(ctx, age.Seconds())
 	pushPendingGauge.Record(ctx, float64(pending))
+	pushSubscriptions.Record(ctx, float64(subscriptions))
 }

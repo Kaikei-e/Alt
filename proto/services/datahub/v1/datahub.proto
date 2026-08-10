@@ -2275,6 +2275,20 @@ message GetNotificationBacklogAgeResponse {
   // How many non-terminal rows there are, so a rising age can be told apart
   // from one row that is stuck.
   int64 pending_count = 2;
+  // How many devices are registered to receive anything at all.
+  //
+  // It rides on this response rather than on a procedure of its own because it
+  // is only ever useful at the same instant as the two fields above. "Nothing
+  // has been sent" describes a broken delivery path when devices exist and an
+  // idle one when they do not, and the two readings have to come from one pass
+  // to be compared; a separate procedure would sample them at different times
+  // and add a round trip to a loop that runs every two seconds.
+  //
+  // 0 is a real reading — a deployment nobody has subscribed to — and the
+  // caller publishes it as such. A gauge left unset instead would report its
+  // last value for as long as the process stays up, which is the failure this
+  // field exists to make visible.
+  int64 active_subscription_count = 3;
 }
 
 // =============================================================================

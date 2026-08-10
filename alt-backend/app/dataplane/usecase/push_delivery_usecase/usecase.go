@@ -15,6 +15,7 @@ package push_delivery_usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -116,6 +117,16 @@ func validateEnqueue(in domain.NotificationEnqueue) error {
 	case !in.ExpiresAt.After(in.OccurredAt):
 		return fmt.Errorf("%w: expires_at %s is not after occurred_at %s, so every row would be "+
 			"expired by the first claim that saw it", ErrInvalidEnqueue, in.ExpiresAt, in.OccurredAt)
+	case !json.Valid(in.Payload):
+		// payload lands in a JSONB NOT NULL column, so anything that is not
+		// JSON — including the empty payload an omitted protobuf field
+		// produces — is rejected by PostgreSQL as an opaque 22P02. The relay
+		// cannot tell that apart from a transient failure and spends eight
+		// attempts on it before dead-lettering the notification, so the
+		// producer has to be told here, where the answer is InvalidArgument
+		// and names the enqueue.
+		return fmt.Errorf("%w: payload must be JSON; it is stored as JSONB and read back by the "+
+			"dispatcher without being re-encoded", ErrInvalidEnqueue)
 	}
 	if !isKnownKind(in.Kind) {
 		return fmt.Errorf("%w: %q", ErrUnknownKind, in.Kind)
@@ -196,20 +207,22 @@ func (u *PushDeliveryUsecase) Release(ctx context.Context, id string, nextAttemp
 	return nil
 }
 
-// BacklogAge reports how stale the queue is and how many non-terminal rows it
-// holds.
+// BacklogAge reports how stale the queue is, how many non-terminal rows it
+// holds, and how many devices could receive them.
 //
 // There is nothing to validate and nothing to clamp: it takes no argument, and
-// both numbers are readings. It lives here rather than beside the subscription
-// reads because it is a question about this state machine — the answer is only
-// correct if it counts the `sending` rows a crashed dispatcher left behind, and
-// that rule belongs with the rest of the queue's rules.
-func (u *PushDeliveryUsecase) BacklogAge(ctx context.Context) (time.Duration, int64, error) {
-	oldest, pending, err := u.port.BacklogAge(ctx)
+// all three numbers are readings. It lives here rather than beside the
+// subscription reads because it is a question about this state machine — the
+// answer is only correct if it counts the `sending` rows a crashed dispatcher
+// left behind, and that rule belongs with the rest of the queue's rules. The
+// device count is answered here rather than from the subscription capability
+// so that it is read in the same pass as the queue it qualifies.
+func (u *PushDeliveryUsecase) BacklogAge(ctx context.Context) (time.Duration, int64, int64, error) {
+	oldest, pending, subscriptions, err := u.port.BacklogAge(ctx)
 	if err != nil {
-		return 0, 0, fmt.Errorf("read push delivery backlog age: %w", err)
+		return 0, 0, 0, fmt.Errorf("read push delivery backlog age: %w", err)
 	}
-	return oldest, pending, nil
+	return oldest, pending, subscriptions, nil
 }
 
 // MarkDead ends delivery for a failure that will not improve.
