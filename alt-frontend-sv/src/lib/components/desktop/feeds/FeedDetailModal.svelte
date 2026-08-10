@@ -1,7 +1,7 @@
 <script lang="ts">
-import { ChevronLeft, ChevronRight } from "@lucide/svelte";
+import { ChevronLeft, ChevronRight, X } from "@lucide/svelte";
 import { Dialog as DialogPrimitive } from "bits-ui";
-import { type Snippet, tick } from "svelte";
+import { tick } from "svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import {
@@ -29,7 +29,15 @@ interface Props {
 	onNext?: () => void;
 	feeds?: RenderFeed[];
 	currentIndex?: number;
-	footerActions?: Snippet;
+	/**
+	 * Rendered as a footer action when supplied. A typed callback rather than a
+	 * snippet: every caller passed the same "Mark as Read" button, and a
+	 * caller-owned button carries the *caller's* style scope, so it could never
+	 * match this component's footer rules — it arrived unstyled and, on a phone
+	 * rail, visibly foreign.
+	 */
+	onMarkAsRead?: () => void;
+	isMarkingAsRead?: boolean;
 }
 
 let {
@@ -42,7 +50,8 @@ let {
 	onNext,
 	feeds,
 	currentIndex,
-	footerActions,
+	onMarkAsRead,
+	isMarkingAsRead = false,
 }: Props = $props();
 
 // Content fetching state
@@ -78,6 +87,53 @@ const summaryButtonState = $derived.by(() => {
 	if (summary) return "success" as const;
 	return "idle" as const;
 });
+
+/**
+ * Footer labels in a long and a short form.
+ *
+ * On the phone rail a cell is about a third of 346px, and "Re-fetch Article"
+ * wraps to two lines there. Both forms are rendered and CSS picks one, rather
+ * than JS reading the viewport: a viewport-derived string renders one way on the
+ * server and another in the browser, which is a hydration mismatch. Both spans
+ * are aria-hidden and the button carries the long form as its accessible name,
+ * so the name is the same at every width.
+ */
+const articleLabel = $derived.by(() => {
+	switch (articleButtonState) {
+		case "loading":
+			return { long: "Loading…", short: "Loading" };
+		case "success":
+			return { long: "Re-fetch Article", short: "Re-fetch" };
+		case "error":
+			return { long: "Try Again", short: "Retry" };
+		default:
+			return { long: "Full Article", short: "Article" };
+	}
+});
+
+const summaryLabel = $derived.by(() => {
+	switch (summaryButtonState) {
+		case "loading":
+			return { long: "Summarizing…", short: "Summarizing" };
+		case "success":
+			return { long: "Re-summarize", short: "Re-run" };
+		case "error":
+			return { long: "Try Again", short: "Retry" };
+		default:
+			return { long: "Summarize", short: "Summary" };
+	}
+});
+
+const markAsReadLabel = $derived(
+	isMarkingAsRead
+		? { long: "Marking…", short: "Marking" }
+		: { long: "Mark as Read", short: "Mark Read" },
+);
+
+function requestClose() {
+	open = false;
+	onOpenChange(false);
+}
 
 // Track previous feed URL to detect actual feed changes
 let previousFeedUrl = $state<string | null>(null);
@@ -420,6 +476,22 @@ async function handleSummarize(forceRefresh = false) {
 			{/if}
 
 			{#if feed}
+				<!--
+					Phone-only close. On a phone the footer has room for reading
+					actions or for chrome, not both, and chrome is what moves: Close
+					is how you leave the modal, not something you do to the article.
+					Hidden above 640px, where the footer's Close still serves.
+				-->
+				<button
+					type="button"
+					class="modal-close"
+					data-testid="modal-close"
+					aria-label="Close"
+					onclick={requestClose}
+				>
+					<X class="h-5 w-5" />
+				</button>
+
 				<div class="modal-header">
 					{#if feed.link}
 						<a
@@ -492,53 +564,60 @@ async function handleSummarize(forceRefresh = false) {
 					</div>
 				</div>
 
-				<div class="modal-footer">
-					<div class="flex gap-3 flex-1 min-w-0">
+				<div class="modal-footer" data-testid="modal-footer">
+					<div class="footer-group footer-group--reading">
 						<button
+							type="button"
 							onclick={articleButtonState === 'success' ? handleRefetchArticle : () => handleFetchFullArticle()}
 							disabled={articleButtonState === 'loading'}
 							class="action-btn"
 							class:action-btn--error={articleButtonState === 'error'}
+							aria-label={articleLabel.long}
 						>
 							{#if articleButtonState === 'loading'}
 								<span class="loading-pulse"></span>
-								<span>Loading&hellip;</span>
-							{:else if articleButtonState === 'success'}
-								<span>Re-fetch Article</span>
-							{:else if articleButtonState === 'error'}
-								<span>Try Again</span>
-							{:else}
-								<span>Full Article</span>
 							{/if}
+							<span class="btn-label btn-label--long" aria-hidden="true">{articleLabel.long}</span>
+							<span class="btn-label btn-label--short" aria-hidden="true">{articleLabel.short}</span>
 						</button>
 
 						<button
+							type="button"
 							onclick={() => handleSummarize(summaryButtonState === 'success')}
 							disabled={summaryButtonState === 'loading' || (!articleContent && summaryButtonState !== 'error' && summaryButtonState !== 'success')}
 							class="action-btn action-btn--primary"
 							class:action-btn--error={summaryButtonState === 'error'}
+							aria-label={summaryLabel.long}
 						>
 							{#if summaryButtonState === 'loading'}
 								<span class="loading-pulse"></span>
-								<span>Summarizing&hellip;</span>
-							{:else if summaryButtonState === 'error'}
-								<span>Try Again</span>
-							{:else if summaryButtonState === 'success'}
-								<span>Re-summarize</span>
-							{:else}
-								<span>Summarize</span>
 							{/if}
+							<span class="btn-label btn-label--long" aria-hidden="true">{summaryLabel.long}</span>
+							<span class="btn-label btn-label--short" aria-hidden="true">{summaryLabel.short}</span>
 						</button>
 					</div>
 
-					<div class="flex gap-3 flex-shrink-0">
-						{#if footerActions}
-							{@render footerActions()}
+					<div class="footer-group footer-group--chrome">
+						{#if onMarkAsRead}
+							<button
+								type="button"
+								class="action-btn"
+								onclick={onMarkAsRead}
+								disabled={isMarkingAsRead}
+								aria-label={markAsReadLabel.long}
+							>
+								<span class="btn-label btn-label--long" aria-hidden="true">{markAsReadLabel.long}</span>
+								<span class="btn-label btn-label--short" aria-hidden="true">{markAsReadLabel.short}</span>
+							</button>
 						{/if}
 
-						<DialogPrimitive.Close class="action-btn">
+						<button
+							type="button"
+							class="action-btn action-btn--close"
+							onclick={requestClose}
+						>
 							Close
-						</DialogPrimitive.Close>
+						</button>
 					</div>
 				</div>
 			{/if}
@@ -581,6 +660,11 @@ async function handleSummarize(forceRefresh = false) {
 	.modal-header {
 		padding: 1.5rem 3rem;
 		border-bottom: 1px solid var(--surface-border);
+	}
+
+	/* Phone-only; the footer's Close serves at desktop width. */
+	.modal-close {
+		display: none;
 	}
 
 	.modal-title-link {
@@ -736,6 +820,29 @@ async function handleSummarize(forceRefresh = false) {
 		border-top: 1px solid var(--surface-border);
 	}
 
+	/* Scoped classes rather than the Tailwind utilities that used to sit here:
+	   the phone rail needs to restyle these groups, and a utility class carries
+	   no hook for that. */
+	.footer-group {
+		display: flex;
+		gap: 0.75rem;
+	}
+
+	.footer-group--reading {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.footer-group--chrome {
+		flex-shrink: 0;
+	}
+
+	/* One of the two label forms is always display:none — see the labels comment
+	   in the script block. */
+	.btn-label--short {
+		display: none;
+	}
+
 	.action-btn {
 		display: inline-flex;
 		align-items: center;
@@ -778,6 +885,20 @@ async function handleSummarize(forceRefresh = false) {
 		border-color: var(--alt-charcoal);
 	}
 
+	/* Kept above the phone media query on purpose: these and the rail rules have
+	   equal specificity, so source order is what decides, and the rail must win
+	   below 640px. */
+	.action-btn--error {
+		color: var(--alt-terracotta);
+		border-color: var(--alt-terracotta);
+		background: transparent;
+	}
+
+	.action-btn--error:hover:not(:disabled) {
+		background: var(--alt-terracotta);
+		color: var(--surface-bg);
+	}
+
 	/*
 	 * Phone width. This modal was only ever opened from the desktop grid, so its
 	 * 3rem gutters were free; reached from the mobile visual-preview gallery they
@@ -794,8 +915,10 @@ async function handleSummarize(forceRefresh = false) {
 			display: none;
 		}
 
+		/* padding-right keeps the headline clear of the close stamp. */
 		.modal-header {
 			padding: 1rem;
+			padding-right: 3.5rem;
 		}
 
 		.modal-title {
@@ -811,41 +934,142 @@ async function handleSummarize(forceRefresh = false) {
 		}
 
 		/*
-		 * Four buttons in one row do not fit 346px: they overflowed the dialog
-		 * and painted over each other. Stack the two groups instead, and let each
-		 * group split its row evenly — two rows of two, every button over the
-		 * 48px touch-target floor that the desktop 2.25rem row does not meet.
+		 * The footer becomes an editorial action rail.
+		 *
+		 * Alt-Paper sets type on paper: hairline rules, small-caps mono, ink
+		 * instead of fills. Three bordered slabs — one of them a solid block of
+		 * teal — is the language of a form, not of a page, and at this width they
+		 * cost two rows and ~112px of a 700px-tall dialog.
+		 *
+		 * So: drop the boxes and let the rules do the work. The footer's own
+		 * top rule plus one hairline between cells frames three equal columns,
+		 * edge to edge, 48px tall — the same rule-and-column device the body's
+		 * section labels already use. Primacy is marked the way this file marks
+		 * it elsewhere (`.rail-section`): a 3px ink rule along the top of the
+		 * cell, not a filled slab.
 		 */
 		.modal-footer {
-			flex-direction: column;
+			gap: 0;
+			padding: 0;
+			padding-bottom: env(safe-area-inset-bottom, 0px);
+			flex-wrap: nowrap;
 			align-items: stretch;
-			gap: 0.5rem;
-			padding: 0.75rem 1rem;
-			padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
 		}
 
-		.modal-footer > div {
-			width: 100%;
+		/* Three equal columns. The flex-grow weights are per *cell*, so the
+		   two-cell reading group takes twice the one-cell chrome group and every
+		   cell lands on a third — a measured column grid rather than cells sized
+		   by how long their label happens to be. */
+		.footer-group {
+			gap: 0;
+			min-width: 0;
 		}
 
-		/* `:global` because one of these is the caller's `footerActions` snippet,
-		   which carries the parent component's style scope, not this one's. */
-		.modal-footer > div > :global(*) {
+		.footer-group--reading {
+			flex: 2 1 0;
+		}
+
+		.footer-group--chrome {
+			flex: 1 1 0;
+		}
+
+		.action-btn {
 			flex: 1 1 0;
 			min-width: 0;
 			min-height: 48px;
+			padding: 0.5rem 0.25rem;
+			border: none;
+			border-left: 1px solid var(--surface-border);
+			background: transparent;
+			color: var(--alt-charcoal);
+			font-family: var(--font-mono);
+			font-size: 0.62rem;
+			font-weight: 700;
+			letter-spacing: 0.06em;
+			white-space: nowrap;
 		}
-	}
 
-	.action-btn--error {
-		color: var(--alt-terracotta);
-		border-color: var(--alt-terracotta);
-		background: transparent;
-	}
+		/* The leftmost cell butts against the dialog edge; only the seams get a
+		   rule. `.footer-group--reading` is always first, so its first child is
+		   the rail's first cell. */
+		.footer-group--reading .action-btn:first-child {
+			border-left: none;
+		}
 
-	.action-btn--error:hover:not(:disabled) {
-		background: var(--alt-terracotta);
-		color: var(--surface-bg);
+		.action-btn:hover:not(:disabled) {
+			background: transparent;
+			color: var(--alt-charcoal);
+		}
+
+		/* Touch has no hover; the press is the only feedback, so it inverts. */
+		.action-btn:active:not(:disabled) {
+			background: var(--alt-charcoal);
+			color: var(--surface-bg);
+		}
+
+		.action-btn--primary {
+			background: transparent;
+			color: var(--alt-primary);
+			box-shadow: inset 0 3px 0 var(--alt-primary);
+		}
+
+		.action-btn--primary:hover:not(:disabled) {
+			background: transparent;
+			color: var(--alt-primary);
+		}
+
+		.action-btn--primary:active:not(:disabled) {
+			background: var(--alt-primary);
+			color: var(--surface-bg);
+		}
+
+		.action-btn--error {
+			color: var(--alt-terracotta);
+			box-shadow: inset 0 3px 0 var(--alt-terracotta);
+		}
+
+		/* Close lives in the header at this width. */
+		.action-btn--close {
+			display: none;
+		}
+
+		.btn-label--long {
+			display: none;
+		}
+
+		.btn-label--short {
+			display: inline;
+		}
+
+		/*
+		 * Header close: a 48px target flush to the modal's top-right corner, in
+		 * the same press-mark idiom as the swipe card's keep stamp — opaque paper
+		 * ground, hairline edges, no radius.
+		 */
+		.modal-close {
+			position: absolute;
+			top: 0;
+			right: 0;
+			z-index: 10;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 48px;
+			height: 48px;
+			background: var(--surface-bg);
+			border: none;
+			border-left: 1px solid var(--surface-border);
+			border-bottom: 1px solid var(--surface-border);
+			color: var(--alt-charcoal);
+			cursor: pointer;
+			touch-action: manipulation;
+		}
+
+		.modal-close:active {
+			background: var(--alt-charcoal);
+			color: var(--surface-bg);
+		}
+
 	}
 
 	.loading-pulse {

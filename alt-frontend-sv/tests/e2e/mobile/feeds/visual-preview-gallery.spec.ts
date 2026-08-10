@@ -96,4 +96,85 @@ test.describe("mobile feeds — visual preview gallery", () => {
 		// Still on the gallery route — no navigation, so no scroll position lost.
 		expect(new URL(page.url()).pathname).toContain("/feeds/visual-preview");
 	});
+
+	/**
+	 * The detail modal's footer is the part of this surface that a phone punishes
+	 * hardest: four desktop-sized buttons in a row do not fit 346px, and the first
+	 * attempt at fixing that — stacking them into two rows of slabs — traded an
+	 * overflow bug for a footer that ate a fifth of the screen and shouted.
+	 *
+	 * Alt-Paper is an editorial print language: hairline rules, small-caps mono,
+	 * ink instead of fills. The footer is one rule-divided rail, and these assert
+	 * the properties that make it that rather than a stack of buttons.
+	 */
+	test.describe("detail modal footer at phone width", () => {
+		test.beforeEach(async ({ page }) => {
+			await gotoMobileRoute(page, "feeds/visual-preview");
+			await page.getByRole("button", { name: "Open AI Trends" }).click();
+			await expect(page.getByRole("dialog")).toBeVisible();
+		});
+
+		test("keeps every action on a single compact rail", async ({ page }) => {
+			const footer = page.getByTestId("modal-footer");
+			await expect(footer).toBeVisible();
+
+			const tops = await footer
+				.getByRole("button")
+				.evaluateAll((els) =>
+					els.map((el) => Math.round(el.getBoundingClientRect().top)),
+				);
+			expect(tops.length).toBeGreaterThan(1);
+			// One distinct top offset = one row.
+			expect(new Set(tops).size).toBe(1);
+
+			const box = (await footer.boundingBox())!;
+			expect(box.height).toBeLessThanOrEqual(72);
+		});
+
+		test("does not overflow the dialog", async ({ page }) => {
+			// The original defect: the footer's buttons ran past the dialog's edge
+			// and painted over one another.
+			const dialogBox = (await page.getByRole("dialog").boundingBox())!;
+			const footerBox = (await page.getByTestId("modal-footer").boundingBox())!;
+
+			expect(footerBox.width).toBeLessThanOrEqual(dialogBox.width + 1);
+			expect(footerBox.x + footerBox.width).toBeLessThanOrEqual(
+				dialogBox.x + dialogBox.width + 1,
+			);
+		});
+
+		test("keeps each action over the 48px touch-target floor", async ({
+			page,
+		}) => {
+			const heights = await page
+				.getByTestId("modal-footer")
+				.getByRole("button")
+				.evaluateAll((els) =>
+					els.map((el) => el.getBoundingClientRect().height),
+				);
+
+			expect(heights.length).toBeGreaterThan(1);
+			for (const height of heights) {
+				expect(height).toBeGreaterThanOrEqual(48);
+			}
+		});
+
+		test("moves Close out of the rail and into the header", async ({
+			page,
+		}) => {
+			// Four actions do not fit a phone rail. Close is the one that belongs in
+			// the header — it is the modal's chrome, not a reading action.
+			const dialog = page.getByRole("dialog");
+			await expect(
+				page
+					.getByTestId("modal-footer")
+					.getByRole("button", { name: /^Close$/i }),
+			).toHaveCount(0);
+
+			const close = dialog.getByTestId("modal-close");
+			await expect(close).toBeVisible();
+			await close.click();
+			await expect(dialog).toBeHidden();
+		});
+	});
 });

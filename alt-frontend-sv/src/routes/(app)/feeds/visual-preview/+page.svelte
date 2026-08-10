@@ -12,7 +12,6 @@ import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types"
 import VisualFeedCard from "$lib/components/desktop/feeds/VisualFeedCard.svelte";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import MobileGalleryTile from "$lib/components/mobile/feeds/gallery/MobileGalleryTile.svelte";
-import { Button } from "$lib/components/ui/button";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
 import { useViewport } from "$lib/stores/viewport.svelte";
@@ -258,17 +257,9 @@ function handleFeedGridReady(api: FeedGridApi) {
 	onNext={handleNext}
 	feeds={feedGridApi?.getVisibleFeeds() ?? []}
 	{currentIndex}
->
-	{#snippet footerActions()}
-		<Button
-			onclick={handleMarkAsReadInModal}
-			variant="outline"
-			disabled={isMarkingAsRead || isProcessingMarkAsRead}
-		>
-			{isMarkingAsRead ? "Marking..." : "Mark as Read"}
-		</Button>
-	{/snippet}
-</FeedDetailModal>
+	onMarkAsRead={handleMarkAsReadInModal}
+	isMarkingAsRead={isMarkingAsRead || isProcessingMarkAsRead}
+/>
 
 <style>
 	.gallery-header {
