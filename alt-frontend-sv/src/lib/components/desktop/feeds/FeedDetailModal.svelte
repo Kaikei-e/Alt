@@ -1,13 +1,13 @@
 <script lang="ts">
 import { ChevronLeft, ChevronRight } from "@lucide/svelte";
+import { Dialog as DialogPrimitive } from "bits-ui";
+import { type Snippet, tick } from "svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
-import { Dialog as DialogPrimitive } from "bits-ui";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
-import { tick, type Snippet } from "svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import {
@@ -398,7 +398,7 @@ async function handleSummarize(forceRefresh = false) {
 		<DialogPrimitive.Overlay class="fixed inset-0 z-50" style="background: rgba(0,0,0,0.5);" />
 		<DialogPrimitive.Content
 			preventScroll={false}
-			class="modal-content fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[88vw] sm:max-w-[1920px] h-[88vh] overflow-hidden flex flex-col z-50"
+			class="modal-content fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] h-[92vh] sm:w-[88vw] sm:max-w-[1920px] sm:h-[88vh] overflow-hidden flex flex-col z-50"
 		>
 			{#if hasPrevious}
 				<button
@@ -776,6 +776,65 @@ async function handleSummarize(forceRefresh = false) {
 	.action-btn--primary:hover:not(:disabled) {
 		background: var(--alt-charcoal);
 		border-color: var(--alt-charcoal);
+	}
+
+	/*
+	 * Phone width. This modal was only ever opened from the desktop grid, so its
+	 * 3rem gutters were free; reached from the mobile visual-preview gallery they
+	 * eat ~96px of a ~346px dialog and squeeze the article into a column too
+	 * narrow to read.
+	 *
+	 * The prev/next arrows go with them. They are vertically centred over the
+	 * body, so at this width they sit on top of the prose rather than beside it,
+	 * and the gallery behind the modal is itself the faster way to reach the next
+	 * article — closing and tapping costs one gesture more than the arrow did.
+	 */
+	@media (max-width: 640px) {
+		.nav-arrow {
+			display: none;
+		}
+
+		.modal-header {
+			padding: 1rem;
+		}
+
+		.modal-title {
+			font-size: 1.15rem;
+		}
+
+		.modal-body {
+			padding: 1rem;
+		}
+
+		.modal-article > :global(.content-section) {
+			padding: 1rem;
+		}
+
+		/*
+		 * Four buttons in one row do not fit 346px: they overflowed the dialog
+		 * and painted over each other. Stack the two groups instead, and let each
+		 * group split its row evenly — two rows of two, every button over the
+		 * 48px touch-target floor that the desktop 2.25rem row does not meet.
+		 */
+		.modal-footer {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 0.5rem;
+			padding: 0.75rem 1rem;
+			padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+		}
+
+		.modal-footer > div {
+			width: 100%;
+		}
+
+		/* `:global` because one of these is the caller's `footerActions` snippet,
+		   which carries the parent component's style scope, not this one's. */
+		.modal-footer > div > :global(*) {
+			flex: 1 1 0;
+			min-width: 0;
+			min-height: 48px;
+		}
 	}
 
 	.action-btn--error {

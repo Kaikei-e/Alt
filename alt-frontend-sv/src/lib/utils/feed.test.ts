@@ -1,11 +1,38 @@
 import { describe, expect, it } from "vitest";
 import {
 	canonicalize,
+	formatCompactDate,
 	formatPublishedDate,
 	generateExcerptFromDescription,
 	mergeTagsLabel,
 	normalizeUrl,
 } from "./feed";
+
+describe("formatCompactDate", () => {
+	it("drops the time of day", () => {
+		// A half-width gallery tile has room for a date or a datestamp, not both;
+		// "Aug 10, 2026, 11:09 PM" wraps onto a second line and competes with the
+		// title for a glance that is supposed to land on the image.
+		expect(formatCompactDate("2025-11-23T10:30:00Z")).toBe("Nov 23, 2025");
+	});
+
+	it("formats a date-only string", () => {
+		expect(formatCompactDate("2024-01-15")).toBe("Jan 15, 2024");
+	});
+
+	it("pins the timezone so SSR and hydration agree", () => {
+		// 23:30 UTC is the previous day in any negative offset. Pinning to UTC is
+		// what keeps the server's string and the browser's string identical.
+		expect(formatCompactDate("2025-11-23T23:30:00Z")).toBe("Nov 23, 2025");
+	});
+
+	it("returns empty string for missing or invalid input", () => {
+		expect(formatCompactDate(null)).toBe("");
+		expect(formatCompactDate(undefined)).toBe("");
+		expect(formatCompactDate("")).toBe("");
+		expect(formatCompactDate("not-a-date")).toBe("");
+	});
+});
 
 describe("formatPublishedDate", () => {
 	it("formats ISO date string with time correctly", () => {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-	NAV_TABS,
-	MOBILE_MENU_SECTIONS,
 	getVisibleMobileMenuSections,
+	MOBILE_MENU_SECTIONS,
+	NAV_TABS,
 } from "./navigation";
 
 describe("NAV_TABS", () => {
@@ -64,6 +64,16 @@ describe("MOBILE_MENU_SECTIONS", () => {
 		expect(hrefs).toContain("/stats");
 		expect(hrefs).toContain("/settings/feeds");
 		expect(hrefs).toContain("/admin/scraping-domains");
+	});
+
+	it("reaches the visual-preview gallery", () => {
+		// The route has a mobile layout of its own now (a two-column thumbnail
+		// gallery). Without a menu entry it is only reachable by typing the URL,
+		// which on a phone means not at all.
+		const hrefs = MOBILE_MENU_SECTIONS.flatMap((s) =>
+			s.items.map((i) => i.href),
+		);
+		expect(hrefs).toContain("/feeds/visual-preview");
 	});
 
 	it("does not duplicate primary tab destinations", () => {

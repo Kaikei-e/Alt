@@ -11,6 +11,7 @@ import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
 import VisualFeedCard from "$lib/components/desktop/feeds/VisualFeedCard.svelte";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import MobileGalleryTile from "$lib/components/mobile/feeds/gallery/MobileGalleryTile.svelte";
 import { Button } from "$lib/components/ui/button";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
@@ -207,43 +208,85 @@ function handleFeedGridReady(api: FeedGridApi) {
 			<VisualFeedCard {feed} {isRead} {onSelect} />
 		{/snippet}
 	</FeedGrid>
-
-	<FeedDetailModal
-		bind:open={isModalOpen}
-		feed={selectedFeed}
-		onOpenChange={(open: boolean) => (isModalOpen = open)}
-		{hasPrevious}
-		{hasNext}
-		onPrevious={handlePrevious}
-		onNext={handleNext}
-		feeds={feedGridApi?.getVisibleFeeds() ?? []}
-		{currentIndex}
-	>
-		{#snippet footerActions()}
-			<Button
-				onclick={handleMarkAsReadInModal}
-				variant="outline"
-				disabled={isMarkingAsRead || isProcessingMarkAsRead}
-			>
-				{isMarkingAsRead ? "Marking..." : "Mark as Read"}
-			</Button>
-		{/snippet}
-	</FeedDetailModal>
 {:else}
-	<!-- Mobile: Redirect to swipe visual-preview -->
-	<div class="flex flex-col items-center justify-center py-24 text-center">
-		<p class="text-lg font-medium text-[var(--text-primary)] mb-2">
-			Visual Preview has a swipe interface on mobile
-		</p>
-		<p class="text-sm text-[var(--text-secondary)] mb-6">
-			Tap below to use the mobile-optimized experience.
-		</p>
-		<a
-			href="/feeds/swipe/visual-preview"
-			class="px-4 py-2 text-sm font-medium transition-colors hover:opacity-90"
-			style="background: var(--accent-primary); color: var(--accent-primary-foreground);"
-		>
-			Go to Swipe Visual Preview
-		</a>
-	</div>
+	<!--
+		Mobile: a vertically scrolling, two-column thumbnail gallery.
+
+		This used to be a hand-off notice pointing at the swipe screen, which made
+		the route a dead end on the device most of the reading happens on. Swipe is
+		a one-at-a-time judgment surface; this is the scanning surface — the reader
+		sees ~6 covers per screen and drills into one, which is a different job and
+		now has its own layout rather than a redirect.
+
+		Two columns rather than a list of small thumbnails: at half a phone's width
+		the image is still large enough to recognise, which is the threshold below
+		which list thumbnails stop earning their place.
+	-->
+	<header class="gallery-header">
+		<h1 class="gallery-title">Visual Preview</h1>
+		<p class="gallery-subtitle">Browse feeds by their cover</p>
+	</header>
+
+	<FeedGrid
+		onSelectFeed={handleSelectFeed}
+		unreadOnly={filters.unreadOnly}
+		sortBy={filters.sortBy}
+		excludedFeedLinkIds={filters.excludedFeedLinkIds}
+		onReady={handleFeedGridReady}
+		gridClass="grid grid-cols-2 gap-2"
+		gridTestId="gallery-grid"
+	>
+		{#snippet cardRenderer({ feed, isRead, onSelect }: { feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void })}
+			<MobileGalleryTile {feed} {isRead} {onSelect} />
+		{/snippet}
+	</FeedGrid>
 {/if}
+
+<!--
+	Shared by both layouts. Opening the article in a modal rather than navigating
+	is what keeps the reader's place: the gallery grows by infinite scroll, so a
+	round-trip to a detail route and back would drop them at the top of a list
+	that no longer contains the items they had already scrolled past.
+-->
+<FeedDetailModal
+	bind:open={isModalOpen}
+	feed={selectedFeed}
+	onOpenChange={(open: boolean) => (isModalOpen = open)}
+	{hasPrevious}
+	{hasNext}
+	onPrevious={handlePrevious}
+	onNext={handleNext}
+	feeds={feedGridApi?.getVisibleFeeds() ?? []}
+	{currentIndex}
+>
+	{#snippet footerActions()}
+		<Button
+			onclick={handleMarkAsReadInModal}
+			variant="outline"
+			disabled={isMarkingAsRead || isProcessingMarkAsRead}
+		>
+			{isMarkingAsRead ? "Marking..." : "Mark as Read"}
+		</Button>
+	{/snippet}
+</FeedDetailModal>
+
+<style>
+	.gallery-header {
+		padding: 0.75rem 0 1rem;
+	}
+
+	.gallery-title {
+		font-family: var(--font-display);
+		font-size: 1.35rem;
+		font-weight: 700;
+		color: var(--text-primary);
+		margin: 0;
+	}
+
+	.gallery-subtitle {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--text-muted);
+		margin: 0.2rem 0 0;
+	}
+</style>
