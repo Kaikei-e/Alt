@@ -1,6 +1,11 @@
 import { test, expect } from "../src/fixtures.js";
-import { expectHeaderContains, expectJsonStatus, expectStatus } from "../../_shared/http.js";
-import { expectPrometheusExposition } from "../src/assertions.js";
+import {
+	expectHeaderContains,
+	expectJsonStatus,
+	expectPrometheusText,
+	expectStatus,
+} from "../../_shared/http.js";
+import { expectExpositionLines } from "../src/assertions.js";
 import { healthLiveSchema, healthReadySchema } from "../src/schemas.js";
 
 /**
@@ -70,25 +75,39 @@ test.describe("health probes", () => {
 });
 
 test.describe("metrics", () => {
-	test("GET /metrics answers 200 text/plain with a currently-mute exporter @smoke @contract", async ({
+	test("GET /metrics publishes the families this service owes @smoke @contract", async ({
 		api,
 	}) => {
 		// Port of 02-metrics-shape.hurl, which asserted 200 + text/plain and
-		// stopped there because recap-worker's exporter is currently mute. The
-		// reason is a real registry-binding bug, spelled out in
-		// src/assertions.ts — `_shared/http.ts`'s `expectPrometheusText` would
-		// fail here.
+		// stopped there because recap-worker's exporter was mute: it gathered
+		// the process-wide default registry while every instrument was
+		// registered into one the service owned. The endpoint answered 200 with
+		// an empty body, so the scrape succeeded and the dashboards stayed
+		// blank.
 		//
-		// The title says "mute" because that is what this proves. A per-line
-		// exposition regex reads like a strengthening over the Hurl scenario,
-		// but with an empty body it never runs a single iteration, so the
-		// emptiness itself is asserted: it is the observable consequence of the
-		// bug, and it fails loudly the day the exporter starts publishing —
-		// which is when the family-name assertion becomes possible.
+		// The families are named rather than counted. A count passes against
+		// any exporter that publishes something, and the failure mode worth
+		// catching is narrower than "publishes nothing": an instrument moved to
+		// a second registry, or a module dropped from the build, takes its own
+		// family with it and leaves the rest of the exposition intact.
+		//
+		// The two relay gauges lead the list because they are read from outside
+		// this service — observability/prometheus/rules/push-delivery-alerts.yml
+		// names recap-worker as a source for them, and an alert whose guard
+		// evaluates over an absent series does not fire.
 		const response = await api.get("/metrics");
-		await expectStatus(response, 200);
 		expectHeaderContains(response, "Content-Type", "text/plain");
-		expectPrometheusExposition(await response.text(), response.url());
+		const body = await expectPrometheusText(response, [
+			"notification_outbox_last_tick_timestamp_seconds",
+			"notification_outbox_oldest_pending_age_seconds",
+			"recap_jobs_completed_total",
+			"recap_jobs_failed_total",
+			"recap_articles_fetched_total",
+			"recap_clusters_created_total",
+			"recap_summaries_generated_total",
+			"recap_active_jobs",
+		]);
+		expectExpositionLines(body, response.url());
 	});
 
 	test("GET /metrics ignores a caller credential rather than rejecting it @authz", async ({

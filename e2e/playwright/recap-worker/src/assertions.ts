@@ -7,10 +7,10 @@ import { jobStatsSchema } from "./schemas.js";
 /**
  * Assertions specific to an axum service, and to this one's pipeline lock.
  *
- * `_shared/` has `expectProcedureMounted` for Connect-RPC and
- * `expectPrometheusText` for a working exporter. recap-worker needs neither
- * shape — it speaks plain REST and its exporter is currently mute — so the two
- * equivalents live here. Both are candidates for `_shared/` once a second
+ * `_shared/` has `expectProcedureMounted` for Connect-RPC, which this service
+ * has no use for — it speaks plain REST — so the axum equivalent lives here,
+ * alongside a per-line exposition check that `expectPrometheusText` composes
+ * with rather than replaces. Both are candidates for `_shared/` once a second
  * axum suite wants them; see this suite's README.
  */
 
@@ -69,30 +69,26 @@ export async function expectRouteMounted(
 const EXPOSITION_LINE = /^(#|[a-zA-Z_:][a-zA-Z0-9_:]*(\{.*\})?\s)/;
 
 /**
- * Asserts `/metrics` serves an exposition body that is **currently empty**,
- * and that every line it does serve is valid exposition.
+ * Asserts every line of an exposition body is well-formed.
  *
- * `_shared/http.ts`'s `expectPrometheusText` demands a `# HELP` line, which is
- * the right assertion for a service whose exporter works. recap-worker's does
- * not, and the reason is a real, known bug rather than a gap in this suite:
- * `Metrics::new` registers all sixty-odd families into a freshly constructed
- * `Registry` (observability/metrics.rs:68+, observability.rs:22-23), while
- * `Telemetry::render_prometheus` encodes `prometheus::gather()` — the
- * process-wide *default* registry, which nothing in this service ever writes
- * to (observability.rs:65-71). The `prometheus` dependency is declared
- * `default-features = false` (Cargo.toml:88), so not even the crate's own
- * process collector lands there. The endpoint answers 200 with the empty
- * string, and every recap dashboard stays blank while the scrape reports
- * success.
+ * This is the strictness `_shared/http.ts`'s `expectPrometheusText` does not
+ * carry: that helper answers "is this service publishing the families it owes"
+ * and stops there, which is the right question and not the only one. A body
+ * that mixes exposition with a stray log line, a panic message or a truncated
+ * chunk still contains the families, still contains `# HELP`, and is still
+ * rejected by every scraper — silently, because a scrape parse failure is not
+ * an HTTP failure.
  *
- * That makes the per-line check below vacuous today — `"".split("\n")` is one
- * empty entry, the loop `continue`s, and the regex never runs. So the line
- * count is asserted rather than assumed: the emptiness is the observable
- * consequence of the bug, and pinning it turns "this test quietly checks
- * nothing" into a tripwire that fails the moment the registry binding is
- * fixed, pointing at the assertion that should replace it.
+ * It became worth running when the exporter started publishing. Until then it
+ * guarded an empty body: `"".split("\n")` is one empty entry, the loop
+ * `continue`d, and the regex never executed once. The assertion that stood in
+ * its place pinned the emptiness itself — the observable consequence of
+ * `render_prometheus` encoding the process-wide default registry while
+ * `Metrics::new` registered into one it owned — so that fixing the binding
+ * would fail this suite loudly rather than leave a vacuous check passing.
+ * That is what happened, and this is the assertion it asked for.
  */
-export function expectPrometheusExposition(body: string, url: string): void {
+export function expectExpositionLines(body: string, url: string): void {
 	expect(
 		body.startsWith("{"),
 		`${url} served a JSON body, which means the handler fell through to an ` +
@@ -100,21 +96,19 @@ export function expectPrometheusExposition(body: string, url: string): void {
 	).toBe(false);
 
 	const lines = body.split("\n").filter((line) => line.trim() !== "");
+
+	expect(
+		lines.length,
+		`${url} served an empty exposition. The exporter is mute, which is a 200 ` +
+			`with blank dashboards behind it: check that Telemetry still gathers the ` +
+			`registry Metrics::new registers into, rather than prometheus::gather().`,
+	).toBeGreaterThan(0);
+
 	for (const line of lines) {
 		expect(line, `${url} served a line that is not Prometheus exposition`).toMatch(
 			EXPOSITION_LINE,
 		);
 	}
-
-	expect(
-		lines.length,
-		`${url} published ${lines.length} metric line(s). recap-worker's exporter is ` +
-			`mute by construction (observability.rs:67 gathers the default registry while ` +
-			`observability.rs:22 registers into a private one), so this is either that bug ` +
-			`fixed — in which case replace this call with _shared/http.ts's ` +
-			`expectPrometheusText and name the families recap-worker must publish — or a ` +
-			`second exporter writing to the default registry.\n${body.slice(0, 300)}`,
-	).toBe(0);
 }
 
 // ---------------------------------------------------------------------------

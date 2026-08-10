@@ -83,6 +83,26 @@ impl Telemetry {
 mod tests {
     use super::*;
 
+    /// The families the E2E suite names in
+    /// `e2e/playwright/recap-worker/tests/health.spec.ts`.
+    ///
+    /// Duplicated here on purpose. The E2E assertion is the one that binds the
+    /// deployed container, but it needs a built image and a running stack to
+    /// say so; this one fails in seconds on a rename, which is when the rename
+    /// is cheap to reconsider. The two relay gauges are read from outside this
+    /// service altogether — push-delivery-alerts.yml names recap-worker as a
+    /// source, and an alert guard over an absent series does not fire.
+    const PUBLISHED_FAMILIES: [&str; 8] = [
+        "notification_outbox_last_tick_timestamp_seconds",
+        "notification_outbox_oldest_pending_age_seconds",
+        "recap_jobs_completed_total",
+        "recap_jobs_failed_total",
+        "recap_articles_fetched_total",
+        "recap_clusters_created_total",
+        "recap_summaries_generated_total",
+        "recap_active_jobs",
+    ];
+
     /// The instruments are registered into a registry this struct owns, so
     /// rendering has to read that registry. Reading the crate-global default
     /// one instead returns an exposition that parses, scrapes and alerts
@@ -100,14 +120,12 @@ mod tests {
 
         let rendered = telemetry.render_prometheus();
 
-        assert!(
-            rendered.contains("notification_outbox_oldest_pending_age_seconds"),
-            "the relay gauge the push alerts guard on must be exposed, got:\n{rendered}"
-        );
-        assert!(
-            rendered.contains("notification_outbox_last_tick_timestamp_seconds"),
-            "the relay liveness gauge must be exposed, got:\n{rendered}"
-        );
+        for family in PUBLISHED_FAMILIES {
+            assert!(
+                rendered.contains(family),
+                "{family} is named by the E2E metrics contract but is not in the exposition:\n{rendered}"
+            );
+        }
     }
 
     /// Every instrument, not just the two the push alerts need. A partial
