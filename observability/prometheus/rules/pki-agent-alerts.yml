@@ -59,15 +59,56 @@ groups:
             Renewal attempts are failing and no success in the last 15m.
             Check step-ca health and the provisioner allowlist.
 
-      # TICKET: pki-agent process not reachable by Prometheus.
+      # PAGE: pki-agent process not reachable by Prometheus. This was a ticket
+      # until 2026-08-10, when a swept sidecar took seven hours to notice. The
+      # two expiry alerts above cannot cover this case — they read metrics the
+      # deleted container was the only source of — so this is the one that
+      # catches it, and a cert-rotation outage does not deserve a ticket.
       - alert: PkiAgentDown
         expr: up{job="pki-agent"} == 0
         for: 5m
         labels:
-          severity: ticket
+          severity: page
           stack: mtls
         annotations:
           summary: "pki-agent-{{ $labels.subject }} Prometheus scrape failing"
           description: |
-            /metrics scrape failed for pki-agent-{{ $labels.subject }}.
-            Container may be down or network policy changed.
+            /metrics scrape failed for pki-agent-{{ $labels.subject }}. With static
+            targets a deleted container reports up=0 rather than vanishing,
+            so this is the alert that catches a swept sidecar.
+            Runbook: docs/runbooks/pki-agent-recovery.md
+
+      # PAGE: the target list itself shrank. Every alert above is per-subject,
+      # so a target dropped from prometheus.yml takes that subject's coverage
+      # with it and nothing complains. Only a count sees this.
+      - alert: PkiAgentFleetIncomplete
+        expr: count(up{job="pki-agent"}) < 14
+        for: 10m
+        labels:
+          severity: page
+          stack: mtls
+        annotations:
+          summary: "pki-agent fleet is short: {{ $value }} of 14 sidecars scraped"
+          description: |
+            compose/pki.yaml defines 14 pki-agent sidecars but Prometheus is
+            scraping fewer. A target missing from prometheus.yml silences
+            every per-subject cert alert for that subject.
+            Runbook: docs/runbooks/pki-agent-recovery.md
+
+      # PAGE: the metric family is gone entirely. Every expiry alert here is
+      # expression-based on a timeseries, which means their silence is
+      # indistinguishable between "all certs healthy" and "there is nothing
+      # left to measure". Ask the absence question explicitly.
+      - alert: PkiAgentMetricsAbsent
+        expr: absent_over_time(pki_agent_healthy[10m])
+        for: 5m
+        labels:
+          severity: page
+          stack: mtls
+        annotations:
+          summary: "pki_agent_healthy has reported nothing for 10m"
+          description: |
+            No pki_agent_healthy series at all. Every cert-expiry alert is
+            expression-based on this metric, so their silence is not
+            evidence of health.
+            Runbook: docs/runbooks/pki-agent-recovery.md

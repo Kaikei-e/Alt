@@ -1,0 +1,184 @@
+# promtool unit tests for the pki-agent cert-lifecycle alerts.
+#
+#   docker exec alt-prometheus-1 promtool test rules \
+#     /etc/prometheus/tests/pki-agent-alerts_test.yml
+#
+# Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
+# test file parsed as a rule group is a fatal config error, not a skip.
+#
+# These pin the three gaps that let a deleted sidecar go unnoticed for seven
+# hours: a scrape failure that only raised a ticket, a target list that can
+# shrink without anyone noticing, and expiry alerts whose expressions need the
+# very timeseries that a deleted container takes with it.
+
+rule_files:
+  - ../rules/pki-agent-alerts.yml
+
+evaluation_interval: 30s
+
+tests:
+  # A deleted container keeps its static target, so up flips to 0 rather than
+  # disappearing. This is what actually happened; it must page, not ticket.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="pki-agent",service="pki-agent",subject="alt-data-hub"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PkiAgentDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: pki-agent
+              service: pki-agent
+              subject: alt-data-hub
+            exp_annotations:
+              summary: "pki-agent-alt-data-hub Prometheus scrape failing"
+              description: |
+                /metrics scrape failed for pki-agent-alt-data-hub. With static
+                targets a deleted container reports up=0 rather than vanishing,
+                so this is the alert that catches a swept sidecar.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # The fleet is 14 sidecars. If a target is dropped from prometheus.yml the
+  # per-target alerts above go quiet with it — only a count notices.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s01"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s02"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s03"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s04"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s05"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s06"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s07"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s08"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s09"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s10"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s11"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s12"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s13"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: PkiAgentFleetIncomplete
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "pki-agent fleet is short: 13 of 14 sidecars scraped"
+              description: |
+                compose/pki.yaml defines 14 pki-agent sidecars but Prometheus is
+                scraping fewer. A target missing from prometheus.yml silences
+                every per-subject cert alert for that subject.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # All 14 present and up: nothing fires.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s01"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s02"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s03"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s04"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s05"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s06"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s07"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s08"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s09"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s10"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s11"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s12"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s13"}'
+        values: '1x30'
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s14"}'
+        values: '1x30'
+      - series: 'pki_agent_healthy{subject="s01"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: PkiAgentFleetIncomplete
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: PkiAgentDown
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: PkiAgentMetricsAbsent
+        exp_alerts: []
+
+  # Total blackout: the metric family is gone entirely (job renamed, network
+  # partition, every sidecar swept). The expiry alerts cannot fire here because
+  # their expressions need the series that just vanished.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="pki-agent",service="pki-agent",subject="s01"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: PkiAgentMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "pki_agent_healthy has reported nothing for 10m"
+              description: |
+                No pki_agent_healthy series at all. Every cert-expiry alert is
+                expression-based on this metric, so their silence is not
+                evidence of health.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      # The expiry alerts are structurally blind here — assert that, so nobody
+      # mistakes their silence for a healthy fleet.
+      - eval_time: 16m
+        alertname: PkiAgentCertExpired
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: PkiAgentCertExpirySoon
+        exp_alerts: []
+
+  # Expiry alerts still work when the series is present.
+  - interval: 30s
+    input_series:
+      - series: 'pki_agent_cert_remaining_seconds{subject="alt-backend"}'
+        values: '3599x30'
+      - series: 'pki_agent_healthy{subject="alt-backend"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: PkiAgentCertExpirySoon
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              subject: alt-backend
+            exp_annotations:
+              summary: "alt-backend mTLS cert expires in under 4h"
+              description: |
+                pki-agent-alt-backend reports only
+                3.599ks left on the leaf certificate.
+                Check: docker logs alt-pki-agent-alt-backend-1
+                Runbook: docs/runbooks/pki-agent-recovery.md
