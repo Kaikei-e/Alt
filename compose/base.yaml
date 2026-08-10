@@ -79,6 +79,15 @@ secrets:
     file: ../secrets/pact_db_password.txt
   internal_auth_token:
     file: ../secrets/internal_auth_token.txt
+  # Pushover delivery credentials for Alertmanager. Two values, not one, and
+  # not interchangeable: the token identifies the application, the user key
+  # identifies the destination device set. Both are read from these files at
+  # notify time (pushover_config's user_key_file / token_file) so neither ever
+  # appears in alertmanager.yml or in the container environment.
+  pushover_user_key:
+    file: ../secrets/pushover_user_key.txt
+  pushover_token:
+    file: ../secrets/pushover_token.txt
 
 networks:
   alt-network:
@@ -95,6 +104,9 @@ volumes:
   oauth_token_data:
   prometheus_data:
   grafana_data:
+  # Alertmanager's silences and notification log. Losing it means a restart
+  # re-notifies every firing alert and forgets every active silence.
+  alertmanager_data:
   pre_processor_db_data:
   redis-streams-data:
   step_ca_data:

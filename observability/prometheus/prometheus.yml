@@ -11,6 +11,17 @@ global:
 rule_files:
   - /etc/prometheus/rules/*.yml
 
+# Where evaluated alerts are delivered. Without this block every rule in
+# rule_files is still evaluated and still shows as "firing" in the Prometheus
+# UI, but goes nowhere — which is exactly how the mTLS expiry outage of
+# 2026-08-10 ran for seven hours with three `severity: page` rules active.
+# Notification routing, grouping and inhibition live in
+# observability/alertmanager/alertmanager.yml, not here.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
 scrape_configs:
   # Self-monitoring
   - job_name: 'prometheus'
@@ -149,29 +160,65 @@ scrape_configs:
 
   # pki-agent sidecars: one per east-west service. Expose cert expiry and
   # rotation outcomes so cert-lifecycle regressions (like the 2026-04-15
-  # Knowledge Home outage) are paged before they go dark.
+  # Knowledge Home outage and its 2026-08-10 repeat) are paged before they go
+  # dark.
+  #
+  # compose/pki.yaml defines exactly 14 sidecars, and they come in two
+  # networking shapes. Keep this list at 14 — PkiAgentFleetIncomplete asserts
+  # count(up{job="pki-agent"}) >= 14 precisely because a target dropped from
+  # here silences every per-subject cert alert for that subject without any
+  # other signal.
+  #
+  #   Pattern A — the sidecar joins `alt-network` on its own. It gets its own
+  #   Docker DNS name, so the target is `pki-agent-<subject>:9510`.
+  #
+  #   Pattern B — the sidecar declares `network_mode: "service:<parent>"` and
+  #   `networks: !override []`, because it also runs the mTLS reverse proxy
+  #   that fronts the parent on :9443. Sharing the parent's netns is what lets
+  #   the proxy reach the parent over 127.0.0.1, but it also means the sidecar
+  #   HAS NO DNS NAME OF ITS OWN: `pki-agent-<subject>` does not resolve, and
+  #   Docker's embedded resolver answers NXDOMAIN. The sidecar's :9510 listener
+  #   lives in the PARENT's network namespace, so the correct scrape target is
+  #   the PARENT service name — `<parent>:9510`. This is not a typo and must
+  #   not be "fixed" to `pki-agent-<subject>:9510`: doing so is what left
+  #   tag-generator and acolyte-orchestrator with a permanently firing
+  #   PkiAgentDown from 2026-08-09, i.e. no cert monitoring at all for them.
+  #   The `subject` label below is authoritative for which agent a series
+  #   belongs to; the address is only how we reach it.
   - job_name: 'pki-agent'
     static_configs:
+      # --- Pattern A: sidecar has its own alt-network identity -------------
       - targets: ['pki-agent-alt-backend:9510']
         labels: { service: 'pki-agent', subject: 'alt-backend' }
       - targets: ['pki-agent-alt-harvester:9510']
         labels: { service: 'pki-agent', subject: 'alt-harvester' }
+      - targets: ['pki-agent-alt-notifier:9510']
+        labels: { service: 'pki-agent', subject: 'alt-notifier' }
       - targets: ['pki-agent-alt-data-hub:9510']
         labels: { service: 'pki-agent', subject: 'alt-data-hub' }
       - targets: ['pki-agent-alt-butterfly-facade:9510']
         labels: { service: 'pki-agent', subject: 'alt-butterfly-facade' }
+      - targets: ['pki-agent-rag-orchestrator:9510']
+        labels: { service: 'pki-agent', subject: 'rag-orchestrator' }
       - targets: ['pki-agent-auth-hub:9510']
         labels: { service: 'pki-agent', subject: 'auth-hub' }
       - targets: ['pki-agent-pre-processor:9510']
         labels: { service: 'pki-agent', subject: 'pre-processor' }
       - targets: ['pki-agent-search-indexer:9510']
         labels: { service: 'pki-agent', subject: 'search-indexer' }
-      - targets: ['pki-agent-tag-generator:9510']
-        labels: { service: 'pki-agent', subject: 'tag-generator' }
       - targets: ['pki-agent-recap-worker:9510']
         labels: { service: 'pki-agent', subject: 'recap-worker' }
-      - targets: ['pki-agent-acolyte-orchestrator:9510']
+      # --- Pattern B: sidecar shares the parent's netns ---------------------
+      # Address is the PARENT service name on purpose. See the block comment
+      # above; `pki-agent-<subject>` does not resolve for these four.
+      - targets: ['tag-generator:9510']
+        labels: { service: 'pki-agent', subject: 'tag-generator' }
+      - targets: ['acolyte-orchestrator:9510']
         labels: { service: 'pki-agent', subject: 'acolyte-orchestrator' }
+      - targets: ['recap-subworker:9510']
+        labels: { service: 'pki-agent', subject: 'recap-subworker' }
+      - targets: ['news-creator:9510']
+        labels: { service: 'pki-agent', subject: 'news-creator' }
     scrape_interval: 30s
     metrics_path: /metrics
 

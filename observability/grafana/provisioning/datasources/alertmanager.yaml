@@ -1,0 +1,25 @@
+apiVersion: 1
+
+# Alt has two alert engines: 31 Prometheus rules in
+# observability/prometheus/rules/, and 27 Grafana-managed rules in
+# ../alerting/ (most of them ClickHouse-backed, which Prometheus cannot
+# evaluate). Pointing Grafana's own alerting at this Alertmanager instead of
+# its built-in notifier gives both engines one set of routes, one silence
+# list, and one inhibition ruleset — silencing a subject during maintenance
+# should not require remembering which engine produced the page.
+datasources:
+  - name: Alertmanager
+    type: alertmanager
+    uid: DS_ALERTMANAGER
+    access: proxy
+    url: http://alertmanager:9093
+    isDefault: false
+    jsonData:
+      implementation: prometheus
+      # This is the switch that makes the consolidation real: with it, rules
+      # in ../alerting/ deliver through Alertmanager rather than Grafana's
+      # embedded notifier. Grafana must additionally be configured to use
+      # this as its alertmanager (Administration > Alerting > choose
+      # Alertmanager); the flag here is what makes it eligible.
+      handleGrafanaManagedAlerts: true
+    editable: false

@@ -53,6 +53,50 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Alertmanager: routes what Prometheus evaluates to somewhere a human sees.
+  # Prometheus is not given a `depends_on` for this — it retries the
+  # alertmanagers endpoint on its own, and gating the metrics store on the
+  # notifier would make a notifier outage a monitoring outage.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    mem_limit: 128m
+    # Loopback-only, same reasoning as prometheus above: the API is
+    # unauthenticated and POST /api/v2/silences can mute every page in the
+    # platform. Prometheus reaches it as `alertmanager:9093` over
+    # alt-network, so nothing depends on the host publication.
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      # Holds silences and the notification log. Without persistence a restart
+      # re-sends every active alert and silently drops in-flight silences.
+      - alertmanager_data:/alertmanager
+      - ../observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      # Pinned rather than left to default: the default is derived from the
+      # container hostname, which then rides along in every notification URL.
+      - '--web.external-url=http://localhost:9093'
+    secrets:
+      - pushover_user_key
+      - pushover_token
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - rask.group=observability
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   grafana:
     image: grafana/grafana:11.4.0
     restart: unless-stopped

@@ -1,0 +1,171 @@
+# Alertmanager configuration for the Alt platform.
+#
+# Alt has 31 Prometheus alerting rules, 16 of them `severity: page` or
+# `critical`. Until this file existed they were evaluated and then discarded:
+# `prometheus.yml` had no `alerting:` block and no alertmanager service was
+# running, so a firing page was visible only to whoever happened to open the
+# Prometheus UI. That is how the 2026-08-10 mTLS expiry outage ran for seven
+# hours with three page-severity rules firing the whole time.
+#
+# Delivery is Pushover. The reason is specific and not interchangeable with a
+# chat webhook: Pushover's Emergency priority (2) bypasses the phone's silent
+# and do-not-disturb modes and keeps re-alerting until a human acknowledges
+# it. Alt is operated by one person, so an alert that lands in a chat channel
+# overnight is an alert that is read the next morning. Slack and Discord have
+# no equivalent — their notification level is a client-side user preference,
+# not something the sender can escalate.
+#
+# Credentials are never in this file. `user_key_file` / `token_file` read
+# Docker secrets at notify time (Alertmanager >= v0.27.0).
+
+global:
+  # An alert stops being re-sent by Prometheus when it resolves; this is the
+  # fallback for when Prometheus itself goes away mid-alert. Kept longer than
+  # the 30s pki-agent scrape interval by a wide margin so a slow scrape cycle
+  # never manufactures a spurious "resolved".
+  resolve_timeout: 10m
+
+route:
+  # Root receiver is the non-emergency one on purpose. An alert that reaches
+  # the root has no severity we recognise, and "unknown severity" is not
+  # grounds for overriding a sleeping operator's do-not-disturb. Anything that
+  # genuinely needs to wake someone declares `severity: page` and matches the
+  # sub-route below.
+  receiver: pushover-ticket
+
+  # Grouping axis. `subject` is in here because pki-agent alerts are
+  # per-sidecar and the subject is the entire actionable content of the
+  # notification — collapsing 14 subjects into one group would produce
+  # "PkiAgentCertExpirySoon (14)" with no indication of which certs.
+  # The cost is that a fleet-wide event is 14 notifications rather than one;
+  # the inhibit_rules at the bottom are what keeps that cost bounded, and they
+  # are load-bearing rather than cosmetic.
+  group_by: ['alertname', 'stack', 'subject']
+
+  # Single operator, no follow-the-sun rotation. Values are chosen so that a
+  # real incident arrives fast and a flapping one does not become background
+  # noise that gets muted wholesale.
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # Wake-the-operator tier. `critical` is included because
+    # KnowledgeLoopCrossUserIsolationViolation uses it and is strictly more
+    # severe than anything labelled `page`.
+    - matchers:
+        - severity=~"page|critical"
+      receiver: pushover-page
+      group_wait: 30s
+      group_interval: 5m
+      # Pushover's own retry/expire loop (see the receiver) already re-alerts
+      # every minute for an hour until acknowledged, so this only governs
+      # re-notification after that window has lapsed and the condition is
+      # still true.
+      repeat_interval: 4h
+
+    # Read-it-when-you-get-to-it tier.
+    - matchers:
+        - severity=~"warning|ticket"
+      receiver: pushover-ticket
+      group_wait: 5m
+      group_interval: 30m
+      repeat_interval: 24h
+
+receivers:
+  - name: pushover-page
+    pushover_configs:
+      - user_key_file: /run/secrets/pushover_user_key
+        token_file: /run/secrets/pushover_token
+        send_resolved: true
+
+        # priority / retry / expire are deliberately left unset.
+        #
+        # Alertmanager's default priority is the template
+        #   {{ if eq .Status "firing" }}2{{ else }}0{{ end }}
+        # which is exactly the intended behaviour: Emergency (2) while
+        # firing, Normal (0) on resolve — so the "all clear" does not itself
+        # break do-not-disturb. The defaults for retry (1m) and expire (1h)
+        # are the re-alert cadence Pushover requires for priority 2 and are
+        # already the right shape for a single operator: keep buzzing every
+        # minute for an hour, then stop and let repeat_interval take over.
+        #
+        # Writing these out explicitly would pin us to today's defaults while
+        # looking like a considered override. They are recorded here instead.
+
+        title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}{{ if .CommonLabels.subject }} — {{ .CommonLabels.subject }}{{ end }}'
+        message: |-
+          {{ if gt (len .Alerts.Firing) 0 }}{{ len .Alerts.Firing }} firing{{ end }}{{ if gt (len .Alerts.Resolved) 0 }} {{ len .Alerts.Resolved }} resolved{{ end }}
+          {{ range .Alerts -}}
+          {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end -}}
+
+  - name: pushover-ticket
+    pushover_configs:
+      - user_key_file: /run/secrets/pushover_user_key
+        token_file: /run/secrets/pushover_token
+        send_resolved: false
+
+        # Explicit here, unlike the page receiver: the default would escalate
+        # a warning to Emergency while firing. Normal priority (0) is audible
+        # but honours the phone's quiet hours, which is the whole distinction
+        # between this tier and the one above.
+        priority: '0'
+
+        title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}{{ if .CommonLabels.subject }} — {{ .CommonLabels.subject }}{{ end }}'
+        message: |-
+          {{ len .Alerts }} alert(s)
+          {{ range .Alerts -}}
+          {{ .Annotations.summary }}
+          {{ end -}}
+
+inhibit_rules:
+  # --- pki-agent: collapse the fleet-wide failure modes ---------------------
+  #
+  # These two rules are the reason group_by can afford to include `subject`.
+  # The pki-agent alert set is deliberately layered — per-subject expiry, a
+  # per-subject scrape check, a fleet count, and an absence check — so that no
+  # single failure is silent. The flip side is that one root cause lights up
+  # every layer at once: the 2026-08-10 incident would have delivered five
+  # subjects x two expiry alerts plus a fleet-count alert as separate
+  # emergency notifications, and an operator being buzzed a dozen times learns
+  # to dismiss the channel rather than read it.
+
+  # 1. `pki_agent_healthy` has reported nothing at all. Every per-subject cert
+  #    alert is an expression over series from that same metric family, so
+  #    while this fires those alerts carry no independent information — their
+  #    firing or not firing is an artefact of what happens to still be in the
+  #    TSDB, which is precisely the ambiguity PkiAgentMetricsAbsent exists to
+  #    resolve.
+  - source_matchers:
+      - alertname="PkiAgentMetricsAbsent"
+    target_matchers:
+      - alertname=~"PkiAgentCertExpirySoon|PkiAgentCertExpired|PkiAgentRenewalFailing|PkiAgentDown|PkiAgentFleetIncomplete"
+    # PkiAgentMetricsAbsent comes from absent_over_time() and so carries only
+    # the rule's own labels (severity, stack) — there is no subject to match
+    # on. `stack` is what scopes the suppression to the mTLS alert family
+    # instead of the whole platform.
+    equal: ['stack']
+
+  # 2. A subject's sidecar is unreachable. Its cert gauges are then stale by
+  #    definition, and any expiry alert for that subject is reporting the last
+  #    value scraped before the container went away — not the current state of
+  #    the certificate. PkiAgentDown is the actionable one; the expiry alerts
+  #    for that subject are its shadow.
+  - source_matchers:
+      - alertname="PkiAgentDown"
+    target_matchers:
+      - alertname=~"PkiAgentCertExpirySoon|PkiAgentCertExpired"
+    equal: ['subject']
+
+  # --- generic severity ladder ---------------------------------------------
+  #
+  # A page and a warning describing the same condition should not both be
+  # delivered. Scoped by alertname as well as the grouping labels so this
+  # cannot silently suppress an unrelated warning that merely shares a stack.
+  - source_matchers:
+      - severity=~"page|critical"
+    target_matchers:
+      - severity=~"warning|ticket"
+    equal: ['alertname', 'stack', 'subject']
