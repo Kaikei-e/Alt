@@ -53,8 +53,18 @@ func allKindsOn() domain.NotificationPreferences {
 	}
 }
 
+// enqueueFor builds an enqueue that is due now and not yet expired.
+//
+// Both properties are relative to the run rather than to a calendar date, and
+// that is the point: expires_at is a deadline the claim query enforces, so a
+// fixed date makes every claiming test pass until that instant and fail for
+// good afterwards. This fixture was written with a date one day out and the
+// suite went red on its own, hours after the last commit that touched it.
+//
+// Truncated to Postgres's microsecond resolution so the round-trip assertions
+// compare a value the column can actually hold.
 func enqueueFor(userID, kind string, payload []byte) domain.NotificationEnqueue {
-	occurred := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+	occurred := time.Now().UTC().Add(-time.Hour).Truncate(time.Microsecond)
 	return domain.NotificationEnqueue{
 		DedupeKey:  kind + ":" + uuid.NewString(),
 		UserID:     userID,
