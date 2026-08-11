@@ -240,6 +240,15 @@ jobs:
             test-path: ./internal/handler/contract/
             sparse-checkout: alt-butterfly-facade
             pact-dir: pacts
+          # altctl's operator surface against knowledge-sovereign. Its provider
+          # leg verifies with FailIfNoPactsFound, so a consumer absent from this
+          # matrix does not skip — the Broker holds nothing for it and the
+          # verification fails. Only the committed snapshot under altctl/pacts/
+          # existed, and nothing published it.
+          - service: altctl
+            test-path: ./internal/sovereignclient/contract/
+            sparse-checkout: altctl
+            pact-dir: altctl/pacts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
