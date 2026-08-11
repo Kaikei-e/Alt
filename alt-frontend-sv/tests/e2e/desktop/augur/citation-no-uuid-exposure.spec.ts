@@ -11,6 +11,7 @@ import { expect, test } from "../../fixtures/pomFixtures";
 test.describe("Augur Citation UUID Exposure", () => {
 	const conversationId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 	const articleRefId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+	const articleTitle = "Love me, love my bruised ego | The Guardian";
 	const isoTimestamp = "2023-11-14T22:13:20Z";
 
 	test("UUID-only Title falls back to URL domain, never the raw UUID", async ({
@@ -112,5 +113,56 @@ test.describe("Augur Citation UUID Exposure", () => {
 				hasText: "Untitled source",
 			}),
 		).toBeVisible();
+	});
+
+	test("An article-scoped question shows the article, not its id", async ({
+		page,
+	}) => {
+		// The wire format rag-orchestrator parses to scope retrieval
+		// (query_intent.go). It reaches the reader through the stored turn and
+		// through the conversation title, which is that turn verbatim.
+		const scopedTurn = `Regarding the article: ${articleTitle} [articleId: ${articleRefId}]\n\nQuestion:\n3行でまとめると？`;
+
+		await page.route(
+			"**/api/v2/alt.augur.v2.AugurService/GetConversation",
+			(route) =>
+				route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						id: conversationId,
+						title: `Regarding the article: ${articleTitle} [articleId: ${articleRefId}] Question: 3行でまとめると？`,
+						createdAt: isoTimestamp,
+						messages: [
+							{
+								role: "user",
+								content: scopedTurn,
+								createdAt: isoTimestamp,
+								citations: [],
+								relatedCitations: [],
+							},
+							{
+								role: "assistant",
+								content: "Three lines, as asked.",
+								createdAt: isoTimestamp,
+								citations: [],
+								relatedCitations: [],
+							},
+						],
+					}),
+				}),
+		);
+
+		await page.goto(`/augur/${conversationId}`);
+
+		const question = page.locator(".entry-question").first();
+		await expect(question).toBeVisible();
+		await expect(question).toHaveText("3行でまとめると？");
+
+		await expect(page.getByTestId("article-scope-card")).toContainText(
+			articleTitle,
+		);
+		await expect(page.locator("body")).not.toContainText(articleRefId);
+		await expect(page.locator("body")).not.toContainText("articleId");
 	});
 });
