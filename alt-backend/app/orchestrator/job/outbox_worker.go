@@ -125,9 +125,9 @@ func initOutboxMetrics() {
 	outboxMeterOnce.Do(func() {
 		meter := otel.Meter("alt-harvester.outbox-worker")
 		outboxProcessedCounter, _ = meter.Int64Counter("alt_harvester_outbox_events_processed_total",
-			metric.WithDescription("ARTICLE_UPSERT outbox events successfully delivered to RAG"))
+			metric.WithDescription("ARTICLE_UPSERT outbox events successfully delivered to RAG and knowledge-sovereign ArticleCreated"))
 		outboxRetriedCounter, _ = meter.Int64Counter("alt_harvester_outbox_events_retried_total",
-			metric.WithDescription("Outbox events released back to PENDING after a transient RAG upsert failure"))
+			metric.WithDescription("Outbox events released back to PENDING after a transient RAG upsert or ArticleCreated append failure"))
 		outboxFailedCounter, _ = meter.Int64Counter("alt_harvester_outbox_events_failed_total",
 			metric.WithDescription("Outbox events marked terminally FAILED, labeled by reason"))
 		outboxReleaseFailedCounter, _ = meter.Int64Counter("alt_harvester_outbox_events_release_failed_total",
@@ -201,15 +201,40 @@ func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegrat
 			// path.
 			if err := ragIntegration.UpsertArticle(ctx, upsertInput); err != nil {
 				handleUpsertFailure(ctx, repo, retries, event.ID, err)
-			} else {
-				retries.clear(event.ID)
-				logger.Logger.InfoContext(ctx, "Successfully processed outbox event", "event_id", event.ID)
-				markProcessed(ctx, repo, event.ID, domain.OutboxProcessed, "")
-				outboxProcessedCounter.Add(ctx, 1)
+				// Knowledge Home must not wait on RAG success (ADR-000578):
+				// still attempt ArticleCreated. Emit failure on this branch
+				// cannot reopen a terminally FAILED row — orphan repair
+				// covers that case. On a transient RAG release the next
+				// tick retries both side effects (ArticleCreated is
+				// dedupe-safe).
+				if emitErr := emitArticleCreatedEvent(ctx, knowledgeEventPort, event.Payload); emitErr != nil {
+					logger.Logger.ErrorContext(ctx, "ArticleCreated emit failed after RAG upsert failure",
+						"event_id", event.ID, "error", emitErr)
+				}
+				continue
 			}
 
-			// Fire-and-forget: emit Knowledge Home ArticleCreated event (idempotent via dedupe_key)
-			emitArticleCreatedEvent(ctx, knowledgeEventPort, event.Payload)
+			// ACK only after both side effects are durable. Marking
+			// PROCESSED before AppendKnowledgeEvent (the previous order)
+			// left PROCESSED outbox rows with no ArticleCreated whenever
+			// sovereign was briefly unavailable — Home rows then arrived
+			// via SummaryVersionCreated with blank title/url and Trail
+			// fell back to article:<uuid>.
+			if err := emitArticleCreatedEvent(ctx, knowledgeEventPort, event.Payload); err != nil {
+				logger.Logger.ErrorContext(ctx, "ArticleCreated emit failed after RAG success; releasing outbox event for retry",
+					"event_id", event.ID, "error", err)
+				if releaseForRetry(ctx, repo, event.ID) {
+					outboxRetriedCounter.Add(ctx, 1)
+				} else {
+					outboxReleaseFailedCounter.Add(ctx, 1)
+				}
+				continue
+			}
+
+			retries.clear(event.ID)
+			logger.Logger.InfoContext(ctx, "Successfully processed outbox event", "event_id", event.ID)
+			markProcessed(ctx, repo, event.ID, domain.OutboxProcessed, "")
+			outboxProcessedCounter.Add(ctx, 1)
 		} else {
 			// An event type this worker was never taught to handle will
 			// never become one it handles by retrying — terminal, same as
@@ -289,7 +314,7 @@ func releaseForRetry(ctx context.Context, repo outboxRepository, id string) bool
 // the Knowledge Home event producer — panicking surfaces that immediately
 // instead of silently dropping every ArticleCreated event (CLAUDE.md rule 8 /
 // ADR-000928 root cause).
-func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.AppendKnowledgeEventPort, payload []byte) {
+func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.AppendKnowledgeEventPort, payload []byte) error {
 	if port == nil {
 		panic("outbox_worker: knowledge_event_port.AppendKnowledgeEventPort is nil — the Knowledge Home ArticleCreated producer must be wired at composition root (see .claude/rules/di-wiring.md)")
 	}
@@ -309,13 +334,15 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 	}
 	if err := json.Unmarshal(payload, &p); err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to unmarshal outbox payload for knowledge event", "error", err)
-		return
+		return fmt.Errorf("unmarshal outbox payload for knowledge event: %w", err)
 	}
 
 	userID, err := uuid.Parse(p.UserID)
 	if err != nil {
 		logger.Logger.WarnContext(ctx, "invalid user_id for knowledge event, skipping", "user_id", p.UserID)
-		return
+		// Invalid user_id is a permanent payload defect: skipping (nil error)
+		// lets the caller ACK rather than retry forever on the same bad row.
+		return nil
 	}
 
 	publishedAt := p.UpdatedAt
@@ -341,7 +368,7 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to marshal knowledge ArticleCreated payload, skipping",
 			"article_id", p.ArticleID, "error", err)
-		return
+		return fmt.Errorf("marshal knowledge ArticleCreated payload: %w", err)
 	}
 
 	kevent := domain.KnowledgeEvent{
@@ -359,9 +386,11 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 	}
 
 	if _, err := port.AppendKnowledgeEvent(ctx, kevent); err != nil {
-		logger.Logger.WarnContext(ctx, "failed to append knowledge ArticleCreated event (non-fatal)",
+		logger.Logger.ErrorContext(ctx, "failed to append knowledge ArticleCreated event",
 			"article_id", p.ArticleID, "error", err)
+		return fmt.Errorf("append knowledge ArticleCreated event: %w", err)
 	}
+	return nil
 }
 
 // markProcessed writes the outbox event's terminal status on a context

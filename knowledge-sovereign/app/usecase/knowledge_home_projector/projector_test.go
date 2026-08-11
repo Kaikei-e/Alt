@@ -260,6 +260,28 @@ func (f *fakeRepo) UpsertKnowledgeHomeItem(_ context.Context, payload json.RawMe
 	if err := json.Unmarshal(payload, &w); err != nil {
 		return fmt.Errorf("fakeRepo.UpsertKnowledgeHomeItem: %w", err)
 	}
+	// Mirror sovereign_db.UpsertKnowledgeHomeItem's merge-safe COALESCE for
+	// string fields: empty incoming title/url/summary must not wipe values
+	// already folded from an earlier event (SummaryVersionCreated → delayed
+	// ArticleCreated is the Trail blank-title failure mode).
+	if existing, ok := f.homeItems[w.ItemKey]; ok {
+		if w.Title == "" {
+			w.Title = existing.Title
+		}
+		if w.URL == "" {
+			w.URL = existing.URL
+		}
+		if w.SummaryExcerpt == "" {
+			w.SummaryExcerpt = existing.SummaryExcerpt
+		}
+		// Mirror GREATEST latch: '' < missing < pending < ready (alphabetical).
+		if existing.SummaryState > w.SummaryState {
+			w.SummaryState = existing.SummaryState
+		}
+		if len(w.Tags) == 0 {
+			w.Tags = existing.Tags
+		}
+	}
 	f.homeItems[w.ItemKey] = w
 	return nil
 }
@@ -607,6 +629,52 @@ func TestProjector_FoldsSummaryVersionCreated_EmptyTextStaysPending(t *testing.T
 	require.True(t, ok)
 	assert.Empty(t, item.SummaryExcerpt)
 	assert.Equal(t, "pending", item.SummaryState, "an empty summary_text must not flip summary_state to ready")
+}
+
+// TestProjector_DelayedArticleCreated_FillsBlankTitleURLAfterSummary pins the
+// merge-safe repair path for the Trail article:<uuid> symptom: when
+// SummaryVersionCreated arrives first (creating a Home row with blank
+// title/url) and ArticleCreated is appended later (outbox emit recovery /
+// orphan repair), title and url must fill in while the summary excerpt is
+// preserved. Without merge-safe COALESCE the delayed ArticleCreated would
+// either wipe the summary or leave the row unnameable.
+func TestProjector_DelayedArticleCreated_FillsBlankTitleURLAfterSummary(t *testing.T) {
+	tenant := uuid.New()
+	user := userPtr()
+	articleID := uuid.New()
+	summaryAt := time.Date(2026, 8, 9, 10, 13, 0, 0, time.UTC)
+	createdAt := summaryAt.Add(2 * time.Hour)
+
+	summaryPayload := mustJSON(t, map[string]any{
+		"summary_version_id": uuid.New().String(),
+		"article_id":         articleID.String(),
+		"summary_text":       "A durable summary that must survive the delayed ArticleCreated fold.",
+	})
+	articlePayload := mustJSON(t, map[string]any{
+		"article_id":   articleID.String(),
+		"title":        "Human-readable Trail title",
+		"url":          "https://example.com/articles/delayed-created",
+		"published_at": createdAt.Format(time.RFC3339),
+		"tenant_id":    tenant.String(),
+	})
+	events := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "SummaryVersionCreated", articleID.String(), summaryAt, tenant, user, summaryPayload),
+		homeEvent(2, "ArticleCreated", articleID.String(), createdAt, tenant, user, articlePayload),
+	}
+	repo := newFakeRepo(events)
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	itemKey := fmt.Sprintf("article:%s", articleID)
+	item, ok := repo.homeItems[itemKey]
+	require.True(t, ok)
+	assert.Equal(t, "Human-readable Trail title", item.Title,
+		"delayed ArticleCreated must fill the blank title left by SummaryVersionCreated")
+	assert.Equal(t, "https://example.com/articles/delayed-created", item.URL,
+		"delayed ArticleCreated must fill the blank url left by SummaryVersionCreated")
+	assert.Equal(t, "A durable summary that must survive the delayed ArticleCreated fold.", item.SummaryExcerpt,
+		"merge-safe upsert must preserve the summary excerpt already folded")
+	assert.Equal(t, "ready", item.SummaryState)
 }
 
 // ── TagSetVersionCreated (design change: no alt-db read) ──

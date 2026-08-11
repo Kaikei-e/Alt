@@ -543,6 +543,69 @@
       }
     },
     {
+      "description": "an AppendKnowledgeEvent request for ArticleCreated with title and url",
+      "providerStates": [
+        {
+          "name": "sovereign accepts ArticleCreated events carrying title and url"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "outbox-worker",
+            "actorType": "service",
+            "aggregateId": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+            "aggregateType": "article",
+            "dedupeKey": "article-created:dddddddd-dddd-dddd-dddd-dddddddddddd",
+            "eventId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "eventType": "ArticleCreated",
+            "occurredAt": "2026-08-09T10:00:00Z",
+            "payload": "eyJhcnRpY2xlX2lkIjoiZGRkZGRkZGQtZGRkZC1kZGRkLWRkZGQtZGRkZGRkZGRkZGRkIiwicHVibGlzaGVkX2F0IjoiMjAyNi0wOC0wOVQxMDowMDowMFoiLCJ0ZW5hbnRfaWQiOiJiYmJiYmJiYi1iYmJiLWJiYmItYmJiYi1iYmJiYmJiYmJiYmIiLCJ0aXRsZSI6IlRyYWlsIG11c3Qgbm90IGZhbGwgYmFjayB0byBhcnRpY2xlIFVVSUQiLCJ1cmwiOiJodHRwczovL2V4YW1wbGUuY29tL2FydGljbGVzL3RyYWlsLXRpdGxlIn0=",
+            "tenantId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            "userId": "cccccccc-cccc-cccc-cccc-cccccccccccc"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "eventSeq": "123"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.eventSeq": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an AppendKnowledgeEvent request for ArticleUrlBackfilled",
       "providerStates": [
         {

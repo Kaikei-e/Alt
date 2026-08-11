@@ -63,7 +63,7 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 			"updated_at": time.Now().Format(time.RFC3339),
 		})
 
-		emitArticleCreatedEvent(context.Background(), stub, payload)
+		require.NoError(t, emitArticleCreatedEvent(context.Background(), stub, payload))
 
 		require.Len(t, stub.events, 1)
 		ev := stub.events[0]
@@ -76,7 +76,7 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 
 	t.Run("panics when port is nil (wiring bug must be loud, not silent)", func(t *testing.T) {
 		assert.Panics(t, func() {
-			emitArticleCreatedEvent(context.Background(), nil, []byte(`{"article_id":"x"}`))
+			_ = emitArticleCreatedEvent(context.Background(), nil, []byte(`{"article_id":"x"}`))
 		})
 	})
 
@@ -89,12 +89,12 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 			"user_id":    "not-a-uuid",
 		})
 
-		emitArticleCreatedEvent(context.Background(), stub, payload)
+		require.NoError(t, emitArticleCreatedEvent(context.Background(), stub, payload))
 
 		assert.Empty(t, stub.events)
 	})
 
-	t.Run("continues on append error", func(t *testing.T) {
+	t.Run("returns append error so the caller can withhold PROCESSED", func(t *testing.T) {
 		stub := &stubKnowledgeEventPort{err: assert.AnError}
 		payload, _ := json.Marshal(map[string]any{
 			"article_id": uuid.New().String(),
@@ -103,10 +103,87 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 			"user_id":    uuid.New().String(),
 		})
 
-		// Should not panic
-		emitArticleCreatedEvent(context.Background(), stub, payload)
+		err := emitArticleCreatedEvent(context.Background(), stub, payload)
+		require.Error(t, err, "append failure must surface so processOutboxEvents can withhold PROCESSED")
 		assert.Len(t, stub.events, 1) // event was attempted
 	})
+}
+
+// successRagIntegration is a RagIntegrationPort that always succeeds UpsertArticle.
+type successRagIntegration struct{}
+
+func (s *successRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string) ([]rag_integration_port.RagContext, error) {
+	return nil, nil
+}
+
+func (s *successRagIntegration) UpsertArticle(_ context.Context, _ rag_integration_port.UpsertArticleInput) error {
+	return nil
+}
+
+func (s *successRagIntegration) Answer(_ context.Context, _ rag_integration_port.AnswerInput) (<-chan string, error) {
+	return nil, nil
+}
+
+// TestProcessOutboxEvents_RagOK_SovereignAppendFails_DoesNotMarkProcessed pins
+// the ACK-before-all-side-effects defect: RAG success used to mark the shared
+// ARTICLE_UPSERT row PROCESSED before emitArticleCreatedEvent ran, and append
+// failures were WARN/non-fatal. The observed Trail article:<uuid> titles came
+// from that silent loss (PROCESSED outbox + no ArticleCreated → blank Home
+// title/url → Trail SQL falls back to item_key).
+func TestProcessOutboxEvents_RagOK_SovereignAppendFails_DoesNotMarkProcessed(t *testing.T) {
+	logger.InitLogger()
+
+	eventID := uuid.New().String()
+	repo := &mockOutboxRepo{events: []domain.OutboxEvent{outboxUpsertEventFixture(eventID)}}
+	rag := &successRagIntegration{}
+	knowledgePort := &stubKnowledgeEventPort{err: fmt.Errorf("sovereign AppendKnowledgeEvent: unavailable")}
+
+	err := processOutboxEvents(context.Background(), repo, rag, knowledgePort, newOutboxRetryTracker())
+	require.NoError(t, err)
+
+	assert.Equal(t, "PENDING", repo.statusOf(eventID),
+		"RAG OK + sovereign append failure must release for retry, not leave terminal PROCESSED without ArticleCreated")
+	require.Len(t, knowledgePort.events, 1, "ArticleCreated append must still be attempted")
+}
+
+// TestProcessOutboxEvents_RagOK_SovereignAppendOK_MarksProcessed is the
+// complementary happy path: both side effects durable → PROCESSED.
+func TestProcessOutboxEvents_RagOK_SovereignAppendOK_MarksProcessed(t *testing.T) {
+	logger.InitLogger()
+
+	eventID := uuid.New().String()
+	repo := &mockOutboxRepo{events: []domain.OutboxEvent{outboxUpsertEventFixture(eventID)}}
+	rag := &successRagIntegration{}
+	knowledgePort := &stubKnowledgeEventPort{}
+
+	err := processOutboxEvents(context.Background(), repo, rag, knowledgePort, newOutboxRetryTracker())
+	require.NoError(t, err)
+
+	assert.Equal(t, "PROCESSED", repo.statusOf(eventID))
+	require.Len(t, knowledgePort.events, 1)
+	assert.Equal(t, domain.EventArticleCreated, knowledgePort.events[0].EventType)
+}
+
+// TestProcessOutboxEvents_SovereignAppendFailsThenSucceeds_RetriesAndAcks
+// proves the release path is reclaimable: a failed append leaves the row
+// retryable, and a later tick with a healthy sovereign marks PROCESSED.
+func TestProcessOutboxEvents_SovereignAppendFailsThenSucceeds_RetriesAndAcks(t *testing.T) {
+	logger.InitLogger()
+
+	eventID := uuid.New().String()
+	repo := &mockOutboxRepo{events: []domain.OutboxEvent{outboxUpsertEventFixture(eventID)}}
+	rag := &successRagIntegration{}
+	knowledgePort := &stubKnowledgeEventPort{err: fmt.Errorf("sovereign AppendKnowledgeEvent: unavailable")}
+	retries := newOutboxRetryTracker()
+
+	require.NoError(t, processOutboxEvents(context.Background(), repo, rag, knowledgePort, retries))
+	assert.Equal(t, "PENDING", repo.statusOf(eventID))
+	require.Len(t, knowledgePort.events, 1)
+
+	knowledgePort.err = nil
+	require.NoError(t, processOutboxEvents(context.Background(), repo, rag, knowledgePort, retries))
+	assert.Equal(t, "PROCESSED", repo.statusOf(eventID))
+	require.Len(t, knowledgePort.events, 2, "retry must attempt ArticleCreated again (dedupe-safe upstream)")
 }
 
 // mockOutboxRepo is an in-memory stand-in for datahub_gateway.OutboxGateway,
