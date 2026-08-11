@@ -2,6 +2,7 @@
 import { Eye } from "@lucide/svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import { cn } from "$lib/utils";
+import { ogImageResolver } from "$lib/utils/ogImageResolver";
 import { createProxyImage } from "$lib/utils/proxyImage.svelte";
 
 interface Props {
@@ -20,6 +21,9 @@ let imageContainer = $state<HTMLElement | null>(null);
 const image = createProxyImage({
 	url: () => feed.ogImageProxyUrl,
 	container: () => imageContainer,
+	// Feeds whose RSS carried no image resolve when the reader reaches them,
+	// keyed on the feed: most of these have no article row to key on.
+	resolve: () => ogImageResolver().resolve(feed.id),
 });
 
 function handleClick() {
@@ -48,8 +52,10 @@ const tags = $derived(
 		class="relative aspect-video overflow-hidden bg-[var(--surface-hover)]"
 		bind:this={imageContainer}
 	>
-		{#if !feed.ogImageProxyUrl || image.state === "absent"}
-			<!-- Fallback gradient: no image exists, or every retry was exhausted -->
+		{#if image.state === "absent"}
+			<!-- Fallback gradient: resolution came back empty, the origin refused,
+			     or every retry was exhausted. A card with no URL yet is *not*
+			     here — it shows the shimmer while it resolves. -->
 			<div
 				data-testid="image-fallback"
 				class="absolute inset-0 fallback-gradient"

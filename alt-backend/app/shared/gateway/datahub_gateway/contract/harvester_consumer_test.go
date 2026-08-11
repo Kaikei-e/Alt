@@ -257,47 +257,6 @@ func TestPruneOutboxEventsContract(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// ---------------------------------------------------------------------------
-// §2.D OG image pipeline (harvester half)
-// ---------------------------------------------------------------------------
-
-func TestListFeedsMissingOgImageContract(t *testing.T) {
-	mockProvider := newDataHubPact(t, consumerHarvester)
-
-	err := mockProvider.
-		AddInteraction().
-		Given("alt-data-hub has recent articles with no og image").
-		UponReceiving("a ListFeedsMissingOgImage request from alt-harvester").
-		WithCompleteRequest(consumer.Request{
-			Method:  "POST",
-			Path:    matchers.String("/services.datahub.v1.DataHubService/ListFeedsMissingOgImage"),
-			Headers: jsonHeaders(),
-			Body:    map[string]interface{}{"limit": 50},
-		}).
-		WithCompleteResponse(consumer.Response{
-			Status:  200,
-			Headers: jsonHeaders(),
-			Body: matchers.MapMatcher{
-				"candidates": matchers.EachLike(map[string]interface{}{
-					"articleId": matchers.Regex("6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01", uuidLikePattern),
-					"url":       matchers.Like("https://example.com/post"),
-				}, 1),
-			},
-		}).
-		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			gw := datahub_gateway.NewOgImageGateway(newDataHubServiceClient(config))
-			candidates, err := gw.FetchFeedsMissingOgImage(context.Background(), 50)
-			if err != nil {
-				return fmt.Errorf("FetchFeedsMissingOgImage failed: %w", err)
-			}
-			require.Len(t, candidates, 1)
-			assert.Equal(t, "https://example.com/post", candidates[0].URL)
-			assert.NotEmpty(t, candidates[0].ArticleID)
-			return nil
-		})
-	require.NoError(t, err)
-}
-
 func TestListUnwarmedOgImageURLsContract(t *testing.T) {
 	mockProvider := newDataHubPact(t, consumerHarvester)
 

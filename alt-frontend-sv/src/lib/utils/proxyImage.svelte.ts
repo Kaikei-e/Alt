@@ -34,6 +34,15 @@ export interface ProxyImageOptions {
 	rootMargin?: string;
 	/** Injectable loader, for tests. */
 	load?: typeof loadProxyImageDefault;
+	/**
+	 * Obtains a proxy URL for a feed that arrived without one, called at most
+	 * once and only after the card has actually entered the viewport.
+	 *
+	 * This is what makes resolution on demand rather than a crawl: the request
+	 * exists because a reader reached this card. Omit it on surfaces that have
+	 * no feed to resolve, and a card with no URL settles straight to `absent`.
+	 */
+	resolve?: () => Promise<string | null>;
 }
 
 export interface ProxyImage {
@@ -49,6 +58,8 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 	let state = $state<ProxyImageState>("idle");
 	let objectUrl = $state<string | null>(null);
 	let inView = $state(false);
+	// A URL obtained on demand, once the card was actually reached.
+	let resolvedUrl = $state<string | null>(null);
 
 	// Non-reactive bookkeeping: these drive control flow inside the effects and
 	// must not re-trigger them.
@@ -56,6 +67,11 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 	let revokeUrl: string | null = null;
 	let loadStartedForUrl: string | null = null;
 	let abortController: AbortController | null = null;
+	let resolveStarted = false;
+
+	// The URL actually loaded: whatever the feed carried, else whatever we
+	// resolved for it.
+	const effectiveUrl = () => options.url() || resolvedUrl;
 
 	function reset() {
 		abortController?.abort();
@@ -67,6 +83,8 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 		objectUrl = null;
 		loadStartedForUrl = null;
 		state = "idle";
+		resolvedUrl = null;
+		resolveStarted = false;
 	}
 
 	// Restart when the URL changes (raw -> proxy backfill, or a recycled card
@@ -99,8 +117,37 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 		return () => io.disconnect();
 	});
 
+	// Resolve on demand: the card is in view and the feed carried no URL. One
+	// attempt per card — a second would mean a reader scrolling back and forth
+	// re-requesting someone else's page.
 	$effect(() => {
-		const url = options.url();
+		if (!inView || resolveStarted || options.url()) return;
+
+		if (!options.resolve) {
+			// Nothing can produce a URL for this card, so stop showing a
+			// shimmer that will never end.
+			state = "absent";
+			return;
+		}
+
+		resolveStarted = true;
+		state = "loading";
+		options
+			.resolve()
+			.then((url) => {
+				if (url) {
+					resolvedUrl = url;
+				} else {
+					state = "absent";
+				}
+			})
+			.catch(() => {
+				state = "absent";
+			});
+	});
+
+	$effect(() => {
+		const url = effectiveUrl();
 		if (!url || !inView || loadStartedForUrl === url) return;
 
 		loadStartedForUrl = url;

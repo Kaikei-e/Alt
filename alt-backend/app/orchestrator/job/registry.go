@@ -104,31 +104,17 @@ func registerTodayEntranceNotifier(scheduler *JobScheduler, container *di.Harves
 func registerImageJobs(scheduler *JobScheduler, container *di.HarvesterComponents) {
 	if container.ImageProxyUsecase == nil {
 		slog.Warn("harvester.image_jobs_disabled",
-			"jobs", "ogp-image-warmer,og-image-backfill",
-			"reason", "IMAGE_PROXY_ENABLED=false; the jobs are not registered rather than ticking a no-op")
+			"jobs", "ogp-image-warmer",
+			"reason", "IMAGE_PROXY_ENABLED=false; the job is not registered rather than ticking a no-op")
 		return
 	}
 
-	slog.Info("harvester.image_jobs_enabled", "jobs", "ogp-image-warmer,og-image-backfill")
+	slog.Info("harvester.image_jobs_enabled", "jobs", "ogp-image-warmer")
 	scheduler.Add(Job{
 		Name:     "ogp-image-warmer",
 		Interval: 1 * time.Hour,
 		Timeout:  20 * time.Minute,
 		Fn:       OgpImageWarmerJob(container.OgImageGateway, container.ImageProxyUsecase),
-	})
-	scheduler.Add(Job{
-		Name:     "og-image-backfill",
-		Interval: 30 * time.Minute,
-		Timeout:  20 * time.Minute,
-		// Both the candidate list and the head write go to alt-data-hub since
-		// batch 2 (catalog §2.D and W3-B2). The page scrape between them is
-		// this job's own work.
-		Fn: OgImageBackfillJob(
-			container.OgImageGateway,
-			container.OgImageGateway,
-			container.FetchArticleGateway,
-			container.ImageProxyUsecase,
-		),
 	})
 }
 

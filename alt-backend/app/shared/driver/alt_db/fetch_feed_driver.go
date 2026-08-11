@@ -27,19 +27,28 @@ type FeedPageRow struct {
 	OgImageURL  *string
 }
 
-// ogImageSelectExpr resolves the OG image for a feed row in the read path.
-// It prefers the scraped article_heads og:image (the article page's canonical
-// image, more stable than RSS dynamic/expiring URLs and the main remedy for
-// proxy 404s) and falls back to the RSS-derived feeds.og_image_url. The image
-// is only surfaced when the feed is within the 7-day copyright retention
-// window; older feeds return NULL so the frontend renders a placeholder.
-// Aliased as og_image_url so existing row scans are unchanged.
+// ogImageSelectExpr resolves the OG image for a feed row in the read path,
+// preferring the most specific answer available.
+//
+//  1. article_heads — the article page's canonical image, scraped when someone
+//     opened the article. More stable than RSS dynamic/expiring URLs and the
+//     main remedy for proxy 404s.
+//  2. feed_og_images — the on-demand resolution, scraped when a reader brought
+//     the card into view. This is the only source for the ~92% of image-less
+//     feeds that have no articles row at all, so nothing above can cover them.
+//  3. feeds.og_image_url — the RSS-derived reference.
+//
+// The image is only surfaced when the feed is within the 7-day copyright
+// retention window; older feeds return NULL so the frontend renders a
+// placeholder. Aliased as og_image_url so existing row scans are unchanged.
 const ogImageSelectExpr = `CASE WHEN f.created_at >= NOW() - INTERVAL '7 days' THEN COALESCE(
 		       (SELECT ah.og_image_url FROM article_heads ah
 		          JOIN articles a2 ON a2.id = ah.article_id
 		         WHERE a2.feed_id = f.id AND a2.deleted_at IS NULL
 		           AND ah.og_image_url IS NOT NULL AND ah.og_image_url <> ''
 		         ORDER BY a2.created_at DESC LIMIT 1),
+		       (SELECT foi.og_image_url FROM feed_og_images foi
+		         WHERE foi.feed_id = f.id AND foi.state = 'resolved'),
 		       f.og_image_url) ELSE NULL END AS og_image_url`
 
 func (r *FeedRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {

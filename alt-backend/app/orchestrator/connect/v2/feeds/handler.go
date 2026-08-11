@@ -14,6 +14,7 @@ import (
 	"alt/orchestrator/usecase/fetch_feed_stats_usecase"
 	"alt/orchestrator/usecase/fetch_feed_usecase"
 	"alt/orchestrator/usecase/image_proxy_usecase"
+	"alt/orchestrator/usecase/og_image_resolve_usecase"
 	"alt/orchestrator/usecase/reading_status"
 	"alt/orchestrator/usecase/search_feed_usecase"
 	"alt/orchestrator/usecase/subscription_usecase"
@@ -57,6 +58,11 @@ type FeedHandlerDeps struct {
 	FeedTagStore         FeedTagStore
 	PreProcessorClient   *preprocessor_connect.ConnectPreProcessorClient
 	CreateSummaryVersion *create_summary_version_usecase.CreateSummaryVersionUsecase
+	// ResolveOgImages resolves og:image URLs for feeds a reader has brought
+	// into view. Nil when the image proxy is not wired, which is the only
+	// configuration under which a resolved image would have no URL to be
+	// served from; ResolveOgImages says so rather than answering empty.
+	ResolveOgImages *og_image_resolve_usecase.Usecase
 	// Shared
 	ImageProxy *image_proxy_usecase.ImageProxyUsecase
 }

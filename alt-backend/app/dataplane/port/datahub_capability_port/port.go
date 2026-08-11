@@ -48,12 +48,23 @@ type OgImagePort interface {
 	// BatchGetOgImageURLs omits article ids with no row and rows with no
 	// image, rather than mapping them to the empty string.
 	BatchGetOgImageURLs(ctx context.Context, articleIDs []string) (map[string]string, error)
-	// ListFeedsMissingOgImage is the backfill work list.
-	ListFeedsMissingOgImage(ctx context.Context, limit int) ([]domain.OgImageBackfillCandidate, error)
 	// ListUnwarmedOgImageURLs is the cache-warmer work list.
 	ListUnwarmedOgImageURLs(ctx context.Context, limit int) ([]string, error)
 	// PurgeExpiredArticleHeads enforces the copyright retention window.
 	PurgeExpiredArticleHeads(ctx context.Context, ttl time.Duration) (int64, error)
+
+	// GetFeedOgImageTargets answers, for feeds a reader has brought into view,
+	// whether an origin request is warranted at all. Feed ids with no row are
+	// omitted rather than returned blank: absent means "never asked", which is
+	// the opposite of a row saying "asked, refused".
+	GetFeedOgImageTargets(ctx context.Context, feedIDs []string) ([]domain.FeedOgImageTarget, error)
+	// SaveFeedOgImage records one resolution outcome. An empty ogImageURL is a
+	// refusal, and `refusal` says why; retryAfter of zero means not within this
+	// retention window.
+	SaveFeedOgImage(ctx context.Context, feedID, ogImageURL string, refusal domain.OgImageRefusal, retryAfter time.Duration) error
+	// PurgeExpiredFeedOgImages enforces the copyright retention window on
+	// on-demand resolutions.
+	PurgeExpiredFeedOgImages(ctx context.Context, ttl time.Duration) (int64, error)
 }
 
 // ImageProxyCachePort is the image proxy's cache tier (catalog §2.E).

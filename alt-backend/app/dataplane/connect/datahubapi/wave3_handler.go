@@ -223,18 +223,17 @@ func (h *Handler) BatchGetOgImageURLs(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(&datahubv1.BatchGetOgImageURLsResponse{OgImageUrls: urls}), nil
 }
 
-func (h *Handler) ListFeedsMissingOgImage(ctx context.Context, req *connect.Request[datahubv1.ListFeedsMissingOgImageRequest]) (*connect.Response[datahubv1.ListFeedsMissingOgImageResponse], error) {
-	candidates, err := h.ogImage.ListFeedsMissingOgImage(ctx, clampLimit(int(req.Msg.GetLimit())))
-	if err != nil {
-		h.logger.ErrorContext(ctx, "ListFeedsMissingOgImage failed", "error", err)
-		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list og image candidates"))
-	}
-
-	out := make([]*datahubv1.OgImageBackfillCandidate, 0, len(candidates))
-	for _, c := range candidates {
-		out = append(out, &datahubv1.OgImageBackfillCandidate{ArticleId: c.ArticleID, Url: c.URL})
-	}
-	return connect.NewResponse(&datahubv1.ListFeedsMissingOgImageResponse{Candidates: out}), nil
+// ListFeedsMissingOgImage is gone: the batch og-image-backfill job it served
+// has been replaced by resolution on demand.
+//
+// The procedure remains only because buf breaking uses the FILE category and
+// would reject deleting it against the current main baseline. It answers
+// Unimplemented rather than an empty list, because an empty list is what a
+// working backfill with nothing to do looks like, and a caller that had one
+// would sit there believing it was covered.
+func (h *Handler) ListFeedsMissingOgImage(context.Context, *connect.Request[datahubv1.ListFeedsMissingOgImageRequest]) (*connect.Response[datahubv1.ListFeedsMissingOgImageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented,
+		errors.New("og image backfill was replaced by on-demand resolution; use GetFeedOgImageTargets and SaveFeedOgImage"))
 }
 
 func (h *Handler) ListUnwarmedOgImageURLs(ctx context.Context, req *connect.Request[datahubv1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[datahubv1.ListUnwarmedOgImageURLsResponse], error) {
@@ -258,6 +257,81 @@ func (h *Handler) PurgeExpiredArticleHeads(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to purge article heads"))
 	}
 	return connect.NewResponse(&datahubv1.PurgeExpiredArticleHeadsResponse{PurgedCount: purged}), nil
+}
+
+// GetFeedOgImageTargets answers whether an origin request is warranted for each
+// feed a reader has brought into view.
+//
+// The limit is the same maxLimit the other batch reads use. It is not a
+// pagination knob: it bounds how many origins one viewport change can cause the
+// caller to contact.
+func (h *Handler) GetFeedOgImageTargets(ctx context.Context, req *connect.Request[datahubv1.GetFeedOgImageTargetsRequest]) (*connect.Response[datahubv1.GetFeedOgImageTargetsResponse], error) {
+	ids := req.Msg.GetFeedIds()
+	if len(ids) == 0 {
+		return connect.NewResponse(&datahubv1.GetFeedOgImageTargetsResponse{}), nil
+	}
+	if len(ids) > maxLimit {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("feed_ids exceeds the %d id limit", maxLimit))
+	}
+
+	targets, err := h.ogImage.GetFeedOgImageTargets(ctx, ids)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "GetFeedOgImageTargets failed", "error", err, "count", len(ids))
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get feed og image targets"))
+	}
+
+	out := make([]*datahubv1.FeedOgImageTarget, 0, len(targets))
+	for _, t := range targets {
+		out = append(out, &datahubv1.FeedOgImageTarget{
+			FeedId:     t.FeedID,
+			PageUrl:    t.PageURL,
+			OgImageUrl: t.OgImageURL,
+			Suppressed: t.Suppressed,
+		})
+	}
+	return connect.NewResponse(&datahubv1.GetFeedOgImageTargetsResponse{Targets: out}), nil
+}
+
+// SaveFeedOgImage records one resolution outcome.
+//
+// retry_after_seconds of zero is stored as "not within this retention window"
+// rather than as "retry now". That is the distinction the whole design rests
+// on: a robots.txt disallow answered with an immediate retry would put the
+// request back on the origin at the next scroll.
+func (h *Handler) SaveFeedOgImage(ctx context.Context, req *connect.Request[datahubv1.SaveFeedOgImageRequest]) (*connect.Response[datahubv1.SaveFeedOgImageResponse], error) {
+	feedID := req.Msg.GetFeedId()
+	if feedID == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_id is required"))
+	}
+
+	imageURL := req.Msg.GetOgImageUrl()
+	refusal := domain.OgImageRefusal(req.Msg.GetReason())
+	if imageURL == "" && refusal == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("a resolution must carry either og_image_url or reason"))
+	}
+
+	retryAfter := time.Duration(req.Msg.GetRetryAfterSeconds()) * time.Second
+	if err := h.ogImage.SaveFeedOgImage(ctx, feedID, imageURL, refusal, retryAfter); err != nil {
+		h.logger.ErrorContext(ctx, "SaveFeedOgImage failed", "error", err, "feed_id", feedID)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to save feed og image"))
+	}
+	return connect.NewResponse(&datahubv1.SaveFeedOgImageResponse{}), nil
+}
+
+func (h *Handler) PurgeExpiredFeedOgImages(ctx context.Context, req *connect.Request[datahubv1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[datahubv1.PurgeExpiredFeedOgImagesResponse], error) {
+	ttl, err := retentionFromSeconds(req.Msg.GetTtlSeconds())
+	if err != nil {
+		return nil, err
+	}
+
+	purged, err := h.ogImage.PurgeExpiredFeedOgImages(ctx, ttl)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "PurgeExpiredFeedOgImages failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to purge feed og images"))
+	}
+	return connect.NewResponse(&datahubv1.PurgeExpiredFeedOgImagesResponse{PurgedCount: purged}), nil
 }
 
 // ---------------------------------------------------------------------------

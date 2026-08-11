@@ -104,9 +104,11 @@ type ogImageDriver interface {
 	SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error
 	FetchArticleHeadByArticleID(ctx context.Context, articleID string) (*domain.ArticleHead, error)
 	FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error)
-	FetchFeedsMissingOgImage(ctx context.Context, limit int) ([]alt_db.OgBackfillCandidate, error)
 	FetchUnwarmedOgImageURLs(ctx context.Context, limit int) ([]string, error)
 	CleanupExpiredArticleHeads(ctx context.Context, ttl time.Duration) (int64, error)
+	FetchFeedOgImageTargets(ctx context.Context, feedIDs []string) ([]domain.FeedOgImageTarget, error)
+	SaveFeedOgImage(ctx context.Context, feedID, ogImageURL string, refusal domain.OgImageRefusal, retryAfter time.Duration) error
+	CleanupExpiredFeedOgImages(ctx context.Context, ttl time.Duration) (int64, error)
 }
 
 // OgImageGateway implements datahub_capability_port.OgImagePort.
@@ -143,19 +145,6 @@ func (g *OgImageGateway) BatchGetOgImageURLs(ctx context.Context, articleIDs []s
 	return urls, nil
 }
 
-func (g *OgImageGateway) ListFeedsMissingOgImage(ctx context.Context, limit int) ([]domain.OgImageBackfillCandidate, error) {
-	rows, err := g.db.FetchFeedsMissingOgImage(ctx, limit)
-	if err != nil {
-		return nil, fmt.Errorf("list feeds missing og image: %w", err)
-	}
-
-	candidates := make([]domain.OgImageBackfillCandidate, 0, len(rows))
-	for _, r := range rows {
-		candidates = append(candidates, domain.OgImageBackfillCandidate{ArticleID: r.ArticleID, URL: r.URL})
-	}
-	return candidates, nil
-}
-
 func (g *OgImageGateway) ListUnwarmedOgImageURLs(ctx context.Context, limit int) ([]string, error) {
 	urls, err := g.db.FetchUnwarmedOgImageURLs(ctx, limit)
 	if err != nil {
@@ -168,6 +157,34 @@ func (g *OgImageGateway) PurgeExpiredArticleHeads(ctx context.Context, ttl time.
 	purged, err := g.db.CleanupExpiredArticleHeads(ctx, ttl)
 	if err != nil {
 		return 0, fmt.Errorf("purge expired article heads: %w", err)
+	}
+	return purged, nil
+}
+
+func (g *OgImageGateway) GetFeedOgImageTargets(ctx context.Context, feedIDs []string) ([]domain.FeedOgImageTarget, error) {
+	targets, err := g.db.FetchFeedOgImageTargets(ctx, feedIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get feed og image targets (%d ids): %w", len(feedIDs), err)
+	}
+	return targets, nil
+}
+
+func (g *OgImageGateway) SaveFeedOgImage(
+	ctx context.Context,
+	feedID, ogImageURL string,
+	refusal domain.OgImageRefusal,
+	retryAfter time.Duration,
+) error {
+	if err := g.db.SaveFeedOgImage(ctx, feedID, ogImageURL, refusal, retryAfter); err != nil {
+		return fmt.Errorf("save feed og image %s: %w", feedID, err)
+	}
+	return nil
+}
+
+func (g *OgImageGateway) PurgeExpiredFeedOgImages(ctx context.Context, ttl time.Duration) (int64, error) {
+	purged, err := g.db.CleanupExpiredFeedOgImages(ctx, ttl)
+	if err != nil {
+		return 0, fmt.Errorf("purge expired feed og images: %w", err)
 	}
 	return purged, nil
 }

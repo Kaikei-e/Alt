@@ -10,9 +10,18 @@ import (
 // mockRetentionPurger implements ogImageRetentionPurger for testing.
 type mockRetentionPurger struct {
 	heads, images, expired          int64
+	feedImages                      int64
 	headsErr, imagesErr, expiredErr error
+	feedImagesErr                   error
 	calls                           []string
 	headTTL, imageTTL               time.Duration
+	feedImageTTL                    time.Duration
+}
+
+func (m *mockRetentionPurger) CleanupExpiredFeedOgImages(ctx context.Context, ttl time.Duration) (int64, error) {
+	m.calls = append(m.calls, "feed_images")
+	m.feedImageTTL = ttl
+	return m.feedImages, m.feedImagesErr
 }
 
 func (m *mockRetentionPurger) CleanupExpiredArticleHeads(ctx context.Context, ttl time.Duration) (int64, error) {
@@ -33,14 +42,18 @@ func (m *mockRetentionPurger) CleanupExpiredImageProxyCache(ctx context.Context)
 }
 
 func TestOgImageRetentionJob_PurgesAllArtifactsWithin7DayWindow(t *testing.T) {
-	p := &mockRetentionPurger{heads: 3, images: 5, expired: 2}
+	p := &mockRetentionPurger{heads: 3, feedImages: 4, images: 5, expired: 2}
 
 	fn := ogImageRetentionJobFn(p, p)
 	if err := fn(context.Background()); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	want := []string{"heads", "images", "expired"}
+	// feed_og_images joins the sweep with on-demand resolution. It holds the
+	// same kind of artifact as article_heads — a scraped third-party image URL
+	// — so a resolver that acquired these without a sweep to remove them would
+	// be worse than not resolving at all.
+	want := []string{"heads", "feed_images", "images", "expired"}
 	if len(p.calls) != len(want) {
 		t.Fatalf("expected purge calls %v, got %v", want, p.calls)
 	}
@@ -54,6 +67,9 @@ func TestOgImageRetentionJob_PurgesAllArtifactsWithin7DayWindow(t *testing.T) {
 	}
 	if p.imageTTL != 7*24*time.Hour {
 		t.Errorf("image cache retention window = %v, want 7 days", p.imageTTL)
+	}
+	if p.feedImageTTL != 7*24*time.Hour {
+		t.Errorf("feed og image retention window = %v, want 7 days", p.feedImageTTL)
 	}
 }
 

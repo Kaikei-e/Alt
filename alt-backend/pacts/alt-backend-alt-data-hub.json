@@ -1316,6 +1316,73 @@
       }
     },
     {
+      "description": "a GetFeedOgImageTargets request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub holds one unresolved feed and one whose origin already refused"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedIds": [
+            "c3d4e5f6-3333-4333-8333-333333333333",
+            "d4e5f6a7-4444-4444-8444-444444444444"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/GetFeedOgImageTargets"
+      },
+      "response": {
+        "body": {
+          "targets": [
+            {
+              "feedId": "c3d4e5f6-3333-4333-8333-333333333333",
+              "pageUrl": "https://example.com/posts/on-demand-og"
+            },
+            {
+              "feedId": "d4e5f6a7-4444-4444-8444-444444444444",
+              "pageUrl": "https://example.com/posts/on-demand-og",
+              "suppressed": true
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetFeedOgImageTargets request from alt-backend for an unknown feed",
+      "providerStates": [
+        {
+          "name": "alt-data-hub holds no feed_og_images row for the requested feed"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedIds": [
+            "00000000-0000-4000-8000-000000000000"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/GetFeedOgImageTargets"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetFeedSummary request from alt-backend",
       "providerStates": [
         {
@@ -4994,6 +5061,33 @@
       }
     },
     {
+      "description": "a PurgeExpiredFeedOgImages request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub holds feed og images past the retention window"
+        }
+      ],
+      "request": {
+        "body": {
+          "ttlSeconds": "604800"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/PurgeExpiredFeedOgImages"
+      },
+      "response": {
+        "body": {
+          "purgedCount": "12"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a PutImageProxyCache request from alt-backend",
       "providerStates": [
         {
@@ -5289,6 +5383,58 @@
         },
         "method": "POST",
         "path": "/services.datahub.v1.DataHubService/SaveDeclinedDomain"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a SaveFeedOgImage request from alt-backend carrying a resolved URL",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts feed og image resolutions"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedId": "c3d4e5f6-3333-4333-8333-333333333333",
+          "ogImageUrl": "https://cdn.example.com/on-demand-og.png"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/SaveFeedOgImage"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a SaveFeedOgImage request from alt-backend recording a robots.txt disallow",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts feed og image refusals"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedId": "d4e5f6a7-4444-4444-8444-444444444444",
+          "reason": "robots_disallow"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/SaveFeedOgImage"
       },
       "response": {
         "body": {},

@@ -1,8 +1,8 @@
-import { expect, test } from "../../fixtures/pomFixtures";
 import {
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopFeedsPage } from "../../pages/desktop/DesktopFeedsPage";
 import { fulfillJson } from "../../utils/mockHelpers";
 
@@ -153,7 +153,9 @@ test.describe("Visual Preview — on-demand OG image resolution", () => {
 		expect(resolveCalls).toBe(callsAfterFirstPass);
 	});
 
-	test("cards the reader never reaches are never resolved", async ({ page }) => {
+	test("cards the reader never reaches are never resolved", async ({
+		page,
+	}) => {
 		// Zero-padded so "Article 01" cannot also match "Article 10".
 		const manyFeeds = {
 			data: Array.from({ length: 24 }, (_, i) => {

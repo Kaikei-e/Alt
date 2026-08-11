@@ -84,6 +84,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		FeedTagStore:             container.Infra.TagGateway,
 		PreProcessorClient:       container.PreProcessorConnectClient,
 		CreateSummaryVersion:     container.CreateSummaryVersionUsecase,
+		ResolveOgImages:          container.ResolveOgImagesUsecase,
 		ImageProxy:               container.ImageProxyUsecase,
 	}, cfg, logger)
 	feedPath, feedServiceHandler := feedsv2connect.NewFeedServiceHandler(feedHandler, opts)

@@ -45,6 +45,7 @@ import (
 	"alt/orchestrator/usecase/knowledge_slo_usecase"
 	"alt/orchestrator/usecase/knowledge_url_backfill_usecase"
 	"alt/orchestrator/usecase/list_lenses_usecase"
+	"alt/orchestrator/usecase/og_image_resolve_usecase"
 	"alt/orchestrator/usecase/opml_usecase"
 	"alt/orchestrator/usecase/reading_status"
 	"alt/orchestrator/usecase/recall_dismiss_usecase"
@@ -175,6 +176,9 @@ type ApplicationComponents struct {
 
 	// Image Proxy
 	ImageProxyUsecase *image_proxy_usecase.ImageProxyUsecase
+	// ResolveOgImagesUsecase resolves og:image URLs for feeds a reader has
+	// brought into view. Nil exactly when the image proxy is not wired.
+	ResolveOgImagesUsecase *og_image_resolve_usecase.Usecase
 
 	// Service-to-service Connect-RPC clients
 	PreProcessorConnectClient *preprocessor_connect.ConnectPreProcessorClient

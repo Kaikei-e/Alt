@@ -103,43 +103,74 @@ func (g *OgImageGateway) FetchOgImageURLByArticleID(ctx context.Context, article
 	return urls[articleID], nil
 }
 
-// FetchFeedsMissingOgImage returns the og-image-backfill work list.
-func (g *OgImageGateway) FetchFeedsMissingOgImage(ctx context.Context, limit int) ([]domain.OgImageBackfillCandidate, error) {
-	resp, err := g.client.ListFeedsMissingOgImage(ctx, connect.NewRequest(&datahubv1.ListFeedsMissingOgImageRequest{
-		Limit: safeconv.Int32(limit),
-	}))
-	if err != nil {
-		return nil, fmt.Errorf("list feeds missing og image: %w", err)
-	}
-
-	candidates := make([]domain.OgImageBackfillCandidate, 0, len(resp.Msg.GetCandidates()))
-	for _, c := range resp.Msg.GetCandidates() {
-		candidates = append(candidates, domain.OgImageBackfillCandidate{
-			ArticleID: c.GetArticleId(),
-			URL:       c.GetUrl(),
-		})
-	}
-	return candidates, nil
-}
-
 // FetchFeedOgImageTargets returns, for feeds a reader has brought into view,
 // the page that would be fetched and whether an earlier attempt already
 // settled the question.
 func (g *OgImageGateway) FetchFeedOgImageTargets(ctx context.Context, feedIDs []string) ([]domain.FeedOgImageTarget, error) {
-	panic("not implemented")
+	if len(feedIDs) == 0 {
+		return nil, nil
+	}
+
+	resp, err := g.client.GetFeedOgImageTargets(ctx, connect.NewRequest(&datahubv1.GetFeedOgImageTargetsRequest{
+		FeedIds: feedIDs,
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("get feed og image targets (%d ids): %w", len(feedIDs), err)
+	}
+
+	protoTargets := resp.Msg.GetTargets()
+	targets := make([]domain.FeedOgImageTarget, 0, len(protoTargets))
+	for _, t := range protoTargets {
+		targets = append(targets, domain.FeedOgImageTarget{
+			FeedID:     t.GetFeedId(),
+			PageURL:    t.GetPageUrl(),
+			OgImageURL: t.GetOgImageUrl(),
+			Suppressed: t.GetSuppressed(),
+		})
+	}
+	return targets, nil
 }
 
 // SaveFeedOgImage records one resolution outcome. An empty ogImageURL means the
 // origin refused, and `refusal` says why; that record is what stops the next
 // reader scrolling past the same card from causing the same request.
 func (g *OgImageGateway) SaveFeedOgImage(ctx context.Context, feedID, ogImageURL string, refusal domain.OgImageRefusal) error {
-	panic("not implemented")
+	// The retry window is a property of *why* the origin said no, so it is
+	// derived here rather than asked of every caller: a robots.txt disallow and
+	// a transient 5xx deserve different answers, and a caller that had to
+	// choose would eventually choose "retry soon" for both.
+	//
+	// It is consulted only when there *is* a refusal. A successful resolution
+	// has nothing to retry, and asking an empty refusal for its window returns
+	// the catch-all six hours — a number that would then travel to the provider
+	// attached to a row that resolved fine.
+	var retryAfterSeconds int64
+	if refusal != "" {
+		retryAfterSeconds = int64(refusal.RetryAfter().Seconds())
+	}
+
+	_, err := g.client.SaveFeedOgImage(ctx, connect.NewRequest(&datahubv1.SaveFeedOgImageRequest{
+		FeedId:            feedID,
+		OgImageUrl:        ogImageURL,
+		Reason:            string(refusal),
+		RetryAfterSeconds: retryAfterSeconds,
+	}))
+	if err != nil {
+		return fmt.Errorf("save feed og image %s: %w", feedID, err)
+	}
+	return nil
 }
 
 // CleanupExpiredFeedOgImages enforces the feed_og_images copyright retention
 // window and returns how many rows went.
 func (g *OgImageGateway) CleanupExpiredFeedOgImages(ctx context.Context, ttl time.Duration) (int64, error) {
-	panic("not implemented")
+	resp, err := g.client.PurgeExpiredFeedOgImages(ctx, connect.NewRequest(&datahubv1.PurgeExpiredFeedOgImagesRequest{
+		TtlSeconds: int64(ttl.Seconds()),
+	}))
+	if err != nil {
+		return 0, fmt.Errorf("purge feed og images older than %s: %w", ttl, err)
+	}
+	return resp.Msg.GetPurgedCount(), nil
 }
 
 // FetchUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.

@@ -23,6 +23,12 @@ const ogImageRetentionWindow = 7 * 24 * time.Hour
 // job honest about which artifact each call removes.
 type articleHeadPurger interface {
 	CleanupExpiredArticleHeads(ctx context.Context, ttl time.Duration) (int64, error)
+	// CleanupExpiredFeedOgImages purges the on-demand resolutions. It sits on
+	// the same interface as article_heads because it is the same kind of
+	// artifact under the same window: a scraped third-party image URL. A
+	// resolver that acquired these without a sweep to remove them would be
+	// worse than not resolving at all.
+	CleanupExpiredFeedOgImages(ctx context.Context, ttl time.Duration) (int64, error)
 }
 
 type imageCachePurger interface {
@@ -55,6 +61,11 @@ func ogImageRetentionJobFn(headPurger articleHeadPurger, cachePurger imageCacheP
 			return fmt.Errorf("purge article heads past retention: %w", err)
 		}
 
+		feedImages, err := headPurger.CleanupExpiredFeedOgImages(ctx, ogImageRetentionWindow)
+		if err != nil {
+			return fmt.Errorf("purge feed og images past retention: %w", err)
+		}
+
 		images, err := cachePurger.CleanupImageProxyCacheOlderThan(ctx, ogImageRetentionWindow)
 		if err != nil {
 			return fmt.Errorf("purge image cache past retention: %w", err)
@@ -67,6 +78,7 @@ func ogImageRetentionJobFn(headPurger articleHeadPurger, cachePurger imageCacheP
 
 		slog.InfoContext(ctx, "OG image retention completed",
 			"article_heads_purged", heads,
+			"feed_og_images_purged", feedImages,
 			"image_cache_purged", images,
 			"image_cache_expired", expired,
 			"retention_window", ogImageRetentionWindow.String(),

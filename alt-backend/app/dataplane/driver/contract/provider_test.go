@@ -997,6 +997,13 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub accepts notification enqueues",
 			"alt-data-hub has due push deliveries",
 			"alt-data-hub has a claimed push delivery",
+
+			// On-demand OG image resolution, which replaced the batch backfill.
+			"alt-data-hub holds one unresolved feed and one whose origin already refused",
+			"alt-data-hub holds no feed_og_images row for the requested feed",
+			"alt-data-hub accepts feed og image resolutions",
+			"alt-data-hub accepts feed og image refusals",
+			"alt-data-hub holds feed og images past the retention window",
 		), backlogStates()))
 }
 
@@ -1118,6 +1125,63 @@ func mountWave3Procedures(mux *http.ServeMux) {
 	}))
 	dataHubProcedure(mux, "PurgeExpiredArticleHeads", jsonPost(map[string]interface{}{
 		"purgedCount": "7",
+	}))
+
+	// On-demand OG image resolution. The stub answers by feed id because the
+	// two branches the consumer takes are exactly the two encodings it has to
+	// tell apart: a feed still worth fetching carries neither og_image_url nor
+	// suppressed (both absent under protojson), while a refused one carries
+	// suppressed. Answering the same body for both would let a consumer that
+	// ignored `suppressed` verify green and then re-request refused origins on
+	// every scroll.
+	dataHubProcedure(mux, "GetFeedOgImageTargets", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			FeedIDs []string `json:"feedIds"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		const (
+			fetchable  = "c3d4e5f6-3333-4333-8333-333333333333"
+			suppressed = "d4e5f6a7-4444-4444-8444-444444444444"
+			pageURL    = "https://example.com/posts/on-demand-og"
+		)
+
+		targets := make([]map[string]interface{}, 0, len(req.FeedIDs))
+		for _, id := range req.FeedIDs {
+			switch id {
+			case fetchable:
+				targets = append(targets, map[string]interface{}{
+					"feedId":  fetchable,
+					"pageUrl": pageURL,
+				})
+			case suppressed:
+				targets = append(targets, map[string]interface{}{
+					"feedId":     suppressed,
+					"pageUrl":    pageURL,
+					"suppressed": true,
+				})
+			}
+			// A feed id the stub does not know is omitted, which is the wire
+			// form of "never asked".
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if len(targets) == 0 {
+			_, _ = w.Write([]byte("{}"))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"targets": targets})
+	})
+	dataHubProcedure(mux, "SaveFeedOgImage", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "PurgeExpiredFeedOgImages", jsonPost(map[string]interface{}{
+		"purgedCount": "12",
 	}))
 
 	// ---- §2.E Image proxy cache -------------------------------------------

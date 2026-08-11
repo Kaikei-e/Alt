@@ -11,6 +11,7 @@
  */
 import type { RenderFeed } from "$lib/schema/feed";
 import { formatCompactDate } from "$lib/utils/feed";
+import { ogImageResolver } from "$lib/utils/ogImageResolver";
 import { createProxyImage } from "$lib/utils/proxyImage.svelte";
 
 interface Props {
@@ -26,11 +27,14 @@ let imageContainer = $state<HTMLElement | null>(null);
 const image = createProxyImage({
 	url: () => feed.ogImageProxyUrl,
 	container: () => imageContainer,
+	// Feeds whose RSS carried no image resolve when the reader reaches them,
+	// keyed on the feed: most of these have no article row to key on.
+	resolve: () => ogImageResolver().resolve(feed.id),
 });
 
-const showFallback = $derived(
-	!feed.ogImageProxyUrl || image.state === "absent",
-);
+// A tile with no URL yet is resolving, not empty — it keeps the shimmer until
+// resolution settles, and only a settled "absent" reaches the fallback.
+const showFallback = $derived(image.state === "absent");
 
 // The shared `publishedAtFormatted` carries a time of day, which wraps to a
 // second line at half a phone's width and pulls weight away from the image.

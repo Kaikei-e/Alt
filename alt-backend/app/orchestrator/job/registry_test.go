@@ -58,11 +58,16 @@ func TestRegisterHarvesterJobs_RegistersTheCoreJobs(t *testing.T) {
 	}
 }
 
-// The two image jobs used to be registered unconditionally and fall back to a
+// The image jobs used to be registered unconditionally and fall back to a
 // closure that logged "dependencies_disabled" on every tick. In the harvester
-// those two jobs are a quarter of the process's reason to exist, so an
-// explicit IMAGE_PROXY_ENABLED=false omits them (one startup log) instead of
-// ticking a no-op forever.
+// that job is a large share of the process's reason to exist, so an explicit
+// IMAGE_PROXY_ENABLED=false omits it (one startup log) instead of ticking a
+// no-op forever.
+//
+// og-image-backfill is deliberately absent from this list. It was a scheduled
+// sweep that fetched publisher pages from a work list, and it is gone: feeds
+// with no og:image now resolve when a reader brings the card into view. If it
+// ever reappears here, the harvester has started crawling again.
 func TestRegisterHarvesterJobs_ImageJobsFollowTheImageProxyWiring(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -77,10 +82,14 @@ func TestRegisterHarvesterJobs_ImageJobsFollowTheImageProxyWiring(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			names := registeredNames(t, harvesterComponents(tt.imageProxy))
 
-			for _, job := range []string{"ogp-image-warmer", "og-image-backfill"} {
+			for _, job := range []string{"ogp-image-warmer"} {
 				if names[job] != tt.wantRegister {
 					t.Errorf("%s registered = %v, want %v", job, names[job], tt.wantRegister)
 				}
+			}
+
+			if names["og-image-backfill"] {
+				t.Error("og-image-backfill is registered; the scheduled page sweep was replaced by on-demand resolution")
 			}
 		})
 	}

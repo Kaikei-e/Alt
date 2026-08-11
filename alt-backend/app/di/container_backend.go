@@ -140,8 +140,9 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 		MorningLetterUsecase:   rag.MorningLetterUsecase,
 
 		// Image usecases
-		ImageFetchUsecase: image.ImageFetchUsecase,
-		ImageProxyUsecase: image.ImageProxyUsecase,
+		ImageFetchUsecase:      image.ImageFetchUsecase,
+		ImageProxyUsecase:      image.ImageProxyUsecase,
+		ResolveOgImagesUsecase: image.ResolveOgImagesUsecase,
 
 		// Recap / Dashboard usecases
 		RecapUsecase:            recap.RecapUsecase,

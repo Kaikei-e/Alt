@@ -3,10 +3,13 @@ package di
 import (
 	"alt/orchestrator/gateway/image_fetch_gateway"
 	"alt/orchestrator/gateway/image_proxy_gateway"
+	"alt/orchestrator/gateway/og_resolve_gateway"
 	"alt/orchestrator/usecase/image_fetch_usecase"
 	"alt/orchestrator/usecase/image_proxy_usecase"
+	"alt/orchestrator/usecase/og_image_resolve_usecase"
 	"alt/utils/image_proxy"
 	"alt/utils/rate_limiter"
+	"alt/utils/security"
 	"log/slog"
 	"net/http"
 	"time"
@@ -16,6 +19,12 @@ import (
 type ImageModule struct {
 	ImageFetchUsecase image_fetch_usecase.ImageFetchUsecaseInterface
 	ImageProxyUsecase *image_proxy_usecase.ImageProxyUsecase
+	// ResolveOgImagesUsecase is nil exactly when the image proxy is not wired.
+	// A resolved image whose URL cannot be signed is unreachable by the
+	// browser, so resolution has nothing to offer in that configuration — and
+	// the handler answers Unimplemented rather than empty, so the two cannot be
+	// confused (rule 8).
+	ResolveOgImagesUsecase *og_image_resolve_usecase.Usecase
 }
 
 func newImageModule(infra *InfraModule) *ImageModule {
@@ -63,9 +72,32 @@ func newImageModule(infra *InfraModule) *ImageModule {
 		)
 	}
 
+	// On-demand og:image resolution rides the same per-host image-proxy slot as
+	// the images themselves: one reader scrolling through one publisher's cards
+	// is one conversation with that publisher, and splitting it across two
+	// limiter namespaces would double the rate they actually see.
+	var resolveOgImagesUC *og_image_resolve_usecase.Usecase
+	if imageProxyWired {
+		resolveOgImagesUC = og_image_resolve_usecase.NewUsecase(
+			infra.OgImageGateway,
+			og_resolve_gateway.NewGateway(
+				imageProxyRateLimiter,
+				&http.Client{Timeout: 15 * time.Second},
+				security.NewSSRFValidator(),
+			),
+			imageProxyUsecaseInstance,
+		)
+		slog.Info("og_image_on_demand_resolution_enabled",
+			"reason", "feeds without an RSS og:image resolve when a reader brings the card into view")
+	} else {
+		slog.Warn("og_image_on_demand_resolution_disabled",
+			"reason", "IMAGE_PROXY_ENABLED=false; a resolved image would have no signed URL to be served from")
+	}
+
 	return &ImageModule{
-		ImageFetchUsecase: imageFetchUC,
-		ImageProxyUsecase: imageProxyUsecaseInstance,
+		ImageFetchUsecase:      imageFetchUC,
+		ImageProxyUsecase:      imageProxyUsecaseInstance,
+		ResolveOgImagesUsecase: resolveOgImagesUC,
 	}
 }
 

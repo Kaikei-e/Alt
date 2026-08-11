@@ -64,6 +64,14 @@ type fakeOgImagePort struct {
 
 	// SaveArticleHead is catalog §2.B W3-B2, added in Wave 3 batch 2. It
 	// writes the table the reads above read, so it lives on the same port.
+	feedTargets       []domain.FeedOgImageTarget
+	feedTargetsErr    error
+	savedFeedID       string
+	savedFeedImageURL string
+	savedFeedRefusal  domain.OgImageRefusal
+	savedFeedRetry    time.Duration
+	feedImagesPurged  int64
+
 	savedHeadArticleID string
 	savedHeadHTML      string
 	savedHeadOgImage   string
@@ -616,4 +624,21 @@ func TestCheckArticleExistsByURLForUserReturnsArticleID(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, resp.Msg.GetExists())
 	assert.Equal(t, "a1", resp.Msg.GetArticleId())
+}
+
+func (f *fakeOgImagePort) GetFeedOgImageTargets(_ context.Context, _ []string) ([]domain.FeedOgImageTarget, error) {
+	return f.feedTargets, f.feedTargetsErr
+}
+
+func (f *fakeOgImagePort) SaveFeedOgImage(_ context.Context, feedID, ogImageURL string, refusal domain.OgImageRefusal, retryAfter time.Duration) error {
+	f.savedFeedID = feedID
+	f.savedFeedImageURL = ogImageURL
+	f.savedFeedRefusal = refusal
+	f.savedFeedRetry = retryAfter
+	return nil
+}
+
+func (f *fakeOgImagePort) PurgeExpiredFeedOgImages(_ context.Context, ttl time.Duration) (int64, error) {
+	f.purgeTTL = ttl
+	return f.feedImagesPurged, nil
 }
