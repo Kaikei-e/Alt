@@ -3,6 +3,7 @@ package datahubapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -426,12 +427,19 @@ func TestCheckArticleExists_MissingURL(t *testing.T) {
 	}
 }
 
+// testTenantID is the owner every CreateArticle test writes as. It is a real
+// UUID because articles.user_id is `UUID NOT NULL` and the Knowledge Home
+// event is keyed by tenant — a placeholder string never reaches the database
+// in production.
+const testTenantID = "00000000-0000-0000-0000-000000000001"
+
 func TestCreateArticle_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
-		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil))
+		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithKnowledgeEventPort(&stubKnowledgeEventPort{}))
 
 	mockCreate.EXPECT().
 		CreateArticle(gomock.Any(), internal_article_port.CreateArticleParams{
@@ -439,7 +447,7 @@ func TestCreateArticle_Success(t *testing.T) {
 			URL:     "http://example.com/test",
 			Content: "Hello world",
 			FeedID:  "feed-1",
-			UserID:  "user-1",
+			UserID:  testTenantID,
 		}).
 		Return("new-article-id", true, nil)
 
@@ -448,7 +456,7 @@ func TestCreateArticle_Success(t *testing.T) {
 		Url:     "http://example.com/test",
 		Content: "Hello world",
 		FeedId:  "feed-1",
-		UserId:  "user-1",
+		UserId:  testTenantID,
 	})
 
 	resp, err := h.CreateArticle(context.Background(), req)
@@ -462,12 +470,46 @@ func TestCreateArticle_Success(t *testing.T) {
 
 func TestCreateArticle_MissingURL(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
-		WithPhase2Ports(nil, mocks.NewMockCreateArticlePort(gomock.NewController(t)), nil, nil, nil, nil))
+		WithPhase2Ports(nil, mocks.NewMockCreateArticlePort(gomock.NewController(t)), nil, nil, nil, nil),
+		WithKnowledgeEventPort(&stubKnowledgeEventPort{}))
 
 	req := connect.NewRequest(&datahubv1.CreateArticleRequest{FeedId: "feed-1"})
 	_, err := h.CreateArticle(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+	}
+}
+
+// The owner is not optional and never was: articles.user_id is UUID NOT NULL,
+// so a request without a parseable one used to reach the database and come
+// back as CodeInternal. It is also the tenant the Knowledge Home event is
+// keyed by, which is why the check moved in front of the write rather than
+// being skipped past on the event path.
+func TestCreateArticle_RejectsUnusableUserID(t *testing.T) {
+	tests := []struct {
+		name   string
+		userID string
+	}{
+		{name: "empty", userID: ""},
+		{name: "not a uuid", userID: "user-1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+				WithPhase2Ports(nil, mocks.NewMockCreateArticlePort(gomock.NewController(t)), nil, nil, nil, nil),
+				WithKnowledgeEventPort(&stubKnowledgeEventPort{}))
+
+			req := connect.NewRequest(&datahubv1.CreateArticleRequest{
+				Url:    "http://example.com/test",
+				FeedId: "feed-1",
+				UserId: tt.userID,
+			})
+			_, err := h.CreateArticle(context.Background(), req)
+			if connect.CodeOf(err) != connect.CodeInvalidArgument {
+				t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+			}
+		})
 	}
 }
 
@@ -868,6 +910,7 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithEventPublisher(mockPublisher),
+		WithKnowledgeEventPort(&stubKnowledgeEventPort{}),
 	)
 
 	publishedAt := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
@@ -878,7 +921,7 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 			URL:         "http://example.com/test",
 			Content:     "Hello world",
 			FeedID:      "feed-1",
-			UserID:      "user-1",
+			UserID:      testTenantID,
 			PublishedAt: publishedAt,
 		}).
 		Return("new-article-id", true, nil)
@@ -887,7 +930,7 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 	mockPublisher.EXPECT().
 		PublishArticleCreated(gomock.Any(), event_publisher_port.ArticleCreatedEvent{
 			ArticleID:   "new-article-id",
-			UserID:      "user-1",
+			UserID:      testTenantID,
 			FeedID:      "feed-1",
 			Title:       "Test Article",
 			URL:         "http://example.com/test",
@@ -901,7 +944,7 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 		Url:         "http://example.com/test",
 		Content:     "Hello world",
 		FeedId:      "feed-1",
-		UserId:      "user-1",
+		UserId:      testTenantID,
 		PublishedAt: timestamppb.New(publishedAt),
 	})
 
@@ -921,6 +964,7 @@ func TestCreateArticle_NilEventPublisher(t *testing.T) {
 	// No WithEventPublisher — eventPublisher is nil
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithKnowledgeEventPort(&stubKnowledgeEventPort{}),
 	)
 
 	mockCreate.EXPECT().
@@ -931,6 +975,7 @@ func TestCreateArticle_NilEventPublisher(t *testing.T) {
 		Title:  "Test",
 		Url:    "http://example.com",
 		FeedId: "feed-1",
+		UserId: testTenantID,
 	})
 
 	resp, err := h.CreateArticle(context.Background(), req)
@@ -950,6 +995,7 @@ func TestCreateArticle_EventPublishFailureDoesNotFailRPC(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithEventPublisher(mockPublisher),
+		WithKnowledgeEventPort(&stubKnowledgeEventPort{}),
 	)
 
 	mockCreate.EXPECT().
@@ -965,6 +1011,7 @@ func TestCreateArticle_EventPublishFailureDoesNotFailRPC(t *testing.T) {
 		Title:  "Test",
 		Url:    "http://example.com/test2",
 		FeedId: "feed-1",
+		UserId: testTenantID,
 	})
 
 	// RPC should succeed even though event publishing failed
@@ -985,6 +1032,7 @@ func TestCreateArticle_PublishesArticleUpdatedEventForUpsert(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithEventPublisher(mockPublisher),
+		WithKnowledgeEventPort(&stubKnowledgeEventPort{}),
 	)
 
 	publishedAt := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
@@ -997,7 +1045,7 @@ func TestCreateArticle_PublishesArticleUpdatedEventForUpsert(t *testing.T) {
 	mockPublisher.EXPECT().
 		PublishArticleUpdated(gomock.Any(), event_publisher_port.ArticleUpdatedEvent{
 			ArticleID:   "existing-article-id",
-			UserID:      "user-1",
+			UserID:      testTenantID,
 			FeedID:      "feed-1",
 			Title:       "Updated Article",
 			URL:         "http://example.com/existing",
@@ -1011,7 +1059,7 @@ func TestCreateArticle_PublishesArticleUpdatedEventForUpsert(t *testing.T) {
 		Url:         "http://example.com/existing",
 		Content:     "Updated body",
 		FeedId:      "feed-1",
-		UserId:      "user-1",
+		UserId:      testTenantID,
 		PublishedAt: timestamppb.New(publishedAt),
 	})
 
@@ -1032,6 +1080,7 @@ func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
 		WithEventPublisher(mockPublisher),
+		WithKnowledgeEventPort(&stubKnowledgeEventPort{}),
 	)
 
 	mockCreate.EXPECT().
@@ -1045,6 +1094,7 @@ func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 		Title:  "Test",
 		Url:    "http://example.com/test3",
 		FeedId: "feed-1",
+		UserId: testTenantID,
 	})
 
 	resp, err := h.CreateArticle(context.Background(), req)
@@ -1289,6 +1339,7 @@ func TestBatchUpsertArticleTags_Unimplemented(t *testing.T) {
 type stubKnowledgeEventPort struct {
 	called    bool
 	lastEvent domain.KnowledgeEvent
+	seq       int64
 	err       error
 }
 
@@ -1298,7 +1349,7 @@ func (s *stubKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event d
 	if s.err != nil {
 		return 0, s.err
 	}
-	return 1, nil
+	return s.seq, nil
 }
 
 func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {
@@ -1319,7 +1370,7 @@ func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {
 		Title:  "Test Article",
 		Url:    "http://example.com/test",
 		FeedId: "feed-1",
-		UserId: "00000000-0000-0000-0000-000000000001",
+		UserId: testTenantID,
 	})
 
 	resp, err := h.CreateArticle(context.Background(), req)
@@ -1342,7 +1393,15 @@ func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {
 	}
 }
 
-func TestCreateArticle_NoKnowledgeEventOnUpdate(t *testing.T) {
+// An upsert is where the repair happens, not where it is skipped.
+//
+// created=false says alt-db already held the (url, user_id) row; it says
+// nothing about whether sovereign ever received the article. Every retry of a
+// CreateArticle whose append failed comes back on this branch, and so does
+// every re-crawl of an unchanged article — so "no event on update" made the
+// first miss permanent and left the Home row with the blank title
+// SummaryVersionCreated gives it. The append is idempotent on dedupe_key.
+func TestCreateArticle_AppendsKnowledgeEventOnUpsert(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	stub := &stubKnowledgeEventPort{}
@@ -1360,6 +1419,7 @@ func TestCreateArticle_NoKnowledgeEventOnUpdate(t *testing.T) {
 		Title:  "Updated",
 		Url:    "http://example.com/existing",
 		FeedId: "feed-1",
+		UserId: testTenantID,
 	})
 
 	_, err := h.CreateArticle(context.Background(), req)
@@ -1367,13 +1427,52 @@ func TestCreateArticle_NoKnowledgeEventOnUpdate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Knowledge event should NOT be appended for upserts
-	if stub.called {
-		t.Fatal("expected knowledge event NOT to be appended for upsert")
+	if !stub.called {
+		t.Fatal("expected knowledge event to be appended for an upsert")
+	}
+	if stub.lastEvent.AggregateID != "existing-article-id" {
+		t.Errorf("expected aggregate_id existing-article-id, got %s", stub.lastEvent.AggregateID)
+	}
+	wantDedupe := fmt.Sprintf(domain.DedupeKeyArticleCreated, "existing-article-id")
+	if stub.lastEvent.DedupeKey != wantDedupe {
+		t.Errorf("expected dedupe_key %s, got %s", wantDedupe, stub.lastEvent.DedupeKey)
 	}
 }
 
-func TestCreateArticle_KnowledgeEventFailureDoesNotFailRPC(t *testing.T) {
+// A dedupe hit answers event_seq 0 with no error, and that is a success: the
+// article already has its ArticleCreated. Only a real failure may fail the RPC.
+func TestCreateArticle_DedupedKnowledgeEventIsNotAFailure(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
+	stub := &stubKnowledgeEventPort{seq: 0}
+
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithKnowledgeEventPort(stub),
+	)
+
+	mockCreate.EXPECT().
+		CreateArticle(gomock.Any(), gomock.Any()).
+		Return("article-dedupe", false, nil)
+
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
+		Title:  "Already known",
+		Url:    "http://example.com/known",
+		FeedId: "feed-1",
+		UserId: testTenantID,
+	})
+
+	if _, err := h.CreateArticle(context.Background(), req); err != nil {
+		t.Fatalf("expected a dedupe hit to succeed, got: %v", err)
+	}
+}
+
+// Losing ArticleCreated is what produces the blank-title Home rows, so the
+// caller has to hear about it. There is no outbox row on this path to release
+// back to PENDING the way the outbox worker does — the RPC's own result is the
+// acknowledgement, so it is what gets withheld. pre-processor propagates the
+// error and its next crawl re-sends the article.
+func TestCreateArticle_KnowledgeEventFailureFailsRPC(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	stub := &stubKnowledgeEventPort{err: errors.New("sovereign unavailable")}
@@ -1391,16 +1490,61 @@ func TestCreateArticle_KnowledgeEventFailureDoesNotFailRPC(t *testing.T) {
 		Title:  "Test",
 		Url:    "http://example.com/test-fail",
 		FeedId: "feed-1",
+		UserId: testTenantID,
 	})
 
-	// RPC should succeed even when knowledge event append fails
-	resp, err := h.CreateArticle(context.Background(), req)
-	if err != nil {
-		t.Fatalf("expected no error despite knowledge event failure, got: %v", err)
+	_, err := h.CreateArticle(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected CreateArticle to fail when the ArticleCreated append fails")
 	}
-	if resp.Msg.ArticleId != "article-x" {
-		t.Errorf("expected article_id article-x, got %s", resp.Msg.ArticleId)
+	if connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Errorf("expected CodeUnavailable so the caller retries, got %v", connect.CodeOf(err))
 	}
+}
+
+// CLAUDE.md rule 8: an unwired producer must be distinguishable from a
+// disabled one. There is no configuration in which alt-data-hub writes
+// articles without appending their ArticleCreated, so the only way to reach a
+// nil port here is a composition-root mistake, and a mistake that answers 200
+// is the ADR-000928 failure mode.
+func TestCreateArticle_PanicsWhenKnowledgeEventPortIsUnwired(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+	)
+
+	mockCreate.EXPECT().
+		CreateArticle(gomock.Any(), gomock.Any()).
+		Return("article-unwired", true, nil)
+
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
+		Title:  "Test",
+		Url:    "http://example.com/unwired",
+		FeedId: "feed-1",
+		UserId: testTenantID,
+	})
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("CreateArticle returned instead of panicking on an unwired knowledge event port")
+		}
+	}()
+	_, _ = h.CreateArticle(context.Background(), req)
+}
+
+// And the same refusal one step earlier, where it costs a boot instead of a
+// request: passing the option with nothing in it is the DI mistake itself.
+func TestWithKnowledgeEventPort_RefusesNil(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("WithKnowledgeEventPort accepted a nil port")
+		}
+	}()
+	NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+		WithKnowledgeEventPort(nil),
+	)
 }
 
 func TestClampLimit(t *testing.T) {

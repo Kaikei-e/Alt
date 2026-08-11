@@ -55,11 +55,18 @@ func SetupConnectHandlers(mux *http.ServeMux, container *datahubdi.DataHubCompon
 	// handler's interface field is not nil as an interface value, so the
 	// handler's own guard would let it through and the procedure would fail on
 	// the first call instead of at boot.
+	// SovereignClient is checked here for the same reason, and it is a pointer
+	// too: CreateArticle is one of the two producers of Knowledge Home's
+	// ArticleCreated event — the only event carrying an article's title and url
+	// into the event log — and a data hub writing articles without it fills
+	// Home with rows that SummaryVersionCreated later inserts blank.
 	switch {
 	case container.KratosClient == nil:
 		panic("datahub: DataHubComponents.KratosClient is nil — DataHubService.GetSystemUser has no identity source")
 	case container.FetchRecentArticlesUsecase == nil:
 		panic("datahub: DataHubComponents.FetchRecentArticlesUsecase is nil — DataHubService.ListRecentArticles has no read behind it")
+	case container.SovereignClient == nil:
+		panic("datahub: DataHubComponents.SovereignClient is nil — DataHubService.CreateArticle has nowhere to append ArticleCreated")
 	}
 
 	gw := container.InternalArticleGateway
@@ -160,6 +167,18 @@ func SetupConnectHandlers(mux *http.ServeMux, container *datahubdi.DataHubCompon
 		"current", datahubPath,
 		"retired", "/services.backend.v1.BackendInternalService/",
 		"retired_in", "ADR-000954 Wave 2-C",
+	)
+
+	// And one naming the ArticleCreated producer, so an operator can tell from
+	// the boot log whether this process appends Knowledge Home events for the
+	// articles it writes. There is no disabled counterpart on purpose: the
+	// checks above make an unwired sink a process that does not start, and
+	// NewDataHubComponents already refuses a sovereign client that would no-op
+	// (CLAUDE.md rule 8).
+	logger.Info("datahub.article_created_producer_enabled",
+		"procedure", datahubPath+"CreateArticle",
+		"sink", "knowledge-sovereign AppendKnowledgeEvent",
+		"sovereign_enabled", container.SovereignClient.Enabled(),
 	)
 }
 

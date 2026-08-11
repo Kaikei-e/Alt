@@ -1,10 +1,12 @@
 package datahub
 
 import (
+	"bytes"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"alt/config"
@@ -14,6 +16,7 @@ import (
 	"alt/dataplane/usecase/push_delivery_usecase"
 	datahubdi "alt/di/datahub"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
+	"alt/shared/driver/sovereign_client"
 )
 
 func mounted(t *testing.T, mux *http.ServeMux, path string) bool {
@@ -33,6 +36,13 @@ func components() *datahubdi.DataHubComponents {
 	return &datahubdi.DataHubComponents{
 		KratosClient:               kratos_client.NewKratosClient("", ""),
 		FetchRecentArticlesUsecase: fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(nil),
+
+		// Required for the same reason and by the same rule: CreateArticle is
+		// a Knowledge Home ArticleCreated producer, and a data hub that writes
+		// articles without appending the event fills Home with blank-title
+		// rows. Disabled here rather than nil — these tests assert routing,
+		// and a disabled client rejects appends loudly instead of no-op'ing.
+		SovereignClient: sovereign_client.NewClient("", false),
 
 		// The ADR-000954 Wave 3 capabilities are required for the same reason
 		// and by the same rule: WithWave3Capabilities panics on a nil one,
@@ -76,6 +86,12 @@ func components() *datahubdi.DataHubComponents {
 		PushDeliveryUsecase: push_delivery_usecase.NewPushDeliveryUsecase(
 			datahub_capability_gateway.NewPushDeliveryGateway(nil)),
 	}
+}
+
+func withoutSovereignClient() *datahubdi.DataHubComponents {
+	c := components()
+	c.SovereignClient = nil
+	return c
 }
 
 // data-hub's mux carries the service-to-service surface and nothing else. The
@@ -137,6 +153,16 @@ func TestSetupConnectHandlers_RefusesToMountWithoutTheAbsorbedRESTCapabilities(t
 				KratosClient: kratos_client.NewKratosClient("", ""),
 			},
 		},
+		{
+			// Everything else wired, so the panic can only come from this
+			// field. A nil *sovereign_client.Client is not nil once it is
+			// stored in the handler's interface field, so the handler's own
+			// guard cannot see it — the same typed-nil trap the recent-articles
+			// usecase has, and the reason both are checked on the concrete
+			// field here.
+			name:      "no sovereign client",
+			container: withoutSovereignClient(),
+		},
 	}
 
 	for _, tt := range tests {
@@ -149,6 +175,20 @@ func TestSetupConnectHandlers_RefusesToMountWithoutTheAbsorbedRESTCapabilities(t
 			SetupConnectHandlers(http.NewServeMux(), tt.container, &config.Config{},
 				slog.New(slog.NewTextHandler(io.Discard, nil)))
 		})
+	}
+}
+
+// Rule 8's other half: the wiring state has to be readable from the boot log,
+// or "the producer is off" and "someone forgot the option" are still the same
+// observation from outside the process.
+func TestSetupConnectHandlers_LogsTheArticleCreatedProducerWiring(t *testing.T) {
+	var log bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&log, nil))
+
+	SetupConnectHandlers(http.NewServeMux(), components(), &config.Config{}, logger)
+
+	if !strings.Contains(log.String(), "datahub.article_created_producer_enabled") {
+		t.Errorf("startup log does not name the ArticleCreated producer's wiring state:\n%s", log.String())
 	}
 }
 

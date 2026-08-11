@@ -543,6 +543,69 @@
       }
     },
     {
+      "description": "an AppendKnowledgeEvent request for ArticleCreated from the CreateArticle procedure",
+      "providerStates": [
+        {
+          "name": "sovereign accepts ArticleCreated events carrying title and url"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "pre-processor",
+            "actorType": "service",
+            "aggregateId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "aggregateType": "article",
+            "dedupeKey": "article-created:ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "eventId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "eventType": "ArticleCreated",
+            "occurredAt": "2026-08-11T00:00:00Z",
+            "payload": "eyJhcnRpY2xlX2lkIjoiZmZmZmZmZmYtZmZmZi1mZmZmLWZmZmYtZmZmZmZmZmZmZmZmIiwicHVibGlzaGVkX2F0IjoiMjAyNi0wOC0xMVQwMDowMDowMFoiLCJ0ZW5hbnRfaWQiOiJlZWVlZWVlZS1lZWVlLWVlZWUtZWVlZS1lZWVlZWVlZWVlZWUiLCJ0aXRsZSI6Iktub3dsZWRnZSBIb21lIG11c3Qgbm90IHNob3cgYSBibGFuayB0aXRsZSIsInVybCI6Imh0dHBzOi8vZXhhbXBsZS5jb20vYXJ0aWNsZXMvYmxhbmstdGl0bGUifQ==",
+            "tenantId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+            "userId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "eventSeq": "0"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.eventSeq": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an AppendKnowledgeEvent request for ArticleCreated with title and url",
       "providerStates": [
         {

@@ -117,8 +117,14 @@ type Handler struct {
 	systemUser     SystemUserPort
 	recentArticles RecentArticlesUsecase
 
-	// Event publishing
-	eventPublisher     event_publisher_port.EventPublisherPort
+	// Event publishing. The mq-hub publisher is genuinely optional — it
+	// carries notifications, and it says so itself through IsEnabled.
+	eventPublisher event_publisher_port.EventPublisherPort
+
+	// The knowledge event sink is not: it is where CreateArticle appends the
+	// ArticleCreated that gives a Knowledge Home row its title and url, so
+	// WithKnowledgeEventPort panics on nil and CreateArticle panics if the
+	// option was never passed.
 	knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort
 
 	// Knowledge version usecases
@@ -323,7 +329,20 @@ func WithBackfillPorts(
 }
 
 // WithKnowledgeEventPort configures the Knowledge Home event append port.
+//
+// Required, and nil panics: ArticleCreated is the only event that carries an
+// article's title and url into the knowledge event log, so a data hub writing
+// articles without it fills Knowledge Home with rows that
+// SummaryVersionCreated later inserts blank. There is no deployment in which
+// that is the intended configuration, which is why "the option was never
+// passed" and "the feature is off" must not be the same state (CLAUDE.md rule
+// 8 / .claude/rules/di-wiring.md).
 func WithKnowledgeEventPort(port knowledge_event_port.AppendKnowledgeEventPort) HandlerOption {
+	if port == nil {
+		panic("datahubapi: AppendKnowledgeEventPort is required — " +
+			"DataHubService.CreateArticle is the Knowledge Home ArticleCreated producer " +
+			"for every article pre-processor ingests (see .claude/rules/di-wiring.md)")
+	}
 	return func(h *Handler) {
 		h.knowledgeEventPort = port
 	}
@@ -506,6 +525,15 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 	if req.Msg.FeedId == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_id is required"))
 	}
+	// The owner is checked here rather than on the event path below, where an
+	// unparseable one used to mean the ArticleCreated event was quietly not
+	// built. It is not an event-only concern: articles.user_id is UUID NOT
+	// NULL, so a request without a usable one has no row to write either.
+	userID, err := uuid.Parse(req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("user_id is required and must be a UUID"))
+	}
 
 	var publishedAt time.Time
 	if req.Msg.PublishedAt != nil {
@@ -526,38 +554,8 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to create article"))
 	}
 
-	// Fire-and-forget: append Knowledge Home ArticleCreated event to sovereign-db
-	if h.knowledgeEventPort != nil && created {
-		if userID, parseErr := uuid.Parse(req.Msg.UserId); parseErr == nil {
-			// Canonical wire schema — see domain.ArticleCreatedPayload comment
-			// and docs/glossary/ubiquitous-language.md. URL goes under the
-			// "url" key; raw map literals here historically wrote "link"
-			// (PM-2026-041) and silently broke the projector.
-			payload, _ := json.Marshal(domain.ArticleCreatedPayload{
-				ArticleID:   articleID,
-				Title:       req.Msg.Title,
-				PublishedAt: publishedAt.Format(time.RFC3339),
-				TenantID:    req.Msg.UserId,
-				URL:         req.Msg.Url,
-			})
-			kevent := domain.KnowledgeEvent{
-				EventID:       uuid.New(),
-				OccurredAt:    time.Now(),
-				TenantID:      userID,
-				UserID:        &userID,
-				ActorType:     domain.ActorService,
-				ActorID:       "pre-processor",
-				EventType:     domain.EventArticleCreated,
-				AggregateType: domain.AggregateArticle,
-				AggregateID:   articleID,
-				DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleCreated, articleID),
-				Payload:       payload,
-			}
-			if _, appendErr := h.knowledgeEventPort.AppendKnowledgeEvent(ctx, kevent); appendErr != nil {
-				h.logger.Warn("failed to append knowledge ArticleCreated event (non-fatal)",
-					"article_id", articleID, "error", appendErr)
-			}
-		}
+	if err := h.appendArticleCreated(ctx, articleID, userID, req.Msg, publishedAt); err != nil {
+		return nil, err
 	}
 
 	// Fire-and-forget: publish ArticleCreated event for downstream consumers
@@ -592,6 +590,78 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 	return connect.NewResponse(&datahubv1.CreateArticleResponse{
 		ArticleId: articleID,
 	}), nil
+}
+
+// appendArticleCreated appends the Knowledge Home ArticleCreated event for the
+// article CreateArticle just wrote. It is the second of the two producers of
+// that event; the first is alt-harvester's outbox worker.
+//
+// It runs on both branches of the upsert. `created == false` says alt-db
+// already had the (url, user_id) row, not that sovereign already has the
+// event: it is the state every retry of a failed CreateArticle arrives in, and
+// the state an unchanged article is re-sent in on every crawl. Skipping it
+// there made the first miss permanent, and a Home row whose ArticleCreated
+// never landed gets created later by SummaryVersionCreated with a blank title
+// and no url. AppendKnowledgeEvent dedupes on DedupeKeyArticleCreated, so the
+// repeat is a lookup when sovereign already has the event and a repair when it
+// does not — event_seq 0 is a dedupe hit, and a success.
+//
+// A failed append fails the RPC. Unlike the outbox worker, which after
+// 5d553fff withholds the outbox ACK and lets the next tick retry both side
+// effects, this path writes no outbox row — the RPC's own result is the only
+// acknowledgement there is, so it is what gets withheld. Unavailable rather
+// than Internal because the caller's correct response is to send the article
+// again, which the upsert and the dedupe key both make safe.
+func (h *Handler) appendArticleCreated(
+	ctx context.Context,
+	articleID string,
+	userID uuid.UUID,
+	msg *datahubv1.CreateArticleRequest,
+	publishedAt time.Time,
+) error {
+	if h.knowledgeEventPort == nil {
+		panic("datahubapi: knowledge_event_port.AppendKnowledgeEventPort is nil — " +
+			"DataHubService.CreateArticle is a Knowledge Home ArticleCreated producer and " +
+			"must be wired at the composition root (see .claude/rules/di-wiring.md)")
+	}
+
+	// Canonical wire schema — see domain.ArticleCreatedPayload comment and
+	// docs/glossary/ubiquitous-language.md. URL goes under the "url" key; raw
+	// map literals here historically wrote "link" (PM-2026-041) and silently
+	// broke the projector.
+	payload, err := json.Marshal(domain.ArticleCreatedPayload{
+		ArticleID:   articleID,
+		Title:       msg.Title,
+		PublishedAt: publishedAt.Format(time.RFC3339),
+		TenantID:    userID.String(),
+		URL:         msg.Url,
+	})
+	if err != nil {
+		h.logger.Error("failed to marshal knowledge ArticleCreated payload",
+			"article_id", articleID, "error", err)
+		return connect.NewError(connect.CodeInternal, errors.New("failed to build ArticleCreated event"))
+	}
+
+	kevent := domain.KnowledgeEvent{
+		EventID:       uuid.New(),
+		OccurredAt:    time.Now(),
+		TenantID:      userID,
+		UserID:        &userID,
+		ActorType:     domain.ActorService,
+		ActorID:       "pre-processor",
+		EventType:     domain.EventArticleCreated,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   articleID,
+		DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleCreated, articleID),
+		Payload:       payload,
+	}
+	if _, err := h.knowledgeEventPort.AppendKnowledgeEvent(ctx, kevent); err != nil {
+		h.logger.Error("failed to append knowledge ArticleCreated event; refusing to acknowledge the write",
+			"article_id", articleID, "error", err)
+		return connect.NewError(connect.CodeUnavailable,
+			errors.New("article written but ArticleCreated could not be appended; retry"))
+	}
+	return nil
 }
 
 func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[datahubv1.SaveArticleSummaryRequest]) (*connect.Response[datahubv1.SaveArticleSummaryResponse], error) {
