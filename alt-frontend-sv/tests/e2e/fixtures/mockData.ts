@@ -406,6 +406,7 @@ export const CONNECT_RPC_PATHS = {
 		"**/api/v2/alt.feeds.v2.FeedService/GetDetailedFeedStats",
 	getUnreadCount: "**/api/v2/alt.feeds.v2.FeedService/GetUnreadCount",
 	streamSummarize: "**/api/v2/alt.feeds.v2.FeedService/StreamSummarize",
+	resolveOgImages: "**/api/v2/alt.feeds.v2.FeedService/ResolveOgImages",
 	// Article service
 	fetchArticleContent:
 		"**/api/v2/alt.articles.v2.ArticleService/FetchArticleContent",
