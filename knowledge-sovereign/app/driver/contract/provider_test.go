@@ -50,6 +50,21 @@ func resolvePactFile(candidates ...string) string {
 	return ""
 }
 
+// Each verifier below sets FilterConsumers to the one consumer it declares
+// state handlers for. ConsumerVersionSelectors is not enough: pact-go appends
+// $PACT_URL to every VerifyRequest's pact sources (provider/verify_request.go,
+// addPactUrlsFromEnvironment), and the Broker's
+// contract_requiring_verification_published webhook sets PACT_URL for the whole
+// job. So one webhook about the alt-backend pact makes all four verifiers in
+// this package load that pact, and pact-go answers a provider state it has no
+// handler for with a WARN and HTTP 200 rather than an error. The three
+// verifiers that never registered "the projection mutation is rejected with an
+// error" then drove the mutation through an accepting fixture and reported the
+// 200/500 mismatch as a contract failure against alt-backend.
+//
+// FilterConsumers is enforced by the verifier itself, so it holds no matter
+// which source handed it the pact.
+
 func TestVerifyAltBackendConsumerContract(t *testing.T) {
 	brokerURL := os.Getenv("PACT_BROKER_BASE_URL")
 	localPact := resolvePactFile(altBackendPactFile, altBackendPactAtRoot)
@@ -67,9 +82,9 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
 		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers: []string{"alt-backend"},
 		StateHandlers: models.StateHandlers{
 			"the projection mutation upsert_home_item is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
-				repo.rejectMutation = false
 				return nil, nil
 			},
 			"a user with at least one footprint exists": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
@@ -84,16 +99,20 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 			"sovereign accepts trail.branch_resolved.v1 events carrying an optional dismiss reason": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
+			// Scoped to the one interaction that asked for it: pact-go calls
+			// this handler again with setup=false on teardown, so the fixture
+			// is accepting again before the next interaction is set up. The
+			// neighbouring "is accepted" states used to carry a compensating
+			// reset, which only worked while they happened to sort after this
+			// one in the pact file.
 			"the projection mutation is rejected with an error": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
-				repo.rejectMutation = true
+				repo.rejectMutation = setup
 				return nil, nil
 			},
 			"the recall mutation snooze_candidate is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
-				repo.rejectMutation = false
 				return nil, nil
 			},
 			"the curation mutation dismiss_curation is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
-				repo.rejectMutation = false
 				return nil, nil
 			},
 			// Knowledge Loop append states (ADR-000840). The handlers
@@ -172,6 +191,7 @@ func TestVerifyRagOrchestratorConsumerContract(t *testing.T) {
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
 		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers: []string{"rag-orchestrator"},
 		StateHandlers: models.StateHandlers{
 			"sovereign accepts append-only Loop transition events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
@@ -235,6 +255,7 @@ func TestVerifyRecapWorkerConsumerContract(t *testing.T) {
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
 		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers: []string{"recap-worker"},
 		StateHandlers: models.StateHandlers{
 			"sovereign accepts append-only Loop transition events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
@@ -291,6 +312,7 @@ func TestVerifyAltctlConsumerContract(t *testing.T) {
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
 		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers: []string{"altctl"},
 		StateHandlers: models.StateHandlers{
 			"an admin operator has snapshot authority": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
