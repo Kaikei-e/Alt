@@ -214,11 +214,11 @@ Broker はヘッダの**値**しかマスクしないため、**PAT が平文で
 ```python
 #!/usr/bin/env python3
 # 出力にリクエストボディ / レスポンスボディ / ヘッダ値を出さないこと。
-import json, urllib.request
+import json, os, urllib.request
 from base64 import b64encode
 from pathlib import Path
 
-BROKER = "http://100.91.38.4:9292"   # 登録先はどのホストでもよい (§下記参照)
+BROKER = os.environ["PACT_BROKER_URL"]   # tailnet の :9292。登録先はどのホストでもよい (§下記参照)
 DISPATCH_URL = "https://api.github.com/repos/Kaikei-e/alt-deploy/dispatches"
 PROVIDERS = [
     "alt-backend", "alt-butterfly-facade", "auth-hub", "pre-processor",
@@ -277,10 +277,10 @@ webhook 定義には `${pactbroker.pactUrl}` が**リテラルのまま**保存�
 効くのは **webhook を発火させた側**のホストである。`127.0.0.1:9292` 経由で
 `test-webhook` すると `pactUrl` が `http://127.0.0.1:9292/...` になり、GitHub
 runner から取得できず `Failed to load pact` で落ちる
-(2026-07-31 run 30597755105 がこれ)。CI が `100.91.38.4:9292` へ publish して
+(2026-07-31 run 30597755105 がこれ)。CI が tailnet の `:9292` へ publish して
 発火する通常経路では正しく解決される。
 
-疎通確認は **runner から到達できるホスト (`100.91.38.4:9292`) 経由で行う**こと。
+疎通確認は **runner から到達できるホスト (tailnet の `:9292`) 経由で行う**こと。
 恒久対策は broker に `PACT_BROKER_BASE_URL` を明示し、発火元に依存させないこと。
 
 #### 登録後の確認

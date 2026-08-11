@@ -60,14 +60,14 @@ class TestDispatchContext:
         from news_creator.gateway import dispatch_metrics
 
         async with dispatch_metrics.dispatch_context(
-            remote_url="http://100.74.178.93:11434",
+            remote_url="http://remote-be-1:11434",
             model="gemma4-e4b-q4km",
         ) as obs:
             obs.set_outcome("success")
 
         dispatches = _find(
             _points_for(metrics_reader, "newscreator.distributed_be.dispatches"),
-            remote_url="http://100.74.178.93:11434",
+            remote_url="http://remote-be-1:11434",
             model="gemma4-e4b-q4km",
             outcome="success",
         )
@@ -76,7 +76,7 @@ class TestDispatchContext:
 
         duration_points = _find(
             _points_for(metrics_reader, "newscreator.distributed_be.request.duration"),
-            remote_url="http://100.74.178.93:11434",
+            remote_url="http://remote-be-1:11434",
             outcome="success",
         )
         assert len(duration_points) == 1
