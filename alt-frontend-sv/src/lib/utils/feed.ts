@@ -40,6 +40,43 @@ export function formatPublishedDate(
 }
 
 /**
+ * Formats a date string without the time of day.
+ *
+ * For surfaces where the dateline is a footnote rather than a fact the reader
+ * came for — the mobile gallery tile, where a full datestamp wraps onto a
+ * second line and takes weight away from the thumbnail it sits under.
+ *
+ * @param dateString - ISO date string or RFC3339 format
+ * @returns Formatted date string (e.g., "Nov 23, 2025")
+ */
+export function formatCompactDate(
+	dateString: string | undefined | null,
+): string {
+	if (!dateString) {
+		return "";
+	}
+
+	try {
+		const date = new Date(dateString);
+		if (Number.isNaN(date.getTime())) {
+			return "";
+		}
+
+		// `timeZone` pinned for the same reason as formatPublishedDate: an
+		// unpinned format renders one string on the server and another in the
+		// browser, and hydration reports the mismatch.
+		return date.toLocaleDateString("en-US", {
+			year: "numeric",
+			month: "short",
+			day: "numeric",
+			timeZone: "UTC",
+		});
+	} catch {
+		return "";
+	}
+}
+
+/**
  * Merges tags array into a display label
  * @param tags - Array of tag strings
  * @returns Merged label (e.g., "Next.js / Performance")

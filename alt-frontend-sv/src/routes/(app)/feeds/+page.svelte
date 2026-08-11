@@ -213,17 +213,9 @@ function handleFeedGridReady(api: FeedGridApi) {
 			onNext={handleNext}
 			feeds={feedGridApi?.getVisibleFeeds() ?? []}
 			{currentIndex}
-		>
-			{#snippet footerActions()}
-				<button
-					onclick={handleMarkAsReadInModal}
-					disabled={isMarkingAsRead || isProcessingMarkAsRead}
-					class="mark-read-btn"
-				>
-					{isMarkingAsRead ? "Marking\u2026" : "Mark as Read"}
-				</button>
-			{/snippet}
-		</FeedDetailModal>
+			onMarkAsRead={handleMarkAsReadInModal}
+			isMarkingAsRead={isMarkingAsRead || isProcessingMarkAsRead}
+		/>
 	</div>
 {:else}
 	<div style="background: var(--app-bg);" class="h-[100dvh] overflow-hidden flex flex-col">
@@ -299,36 +291,6 @@ function handleFeedGridReady(api: FeedGridApi) {
 		height: 1px;
 		background: var(--surface-border);
 		margin-top: 0.75rem;
-	}
-
-	.mark-read-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0.4rem 1rem;
-		min-height: 2.25rem;
-		font-family: var(--font-body);
-		font-size: 0.75rem;
-		font-weight: 600;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		color: var(--alt-charcoal);
-		background: transparent;
-		border: 1.5px solid var(--alt-charcoal);
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			color 0.15s;
-	}
-
-	.mark-read-btn:hover:not(:disabled) {
-		background: var(--alt-charcoal);
-		color: var(--surface-bg);
-	}
-
-	.mark-read-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
 	}
 
 	@media (prefers-reduced-motion: reduce) {

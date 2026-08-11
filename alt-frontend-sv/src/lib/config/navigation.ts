@@ -12,6 +12,7 @@ import {
 	Heart,
 	Home,
 	Infinity as InfinityIcon,
+	LayoutGrid,
 	Lightbulb,
 	Link as LinkIcon,
 	Menu,
@@ -71,6 +72,7 @@ export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 		title: "Browse",
 		items: [
 			{ label: "Library", href: "/feeds", icon: Rss },
+			{ label: "Gallery", href: "/feeds/visual-preview", icon: LayoutGrid },
 			{ label: "Swipe", href: "/feeds/swipe/visual-preview", icon: Rss },
 			{ label: "Swipe Mode", href: "/feeds/swipe", icon: InfinityIcon },
 			{ label: "Favorites", href: "/feeds/favorites", icon: Heart },

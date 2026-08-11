@@ -1,5 +1,5 @@
 <script lang="ts" module>
-export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
+export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 </script>
 
 <script lang="ts">
@@ -20,11 +20,13 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 		fetchFn?: (cursor?: string, limit?: number) => Promise<import("$lib/api").CursorResponse<RenderFeed>>;
 		cardRenderer?: Snippet<[{ feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void }]>;
 		gridClass?: string;
+		/** data-testid for the grid element itself, so a caller can assert its layout. */
+		gridTestId?: string;
 		emptyText?: string;
 		loadingText?: string;
 	}
 
-	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4", emptyText = "No dispatches on the wire", loadingText = "Retrieving dispatches" }: Props = $props();
+	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4", gridTestId, emptyText = "No dispatches on the wire", loadingText = "Retrieving dispatches" }: Props = $props();
 
 	// Track initial load completion to only animate first batch
 	let initialLoadDone = $state(false);
@@ -286,7 +288,7 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 	{:else if visibleFeeds.length === 0}
 		<p class="empty-state">{emptyText}</p>
 	{:else}
-		<div class={gridClass}>
+		<div class={gridClass} data-testid={gridTestId}>
 			{#each visibleFeeds as feed, index (feed.id)}
 				<div class={initialLoadDone ? "" : "dispatch-item"} style={initialLoadDone ? "" : `--stagger: ${index};`}>
 					{#if cardRenderer}
@@ -306,6 +308,8 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 				rootMargin: "0px 0px 200px 0px",
 			}}
 			class="load-more"
+			role="status"
+			aria-live="polite"
 		>
 			{#if isFetchingNextPage}
 				<div class="loading-state">
