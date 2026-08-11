@@ -583,6 +583,7 @@ func TestVerifyRecapWorkerContract(t *testing.T) {
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
 		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers: []string{"recap-worker"},
 		StateHandlers: models.StateHandlers{
 			"articles exist in the recap window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				// No-op: stub server always returns articles
@@ -647,6 +648,7 @@ func TestVerifyAltButterflyFacadeContract(t *testing.T) {
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
 		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers: []string{"alt-butterfly-facade"},
 		StateHandlers: models.StateHandlers{
 			"article does not exist": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
@@ -711,6 +713,7 @@ func TestVerifySearchIndexerContract(t *testing.T) {
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerName,
 		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers: []string{"search-indexer"},
 		StateHandlers: models.StateHandlers{
 			"articles exist in the database": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
@@ -753,9 +756,18 @@ func TestVerifySearchIndexerContract(t *testing.T) {
 //
 // Every state here is a no-op for the same reason: this verification runs
 // against a stub, not against a database, so "articles exist" is already true
-// by construction. The names still have to be declared — pact-go fails a
-// verification whose pact names a state the provider does not know, which is
-// what catches a consumer inventing a precondition nobody agreed to.
+// by construction.
+//
+// Declaring the names does NOT make an undeclared one an error, which is the
+// opposite of what this comment claimed until 2026-08. pact-go's
+// stateHandlerMiddleware (provider/verifier.go) answers a state it has no
+// handler for with a `[WARN] no state handler found` line and HTTP 200, so an
+// unknown precondition is silently treated as satisfied and the interaction
+// runs against whatever the stub's default happens to be. Believing otherwise
+// is what let the knowledge-sovereign harness verify a foreign consumer's pact
+// and report the resulting mismatch as a contract break. Declare them so the
+// list documents the agreed preconditions, and keep FilterConsumers pinned so
+// no pact this list was not written for reaches the verifier.
 func noopStates(names ...string) models.StateHandlers {
 	handlers := models.StateHandlers{}
 	for _, name := range names {
@@ -800,6 +812,7 @@ func verifyConsumer(t *testing.T, consumer, providerPacticipant, pactPath string
 	verifyRequest := provider.VerifyRequest{
 		Provider:        providerPacticipant,
 		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", startStubServer(t)),
+		FilterConsumers: []string{consumer},
 		StateHandlers:   states,
 	}
 

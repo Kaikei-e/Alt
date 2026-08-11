@@ -36,6 +36,16 @@ const (
 	ragOrchPactAtRoot     = "../../../../pacts/rag-orchestrator-knowledge-sovereign.json"
 	recapWorkerPactFile   = "../../../../recap-worker/pacts/recap-worker-knowledge-sovereign.json"
 	recapWorkerPactAtRoot = "../../../../pacts/recap-worker-knowledge-sovereign.json"
+
+	// One name per consumer, read by both FilterConsumers and the
+	// ConsumerVersionSelectors. Stating it twice let the two disagree, and a
+	// FilterConsumers that matches nothing is not caught by
+	// FailIfNoPactsFound — the Broker's pacts are counted before the consumer
+	// filter runs, so the verification passes having checked nothing.
+	altBackendConsumer  = "alt-backend"
+	ragOrchConsumer     = "rag-orchestrator"
+	recapWorkerConsumer = "recap-worker"
+	altctlConsumer      = "altctl"
 )
 
 // resolvePactFile returns the first existing path among the
@@ -64,6 +74,12 @@ func resolvePactFile(candidates ...string) string {
 //
 // FilterConsumers is enforced by the verifier itself, so it holds no matter
 // which source handed it the pact.
+//
+// FailIfNoPactsFound accompanies it so a selector that matches nothing fails
+// instead of reporting a green verification of zero interactions. The
+// file-mode branch always supplies a pact — the test skips earlier when none
+// exists — so the flag can only fire when the Broker genuinely holds no pact
+// for this consumer, which is a result worth failing on rather than passing.
 
 func TestVerifyAltBackendConsumerContract(t *testing.T) {
 	brokerURL := os.Getenv("PACT_BROKER_BASE_URL")
@@ -80,9 +96,10 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 	port := startProviderServer(t, repo)
 
 	verifyRequest := provider.VerifyRequest{
-		Provider:        providerName,
-		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
-		FilterConsumers: []string{"alt-backend"},
+		Provider:           providerName,
+		ProviderBaseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers:    []string{altBackendConsumer},
+		FailIfNoPactsFound: true,
 		StateHandlers: models.StateHandlers{
 			"the projection mutation upsert_home_item is accepted": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
@@ -141,8 +158,8 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "alt-backend", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "alt-backend", DeployedOrReleased: true},
+			&provider.ConsumerVersionSelector{Consumer: altBackendConsumer, MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: altBackendConsumer, DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
@@ -189,9 +206,10 @@ func TestVerifyRagOrchestratorConsumerContract(t *testing.T) {
 	port := startProviderServer(t, repo)
 
 	verifyRequest := provider.VerifyRequest{
-		Provider:        providerName,
-		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
-		FilterConsumers: []string{"rag-orchestrator"},
+		Provider:           providerName,
+		ProviderBaseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers:    []string{ragOrchConsumer},
+		FailIfNoPactsFound: true,
 		StateHandlers: models.StateHandlers{
 			"sovereign accepts append-only Loop transition events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
@@ -204,8 +222,8 @@ func TestVerifyRagOrchestratorConsumerContract(t *testing.T) {
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "rag-orchestrator", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "rag-orchestrator", DeployedOrReleased: true},
+			&provider.ConsumerVersionSelector{Consumer: ragOrchConsumer, MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: ragOrchConsumer, DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
@@ -253,9 +271,10 @@ func TestVerifyRecapWorkerConsumerContract(t *testing.T) {
 	port := startProviderServer(t, repo)
 
 	verifyRequest := provider.VerifyRequest{
-		Provider:        providerName,
-		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
-		FilterConsumers: []string{"recap-worker"},
+		Provider:           providerName,
+		ProviderBaseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers:    []string{recapWorkerConsumer},
+		FailIfNoPactsFound: true,
 		StateHandlers: models.StateHandlers{
 			"sovereign accepts append-only Loop transition events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
@@ -268,8 +287,8 @@ func TestVerifyRecapWorkerConsumerContract(t *testing.T) {
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "recap-worker", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "recap-worker", DeployedOrReleased: true},
+			&provider.ConsumerVersionSelector{Consumer: recapWorkerConsumer, MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: recapWorkerConsumer, DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
@@ -310,9 +329,10 @@ func TestVerifyAltctlConsumerContract(t *testing.T) {
 	port := startProviderServer(t, repo)
 
 	verifyRequest := provider.VerifyRequest{
-		Provider:        providerName,
-		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
-		FilterConsumers: []string{"altctl"},
+		Provider:           providerName,
+		ProviderBaseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
+		FilterConsumers:    []string{altctlConsumer},
+		FailIfNoPactsFound: true,
 		StateHandlers: models.StateHandlers{
 			"an admin operator has snapshot authority": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
@@ -337,8 +357,8 @@ func TestVerifyAltctlConsumerContract(t *testing.T) {
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "altctl", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "altctl", DeployedOrReleased: true},
+			&provider.ConsumerVersionSelector{Consumer: altctlConsumer, MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: altctlConsumer, DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver

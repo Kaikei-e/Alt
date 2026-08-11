@@ -148,8 +148,16 @@ func verifyMessagePact(
 		}
 	}
 
+	// FilterConsumers pins this verification to the one consumer whose message
+	// handlers are registered above. pact-go appends $PACT_URL to every
+	// VerifyRequest's pact sources (provider/verify_request.go,
+	// addPactUrlsFromEnvironment) and alt-deploy's verify-pact-on-demand sets
+	// PACT_URL for the whole job, so without this a webhook about one
+	// consumer's pact makes every verifier in this package replay it — against
+	// handlers that do not cover its message descriptions.
 	verifyRequest := provider.VerifyRequest{
 		Provider:        "mq-hub",
+		FilterConsumers: []string{consumer},
 		MessageHandlers: handlers,
 		StateHandlers:   states,
 	}
