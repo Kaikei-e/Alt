@@ -83,6 +83,18 @@ test.describe("GetArticleSourceURL", () => {
 					: undefined;
 			expect(typeof sourceURL).toBe("string");
 			expect(String(sourceURL)).toMatch(/^https?:\/\//);
+
+			// The reader masthead has no other title source on an id-only entry:
+			// the summary-ready notification navigates to /articles/<id> with no
+			// query string at all. A response that carries only the URL forces the
+			// client to render the URL host as the headline.
+			const title =
+				typeof body === "object" && body !== null
+					? (body as Record<string, unknown>)["title"]
+					: undefined;
+			expect(typeof title).toBe("string");
+			expect(String(title).length).toBeGreaterThan(0);
+			expect(String(title)).not.toBe(new URL(String(sourceURL)).host);
 		}
 	});
 
