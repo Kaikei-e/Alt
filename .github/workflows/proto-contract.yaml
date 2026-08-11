@@ -375,7 +375,16 @@ jobs:
           PACT_BROKER_USERNAME: pact
           PACT_BROKER_PASSWORD: pact
         run: |
-          VERSION="${GITHUB_SHA:0:7}"
+          # The full SHA, not a short one, because the provider steps below
+          # annotate their own pacticipant with ${{ github.sha }}. A pacticipant
+          # that is both consumer and provider — alt-backend is — would
+          # otherwise get two versions for one commit, and the newer one (the
+          # provider annotation) carries no pact. `mainBranch: true` resolves to
+          # the latest version on the branch and then looks for its pacts, so
+          # from that moment every selector for that consumer answers "no pacts
+          # found" while the pact sits on the older version. Verified against a
+          # local broker: two versions -> 0 pacts, one shared version -> 1.
+          VERSION="${GITHUB_SHA}"
           BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-ruby-standalone/master/install.sh | PACT_CLI_VERSION=v2.4.10 bash
           export PATH="${PATH}:${PWD}/pact/bin"
@@ -546,7 +555,10 @@ jobs:
           PACT_BROKER_USERNAME: pact
           PACT_BROKER_PASSWORD: pact
         run: |
-          VERSION="${GITHUB_SHA:0:7}"
+          # Full SHA, matching PACT_PROVIDER_VERSION below — see the Go verify
+          # job's publish step for why a pacticipant must not end up with two
+          # versions for one commit.
+          VERSION="${GITHUB_SHA}"
           BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-ruby-standalone/master/install.sh | PACT_CLI_VERSION=v2.4.10 bash
           export PATH="${PATH}:${PWD}/pact/bin"
