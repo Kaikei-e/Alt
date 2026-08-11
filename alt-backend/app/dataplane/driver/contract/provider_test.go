@@ -1364,7 +1364,8 @@ func mountWave3Batch2Procedures(mux *http.ServeMux) {
 		"article": articleContent,
 	}))
 	dataHubProcedure(mux, "LookupArticleURL", jsonPost(map[string]interface{}{
-		"url": stubURL,
+		"url":   stubURL,
+		"title": "Example headline",
 	}))
 
 	// ---- §2.N Knowledge backfill -------------------------------------------

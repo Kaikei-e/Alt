@@ -4,26 +4,26 @@
  * Provides type-safe methods to call ArticleService endpoints.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
-	ArticleService,
-	StreamArticleTagsResponse_EventType,
-	type StreamArticleTagsResponse,
-	type FetchArticleContentResponse,
 	type ArchiveArticleResponse,
-	type FetchArticlesCursorResponse,
+	ArticleService,
+	type BatchPrefetchImagesResponse,
+	type FetchArticleContentResponse,
 	type FetchArticleSummaryResponse,
-	type ArticleSummaryItem as ProtoArticleSummaryItem,
 	type FetchArticlesByTagResponse,
+	type FetchArticlesCursorResponse,
 	type FetchArticleTagsResponse,
 	type FetchRandomFeedResponse,
-	type TagTrailArticleItem as ProtoTagTrailArticleItem,
-	type ArticleTagItem as ProtoArticleTagItem,
-	type BatchPrefetchImagesResponse,
-	type ImageProxyInfo as ProtoImageProxyInfo,
 	type FetchTagCloudResponse,
+	type ArticleSummaryItem as ProtoArticleSummaryItem,
+	type ArticleTagItem as ProtoArticleTagItem,
+	type ImageProxyInfo as ProtoImageProxyInfo,
 	type TagCloudItem as ProtoTagCloudItem,
+	type TagTrailArticleItem as ProtoTagTrailArticleItem,
+	type StreamArticleTagsResponse,
+	StreamArticleTagsResponse_EventType,
 } from "$lib/gen/alt/articles/v2/articles_pb";
 
 /** Type-safe ArticleService client */

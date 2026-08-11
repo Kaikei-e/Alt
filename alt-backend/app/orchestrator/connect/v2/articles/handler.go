@@ -855,5 +855,6 @@ func (h *Handler) GetArticleSourceURL(
 	}
 	return connect.NewResponse(&articlesv2.GetArticleSourceURLResponse{
 		SourceUrl: source.URL,
+		Title:     source.Title,
 	}), nil
 }

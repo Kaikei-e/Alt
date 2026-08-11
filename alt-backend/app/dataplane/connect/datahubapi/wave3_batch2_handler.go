@@ -286,7 +286,10 @@ func (h *Handler) LookupArticleURL(ctx context.Context, req *connect.Request[dat
 		h.logger.ErrorContext(ctx, "LookupArticleURL failed", "error", err, "article_id", req.Msg.GetArticleId())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to look up article url"))
 	}
-	return connect.NewResponse(&datahubv1.LookupArticleURLResponse{Url: source.URL}), nil
+	return connect.NewResponse(&datahubv1.LookupArticleURLResponse{
+		Url:   source.URL,
+		Title: source.Title,
+	}), nil
 }
 
 // ---------------------------------------------------------------------------

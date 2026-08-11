@@ -310,5 +310,8 @@ func (g *ArticleURLLookupGateway) LookupArticleSource(ctx context.Context, artic
 	if err != nil {
 		return domain.ArticleSource{}, fmt.Errorf("lookup article source %s: %w", articleID, err)
 	}
-	return domain.ArticleSource{URL: resp.Msg.GetUrl()}, nil
+	return domain.ArticleSource{
+		URL:   resp.Msg.GetUrl(),
+		Title: resp.Msg.GetTitle(),
+	}, nil
 }

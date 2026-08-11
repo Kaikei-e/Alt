@@ -25,10 +25,10 @@ func (r *ArticleRepository) LookupArticleSource(ctx context.Context, articleID s
 		return domain.ArticleSource{}, nil
 	}
 
-	const query = `SELECT url FROM articles WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL LIMIT 1`
+	const query = `SELECT url, COALESCE(title, '') FROM articles WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL LIMIT 1`
 
 	var found domain.ArticleSource
-	err := r.pool.QueryRow(ctx, query, articleID, userID).Scan(&found.URL)
+	err := r.pool.QueryRow(ctx, query, articleID, userID).Scan(&found.URL, &found.Title)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ArticleSource{}, nil

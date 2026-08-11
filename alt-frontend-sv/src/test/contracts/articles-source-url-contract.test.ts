@@ -13,8 +13,9 @@
  * `e2e/playwright/alt-backend/tests/articles-source-url.spec.ts` covers status codes
  * (400 / 404 / 200) end-to-end against alt-backend.
  */
-import { describe, it, expect } from "vitest";
-import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
+
+import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { describe, expect, it } from "vitest";
 import {
 	GetArticleSourceURLRequestSchema,
 	GetArticleSourceURLResponseSchema,

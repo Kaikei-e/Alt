@@ -4633,6 +4633,7 @@
       },
       "response": {
         "body": {
+          "title": "Example headline",
           "url": "https://example.com/post"
         },
         "headers": {
@@ -4640,6 +4641,14 @@
         },
         "matchingRules": {
           "body": {
+            "$.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.url": {
               "combine": "AND",
               "matchers": [

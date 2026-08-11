@@ -39,8 +39,14 @@ const paramUrl = $derived(safeArticleHref(page.url.searchParams.get("url")));
 // from the article id server-side (GetArticleSourceURL), so the URL never
 // travels in the client URL bar and is never client-supplied.
 let resolvedUrl = $state<string | null>(null);
+// The title comes back from the same lookup. It has to, because the entry
+// points that omit `?title=` — the summary-ready notification, the trail spine,
+// a Home card whose projection row has no title — have no second call they
+// could make for it.
+let resolvedTitle = $state<string | null>(null);
 const articleUrl = $derived(paramUrl ?? resolvedUrl);
-const articleTitle = $derived(page.url.searchParams.get("title"));
+const paramTitle = $derived(page.url.searchParams.get("title"));
+const articleTitle = $derived(paramTitle ?? resolvedTitle);
 
 // Dwell measurement for a walked trail branch. The ?trail_proposal= handoff is
 // the sole gate (D19): captured once at init, deliberately non-reactive — one
@@ -63,15 +69,26 @@ onMount(() => {
 	}
 });
 
+// A plain latch rather than $state: it is read inside the effect that writes
+// it, and a reactive one would re-run the effect on its own write.
+let resolveRequestedFor: string | null = null;
+
 $effect(() => {
-	if (paramUrl || resolvedUrl || !articleId) return;
+	// Either half being absent is reason enough to resolve — a Home card with a
+	// blank projection title passes `?url=` and no `?title=`, and gating on the
+	// URL alone left that case rendering the URL host as its headline.
+	if (!articleId || (paramUrl && paramTitle)) return;
+	if (resolveRequestedFor === articleId) return;
+	resolveRequestedFor = articleId;
 	let cancelled = false;
 	void getArticleSourceURLClient(articleId)
 		.then((source) => {
-			if (!cancelled) resolvedUrl = safeArticleHref(source.url);
+			if (cancelled) return;
+			resolvedUrl = safeArticleHref(source.url);
+			resolvedTitle = source.title || null;
 		})
 		.catch(() => {
-			// Leave resolvedUrl null — the page falls back to its empty state.
+			// Leave both null — the page falls back to its empty state.
 		});
 	return () => {
 		cancelled = true;
@@ -108,7 +125,9 @@ const sourceHost = $derived.by(() => {
 const mastheadKicker = $derived(
 	sourceHost ? sourceHost.toUpperCase() : "ARTICLE",
 );
-const mastheadTitle = $derived(articleTitle ?? sourceHost ?? "Article");
+// Never the host. A URL is not a headline, and substituting one made a Guardian
+// feature read as "www.theguardian.com" on every entry that carries no title.
+const mastheadTitle = $derived(articleTitle ?? "Article");
 
 const readingTimeMinutes = $derived.by<number | null>(() => {
 	if (!articleContent) return null;
