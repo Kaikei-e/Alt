@@ -37,6 +37,8 @@ on:
       - 'compose/observability.yaml'
       - 'scripts/observability-validate.sh'
       - 'scripts/observability-config-audit.py'
+      - 'scripts/observability-drift-check.py'
+      - 'scripts/tests/test-observability-drift-check.py'
       - '.github/workflows/observability-validate.yaml'
   pull_request:
     branches: [main]
@@ -45,6 +47,8 @@ on:
       - 'compose/observability.yaml'
       - 'scripts/observability-validate.sh'
       - 'scripts/observability-config-audit.py'
+      - 'scripts/observability-drift-check.py'
+      - 'scripts/tests/test-observability-drift-check.py'
       - '.github/workflows/observability-validate.yaml'
   workflow_dispatch:
 
@@ -143,3 +147,10 @@ jobs:
 
       - name: Validate observability configuration
         run: scripts/observability-validate.sh
+
+      # The drift checker only runs against a live host, so nothing here can
+      # exercise it end to end. Its comparison logic is pure, though, and it
+      # was wrong in a way no host-side run could reveal: it reported drift
+      # unconditionally, so "drift" and "no drift" looked identical.
+      - name: Drift-check self-tests
+        run: python3 scripts/tests/test-observability-drift-check.py

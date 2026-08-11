@@ -268,7 +268,8 @@ exit 1。比較対象:
 - `global` に明示されているキー
 - アラート / 記録ルールを `(ファイル名, グループ名, ルール名)` の集合として比較
   (「11 本のはずが 4 本」ではなく「どの 7 本が落ちているか」が出る)
-- Alertmanager 設定の本文一致 (`/api/v2/status` の `config.original`)
+- Alertmanager 設定の一致 (`/metrics` の `alertmanager_config_hash` と、ディスク上の
+  ファイルを同じ md5 で畳んだ値。あわせて `alertmanager_config_last_reload_successful`)
 - 最終 reload からの経過時間
 
 ### 4.2 自動 (推奨)

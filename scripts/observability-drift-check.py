@@ -17,7 +17,8 @@ This checks the two against each other and names the difference:
   * alert/recording rules     (disk rule files vs /api/v1/rules), compared as
                                (file, group, name) so a partially loaded file
                                is reported per rule, not as a count mismatch
-  * alertmanager.yml text     (disk vs /api/v2/status config.original)
+  * alertmanager.yml          (disk bytes vs the `alertmanager_config_hash`
+                               Alertmanager derives from the file it loaded)
   * last successful reload    (age, and whether the last attempt failed)
 
 Exit codes:
@@ -35,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import sys
@@ -54,6 +56,64 @@ DEFAULT_ALERTMANAGER_URL = "http://127.0.0.1:9093"
 
 class Unreachable(Exception):
     pass
+
+
+def alertmanager_config_hash(data: bytes) -> float:
+    """Hash config bytes the way Alertmanager hashes the file it loads.
+
+    Its md5HashAsMetricValue keeps only the first 6 bytes of the digest — a
+    float64 mantissa cannot carry more — and reads them little-endian.
+    """
+    digest = hashlib.md5(data, usedforsecurity=False).digest()[:6]
+    return float(int.from_bytes(digest, "little"))
+
+
+def read_metric(exposition: str, name: str) -> float | None:
+    """Read an unlabelled gauge out of a Prometheus text exposition."""
+    for line in exposition.splitlines():
+        if line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if len(parts) == 2 and parts[0] == name:
+            try:
+                return float(parts[1])
+            except ValueError:
+                return None
+    return None
+
+
+def check_alertmanager_config(disk: bytes, exposition: str) -> str | None:
+    """Name the difference between the config on disk and the one running.
+
+    Compared by hash rather than by text. `/api/v2/status` exposes the loaded
+    config under `config.original`, but that string is the parsed config
+    marshalled back out: comments are gone and every unset global default is
+    filled in, so it never equals the file a human wrote. Comparing the two as
+    text reported drift on every run, including immediately after a successful
+    reload, which is how a check that should have caught an unreloaded
+    Alertmanager became one nobody could act on.
+    """
+    reloaded = read_metric(exposition, "alertmanager_config_last_reload_successful")
+    if reloaded is not None and reloaded != 1:
+        return (
+            "Alertmanager's last config reload failed — it is still evaluating the "
+            "previous config no matter what is on disk"
+        )
+
+    loaded = read_metric(exposition, "alertmanager_config_hash")
+    if loaded is None:
+        return (
+            "alertmanager_config_hash absent from Alertmanager's /metrics — cannot "
+            "tell which config is running"
+        )
+
+    if loaded != alertmanager_config_hash(disk):
+        return (
+            "alertmanager.yml on disk is not the config Alertmanager loaded — "
+            "reload it too"
+        )
+
+    return None
 
 
 def http_get(url: str, timeout: float) -> bytes:
@@ -251,15 +311,12 @@ def main() -> int:
     if os.path.isfile(am_path):
         am_url = args.alertmanager_url.rstrip("/")
         try:
-            am_status = get_json(f"{am_url}/api/v2/status", args.timeout)
-            original = (am_status.get("config") or {}).get("original", "")
-            with open(am_path, encoding="utf-8") as handle:
+            exposition = http_get(f"{am_url}/metrics", args.timeout).decode("utf-8")
+            with open(am_path, "rb") as handle:
                 on_disk = handle.read()
-            if original.strip() != on_disk.strip():
-                findings.append(
-                    "alertmanager.yml on disk differs from the config Alertmanager "
-                    "loaded — reload it too"
-                )
+            finding = check_alertmanager_config(on_disk, exposition)
+            if finding:
+                findings.append(finding)
             else:
                 notes.append("alertmanager config     : in sync")
         except Unreachable:
