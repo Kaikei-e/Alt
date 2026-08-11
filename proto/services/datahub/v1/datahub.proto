@@ -1123,6 +1123,9 @@ message LookupArticleURLResponse {
   // cases are deliberately indistinguishable: telling them apart would confirm
   // the existence of another tenant's article.
   string url = 1;
+  // Stored headline, read from the same row and under the same tenant scope.
+  // Empty for a miss, and also for a row whose title was never populated.
+  string title = 2;
 }
 
 // =============================================================================

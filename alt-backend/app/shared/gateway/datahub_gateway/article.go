@@ -292,14 +292,15 @@ func NewArticleURLLookupGateway(client datahubv1connect.DataHubServiceClient) *A
 	return &ArticleURLLookupGateway{client: client}
 }
 
-// LookupArticleURL returns ("", nil) when the article is not in the user's
-// tenant — deliberately the same answer as for one that does not exist.
-func (g *ArticleURLLookupGateway) LookupArticleURL(ctx context.Context, articleID string, userID uuid.UUID) (string, error) {
+// LookupArticleSource returns the zero value without error when the article is
+// not in the user's tenant — deliberately the same answer as for one that does
+// not exist.
+func (g *ArticleURLLookupGateway) LookupArticleSource(ctx context.Context, articleID string, userID uuid.UUID) (domain.ArticleSource, error) {
 	if articleID == "" {
 		// Preserved from the driver: the Knowledge Trail action path calls
 		// this with whatever id the event carried, and an empty one is a
 		// missing link rather than a request worth a round trip.
-		return "", nil
+		return domain.ArticleSource{}, nil
 	}
 
 	resp, err := g.client.LookupArticleURL(ctx, connect.NewRequest(&datahubv1.LookupArticleURLRequest{
@@ -307,7 +308,7 @@ func (g *ArticleURLLookupGateway) LookupArticleURL(ctx context.Context, articleI
 		UserId:    userID.String(),
 	}))
 	if err != nil {
-		return "", fmt.Errorf("lookup article url %s: %w", articleID, err)
+		return domain.ArticleSource{}, fmt.Errorf("lookup article source %s: %w", articleID, err)
 	}
-	return resp.Msg.GetUrl(), nil
+	return domain.ArticleSource{URL: resp.Msg.GetUrl()}, nil
 }

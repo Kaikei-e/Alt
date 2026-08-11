@@ -52,6 +52,16 @@ export interface ArchiveArticleResult {
 }
 
 /**
+ * What an id-only caller learns about an article: where it lives and what it
+ * is called. An empty title is a data gap to render around — never a cue to
+ * derive a headline from the URL.
+ */
+export interface ArticleSource {
+	url: string;
+	title: string;
+}
+
+/**
  * Article item from Connect-RPC (converted from proto)
  */
 export interface ConnectArticleItem {
@@ -611,8 +621,8 @@ export async function fetchTagCloud(
 export async function getArticleSourceURL(
 	transport: Transport,
 	articleId: string,
-): Promise<string> {
+): Promise<ArticleSource> {
 	const client = createArticleClient(transport);
 	const response = await client.getArticleSourceURL({ articleId });
-	return response.sourceUrl;
+	return { url: response.sourceUrl, title: response.title };
 }

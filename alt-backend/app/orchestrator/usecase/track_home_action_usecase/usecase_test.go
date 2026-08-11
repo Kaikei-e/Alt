@@ -112,15 +112,15 @@ type flakyArticleURLLookupPort struct {
 	err        error // returned for every failing call
 }
 
-func (m *flakyArticleURLLookupPort) LookupArticleURL(_ context.Context, _ string, _ uuid.UUID) (string, error) {
+func (m *flakyArticleURLLookupPort) LookupArticleSource(_ context.Context, _ string, _ uuid.UUID) (domain.ArticleSource, error) {
 	m.calls++
 	if m.calls <= m.failUntil {
 		if m.err != nil {
-			return "", m.err
+			return domain.ArticleSource{}, m.err
 		}
-		return "", errors.New("transient lookup failure")
+		return domain.ArticleSource{}, errors.New("transient lookup failure")
 	}
-	return m.succeedURL, nil
+	return domain.ArticleSource{URL: m.succeedURL}, nil
 }
 
 func TestTrackHomeActionUsecase_Execute(t *testing.T) {

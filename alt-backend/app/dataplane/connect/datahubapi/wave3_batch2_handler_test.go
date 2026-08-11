@@ -43,6 +43,7 @@ type fakeArticleReadPort struct {
 	articles     []*domain.Article
 	ids          []uuid.UUID
 	url          string
+	title        string
 	err          error
 	gotUser      *uuid.UUID
 	gotCursor    *time.Time
@@ -87,9 +88,9 @@ func (f *fakeArticleReadPort) GetLatestByFeedID(_ context.Context, feedID uuid.U
 	return f.content, f.err
 }
 
-func (f *fakeArticleReadPort) LookupURL(_ context.Context, articleID string, userID uuid.UUID) (string, error) {
+func (f *fakeArticleReadPort) LookupSource(_ context.Context, articleID string, userID uuid.UUID) (domain.ArticleSource, error) {
 	f.gotArticleID, f.gotUser = articleID, &userID
-	return f.url, f.err
+	return domain.ArticleSource{URL: f.url, Title: f.title}, f.err
 }
 
 type fakeKnowledgeBackfillPort struct {
@@ -488,7 +489,10 @@ func TestGetLatestArticleByFeedID_RejectsUnparseableFeedID(t *testing.T) {
 
 func TestLookupArticleURL(t *testing.T) {
 	userID := uuid.New()
-	h, f := newBatch2Handler(batch2Fakes{read: &fakeArticleReadPort{url: "https://example.com/a"}})
+	h, f := newBatch2Handler(batch2Fakes{read: &fakeArticleReadPort{
+		url:   "https://example.com/a",
+		title: "Working at a toy store",
+	}})
 
 	resp, err := h.LookupArticleURL(context.Background(), connect.NewRequest(&datahubv1.LookupArticleURLRequest{
 		ArticleId: "a1",
@@ -496,9 +500,27 @@ func TestLookupArticleURL(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/a", resp.Msg.GetUrl())
+	// The title travels with the URL: the caller resolving an id has no other
+	// way to learn what the article is called, and derives a headline from the
+	// URL host when it is absent.
+	assert.Equal(t, "Working at a toy store", resp.Msg.GetTitle())
 	assert.Equal(t, "a1", f.read.gotArticleID)
 	require.NotNil(t, f.read.gotUser)
 	assert.Equal(t, userID, *f.read.gotUser)
+}
+
+// A row with no stored title is still a hit — the URL decides found from
+// not-found, and the caller renders around the gap.
+func TestLookupArticleURL_UntitledArticleKeepsItsURL(t *testing.T) {
+	h, _ := newBatch2Handler(batch2Fakes{read: &fakeArticleReadPort{url: "https://example.com/untitled"}})
+
+	resp, err := h.LookupArticleURL(context.Background(), connect.NewRequest(&datahubv1.LookupArticleURLRequest{
+		ArticleId: "a1",
+		UserId:    uuid.NewString(),
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com/untitled", resp.Msg.GetUrl())
+	assert.Empty(t, resp.Msg.GetTitle())
 }
 
 // An article outside the tenant answers "" and not NotFound: a distinct code

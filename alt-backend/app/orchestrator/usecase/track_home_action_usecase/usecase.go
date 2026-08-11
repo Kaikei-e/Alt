@@ -166,9 +166,9 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 			const backoff = 100 * time.Millisecond
 			var foundURL string
 			for attempt := 1; attempt <= maxAttempts; attempt++ {
-				url, lookupErr := u.articleURLLookupPort.LookupArticleURL(ctx, articleID, userID)
+				source, lookupErr := u.articleURLLookupPort.LookupArticleSource(ctx, articleID, userID)
 				if lookupErr == nil {
-					foundURL = url
+					foundURL = source.URL
 					break
 				}
 				if attempt == maxAttempts {

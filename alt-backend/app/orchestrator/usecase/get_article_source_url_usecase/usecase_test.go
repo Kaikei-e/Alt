@@ -7,35 +7,55 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"alt/domain"
 )
 
-// stubLookupPort lets tests control the LookupArticleURL response without
-// running a real DB. Returns (url, err) verbatim from the recorded call.
+// stubLookupPort lets tests control the lookup response without running a real
+// DB. Returns (source, err) verbatim from the recorded call.
 type stubLookupPort struct {
 	gotArticleID string
 	gotUserID    uuid.UUID
-	url          string
+	source       domain.ArticleSource
 	err          error
 }
 
-func (s *stubLookupPort) LookupArticleURL(_ context.Context, articleID string, userID uuid.UUID) (string, error) {
+func (s *stubLookupPort) LookupArticleSource(_ context.Context, articleID string, userID uuid.UUID) (domain.ArticleSource, error) {
 	s.gotArticleID = articleID
 	s.gotUserID = userID
-	return s.url, s.err
+	return s.source, s.err
 }
 
 func TestGetArticleSourceURL_Happy(t *testing.T) {
-	stub := &stubLookupPort{url: "https://example.com/article-1"}
+	stub := &stubLookupPort{source: domain.ArticleSource{
+		URL:   "https://example.com/article-1",
+		Title: "How the masthead learned its name",
+	}}
 	uc := NewGetArticleSourceURLUsecase(stub)
 
 	userID := uuid.New()
 	articleID := uuid.New().String()
 
-	url, err := uc.Execute(context.Background(), articleID, userID)
+	source, err := uc.Execute(context.Background(), articleID, userID)
 	require.NoError(t, err)
-	require.Equal(t, "https://example.com/article-1", url)
+	require.Equal(t, "https://example.com/article-1", source.URL)
+	require.Equal(t, "How the masthead learned its name", source.Title,
+		"the stored title is the only headline an id-only caller can get")
 	require.Equal(t, articleID, stub.gotArticleID, "article_id must be passed through")
 	require.Equal(t, userID, stub.gotUserID, "user_id must be passed through (tenant scope)")
+}
+
+func TestGetArticleSourceURL_EmptyTitleIsStillAHit(t *testing.T) {
+	// A row whose title was never populated is a data gap for the caller to
+	// render around, not a lookup failure — the URL is what decides found from
+	// not-found.
+	stub := &stubLookupPort{source: domain.ArticleSource{URL: "https://example.com/untitled"}}
+	uc := NewGetArticleSourceURLUsecase(stub)
+
+	source, err := uc.Execute(context.Background(), uuid.New().String(), uuid.New())
+	require.NoError(t, err)
+	require.Equal(t, "https://example.com/untitled", source.URL)
+	require.Empty(t, source.Title)
 }
 
 func TestGetArticleSourceURL_MalformedUUID_InvalidArgument(t *testing.T) {
@@ -50,7 +70,7 @@ func TestGetArticleSourceURL_MalformedUUID_InvalidArgument(t *testing.T) {
 }
 
 func TestGetArticleSourceURL_LookupReturnsEmpty_NotFound(t *testing.T) {
-	stub := &stubLookupPort{url: ""}
+	stub := &stubLookupPort{}
 	uc := NewGetArticleSourceURLUsecase(stub)
 
 	_, err := uc.Execute(context.Background(), uuid.New().String(), uuid.New())
@@ -73,7 +93,7 @@ func TestGetArticleSourceURL_TenantScopeIsolation(t *testing.T) {
 	// pins the contract that the usecase MUST NOT cache or substitute the
 	// user_id — cross-tenant URL disclosure was security audit finding #1
 	// on the ACT Open fix (ADR-879).
-	stub := &stubLookupPort{url: "https://example.com/article-2"}
+	stub := &stubLookupPort{source: domain.ArticleSource{URL: "https://example.com/article-2"}}
 	uc := NewGetArticleSourceURLUsecase(stub)
 
 	userA := uuid.New()

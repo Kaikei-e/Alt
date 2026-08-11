@@ -9,15 +9,18 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+
+	"alt/domain"
 )
 
-// ArticleURLLookupPort returns the canonical source URL for an article scoped
-// to the calling user. Returns ("", nil) when the article does not exist or
-// belongs to another user; the caller decides whether to log + fall back.
+// ArticleURLLookupPort returns the canonical source URL and stored title for
+// an article scoped to the calling user. Returns (zero, nil) when the article
+// does not exist or belongs to another user; the caller decides whether to log
+// + fall back.
 //
 // Tenant isolation: the implementation MUST filter on user_id (not just
 // article_id) so cross-tenant URL disclosure is impossible (security audit
 // finding #1 on the ACT Open canonical fix).
 type ArticleURLLookupPort interface {
-	LookupArticleURL(ctx context.Context, articleID string, userID uuid.UUID) (string, error)
+	LookupArticleSource(ctx context.Context, articleID string, userID uuid.UUID) (domain.ArticleSource, error)
 }

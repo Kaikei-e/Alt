@@ -537,15 +537,20 @@ func TestLookupArticleURLContract(t *testing.T) {
 				// NotFound code, so that the response cannot be used to
 				// confirm another tenant's article exists.
 				"url": matchers.Like("https://example.com/post"),
+				// The stored title rides along: a caller that only has an id
+				// has no second call it could make for it, and renders the URL
+				// host as the headline when the field is missing.
+				"title": matchers.Like("Example headline"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewArticleURLLookupGateway(newDataHubServiceClient(config))
-			url, err := gw.LookupArticleURL(context.Background(), testArticleID, uuid.MustParse(testUserID))
+			source, err := gw.LookupArticleSource(context.Background(), testArticleID, uuid.MustParse(testUserID))
 			if err != nil {
-				return fmt.Errorf("LookupArticleURL failed: %w", err)
+				return fmt.Errorf("LookupArticleSource failed: %w", err)
 			}
-			assert.Equal(t, "https://example.com/post", url)
+			assert.Equal(t, "https://example.com/post", source.URL)
+			assert.Equal(t, "Example headline", source.Title)
 			return nil
 		})
 	require.NoError(t, err)

@@ -8247,7 +8247,10 @@ type LookupArticleURLResponse struct {
 	// Empty when the article does not exist within the user's tenant. The two
 	// cases are deliberately indistinguishable: telling them apart would confirm
 	// the existence of another tenant's article.
-	Url           string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	Url string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	// Stored headline, read from the same row and under the same tenant scope.
+	// Empty for a miss, and also for a row whose title was never populated.
+	Title         string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8285,6 +8288,13 @@ func (*LookupArticleURLResponse) Descriptor() ([]byte, []int) {
 func (x *LookupArticleURLResponse) GetUrl() string {
 	if x != nil {
 		return x.Url
+	}
+	return ""
+}
+
+func (x *LookupArticleURLResponse) GetTitle() string {
+	if x != nil {
+		return x.Title
 	}
 	return ""
 }
@@ -17662,9 +17672,10 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\x17LookupArticleURLRequest\x12\x1d\n" +
 	"\n" +
 	"article_id\x18\x01 \x01(\tR\tarticleId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\tR\x06userId\",\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"B\n" +
 	"\x18LookupArticleURLResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\"\xeb\x01\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\"\xeb\x01\n" +
 	"\x0fBackfillArticle\x12\x1d\n" +
 	"\n" +
 	"article_id\x18\x01 \x01(\tR\tarticleId\x12\x17\n" +

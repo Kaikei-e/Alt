@@ -143,9 +143,10 @@ type ArticleReadPort interface {
 	BatchGetByIDs(ctx context.Context, articleIDs []uuid.UUID) ([]*domain.Article, error)
 	// GetLatestByFeedID returns nil without error for a feed with no articles.
 	GetLatestByFeedID(ctx context.Context, feedID uuid.UUID) (*domain.ArticleContent, error)
-	// LookupURL returns "" for an article outside the user's tenant, which is
-	// deliberately the same answer as for one that does not exist.
-	LookupURL(ctx context.Context, articleID string, userID uuid.UUID) (string, error)
+	// LookupSource returns the zero value for an article outside the user's
+	// tenant, which is deliberately the same answer as for one that does not
+	// exist.
+	LookupSource(ctx context.Context, articleID string, userID uuid.UUID) (domain.ArticleSource, error)
 }
 
 // FeedLinkPort is the subscription list — the URLs the collector polls

@@ -320,6 +320,12 @@ message GetArticleSourceURLRequest {
 message GetArticleSourceURLResponse {
   // Canonical HTTPS source URL for the article.
   string source_url = 1;
+  // Stored headline for the article. Carried here rather than behind its own
+  // procedure because the callers that need it are exactly the callers that
+  // already resolve the URL by id: entry points that navigate to
+  // /articles/<id> with no query string, which have no other title source and
+  // otherwise render the URL host as the headline.
+  string title = 2;
 }
 
 // =============================================================================

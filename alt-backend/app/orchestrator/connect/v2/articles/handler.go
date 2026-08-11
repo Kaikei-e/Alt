@@ -841,7 +841,7 @@ func (h *Handler) GetArticleSourceURL(
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("get_article_source_url usecase not wired"))
 	}
 
-	url, err := h.deps.GetArticleSourceURL.Execute(ctx, req.Msg.GetArticleId(), user.UserID)
+	source, err := h.deps.GetArticleSourceURL.Execute(ctx, req.Msg.GetArticleId(), user.UserID)
 	if err != nil {
 		switch {
 		case errors.Is(err, get_article_source_url_usecase.ErrInvalidArgument):
@@ -854,6 +854,6 @@ func (h *Handler) GetArticleSourceURL(
 		}
 	}
 	return connect.NewResponse(&articlesv2.GetArticleSourceURLResponse{
-		SourceUrl: url,
+		SourceUrl: source.URL,
 	}), nil
 }

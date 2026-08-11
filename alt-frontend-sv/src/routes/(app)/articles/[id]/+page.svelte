@@ -67,8 +67,8 @@ $effect(() => {
 	if (paramUrl || resolvedUrl || !articleId) return;
 	let cancelled = false;
 	void getArticleSourceURLClient(articleId)
-		.then((u) => {
-			if (!cancelled) resolvedUrl = safeArticleHref(u);
+		.then((source) => {
+			if (!cancelled) resolvedUrl = safeArticleHref(source.url);
 		})
 		.catch(() => {
 			// Leave resolvedUrl null — the page falls back to its empty state.

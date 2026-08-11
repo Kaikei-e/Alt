@@ -1782,7 +1782,13 @@ func (x *GetArticleSourceURLRequest) GetArticleId() string {
 type GetArticleSourceURLResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Canonical HTTPS source URL for the article.
-	SourceUrl     string `protobuf:"bytes,1,opt,name=source_url,json=sourceUrl,proto3" json:"source_url,omitempty"`
+	SourceUrl string `protobuf:"bytes,1,opt,name=source_url,json=sourceUrl,proto3" json:"source_url,omitempty"`
+	// Stored headline for the article. Carried here rather than behind its own
+	// procedure because the callers that need it are exactly the callers that
+	// already resolve the URL by id: entry points that navigate to
+	// /articles/<id> with no query string, which have no other title source and
+	// otherwise render the URL host as the headline.
+	Title         string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1820,6 +1826,13 @@ func (*GetArticleSourceURLResponse) Descriptor() ([]byte, []int) {
 func (x *GetArticleSourceURLResponse) GetSourceUrl() string {
 	if x != nil {
 		return x.SourceUrl
+	}
+	return ""
+}
+
+func (x *GetArticleSourceURLResponse) GetTitle() string {
+	if x != nil {
+		return x.Title
 	}
 	return ""
 }
@@ -1972,10 +1985,11 @@ const file_alt_articles_v2_articles_proto_rawDesc = "" +
 	"total_tags\x18\x02 \x01(\x05R\ttotalTags\";\n" +
 	"\x1aGetArticleSourceURLRequest\x12\x1d\n" +
 	"\n" +
-	"article_id\x18\x01 \x01(\tR\tarticleId\"<\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\"R\n" +
 	"\x1bGetArticleSourceURLResponse\x12\x1d\n" +
 	"\n" +
-	"source_url\x18\x01 \x01(\tR\tsourceUrl2\xbf\t\n" +
+	"source_url\x18\x01 \x01(\tR\tsourceUrl\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title2\xbf\t\n" +
 	"\x0eArticleService\x12p\n" +
 	"\x13FetchArticleContent\x12+.alt.articles.v2.FetchArticleContentRequest\x1a,.alt.articles.v2.FetchArticleContentResponse\x12a\n" +
 	"\x0eArchiveArticle\x12&.alt.articles.v2.ArchiveArticleRequest\x1a'.alt.articles.v2.ArchiveArticleResponse\x12p\n" +

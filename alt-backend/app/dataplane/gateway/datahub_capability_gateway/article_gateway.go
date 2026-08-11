@@ -53,7 +53,7 @@ type articleReadDriver interface {
 	FetchArticleIDsWithCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]uuid.UUID, error)
 	FetchArticlesByIDs(ctx context.Context, articleIDs []uuid.UUID) ([]*domain.Article, error)
 	FetchLatestArticleByFeedID(ctx context.Context, feedID uuid.UUID) (*domain.ArticleContent, error)
-	LookupArticleURL(ctx context.Context, articleID string, userID uuid.UUID) (string, error)
+	LookupArticleSource(ctx context.Context, articleID string, userID uuid.UUID) (domain.ArticleSource, error)
 }
 
 // ArticleReadGateway implements datahub_capability_port.ArticleReadPort.
@@ -121,12 +121,12 @@ func (g *ArticleReadGateway) GetLatestByFeedID(ctx context.Context, feedID uuid.
 	return article, nil
 }
 
-func (g *ArticleReadGateway) LookupURL(ctx context.Context, articleID string, userID uuid.UUID) (string, error) {
-	url, err := g.db.LookupArticleURL(ctx, articleID, userID)
+func (g *ArticleReadGateway) LookupSource(ctx context.Context, articleID string, userID uuid.UUID) (domain.ArticleSource, error) {
+	source, err := g.db.LookupArticleSource(ctx, articleID, userID)
 	if err != nil {
-		return "", fmt.Errorf("lookup article url %s: %w", articleID, err)
+		return domain.ArticleSource{}, fmt.Errorf("lookup article source %s: %w", articleID, err)
 	}
-	return url, nil
+	return source, nil
 }
 
 // ---------------------------------------------------------------------------

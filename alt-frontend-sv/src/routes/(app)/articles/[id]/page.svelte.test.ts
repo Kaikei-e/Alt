@@ -3,12 +3,20 @@ import { page as testPage } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { goto } from "$app/navigation";
 
+const DEFAULT_PAGE_URL =
+	"http://localhost/articles/test-123?url=https%3A%2F%2Fexample.com%2Farticle&title=Test+Article";
+
+// Read through a getter rather than captured at mock time: the masthead cases
+// below vary the query string, and a frozen URL would make every one of them
+// exercise the same handoff.
+let currentPageURL = new URL(DEFAULT_PAGE_URL);
+
 vi.mock("$app/state", () => ({
 	page: {
 		params: { id: "test-123" },
-		url: new URL(
-			"http://localhost/articles/test-123?url=https%3A%2F%2Fexample.com%2Farticle&title=Test+Article",
-		),
+		get url() {
+			return currentPageURL;
+		},
 	},
 }));
 
@@ -32,7 +40,9 @@ vi.mock("$app/state", () => ({
 vi.mock("$app/navigation", { spy: true });
 
 const mockGetFeedContent = vi.fn();
-const mockGetArticleSourceURL = vi.fn().mockResolvedValue("");
+const mockGetArticleSourceURL = vi
+	.fn()
+	.mockResolvedValue({ url: "", title: "" });
 vi.mock("$lib/api/client/articles", () => ({
 	getFeedContentOnTheFlyClient: (...args: unknown[]) =>
 		mockGetFeedContent(...args),
@@ -71,6 +81,7 @@ describe("Article page fetch button", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentPageURL = new URL(DEFAULT_PAGE_URL);
 	});
 
 	it("shows disabled Fetching... button while loading", async () => {
@@ -155,6 +166,7 @@ describe("Article page Alt-Paper mobile layout", () => {
 		vi.clearAllMocks();
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
+		currentPageURL = new URL(DEFAULT_PAGE_URL);
 	});
 
 	it("renders editorial masthead with page-kicker role and article title", async () => {
@@ -227,5 +239,78 @@ describe("Article page Alt-Paper mobile layout", () => {
 		await expect
 			.element(testPage.getByRole("link", { name: /open original/i }))
 			.toBeInTheDocument();
+	});
+});
+
+describe("Article page masthead", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(goto).mockImplementation(async () => {});
+		summarizerOverride = {};
+		currentPageURL = new URL(DEFAULT_PAGE_URL);
+		mockGetFeedContent.mockReturnValue(new Promise(() => {}));
+	});
+
+	it("uses the ?title= handoff when the calling surface supplied one", async () => {
+		renderPage();
+
+		await expect
+			.element(testPage.getByRole("heading", { level: 1 }))
+			.toHaveTextContent("Test Article");
+	});
+
+	it("resolves the title from the article id when no ?title= is passed", async () => {
+		// The summary-ready notification navigates to /articles/<id> with no
+		// query string at all, so the stored title is the only headline
+		// available. Deriving one from the URL host shipped Guardian features
+		// titled "www.theguardian.com".
+		currentPageURL = new URL("http://localhost/articles/test-123");
+		mockGetArticleSourceURL.mockResolvedValue({
+			url: "https://www.theguardian.com/lifeandstyle/toy-store",
+			title: "Working at a toy store was my teen feminist awakening",
+		});
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByRole("heading", { level: 1 }))
+			.toHaveTextContent(
+				"Working at a toy store was my teen feminist awakening",
+			);
+	});
+
+	it("resolves the title when the caller passed a url but no title", async () => {
+		// A Knowledge Home card whose projection row has a blank title omits
+		// the ?title= parameter while still passing ?url=. Resolution has to be
+		// driven by the missing title, not by the missing URL.
+		currentPageURL = new URL(
+			"http://localhost/articles/test-123?url=https%3A%2F%2Fwww.theguardian.com%2Flifeandstyle%2Ftoy-store",
+		);
+		mockGetArticleSourceURL.mockResolvedValue({
+			url: "https://www.theguardian.com/lifeandstyle/toy-store",
+			title: "Working at a toy store was my teen feminist awakening",
+		});
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByRole("heading", { level: 1 }))
+			.toHaveTextContent(
+				"Working at a toy store was my teen feminist awakening",
+			);
+	});
+
+	it("falls back to a neutral label, never the host, when no title exists", async () => {
+		currentPageURL = new URL("http://localhost/articles/test-123");
+		mockGetArticleSourceURL.mockResolvedValue({
+			url: "https://www.theguardian.com/lifeandstyle/toy-store",
+			title: "",
+		});
+
+		renderPage();
+
+		const heading = testPage.getByRole("heading", { level: 1 });
+		await expect.element(heading).toBeInTheDocument();
+		await expect.element(heading).not.toHaveTextContent("www.theguardian.com");
 	});
 });

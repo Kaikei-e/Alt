@@ -1,3 +1,4 @@
+import type { ArticleSource } from "$lib/connect/articles";
 import { createClientTransport } from "$lib/connect/transport-client";
 
 /**
@@ -116,7 +117,7 @@ export async function getFeedContentOnTheFlyClient(
  */
 export async function getArticleSourceURLClient(
 	articleId: string,
-): Promise<string> {
+): Promise<ArticleSource> {
 	const transport = createClientTransport();
 	const { getArticleSourceURL } = await import("$lib/connect/articles");
 	return getArticleSourceURL(transport, articleId);

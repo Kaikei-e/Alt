@@ -52,6 +52,36 @@ describe("ArticleService.GetArticleSourceURL contract", () => {
 		expect(decoded.sourceUrl).toBe(res.sourceUrl);
 	});
 
+	it("response carries the stored title alongside the URL", () => {
+		// The reader masthead on an id-only entry has no other title source:
+		// the summary-ready notification navigates to /articles/<id> with no
+		// query string. Losing this field puts the URL host back in the <h1>.
+		const res = create(GetArticleSourceURLResponseSchema, {
+			sourceUrl: "https://www.example.com/lifeandstyle/toy-store",
+			title: "Working at a toy store was my teen feminist awakening",
+		});
+
+		const decoded = fromBinary(
+			GetArticleSourceURLResponseSchema,
+			toBinary(GetArticleSourceURLResponseSchema, res),
+		);
+		expect(decoded.title).toBe(
+			"Working at a toy store was my teen feminist awakening",
+		);
+		expect(decoded.title).not.toBe(new URL(decoded.sourceUrl).host);
+	});
+
+	it("an empty title is a data gap, not a not_found signal", () => {
+		// source_url alone decides found from not-found. A row whose title was
+		// never populated still resolves; the client renders around the gap
+		// rather than substituting the host.
+		const res = create(GetArticleSourceURLResponseSchema, {
+			sourceUrl: "https://example.com/untitled",
+		});
+		expect(res.sourceUrl).toBe("https://example.com/untitled");
+		expect(res.title).toBe("");
+	});
+
 	it("empty source_url is the not_found wire idiom (handler MAY map to 404)", () => {
 		// proto3 string default is empty. A handler that returns an empty
 		// response body is signaling "not found" without a structured

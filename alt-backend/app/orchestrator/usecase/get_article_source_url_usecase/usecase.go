@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"alt/domain"
 	"alt/orchestrator/port/article_url_lookup_port"
 )
 
@@ -39,27 +40,32 @@ func NewGetArticleSourceURLUsecase(
 	return &GetArticleSourceURLUsecase{lookupPort: lookupPort}
 }
 
-// Execute resolves the source URL for articleID, scoped to userID.
+// Execute resolves the source URL and stored title for articleID, scoped to
+// userID.
 //
 // Returns:
-//   - URL string and nil error on a tenant-owned hit
-//   - "" + ErrInvalidArgument when articleID is not a UUID
-//   - "" + ErrNotFound when the article is missing or belongs to another tenant
-//   - "" + wrapped driver error on infrastructure failures
+//   - the article source and nil error on a tenant-owned hit
+//   - zero + ErrInvalidArgument when articleID is not a UUID
+//   - zero + ErrNotFound when the article is missing or belongs to another tenant
+//   - zero + wrapped driver error on infrastructure failures
+//
+// A hit with an empty title is still a hit: the URL is what decides found from
+// not-found, and a row whose title was never populated is a data gap for the
+// caller to render around, not a lookup failure.
 func (u *GetArticleSourceURLUsecase) Execute(
 	ctx context.Context,
 	articleID string,
 	userID uuid.UUID,
-) (string, error) {
+) (domain.ArticleSource, error) {
 	if _, err := uuid.Parse(articleID); err != nil {
-		return "", fmt.Errorf("%w: malformed article_id", ErrInvalidArgument)
+		return domain.ArticleSource{}, fmt.Errorf("%w: malformed article_id", ErrInvalidArgument)
 	}
-	url, err := u.lookupPort.LookupArticleURL(ctx, articleID, userID)
+	source, err := u.lookupPort.LookupArticleSource(ctx, articleID, userID)
 	if err != nil {
-		return "", fmt.Errorf("get_article_source_url: lookup: %w", err)
+		return domain.ArticleSource{}, fmt.Errorf("get_article_source_url: lookup: %w", err)
 	}
-	if url == "" {
-		return "", ErrNotFound
+	if source.URL == "" {
+		return domain.ArticleSource{}, ErrNotFound
 	}
-	return url, nil
+	return source, nil
 }
