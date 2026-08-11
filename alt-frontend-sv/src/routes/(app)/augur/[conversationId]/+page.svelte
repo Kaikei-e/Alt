@@ -8,6 +8,7 @@ import {
 	getAugurConversation,
 } from "$lib/connect";
 import { useViewport } from "$lib/stores/viewport.svelte";
+import { formatAugurConversationLabel } from "$lib/utils/augur-entry";
 
 type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
 
@@ -50,6 +51,10 @@ let errorMessage = $state<string>("");
 let isLoading = $state(true);
 
 const conversationId = $derived($page.params.conversationId ?? "");
+// The stored title is the first user turn verbatim, marker and all.
+const conversationLabel = $derived(
+	formatAugurConversationLabel(conversation?.title ?? ""),
+);
 
 function toPaneCitation(
 	c: AugurStoredConversation["messages"][number]["citations"][number],
@@ -132,7 +137,7 @@ async function load(id: string) {
 
 <svelte:head>
 	<title>
-		{conversation?.title ? `Augur · ${conversation.title}` : "Ask Augur"}
+		{conversationLabel ? `Augur · ${conversationLabel}` : "Ask Augur"}
 	</title>
 </svelte:head>
 
@@ -145,7 +150,7 @@ async function load(id: string) {
 		<AugurChat
 			initialMessages={toPaneMessages(conversation)}
 			initialConversationId={conversation.id}
-			title={conversation.title}
+			title={conversationLabel}
 		/>
 	{:else}
 		<div class="augur-mobile-shell">

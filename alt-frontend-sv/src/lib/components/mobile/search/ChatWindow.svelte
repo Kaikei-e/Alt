@@ -1,11 +1,13 @@
 <script lang="ts">
 import { onDestroy, tick, untrack } from "svelte";
 import augurAvatar from "$lib/assets/augur-chat.webp";
+import ArticleScopeCard from "$lib/components/desktop/augur/ArticleScopeCard.svelte";
 import {
 	type AugurCitation,
 	createClientTransport,
 	streamAugurChat,
 } from "$lib/connect";
+import { parseAugurUserMessage } from "$lib/utils/augur-entry";
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
@@ -302,7 +304,13 @@ $effect(() => {
 		{#each messages as message, idx (message.id)}
 			<article class="thread-entry" data-role={message.role} style="--stagger: {idx}">
 				{#if message.role === "user"}
-					<h3 class="entry-question">{message.content}</h3>
+					{@const asked = parseAugurUserMessage(message.content)}
+					{#if asked.articleTitle}
+						<div class="entry-scope">
+							<ArticleScopeCard title={asked.articleTitle} articleId={asked.articleId} />
+						</div>
+					{/if}
+					<h3 class="entry-question">{asked.question}</h3>
 				{:else}
 					<div class="entry-byline">
 						<img src={augurAvatar} alt="Augur" class="byline-avatar" />
@@ -446,6 +454,11 @@ $effect(() => {
 		font-size: 0.6rem; font-weight: 600;
 		letter-spacing: 0.08em; text-transform: uppercase;
 		color: var(--alt-ash, #999);
+	}
+
+	/* The article the question was about, when it was about one */
+	.entry-scope {
+		margin-bottom: 0.6rem;
 	}
 
 	/* User question */

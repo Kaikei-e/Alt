@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { AugurConversationSummary } from "$lib/connect";
 import { MessagesSquare, Trash2 } from "@lucide/svelte";
+import { formatAugurConversationLabel } from "$lib/utils/augur-entry";
 
 type Props = {
 	conversations: AugurConversationSummary[];
@@ -101,9 +102,13 @@ async function handleDelete(event: MouseEvent, id: string) {
               class="item-main"
               onclick={() => onOpen(conv.id)}
             >
-              <p class="item-title">{conv.title || "Untitled chat"}</p>
+              <p class="item-title">
+                {formatAugurConversationLabel(conv.title) || "Untitled chat"}
+              </p>
               {#if conv.lastMessagePreview}
-                <p class="item-preview">{conv.lastMessagePreview}</p>
+                <p class="item-preview">
+                  {formatAugurConversationLabel(conv.lastMessagePreview)}
+                </p>
               {/if}
               <p class="item-meta">
                 <span class="meta-date">

@@ -1,6 +1,8 @@
 <script lang="ts">
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import { parseAugurUserMessage } from "$lib/utils/augur-entry";
 import augurAvatar from "$lib/assets/augur-chat.webp";
+import ArticleScopeCard from "./ArticleScopeCard.svelte";
 
 type Citation = {
 	URL: string;
@@ -20,11 +22,21 @@ type Props = {
 let { message, role, timestamp, citations, index = 0 }: Props = $props();
 
 let isUser = $derived(role === "user");
+
+// The article id rides inside the message text because rag-orchestrator scopes
+// retrieval on it. It is addressed to the backend, not to the reader, so the
+// turn is shown as the article it was about plus the question that was asked.
+let asked = $derived(isUser ? parseAugurUserMessage(message) : null);
 </script>
 
 <article class="thread-entry" data-role={role} style="--stagger: {index}">
-	{#if isUser}
-		<h3 class="entry-question">{message}</h3>
+	{#if isUser && asked}
+		{#if asked.articleTitle}
+			<div class="entry-scope">
+				<ArticleScopeCard title={asked.articleTitle} articleId={asked.articleId} />
+			</div>
+		{/if}
+		<h3 class="entry-question">{asked.question}</h3>
 	{:else}
 		<div class="entry-byline">
 			<img src={augurAvatar} alt="Augur" class="byline-avatar" />
@@ -69,6 +81,12 @@ let isUser = $derived(role === "user");
 		animation-delay: calc(var(--stagger) * 60ms);
 	}
 	@keyframes entry-in { to { opacity: 1; } }
+
+	/* The article the question was about, when it was about one */
+	.entry-scope {
+		margin-bottom: 0.6rem;
+		max-width: 65ch;
+	}
 
 	/* User question — the question speaks for itself */
 	.entry-question {

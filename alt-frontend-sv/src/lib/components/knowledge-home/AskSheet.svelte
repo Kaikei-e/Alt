@@ -1,7 +1,8 @@
 <script lang="ts">
 import { tick } from "svelte";
-import { FileText, RotateCcw, Shuffle } from "@lucide/svelte";
+import { RotateCcw, Shuffle } from "@lucide/svelte";
 import * as Sheet from "$lib/components/ui/sheet";
+import ArticleScopeCard from "$lib/components/desktop/augur/ArticleScopeCard.svelte";
 import ThreadEntry from "$lib/components/desktop/augur/ThreadEntry.svelte";
 import QuestionInput from "$lib/components/desktop/augur/QuestionInput.svelte";
 import { useAugurPane } from "$lib/hooks/useAugurPane.svelte";
@@ -14,6 +15,8 @@ interface Props {
 	scopeTitle: string;
 	scopeContext?: string;
 	scopeArticleId?: string;
+	/** The article's source URL, when the calling surface already holds one. */
+	scopeArticleUrl?: string;
 	scopeTags?: string[];
 	onClose: () => void;
 	onConversationId?: (id: string) => void;
@@ -24,6 +27,7 @@ const {
 	scopeTitle,
 	scopeContext,
 	scopeArticleId,
+	scopeArticleUrl,
 	scopeTags,
 	onClose,
 	onConversationId,
@@ -114,7 +118,7 @@ function handleOpenChange(isOpen: boolean) {
 		<Sheet.Content
 			side={sheetSide}
 			class={isDesktop
-				? "flex h-full w-full flex-col sm:max-w-[28rem]"
+				? "flex h-full w-full flex-col sm:max-w-[max(28rem,50vw)]"
 				: "flex h-[85dvh] flex-col"}
 		>
 			<Sheet.Header class="flex-shrink-0 border-b border-[var(--surface-border)]">
@@ -122,21 +126,12 @@ function handleOpenChange(isOpen: boolean) {
 					<Sheet.Title class="text-xs font-medium text-[var(--text-secondary)]">
 						質問の対象
 					</Sheet.Title>
-					<div class="flex items-start gap-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] p-2.5">
-						<FileText class="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--interactive-text)]" />
-						<div class="min-w-0 flex-1">
-							<p class="line-clamp-2 text-sm font-medium text-[var(--text-primary)]">{scopeTitle}</p>
-							{#if scopeTags && scopeTags.length > 0}
-								<div class="mt-1.5 flex flex-wrap gap-1">
-									{#each scopeTags as tag}
-										<span class="rounded-full bg-[var(--surface-bg)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
-											{tag}
-										</span>
-									{/each}
-								</div>
-							{/if}
-						</div>
-					</div>
+					<ArticleScopeCard
+						title={scopeTitle}
+						articleId={scopeArticleId}
+						sourceUrl={scopeArticleUrl}
+						tags={scopeTags ?? []}
+					/>
 				{:else if phase === "ask"}
 					<Sheet.Title class="text-sm font-semibold text-[var(--text-primary)]">
 						{scopeTitle} について質問

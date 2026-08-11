@@ -49,6 +49,7 @@ let askSheetOpen = $state(false);
 let askScopeTitle = $state("");
 let askScopeContext = $state("");
 let askScopeArticleId = $state<string | undefined>(undefined);
+let askScopeArticleUrl = $state<string | undefined>(undefined);
 let askScopeTags = $state<string[]>([]);
 let searchQuery = $state("");
 let lensSources = $state<ConnectFeedSource[]>([]);
@@ -158,6 +159,7 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 		askScopeTitle = item.title;
 		askScopeContext = item.title;
 		askScopeArticleId = item.articleId;
+		askScopeArticleUrl = item.url;
 		askScopeTags = item.tags?.slice(0, 3) ?? [];
 		askSheetOpen = true;
 	}
@@ -199,6 +201,7 @@ function handleAskFromHome(query: string) {
 	askScopeTitle = query.trim() ? query : "Knowledge Home";
 	askScopeContext = query.trim();
 	askScopeArticleId = undefined;
+	askScopeArticleUrl = undefined;
 	askScopeTags = [];
 	askSheetOpen = true;
 }
@@ -490,6 +493,7 @@ onMount(async () => {
 	scopeTitle={askScopeTitle}
 	scopeContext={askScopeContext}
 	scopeArticleId={askScopeArticleId}
+	scopeArticleUrl={askScopeArticleUrl}
 	scopeTags={askScopeTags}
 	onClose={() => {
 		askSheetOpen = false;
