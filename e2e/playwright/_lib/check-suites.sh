@@ -161,6 +161,9 @@ if [[ "$#" -eq 0 ]]; then
   if ! bash "$ROOT/e2e/_lib/reclaim-network-pool.test.sh"; then
     failed+=("reclaim-network-pool self-test")
   fi
+  if ! bash "$ROOT/e2e/playwright/_lib/install-suite-deps.test.sh"; then
+    failed+=("install-suite-deps self-test")
+  fi
 else
   echo "(skipped: only run for the whole fleet)"
 fi
