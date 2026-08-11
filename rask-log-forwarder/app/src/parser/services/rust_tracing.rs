@@ -6,6 +6,10 @@
 //! ```
 //! Key difference from Go slog: message and business context fields are nested
 //! inside a `"fields"` object rather than at the top level.
+//!
+//! A writer may also flatten those same fields to the line root (plecto's edge
+//! access log does since 0.7.0), which is handled too — `"target"` is then what
+//! still identifies the line as tracing output.
 
 use super::{LogLevel, ParsedLogEntry, ServiceParser};
 use crate::parser::docker::ParseError;
@@ -52,9 +56,13 @@ impl ServiceParser for RustTracingParser {
 
         if let Some(start) = trimmed.find('{') {
             let json_part = &trimmed[start..];
-            // Rust tracing fmt().json() has "fields":{ AND "timestamp" at top level
-            // but does NOT have top-level "msg" or "message" (those are inside "fields")
-            json_part.contains("\"fields\":{")
+            // Two renderings of the same subscriber: the JSON layer's default nests
+            // the event's own fields under "fields", while a flattened writer (plecto
+            // 0.7.0) puts them at the line root. "target" is on every tracing line
+            // either way, and is what separates a flattened one from Go slog.
+            let nested = json_part.contains("\"fields\":{");
+            let flattened = json_part.contains("\"target\"");
+            (nested || flattened)
                 && json_part.contains("\"timestamp\"")
                 && !json_part.contains("\"msg\"")
                 && serde_json::from_str::<Value>(json_part).is_ok()
@@ -85,29 +93,40 @@ impl ServiceParser for RustTracingParser {
                         };
 
                         // Extract fields from nested "fields" object
-                        let mut message = String::new();
                         let mut fields = std::collections::HashMap::new();
 
-                        if let Some(fields_obj) = obj.get("fields").and_then(|v| v.as_object()) {
-                            // Extract message from fields.message
-                            message = fields_obj
-                                .get("message")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-
+                        let message = if let Some(fields_obj) =
+                            obj.get("fields").and_then(|v| v.as_object())
+                        {
                             // Flatten all other fields from the "fields" object
                             for (key, value) in fields_obj {
                                 if key != "message" {
                                     fields.insert(key.clone(), Self::json_value_to_string(value));
                                 }
                             }
+
+                            // Extract message from fields.message
+                            fields_obj.get("message")
+                        } else {
+                            // Flattened line: the event's fields, message included, are at the root.
+                            obj.get("message")
                         }
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
                         // Also collect top-level fields (except level, timestamp, fields, target, span, spans)
                         for (key, value) in obj {
-                            if !["level", "timestamp", "fields", "target", "span", "spans"]
-                                .contains(&key.as_str())
+                            if ![
+                                "level",
+                                "timestamp",
+                                "fields",
+                                "target",
+                                "span",
+                                "spans",
+                                "message",
+                            ]
+                            .contains(&key.as_str())
                             {
                                 fields.insert(key.clone(), Self::json_value_to_string(value));
                             }
@@ -240,6 +259,57 @@ mod tests {
         assert!(
             !parser.can_parse(go_log2),
             "Should not match Go slog with 'message' at top level"
+        );
+    }
+
+    #[test]
+    fn test_can_parse_flattened_tracing_json() {
+        let parser = RustTracingParser::new();
+
+        // plecto 0.7.0 renders every event's fields at the line root instead of
+        // nesting them under "fields". "target" is what still marks the line as
+        // tracing output once the nesting is gone.
+        let flat = r#"{"timestamp":"2026-08-11T14:31:32.082058Z","level":"INFO","message":"access","client":"172.18.0.1","scheme":"http","method":"GET","authority":"example.com","path":"/","status":200,"duration_ms":26,"trace_id":"18cac6b721dfff4f0000000000000001","span_id":"0000000000000002","target":"plecto::access"}"#;
+
+        assert!(
+            parser.can_parse(flat),
+            "Should detect flattened Rust tracing format"
+        );
+    }
+
+    #[test]
+    fn test_parse_flattened_access_log_keeps_bare_http_keys() {
+        let parser = RustTracingParser::new();
+
+        let flat = r#"{"timestamp":"2026-08-11T14:31:32.082058Z","level":"INFO","message":"access","client":"172.18.0.1","scheme":"http","method":"GET","authority":"example.com","path":"/","status":200,"duration_ms":26,"trace_id":"18cac6b721dfff4f0000000000000001","span_id":"0000000000000002","target":"plecto::access"}"#;
+
+        let entry = parser.parse_log(flat).unwrap();
+
+        assert_eq!(entry.service_type, "rust-tracing");
+        assert_eq!(entry.log_type, "structured");
+        assert_eq!(entry.message, "access");
+        assert!(!entry.fields.contains_key("message"));
+
+        // http_logs_mv keys the plecto-proxy branch on these bare field names, so
+        // they must stay in the fields map rather than being lifted into the typed
+        // columns (which the aggregator would rename to http_method/http_path/...).
+        assert_eq!(entry.fields.get("method"), Some(&"GET".to_string()));
+        assert_eq!(entry.fields.get("path"), Some(&"/".to_string()));
+        assert_eq!(entry.fields.get("status"), Some(&"200".to_string()));
+        assert_eq!(entry.fields.get("client"), Some(&"172.18.0.1".to_string()));
+        assert_eq!(entry.fields.get("duration_ms"), Some(&"26".to_string()));
+        assert!(entry.method.is_none());
+        assert!(entry.path.is_none());
+        assert!(entry.status_code.is_none());
+
+        // Lifted into the TraceId/SpanId columns by the universal parser.
+        assert_eq!(
+            entry.fields.get("trace_id"),
+            Some(&"18cac6b721dfff4f0000000000000001".to_string())
+        );
+        assert_eq!(
+            entry.fields.get("span_id"),
+            Some(&"0000000000000002".to_string())
         );
     }
 

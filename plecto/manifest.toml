@@ -1,15 +1,16 @@
-# Plecto edge/ingress manifest for Alt (nginx cutover trial).
-# Built against ghcr.io/kaikei-e/plecto:0.6.0 (plecto:filter@0.3.0).
+# Plecto edge/ingress manifest for Alt.
+# Built against ghcr.io/kaikei-e/plecto:0.7.0. The image series and the
+# `plecto:filter@` contract series are independent — see compose/core.yaml.
 # [state] is omitted (defaults to "memory" — zero-config; rate-limit counters/KV don't
-# survive a restart, acceptable for this trial).
+# survive a restart, acceptable for this deployment).
 
 [trust]
 keys = [".plecto/dev-key.pub"]
 
 [[filter]]
-id = "security-headers"
-source = "artifacts/security-headers"
-digest = "sha256:a86d20922ac413e5db7e2df5e2e2ed9b5e2dc20dc1dd0ef0a83e0c662e512539"
+id = "stale-chunk-heal"
+source = "artifacts/stale-chunk-heal"
+digest = "sha256:4f3bdc90e4f2aabb1569ad82e8cd87e5b94ff453736f063a783c52c46b13b927"
 isolation = "trusted"        # first-party, Alt-authored filter
 
 [observability]
@@ -18,6 +19,8 @@ access_log = true
 
 [listen]
 addr = "0.0.0.0:8443"          # published as host 80 -> container 8443 (nonroot: no <1024 bind)
+[listen.trusted_proxy]
+trusted = ["172.18.0.1/32"]
 
 [[upstream]]
 name = "alt-backend"
@@ -43,37 +46,52 @@ addresses = ["dashboard:8000"]
 [upstream.health]
 path = "/health"
 
+# Every route below repeats the same four baseline security headers, the ones
+# nginx applied via `include conf.d/snippets/security-headers.conf`. They were a
+# WASM filter until 0.7.0 gave routes a native declaration; a constant header set
+# never needed a signed component. The declaration is a floor: it lands on
+# forwarded responses, a filter's replace, the rate limit's 429, and the
+# forward-side 502/503/504 alike. Only a response returned before a route is
+# chosen carries none, and route 10's "/" prefix leaves no such request.
+
 # 1. Browser-direct SSE
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-backend"
 strip_prefix = "/api"
 [route.match]
 path_prefix = "/api/v1/sse/"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 
 # 2. Dashboard SSE
 [[route]]
-filters = ["security-headers"]
 upstream = "dashboard"
 [route.match]
 path_prefix = "/sse/dashboard/"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 
 # 3. Kratos. nginx's own CORS preflight handling is dropped here deliberately: Kratos's
 # own kratos.yml already declares cors: enabled: true with the identical origin list
 # (localhost / curionoah.com) and allow_credentials: true — nginx's handling was
 # redundant, not load-bearing.
 [[route]]
-filters = ["security-headers"]
 upstream = "kratos"
 strip_prefix = "/ory"
 [route.match]
 path_prefix = "/ory/"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 [route.rate_limit]
 rate = 20
 burst = 40
 key = "client-ip"
 [route.upgrade]
 protocols = ["websocket"]
+# A login flow is a local, sub-second call; the upstream's 30 s default only decides
+# how long a browser waits on a wedged Kratos before being told anything.
+[route.timeouts]
+request_timeout_ms = 10000
 # nginx never set `gzip off` here, so this location inherited the global `gzip on` —
 # Kratos JSON flow responses (incl. CSRF tokens) were already compressed pre-cutover.
 # This restores that parity. NOTE: ADR 000075 flags reflected-secret routes as a BREACH
@@ -86,91 +104,112 @@ protocols = ["websocket"]
 # 5. OGP image proxy. No Plecto equivalent to nginx's disk-backed proxy_cache — every
 # request now round-trips to alt-backend (accepted regression, see review doc).
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-backend"
 [route.match]
 path_prefix = "/v1/images/proxy/"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 [route.rate_limit]
 rate = 20
 burst = 40
 key = "client-ip"
+# The handler fetches, resizes and re-encodes a remote image under its own 10 s
+# deadline and answers 504 itself. Sitting just above it keeps that error path the
+# one users get, while still bounding a handler that blows through its own deadline.
+[route.timeouts]
+request_timeout_ms = 12000
 
 # 6. nginx's generic `~* ^/api/.*(stream|sse)` regex catch-all has no Plecto equivalent
 # (path_prefix/host/method/header/query only, no regex). Any NEW streaming RPC added in
 # future needs an explicit route below — no more silent fallback.
 
 # 7. Immutable static assets (merges nginx's prefix + regex/JS variant into one route).
-# ACCEPTED REGRESSION: nginx's regex variant also did `error_page 404 =
-# @stale_chunk_reload`, synthesizing a 200 JS body on a 404 to self-heal the iOS Safari
-# "Cannot Open the Page" bug (Layer 1 of 4). Plecto's response-edit has no body field —
-# a filter cannot rewrite an upstream's response body. Layers 2-4 (client-side) remain.
+# The filter answers a 404 on a `.js` / `.mjs` chunk with a synthesised 200, the way
+# nginx's `error_page 404 = @stale_chunk_reload` did — a browser left on the previous
+# deploy gets a script that reloads it instead of iOS Safari's full-sheet "Cannot Open
+# the Page". Layer 1 of 4; layers 2-4 live in the frontend.
 [[route]]
-filters = ["security-headers"]
+filters = ["stale-chunk-heal"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/_app/immutable/"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+# Serving a hashed file off disk: measured p99 38 ms, max 62 ms over two days.
+[route.timeouts]
+request_timeout_ms = 5000
 # Mirrors nginx's `gzip on; gzip_types text/javascript application/javascript text/css;
-# gzip_min_length 256;` for this location. algorithms left at the v0.3.0 default
+# gzip_min_length 256;` for this location. algorithms left at the default
 # (zstd -> br -> gzip server preference) — a strict upgrade over nginx's gzip-only.
 [route.compression]
 min_length = 256
 
 # 8. Enumerated Connect-RPC streaming routes (regex -> explicit path_prefix).
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.augur.v2."
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.morning_letter.v2."
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.feeds.v2."
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.knowledge.loop.v1."
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.knowledge_home.v1."
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.admin_monitor.v1."
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 
 # 9. SvelteKit API catch-all (non-streaming Connect-RPC / REST).
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 [route.upgrade]
 protocols = ["websocket"]
 
-# 10. SSR catch-all (favicon.svg is covered by prefix "/" too).
+# 10. SSR catch-all (favicon.svg is covered by prefix "/" too). No [route.timeouts]:
+# SSR's measured tail reaches 17.8 s, so any bound tighter than the upstream's 30 s
+# default would turn a slow page into a 504 for a request that was going to succeed.
 [[route]]
-filters = ["security-headers"]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/"
+[route.headers]
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
 [route.upgrade]
 protocols = ["websocket"]
 # Mirrors nginx's `gzip on; gzip_types text/css application/javascript application/json
 # text/javascript; gzip_min_length 256;` (text/html was always implicitly covered by
-# nginx). algorithms left at the v0.3.0 default (zstd -> br -> gzip).
+# nginx). algorithms left at the default (zstd -> br -> gzip).
 [route.compression]
 min_length = 256

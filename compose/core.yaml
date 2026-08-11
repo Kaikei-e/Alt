@@ -68,9 +68,12 @@ services:
     # edge/ingress reverse proxy — trial cutover, see
     # docs/review/plecto-proxy-trial-2026-07-10.md. Pulled from the published,
     # cosign-signed multi-arch release image on GHCR — pin to an explicit
-    # version (not `:latest`) and bump deliberately alongside plecto/manifest.toml
-    # and plecto/wit/world.wit's `plecto:filter@` version.
-    image: ghcr.io/kaikei-e/plecto:0.6.0
+    # version, never `:latest`.
+    # The image series and the `plecto:filter@` contract series are INDEPENDENT:
+    # this binary loads 0.1.0 / 0.2.0 / 0.3.0 / 0.4.0 through load-time adapters,
+    # so bumping the image never requires rebuilding or re-signing a filter, and
+    # a patch release is always safe to take on its own.
+    image: ghcr.io/kaikei-e/plecto:0.7.0
     command: ["/etc/plecto/manifest.toml"]
     restart: always
     mem_limit: 512m

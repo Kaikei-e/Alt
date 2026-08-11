@@ -1,16 +1,20 @@
 // plecto:filter — the typed contract between the native fast path (host) and
 // WASM filters (extension plane). See ADR 000001 / 000002.
 //
-// v0.3.0 (ADR 000073): `on-response` carries the as-forwarded request snapshot and
-// `response-decision` gains `replace`. Base scope (ADR 000010): sync, header-only,
-// Plecto's OWN http types.
+// v0.4.0 (ADR 000098 / 000104): `on-response-body` puts the response plane on the
+// same buffer-then-decide footing as the request plane, `request-body-decision`
+// takes the uniform continue / modified / terminal shape the other decisions
+// already have, and `http-request.path` is renamed `path-with-query` so the name
+// declares what the field carries. 0.3.0 is frozen at `wit/v0.3.0/`; components built against it —
+// or against 0.2.0 / 0.1.0 — keep loading through the host's load-time adapters
+// (ADR 000064). Base scope (ADR 000010): sync, header-only, Plecto's OWN http types.
 // stream<u8> bodies, async funcs, and wasi:http type reuse arrive in a later
 // increment. wasmtime 46 (shipped 2026-06-22) brings Component Model async +
 // WASI 0.3 by default (ADR 000003 / 000005); the committed direction is to
 // CONVERGE these types onto wasi:http (proxy / middleware) in M3 (ADR 000020).
 // Until that migration this world stays buildable+runnable on the stable
 // toolchain with no experimental flags.
-package plecto:filter@0.3.0;
+package plecto:filter@0.4.0;
 
 interface types {
     // A single HTTP header field.
@@ -19,17 +23,21 @@ interface types {
         value: list<u8>,
     }
 
-    // The request as seen by a filter. Header-only in v0.1.0 (no body).
+    // The request as seen by a filter. Header-only (no body).
     record http-request {
         method: string,
-        // path including query, e.g. "/api?x=1"
-        path: string,
+        // origin-form target: the path AND the query string, e.g. "/api?x=1". A filter needs
+        // the query to decide, so it is carried; the name says so (renamed from `path` in
+        // 0.4.0, ADR 000104). The operator-facing access log deliberately keeps its own
+        // query-LESS `path` field — two different values, two different names.
+        path-with-query: string,
         authority: string,
         scheme: string,
         headers: list<header>,
     }
 
-    // A response a filter synthesises when it short-circuits the chain.
+    // A response a filter authors itself, status / headers / body all of its own choosing: the
+    // payload of a request-side `short-circuit` or a response-side `replace`.
     record http-response {
         status: u16,
         headers: list<header>,
@@ -63,23 +71,78 @@ interface types {
     variant response-decision {
         %continue,
         modified(response-edit),
-        // Stop the chain and send this SYNTHESISED response instead of the upstream one
-        // (the upstream body stream is dropped, never read — ADR 000038 stays intact).
-        // Distinct from the request side's `short-circuit`: nothing is short-circuited
-        // here — a response that already arrived is being replaced (P12). The host
-        // validates the returned headers fail-closed, exactly like a `short-circuit`
-        // output (ADR 000071 rules).
+        // Answer with THIS response — status, headers, AND body, all authored by the filter —
+        // in place of the one upstream returned. This is the arm that carries a body: an error
+        // page keyed on the upstream's status, a maintenance notice, a cached payload.
+        // `modified` above retouches the upstream's status and headers, but `response-edit` has
+        // no body field; whole-response authoring lives here.
+        // What `replace` does NOT do is read the upstream body: that stream is dropped unread,
+        // so the zero-copy passthrough is intact (ADR 000038) — the body it sends is
+        // SYNTHESISED, never a rewrite of the upstream's. Distinct from the request side's
+        // `short-circuit`: nothing is short-circuited here — a response that already arrived is
+        // being replaced (P12). It is terminal (the remaining filters of the reverse walk are
+        // skipped), and the host validates the returned headers fail-closed, exactly like a
+        // `short-circuit` output (ADR 000071 rules).
         replace(http-response),
+    }
+
+    // A rewrite a filter asks the host to apply to the request body before continuing. The
+    // header edits ride along because a body transform usually forces one (content-type after
+    // a re-encode, a digest stamp); content-length is HOST-owned and recomputed from `body`.
+    record request-body-edit {
+        body: list<u8>,
+        set-headers: list<header>,
+        remove-headers: list<string>,
     }
 
     // The typed outcome of a request-side BODY filter (buffer-then-decide, ADR 000025). v1 carries
     // the buffered body as `list<u8>`; the deferred true-streaming increment swaps it to `stream<u8>`
     // (the contract keeps room for a `body` resource then). Never a bare flag (Tenet 3).
+    //
+    // 0.4.0 (ADR 000098) gives this the same shape as the other three decisions — continue /
+    // modified / terminal — so all four read the same way (P12). `%continue` is a BARE arm: the
+    // dominant case is inspection (WAF / DLP / schema checks), and returning the bytes back
+    // across the boundary to say "unchanged" charges that case a full copy for nothing. The
+    // 0.3.0 form `%continue(list<u8>)` lives on in `wit/v0.3.0/`, where the host's adapter maps
+    // it onto `modified` — those bytes always meant "forward THIS body".
     variant request-body-decision {
-        // continue with the (possibly transformed) body
-        %continue(list<u8>),
+        // forward the buffered body unchanged — the host never lowers it back across the boundary
+        %continue,
+        // forward this body instead, applying the header edits that come with it
+        modified(request-body-edit),
         // stop the chain and synthesise this response now (don't reach upstream)
         short-circuit(http-response),
+    }
+
+    // A rewrite a filter asks the host to apply to the response body before continuing. Same
+    // shape and same reason as `request-body-edit`: a body transform usually forces a header
+    // edit (content-type after a re-encode), and content-length is HOST-owned — a guest-supplied
+    // one is rejected fail-closed rather than stripped, because a length that disagrees with the
+    // bytes is a response-desync primitive.
+    record response-body-edit {
+        body: list<u8>,
+        set-headers: list<header>,
+        remove-headers: list<string>,
+    }
+
+    // The typed outcome of a response-side BODY filter (buffer-then-decide, ADR 000098). Mirrors
+    // `response-decision`, not `request-body-decision`: on the response plane nothing is
+    // short-circuited — a response that already arrived is forwarded, edited, or replaced (P12).
+    //
+    // The host holds the response headers until this decision returns, so a filter can still
+    // refuse a body whose headers were already "sent" everywhere else — that held-header property
+    // is what makes `replace` meaningful here at all.
+    variant response-body-decision {
+        // forward the buffered body unchanged — the host never lowers the bytes back across the
+        // boundary. The dominant response-side case is inspection (WAF / DLP / guardrails), and
+        // charging it a full copy to say "unchanged" would re-import the ADR 000038 body tax on
+        // the response plane.
+        %continue,
+        // forward this body instead, applying the header edits that come with it.
+        modified(response-body-edit),
+        // discard the upstream response INCLUDING the buffered body and send this synthesised one.
+        // Same fail-closed header validation as every other guest-authored response (ADR 000071).
+        replace(http-response),
     }
 }
 
@@ -156,14 +219,22 @@ interface host-config {
     get: func(key: string) -> option<string>;
 }
 
-// The base contract: header-only filters (auth, rate-limit, header rewrite) implement exactly this.
-// It deliberately does NOT export `on-request-body`, so the host can tell — by the ABSENCE of that
-// export (ADR 000005 mechanism 2 / ADR 000038) — that this filter never reads the request body, and
-// skip buffering it entirely (zero-copy streaming passthrough). `request-body-decision` is `use`d so
-// its type is available to the host for the optional body call, even though the base world itself
-// declares no body export.
+// The base contract — the FLOOR of the acceptance lattice (ADR 000098 decision 2). Header-only
+// filters (auth, rate-limit, header rewrite) implement exactly this. It deliberately exports
+// NEITHER body hook, so the host can tell — by the ABSENCE of those exports (ADR 000005
+// mechanism 2 / ADR 000038) — that this filter reads no body in either direction, and skip
+// buffering entirely (zero-copy streaming passthrough) on both planes.
+//
+// NORMATIVE ACCEPTANCE RULE: a component is accepted when it exports all of `filter` PLUS ANY
+// SUBSET of the body hooks (`on-request-body`, `on-response-body`). The host probes each optional
+// export by name at load and records which are present, per direction. `filter` and `filter-body`
+// are the two ENDS of that lattice — targets for guest bindings generation, not an enumeration of
+// the legal shapes; a component exporting only `on-response-body` is equally conformant and is
+// covered by a conformance fixture. World subtyping lives in the host until WIT can express an
+// optional export. The body decision types are `use`d here so they are available to the host for
+// those optional calls, even though this world declares no body export of its own.
 world filter {
-    use types.{http-request, http-response, request-decision, response-decision, request-body-decision};
+    use types.{http-request, http-response, request-decision, response-decision, request-body-decision, response-body-decision};
 
     // granted capabilities (deny-by-default: only these are importable, ADR 000006)
     import host-log;
@@ -178,27 +249,36 @@ world filter {
 
     // hot path — one call per request / response.
     //
+    // `on-response` can answer with a response of its OWN: `replace` sends a filter-authored
+    // status, headers, AND body in place of the upstream's, so an error page keyed on
+    // `resp.status`, a maintenance notice, or any other synthesised payload is expressible
+    // here; `modified` retouches the upstream's status and headers instead. What a filter
+    // cannot do is READ the upstream body — `resp.body` is always empty (header-only) because
+    // that body streams zero-copy past the chain (ADR 000038). The body a `replace` sends is
+    // synthesised, never a rewrite of the upstream's.
+    //
     // `req` on `on-response` is the AS-FORWARDED request snapshot (Declared Semantics,
     // ADR 000073): the header-only request as it left the request-side chain — filter
     // edits applied (e.g. an auth filter's `x-authenticated-user` stamp), before the
     // host's egress transforms (hop-by-hop strip, upstream path rewrite, traceparent
     // injection). Untouched inbound headers such as `Origin` are still present. It is a
     // value-passed view: editing it does nothing — respond with a `response-decision`.
-    // `resp.body` is always empty (header-only): the upstream body streams zero-copy
-    // past the chain (ADR 000038); `replace` SYNTHESISES a body, it never reads one.
     export on-request: func(req: http-request) -> request-decision;
     export on-response: func(req: http-request, resp: http-response) -> response-decision;
 }
 
-// The body-reading contract: identical to `filter` PLUS the `on-request-body` export. A filter that
-// inspects or transforms the request body targets this world; the PRESENCE of `on-request-body` is
-// the signal that makes the host buffer the body and run this hook (buffer-then-decide, ADR 000025).
-// Absence (the base `filter` world) means the body streams straight through. The deferred
+// The body-reading contract — the CEILING of the acceptance lattice: `filter` PLUS BOTH body
+// hooks. A filter that inspects or transforms a body targets this world; the PRESENCE of each
+// export is the per-direction signal that makes the host buffer that direction and run the hook
+// (buffer-then-decide, ADR 000025 / 000098). Absence keeps that direction streaming straight
+// through — the two directions are decided independently, so a filter that reads only one body
+// pays the buffer tax only there. A component needing exactly one of the two exports it directly
+// (see `filter`'s acceptance rule); this world is the both-hooks target. The deferred
 // true-streaming increment swaps the `list<u8>` for `stream<u8>`. (Spelled out rather than
 // `include filter` — WIT does not propagate an included world's type `use` into a new export's
 // scope, so the shared shape is duplicated here deliberately.)
 world filter-body {
-    use types.{http-request, http-response, request-decision, response-decision, request-body-decision};
+    use types.{http-request, http-response, request-decision, response-decision, request-body-decision, response-body-decision};
 
     import host-log;
     import host-clock;
@@ -213,4 +293,11 @@ world filter-body {
     // Same as-forwarded / replace Declared Semantics as `filter` (ADR 000073): `req` is the
     // chain-output snapshot before egress transforms; `replace` is terminal and synthesises.
     export on-response: func(req: http-request, resp: http-response) -> response-decision;
+    // The buffered upstream response body (ADR 000098). `resp.body` is ALWAYS empty here — it
+    // carries status + headers only, exactly as on `on-response`; the bytes arrive as their own
+    // parameter. `req` is the same as-forwarded request snapshot the other response hook sees, so
+    // a decision can key on what was asked as well as on what came back. The host holds the
+    // response headers until this returns, and it — not the guest — owns content-length.
+    export on-response-body: func(req: http-request, resp: http-response, body: list<u8>)
+        -> response-body-decision;
 }
