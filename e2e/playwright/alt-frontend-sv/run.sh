@@ -102,7 +102,24 @@ docker run --rm \
     export PATH="${BUN_INSTALL}/bin:${PATH}"
     bun --version
 
-    bun install --frozen-lockfile
+    # Same retry shape as the apt loop above, for the same reason: this runs on
+    # a release-time runner that fetches every tarball fresh, and a truncated
+    # download surfaces as "IntegrityCheckFailed" against a lockfile hash that
+    # is fine. It has taken out whole release legs while the identical install
+    # on a hosted runner passed. The cache is cleared between attempts so a
+    # corrupt entry is not simply re-read; a genuinely wrong hash fails all
+    # three attempts the same way.
+    for attempt in 1 2 3; do
+      if bun install --frozen-lockfile; then
+        break
+      fi
+      if [ "$attempt" = "3" ]; then
+        echo "bun install failed after 3 attempts" >&2
+        exit 1
+      fi
+      bun pm cache rm || true
+      sleep $((attempt * 10))
+    done
 
     bunx playwright test ${PROJECTS} --shard="${SHARD}"
   '
