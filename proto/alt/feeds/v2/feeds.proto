@@ -386,6 +386,11 @@ service FeedService {
   // GetFeedTags returns the tags associated with a single feed by ID.
   // Replaces GET /v1/feeds/:id/tags used by the Tag Trail feature.
   rpc GetFeedTags(GetFeedTagsRequest) returns (GetFeedTagsResponse);
+
+  // ResolveOgImages obtains og:image URLs on demand for feeds that arrived
+  // without one, at the moment a reader brings those cards into view. One
+  // origin fetch per feed, for a page someone is actually looking at.
+  rpc ResolveOgImages(ResolveOgImagesRequest) returns (ResolveOgImagesResponse);
 }
 
 // =============================================================================
@@ -416,4 +421,39 @@ message FeedTag {
 message GetFeedTagsResponse {
   // Tags attached to the feed
   repeated FeedTag tags = 1;
+}
+
+// =============================================================================
+// On-demand OG image resolution
+// =============================================================================
+
+// ResolveOgImagesRequest asks for og:image URLs for feeds that arrived without
+// one.
+//
+// Keyed on the feed, not the article. An articles row only exists once someone
+// has fetched the content, and the overwhelming majority of image-less feeds
+// have never had one — so anything keyed on article_id cannot reach them.
+message ResolveOgImagesRequest {
+  // Feed UUIDs the reader has brought into view. The server caps the batch;
+  // the cap is a bound on outbound load against publishers, so it belongs to
+  // the server rather than the caller.
+  repeated string feed_ids = 1;
+}
+
+// ResolveOgImage carries one feed that resolved.
+message ResolveOgImage {
+  // Feed UUID this result belongs to
+  string feed_id = 1;
+  // HMAC-signed proxy URL for the resolved image
+  string og_image_proxy_url = 2;
+}
+
+// ResolveOgImagesResponse carries only the feeds that resolved.
+//
+// A feed whose origin refused is absent rather than present-with-an-empty-URL,
+// so a client cannot read "we asked and were told no" as "we hold an empty
+// URL". The refusal is recorded server-side; asking again for the same feed
+// will not produce another origin fetch.
+message ResolveOgImagesResponse {
+  repeated ResolveOgImage images = 1;
 }

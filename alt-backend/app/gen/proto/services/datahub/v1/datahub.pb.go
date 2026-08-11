@@ -4879,8 +4879,17 @@ func (x *BatchGetOgImageURLsResponse) GetOgImageUrls() map[string]string {
 	return nil
 }
 
-// OgImageBackfillCandidate is an article whose feed has no RSS-supplied
-// og:image and which has not been scraped yet.
+// OgImageBackfillCandidate, ListFeedsMissingOgImageRequest and
+// ListFeedsMissingOgImageResponse served the batch og-image-backfill job, which
+// has been removed in favour of resolving on demand. Nothing calls them now.
+//
+// They are deprecated rather than deleted because `buf breaking` uses the FILE
+// category and would reject the deletion against the current main baseline.
+// Deleting them, the RPC below, and the handler and driver behind them is a
+// follow-up once this lands and the baseline moves — the same two-step this
+// module's buf.yaml already documents for the three retired paths it ignores.
+//
+// Deprecated: Marked as deprecated in services/datahub/v1/datahub.proto.
 type OgImageBackfillCandidate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ArticleId     string                 `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
@@ -4933,6 +4942,7 @@ func (x *OgImageBackfillCandidate) GetUrl() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in services/datahub/v1/datahub.proto.
 type ListFeedsMissingOgImageRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Per-run scraping budget. The caller owns it: this bounds outbound HTTP
@@ -4979,6 +4989,7 @@ func (x *ListFeedsMissingOgImageRequest) GetLimit() int32 {
 	return 0
 }
 
+// Deprecated: Marked as deprecated in services/datahub/v1/datahub.proto.
 type ListFeedsMissingOgImageResponse struct {
 	state         protoimpl.MessageState      `protogen:"open.v1"`
 	Candidates    []*OgImageBackfillCandidate `protobuf:"bytes,1,rep,name=candidates,proto3" json:"candidates,omitempty"`
@@ -5023,6 +5034,369 @@ func (x *ListFeedsMissingOgImageResponse) GetCandidates() []*OgImageBackfillCand
 	return nil
 }
 
+// FeedOgImageTarget is one feed a reader has brought into view: the page whose
+// og:image would be read, plus whatever an earlier attempt already settled.
+type FeedOgImageTarget struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	FeedId string                 `protobuf:"bytes,1,opt,name=feed_id,json=feedId,proto3" json:"feed_id,omitempty"`
+	// feeds.website_url — the page that would be fetched.
+	PageUrl string `protobuf:"bytes,2,opt,name=page_url,json=pageUrl,proto3" json:"page_url,omitempty"`
+	// An og:image URL already held for this feed, from RSS or from an earlier
+	// resolution. Non-empty means there is nothing to fetch.
+	OgImageUrl string `protobuf:"bytes,3,opt,name=og_image_url,json=ogImageUrl,proto3" json:"og_image_url,omitempty"`
+	// True when an earlier attempt was refused and that refusal still stands.
+	// The caller must not fetch: re-asking an origin that has already said no,
+	// every time a card scrolls past, is the crawl this design removes.
+	Suppressed    bool `protobuf:"varint,4,opt,name=suppressed,proto3" json:"suppressed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FeedOgImageTarget) Reset() {
+	*x = FeedOgImageTarget{}
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[82]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FeedOgImageTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FeedOgImageTarget) ProtoMessage() {}
+
+func (x *FeedOgImageTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[82]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FeedOgImageTarget.ProtoReflect.Descriptor instead.
+func (*FeedOgImageTarget) Descriptor() ([]byte, []int) {
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{82}
+}
+
+func (x *FeedOgImageTarget) GetFeedId() string {
+	if x != nil {
+		return x.FeedId
+	}
+	return ""
+}
+
+func (x *FeedOgImageTarget) GetPageUrl() string {
+	if x != nil {
+		return x.PageUrl
+	}
+	return ""
+}
+
+func (x *FeedOgImageTarget) GetOgImageUrl() string {
+	if x != nil {
+		return x.OgImageUrl
+	}
+	return ""
+}
+
+func (x *FeedOgImageTarget) GetSuppressed() bool {
+	if x != nil {
+		return x.Suppressed
+	}
+	return false
+}
+
+type GetFeedOgImageTargetsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FeedIds       []string               `protobuf:"bytes,1,rep,name=feed_ids,json=feedIds,proto3" json:"feed_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFeedOgImageTargetsRequest) Reset() {
+	*x = GetFeedOgImageTargetsRequest{}
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[83]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFeedOgImageTargetsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFeedOgImageTargetsRequest) ProtoMessage() {}
+
+func (x *GetFeedOgImageTargetsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[83]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFeedOgImageTargetsRequest.ProtoReflect.Descriptor instead.
+func (*GetFeedOgImageTargetsRequest) Descriptor() ([]byte, []int) {
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{83}
+}
+
+func (x *GetFeedOgImageTargetsRequest) GetFeedIds() []string {
+	if x != nil {
+		return x.FeedIds
+	}
+	return nil
+}
+
+type GetFeedOgImageTargetsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Feed ids with no row are absent rather than present-and-empty.
+	Targets       []*FeedOgImageTarget `protobuf:"bytes,1,rep,name=targets,proto3" json:"targets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFeedOgImageTargetsResponse) Reset() {
+	*x = GetFeedOgImageTargetsResponse{}
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[84]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFeedOgImageTargetsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFeedOgImageTargetsResponse) ProtoMessage() {}
+
+func (x *GetFeedOgImageTargetsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[84]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFeedOgImageTargetsResponse.ProtoReflect.Descriptor instead.
+func (*GetFeedOgImageTargetsResponse) Descriptor() ([]byte, []int) {
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{84}
+}
+
+func (x *GetFeedOgImageTargetsResponse) GetTargets() []*FeedOgImageTarget {
+	if x != nil {
+		return x.Targets
+	}
+	return nil
+}
+
+type SaveFeedOgImageRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	FeedId string                 `protobuf:"bytes,1,opt,name=feed_id,json=feedId,proto3" json:"feed_id,omitempty"`
+	// Empty when the origin refused; `reason` then carries why.
+	OgImageUrl string `protobuf:"bytes,2,opt,name=og_image_url,json=ogImageUrl,proto3" json:"og_image_url,omitempty"`
+	// robots_disallow | http_403 | http_404 | no_og_tag | fetch_error
+	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	// How long before this feed may be asked about again. Zero means not within
+	// this retention window — the right answer for a robots.txt disallow, which
+	// is a policy rather than a transient fault.
+	RetryAfterSeconds int64 `protobuf:"varint,4,opt,name=retry_after_seconds,json=retryAfterSeconds,proto3" json:"retry_after_seconds,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *SaveFeedOgImageRequest) Reset() {
+	*x = SaveFeedOgImageRequest{}
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[85]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveFeedOgImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveFeedOgImageRequest) ProtoMessage() {}
+
+func (x *SaveFeedOgImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[85]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveFeedOgImageRequest.ProtoReflect.Descriptor instead.
+func (*SaveFeedOgImageRequest) Descriptor() ([]byte, []int) {
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{85}
+}
+
+func (x *SaveFeedOgImageRequest) GetFeedId() string {
+	if x != nil {
+		return x.FeedId
+	}
+	return ""
+}
+
+func (x *SaveFeedOgImageRequest) GetOgImageUrl() string {
+	if x != nil {
+		return x.OgImageUrl
+	}
+	return ""
+}
+
+func (x *SaveFeedOgImageRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *SaveFeedOgImageRequest) GetRetryAfterSeconds() int64 {
+	if x != nil {
+		return x.RetryAfterSeconds
+	}
+	return 0
+}
+
+type SaveFeedOgImageResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveFeedOgImageResponse) Reset() {
+	*x = SaveFeedOgImageResponse{}
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[86]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveFeedOgImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveFeedOgImageResponse) ProtoMessage() {}
+
+func (x *SaveFeedOgImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[86]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveFeedOgImageResponse.ProtoReflect.Descriptor instead.
+func (*SaveFeedOgImageResponse) Descriptor() ([]byte, []int) {
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{86}
+}
+
+type PurgeExpiredFeedOgImagesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Copyright retention window, owned by the caller (og-image-retention).
+	TtlSeconds    int64 `protobuf:"varint,1,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PurgeExpiredFeedOgImagesRequest) Reset() {
+	*x = PurgeExpiredFeedOgImagesRequest{}
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[87]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PurgeExpiredFeedOgImagesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PurgeExpiredFeedOgImagesRequest) ProtoMessage() {}
+
+func (x *PurgeExpiredFeedOgImagesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[87]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PurgeExpiredFeedOgImagesRequest.ProtoReflect.Descriptor instead.
+func (*PurgeExpiredFeedOgImagesRequest) Descriptor() ([]byte, []int) {
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{87}
+}
+
+func (x *PurgeExpiredFeedOgImagesRequest) GetTtlSeconds() int64 {
+	if x != nil {
+		return x.TtlSeconds
+	}
+	return 0
+}
+
+type PurgeExpiredFeedOgImagesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PurgedCount   int64                  `protobuf:"varint,1,opt,name=purged_count,json=purgedCount,proto3" json:"purged_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PurgeExpiredFeedOgImagesResponse) Reset() {
+	*x = PurgeExpiredFeedOgImagesResponse{}
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[88]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PurgeExpiredFeedOgImagesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PurgeExpiredFeedOgImagesResponse) ProtoMessage() {}
+
+func (x *PurgeExpiredFeedOgImagesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[88]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PurgeExpiredFeedOgImagesResponse.ProtoReflect.Descriptor instead.
+func (*PurgeExpiredFeedOgImagesResponse) Descriptor() ([]byte, []int) {
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{88}
+}
+
+func (x *PurgeExpiredFeedOgImagesResponse) GetPurgedCount() int64 {
+	if x != nil {
+		return x.PurgedCount
+	}
+	return 0
+}
+
 type ListUnwarmedOgImageURLsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
@@ -5032,7 +5406,7 @@ type ListUnwarmedOgImageURLsRequest struct {
 
 func (x *ListUnwarmedOgImageURLsRequest) Reset() {
 	*x = ListUnwarmedOgImageURLsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[82]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5044,7 +5418,7 @@ func (x *ListUnwarmedOgImageURLsRequest) String() string {
 func (*ListUnwarmedOgImageURLsRequest) ProtoMessage() {}
 
 func (x *ListUnwarmedOgImageURLsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[82]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5057,7 +5431,7 @@ func (x *ListUnwarmedOgImageURLsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUnwarmedOgImageURLsRequest.ProtoReflect.Descriptor instead.
 func (*ListUnwarmedOgImageURLsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{82}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *ListUnwarmedOgImageURLsRequest) GetLimit() int32 {
@@ -5076,7 +5450,7 @@ type ListUnwarmedOgImageURLsResponse struct {
 
 func (x *ListUnwarmedOgImageURLsResponse) Reset() {
 	*x = ListUnwarmedOgImageURLsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[83]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5088,7 +5462,7 @@ func (x *ListUnwarmedOgImageURLsResponse) String() string {
 func (*ListUnwarmedOgImageURLsResponse) ProtoMessage() {}
 
 func (x *ListUnwarmedOgImageURLsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[83]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5101,7 +5475,7 @@ func (x *ListUnwarmedOgImageURLsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUnwarmedOgImageURLsResponse.ProtoReflect.Descriptor instead.
 func (*ListUnwarmedOgImageURLsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{83}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *ListUnwarmedOgImageURLsResponse) GetUrls() []string {
@@ -5121,7 +5495,7 @@ type PurgeExpiredArticleHeadsRequest struct {
 
 func (x *PurgeExpiredArticleHeadsRequest) Reset() {
 	*x = PurgeExpiredArticleHeadsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[84]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5133,7 +5507,7 @@ func (x *PurgeExpiredArticleHeadsRequest) String() string {
 func (*PurgeExpiredArticleHeadsRequest) ProtoMessage() {}
 
 func (x *PurgeExpiredArticleHeadsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[84]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5146,7 +5520,7 @@ func (x *PurgeExpiredArticleHeadsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PurgeExpiredArticleHeadsRequest.ProtoReflect.Descriptor instead.
 func (*PurgeExpiredArticleHeadsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{84}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *PurgeExpiredArticleHeadsRequest) GetTtlSeconds() int64 {
@@ -5165,7 +5539,7 @@ type PurgeExpiredArticleHeadsResponse struct {
 
 func (x *PurgeExpiredArticleHeadsResponse) Reset() {
 	*x = PurgeExpiredArticleHeadsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[85]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5177,7 +5551,7 @@ func (x *PurgeExpiredArticleHeadsResponse) String() string {
 func (*PurgeExpiredArticleHeadsResponse) ProtoMessage() {}
 
 func (x *PurgeExpiredArticleHeadsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[85]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5190,7 +5564,7 @@ func (x *PurgeExpiredArticleHeadsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PurgeExpiredArticleHeadsResponse.ProtoReflect.Descriptor instead.
 func (*PurgeExpiredArticleHeadsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{85}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *PurgeExpiredArticleHeadsResponse) GetPurgedCount() int64 {
@@ -5225,7 +5599,7 @@ type ImageProxyCacheEntry struct {
 
 func (x *ImageProxyCacheEntry) Reset() {
 	*x = ImageProxyCacheEntry{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[86]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5237,7 +5611,7 @@ func (x *ImageProxyCacheEntry) String() string {
 func (*ImageProxyCacheEntry) ProtoMessage() {}
 
 func (x *ImageProxyCacheEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[86]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5250,7 +5624,7 @@ func (x *ImageProxyCacheEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageProxyCacheEntry.ProtoReflect.Descriptor instead.
 func (*ImageProxyCacheEntry) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{86}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *ImageProxyCacheEntry) GetUrlHash() string {
@@ -5332,7 +5706,7 @@ type GetImageProxyCacheRequest struct {
 
 func (x *GetImageProxyCacheRequest) Reset() {
 	*x = GetImageProxyCacheRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[87]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5344,7 +5718,7 @@ func (x *GetImageProxyCacheRequest) String() string {
 func (*GetImageProxyCacheRequest) ProtoMessage() {}
 
 func (x *GetImageProxyCacheRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[87]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5357,7 +5731,7 @@ func (x *GetImageProxyCacheRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetImageProxyCacheRequest.ProtoReflect.Descriptor instead.
 func (*GetImageProxyCacheRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{87}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *GetImageProxyCacheRequest) GetUrlHash() string {
@@ -5379,7 +5753,7 @@ type GetImageProxyCacheResponse struct {
 
 func (x *GetImageProxyCacheResponse) Reset() {
 	*x = GetImageProxyCacheResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[88]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5391,7 +5765,7 @@ func (x *GetImageProxyCacheResponse) String() string {
 func (*GetImageProxyCacheResponse) ProtoMessage() {}
 
 func (x *GetImageProxyCacheResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[88]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5404,7 +5778,7 @@ func (x *GetImageProxyCacheResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetImageProxyCacheResponse.ProtoReflect.Descriptor instead.
 func (*GetImageProxyCacheResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{88}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *GetImageProxyCacheResponse) GetEntry() *ImageProxyCacheEntry {
@@ -5423,7 +5797,7 @@ type PutImageProxyCacheRequest struct {
 
 func (x *PutImageProxyCacheRequest) Reset() {
 	*x = PutImageProxyCacheRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[89]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5435,7 +5809,7 @@ func (x *PutImageProxyCacheRequest) String() string {
 func (*PutImageProxyCacheRequest) ProtoMessage() {}
 
 func (x *PutImageProxyCacheRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[89]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5448,7 +5822,7 @@ func (x *PutImageProxyCacheRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutImageProxyCacheRequest.ProtoReflect.Descriptor instead.
 func (*PutImageProxyCacheRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{89}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *PutImageProxyCacheRequest) GetEntry() *ImageProxyCacheEntry {
@@ -5466,7 +5840,7 @@ type PutImageProxyCacheResponse struct {
 
 func (x *PutImageProxyCacheResponse) Reset() {
 	*x = PutImageProxyCacheResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[90]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5478,7 +5852,7 @@ func (x *PutImageProxyCacheResponse) String() string {
 func (*PutImageProxyCacheResponse) ProtoMessage() {}
 
 func (x *PutImageProxyCacheResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[90]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5491,7 +5865,7 @@ func (x *PutImageProxyCacheResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutImageProxyCacheResponse.ProtoReflect.Descriptor instead.
 func (*PutImageProxyCacheResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{90}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{97}
 }
 
 type EvictExpiredImageProxyCacheRequest struct {
@@ -5502,7 +5876,7 @@ type EvictExpiredImageProxyCacheRequest struct {
 
 func (x *EvictExpiredImageProxyCacheRequest) Reset() {
 	*x = EvictExpiredImageProxyCacheRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[91]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5514,7 +5888,7 @@ func (x *EvictExpiredImageProxyCacheRequest) String() string {
 func (*EvictExpiredImageProxyCacheRequest) ProtoMessage() {}
 
 func (x *EvictExpiredImageProxyCacheRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[91]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5527,7 +5901,7 @@ func (x *EvictExpiredImageProxyCacheRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use EvictExpiredImageProxyCacheRequest.ProtoReflect.Descriptor instead.
 func (*EvictExpiredImageProxyCacheRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{91}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{98}
 }
 
 type EvictExpiredImageProxyCacheResponse struct {
@@ -5539,7 +5913,7 @@ type EvictExpiredImageProxyCacheResponse struct {
 
 func (x *EvictExpiredImageProxyCacheResponse) Reset() {
 	*x = EvictExpiredImageProxyCacheResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[92]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5551,7 +5925,7 @@ func (x *EvictExpiredImageProxyCacheResponse) String() string {
 func (*EvictExpiredImageProxyCacheResponse) ProtoMessage() {}
 
 func (x *EvictExpiredImageProxyCacheResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[92]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5564,7 +5938,7 @@ func (x *EvictExpiredImageProxyCacheResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use EvictExpiredImageProxyCacheResponse.ProtoReflect.Descriptor instead.
 func (*EvictExpiredImageProxyCacheResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{92}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *EvictExpiredImageProxyCacheResponse) GetEvictedCount() int64 {
@@ -5585,7 +5959,7 @@ type PurgeImageProxyCacheOlderThanRequest struct {
 
 func (x *PurgeImageProxyCacheOlderThanRequest) Reset() {
 	*x = PurgeImageProxyCacheOlderThanRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[93]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5597,7 +5971,7 @@ func (x *PurgeImageProxyCacheOlderThanRequest) String() string {
 func (*PurgeImageProxyCacheOlderThanRequest) ProtoMessage() {}
 
 func (x *PurgeImageProxyCacheOlderThanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[93]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5610,7 +5984,7 @@ func (x *PurgeImageProxyCacheOlderThanRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use PurgeImageProxyCacheOlderThanRequest.ProtoReflect.Descriptor instead.
 func (*PurgeImageProxyCacheOlderThanRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{93}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *PurgeImageProxyCacheOlderThanRequest) GetTtlSeconds() int64 {
@@ -5629,7 +6003,7 @@ type PurgeImageProxyCacheOlderThanResponse struct {
 
 func (x *PurgeImageProxyCacheOlderThanResponse) Reset() {
 	*x = PurgeImageProxyCacheOlderThanResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[94]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5641,7 +6015,7 @@ func (x *PurgeImageProxyCacheOlderThanResponse) String() string {
 func (*PurgeImageProxyCacheOlderThanResponse) ProtoMessage() {}
 
 func (x *PurgeImageProxyCacheOlderThanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[94]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5654,7 +6028,7 @@ func (x *PurgeImageProxyCacheOlderThanResponse) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use PurgeImageProxyCacheOlderThanResponse.ProtoReflect.Descriptor instead.
 func (*PurgeImageProxyCacheOlderThanResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{94}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *PurgeImageProxyCacheOlderThanResponse) GetPurgedCount() int64 {
@@ -5692,7 +6066,7 @@ type ScrapingDomain struct {
 
 func (x *ScrapingDomain) Reset() {
 	*x = ScrapingDomain{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[95]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5704,7 +6078,7 @@ func (x *ScrapingDomain) String() string {
 func (*ScrapingDomain) ProtoMessage() {}
 
 func (x *ScrapingDomain) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[95]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5717,7 +6091,7 @@ func (x *ScrapingDomain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScrapingDomain.ProtoReflect.Descriptor instead.
 func (*ScrapingDomain) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{95}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *ScrapingDomain) GetId() string {
@@ -5834,7 +6208,7 @@ type GetScrapingDomainByDomainRequest struct {
 
 func (x *GetScrapingDomainByDomainRequest) Reset() {
 	*x = GetScrapingDomainByDomainRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[96]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5846,7 +6220,7 @@ func (x *GetScrapingDomainByDomainRequest) String() string {
 func (*GetScrapingDomainByDomainRequest) ProtoMessage() {}
 
 func (x *GetScrapingDomainByDomainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[96]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5859,7 +6233,7 @@ func (x *GetScrapingDomainByDomainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetScrapingDomainByDomainRequest.ProtoReflect.Descriptor instead.
 func (*GetScrapingDomainByDomainRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{96}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *GetScrapingDomainByDomainRequest) GetDomain() string {
@@ -5880,7 +6254,7 @@ type GetScrapingDomainByDomainResponse struct {
 
 func (x *GetScrapingDomainByDomainResponse) Reset() {
 	*x = GetScrapingDomainByDomainResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[97]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5892,7 +6266,7 @@ func (x *GetScrapingDomainByDomainResponse) String() string {
 func (*GetScrapingDomainByDomainResponse) ProtoMessage() {}
 
 func (x *GetScrapingDomainByDomainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[97]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5905,7 +6279,7 @@ func (x *GetScrapingDomainByDomainResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetScrapingDomainByDomainResponse.ProtoReflect.Descriptor instead.
 func (*GetScrapingDomainByDomainResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{97}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *GetScrapingDomainByDomainResponse) GetScrapingDomain() *ScrapingDomain {
@@ -5924,7 +6298,7 @@ type GetScrapingDomainByIDRequest struct {
 
 func (x *GetScrapingDomainByIDRequest) Reset() {
 	*x = GetScrapingDomainByIDRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[98]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5936,7 +6310,7 @@ func (x *GetScrapingDomainByIDRequest) String() string {
 func (*GetScrapingDomainByIDRequest) ProtoMessage() {}
 
 func (x *GetScrapingDomainByIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[98]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5949,7 +6323,7 @@ func (x *GetScrapingDomainByIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetScrapingDomainByIDRequest.ProtoReflect.Descriptor instead.
 func (*GetScrapingDomainByIDRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{98}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *GetScrapingDomainByIDRequest) GetId() string {
@@ -5968,7 +6342,7 @@ type GetScrapingDomainByIDResponse struct {
 
 func (x *GetScrapingDomainByIDResponse) Reset() {
 	*x = GetScrapingDomainByIDResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[99]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5980,7 +6354,7 @@ func (x *GetScrapingDomainByIDResponse) String() string {
 func (*GetScrapingDomainByIDResponse) ProtoMessage() {}
 
 func (x *GetScrapingDomainByIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[99]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5993,7 +6367,7 @@ func (x *GetScrapingDomainByIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetScrapingDomainByIDResponse.ProtoReflect.Descriptor instead.
 func (*GetScrapingDomainByIDResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{99}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *GetScrapingDomainByIDResponse) GetScrapingDomain() *ScrapingDomain {
@@ -6012,7 +6386,7 @@ type SaveScrapingDomainRequest struct {
 
 func (x *SaveScrapingDomainRequest) Reset() {
 	*x = SaveScrapingDomainRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[100]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6024,7 +6398,7 @@ func (x *SaveScrapingDomainRequest) String() string {
 func (*SaveScrapingDomainRequest) ProtoMessage() {}
 
 func (x *SaveScrapingDomainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[100]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6037,7 +6411,7 @@ func (x *SaveScrapingDomainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveScrapingDomainRequest.ProtoReflect.Descriptor instead.
 func (*SaveScrapingDomainRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{100}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *SaveScrapingDomainRequest) GetScrapingDomain() *ScrapingDomain {
@@ -6060,7 +6434,7 @@ type SaveScrapingDomainResponse struct {
 
 func (x *SaveScrapingDomainResponse) Reset() {
 	*x = SaveScrapingDomainResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[101]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6072,7 +6446,7 @@ func (x *SaveScrapingDomainResponse) String() string {
 func (*SaveScrapingDomainResponse) ProtoMessage() {}
 
 func (x *SaveScrapingDomainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[101]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6085,7 +6459,7 @@ func (x *SaveScrapingDomainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveScrapingDomainResponse.ProtoReflect.Descriptor instead.
 func (*SaveScrapingDomainResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{101}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *SaveScrapingDomainResponse) GetScrapingDomain() *ScrapingDomain {
@@ -6105,7 +6479,7 @@ type ListScrapingDomainsRequest struct {
 
 func (x *ListScrapingDomainsRequest) Reset() {
 	*x = ListScrapingDomainsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[102]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6117,7 +6491,7 @@ func (x *ListScrapingDomainsRequest) String() string {
 func (*ListScrapingDomainsRequest) ProtoMessage() {}
 
 func (x *ListScrapingDomainsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[102]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6130,7 +6504,7 @@ func (x *ListScrapingDomainsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListScrapingDomainsRequest.ProtoReflect.Descriptor instead.
 func (*ListScrapingDomainsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{102}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *ListScrapingDomainsRequest) GetOffset() int32 {
@@ -6156,7 +6530,7 @@ type ListScrapingDomainsResponse struct {
 
 func (x *ListScrapingDomainsResponse) Reset() {
 	*x = ListScrapingDomainsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[103]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6168,7 +6542,7 @@ func (x *ListScrapingDomainsResponse) String() string {
 func (*ListScrapingDomainsResponse) ProtoMessage() {}
 
 func (x *ListScrapingDomainsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[103]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6181,7 +6555,7 @@ func (x *ListScrapingDomainsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListScrapingDomainsResponse.ProtoReflect.Descriptor instead.
 func (*ListScrapingDomainsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{103}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *ListScrapingDomainsResponse) GetScrapingDomains() []*ScrapingDomain {
@@ -6205,7 +6579,7 @@ type ScrapingPolicyUpdate struct {
 
 func (x *ScrapingPolicyUpdate) Reset() {
 	*x = ScrapingPolicyUpdate{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[104]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6217,7 +6591,7 @@ func (x *ScrapingPolicyUpdate) String() string {
 func (*ScrapingPolicyUpdate) ProtoMessage() {}
 
 func (x *ScrapingPolicyUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[104]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6230,7 +6604,7 @@ func (x *ScrapingPolicyUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScrapingPolicyUpdate.ProtoReflect.Descriptor instead.
 func (*ScrapingPolicyUpdate) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{104}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *ScrapingPolicyUpdate) GetAllowFetchBody() bool {
@@ -6271,7 +6645,7 @@ type UpdateScrapingDomainPolicyRequest struct {
 
 func (x *UpdateScrapingDomainPolicyRequest) Reset() {
 	*x = UpdateScrapingDomainPolicyRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[105]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6283,7 +6657,7 @@ func (x *UpdateScrapingDomainPolicyRequest) String() string {
 func (*UpdateScrapingDomainPolicyRequest) ProtoMessage() {}
 
 func (x *UpdateScrapingDomainPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[105]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6296,7 +6670,7 @@ func (x *UpdateScrapingDomainPolicyRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use UpdateScrapingDomainPolicyRequest.ProtoReflect.Descriptor instead.
 func (*UpdateScrapingDomainPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{105}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *UpdateScrapingDomainPolicyRequest) GetId() string {
@@ -6321,7 +6695,7 @@ type UpdateScrapingDomainPolicyResponse struct {
 
 func (x *UpdateScrapingDomainPolicyResponse) Reset() {
 	*x = UpdateScrapingDomainPolicyResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[106]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6333,7 +6707,7 @@ func (x *UpdateScrapingDomainPolicyResponse) String() string {
 func (*UpdateScrapingDomainPolicyResponse) ProtoMessage() {}
 
 func (x *UpdateScrapingDomainPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[106]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6346,7 +6720,7 @@ func (x *UpdateScrapingDomainPolicyResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use UpdateScrapingDomainPolicyResponse.ProtoReflect.Descriptor instead.
 func (*UpdateScrapingDomainPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{106}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{113}
 }
 
 type SaveDeclinedDomainRequest struct {
@@ -6359,7 +6733,7 @@ type SaveDeclinedDomainRequest struct {
 
 func (x *SaveDeclinedDomainRequest) Reset() {
 	*x = SaveDeclinedDomainRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[107]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6371,7 +6745,7 @@ func (x *SaveDeclinedDomainRequest) String() string {
 func (*SaveDeclinedDomainRequest) ProtoMessage() {}
 
 func (x *SaveDeclinedDomainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[107]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6384,7 +6758,7 @@ func (x *SaveDeclinedDomainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveDeclinedDomainRequest.ProtoReflect.Descriptor instead.
 func (*SaveDeclinedDomainRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{107}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *SaveDeclinedDomainRequest) GetUserId() string {
@@ -6409,7 +6783,7 @@ type SaveDeclinedDomainResponse struct {
 
 func (x *SaveDeclinedDomainResponse) Reset() {
 	*x = SaveDeclinedDomainResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[108]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6421,7 +6795,7 @@ func (x *SaveDeclinedDomainResponse) String() string {
 func (*SaveDeclinedDomainResponse) ProtoMessage() {}
 
 func (x *SaveDeclinedDomainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[108]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6434,7 +6808,7 @@ func (x *SaveDeclinedDomainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveDeclinedDomainResponse.ProtoReflect.Descriptor instead.
 func (*SaveDeclinedDomainResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{108}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{115}
 }
 
 type IsDomainDeclinedRequest struct {
@@ -6447,7 +6821,7 @@ type IsDomainDeclinedRequest struct {
 
 func (x *IsDomainDeclinedRequest) Reset() {
 	*x = IsDomainDeclinedRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[109]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6459,7 +6833,7 @@ func (x *IsDomainDeclinedRequest) String() string {
 func (*IsDomainDeclinedRequest) ProtoMessage() {}
 
 func (x *IsDomainDeclinedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[109]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6472,7 +6846,7 @@ func (x *IsDomainDeclinedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsDomainDeclinedRequest.ProtoReflect.Descriptor instead.
 func (*IsDomainDeclinedRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{109}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *IsDomainDeclinedRequest) GetUserId() string {
@@ -6498,7 +6872,7 @@ type IsDomainDeclinedResponse struct {
 
 func (x *IsDomainDeclinedResponse) Reset() {
 	*x = IsDomainDeclinedResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[110]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6510,7 +6884,7 @@ func (x *IsDomainDeclinedResponse) String() string {
 func (*IsDomainDeclinedResponse) ProtoMessage() {}
 
 func (x *IsDomainDeclinedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[110]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6523,7 +6897,7 @@ func (x *IsDomainDeclinedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsDomainDeclinedResponse.ProtoReflect.Descriptor instead.
 func (*IsDomainDeclinedResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{110}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *IsDomainDeclinedResponse) GetDeclined() bool {
@@ -6542,7 +6916,7 @@ type ListSubscribedUserIDsByFeedLinkIDRequest struct {
 
 func (x *ListSubscribedUserIDsByFeedLinkIDRequest) Reset() {
 	*x = ListSubscribedUserIDsByFeedLinkIDRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[111]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6554,7 +6928,7 @@ func (x *ListSubscribedUserIDsByFeedLinkIDRequest) String() string {
 func (*ListSubscribedUserIDsByFeedLinkIDRequest) ProtoMessage() {}
 
 func (x *ListSubscribedUserIDsByFeedLinkIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[111]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6567,7 +6941,7 @@ func (x *ListSubscribedUserIDsByFeedLinkIDRequest) ProtoReflect() protoreflect.M
 
 // Deprecated: Use ListSubscribedUserIDsByFeedLinkIDRequest.ProtoReflect.Descriptor instead.
 func (*ListSubscribedUserIDsByFeedLinkIDRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{111}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *ListSubscribedUserIDsByFeedLinkIDRequest) GetFeedLinkId() string {
@@ -6586,7 +6960,7 @@ type ListSubscribedUserIDsByFeedLinkIDResponse struct {
 
 func (x *ListSubscribedUserIDsByFeedLinkIDResponse) Reset() {
 	*x = ListSubscribedUserIDsByFeedLinkIDResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[112]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6598,7 +6972,7 @@ func (x *ListSubscribedUserIDsByFeedLinkIDResponse) String() string {
 func (*ListSubscribedUserIDsByFeedLinkIDResponse) ProtoMessage() {}
 
 func (x *ListSubscribedUserIDsByFeedLinkIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[112]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6611,7 +6985,7 @@ func (x *ListSubscribedUserIDsByFeedLinkIDResponse) ProtoReflect() protoreflect.
 
 // Deprecated: Use ListSubscribedUserIDsByFeedLinkIDResponse.ProtoReflect.Descriptor instead.
 func (*ListSubscribedUserIDsByFeedLinkIDResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{112}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *ListSubscribedUserIDsByFeedLinkIDResponse) GetUserIds() []string {
@@ -6631,7 +7005,7 @@ type CheckArticleExistsByURLForUserRequest struct {
 
 func (x *CheckArticleExistsByURLForUserRequest) Reset() {
 	*x = CheckArticleExistsByURLForUserRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[113]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6643,7 +7017,7 @@ func (x *CheckArticleExistsByURLForUserRequest) String() string {
 func (*CheckArticleExistsByURLForUserRequest) ProtoMessage() {}
 
 func (x *CheckArticleExistsByURLForUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[113]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6656,7 +7030,7 @@ func (x *CheckArticleExistsByURLForUserRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use CheckArticleExistsByURLForUserRequest.ProtoReflect.Descriptor instead.
 func (*CheckArticleExistsByURLForUserRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{113}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *CheckArticleExistsByURLForUserRequest) GetUrl() string {
@@ -6683,7 +7057,7 @@ type CheckArticleExistsByURLForUserResponse struct {
 
 func (x *CheckArticleExistsByURLForUserResponse) Reset() {
 	*x = CheckArticleExistsByURLForUserResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[114]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6695,7 +7069,7 @@ func (x *CheckArticleExistsByURLForUserResponse) String() string {
 func (*CheckArticleExistsByURLForUserResponse) ProtoMessage() {}
 
 func (x *CheckArticleExistsByURLForUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[114]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6708,7 +7082,7 @@ func (x *CheckArticleExistsByURLForUserResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use CheckArticleExistsByURLForUserResponse.ProtoReflect.Descriptor instead.
 func (*CheckArticleExistsByURLForUserResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{114}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *CheckArticleExistsByURLForUserResponse) GetExists() bool {
@@ -6740,7 +7114,7 @@ type ArchiveArticleRequest struct {
 
 func (x *ArchiveArticleRequest) Reset() {
 	*x = ArchiveArticleRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[115]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6752,7 +7126,7 @@ func (x *ArchiveArticleRequest) String() string {
 func (*ArchiveArticleRequest) ProtoMessage() {}
 
 func (x *ArchiveArticleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[115]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6765,7 +7139,7 @@ func (x *ArchiveArticleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveArticleRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveArticleRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{115}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *ArchiveArticleRequest) GetUrl() string {
@@ -6809,7 +7183,7 @@ type ArchiveArticleResponse struct {
 
 func (x *ArchiveArticleResponse) Reset() {
 	*x = ArchiveArticleResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[116]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6821,7 +7195,7 @@ func (x *ArchiveArticleResponse) String() string {
 func (*ArchiveArticleResponse) ProtoMessage() {}
 
 func (x *ArchiveArticleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[116]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6834,7 +7208,7 @@ func (x *ArchiveArticleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveArticleResponse.ProtoReflect.Descriptor instead.
 func (*ArchiveArticleResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{116}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *ArchiveArticleResponse) GetArticleId() string {
@@ -6865,7 +7239,7 @@ type SaveArticleHeadRequest struct {
 
 func (x *SaveArticleHeadRequest) Reset() {
 	*x = SaveArticleHeadRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[117]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6877,7 +7251,7 @@ func (x *SaveArticleHeadRequest) String() string {
 func (*SaveArticleHeadRequest) ProtoMessage() {}
 
 func (x *SaveArticleHeadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[117]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6890,7 +7264,7 @@ func (x *SaveArticleHeadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveArticleHeadRequest.ProtoReflect.Descriptor instead.
 func (*SaveArticleHeadRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{117}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *SaveArticleHeadRequest) GetArticleId() string {
@@ -6922,7 +7296,7 @@ type SaveArticleHeadResponse struct {
 
 func (x *SaveArticleHeadResponse) Reset() {
 	*x = SaveArticleHeadResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[118]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6934,7 +7308,7 @@ func (x *SaveArticleHeadResponse) String() string {
 func (*SaveArticleHeadResponse) ProtoMessage() {}
 
 func (x *SaveArticleHeadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[118]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6947,7 +7321,7 @@ func (x *SaveArticleHeadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveArticleHeadResponse.ProtoReflect.Descriptor instead.
 func (*SaveArticleHeadResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{118}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{125}
 }
 
 // ArticleContent is the narrow projection: one article's body and identity,
@@ -6971,7 +7345,7 @@ type ArticleContent struct {
 
 func (x *ArticleContent) Reset() {
 	*x = ArticleContent{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[119]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6983,7 +7357,7 @@ func (x *ArticleContent) String() string {
 func (*ArticleContent) ProtoMessage() {}
 
 func (x *ArticleContent) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[119]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6996,7 +7370,7 @@ func (x *ArticleContent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArticleContent.ProtoReflect.Descriptor instead.
 func (*ArticleContent) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{119}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *ArticleContent) GetId() string {
@@ -7052,7 +7426,7 @@ type UserArticle struct {
 
 func (x *UserArticle) Reset() {
 	*x = UserArticle{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[120]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7064,7 +7438,7 @@ func (x *UserArticle) String() string {
 func (*UserArticle) ProtoMessage() {}
 
 func (x *UserArticle) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[120]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7077,7 +7451,7 @@ func (x *UserArticle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserArticle.ProtoReflect.Descriptor instead.
 func (*UserArticle) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{120}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *UserArticle) GetId() string {
@@ -7149,7 +7523,7 @@ type GetArticleByURLRequest struct {
 
 func (x *GetArticleByURLRequest) Reset() {
 	*x = GetArticleByURLRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[121]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7161,7 +7535,7 @@ func (x *GetArticleByURLRequest) String() string {
 func (*GetArticleByURLRequest) ProtoMessage() {}
 
 func (x *GetArticleByURLRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[121]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7174,7 +7548,7 @@ func (x *GetArticleByURLRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleByURLRequest.ProtoReflect.Descriptor instead.
 func (*GetArticleByURLRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{121}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *GetArticleByURLRequest) GetUrl() string {
@@ -7202,7 +7576,7 @@ type GetArticleByURLResponse struct {
 
 func (x *GetArticleByURLResponse) Reset() {
 	*x = GetArticleByURLResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[122]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7214,7 +7588,7 @@ func (x *GetArticleByURLResponse) String() string {
 func (*GetArticleByURLResponse) ProtoMessage() {}
 
 func (x *GetArticleByURLResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[122]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7227,7 +7601,7 @@ func (x *GetArticleByURLResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleByURLResponse.ProtoReflect.Descriptor instead.
 func (*GetArticleByURLResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{122}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *GetArticleByURLResponse) GetArticle() *ArticleContent {
@@ -7247,7 +7621,7 @@ type BatchGetArticlesByURLsRequest struct {
 
 func (x *BatchGetArticlesByURLsRequest) Reset() {
 	*x = BatchGetArticlesByURLsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[123]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7259,7 +7633,7 @@ func (x *BatchGetArticlesByURLsRequest) String() string {
 func (*BatchGetArticlesByURLsRequest) ProtoMessage() {}
 
 func (x *BatchGetArticlesByURLsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[123]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7272,7 +7646,7 @@ func (x *BatchGetArticlesByURLsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetArticlesByURLsRequest.ProtoReflect.Descriptor instead.
 func (*BatchGetArticlesByURLsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{123}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *BatchGetArticlesByURLsRequest) GetUrls() []string {
@@ -7300,7 +7674,7 @@ type BatchGetArticlesByURLsResponse struct {
 
 func (x *BatchGetArticlesByURLsResponse) Reset() {
 	*x = BatchGetArticlesByURLsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[124]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7312,7 +7686,7 @@ func (x *BatchGetArticlesByURLsResponse) String() string {
 func (*BatchGetArticlesByURLsResponse) ProtoMessage() {}
 
 func (x *BatchGetArticlesByURLsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[124]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7325,7 +7699,7 @@ func (x *BatchGetArticlesByURLsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetArticlesByURLsResponse.ProtoReflect.Descriptor instead.
 func (*BatchGetArticlesByURLsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{124}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *BatchGetArticlesByURLsResponse) GetArticles() map[string]*ArticleContent {
@@ -7344,7 +7718,7 @@ type GetArticleContentByIDRequest struct {
 
 func (x *GetArticleContentByIDRequest) Reset() {
 	*x = GetArticleContentByIDRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[125]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7356,7 +7730,7 @@ func (x *GetArticleContentByIDRequest) String() string {
 func (*GetArticleContentByIDRequest) ProtoMessage() {}
 
 func (x *GetArticleContentByIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[125]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7369,7 +7743,7 @@ func (x *GetArticleContentByIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleContentByIDRequest.ProtoReflect.Descriptor instead.
 func (*GetArticleContentByIDRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{125}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *GetArticleContentByIDRequest) GetArticleId() string {
@@ -7388,7 +7762,7 @@ type GetArticleContentByIDResponse struct {
 
 func (x *GetArticleContentByIDResponse) Reset() {
 	*x = GetArticleContentByIDResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[126]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7400,7 +7774,7 @@ func (x *GetArticleContentByIDResponse) String() string {
 func (*GetArticleContentByIDResponse) ProtoMessage() {}
 
 func (x *GetArticleContentByIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[126]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7413,7 +7787,7 @@ func (x *GetArticleContentByIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleContentByIDResponse.ProtoReflect.Descriptor instead.
 func (*GetArticleContentByIDResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{126}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *GetArticleContentByIDResponse) GetArticle() *ArticleContent {
@@ -7437,7 +7811,7 @@ type ListArticlesCursorRequest struct {
 
 func (x *ListArticlesCursorRequest) Reset() {
 	*x = ListArticlesCursorRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[127]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7449,7 +7823,7 @@ func (x *ListArticlesCursorRequest) String() string {
 func (*ListArticlesCursorRequest) ProtoMessage() {}
 
 func (x *ListArticlesCursorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[127]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7462,7 +7836,7 @@ func (x *ListArticlesCursorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArticlesCursorRequest.ProtoReflect.Descriptor instead.
 func (*ListArticlesCursorRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{127}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *ListArticlesCursorRequest) GetUserId() string {
@@ -7495,7 +7869,7 @@ type ListArticlesCursorResponse struct {
 
 func (x *ListArticlesCursorResponse) Reset() {
 	*x = ListArticlesCursorResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[128]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7507,7 +7881,7 @@ func (x *ListArticlesCursorResponse) String() string {
 func (*ListArticlesCursorResponse) ProtoMessage() {}
 
 func (x *ListArticlesCursorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[128]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7520,7 +7894,7 @@ func (x *ListArticlesCursorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArticlesCursorResponse.ProtoReflect.Descriptor instead.
 func (*ListArticlesCursorResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{128}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *ListArticlesCursorResponse) GetArticles() []*UserArticle {
@@ -7541,7 +7915,7 @@ type ListArticleIDsCursorRequest struct {
 
 func (x *ListArticleIDsCursorRequest) Reset() {
 	*x = ListArticleIDsCursorRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[129]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7553,7 +7927,7 @@ func (x *ListArticleIDsCursorRequest) String() string {
 func (*ListArticleIDsCursorRequest) ProtoMessage() {}
 
 func (x *ListArticleIDsCursorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[129]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7566,7 +7940,7 @@ func (x *ListArticleIDsCursorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArticleIDsCursorRequest.ProtoReflect.Descriptor instead.
 func (*ListArticleIDsCursorRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{129}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *ListArticleIDsCursorRequest) GetUserId() string {
@@ -7599,7 +7973,7 @@ type ListArticleIDsCursorResponse struct {
 
 func (x *ListArticleIDsCursorResponse) Reset() {
 	*x = ListArticleIDsCursorResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[130]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7611,7 +7985,7 @@ func (x *ListArticleIDsCursorResponse) String() string {
 func (*ListArticleIDsCursorResponse) ProtoMessage() {}
 
 func (x *ListArticleIDsCursorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[130]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7624,7 +7998,7 @@ func (x *ListArticleIDsCursorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArticleIDsCursorResponse.ProtoReflect.Descriptor instead.
 func (*ListArticleIDsCursorResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{130}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *ListArticleIDsCursorResponse) GetArticleIds() []string {
@@ -7643,7 +8017,7 @@ type BatchGetArticlesByIDsRequest struct {
 
 func (x *BatchGetArticlesByIDsRequest) Reset() {
 	*x = BatchGetArticlesByIDsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[131]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7655,7 +8029,7 @@ func (x *BatchGetArticlesByIDsRequest) String() string {
 func (*BatchGetArticlesByIDsRequest) ProtoMessage() {}
 
 func (x *BatchGetArticlesByIDsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[131]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7668,7 +8042,7 @@ func (x *BatchGetArticlesByIDsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetArticlesByIDsRequest.ProtoReflect.Descriptor instead.
 func (*BatchGetArticlesByIDsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{131}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *BatchGetArticlesByIDsRequest) GetArticleIds() []string {
@@ -7689,7 +8063,7 @@ type BatchGetArticlesByIDsResponse struct {
 
 func (x *BatchGetArticlesByIDsResponse) Reset() {
 	*x = BatchGetArticlesByIDsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[132]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7701,7 +8075,7 @@ func (x *BatchGetArticlesByIDsResponse) String() string {
 func (*BatchGetArticlesByIDsResponse) ProtoMessage() {}
 
 func (x *BatchGetArticlesByIDsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[132]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7714,7 +8088,7 @@ func (x *BatchGetArticlesByIDsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetArticlesByIDsResponse.ProtoReflect.Descriptor instead.
 func (*BatchGetArticlesByIDsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{132}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *BatchGetArticlesByIDsResponse) GetArticles() []*UserArticle {
@@ -7733,7 +8107,7 @@ type GetLatestArticleByFeedIDRequest struct {
 
 func (x *GetLatestArticleByFeedIDRequest) Reset() {
 	*x = GetLatestArticleByFeedIDRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[133]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7745,7 +8119,7 @@ func (x *GetLatestArticleByFeedIDRequest) String() string {
 func (*GetLatestArticleByFeedIDRequest) ProtoMessage() {}
 
 func (x *GetLatestArticleByFeedIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[133]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7758,7 +8132,7 @@ func (x *GetLatestArticleByFeedIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLatestArticleByFeedIDRequest.ProtoReflect.Descriptor instead.
 func (*GetLatestArticleByFeedIDRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{133}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *GetLatestArticleByFeedIDRequest) GetFeedId() string {
@@ -7779,7 +8153,7 @@ type GetLatestArticleByFeedIDResponse struct {
 
 func (x *GetLatestArticleByFeedIDResponse) Reset() {
 	*x = GetLatestArticleByFeedIDResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[134]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7791,7 +8165,7 @@ func (x *GetLatestArticleByFeedIDResponse) String() string {
 func (*GetLatestArticleByFeedIDResponse) ProtoMessage() {}
 
 func (x *GetLatestArticleByFeedIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[134]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7804,7 +8178,7 @@ func (x *GetLatestArticleByFeedIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLatestArticleByFeedIDResponse.ProtoReflect.Descriptor instead.
 func (*GetLatestArticleByFeedIDResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{134}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *GetLatestArticleByFeedIDResponse) GetArticle() *ArticleContent {
@@ -7826,7 +8200,7 @@ type LookupArticleURLRequest struct {
 
 func (x *LookupArticleURLRequest) Reset() {
 	*x = LookupArticleURLRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[135]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7838,7 +8212,7 @@ func (x *LookupArticleURLRequest) String() string {
 func (*LookupArticleURLRequest) ProtoMessage() {}
 
 func (x *LookupArticleURLRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[135]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7851,7 +8225,7 @@ func (x *LookupArticleURLRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LookupArticleURLRequest.ProtoReflect.Descriptor instead.
 func (*LookupArticleURLRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{135}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *LookupArticleURLRequest) GetArticleId() string {
@@ -7880,7 +8254,7 @@ type LookupArticleURLResponse struct {
 
 func (x *LookupArticleURLResponse) Reset() {
 	*x = LookupArticleURLResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[136]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7892,7 +8266,7 @@ func (x *LookupArticleURLResponse) String() string {
 func (*LookupArticleURLResponse) ProtoMessage() {}
 
 func (x *LookupArticleURLResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[136]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7905,7 +8279,7 @@ func (x *LookupArticleURLResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LookupArticleURLResponse.ProtoReflect.Descriptor instead.
 func (*LookupArticleURLResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{136}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *LookupArticleURLResponse) GetUrl() string {
@@ -7931,7 +8305,7 @@ type BackfillArticle struct {
 
 func (x *BackfillArticle) Reset() {
 	*x = BackfillArticle{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[137]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7943,7 +8317,7 @@ func (x *BackfillArticle) String() string {
 func (*BackfillArticle) ProtoMessage() {}
 
 func (x *BackfillArticle) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[137]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7956,7 +8330,7 @@ func (x *BackfillArticle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackfillArticle.ProtoReflect.Descriptor instead.
 func (*BackfillArticle) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{137}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *BackfillArticle) GetArticleId() string {
@@ -8009,7 +8383,7 @@ type CountBackfillArticlesRequest struct {
 
 func (x *CountBackfillArticlesRequest) Reset() {
 	*x = CountBackfillArticlesRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[138]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8021,7 +8395,7 @@ func (x *CountBackfillArticlesRequest) String() string {
 func (*CountBackfillArticlesRequest) ProtoMessage() {}
 
 func (x *CountBackfillArticlesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[138]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8034,7 +8408,7 @@ func (x *CountBackfillArticlesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountBackfillArticlesRequest.ProtoReflect.Descriptor instead.
 func (*CountBackfillArticlesRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{138}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{145}
 }
 
 type CountBackfillArticlesResponse struct {
@@ -8046,7 +8420,7 @@ type CountBackfillArticlesResponse struct {
 
 func (x *CountBackfillArticlesResponse) Reset() {
 	*x = CountBackfillArticlesResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[139]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8058,7 +8432,7 @@ func (x *CountBackfillArticlesResponse) String() string {
 func (*CountBackfillArticlesResponse) ProtoMessage() {}
 
 func (x *CountBackfillArticlesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[139]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8071,7 +8445,7 @@ func (x *CountBackfillArticlesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CountBackfillArticlesResponse.ProtoReflect.Descriptor instead.
 func (*CountBackfillArticlesResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{139}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *CountBackfillArticlesResponse) GetCount() int32 {
@@ -8096,7 +8470,7 @@ type ListBackfillArticlesRequest struct {
 
 func (x *ListBackfillArticlesRequest) Reset() {
 	*x = ListBackfillArticlesRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[140]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8108,7 +8482,7 @@ func (x *ListBackfillArticlesRequest) String() string {
 func (*ListBackfillArticlesRequest) ProtoMessage() {}
 
 func (x *ListBackfillArticlesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[140]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8121,7 +8495,7 @@ func (x *ListBackfillArticlesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBackfillArticlesRequest.ProtoReflect.Descriptor instead.
 func (*ListBackfillArticlesRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{140}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *ListBackfillArticlesRequest) GetLastCreatedAt() *timestamppb.Timestamp {
@@ -8154,7 +8528,7 @@ type ListBackfillArticlesResponse struct {
 
 func (x *ListBackfillArticlesResponse) Reset() {
 	*x = ListBackfillArticlesResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[141]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8166,7 +8540,7 @@ func (x *ListBackfillArticlesResponse) String() string {
 func (*ListBackfillArticlesResponse) ProtoMessage() {}
 
 func (x *ListBackfillArticlesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[141]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8179,7 +8553,7 @@ func (x *ListBackfillArticlesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBackfillArticlesResponse.ProtoReflect.Descriptor instead.
 func (*ListBackfillArticlesResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{141}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{148}
 }
 
 func (x *ListBackfillArticlesResponse) GetArticles() []*BackfillArticle {
@@ -8206,7 +8580,7 @@ type BackfillSummaryTitle struct {
 
 func (x *BackfillSummaryTitle) Reset() {
 	*x = BackfillSummaryTitle{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[142]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8218,7 +8592,7 @@ func (x *BackfillSummaryTitle) String() string {
 func (*BackfillSummaryTitle) ProtoMessage() {}
 
 func (x *BackfillSummaryTitle) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[142]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8231,7 +8605,7 @@ func (x *BackfillSummaryTitle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackfillSummaryTitle.ProtoReflect.Descriptor instead.
 func (*BackfillSummaryTitle) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{142}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{149}
 }
 
 func (x *BackfillSummaryTitle) GetSummaryVersionId() string {
@@ -8284,7 +8658,7 @@ type CountBackfillSummaryTitlesRequest struct {
 
 func (x *CountBackfillSummaryTitlesRequest) Reset() {
 	*x = CountBackfillSummaryTitlesRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[143]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8296,7 +8670,7 @@ func (x *CountBackfillSummaryTitlesRequest) String() string {
 func (*CountBackfillSummaryTitlesRequest) ProtoMessage() {}
 
 func (x *CountBackfillSummaryTitlesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[143]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8309,7 +8683,7 @@ func (x *CountBackfillSummaryTitlesRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use CountBackfillSummaryTitlesRequest.ProtoReflect.Descriptor instead.
 func (*CountBackfillSummaryTitlesRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{143}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{150}
 }
 
 type CountBackfillSummaryTitlesResponse struct {
@@ -8321,7 +8695,7 @@ type CountBackfillSummaryTitlesResponse struct {
 
 func (x *CountBackfillSummaryTitlesResponse) Reset() {
 	*x = CountBackfillSummaryTitlesResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[144]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8333,7 +8707,7 @@ func (x *CountBackfillSummaryTitlesResponse) String() string {
 func (*CountBackfillSummaryTitlesResponse) ProtoMessage() {}
 
 func (x *CountBackfillSummaryTitlesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[144]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8346,7 +8720,7 @@ func (x *CountBackfillSummaryTitlesResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use CountBackfillSummaryTitlesResponse.ProtoReflect.Descriptor instead.
 func (*CountBackfillSummaryTitlesResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{144}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{151}
 }
 
 func (x *CountBackfillSummaryTitlesResponse) GetCount() int32 {
@@ -8369,7 +8743,7 @@ type ListBackfillSummaryTitlesRequest struct {
 
 func (x *ListBackfillSummaryTitlesRequest) Reset() {
 	*x = ListBackfillSummaryTitlesRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[145]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8381,7 +8755,7 @@ func (x *ListBackfillSummaryTitlesRequest) String() string {
 func (*ListBackfillSummaryTitlesRequest) ProtoMessage() {}
 
 func (x *ListBackfillSummaryTitlesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[145]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8394,7 +8768,7 @@ func (x *ListBackfillSummaryTitlesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBackfillSummaryTitlesRequest.ProtoReflect.Descriptor instead.
 func (*ListBackfillSummaryTitlesRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{145}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *ListBackfillSummaryTitlesRequest) GetLastGeneratedAt() *timestamppb.Timestamp {
@@ -8427,7 +8801,7 @@ type ListBackfillSummaryTitlesResponse struct {
 
 func (x *ListBackfillSummaryTitlesResponse) Reset() {
 	*x = ListBackfillSummaryTitlesResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[146]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8439,7 +8813,7 @@ func (x *ListBackfillSummaryTitlesResponse) String() string {
 func (*ListBackfillSummaryTitlesResponse) ProtoMessage() {}
 
 func (x *ListBackfillSummaryTitlesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[146]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8452,7 +8826,7 @@ func (x *ListBackfillSummaryTitlesResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ListBackfillSummaryTitlesResponse.ProtoReflect.Descriptor instead.
 func (*ListBackfillSummaryTitlesResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{146}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{153}
 }
 
 func (x *ListBackfillSummaryTitlesResponse) GetEntries() []*BackfillSummaryTitle {
@@ -8478,7 +8852,7 @@ type FeedLink struct {
 
 func (x *FeedLink) Reset() {
 	*x = FeedLink{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[147]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8490,7 +8864,7 @@ func (x *FeedLink) String() string {
 func (*FeedLink) ProtoMessage() {}
 
 func (x *FeedLink) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[147]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8503,7 +8877,7 @@ func (x *FeedLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedLink.ProtoReflect.Descriptor instead.
 func (*FeedLink) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{147}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *FeedLink) GetId() string {
@@ -8539,7 +8913,7 @@ type FeedLinkAvailability struct {
 
 func (x *FeedLinkAvailability) Reset() {
 	*x = FeedLinkAvailability{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[148]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8551,7 +8925,7 @@ func (x *FeedLinkAvailability) String() string {
 func (*FeedLinkAvailability) ProtoMessage() {}
 
 func (x *FeedLinkAvailability) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[148]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8564,7 +8938,7 @@ func (x *FeedLinkAvailability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedLinkAvailability.ProtoReflect.Descriptor instead.
 func (*FeedLinkAvailability) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{148}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{155}
 }
 
 func (x *FeedLinkAvailability) GetFeedLinkId() string {
@@ -8617,7 +8991,7 @@ type FeedLinkWithHealth struct {
 
 func (x *FeedLinkWithHealth) Reset() {
 	*x = FeedLinkWithHealth{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[149]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8629,7 +9003,7 @@ func (x *FeedLinkWithHealth) String() string {
 func (*FeedLinkWithHealth) ProtoMessage() {}
 
 func (x *FeedLinkWithHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[149]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8642,7 +9016,7 @@ func (x *FeedLinkWithHealth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedLinkWithHealth.ProtoReflect.Descriptor instead.
 func (*FeedLinkWithHealth) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{149}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *FeedLinkWithHealth) GetFeedLink() *FeedLink {
@@ -8671,7 +9045,7 @@ type FeedLinkDomain struct {
 
 func (x *FeedLinkDomain) Reset() {
 	*x = FeedLinkDomain{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[150]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8683,7 +9057,7 @@ func (x *FeedLinkDomain) String() string {
 func (*FeedLinkDomain) ProtoMessage() {}
 
 func (x *FeedLinkDomain) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[150]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8696,7 +9070,7 @@ func (x *FeedLinkDomain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedLinkDomain.ProtoReflect.Descriptor instead.
 func (*FeedLinkDomain) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{150}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{157}
 }
 
 func (x *FeedLinkDomain) GetDomain() string {
@@ -8728,7 +9102,7 @@ type FeedLinkExportEntry struct {
 
 func (x *FeedLinkExportEntry) Reset() {
 	*x = FeedLinkExportEntry{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[151]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8740,7 +9114,7 @@ func (x *FeedLinkExportEntry) String() string {
 func (*FeedLinkExportEntry) ProtoMessage() {}
 
 func (x *FeedLinkExportEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[151]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8753,7 +9127,7 @@ func (x *FeedLinkExportEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedLinkExportEntry.ProtoReflect.Descriptor instead.
 func (*FeedLinkExportEntry) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{151}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{158}
 }
 
 func (x *FeedLinkExportEntry) GetUrl() string {
@@ -8803,7 +9177,7 @@ type Feed struct {
 
 func (x *Feed) Reset() {
 	*x = Feed{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[152]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[159]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8815,7 +9189,7 @@ func (x *Feed) String() string {
 func (*Feed) ProtoMessage() {}
 
 func (x *Feed) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[152]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[159]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8828,7 +9202,7 @@ func (x *Feed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Feed.ProtoReflect.Descriptor instead.
 func (*Feed) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{152}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{159}
 }
 
 func (x *Feed) GetId() string {
@@ -8930,7 +9304,7 @@ type FeedRegistration struct {
 
 func (x *FeedRegistration) Reset() {
 	*x = FeedRegistration{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[153]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[160]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8942,7 +9316,7 @@ func (x *FeedRegistration) String() string {
 func (*FeedRegistration) ProtoMessage() {}
 
 func (x *FeedRegistration) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[153]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[160]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8955,7 +9329,7 @@ func (x *FeedRegistration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedRegistration.ProtoReflect.Descriptor instead.
 func (*FeedRegistration) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{153}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{160}
 }
 
 func (x *FeedRegistration) GetTitle() string {
@@ -9029,7 +9403,7 @@ type FeedRegistrationResult struct {
 
 func (x *FeedRegistrationResult) Reset() {
 	*x = FeedRegistrationResult{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[154]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[161]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9041,7 +9415,7 @@ func (x *FeedRegistrationResult) String() string {
 func (*FeedRegistrationResult) ProtoMessage() {}
 
 func (x *FeedRegistrationResult) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[154]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[161]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9054,7 +9428,7 @@ func (x *FeedRegistrationResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedRegistrationResult.ProtoReflect.Descriptor instead.
 func (*FeedRegistrationResult) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{154}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{161}
 }
 
 func (x *FeedRegistrationResult) GetFeedId() string {
@@ -9081,7 +9455,7 @@ type FeedSummary struct {
 
 func (x *FeedSummary) Reset() {
 	*x = FeedSummary{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[155]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[162]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9093,7 +9467,7 @@ func (x *FeedSummary) String() string {
 func (*FeedSummary) ProtoMessage() {}
 
 func (x *FeedSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[155]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[162]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9106,7 +9480,7 @@ func (x *FeedSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedSummary.ProtoReflect.Descriptor instead.
 func (*FeedSummary) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{155}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{162}
 }
 
 func (x *FeedSummary) GetSummary() string {
@@ -9132,7 +9506,7 @@ type FeedAndArticle struct {
 
 func (x *FeedAndArticle) Reset() {
 	*x = FeedAndArticle{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[156]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[163]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9144,7 +9518,7 @@ func (x *FeedAndArticle) String() string {
 func (*FeedAndArticle) ProtoMessage() {}
 
 func (x *FeedAndArticle) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[156]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[163]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9157,7 +9531,7 @@ func (x *FeedAndArticle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedAndArticle.ProtoReflect.Descriptor instead.
 func (*FeedAndArticle) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{156}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{163}
 }
 
 func (x *FeedAndArticle) GetFeedId() string {
@@ -9212,7 +9586,7 @@ type InoreaderSummary struct {
 
 func (x *InoreaderSummary) Reset() {
 	*x = InoreaderSummary{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[157]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[164]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9224,7 +9598,7 @@ func (x *InoreaderSummary) String() string {
 func (*InoreaderSummary) ProtoMessage() {}
 
 func (x *InoreaderSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[157]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[164]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9237,7 +9611,7 @@ func (x *InoreaderSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InoreaderSummary.ProtoReflect.Descriptor instead.
 func (*InoreaderSummary) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{157}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{164}
 }
 
 func (x *InoreaderSummary) GetArticleUrl() string {
@@ -9305,7 +9679,7 @@ type RegisterFeedLinkRequest struct {
 
 func (x *RegisterFeedLinkRequest) Reset() {
 	*x = RegisterFeedLinkRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[158]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[165]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9317,7 +9691,7 @@ func (x *RegisterFeedLinkRequest) String() string {
 func (*RegisterFeedLinkRequest) ProtoMessage() {}
 
 func (x *RegisterFeedLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[158]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[165]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9330,7 +9704,7 @@ func (x *RegisterFeedLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterFeedLinkRequest.ProtoReflect.Descriptor instead.
 func (*RegisterFeedLinkRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{158}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{165}
 }
 
 func (x *RegisterFeedLinkRequest) GetUrl() string {
@@ -9353,7 +9727,7 @@ type RegisterFeedLinkResponse struct {
 
 func (x *RegisterFeedLinkResponse) Reset() {
 	*x = RegisterFeedLinkResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[159]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[166]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9365,7 +9739,7 @@ func (x *RegisterFeedLinkResponse) String() string {
 func (*RegisterFeedLinkResponse) ProtoMessage() {}
 
 func (x *RegisterFeedLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[159]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[166]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9378,7 +9752,7 @@ func (x *RegisterFeedLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterFeedLinkResponse.ProtoReflect.Descriptor instead.
 func (*RegisterFeedLinkResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{159}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{166}
 }
 
 func (x *RegisterFeedLinkResponse) GetAlreadyExisted() bool {
@@ -9399,7 +9773,7 @@ type BulkRegisterFeedLinksRequest struct {
 
 func (x *BulkRegisterFeedLinksRequest) Reset() {
 	*x = BulkRegisterFeedLinksRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[160]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[167]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9411,7 +9785,7 @@ func (x *BulkRegisterFeedLinksRequest) String() string {
 func (*BulkRegisterFeedLinksRequest) ProtoMessage() {}
 
 func (x *BulkRegisterFeedLinksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[160]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[167]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9424,7 +9798,7 @@ func (x *BulkRegisterFeedLinksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BulkRegisterFeedLinksRequest.ProtoReflect.Descriptor instead.
 func (*BulkRegisterFeedLinksRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{160}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{167}
 }
 
 func (x *BulkRegisterFeedLinksRequest) GetUrls() []string {
@@ -9449,7 +9823,7 @@ type BulkRegisterFeedLinksResponse struct {
 
 func (x *BulkRegisterFeedLinksResponse) Reset() {
 	*x = BulkRegisterFeedLinksResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[161]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[168]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9461,7 +9835,7 @@ func (x *BulkRegisterFeedLinksResponse) String() string {
 func (*BulkRegisterFeedLinksResponse) ProtoMessage() {}
 
 func (x *BulkRegisterFeedLinksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[161]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[168]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9474,7 +9848,7 @@ func (x *BulkRegisterFeedLinksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BulkRegisterFeedLinksResponse.ProtoReflect.Descriptor instead.
 func (*BulkRegisterFeedLinksResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{161}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{168}
 }
 
 func (x *BulkRegisterFeedLinksResponse) GetRegistered() int32 {
@@ -9506,7 +9880,7 @@ type ListFeedLinksRequest struct {
 
 func (x *ListFeedLinksRequest) Reset() {
 	*x = ListFeedLinksRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[162]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[169]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9518,7 +9892,7 @@ func (x *ListFeedLinksRequest) String() string {
 func (*ListFeedLinksRequest) ProtoMessage() {}
 
 func (x *ListFeedLinksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[162]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[169]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9531,7 +9905,7 @@ func (x *ListFeedLinksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedLinksRequest.ProtoReflect.Descriptor instead.
 func (*ListFeedLinksRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{162}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{169}
 }
 
 type ListFeedLinksResponse struct {
@@ -9543,7 +9917,7 @@ type ListFeedLinksResponse struct {
 
 func (x *ListFeedLinksResponse) Reset() {
 	*x = ListFeedLinksResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[163]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[170]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9555,7 +9929,7 @@ func (x *ListFeedLinksResponse) String() string {
 func (*ListFeedLinksResponse) ProtoMessage() {}
 
 func (x *ListFeedLinksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[163]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[170]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9568,7 +9942,7 @@ func (x *ListFeedLinksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedLinksResponse.ProtoReflect.Descriptor instead.
 func (*ListFeedLinksResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{163}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{170}
 }
 
 func (x *ListFeedLinksResponse) GetFeedLinks() []*FeedLink {
@@ -9586,7 +9960,7 @@ type ListFeedLinksWithHealthRequest struct {
 
 func (x *ListFeedLinksWithHealthRequest) Reset() {
 	*x = ListFeedLinksWithHealthRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[164]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[171]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9598,7 +9972,7 @@ func (x *ListFeedLinksWithHealthRequest) String() string {
 func (*ListFeedLinksWithHealthRequest) ProtoMessage() {}
 
 func (x *ListFeedLinksWithHealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[164]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[171]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9611,7 +9985,7 @@ func (x *ListFeedLinksWithHealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedLinksWithHealthRequest.ProtoReflect.Descriptor instead.
 func (*ListFeedLinksWithHealthRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{164}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{171}
 }
 
 type ListFeedLinksWithHealthResponse struct {
@@ -9623,7 +9997,7 @@ type ListFeedLinksWithHealthResponse struct {
 
 func (x *ListFeedLinksWithHealthResponse) Reset() {
 	*x = ListFeedLinksWithHealthResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[165]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[172]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9635,7 +10009,7 @@ func (x *ListFeedLinksWithHealthResponse) String() string {
 func (*ListFeedLinksWithHealthResponse) ProtoMessage() {}
 
 func (x *ListFeedLinksWithHealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[165]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[172]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9648,7 +10022,7 @@ func (x *ListFeedLinksWithHealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedLinksWithHealthResponse.ProtoReflect.Descriptor instead.
 func (*ListFeedLinksWithHealthResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{165}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{172}
 }
 
 func (x *ListFeedLinksWithHealthResponse) GetFeedLinks() []*FeedLinkWithHealth {
@@ -9667,7 +10041,7 @@ type DeleteFeedLinkRequest struct {
 
 func (x *DeleteFeedLinkRequest) Reset() {
 	*x = DeleteFeedLinkRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[166]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[173]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9679,7 +10053,7 @@ func (x *DeleteFeedLinkRequest) String() string {
 func (*DeleteFeedLinkRequest) ProtoMessage() {}
 
 func (x *DeleteFeedLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[166]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[173]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9692,7 +10066,7 @@ func (x *DeleteFeedLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFeedLinkRequest.ProtoReflect.Descriptor instead.
 func (*DeleteFeedLinkRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{166}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{173}
 }
 
 func (x *DeleteFeedLinkRequest) GetId() string {
@@ -9710,7 +10084,7 @@ type DeleteFeedLinkResponse struct {
 
 func (x *DeleteFeedLinkResponse) Reset() {
 	*x = DeleteFeedLinkResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[167]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[174]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9722,7 +10096,7 @@ func (x *DeleteFeedLinkResponse) String() string {
 func (*DeleteFeedLinkResponse) ProtoMessage() {}
 
 func (x *DeleteFeedLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[167]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[174]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9735,7 +10109,7 @@ func (x *DeleteFeedLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFeedLinkResponse.ProtoReflect.Descriptor instead.
 func (*DeleteFeedLinkResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{167}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{174}
 }
 
 type ResolveFeedLinkIDByURLRequest struct {
@@ -9747,7 +10121,7 @@ type ResolveFeedLinkIDByURLRequest struct {
 
 func (x *ResolveFeedLinkIDByURLRequest) Reset() {
 	*x = ResolveFeedLinkIDByURLRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[168]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[175]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9759,7 +10133,7 @@ func (x *ResolveFeedLinkIDByURLRequest) String() string {
 func (*ResolveFeedLinkIDByURLRequest) ProtoMessage() {}
 
 func (x *ResolveFeedLinkIDByURLRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[168]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[175]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9772,7 +10146,7 @@ func (x *ResolveFeedLinkIDByURLRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveFeedLinkIDByURLRequest.ProtoReflect.Descriptor instead.
 func (*ResolveFeedLinkIDByURLRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{168}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{175}
 }
 
 func (x *ResolveFeedLinkIDByURLRequest) GetFeedUrl() string {
@@ -9794,7 +10168,7 @@ type ResolveFeedLinkIDByURLResponse struct {
 
 func (x *ResolveFeedLinkIDByURLResponse) Reset() {
 	*x = ResolveFeedLinkIDByURLResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[169]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[176]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9806,7 +10180,7 @@ func (x *ResolveFeedLinkIDByURLResponse) String() string {
 func (*ResolveFeedLinkIDByURLResponse) ProtoMessage() {}
 
 func (x *ResolveFeedLinkIDByURLResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[169]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[176]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9819,7 +10193,7 @@ func (x *ResolveFeedLinkIDByURLResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveFeedLinkIDByURLResponse.ProtoReflect.Descriptor instead.
 func (*ResolveFeedLinkIDByURLResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{169}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{176}
 }
 
 func (x *ResolveFeedLinkIDByURLResponse) GetFeedLinkId() string {
@@ -9837,7 +10211,7 @@ type ListFeedLinkDomainsRequest struct {
 
 func (x *ListFeedLinkDomainsRequest) Reset() {
 	*x = ListFeedLinkDomainsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[170]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[177]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9849,7 +10223,7 @@ func (x *ListFeedLinkDomainsRequest) String() string {
 func (*ListFeedLinkDomainsRequest) ProtoMessage() {}
 
 func (x *ListFeedLinkDomainsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[170]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[177]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9862,7 +10236,7 @@ func (x *ListFeedLinkDomainsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedLinkDomainsRequest.ProtoReflect.Descriptor instead.
 func (*ListFeedLinkDomainsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{170}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{177}
 }
 
 type ListFeedLinkDomainsResponse struct {
@@ -9874,7 +10248,7 @@ type ListFeedLinkDomainsResponse struct {
 
 func (x *ListFeedLinkDomainsResponse) Reset() {
 	*x = ListFeedLinkDomainsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[171]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[178]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9886,7 +10260,7 @@ func (x *ListFeedLinkDomainsResponse) String() string {
 func (*ListFeedLinkDomainsResponse) ProtoMessage() {}
 
 func (x *ListFeedLinkDomainsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[171]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[178]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9899,7 +10273,7 @@ func (x *ListFeedLinkDomainsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedLinkDomainsResponse.ProtoReflect.Descriptor instead.
 func (*ListFeedLinkDomainsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{171}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{178}
 }
 
 func (x *ListFeedLinkDomainsResponse) GetDomains() []*FeedLinkDomain {
@@ -9917,7 +10291,7 @@ type ListRSSFeedURLsRequest struct {
 
 func (x *ListRSSFeedURLsRequest) Reset() {
 	*x = ListRSSFeedURLsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[172]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[179]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9929,7 +10303,7 @@ func (x *ListRSSFeedURLsRequest) String() string {
 func (*ListRSSFeedURLsRequest) ProtoMessage() {}
 
 func (x *ListRSSFeedURLsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[172]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[179]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9942,7 +10316,7 @@ func (x *ListRSSFeedURLsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRSSFeedURLsRequest.ProtoReflect.Descriptor instead.
 func (*ListRSSFeedURLsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{172}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{179}
 }
 
 type ListRSSFeedURLsResponse struct {
@@ -9957,7 +10331,7 @@ type ListRSSFeedURLsResponse struct {
 
 func (x *ListRSSFeedURLsResponse) Reset() {
 	*x = ListRSSFeedURLsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[173]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[180]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9969,7 +10343,7 @@ func (x *ListRSSFeedURLsResponse) String() string {
 func (*ListRSSFeedURLsResponse) ProtoMessage() {}
 
 func (x *ListRSSFeedURLsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[173]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[180]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9982,7 +10356,7 @@ func (x *ListRSSFeedURLsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRSSFeedURLsResponse.ProtoReflect.Descriptor instead.
 func (*ListRSSFeedURLsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{173}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{180}
 }
 
 func (x *ListRSSFeedURLsResponse) GetFeedLinks() []*FeedLink {
@@ -10000,7 +10374,7 @@ type ListFeedLinksForExportRequest struct {
 
 func (x *ListFeedLinksForExportRequest) Reset() {
 	*x = ListFeedLinksForExportRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[174]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[181]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10012,7 +10386,7 @@ func (x *ListFeedLinksForExportRequest) String() string {
 func (*ListFeedLinksForExportRequest) ProtoMessage() {}
 
 func (x *ListFeedLinksForExportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[174]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[181]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10025,7 +10399,7 @@ func (x *ListFeedLinksForExportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedLinksForExportRequest.ProtoReflect.Descriptor instead.
 func (*ListFeedLinksForExportRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{174}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{181}
 }
 
 type ListFeedLinksForExportResponse struct {
@@ -10037,7 +10411,7 @@ type ListFeedLinksForExportResponse struct {
 
 func (x *ListFeedLinksForExportResponse) Reset() {
 	*x = ListFeedLinksForExportResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[175]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[182]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10049,7 +10423,7 @@ func (x *ListFeedLinksForExportResponse) String() string {
 func (*ListFeedLinksForExportResponse) ProtoMessage() {}
 
 func (x *ListFeedLinksForExportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[175]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[182]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10062,7 +10436,7 @@ func (x *ListFeedLinksForExportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedLinksForExportResponse.ProtoReflect.Descriptor instead.
 func (*ListFeedLinksForExportResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{175}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{182}
 }
 
 func (x *ListFeedLinksForExportResponse) GetEntries() []*FeedLinkExportEntry {
@@ -10087,7 +10461,7 @@ type RecordFeedLinkFailureRequest struct {
 
 func (x *RecordFeedLinkFailureRequest) Reset() {
 	*x = RecordFeedLinkFailureRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[176]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[183]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10099,7 +10473,7 @@ func (x *RecordFeedLinkFailureRequest) String() string {
 func (*RecordFeedLinkFailureRequest) ProtoMessage() {}
 
 func (x *RecordFeedLinkFailureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[176]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[183]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10112,7 +10486,7 @@ func (x *RecordFeedLinkFailureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordFeedLinkFailureRequest.ProtoReflect.Descriptor instead.
 func (*RecordFeedLinkFailureRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{176}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{183}
 }
 
 func (x *RecordFeedLinkFailureRequest) GetFeedUrl() string {
@@ -10152,7 +10526,7 @@ type RecordFeedLinkFailureResponse struct {
 
 func (x *RecordFeedLinkFailureResponse) Reset() {
 	*x = RecordFeedLinkFailureResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[177]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[184]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10164,7 +10538,7 @@ func (x *RecordFeedLinkFailureResponse) String() string {
 func (*RecordFeedLinkFailureResponse) ProtoMessage() {}
 
 func (x *RecordFeedLinkFailureResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[177]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[184]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10177,7 +10551,7 @@ func (x *RecordFeedLinkFailureResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordFeedLinkFailureResponse.ProtoReflect.Descriptor instead.
 func (*RecordFeedLinkFailureResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{177}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{184}
 }
 
 func (x *RecordFeedLinkFailureResponse) GetAvailability() *FeedLinkAvailability {
@@ -10203,7 +10577,7 @@ type ResetFeedLinkFailuresRequest struct {
 
 func (x *ResetFeedLinkFailuresRequest) Reset() {
 	*x = ResetFeedLinkFailuresRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[178]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[185]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10215,7 +10589,7 @@ func (x *ResetFeedLinkFailuresRequest) String() string {
 func (*ResetFeedLinkFailuresRequest) ProtoMessage() {}
 
 func (x *ResetFeedLinkFailuresRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[178]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[185]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10228,7 +10602,7 @@ func (x *ResetFeedLinkFailuresRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResetFeedLinkFailuresRequest.ProtoReflect.Descriptor instead.
 func (*ResetFeedLinkFailuresRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{178}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{185}
 }
 
 func (x *ResetFeedLinkFailuresRequest) GetFeedUrl() string {
@@ -10246,7 +10620,7 @@ type ResetFeedLinkFailuresResponse struct {
 
 func (x *ResetFeedLinkFailuresResponse) Reset() {
 	*x = ResetFeedLinkFailuresResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[179]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[186]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10258,7 +10632,7 @@ func (x *ResetFeedLinkFailuresResponse) String() string {
 func (*ResetFeedLinkFailuresResponse) ProtoMessage() {}
 
 func (x *ResetFeedLinkFailuresResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[179]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[186]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10271,7 +10645,7 @@ func (x *ResetFeedLinkFailuresResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResetFeedLinkFailuresResponse.ProtoReflect.Descriptor instead.
 func (*ResetFeedLinkFailuresResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{179}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{186}
 }
 
 type RegisterFeedsRequest struct {
@@ -10283,7 +10657,7 @@ type RegisterFeedsRequest struct {
 
 func (x *RegisterFeedsRequest) Reset() {
 	*x = RegisterFeedsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[180]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[187]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10295,7 +10669,7 @@ func (x *RegisterFeedsRequest) String() string {
 func (*RegisterFeedsRequest) ProtoMessage() {}
 
 func (x *RegisterFeedsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[180]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[187]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10308,7 +10682,7 @@ func (x *RegisterFeedsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterFeedsRequest.ProtoReflect.Descriptor instead.
 func (*RegisterFeedsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{180}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{187}
 }
 
 func (x *RegisterFeedsRequest) GetFeeds() []*FeedRegistration {
@@ -10328,7 +10702,7 @@ type RegisterFeedsResponse struct {
 
 func (x *RegisterFeedsResponse) Reset() {
 	*x = RegisterFeedsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[181]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[188]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10340,7 +10714,7 @@ func (x *RegisterFeedsResponse) String() string {
 func (*RegisterFeedsResponse) ProtoMessage() {}
 
 func (x *RegisterFeedsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[181]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[188]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10353,7 +10727,7 @@ func (x *RegisterFeedsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterFeedsResponse.ProtoReflect.Descriptor instead.
 func (*RegisterFeedsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{181}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{188}
 }
 
 func (x *RegisterFeedsResponse) GetResults() []*FeedRegistrationResult {
@@ -10380,7 +10754,7 @@ type ListFeedsCursorRequest struct {
 
 func (x *ListFeedsCursorRequest) Reset() {
 	*x = ListFeedsCursorRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[182]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[189]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10392,7 +10766,7 @@ func (x *ListFeedsCursorRequest) String() string {
 func (*ListFeedsCursorRequest) ProtoMessage() {}
 
 func (x *ListFeedsCursorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[182]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[189]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10405,7 +10779,7 @@ func (x *ListFeedsCursorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedsCursorRequest.ProtoReflect.Descriptor instead.
 func (*ListFeedsCursorRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{182}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{189}
 }
 
 func (x *ListFeedsCursorRequest) GetScope() FeedScope {
@@ -10452,7 +10826,7 @@ type ListFeedsCursorResponse struct {
 
 func (x *ListFeedsCursorResponse) Reset() {
 	*x = ListFeedsCursorResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[183]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[190]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10464,7 +10838,7 @@ func (x *ListFeedsCursorResponse) String() string {
 func (*ListFeedsCursorResponse) ProtoMessage() {}
 
 func (x *ListFeedsCursorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[183]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[190]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10477,7 +10851,7 @@ func (x *ListFeedsCursorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedsCursorResponse.ProtoReflect.Descriptor instead.
 func (*ListFeedsCursorResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{183}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{190}
 }
 
 func (x *ListFeedsCursorResponse) GetFeeds() []*Feed {
@@ -10501,7 +10875,7 @@ type ListFeedsPageRequest struct {
 
 func (x *ListFeedsPageRequest) Reset() {
 	*x = ListFeedsPageRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[184]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[191]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10513,7 +10887,7 @@ func (x *ListFeedsPageRequest) String() string {
 func (*ListFeedsPageRequest) ProtoMessage() {}
 
 func (x *ListFeedsPageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[184]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[191]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10526,7 +10900,7 @@ func (x *ListFeedsPageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedsPageRequest.ProtoReflect.Descriptor instead.
 func (*ListFeedsPageRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{184}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{191}
 }
 
 func (x *ListFeedsPageRequest) GetPage() int32 {
@@ -10559,7 +10933,7 @@ type ListFeedsPageResponse struct {
 
 func (x *ListFeedsPageResponse) Reset() {
 	*x = ListFeedsPageResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[185]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[192]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10571,7 +10945,7 @@ func (x *ListFeedsPageResponse) String() string {
 func (*ListFeedsPageResponse) ProtoMessage() {}
 
 func (x *ListFeedsPageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[185]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[192]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10584,7 +10958,7 @@ func (x *ListFeedsPageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedsPageResponse.ProtoReflect.Descriptor instead.
 func (*ListFeedsPageResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{185}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{192}
 }
 
 func (x *ListFeedsPageResponse) GetFeeds() []*Feed {
@@ -10605,7 +10979,7 @@ type ListFeedsLimitRequest struct {
 
 func (x *ListFeedsLimitRequest) Reset() {
 	*x = ListFeedsLimitRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[186]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[193]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10617,7 +10991,7 @@ func (x *ListFeedsLimitRequest) String() string {
 func (*ListFeedsLimitRequest) ProtoMessage() {}
 
 func (x *ListFeedsLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[186]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[193]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10630,7 +11004,7 @@ func (x *ListFeedsLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedsLimitRequest.ProtoReflect.Descriptor instead.
 func (*ListFeedsLimitRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{186}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{193}
 }
 
 func (x *ListFeedsLimitRequest) GetLimit() int32 {
@@ -10649,7 +11023,7 @@ type ListFeedsLimitResponse struct {
 
 func (x *ListFeedsLimitResponse) Reset() {
 	*x = ListFeedsLimitResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[187]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[194]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10661,7 +11035,7 @@ func (x *ListFeedsLimitResponse) String() string {
 func (*ListFeedsLimitResponse) ProtoMessage() {}
 
 func (x *ListFeedsLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[187]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[194]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10674,7 +11048,7 @@ func (x *ListFeedsLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedsLimitResponse.ProtoReflect.Descriptor instead.
 func (*ListFeedsLimitResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{187}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{194}
 }
 
 func (x *ListFeedsLimitResponse) GetFeeds() []*Feed {
@@ -10692,7 +11066,7 @@ type GetSingleFeedRequest struct {
 
 func (x *GetSingleFeedRequest) Reset() {
 	*x = GetSingleFeedRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[188]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[195]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10704,7 +11078,7 @@ func (x *GetSingleFeedRequest) String() string {
 func (*GetSingleFeedRequest) ProtoMessage() {}
 
 func (x *GetSingleFeedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[188]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[195]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10717,7 +11091,7 @@ func (x *GetSingleFeedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSingleFeedRequest.ProtoReflect.Descriptor instead.
 func (*GetSingleFeedRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{188}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{195}
 }
 
 type GetSingleFeedResponse struct {
@@ -10730,7 +11104,7 @@ type GetSingleFeedResponse struct {
 
 func (x *GetSingleFeedResponse) Reset() {
 	*x = GetSingleFeedResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[189]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[196]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10742,7 +11116,7 @@ func (x *GetSingleFeedResponse) String() string {
 func (*GetSingleFeedResponse) ProtoMessage() {}
 
 func (x *GetSingleFeedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[189]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[196]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10755,7 +11129,7 @@ func (x *GetSingleFeedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSingleFeedResponse.ProtoReflect.Descriptor instead.
 func (*GetSingleFeedResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{189}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{196}
 }
 
 func (x *GetSingleFeedResponse) GetFeed() *Feed {
@@ -10774,7 +11148,7 @@ type ListFeedsByFeedLinkIDRequest struct {
 
 func (x *ListFeedsByFeedLinkIDRequest) Reset() {
 	*x = ListFeedsByFeedLinkIDRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[190]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[197]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10786,7 +11160,7 @@ func (x *ListFeedsByFeedLinkIDRequest) String() string {
 func (*ListFeedsByFeedLinkIDRequest) ProtoMessage() {}
 
 func (x *ListFeedsByFeedLinkIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[190]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[197]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10799,7 +11173,7 @@ func (x *ListFeedsByFeedLinkIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedsByFeedLinkIDRequest.ProtoReflect.Descriptor instead.
 func (*ListFeedsByFeedLinkIDRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{190}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{197}
 }
 
 func (x *ListFeedsByFeedLinkIDRequest) GetFeedLinkId() string {
@@ -10818,7 +11192,7 @@ type ListFeedsByFeedLinkIDResponse struct {
 
 func (x *ListFeedsByFeedLinkIDResponse) Reset() {
 	*x = ListFeedsByFeedLinkIDResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[191]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[198]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10830,7 +11204,7 @@ func (x *ListFeedsByFeedLinkIDResponse) String() string {
 func (*ListFeedsByFeedLinkIDResponse) ProtoMessage() {}
 
 func (x *ListFeedsByFeedLinkIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[191]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[198]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10843,7 +11217,7 @@ func (x *ListFeedsByFeedLinkIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFeedsByFeedLinkIDResponse.ProtoReflect.Descriptor instead.
 func (*ListFeedsByFeedLinkIDResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{191}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{198}
 }
 
 func (x *ListFeedsByFeedLinkIDResponse) GetFeeds() []*Feed {
@@ -10865,7 +11239,7 @@ type GetFeedSummaryRequest struct {
 
 func (x *GetFeedSummaryRequest) Reset() {
 	*x = GetFeedSummaryRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[192]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[199]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10877,7 +11251,7 @@ func (x *GetFeedSummaryRequest) String() string {
 func (*GetFeedSummaryRequest) ProtoMessage() {}
 
 func (x *GetFeedSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[192]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[199]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10890,7 +11264,7 @@ func (x *GetFeedSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedSummaryRequest.ProtoReflect.Descriptor instead.
 func (*GetFeedSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{192}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{199}
 }
 
 func (x *GetFeedSummaryRequest) GetFeedUrl() string {
@@ -10917,7 +11291,7 @@ type GetFeedSummaryResponse struct {
 
 func (x *GetFeedSummaryResponse) Reset() {
 	*x = GetFeedSummaryResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[193]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[200]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10929,7 +11303,7 @@ func (x *GetFeedSummaryResponse) String() string {
 func (*GetFeedSummaryResponse) ProtoMessage() {}
 
 func (x *GetFeedSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[193]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[200]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10942,7 +11316,7 @@ func (x *GetFeedSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedSummaryResponse.ProtoReflect.Descriptor instead.
 func (*GetFeedSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{193}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{200}
 }
 
 func (x *GetFeedSummaryResponse) GetSummary() *FeedSummary {
@@ -10962,7 +11336,7 @@ type GetArticleSummaryByArticleIDRequest struct {
 
 func (x *GetArticleSummaryByArticleIDRequest) Reset() {
 	*x = GetArticleSummaryByArticleIDRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[194]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[201]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10974,7 +11348,7 @@ func (x *GetArticleSummaryByArticleIDRequest) String() string {
 func (*GetArticleSummaryByArticleIDRequest) ProtoMessage() {}
 
 func (x *GetArticleSummaryByArticleIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[194]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[201]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10987,7 +11361,7 @@ func (x *GetArticleSummaryByArticleIDRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use GetArticleSummaryByArticleIDRequest.ProtoReflect.Descriptor instead.
 func (*GetArticleSummaryByArticleIDRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{194}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{201}
 }
 
 func (x *GetArticleSummaryByArticleIDRequest) GetArticleId() string {
@@ -11013,7 +11387,7 @@ type GetArticleSummaryByArticleIDResponse struct {
 
 func (x *GetArticleSummaryByArticleIDResponse) Reset() {
 	*x = GetArticleSummaryByArticleIDResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[195]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[202]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11025,7 +11399,7 @@ func (x *GetArticleSummaryByArticleIDResponse) String() string {
 func (*GetArticleSummaryByArticleIDResponse) ProtoMessage() {}
 
 func (x *GetArticleSummaryByArticleIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[195]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[202]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11038,7 +11412,7 @@ func (x *GetArticleSummaryByArticleIDResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use GetArticleSummaryByArticleIDResponse.ProtoReflect.Descriptor instead.
 func (*GetArticleSummaryByArticleIDResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{195}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{202}
 }
 
 func (x *GetArticleSummaryByArticleIDResponse) GetSummary() *FeedSummary {
@@ -11058,7 +11432,7 @@ type SearchFeedsByTitleRequest struct {
 
 func (x *SearchFeedsByTitleRequest) Reset() {
 	*x = SearchFeedsByTitleRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[196]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[203]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11070,7 +11444,7 @@ func (x *SearchFeedsByTitleRequest) String() string {
 func (*SearchFeedsByTitleRequest) ProtoMessage() {}
 
 func (x *SearchFeedsByTitleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[196]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[203]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11083,7 +11457,7 @@ func (x *SearchFeedsByTitleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchFeedsByTitleRequest.ProtoReflect.Descriptor instead.
 func (*SearchFeedsByTitleRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{196}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{203}
 }
 
 func (x *SearchFeedsByTitleRequest) GetQuery() string {
@@ -11109,7 +11483,7 @@ type SearchFeedsByTitleResponse struct {
 
 func (x *SearchFeedsByTitleResponse) Reset() {
 	*x = SearchFeedsByTitleResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[197]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[204]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11121,7 +11495,7 @@ func (x *SearchFeedsByTitleResponse) String() string {
 func (*SearchFeedsByTitleResponse) ProtoMessage() {}
 
 func (x *SearchFeedsByTitleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[197]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[204]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11134,7 +11508,7 @@ func (x *SearchFeedsByTitleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchFeedsByTitleResponse.ProtoReflect.Descriptor instead.
 func (*SearchFeedsByTitleResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{197}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{204}
 }
 
 func (x *SearchFeedsByTitleResponse) GetFeeds() []*Feed {
@@ -11152,7 +11526,7 @@ type GetRandomFeedRequest struct {
 
 func (x *GetRandomFeedRequest) Reset() {
 	*x = GetRandomFeedRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[198]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[205]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11164,7 +11538,7 @@ func (x *GetRandomFeedRequest) String() string {
 func (*GetRandomFeedRequest) ProtoMessage() {}
 
 func (x *GetRandomFeedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[198]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[205]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11177,7 +11551,7 @@ func (x *GetRandomFeedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRandomFeedRequest.ProtoReflect.Descriptor instead.
 func (*GetRandomFeedRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{198}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{205}
 }
 
 type GetRandomFeedResponse struct {
@@ -11191,7 +11565,7 @@ type GetRandomFeedResponse struct {
 
 func (x *GetRandomFeedResponse) Reset() {
 	*x = GetRandomFeedResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[199]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[206]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11203,7 +11577,7 @@ func (x *GetRandomFeedResponse) String() string {
 func (*GetRandomFeedResponse) ProtoMessage() {}
 
 func (x *GetRandomFeedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[199]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[206]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11216,7 +11590,7 @@ func (x *GetRandomFeedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRandomFeedResponse.ProtoReflect.Descriptor instead.
 func (*GetRandomFeedResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{199}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{206}
 }
 
 func (x *GetRandomFeedResponse) GetFeed() *Feed {
@@ -11235,7 +11609,7 @@ type GetFeedURLsByArticleIDsRequest struct {
 
 func (x *GetFeedURLsByArticleIDsRequest) Reset() {
 	*x = GetFeedURLsByArticleIDsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[200]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[207]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11247,7 +11621,7 @@ func (x *GetFeedURLsByArticleIDsRequest) String() string {
 func (*GetFeedURLsByArticleIDsRequest) ProtoMessage() {}
 
 func (x *GetFeedURLsByArticleIDsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[200]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[207]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11260,7 +11634,7 @@ func (x *GetFeedURLsByArticleIDsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedURLsByArticleIDsRequest.ProtoReflect.Descriptor instead.
 func (*GetFeedURLsByArticleIDsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{200}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{207}
 }
 
 func (x *GetFeedURLsByArticleIDsRequest) GetArticleIds() []string {
@@ -11279,7 +11653,7 @@ type GetFeedURLsByArticleIDsResponse struct {
 
 func (x *GetFeedURLsByArticleIDsResponse) Reset() {
 	*x = GetFeedURLsByArticleIDsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[201]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[208]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11291,7 +11665,7 @@ func (x *GetFeedURLsByArticleIDsResponse) String() string {
 func (*GetFeedURLsByArticleIDsResponse) ProtoMessage() {}
 
 func (x *GetFeedURLsByArticleIDsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[201]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[208]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11304,7 +11678,7 @@ func (x *GetFeedURLsByArticleIDsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedURLsByArticleIDsResponse.ProtoReflect.Descriptor instead.
 func (*GetFeedURLsByArticleIDsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{201}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{208}
 }
 
 func (x *GetFeedURLsByArticleIDsResponse) GetPairs() []*FeedAndArticle {
@@ -11323,7 +11697,7 @@ type BatchGetFeedTitlesByIDsRequest struct {
 
 func (x *BatchGetFeedTitlesByIDsRequest) Reset() {
 	*x = BatchGetFeedTitlesByIDsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[202]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[209]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11335,7 +11709,7 @@ func (x *BatchGetFeedTitlesByIDsRequest) String() string {
 func (*BatchGetFeedTitlesByIDsRequest) ProtoMessage() {}
 
 func (x *BatchGetFeedTitlesByIDsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[202]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[209]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11348,7 +11722,7 @@ func (x *BatchGetFeedTitlesByIDsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetFeedTitlesByIDsRequest.ProtoReflect.Descriptor instead.
 func (*BatchGetFeedTitlesByIDsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{202}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{209}
 }
 
 func (x *BatchGetFeedTitlesByIDsRequest) GetFeedIds() []string {
@@ -11370,7 +11744,7 @@ type BatchGetFeedTitlesByIDsResponse struct {
 
 func (x *BatchGetFeedTitlesByIDsResponse) Reset() {
 	*x = BatchGetFeedTitlesByIDsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[203]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[210]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11382,7 +11756,7 @@ func (x *BatchGetFeedTitlesByIDsResponse) String() string {
 func (*BatchGetFeedTitlesByIDsResponse) ProtoMessage() {}
 
 func (x *BatchGetFeedTitlesByIDsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[203]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[210]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11395,7 +11769,7 @@ func (x *BatchGetFeedTitlesByIDsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetFeedTitlesByIDsResponse.ProtoReflect.Descriptor instead.
 func (*BatchGetFeedTitlesByIDsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{203}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{210}
 }
 
 func (x *BatchGetFeedTitlesByIDsResponse) GetTitles() map[string]string {
@@ -11414,7 +11788,7 @@ type GetInoreaderSummariesByURLsRequest struct {
 
 func (x *GetInoreaderSummariesByURLsRequest) Reset() {
 	*x = GetInoreaderSummariesByURLsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[204]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[211]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11426,7 +11800,7 @@ func (x *GetInoreaderSummariesByURLsRequest) String() string {
 func (*GetInoreaderSummariesByURLsRequest) ProtoMessage() {}
 
 func (x *GetInoreaderSummariesByURLsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[204]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[211]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11439,7 +11813,7 @@ func (x *GetInoreaderSummariesByURLsRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetInoreaderSummariesByURLsRequest.ProtoReflect.Descriptor instead.
 func (*GetInoreaderSummariesByURLsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{204}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{211}
 }
 
 func (x *GetInoreaderSummariesByURLsRequest) GetUrls() []string {
@@ -11458,7 +11832,7 @@ type GetInoreaderSummariesByURLsResponse struct {
 
 func (x *GetInoreaderSummariesByURLsResponse) Reset() {
 	*x = GetInoreaderSummariesByURLsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[205]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[212]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11470,7 +11844,7 @@ func (x *GetInoreaderSummariesByURLsResponse) String() string {
 func (*GetInoreaderSummariesByURLsResponse) ProtoMessage() {}
 
 func (x *GetInoreaderSummariesByURLsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[205]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[212]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11483,7 +11857,7 @@ func (x *GetInoreaderSummariesByURLsResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use GetInoreaderSummariesByURLsResponse.ProtoReflect.Descriptor instead.
 func (*GetInoreaderSummariesByURLsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{205}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{212}
 }
 
 func (x *GetInoreaderSummariesByURLsResponse) GetSummaries() []*InoreaderSummary {
@@ -11510,7 +11884,7 @@ type FeedSubscription struct {
 
 func (x *FeedSubscription) Reset() {
 	*x = FeedSubscription{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[206]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[213]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11522,7 +11896,7 @@ func (x *FeedSubscription) String() string {
 func (*FeedSubscription) ProtoMessage() {}
 
 func (x *FeedSubscription) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[206]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[213]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11535,7 +11909,7 @@ func (x *FeedSubscription) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedSubscription.ProtoReflect.Descriptor instead.
 func (*FeedSubscription) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{206}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{213}
 }
 
 func (x *FeedSubscription) GetFeedLinkId() string {
@@ -11579,7 +11953,7 @@ type MarkFeedReadRequest struct {
 
 func (x *MarkFeedReadRequest) Reset() {
 	*x = MarkFeedReadRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[207]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[214]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11591,7 +11965,7 @@ func (x *MarkFeedReadRequest) String() string {
 func (*MarkFeedReadRequest) ProtoMessage() {}
 
 func (x *MarkFeedReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[207]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[214]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11604,7 +11978,7 @@ func (x *MarkFeedReadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkFeedReadRequest.ProtoReflect.Descriptor instead.
 func (*MarkFeedReadRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{207}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{214}
 }
 
 func (x *MarkFeedReadRequest) GetFeedUrl() string {
@@ -11629,7 +12003,7 @@ type MarkFeedReadResponse struct {
 
 func (x *MarkFeedReadResponse) Reset() {
 	*x = MarkFeedReadResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[208]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[215]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11641,7 +12015,7 @@ func (x *MarkFeedReadResponse) String() string {
 func (*MarkFeedReadResponse) ProtoMessage() {}
 
 func (x *MarkFeedReadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[208]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[215]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11654,7 +12028,7 @@ func (x *MarkFeedReadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkFeedReadResponse.ProtoReflect.Descriptor instead.
 func (*MarkFeedReadResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{208}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{215}
 }
 
 type MarkArticleReadRequest struct {
@@ -11667,7 +12041,7 @@ type MarkArticleReadRequest struct {
 
 func (x *MarkArticleReadRequest) Reset() {
 	*x = MarkArticleReadRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[209]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[216]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11679,7 +12053,7 @@ func (x *MarkArticleReadRequest) String() string {
 func (*MarkArticleReadRequest) ProtoMessage() {}
 
 func (x *MarkArticleReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[209]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[216]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11692,7 +12066,7 @@ func (x *MarkArticleReadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkArticleReadRequest.ProtoReflect.Descriptor instead.
 func (*MarkArticleReadRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{209}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{216}
 }
 
 func (x *MarkArticleReadRequest) GetArticleUrl() string {
@@ -11717,7 +12091,7 @@ type MarkArticleReadResponse struct {
 
 func (x *MarkArticleReadResponse) Reset() {
 	*x = MarkArticleReadResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[210]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[217]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11729,7 +12103,7 @@ func (x *MarkArticleReadResponse) String() string {
 func (*MarkArticleReadResponse) ProtoMessage() {}
 
 func (x *MarkArticleReadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[210]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[217]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11742,7 +12116,7 @@ func (x *MarkArticleReadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkArticleReadResponse.ProtoReflect.Descriptor instead.
 func (*MarkArticleReadResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{210}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{217}
 }
 
 type GetReadFeedIDsRequest struct {
@@ -11755,7 +12129,7 @@ type GetReadFeedIDsRequest struct {
 
 func (x *GetReadFeedIDsRequest) Reset() {
 	*x = GetReadFeedIDsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[211]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[218]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11767,7 +12141,7 @@ func (x *GetReadFeedIDsRequest) String() string {
 func (*GetReadFeedIDsRequest) ProtoMessage() {}
 
 func (x *GetReadFeedIDsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[211]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[218]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11780,7 +12154,7 @@ func (x *GetReadFeedIDsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReadFeedIDsRequest.ProtoReflect.Descriptor instead.
 func (*GetReadFeedIDsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{211}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{218}
 }
 
 func (x *GetReadFeedIDsRequest) GetUserId() string {
@@ -11808,7 +12182,7 @@ type GetReadFeedIDsResponse struct {
 
 func (x *GetReadFeedIDsResponse) Reset() {
 	*x = GetReadFeedIDsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[212]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[219]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11820,7 +12194,7 @@ func (x *GetReadFeedIDsResponse) String() string {
 func (*GetReadFeedIDsResponse) ProtoMessage() {}
 
 func (x *GetReadFeedIDsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[212]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[219]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11833,7 +12207,7 @@ func (x *GetReadFeedIDsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReadFeedIDsResponse.ProtoReflect.Descriptor instead.
 func (*GetReadFeedIDsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{212}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{219}
 }
 
 func (x *GetReadFeedIDsResponse) GetReadFeedIds() []string {
@@ -11852,7 +12226,7 @@ type GetAllReadFeedIDsRequest struct {
 
 func (x *GetAllReadFeedIDsRequest) Reset() {
 	*x = GetAllReadFeedIDsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[213]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[220]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11864,7 +12238,7 @@ func (x *GetAllReadFeedIDsRequest) String() string {
 func (*GetAllReadFeedIDsRequest) ProtoMessage() {}
 
 func (x *GetAllReadFeedIDsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[213]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[220]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11877,7 +12251,7 @@ func (x *GetAllReadFeedIDsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAllReadFeedIDsRequest.ProtoReflect.Descriptor instead.
 func (*GetAllReadFeedIDsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{213}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{220}
 }
 
 func (x *GetAllReadFeedIDsRequest) GetUserId() string {
@@ -11896,7 +12270,7 @@ type GetAllReadFeedIDsResponse struct {
 
 func (x *GetAllReadFeedIDsResponse) Reset() {
 	*x = GetAllReadFeedIDsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[214]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[221]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11908,7 +12282,7 @@ func (x *GetAllReadFeedIDsResponse) String() string {
 func (*GetAllReadFeedIDsResponse) ProtoMessage() {}
 
 func (x *GetAllReadFeedIDsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[214]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[221]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11921,7 +12295,7 @@ func (x *GetAllReadFeedIDsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAllReadFeedIDsResponse.ProtoReflect.Descriptor instead.
 func (*GetAllReadFeedIDsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{214}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{221}
 }
 
 func (x *GetAllReadFeedIDsResponse) GetReadFeedIds() []string {
@@ -11940,7 +12314,7 @@ type GetUserSubscribedFeedLinkIDsRequest struct {
 
 func (x *GetUserSubscribedFeedLinkIDsRequest) Reset() {
 	*x = GetUserSubscribedFeedLinkIDsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[215]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[222]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11952,7 +12326,7 @@ func (x *GetUserSubscribedFeedLinkIDsRequest) String() string {
 func (*GetUserSubscribedFeedLinkIDsRequest) ProtoMessage() {}
 
 func (x *GetUserSubscribedFeedLinkIDsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[215]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[222]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11965,7 +12339,7 @@ func (x *GetUserSubscribedFeedLinkIDsRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use GetUserSubscribedFeedLinkIDsRequest.ProtoReflect.Descriptor instead.
 func (*GetUserSubscribedFeedLinkIDsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{215}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{222}
 }
 
 func (x *GetUserSubscribedFeedLinkIDsRequest) GetUserId() string {
@@ -11989,7 +12363,7 @@ type GetUserSubscribedFeedLinkIDsResponse struct {
 
 func (x *GetUserSubscribedFeedLinkIDsResponse) Reset() {
 	*x = GetUserSubscribedFeedLinkIDsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[216]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[223]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12001,7 +12375,7 @@ func (x *GetUserSubscribedFeedLinkIDsResponse) String() string {
 func (*GetUserSubscribedFeedLinkIDsResponse) ProtoMessage() {}
 
 func (x *GetUserSubscribedFeedLinkIDsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[216]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[223]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12014,7 +12388,7 @@ func (x *GetUserSubscribedFeedLinkIDsResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use GetUserSubscribedFeedLinkIDsResponse.ProtoReflect.Descriptor instead.
 func (*GetUserSubscribedFeedLinkIDsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{216}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{223}
 }
 
 func (x *GetUserSubscribedFeedLinkIDsResponse) GetFeedLinkIds() []string {
@@ -12033,7 +12407,7 @@ type ListSubscriptionsRequest struct {
 
 func (x *ListSubscriptionsRequest) Reset() {
 	*x = ListSubscriptionsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[217]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[224]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12045,7 +12419,7 @@ func (x *ListSubscriptionsRequest) String() string {
 func (*ListSubscriptionsRequest) ProtoMessage() {}
 
 func (x *ListSubscriptionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[217]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[224]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12058,7 +12432,7 @@ func (x *ListSubscriptionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubscriptionsRequest.ProtoReflect.Descriptor instead.
 func (*ListSubscriptionsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{217}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{224}
 }
 
 func (x *ListSubscriptionsRequest) GetUserId() string {
@@ -12077,7 +12451,7 @@ type ListSubscriptionsResponse struct {
 
 func (x *ListSubscriptionsResponse) Reset() {
 	*x = ListSubscriptionsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[218]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[225]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12089,7 +12463,7 @@ func (x *ListSubscriptionsResponse) String() string {
 func (*ListSubscriptionsResponse) ProtoMessage() {}
 
 func (x *ListSubscriptionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[218]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[225]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12102,7 +12476,7 @@ func (x *ListSubscriptionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubscriptionsResponse.ProtoReflect.Descriptor instead.
 func (*ListSubscriptionsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{218}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{225}
 }
 
 func (x *ListSubscriptionsResponse) GetSubscriptions() []*FeedSubscription {
@@ -12122,7 +12496,7 @@ type SubscribeRequest struct {
 
 func (x *SubscribeRequest) Reset() {
 	*x = SubscribeRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[219]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[226]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12134,7 +12508,7 @@ func (x *SubscribeRequest) String() string {
 func (*SubscribeRequest) ProtoMessage() {}
 
 func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[219]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[226]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12147,7 +12521,7 @@ func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{219}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{226}
 }
 
 func (x *SubscribeRequest) GetUserId() string {
@@ -12173,7 +12547,7 @@ type SubscribeResponse struct {
 
 func (x *SubscribeResponse) Reset() {
 	*x = SubscribeResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[220]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[227]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12185,7 +12559,7 @@ func (x *SubscribeResponse) String() string {
 func (*SubscribeResponse) ProtoMessage() {}
 
 func (x *SubscribeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[220]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[227]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12198,7 +12572,7 @@ func (x *SubscribeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeResponse.ProtoReflect.Descriptor instead.
 func (*SubscribeResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{220}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{227}
 }
 
 type UnsubscribeRequest struct {
@@ -12211,7 +12585,7 @@ type UnsubscribeRequest struct {
 
 func (x *UnsubscribeRequest) Reset() {
 	*x = UnsubscribeRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[221]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[228]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12223,7 +12597,7 @@ func (x *UnsubscribeRequest) String() string {
 func (*UnsubscribeRequest) ProtoMessage() {}
 
 func (x *UnsubscribeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[221]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[228]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12236,7 +12610,7 @@ func (x *UnsubscribeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnsubscribeRequest.ProtoReflect.Descriptor instead.
 func (*UnsubscribeRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{221}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{228}
 }
 
 func (x *UnsubscribeRequest) GetUserId() string {
@@ -12263,7 +12637,7 @@ type UnsubscribeResponse struct {
 
 func (x *UnsubscribeResponse) Reset() {
 	*x = UnsubscribeResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[222]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[229]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12275,7 +12649,7 @@ func (x *UnsubscribeResponse) String() string {
 func (*UnsubscribeResponse) ProtoMessage() {}
 
 func (x *UnsubscribeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[222]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[229]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12288,7 +12662,7 @@ func (x *UnsubscribeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnsubscribeResponse.ProtoReflect.Descriptor instead.
 func (*UnsubscribeResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{222}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{229}
 }
 
 type AddFavoriteFeedRequest struct {
@@ -12301,7 +12675,7 @@ type AddFavoriteFeedRequest struct {
 
 func (x *AddFavoriteFeedRequest) Reset() {
 	*x = AddFavoriteFeedRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[223]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[230]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12313,7 +12687,7 @@ func (x *AddFavoriteFeedRequest) String() string {
 func (*AddFavoriteFeedRequest) ProtoMessage() {}
 
 func (x *AddFavoriteFeedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[223]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[230]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12326,7 +12700,7 @@ func (x *AddFavoriteFeedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddFavoriteFeedRequest.ProtoReflect.Descriptor instead.
 func (*AddFavoriteFeedRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{223}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{230}
 }
 
 func (x *AddFavoriteFeedRequest) GetFeedUrl() string {
@@ -12351,7 +12725,7 @@ type AddFavoriteFeedResponse struct {
 
 func (x *AddFavoriteFeedResponse) Reset() {
 	*x = AddFavoriteFeedResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[224]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[231]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12363,7 +12737,7 @@ func (x *AddFavoriteFeedResponse) String() string {
 func (*AddFavoriteFeedResponse) ProtoMessage() {}
 
 func (x *AddFavoriteFeedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[224]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[231]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12376,7 +12750,7 @@ func (x *AddFavoriteFeedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddFavoriteFeedResponse.ProtoReflect.Descriptor instead.
 func (*AddFavoriteFeedResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{224}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{231}
 }
 
 type RemoveFavoriteFeedRequest struct {
@@ -12389,7 +12763,7 @@ type RemoveFavoriteFeedRequest struct {
 
 func (x *RemoveFavoriteFeedRequest) Reset() {
 	*x = RemoveFavoriteFeedRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[225]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[232]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12401,7 +12775,7 @@ func (x *RemoveFavoriteFeedRequest) String() string {
 func (*RemoveFavoriteFeedRequest) ProtoMessage() {}
 
 func (x *RemoveFavoriteFeedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[225]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[232]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12414,7 +12788,7 @@ func (x *RemoveFavoriteFeedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveFavoriteFeedRequest.ProtoReflect.Descriptor instead.
 func (*RemoveFavoriteFeedRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{225}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{232}
 }
 
 func (x *RemoveFavoriteFeedRequest) GetFeedUrl() string {
@@ -12439,7 +12813,7 @@ type RemoveFavoriteFeedResponse struct {
 
 func (x *RemoveFavoriteFeedResponse) Reset() {
 	*x = RemoveFavoriteFeedResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[226]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[233]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12451,7 +12825,7 @@ func (x *RemoveFavoriteFeedResponse) String() string {
 func (*RemoveFavoriteFeedResponse) ProtoMessage() {}
 
 func (x *RemoveFavoriteFeedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[226]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[233]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12464,7 +12838,7 @@ func (x *RemoveFavoriteFeedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveFavoriteFeedResponse.ProtoReflect.Descriptor instead.
 func (*RemoveFavoriteFeedResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{226}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{233}
 }
 
 // FeedTag is a row of feed_tags as the reads return it.
@@ -12488,7 +12862,7 @@ type FeedTag struct {
 
 func (x *FeedTag) Reset() {
 	*x = FeedTag{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[227]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[234]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12500,7 +12874,7 @@ func (x *FeedTag) String() string {
 func (*FeedTag) ProtoMessage() {}
 
 func (x *FeedTag) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[227]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[234]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12513,7 +12887,7 @@ func (x *FeedTag) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedTag.ProtoReflect.Descriptor instead.
 func (*FeedTag) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{227}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{234}
 }
 
 func (x *FeedTag) GetId() string {
@@ -12574,7 +12948,7 @@ type GetArticleTagsRequest struct {
 
 func (x *GetArticleTagsRequest) Reset() {
 	*x = GetArticleTagsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[228]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[235]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12586,7 +12960,7 @@ func (x *GetArticleTagsRequest) String() string {
 func (*GetArticleTagsRequest) ProtoMessage() {}
 
 func (x *GetArticleTagsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[228]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[235]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12599,7 +12973,7 @@ func (x *GetArticleTagsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleTagsRequest.ProtoReflect.Descriptor instead.
 func (*GetArticleTagsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{228}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{235}
 }
 
 func (x *GetArticleTagsRequest) GetArticleId() string {
@@ -12621,7 +12995,7 @@ type GetArticleTagsResponse struct {
 
 func (x *GetArticleTagsResponse) Reset() {
 	*x = GetArticleTagsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[229]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[236]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12633,7 +13007,7 @@ func (x *GetArticleTagsResponse) String() string {
 func (*GetArticleTagsResponse) ProtoMessage() {}
 
 func (x *GetArticleTagsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[229]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[236]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12646,7 +13020,7 @@ func (x *GetArticleTagsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleTagsResponse.ProtoReflect.Descriptor instead.
 func (*GetArticleTagsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{229}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{236}
 }
 
 func (x *GetArticleTagsResponse) GetTags() []*FeedTag {
@@ -12669,7 +13043,7 @@ type GetFeedTagsRequest struct {
 
 func (x *GetFeedTagsRequest) Reset() {
 	*x = GetFeedTagsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[230]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[237]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12681,7 +13055,7 @@ func (x *GetFeedTagsRequest) String() string {
 func (*GetFeedTagsRequest) ProtoMessage() {}
 
 func (x *GetFeedTagsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[230]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[237]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12694,7 +13068,7 @@ func (x *GetFeedTagsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedTagsRequest.ProtoReflect.Descriptor instead.
 func (*GetFeedTagsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{230}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{237}
 }
 
 func (x *GetFeedTagsRequest) GetFeedId() string {
@@ -12727,7 +13101,7 @@ type GetFeedTagsResponse struct {
 
 func (x *GetFeedTagsResponse) Reset() {
 	*x = GetFeedTagsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[231]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[238]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12739,7 +13113,7 @@ func (x *GetFeedTagsResponse) String() string {
 func (*GetFeedTagsResponse) ProtoMessage() {}
 
 func (x *GetFeedTagsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[231]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[238]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12752,7 +13126,7 @@ func (x *GetFeedTagsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedTagsResponse.ProtoReflect.Descriptor instead.
 func (*GetFeedTagsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{231}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{238}
 }
 
 func (x *GetFeedTagsResponse) GetTags() []*FeedTag {
@@ -12774,7 +13148,7 @@ type TagCooccurrence struct {
 
 func (x *TagCooccurrence) Reset() {
 	*x = TagCooccurrence{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[232]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[239]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12786,7 +13160,7 @@ func (x *TagCooccurrence) String() string {
 func (*TagCooccurrence) ProtoMessage() {}
 
 func (x *TagCooccurrence) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[232]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[239]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12799,7 +13173,7 @@ func (x *TagCooccurrence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagCooccurrence.ProtoReflect.Descriptor instead.
 func (*TagCooccurrence) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{232}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{239}
 }
 
 func (x *TagCooccurrence) GetTagNameA() string {
@@ -12832,7 +13206,7 @@ type GetTagCooccurrencesRequest struct {
 
 func (x *GetTagCooccurrencesRequest) Reset() {
 	*x = GetTagCooccurrencesRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[233]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[240]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12844,7 +13218,7 @@ func (x *GetTagCooccurrencesRequest) String() string {
 func (*GetTagCooccurrencesRequest) ProtoMessage() {}
 
 func (x *GetTagCooccurrencesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[233]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[240]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12857,7 +13231,7 @@ func (x *GetTagCooccurrencesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagCooccurrencesRequest.ProtoReflect.Descriptor instead.
 func (*GetTagCooccurrencesRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{233}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{240}
 }
 
 func (x *GetTagCooccurrencesRequest) GetTagNames() []string {
@@ -12876,7 +13250,7 @@ type GetTagCooccurrencesResponse struct {
 
 func (x *GetTagCooccurrencesResponse) Reset() {
 	*x = GetTagCooccurrencesResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[234]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[241]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12888,7 +13262,7 @@ func (x *GetTagCooccurrencesResponse) String() string {
 func (*GetTagCooccurrencesResponse) ProtoMessage() {}
 
 func (x *GetTagCooccurrencesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[234]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[241]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12901,7 +13275,7 @@ func (x *GetTagCooccurrencesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagCooccurrencesResponse.ProtoReflect.Descriptor instead.
 func (*GetTagCooccurrencesResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{234}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{241}
 }
 
 func (x *GetTagCooccurrencesResponse) GetCooccurrences() []*TagCooccurrence {
@@ -12923,7 +13297,7 @@ type TagPrefixHit struct {
 
 func (x *TagPrefixHit) Reset() {
 	*x = TagPrefixHit{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[235]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[242]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12935,7 +13309,7 @@ func (x *TagPrefixHit) String() string {
 func (*TagPrefixHit) ProtoMessage() {}
 
 func (x *TagPrefixHit) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[235]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[242]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12948,7 +13322,7 @@ func (x *TagPrefixHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagPrefixHit.ProtoReflect.Descriptor instead.
 func (*TagPrefixHit) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{235}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{242}
 }
 
 func (x *TagPrefixHit) GetTagName() string {
@@ -12975,7 +13349,7 @@ type SearchTagsByPrefixRequest struct {
 
 func (x *SearchTagsByPrefixRequest) Reset() {
 	*x = SearchTagsByPrefixRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[236]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[243]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12987,7 +13361,7 @@ func (x *SearchTagsByPrefixRequest) String() string {
 func (*SearchTagsByPrefixRequest) ProtoMessage() {}
 
 func (x *SearchTagsByPrefixRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[236]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[243]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13000,7 +13374,7 @@ func (x *SearchTagsByPrefixRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchTagsByPrefixRequest.ProtoReflect.Descriptor instead.
 func (*SearchTagsByPrefixRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{236}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{243}
 }
 
 func (x *SearchTagsByPrefixRequest) GetPrefix() string {
@@ -13026,7 +13400,7 @@ type SearchTagsByPrefixResponse struct {
 
 func (x *SearchTagsByPrefixResponse) Reset() {
 	*x = SearchTagsByPrefixResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[237]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[244]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13038,7 +13412,7 @@ func (x *SearchTagsByPrefixResponse) String() string {
 func (*SearchTagsByPrefixResponse) ProtoMessage() {}
 
 func (x *SearchTagsByPrefixResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[237]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[244]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13051,7 +13425,7 @@ func (x *SearchTagsByPrefixResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchTagsByPrefixResponse.ProtoReflect.Descriptor instead.
 func (*SearchTagsByPrefixResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{237}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{244}
 }
 
 func (x *SearchTagsByPrefixResponse) GetHits() []*TagPrefixHit {
@@ -13073,7 +13447,7 @@ type TagArticleCount struct {
 
 func (x *TagArticleCount) Reset() {
 	*x = TagArticleCount{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[238]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[245]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13085,7 +13459,7 @@ func (x *TagArticleCount) String() string {
 func (*TagArticleCount) ProtoMessage() {}
 
 func (x *TagArticleCount) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[238]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[245]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13098,7 +13472,7 @@ func (x *TagArticleCount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagArticleCount.ProtoReflect.Descriptor instead.
 func (*TagArticleCount) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{238}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{245}
 }
 
 func (x *TagArticleCount) GetTagName() string {
@@ -13128,7 +13502,7 @@ type GetTagArticleCountsRequest struct {
 
 func (x *GetTagArticleCountsRequest) Reset() {
 	*x = GetTagArticleCountsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[239]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[246]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13140,7 +13514,7 @@ func (x *GetTagArticleCountsRequest) String() string {
 func (*GetTagArticleCountsRequest) ProtoMessage() {}
 
 func (x *GetTagArticleCountsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[239]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[246]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13153,7 +13527,7 @@ func (x *GetTagArticleCountsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagArticleCountsRequest.ProtoReflect.Descriptor instead.
 func (*GetTagArticleCountsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{239}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{246}
 }
 
 func (x *GetTagArticleCountsRequest) GetUserId() string {
@@ -13179,7 +13553,7 @@ type GetTagArticleCountsResponse struct {
 
 func (x *GetTagArticleCountsResponse) Reset() {
 	*x = GetTagArticleCountsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[240]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[247]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13191,7 +13565,7 @@ func (x *GetTagArticleCountsResponse) String() string {
 func (*GetTagArticleCountsResponse) ProtoMessage() {}
 
 func (x *GetTagArticleCountsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[240]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[247]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13204,7 +13578,7 @@ func (x *GetTagArticleCountsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagArticleCountsResponse.ProtoReflect.Descriptor instead.
 func (*GetTagArticleCountsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{240}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{247}
 }
 
 func (x *GetTagArticleCountsResponse) GetCounts() []*TagArticleCount {
@@ -13243,7 +13617,7 @@ type TagTrailArticle struct {
 
 func (x *TagTrailArticle) Reset() {
 	*x = TagTrailArticle{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[241]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[248]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13255,7 +13629,7 @@ func (x *TagTrailArticle) String() string {
 func (*TagTrailArticle) ProtoMessage() {}
 
 func (x *TagTrailArticle) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[241]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[248]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13268,7 +13642,7 @@ func (x *TagTrailArticle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagTrailArticle.ProtoReflect.Descriptor instead.
 func (*TagTrailArticle) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{241}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{248}
 }
 
 func (x *TagTrailArticle) GetId() string {
@@ -13327,7 +13701,7 @@ type ListArticlesByTagIDRequest struct {
 
 func (x *ListArticlesByTagIDRequest) Reset() {
 	*x = ListArticlesByTagIDRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[242]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[249]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13339,7 +13713,7 @@ func (x *ListArticlesByTagIDRequest) String() string {
 func (*ListArticlesByTagIDRequest) ProtoMessage() {}
 
 func (x *ListArticlesByTagIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[242]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[249]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13352,7 +13726,7 @@ func (x *ListArticlesByTagIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArticlesByTagIDRequest.ProtoReflect.Descriptor instead.
 func (*ListArticlesByTagIDRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{242}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{249}
 }
 
 func (x *ListArticlesByTagIDRequest) GetTagId() string {
@@ -13385,7 +13759,7 @@ type ListArticlesByTagIDResponse struct {
 
 func (x *ListArticlesByTagIDResponse) Reset() {
 	*x = ListArticlesByTagIDResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[243]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[250]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13397,7 +13771,7 @@ func (x *ListArticlesByTagIDResponse) String() string {
 func (*ListArticlesByTagIDResponse) ProtoMessage() {}
 
 func (x *ListArticlesByTagIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[243]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[250]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13410,7 +13784,7 @@ func (x *ListArticlesByTagIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArticlesByTagIDResponse.ProtoReflect.Descriptor instead.
 func (*ListArticlesByTagIDResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{243}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{250}
 }
 
 func (x *ListArticlesByTagIDResponse) GetArticles() []*TagTrailArticle {
@@ -13433,7 +13807,7 @@ type ListArticlesByTagNameRequest struct {
 
 func (x *ListArticlesByTagNameRequest) Reset() {
 	*x = ListArticlesByTagNameRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[244]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[251]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13445,7 +13819,7 @@ func (x *ListArticlesByTagNameRequest) String() string {
 func (*ListArticlesByTagNameRequest) ProtoMessage() {}
 
 func (x *ListArticlesByTagNameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[244]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[251]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13458,7 +13832,7 @@ func (x *ListArticlesByTagNameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArticlesByTagNameRequest.ProtoReflect.Descriptor instead.
 func (*ListArticlesByTagNameRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{244}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{251}
 }
 
 func (x *ListArticlesByTagNameRequest) GetTagName() string {
@@ -13491,7 +13865,7 @@ type ListArticlesByTagNameResponse struct {
 
 func (x *ListArticlesByTagNameResponse) Reset() {
 	*x = ListArticlesByTagNameResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[245]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[252]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13503,7 +13877,7 @@ func (x *ListArticlesByTagNameResponse) String() string {
 func (*ListArticlesByTagNameResponse) ProtoMessage() {}
 
 func (x *ListArticlesByTagNameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[245]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[252]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13516,7 +13890,7 @@ func (x *ListArticlesByTagNameResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArticlesByTagNameResponse.ProtoReflect.Descriptor instead.
 func (*ListArticlesByTagNameResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{245}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{252}
 }
 
 func (x *ListArticlesByTagNameResponse) GetArticles() []*TagTrailArticle {
@@ -13535,7 +13909,7 @@ type GetArticleTitleAndLinkRequest struct {
 
 func (x *GetArticleTitleAndLinkRequest) Reset() {
 	*x = GetArticleTitleAndLinkRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[246]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[253]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13547,7 +13921,7 @@ func (x *GetArticleTitleAndLinkRequest) String() string {
 func (*GetArticleTitleAndLinkRequest) ProtoMessage() {}
 
 func (x *GetArticleTitleAndLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[246]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[253]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13560,7 +13934,7 @@ func (x *GetArticleTitleAndLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleTitleAndLinkRequest.ProtoReflect.Descriptor instead.
 func (*GetArticleTitleAndLinkRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{246}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{253}
 }
 
 func (x *GetArticleTitleAndLinkRequest) GetArticleId() string {
@@ -13589,7 +13963,7 @@ type GetArticleTitleAndLinkResponse struct {
 
 func (x *GetArticleTitleAndLinkResponse) Reset() {
 	*x = GetArticleTitleAndLinkResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[247]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[254]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13601,7 +13975,7 @@ func (x *GetArticleTitleAndLinkResponse) String() string {
 func (*GetArticleTitleAndLinkResponse) ProtoMessage() {}
 
 func (x *GetArticleTitleAndLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[247]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[254]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13614,7 +13988,7 @@ func (x *GetArticleTitleAndLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleTitleAndLinkResponse.ProtoReflect.Descriptor instead.
 func (*GetArticleTitleAndLinkResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{247}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{254}
 }
 
 func (x *GetArticleTitleAndLinkResponse) GetFound() bool {
@@ -13681,7 +14055,7 @@ type SummaryVersion struct {
 
 func (x *SummaryVersion) Reset() {
 	*x = SummaryVersion{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[248]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[255]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13693,7 +14067,7 @@ func (x *SummaryVersion) String() string {
 func (*SummaryVersion) ProtoMessage() {}
 
 func (x *SummaryVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[248]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[255]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13706,7 +14080,7 @@ func (x *SummaryVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SummaryVersion.ProtoReflect.Descriptor instead.
 func (*SummaryVersion) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{248}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{255}
 }
 
 func (x *SummaryVersion) GetSummaryVersionId() string {
@@ -13788,7 +14162,7 @@ type CreateSummaryVersionRequest struct {
 
 func (x *CreateSummaryVersionRequest) Reset() {
 	*x = CreateSummaryVersionRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[249]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[256]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13800,7 +14174,7 @@ func (x *CreateSummaryVersionRequest) String() string {
 func (*CreateSummaryVersionRequest) ProtoMessage() {}
 
 func (x *CreateSummaryVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[249]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[256]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13813,7 +14187,7 @@ func (x *CreateSummaryVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSummaryVersionRequest.ProtoReflect.Descriptor instead.
 func (*CreateSummaryVersionRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{249}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{256}
 }
 
 func (x *CreateSummaryVersionRequest) GetVersion() *SummaryVersion {
@@ -13831,7 +14205,7 @@ type CreateSummaryVersionResponse struct {
 
 func (x *CreateSummaryVersionResponse) Reset() {
 	*x = CreateSummaryVersionResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[250]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[257]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13843,7 +14217,7 @@ func (x *CreateSummaryVersionResponse) String() string {
 func (*CreateSummaryVersionResponse) ProtoMessage() {}
 
 func (x *CreateSummaryVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[250]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[257]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13856,7 +14230,7 @@ func (x *CreateSummaryVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSummaryVersionResponse.ProtoReflect.Descriptor instead.
 func (*CreateSummaryVersionResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{250}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{257}
 }
 
 type MarkSummaryVersionSupersededRequest struct {
@@ -13869,7 +14243,7 @@ type MarkSummaryVersionSupersededRequest struct {
 
 func (x *MarkSummaryVersionSupersededRequest) Reset() {
 	*x = MarkSummaryVersionSupersededRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[251]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[258]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13881,7 +14255,7 @@ func (x *MarkSummaryVersionSupersededRequest) String() string {
 func (*MarkSummaryVersionSupersededRequest) ProtoMessage() {}
 
 func (x *MarkSummaryVersionSupersededRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[251]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[258]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13894,7 +14268,7 @@ func (x *MarkSummaryVersionSupersededRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use MarkSummaryVersionSupersededRequest.ProtoReflect.Descriptor instead.
 func (*MarkSummaryVersionSupersededRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{251}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{258}
 }
 
 func (x *MarkSummaryVersionSupersededRequest) GetArticleId() string {
@@ -13924,7 +14298,7 @@ type MarkSummaryVersionSupersededResponse struct {
 
 func (x *MarkSummaryVersionSupersededResponse) Reset() {
 	*x = MarkSummaryVersionSupersededResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[252]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[259]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13936,7 +14310,7 @@ func (x *MarkSummaryVersionSupersededResponse) String() string {
 func (*MarkSummaryVersionSupersededResponse) ProtoMessage() {}
 
 func (x *MarkSummaryVersionSupersededResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[252]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[259]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13949,7 +14323,7 @@ func (x *MarkSummaryVersionSupersededResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use MarkSummaryVersionSupersededResponse.ProtoReflect.Descriptor instead.
 func (*MarkSummaryVersionSupersededResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{252}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{259}
 }
 
 func (x *MarkSummaryVersionSupersededResponse) GetPreviousVersion() *SummaryVersion {
@@ -13968,7 +14342,7 @@ type GetSummaryVersionByIDRequest struct {
 
 func (x *GetSummaryVersionByIDRequest) Reset() {
 	*x = GetSummaryVersionByIDRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[253]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[260]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13980,7 +14354,7 @@ func (x *GetSummaryVersionByIDRequest) String() string {
 func (*GetSummaryVersionByIDRequest) ProtoMessage() {}
 
 func (x *GetSummaryVersionByIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[253]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[260]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13993,7 +14367,7 @@ func (x *GetSummaryVersionByIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSummaryVersionByIDRequest.ProtoReflect.Descriptor instead.
 func (*GetSummaryVersionByIDRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{253}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{260}
 }
 
 func (x *GetSummaryVersionByIDRequest) GetSummaryVersionId() string {
@@ -14012,7 +14386,7 @@ type GetSummaryVersionByIDResponse struct {
 
 func (x *GetSummaryVersionByIDResponse) Reset() {
 	*x = GetSummaryVersionByIDResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[254]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[261]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14024,7 +14398,7 @@ func (x *GetSummaryVersionByIDResponse) String() string {
 func (*GetSummaryVersionByIDResponse) ProtoMessage() {}
 
 func (x *GetSummaryVersionByIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[254]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[261]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14037,7 +14411,7 @@ func (x *GetSummaryVersionByIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSummaryVersionByIDResponse.ProtoReflect.Descriptor instead.
 func (*GetSummaryVersionByIDResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{254}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{261}
 }
 
 func (x *GetSummaryVersionByIDResponse) GetVersion() *SummaryVersion {
@@ -14056,7 +14430,7 @@ type GetLatestSummaryVersionRequest struct {
 
 func (x *GetLatestSummaryVersionRequest) Reset() {
 	*x = GetLatestSummaryVersionRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[255]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[262]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14068,7 +14442,7 @@ func (x *GetLatestSummaryVersionRequest) String() string {
 func (*GetLatestSummaryVersionRequest) ProtoMessage() {}
 
 func (x *GetLatestSummaryVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[255]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[262]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14081,7 +14455,7 @@ func (x *GetLatestSummaryVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLatestSummaryVersionRequest.ProtoReflect.Descriptor instead.
 func (*GetLatestSummaryVersionRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{255}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{262}
 }
 
 func (x *GetLatestSummaryVersionRequest) GetArticleId() string {
@@ -14100,7 +14474,7 @@ type GetLatestSummaryVersionResponse struct {
 
 func (x *GetLatestSummaryVersionResponse) Reset() {
 	*x = GetLatestSummaryVersionResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[256]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[263]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14112,7 +14486,7 @@ func (x *GetLatestSummaryVersionResponse) String() string {
 func (*GetLatestSummaryVersionResponse) ProtoMessage() {}
 
 func (x *GetLatestSummaryVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[256]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[263]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14125,7 +14499,7 @@ func (x *GetLatestSummaryVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLatestSummaryVersionResponse.ProtoReflect.Descriptor instead.
 func (*GetLatestSummaryVersionResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{256}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{263}
 }
 
 func (x *GetLatestSummaryVersionResponse) GetVersion() *SummaryVersion {
@@ -14158,7 +14532,7 @@ type TagSetVersion struct {
 
 func (x *TagSetVersion) Reset() {
 	*x = TagSetVersion{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[257]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[264]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14170,7 +14544,7 @@ func (x *TagSetVersion) String() string {
 func (*TagSetVersion) ProtoMessage() {}
 
 func (x *TagSetVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[257]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[264]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14183,7 +14557,7 @@ func (x *TagSetVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagSetVersion.ProtoReflect.Descriptor instead.
 func (*TagSetVersion) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{257}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{264}
 }
 
 func (x *TagSetVersion) GetTagSetVersionId() string {
@@ -14251,7 +14625,7 @@ type CreateTagSetVersionRequest struct {
 
 func (x *CreateTagSetVersionRequest) Reset() {
 	*x = CreateTagSetVersionRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[258]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[265]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14263,7 +14637,7 @@ func (x *CreateTagSetVersionRequest) String() string {
 func (*CreateTagSetVersionRequest) ProtoMessage() {}
 
 func (x *CreateTagSetVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[258]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[265]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14276,7 +14650,7 @@ func (x *CreateTagSetVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTagSetVersionRequest.ProtoReflect.Descriptor instead.
 func (*CreateTagSetVersionRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{258}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{265}
 }
 
 func (x *CreateTagSetVersionRequest) GetVersion() *TagSetVersion {
@@ -14294,7 +14668,7 @@ type CreateTagSetVersionResponse struct {
 
 func (x *CreateTagSetVersionResponse) Reset() {
 	*x = CreateTagSetVersionResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[259]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[266]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14306,7 +14680,7 @@ func (x *CreateTagSetVersionResponse) String() string {
 func (*CreateTagSetVersionResponse) ProtoMessage() {}
 
 func (x *CreateTagSetVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[259]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[266]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14319,7 +14693,7 @@ func (x *CreateTagSetVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTagSetVersionResponse.ProtoReflect.Descriptor instead.
 func (*CreateTagSetVersionResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{259}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{266}
 }
 
 type MarkTagSetVersionSupersededRequest struct {
@@ -14332,7 +14706,7 @@ type MarkTagSetVersionSupersededRequest struct {
 
 func (x *MarkTagSetVersionSupersededRequest) Reset() {
 	*x = MarkTagSetVersionSupersededRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[260]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[267]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14344,7 +14718,7 @@ func (x *MarkTagSetVersionSupersededRequest) String() string {
 func (*MarkTagSetVersionSupersededRequest) ProtoMessage() {}
 
 func (x *MarkTagSetVersionSupersededRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[260]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[267]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14357,7 +14731,7 @@ func (x *MarkTagSetVersionSupersededRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use MarkTagSetVersionSupersededRequest.ProtoReflect.Descriptor instead.
 func (*MarkTagSetVersionSupersededRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{260}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{267}
 }
 
 func (x *MarkTagSetVersionSupersededRequest) GetArticleId() string {
@@ -14383,7 +14757,7 @@ type MarkTagSetVersionSupersededResponse struct {
 
 func (x *MarkTagSetVersionSupersededResponse) Reset() {
 	*x = MarkTagSetVersionSupersededResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[261]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[268]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14395,7 +14769,7 @@ func (x *MarkTagSetVersionSupersededResponse) String() string {
 func (*MarkTagSetVersionSupersededResponse) ProtoMessage() {}
 
 func (x *MarkTagSetVersionSupersededResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[261]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[268]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14408,7 +14782,7 @@ func (x *MarkTagSetVersionSupersededResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use MarkTagSetVersionSupersededResponse.ProtoReflect.Descriptor instead.
 func (*MarkTagSetVersionSupersededResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{261}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{268}
 }
 
 func (x *MarkTagSetVersionSupersededResponse) GetPreviousVersion() *TagSetVersion {
@@ -14427,7 +14801,7 @@ type GetTagSetVersionByIDRequest struct {
 
 func (x *GetTagSetVersionByIDRequest) Reset() {
 	*x = GetTagSetVersionByIDRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[262]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[269]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14439,7 +14813,7 @@ func (x *GetTagSetVersionByIDRequest) String() string {
 func (*GetTagSetVersionByIDRequest) ProtoMessage() {}
 
 func (x *GetTagSetVersionByIDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[262]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[269]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14452,7 +14826,7 @@ func (x *GetTagSetVersionByIDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagSetVersionByIDRequest.ProtoReflect.Descriptor instead.
 func (*GetTagSetVersionByIDRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{262}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{269}
 }
 
 func (x *GetTagSetVersionByIDRequest) GetTagSetVersionId() string {
@@ -14471,7 +14845,7 @@ type GetTagSetVersionByIDResponse struct {
 
 func (x *GetTagSetVersionByIDResponse) Reset() {
 	*x = GetTagSetVersionByIDResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[263]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[270]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14483,7 +14857,7 @@ func (x *GetTagSetVersionByIDResponse) String() string {
 func (*GetTagSetVersionByIDResponse) ProtoMessage() {}
 
 func (x *GetTagSetVersionByIDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[263]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[270]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14496,7 +14870,7 @@ func (x *GetTagSetVersionByIDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagSetVersionByIDResponse.ProtoReflect.Descriptor instead.
 func (*GetTagSetVersionByIDResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{263}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{270}
 }
 
 func (x *GetTagSetVersionByIDResponse) GetVersion() *TagSetVersion {
@@ -14514,7 +14888,7 @@ type GetFeedAmountRequest struct {
 
 func (x *GetFeedAmountRequest) Reset() {
 	*x = GetFeedAmountRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[264]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[271]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14526,7 +14900,7 @@ func (x *GetFeedAmountRequest) String() string {
 func (*GetFeedAmountRequest) ProtoMessage() {}
 
 func (x *GetFeedAmountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[264]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[271]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14539,7 +14913,7 @@ func (x *GetFeedAmountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedAmountRequest.ProtoReflect.Descriptor instead.
 func (*GetFeedAmountRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{264}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{271}
 }
 
 type GetFeedAmountResponse struct {
@@ -14551,7 +14925,7 @@ type GetFeedAmountResponse struct {
 
 func (x *GetFeedAmountResponse) Reset() {
 	*x = GetFeedAmountResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[265]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[272]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14563,7 +14937,7 @@ func (x *GetFeedAmountResponse) String() string {
 func (*GetFeedAmountResponse) ProtoMessage() {}
 
 func (x *GetFeedAmountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[265]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[272]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14576,7 +14950,7 @@ func (x *GetFeedAmountResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedAmountResponse.ProtoReflect.Descriptor instead.
 func (*GetFeedAmountResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{265}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{272}
 }
 
 func (x *GetFeedAmountResponse) GetCount() int32 {
@@ -14595,7 +14969,7 @@ type GetTotalArticlesCountRequest struct {
 
 func (x *GetTotalArticlesCountRequest) Reset() {
 	*x = GetTotalArticlesCountRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[266]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[273]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14607,7 +14981,7 @@ func (x *GetTotalArticlesCountRequest) String() string {
 func (*GetTotalArticlesCountRequest) ProtoMessage() {}
 
 func (x *GetTotalArticlesCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[266]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[273]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14620,7 +14994,7 @@ func (x *GetTotalArticlesCountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTotalArticlesCountRequest.ProtoReflect.Descriptor instead.
 func (*GetTotalArticlesCountRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{266}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{273}
 }
 
 func (x *GetTotalArticlesCountRequest) GetUserId() string {
@@ -14639,7 +15013,7 @@ type GetTotalArticlesCountResponse struct {
 
 func (x *GetTotalArticlesCountResponse) Reset() {
 	*x = GetTotalArticlesCountResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[267]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[274]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14651,7 +15025,7 @@ func (x *GetTotalArticlesCountResponse) String() string {
 func (*GetTotalArticlesCountResponse) ProtoMessage() {}
 
 func (x *GetTotalArticlesCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[267]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[274]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14664,7 +15038,7 @@ func (x *GetTotalArticlesCountResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTotalArticlesCountResponse.ProtoReflect.Descriptor instead.
 func (*GetTotalArticlesCountResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{267}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{274}
 }
 
 func (x *GetTotalArticlesCountResponse) GetCount() int32 {
@@ -14683,7 +15057,7 @@ type GetSummarizedArticlesCountRequest struct {
 
 func (x *GetSummarizedArticlesCountRequest) Reset() {
 	*x = GetSummarizedArticlesCountRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[268]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[275]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14695,7 +15069,7 @@ func (x *GetSummarizedArticlesCountRequest) String() string {
 func (*GetSummarizedArticlesCountRequest) ProtoMessage() {}
 
 func (x *GetSummarizedArticlesCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[268]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[275]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14708,7 +15082,7 @@ func (x *GetSummarizedArticlesCountRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetSummarizedArticlesCountRequest.ProtoReflect.Descriptor instead.
 func (*GetSummarizedArticlesCountRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{268}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{275}
 }
 
 func (x *GetSummarizedArticlesCountRequest) GetUserId() string {
@@ -14727,7 +15101,7 @@ type GetSummarizedArticlesCountResponse struct {
 
 func (x *GetSummarizedArticlesCountResponse) Reset() {
 	*x = GetSummarizedArticlesCountResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[269]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[276]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14739,7 +15113,7 @@ func (x *GetSummarizedArticlesCountResponse) String() string {
 func (*GetSummarizedArticlesCountResponse) ProtoMessage() {}
 
 func (x *GetSummarizedArticlesCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[269]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[276]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14752,7 +15126,7 @@ func (x *GetSummarizedArticlesCountResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetSummarizedArticlesCountResponse.ProtoReflect.Descriptor instead.
 func (*GetSummarizedArticlesCountResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{269}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{276}
 }
 
 func (x *GetSummarizedArticlesCountResponse) GetCount() int32 {
@@ -14771,7 +15145,7 @@ type GetUnsummarizedArticlesCountRequest struct {
 
 func (x *GetUnsummarizedArticlesCountRequest) Reset() {
 	*x = GetUnsummarizedArticlesCountRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[270]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[277]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14783,7 +15157,7 @@ func (x *GetUnsummarizedArticlesCountRequest) String() string {
 func (*GetUnsummarizedArticlesCountRequest) ProtoMessage() {}
 
 func (x *GetUnsummarizedArticlesCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[270]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[277]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14796,7 +15170,7 @@ func (x *GetUnsummarizedArticlesCountRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use GetUnsummarizedArticlesCountRequest.ProtoReflect.Descriptor instead.
 func (*GetUnsummarizedArticlesCountRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{270}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{277}
 }
 
 func (x *GetUnsummarizedArticlesCountRequest) GetUserId() string {
@@ -14815,7 +15189,7 @@ type GetUnsummarizedArticlesCountResponse struct {
 
 func (x *GetUnsummarizedArticlesCountResponse) Reset() {
 	*x = GetUnsummarizedArticlesCountResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[271]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[278]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14827,7 +15201,7 @@ func (x *GetUnsummarizedArticlesCountResponse) String() string {
 func (*GetUnsummarizedArticlesCountResponse) ProtoMessage() {}
 
 func (x *GetUnsummarizedArticlesCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[271]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[278]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14840,7 +15214,7 @@ func (x *GetUnsummarizedArticlesCountResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use GetUnsummarizedArticlesCountResponse.ProtoReflect.Descriptor instead.
 func (*GetUnsummarizedArticlesCountResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{271}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{278}
 }
 
 func (x *GetUnsummarizedArticlesCountResponse) GetCount() int32 {
@@ -14861,7 +15235,7 @@ type GetTodayUnreadArticlesCountRequest struct {
 
 func (x *GetTodayUnreadArticlesCountRequest) Reset() {
 	*x = GetTodayUnreadArticlesCountRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[272]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[279]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14873,7 +15247,7 @@ func (x *GetTodayUnreadArticlesCountRequest) String() string {
 func (*GetTodayUnreadArticlesCountRequest) ProtoMessage() {}
 
 func (x *GetTodayUnreadArticlesCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[272]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[279]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14886,7 +15260,7 @@ func (x *GetTodayUnreadArticlesCountRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetTodayUnreadArticlesCountRequest.ProtoReflect.Descriptor instead.
 func (*GetTodayUnreadArticlesCountRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{272}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{279}
 }
 
 func (x *GetTodayUnreadArticlesCountRequest) GetUserId() string {
@@ -14912,7 +15286,7 @@ type GetTodayUnreadArticlesCountResponse struct {
 
 func (x *GetTodayUnreadArticlesCountResponse) Reset() {
 	*x = GetTodayUnreadArticlesCountResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[273]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[280]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14924,7 +15298,7 @@ func (x *GetTodayUnreadArticlesCountResponse) String() string {
 func (*GetTodayUnreadArticlesCountResponse) ProtoMessage() {}
 
 func (x *GetTodayUnreadArticlesCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[273]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[280]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14937,7 +15311,7 @@ func (x *GetTodayUnreadArticlesCountResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use GetTodayUnreadArticlesCountResponse.ProtoReflect.Descriptor instead.
 func (*GetTodayUnreadArticlesCountResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{273}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{280}
 }
 
 func (x *GetTodayUnreadArticlesCountResponse) GetCount() int32 {
@@ -14960,7 +15334,7 @@ type TrendDataPoint struct {
 
 func (x *TrendDataPoint) Reset() {
 	*x = TrendDataPoint{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[274]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[281]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14972,7 +15346,7 @@ func (x *TrendDataPoint) String() string {
 func (*TrendDataPoint) ProtoMessage() {}
 
 func (x *TrendDataPoint) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[274]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[281]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14985,7 +15359,7 @@ func (x *TrendDataPoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrendDataPoint.ProtoReflect.Descriptor instead.
 func (*TrendDataPoint) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{274}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{281}
 }
 
 func (x *TrendDataPoint) GetBucket() *timestamppb.Timestamp {
@@ -15026,7 +15400,7 @@ type GetTrendStatsRequest struct {
 
 func (x *GetTrendStatsRequest) Reset() {
 	*x = GetTrendStatsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[275]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[282]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15038,7 +15412,7 @@ func (x *GetTrendStatsRequest) String() string {
 func (*GetTrendStatsRequest) ProtoMessage() {}
 
 func (x *GetTrendStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[275]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[282]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15051,7 +15425,7 @@ func (x *GetTrendStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTrendStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetTrendStatsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{275}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{282}
 }
 
 func (x *GetTrendStatsRequest) GetUserId() string {
@@ -15081,7 +15455,7 @@ type GetTrendStatsResponse struct {
 
 func (x *GetTrendStatsResponse) Reset() {
 	*x = GetTrendStatsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[276]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[283]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15093,7 +15467,7 @@ func (x *GetTrendStatsResponse) String() string {
 func (*GetTrendStatsResponse) ProtoMessage() {}
 
 func (x *GetTrendStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[276]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[283]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15106,7 +15480,7 @@ func (x *GetTrendStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTrendStatsResponse.ProtoReflect.Descriptor instead.
 func (*GetTrendStatsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{276}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{283}
 }
 
 func (x *GetTrendStatsResponse) GetPoints() []*TrendDataPoint {
@@ -15132,7 +15506,7 @@ type ListUserFeedIDsRequest struct {
 
 func (x *ListUserFeedIDsRequest) Reset() {
 	*x = ListUserFeedIDsRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[277]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[284]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15144,7 +15518,7 @@ func (x *ListUserFeedIDsRequest) String() string {
 func (*ListUserFeedIDsRequest) ProtoMessage() {}
 
 func (x *ListUserFeedIDsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[277]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[284]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15157,7 +15531,7 @@ func (x *ListUserFeedIDsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserFeedIDsRequest.ProtoReflect.Descriptor instead.
 func (*ListUserFeedIDsRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{277}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{284}
 }
 
 func (x *ListUserFeedIDsRequest) GetUserId() string {
@@ -15176,7 +15550,7 @@ type ListUserFeedIDsResponse struct {
 
 func (x *ListUserFeedIDsResponse) Reset() {
 	*x = ListUserFeedIDsResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[278]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[285]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15188,7 +15562,7 @@ func (x *ListUserFeedIDsResponse) String() string {
 func (*ListUserFeedIDsResponse) ProtoMessage() {}
 
 func (x *ListUserFeedIDsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[278]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[285]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15201,7 +15575,7 @@ func (x *ListUserFeedIDsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserFeedIDsResponse.ProtoReflect.Descriptor instead.
 func (*ListUserFeedIDsResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{278}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{285}
 }
 
 func (x *ListUserFeedIDsResponse) GetFeedIds() []string {
@@ -15224,7 +15598,7 @@ type NotificationPreferences struct {
 
 func (x *NotificationPreferences) Reset() {
 	*x = NotificationPreferences{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[279]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[286]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15236,7 +15610,7 @@ func (x *NotificationPreferences) String() string {
 func (*NotificationPreferences) ProtoMessage() {}
 
 func (x *NotificationPreferences) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[279]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[286]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15249,7 +15623,7 @@ func (x *NotificationPreferences) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationPreferences.ProtoReflect.Descriptor instead.
 func (*NotificationPreferences) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{279}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{286}
 }
 
 func (x *NotificationPreferences) GetSummaryReady() bool {
@@ -15306,7 +15680,7 @@ type PushSubscription struct {
 
 func (x *PushSubscription) Reset() {
 	*x = PushSubscription{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[280]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[287]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15318,7 +15692,7 @@ func (x *PushSubscription) String() string {
 func (*PushSubscription) ProtoMessage() {}
 
 func (x *PushSubscription) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[280]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[287]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15331,7 +15705,7 @@ func (x *PushSubscription) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushSubscription.ProtoReflect.Descriptor instead.
 func (*PushSubscription) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{280}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{287}
 }
 
 func (x *PushSubscription) GetUserId() string {
@@ -15415,7 +15789,7 @@ type UpsertPushSubscriptionRequest struct {
 
 func (x *UpsertPushSubscriptionRequest) Reset() {
 	*x = UpsertPushSubscriptionRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[281]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[288]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15427,7 +15801,7 @@ func (x *UpsertPushSubscriptionRequest) String() string {
 func (*UpsertPushSubscriptionRequest) ProtoMessage() {}
 
 func (x *UpsertPushSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[281]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[288]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15440,7 +15814,7 @@ func (x *UpsertPushSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertPushSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*UpsertPushSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{281}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{288}
 }
 
 func (x *UpsertPushSubscriptionRequest) GetSubscription() *PushSubscription {
@@ -15461,7 +15835,7 @@ type UpsertPushSubscriptionResponse struct {
 
 func (x *UpsertPushSubscriptionResponse) Reset() {
 	*x = UpsertPushSubscriptionResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[282]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[289]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15473,7 +15847,7 @@ func (x *UpsertPushSubscriptionResponse) String() string {
 func (*UpsertPushSubscriptionResponse) ProtoMessage() {}
 
 func (x *UpsertPushSubscriptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[282]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[289]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15486,7 +15860,7 @@ func (x *UpsertPushSubscriptionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertPushSubscriptionResponse.ProtoReflect.Descriptor instead.
 func (*UpsertPushSubscriptionResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{282}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{289}
 }
 
 func (x *UpsertPushSubscriptionResponse) GetCreated() bool {
@@ -15509,7 +15883,7 @@ type GetPushSubscriptionRequest struct {
 
 func (x *GetPushSubscriptionRequest) Reset() {
 	*x = GetPushSubscriptionRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[283]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[290]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15521,7 +15895,7 @@ func (x *GetPushSubscriptionRequest) String() string {
 func (*GetPushSubscriptionRequest) ProtoMessage() {}
 
 func (x *GetPushSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[283]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[290]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15534,7 +15908,7 @@ func (x *GetPushSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPushSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*GetPushSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{283}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{290}
 }
 
 func (x *GetPushSubscriptionRequest) GetUserId() string {
@@ -15562,7 +15936,7 @@ type GetPushSubscriptionResponse struct {
 
 func (x *GetPushSubscriptionResponse) Reset() {
 	*x = GetPushSubscriptionResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[284]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[291]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15574,7 +15948,7 @@ func (x *GetPushSubscriptionResponse) String() string {
 func (*GetPushSubscriptionResponse) ProtoMessage() {}
 
 func (x *GetPushSubscriptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[284]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[291]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15587,7 +15961,7 @@ func (x *GetPushSubscriptionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPushSubscriptionResponse.ProtoReflect.Descriptor instead.
 func (*GetPushSubscriptionResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{284}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{291}
 }
 
 func (x *GetPushSubscriptionResponse) GetSubscription() *PushSubscription {
@@ -15608,7 +15982,7 @@ type UpdatePushSubscriptionPreferencesRequest struct {
 
 func (x *UpdatePushSubscriptionPreferencesRequest) Reset() {
 	*x = UpdatePushSubscriptionPreferencesRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[285]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[292]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15620,7 +15994,7 @@ func (x *UpdatePushSubscriptionPreferencesRequest) String() string {
 func (*UpdatePushSubscriptionPreferencesRequest) ProtoMessage() {}
 
 func (x *UpdatePushSubscriptionPreferencesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[285]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[292]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15633,7 +16007,7 @@ func (x *UpdatePushSubscriptionPreferencesRequest) ProtoReflect() protoreflect.M
 
 // Deprecated: Use UpdatePushSubscriptionPreferencesRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePushSubscriptionPreferencesRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{285}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{292}
 }
 
 func (x *UpdatePushSubscriptionPreferencesRequest) GetUserId() string {
@@ -15669,7 +16043,7 @@ type UpdatePushSubscriptionPreferencesResponse struct {
 
 func (x *UpdatePushSubscriptionPreferencesResponse) Reset() {
 	*x = UpdatePushSubscriptionPreferencesResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[286]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[293]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15681,7 +16055,7 @@ func (x *UpdatePushSubscriptionPreferencesResponse) String() string {
 func (*UpdatePushSubscriptionPreferencesResponse) ProtoMessage() {}
 
 func (x *UpdatePushSubscriptionPreferencesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[286]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[293]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15694,7 +16068,7 @@ func (x *UpdatePushSubscriptionPreferencesResponse) ProtoReflect() protoreflect.
 
 // Deprecated: Use UpdatePushSubscriptionPreferencesResponse.ProtoReflect.Descriptor instead.
 func (*UpdatePushSubscriptionPreferencesResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{286}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{293}
 }
 
 func (x *UpdatePushSubscriptionPreferencesResponse) GetUpdated() bool {
@@ -15714,7 +16088,7 @@ type DeletePushSubscriptionRequest struct {
 
 func (x *DeletePushSubscriptionRequest) Reset() {
 	*x = DeletePushSubscriptionRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[287]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[294]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15726,7 +16100,7 @@ func (x *DeletePushSubscriptionRequest) String() string {
 func (*DeletePushSubscriptionRequest) ProtoMessage() {}
 
 func (x *DeletePushSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[287]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[294]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15739,7 +16113,7 @@ func (x *DeletePushSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePushSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*DeletePushSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{287}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{294}
 }
 
 func (x *DeletePushSubscriptionRequest) GetUserId() string {
@@ -15767,7 +16141,7 @@ type DeletePushSubscriptionResponse struct {
 
 func (x *DeletePushSubscriptionResponse) Reset() {
 	*x = DeletePushSubscriptionResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[288]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[295]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15779,7 +16153,7 @@ func (x *DeletePushSubscriptionResponse) String() string {
 func (*DeletePushSubscriptionResponse) ProtoMessage() {}
 
 func (x *DeletePushSubscriptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[288]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[295]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15792,7 +16166,7 @@ func (x *DeletePushSubscriptionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePushSubscriptionResponse.ProtoReflect.Descriptor instead.
 func (*DeletePushSubscriptionResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{288}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{295}
 }
 
 func (x *DeletePushSubscriptionResponse) GetDeleted() bool {
@@ -15811,7 +16185,7 @@ type ListPushSubscriptionsForUserRequest struct {
 
 func (x *ListPushSubscriptionsForUserRequest) Reset() {
 	*x = ListPushSubscriptionsForUserRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[289]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[296]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15823,7 +16197,7 @@ func (x *ListPushSubscriptionsForUserRequest) String() string {
 func (*ListPushSubscriptionsForUserRequest) ProtoMessage() {}
 
 func (x *ListPushSubscriptionsForUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[289]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[296]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15836,7 +16210,7 @@ func (x *ListPushSubscriptionsForUserRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ListPushSubscriptionsForUserRequest.ProtoReflect.Descriptor instead.
 func (*ListPushSubscriptionsForUserRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{289}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{296}
 }
 
 func (x *ListPushSubscriptionsForUserRequest) GetUserId() string {
@@ -15856,7 +16230,7 @@ type ListPushSubscriptionsForUserResponse struct {
 
 func (x *ListPushSubscriptionsForUserResponse) Reset() {
 	*x = ListPushSubscriptionsForUserResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[290]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[297]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15868,7 +16242,7 @@ func (x *ListPushSubscriptionsForUserResponse) String() string {
 func (*ListPushSubscriptionsForUserResponse) ProtoMessage() {}
 
 func (x *ListPushSubscriptionsForUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[290]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[297]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15881,7 +16255,7 @@ func (x *ListPushSubscriptionsForUserResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ListPushSubscriptionsForUserResponse.ProtoReflect.Descriptor instead.
 func (*ListPushSubscriptionsForUserResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{290}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{297}
 }
 
 func (x *ListPushSubscriptionsForUserResponse) GetSubscriptions() []*PushSubscription {
@@ -15928,7 +16302,7 @@ type PushDelivery struct {
 
 func (x *PushDelivery) Reset() {
 	*x = PushDelivery{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[291]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[298]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15940,7 +16314,7 @@ func (x *PushDelivery) String() string {
 func (*PushDelivery) ProtoMessage() {}
 
 func (x *PushDelivery) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[291]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[298]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15953,7 +16327,7 @@ func (x *PushDelivery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushDelivery.ProtoReflect.Descriptor instead.
 func (*PushDelivery) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{291}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{298}
 }
 
 func (x *PushDelivery) GetId() string {
@@ -16078,7 +16452,7 @@ type EnqueueNotificationRequest struct {
 
 func (x *EnqueueNotificationRequest) Reset() {
 	*x = EnqueueNotificationRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[292]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[299]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16090,7 +16464,7 @@ func (x *EnqueueNotificationRequest) String() string {
 func (*EnqueueNotificationRequest) ProtoMessage() {}
 
 func (x *EnqueueNotificationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[292]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[299]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16103,7 +16477,7 @@ func (x *EnqueueNotificationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnqueueNotificationRequest.ProtoReflect.Descriptor instead.
 func (*EnqueueNotificationRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{292}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{299}
 }
 
 func (x *EnqueueNotificationRequest) GetDedupeKey() string {
@@ -16164,7 +16538,7 @@ type EnqueueNotificationResponse struct {
 
 func (x *EnqueueNotificationResponse) Reset() {
 	*x = EnqueueNotificationResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[293]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[300]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16176,7 +16550,7 @@ func (x *EnqueueNotificationResponse) String() string {
 func (*EnqueueNotificationResponse) ProtoMessage() {}
 
 func (x *EnqueueNotificationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[293]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[300]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16189,7 +16563,7 @@ func (x *EnqueueNotificationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnqueueNotificationResponse.ProtoReflect.Descriptor instead.
 func (*EnqueueNotificationResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{293}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{300}
 }
 
 func (x *EnqueueNotificationResponse) GetDeliveryCount() int32 {
@@ -16225,7 +16599,7 @@ type ClaimNotificationBatchRequest struct {
 
 func (x *ClaimNotificationBatchRequest) Reset() {
 	*x = ClaimNotificationBatchRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[294]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[301]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16237,7 +16611,7 @@ func (x *ClaimNotificationBatchRequest) String() string {
 func (*ClaimNotificationBatchRequest) ProtoMessage() {}
 
 func (x *ClaimNotificationBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[294]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[301]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16250,7 +16624,7 @@ func (x *ClaimNotificationBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimNotificationBatchRequest.ProtoReflect.Descriptor instead.
 func (*ClaimNotificationBatchRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{294}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{301}
 }
 
 func (x *ClaimNotificationBatchRequest) GetLockedBy() string {
@@ -16284,7 +16658,7 @@ type ClaimNotificationBatchResponse struct {
 
 func (x *ClaimNotificationBatchResponse) Reset() {
 	*x = ClaimNotificationBatchResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[295]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[302]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16296,7 +16670,7 @@ func (x *ClaimNotificationBatchResponse) String() string {
 func (*ClaimNotificationBatchResponse) ProtoMessage() {}
 
 func (x *ClaimNotificationBatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[295]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[302]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16309,7 +16683,7 @@ func (x *ClaimNotificationBatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimNotificationBatchResponse.ProtoReflect.Descriptor instead.
 func (*ClaimNotificationBatchResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{295}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{302}
 }
 
 func (x *ClaimNotificationBatchResponse) GetDeliveries() []*PushDelivery {
@@ -16331,7 +16705,7 @@ type MarkNotificationSentRequest struct {
 
 func (x *MarkNotificationSentRequest) Reset() {
 	*x = MarkNotificationSentRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[296]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[303]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16343,7 +16717,7 @@ func (x *MarkNotificationSentRequest) String() string {
 func (*MarkNotificationSentRequest) ProtoMessage() {}
 
 func (x *MarkNotificationSentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[296]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[303]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16356,7 +16730,7 @@ func (x *MarkNotificationSentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkNotificationSentRequest.ProtoReflect.Descriptor instead.
 func (*MarkNotificationSentRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{296}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{303}
 }
 
 func (x *MarkNotificationSentRequest) GetId() string {
@@ -16381,7 +16755,7 @@ type MarkNotificationSentResponse struct {
 
 func (x *MarkNotificationSentResponse) Reset() {
 	*x = MarkNotificationSentResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[297]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[304]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16393,7 +16767,7 @@ func (x *MarkNotificationSentResponse) String() string {
 func (*MarkNotificationSentResponse) ProtoMessage() {}
 
 func (x *MarkNotificationSentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[297]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[304]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16406,7 +16780,7 @@ func (x *MarkNotificationSentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkNotificationSentResponse.ProtoReflect.Descriptor instead.
 func (*MarkNotificationSentResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{297}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{304}
 }
 
 type ReleaseNotificationRequest struct {
@@ -16425,7 +16799,7 @@ type ReleaseNotificationRequest struct {
 
 func (x *ReleaseNotificationRequest) Reset() {
 	*x = ReleaseNotificationRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[298]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[305]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16437,7 +16811,7 @@ func (x *ReleaseNotificationRequest) String() string {
 func (*ReleaseNotificationRequest) ProtoMessage() {}
 
 func (x *ReleaseNotificationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[298]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[305]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16450,7 +16824,7 @@ func (x *ReleaseNotificationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseNotificationRequest.ProtoReflect.Descriptor instead.
 func (*ReleaseNotificationRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{298}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{305}
 }
 
 func (x *ReleaseNotificationRequest) GetId() string {
@@ -16482,7 +16856,7 @@ type ReleaseNotificationResponse struct {
 
 func (x *ReleaseNotificationResponse) Reset() {
 	*x = ReleaseNotificationResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[299]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[306]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16494,7 +16868,7 @@ func (x *ReleaseNotificationResponse) String() string {
 func (*ReleaseNotificationResponse) ProtoMessage() {}
 
 func (x *ReleaseNotificationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[299]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[306]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16507,7 +16881,7 @@ func (x *ReleaseNotificationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseNotificationResponse.ProtoReflect.Descriptor instead.
 func (*ReleaseNotificationResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{299}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{306}
 }
 
 type MarkNotificationDeadRequest struct {
@@ -16523,7 +16897,7 @@ type MarkNotificationDeadRequest struct {
 
 func (x *MarkNotificationDeadRequest) Reset() {
 	*x = MarkNotificationDeadRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[300]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[307]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16535,7 +16909,7 @@ func (x *MarkNotificationDeadRequest) String() string {
 func (*MarkNotificationDeadRequest) ProtoMessage() {}
 
 func (x *MarkNotificationDeadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[300]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[307]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16548,7 +16922,7 @@ func (x *MarkNotificationDeadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkNotificationDeadRequest.ProtoReflect.Descriptor instead.
 func (*MarkNotificationDeadRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{300}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{307}
 }
 
 func (x *MarkNotificationDeadRequest) GetId() string {
@@ -16580,7 +16954,7 @@ type MarkNotificationDeadResponse struct {
 
 func (x *MarkNotificationDeadResponse) Reset() {
 	*x = MarkNotificationDeadResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[301]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[308]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16592,7 +16966,7 @@ func (x *MarkNotificationDeadResponse) String() string {
 func (*MarkNotificationDeadResponse) ProtoMessage() {}
 
 func (x *MarkNotificationDeadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[301]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[308]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16605,7 +16979,7 @@ func (x *MarkNotificationDeadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkNotificationDeadResponse.ProtoReflect.Descriptor instead.
 func (*MarkNotificationDeadResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{301}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{308}
 }
 
 // GetNotificationBacklogAgeRequest takes no argument: the queue is global to
@@ -16619,7 +16993,7 @@ type GetNotificationBacklogAgeRequest struct {
 
 func (x *GetNotificationBacklogAgeRequest) Reset() {
 	*x = GetNotificationBacklogAgeRequest{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[302]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[309]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16631,7 +17005,7 @@ func (x *GetNotificationBacklogAgeRequest) String() string {
 func (*GetNotificationBacklogAgeRequest) ProtoMessage() {}
 
 func (x *GetNotificationBacklogAgeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[302]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[309]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16644,7 +17018,7 @@ func (x *GetNotificationBacklogAgeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNotificationBacklogAgeRequest.ProtoReflect.Descriptor instead.
 func (*GetNotificationBacklogAgeRequest) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{302}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{309}
 }
 
 type GetNotificationBacklogAgeResponse struct {
@@ -16678,7 +17052,7 @@ type GetNotificationBacklogAgeResponse struct {
 
 func (x *GetNotificationBacklogAgeResponse) Reset() {
 	*x = GetNotificationBacklogAgeResponse{}
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[303]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[310]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16690,7 +17064,7 @@ func (x *GetNotificationBacklogAgeResponse) String() string {
 func (*GetNotificationBacklogAgeResponse) ProtoMessage() {}
 
 func (x *GetNotificationBacklogAgeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_datahub_v1_datahub_proto_msgTypes[303]
+	mi := &file_services_datahub_v1_datahub_proto_msgTypes[310]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16703,7 +17077,7 @@ func (x *GetNotificationBacklogAgeResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetNotificationBacklogAgeResponse.ProtoReflect.Descriptor instead.
 func (*GetNotificationBacklogAgeResponse) Descriptor() ([]byte, []int) {
-	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{303}
+	return file_services_datahub_v1_datahub_proto_rawDescGZIP(), []int{310}
 }
 
 func (x *GetNotificationBacklogAgeResponse) GetOldestPendingAgeSeconds() float64 {
@@ -17061,17 +17435,41 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\rog_image_urls\x18\x01 \x03(\v2A.services.datahub.v1.BatchGetOgImageURLsResponse.OgImageUrlsEntryR\vogImageUrls\x1a>\n" +
 	"\x10OgImageUrlsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"K\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"O\n" +
 	"\x18OgImageBackfillCandidate\x12\x1d\n" +
 	"\n" +
 	"article_id\x18\x01 \x01(\tR\tarticleId\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"6\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url:\x02\x18\x01\":\n" +
 	"\x1eListFeedsMissingOgImageRequest\x12\x14\n" +
-	"\x05limit\x18\x01 \x01(\x05R\x05limit\"p\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit:\x02\x18\x01\"t\n" +
 	"\x1fListFeedsMissingOgImageResponse\x12M\n" +
 	"\n" +
 	"candidates\x18\x01 \x03(\v2-.services.datahub.v1.OgImageBackfillCandidateR\n" +
-	"candidates\"6\n" +
+	"candidates:\x02\x18\x01\"\x89\x01\n" +
+	"\x11FeedOgImageTarget\x12\x17\n" +
+	"\afeed_id\x18\x01 \x01(\tR\x06feedId\x12\x19\n" +
+	"\bpage_url\x18\x02 \x01(\tR\apageUrl\x12 \n" +
+	"\fog_image_url\x18\x03 \x01(\tR\n" +
+	"ogImageUrl\x12\x1e\n" +
+	"\n" +
+	"suppressed\x18\x04 \x01(\bR\n" +
+	"suppressed\"9\n" +
+	"\x1cGetFeedOgImageTargetsRequest\x12\x19\n" +
+	"\bfeed_ids\x18\x01 \x03(\tR\afeedIds\"a\n" +
+	"\x1dGetFeedOgImageTargetsResponse\x12@\n" +
+	"\atargets\x18\x01 \x03(\v2&.services.datahub.v1.FeedOgImageTargetR\atargets\"\x9b\x01\n" +
+	"\x16SaveFeedOgImageRequest\x12\x17\n" +
+	"\afeed_id\x18\x01 \x01(\tR\x06feedId\x12 \n" +
+	"\fog_image_url\x18\x02 \x01(\tR\n" +
+	"ogImageUrl\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12.\n" +
+	"\x13retry_after_seconds\x18\x04 \x01(\x03R\x11retryAfterSeconds\"\x19\n" +
+	"\x17SaveFeedOgImageResponse\"B\n" +
+	"\x1fPurgeExpiredFeedOgImagesRequest\x12\x1f\n" +
+	"\vttl_seconds\x18\x01 \x01(\x03R\n" +
+	"ttlSeconds\"E\n" +
+	" PurgeExpiredFeedOgImagesResponse\x12!\n" +
+	"\fpurged_count\x18\x01 \x01(\x03R\vpurgedCount\"6\n" +
 	"\x1eListUnwarmedOgImageURLsRequest\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\x05R\x05limit\"5\n" +
 	"\x1fListUnwarmedOgImageURLsResponse\x12\x12\n" +
@@ -17868,7 +18266,7 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\x1aNOTIFICATION_STATE_SENDING\x10\x02\x12\x1b\n" +
 	"\x17NOTIFICATION_STATE_SENT\x10\x03\x12\x1b\n" +
 	"\x17NOTIFICATION_STATE_DEAD\x10\x04\x12\x1e\n" +
-	"\x1aNOTIFICATION_STATE_EXPIRED\x10\x052\x92}\n" +
+	"\x1aNOTIFICATION_STATE_EXPIRED\x10\x052\x8f\x80\x01\n" +
 	"\x0eDataHubService\x12{\n" +
 	"\x14ListArticlesWithTags\x120.services.datahub.v1.ListArticlesWithTagsRequest\x1a1.services.datahub.v1.ListArticlesWithTagsResponse\x12\x90\x01\n" +
 	"\x1bListArticlesWithTagsForward\x127.services.datahub.v1.ListArticlesWithTagsForwardRequest\x1a8.services.datahub.v1.ListArticlesWithTagsForwardResponse\x12x\n" +
@@ -17901,10 +18299,13 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\x12ReleaseOutboxEvent\x12..services.datahub.v1.ReleaseOutboxEventRequest\x1a/.services.datahub.v1.ReleaseOutboxEventResponse\x12r\n" +
 	"\x11PruneOutboxEvents\x12-.services.datahub.v1.PruneOutboxEventsRequest\x1a..services.datahub.v1.PruneOutboxEventsResponse\x12i\n" +
 	"\x0eGetArticleHead\x12*.services.datahub.v1.GetArticleHeadRequest\x1a+.services.datahub.v1.GetArticleHeadResponse\x12x\n" +
-	"\x13BatchGetOgImageURLs\x12/.services.datahub.v1.BatchGetOgImageURLsRequest\x1a0.services.datahub.v1.BatchGetOgImageURLsResponse\x12\x84\x01\n" +
-	"\x17ListFeedsMissingOgImage\x123.services.datahub.v1.ListFeedsMissingOgImageRequest\x1a4.services.datahub.v1.ListFeedsMissingOgImageResponse\x12\x84\x01\n" +
+	"\x13BatchGetOgImageURLs\x12/.services.datahub.v1.BatchGetOgImageURLsRequest\x1a0.services.datahub.v1.BatchGetOgImageURLsResponse\x12\x89\x01\n" +
+	"\x17ListFeedsMissingOgImage\x123.services.datahub.v1.ListFeedsMissingOgImageRequest\x1a4.services.datahub.v1.ListFeedsMissingOgImageResponse\"\x03\x88\x02\x01\x12\x84\x01\n" +
 	"\x17ListUnwarmedOgImageURLs\x123.services.datahub.v1.ListUnwarmedOgImageURLsRequest\x1a4.services.datahub.v1.ListUnwarmedOgImageURLsResponse\x12\x87\x01\n" +
-	"\x18PurgeExpiredArticleHeads\x124.services.datahub.v1.PurgeExpiredArticleHeadsRequest\x1a5.services.datahub.v1.PurgeExpiredArticleHeadsResponse\x12u\n" +
+	"\x18PurgeExpiredArticleHeads\x124.services.datahub.v1.PurgeExpiredArticleHeadsRequest\x1a5.services.datahub.v1.PurgeExpiredArticleHeadsResponse\x12~\n" +
+	"\x15GetFeedOgImageTargets\x121.services.datahub.v1.GetFeedOgImageTargetsRequest\x1a2.services.datahub.v1.GetFeedOgImageTargetsResponse\x12l\n" +
+	"\x0fSaveFeedOgImage\x12+.services.datahub.v1.SaveFeedOgImageRequest\x1a,.services.datahub.v1.SaveFeedOgImageResponse\x12\x87\x01\n" +
+	"\x18PurgeExpiredFeedOgImages\x124.services.datahub.v1.PurgeExpiredFeedOgImagesRequest\x1a5.services.datahub.v1.PurgeExpiredFeedOgImagesResponse\x12u\n" +
 	"\x12GetImageProxyCache\x12..services.datahub.v1.GetImageProxyCacheRequest\x1a/.services.datahub.v1.GetImageProxyCacheResponse\x12u\n" +
 	"\x12PutImageProxyCache\x12..services.datahub.v1.PutImageProxyCacheRequest\x1a/.services.datahub.v1.PutImageProxyCacheResponse\x12\x90\x01\n" +
 	"\x1bEvictExpiredImageProxyCache\x127.services.datahub.v1.EvictExpiredImageProxyCacheRequest\x1a8.services.datahub.v1.EvictExpiredImageProxyCacheResponse\x12\x96\x01\n" +
@@ -18013,7 +18414,7 @@ func file_services_datahub_v1_datahub_proto_rawDescGZIP() []byte {
 }
 
 var file_services_datahub_v1_datahub_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_services_datahub_v1_datahub_proto_msgTypes = make([]protoimpl.MessageInfo, 307)
+var file_services_datahub_v1_datahub_proto_msgTypes = make([]protoimpl.MessageInfo, 314)
 var file_services_datahub_v1_datahub_proto_goTypes = []any{
 	(SummaryVersioning)(0),                            // 0: services.datahub.v1.SummaryVersioning
 	(OutboxEventStatus)(0),                            // 1: services.datahub.v1.OutboxEventStatus
@@ -18103,655 +18504,669 @@ var file_services_datahub_v1_datahub_proto_goTypes = []any{
 	(*OgImageBackfillCandidate)(nil),                  // 85: services.datahub.v1.OgImageBackfillCandidate
 	(*ListFeedsMissingOgImageRequest)(nil),            // 86: services.datahub.v1.ListFeedsMissingOgImageRequest
 	(*ListFeedsMissingOgImageResponse)(nil),           // 87: services.datahub.v1.ListFeedsMissingOgImageResponse
-	(*ListUnwarmedOgImageURLsRequest)(nil),            // 88: services.datahub.v1.ListUnwarmedOgImageURLsRequest
-	(*ListUnwarmedOgImageURLsResponse)(nil),           // 89: services.datahub.v1.ListUnwarmedOgImageURLsResponse
-	(*PurgeExpiredArticleHeadsRequest)(nil),           // 90: services.datahub.v1.PurgeExpiredArticleHeadsRequest
-	(*PurgeExpiredArticleHeadsResponse)(nil),          // 91: services.datahub.v1.PurgeExpiredArticleHeadsResponse
-	(*ImageProxyCacheEntry)(nil),                      // 92: services.datahub.v1.ImageProxyCacheEntry
-	(*GetImageProxyCacheRequest)(nil),                 // 93: services.datahub.v1.GetImageProxyCacheRequest
-	(*GetImageProxyCacheResponse)(nil),                // 94: services.datahub.v1.GetImageProxyCacheResponse
-	(*PutImageProxyCacheRequest)(nil),                 // 95: services.datahub.v1.PutImageProxyCacheRequest
-	(*PutImageProxyCacheResponse)(nil),                // 96: services.datahub.v1.PutImageProxyCacheResponse
-	(*EvictExpiredImageProxyCacheRequest)(nil),        // 97: services.datahub.v1.EvictExpiredImageProxyCacheRequest
-	(*EvictExpiredImageProxyCacheResponse)(nil),       // 98: services.datahub.v1.EvictExpiredImageProxyCacheResponse
-	(*PurgeImageProxyCacheOlderThanRequest)(nil),      // 99: services.datahub.v1.PurgeImageProxyCacheOlderThanRequest
-	(*PurgeImageProxyCacheOlderThanResponse)(nil),     // 100: services.datahub.v1.PurgeImageProxyCacheOlderThanResponse
-	(*ScrapingDomain)(nil),                            // 101: services.datahub.v1.ScrapingDomain
-	(*GetScrapingDomainByDomainRequest)(nil),          // 102: services.datahub.v1.GetScrapingDomainByDomainRequest
-	(*GetScrapingDomainByDomainResponse)(nil),         // 103: services.datahub.v1.GetScrapingDomainByDomainResponse
-	(*GetScrapingDomainByIDRequest)(nil),              // 104: services.datahub.v1.GetScrapingDomainByIDRequest
-	(*GetScrapingDomainByIDResponse)(nil),             // 105: services.datahub.v1.GetScrapingDomainByIDResponse
-	(*SaveScrapingDomainRequest)(nil),                 // 106: services.datahub.v1.SaveScrapingDomainRequest
-	(*SaveScrapingDomainResponse)(nil),                // 107: services.datahub.v1.SaveScrapingDomainResponse
-	(*ListScrapingDomainsRequest)(nil),                // 108: services.datahub.v1.ListScrapingDomainsRequest
-	(*ListScrapingDomainsResponse)(nil),               // 109: services.datahub.v1.ListScrapingDomainsResponse
-	(*ScrapingPolicyUpdate)(nil),                      // 110: services.datahub.v1.ScrapingPolicyUpdate
-	(*UpdateScrapingDomainPolicyRequest)(nil),         // 111: services.datahub.v1.UpdateScrapingDomainPolicyRequest
-	(*UpdateScrapingDomainPolicyResponse)(nil),        // 112: services.datahub.v1.UpdateScrapingDomainPolicyResponse
-	(*SaveDeclinedDomainRequest)(nil),                 // 113: services.datahub.v1.SaveDeclinedDomainRequest
-	(*SaveDeclinedDomainResponse)(nil),                // 114: services.datahub.v1.SaveDeclinedDomainResponse
-	(*IsDomainDeclinedRequest)(nil),                   // 115: services.datahub.v1.IsDomainDeclinedRequest
-	(*IsDomainDeclinedResponse)(nil),                  // 116: services.datahub.v1.IsDomainDeclinedResponse
-	(*ListSubscribedUserIDsByFeedLinkIDRequest)(nil),  // 117: services.datahub.v1.ListSubscribedUserIDsByFeedLinkIDRequest
-	(*ListSubscribedUserIDsByFeedLinkIDResponse)(nil), // 118: services.datahub.v1.ListSubscribedUserIDsByFeedLinkIDResponse
-	(*CheckArticleExistsByURLForUserRequest)(nil),     // 119: services.datahub.v1.CheckArticleExistsByURLForUserRequest
-	(*CheckArticleExistsByURLForUserResponse)(nil),    // 120: services.datahub.v1.CheckArticleExistsByURLForUserResponse
-	(*ArchiveArticleRequest)(nil),                     // 121: services.datahub.v1.ArchiveArticleRequest
-	(*ArchiveArticleResponse)(nil),                    // 122: services.datahub.v1.ArchiveArticleResponse
-	(*SaveArticleHeadRequest)(nil),                    // 123: services.datahub.v1.SaveArticleHeadRequest
-	(*SaveArticleHeadResponse)(nil),                   // 124: services.datahub.v1.SaveArticleHeadResponse
-	(*ArticleContent)(nil),                            // 125: services.datahub.v1.ArticleContent
-	(*UserArticle)(nil),                               // 126: services.datahub.v1.UserArticle
-	(*GetArticleByURLRequest)(nil),                    // 127: services.datahub.v1.GetArticleByURLRequest
-	(*GetArticleByURLResponse)(nil),                   // 128: services.datahub.v1.GetArticleByURLResponse
-	(*BatchGetArticlesByURLsRequest)(nil),             // 129: services.datahub.v1.BatchGetArticlesByURLsRequest
-	(*BatchGetArticlesByURLsResponse)(nil),            // 130: services.datahub.v1.BatchGetArticlesByURLsResponse
-	(*GetArticleContentByIDRequest)(nil),              // 131: services.datahub.v1.GetArticleContentByIDRequest
-	(*GetArticleContentByIDResponse)(nil),             // 132: services.datahub.v1.GetArticleContentByIDResponse
-	(*ListArticlesCursorRequest)(nil),                 // 133: services.datahub.v1.ListArticlesCursorRequest
-	(*ListArticlesCursorResponse)(nil),                // 134: services.datahub.v1.ListArticlesCursorResponse
-	(*ListArticleIDsCursorRequest)(nil),               // 135: services.datahub.v1.ListArticleIDsCursorRequest
-	(*ListArticleIDsCursorResponse)(nil),              // 136: services.datahub.v1.ListArticleIDsCursorResponse
-	(*BatchGetArticlesByIDsRequest)(nil),              // 137: services.datahub.v1.BatchGetArticlesByIDsRequest
-	(*BatchGetArticlesByIDsResponse)(nil),             // 138: services.datahub.v1.BatchGetArticlesByIDsResponse
-	(*GetLatestArticleByFeedIDRequest)(nil),           // 139: services.datahub.v1.GetLatestArticleByFeedIDRequest
-	(*GetLatestArticleByFeedIDResponse)(nil),          // 140: services.datahub.v1.GetLatestArticleByFeedIDResponse
-	(*LookupArticleURLRequest)(nil),                   // 141: services.datahub.v1.LookupArticleURLRequest
-	(*LookupArticleURLResponse)(nil),                  // 142: services.datahub.v1.LookupArticleURLResponse
-	(*BackfillArticle)(nil),                           // 143: services.datahub.v1.BackfillArticle
-	(*CountBackfillArticlesRequest)(nil),              // 144: services.datahub.v1.CountBackfillArticlesRequest
-	(*CountBackfillArticlesResponse)(nil),             // 145: services.datahub.v1.CountBackfillArticlesResponse
-	(*ListBackfillArticlesRequest)(nil),               // 146: services.datahub.v1.ListBackfillArticlesRequest
-	(*ListBackfillArticlesResponse)(nil),              // 147: services.datahub.v1.ListBackfillArticlesResponse
-	(*BackfillSummaryTitle)(nil),                      // 148: services.datahub.v1.BackfillSummaryTitle
-	(*CountBackfillSummaryTitlesRequest)(nil),         // 149: services.datahub.v1.CountBackfillSummaryTitlesRequest
-	(*CountBackfillSummaryTitlesResponse)(nil),        // 150: services.datahub.v1.CountBackfillSummaryTitlesResponse
-	(*ListBackfillSummaryTitlesRequest)(nil),          // 151: services.datahub.v1.ListBackfillSummaryTitlesRequest
-	(*ListBackfillSummaryTitlesResponse)(nil),         // 152: services.datahub.v1.ListBackfillSummaryTitlesResponse
-	(*FeedLink)(nil),                                  // 153: services.datahub.v1.FeedLink
-	(*FeedLinkAvailability)(nil),                      // 154: services.datahub.v1.FeedLinkAvailability
-	(*FeedLinkWithHealth)(nil),                        // 155: services.datahub.v1.FeedLinkWithHealth
-	(*FeedLinkDomain)(nil),                            // 156: services.datahub.v1.FeedLinkDomain
-	(*FeedLinkExportEntry)(nil),                       // 157: services.datahub.v1.FeedLinkExportEntry
-	(*Feed)(nil),                                      // 158: services.datahub.v1.Feed
-	(*FeedRegistration)(nil),                          // 159: services.datahub.v1.FeedRegistration
-	(*FeedRegistrationResult)(nil),                    // 160: services.datahub.v1.FeedRegistrationResult
-	(*FeedSummary)(nil),                               // 161: services.datahub.v1.FeedSummary
-	(*FeedAndArticle)(nil),                            // 162: services.datahub.v1.FeedAndArticle
-	(*InoreaderSummary)(nil),                          // 163: services.datahub.v1.InoreaderSummary
-	(*RegisterFeedLinkRequest)(nil),                   // 164: services.datahub.v1.RegisterFeedLinkRequest
-	(*RegisterFeedLinkResponse)(nil),                  // 165: services.datahub.v1.RegisterFeedLinkResponse
-	(*BulkRegisterFeedLinksRequest)(nil),              // 166: services.datahub.v1.BulkRegisterFeedLinksRequest
-	(*BulkRegisterFeedLinksResponse)(nil),             // 167: services.datahub.v1.BulkRegisterFeedLinksResponse
-	(*ListFeedLinksRequest)(nil),                      // 168: services.datahub.v1.ListFeedLinksRequest
-	(*ListFeedLinksResponse)(nil),                     // 169: services.datahub.v1.ListFeedLinksResponse
-	(*ListFeedLinksWithHealthRequest)(nil),            // 170: services.datahub.v1.ListFeedLinksWithHealthRequest
-	(*ListFeedLinksWithHealthResponse)(nil),           // 171: services.datahub.v1.ListFeedLinksWithHealthResponse
-	(*DeleteFeedLinkRequest)(nil),                     // 172: services.datahub.v1.DeleteFeedLinkRequest
-	(*DeleteFeedLinkResponse)(nil),                    // 173: services.datahub.v1.DeleteFeedLinkResponse
-	(*ResolveFeedLinkIDByURLRequest)(nil),             // 174: services.datahub.v1.ResolveFeedLinkIDByURLRequest
-	(*ResolveFeedLinkIDByURLResponse)(nil),            // 175: services.datahub.v1.ResolveFeedLinkIDByURLResponse
-	(*ListFeedLinkDomainsRequest)(nil),                // 176: services.datahub.v1.ListFeedLinkDomainsRequest
-	(*ListFeedLinkDomainsResponse)(nil),               // 177: services.datahub.v1.ListFeedLinkDomainsResponse
-	(*ListRSSFeedURLsRequest)(nil),                    // 178: services.datahub.v1.ListRSSFeedURLsRequest
-	(*ListRSSFeedURLsResponse)(nil),                   // 179: services.datahub.v1.ListRSSFeedURLsResponse
-	(*ListFeedLinksForExportRequest)(nil),             // 180: services.datahub.v1.ListFeedLinksForExportRequest
-	(*ListFeedLinksForExportResponse)(nil),            // 181: services.datahub.v1.ListFeedLinksForExportResponse
-	(*RecordFeedLinkFailureRequest)(nil),              // 182: services.datahub.v1.RecordFeedLinkFailureRequest
-	(*RecordFeedLinkFailureResponse)(nil),             // 183: services.datahub.v1.RecordFeedLinkFailureResponse
-	(*ResetFeedLinkFailuresRequest)(nil),              // 184: services.datahub.v1.ResetFeedLinkFailuresRequest
-	(*ResetFeedLinkFailuresResponse)(nil),             // 185: services.datahub.v1.ResetFeedLinkFailuresResponse
-	(*RegisterFeedsRequest)(nil),                      // 186: services.datahub.v1.RegisterFeedsRequest
-	(*RegisterFeedsResponse)(nil),                     // 187: services.datahub.v1.RegisterFeedsResponse
-	(*ListFeedsCursorRequest)(nil),                    // 188: services.datahub.v1.ListFeedsCursorRequest
-	(*ListFeedsCursorResponse)(nil),                   // 189: services.datahub.v1.ListFeedsCursorResponse
-	(*ListFeedsPageRequest)(nil),                      // 190: services.datahub.v1.ListFeedsPageRequest
-	(*ListFeedsPageResponse)(nil),                     // 191: services.datahub.v1.ListFeedsPageResponse
-	(*ListFeedsLimitRequest)(nil),                     // 192: services.datahub.v1.ListFeedsLimitRequest
-	(*ListFeedsLimitResponse)(nil),                    // 193: services.datahub.v1.ListFeedsLimitResponse
-	(*GetSingleFeedRequest)(nil),                      // 194: services.datahub.v1.GetSingleFeedRequest
-	(*GetSingleFeedResponse)(nil),                     // 195: services.datahub.v1.GetSingleFeedResponse
-	(*ListFeedsByFeedLinkIDRequest)(nil),              // 196: services.datahub.v1.ListFeedsByFeedLinkIDRequest
-	(*ListFeedsByFeedLinkIDResponse)(nil),             // 197: services.datahub.v1.ListFeedsByFeedLinkIDResponse
-	(*GetFeedSummaryRequest)(nil),                     // 198: services.datahub.v1.GetFeedSummaryRequest
-	(*GetFeedSummaryResponse)(nil),                    // 199: services.datahub.v1.GetFeedSummaryResponse
-	(*GetArticleSummaryByArticleIDRequest)(nil),       // 200: services.datahub.v1.GetArticleSummaryByArticleIDRequest
-	(*GetArticleSummaryByArticleIDResponse)(nil),      // 201: services.datahub.v1.GetArticleSummaryByArticleIDResponse
-	(*SearchFeedsByTitleRequest)(nil),                 // 202: services.datahub.v1.SearchFeedsByTitleRequest
-	(*SearchFeedsByTitleResponse)(nil),                // 203: services.datahub.v1.SearchFeedsByTitleResponse
-	(*GetRandomFeedRequest)(nil),                      // 204: services.datahub.v1.GetRandomFeedRequest
-	(*GetRandomFeedResponse)(nil),                     // 205: services.datahub.v1.GetRandomFeedResponse
-	(*GetFeedURLsByArticleIDsRequest)(nil),            // 206: services.datahub.v1.GetFeedURLsByArticleIDsRequest
-	(*GetFeedURLsByArticleIDsResponse)(nil),           // 207: services.datahub.v1.GetFeedURLsByArticleIDsResponse
-	(*BatchGetFeedTitlesByIDsRequest)(nil),            // 208: services.datahub.v1.BatchGetFeedTitlesByIDsRequest
-	(*BatchGetFeedTitlesByIDsResponse)(nil),           // 209: services.datahub.v1.BatchGetFeedTitlesByIDsResponse
-	(*GetInoreaderSummariesByURLsRequest)(nil),        // 210: services.datahub.v1.GetInoreaderSummariesByURLsRequest
-	(*GetInoreaderSummariesByURLsResponse)(nil),       // 211: services.datahub.v1.GetInoreaderSummariesByURLsResponse
-	(*FeedSubscription)(nil),                          // 212: services.datahub.v1.FeedSubscription
-	(*MarkFeedReadRequest)(nil),                       // 213: services.datahub.v1.MarkFeedReadRequest
-	(*MarkFeedReadResponse)(nil),                      // 214: services.datahub.v1.MarkFeedReadResponse
-	(*MarkArticleReadRequest)(nil),                    // 215: services.datahub.v1.MarkArticleReadRequest
-	(*MarkArticleReadResponse)(nil),                   // 216: services.datahub.v1.MarkArticleReadResponse
-	(*GetReadFeedIDsRequest)(nil),                     // 217: services.datahub.v1.GetReadFeedIDsRequest
-	(*GetReadFeedIDsResponse)(nil),                    // 218: services.datahub.v1.GetReadFeedIDsResponse
-	(*GetAllReadFeedIDsRequest)(nil),                  // 219: services.datahub.v1.GetAllReadFeedIDsRequest
-	(*GetAllReadFeedIDsResponse)(nil),                 // 220: services.datahub.v1.GetAllReadFeedIDsResponse
-	(*GetUserSubscribedFeedLinkIDsRequest)(nil),       // 221: services.datahub.v1.GetUserSubscribedFeedLinkIDsRequest
-	(*GetUserSubscribedFeedLinkIDsResponse)(nil),      // 222: services.datahub.v1.GetUserSubscribedFeedLinkIDsResponse
-	(*ListSubscriptionsRequest)(nil),                  // 223: services.datahub.v1.ListSubscriptionsRequest
-	(*ListSubscriptionsResponse)(nil),                 // 224: services.datahub.v1.ListSubscriptionsResponse
-	(*SubscribeRequest)(nil),                          // 225: services.datahub.v1.SubscribeRequest
-	(*SubscribeResponse)(nil),                         // 226: services.datahub.v1.SubscribeResponse
-	(*UnsubscribeRequest)(nil),                        // 227: services.datahub.v1.UnsubscribeRequest
-	(*UnsubscribeResponse)(nil),                       // 228: services.datahub.v1.UnsubscribeResponse
-	(*AddFavoriteFeedRequest)(nil),                    // 229: services.datahub.v1.AddFavoriteFeedRequest
-	(*AddFavoriteFeedResponse)(nil),                   // 230: services.datahub.v1.AddFavoriteFeedResponse
-	(*RemoveFavoriteFeedRequest)(nil),                 // 231: services.datahub.v1.RemoveFavoriteFeedRequest
-	(*RemoveFavoriteFeedResponse)(nil),                // 232: services.datahub.v1.RemoveFavoriteFeedResponse
-	(*FeedTag)(nil),                                   // 233: services.datahub.v1.FeedTag
-	(*GetArticleTagsRequest)(nil),                     // 234: services.datahub.v1.GetArticleTagsRequest
-	(*GetArticleTagsResponse)(nil),                    // 235: services.datahub.v1.GetArticleTagsResponse
-	(*GetFeedTagsRequest)(nil),                        // 236: services.datahub.v1.GetFeedTagsRequest
-	(*GetFeedTagsResponse)(nil),                       // 237: services.datahub.v1.GetFeedTagsResponse
-	(*TagCooccurrence)(nil),                           // 238: services.datahub.v1.TagCooccurrence
-	(*GetTagCooccurrencesRequest)(nil),                // 239: services.datahub.v1.GetTagCooccurrencesRequest
-	(*GetTagCooccurrencesResponse)(nil),               // 240: services.datahub.v1.GetTagCooccurrencesResponse
-	(*TagPrefixHit)(nil),                              // 241: services.datahub.v1.TagPrefixHit
-	(*SearchTagsByPrefixRequest)(nil),                 // 242: services.datahub.v1.SearchTagsByPrefixRequest
-	(*SearchTagsByPrefixResponse)(nil),                // 243: services.datahub.v1.SearchTagsByPrefixResponse
-	(*TagArticleCount)(nil),                           // 244: services.datahub.v1.TagArticleCount
-	(*GetTagArticleCountsRequest)(nil),                // 245: services.datahub.v1.GetTagArticleCountsRequest
-	(*GetTagArticleCountsResponse)(nil),               // 246: services.datahub.v1.GetTagArticleCountsResponse
-	(*TagTrailArticle)(nil),                           // 247: services.datahub.v1.TagTrailArticle
-	(*ListArticlesByTagIDRequest)(nil),                // 248: services.datahub.v1.ListArticlesByTagIDRequest
-	(*ListArticlesByTagIDResponse)(nil),               // 249: services.datahub.v1.ListArticlesByTagIDResponse
-	(*ListArticlesByTagNameRequest)(nil),              // 250: services.datahub.v1.ListArticlesByTagNameRequest
-	(*ListArticlesByTagNameResponse)(nil),             // 251: services.datahub.v1.ListArticlesByTagNameResponse
-	(*GetArticleTitleAndLinkRequest)(nil),             // 252: services.datahub.v1.GetArticleTitleAndLinkRequest
-	(*GetArticleTitleAndLinkResponse)(nil),            // 253: services.datahub.v1.GetArticleTitleAndLinkResponse
-	(*SummaryVersion)(nil),                            // 254: services.datahub.v1.SummaryVersion
-	(*CreateSummaryVersionRequest)(nil),               // 255: services.datahub.v1.CreateSummaryVersionRequest
-	(*CreateSummaryVersionResponse)(nil),              // 256: services.datahub.v1.CreateSummaryVersionResponse
-	(*MarkSummaryVersionSupersededRequest)(nil),       // 257: services.datahub.v1.MarkSummaryVersionSupersededRequest
-	(*MarkSummaryVersionSupersededResponse)(nil),      // 258: services.datahub.v1.MarkSummaryVersionSupersededResponse
-	(*GetSummaryVersionByIDRequest)(nil),              // 259: services.datahub.v1.GetSummaryVersionByIDRequest
-	(*GetSummaryVersionByIDResponse)(nil),             // 260: services.datahub.v1.GetSummaryVersionByIDResponse
-	(*GetLatestSummaryVersionRequest)(nil),            // 261: services.datahub.v1.GetLatestSummaryVersionRequest
-	(*GetLatestSummaryVersionResponse)(nil),           // 262: services.datahub.v1.GetLatestSummaryVersionResponse
-	(*TagSetVersion)(nil),                             // 263: services.datahub.v1.TagSetVersion
-	(*CreateTagSetVersionRequest)(nil),                // 264: services.datahub.v1.CreateTagSetVersionRequest
-	(*CreateTagSetVersionResponse)(nil),               // 265: services.datahub.v1.CreateTagSetVersionResponse
-	(*MarkTagSetVersionSupersededRequest)(nil),        // 266: services.datahub.v1.MarkTagSetVersionSupersededRequest
-	(*MarkTagSetVersionSupersededResponse)(nil),       // 267: services.datahub.v1.MarkTagSetVersionSupersededResponse
-	(*GetTagSetVersionByIDRequest)(nil),               // 268: services.datahub.v1.GetTagSetVersionByIDRequest
-	(*GetTagSetVersionByIDResponse)(nil),              // 269: services.datahub.v1.GetTagSetVersionByIDResponse
-	(*GetFeedAmountRequest)(nil),                      // 270: services.datahub.v1.GetFeedAmountRequest
-	(*GetFeedAmountResponse)(nil),                     // 271: services.datahub.v1.GetFeedAmountResponse
-	(*GetTotalArticlesCountRequest)(nil),              // 272: services.datahub.v1.GetTotalArticlesCountRequest
-	(*GetTotalArticlesCountResponse)(nil),             // 273: services.datahub.v1.GetTotalArticlesCountResponse
-	(*GetSummarizedArticlesCountRequest)(nil),         // 274: services.datahub.v1.GetSummarizedArticlesCountRequest
-	(*GetSummarizedArticlesCountResponse)(nil),        // 275: services.datahub.v1.GetSummarizedArticlesCountResponse
-	(*GetUnsummarizedArticlesCountRequest)(nil),       // 276: services.datahub.v1.GetUnsummarizedArticlesCountRequest
-	(*GetUnsummarizedArticlesCountResponse)(nil),      // 277: services.datahub.v1.GetUnsummarizedArticlesCountResponse
-	(*GetTodayUnreadArticlesCountRequest)(nil),        // 278: services.datahub.v1.GetTodayUnreadArticlesCountRequest
-	(*GetTodayUnreadArticlesCountResponse)(nil),       // 279: services.datahub.v1.GetTodayUnreadArticlesCountResponse
-	(*TrendDataPoint)(nil),                            // 280: services.datahub.v1.TrendDataPoint
-	(*GetTrendStatsRequest)(nil),                      // 281: services.datahub.v1.GetTrendStatsRequest
-	(*GetTrendStatsResponse)(nil),                     // 282: services.datahub.v1.GetTrendStatsResponse
-	(*ListUserFeedIDsRequest)(nil),                    // 283: services.datahub.v1.ListUserFeedIDsRequest
-	(*ListUserFeedIDsResponse)(nil),                   // 284: services.datahub.v1.ListUserFeedIDsResponse
-	(*NotificationPreferences)(nil),                   // 285: services.datahub.v1.NotificationPreferences
-	(*PushSubscription)(nil),                          // 286: services.datahub.v1.PushSubscription
-	(*UpsertPushSubscriptionRequest)(nil),             // 287: services.datahub.v1.UpsertPushSubscriptionRequest
-	(*UpsertPushSubscriptionResponse)(nil),            // 288: services.datahub.v1.UpsertPushSubscriptionResponse
-	(*GetPushSubscriptionRequest)(nil),                // 289: services.datahub.v1.GetPushSubscriptionRequest
-	(*GetPushSubscriptionResponse)(nil),               // 290: services.datahub.v1.GetPushSubscriptionResponse
-	(*UpdatePushSubscriptionPreferencesRequest)(nil),  // 291: services.datahub.v1.UpdatePushSubscriptionPreferencesRequest
-	(*UpdatePushSubscriptionPreferencesResponse)(nil), // 292: services.datahub.v1.UpdatePushSubscriptionPreferencesResponse
-	(*DeletePushSubscriptionRequest)(nil),             // 293: services.datahub.v1.DeletePushSubscriptionRequest
-	(*DeletePushSubscriptionResponse)(nil),            // 294: services.datahub.v1.DeletePushSubscriptionResponse
-	(*ListPushSubscriptionsForUserRequest)(nil),       // 295: services.datahub.v1.ListPushSubscriptionsForUserRequest
-	(*ListPushSubscriptionsForUserResponse)(nil),      // 296: services.datahub.v1.ListPushSubscriptionsForUserResponse
-	(*PushDelivery)(nil),                              // 297: services.datahub.v1.PushDelivery
-	(*EnqueueNotificationRequest)(nil),                // 298: services.datahub.v1.EnqueueNotificationRequest
-	(*EnqueueNotificationResponse)(nil),               // 299: services.datahub.v1.EnqueueNotificationResponse
-	(*ClaimNotificationBatchRequest)(nil),             // 300: services.datahub.v1.ClaimNotificationBatchRequest
-	(*ClaimNotificationBatchResponse)(nil),            // 301: services.datahub.v1.ClaimNotificationBatchResponse
-	(*MarkNotificationSentRequest)(nil),               // 302: services.datahub.v1.MarkNotificationSentRequest
-	(*MarkNotificationSentResponse)(nil),              // 303: services.datahub.v1.MarkNotificationSentResponse
-	(*ReleaseNotificationRequest)(nil),                // 304: services.datahub.v1.ReleaseNotificationRequest
-	(*ReleaseNotificationResponse)(nil),               // 305: services.datahub.v1.ReleaseNotificationResponse
-	(*MarkNotificationDeadRequest)(nil),               // 306: services.datahub.v1.MarkNotificationDeadRequest
-	(*MarkNotificationDeadResponse)(nil),              // 307: services.datahub.v1.MarkNotificationDeadResponse
-	(*GetNotificationBacklogAgeRequest)(nil),          // 308: services.datahub.v1.GetNotificationBacklogAgeRequest
-	(*GetNotificationBacklogAgeResponse)(nil),         // 309: services.datahub.v1.GetNotificationBacklogAgeResponse
-	nil,                           // 310: services.datahub.v1.BatchGetOgImageURLsResponse.OgImageUrlsEntry
-	nil,                           // 311: services.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry
-	nil,                           // 312: services.datahub.v1.BatchGetFeedTitlesByIDsResponse.TitlesEntry
-	(*timestamppb.Timestamp)(nil), // 313: google.protobuf.Timestamp
+	(*FeedOgImageTarget)(nil),                         // 88: services.datahub.v1.FeedOgImageTarget
+	(*GetFeedOgImageTargetsRequest)(nil),              // 89: services.datahub.v1.GetFeedOgImageTargetsRequest
+	(*GetFeedOgImageTargetsResponse)(nil),             // 90: services.datahub.v1.GetFeedOgImageTargetsResponse
+	(*SaveFeedOgImageRequest)(nil),                    // 91: services.datahub.v1.SaveFeedOgImageRequest
+	(*SaveFeedOgImageResponse)(nil),                   // 92: services.datahub.v1.SaveFeedOgImageResponse
+	(*PurgeExpiredFeedOgImagesRequest)(nil),           // 93: services.datahub.v1.PurgeExpiredFeedOgImagesRequest
+	(*PurgeExpiredFeedOgImagesResponse)(nil),          // 94: services.datahub.v1.PurgeExpiredFeedOgImagesResponse
+	(*ListUnwarmedOgImageURLsRequest)(nil),            // 95: services.datahub.v1.ListUnwarmedOgImageURLsRequest
+	(*ListUnwarmedOgImageURLsResponse)(nil),           // 96: services.datahub.v1.ListUnwarmedOgImageURLsResponse
+	(*PurgeExpiredArticleHeadsRequest)(nil),           // 97: services.datahub.v1.PurgeExpiredArticleHeadsRequest
+	(*PurgeExpiredArticleHeadsResponse)(nil),          // 98: services.datahub.v1.PurgeExpiredArticleHeadsResponse
+	(*ImageProxyCacheEntry)(nil),                      // 99: services.datahub.v1.ImageProxyCacheEntry
+	(*GetImageProxyCacheRequest)(nil),                 // 100: services.datahub.v1.GetImageProxyCacheRequest
+	(*GetImageProxyCacheResponse)(nil),                // 101: services.datahub.v1.GetImageProxyCacheResponse
+	(*PutImageProxyCacheRequest)(nil),                 // 102: services.datahub.v1.PutImageProxyCacheRequest
+	(*PutImageProxyCacheResponse)(nil),                // 103: services.datahub.v1.PutImageProxyCacheResponse
+	(*EvictExpiredImageProxyCacheRequest)(nil),        // 104: services.datahub.v1.EvictExpiredImageProxyCacheRequest
+	(*EvictExpiredImageProxyCacheResponse)(nil),       // 105: services.datahub.v1.EvictExpiredImageProxyCacheResponse
+	(*PurgeImageProxyCacheOlderThanRequest)(nil),      // 106: services.datahub.v1.PurgeImageProxyCacheOlderThanRequest
+	(*PurgeImageProxyCacheOlderThanResponse)(nil),     // 107: services.datahub.v1.PurgeImageProxyCacheOlderThanResponse
+	(*ScrapingDomain)(nil),                            // 108: services.datahub.v1.ScrapingDomain
+	(*GetScrapingDomainByDomainRequest)(nil),          // 109: services.datahub.v1.GetScrapingDomainByDomainRequest
+	(*GetScrapingDomainByDomainResponse)(nil),         // 110: services.datahub.v1.GetScrapingDomainByDomainResponse
+	(*GetScrapingDomainByIDRequest)(nil),              // 111: services.datahub.v1.GetScrapingDomainByIDRequest
+	(*GetScrapingDomainByIDResponse)(nil),             // 112: services.datahub.v1.GetScrapingDomainByIDResponse
+	(*SaveScrapingDomainRequest)(nil),                 // 113: services.datahub.v1.SaveScrapingDomainRequest
+	(*SaveScrapingDomainResponse)(nil),                // 114: services.datahub.v1.SaveScrapingDomainResponse
+	(*ListScrapingDomainsRequest)(nil),                // 115: services.datahub.v1.ListScrapingDomainsRequest
+	(*ListScrapingDomainsResponse)(nil),               // 116: services.datahub.v1.ListScrapingDomainsResponse
+	(*ScrapingPolicyUpdate)(nil),                      // 117: services.datahub.v1.ScrapingPolicyUpdate
+	(*UpdateScrapingDomainPolicyRequest)(nil),         // 118: services.datahub.v1.UpdateScrapingDomainPolicyRequest
+	(*UpdateScrapingDomainPolicyResponse)(nil),        // 119: services.datahub.v1.UpdateScrapingDomainPolicyResponse
+	(*SaveDeclinedDomainRequest)(nil),                 // 120: services.datahub.v1.SaveDeclinedDomainRequest
+	(*SaveDeclinedDomainResponse)(nil),                // 121: services.datahub.v1.SaveDeclinedDomainResponse
+	(*IsDomainDeclinedRequest)(nil),                   // 122: services.datahub.v1.IsDomainDeclinedRequest
+	(*IsDomainDeclinedResponse)(nil),                  // 123: services.datahub.v1.IsDomainDeclinedResponse
+	(*ListSubscribedUserIDsByFeedLinkIDRequest)(nil),  // 124: services.datahub.v1.ListSubscribedUserIDsByFeedLinkIDRequest
+	(*ListSubscribedUserIDsByFeedLinkIDResponse)(nil), // 125: services.datahub.v1.ListSubscribedUserIDsByFeedLinkIDResponse
+	(*CheckArticleExistsByURLForUserRequest)(nil),     // 126: services.datahub.v1.CheckArticleExistsByURLForUserRequest
+	(*CheckArticleExistsByURLForUserResponse)(nil),    // 127: services.datahub.v1.CheckArticleExistsByURLForUserResponse
+	(*ArchiveArticleRequest)(nil),                     // 128: services.datahub.v1.ArchiveArticleRequest
+	(*ArchiveArticleResponse)(nil),                    // 129: services.datahub.v1.ArchiveArticleResponse
+	(*SaveArticleHeadRequest)(nil),                    // 130: services.datahub.v1.SaveArticleHeadRequest
+	(*SaveArticleHeadResponse)(nil),                   // 131: services.datahub.v1.SaveArticleHeadResponse
+	(*ArticleContent)(nil),                            // 132: services.datahub.v1.ArticleContent
+	(*UserArticle)(nil),                               // 133: services.datahub.v1.UserArticle
+	(*GetArticleByURLRequest)(nil),                    // 134: services.datahub.v1.GetArticleByURLRequest
+	(*GetArticleByURLResponse)(nil),                   // 135: services.datahub.v1.GetArticleByURLResponse
+	(*BatchGetArticlesByURLsRequest)(nil),             // 136: services.datahub.v1.BatchGetArticlesByURLsRequest
+	(*BatchGetArticlesByURLsResponse)(nil),            // 137: services.datahub.v1.BatchGetArticlesByURLsResponse
+	(*GetArticleContentByIDRequest)(nil),              // 138: services.datahub.v1.GetArticleContentByIDRequest
+	(*GetArticleContentByIDResponse)(nil),             // 139: services.datahub.v1.GetArticleContentByIDResponse
+	(*ListArticlesCursorRequest)(nil),                 // 140: services.datahub.v1.ListArticlesCursorRequest
+	(*ListArticlesCursorResponse)(nil),                // 141: services.datahub.v1.ListArticlesCursorResponse
+	(*ListArticleIDsCursorRequest)(nil),               // 142: services.datahub.v1.ListArticleIDsCursorRequest
+	(*ListArticleIDsCursorResponse)(nil),              // 143: services.datahub.v1.ListArticleIDsCursorResponse
+	(*BatchGetArticlesByIDsRequest)(nil),              // 144: services.datahub.v1.BatchGetArticlesByIDsRequest
+	(*BatchGetArticlesByIDsResponse)(nil),             // 145: services.datahub.v1.BatchGetArticlesByIDsResponse
+	(*GetLatestArticleByFeedIDRequest)(nil),           // 146: services.datahub.v1.GetLatestArticleByFeedIDRequest
+	(*GetLatestArticleByFeedIDResponse)(nil),          // 147: services.datahub.v1.GetLatestArticleByFeedIDResponse
+	(*LookupArticleURLRequest)(nil),                   // 148: services.datahub.v1.LookupArticleURLRequest
+	(*LookupArticleURLResponse)(nil),                  // 149: services.datahub.v1.LookupArticleURLResponse
+	(*BackfillArticle)(nil),                           // 150: services.datahub.v1.BackfillArticle
+	(*CountBackfillArticlesRequest)(nil),              // 151: services.datahub.v1.CountBackfillArticlesRequest
+	(*CountBackfillArticlesResponse)(nil),             // 152: services.datahub.v1.CountBackfillArticlesResponse
+	(*ListBackfillArticlesRequest)(nil),               // 153: services.datahub.v1.ListBackfillArticlesRequest
+	(*ListBackfillArticlesResponse)(nil),              // 154: services.datahub.v1.ListBackfillArticlesResponse
+	(*BackfillSummaryTitle)(nil),                      // 155: services.datahub.v1.BackfillSummaryTitle
+	(*CountBackfillSummaryTitlesRequest)(nil),         // 156: services.datahub.v1.CountBackfillSummaryTitlesRequest
+	(*CountBackfillSummaryTitlesResponse)(nil),        // 157: services.datahub.v1.CountBackfillSummaryTitlesResponse
+	(*ListBackfillSummaryTitlesRequest)(nil),          // 158: services.datahub.v1.ListBackfillSummaryTitlesRequest
+	(*ListBackfillSummaryTitlesResponse)(nil),         // 159: services.datahub.v1.ListBackfillSummaryTitlesResponse
+	(*FeedLink)(nil),                                  // 160: services.datahub.v1.FeedLink
+	(*FeedLinkAvailability)(nil),                      // 161: services.datahub.v1.FeedLinkAvailability
+	(*FeedLinkWithHealth)(nil),                        // 162: services.datahub.v1.FeedLinkWithHealth
+	(*FeedLinkDomain)(nil),                            // 163: services.datahub.v1.FeedLinkDomain
+	(*FeedLinkExportEntry)(nil),                       // 164: services.datahub.v1.FeedLinkExportEntry
+	(*Feed)(nil),                                      // 165: services.datahub.v1.Feed
+	(*FeedRegistration)(nil),                          // 166: services.datahub.v1.FeedRegistration
+	(*FeedRegistrationResult)(nil),                    // 167: services.datahub.v1.FeedRegistrationResult
+	(*FeedSummary)(nil),                               // 168: services.datahub.v1.FeedSummary
+	(*FeedAndArticle)(nil),                            // 169: services.datahub.v1.FeedAndArticle
+	(*InoreaderSummary)(nil),                          // 170: services.datahub.v1.InoreaderSummary
+	(*RegisterFeedLinkRequest)(nil),                   // 171: services.datahub.v1.RegisterFeedLinkRequest
+	(*RegisterFeedLinkResponse)(nil),                  // 172: services.datahub.v1.RegisterFeedLinkResponse
+	(*BulkRegisterFeedLinksRequest)(nil),              // 173: services.datahub.v1.BulkRegisterFeedLinksRequest
+	(*BulkRegisterFeedLinksResponse)(nil),             // 174: services.datahub.v1.BulkRegisterFeedLinksResponse
+	(*ListFeedLinksRequest)(nil),                      // 175: services.datahub.v1.ListFeedLinksRequest
+	(*ListFeedLinksResponse)(nil),                     // 176: services.datahub.v1.ListFeedLinksResponse
+	(*ListFeedLinksWithHealthRequest)(nil),            // 177: services.datahub.v1.ListFeedLinksWithHealthRequest
+	(*ListFeedLinksWithHealthResponse)(nil),           // 178: services.datahub.v1.ListFeedLinksWithHealthResponse
+	(*DeleteFeedLinkRequest)(nil),                     // 179: services.datahub.v1.DeleteFeedLinkRequest
+	(*DeleteFeedLinkResponse)(nil),                    // 180: services.datahub.v1.DeleteFeedLinkResponse
+	(*ResolveFeedLinkIDByURLRequest)(nil),             // 181: services.datahub.v1.ResolveFeedLinkIDByURLRequest
+	(*ResolveFeedLinkIDByURLResponse)(nil),            // 182: services.datahub.v1.ResolveFeedLinkIDByURLResponse
+	(*ListFeedLinkDomainsRequest)(nil),                // 183: services.datahub.v1.ListFeedLinkDomainsRequest
+	(*ListFeedLinkDomainsResponse)(nil),               // 184: services.datahub.v1.ListFeedLinkDomainsResponse
+	(*ListRSSFeedURLsRequest)(nil),                    // 185: services.datahub.v1.ListRSSFeedURLsRequest
+	(*ListRSSFeedURLsResponse)(nil),                   // 186: services.datahub.v1.ListRSSFeedURLsResponse
+	(*ListFeedLinksForExportRequest)(nil),             // 187: services.datahub.v1.ListFeedLinksForExportRequest
+	(*ListFeedLinksForExportResponse)(nil),            // 188: services.datahub.v1.ListFeedLinksForExportResponse
+	(*RecordFeedLinkFailureRequest)(nil),              // 189: services.datahub.v1.RecordFeedLinkFailureRequest
+	(*RecordFeedLinkFailureResponse)(nil),             // 190: services.datahub.v1.RecordFeedLinkFailureResponse
+	(*ResetFeedLinkFailuresRequest)(nil),              // 191: services.datahub.v1.ResetFeedLinkFailuresRequest
+	(*ResetFeedLinkFailuresResponse)(nil),             // 192: services.datahub.v1.ResetFeedLinkFailuresResponse
+	(*RegisterFeedsRequest)(nil),                      // 193: services.datahub.v1.RegisterFeedsRequest
+	(*RegisterFeedsResponse)(nil),                     // 194: services.datahub.v1.RegisterFeedsResponse
+	(*ListFeedsCursorRequest)(nil),                    // 195: services.datahub.v1.ListFeedsCursorRequest
+	(*ListFeedsCursorResponse)(nil),                   // 196: services.datahub.v1.ListFeedsCursorResponse
+	(*ListFeedsPageRequest)(nil),                      // 197: services.datahub.v1.ListFeedsPageRequest
+	(*ListFeedsPageResponse)(nil),                     // 198: services.datahub.v1.ListFeedsPageResponse
+	(*ListFeedsLimitRequest)(nil),                     // 199: services.datahub.v1.ListFeedsLimitRequest
+	(*ListFeedsLimitResponse)(nil),                    // 200: services.datahub.v1.ListFeedsLimitResponse
+	(*GetSingleFeedRequest)(nil),                      // 201: services.datahub.v1.GetSingleFeedRequest
+	(*GetSingleFeedResponse)(nil),                     // 202: services.datahub.v1.GetSingleFeedResponse
+	(*ListFeedsByFeedLinkIDRequest)(nil),              // 203: services.datahub.v1.ListFeedsByFeedLinkIDRequest
+	(*ListFeedsByFeedLinkIDResponse)(nil),             // 204: services.datahub.v1.ListFeedsByFeedLinkIDResponse
+	(*GetFeedSummaryRequest)(nil),                     // 205: services.datahub.v1.GetFeedSummaryRequest
+	(*GetFeedSummaryResponse)(nil),                    // 206: services.datahub.v1.GetFeedSummaryResponse
+	(*GetArticleSummaryByArticleIDRequest)(nil),       // 207: services.datahub.v1.GetArticleSummaryByArticleIDRequest
+	(*GetArticleSummaryByArticleIDResponse)(nil),      // 208: services.datahub.v1.GetArticleSummaryByArticleIDResponse
+	(*SearchFeedsByTitleRequest)(nil),                 // 209: services.datahub.v1.SearchFeedsByTitleRequest
+	(*SearchFeedsByTitleResponse)(nil),                // 210: services.datahub.v1.SearchFeedsByTitleResponse
+	(*GetRandomFeedRequest)(nil),                      // 211: services.datahub.v1.GetRandomFeedRequest
+	(*GetRandomFeedResponse)(nil),                     // 212: services.datahub.v1.GetRandomFeedResponse
+	(*GetFeedURLsByArticleIDsRequest)(nil),            // 213: services.datahub.v1.GetFeedURLsByArticleIDsRequest
+	(*GetFeedURLsByArticleIDsResponse)(nil),           // 214: services.datahub.v1.GetFeedURLsByArticleIDsResponse
+	(*BatchGetFeedTitlesByIDsRequest)(nil),            // 215: services.datahub.v1.BatchGetFeedTitlesByIDsRequest
+	(*BatchGetFeedTitlesByIDsResponse)(nil),           // 216: services.datahub.v1.BatchGetFeedTitlesByIDsResponse
+	(*GetInoreaderSummariesByURLsRequest)(nil),        // 217: services.datahub.v1.GetInoreaderSummariesByURLsRequest
+	(*GetInoreaderSummariesByURLsResponse)(nil),       // 218: services.datahub.v1.GetInoreaderSummariesByURLsResponse
+	(*FeedSubscription)(nil),                          // 219: services.datahub.v1.FeedSubscription
+	(*MarkFeedReadRequest)(nil),                       // 220: services.datahub.v1.MarkFeedReadRequest
+	(*MarkFeedReadResponse)(nil),                      // 221: services.datahub.v1.MarkFeedReadResponse
+	(*MarkArticleReadRequest)(nil),                    // 222: services.datahub.v1.MarkArticleReadRequest
+	(*MarkArticleReadResponse)(nil),                   // 223: services.datahub.v1.MarkArticleReadResponse
+	(*GetReadFeedIDsRequest)(nil),                     // 224: services.datahub.v1.GetReadFeedIDsRequest
+	(*GetReadFeedIDsResponse)(nil),                    // 225: services.datahub.v1.GetReadFeedIDsResponse
+	(*GetAllReadFeedIDsRequest)(nil),                  // 226: services.datahub.v1.GetAllReadFeedIDsRequest
+	(*GetAllReadFeedIDsResponse)(nil),                 // 227: services.datahub.v1.GetAllReadFeedIDsResponse
+	(*GetUserSubscribedFeedLinkIDsRequest)(nil),       // 228: services.datahub.v1.GetUserSubscribedFeedLinkIDsRequest
+	(*GetUserSubscribedFeedLinkIDsResponse)(nil),      // 229: services.datahub.v1.GetUserSubscribedFeedLinkIDsResponse
+	(*ListSubscriptionsRequest)(nil),                  // 230: services.datahub.v1.ListSubscriptionsRequest
+	(*ListSubscriptionsResponse)(nil),                 // 231: services.datahub.v1.ListSubscriptionsResponse
+	(*SubscribeRequest)(nil),                          // 232: services.datahub.v1.SubscribeRequest
+	(*SubscribeResponse)(nil),                         // 233: services.datahub.v1.SubscribeResponse
+	(*UnsubscribeRequest)(nil),                        // 234: services.datahub.v1.UnsubscribeRequest
+	(*UnsubscribeResponse)(nil),                       // 235: services.datahub.v1.UnsubscribeResponse
+	(*AddFavoriteFeedRequest)(nil),                    // 236: services.datahub.v1.AddFavoriteFeedRequest
+	(*AddFavoriteFeedResponse)(nil),                   // 237: services.datahub.v1.AddFavoriteFeedResponse
+	(*RemoveFavoriteFeedRequest)(nil),                 // 238: services.datahub.v1.RemoveFavoriteFeedRequest
+	(*RemoveFavoriteFeedResponse)(nil),                // 239: services.datahub.v1.RemoveFavoriteFeedResponse
+	(*FeedTag)(nil),                                   // 240: services.datahub.v1.FeedTag
+	(*GetArticleTagsRequest)(nil),                     // 241: services.datahub.v1.GetArticleTagsRequest
+	(*GetArticleTagsResponse)(nil),                    // 242: services.datahub.v1.GetArticleTagsResponse
+	(*GetFeedTagsRequest)(nil),                        // 243: services.datahub.v1.GetFeedTagsRequest
+	(*GetFeedTagsResponse)(nil),                       // 244: services.datahub.v1.GetFeedTagsResponse
+	(*TagCooccurrence)(nil),                           // 245: services.datahub.v1.TagCooccurrence
+	(*GetTagCooccurrencesRequest)(nil),                // 246: services.datahub.v1.GetTagCooccurrencesRequest
+	(*GetTagCooccurrencesResponse)(nil),               // 247: services.datahub.v1.GetTagCooccurrencesResponse
+	(*TagPrefixHit)(nil),                              // 248: services.datahub.v1.TagPrefixHit
+	(*SearchTagsByPrefixRequest)(nil),                 // 249: services.datahub.v1.SearchTagsByPrefixRequest
+	(*SearchTagsByPrefixResponse)(nil),                // 250: services.datahub.v1.SearchTagsByPrefixResponse
+	(*TagArticleCount)(nil),                           // 251: services.datahub.v1.TagArticleCount
+	(*GetTagArticleCountsRequest)(nil),                // 252: services.datahub.v1.GetTagArticleCountsRequest
+	(*GetTagArticleCountsResponse)(nil),               // 253: services.datahub.v1.GetTagArticleCountsResponse
+	(*TagTrailArticle)(nil),                           // 254: services.datahub.v1.TagTrailArticle
+	(*ListArticlesByTagIDRequest)(nil),                // 255: services.datahub.v1.ListArticlesByTagIDRequest
+	(*ListArticlesByTagIDResponse)(nil),               // 256: services.datahub.v1.ListArticlesByTagIDResponse
+	(*ListArticlesByTagNameRequest)(nil),              // 257: services.datahub.v1.ListArticlesByTagNameRequest
+	(*ListArticlesByTagNameResponse)(nil),             // 258: services.datahub.v1.ListArticlesByTagNameResponse
+	(*GetArticleTitleAndLinkRequest)(nil),             // 259: services.datahub.v1.GetArticleTitleAndLinkRequest
+	(*GetArticleTitleAndLinkResponse)(nil),            // 260: services.datahub.v1.GetArticleTitleAndLinkResponse
+	(*SummaryVersion)(nil),                            // 261: services.datahub.v1.SummaryVersion
+	(*CreateSummaryVersionRequest)(nil),               // 262: services.datahub.v1.CreateSummaryVersionRequest
+	(*CreateSummaryVersionResponse)(nil),              // 263: services.datahub.v1.CreateSummaryVersionResponse
+	(*MarkSummaryVersionSupersededRequest)(nil),       // 264: services.datahub.v1.MarkSummaryVersionSupersededRequest
+	(*MarkSummaryVersionSupersededResponse)(nil),      // 265: services.datahub.v1.MarkSummaryVersionSupersededResponse
+	(*GetSummaryVersionByIDRequest)(nil),              // 266: services.datahub.v1.GetSummaryVersionByIDRequest
+	(*GetSummaryVersionByIDResponse)(nil),             // 267: services.datahub.v1.GetSummaryVersionByIDResponse
+	(*GetLatestSummaryVersionRequest)(nil),            // 268: services.datahub.v1.GetLatestSummaryVersionRequest
+	(*GetLatestSummaryVersionResponse)(nil),           // 269: services.datahub.v1.GetLatestSummaryVersionResponse
+	(*TagSetVersion)(nil),                             // 270: services.datahub.v1.TagSetVersion
+	(*CreateTagSetVersionRequest)(nil),                // 271: services.datahub.v1.CreateTagSetVersionRequest
+	(*CreateTagSetVersionResponse)(nil),               // 272: services.datahub.v1.CreateTagSetVersionResponse
+	(*MarkTagSetVersionSupersededRequest)(nil),        // 273: services.datahub.v1.MarkTagSetVersionSupersededRequest
+	(*MarkTagSetVersionSupersededResponse)(nil),       // 274: services.datahub.v1.MarkTagSetVersionSupersededResponse
+	(*GetTagSetVersionByIDRequest)(nil),               // 275: services.datahub.v1.GetTagSetVersionByIDRequest
+	(*GetTagSetVersionByIDResponse)(nil),              // 276: services.datahub.v1.GetTagSetVersionByIDResponse
+	(*GetFeedAmountRequest)(nil),                      // 277: services.datahub.v1.GetFeedAmountRequest
+	(*GetFeedAmountResponse)(nil),                     // 278: services.datahub.v1.GetFeedAmountResponse
+	(*GetTotalArticlesCountRequest)(nil),              // 279: services.datahub.v1.GetTotalArticlesCountRequest
+	(*GetTotalArticlesCountResponse)(nil),             // 280: services.datahub.v1.GetTotalArticlesCountResponse
+	(*GetSummarizedArticlesCountRequest)(nil),         // 281: services.datahub.v1.GetSummarizedArticlesCountRequest
+	(*GetSummarizedArticlesCountResponse)(nil),        // 282: services.datahub.v1.GetSummarizedArticlesCountResponse
+	(*GetUnsummarizedArticlesCountRequest)(nil),       // 283: services.datahub.v1.GetUnsummarizedArticlesCountRequest
+	(*GetUnsummarizedArticlesCountResponse)(nil),      // 284: services.datahub.v1.GetUnsummarizedArticlesCountResponse
+	(*GetTodayUnreadArticlesCountRequest)(nil),        // 285: services.datahub.v1.GetTodayUnreadArticlesCountRequest
+	(*GetTodayUnreadArticlesCountResponse)(nil),       // 286: services.datahub.v1.GetTodayUnreadArticlesCountResponse
+	(*TrendDataPoint)(nil),                            // 287: services.datahub.v1.TrendDataPoint
+	(*GetTrendStatsRequest)(nil),                      // 288: services.datahub.v1.GetTrendStatsRequest
+	(*GetTrendStatsResponse)(nil),                     // 289: services.datahub.v1.GetTrendStatsResponse
+	(*ListUserFeedIDsRequest)(nil),                    // 290: services.datahub.v1.ListUserFeedIDsRequest
+	(*ListUserFeedIDsResponse)(nil),                   // 291: services.datahub.v1.ListUserFeedIDsResponse
+	(*NotificationPreferences)(nil),                   // 292: services.datahub.v1.NotificationPreferences
+	(*PushSubscription)(nil),                          // 293: services.datahub.v1.PushSubscription
+	(*UpsertPushSubscriptionRequest)(nil),             // 294: services.datahub.v1.UpsertPushSubscriptionRequest
+	(*UpsertPushSubscriptionResponse)(nil),            // 295: services.datahub.v1.UpsertPushSubscriptionResponse
+	(*GetPushSubscriptionRequest)(nil),                // 296: services.datahub.v1.GetPushSubscriptionRequest
+	(*GetPushSubscriptionResponse)(nil),               // 297: services.datahub.v1.GetPushSubscriptionResponse
+	(*UpdatePushSubscriptionPreferencesRequest)(nil),  // 298: services.datahub.v1.UpdatePushSubscriptionPreferencesRequest
+	(*UpdatePushSubscriptionPreferencesResponse)(nil), // 299: services.datahub.v1.UpdatePushSubscriptionPreferencesResponse
+	(*DeletePushSubscriptionRequest)(nil),             // 300: services.datahub.v1.DeletePushSubscriptionRequest
+	(*DeletePushSubscriptionResponse)(nil),            // 301: services.datahub.v1.DeletePushSubscriptionResponse
+	(*ListPushSubscriptionsForUserRequest)(nil),       // 302: services.datahub.v1.ListPushSubscriptionsForUserRequest
+	(*ListPushSubscriptionsForUserResponse)(nil),      // 303: services.datahub.v1.ListPushSubscriptionsForUserResponse
+	(*PushDelivery)(nil),                              // 304: services.datahub.v1.PushDelivery
+	(*EnqueueNotificationRequest)(nil),                // 305: services.datahub.v1.EnqueueNotificationRequest
+	(*EnqueueNotificationResponse)(nil),               // 306: services.datahub.v1.EnqueueNotificationResponse
+	(*ClaimNotificationBatchRequest)(nil),             // 307: services.datahub.v1.ClaimNotificationBatchRequest
+	(*ClaimNotificationBatchResponse)(nil),            // 308: services.datahub.v1.ClaimNotificationBatchResponse
+	(*MarkNotificationSentRequest)(nil),               // 309: services.datahub.v1.MarkNotificationSentRequest
+	(*MarkNotificationSentResponse)(nil),              // 310: services.datahub.v1.MarkNotificationSentResponse
+	(*ReleaseNotificationRequest)(nil),                // 311: services.datahub.v1.ReleaseNotificationRequest
+	(*ReleaseNotificationResponse)(nil),               // 312: services.datahub.v1.ReleaseNotificationResponse
+	(*MarkNotificationDeadRequest)(nil),               // 313: services.datahub.v1.MarkNotificationDeadRequest
+	(*MarkNotificationDeadResponse)(nil),              // 314: services.datahub.v1.MarkNotificationDeadResponse
+	(*GetNotificationBacklogAgeRequest)(nil),          // 315: services.datahub.v1.GetNotificationBacklogAgeRequest
+	(*GetNotificationBacklogAgeResponse)(nil),         // 316: services.datahub.v1.GetNotificationBacklogAgeResponse
+	nil,                           // 317: services.datahub.v1.BatchGetOgImageURLsResponse.OgImageUrlsEntry
+	nil,                           // 318: services.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry
+	nil,                           // 319: services.datahub.v1.BatchGetFeedTitlesByIDsResponse.TitlesEntry
+	(*timestamppb.Timestamp)(nil), // 320: google.protobuf.Timestamp
 }
 var file_services_datahub_v1_datahub_proto_depIdxs = []int32{
-	313, // 0: services.datahub.v1.ArticleWithTags.created_at:type_name -> google.protobuf.Timestamp
-	313, // 1: services.datahub.v1.ArticleWithTags.published_at:type_name -> google.protobuf.Timestamp
-	313, // 2: services.datahub.v1.DeletedArticle.deleted_at:type_name -> google.protobuf.Timestamp
-	313, // 3: services.datahub.v1.ListArticlesWithTagsRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	320, // 0: services.datahub.v1.ArticleWithTags.created_at:type_name -> google.protobuf.Timestamp
+	320, // 1: services.datahub.v1.ArticleWithTags.published_at:type_name -> google.protobuf.Timestamp
+	320, // 2: services.datahub.v1.DeletedArticle.deleted_at:type_name -> google.protobuf.Timestamp
+	320, // 3: services.datahub.v1.ListArticlesWithTagsRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	6,   // 4: services.datahub.v1.ListArticlesWithTagsResponse.articles:type_name -> services.datahub.v1.ArticleWithTags
-	313, // 5: services.datahub.v1.ListArticlesWithTagsResponse.next_created_at:type_name -> google.protobuf.Timestamp
-	313, // 6: services.datahub.v1.ListArticlesWithTagsForwardRequest.incremental_mark:type_name -> google.protobuf.Timestamp
-	313, // 7: services.datahub.v1.ListArticlesWithTagsForwardRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	320, // 5: services.datahub.v1.ListArticlesWithTagsResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	320, // 6: services.datahub.v1.ListArticlesWithTagsForwardRequest.incremental_mark:type_name -> google.protobuf.Timestamp
+	320, // 7: services.datahub.v1.ListArticlesWithTagsForwardRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	6,   // 8: services.datahub.v1.ListArticlesWithTagsForwardResponse.articles:type_name -> services.datahub.v1.ArticleWithTags
-	313, // 9: services.datahub.v1.ListArticlesWithTagsForwardResponse.next_created_at:type_name -> google.protobuf.Timestamp
-	313, // 10: services.datahub.v1.ListDeletedArticlesRequest.last_deleted_at:type_name -> google.protobuf.Timestamp
+	320, // 9: services.datahub.v1.ListArticlesWithTagsForwardResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	320, // 10: services.datahub.v1.ListDeletedArticlesRequest.last_deleted_at:type_name -> google.protobuf.Timestamp
 	7,   // 11: services.datahub.v1.ListDeletedArticlesResponse.articles:type_name -> services.datahub.v1.DeletedArticle
-	313, // 12: services.datahub.v1.ListDeletedArticlesResponse.next_deleted_at:type_name -> google.protobuf.Timestamp
-	313, // 13: services.datahub.v1.GetLatestArticleTimestampResponse.latest_created_at:type_name -> google.protobuf.Timestamp
+	320, // 12: services.datahub.v1.ListDeletedArticlesResponse.next_deleted_at:type_name -> google.protobuf.Timestamp
+	320, // 13: services.datahub.v1.GetLatestArticleTimestampResponse.latest_created_at:type_name -> google.protobuf.Timestamp
 	6,   // 14: services.datahub.v1.GetArticleByIDResponse.article:type_name -> services.datahub.v1.ArticleWithTags
-	313, // 15: services.datahub.v1.CreateArticleRequest.published_at:type_name -> google.protobuf.Timestamp
+	320, // 15: services.datahub.v1.CreateArticleRequest.published_at:type_name -> google.protobuf.Timestamp
 	0,   // 16: services.datahub.v1.SaveArticleSummaryRequest.summary_versioning:type_name -> services.datahub.v1.SummaryVersioning
 	30,  // 17: services.datahub.v1.ListFeedURLsResponse.feeds:type_name -> services.datahub.v1.FeedURL
 	32,  // 18: services.datahub.v1.UpsertArticleTagsRequest.tags:type_name -> services.datahub.v1.TagItem
 	31,  // 19: services.datahub.v1.BatchUpsertArticleTagsRequest.items:type_name -> services.datahub.v1.UpsertArticleTagsRequest
-	313, // 20: services.datahub.v1.ListUntaggedArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	320, // 20: services.datahub.v1.ListUntaggedArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	6,   // 21: services.datahub.v1.ListUntaggedArticlesResponse.articles:type_name -> services.datahub.v1.ArticleWithTags
-	313, // 22: services.datahub.v1.ListUntaggedArticlesResponse.next_created_at:type_name -> google.protobuf.Timestamp
-	313, // 23: services.datahub.v1.ArticleTagEntry.updated_at:type_name -> google.protobuf.Timestamp
+	320, // 22: services.datahub.v1.ListUntaggedArticlesResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	320, // 23: services.datahub.v1.ArticleTagEntry.updated_at:type_name -> google.protobuf.Timestamp
 	39,  // 24: services.datahub.v1.ArticleTagsEntry.tags:type_name -> services.datahub.v1.ArticleTagEntry
 	40,  // 25: services.datahub.v1.BatchGetTagsByArticleIDsResponse.items:type_name -> services.datahub.v1.ArticleTagsEntry
-	313, // 26: services.datahub.v1.ArticleWithSummaryItem.created_at:type_name -> google.protobuf.Timestamp
-	313, // 27: services.datahub.v1.FindArticlesWithSummariesRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	320, // 26: services.datahub.v1.ArticleWithSummaryItem.created_at:type_name -> google.protobuf.Timestamp
+	320, // 27: services.datahub.v1.FindArticlesWithSummariesRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	46,  // 28: services.datahub.v1.FindArticlesWithSummariesResponse.articles:type_name -> services.datahub.v1.ArticleWithSummaryItem
-	313, // 29: services.datahub.v1.FindArticlesWithSummariesResponse.next_created_at:type_name -> google.protobuf.Timestamp
-	313, // 30: services.datahub.v1.UnsummarizedArticle.created_at:type_name -> google.protobuf.Timestamp
-	313, // 31: services.datahub.v1.ListUnsummarizedArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	320, // 29: services.datahub.v1.FindArticlesWithSummariesResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	320, // 30: services.datahub.v1.UnsummarizedArticle.created_at:type_name -> google.protobuf.Timestamp
+	320, // 31: services.datahub.v1.ListUnsummarizedArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
 	49,  // 32: services.datahub.v1.ListUnsummarizedArticlesResponse.articles:type_name -> services.datahub.v1.UnsummarizedArticle
-	313, // 33: services.datahub.v1.ListUnsummarizedArticlesResponse.next_created_at:type_name -> google.protobuf.Timestamp
+	320, // 33: services.datahub.v1.ListUnsummarizedArticlesResponse.next_created_at:type_name -> google.protobuf.Timestamp
 	58,  // 34: services.datahub.v1.FetchTagCloudResponse.tags:type_name -> services.datahub.v1.TagCloudItem
 	61,  // 35: services.datahub.v1.FetchArticlesByTagResponse.articles:type_name -> services.datahub.v1.ArticleByTagItem
 	63,  // 36: services.datahub.v1.ListRecapArticlesResponse.range:type_name -> services.datahub.v1.RecapArticleRange
 	64,  // 37: services.datahub.v1.ListRecapArticlesResponse.articles:type_name -> services.datahub.v1.RecapArticleItem
 	68,  // 38: services.datahub.v1.ListRecentArticlesResponse.articles:type_name -> services.datahub.v1.RecentArticleItem
 	1,   // 39: services.datahub.v1.OutboxEvent.status:type_name -> services.datahub.v1.OutboxEventStatus
-	313, // 40: services.datahub.v1.OutboxEvent.created_at:type_name -> google.protobuf.Timestamp
+	320, // 40: services.datahub.v1.OutboxEvent.created_at:type_name -> google.protobuf.Timestamp
 	71,  // 41: services.datahub.v1.ClaimOutboxBatchResponse.events:type_name -> services.datahub.v1.OutboxEvent
 	1,   // 42: services.datahub.v1.MarkOutboxProcessedRequest.status:type_name -> services.datahub.v1.OutboxEventStatus
 	80,  // 43: services.datahub.v1.GetArticleHeadResponse.head:type_name -> services.datahub.v1.ArticleHead
-	310, // 44: services.datahub.v1.BatchGetOgImageURLsResponse.og_image_urls:type_name -> services.datahub.v1.BatchGetOgImageURLsResponse.OgImageUrlsEntry
+	317, // 44: services.datahub.v1.BatchGetOgImageURLsResponse.og_image_urls:type_name -> services.datahub.v1.BatchGetOgImageURLsResponse.OgImageUrlsEntry
 	85,  // 45: services.datahub.v1.ListFeedsMissingOgImageResponse.candidates:type_name -> services.datahub.v1.OgImageBackfillCandidate
-	313, // 46: services.datahub.v1.ImageProxyCacheEntry.created_at:type_name -> google.protobuf.Timestamp
-	313, // 47: services.datahub.v1.ImageProxyCacheEntry.expires_at:type_name -> google.protobuf.Timestamp
-	92,  // 48: services.datahub.v1.GetImageProxyCacheResponse.entry:type_name -> services.datahub.v1.ImageProxyCacheEntry
-	92,  // 49: services.datahub.v1.PutImageProxyCacheRequest.entry:type_name -> services.datahub.v1.ImageProxyCacheEntry
-	313, // 50: services.datahub.v1.ScrapingDomain.robots_txt_fetched_at:type_name -> google.protobuf.Timestamp
-	313, // 51: services.datahub.v1.ScrapingDomain.created_at:type_name -> google.protobuf.Timestamp
-	313, // 52: services.datahub.v1.ScrapingDomain.updated_at:type_name -> google.protobuf.Timestamp
-	101, // 53: services.datahub.v1.GetScrapingDomainByDomainResponse.scraping_domain:type_name -> services.datahub.v1.ScrapingDomain
-	101, // 54: services.datahub.v1.GetScrapingDomainByIDResponse.scraping_domain:type_name -> services.datahub.v1.ScrapingDomain
-	101, // 55: services.datahub.v1.SaveScrapingDomainRequest.scraping_domain:type_name -> services.datahub.v1.ScrapingDomain
-	101, // 56: services.datahub.v1.SaveScrapingDomainResponse.scraping_domain:type_name -> services.datahub.v1.ScrapingDomain
-	101, // 57: services.datahub.v1.ListScrapingDomainsResponse.scraping_domains:type_name -> services.datahub.v1.ScrapingDomain
-	110, // 58: services.datahub.v1.UpdateScrapingDomainPolicyRequest.update:type_name -> services.datahub.v1.ScrapingPolicyUpdate
-	313, // 59: services.datahub.v1.UserArticle.published_at:type_name -> google.protobuf.Timestamp
-	313, // 60: services.datahub.v1.UserArticle.created_at:type_name -> google.protobuf.Timestamp
-	125, // 61: services.datahub.v1.GetArticleByURLResponse.article:type_name -> services.datahub.v1.ArticleContent
-	311, // 62: services.datahub.v1.BatchGetArticlesByURLsResponse.articles:type_name -> services.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry
-	125, // 63: services.datahub.v1.GetArticleContentByIDResponse.article:type_name -> services.datahub.v1.ArticleContent
-	313, // 64: services.datahub.v1.ListArticlesCursorRequest.cursor:type_name -> google.protobuf.Timestamp
-	126, // 65: services.datahub.v1.ListArticlesCursorResponse.articles:type_name -> services.datahub.v1.UserArticle
-	313, // 66: services.datahub.v1.ListArticleIDsCursorRequest.cursor:type_name -> google.protobuf.Timestamp
-	126, // 67: services.datahub.v1.BatchGetArticlesByIDsResponse.articles:type_name -> services.datahub.v1.UserArticle
-	125, // 68: services.datahub.v1.GetLatestArticleByFeedIDResponse.article:type_name -> services.datahub.v1.ArticleContent
-	313, // 69: services.datahub.v1.BackfillArticle.created_at:type_name -> google.protobuf.Timestamp
-	313, // 70: services.datahub.v1.BackfillArticle.published_at:type_name -> google.protobuf.Timestamp
-	313, // 71: services.datahub.v1.ListBackfillArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
-	143, // 72: services.datahub.v1.ListBackfillArticlesResponse.articles:type_name -> services.datahub.v1.BackfillArticle
-	313, // 73: services.datahub.v1.BackfillSummaryTitle.generated_at:type_name -> google.protobuf.Timestamp
-	313, // 74: services.datahub.v1.ListBackfillSummaryTitlesRequest.last_generated_at:type_name -> google.protobuf.Timestamp
-	148, // 75: services.datahub.v1.ListBackfillSummaryTitlesResponse.entries:type_name -> services.datahub.v1.BackfillSummaryTitle
-	313, // 76: services.datahub.v1.FeedLinkAvailability.last_failure_at:type_name -> google.protobuf.Timestamp
-	153, // 77: services.datahub.v1.FeedLinkWithHealth.feed_link:type_name -> services.datahub.v1.FeedLink
-	154, // 78: services.datahub.v1.FeedLinkWithHealth.availability:type_name -> services.datahub.v1.FeedLinkAvailability
-	313, // 79: services.datahub.v1.Feed.pub_date:type_name -> google.protobuf.Timestamp
-	313, // 80: services.datahub.v1.Feed.created_at:type_name -> google.protobuf.Timestamp
-	313, // 81: services.datahub.v1.Feed.updated_at:type_name -> google.protobuf.Timestamp
-	313, // 82: services.datahub.v1.FeedRegistration.pub_date:type_name -> google.protobuf.Timestamp
-	313, // 83: services.datahub.v1.FeedRegistration.created_at:type_name -> google.protobuf.Timestamp
-	313, // 84: services.datahub.v1.FeedRegistration.updated_at:type_name -> google.protobuf.Timestamp
-	313, // 85: services.datahub.v1.InoreaderSummary.published_at:type_name -> google.protobuf.Timestamp
-	313, // 86: services.datahub.v1.InoreaderSummary.fetched_at:type_name -> google.protobuf.Timestamp
-	153, // 87: services.datahub.v1.ListFeedLinksResponse.feed_links:type_name -> services.datahub.v1.FeedLink
-	155, // 88: services.datahub.v1.ListFeedLinksWithHealthResponse.feed_links:type_name -> services.datahub.v1.FeedLinkWithHealth
-	156, // 89: services.datahub.v1.ListFeedLinkDomainsResponse.domains:type_name -> services.datahub.v1.FeedLinkDomain
-	153, // 90: services.datahub.v1.ListRSSFeedURLsResponse.feed_links:type_name -> services.datahub.v1.FeedLink
-	157, // 91: services.datahub.v1.ListFeedLinksForExportResponse.entries:type_name -> services.datahub.v1.FeedLinkExportEntry
-	154, // 92: services.datahub.v1.RecordFeedLinkFailureResponse.availability:type_name -> services.datahub.v1.FeedLinkAvailability
-	159, // 93: services.datahub.v1.RegisterFeedsRequest.feeds:type_name -> services.datahub.v1.FeedRegistration
-	160, // 94: services.datahub.v1.RegisterFeedsResponse.results:type_name -> services.datahub.v1.FeedRegistrationResult
-	2,   // 95: services.datahub.v1.ListFeedsCursorRequest.scope:type_name -> services.datahub.v1.FeedScope
-	313, // 96: services.datahub.v1.ListFeedsCursorRequest.cursor:type_name -> google.protobuf.Timestamp
-	158, // 97: services.datahub.v1.ListFeedsCursorResponse.feeds:type_name -> services.datahub.v1.Feed
-	158, // 98: services.datahub.v1.ListFeedsPageResponse.feeds:type_name -> services.datahub.v1.Feed
-	158, // 99: services.datahub.v1.ListFeedsLimitResponse.feeds:type_name -> services.datahub.v1.Feed
-	158, // 100: services.datahub.v1.GetSingleFeedResponse.feed:type_name -> services.datahub.v1.Feed
-	158, // 101: services.datahub.v1.ListFeedsByFeedLinkIDResponse.feeds:type_name -> services.datahub.v1.Feed
-	161, // 102: services.datahub.v1.GetFeedSummaryResponse.summary:type_name -> services.datahub.v1.FeedSummary
-	161, // 103: services.datahub.v1.GetArticleSummaryByArticleIDResponse.summary:type_name -> services.datahub.v1.FeedSummary
-	158, // 104: services.datahub.v1.SearchFeedsByTitleResponse.feeds:type_name -> services.datahub.v1.Feed
-	158, // 105: services.datahub.v1.GetRandomFeedResponse.feed:type_name -> services.datahub.v1.Feed
-	162, // 106: services.datahub.v1.GetFeedURLsByArticleIDsResponse.pairs:type_name -> services.datahub.v1.FeedAndArticle
-	312, // 107: services.datahub.v1.BatchGetFeedTitlesByIDsResponse.titles:type_name -> services.datahub.v1.BatchGetFeedTitlesByIDsResponse.TitlesEntry
-	163, // 108: services.datahub.v1.GetInoreaderSummariesByURLsResponse.summaries:type_name -> services.datahub.v1.InoreaderSummary
-	313, // 109: services.datahub.v1.FeedSubscription.subscribed_at:type_name -> google.protobuf.Timestamp
-	212, // 110: services.datahub.v1.ListSubscriptionsResponse.subscriptions:type_name -> services.datahub.v1.FeedSubscription
-	313, // 111: services.datahub.v1.FeedTag.created_at:type_name -> google.protobuf.Timestamp
-	313, // 112: services.datahub.v1.FeedTag.updated_at:type_name -> google.protobuf.Timestamp
-	233, // 113: services.datahub.v1.GetArticleTagsResponse.tags:type_name -> services.datahub.v1.FeedTag
-	313, // 114: services.datahub.v1.GetFeedTagsRequest.cursor:type_name -> google.protobuf.Timestamp
-	233, // 115: services.datahub.v1.GetFeedTagsResponse.tags:type_name -> services.datahub.v1.FeedTag
-	238, // 116: services.datahub.v1.GetTagCooccurrencesResponse.cooccurrences:type_name -> services.datahub.v1.TagCooccurrence
-	241, // 117: services.datahub.v1.SearchTagsByPrefixResponse.hits:type_name -> services.datahub.v1.TagPrefixHit
-	313, // 118: services.datahub.v1.GetTagArticleCountsRequest.since:type_name -> google.protobuf.Timestamp
-	244, // 119: services.datahub.v1.GetTagArticleCountsResponse.counts:type_name -> services.datahub.v1.TagArticleCount
-	313, // 120: services.datahub.v1.TagTrailArticle.published_at:type_name -> google.protobuf.Timestamp
-	313, // 121: services.datahub.v1.ListArticlesByTagIDRequest.cursor:type_name -> google.protobuf.Timestamp
-	247, // 122: services.datahub.v1.ListArticlesByTagIDResponse.articles:type_name -> services.datahub.v1.TagTrailArticle
-	313, // 123: services.datahub.v1.ListArticlesByTagNameRequest.cursor:type_name -> google.protobuf.Timestamp
-	247, // 124: services.datahub.v1.ListArticlesByTagNameResponse.articles:type_name -> services.datahub.v1.TagTrailArticle
-	313, // 125: services.datahub.v1.GetArticleTitleAndLinkResponse.published_at:type_name -> google.protobuf.Timestamp
-	313, // 126: services.datahub.v1.SummaryVersion.generated_at:type_name -> google.protobuf.Timestamp
-	254, // 127: services.datahub.v1.CreateSummaryVersionRequest.version:type_name -> services.datahub.v1.SummaryVersion
-	254, // 128: services.datahub.v1.MarkSummaryVersionSupersededResponse.previous_version:type_name -> services.datahub.v1.SummaryVersion
-	254, // 129: services.datahub.v1.GetSummaryVersionByIDResponse.version:type_name -> services.datahub.v1.SummaryVersion
-	254, // 130: services.datahub.v1.GetLatestSummaryVersionResponse.version:type_name -> services.datahub.v1.SummaryVersion
-	313, // 131: services.datahub.v1.TagSetVersion.generated_at:type_name -> google.protobuf.Timestamp
-	263, // 132: services.datahub.v1.CreateTagSetVersionRequest.version:type_name -> services.datahub.v1.TagSetVersion
-	263, // 133: services.datahub.v1.MarkTagSetVersionSupersededResponse.previous_version:type_name -> services.datahub.v1.TagSetVersion
-	263, // 134: services.datahub.v1.GetTagSetVersionByIDResponse.version:type_name -> services.datahub.v1.TagSetVersion
-	313, // 135: services.datahub.v1.GetTodayUnreadArticlesCountRequest.since:type_name -> google.protobuf.Timestamp
-	313, // 136: services.datahub.v1.TrendDataPoint.bucket:type_name -> google.protobuf.Timestamp
-	3,   // 137: services.datahub.v1.GetTrendStatsRequest.window:type_name -> services.datahub.v1.TrendWindow
-	280, // 138: services.datahub.v1.GetTrendStatsResponse.points:type_name -> services.datahub.v1.TrendDataPoint
-	4,   // 139: services.datahub.v1.GetTrendStatsResponse.granularity:type_name -> services.datahub.v1.TrendGranularity
-	285, // 140: services.datahub.v1.PushSubscription.preferences:type_name -> services.datahub.v1.NotificationPreferences
-	313, // 141: services.datahub.v1.PushSubscription.created_at:type_name -> google.protobuf.Timestamp
-	313, // 142: services.datahub.v1.PushSubscription.updated_at:type_name -> google.protobuf.Timestamp
-	313, // 143: services.datahub.v1.PushSubscription.last_success_at:type_name -> google.protobuf.Timestamp
-	313, // 144: services.datahub.v1.PushSubscription.last_failure_at:type_name -> google.protobuf.Timestamp
-	286, // 145: services.datahub.v1.UpsertPushSubscriptionRequest.subscription:type_name -> services.datahub.v1.PushSubscription
-	286, // 146: services.datahub.v1.GetPushSubscriptionResponse.subscription:type_name -> services.datahub.v1.PushSubscription
-	285, // 147: services.datahub.v1.UpdatePushSubscriptionPreferencesRequest.preferences:type_name -> services.datahub.v1.NotificationPreferences
-	286, // 148: services.datahub.v1.ListPushSubscriptionsForUserResponse.subscriptions:type_name -> services.datahub.v1.PushSubscription
-	313, // 149: services.datahub.v1.PushDelivery.occurred_at:type_name -> google.protobuf.Timestamp
-	5,   // 150: services.datahub.v1.PushDelivery.state:type_name -> services.datahub.v1.NotificationState
-	313, // 151: services.datahub.v1.PushDelivery.next_attempt_at:type_name -> google.protobuf.Timestamp
-	313, // 152: services.datahub.v1.PushDelivery.expires_at:type_name -> google.protobuf.Timestamp
-	313, // 153: services.datahub.v1.EnqueueNotificationRequest.occurred_at:type_name -> google.protobuf.Timestamp
-	313, // 154: services.datahub.v1.EnqueueNotificationRequest.expires_at:type_name -> google.protobuf.Timestamp
-	297, // 155: services.datahub.v1.ClaimNotificationBatchResponse.deliveries:type_name -> services.datahub.v1.PushDelivery
-	313, // 156: services.datahub.v1.ReleaseNotificationRequest.next_attempt_at:type_name -> google.protobuf.Timestamp
-	125, // 157: services.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry.value:type_name -> services.datahub.v1.ArticleContent
-	8,   // 158: services.datahub.v1.DataHubService.ListArticlesWithTags:input_type -> services.datahub.v1.ListArticlesWithTagsRequest
-	10,  // 159: services.datahub.v1.DataHubService.ListArticlesWithTagsForward:input_type -> services.datahub.v1.ListArticlesWithTagsForwardRequest
-	12,  // 160: services.datahub.v1.DataHubService.ListDeletedArticles:input_type -> services.datahub.v1.ListDeletedArticlesRequest
-	14,  // 161: services.datahub.v1.DataHubService.GetLatestArticleTimestamp:input_type -> services.datahub.v1.GetLatestArticleTimestampRequest
-	16,  // 162: services.datahub.v1.DataHubService.GetArticleByID:input_type -> services.datahub.v1.GetArticleByIDRequest
-	18,  // 163: services.datahub.v1.DataHubService.CheckArticleExists:input_type -> services.datahub.v1.CheckArticleExistsRequest
-	20,  // 164: services.datahub.v1.DataHubService.CreateArticle:input_type -> services.datahub.v1.CreateArticleRequest
-	22,  // 165: services.datahub.v1.DataHubService.SaveArticleSummary:input_type -> services.datahub.v1.SaveArticleSummaryRequest
-	24,  // 166: services.datahub.v1.DataHubService.GetArticleContent:input_type -> services.datahub.v1.GetArticleContentRequest
-	26,  // 167: services.datahub.v1.DataHubService.GetFeedID:input_type -> services.datahub.v1.GetFeedIDRequest
-	28,  // 168: services.datahub.v1.DataHubService.ListFeedURLs:input_type -> services.datahub.v1.ListFeedURLsRequest
-	31,  // 169: services.datahub.v1.DataHubService.UpsertArticleTags:input_type -> services.datahub.v1.UpsertArticleTagsRequest
-	34,  // 170: services.datahub.v1.DataHubService.BatchUpsertArticleTags:input_type -> services.datahub.v1.BatchUpsertArticleTagsRequest
-	36,  // 171: services.datahub.v1.DataHubService.ListUntaggedArticles:input_type -> services.datahub.v1.ListUntaggedArticlesRequest
-	38,  // 172: services.datahub.v1.DataHubService.BatchGetTagsByArticleIDs:input_type -> services.datahub.v1.BatchGetTagsByArticleIDsRequest
-	42,  // 173: services.datahub.v1.DataHubService.DeleteArticleSummary:input_type -> services.datahub.v1.DeleteArticleSummaryRequest
-	44,  // 174: services.datahub.v1.DataHubService.CheckArticleSummaryExists:input_type -> services.datahub.v1.CheckArticleSummaryExistsRequest
-	47,  // 175: services.datahub.v1.DataHubService.FindArticlesWithSummaries:input_type -> services.datahub.v1.FindArticlesWithSummariesRequest
-	50,  // 176: services.datahub.v1.DataHubService.ListUnsummarizedArticles:input_type -> services.datahub.v1.ListUnsummarizedArticlesRequest
-	52,  // 177: services.datahub.v1.DataHubService.HasUnsummarizedArticles:input_type -> services.datahub.v1.HasUnsummarizedArticlesRequest
-	54,  // 178: services.datahub.v1.DataHubService.GetEmptyFeedID:input_type -> services.datahub.v1.GetEmptyFeedIDRequest
-	56,  // 179: services.datahub.v1.DataHubService.FetchTagCloud:input_type -> services.datahub.v1.FetchTagCloudRequest
-	59,  // 180: services.datahub.v1.DataHubService.FetchArticlesByTag:input_type -> services.datahub.v1.FetchArticlesByTagRequest
-	62,  // 181: services.datahub.v1.DataHubService.ListRecapArticles:input_type -> services.datahub.v1.ListRecapArticlesRequest
-	66,  // 182: services.datahub.v1.DataHubService.GetSystemUser:input_type -> services.datahub.v1.GetSystemUserRequest
-	69,  // 183: services.datahub.v1.DataHubService.ListRecentArticles:input_type -> services.datahub.v1.ListRecentArticlesRequest
-	72,  // 184: services.datahub.v1.DataHubService.ClaimOutboxBatch:input_type -> services.datahub.v1.ClaimOutboxBatchRequest
-	74,  // 185: services.datahub.v1.DataHubService.MarkOutboxProcessed:input_type -> services.datahub.v1.MarkOutboxProcessedRequest
-	76,  // 186: services.datahub.v1.DataHubService.ReleaseOutboxEvent:input_type -> services.datahub.v1.ReleaseOutboxEventRequest
-	78,  // 187: services.datahub.v1.DataHubService.PruneOutboxEvents:input_type -> services.datahub.v1.PruneOutboxEventsRequest
-	81,  // 188: services.datahub.v1.DataHubService.GetArticleHead:input_type -> services.datahub.v1.GetArticleHeadRequest
-	83,  // 189: services.datahub.v1.DataHubService.BatchGetOgImageURLs:input_type -> services.datahub.v1.BatchGetOgImageURLsRequest
-	86,  // 190: services.datahub.v1.DataHubService.ListFeedsMissingOgImage:input_type -> services.datahub.v1.ListFeedsMissingOgImageRequest
-	88,  // 191: services.datahub.v1.DataHubService.ListUnwarmedOgImageURLs:input_type -> services.datahub.v1.ListUnwarmedOgImageURLsRequest
-	90,  // 192: services.datahub.v1.DataHubService.PurgeExpiredArticleHeads:input_type -> services.datahub.v1.PurgeExpiredArticleHeadsRequest
-	93,  // 193: services.datahub.v1.DataHubService.GetImageProxyCache:input_type -> services.datahub.v1.GetImageProxyCacheRequest
-	95,  // 194: services.datahub.v1.DataHubService.PutImageProxyCache:input_type -> services.datahub.v1.PutImageProxyCacheRequest
-	97,  // 195: services.datahub.v1.DataHubService.EvictExpiredImageProxyCache:input_type -> services.datahub.v1.EvictExpiredImageProxyCacheRequest
-	99,  // 196: services.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan:input_type -> services.datahub.v1.PurgeImageProxyCacheOlderThanRequest
-	102, // 197: services.datahub.v1.DataHubService.GetScrapingDomainByDomain:input_type -> services.datahub.v1.GetScrapingDomainByDomainRequest
-	104, // 198: services.datahub.v1.DataHubService.GetScrapingDomainByID:input_type -> services.datahub.v1.GetScrapingDomainByIDRequest
-	106, // 199: services.datahub.v1.DataHubService.SaveScrapingDomain:input_type -> services.datahub.v1.SaveScrapingDomainRequest
-	108, // 200: services.datahub.v1.DataHubService.ListScrapingDomains:input_type -> services.datahub.v1.ListScrapingDomainsRequest
-	111, // 201: services.datahub.v1.DataHubService.UpdateScrapingDomainPolicy:input_type -> services.datahub.v1.UpdateScrapingDomainPolicyRequest
-	113, // 202: services.datahub.v1.DataHubService.SaveDeclinedDomain:input_type -> services.datahub.v1.SaveDeclinedDomainRequest
-	115, // 203: services.datahub.v1.DataHubService.IsDomainDeclined:input_type -> services.datahub.v1.IsDomainDeclinedRequest
-	117, // 204: services.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID:input_type -> services.datahub.v1.ListSubscribedUserIDsByFeedLinkIDRequest
-	119, // 205: services.datahub.v1.DataHubService.CheckArticleExistsByURLForUser:input_type -> services.datahub.v1.CheckArticleExistsByURLForUserRequest
-	121, // 206: services.datahub.v1.DataHubService.ArchiveArticle:input_type -> services.datahub.v1.ArchiveArticleRequest
-	123, // 207: services.datahub.v1.DataHubService.SaveArticleHead:input_type -> services.datahub.v1.SaveArticleHeadRequest
-	127, // 208: services.datahub.v1.DataHubService.GetArticleByURL:input_type -> services.datahub.v1.GetArticleByURLRequest
-	129, // 209: services.datahub.v1.DataHubService.BatchGetArticlesByURLs:input_type -> services.datahub.v1.BatchGetArticlesByURLsRequest
-	131, // 210: services.datahub.v1.DataHubService.GetArticleContentByID:input_type -> services.datahub.v1.GetArticleContentByIDRequest
-	133, // 211: services.datahub.v1.DataHubService.ListArticlesCursor:input_type -> services.datahub.v1.ListArticlesCursorRequest
-	135, // 212: services.datahub.v1.DataHubService.ListArticleIDsCursor:input_type -> services.datahub.v1.ListArticleIDsCursorRequest
-	137, // 213: services.datahub.v1.DataHubService.BatchGetArticlesByIDs:input_type -> services.datahub.v1.BatchGetArticlesByIDsRequest
-	139, // 214: services.datahub.v1.DataHubService.GetLatestArticleByFeedID:input_type -> services.datahub.v1.GetLatestArticleByFeedIDRequest
-	141, // 215: services.datahub.v1.DataHubService.LookupArticleURL:input_type -> services.datahub.v1.LookupArticleURLRequest
-	144, // 216: services.datahub.v1.DataHubService.CountBackfillArticles:input_type -> services.datahub.v1.CountBackfillArticlesRequest
-	146, // 217: services.datahub.v1.DataHubService.ListBackfillArticles:input_type -> services.datahub.v1.ListBackfillArticlesRequest
-	149, // 218: services.datahub.v1.DataHubService.CountBackfillSummaryTitles:input_type -> services.datahub.v1.CountBackfillSummaryTitlesRequest
-	151, // 219: services.datahub.v1.DataHubService.ListBackfillSummaryTitles:input_type -> services.datahub.v1.ListBackfillSummaryTitlesRequest
-	164, // 220: services.datahub.v1.DataHubService.RegisterFeedLink:input_type -> services.datahub.v1.RegisterFeedLinkRequest
-	166, // 221: services.datahub.v1.DataHubService.BulkRegisterFeedLinks:input_type -> services.datahub.v1.BulkRegisterFeedLinksRequest
-	168, // 222: services.datahub.v1.DataHubService.ListFeedLinks:input_type -> services.datahub.v1.ListFeedLinksRequest
-	170, // 223: services.datahub.v1.DataHubService.ListFeedLinksWithHealth:input_type -> services.datahub.v1.ListFeedLinksWithHealthRequest
-	172, // 224: services.datahub.v1.DataHubService.DeleteFeedLink:input_type -> services.datahub.v1.DeleteFeedLinkRequest
-	174, // 225: services.datahub.v1.DataHubService.ResolveFeedLinkIDByURL:input_type -> services.datahub.v1.ResolveFeedLinkIDByURLRequest
-	176, // 226: services.datahub.v1.DataHubService.ListFeedLinkDomains:input_type -> services.datahub.v1.ListFeedLinkDomainsRequest
-	178, // 227: services.datahub.v1.DataHubService.ListRSSFeedURLs:input_type -> services.datahub.v1.ListRSSFeedURLsRequest
-	180, // 228: services.datahub.v1.DataHubService.ListFeedLinksForExport:input_type -> services.datahub.v1.ListFeedLinksForExportRequest
-	182, // 229: services.datahub.v1.DataHubService.RecordFeedLinkFailure:input_type -> services.datahub.v1.RecordFeedLinkFailureRequest
-	184, // 230: services.datahub.v1.DataHubService.ResetFeedLinkFailures:input_type -> services.datahub.v1.ResetFeedLinkFailuresRequest
-	186, // 231: services.datahub.v1.DataHubService.RegisterFeeds:input_type -> services.datahub.v1.RegisterFeedsRequest
-	188, // 232: services.datahub.v1.DataHubService.ListFeedsCursor:input_type -> services.datahub.v1.ListFeedsCursorRequest
-	190, // 233: services.datahub.v1.DataHubService.ListFeedsPage:input_type -> services.datahub.v1.ListFeedsPageRequest
-	192, // 234: services.datahub.v1.DataHubService.ListFeedsLimit:input_type -> services.datahub.v1.ListFeedsLimitRequest
-	194, // 235: services.datahub.v1.DataHubService.GetSingleFeed:input_type -> services.datahub.v1.GetSingleFeedRequest
-	196, // 236: services.datahub.v1.DataHubService.ListFeedsByFeedLinkID:input_type -> services.datahub.v1.ListFeedsByFeedLinkIDRequest
-	198, // 237: services.datahub.v1.DataHubService.GetFeedSummary:input_type -> services.datahub.v1.GetFeedSummaryRequest
-	200, // 238: services.datahub.v1.DataHubService.GetArticleSummaryByArticleID:input_type -> services.datahub.v1.GetArticleSummaryByArticleIDRequest
-	202, // 239: services.datahub.v1.DataHubService.SearchFeedsByTitle:input_type -> services.datahub.v1.SearchFeedsByTitleRequest
-	204, // 240: services.datahub.v1.DataHubService.GetRandomFeed:input_type -> services.datahub.v1.GetRandomFeedRequest
-	206, // 241: services.datahub.v1.DataHubService.GetFeedURLsByArticleIDs:input_type -> services.datahub.v1.GetFeedURLsByArticleIDsRequest
-	208, // 242: services.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs:input_type -> services.datahub.v1.BatchGetFeedTitlesByIDsRequest
-	210, // 243: services.datahub.v1.DataHubService.GetInoreaderSummariesByURLs:input_type -> services.datahub.v1.GetInoreaderSummariesByURLsRequest
-	213, // 244: services.datahub.v1.DataHubService.MarkFeedRead:input_type -> services.datahub.v1.MarkFeedReadRequest
-	215, // 245: services.datahub.v1.DataHubService.MarkArticleRead:input_type -> services.datahub.v1.MarkArticleReadRequest
-	217, // 246: services.datahub.v1.DataHubService.GetReadFeedIDs:input_type -> services.datahub.v1.GetReadFeedIDsRequest
-	219, // 247: services.datahub.v1.DataHubService.GetAllReadFeedIDs:input_type -> services.datahub.v1.GetAllReadFeedIDsRequest
-	221, // 248: services.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs:input_type -> services.datahub.v1.GetUserSubscribedFeedLinkIDsRequest
-	223, // 249: services.datahub.v1.DataHubService.ListSubscriptions:input_type -> services.datahub.v1.ListSubscriptionsRequest
-	225, // 250: services.datahub.v1.DataHubService.Subscribe:input_type -> services.datahub.v1.SubscribeRequest
-	227, // 251: services.datahub.v1.DataHubService.Unsubscribe:input_type -> services.datahub.v1.UnsubscribeRequest
-	229, // 252: services.datahub.v1.DataHubService.AddFavoriteFeed:input_type -> services.datahub.v1.AddFavoriteFeedRequest
-	231, // 253: services.datahub.v1.DataHubService.RemoveFavoriteFeed:input_type -> services.datahub.v1.RemoveFavoriteFeedRequest
-	234, // 254: services.datahub.v1.DataHubService.GetArticleTags:input_type -> services.datahub.v1.GetArticleTagsRequest
-	236, // 255: services.datahub.v1.DataHubService.GetFeedTags:input_type -> services.datahub.v1.GetFeedTagsRequest
-	239, // 256: services.datahub.v1.DataHubService.GetTagCooccurrences:input_type -> services.datahub.v1.GetTagCooccurrencesRequest
-	242, // 257: services.datahub.v1.DataHubService.SearchTagsByPrefix:input_type -> services.datahub.v1.SearchTagsByPrefixRequest
-	245, // 258: services.datahub.v1.DataHubService.GetTagArticleCounts:input_type -> services.datahub.v1.GetTagArticleCountsRequest
-	248, // 259: services.datahub.v1.DataHubService.ListArticlesByTagID:input_type -> services.datahub.v1.ListArticlesByTagIDRequest
-	250, // 260: services.datahub.v1.DataHubService.ListArticlesByTagName:input_type -> services.datahub.v1.ListArticlesByTagNameRequest
-	252, // 261: services.datahub.v1.DataHubService.GetArticleTitleAndLink:input_type -> services.datahub.v1.GetArticleTitleAndLinkRequest
-	255, // 262: services.datahub.v1.DataHubService.CreateSummaryVersion:input_type -> services.datahub.v1.CreateSummaryVersionRequest
-	257, // 263: services.datahub.v1.DataHubService.MarkSummaryVersionSuperseded:input_type -> services.datahub.v1.MarkSummaryVersionSupersededRequest
-	259, // 264: services.datahub.v1.DataHubService.GetSummaryVersionByID:input_type -> services.datahub.v1.GetSummaryVersionByIDRequest
-	261, // 265: services.datahub.v1.DataHubService.GetLatestSummaryVersion:input_type -> services.datahub.v1.GetLatestSummaryVersionRequest
-	264, // 266: services.datahub.v1.DataHubService.CreateTagSetVersion:input_type -> services.datahub.v1.CreateTagSetVersionRequest
-	266, // 267: services.datahub.v1.DataHubService.MarkTagSetVersionSuperseded:input_type -> services.datahub.v1.MarkTagSetVersionSupersededRequest
-	268, // 268: services.datahub.v1.DataHubService.GetTagSetVersionByID:input_type -> services.datahub.v1.GetTagSetVersionByIDRequest
-	270, // 269: services.datahub.v1.DataHubService.GetFeedAmount:input_type -> services.datahub.v1.GetFeedAmountRequest
-	272, // 270: services.datahub.v1.DataHubService.GetTotalArticlesCount:input_type -> services.datahub.v1.GetTotalArticlesCountRequest
-	274, // 271: services.datahub.v1.DataHubService.GetSummarizedArticlesCount:input_type -> services.datahub.v1.GetSummarizedArticlesCountRequest
-	276, // 272: services.datahub.v1.DataHubService.GetUnsummarizedArticlesCount:input_type -> services.datahub.v1.GetUnsummarizedArticlesCountRequest
-	278, // 273: services.datahub.v1.DataHubService.GetTodayUnreadArticlesCount:input_type -> services.datahub.v1.GetTodayUnreadArticlesCountRequest
-	281, // 274: services.datahub.v1.DataHubService.GetTrendStats:input_type -> services.datahub.v1.GetTrendStatsRequest
-	283, // 275: services.datahub.v1.DataHubService.ListUserFeedIDs:input_type -> services.datahub.v1.ListUserFeedIDsRequest
-	287, // 276: services.datahub.v1.DataHubService.UpsertPushSubscription:input_type -> services.datahub.v1.UpsertPushSubscriptionRequest
-	289, // 277: services.datahub.v1.DataHubService.GetPushSubscription:input_type -> services.datahub.v1.GetPushSubscriptionRequest
-	291, // 278: services.datahub.v1.DataHubService.UpdatePushSubscriptionPreferences:input_type -> services.datahub.v1.UpdatePushSubscriptionPreferencesRequest
-	293, // 279: services.datahub.v1.DataHubService.DeletePushSubscription:input_type -> services.datahub.v1.DeletePushSubscriptionRequest
-	295, // 280: services.datahub.v1.DataHubService.ListPushSubscriptionsForUser:input_type -> services.datahub.v1.ListPushSubscriptionsForUserRequest
-	298, // 281: services.datahub.v1.DataHubService.EnqueueNotification:input_type -> services.datahub.v1.EnqueueNotificationRequest
-	300, // 282: services.datahub.v1.DataHubService.ClaimNotificationBatch:input_type -> services.datahub.v1.ClaimNotificationBatchRequest
-	302, // 283: services.datahub.v1.DataHubService.MarkNotificationSent:input_type -> services.datahub.v1.MarkNotificationSentRequest
-	304, // 284: services.datahub.v1.DataHubService.ReleaseNotification:input_type -> services.datahub.v1.ReleaseNotificationRequest
-	306, // 285: services.datahub.v1.DataHubService.MarkNotificationDead:input_type -> services.datahub.v1.MarkNotificationDeadRequest
-	308, // 286: services.datahub.v1.DataHubService.GetNotificationBacklogAge:input_type -> services.datahub.v1.GetNotificationBacklogAgeRequest
-	9,   // 287: services.datahub.v1.DataHubService.ListArticlesWithTags:output_type -> services.datahub.v1.ListArticlesWithTagsResponse
-	11,  // 288: services.datahub.v1.DataHubService.ListArticlesWithTagsForward:output_type -> services.datahub.v1.ListArticlesWithTagsForwardResponse
-	13,  // 289: services.datahub.v1.DataHubService.ListDeletedArticles:output_type -> services.datahub.v1.ListDeletedArticlesResponse
-	15,  // 290: services.datahub.v1.DataHubService.GetLatestArticleTimestamp:output_type -> services.datahub.v1.GetLatestArticleTimestampResponse
-	17,  // 291: services.datahub.v1.DataHubService.GetArticleByID:output_type -> services.datahub.v1.GetArticleByIDResponse
-	19,  // 292: services.datahub.v1.DataHubService.CheckArticleExists:output_type -> services.datahub.v1.CheckArticleExistsResponse
-	21,  // 293: services.datahub.v1.DataHubService.CreateArticle:output_type -> services.datahub.v1.CreateArticleResponse
-	23,  // 294: services.datahub.v1.DataHubService.SaveArticleSummary:output_type -> services.datahub.v1.SaveArticleSummaryResponse
-	25,  // 295: services.datahub.v1.DataHubService.GetArticleContent:output_type -> services.datahub.v1.GetArticleContentResponse
-	27,  // 296: services.datahub.v1.DataHubService.GetFeedID:output_type -> services.datahub.v1.GetFeedIDResponse
-	29,  // 297: services.datahub.v1.DataHubService.ListFeedURLs:output_type -> services.datahub.v1.ListFeedURLsResponse
-	33,  // 298: services.datahub.v1.DataHubService.UpsertArticleTags:output_type -> services.datahub.v1.UpsertArticleTagsResponse
-	35,  // 299: services.datahub.v1.DataHubService.BatchUpsertArticleTags:output_type -> services.datahub.v1.BatchUpsertArticleTagsResponse
-	37,  // 300: services.datahub.v1.DataHubService.ListUntaggedArticles:output_type -> services.datahub.v1.ListUntaggedArticlesResponse
-	41,  // 301: services.datahub.v1.DataHubService.BatchGetTagsByArticleIDs:output_type -> services.datahub.v1.BatchGetTagsByArticleIDsResponse
-	43,  // 302: services.datahub.v1.DataHubService.DeleteArticleSummary:output_type -> services.datahub.v1.DeleteArticleSummaryResponse
-	45,  // 303: services.datahub.v1.DataHubService.CheckArticleSummaryExists:output_type -> services.datahub.v1.CheckArticleSummaryExistsResponse
-	48,  // 304: services.datahub.v1.DataHubService.FindArticlesWithSummaries:output_type -> services.datahub.v1.FindArticlesWithSummariesResponse
-	51,  // 305: services.datahub.v1.DataHubService.ListUnsummarizedArticles:output_type -> services.datahub.v1.ListUnsummarizedArticlesResponse
-	53,  // 306: services.datahub.v1.DataHubService.HasUnsummarizedArticles:output_type -> services.datahub.v1.HasUnsummarizedArticlesResponse
-	55,  // 307: services.datahub.v1.DataHubService.GetEmptyFeedID:output_type -> services.datahub.v1.GetEmptyFeedIDResponse
-	57,  // 308: services.datahub.v1.DataHubService.FetchTagCloud:output_type -> services.datahub.v1.FetchTagCloudResponse
-	60,  // 309: services.datahub.v1.DataHubService.FetchArticlesByTag:output_type -> services.datahub.v1.FetchArticlesByTagResponse
-	65,  // 310: services.datahub.v1.DataHubService.ListRecapArticles:output_type -> services.datahub.v1.ListRecapArticlesResponse
-	67,  // 311: services.datahub.v1.DataHubService.GetSystemUser:output_type -> services.datahub.v1.GetSystemUserResponse
-	70,  // 312: services.datahub.v1.DataHubService.ListRecentArticles:output_type -> services.datahub.v1.ListRecentArticlesResponse
-	73,  // 313: services.datahub.v1.DataHubService.ClaimOutboxBatch:output_type -> services.datahub.v1.ClaimOutboxBatchResponse
-	75,  // 314: services.datahub.v1.DataHubService.MarkOutboxProcessed:output_type -> services.datahub.v1.MarkOutboxProcessedResponse
-	77,  // 315: services.datahub.v1.DataHubService.ReleaseOutboxEvent:output_type -> services.datahub.v1.ReleaseOutboxEventResponse
-	79,  // 316: services.datahub.v1.DataHubService.PruneOutboxEvents:output_type -> services.datahub.v1.PruneOutboxEventsResponse
-	82,  // 317: services.datahub.v1.DataHubService.GetArticleHead:output_type -> services.datahub.v1.GetArticleHeadResponse
-	84,  // 318: services.datahub.v1.DataHubService.BatchGetOgImageURLs:output_type -> services.datahub.v1.BatchGetOgImageURLsResponse
-	87,  // 319: services.datahub.v1.DataHubService.ListFeedsMissingOgImage:output_type -> services.datahub.v1.ListFeedsMissingOgImageResponse
-	89,  // 320: services.datahub.v1.DataHubService.ListUnwarmedOgImageURLs:output_type -> services.datahub.v1.ListUnwarmedOgImageURLsResponse
-	91,  // 321: services.datahub.v1.DataHubService.PurgeExpiredArticleHeads:output_type -> services.datahub.v1.PurgeExpiredArticleHeadsResponse
-	94,  // 322: services.datahub.v1.DataHubService.GetImageProxyCache:output_type -> services.datahub.v1.GetImageProxyCacheResponse
-	96,  // 323: services.datahub.v1.DataHubService.PutImageProxyCache:output_type -> services.datahub.v1.PutImageProxyCacheResponse
-	98,  // 324: services.datahub.v1.DataHubService.EvictExpiredImageProxyCache:output_type -> services.datahub.v1.EvictExpiredImageProxyCacheResponse
-	100, // 325: services.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan:output_type -> services.datahub.v1.PurgeImageProxyCacheOlderThanResponse
-	103, // 326: services.datahub.v1.DataHubService.GetScrapingDomainByDomain:output_type -> services.datahub.v1.GetScrapingDomainByDomainResponse
-	105, // 327: services.datahub.v1.DataHubService.GetScrapingDomainByID:output_type -> services.datahub.v1.GetScrapingDomainByIDResponse
-	107, // 328: services.datahub.v1.DataHubService.SaveScrapingDomain:output_type -> services.datahub.v1.SaveScrapingDomainResponse
-	109, // 329: services.datahub.v1.DataHubService.ListScrapingDomains:output_type -> services.datahub.v1.ListScrapingDomainsResponse
-	112, // 330: services.datahub.v1.DataHubService.UpdateScrapingDomainPolicy:output_type -> services.datahub.v1.UpdateScrapingDomainPolicyResponse
-	114, // 331: services.datahub.v1.DataHubService.SaveDeclinedDomain:output_type -> services.datahub.v1.SaveDeclinedDomainResponse
-	116, // 332: services.datahub.v1.DataHubService.IsDomainDeclined:output_type -> services.datahub.v1.IsDomainDeclinedResponse
-	118, // 333: services.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID:output_type -> services.datahub.v1.ListSubscribedUserIDsByFeedLinkIDResponse
-	120, // 334: services.datahub.v1.DataHubService.CheckArticleExistsByURLForUser:output_type -> services.datahub.v1.CheckArticleExistsByURLForUserResponse
-	122, // 335: services.datahub.v1.DataHubService.ArchiveArticle:output_type -> services.datahub.v1.ArchiveArticleResponse
-	124, // 336: services.datahub.v1.DataHubService.SaveArticleHead:output_type -> services.datahub.v1.SaveArticleHeadResponse
-	128, // 337: services.datahub.v1.DataHubService.GetArticleByURL:output_type -> services.datahub.v1.GetArticleByURLResponse
-	130, // 338: services.datahub.v1.DataHubService.BatchGetArticlesByURLs:output_type -> services.datahub.v1.BatchGetArticlesByURLsResponse
-	132, // 339: services.datahub.v1.DataHubService.GetArticleContentByID:output_type -> services.datahub.v1.GetArticleContentByIDResponse
-	134, // 340: services.datahub.v1.DataHubService.ListArticlesCursor:output_type -> services.datahub.v1.ListArticlesCursorResponse
-	136, // 341: services.datahub.v1.DataHubService.ListArticleIDsCursor:output_type -> services.datahub.v1.ListArticleIDsCursorResponse
-	138, // 342: services.datahub.v1.DataHubService.BatchGetArticlesByIDs:output_type -> services.datahub.v1.BatchGetArticlesByIDsResponse
-	140, // 343: services.datahub.v1.DataHubService.GetLatestArticleByFeedID:output_type -> services.datahub.v1.GetLatestArticleByFeedIDResponse
-	142, // 344: services.datahub.v1.DataHubService.LookupArticleURL:output_type -> services.datahub.v1.LookupArticleURLResponse
-	145, // 345: services.datahub.v1.DataHubService.CountBackfillArticles:output_type -> services.datahub.v1.CountBackfillArticlesResponse
-	147, // 346: services.datahub.v1.DataHubService.ListBackfillArticles:output_type -> services.datahub.v1.ListBackfillArticlesResponse
-	150, // 347: services.datahub.v1.DataHubService.CountBackfillSummaryTitles:output_type -> services.datahub.v1.CountBackfillSummaryTitlesResponse
-	152, // 348: services.datahub.v1.DataHubService.ListBackfillSummaryTitles:output_type -> services.datahub.v1.ListBackfillSummaryTitlesResponse
-	165, // 349: services.datahub.v1.DataHubService.RegisterFeedLink:output_type -> services.datahub.v1.RegisterFeedLinkResponse
-	167, // 350: services.datahub.v1.DataHubService.BulkRegisterFeedLinks:output_type -> services.datahub.v1.BulkRegisterFeedLinksResponse
-	169, // 351: services.datahub.v1.DataHubService.ListFeedLinks:output_type -> services.datahub.v1.ListFeedLinksResponse
-	171, // 352: services.datahub.v1.DataHubService.ListFeedLinksWithHealth:output_type -> services.datahub.v1.ListFeedLinksWithHealthResponse
-	173, // 353: services.datahub.v1.DataHubService.DeleteFeedLink:output_type -> services.datahub.v1.DeleteFeedLinkResponse
-	175, // 354: services.datahub.v1.DataHubService.ResolveFeedLinkIDByURL:output_type -> services.datahub.v1.ResolveFeedLinkIDByURLResponse
-	177, // 355: services.datahub.v1.DataHubService.ListFeedLinkDomains:output_type -> services.datahub.v1.ListFeedLinkDomainsResponse
-	179, // 356: services.datahub.v1.DataHubService.ListRSSFeedURLs:output_type -> services.datahub.v1.ListRSSFeedURLsResponse
-	181, // 357: services.datahub.v1.DataHubService.ListFeedLinksForExport:output_type -> services.datahub.v1.ListFeedLinksForExportResponse
-	183, // 358: services.datahub.v1.DataHubService.RecordFeedLinkFailure:output_type -> services.datahub.v1.RecordFeedLinkFailureResponse
-	185, // 359: services.datahub.v1.DataHubService.ResetFeedLinkFailures:output_type -> services.datahub.v1.ResetFeedLinkFailuresResponse
-	187, // 360: services.datahub.v1.DataHubService.RegisterFeeds:output_type -> services.datahub.v1.RegisterFeedsResponse
-	189, // 361: services.datahub.v1.DataHubService.ListFeedsCursor:output_type -> services.datahub.v1.ListFeedsCursorResponse
-	191, // 362: services.datahub.v1.DataHubService.ListFeedsPage:output_type -> services.datahub.v1.ListFeedsPageResponse
-	193, // 363: services.datahub.v1.DataHubService.ListFeedsLimit:output_type -> services.datahub.v1.ListFeedsLimitResponse
-	195, // 364: services.datahub.v1.DataHubService.GetSingleFeed:output_type -> services.datahub.v1.GetSingleFeedResponse
-	197, // 365: services.datahub.v1.DataHubService.ListFeedsByFeedLinkID:output_type -> services.datahub.v1.ListFeedsByFeedLinkIDResponse
-	199, // 366: services.datahub.v1.DataHubService.GetFeedSummary:output_type -> services.datahub.v1.GetFeedSummaryResponse
-	201, // 367: services.datahub.v1.DataHubService.GetArticleSummaryByArticleID:output_type -> services.datahub.v1.GetArticleSummaryByArticleIDResponse
-	203, // 368: services.datahub.v1.DataHubService.SearchFeedsByTitle:output_type -> services.datahub.v1.SearchFeedsByTitleResponse
-	205, // 369: services.datahub.v1.DataHubService.GetRandomFeed:output_type -> services.datahub.v1.GetRandomFeedResponse
-	207, // 370: services.datahub.v1.DataHubService.GetFeedURLsByArticleIDs:output_type -> services.datahub.v1.GetFeedURLsByArticleIDsResponse
-	209, // 371: services.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs:output_type -> services.datahub.v1.BatchGetFeedTitlesByIDsResponse
-	211, // 372: services.datahub.v1.DataHubService.GetInoreaderSummariesByURLs:output_type -> services.datahub.v1.GetInoreaderSummariesByURLsResponse
-	214, // 373: services.datahub.v1.DataHubService.MarkFeedRead:output_type -> services.datahub.v1.MarkFeedReadResponse
-	216, // 374: services.datahub.v1.DataHubService.MarkArticleRead:output_type -> services.datahub.v1.MarkArticleReadResponse
-	218, // 375: services.datahub.v1.DataHubService.GetReadFeedIDs:output_type -> services.datahub.v1.GetReadFeedIDsResponse
-	220, // 376: services.datahub.v1.DataHubService.GetAllReadFeedIDs:output_type -> services.datahub.v1.GetAllReadFeedIDsResponse
-	222, // 377: services.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs:output_type -> services.datahub.v1.GetUserSubscribedFeedLinkIDsResponse
-	224, // 378: services.datahub.v1.DataHubService.ListSubscriptions:output_type -> services.datahub.v1.ListSubscriptionsResponse
-	226, // 379: services.datahub.v1.DataHubService.Subscribe:output_type -> services.datahub.v1.SubscribeResponse
-	228, // 380: services.datahub.v1.DataHubService.Unsubscribe:output_type -> services.datahub.v1.UnsubscribeResponse
-	230, // 381: services.datahub.v1.DataHubService.AddFavoriteFeed:output_type -> services.datahub.v1.AddFavoriteFeedResponse
-	232, // 382: services.datahub.v1.DataHubService.RemoveFavoriteFeed:output_type -> services.datahub.v1.RemoveFavoriteFeedResponse
-	235, // 383: services.datahub.v1.DataHubService.GetArticleTags:output_type -> services.datahub.v1.GetArticleTagsResponse
-	237, // 384: services.datahub.v1.DataHubService.GetFeedTags:output_type -> services.datahub.v1.GetFeedTagsResponse
-	240, // 385: services.datahub.v1.DataHubService.GetTagCooccurrences:output_type -> services.datahub.v1.GetTagCooccurrencesResponse
-	243, // 386: services.datahub.v1.DataHubService.SearchTagsByPrefix:output_type -> services.datahub.v1.SearchTagsByPrefixResponse
-	246, // 387: services.datahub.v1.DataHubService.GetTagArticleCounts:output_type -> services.datahub.v1.GetTagArticleCountsResponse
-	249, // 388: services.datahub.v1.DataHubService.ListArticlesByTagID:output_type -> services.datahub.v1.ListArticlesByTagIDResponse
-	251, // 389: services.datahub.v1.DataHubService.ListArticlesByTagName:output_type -> services.datahub.v1.ListArticlesByTagNameResponse
-	253, // 390: services.datahub.v1.DataHubService.GetArticleTitleAndLink:output_type -> services.datahub.v1.GetArticleTitleAndLinkResponse
-	256, // 391: services.datahub.v1.DataHubService.CreateSummaryVersion:output_type -> services.datahub.v1.CreateSummaryVersionResponse
-	258, // 392: services.datahub.v1.DataHubService.MarkSummaryVersionSuperseded:output_type -> services.datahub.v1.MarkSummaryVersionSupersededResponse
-	260, // 393: services.datahub.v1.DataHubService.GetSummaryVersionByID:output_type -> services.datahub.v1.GetSummaryVersionByIDResponse
-	262, // 394: services.datahub.v1.DataHubService.GetLatestSummaryVersion:output_type -> services.datahub.v1.GetLatestSummaryVersionResponse
-	265, // 395: services.datahub.v1.DataHubService.CreateTagSetVersion:output_type -> services.datahub.v1.CreateTagSetVersionResponse
-	267, // 396: services.datahub.v1.DataHubService.MarkTagSetVersionSuperseded:output_type -> services.datahub.v1.MarkTagSetVersionSupersededResponse
-	269, // 397: services.datahub.v1.DataHubService.GetTagSetVersionByID:output_type -> services.datahub.v1.GetTagSetVersionByIDResponse
-	271, // 398: services.datahub.v1.DataHubService.GetFeedAmount:output_type -> services.datahub.v1.GetFeedAmountResponse
-	273, // 399: services.datahub.v1.DataHubService.GetTotalArticlesCount:output_type -> services.datahub.v1.GetTotalArticlesCountResponse
-	275, // 400: services.datahub.v1.DataHubService.GetSummarizedArticlesCount:output_type -> services.datahub.v1.GetSummarizedArticlesCountResponse
-	277, // 401: services.datahub.v1.DataHubService.GetUnsummarizedArticlesCount:output_type -> services.datahub.v1.GetUnsummarizedArticlesCountResponse
-	279, // 402: services.datahub.v1.DataHubService.GetTodayUnreadArticlesCount:output_type -> services.datahub.v1.GetTodayUnreadArticlesCountResponse
-	282, // 403: services.datahub.v1.DataHubService.GetTrendStats:output_type -> services.datahub.v1.GetTrendStatsResponse
-	284, // 404: services.datahub.v1.DataHubService.ListUserFeedIDs:output_type -> services.datahub.v1.ListUserFeedIDsResponse
-	288, // 405: services.datahub.v1.DataHubService.UpsertPushSubscription:output_type -> services.datahub.v1.UpsertPushSubscriptionResponse
-	290, // 406: services.datahub.v1.DataHubService.GetPushSubscription:output_type -> services.datahub.v1.GetPushSubscriptionResponse
-	292, // 407: services.datahub.v1.DataHubService.UpdatePushSubscriptionPreferences:output_type -> services.datahub.v1.UpdatePushSubscriptionPreferencesResponse
-	294, // 408: services.datahub.v1.DataHubService.DeletePushSubscription:output_type -> services.datahub.v1.DeletePushSubscriptionResponse
-	296, // 409: services.datahub.v1.DataHubService.ListPushSubscriptionsForUser:output_type -> services.datahub.v1.ListPushSubscriptionsForUserResponse
-	299, // 410: services.datahub.v1.DataHubService.EnqueueNotification:output_type -> services.datahub.v1.EnqueueNotificationResponse
-	301, // 411: services.datahub.v1.DataHubService.ClaimNotificationBatch:output_type -> services.datahub.v1.ClaimNotificationBatchResponse
-	303, // 412: services.datahub.v1.DataHubService.MarkNotificationSent:output_type -> services.datahub.v1.MarkNotificationSentResponse
-	305, // 413: services.datahub.v1.DataHubService.ReleaseNotification:output_type -> services.datahub.v1.ReleaseNotificationResponse
-	307, // 414: services.datahub.v1.DataHubService.MarkNotificationDead:output_type -> services.datahub.v1.MarkNotificationDeadResponse
-	309, // 415: services.datahub.v1.DataHubService.GetNotificationBacklogAge:output_type -> services.datahub.v1.GetNotificationBacklogAgeResponse
-	287, // [287:416] is the sub-list for method output_type
-	158, // [158:287] is the sub-list for method input_type
-	158, // [158:158] is the sub-list for extension type_name
-	158, // [158:158] is the sub-list for extension extendee
-	0,   // [0:158] is the sub-list for field type_name
+	88,  // 46: services.datahub.v1.GetFeedOgImageTargetsResponse.targets:type_name -> services.datahub.v1.FeedOgImageTarget
+	320, // 47: services.datahub.v1.ImageProxyCacheEntry.created_at:type_name -> google.protobuf.Timestamp
+	320, // 48: services.datahub.v1.ImageProxyCacheEntry.expires_at:type_name -> google.protobuf.Timestamp
+	99,  // 49: services.datahub.v1.GetImageProxyCacheResponse.entry:type_name -> services.datahub.v1.ImageProxyCacheEntry
+	99,  // 50: services.datahub.v1.PutImageProxyCacheRequest.entry:type_name -> services.datahub.v1.ImageProxyCacheEntry
+	320, // 51: services.datahub.v1.ScrapingDomain.robots_txt_fetched_at:type_name -> google.protobuf.Timestamp
+	320, // 52: services.datahub.v1.ScrapingDomain.created_at:type_name -> google.protobuf.Timestamp
+	320, // 53: services.datahub.v1.ScrapingDomain.updated_at:type_name -> google.protobuf.Timestamp
+	108, // 54: services.datahub.v1.GetScrapingDomainByDomainResponse.scraping_domain:type_name -> services.datahub.v1.ScrapingDomain
+	108, // 55: services.datahub.v1.GetScrapingDomainByIDResponse.scraping_domain:type_name -> services.datahub.v1.ScrapingDomain
+	108, // 56: services.datahub.v1.SaveScrapingDomainRequest.scraping_domain:type_name -> services.datahub.v1.ScrapingDomain
+	108, // 57: services.datahub.v1.SaveScrapingDomainResponse.scraping_domain:type_name -> services.datahub.v1.ScrapingDomain
+	108, // 58: services.datahub.v1.ListScrapingDomainsResponse.scraping_domains:type_name -> services.datahub.v1.ScrapingDomain
+	117, // 59: services.datahub.v1.UpdateScrapingDomainPolicyRequest.update:type_name -> services.datahub.v1.ScrapingPolicyUpdate
+	320, // 60: services.datahub.v1.UserArticle.published_at:type_name -> google.protobuf.Timestamp
+	320, // 61: services.datahub.v1.UserArticle.created_at:type_name -> google.protobuf.Timestamp
+	132, // 62: services.datahub.v1.GetArticleByURLResponse.article:type_name -> services.datahub.v1.ArticleContent
+	318, // 63: services.datahub.v1.BatchGetArticlesByURLsResponse.articles:type_name -> services.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry
+	132, // 64: services.datahub.v1.GetArticleContentByIDResponse.article:type_name -> services.datahub.v1.ArticleContent
+	320, // 65: services.datahub.v1.ListArticlesCursorRequest.cursor:type_name -> google.protobuf.Timestamp
+	133, // 66: services.datahub.v1.ListArticlesCursorResponse.articles:type_name -> services.datahub.v1.UserArticle
+	320, // 67: services.datahub.v1.ListArticleIDsCursorRequest.cursor:type_name -> google.protobuf.Timestamp
+	133, // 68: services.datahub.v1.BatchGetArticlesByIDsResponse.articles:type_name -> services.datahub.v1.UserArticle
+	132, // 69: services.datahub.v1.GetLatestArticleByFeedIDResponse.article:type_name -> services.datahub.v1.ArticleContent
+	320, // 70: services.datahub.v1.BackfillArticle.created_at:type_name -> google.protobuf.Timestamp
+	320, // 71: services.datahub.v1.BackfillArticle.published_at:type_name -> google.protobuf.Timestamp
+	320, // 72: services.datahub.v1.ListBackfillArticlesRequest.last_created_at:type_name -> google.protobuf.Timestamp
+	150, // 73: services.datahub.v1.ListBackfillArticlesResponse.articles:type_name -> services.datahub.v1.BackfillArticle
+	320, // 74: services.datahub.v1.BackfillSummaryTitle.generated_at:type_name -> google.protobuf.Timestamp
+	320, // 75: services.datahub.v1.ListBackfillSummaryTitlesRequest.last_generated_at:type_name -> google.protobuf.Timestamp
+	155, // 76: services.datahub.v1.ListBackfillSummaryTitlesResponse.entries:type_name -> services.datahub.v1.BackfillSummaryTitle
+	320, // 77: services.datahub.v1.FeedLinkAvailability.last_failure_at:type_name -> google.protobuf.Timestamp
+	160, // 78: services.datahub.v1.FeedLinkWithHealth.feed_link:type_name -> services.datahub.v1.FeedLink
+	161, // 79: services.datahub.v1.FeedLinkWithHealth.availability:type_name -> services.datahub.v1.FeedLinkAvailability
+	320, // 80: services.datahub.v1.Feed.pub_date:type_name -> google.protobuf.Timestamp
+	320, // 81: services.datahub.v1.Feed.created_at:type_name -> google.protobuf.Timestamp
+	320, // 82: services.datahub.v1.Feed.updated_at:type_name -> google.protobuf.Timestamp
+	320, // 83: services.datahub.v1.FeedRegistration.pub_date:type_name -> google.protobuf.Timestamp
+	320, // 84: services.datahub.v1.FeedRegistration.created_at:type_name -> google.protobuf.Timestamp
+	320, // 85: services.datahub.v1.FeedRegistration.updated_at:type_name -> google.protobuf.Timestamp
+	320, // 86: services.datahub.v1.InoreaderSummary.published_at:type_name -> google.protobuf.Timestamp
+	320, // 87: services.datahub.v1.InoreaderSummary.fetched_at:type_name -> google.protobuf.Timestamp
+	160, // 88: services.datahub.v1.ListFeedLinksResponse.feed_links:type_name -> services.datahub.v1.FeedLink
+	162, // 89: services.datahub.v1.ListFeedLinksWithHealthResponse.feed_links:type_name -> services.datahub.v1.FeedLinkWithHealth
+	163, // 90: services.datahub.v1.ListFeedLinkDomainsResponse.domains:type_name -> services.datahub.v1.FeedLinkDomain
+	160, // 91: services.datahub.v1.ListRSSFeedURLsResponse.feed_links:type_name -> services.datahub.v1.FeedLink
+	164, // 92: services.datahub.v1.ListFeedLinksForExportResponse.entries:type_name -> services.datahub.v1.FeedLinkExportEntry
+	161, // 93: services.datahub.v1.RecordFeedLinkFailureResponse.availability:type_name -> services.datahub.v1.FeedLinkAvailability
+	166, // 94: services.datahub.v1.RegisterFeedsRequest.feeds:type_name -> services.datahub.v1.FeedRegistration
+	167, // 95: services.datahub.v1.RegisterFeedsResponse.results:type_name -> services.datahub.v1.FeedRegistrationResult
+	2,   // 96: services.datahub.v1.ListFeedsCursorRequest.scope:type_name -> services.datahub.v1.FeedScope
+	320, // 97: services.datahub.v1.ListFeedsCursorRequest.cursor:type_name -> google.protobuf.Timestamp
+	165, // 98: services.datahub.v1.ListFeedsCursorResponse.feeds:type_name -> services.datahub.v1.Feed
+	165, // 99: services.datahub.v1.ListFeedsPageResponse.feeds:type_name -> services.datahub.v1.Feed
+	165, // 100: services.datahub.v1.ListFeedsLimitResponse.feeds:type_name -> services.datahub.v1.Feed
+	165, // 101: services.datahub.v1.GetSingleFeedResponse.feed:type_name -> services.datahub.v1.Feed
+	165, // 102: services.datahub.v1.ListFeedsByFeedLinkIDResponse.feeds:type_name -> services.datahub.v1.Feed
+	168, // 103: services.datahub.v1.GetFeedSummaryResponse.summary:type_name -> services.datahub.v1.FeedSummary
+	168, // 104: services.datahub.v1.GetArticleSummaryByArticleIDResponse.summary:type_name -> services.datahub.v1.FeedSummary
+	165, // 105: services.datahub.v1.SearchFeedsByTitleResponse.feeds:type_name -> services.datahub.v1.Feed
+	165, // 106: services.datahub.v1.GetRandomFeedResponse.feed:type_name -> services.datahub.v1.Feed
+	169, // 107: services.datahub.v1.GetFeedURLsByArticleIDsResponse.pairs:type_name -> services.datahub.v1.FeedAndArticle
+	319, // 108: services.datahub.v1.BatchGetFeedTitlesByIDsResponse.titles:type_name -> services.datahub.v1.BatchGetFeedTitlesByIDsResponse.TitlesEntry
+	170, // 109: services.datahub.v1.GetInoreaderSummariesByURLsResponse.summaries:type_name -> services.datahub.v1.InoreaderSummary
+	320, // 110: services.datahub.v1.FeedSubscription.subscribed_at:type_name -> google.protobuf.Timestamp
+	219, // 111: services.datahub.v1.ListSubscriptionsResponse.subscriptions:type_name -> services.datahub.v1.FeedSubscription
+	320, // 112: services.datahub.v1.FeedTag.created_at:type_name -> google.protobuf.Timestamp
+	320, // 113: services.datahub.v1.FeedTag.updated_at:type_name -> google.protobuf.Timestamp
+	240, // 114: services.datahub.v1.GetArticleTagsResponse.tags:type_name -> services.datahub.v1.FeedTag
+	320, // 115: services.datahub.v1.GetFeedTagsRequest.cursor:type_name -> google.protobuf.Timestamp
+	240, // 116: services.datahub.v1.GetFeedTagsResponse.tags:type_name -> services.datahub.v1.FeedTag
+	245, // 117: services.datahub.v1.GetTagCooccurrencesResponse.cooccurrences:type_name -> services.datahub.v1.TagCooccurrence
+	248, // 118: services.datahub.v1.SearchTagsByPrefixResponse.hits:type_name -> services.datahub.v1.TagPrefixHit
+	320, // 119: services.datahub.v1.GetTagArticleCountsRequest.since:type_name -> google.protobuf.Timestamp
+	251, // 120: services.datahub.v1.GetTagArticleCountsResponse.counts:type_name -> services.datahub.v1.TagArticleCount
+	320, // 121: services.datahub.v1.TagTrailArticle.published_at:type_name -> google.protobuf.Timestamp
+	320, // 122: services.datahub.v1.ListArticlesByTagIDRequest.cursor:type_name -> google.protobuf.Timestamp
+	254, // 123: services.datahub.v1.ListArticlesByTagIDResponse.articles:type_name -> services.datahub.v1.TagTrailArticle
+	320, // 124: services.datahub.v1.ListArticlesByTagNameRequest.cursor:type_name -> google.protobuf.Timestamp
+	254, // 125: services.datahub.v1.ListArticlesByTagNameResponse.articles:type_name -> services.datahub.v1.TagTrailArticle
+	320, // 126: services.datahub.v1.GetArticleTitleAndLinkResponse.published_at:type_name -> google.protobuf.Timestamp
+	320, // 127: services.datahub.v1.SummaryVersion.generated_at:type_name -> google.protobuf.Timestamp
+	261, // 128: services.datahub.v1.CreateSummaryVersionRequest.version:type_name -> services.datahub.v1.SummaryVersion
+	261, // 129: services.datahub.v1.MarkSummaryVersionSupersededResponse.previous_version:type_name -> services.datahub.v1.SummaryVersion
+	261, // 130: services.datahub.v1.GetSummaryVersionByIDResponse.version:type_name -> services.datahub.v1.SummaryVersion
+	261, // 131: services.datahub.v1.GetLatestSummaryVersionResponse.version:type_name -> services.datahub.v1.SummaryVersion
+	320, // 132: services.datahub.v1.TagSetVersion.generated_at:type_name -> google.protobuf.Timestamp
+	270, // 133: services.datahub.v1.CreateTagSetVersionRequest.version:type_name -> services.datahub.v1.TagSetVersion
+	270, // 134: services.datahub.v1.MarkTagSetVersionSupersededResponse.previous_version:type_name -> services.datahub.v1.TagSetVersion
+	270, // 135: services.datahub.v1.GetTagSetVersionByIDResponse.version:type_name -> services.datahub.v1.TagSetVersion
+	320, // 136: services.datahub.v1.GetTodayUnreadArticlesCountRequest.since:type_name -> google.protobuf.Timestamp
+	320, // 137: services.datahub.v1.TrendDataPoint.bucket:type_name -> google.protobuf.Timestamp
+	3,   // 138: services.datahub.v1.GetTrendStatsRequest.window:type_name -> services.datahub.v1.TrendWindow
+	287, // 139: services.datahub.v1.GetTrendStatsResponse.points:type_name -> services.datahub.v1.TrendDataPoint
+	4,   // 140: services.datahub.v1.GetTrendStatsResponse.granularity:type_name -> services.datahub.v1.TrendGranularity
+	292, // 141: services.datahub.v1.PushSubscription.preferences:type_name -> services.datahub.v1.NotificationPreferences
+	320, // 142: services.datahub.v1.PushSubscription.created_at:type_name -> google.protobuf.Timestamp
+	320, // 143: services.datahub.v1.PushSubscription.updated_at:type_name -> google.protobuf.Timestamp
+	320, // 144: services.datahub.v1.PushSubscription.last_success_at:type_name -> google.protobuf.Timestamp
+	320, // 145: services.datahub.v1.PushSubscription.last_failure_at:type_name -> google.protobuf.Timestamp
+	293, // 146: services.datahub.v1.UpsertPushSubscriptionRequest.subscription:type_name -> services.datahub.v1.PushSubscription
+	293, // 147: services.datahub.v1.GetPushSubscriptionResponse.subscription:type_name -> services.datahub.v1.PushSubscription
+	292, // 148: services.datahub.v1.UpdatePushSubscriptionPreferencesRequest.preferences:type_name -> services.datahub.v1.NotificationPreferences
+	293, // 149: services.datahub.v1.ListPushSubscriptionsForUserResponse.subscriptions:type_name -> services.datahub.v1.PushSubscription
+	320, // 150: services.datahub.v1.PushDelivery.occurred_at:type_name -> google.protobuf.Timestamp
+	5,   // 151: services.datahub.v1.PushDelivery.state:type_name -> services.datahub.v1.NotificationState
+	320, // 152: services.datahub.v1.PushDelivery.next_attempt_at:type_name -> google.protobuf.Timestamp
+	320, // 153: services.datahub.v1.PushDelivery.expires_at:type_name -> google.protobuf.Timestamp
+	320, // 154: services.datahub.v1.EnqueueNotificationRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	320, // 155: services.datahub.v1.EnqueueNotificationRequest.expires_at:type_name -> google.protobuf.Timestamp
+	304, // 156: services.datahub.v1.ClaimNotificationBatchResponse.deliveries:type_name -> services.datahub.v1.PushDelivery
+	320, // 157: services.datahub.v1.ReleaseNotificationRequest.next_attempt_at:type_name -> google.protobuf.Timestamp
+	132, // 158: services.datahub.v1.BatchGetArticlesByURLsResponse.ArticlesEntry.value:type_name -> services.datahub.v1.ArticleContent
+	8,   // 159: services.datahub.v1.DataHubService.ListArticlesWithTags:input_type -> services.datahub.v1.ListArticlesWithTagsRequest
+	10,  // 160: services.datahub.v1.DataHubService.ListArticlesWithTagsForward:input_type -> services.datahub.v1.ListArticlesWithTagsForwardRequest
+	12,  // 161: services.datahub.v1.DataHubService.ListDeletedArticles:input_type -> services.datahub.v1.ListDeletedArticlesRequest
+	14,  // 162: services.datahub.v1.DataHubService.GetLatestArticleTimestamp:input_type -> services.datahub.v1.GetLatestArticleTimestampRequest
+	16,  // 163: services.datahub.v1.DataHubService.GetArticleByID:input_type -> services.datahub.v1.GetArticleByIDRequest
+	18,  // 164: services.datahub.v1.DataHubService.CheckArticleExists:input_type -> services.datahub.v1.CheckArticleExistsRequest
+	20,  // 165: services.datahub.v1.DataHubService.CreateArticle:input_type -> services.datahub.v1.CreateArticleRequest
+	22,  // 166: services.datahub.v1.DataHubService.SaveArticleSummary:input_type -> services.datahub.v1.SaveArticleSummaryRequest
+	24,  // 167: services.datahub.v1.DataHubService.GetArticleContent:input_type -> services.datahub.v1.GetArticleContentRequest
+	26,  // 168: services.datahub.v1.DataHubService.GetFeedID:input_type -> services.datahub.v1.GetFeedIDRequest
+	28,  // 169: services.datahub.v1.DataHubService.ListFeedURLs:input_type -> services.datahub.v1.ListFeedURLsRequest
+	31,  // 170: services.datahub.v1.DataHubService.UpsertArticleTags:input_type -> services.datahub.v1.UpsertArticleTagsRequest
+	34,  // 171: services.datahub.v1.DataHubService.BatchUpsertArticleTags:input_type -> services.datahub.v1.BatchUpsertArticleTagsRequest
+	36,  // 172: services.datahub.v1.DataHubService.ListUntaggedArticles:input_type -> services.datahub.v1.ListUntaggedArticlesRequest
+	38,  // 173: services.datahub.v1.DataHubService.BatchGetTagsByArticleIDs:input_type -> services.datahub.v1.BatchGetTagsByArticleIDsRequest
+	42,  // 174: services.datahub.v1.DataHubService.DeleteArticleSummary:input_type -> services.datahub.v1.DeleteArticleSummaryRequest
+	44,  // 175: services.datahub.v1.DataHubService.CheckArticleSummaryExists:input_type -> services.datahub.v1.CheckArticleSummaryExistsRequest
+	47,  // 176: services.datahub.v1.DataHubService.FindArticlesWithSummaries:input_type -> services.datahub.v1.FindArticlesWithSummariesRequest
+	50,  // 177: services.datahub.v1.DataHubService.ListUnsummarizedArticles:input_type -> services.datahub.v1.ListUnsummarizedArticlesRequest
+	52,  // 178: services.datahub.v1.DataHubService.HasUnsummarizedArticles:input_type -> services.datahub.v1.HasUnsummarizedArticlesRequest
+	54,  // 179: services.datahub.v1.DataHubService.GetEmptyFeedID:input_type -> services.datahub.v1.GetEmptyFeedIDRequest
+	56,  // 180: services.datahub.v1.DataHubService.FetchTagCloud:input_type -> services.datahub.v1.FetchTagCloudRequest
+	59,  // 181: services.datahub.v1.DataHubService.FetchArticlesByTag:input_type -> services.datahub.v1.FetchArticlesByTagRequest
+	62,  // 182: services.datahub.v1.DataHubService.ListRecapArticles:input_type -> services.datahub.v1.ListRecapArticlesRequest
+	66,  // 183: services.datahub.v1.DataHubService.GetSystemUser:input_type -> services.datahub.v1.GetSystemUserRequest
+	69,  // 184: services.datahub.v1.DataHubService.ListRecentArticles:input_type -> services.datahub.v1.ListRecentArticlesRequest
+	72,  // 185: services.datahub.v1.DataHubService.ClaimOutboxBatch:input_type -> services.datahub.v1.ClaimOutboxBatchRequest
+	74,  // 186: services.datahub.v1.DataHubService.MarkOutboxProcessed:input_type -> services.datahub.v1.MarkOutboxProcessedRequest
+	76,  // 187: services.datahub.v1.DataHubService.ReleaseOutboxEvent:input_type -> services.datahub.v1.ReleaseOutboxEventRequest
+	78,  // 188: services.datahub.v1.DataHubService.PruneOutboxEvents:input_type -> services.datahub.v1.PruneOutboxEventsRequest
+	81,  // 189: services.datahub.v1.DataHubService.GetArticleHead:input_type -> services.datahub.v1.GetArticleHeadRequest
+	83,  // 190: services.datahub.v1.DataHubService.BatchGetOgImageURLs:input_type -> services.datahub.v1.BatchGetOgImageURLsRequest
+	86,  // 191: services.datahub.v1.DataHubService.ListFeedsMissingOgImage:input_type -> services.datahub.v1.ListFeedsMissingOgImageRequest
+	95,  // 192: services.datahub.v1.DataHubService.ListUnwarmedOgImageURLs:input_type -> services.datahub.v1.ListUnwarmedOgImageURLsRequest
+	97,  // 193: services.datahub.v1.DataHubService.PurgeExpiredArticleHeads:input_type -> services.datahub.v1.PurgeExpiredArticleHeadsRequest
+	89,  // 194: services.datahub.v1.DataHubService.GetFeedOgImageTargets:input_type -> services.datahub.v1.GetFeedOgImageTargetsRequest
+	91,  // 195: services.datahub.v1.DataHubService.SaveFeedOgImage:input_type -> services.datahub.v1.SaveFeedOgImageRequest
+	93,  // 196: services.datahub.v1.DataHubService.PurgeExpiredFeedOgImages:input_type -> services.datahub.v1.PurgeExpiredFeedOgImagesRequest
+	100, // 197: services.datahub.v1.DataHubService.GetImageProxyCache:input_type -> services.datahub.v1.GetImageProxyCacheRequest
+	102, // 198: services.datahub.v1.DataHubService.PutImageProxyCache:input_type -> services.datahub.v1.PutImageProxyCacheRequest
+	104, // 199: services.datahub.v1.DataHubService.EvictExpiredImageProxyCache:input_type -> services.datahub.v1.EvictExpiredImageProxyCacheRequest
+	106, // 200: services.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan:input_type -> services.datahub.v1.PurgeImageProxyCacheOlderThanRequest
+	109, // 201: services.datahub.v1.DataHubService.GetScrapingDomainByDomain:input_type -> services.datahub.v1.GetScrapingDomainByDomainRequest
+	111, // 202: services.datahub.v1.DataHubService.GetScrapingDomainByID:input_type -> services.datahub.v1.GetScrapingDomainByIDRequest
+	113, // 203: services.datahub.v1.DataHubService.SaveScrapingDomain:input_type -> services.datahub.v1.SaveScrapingDomainRequest
+	115, // 204: services.datahub.v1.DataHubService.ListScrapingDomains:input_type -> services.datahub.v1.ListScrapingDomainsRequest
+	118, // 205: services.datahub.v1.DataHubService.UpdateScrapingDomainPolicy:input_type -> services.datahub.v1.UpdateScrapingDomainPolicyRequest
+	120, // 206: services.datahub.v1.DataHubService.SaveDeclinedDomain:input_type -> services.datahub.v1.SaveDeclinedDomainRequest
+	122, // 207: services.datahub.v1.DataHubService.IsDomainDeclined:input_type -> services.datahub.v1.IsDomainDeclinedRequest
+	124, // 208: services.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID:input_type -> services.datahub.v1.ListSubscribedUserIDsByFeedLinkIDRequest
+	126, // 209: services.datahub.v1.DataHubService.CheckArticleExistsByURLForUser:input_type -> services.datahub.v1.CheckArticleExistsByURLForUserRequest
+	128, // 210: services.datahub.v1.DataHubService.ArchiveArticle:input_type -> services.datahub.v1.ArchiveArticleRequest
+	130, // 211: services.datahub.v1.DataHubService.SaveArticleHead:input_type -> services.datahub.v1.SaveArticleHeadRequest
+	134, // 212: services.datahub.v1.DataHubService.GetArticleByURL:input_type -> services.datahub.v1.GetArticleByURLRequest
+	136, // 213: services.datahub.v1.DataHubService.BatchGetArticlesByURLs:input_type -> services.datahub.v1.BatchGetArticlesByURLsRequest
+	138, // 214: services.datahub.v1.DataHubService.GetArticleContentByID:input_type -> services.datahub.v1.GetArticleContentByIDRequest
+	140, // 215: services.datahub.v1.DataHubService.ListArticlesCursor:input_type -> services.datahub.v1.ListArticlesCursorRequest
+	142, // 216: services.datahub.v1.DataHubService.ListArticleIDsCursor:input_type -> services.datahub.v1.ListArticleIDsCursorRequest
+	144, // 217: services.datahub.v1.DataHubService.BatchGetArticlesByIDs:input_type -> services.datahub.v1.BatchGetArticlesByIDsRequest
+	146, // 218: services.datahub.v1.DataHubService.GetLatestArticleByFeedID:input_type -> services.datahub.v1.GetLatestArticleByFeedIDRequest
+	148, // 219: services.datahub.v1.DataHubService.LookupArticleURL:input_type -> services.datahub.v1.LookupArticleURLRequest
+	151, // 220: services.datahub.v1.DataHubService.CountBackfillArticles:input_type -> services.datahub.v1.CountBackfillArticlesRequest
+	153, // 221: services.datahub.v1.DataHubService.ListBackfillArticles:input_type -> services.datahub.v1.ListBackfillArticlesRequest
+	156, // 222: services.datahub.v1.DataHubService.CountBackfillSummaryTitles:input_type -> services.datahub.v1.CountBackfillSummaryTitlesRequest
+	158, // 223: services.datahub.v1.DataHubService.ListBackfillSummaryTitles:input_type -> services.datahub.v1.ListBackfillSummaryTitlesRequest
+	171, // 224: services.datahub.v1.DataHubService.RegisterFeedLink:input_type -> services.datahub.v1.RegisterFeedLinkRequest
+	173, // 225: services.datahub.v1.DataHubService.BulkRegisterFeedLinks:input_type -> services.datahub.v1.BulkRegisterFeedLinksRequest
+	175, // 226: services.datahub.v1.DataHubService.ListFeedLinks:input_type -> services.datahub.v1.ListFeedLinksRequest
+	177, // 227: services.datahub.v1.DataHubService.ListFeedLinksWithHealth:input_type -> services.datahub.v1.ListFeedLinksWithHealthRequest
+	179, // 228: services.datahub.v1.DataHubService.DeleteFeedLink:input_type -> services.datahub.v1.DeleteFeedLinkRequest
+	181, // 229: services.datahub.v1.DataHubService.ResolveFeedLinkIDByURL:input_type -> services.datahub.v1.ResolveFeedLinkIDByURLRequest
+	183, // 230: services.datahub.v1.DataHubService.ListFeedLinkDomains:input_type -> services.datahub.v1.ListFeedLinkDomainsRequest
+	185, // 231: services.datahub.v1.DataHubService.ListRSSFeedURLs:input_type -> services.datahub.v1.ListRSSFeedURLsRequest
+	187, // 232: services.datahub.v1.DataHubService.ListFeedLinksForExport:input_type -> services.datahub.v1.ListFeedLinksForExportRequest
+	189, // 233: services.datahub.v1.DataHubService.RecordFeedLinkFailure:input_type -> services.datahub.v1.RecordFeedLinkFailureRequest
+	191, // 234: services.datahub.v1.DataHubService.ResetFeedLinkFailures:input_type -> services.datahub.v1.ResetFeedLinkFailuresRequest
+	193, // 235: services.datahub.v1.DataHubService.RegisterFeeds:input_type -> services.datahub.v1.RegisterFeedsRequest
+	195, // 236: services.datahub.v1.DataHubService.ListFeedsCursor:input_type -> services.datahub.v1.ListFeedsCursorRequest
+	197, // 237: services.datahub.v1.DataHubService.ListFeedsPage:input_type -> services.datahub.v1.ListFeedsPageRequest
+	199, // 238: services.datahub.v1.DataHubService.ListFeedsLimit:input_type -> services.datahub.v1.ListFeedsLimitRequest
+	201, // 239: services.datahub.v1.DataHubService.GetSingleFeed:input_type -> services.datahub.v1.GetSingleFeedRequest
+	203, // 240: services.datahub.v1.DataHubService.ListFeedsByFeedLinkID:input_type -> services.datahub.v1.ListFeedsByFeedLinkIDRequest
+	205, // 241: services.datahub.v1.DataHubService.GetFeedSummary:input_type -> services.datahub.v1.GetFeedSummaryRequest
+	207, // 242: services.datahub.v1.DataHubService.GetArticleSummaryByArticleID:input_type -> services.datahub.v1.GetArticleSummaryByArticleIDRequest
+	209, // 243: services.datahub.v1.DataHubService.SearchFeedsByTitle:input_type -> services.datahub.v1.SearchFeedsByTitleRequest
+	211, // 244: services.datahub.v1.DataHubService.GetRandomFeed:input_type -> services.datahub.v1.GetRandomFeedRequest
+	213, // 245: services.datahub.v1.DataHubService.GetFeedURLsByArticleIDs:input_type -> services.datahub.v1.GetFeedURLsByArticleIDsRequest
+	215, // 246: services.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs:input_type -> services.datahub.v1.BatchGetFeedTitlesByIDsRequest
+	217, // 247: services.datahub.v1.DataHubService.GetInoreaderSummariesByURLs:input_type -> services.datahub.v1.GetInoreaderSummariesByURLsRequest
+	220, // 248: services.datahub.v1.DataHubService.MarkFeedRead:input_type -> services.datahub.v1.MarkFeedReadRequest
+	222, // 249: services.datahub.v1.DataHubService.MarkArticleRead:input_type -> services.datahub.v1.MarkArticleReadRequest
+	224, // 250: services.datahub.v1.DataHubService.GetReadFeedIDs:input_type -> services.datahub.v1.GetReadFeedIDsRequest
+	226, // 251: services.datahub.v1.DataHubService.GetAllReadFeedIDs:input_type -> services.datahub.v1.GetAllReadFeedIDsRequest
+	228, // 252: services.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs:input_type -> services.datahub.v1.GetUserSubscribedFeedLinkIDsRequest
+	230, // 253: services.datahub.v1.DataHubService.ListSubscriptions:input_type -> services.datahub.v1.ListSubscriptionsRequest
+	232, // 254: services.datahub.v1.DataHubService.Subscribe:input_type -> services.datahub.v1.SubscribeRequest
+	234, // 255: services.datahub.v1.DataHubService.Unsubscribe:input_type -> services.datahub.v1.UnsubscribeRequest
+	236, // 256: services.datahub.v1.DataHubService.AddFavoriteFeed:input_type -> services.datahub.v1.AddFavoriteFeedRequest
+	238, // 257: services.datahub.v1.DataHubService.RemoveFavoriteFeed:input_type -> services.datahub.v1.RemoveFavoriteFeedRequest
+	241, // 258: services.datahub.v1.DataHubService.GetArticleTags:input_type -> services.datahub.v1.GetArticleTagsRequest
+	243, // 259: services.datahub.v1.DataHubService.GetFeedTags:input_type -> services.datahub.v1.GetFeedTagsRequest
+	246, // 260: services.datahub.v1.DataHubService.GetTagCooccurrences:input_type -> services.datahub.v1.GetTagCooccurrencesRequest
+	249, // 261: services.datahub.v1.DataHubService.SearchTagsByPrefix:input_type -> services.datahub.v1.SearchTagsByPrefixRequest
+	252, // 262: services.datahub.v1.DataHubService.GetTagArticleCounts:input_type -> services.datahub.v1.GetTagArticleCountsRequest
+	255, // 263: services.datahub.v1.DataHubService.ListArticlesByTagID:input_type -> services.datahub.v1.ListArticlesByTagIDRequest
+	257, // 264: services.datahub.v1.DataHubService.ListArticlesByTagName:input_type -> services.datahub.v1.ListArticlesByTagNameRequest
+	259, // 265: services.datahub.v1.DataHubService.GetArticleTitleAndLink:input_type -> services.datahub.v1.GetArticleTitleAndLinkRequest
+	262, // 266: services.datahub.v1.DataHubService.CreateSummaryVersion:input_type -> services.datahub.v1.CreateSummaryVersionRequest
+	264, // 267: services.datahub.v1.DataHubService.MarkSummaryVersionSuperseded:input_type -> services.datahub.v1.MarkSummaryVersionSupersededRequest
+	266, // 268: services.datahub.v1.DataHubService.GetSummaryVersionByID:input_type -> services.datahub.v1.GetSummaryVersionByIDRequest
+	268, // 269: services.datahub.v1.DataHubService.GetLatestSummaryVersion:input_type -> services.datahub.v1.GetLatestSummaryVersionRequest
+	271, // 270: services.datahub.v1.DataHubService.CreateTagSetVersion:input_type -> services.datahub.v1.CreateTagSetVersionRequest
+	273, // 271: services.datahub.v1.DataHubService.MarkTagSetVersionSuperseded:input_type -> services.datahub.v1.MarkTagSetVersionSupersededRequest
+	275, // 272: services.datahub.v1.DataHubService.GetTagSetVersionByID:input_type -> services.datahub.v1.GetTagSetVersionByIDRequest
+	277, // 273: services.datahub.v1.DataHubService.GetFeedAmount:input_type -> services.datahub.v1.GetFeedAmountRequest
+	279, // 274: services.datahub.v1.DataHubService.GetTotalArticlesCount:input_type -> services.datahub.v1.GetTotalArticlesCountRequest
+	281, // 275: services.datahub.v1.DataHubService.GetSummarizedArticlesCount:input_type -> services.datahub.v1.GetSummarizedArticlesCountRequest
+	283, // 276: services.datahub.v1.DataHubService.GetUnsummarizedArticlesCount:input_type -> services.datahub.v1.GetUnsummarizedArticlesCountRequest
+	285, // 277: services.datahub.v1.DataHubService.GetTodayUnreadArticlesCount:input_type -> services.datahub.v1.GetTodayUnreadArticlesCountRequest
+	288, // 278: services.datahub.v1.DataHubService.GetTrendStats:input_type -> services.datahub.v1.GetTrendStatsRequest
+	290, // 279: services.datahub.v1.DataHubService.ListUserFeedIDs:input_type -> services.datahub.v1.ListUserFeedIDsRequest
+	294, // 280: services.datahub.v1.DataHubService.UpsertPushSubscription:input_type -> services.datahub.v1.UpsertPushSubscriptionRequest
+	296, // 281: services.datahub.v1.DataHubService.GetPushSubscription:input_type -> services.datahub.v1.GetPushSubscriptionRequest
+	298, // 282: services.datahub.v1.DataHubService.UpdatePushSubscriptionPreferences:input_type -> services.datahub.v1.UpdatePushSubscriptionPreferencesRequest
+	300, // 283: services.datahub.v1.DataHubService.DeletePushSubscription:input_type -> services.datahub.v1.DeletePushSubscriptionRequest
+	302, // 284: services.datahub.v1.DataHubService.ListPushSubscriptionsForUser:input_type -> services.datahub.v1.ListPushSubscriptionsForUserRequest
+	305, // 285: services.datahub.v1.DataHubService.EnqueueNotification:input_type -> services.datahub.v1.EnqueueNotificationRequest
+	307, // 286: services.datahub.v1.DataHubService.ClaimNotificationBatch:input_type -> services.datahub.v1.ClaimNotificationBatchRequest
+	309, // 287: services.datahub.v1.DataHubService.MarkNotificationSent:input_type -> services.datahub.v1.MarkNotificationSentRequest
+	311, // 288: services.datahub.v1.DataHubService.ReleaseNotification:input_type -> services.datahub.v1.ReleaseNotificationRequest
+	313, // 289: services.datahub.v1.DataHubService.MarkNotificationDead:input_type -> services.datahub.v1.MarkNotificationDeadRequest
+	315, // 290: services.datahub.v1.DataHubService.GetNotificationBacklogAge:input_type -> services.datahub.v1.GetNotificationBacklogAgeRequest
+	9,   // 291: services.datahub.v1.DataHubService.ListArticlesWithTags:output_type -> services.datahub.v1.ListArticlesWithTagsResponse
+	11,  // 292: services.datahub.v1.DataHubService.ListArticlesWithTagsForward:output_type -> services.datahub.v1.ListArticlesWithTagsForwardResponse
+	13,  // 293: services.datahub.v1.DataHubService.ListDeletedArticles:output_type -> services.datahub.v1.ListDeletedArticlesResponse
+	15,  // 294: services.datahub.v1.DataHubService.GetLatestArticleTimestamp:output_type -> services.datahub.v1.GetLatestArticleTimestampResponse
+	17,  // 295: services.datahub.v1.DataHubService.GetArticleByID:output_type -> services.datahub.v1.GetArticleByIDResponse
+	19,  // 296: services.datahub.v1.DataHubService.CheckArticleExists:output_type -> services.datahub.v1.CheckArticleExistsResponse
+	21,  // 297: services.datahub.v1.DataHubService.CreateArticle:output_type -> services.datahub.v1.CreateArticleResponse
+	23,  // 298: services.datahub.v1.DataHubService.SaveArticleSummary:output_type -> services.datahub.v1.SaveArticleSummaryResponse
+	25,  // 299: services.datahub.v1.DataHubService.GetArticleContent:output_type -> services.datahub.v1.GetArticleContentResponse
+	27,  // 300: services.datahub.v1.DataHubService.GetFeedID:output_type -> services.datahub.v1.GetFeedIDResponse
+	29,  // 301: services.datahub.v1.DataHubService.ListFeedURLs:output_type -> services.datahub.v1.ListFeedURLsResponse
+	33,  // 302: services.datahub.v1.DataHubService.UpsertArticleTags:output_type -> services.datahub.v1.UpsertArticleTagsResponse
+	35,  // 303: services.datahub.v1.DataHubService.BatchUpsertArticleTags:output_type -> services.datahub.v1.BatchUpsertArticleTagsResponse
+	37,  // 304: services.datahub.v1.DataHubService.ListUntaggedArticles:output_type -> services.datahub.v1.ListUntaggedArticlesResponse
+	41,  // 305: services.datahub.v1.DataHubService.BatchGetTagsByArticleIDs:output_type -> services.datahub.v1.BatchGetTagsByArticleIDsResponse
+	43,  // 306: services.datahub.v1.DataHubService.DeleteArticleSummary:output_type -> services.datahub.v1.DeleteArticleSummaryResponse
+	45,  // 307: services.datahub.v1.DataHubService.CheckArticleSummaryExists:output_type -> services.datahub.v1.CheckArticleSummaryExistsResponse
+	48,  // 308: services.datahub.v1.DataHubService.FindArticlesWithSummaries:output_type -> services.datahub.v1.FindArticlesWithSummariesResponse
+	51,  // 309: services.datahub.v1.DataHubService.ListUnsummarizedArticles:output_type -> services.datahub.v1.ListUnsummarizedArticlesResponse
+	53,  // 310: services.datahub.v1.DataHubService.HasUnsummarizedArticles:output_type -> services.datahub.v1.HasUnsummarizedArticlesResponse
+	55,  // 311: services.datahub.v1.DataHubService.GetEmptyFeedID:output_type -> services.datahub.v1.GetEmptyFeedIDResponse
+	57,  // 312: services.datahub.v1.DataHubService.FetchTagCloud:output_type -> services.datahub.v1.FetchTagCloudResponse
+	60,  // 313: services.datahub.v1.DataHubService.FetchArticlesByTag:output_type -> services.datahub.v1.FetchArticlesByTagResponse
+	65,  // 314: services.datahub.v1.DataHubService.ListRecapArticles:output_type -> services.datahub.v1.ListRecapArticlesResponse
+	67,  // 315: services.datahub.v1.DataHubService.GetSystemUser:output_type -> services.datahub.v1.GetSystemUserResponse
+	70,  // 316: services.datahub.v1.DataHubService.ListRecentArticles:output_type -> services.datahub.v1.ListRecentArticlesResponse
+	73,  // 317: services.datahub.v1.DataHubService.ClaimOutboxBatch:output_type -> services.datahub.v1.ClaimOutboxBatchResponse
+	75,  // 318: services.datahub.v1.DataHubService.MarkOutboxProcessed:output_type -> services.datahub.v1.MarkOutboxProcessedResponse
+	77,  // 319: services.datahub.v1.DataHubService.ReleaseOutboxEvent:output_type -> services.datahub.v1.ReleaseOutboxEventResponse
+	79,  // 320: services.datahub.v1.DataHubService.PruneOutboxEvents:output_type -> services.datahub.v1.PruneOutboxEventsResponse
+	82,  // 321: services.datahub.v1.DataHubService.GetArticleHead:output_type -> services.datahub.v1.GetArticleHeadResponse
+	84,  // 322: services.datahub.v1.DataHubService.BatchGetOgImageURLs:output_type -> services.datahub.v1.BatchGetOgImageURLsResponse
+	87,  // 323: services.datahub.v1.DataHubService.ListFeedsMissingOgImage:output_type -> services.datahub.v1.ListFeedsMissingOgImageResponse
+	96,  // 324: services.datahub.v1.DataHubService.ListUnwarmedOgImageURLs:output_type -> services.datahub.v1.ListUnwarmedOgImageURLsResponse
+	98,  // 325: services.datahub.v1.DataHubService.PurgeExpiredArticleHeads:output_type -> services.datahub.v1.PurgeExpiredArticleHeadsResponse
+	90,  // 326: services.datahub.v1.DataHubService.GetFeedOgImageTargets:output_type -> services.datahub.v1.GetFeedOgImageTargetsResponse
+	92,  // 327: services.datahub.v1.DataHubService.SaveFeedOgImage:output_type -> services.datahub.v1.SaveFeedOgImageResponse
+	94,  // 328: services.datahub.v1.DataHubService.PurgeExpiredFeedOgImages:output_type -> services.datahub.v1.PurgeExpiredFeedOgImagesResponse
+	101, // 329: services.datahub.v1.DataHubService.GetImageProxyCache:output_type -> services.datahub.v1.GetImageProxyCacheResponse
+	103, // 330: services.datahub.v1.DataHubService.PutImageProxyCache:output_type -> services.datahub.v1.PutImageProxyCacheResponse
+	105, // 331: services.datahub.v1.DataHubService.EvictExpiredImageProxyCache:output_type -> services.datahub.v1.EvictExpiredImageProxyCacheResponse
+	107, // 332: services.datahub.v1.DataHubService.PurgeImageProxyCacheOlderThan:output_type -> services.datahub.v1.PurgeImageProxyCacheOlderThanResponse
+	110, // 333: services.datahub.v1.DataHubService.GetScrapingDomainByDomain:output_type -> services.datahub.v1.GetScrapingDomainByDomainResponse
+	112, // 334: services.datahub.v1.DataHubService.GetScrapingDomainByID:output_type -> services.datahub.v1.GetScrapingDomainByIDResponse
+	114, // 335: services.datahub.v1.DataHubService.SaveScrapingDomain:output_type -> services.datahub.v1.SaveScrapingDomainResponse
+	116, // 336: services.datahub.v1.DataHubService.ListScrapingDomains:output_type -> services.datahub.v1.ListScrapingDomainsResponse
+	119, // 337: services.datahub.v1.DataHubService.UpdateScrapingDomainPolicy:output_type -> services.datahub.v1.UpdateScrapingDomainPolicyResponse
+	121, // 338: services.datahub.v1.DataHubService.SaveDeclinedDomain:output_type -> services.datahub.v1.SaveDeclinedDomainResponse
+	123, // 339: services.datahub.v1.DataHubService.IsDomainDeclined:output_type -> services.datahub.v1.IsDomainDeclinedResponse
+	125, // 340: services.datahub.v1.DataHubService.ListSubscribedUserIDsByFeedLinkID:output_type -> services.datahub.v1.ListSubscribedUserIDsByFeedLinkIDResponse
+	127, // 341: services.datahub.v1.DataHubService.CheckArticleExistsByURLForUser:output_type -> services.datahub.v1.CheckArticleExistsByURLForUserResponse
+	129, // 342: services.datahub.v1.DataHubService.ArchiveArticle:output_type -> services.datahub.v1.ArchiveArticleResponse
+	131, // 343: services.datahub.v1.DataHubService.SaveArticleHead:output_type -> services.datahub.v1.SaveArticleHeadResponse
+	135, // 344: services.datahub.v1.DataHubService.GetArticleByURL:output_type -> services.datahub.v1.GetArticleByURLResponse
+	137, // 345: services.datahub.v1.DataHubService.BatchGetArticlesByURLs:output_type -> services.datahub.v1.BatchGetArticlesByURLsResponse
+	139, // 346: services.datahub.v1.DataHubService.GetArticleContentByID:output_type -> services.datahub.v1.GetArticleContentByIDResponse
+	141, // 347: services.datahub.v1.DataHubService.ListArticlesCursor:output_type -> services.datahub.v1.ListArticlesCursorResponse
+	143, // 348: services.datahub.v1.DataHubService.ListArticleIDsCursor:output_type -> services.datahub.v1.ListArticleIDsCursorResponse
+	145, // 349: services.datahub.v1.DataHubService.BatchGetArticlesByIDs:output_type -> services.datahub.v1.BatchGetArticlesByIDsResponse
+	147, // 350: services.datahub.v1.DataHubService.GetLatestArticleByFeedID:output_type -> services.datahub.v1.GetLatestArticleByFeedIDResponse
+	149, // 351: services.datahub.v1.DataHubService.LookupArticleURL:output_type -> services.datahub.v1.LookupArticleURLResponse
+	152, // 352: services.datahub.v1.DataHubService.CountBackfillArticles:output_type -> services.datahub.v1.CountBackfillArticlesResponse
+	154, // 353: services.datahub.v1.DataHubService.ListBackfillArticles:output_type -> services.datahub.v1.ListBackfillArticlesResponse
+	157, // 354: services.datahub.v1.DataHubService.CountBackfillSummaryTitles:output_type -> services.datahub.v1.CountBackfillSummaryTitlesResponse
+	159, // 355: services.datahub.v1.DataHubService.ListBackfillSummaryTitles:output_type -> services.datahub.v1.ListBackfillSummaryTitlesResponse
+	172, // 356: services.datahub.v1.DataHubService.RegisterFeedLink:output_type -> services.datahub.v1.RegisterFeedLinkResponse
+	174, // 357: services.datahub.v1.DataHubService.BulkRegisterFeedLinks:output_type -> services.datahub.v1.BulkRegisterFeedLinksResponse
+	176, // 358: services.datahub.v1.DataHubService.ListFeedLinks:output_type -> services.datahub.v1.ListFeedLinksResponse
+	178, // 359: services.datahub.v1.DataHubService.ListFeedLinksWithHealth:output_type -> services.datahub.v1.ListFeedLinksWithHealthResponse
+	180, // 360: services.datahub.v1.DataHubService.DeleteFeedLink:output_type -> services.datahub.v1.DeleteFeedLinkResponse
+	182, // 361: services.datahub.v1.DataHubService.ResolveFeedLinkIDByURL:output_type -> services.datahub.v1.ResolveFeedLinkIDByURLResponse
+	184, // 362: services.datahub.v1.DataHubService.ListFeedLinkDomains:output_type -> services.datahub.v1.ListFeedLinkDomainsResponse
+	186, // 363: services.datahub.v1.DataHubService.ListRSSFeedURLs:output_type -> services.datahub.v1.ListRSSFeedURLsResponse
+	188, // 364: services.datahub.v1.DataHubService.ListFeedLinksForExport:output_type -> services.datahub.v1.ListFeedLinksForExportResponse
+	190, // 365: services.datahub.v1.DataHubService.RecordFeedLinkFailure:output_type -> services.datahub.v1.RecordFeedLinkFailureResponse
+	192, // 366: services.datahub.v1.DataHubService.ResetFeedLinkFailures:output_type -> services.datahub.v1.ResetFeedLinkFailuresResponse
+	194, // 367: services.datahub.v1.DataHubService.RegisterFeeds:output_type -> services.datahub.v1.RegisterFeedsResponse
+	196, // 368: services.datahub.v1.DataHubService.ListFeedsCursor:output_type -> services.datahub.v1.ListFeedsCursorResponse
+	198, // 369: services.datahub.v1.DataHubService.ListFeedsPage:output_type -> services.datahub.v1.ListFeedsPageResponse
+	200, // 370: services.datahub.v1.DataHubService.ListFeedsLimit:output_type -> services.datahub.v1.ListFeedsLimitResponse
+	202, // 371: services.datahub.v1.DataHubService.GetSingleFeed:output_type -> services.datahub.v1.GetSingleFeedResponse
+	204, // 372: services.datahub.v1.DataHubService.ListFeedsByFeedLinkID:output_type -> services.datahub.v1.ListFeedsByFeedLinkIDResponse
+	206, // 373: services.datahub.v1.DataHubService.GetFeedSummary:output_type -> services.datahub.v1.GetFeedSummaryResponse
+	208, // 374: services.datahub.v1.DataHubService.GetArticleSummaryByArticleID:output_type -> services.datahub.v1.GetArticleSummaryByArticleIDResponse
+	210, // 375: services.datahub.v1.DataHubService.SearchFeedsByTitle:output_type -> services.datahub.v1.SearchFeedsByTitleResponse
+	212, // 376: services.datahub.v1.DataHubService.GetRandomFeed:output_type -> services.datahub.v1.GetRandomFeedResponse
+	214, // 377: services.datahub.v1.DataHubService.GetFeedURLsByArticleIDs:output_type -> services.datahub.v1.GetFeedURLsByArticleIDsResponse
+	216, // 378: services.datahub.v1.DataHubService.BatchGetFeedTitlesByIDs:output_type -> services.datahub.v1.BatchGetFeedTitlesByIDsResponse
+	218, // 379: services.datahub.v1.DataHubService.GetInoreaderSummariesByURLs:output_type -> services.datahub.v1.GetInoreaderSummariesByURLsResponse
+	221, // 380: services.datahub.v1.DataHubService.MarkFeedRead:output_type -> services.datahub.v1.MarkFeedReadResponse
+	223, // 381: services.datahub.v1.DataHubService.MarkArticleRead:output_type -> services.datahub.v1.MarkArticleReadResponse
+	225, // 382: services.datahub.v1.DataHubService.GetReadFeedIDs:output_type -> services.datahub.v1.GetReadFeedIDsResponse
+	227, // 383: services.datahub.v1.DataHubService.GetAllReadFeedIDs:output_type -> services.datahub.v1.GetAllReadFeedIDsResponse
+	229, // 384: services.datahub.v1.DataHubService.GetUserSubscribedFeedLinkIDs:output_type -> services.datahub.v1.GetUserSubscribedFeedLinkIDsResponse
+	231, // 385: services.datahub.v1.DataHubService.ListSubscriptions:output_type -> services.datahub.v1.ListSubscriptionsResponse
+	233, // 386: services.datahub.v1.DataHubService.Subscribe:output_type -> services.datahub.v1.SubscribeResponse
+	235, // 387: services.datahub.v1.DataHubService.Unsubscribe:output_type -> services.datahub.v1.UnsubscribeResponse
+	237, // 388: services.datahub.v1.DataHubService.AddFavoriteFeed:output_type -> services.datahub.v1.AddFavoriteFeedResponse
+	239, // 389: services.datahub.v1.DataHubService.RemoveFavoriteFeed:output_type -> services.datahub.v1.RemoveFavoriteFeedResponse
+	242, // 390: services.datahub.v1.DataHubService.GetArticleTags:output_type -> services.datahub.v1.GetArticleTagsResponse
+	244, // 391: services.datahub.v1.DataHubService.GetFeedTags:output_type -> services.datahub.v1.GetFeedTagsResponse
+	247, // 392: services.datahub.v1.DataHubService.GetTagCooccurrences:output_type -> services.datahub.v1.GetTagCooccurrencesResponse
+	250, // 393: services.datahub.v1.DataHubService.SearchTagsByPrefix:output_type -> services.datahub.v1.SearchTagsByPrefixResponse
+	253, // 394: services.datahub.v1.DataHubService.GetTagArticleCounts:output_type -> services.datahub.v1.GetTagArticleCountsResponse
+	256, // 395: services.datahub.v1.DataHubService.ListArticlesByTagID:output_type -> services.datahub.v1.ListArticlesByTagIDResponse
+	258, // 396: services.datahub.v1.DataHubService.ListArticlesByTagName:output_type -> services.datahub.v1.ListArticlesByTagNameResponse
+	260, // 397: services.datahub.v1.DataHubService.GetArticleTitleAndLink:output_type -> services.datahub.v1.GetArticleTitleAndLinkResponse
+	263, // 398: services.datahub.v1.DataHubService.CreateSummaryVersion:output_type -> services.datahub.v1.CreateSummaryVersionResponse
+	265, // 399: services.datahub.v1.DataHubService.MarkSummaryVersionSuperseded:output_type -> services.datahub.v1.MarkSummaryVersionSupersededResponse
+	267, // 400: services.datahub.v1.DataHubService.GetSummaryVersionByID:output_type -> services.datahub.v1.GetSummaryVersionByIDResponse
+	269, // 401: services.datahub.v1.DataHubService.GetLatestSummaryVersion:output_type -> services.datahub.v1.GetLatestSummaryVersionResponse
+	272, // 402: services.datahub.v1.DataHubService.CreateTagSetVersion:output_type -> services.datahub.v1.CreateTagSetVersionResponse
+	274, // 403: services.datahub.v1.DataHubService.MarkTagSetVersionSuperseded:output_type -> services.datahub.v1.MarkTagSetVersionSupersededResponse
+	276, // 404: services.datahub.v1.DataHubService.GetTagSetVersionByID:output_type -> services.datahub.v1.GetTagSetVersionByIDResponse
+	278, // 405: services.datahub.v1.DataHubService.GetFeedAmount:output_type -> services.datahub.v1.GetFeedAmountResponse
+	280, // 406: services.datahub.v1.DataHubService.GetTotalArticlesCount:output_type -> services.datahub.v1.GetTotalArticlesCountResponse
+	282, // 407: services.datahub.v1.DataHubService.GetSummarizedArticlesCount:output_type -> services.datahub.v1.GetSummarizedArticlesCountResponse
+	284, // 408: services.datahub.v1.DataHubService.GetUnsummarizedArticlesCount:output_type -> services.datahub.v1.GetUnsummarizedArticlesCountResponse
+	286, // 409: services.datahub.v1.DataHubService.GetTodayUnreadArticlesCount:output_type -> services.datahub.v1.GetTodayUnreadArticlesCountResponse
+	289, // 410: services.datahub.v1.DataHubService.GetTrendStats:output_type -> services.datahub.v1.GetTrendStatsResponse
+	291, // 411: services.datahub.v1.DataHubService.ListUserFeedIDs:output_type -> services.datahub.v1.ListUserFeedIDsResponse
+	295, // 412: services.datahub.v1.DataHubService.UpsertPushSubscription:output_type -> services.datahub.v1.UpsertPushSubscriptionResponse
+	297, // 413: services.datahub.v1.DataHubService.GetPushSubscription:output_type -> services.datahub.v1.GetPushSubscriptionResponse
+	299, // 414: services.datahub.v1.DataHubService.UpdatePushSubscriptionPreferences:output_type -> services.datahub.v1.UpdatePushSubscriptionPreferencesResponse
+	301, // 415: services.datahub.v1.DataHubService.DeletePushSubscription:output_type -> services.datahub.v1.DeletePushSubscriptionResponse
+	303, // 416: services.datahub.v1.DataHubService.ListPushSubscriptionsForUser:output_type -> services.datahub.v1.ListPushSubscriptionsForUserResponse
+	306, // 417: services.datahub.v1.DataHubService.EnqueueNotification:output_type -> services.datahub.v1.EnqueueNotificationResponse
+	308, // 418: services.datahub.v1.DataHubService.ClaimNotificationBatch:output_type -> services.datahub.v1.ClaimNotificationBatchResponse
+	310, // 419: services.datahub.v1.DataHubService.MarkNotificationSent:output_type -> services.datahub.v1.MarkNotificationSentResponse
+	312, // 420: services.datahub.v1.DataHubService.ReleaseNotification:output_type -> services.datahub.v1.ReleaseNotificationResponse
+	314, // 421: services.datahub.v1.DataHubService.MarkNotificationDead:output_type -> services.datahub.v1.MarkNotificationDeadResponse
+	316, // 422: services.datahub.v1.DataHubService.GetNotificationBacklogAge:output_type -> services.datahub.v1.GetNotificationBacklogAgeResponse
+	291, // [291:423] is the sub-list for method output_type
+	159, // [159:291] is the sub-list for method input_type
+	159, // [159:159] is the sub-list for extension type_name
+	159, // [159:159] is the sub-list for extension extendee
+	0,   // [0:159] is the sub-list for field type_name
 }
 
 func init() { file_services_datahub_v1_datahub_proto_init() }
@@ -18776,31 +19191,31 @@ func file_services_datahub_v1_datahub_proto_init() {
 	file_services_datahub_v1_datahub_proto_msgTypes[58].OneofWrappers = []any{}
 	file_services_datahub_v1_datahub_proto_msgTypes[63].OneofWrappers = []any{}
 	file_services_datahub_v1_datahub_proto_msgTypes[76].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[88].OneofWrappers = []any{}
 	file_services_datahub_v1_datahub_proto_msgTypes[95].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[97].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[99].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[102].OneofWrappers = []any{}
 	file_services_datahub_v1_datahub_proto_msgTypes[104].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[148].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[152].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[153].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[157].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[169].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[192].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[194].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[206].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[230].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[248].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[252].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[257].OneofWrappers = []any{}
-	file_services_datahub_v1_datahub_proto_msgTypes[261].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[106].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[111].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[155].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[159].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[160].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[164].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[176].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[199].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[201].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[213].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[237].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[255].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[259].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[264].OneofWrappers = []any{}
+	file_services_datahub_v1_datahub_proto_msgTypes[268].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_datahub_v1_datahub_proto_rawDesc), len(file_services_datahub_v1_datahub_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   307,
+			NumMessages:   314,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

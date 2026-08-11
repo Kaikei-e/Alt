@@ -72,6 +72,9 @@ const (
 	FeedServiceUnsubscribeProcedure = "/alt.feeds.v2.FeedService/Unsubscribe"
 	// FeedServiceGetFeedTagsProcedure is the fully-qualified name of the FeedService's GetFeedTags RPC.
 	FeedServiceGetFeedTagsProcedure = "/alt.feeds.v2.FeedService/GetFeedTags"
+	// FeedServiceResolveOgImagesProcedure is the fully-qualified name of the FeedService's
+	// ResolveOgImages RPC.
+	FeedServiceResolveOgImagesProcedure = "/alt.feeds.v2.FeedService/ResolveOgImages"
 )
 
 // FeedServiceClient is a client for the alt.feeds.v2.FeedService service.
@@ -114,6 +117,10 @@ type FeedServiceClient interface {
 	// GetFeedTags returns the tags associated with a single feed by ID.
 	// Replaces GET /v1/feeds/:id/tags used by the Tag Trail feature.
 	GetFeedTags(context.Context, *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error)
+	// ResolveOgImages obtains og:image URLs on demand for feeds that arrived
+	// without one, at the moment a reader brings those cards into view. One
+	// origin fetch per feed, for a page someone is actually looking at.
+	ResolveOgImages(context.Context, *connect.Request[v2.ResolveOgImagesRequest]) (*connect.Response[v2.ResolveOgImagesResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the alt.feeds.v2.FeedService service. By default, it
@@ -217,6 +224,12 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("GetFeedTags")),
 			connect.WithClientOptions(opts...),
 		),
+		resolveOgImages: connect.NewClient[v2.ResolveOgImagesRequest, v2.ResolveOgImagesResponse](
+			httpClient,
+			baseURL+FeedServiceResolveOgImagesProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("ResolveOgImages")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -237,6 +250,7 @@ type feedServiceClient struct {
 	subscribe            *connect.Client[v2.SubscribeRequest, v2.SubscribeResponse]
 	unsubscribe          *connect.Client[v2.UnsubscribeRequest, v2.UnsubscribeResponse]
 	getFeedTags          *connect.Client[v2.GetFeedTagsRequest, v2.GetFeedTagsResponse]
+	resolveOgImages      *connect.Client[v2.ResolveOgImagesRequest, v2.ResolveOgImagesResponse]
 }
 
 // GetFeedStats calls alt.feeds.v2.FeedService.GetFeedStats.
@@ -314,6 +328,11 @@ func (c *feedServiceClient) GetFeedTags(ctx context.Context, req *connect.Reques
 	return c.getFeedTags.CallUnary(ctx, req)
 }
 
+// ResolveOgImages calls alt.feeds.v2.FeedService.ResolveOgImages.
+func (c *feedServiceClient) ResolveOgImages(ctx context.Context, req *connect.Request[v2.ResolveOgImagesRequest]) (*connect.Response[v2.ResolveOgImagesResponse], error) {
+	return c.resolveOgImages.CallUnary(ctx, req)
+}
+
 // FeedServiceHandler is an implementation of the alt.feeds.v2.FeedService service.
 type FeedServiceHandler interface {
 	// GetFeedStats returns basic feed statistics (feed count, summarized count)
@@ -354,6 +373,10 @@ type FeedServiceHandler interface {
 	// GetFeedTags returns the tags associated with a single feed by ID.
 	// Replaces GET /v1/feeds/:id/tags used by the Tag Trail feature.
 	GetFeedTags(context.Context, *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error)
+	// ResolveOgImages obtains og:image URLs on demand for feeds that arrived
+	// without one, at the moment a reader brings those cards into view. One
+	// origin fetch per feed, for a page someone is actually looking at.
+	ResolveOgImages(context.Context, *connect.Request[v2.ResolveOgImagesRequest]) (*connect.Response[v2.ResolveOgImagesResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -453,6 +476,12 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("GetFeedTags")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceResolveOgImagesHandler := connect.NewUnaryHandler(
+		FeedServiceResolveOgImagesProcedure,
+		svc.ResolveOgImages,
+		connect.WithSchema(feedServiceMethods.ByName("ResolveOgImages")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.feeds.v2.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetFeedStatsProcedure:
@@ -485,6 +514,8 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceUnsubscribeHandler.ServeHTTP(w, r)
 		case FeedServiceGetFeedTagsProcedure:
 			feedServiceGetFeedTagsHandler.ServeHTTP(w, r)
+		case FeedServiceResolveOgImagesProcedure:
+			feedServiceResolveOgImagesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -552,4 +583,8 @@ func (UnimplementedFeedServiceHandler) Unsubscribe(context.Context, *connect.Req
 
 func (UnimplementedFeedServiceHandler) GetFeedTags(context.Context, *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.GetFeedTags is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) ResolveOgImages(context.Context, *connect.Request[v2.ResolveOgImagesRequest]) (*connect.Response[v2.ResolveOgImagesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.ResolveOgImages is not implemented"))
 }

@@ -165,6 +165,15 @@ const (
 	// DataHubServicePurgeExpiredArticleHeadsProcedure is the fully-qualified name of the
 	// DataHubService's PurgeExpiredArticleHeads RPC.
 	DataHubServicePurgeExpiredArticleHeadsProcedure = "/services.datahub.v1.DataHubService/PurgeExpiredArticleHeads"
+	// DataHubServiceGetFeedOgImageTargetsProcedure is the fully-qualified name of the DataHubService's
+	// GetFeedOgImageTargets RPC.
+	DataHubServiceGetFeedOgImageTargetsProcedure = "/services.datahub.v1.DataHubService/GetFeedOgImageTargets"
+	// DataHubServiceSaveFeedOgImageProcedure is the fully-qualified name of the DataHubService's
+	// SaveFeedOgImage RPC.
+	DataHubServiceSaveFeedOgImageProcedure = "/services.datahub.v1.DataHubService/SaveFeedOgImage"
+	// DataHubServicePurgeExpiredFeedOgImagesProcedure is the fully-qualified name of the
+	// DataHubService's PurgeExpiredFeedOgImages RPC.
+	DataHubServicePurgeExpiredFeedOgImagesProcedure = "/services.datahub.v1.DataHubService/PurgeExpiredFeedOgImages"
 	// DataHubServiceGetImageProxyCacheProcedure is the fully-qualified name of the DataHubService's
 	// GetImageProxyCache RPC.
 	DataHubServiceGetImageProxyCacheProcedure = "/services.datahub.v1.DataHubService/GetImageProxyCache"
@@ -588,12 +597,25 @@ type DataHubServiceClient interface {
 	GetArticleHead(context.Context, *connect.Request[v1.GetArticleHeadRequest]) (*connect.Response[v1.GetArticleHeadResponse], error)
 	// BatchGetOgImageURLs resolves og:image URLs for many articles at once.
 	BatchGetOgImageURLs(context.Context, *connect.Request[v1.BatchGetOgImageURLsRequest]) (*connect.Response[v1.BatchGetOgImageURLsResponse], error)
-	// ListFeedsMissingOgImage returns the og-image-backfill work list.
+	// ListFeedsMissingOgImage served the batch og-image-backfill job, which has
+	// been removed in favour of resolving on demand. No caller remains; deleting
+	// it is a follow-up once main carries the new breaking-change baseline.
+	//
+	// Deprecated: do not use.
 	ListFeedsMissingOgImage(context.Context, *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error)
 	// ListUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
 	ListUnwarmedOgImageURLs(context.Context, *connect.Request[v1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[v1.ListUnwarmedOgImageURLsResponse], error)
 	// PurgeExpiredArticleHeads enforces the article_heads retention window.
 	PurgeExpiredArticleHeads(context.Context, *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error)
+	// GetFeedOgImageTargets returns, for feeds a reader has brought into view,
+	// the page to fetch and whether an earlier attempt already settled the
+	// question.
+	GetFeedOgImageTargets(context.Context, *connect.Request[v1.GetFeedOgImageTargetsRequest]) (*connect.Response[v1.GetFeedOgImageTargetsResponse], error)
+	// SaveFeedOgImage records one resolution outcome — a URL, or the refusal
+	// that must stop the origin being asked again.
+	SaveFeedOgImage(context.Context, *connect.Request[v1.SaveFeedOgImageRequest]) (*connect.Response[v1.SaveFeedOgImageResponse], error)
+	// PurgeExpiredFeedOgImages enforces the feed_og_images retention window.
+	PurgeExpiredFeedOgImages(context.Context, *connect.Request[v1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[v1.PurgeExpiredFeedOgImagesResponse], error)
 	// GetImageProxyCache returns a live cache entry, or nothing.
 	GetImageProxyCache(context.Context, *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error)
 	// PutImageProxyCache upserts a cache entry by url_hash.
@@ -1262,6 +1284,24 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredArticleHeads")),
 			connect.WithClientOptions(opts...),
 		),
+		getFeedOgImageTargets: connect.NewClient[v1.GetFeedOgImageTargetsRequest, v1.GetFeedOgImageTargetsResponse](
+			httpClient,
+			baseURL+DataHubServiceGetFeedOgImageTargetsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetFeedOgImageTargets")),
+			connect.WithClientOptions(opts...),
+		),
+		saveFeedOgImage: connect.NewClient[v1.SaveFeedOgImageRequest, v1.SaveFeedOgImageResponse](
+			httpClient,
+			baseURL+DataHubServiceSaveFeedOgImageProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("SaveFeedOgImage")),
+			connect.WithClientOptions(opts...),
+		),
+		purgeExpiredFeedOgImages: connect.NewClient[v1.PurgeExpiredFeedOgImagesRequest, v1.PurgeExpiredFeedOgImagesResponse](
+			httpClient,
+			baseURL+DataHubServicePurgeExpiredFeedOgImagesProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredFeedOgImages")),
+			connect.WithClientOptions(opts...),
+		),
 		getImageProxyCache: connect.NewClient[v1.GetImageProxyCacheRequest, v1.GetImageProxyCacheResponse](
 			httpClient,
 			baseURL+DataHubServiceGetImageProxyCacheProcedure,
@@ -1866,6 +1906,9 @@ type dataHubServiceClient struct {
 	listFeedsMissingOgImage           *connect.Client[v1.ListFeedsMissingOgImageRequest, v1.ListFeedsMissingOgImageResponse]
 	listUnwarmedOgImageURLs           *connect.Client[v1.ListUnwarmedOgImageURLsRequest, v1.ListUnwarmedOgImageURLsResponse]
 	purgeExpiredArticleHeads          *connect.Client[v1.PurgeExpiredArticleHeadsRequest, v1.PurgeExpiredArticleHeadsResponse]
+	getFeedOgImageTargets             *connect.Client[v1.GetFeedOgImageTargetsRequest, v1.GetFeedOgImageTargetsResponse]
+	saveFeedOgImage                   *connect.Client[v1.SaveFeedOgImageRequest, v1.SaveFeedOgImageResponse]
+	purgeExpiredFeedOgImages          *connect.Client[v1.PurgeExpiredFeedOgImagesRequest, v1.PurgeExpiredFeedOgImagesResponse]
 	getImageProxyCache                *connect.Client[v1.GetImageProxyCacheRequest, v1.GetImageProxyCacheResponse]
 	putImageProxyCache                *connect.Client[v1.PutImageProxyCacheRequest, v1.PutImageProxyCacheResponse]
 	evictExpiredImageProxyCache       *connect.Client[v1.EvictExpiredImageProxyCacheRequest, v1.EvictExpiredImageProxyCacheResponse]
@@ -2123,6 +2166,8 @@ func (c *dataHubServiceClient) BatchGetOgImageURLs(ctx context.Context, req *con
 }
 
 // ListFeedsMissingOgImage calls services.datahub.v1.DataHubService.ListFeedsMissingOgImage.
+//
+// Deprecated: do not use.
 func (c *dataHubServiceClient) ListFeedsMissingOgImage(ctx context.Context, req *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error) {
 	return c.listFeedsMissingOgImage.CallUnary(ctx, req)
 }
@@ -2135,6 +2180,21 @@ func (c *dataHubServiceClient) ListUnwarmedOgImageURLs(ctx context.Context, req 
 // PurgeExpiredArticleHeads calls services.datahub.v1.DataHubService.PurgeExpiredArticleHeads.
 func (c *dataHubServiceClient) PurgeExpiredArticleHeads(ctx context.Context, req *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error) {
 	return c.purgeExpiredArticleHeads.CallUnary(ctx, req)
+}
+
+// GetFeedOgImageTargets calls services.datahub.v1.DataHubService.GetFeedOgImageTargets.
+func (c *dataHubServiceClient) GetFeedOgImageTargets(ctx context.Context, req *connect.Request[v1.GetFeedOgImageTargetsRequest]) (*connect.Response[v1.GetFeedOgImageTargetsResponse], error) {
+	return c.getFeedOgImageTargets.CallUnary(ctx, req)
+}
+
+// SaveFeedOgImage calls services.datahub.v1.DataHubService.SaveFeedOgImage.
+func (c *dataHubServiceClient) SaveFeedOgImage(ctx context.Context, req *connect.Request[v1.SaveFeedOgImageRequest]) (*connect.Response[v1.SaveFeedOgImageResponse], error) {
+	return c.saveFeedOgImage.CallUnary(ctx, req)
+}
+
+// PurgeExpiredFeedOgImages calls services.datahub.v1.DataHubService.PurgeExpiredFeedOgImages.
+func (c *dataHubServiceClient) PurgeExpiredFeedOgImages(ctx context.Context, req *connect.Request[v1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[v1.PurgeExpiredFeedOgImagesResponse], error) {
+	return c.purgeExpiredFeedOgImages.CallUnary(ctx, req)
 }
 
 // GetImageProxyCache calls services.datahub.v1.DataHubService.GetImageProxyCache.
@@ -2755,12 +2815,25 @@ type DataHubServiceHandler interface {
 	GetArticleHead(context.Context, *connect.Request[v1.GetArticleHeadRequest]) (*connect.Response[v1.GetArticleHeadResponse], error)
 	// BatchGetOgImageURLs resolves og:image URLs for many articles at once.
 	BatchGetOgImageURLs(context.Context, *connect.Request[v1.BatchGetOgImageURLsRequest]) (*connect.Response[v1.BatchGetOgImageURLsResponse], error)
-	// ListFeedsMissingOgImage returns the og-image-backfill work list.
+	// ListFeedsMissingOgImage served the batch og-image-backfill job, which has
+	// been removed in favour of resolving on demand. No caller remains; deleting
+	// it is a follow-up once main carries the new breaking-change baseline.
+	//
+	// Deprecated: do not use.
 	ListFeedsMissingOgImage(context.Context, *connect.Request[v1.ListFeedsMissingOgImageRequest]) (*connect.Response[v1.ListFeedsMissingOgImageResponse], error)
 	// ListUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
 	ListUnwarmedOgImageURLs(context.Context, *connect.Request[v1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[v1.ListUnwarmedOgImageURLsResponse], error)
 	// PurgeExpiredArticleHeads enforces the article_heads retention window.
 	PurgeExpiredArticleHeads(context.Context, *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error)
+	// GetFeedOgImageTargets returns, for feeds a reader has brought into view,
+	// the page to fetch and whether an earlier attempt already settled the
+	// question.
+	GetFeedOgImageTargets(context.Context, *connect.Request[v1.GetFeedOgImageTargetsRequest]) (*connect.Response[v1.GetFeedOgImageTargetsResponse], error)
+	// SaveFeedOgImage records one resolution outcome — a URL, or the refusal
+	// that must stop the origin being asked again.
+	SaveFeedOgImage(context.Context, *connect.Request[v1.SaveFeedOgImageRequest]) (*connect.Response[v1.SaveFeedOgImageResponse], error)
+	// PurgeExpiredFeedOgImages enforces the feed_og_images retention window.
+	PurgeExpiredFeedOgImages(context.Context, *connect.Request[v1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[v1.PurgeExpiredFeedOgImagesResponse], error)
 	// GetImageProxyCache returns a live cache entry, or nothing.
 	GetImageProxyCache(context.Context, *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error)
 	// PutImageProxyCache upserts a cache entry by url_hash.
@@ -3425,6 +3498,24 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredArticleHeads")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceGetFeedOgImageTargetsHandler := connect.NewUnaryHandler(
+		DataHubServiceGetFeedOgImageTargetsProcedure,
+		svc.GetFeedOgImageTargets,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetFeedOgImageTargets")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceSaveFeedOgImageHandler := connect.NewUnaryHandler(
+		DataHubServiceSaveFeedOgImageProcedure,
+		svc.SaveFeedOgImage,
+		connect.WithSchema(dataHubServiceMethods.ByName("SaveFeedOgImage")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServicePurgeExpiredFeedOgImagesHandler := connect.NewUnaryHandler(
+		DataHubServicePurgeExpiredFeedOgImagesProcedure,
+		svc.PurgeExpiredFeedOgImages,
+		connect.WithSchema(dataHubServiceMethods.ByName("PurgeExpiredFeedOgImages")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataHubServiceGetImageProxyCacheHandler := connect.NewUnaryHandler(
 		DataHubServiceGetImageProxyCacheProcedure,
 		svc.GetImageProxyCache,
@@ -4061,6 +4152,12 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceListUnwarmedOgImageURLsHandler.ServeHTTP(w, r)
 		case DataHubServicePurgeExpiredArticleHeadsProcedure:
 			dataHubServicePurgeExpiredArticleHeadsHandler.ServeHTTP(w, r)
+		case DataHubServiceGetFeedOgImageTargetsProcedure:
+			dataHubServiceGetFeedOgImageTargetsHandler.ServeHTTP(w, r)
+		case DataHubServiceSaveFeedOgImageProcedure:
+			dataHubServiceSaveFeedOgImageHandler.ServeHTTP(w, r)
+		case DataHubServicePurgeExpiredFeedOgImagesProcedure:
+			dataHubServicePurgeExpiredFeedOgImagesHandler.ServeHTTP(w, r)
 		case DataHubServiceGetImageProxyCacheProcedure:
 			dataHubServiceGetImageProxyCacheHandler.ServeHTTP(w, r)
 		case DataHubServicePutImageProxyCacheProcedure:
@@ -4396,6 +4493,18 @@ func (UnimplementedDataHubServiceHandler) ListUnwarmedOgImageURLs(context.Contex
 
 func (UnimplementedDataHubServiceHandler) PurgeExpiredArticleHeads(context.Context, *connect.Request[v1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[v1.PurgeExpiredArticleHeadsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.PurgeExpiredArticleHeads is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetFeedOgImageTargets(context.Context, *connect.Request[v1.GetFeedOgImageTargetsRequest]) (*connect.Response[v1.GetFeedOgImageTargetsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.GetFeedOgImageTargets is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) SaveFeedOgImage(context.Context, *connect.Request[v1.SaveFeedOgImageRequest]) (*connect.Response[v1.SaveFeedOgImageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.SaveFeedOgImage is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) PurgeExpiredFeedOgImages(context.Context, *connect.Request[v1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[v1.PurgeExpiredFeedOgImagesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.PurgeExpiredFeedOgImages is not implemented"))
 }
 
 func (UnimplementedDataHubServiceHandler) GetImageProxyCache(context.Context, *connect.Request[v1.GetImageProxyCacheRequest]) (*connect.Response[v1.GetImageProxyCacheResponse], error) {

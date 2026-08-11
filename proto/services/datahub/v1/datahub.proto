@@ -689,21 +689,81 @@ message BatchGetOgImageURLsResponse {
   map<string, string> og_image_urls = 1;
 }
 
-// OgImageBackfillCandidate is an article whose feed has no RSS-supplied
-// og:image and which has not been scraped yet.
+// OgImageBackfillCandidate, ListFeedsMissingOgImageRequest and
+// ListFeedsMissingOgImageResponse served the batch og-image-backfill job, which
+// has been removed in favour of resolving on demand. Nothing calls them now.
+//
+// They are deprecated rather than deleted because `buf breaking` uses the FILE
+// category and would reject the deletion against the current main baseline.
+// Deleting them, the RPC below, and the handler and driver behind them is a
+// follow-up once this lands and the baseline moves — the same two-step this
+// module's buf.yaml already documents for the three retired paths it ignores.
 message OgImageBackfillCandidate {
+  option deprecated = true;
+
   string article_id = 1;
   string url = 2;
 }
 
 message ListFeedsMissingOgImageRequest {
+  option deprecated = true;
+
   // Per-run scraping budget. The caller owns it: this bounds outbound HTTP
   // load on publishers, which is alt-harvester's concern, not the table's.
   int32 limit = 1;
 }
 
 message ListFeedsMissingOgImageResponse {
+  option deprecated = true;
+
   repeated OgImageBackfillCandidate candidates = 1;
+}
+
+// FeedOgImageTarget is one feed a reader has brought into view: the page whose
+// og:image would be read, plus whatever an earlier attempt already settled.
+message FeedOgImageTarget {
+  string feed_id = 1;
+  // feeds.website_url — the page that would be fetched.
+  string page_url = 2;
+  // An og:image URL already held for this feed, from RSS or from an earlier
+  // resolution. Non-empty means there is nothing to fetch.
+  string og_image_url = 3;
+  // True when an earlier attempt was refused and that refusal still stands.
+  // The caller must not fetch: re-asking an origin that has already said no,
+  // every time a card scrolls past, is the crawl this design removes.
+  bool suppressed = 4;
+}
+
+message GetFeedOgImageTargetsRequest {
+  repeated string feed_ids = 1;
+}
+
+message GetFeedOgImageTargetsResponse {
+  // Feed ids with no row are absent rather than present-and-empty.
+  repeated FeedOgImageTarget targets = 1;
+}
+
+message SaveFeedOgImageRequest {
+  string feed_id = 1;
+  // Empty when the origin refused; `reason` then carries why.
+  string og_image_url = 2;
+  // robots_disallow | http_403 | http_404 | no_og_tag | fetch_error
+  string reason = 3;
+  // How long before this feed may be asked about again. Zero means not within
+  // this retention window — the right answer for a robots.txt disallow, which
+  // is a policy rather than a transient fault.
+  int64 retry_after_seconds = 4;
+}
+
+message SaveFeedOgImageResponse {}
+
+message PurgeExpiredFeedOgImagesRequest {
+  // Copyright retention window, owned by the caller (og-image-retention).
+  int64 ttl_seconds = 1;
+}
+
+message PurgeExpiredFeedOgImagesResponse {
+  int64 purged_count = 1;
 }
 
 message ListUnwarmedOgImageURLsRequest {
@@ -2494,14 +2554,32 @@ service DataHubService {
   // BatchGetOgImageURLs resolves og:image URLs for many articles at once.
   rpc BatchGetOgImageURLs(BatchGetOgImageURLsRequest) returns (BatchGetOgImageURLsResponse);
 
-  // ListFeedsMissingOgImage returns the og-image-backfill work list.
-  rpc ListFeedsMissingOgImage(ListFeedsMissingOgImageRequest) returns (ListFeedsMissingOgImageResponse);
+  // ListFeedsMissingOgImage served the batch og-image-backfill job, which has
+  // been removed in favour of resolving on demand. No caller remains; deleting
+  // it is a follow-up once main carries the new breaking-change baseline.
+  rpc ListFeedsMissingOgImage(ListFeedsMissingOgImageRequest) returns (ListFeedsMissingOgImageResponse) {
+    option deprecated = true;
+  }
 
   // ListUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
   rpc ListUnwarmedOgImageURLs(ListUnwarmedOgImageURLsRequest) returns (ListUnwarmedOgImageURLsResponse);
 
   // PurgeExpiredArticleHeads enforces the article_heads retention window.
   rpc PurgeExpiredArticleHeads(PurgeExpiredArticleHeadsRequest) returns (PurgeExpiredArticleHeadsResponse);
+
+  // ── On-demand OG images, keyed on the feed (alt-backend serving path) ──
+
+  // GetFeedOgImageTargets returns, for feeds a reader has brought into view,
+  // the page to fetch and whether an earlier attempt already settled the
+  // question.
+  rpc GetFeedOgImageTargets(GetFeedOgImageTargetsRequest) returns (GetFeedOgImageTargetsResponse);
+
+  // SaveFeedOgImage records one resolution outcome — a URL, or the refusal
+  // that must stop the origin being asked again.
+  rpc SaveFeedOgImage(SaveFeedOgImageRequest) returns (SaveFeedOgImageResponse);
+
+  // PurgeExpiredFeedOgImages enforces the feed_og_images retention window.
+  rpc PurgeExpiredFeedOgImages(PurgeExpiredFeedOgImagesRequest) returns (PurgeExpiredFeedOgImagesResponse);
 
   // ── Image proxy cache (alt-backend serving path, alt-harvester retention) ──
 

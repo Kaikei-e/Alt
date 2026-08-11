@@ -122,6 +122,26 @@ func (g *OgImageGateway) FetchFeedsMissingOgImage(ctx context.Context, limit int
 	return candidates, nil
 }
 
+// FetchFeedOgImageTargets returns, for feeds a reader has brought into view,
+// the page that would be fetched and whether an earlier attempt already
+// settled the question.
+func (g *OgImageGateway) FetchFeedOgImageTargets(ctx context.Context, feedIDs []string) ([]domain.FeedOgImageTarget, error) {
+	panic("not implemented")
+}
+
+// SaveFeedOgImage records one resolution outcome. An empty ogImageURL means the
+// origin refused, and `refusal` says why; that record is what stops the next
+// reader scrolling past the same card from causing the same request.
+func (g *OgImageGateway) SaveFeedOgImage(ctx context.Context, feedID, ogImageURL string, refusal domain.OgImageRefusal) error {
+	panic("not implemented")
+}
+
+// CleanupExpiredFeedOgImages enforces the feed_og_images copyright retention
+// window and returns how many rows went.
+func (g *OgImageGateway) CleanupExpiredFeedOgImages(ctx context.Context, ttl time.Duration) (int64, error) {
+	panic("not implemented")
+}
+
 // FetchUnwarmedOgImageURLs returns feed og:image URLs with no live cache entry.
 func (g *OgImageGateway) FetchUnwarmedOgImageURLs(ctx context.Context, limit int) ([]string, error) {
 	resp, err := g.client.ListUnwarmedOgImageURLs(ctx, connect.NewRequest(&datahubv1.ListUnwarmedOgImageURLsRequest{
