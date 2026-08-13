@@ -67,6 +67,20 @@ func (s *articleSyncService) advanceBackfillCursor(t time.Time) {
 	}
 }
 
+// recordBackfillProgress moves the cursor to the watermark of the last row the
+// query scanned, which is not the same as the last article it returned: the
+// empty-feed filter runs after the LIMIT, so a window whose rows all belong to
+// feeds that already have articles returns nothing and would otherwise be
+// rescanned on every run forever.
+func (s *articleSyncService) recordBackfillProgress(ctx context.Context, scannedThrough time.Time) {
+	if !scannedThrough.After(s.backfillCursor()) {
+		return
+	}
+
+	s.advanceBackfillCursor(scannedThrough)
+	s.logger.InfoContext(ctx, "backfill cursor advanced", "cursor", s.backfillCursor())
+}
+
 // NewArticleSyncService creates a new article sync service.
 func NewArticleSyncService(
 	articleRepo repository.ArticleRepository,
@@ -161,7 +175,7 @@ func (s *articleSyncService) BackfillEmptyFeeds(ctx context.Context) error {
 
 	// Fetch inoreader articles for feeds that have no articles
 	// Uses lastBackfillFetchedAt as cursor to avoid re-processing in API mode
-	articles, err := s.articleRepo.FetchInoreaderArticlesForEmptyFeeds(ctx, s.backfillCursor(), 1000)
+	articles, scannedThrough, err := s.articleRepo.FetchInoreaderArticlesForEmptyFeeds(ctx, s.backfillCursor(), 1000)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to fetch inoreader articles for empty feeds", "error", err)
 		return fmt.Errorf("failed to fetch inoreader articles for empty feeds: %w", err)
@@ -169,6 +183,7 @@ func (s *articleSyncService) BackfillEmptyFeeds(ctx context.Context) error {
 
 	if len(articles) == 0 {
 		s.logger.InfoContext(ctx, "no articles to backfill")
+		s.recordBackfillProgress(ctx, scannedThrough)
 		return nil
 	}
 
@@ -203,14 +218,7 @@ func (s *articleSyncService) BackfillEmptyFeeds(ctx context.Context) error {
 		s.logger.InfoContext(ctx, "no valid articles to backfill after validation")
 	}
 
-	// Advance cursor to the last fetched_at to avoid re-processing
-	if len(articles) > 0 {
-		lastArticle := articles[len(articles)-1]
-		if lastArticle.CreatedAt.After(s.backfillCursor()) {
-			s.advanceBackfillCursor(lastArticle.CreatedAt)
-			s.logger.InfoContext(ctx, "backfill cursor advanced", "cursor", s.backfillCursor())
-		}
-	}
+	s.recordBackfillProgress(ctx, scannedThrough)
 
 	return nil
 }

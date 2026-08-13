@@ -216,16 +216,20 @@ func (r *ArticleRepository) FetchInoreaderArticles(ctx context.Context, since ti
 // In API mode (split-DB), queries inoreader tables from pre-processor-db and
 // resolves empty feedIDs via backend API using push-down anti-join.
 // Only articles for feeds with zero existing articles are returned.
-func (r *ArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, error) {
+func (r *ArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, time.Time, error) {
 	// Get inoreader articles with feed_urls (pre-processor-db only)
 	candidates, err := driver.GetInoreaderArticlesForBackfill(ctx, r.dbPool, fetchedAfter, limit)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 
 	if len(candidates) == 0 {
-		return nil, nil
+		return nil, time.Time{}, nil
 	}
+
+	// Candidates come back ordered by fetched_at ASC, so the last one marks how
+	// far this scan got — including the rows the empty-feed filter below drops.
+	scannedThrough := candidates[len(candidates)-1].CreatedAt
 
 	// feed_url → feedID (empty feed) cache
 	emptyFeedCache := make(map[string]string) // feedURL → feedID ("" = no empty feed)
@@ -255,7 +259,7 @@ func (r *ArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Cont
 		result = append(result, article)
 	}
 
-	return result, nil
+	return result, scannedThrough, nil
 }
 
 // UpsertArticles batch upserts articles.

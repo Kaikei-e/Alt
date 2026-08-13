@@ -19,7 +19,13 @@ type ArticleRepository interface {
 	HasUnsummarizedArticles(ctx context.Context) (bool, error)
 	FindByID(ctx context.Context, articleID string) (*domain.Article, error)
 	FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*domain.Article, error)
-	FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, error)
+	// FetchInoreaderArticlesForEmptyFeeds returns the articles whose feed has no
+	// articles yet, plus the fetched_at watermark of the last row the query
+	// scanned. The empty-feed filter runs after the LIMIT, so callers must
+	// advance their cursor with the watermark and not with the last returned
+	// article — otherwise a window where nothing survives the filter is
+	// rescanned forever. The watermark is zero when the query scanned no rows.
+	FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, time.Time, error)
 	UpsertArticles(ctx context.Context, articles []*domain.Article) error
 	UpsertArticlesWithFeedID(ctx context.Context, articles []*domain.Article) error
 }

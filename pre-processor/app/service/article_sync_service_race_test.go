@@ -27,10 +27,11 @@ func (r *raceArticleRepo) UpsertArticles(_ context.Context, _ []*domain.Article)
 	return nil
 }
 
-func (r *raceArticleRepo) FetchInoreaderArticlesForEmptyFeeds(_ context.Context, _ time.Time, _ int) ([]*domain.Article, error) {
+func (r *raceArticleRepo) FetchInoreaderArticlesForEmptyFeeds(_ context.Context, _ time.Time, _ int) ([]*domain.Article, time.Time, error) {
+	fetchedAt := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	return []*domain.Article{
-		{ID: "backfill-1", URL: "https://example.com/backfill-1", Title: "backfill title", Content: "backfill content", FeedID: "feed-1", CreatedAt: time.Now()},
-	}, nil
+		{ID: "backfill-1", URL: "https://example.com/backfill-1", Title: "backfill title", Content: "backfill content", FeedID: "feed-1", CreatedAt: fetchedAt},
+	}, fetchedAt, nil
 }
 
 func (r *raceArticleRepo) UpsertArticlesWithFeedID(_ context.Context, _ []*domain.Article) error {
