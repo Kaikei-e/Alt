@@ -57,6 +57,9 @@ class IdempotencyMismatchError(Exception):
 DaoFactory = Callable[[Any], SubworkerDAO]
 SessionFactory = Callable[[], Any]
 
+ORPHANED_RUN_MESSAGE = "run orphaned by a subworker restart"
+CANCELLED_RUN_MESSAGE = "run cancelled during shutdown"
+
 
 def _hash_payload(payload: dict[str, Any]) -> str:
     serialized = orjson.dumps(payload, option=orjson.OPT_SORT_KEYS)
@@ -119,6 +122,8 @@ class RunManager:
         self._classifier = classifier  # Kept for backward compatibility
         self._classification_runner = classification_runner
         self._background_slots = asyncio.Semaphore(settings.max_background_runs)
+        self._orphan_sweep_lock = asyncio.Lock()
+        self._orphan_sweep_done = False
         self._run_timeout: float = settings.run_execution_timeout_seconds
         self._queue_warning_threshold = settings.queue_warning_threshold
         # Dedicated pool for CPU-bound inprocess pipeline runs (pipeline_mode="inprocess")
@@ -127,8 +132,32 @@ class RunManager:
             max_workers=settings.max_background_runs, thread_name_prefix="pipeline-inprocess"
         )
 
+    async def _sweep_orphaned_runs(self) -> None:
+        """Fail runs a previous process left behind, once per process.
+
+        A row stuck in 'running' is reused forever by the idempotency
+        lookup, so the submitter keeps polling a run that nobody will ever
+        finish. Sweeping before this process inserts its first run is what
+        makes the blanket status filter safe: every 'running' row visible
+        at that point belongs to a predecessor.
+        """
+        if self._orphan_sweep_done:
+            return
+        async with self._orphan_sweep_lock:
+            if self._orphan_sweep_done:
+                return
+            async with self._session_factory() as session:
+                dao = self._dao_factory(session)
+                swept = await dao.fail_orphaned_runs(ORPHANED_RUN_MESSAGE)
+                await session.commit()
+            self._orphan_sweep_done = True
+            if swept:
+                LOGGER.warning("run.orphans.swept", swept=swept)
+
     async def create_run(self, submission: RunSubmission) -> RunRecord:
         """Insert a new run or reuse an existing idempotent run."""
+
+        await self._sweep_orphaned_runs()
 
         payload_dict = submission.payload.model_dump(mode="json")
         request_hash = _hash_payload(payload_dict)
@@ -212,6 +241,13 @@ class RunManager:
             LOGGER.info("run.process.started", run_id=run_id)
             try:
                 await asyncio.wait_for(self._process_run_inner(run_id), timeout=self._run_timeout)
+            except asyncio.CancelledError:
+                # CancelledError is a BaseException, so the failure handler
+                # below never sees a shutdown-cancelled run and the row would
+                # stay 'running'. Re-raise to keep cancellation cooperative.
+                await self._handle_failure(run_id, CANCELLED_RUN_MESSAGE)
+                LOGGER.warning("run.process.cancelled", run_id=run_id)
+                raise
             except TimeoutError:
                 await self._handle_failure(run_id, f"pipeline timed out after {self._run_timeout}s")
                 LOGGER.error("run.process.timeout", run_id=run_id, timeout_s=self._run_timeout)
@@ -390,6 +426,8 @@ class RunManager:
     ) -> RunRecord:
         """Insert a new classification run or reuse an existing idempotent run."""
 
+        await self._sweep_orphaned_runs()
+
         payload_dict = submission.payload.model_dump(mode="json")
         request_hash = _hash_payload(payload_dict)
         request_envelope = {
@@ -501,6 +539,13 @@ class RunManager:
                 await asyncio.wait_for(
                     self._process_classification_run_inner(run_id), timeout=self._run_timeout
                 )
+            except asyncio.CancelledError:
+                # CancelledError is a BaseException, so the failure handler
+                # below never sees a shutdown-cancelled run and the row would
+                # stay 'running'. Re-raise to keep cancellation cooperative.
+                await self._handle_failure(run_id, CANCELLED_RUN_MESSAGE)
+                LOGGER.warning("classification.run.process.cancelled", run_id=run_id)
+                raise
             except TimeoutError:
                 await self._handle_failure(
                     run_id, f"classification timed out after {self._run_timeout}s"

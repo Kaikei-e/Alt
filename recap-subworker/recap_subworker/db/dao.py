@@ -340,6 +340,22 @@ class SubworkerDAO:
         )
         await self.session.execute(stmt)
 
+    async def fail_orphaned_runs(self, error_message: str) -> int:
+        """Mark every run still flagged 'running' as failed, returning the row count.
+
+        Only meaningful for a process that has not scheduled a run of its
+        own yet: the service runs single-process, so such rows can only be
+        leftovers from a predecessor that died mid-run.
+        """
+        stmt = (
+            update(runs_table)
+            .where(runs_table.c.status == "running")
+            .values(status="failed", error_message=error_message)
+            .returning(runs_table.c.id)
+        )
+        result = await self.session.execute(stmt)
+        return len(result.all())
+
     async def insert_clusters(self, run_id: int, clusters: Iterable[PersistedCluster]) -> None:
         for cluster in clusters:
             stmt = (

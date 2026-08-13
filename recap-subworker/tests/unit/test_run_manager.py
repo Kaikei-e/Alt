@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from uuid import uuid4
 
 import pytest
@@ -67,9 +68,19 @@ class FakeDAO:
         self.diagnostic_entries = None
         self.success_status = None
         self.failure_status = None
+        self.orphan_sweeps: list[str] = []
 
     async def find_run_by_idempotency(self, *args, **kwargs):
         return self.idempotent_record
+
+    async def fail_orphaned_runs(self, error_message):
+        self.orphan_sweeps.append(error_message)
+        if self.idempotent_record is None or self.idempotent_record.status != "running":
+            return 0
+        self.idempotent_record = replace(
+            self.idempotent_record, status="failed", error_message=error_message
+        )
+        return 1
 
     async def has_running_run(self, *args, **kwargs):
         return self.running
@@ -175,9 +186,16 @@ async def test_create_run_inserts_and_schedules(payload):
 async def test_create_run_reuses_existing_idempotent(payload):
     session = FakeSession()
     dao = FakeDAO(session)
+    job_id = uuid4()
+    manager = make_manager(dao, session)
+    manager._schedule_background = lambda record: None  # type: ignore[attr-defined]
+    submission = RunSubmission(job_id=job_id, genre="ai", payload=payload, idempotency_key="k")
+    # The first submission runs the orphan sweep, after which a 'running'
+    # row can only belong to a run this process still owns.
+    await manager.create_run(submission)
     existing = RunRecord(
-        run_id=3,
-        job_id=uuid4(),
+        run_id=7,
+        job_id=job_id,
         genre="ai",
         status="running",
         cluster_count=0,
@@ -186,9 +204,8 @@ async def test_create_run_reuses_existing_idempotent(payload):
         error_message=None,
     )
     dao.idempotent_record = existing
-    manager = make_manager(dao, session)
+    dao.inserted.clear()
     manager._schedule_background = lambda record: (_ for _ in ()).throw(AssertionError())  # type: ignore[attr-defined]
-    submission = RunSubmission(job_id=existing.job_id, genre="ai", payload=payload, idempotency_key="k")
 
     record = await manager.create_run(submission)
 
@@ -547,3 +564,154 @@ async def test_convert_cluster_to_api_filters_short_sentences():
     assert len(result.representatives) == 2
     for rep in result.representatives:
         assert len(rep.sentence_text) >= 20
+
+
+class BlockingClassificationRunnerStub:
+    """Classification runner that never returns, to model an in-flight run."""
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    async def predict_batch(self, texts):
+        self.started.set()
+        await asyncio.sleep(3600)
+        raise AssertionError("predict_batch must be cancelled, not completed")
+
+
+class BlockingPipelineRunnerStub:
+    """Pipeline runner that never returns, to model an in-flight run."""
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    async def run(self, request):
+        self.started.set()
+        await asyncio.sleep(3600)
+        raise AssertionError("run must be cancelled, not completed")
+
+    async def warmup(self):  # pragma: no cover - not used in tests
+        return None
+
+
+@pytest.mark.asyncio
+async def test_create_run_sweeps_orphaned_running_run_from_previous_process(payload):
+    session = FakeSession()
+    dao = FakeDAO(session)
+    job_id = uuid4()
+    request_hash = _hash_payload(payload.model_dump(mode="json"))
+    dao.idempotent_record = RunRecord(
+        run_id=3,
+        job_id=job_id,
+        genre="ai",
+        status="running",
+        cluster_count=0,
+        request_payload={"request_hash": request_hash},
+        response_payload=None,
+        error_message=None,
+    )
+    manager = make_manager(dao, session)
+    manager._schedule_background = lambda record: None  # type: ignore[attr-defined]
+    submission = RunSubmission(job_id=job_id, genre="ai", payload=payload, idempotency_key="k")
+
+    record = await manager.create_run(submission)
+
+    assert dao.orphan_sweeps, "orphaned 'running' rows must be swept before the idempotency lookup"
+    assert record.run_id == 7, "a zombie 'running' run must not be reused"
+    assert dao.inserted
+
+    await manager.create_run(submission)
+
+    assert len(dao.orphan_sweeps) == 1, "the sweep must run once per process"
+
+
+@pytest.mark.asyncio
+async def test_create_classification_run_sweeps_orphaned_running_run_from_previous_process():
+    session = FakeSession()
+    dao = FakeDAO(session)
+    job_id = uuid4()
+    payload = ClassificationJobPayload(texts=["classification text"])
+    request_hash = _hash_payload(payload.model_dump(mode="json"))
+    dao.idempotent_record = RunRecord(
+        run_id=4,
+        job_id=job_id,
+        genre="classification",
+        status="running",
+        cluster_count=0,
+        request_payload={"request_hash": request_hash},
+        response_payload=None,
+        error_message=None,
+    )
+    manager = make_manager(dao, session)
+    manager._classification_runner = ClassificationRunnerStub()
+    submission = ClassificationRunSubmission(
+        job_id=job_id, payload=payload, idempotency_key="chunk-1"
+    )
+
+    record = await manager.create_classification_run(submission)
+
+    assert dao.orphan_sweeps, "orphaned 'running' rows must be swept before the idempotency lookup"
+    assert record.run_id == 7, "a zombie 'running' run must not be reused"
+    assert dao.inserted
+
+    await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_marks_cancelled_classification_run_failed():
+    session = FakeSession()
+    dao = FakeDAO(session)
+    job_id = uuid4()
+    payload = ClassificationJobPayload(texts=["classification text"])
+    dao.fetched_record = RunRecord(
+        run_id=7,
+        job_id=job_id,
+        genre="classification",
+        status="running",
+        cluster_count=0,
+        request_payload={"payload": payload.model_dump(mode="json"), "type": "classification"},
+        response_payload=None,
+        error_message=None,
+    )
+    manager = make_manager(dao, session)
+    runner = BlockingClassificationRunnerStub()
+    manager._classification_runner = runner
+    submission = ClassificationRunSubmission(
+        job_id=job_id, payload=payload, idempotency_key="chunk-1"
+    )
+
+    await manager.create_classification_run(submission)
+    await asyncio.wait_for(runner.started.wait(), timeout=5)
+    await manager.shutdown()
+
+    assert dao.failure_status is not None, "a cancelled run must not stay 'running'"
+    assert dao.failure_status[0] == 7
+    assert dao.failure_status[1] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_shutdown_marks_cancelled_cluster_run_failed(payload):
+    session = FakeSession()
+    dao = FakeDAO(session)
+    job_id = uuid4()
+    dao.fetched_record = RunRecord(
+        run_id=7,
+        job_id=job_id,
+        genre="ai",
+        status="running",
+        cluster_count=0,
+        request_payload={"payload": payload.model_dump(mode="json")},
+        response_payload=None,
+        error_message=None,
+    )
+    runner = BlockingPipelineRunnerStub()
+    settings = Settings(max_background_runs=1, pipeline_mode="processpool")
+    manager = make_manager(dao, session, settings=settings, pipeline_runner=runner)
+    submission = RunSubmission(job_id=job_id, genre="ai", payload=payload, idempotency_key=None)
+
+    await manager.create_run(submission)
+    await asyncio.wait_for(runner.started.wait(), timeout=5)
+    await manager.shutdown()
+
+    assert dao.failure_status is not None, "a cancelled run must not stay 'running'"
+    assert dao.failure_status[0] == 7
+    assert dao.failure_status[1] == "failed"
