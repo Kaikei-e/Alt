@@ -1,16 +1,7 @@
----
-name: bp-python
-description: Alt の Python 3.14+ 規約を適用する。型ヒント必須と Pyrefly、具体例外と原因チェーン、Pydantic/frozen dataclass の境界保護、asyncio と同期推論の分離、spawn プロセスプール、起動時 fail-closed を扱う。Python のコードを書く・直す・レビューするときに使う。ユーザが「Python」や規約名に触れなくても、Python サービス（news-creator, tag-generator, metrics, recap-subworker, recap-evaluator, acolyte-orchestrator）の実装・修正に入るなら使う。
-paths:
-  - "**/*.py"
----
+# Python 3.14+ — Alt の規約
 
-# Python Best Practices
-
-以下はタスク全体を通じて有効な規約であり、一度読んで終わる手順ではない。Python コードを書くたびに適用する。
-
-詳細な根拠とコード例が必要になった時点で `docs/best_practices/python.md` の該当セクションだけを Read する
-（全 13 セクション・444 行あるため全文読み込みはしない）。
+詳細な根拠とコード例は `docs/best_practices/python.md`（13 セクション・444 行）の該当セクションだけを Read する。
+セクション: Project Structure, Type Hints & Static Analysis, Error Handling, Clean Architecture, Pydantic & Dataclass, Async Patterns, Resource Management, Logging, Testing, Tooling, Security, ML Runtime & Process Pools
 
 ## 重要原則
 
@@ -27,8 +18,3 @@ paths:
 11. **async リソースは多層防御で回収**: async generator の `finally` は実行保証なし（PEP 525）→ `contextlib.aclosing` で包む。セマフォは `slot_id` / `home_pool` の所有権追跡 + release パス invariant + `CancelledError` ハンドラで取得済みリソースを棚卸し（ADR-000243, ADR-000606, ADR-000612）
 12. **プロセスプールは spawn + メモリ見積り**: CUDA は fork 子プロセスで再初期化不能 → spawn context 必須。spawn プールは「ワーカー数 × モデルサイズ」でメモリ線形増、子の OOM kill は親 `.get()` の無症状ハング → timeout 必須（ADR-000048, ADR-000550）
 13. **起動時 fail-closed / lazy init 禁止**: 必須 artefact は Pydantic `@model_validator` で起動時検証して即 exit。存在チェックは `Path.exists()` でなく `is_file()`（空ディレクトリで素通りする）（ADR-000825, PM-2026-036）
-
-## 参照
-
-完全なベストプラクティスは `docs/best_practices/python.md` を参照。
-セクション: Project Structure, Type Hints & Static Analysis, Error Handling, Clean Architecture, Pydantic & Dataclass, Async Patterns, Resource Management, Logging, Testing, Tooling, Security, ML Runtime & Process Pools

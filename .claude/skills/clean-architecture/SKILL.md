@@ -1,7 +1,6 @@
 ---
 name: clean-architecture
-description: Alt の Clean Architecture レイヤ規約（Handler → Usecase → Port → Gateway → Driver）を適用し、層の逆依存・層越境・誤った層への実装を検出する。サービスのコードを新規実装・リファクタ・レビューするとき、どの層に置くべきか判断するとき、handler/usecase/gateway/driver/port ディレクトリ配下を編集するときに使う。ユーザが「Clean Architecture」や「層」に触れなくても、ハンドラに fetch や SQL を書き足すような層をまたぐ変更に入るなら使う。
-allowed-tools: Read, Grep, Glob, Bash
+description: Alt の Clean Architecture レイヤ規約（Handler → Usecase → Port → Gateway → Driver）に沿って、書こうとしている実装をどの層に置くかを判断し、層の逆依存・層越境を書く前に防ぐ。handler / rest / usecase / port / gateway / driver 配下を新規実装・リファクタするとき、ハンドラに fetch や SQL を足すような層をまたぐ変更に入るときに、ユーザが「Clean Architecture」や「層」に触れなくても使う。既に書かれたコードを横断的に走査して違反を列挙したいときは layer-checker サブエージェントを使う（このスキルは書く前の配置判断、layer-checker は書いた後の検出）。
 paths:
   - "**/handler/**"
   - "**/rest/**"
@@ -13,49 +12,30 @@ paths:
 
 # Clean Architecture Layers
 
-```
-Handler -> Usecase -> Port -> Gateway -> Driver
-```
+依存の向きは CLAUDE.md にある通り Handler → Usecase → Port → Gateway → Driver。
+このスキルは「この処理をどの層に書くか」を決めるための責務表と、Alt で実際に繰り返された誤配置を扱う。
 
-## Layer Rules
+## 各層の責務
 
-| Layer | Responsibility | Can Depend On |
-|-------|----------------|---------------|
-| Handler | HTTP/gRPC entry points, validation, response formatting | Usecase, Port |
-| Usecase | Business logic orchestration, NO external dependencies | Port only |
-| Port | Interface definitions (contracts) | Nothing |
-| Gateway | Anti-corruption layer, external service mapping | Port, Driver |
-| Driver | Database, API, external integrations | External libraries |
+| 層（ディレクトリ） | 置くもの | 依存してよい先 |
+|---|---|---|
+| Handler (`rest/`, `handler/`) | HTTP / gRPC のエントリポイント、入力バリデーション、レスポンス整形 | Usecase, Port |
+| Usecase (`usecase/`) | ビジネスロジックの組み立て。外部依存を直接持たない | Port のみ |
+| Port (`port/`) | インタフェース定義（契約）のみ | 何にも依存しない |
+| Gateway (`gateway/`) | 腐敗防止層。外部サービスのモデルを内部モデルに写像 | Port, Driver |
+| Driver (`driver/`) | DB・API・外部連携の実装 | 外部ライブラリ |
 
-## File Patterns
+## Alt で繰り返し出た誤配置
 
-- `**/rest/**` or `**/handler/**` = Handler layer
-- `**/usecase/**` = Usecase layer
-- `**/port/**` = Port layer (interfaces)
-- `**/gateway/**` = Gateway layer
-- `**/driver/**` = Driver layer
+2026-07 の全リポジトリレビューで実際に見つかったパターン。変更を終える前に自分の差分を照らす。
 
-## Common Violations
+- **Handler が Driver の仕事をしている**: REST / RPC ハンドラの中に HTTP fetch、SSRF 検証、直接の DB 呼び出しが書かれる（3 つのハンドラに ~600 行が重複した実例）。ハンドラは検証して Usecase に委譲してレスポンスを整えるだけ
+- **Driver が Service / Usecase を import する**（逆依存）: `driver/` から `service/` や `usecase/` を参照すると依存の向きが反転する
+- **Usecase がインフラを import する**: `usecase/` から `otel` / `httpx` / `asyncpg` / redis クライアント / `driver/` を直接参照している。Port インタフェース越しにする
+- **抽出せずに層をまたいで複製する**: 同じロジックが複数のハンドラに貼られているのは、それが一段下の層に属しているサイン。Usecase に抽出する
+- 層をまたぐ循環依存
 
-Concrete patterns found repeatedly in the 2026-07 full-repo review — check for these before finishing any change:
+## 既存コードの走査
 
-- **Handler doing Driver work**: HTTP fetch, SSRF validation, or direct DB calls implemented inside a REST/RPC handler (seen as ~600 lines duplicated across 3 handlers). Handlers validate, delegate to a Usecase, and format the response — nothing else
-- **Driver importing Service/Usecase** (reverse dependency): a `driver/` package importing from `service/` or `usecase/` inverts the layer direction
-- **Usecase importing infrastructure**: `usecase/` importing `otel`, `httpx`, `asyncpg`, redis clients, or any `driver/` package directly — depend on a Port interface instead
-- **Cross-layer duplication instead of extraction**: the same logic pasted into multiple handlers because it lives at the wrong layer — extract into a Usecase
-- Circular dependencies between layers
-
-## Self-Check (run before handoff)
-
-```bash
-# Go: usecase importing driver or otel directly
-grep -rn --include="*.go" -E '"[^"]*/(driver|otel)' */app/usecase/ | grep -v _test
-
-# Go: driver importing service/usecase (reverse dependency)
-grep -rn --include="*.go" -E '"[^"]*/(service|usecase)' */app/driver/
-
-# Python: usecase importing infrastructure
-grep -rn --include="*.py" -E '^(from|import) .*(httpx|asyncpg|redis|driver)' */app/usecase/
-```
-
-For broad audits use the `layer-checker` agent.
+リポジトリ全体やサービス単位で違反を洗い出すときは `layer-checker` サブエージェントを起動する。
+検出用の grep とレポート形式はそちらが持っている。ここでは重複させない。

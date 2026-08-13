@@ -1,16 +1,7 @@
----
-name: bp-go
-description: Alt の Go 規約を適用する。エラーラップ、context 第一引数、slog、テーブル駆動テスト、http.Server の 4 タイムアウト、Redis Streams の XACK/XAUTOCLAIM 対、fail-fast 設定を扱う。Go のコードを書く・直す・レビューするときに使う。ユーザが「Go」や規約名に触れなくても、Go サービス（alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, rag-orchestrator, altctl）の実装・修正に入るなら使う。
-paths:
-  - "**/*.go"
----
+# Go — Alt の規約
 
-# Go Best Practices
-
-以下はタスク全体を通じて有効な規約であり、一度読んで終わる手順ではない。Go コードを書くたびに適用する。
-
-詳細な根拠とコード例が必要になった時点で `docs/best_practices/go.md` の該当セクションだけを Read する
-（全 17 セクション・725 行あるため全文読み込みはしない）。
+詳細な根拠とコード例は `docs/best_practices/go.md`（17 セクション・725 行）の該当セクションだけを Read する。
+セクション: Project Structure, Error Handling, Concurrency, Context, Logging, Testing, Database, HTTP/API, Configuration
 
 ## 重要原則
 
@@ -29,8 +20,3 @@ paths:
 13. **DB 書き込みの silent success 禁止**: トランザクションは無条件 `defer tx.Rollback(ctx)`。行の存在を前提とする UPDATE は `rows_affected == 0` をエラーに
 14. **time.Duration に untyped int 禁止**: `15 * 1000` は 15µs（ナノ秒解釈）。必ず `15 * time.Second` の単位定数を掛ける
 15. **streaming はタイムアウト例外 + Accept-Encoding 手動設定禁止**: streaming server は `WriteTimeout: 0`、streaming client は `http.Client.Timeout: 0` + context deadline。`Accept-Encoding` を手動設定すると透過 gzip 解凍が無効化される
-
-## 参照
-
-完全なベストプラクティスは `docs/best_practices/go.md` を参照。
-セクション: Project Structure, Error Handling, Concurrency, Context, Logging, Testing, Database, HTTP/API, Configuration

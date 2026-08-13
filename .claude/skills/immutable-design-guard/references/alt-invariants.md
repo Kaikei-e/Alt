@@ -1,16 +1,11 @@
 # Alt Immutable Data Model — Canonical Invariants
 
-Alt monorepo で append-only event store を持つすべてのサブシステムに通用する
-正規不変条件。SKILL.md のコア原則 1 行リストの拡張定義。
+Alt monorepo で append-only event store を持つすべてのサブシステムに通用する正規不変条件。
+SKILL.md のコア原則 1 行リストの拡張定義で、各項目は **何を言っているか / 典型的な違反 /
+満たす実装パターン** の 3 節。今回の変更に効くものだけ読む。
 
 > 一次出典: `docs/plan/knowledge-loop-canonical-contract.md` §3 (Canonical
 > invariants)。Knowledge Loop のテーブル名で書かれているが、原則は領域非依存。
-
-各項目は次の形で書く。
-
-- **何を言っているか** (1-2 行)
-- **典型的な違反**
-- **満たす実装パターン**
 
 ## Contents
 

@@ -1,17 +1,9 @@
----
-name: bp-typescript
-description: Alt の TypeScript 規約を適用する。strict + noUncheckedIndexedAccess、境界では unknown、型ガード優先、satisfies、判別共用体の網羅性、Zod での境界バリデーション、起動時 env 検証の fail-fast、redirect パラメータの URL パース検証、connect-es エラーの numeric enum、wire スキーマの一本化を扱う。TypeScript のコードを書く・直す・レビューするときに使う。ユーザが「TypeScript」に触れなくても alt-frontend-sv / auth-token-manager / alt-perf の実装に入るなら使う。
-paths:
-  - "**/*.ts"
-  - "**/*.tsx"
----
+# TypeScript — Alt の規約
 
-# TypeScript Best Practices
+詳細な根拠とコード例は `docs/best_practices/typescript.md`（857 行）の該当セクションだけを Read する。
+セクション: Strict Configuration, Type Safety, Discriminated Unions, Error Handling, Async Patterns, Zod Validation, Module Design
 
-以下はタスク全体を通じて有効な規約であり、一度読んで終わる手順ではない。TypeScript コードを書くたびに適用する。
-
-詳細な根拠とコード例が必要になった時点で `docs/best_practices/typescript.md` の該当セクションだけを Read する
-（857 行あるため全文読み込みはしない）。
+`alt-frontend-sv` のコンポーネント / load 関数を触るときは `references/svelte.md` も併せて適用する。
 
 ## 重要原則
 
@@ -27,8 +19,3 @@ paths:
 10. **connect-es エラーは numeric enum + ラップ前提**: `ConnectError.code` は数値 enum（string 比較は全エラーが default 行き）。native AbortError は ConnectError にラップされ `err.name` では捕まらない。エラーマッピングのテストは real ConnectError で書く
 11. **wire スキーマは canonical 一本**: producer/consumer での型再宣言は wire drift の温床。生成型 / 共有スキーマを両側で import。protojson は zero-value field を JSON から省略するので受信側は default 前提で読む
 12. **`split(sep, limit)` は残りを捨てる**: Go の `SplitN` と非互換。`=` 区切りのトークン分解は `indexOf` + `substring` で書く
-
-## 参照
-
-完全なベストプラクティスは `docs/best_practices/typescript.md` を参照。
-セクション: Strict Configuration, Type Safety, Discriminated Unions, Error Handling, Async Patterns, Zod Validation, Module Design

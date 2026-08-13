@@ -1,28 +1,24 @@
 ---
 name: docker-compose
-description: Alt スタックを Docker Compose で操作する。サービスの起動・停止・再ビルド・ログ確認・health check、18 個の stack ファイルに分割された構成のどこにどのサービスが居るかの引き当て、起動しない/変更が反映されない/ポート衝突の切り分けを扱う。ユーザが「起動して」「ログ見せて」「再ビルドして」「立ち上がらない」のようにコンテナ操作を求めたとき、または compose 配下の yaml を編集するときに使う。
+description: Alt スタックを Docker Compose で操作する。18 個の stack ファイルのどこにどのサービスが定義されているかの引き当てと、再ビルド・強制再作成・サイドカーの同時再作成のような素直に推測すると外す操作を扱う。ユーザが「起動して」「立ち上げて」「再ビルドして」「落として」「立ち上がらない」「反映されない」のようにコンテナ操作を求めたとき、または `compose/` 配下の yaml を編集するときに使う。障害の原因をログや DB から掘るなら log-seeker を使う（このスキルはコンテナ操作と構成の引き当て担当）。
 allowed-tools: Bash, Read, Glob, Grep
-argument-hint: "[service] [up|down|logs|ps|restart]"
 paths:
   - "compose/**"
 ---
 
 # Docker Compose Operations
 
-Alt は Compose を single source of truth とする。K8s は使わない。
+基本の `up -d` / `logs` / `down` と health check の curl は CLAUDE.md にある。ここはその先。
 
-## 基本コマンド
-
-`-f compose/compose.yaml -p alt` は常に付ける。省略すると別プロジェクト扱いになり既存コンテナを見失う。
+## CLAUDE.md にないコマンド
 
 ```bash
-docker compose -f compose/compose.yaml -p alt up -d                    # 全体
-docker compose -f compose/compose.yaml -p alt up -d <service>          # 単体
-docker compose -f compose/compose.yaml -p alt up --build -d <service>  # コード変更後
-docker compose -f compose/compose.yaml -p alt logs <service> -f
+docker compose -f compose/compose.yaml -p alt up --build -d <service>          # コード変更後
+docker compose -f compose/compose.yaml -p alt up -d --force-recreate <service> # bind し直し・sidecar 復旧
 docker compose -f compose/compose.yaml -p alt ps
-docker compose -f compose/compose.yaml -p alt down
 ```
+
+`-p alt` を省略すると別プロジェクト扱いになり、既存コンテナを見失う。
 
 ## スタック構成（Compose profiles ではなく `include:`）
 
@@ -50,21 +46,11 @@ docker compose -f compose/compose.yaml -p alt down
 | `perf.yaml` | alt-perf, k6 |
 | `backup.yaml` | docker-socket-proxy, restic-backup |
 
-## Health check
-
-```bash
-curl http://localhost/health          # Frontend (nginx 経由)
-curl http://localhost:9000/v1/health  # alt-backend
-curl http://localhost:9250/health     # BFF (alt-butterfly-facade)
-curl http://localhost:7700/health     # Meilisearch
-```
-
 ## Gotchas
 
 環境固有で、素直に推測すると外す点。
 
 - **`restart` は host port を再 bind しない。** bind に失敗したコンテナは `--force-recreate` が必要で、`restart` では直らない
 - **`network_mode: service:` の pki-agent サイドカーは親と同時に recreate する。** 親だけ再作成すると相乗りサイドカーが孤立し、無言で壊れる。`--force-recreate <親> pki-agent-<親>` と並べて指定する
-- **Go / Rust / TypeScript の変更は `--build` が必須。** 付け忘れると古いバイナリが動き続け、「変更が反映されない」の原因になる
 - **起動しないときは `down` してから `up -d`。** 中途半端な状態からの `up` は依存解決に失敗しやすい
 - ポート衝突は `docker ps` で占有コンテナを先に特定する

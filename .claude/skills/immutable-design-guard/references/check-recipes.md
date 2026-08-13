@@ -13,10 +13,14 @@
 - [proto / event payload schema](#proto-event-payload-schema)
 - [共通: Versioned artifacts 違反](#共通-versioned-artifacts-違反)
 - [共通: Single emission / idempotency](#共通-single-emission-idempotency)
-- [Knowledge Loop / Knowledge Home 固有 (例)](#knowledge-loop-knowledge-home-固有-例)
+- [Knowledge model 固有 (例)](#knowledge-model-固有-例)
 - [レポートに含める情報](#レポートに含める情報)
 
-引数の `<root>` は対象サービスのアプリルート (例: `alt-backend/app/`)。
+`<root>` は対象サービスのアプリルート。イミュータブル知識モデルの本体は
+`knowledge-sovereign/app/`（`handler` / `usecase` / `driver` がその直下、migration は
+`knowledge-sovereign/migrations/`）。alt-db 側の migration は `migrations-atlas/migrations/`。
+`alt-backend/app/` は層が `adapter` / `orchestrator` / `dataplane` / `shared` の下に入れ子なので、
+`<root>/handler` 形式のパスは `alt-backend/app/*/usecase` のように読み替える。
 ripgrep (`rg`) があれば優先、無ければ `grep -rn`。
 
 ## 共通: append-first 違反
@@ -25,8 +29,8 @@ ripgrep (`rg`) があれば優先、無ければ `grep -rn`。
 # event store への UPDATE / DELETE
 rg -n 'UPDATE\s+\S*event\S*\s+SET|DELETE\s+FROM\s+\S*event\S*' <root>
 
-# event store table への "soft delete" 列
-rg -n 'deleted_at|is_deleted' <root>/migrations* <root>/*/migrations*
+# event store table への "soft delete" 列 (<migrations> = knowledge-sovereign/migrations 等)
+rg -n 'deleted_at|is_deleted' <migrations>
 ```
 
 ## 共通: time.Now() / NOW() による業務時刻汚染
@@ -46,7 +50,7 @@ rg -n --type py '(datetime\.now|datetime\.utcnow|time\.time\()' \
 
 # SQL: projection 系 migration 内の DEFAULT NOW()
 rg -n 'DEFAULT\s+NOW\(\)|DEFAULT\s+CURRENT_TIMESTAMP' \
-   <root>/migrations* migrations-atlas/migrations
+   knowledge-sovereign/migrations migrations-atlas/migrations
 ```
 
 ヒットしたら **business fact か debug-only `projected_at` か** を判定。
@@ -75,13 +79,13 @@ rg -n 'UPDATE\s+\S*projection\S*\s+SET|INSERT\s+INTO\s+\S*projection\S*' \
 
 ```bash
 # SQL CASE WHEN で business 判定
-rg -n 'CASE\s+WHEN' migrations-atlas/migrations <root>/driver
+rg -n 'CASE\s+WHEN' <migrations> <root>/driver
 
 # 引き算で負数になりうる UPDATE
-rg -n 'SET\s+\w+\s*=\s*\w+\s*-\s*' migrations-atlas/migrations <root>/driver
+rg -n 'SET\s+\w+\s*=\s*\w+\s*-\s*' <migrations> <root>/driver
 
 # COALESCE 漏れ (UPSERT で EXCLUDED 値を上書きしている)
-rg -n 'ON CONFLICT.*DO UPDATE' migrations-atlas/migrations | head -50
+rg -n 'ON CONFLICT.*DO UPDATE' <migrations> <root>/driver | head -50
 ```
 
 ヒットしたら `GREATEST(0, …)` / `COALESCE(EXCLUDED.x, table.x)` /
@@ -105,7 +109,7 @@ rg -n 'version_id|artifact_version_ref' proto/
 
 ```bash
 # *_versions テーブルへの UPDATE (append-only であるべき)
-rg -n 'UPDATE\s+\S*_versions?\s+SET' <root> migrations-atlas/migrations
+rg -n 'UPDATE\s+\S*_versions?\s+SET' <root> <migrations>
 
 # event payload が article_id だけで version_id を持たない
 rg -n 'article_id\s*string' proto/ -A2 | rg -B1 -L 'version_id'
@@ -125,22 +129,24 @@ rg -n 'PublishEvent|EmitEvent|AppendEvent' <root>/usecase | \
 
 2 連発以上を発行しているファイルは要検査。
 
-## Knowledge Loop / Knowledge Home 固有 (例)
+## Knowledge model 固有 (例)
 
 ```bash
-# knowledge_events への UPDATE / DELETE
+# knowledge_events への UPDATE / DELETE (INSERT-only であるべき)
 rg -n 'UPDATE\s+knowledge_events|DELETE\s+FROM\s+knowledge_events' \
-   alt-backend/app/
+   knowledge-sovereign/app/ knowledge-sovereign/migrations/
 
-# projector 内の time.Now()
-rg -n 'time\.Now\(\)' alt-backend/app/job/knowledge_projector*.go
+# projector 内の wall clock
+rg -n 'time\.Now\(\)' knowledge-sovereign/app/usecase/knowledge_home_projector/ \
+   knowledge-sovereign/app/usecase/knowledge_trail_projector/
 
 # summary_versions / tag_set_versions への UPDATE
-rg -n 'UPDATE\s+(summary_versions|tag_set_versions)\s+SET' alt-backend/app/
+rg -n 'UPDATE\s+(summary_versions|tag_set_versions)\s+SET' \
+   alt-backend/app/ migrations-atlas/migrations/
 
-# write path が knowledge_home_items を mutate
-rg -n 'UPDATE\s+knowledge_home_items|INSERT\s+INTO\s+knowledge_home_items' \
-   alt-backend/app/handler alt-backend/app/usecase
+# write path (handler) が read model を直接 mutate
+rg -n 'UPDATE\s+(knowledge_home_items|today_digest_view|recall_candidate_view)|INSERT\s+INTO\s+knowledge_home_items' \
+   knowledge-sovereign/app/handler
 ```
 
 ## レポートに含める情報

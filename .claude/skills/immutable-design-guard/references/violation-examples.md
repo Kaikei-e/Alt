@@ -9,8 +9,7 @@
 - [Case 2: Backend-non-authoritative read — projection に availability が無い](#case-2-backend-non-authoritative-read-projection-に-availability-が無い)
 - [Case 3: Reproject swap でチェックポイントギャップ](#case-3-reproject-swap-でチェックポイントギャップ)
 - [Case 4: Merge-unsafe upsert — snapshot 上書きで負数 / loss](#case-4-merge-unsafe-upsert-snapshot-上書きで負数-loss)
-- [レビュー Findings の書き方サンプル](#レビュー-findings-の書き方サンプル)
-- [Immutable Design Findings](#immutable-design-findings)
+- [Findings の記入例](#findings-の記入例)
 - [このリストの育て方](#このリストの育て方)
 
 これは「Knowledge Home / Loop の文脈」で書かれているが、構造は他の
@@ -157,16 +156,13 @@ NULL に戻り、`current - 1` で counter が負数になりうる。
 
 ---
 
-## レビュー Findings の書き方サンプル
+## Findings の記入例
 
-これらケースを参考に、SKILL.md の出力テンプレを埋めると次のように
-なる:
+Case 1 を SKILL.md の出力テンプレに落とすとこうなる。
 
 ```markdown
-## Immutable Design Findings
-
 ### 1. [high] reproject 時に latest summary が読まれて古い event が新しい内容で投影される
-- 該当箇所: `alt-backend/app/job/knowledge_projector.go:128`
+- 該当箇所: `knowledge-sovereign/app/usecase/knowledge_home_projector/projector.go:128`
 - 破っている原則: Reproject-safe projector / Versioned artifacts
 - なぜ危険か: replay 順序が変わると read model 結果が変わる。
   shadow projection の検証が無効化される。
@@ -181,12 +177,8 @@ NULL に戻り、`current - 1` で counter が負数になりうる。
 
 ## このリストの育て方
 
-新しい違反パターンを発見したら、上のテンプレに沿って追加する:
-
-- 症状 (実例から anonymized)
-- 該当原則 (alt-invariants.md の名前で参照)
-- 是正手順
-- 一般化 (他サービスでも適用できる教訓)
-- 一次出典 (review / postmortem / ADR への wikilink)
+新しい違反パターンを見つけたら、上と同じ **症状 → 該当原則 → 是正 → 一般化 → 一次出典** の
+5 節で追加する。原則名は alt-invariants.md の名前をそのまま使い、一次出典は review / postmortem /
+ADR へのリンクを必ず残す（出典の無いケースは再発時に信用されない）。
 
 [← back to SKILL.md](../SKILL.md)
