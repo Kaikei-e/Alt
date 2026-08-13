@@ -9,6 +9,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"alt/dataplane/port/internal_article_port"
@@ -18,7 +19,9 @@ import (
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/mocks"
+	"alt/shared/driver/alt_db"
 	"alt/shared/port/event_publisher_port"
+	"alt/shared/usecase/create_summary_version_usecase"
 
 	"go.uber.org/mock/gomock"
 )
@@ -346,9 +349,11 @@ func TestGetArticleByID_NotFound(t *testing.T) {
 	h, _, _, _, _, mockGetByID := setupHandler(t)
 	ctx := context.Background()
 
+	// internal_article_gateway wraps whatever the driver returns, and the
+	// driver reports an absent (or soft-deleted) row as pgx.ErrNoRows.
 	mockGetByID.EXPECT().
 		GetArticleByID(gomock.Any(), "missing").
-		Return(nil, errors.New("not found"))
+		Return(nil, fmt.Errorf("GetArticleByID: %w", pgx.ErrNoRows))
 
 	req := connect.NewRequest(&datahubv1.GetArticleByIDRequest{ArticleId: "missing"})
 
@@ -358,6 +363,30 @@ func TestGetArticleByID_NotFound(t *testing.T) {
 	}
 	if connect.CodeOf(err) != connect.CodeNotFound {
 		t.Errorf("expected CodeNotFound, got %v", connect.CodeOf(err))
+	}
+}
+
+// search-indexer skips and ACKs a GetArticleByID that answers NotFound, on the
+// reading that the row is gone. A pool exhaustion or a transient DB blip that
+// also answered NotFound would therefore drop the article from the index
+// permanently, with no retry and no DLQ, so only the absence sentinel may
+// produce that code.
+func TestGetArticleByID_RepositoryFailureIsNotNotFound(t *testing.T) {
+	h, _, _, _, _, mockGetByID := setupHandler(t)
+	ctx := context.Background()
+
+	mockGetByID.EXPECT().
+		GetArticleByID(gomock.Any(), "a1").
+		Return(nil, fmt.Errorf("GetArticleByID: %w", errors.New("timeout: pool exhausted")))
+
+	req := connect.NewRequest(&datahubv1.GetArticleByIDRequest{ArticleId: "a1"})
+
+	_, err := h.GetArticleByID(ctx, req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeInternal {
+		t.Errorf("expected CodeInternal so the caller retries, got %v", connect.CodeOf(err))
 	}
 }
 
@@ -580,6 +609,45 @@ func TestSaveArticleSummary_ForwardsArticleTitle(t *testing.T) {
 	}
 }
 
+// The summary_versions row and its SummaryVersionCreated event are one write
+// as far as the caller is concerned. When the append fails after the row
+// lands, the version exists in a state no projection can ever reach and no
+// repair path visits, so answering Success=true makes the loss permanent —
+// pre-processor reads only Success and never sends the summary again.
+// Unavailable rather than Internal because the caller's correct response is to
+// re-send, which supersession makes safe, exactly as on the ArticleCreated
+// path.
+func TestSaveArticleSummary_SummaryVersionEventFailureFailsRPC(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockSave := mocks.NewMockSaveArticleSummaryPort(ctrl)
+	mockVersion := mocks.NewMockCreateSummaryVersionPort(ctrl)
+	stub := &stubKnowledgeEventPort{err: errors.New("sovereign unavailable")}
+
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+		WithPhase2Ports(nil, nil, mockSave, nil, nil, nil),
+		WithKnowledgeVersionUsecases(
+			create_summary_version_usecase.NewCreateSummaryVersionUsecase(mockVersion, stub, nil),
+			nil,
+		))
+
+	mockSave.EXPECT().SaveArticleSummary(gomock.Any(), gomock.Any()).Return(nil)
+	mockVersion.EXPECT().CreateSummaryVersion(gomock.Any(), gomock.Any()).Return(nil)
+
+	req := connect.NewRequest(&datahubv1.SaveArticleSummaryRequest{
+		ArticleId: "11111111-1111-1111-1111-111111111111",
+		UserId:    testTenantID,
+		Summary:   "This is a summary",
+	})
+
+	resp, err := h.SaveArticleSummary(context.Background(), req)
+	if err == nil {
+		t.Fatalf("expected SaveArticleSummary to fail when the SummaryVersionCreated append fails, got success=%v", resp.Msg.Success)
+	}
+	if connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Errorf("expected CodeUnavailable so the caller retries, got %v", connect.CodeOf(err))
+	}
+}
+
 func TestSaveArticleSummary_MissingArticleID(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, mocks.NewMockSaveArticleSummaryPort(gomock.NewController(t)), nil, nil, nil))
@@ -677,14 +745,43 @@ func TestGetFeedID_NotFound(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, nil, nil, mockGetFeed, nil))
 
+	// internal_article_gateway wraps whatever the driver returns, and the
+	// driver reports "no feed at this URL" as alt_db.ErrFeedNotFoundByURL.
 	mockGetFeed.EXPECT().
 		GetFeedID(gomock.Any(), "http://missing.com/feed.xml").
-		Return("", errors.New("not found"))
+		Return("", fmt.Errorf("GetFeedID: %w", alt_db.ErrFeedNotFoundByURL))
 
 	req := connect.NewRequest(&datahubv1.GetFeedIDRequest{FeedUrl: "http://missing.com/feed.xml"})
 	_, err := h.GetFeedID(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeNotFound {
 		t.Errorf("expected CodeNotFound, got %v", connect.CodeOf(err))
+	}
+}
+
+// pre-processor reads NotFound from this RPC as "the feed is not registered":
+// UpsertArticles skips every article of that batch and CheckExists treats the
+// URL as unknown. A pool exhaustion or a transient DB blip answered with the
+// same code would therefore drop a whole batch of ingested articles and can
+// misreport a registered feed as unregistered, so only the driver's absence
+// sentinel may produce it.
+func TestGetFeedID_RepositoryFailureIsNotNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockGetFeed := mocks.NewMockGetFeedIDPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+		WithPhase2Ports(nil, nil, nil, nil, mockGetFeed, nil))
+
+	mockGetFeed.EXPECT().
+		GetFeedID(gomock.Any(), "http://example.com/feed.xml").
+		Return("", fmt.Errorf("GetFeedID: %w", errors.New("timeout: pool exhausted")))
+
+	req := connect.NewRequest(&datahubv1.GetFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	_, err := h.GetFeedID(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeInternal {
+		t.Errorf("expected CodeInternal so the caller retries instead of skipping the batch, got %v", connect.CodeOf(err))
 	}
 }
 

@@ -27,6 +27,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"alt/dataplane/port/datahub_capability_port"
@@ -41,6 +42,7 @@ import (
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
+	"alt/shared/driver/alt_db"
 	"alt/shared/port/event_publisher_port"
 	"alt/shared/port/knowledge_event_port"
 	"alt/shared/usecase/create_summary_version_usecase"
@@ -481,8 +483,15 @@ func (h *Handler) GetArticleByID(ctx context.Context, req *connect.Request[datah
 
 	article, err := h.getArticleByID.GetArticleByID(ctx, req.Msg.ArticleId)
 	if err != nil {
+		// search-indexer reads NotFound as "the row is gone", skips the
+		// article and ACKs the message. A pool exhaustion or a transient DB
+		// blip answered with the same code would drop that article from the
+		// index for good, so only the driver's absence sentinel earns it.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("article not found"))
+		}
 		h.logger.Error("GetArticleByID failed", "article_id", req.Msg.ArticleId, "error", err)
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("article not found"))
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get article"))
 	}
 
 	return connect.NewResponse(&datahubv1.GetArticleByIDResponse{
@@ -724,8 +733,20 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[d
 					sv.ArticleTitle = article.Title
 				}
 			}
+			// Execute writes the summary_versions row and then appends
+			// SummaryVersionCreated, so a failure can leave a version row that
+			// no projection ever sees and no repair path visits. The RPC
+			// result is the only acknowledgement this write has — callers read
+			// nothing but Success — so it is what gets withheld, exactly as on
+			// the ArticleCreated path. Unavailable rather than Internal
+			// because the caller's correct response is to send the summary
+			// again: the re-send supersedes the orphaned version and appends
+			// the event that was lost.
 			if svErr := h.createSummaryVersionUsecase.Execute(ctx, sv); svErr != nil {
-				h.logger.Error("failed to create summary version", "error", svErr, "article_id", req.Msg.ArticleId)
+				h.logger.Error("failed to create summary version; refusing to acknowledge the write",
+					"error", svErr, "article_id", req.Msg.ArticleId)
+				return nil, connect.NewError(connect.CodeUnavailable,
+					errors.New("summary written but its version could not be recorded; retry"))
 			}
 		}
 	}
@@ -771,8 +792,16 @@ func (h *Handler) GetFeedID(ctx context.Context, req *connect.Request[datahubv1.
 
 	feedID, err := h.getFeedID.GetFeedID(ctx, req.Msg.FeedUrl)
 	if err != nil {
-		h.logger.Error("GetFeedID failed", "error", err)
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
+		// pre-processor reads NotFound as "this feed is not registered": it
+		// skips every article of the batch and treats the URL as unknown on
+		// the existence check. A pool exhaustion or a transient DB blip
+		// answered with the same code would silently drop a whole batch of
+		// ingested articles, so only the driver's absence sentinel earns it.
+		if errors.Is(err, alt_db.ErrFeedNotFoundByURL) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
+		}
+		h.logger.Error("GetFeedID failed", "feed_url", req.Msg.FeedUrl, "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get feed ID"))
 	}
 
 	return connect.NewResponse(&datahubv1.GetFeedIDResponse{
