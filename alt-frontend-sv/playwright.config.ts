@@ -196,6 +196,9 @@ export default defineConfig({
 					BACKEND_BASE_URL: "http://127.0.0.1:4003",
 					BACKEND_CONNECT_URL: "http://127.0.0.1:4003",
 					RECAP_WORKER_BASE_URL: "http://127.0.0.1:4003",
+					// No knowledge-sovereign runs here and the admin panel is out of
+					// scope for this suite, so opt out of its Bearer explicitly.
+					SOVEREIGN_ADMIN_AUTH: "disabled",
 				},
 			},
 });

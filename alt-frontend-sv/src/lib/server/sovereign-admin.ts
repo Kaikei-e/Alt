@@ -41,9 +41,9 @@ function loadAdminToken(): string | null {
 		try {
 			contents = readFileSync(tokenFile, "utf8");
 		} catch (cause) {
-			// This runs at module load, where a bare fs error reaches the operator
-			// only as a container that exited: name the config key, the path and
-			// the OS reason so the log line alone is diagnosable.
+			// This runs at server startup, where a bare fs error reaches the
+			// operator only as a container that exited: name the config key, the
+			// path and the OS reason so the log line alone is diagnosable.
 			throw new Error(
 				`SOVEREIGN_ADMIN_TOKEN_FILE (${tokenFile}) could not be read: ${
 					cause instanceof Error ? cause.message : String(cause)
@@ -70,15 +70,30 @@ function loadAdminToken(): string | null {
 	);
 }
 
-const adminToken = loadAdminToken();
+let resolved: { token: string | null } | undefined;
+
+// Resolved on first use, never at module load: `vite build` imports every server
+// module to analyse the routes, and the machine building the image holds no
+// runtime secrets. The server hook below moves that first use to process start.
+function adminToken(): string | null {
+	resolved ??= { token: loadAdminToken() };
+	return resolved.token;
+}
+
+// Called from the `init` server hook so that a missing token kills the process
+// at startup instead of surfacing as 401s the first time someone opens the panel.
+export function verifySovereignAdminAuth(): void {
+	adminToken();
+}
 
 function adminHeaders(
 	extra?: Record<string, string>,
 ): Record<string, string> | undefined {
-	if (!adminToken) {
+	const token = adminToken();
+	if (!token) {
 		return extra;
 	}
-	return { ...extra, Authorization: `Bearer ${adminToken}` };
+	return { ...extra, Authorization: `Bearer ${token}` };
 }
 
 async function fetchJSON<T>(url: string): Promise<T> {

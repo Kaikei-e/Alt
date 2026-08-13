@@ -1,10 +1,12 @@
-import type { Handle, HandleServerError } from "@sveltejs/kit";
+import type { Handle, HandleServerError, ServerInit } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
+import { building } from "$app/environment";
 import {
 	isPublicRoute,
 	isApiRoute,
 	isStreamEndpoint,
 } from "$lib/server/route-guard";
+import { verifySovereignAdminAuth } from "$lib/server/sovereign-admin";
 import { validateSession } from "$lib/server/auth-middleware";
 import { classifyOryError } from "$lib/server/error-classifier";
 import {
@@ -20,6 +22,16 @@ import {
 
 const resolveOptions = {
 	filterSerializedResponseHeaders: (name: string) => name === "content-type",
+};
+
+// `init` runs once when the server is created, which is where required runtime
+// config has to be proven present. SvelteKit also runs it while prerendering,
+// where `building` is true and the build machine holds no runtime secrets, so
+// that pass is skipped rather than turned into a build-time secret requirement.
+export const init: ServerInit = () => {
+	if (building) return;
+
+	verifySovereignAdminAuth();
 };
 
 export const handle: Handle = async ({ event, resolve: resolveEvent }) => {

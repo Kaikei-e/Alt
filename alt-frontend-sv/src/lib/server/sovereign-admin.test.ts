@@ -240,24 +240,39 @@ describe("sovereign admin client authorization", () => {
 		await expect(fetchSovereignAdminSnapshot()).rejects.toThrow("401");
 	});
 
-	it("fails fast when no admin token is configured", async () => {
-		await expect(import("./sovereign-admin")).rejects.toThrow(
+	// `vite build` imports every server module to analyse the routes, on a
+	// machine that holds no runtime secrets, so importing must resolve nothing.
+	it("imports without touching the admin config", async () => {
+		const { verifySovereignAdminAuth } = await import("./sovereign-admin");
+
+		expect(verifySovereignAdminAuth).toBeTypeOf("function");
+	});
+
+	it("fails fast on startup verification when no admin token is configured", async () => {
+		const { verifySovereignAdminAuth } = await import("./sovereign-admin");
+
+		expect(verifySovereignAdminAuth).toThrow(/SOVEREIGN_ADMIN_TOKEN/);
+	});
+
+	it("refuses to call /admin/* unauthenticated when startup verification was skipped", async () => {
+		const fetchMock = mockGets();
+		const { fetchSovereignAdminSnapshot } = await import("./sovereign-admin");
+
+		await expect(fetchSovereignAdminSnapshot()).rejects.toThrow(
 			/SOVEREIGN_ADMIN_TOKEN/,
 		);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it("names the config key, the token file path and the OS reason when the token file cannot be read", async () => {
 		const missingPath = join(secretDir, "does_not_exist");
 		env.SOVEREIGN_ADMIN_TOKEN_FILE = missingPath;
 
-		const message = await import("./sovereign-admin").then(
-			() => "module loaded without throwing",
-			(error: Error) => error.message,
-		);
+		const { verifySovereignAdminAuth } = await import("./sovereign-admin");
 
-		expect(message).toContain("SOVEREIGN_ADMIN_TOKEN_FILE");
-		expect(message).toContain(missingPath);
-		expect(message).toContain("ENOENT");
+		expect(verifySovereignAdminAuth).toThrow("SOVEREIGN_ADMIN_TOKEN_FILE");
+		expect(verifySovereignAdminAuth).toThrow(missingPath);
+		expect(verifySovereignAdminAuth).toThrow("ENOENT");
 	});
 
 	it("runs without a token only when auth is explicitly disabled", async () => {
