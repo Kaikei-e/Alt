@@ -7,10 +7,13 @@ import (
 	"alt/orchestrator/gateway/fetch_article_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
 	"alt/orchestrator/usecase/fetch_article_usecase"
+	"alt/orchestrator/usecase/fetch_articles_usecase"
+	"alt/shared/usecase/fetch_articles_by_tag_usecase"
 	// Note: driver/gateway imports are used to construct the usecase, not for direct handler access.
 	"alt/utils/logger"
 	"alt/utils/security"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -249,4 +252,130 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		assert.Empty(t, repo.declinedSaved, "an allowed fetch must not record a decline")
 	})
+}
+
+// stubArticleCursorPort records the cursor the handler passed down, so the
+// page-2 request can be compared against the timestamp page 1 handed out.
+type stubArticleCursorPort struct {
+	articles   []*domain.Article
+	lastCursor *time.Time
+}
+
+func (s *stubArticleCursorPort) FetchArticlesWithCursor(_ context.Context, cursor *time.Time, _ int) ([]*domain.Article, error) {
+	s.lastCursor = cursor
+	return s.articles, nil
+}
+
+func (s *stubArticleCursorPort) FetchArticleIDsWithCursor(_ context.Context, cursor *time.Time, _ int) ([]uuid.UUID, error) {
+	s.lastCursor = cursor
+	return nil, nil
+}
+
+type stubArticlesByTagPort struct {
+	articles   []*domain.TagTrailArticle
+	lastCursor *time.Time
+}
+
+func (s *stubArticlesByTagPort) FetchArticlesByTag(_ context.Context, _ string, cursor *time.Time, _ int) ([]*domain.TagTrailArticle, error) {
+	s.lastCursor = cursor
+	return s.articles, nil
+}
+
+func (s *stubArticlesByTagPort) FetchArticlesByTagName(_ context.Context, _ string, cursor *time.Time, _ int) ([]*domain.TagTrailArticle, error) {
+	s.lastCursor = cursor
+	return s.articles, nil
+}
+
+func callArticleHandler(t *testing.T, handler echo.HandlerFunc, target string, out interface{}) {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req = req.WithContext(domain.SetUserContext(req.Context(), &domain.UserContext{
+		UserID:    uuid.New(),
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  uuid.New(),
+		SessionID: "test-session",
+		LoginAt:   time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}))
+	rec := httptest.NewRecorder()
+
+	if err := handler(echo.New().NewContext(req, rec)); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), out); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+}
+
+// TestHandleFetchArticlesCursor_RoundTripKeepsSubSecondPrecision pins the
+// pagination boundary: articles.created_at is microsecond precision and one
+// harvester transaction stamps a whole batch inside the same second, so a
+// cursor that only names the second is fed back into `created_at < $1` and
+// drops the rest of that second from the timeline for good.
+func TestHandleFetchArticlesCursor_RoundTripKeepsSubSecondPrecision(t *testing.T) {
+	logger.InitLogger()
+
+	firstPageTail := time.Date(2026, time.March, 2, 10, 0, 0, 123456000, time.UTC)
+	sameSecond := firstPageTail.Add(-500 * time.Microsecond)
+
+	port := &stubArticleCursorPort{articles: []*domain.Article{
+		{ID: uuid.New(), Title: "first", URL: "https://example.com/1", PublishedAt: firstPageTail},
+		{ID: uuid.New(), Title: "second", URL: "https://example.com/2", PublishedAt: sameSecond},
+	}}
+	handler := handleFetchArticlesCursor(&di.ApplicationComponents{
+		FetchArticlesCursorUsecase: fetch_articles_usecase.NewFetchArticlesCursorUsecase(port),
+	})
+
+	var page1 ArticlesWithCursorResponse
+	callArticleHandler(t, handler, "/v1/articles/fetch/cursor?limit=1", &page1)
+	if !page1.HasMore || page1.NextCursor == nil {
+		t.Fatalf("expected a next cursor, got %+v", page1)
+	}
+
+	var page2 ArticlesWithCursorResponse
+	callArticleHandler(t, handler,
+		"/v1/articles/fetch/cursor?limit=1&cursor="+url.QueryEscape(*page1.NextCursor), &page2)
+
+	if port.lastCursor == nil || !port.lastCursor.Equal(firstPageTail) {
+		t.Fatalf("cursor %s became %s, so every row between them is skipped",
+			firstPageTail.Format(time.RFC3339Nano), port.lastCursor.Format(time.RFC3339Nano))
+	}
+}
+
+// TestHandleFetchArticlesByTag_RoundTripKeepsSubSecondPrecision is the Tag
+// Trail half of the same walk: its cursor is also articles.created_at compared
+// with `<`.
+func TestHandleFetchArticlesByTag_RoundTripKeepsSubSecondPrecision(t *testing.T) {
+	logger.InitLogger()
+
+	firstPageTail := time.Date(2026, time.March, 2, 10, 0, 0, 123456000, time.UTC)
+	sameSecond := firstPageTail.Add(-500 * time.Microsecond)
+
+	port := &stubArticlesByTagPort{articles: []*domain.TagTrailArticle{
+		{ID: uuid.New().String(), Title: "first", Link: "https://example.com/1", PublishedAt: firstPageTail},
+		{ID: uuid.New().String(), Title: "second", Link: "https://example.com/2", PublishedAt: sameSecond},
+	}}
+	handler := handleFetchArticlesByTag(&di.ApplicationComponents{
+		FetchArticlesByTagUsecase: fetch_articles_by_tag_usecase.NewFetchArticlesByTagUsecase(port),
+	})
+
+	var page1 ArticlesByTagResponse
+	callArticleHandler(t, handler, "/v1/articles/by-tag?tag_name=go&limit=1", &page1)
+	if !page1.HasMore || page1.NextCursor == nil {
+		t.Fatalf("expected a next cursor, got %+v", page1)
+	}
+
+	var page2 ArticlesByTagResponse
+	callArticleHandler(t, handler,
+		"/v1/articles/by-tag?tag_name=go&limit=1&cursor="+url.QueryEscape(*page1.NextCursor), &page2)
+
+	if port.lastCursor == nil || !port.lastCursor.Equal(firstPageTail) {
+		t.Fatalf("cursor %s became %s, so every row between them is skipped",
+			firstPageTail.Format(time.RFC3339Nano), port.lastCursor.Format(time.RFC3339Nano))
+	}
 }

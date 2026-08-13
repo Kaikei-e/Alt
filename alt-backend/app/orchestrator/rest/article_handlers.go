@@ -205,10 +205,12 @@ func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.Handler
 			}
 		}
 
+		// Sub-second precision: the cursor comes back as the right-hand side of
+		// a strict `created_at < $1`, and created_at is microsecond precision.
 		var nextCursor *string
 		if hasMore && len(articles) > 0 {
 			lastArticle := articles[len(articles)-1]
-			cursorStr := lastArticle.PublishedAt.Format(time.RFC3339)
+			cursorStr := lastArticle.PublishedAt.Format(time.RFC3339Nano)
 			nextCursor = &cursorStr
 		}
 
@@ -305,10 +307,12 @@ func handleFetchArticlesByTag(container *di.ApplicationComponents) echo.HandlerF
 			}
 		}
 
+		// Sub-second precision: the cursor comes back as the right-hand side of
+		// a strict `created_at < $1`, and created_at is microsecond precision.
 		var nextCursor *string
 		if hasMore && len(articles) > 0 {
 			lastArticle := articles[len(articles)-1]
-			cursorStr := lastArticle.PublishedAt.Format(time.RFC3339)
+			cursorStr := lastArticle.PublishedAt.Format(time.RFC3339Nano)
 			nextCursor = &cursorStr
 		}
 

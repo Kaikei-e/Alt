@@ -326,11 +326,13 @@ func (h *Handler) FetchArticlesCursor(
 	stopMarshal := timer.StartPhase(ctx, "marshal")
 	protoArticles := convertArticlesToProto(articles)
 
-	// Derive next cursor
+	// Derive next cursor, with sub-second precision: it comes back as the
+	// right-hand side of a strict `created_at < $1`, and created_at is
+	// microsecond precision.
 	var nextCursor *string
 	if hasMore && len(articles) > 0 {
 		lastArticle := articles[len(articles)-1]
-		cursorStr := lastArticle.PublishedAt.Format(time.RFC3339)
+		cursorStr := lastArticle.PublishedAt.Format(time.RFC3339Nano)
 		nextCursor = &cursorStr
 	}
 
@@ -432,11 +434,13 @@ func (h *Handler) FetchArticlesByTag(
 		})
 	}
 
-	// Derive next cursor
+	// Derive next cursor, with sub-second precision: it comes back as the
+	// right-hand side of a strict `created_at < $1`, and created_at is
+	// microsecond precision.
 	var nextCursor *string
 	if hasMore && len(articles) > 0 {
 		lastArticle := articles[len(articles)-1]
-		cursorStr := lastArticle.PublishedAt.Format(time.RFC3339)
+		cursorStr := lastArticle.PublishedAt.Format(time.RFC3339Nano)
 		nextCursor = &cursorStr
 	}
 
