@@ -2,92 +2,172 @@
  * Server-side client for knowledge-sovereign admin REST endpoints.
  *
  * Calls knowledge-sovereign metrics port (:9501) directly from SvelteKit server.
- * PascalCase Go responses (structs without json tags) are normalized to camelCase.
+ * The list endpoints answer with a named envelope ("tables", "snapshots",
+ * "logs", "partitions") around snake_case rows; the single-object endpoints
+ * (snapshots/latest, snapshots/create) answer with a bare snake_case object.
+ * Both are unwrapped and renamed to the camelCase view types here.
  */
 
+import { readFileSync } from "node:fs";
 import { env } from "$env/dynamic/private";
 import type {
-	TableStorageInfo,
-	SnapshotMetadata,
-	RetentionLogEntry,
 	EligiblePartitionsResult,
+	PartitionInfo,
+	RetentionAction,
+	RetentionLogEntry,
 	RetentionRunResponse,
+	SnapshotMetadata,
 	SovereignAdminSnapshot,
+	TableStorageInfo,
 } from "$lib/types/sovereign-admin";
 
 const SOVEREIGN_METRICS_URL =
 	env.SOVEREIGN_METRICS_URL || "http://knowledge-sovereign:9501";
 
+// knowledge-sovereign Bearer-gates every /admin/* route on its metrics port and
+// opens it only for an explicit ADMIN_AUTH=disabled, so this caller mirrors that
+// switch rather than reading an absent token as "no token needed".
+function loadAdminToken(): string | null {
+	if (env.SOVEREIGN_ADMIN_AUTH === "disabled") {
+		console.warn(
+			"sovereign_admin_auth_disabled: SOVEREIGN_ADMIN_AUTH=disabled was set explicitly; /admin/* calls carry no Bearer token",
+		);
+		return null;
+	}
+
+	const tokenFile = env.SOVEREIGN_ADMIN_TOKEN_FILE;
+	if (tokenFile) {
+		let contents: string;
+		try {
+			contents = readFileSync(tokenFile, "utf8");
+		} catch (cause) {
+			// This runs at module load, where a bare fs error reaches the operator
+			// only as a container that exited: name the config key, the path and
+			// the OS reason so the log line alone is diagnosable.
+			throw new Error(
+				`SOVEREIGN_ADMIN_TOKEN_FILE (${tokenFile}) could not be read: ${
+					cause instanceof Error ? cause.message : String(cause)
+				}`,
+				{ cause },
+			);
+		}
+		const token = contents.trim();
+		if (!token) {
+			throw new Error(`SOVEREIGN_ADMIN_TOKEN_FILE (${tokenFile}) is empty`);
+		}
+		console.info("sovereign_admin_auth_enabled");
+		return token;
+	}
+
+	const token = env.SOVEREIGN_ADMIN_TOKEN?.trim();
+	if (token) {
+		console.info("sovereign_admin_auth_enabled");
+		return token;
+	}
+
+	throw new Error(
+		"SOVEREIGN_ADMIN_TOKEN_FILE or SOVEREIGN_ADMIN_TOKEN is required; set SOVEREIGN_ADMIN_AUTH=disabled to call knowledge-sovereign /admin/* without a token",
+	);
+}
+
+const adminToken = loadAdminToken();
+
+function adminHeaders(
+	extra?: Record<string, string>,
+): Record<string, string> | undefined {
+	if (!adminToken) {
+		return extra;
+	}
+	return { ...extra, Authorization: `Bearer ${adminToken}` };
+}
+
 async function fetchJSON<T>(url: string): Promise<T> {
-	const response = await fetch(url);
+	const response = await fetch(url, { headers: adminHeaders() });
 	if (!response.ok) {
 		throw new Error(`Sovereign API error: ${response.status} ${url}`);
 	}
 	return response.json() as Promise<T>;
 }
 
-// --- PascalCase → camelCase normalizers ---
+// --- snake_case → camelCase normalizers ---
 
-export function normalizeSnapshotMetadata(
-	raw: Record<string, unknown>,
-): SnapshotMetadata {
+type RawRow = Record<string, unknown>;
+
+// omitempty json tags drop the key entirely; the view types declare a string.
+function optionalString(value: unknown): string {
+	return (value as string | undefined) ?? "";
+}
+
+export function normalizeTableStorageInfo(raw: RawRow): TableStorageInfo {
 	return {
-		snapshotId: raw.SnapshotID as string,
-		snapshotType: raw.SnapshotType as string,
-		projectionVersion: raw.ProjectionVersion as number,
-		projectorBuildRef: raw.ProjectorBuildRef as string,
-		schemaVersion: raw.SchemaVersion as string,
-		snapshotAt: raw.SnapshotAt as string,
-		eventSeqBoundary: raw.EventSeqBoundary as number,
-		snapshotDataPath: raw.SnapshotDataPath as string,
-		itemsRowCount: raw.ItemsRowCount as number,
-		itemsChecksum: raw.ItemsChecksum as string,
-		digestRowCount: raw.DigestRowCount as number,
-		digestChecksum: raw.DigestChecksum as string,
-		recallRowCount: raw.RecallRowCount as number,
-		recallChecksum: raw.RecallChecksum as string,
-		createdAt: raw.CreatedAt as string,
-		status: raw.Status as string,
+		table_name: raw.name as string,
+		row_count: raw.row_count as number,
+		total_size: raw.total_size as string,
+		total_bytes: raw.total_bytes as number,
+		is_partitioned: raw.is_partitioned as boolean,
 	};
 }
 
-export function normalizeRetentionLogEntry(
-	raw: Record<string, unknown>,
-): RetentionLogEntry {
+export function normalizeSnapshotMetadata(raw: RawRow): SnapshotMetadata {
 	return {
-		logId: raw.LogID as string,
-		runAt: raw.RunAt as string,
-		action: raw.Action as string,
-		targetTable: raw.TargetTable as string,
-		targetPartition: raw.TargetPartition as string,
-		rowsAffected: raw.RowsAffected as number,
-		archivePath: raw.ArchivePath as string,
-		checksum: raw.Checksum as string,
-		dryRun: raw.DryRun as boolean,
-		status: raw.Status as string,
-		errorMessage: raw.ErrorMessage as string,
+		snapshotId: raw.snapshot_id as string,
+		snapshotType: raw.snapshot_type as string,
+		projectionVersion: raw.projection_version as number,
+		projectorBuildRef: raw.projector_build_ref as string,
+		schemaVersion: raw.schema_version as string,
+		snapshotAt: raw.snapshot_at as string,
+		eventSeqBoundary: raw.event_seq_boundary as number,
+		snapshotDataPath: raw.snapshot_data_path as string,
+		itemsRowCount: raw.items_row_count as number,
+		itemsChecksum: raw.items_checksum as string,
+		digestRowCount: raw.digest_row_count as number,
+		digestChecksum: raw.digest_checksum as string,
+		recallRowCount: raw.recall_row_count as number,
+		recallChecksum: raw.recall_checksum as string,
+		createdAt: raw.created_at as string,
+		status: raw.status as string,
 	};
 }
 
-export function normalizePartitionInfo(raw: Record<string, unknown>) {
+export function normalizeRetentionLogEntry(raw: RawRow): RetentionLogEntry {
 	return {
-		name: raw.Name as string,
-		rangeStart: raw.RangeStart as string,
-		rangeEnd: raw.RangeEnd as string,
-		rowCount: raw.RowCount as number,
-		sizeBytes: raw.SizeBytes as number,
+		logId: raw.log_id as string,
+		runAt: raw.run_at as string,
+		action: raw.action as string,
+		targetTable: raw.target_table as string,
+		targetPartition: raw.target_partition as string,
+		rowsAffected: raw.rows_affected as number,
+		archivePath: optionalString(raw.archive_path),
+		checksum: optionalString(raw.checksum),
+		dryRun: raw.dry_run as boolean,
+		status: raw.status as string,
+		errorMessage: optionalString(raw.error_message),
 	};
 }
 
-export function normalizeEligiblePartitionsResult(
-	raw: Record<string, unknown>,
-): EligiblePartitionsResult {
-	return {
-		table: raw.table as string,
-		eligible: ((raw.eligible as Record<string, unknown>[]) ?? []).map(
-			normalizePartitionInfo,
-		),
-	};
+// /admin/retention/eligible answers a single flat array of table-tagged rows;
+// the panel renders one section per table, so regroup on the way in.
+export function groupEligiblePartitions(
+	rows: RawRow[],
+): EligiblePartitionsResult[] {
+	const byTable = new Map<string, EligiblePartitionsResult>();
+	for (const row of rows) {
+		const table = row.table_name as string;
+		const partition: PartitionInfo = {
+			name: row.partition_name as string,
+			rangeStart: row.range_start as string,
+			rangeEnd: row.range_end as string,
+			rowCount: row.row_count as number,
+			sizeBytes: row.size_bytes as number,
+		};
+		const group = byTable.get(table);
+		if (group) {
+			group.eligible.push(partition);
+		} else {
+			byTable.set(table, { table, eligible: [partition] });
+		}
+	}
+	return [...byTable.values()];
 }
 
 // --- Public API ---
@@ -95,50 +175,46 @@ export function normalizeEligiblePartitionsResult(
 export async function fetchSovereignAdminSnapshot(): Promise<SovereignAdminSnapshot> {
 	const [
 		storageStats,
-		rawSnapshots,
+		snapshotList,
 		rawLatestSnapshot,
-		rawRetentionLogs,
-		rawEligiblePartitions,
+		retentionStatus,
+		eligible,
 	] = await Promise.all([
-		fetchJSON<TableStorageInfo[]>(
+		fetchJSON<{ tables: RawRow[] }>(
 			`${SOVEREIGN_METRICS_URL}/admin/storage/stats`,
-		).catch(() => []),
-		fetchJSON<Record<string, unknown>[]>(
+		),
+		fetchJSON<{ snapshots: RawRow[] }>(
 			`${SOVEREIGN_METRICS_URL}/admin/snapshots/list`,
-		).catch(() => []),
-		fetchJSON<Record<string, unknown> | null>(
-			`${SOVEREIGN_METRICS_URL}/admin/snapshots/latest`,
-		).catch(() => null),
-		fetchJSON<Record<string, unknown>[]>(
+		),
+		fetchJSON<RawRow | null>(`${SOVEREIGN_METRICS_URL}/admin/snapshots/latest`),
+		fetchJSON<{ logs: RawRow[] }>(
 			`${SOVEREIGN_METRICS_URL}/admin/retention/status`,
-		).catch(() => []),
-		fetchJSON<Record<string, unknown>[]>(
+		),
+		fetchJSON<{ partitions: RawRow[] }>(
 			`${SOVEREIGN_METRICS_URL}/admin/retention/eligible`,
-		).catch(() => []),
+		),
 	]);
 
 	return {
-		storageStats,
-		snapshots: rawSnapshots.map(normalizeSnapshotMetadata),
+		storageStats: storageStats.tables.map(normalizeTableStorageInfo),
+		snapshots: snapshotList.snapshots.map(normalizeSnapshotMetadata),
 		latestSnapshot: rawLatestSnapshot
 			? normalizeSnapshotMetadata(rawLatestSnapshot)
 			: null,
-		retentionLogs: rawRetentionLogs.map(normalizeRetentionLogEntry),
-		eligiblePartitions: rawEligiblePartitions.map(
-			normalizeEligiblePartitionsResult,
-		),
+		retentionLogs: retentionStatus.logs.map(normalizeRetentionLogEntry),
+		eligiblePartitions: groupEligiblePartitions(eligible.partitions),
 	};
 }
 
 export async function createSovereignSnapshot(): Promise<SnapshotMetadata> {
 	const response = await fetch(
 		`${SOVEREIGN_METRICS_URL}/admin/snapshots/create`,
-		{ method: "POST" },
+		{ method: "POST", headers: adminHeaders() },
 	);
 	if (!response.ok) {
 		throw new Error(`Failed to create snapshot: ${response.status}`);
 	}
-	const raw = (await response.json()) as Record<string, unknown>;
+	const raw = (await response.json()) as RawRow;
 	return normalizeSnapshotMetadata(raw);
 }
 
@@ -147,11 +223,17 @@ export async function runSovereignRetention(
 ): Promise<RetentionRunResponse> {
 	const response = await fetch(`${SOVEREIGN_METRICS_URL}/admin/retention/run`, {
 		method: "POST",
-		headers: { "Content-Type": "application/json" },
+		headers: adminHeaders({ "Content-Type": "application/json" }),
 		body: JSON.stringify({ dry_run: dryRun }),
 	});
 	if (!response.ok) {
 		throw new Error(`Failed to run retention: ${response.status}`);
 	}
-	return response.json() as Promise<RetentionRunResponse>;
+	// A run that plans no action leaves Go's Actions slice nil, which encodes as
+	// null, not []. The result panel reads .length on it unconditionally.
+	const raw = (await response.json()) as Omit<
+		RetentionRunResponse,
+		"actions"
+	> & { actions: RetentionAction[] | null };
+	return { ...raw, actions: raw.actions ?? [] };
 }
