@@ -220,8 +220,41 @@ async def test_list_running_runs_returns_every_running_row() -> None:
     assert {r.run_id for r in result} == {run_id_1, run_id_2}
     assert all(r.run_status == "running" for r in result)
     query, params = conn.executed[0]
-    assert "run_status = 'running'" in query
+    assert "run_status IN ('pending', 'running')" in query
     assert params is None
+
+
+@pytest.mark.asyncio
+async def test_list_running_runs_also_returns_pending_runs() -> None:
+    """create_run commits 'pending' and only then queues the pipeline behind a
+    4-slot semaphore, a wait that can outlast a redeploy. A run orphaned in that
+    window never reaches 'running', so a reconciliation scoped to 'running'
+    leaves it wedging get_active_run_for_report for its report forever."""
+    pending_run_id = uuid4()
+    report_id = uuid4()
+    rows = [
+        (
+            pending_run_id,
+            report_id,
+            1,
+            "pending",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
+    ]
+    conn = _FakeConnection(rows=[rows])
+    gw = _gw(conn)
+
+    result = await gw.list_running_runs()
+
+    assert [r.run_id for r in result] == [pending_run_id]
+    query, _params = conn.executed[0]
+    assert "run_status IN ('pending', 'running')" in query
 
 
 @pytest.mark.asyncio

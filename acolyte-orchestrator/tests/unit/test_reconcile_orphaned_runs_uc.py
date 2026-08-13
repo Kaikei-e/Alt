@@ -69,6 +69,15 @@ def _running_run() -> ReportRun:
     )
 
 
+def _pending_run() -> ReportRun:
+    return ReportRun(
+        run_id=uuid4(),
+        report_id=uuid4(),
+        target_version_no=1,
+        run_status="pending",
+    )
+
+
 @pytest.mark.asyncio
 async def test_execute_fails_every_orphaned_running_run() -> None:
     run_a, run_b = _running_run(), _running_run()
@@ -81,6 +90,22 @@ async def test_execute_fails_every_orphaned_running_run() -> None:
     failed_ids = {run_id for run_id, _code, _msg in jobs.failed}
     assert failed_ids == {run_a.run_id, run_b.run_id}
     assert all(code == "orphaned_after_restart" for _run_id, code, _msg in jobs.failed)
+
+
+@pytest.mark.asyncio
+async def test_execute_records_the_status_the_run_was_orphaned_in() -> None:
+    """A run orphaned while queued behind the run semaphore is 'pending', never
+    'running' — the failure message must not claim otherwise, or the operator
+    reading report_runs.failure_message looks for a crash mid-pipeline that
+    never happened."""
+    run = _pending_run()
+    jobs = _FakeJobQueue([run])
+    uc = ReconcileOrphanedRunsUsecase(jobs)
+
+    await uc.execute()
+
+    _run_id, _code, message = jobs.failed[0]
+    assert "pending" in message
 
 
 @pytest.mark.asyncio
