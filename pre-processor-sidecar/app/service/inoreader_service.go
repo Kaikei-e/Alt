@@ -55,11 +55,10 @@ type InoreaderService struct {
 	circuitBreaker        *utils.CircuitBreaker // TDD Phase 3 - REFACTOR: Circuit Breaker
 	monitor               *utils.Monitor        // TDD Phase 3 - REFACTOR: Structured Logging & Monitoring
 
-	// rateLimitMu guards every field of rateLimitInfo. The scheduler's
-	// periodic fetch and an admin-triggered fetch can run concurrently
-	// (handler.ScheduleHandler's admin trigger vs the background scheduler),
-	// both reading/incrementing Zone1Usage without previously being
-	// synchronized.
+	// rateLimitMu guards every field of rateLimitInfo. The scheduler
+	// serializes its article-fetch runs and its subscription-refresh runs
+	// separately, so a stream fetch and a subscription list call can still
+	// read and increment Zone1Usage concurrently.
 	rateLimitMu sync.RWMutex
 
 	fetchMu             sync.Mutex

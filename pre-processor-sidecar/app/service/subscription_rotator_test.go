@@ -659,9 +659,9 @@ func TestTimingCalculationsWithConfigurableInterval(t *testing.T) {
 	assert.True(t, rotator.IsReadyForNext(), "Should be ready after 30+ minutes")
 }
 
-// Test compatibility with schedule handler expectations
-func TestScheduleHandlerCompatibility(t *testing.T) {
-	// This test verifies that the rotator interval matches what schedule handler expects
+// Test that the env-configured interval and daily rotation budget hold for a
+// realistic subscription count
+func TestEnvConfiguredIntervalAndDailyBudget(t *testing.T) {
 	originalRotationEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
 	originalDailyEnv := os.Getenv("MAX_DAILY_ROTATIONS")
 	defer func() {
@@ -677,14 +677,13 @@ func TestScheduleHandlerCompatibility(t *testing.T) {
 		}
 	}()
 
-	// Set to 30 minutes (matching schedule handler default)
 	os.Setenv("ROTATION_INTERVAL_MINUTES", "30")
 	// Set to 2 rotations per day (matching production config)
 	os.Setenv("MAX_DAILY_ROTATIONS", "2")
 	rotator := NewSubscriptionRotator(slog.Default())
 
 	// Verify interval matches expected value
-	assert.Equal(t, 30, rotator.GetInterval(), "Rotator interval should match schedule handler")
+	assert.Equal(t, 30, rotator.GetInterval(), "Rotator interval should follow ROTATION_INTERVAL_MINUTES")
 
 	// Verify calculations work correctly for realistic setup
 	ctx := context.Background()

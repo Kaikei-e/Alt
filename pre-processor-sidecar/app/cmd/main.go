@@ -368,7 +368,6 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	inoreaderService := service.NewInoreaderService(inoreaderClient, apiUsageRepo, tokenProvider, logger)
 
 	subscriptionSyncService := service.NewSubscriptionSyncService(inoreaderService, subscriptionRepo, syncStateRepo, logger)
-	rateLimitManager := service.NewRateLimitManager(nil, logger)
 
 	// Initialize service layer with rotation support
 	articleFetchService := service.NewArticleFetchService(
@@ -379,41 +378,18 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		logger,
 	)
 
-	// Initialize handler layer (keep legacy handler for subscription sync)
-	articleFetchHandler := handler.NewArticleFetchHandler(
-		inoreaderService,
-		subscriptionSyncService,
-		rateLimitManager,
-		articleRepo,
-		syncStateRepo,
-		logger,
-	)
-
-	scheduleHandler := handler.NewScheduleHandler(articleFetchHandler, articleFetchService, logger)
-	scheduleHandler.SetTokenManager(tokenManagementService)
-
-	// The scheduler that actually drives ticker-based fetch/refresh (started
-	// below). Constructed here — ahead of the Admin API trigger endpoints —
-	// so those endpoints can call into it directly (TriggerFetchNow /
-	// TriggerRefreshNow) instead of ScheduleHandler's own trigger methods.
-	// The two used to have no shared guard: an admin-triggered fetch could
-	// run concurrently with the ticker-driven fetch and double-consume the
-	// 100 req/day Inoreader quota.
+	// The scheduler owns both the ticker-driven fetch/refresh loops (started
+	// below) and the Admin API's manual triggers, so it is constructed ahead
+	// of the trigger endpoints. Routing those endpoints through
+	// TriggerFetchNow / TriggerRefreshNow keeps a manual run mutually
+	// exclusive with the ticker-driven run; without a shared guard the two
+	// could double-consume the 100 req/day Inoreader quota.
 	inoreaderScheduler := scheduler.NewScheduler(
 		syncStateRepo,
 		subscriptionSyncService,
 		articleFetchService,
 		logger,
 	)
-
-	// Add job result callback for monitoring
-	scheduleHandler.AddJobResultCallback(func(result *handler.JobResult) {
-		logger.Info("Scheduled job completed",
-			"job_type", result.JobType,
-			"success", result.Success,
-			"duration", result.Duration,
-			"error", result.Error)
-	})
 
 	// セキュリティコンポーネントの初期化
 	authenticator := security.NewKubernetesAuthenticator(logger)
@@ -541,12 +517,6 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	// Register shutdown hook for scheduler
 	defer inoreaderScheduler.Stop()
 
-	// scheduleHandler's own ticker-based scheduling (Start) stays unused —
-	// inoreaderScheduler above is the sole driver of ticker-based fetch and
-	// refresh, and Admin API triggers now go through inoreaderScheduler's
-	// TriggerFetchNow/TriggerRefreshNow too, so there is exactly one
-	// scheduling authority instead of two independently racing ones.
-
 	// サービス状態の定期ログ（頻度を30分に削減してAPI呼び出しを減らす）
 	statusTicker := time.NewTicker(30 * time.Minute)
 	defer statusTicker.Stop()
@@ -571,7 +541,6 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	<-ctx.Done()
 
 	logger.Info("Shutting down dual schedule processing")
-	scheduleHandler.Stop()
 
 	return nil
 }
