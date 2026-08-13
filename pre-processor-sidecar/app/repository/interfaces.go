@@ -24,7 +24,7 @@ var ErrSyncStateNotFound = errors.New("sync state not found")
 type ArticleRepository interface {
 	// Create operations
 	Create(ctx context.Context, article *models.Article) error
-	CreateBatch(ctx context.Context, articles []*models.Article) (int, error)
+	CreateBatch(ctx context.Context, articles []*models.Article) (created int, failed int, err error)
 
 	// Read operations
 	FindByInoreaderID(ctx context.Context, inoreaderID string) (*models.Article, error)

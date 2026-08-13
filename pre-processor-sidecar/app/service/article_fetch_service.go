@@ -22,7 +22,7 @@ import (
 type ArticleRepository interface {
 	FindByInoreaderID(ctx context.Context, inoreaderID string) (*models.Article, error)
 	Create(ctx context.Context, article *models.Article) error
-	CreateBatch(ctx context.Context, articles []*models.Article) (int, error)
+	CreateBatch(ctx context.Context, articles []*models.Article) (created int, failed int, err error)
 	Update(ctx context.Context, article *models.Article) error
 	GetUnprocessed(ctx context.Context, limit int) ([]*models.Article, error)
 	MarkAsProcessed(ctx context.Context, articleID string) error
@@ -36,11 +36,9 @@ type SyncStateRepository interface {
 	Update(ctx context.Context, syncState *models.SyncState) error
 }
 
-// interSubscriptionDelay bounds how often the batch subscription loops
-// (here and in handler.ScheduleHandler's batch rotation) issue back-to-back
-// Inoreader API calls. CLAUDE.md rule 2 requires a 5-second floor between
-// external API calls; the previous 100ms delay in both call sites violated
-// it identically, so the wait lives here once and both callers share it.
+// interSubscriptionDelay bounds how often the batch subscription loop issues
+// back-to-back Inoreader API calls, holding to the 5-second floor required
+// between external API calls.
 const interSubscriptionDelay = 5 * time.Second
 
 // WaitBetweenSubscriptions blocks for interSubscriptionDelay or until ctx is
@@ -57,13 +55,18 @@ func WaitBetweenSubscriptions(ctx context.Context) error {
 
 // ArticleFetchResult represents the result of an article fetch operation
 type ArticleFetchResult struct {
-	NewArticles       int           `json:"new_articles"`
-	TotalProcessed    int           `json:"total_processed"`
-	FilteredNonTier1  int           `json:"filtered_non_tier1"`
-	ContinuationToken string        `json:"continuation_token,omitempty"`
-	SyncTime          time.Time     `json:"sync_time"`
-	Duration          time.Duration `json:"duration"`
-	Errors            []string      `json:"errors,omitempty"`
+	NewArticles      int `json:"new_articles"`
+	TotalProcessed   int `json:"total_processed"`
+	FilteredNonTier1 int `json:"filtered_non_tier1"`
+	// DroppedUnresolvable counts articles this fetch discarded for good. They are
+	// deliberately not folded into NewArticles or into the retryable failure
+	// count, so an operator can tell "stored" from "thrown away" without reading
+	// the log stream.
+	DroppedUnresolvable int           `json:"dropped_unresolvable,omitempty"`
+	ContinuationToken   string        `json:"continuation_token,omitempty"`
+	SyncTime            time.Time     `json:"sync_time"`
+	Duration            time.Duration `json:"duration"`
+	Errors              []string      `json:"errors,omitempty"`
 }
 
 // SubscriptionMapping represents the cache for mapping Inoreader stream IDs to subscription UUIDs
@@ -142,7 +145,7 @@ func NewArticleFetchService(
 		logger:                logger,
 		// Phase 3: Rotation processing initialization
 		subscriptionRotator: subscriptionRotator,
-		rotationEnabled:     false, // Will be enabled by ScheduleHandler on startup
+		rotationEnabled:     false, // EnableRotationMode flips this once subscriptions are loaded
 	}
 }
 
@@ -189,6 +192,15 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 	articles, nextToken, err := s.inoreaderService.FetchStreamContents(ctx, streamID, continuationToken)
 	if err != nil {
 		s.logger.Error("Failed to fetch articles from Inoreader API", "error", err, "stream_id", streamID)
+		// The Zone 1 call is already spent and a stale stream_id fails with the
+		// same 404 on every retry, while the scheduler always picks the stream
+		// with the oldest last_sync: leaving it untouched would re-pick this one
+		// stream every tick and starve all the others. So last_sync advances even
+		// though nothing was fetched, and the continuation token is written back
+		// unchanged so this stream resumes where it stopped on its next turn.
+		if syncErr := s.updateSyncState(ctx, streamID, continuationToken, syncState); syncErr != nil {
+			s.logger.Error("Failed to update sync state after fetch failure", "error", syncErr, "stream_id", streamID)
+		}
 		return nil, fmt.Errorf("failed to fetch articles from stream %s: %w", streamID, err)
 	}
 
@@ -227,20 +239,37 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 	filterResult := FilterTier1Articles(articles, s.logger)
 	tier1Articles := filterResult.Tier1
 
-	// Step 6: Process only Tier1 articles in batches
-	processed, skipped, err := s.ProcessArticleBatch(ctx, tier1Articles)
-	if err != nil {
-		s.logger.Error("Failed to process article batch", "error", err)
-		return nil, fmt.Errorf("failed to process article batch: %w", err)
+	// Step 6: Process only Tier1 articles in batches. A batch error means the
+	// whole page was lost; it is reported to the caller below, but only after
+	// sync state is written, since bailing out here would leave last_sync
+	// untouched and pin the scheduler to this stream forever.
+	processed, failed, dropped, batchErr := s.ProcessArticleBatch(ctx, tier1Articles)
+	if batchErr != nil {
+		s.logger.Error("Failed to process article batch", "error", batchErr)
 	}
 
 	result.NewArticles = processed
 	result.TotalProcessed = len(articles)
 	result.FilteredNonTier1 = filterResult.Filtered
-	result.ContinuationToken = nextToken
+	result.DroppedUnresolvable = dropped
+	// Articles from this page that failed to persist are only recoverable by
+	// refetching the same page, so the continuation token stays where it is
+	// until the whole page is stored. Sync state is still written: the
+	// scheduler selects the stream with the oldest last_sync, so withholding
+	// the write would pin every tick to this one stream and starve the rest.
+	tokenToPersist := nextToken
+	if failed > 0 {
+		tokenToPersist = continuationToken
+		s.logger.Warn("Holding continuation token after batch failure",
+			"stream_id", streamID,
+			"processed", processed,
+			"failed", failed)
+		result.Errors = append(result.Errors,
+			fmt.Sprintf("Continuation token held: %d of %d articles failed to persist", failed, len(tier1Articles)))
+	}
+	result.ContinuationToken = tokenToPersist
 
-	// Update or create sync state with new continuation token
-	if err := s.updateSyncState(ctx, streamID, nextToken, syncState); err != nil {
+	if err := s.updateSyncState(ctx, streamID, tokenToPersist, syncState); err != nil {
 		s.logger.Error("Failed to update sync state", "error", err, "stream_id", streamID)
 		errorMsg := fmt.Sprintf("Failed to update sync state: %v", err)
 		result.Errors = append(result.Errors, errorMsg)
@@ -254,8 +283,13 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 		"new_articles", result.NewArticles,
 		"total_processed", result.TotalProcessed,
 		"filtered_non_tier1", result.FilteredNonTier1,
-		"skipped", skipped,
+		"failed", failed,
+		"dropped_unresolvable", result.DroppedUnresolvable,
 		"continuation_token", result.ContinuationToken)
+
+	if batchErr != nil {
+		return nil, fmt.Errorf("failed to process article batch: %w", batchErr)
+	}
 
 	return result, nil
 }
@@ -267,35 +301,69 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 // are now handled by SubscriptionAutoCreatorAdapter in the use case layer
 
 // ProcessArticleBatch processes a batch of articles with auto-subscription creation
-func (s *ArticleFetchService) ProcessArticleBatch(ctx context.Context, articles []*models.Article) (processed, skipped int, err error) {
+func (s *ArticleFetchService) ProcessArticleBatch(ctx context.Context, articles []*models.Article) (processed, failed, dropped int, err error) {
 	s.logger.Info("Starting resilient article batch processing",
 		"total_articles", len(articles))
 
-	processed = 0
-	skipped = 0
+	persistable, dropped := s.dropUnresolvableArticles(articles)
 
 	// Use CreateBatch for resilient processing (individual transactions)
-	createdCount, batchErr := s.articleRepo.CreateBatch(ctx, articles)
+	processed, failed, batchErr := s.articleRepo.CreateBatch(ctx, persistable)
 	if batchErr != nil {
 		s.logger.Error("Batch processing failed completely", "error", batchErr)
-		return 0, len(articles), fmt.Errorf("article batch processing failed: %w", batchErr)
+		return 0, len(persistable), dropped, fmt.Errorf("article batch processing failed: %w", batchErr)
 	}
 
-	processed = createdCount
-	skipped = len(articles) - createdCount
-
 	successRate := 100.0
-	if len(articles) > 0 {
-		successRate = float64(processed) / float64(len(articles)) * 100
+	if len(persistable) > 0 {
+		successRate = float64(processed) / float64(len(persistable)) * 100
 	}
 
 	s.logger.Info("Resilient article batch processing completed",
 		"total_articles", len(articles),
 		"processed", processed,
-		"skipped", skipped,
+		"failed", failed,
+		"dropped_unresolvable", dropped,
 		"success_rate", fmt.Sprintf("%.1f%%", successRate))
 
-	return processed, skipped, nil
+	return processed, failed, dropped, nil
+}
+
+// dropUnresolvableArticles removes the articles no retry can ever persist. They
+// would fail identically on every refetch, and a failed article holds the
+// continuation token, so keeping them would stall the stream permanently.
+// Dropping is data loss, not a fallback: each dropped article is named with its
+// reason at Warn so an operator can find the broken subscription mapping or the
+// URL-less feed entry from the logs alone, and the count is returned so callers
+// report it separately from a clean success.
+func (s *ArticleFetchService) dropUnresolvableArticles(articles []*models.Article) ([]*models.Article, int) {
+	persistable := make([]*models.Article, 0, len(articles))
+	dropped := 0
+
+	for _, article := range articles {
+		reason := repository.UnresolvableReason(article)
+		if reason == "" {
+			persistable = append(persistable, article)
+			continue
+		}
+
+		dropped++
+		s.logger.Warn("Dropping unresolvable article permanently",
+			"inoreader_id", article.InoreaderID,
+			"article_url", article.ArticleURL,
+			"subscription_id", article.SubscriptionID,
+			"title", article.Title,
+			"reason", reason)
+	}
+
+	if dropped > 0 {
+		s.logger.Warn("Dropped unresolvable articles before persistence",
+			"dropped", dropped,
+			"total_articles", len(articles),
+			"persistable", len(persistable))
+	}
+
+	return persistable, dropped
 }
 
 // updateSyncState updates or creates sync state with new continuation token
@@ -391,13 +459,6 @@ func (s *ArticleFetchService) EnableRotationMode(ctx context.Context) error {
 	})
 }
 
-// EnableRotationModeWithRandomStart enables subscription rotation with random starting position
-func (s *ArticleFetchService) EnableRotationModeWithRandomStart(ctx context.Context) error {
-	return s.EnableRotationModeWithOptions(ctx, RotationOptions{
-		EnableRandomStart: true,
-	})
-}
-
 // EnableRotationModeWithOptions enables subscription rotation processing with custom options
 func (s *ArticleFetchService) EnableRotationModeWithOptions(ctx context.Context, options RotationOptions) error {
 	s.mu.Lock()
@@ -481,7 +542,7 @@ func (s *ArticleFetchService) StartRotationProcessor(ctx context.Context) error 
 	}
 }
 
-// ProcessNextSubscriptionRotation processes the next subscription in rotation (exposed for ScheduleHandler)
+// ProcessNextSubscriptionRotation processes the next subscription in rotation
 func (s *ArticleFetchService) ProcessNextSubscriptionRotation(ctx context.Context) error {
 	// Check if we should wait more before next processing
 	if !s.subscriptionRotator.IsReadyForNext() {
@@ -554,13 +615,6 @@ func (s *ArticleFetchService) SetRotationInterval(minutes int) {
 		s.subscriptionRotator.SetInterval(minutes)
 		s.logger.Info("Updated rotation interval", "new_interval_minutes", minutes)
 	}
-}
-
-// IsRotationEnabled returns whether rotation mode is currently enabled
-func (s *ArticleFetchService) IsRotationEnabled() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.rotationEnabled
 }
 
 // FetchSingleSubscriptionArticles processes articles for a specific subscription (used in rotation)

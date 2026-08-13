@@ -57,12 +57,13 @@ func (mr *MockArticleRepositoryMockRecorder) Create(ctx, article any) *gomock.Ca
 }
 
 // CreateBatch mocks base method.
-func (m *MockArticleRepository) CreateBatch(ctx context.Context, articles []*models.Article) (int, error) {
+func (m *MockArticleRepository) CreateBatch(ctx context.Context, articles []*models.Article) (int, int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateBatch", ctx, articles)
 	ret0, _ := ret[0].(int)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // CreateBatch indicates an expected call of CreateBatch.

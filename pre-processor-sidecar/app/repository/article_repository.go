@@ -186,10 +186,17 @@ type BatchResult struct {
 	LastError   error
 }
 
-// CreateBatch creates multiple articles using UPSERT for efficient duplicate handling
-func (r *PostgreSQLArticleRepository) CreateBatch(ctx context.Context, articles []*models.Article) (int, error) {
+// CreateBatch creates multiple articles using UPSERT for efficient duplicate handling.
+// It returns how many articles were persisted and how many failed; a partial failure is
+// not an error, but the caller must treat the batch as incomplete and refetch the page
+// instead of advancing its continuation token past the articles that were lost.
+func (r *PostgreSQLArticleRepository) CreateBatch(ctx context.Context, articles []*models.Article) (created int, failed int, err error) {
 	result := r.CreateBatchWithResult(ctx, articles)
-	return result.Inserted + result.Updated, result.LastError
+	created = result.Inserted + result.Updated
+	if created == 0 && result.Failed > 0 {
+		return 0, result.Failed, result.LastError
+	}
+	return created, result.Failed, nil
 }
 
 // CreateBatchWithResult creates multiple articles and returns detailed statistics
@@ -252,11 +259,11 @@ func (r *PostgreSQLArticleRepository) CreateBatchWithResult(ctx context.Context,
 		"success_rate", fmt.Sprintf("%.1f%%", float64(successCount)/float64(result.Total)*100),
 		"new_vs_duplicate_ratio", fmt.Sprintf("%d:%d", result.Inserted, result.Updated))
 
-	// Set error only if all articles failed
+	// A partial failure keeps LastError so the caller can see why articles were
+	// dropped; clearing it here made a half-written batch indistinguishable from
+	// a complete one.
 	if successCount == 0 && result.Failed > 0 && result.LastError != nil {
 		result.LastError = fmt.Errorf("all articles failed to upsert, last error: %w", result.LastError)
-	} else {
-		result.LastError = nil
 	}
 
 	return result
@@ -268,19 +275,32 @@ func (r *PostgreSQLArticleRepository) createArticleWithValidation(ctx context.Co
 	return err
 }
 
+// UnresolvableReason names why an article can never be stored, no matter how
+// often the page is refetched: the subscription it belongs to could not be
+// resolved or auto-created, or the feed entry carries no URL. It returns an
+// empty string for anything a retry could still fix. Callers drop these instead
+// of retrying them forever; keeping the rule here means the drop set and the
+// pre-insert rejection below can never drift apart.
+func UnresolvableReason(article *models.Article) string {
+	switch {
+	case article.SubscriptionID == uuid.Nil:
+		return "nil_subscription_id"
+	case article.ArticleURL == "":
+		return "empty_article_url"
+	default:
+		return ""
+	}
+}
+
 // createArticleWithValidationAndResult creates a single article with pre-validation and returns result
 func (r *PostgreSQLArticleRepository) createArticleWithValidationAndResult(ctx context.Context, article *models.Article) (*UpsertResult, error) {
-	// Pre-validation: Check for nil UUID (invalid subscription)
-	if article.SubscriptionID == uuid.Nil {
-		return nil, fmt.Errorf("invalid subscription ID: nil UUID for inoreader_id %s", article.InoreaderID)
+	if reason := UnresolvableReason(article); reason != "" {
+		return nil, fmt.Errorf("unresolvable article for inoreader_id %s: %s", article.InoreaderID, reason)
 	}
 
 	// Validate required fields
 	if article.InoreaderID == "" {
 		return nil, fmt.Errorf("invalid article: empty inoreader_id")
-	}
-	if article.ArticleURL == "" {
-		return nil, fmt.Errorf("invalid article: empty article_url for inoreader_id %s", article.InoreaderID)
 	}
 
 	// Create article using UPSERT with result tracking
