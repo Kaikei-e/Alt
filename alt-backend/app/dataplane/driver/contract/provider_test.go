@@ -1048,6 +1048,12 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 		), backlogStates()), true)
 }
 
+// Verified without failIfNoPactsFound, unlike its siblings: services.yaml keeps
+// alt-harvester as a runtime rather than a pacticipant until wave 3, so the
+// production broker holds no pact under that consumer name by design and this
+// selector legitimately resolves to nothing there. The throwaway broker in the
+// Alt repo's own workflow does receive the pact, so the contract is still
+// replayed on every push. Restore the flag when alt-harvester is promoted.
 func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
 	verifyConsumer(t, "alt-harvester", dataHubProviderName,
 		filepath.Join(altBackendPactDir, altHarvesterDataHubPactFile),
@@ -1073,7 +1079,7 @@ func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
 
 			// The daily-entrance digest the today-entrance job enqueues.
 			"alt-data-hub accepts notification enqueues",
-		), true)
+		), false)
 }
 
 // TestVerifyRecapWorkerDataHubContract verifies the notification enqueue the
