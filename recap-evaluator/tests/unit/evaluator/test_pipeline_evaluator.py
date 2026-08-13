@@ -80,6 +80,32 @@ class TestPipelineEvaluator:
         assert result.total_jobs == 0
         assert result.success_rate == 0.0
 
+    async def test_evaluate_batch_counts_failed_jobs_outside_completed_ids(
+        self, pipeline_evaluator, mock_db
+    ):
+        """Callers derive job_ids from the completed-status query, and
+        recap_jobs holds one status per job_id, so a failed job can never
+        appear in job_ids. The failure count must come from the window, not
+        from an intersection that is empty by construction.
+        """
+        completed_id = uuid4()
+        failed_rows = [
+            {"job_id": uuid4(), "status": "failed"} for _ in range(9)
+        ]
+        mock_db.fetch_recent_jobs.side_effect = [
+            [{"job_id": completed_id, "status": "completed"}],
+            failed_rows,
+        ]
+        mock_db.fetch_stage_logs_batch.return_value = {}
+        mock_db.fetch_preprocess_metrics_batch.return_value = {}
+
+        result = await pipeline_evaluator.evaluate_batch([completed_id])
+
+        assert result.failed_jobs == 9
+        assert result.total_jobs == 10
+        assert result.success_rate == pytest.approx(0.1)
+        assert result.alert_level == AlertLevel.CRITICAL
+
     async def test_alert_level_critical_on_low_success_rate(
         self, pipeline_evaluator, mock_db
     ):
