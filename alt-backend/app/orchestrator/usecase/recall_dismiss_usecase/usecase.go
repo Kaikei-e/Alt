@@ -34,10 +34,6 @@ func (u *RecallDismissUsecase) Execute(ctx context.Context, userID uuid.UUID, te
 	// moment instead of drifting across two separate time.Now() calls.
 	occurredAt := time.Now()
 
-	if err := u.candidatePort.DismissRecallCandidate(ctx, userID, itemKey, occurredAt); err != nil {
-		return fmt.Errorf("dismiss recall candidate: %w", err)
-	}
-
 	payload, _ := json.Marshal(map[string]any{
 		"item_key": itemKey,
 	})
@@ -56,6 +52,17 @@ func (u *RecallDismissUsecase) Execute(ctx context.Context, userID uuid.UUID, te
 		Payload:       payload,
 	}
 
-	_, _ = u.eventPort.AppendKnowledgeEvent(ctx, event)
+	// The event is the durable write: recall_candidate_view is TRUNCATEd and
+	// refolded from the event log on reproject, so a dismiss that only reached
+	// the read model resurfaces. Append first and fail the command if it does
+	// not land — the dedupe key makes a client retry idempotent.
+	if _, err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
+		return fmt.Errorf("append recall dismissed event: %w", err)
+	}
+
+	if err := u.candidatePort.DismissRecallCandidate(ctx, userID, itemKey, occurredAt); err != nil {
+		return fmt.Errorf("dismiss recall candidate: %w", err)
+	}
+
 	return nil
 }

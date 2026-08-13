@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/utils/logger"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,11 +16,15 @@ import (
 type mockUserEventPort struct {
 	appendedEvents []domain.KnowledgeUserEvent
 	err            error
+	failFor        map[string]error
 }
 
 func (m *mockUserEventPort) AppendKnowledgeUserEvent(_ context.Context, event domain.KnowledgeUserEvent) error {
 	if m.err != nil {
 		return m.err
+	}
+	if err, ok := m.failFor[event.ItemKey]; ok {
+		return err
 	}
 	m.appendedEvents = append(m.appendedEvents, event)
 	return nil
@@ -114,4 +119,38 @@ func TestTrackHomeSeenUsecase_Execute(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Impression events have no outbox and no DLQ: a swallowed append is a
+// permanent loss, and the handler counts a "persisted" metric on the way out.
+// Execute must therefore surface append failures to its caller.
+func TestTrackHomeSeenUsecase_Execute_ReturnsAppendFailures(t *testing.T) {
+	logger.InitLogger()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+
+	t.Run("every append fails", func(t *testing.T) {
+		port := &mockUserEventPort{err: errors.New("sovereign unavailable")}
+
+		err := NewTrackHomeSeenUsecase(port, nil).
+			Execute(context.Background(), userID, tenantID, []string{"article:1", "article:2"}, "session-1")
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "sovereign unavailable")
+		assert.Empty(t, port.appendedEvents)
+	})
+
+	t.Run("partial failure still reports an error and keeps the successes", func(t *testing.T) {
+		port := &mockUserEventPort{
+			failFor: map[string]error{"article:2": errors.New("append rejected")},
+		}
+
+		err := NewTrackHomeSeenUsecase(port, nil).
+			Execute(context.Background(), userID, tenantID, []string{"article:1", "article:2", "article:3"}, "session-2")
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "article:2")
+		assert.Len(t, port.appendedEvents, 2)
+	})
 }
