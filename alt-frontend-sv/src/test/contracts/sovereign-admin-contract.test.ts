@@ -2,7 +2,7 @@
  * Sovereign Admin REST API Contract Tests
  *
  * Pins the wire shape of knowledge-sovereign's /admin/* endpoints (metrics
- * port :9501) against the real client in $lib/server/sovereign-admin.
+ * port :9501) against the real translation in $lib/server/sovereign-admin-wire.
  *
  * Fixtures are transcribed from the Go source, handler -> response struct ->
  * json tags:
@@ -17,15 +17,19 @@
  * Every row is snake_case and every list endpoint wraps its rows in a named
  * envelope. Nothing here may re-implement a normalizer: a contract test that
  * declares its own copy of the code under test is green by construction.
+ *
+ * The request side (bearer token, dry_run body, error statuses) is pinned in
+ * src/lib/server/sovereign-admin.test.ts, which vitest runs: that module reads
+ * $env/dynamic/private, which the bun runner used for this directory cannot
+ * resolve.
  */
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-const { env } = vi.hoisted(() => ({
-	env: {} as Record<string, string | undefined>,
-}));
-vi.mock("$env/dynamic/private", () => ({ env }));
-
-const METRICS_URL = "http://knowledge-sovereign:9501";
+import { describe, expect, it } from "vitest";
+import {
+	normalizeRetentionRun,
+	normalizeSnapshotMetadata,
+	normalizeSovereignAdminSnapshot,
+	type SovereignAdminWire,
+} from "$lib/server/sovereign-admin-wire";
 
 // driver/sovereign_db/snapshot.go SnapshotMetadata — all 16 fields, no omitempty.
 const WIRE_SNAPSHOT = {
@@ -45,6 +49,26 @@ const WIRE_SNAPSHOT = {
 	recall_row_count: 640,
 	recall_checksum: "sha256:aabbccddeeff00112233445566778899",
 	created_at: "2026-08-12T03:30:11Z",
+	status: "valid",
+};
+
+const VIEW_SNAPSHOT = {
+	snapshotId: "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+	snapshotType: "full",
+	projectionVersion: 4,
+	projectorBuildRef: "sha-3d51e2c",
+	schemaVersion: "00051",
+	snapshotAt: "2026-08-12T03:30:00Z",
+	eventSeqBoundary: 1204873,
+	snapshotDataPath:
+		"/var/lib/knowledge-sovereign/snapshots/snapshot_20260812_033000",
+	itemsRowCount: 18402,
+	itemsChecksum: "sha256:0b1c2d3e4f50617283940a1b2c3d4e5f",
+	digestRowCount: 30,
+	digestChecksum: "sha256:5f4e3d2c1b0a90817263544f3e2d1c0b",
+	recallRowCount: 640,
+	recallChecksum: "sha256:aabbccddeeff00112233445566778899",
+	createdAt: "2026-08-12T03:30:11Z",
 	status: "valid",
 };
 
@@ -134,54 +158,22 @@ const WIRE_ELIGIBLE = {
 	],
 };
 
-const GET_BODIES: Record<string, unknown> = {
-	"/admin/storage/stats": WIRE_STORAGE_STATS,
-	"/admin/snapshots/list": { snapshots: [WIRE_SNAPSHOT] },
-	"/admin/snapshots/latest": WIRE_SNAPSHOT,
-	"/admin/retention/status": WIRE_RETENTION_STATUS,
-	"/admin/retention/eligible": WIRE_ELIGIBLE,
-};
-
-function jsonResponse(body: unknown) {
-	return { ok: true, status: 200, json: () => Promise.resolve(body) };
+function wireBodies(
+	overrides: Partial<SovereignAdminWire> = {},
+): SovereignAdminWire {
+	return {
+		storage: WIRE_STORAGE_STATS,
+		snapshotList: { snapshots: [WIRE_SNAPSHOT] },
+		latestSnapshot: WIRE_SNAPSHOT,
+		retentionStatus: WIRE_RETENTION_STATUS,
+		eligible: WIRE_ELIGIBLE,
+		...overrides,
+	};
 }
-
-function stubGets(overrides: Record<string, unknown> = {}) {
-	const bodies = { ...GET_BODIES, ...overrides };
-	vi.stubGlobal(
-		"fetch",
-		vi.fn((url: string) => {
-			const path = new URL(url).pathname;
-			if (!(path in bodies)) {
-				throw new Error(`unexpected fetch: ${url}`);
-			}
-			return Promise.resolve(jsonResponse(bodies[path]));
-		}),
-	);
-}
-
-async function importClient() {
-	return import("$lib/server/sovereign-admin");
-}
-
-beforeEach(() => {
-	vi.resetModules();
-	vi.unstubAllGlobals();
-	for (const key of Object.keys(env)) delete env[key];
-	env.SOVEREIGN_METRICS_URL = METRICS_URL;
-	env.SOVEREIGN_ADMIN_TOKEN = "contract-test-admin-token";
-});
-
-afterAll(() => {
-	vi.unstubAllGlobals();
-});
 
 describe("GET /admin/storage/stats", () => {
-	it("unwraps the tables envelope and reads the table name from `name`", async () => {
-		stubGets();
-		const { fetchSovereignAdminSnapshot } = await importClient();
-
-		const { storageStats } = await fetchSovereignAdminSnapshot();
+	it("unwraps the tables envelope and reads the table name from `name`", () => {
+		const { storageStats } = normalizeSovereignAdminSnapshot(wireBodies());
 
 		expect(storageStats).toEqual([
 			{
@@ -201,81 +193,46 @@ describe("GET /admin/storage/stats", () => {
 		]);
 	});
 
-	it("survives a table list the handler emitted as an empty array", async () => {
-		stubGets({ "/admin/storage/stats": { tables: [] } });
-		const { fetchSovereignAdminSnapshot } = await importClient();
-
-		const { storageStats } = await fetchSovereignAdminSnapshot();
+	it("survives a table list the handler emitted as an empty array", () => {
+		const { storageStats } = normalizeSovereignAdminSnapshot(
+			wireBodies({ storage: { tables: [] } }),
+		);
 
 		expect(storageStats).toEqual([]);
 	});
 });
 
 describe("GET /admin/snapshots/list and /admin/snapshots/latest", () => {
-	it("maps every snake_case snapshot field to its camelCase view field", async () => {
-		stubGets();
-		const { fetchSovereignAdminSnapshot } = await importClient();
-
-		const { snapshots, latestSnapshot } = await fetchSovereignAdminSnapshot();
+	it("maps every snake_case snapshot field to its camelCase view field", () => {
+		const { snapshots, latestSnapshot } = normalizeSovereignAdminSnapshot(
+			wireBodies(),
+		);
 
 		expect(snapshots).toHaveLength(1);
-		expect(latestSnapshot).toEqual({
-			snapshotId: "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-			snapshotType: "full",
-			projectionVersion: 4,
-			projectorBuildRef: "sha-3d51e2c",
-			schemaVersion: "00051",
-			snapshotAt: "2026-08-12T03:30:00Z",
-			eventSeqBoundary: 1204873,
-			snapshotDataPath:
-				"/var/lib/knowledge-sovereign/snapshots/snapshot_20260812_033000",
-			itemsRowCount: 18402,
-			itemsChecksum: "sha256:0b1c2d3e4f50617283940a1b2c3d4e5f",
-			digestRowCount: 30,
-			digestChecksum: "sha256:5f4e3d2c1b0a90817263544f3e2d1c0b",
-			recallRowCount: 640,
-			recallChecksum: "sha256:aabbccddeeff00112233445566778899",
-			createdAt: "2026-08-12T03:30:11Z",
-			status: "valid",
-		});
+		expect(latestSnapshot).toEqual(VIEW_SNAPSHOT);
 		expect(snapshots[0]).toEqual(latestSnapshot);
 	});
 
 	// handleGetLatestSnapshot encodes a nil *SnapshotMetadata, which is the JSON
 	// literal null rather than an object or an envelope.
-	it("reads a bare null from /snapshots/latest as no snapshot", async () => {
-		stubGets({ "/admin/snapshots/latest": null });
-		const { fetchSovereignAdminSnapshot } = await importClient();
-
-		const { latestSnapshot } = await fetchSovereignAdminSnapshot();
+	it("reads a bare null from /snapshots/latest as no snapshot", () => {
+		const { latestSnapshot } = normalizeSovereignAdminSnapshot(
+			wireBodies({ latestSnapshot: null }),
+		);
 
 		expect(latestSnapshot).toBeNull();
 	});
 });
 
 describe("POST /admin/snapshots/create", () => {
-	it("reads the un-enveloped snapshot object the handler encodes", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue(jsonResponse(WIRE_SNAPSHOT)),
-		);
-		const { createSovereignSnapshot } = await importClient();
-
-		const created = await createSovereignSnapshot();
-
-		expect(created.snapshotId).toBe("7c9e6679-7425-40de-944b-e07fc1f90ae7");
-		expect(created.eventSeqBoundary).toBe(1204873);
-		expect(created.recallRowCount).toBe(640);
-		expect(created.status).toBe("valid");
+	it("reads the un-enveloped snapshot object the handler encodes", () => {
+		expect(normalizeSnapshotMetadata(WIRE_SNAPSHOT)).toEqual(VIEW_SNAPSHOT);
 	});
 });
 
 describe("GET /admin/retention/status", () => {
-	it("unwraps the logs envelope and maps every field", async () => {
-		stubGets();
-		const { fetchSovereignAdminSnapshot } = await importClient();
-
-		const { retentionLogs } = await fetchSovereignAdminSnapshot();
+	it("unwraps the logs envelope and maps every field", () => {
+		const { retentionLogs } = normalizeSovereignAdminSnapshot(wireBodies());
 
 		expect(retentionLogs[0]).toEqual({
 			logId: "1f0a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8",
@@ -293,11 +250,8 @@ describe("GET /admin/retention/status", () => {
 		});
 	});
 
-	it("fills the omitempty archive_path / checksum / error_message with empty strings", async () => {
-		stubGets();
-		const { fetchSovereignAdminSnapshot } = await importClient();
-
-		const { retentionLogs } = await fetchSovereignAdminSnapshot();
+	it("fills the omitempty archive_path / checksum / error_message with empty strings", () => {
+		const { retentionLogs } = normalizeSovereignAdminSnapshot(wireBodies());
 
 		const dryRunLog = retentionLogs[1];
 		expect(dryRunLog?.dryRun).toBe(true);
@@ -308,11 +262,10 @@ describe("GET /admin/retention/status", () => {
 });
 
 describe("GET /admin/retention/eligible", () => {
-	it("regroups the flat table-tagged partition rows by table", async () => {
-		stubGets();
-		const { fetchSovereignAdminSnapshot } = await importClient();
-
-		const { eligiblePartitions } = await fetchSovereignAdminSnapshot();
+	it("regroups the flat table-tagged partition rows by table", () => {
+		const { eligiblePartitions } = normalizeSovereignAdminSnapshot(
+			wireBodies(),
+		);
 
 		expect(eligiblePartitions).toEqual([
 			{
@@ -349,39 +302,30 @@ describe("GET /admin/retention/eligible", () => {
 		]);
 	});
 
-	it("returns no groups when the handler found nothing eligible", async () => {
-		stubGets({ "/admin/retention/eligible": { partitions: [] } });
-		const { fetchSovereignAdminSnapshot } = await importClient();
-
-		const { eligiblePartitions } = await fetchSovereignAdminSnapshot();
+	it("returns no groups when the handler found nothing eligible", () => {
+		const { eligiblePartitions } = normalizeSovereignAdminSnapshot(
+			wireBodies({ eligible: { partitions: [] } }),
+		);
 
 		expect(eligiblePartitions).toEqual([]);
 	});
 });
 
 describe("POST /admin/retention/run", () => {
-	it("sends dry_run and reads the snake_case action rows", async () => {
-		const fetchMock = vi.fn().mockResolvedValue(
-			jsonResponse({
-				dry_run: true,
-				actions: [
-					{
-						action: "export",
-						table: "knowledge_events",
-						partition: "knowledge_events_y2025m12",
-						rows: 0,
-						status: "dry_run",
-					},
-				],
-			}),
-		);
-		vi.stubGlobal("fetch", fetchMock);
-		const { runSovereignRetention } = await importClient();
+	it("reads the snake_case action rows of a dry run", () => {
+		const result = normalizeRetentionRun({
+			dry_run: true,
+			actions: [
+				{
+					action: "export",
+					table: "knowledge_events",
+					partition: "knowledge_events_y2025m12",
+					rows: 0,
+					status: "dry_run",
+				},
+			],
+		});
 
-		const result = await runSovereignRetention(true);
-
-		const init = fetchMock.mock.calls[0]?.[1] as { body: string };
-		expect(JSON.parse(init.body)).toEqual({ dry_run: true });
 		expect(result.dry_run).toBe(true);
 		expect(result.actions).toEqual([
 			{
@@ -394,72 +338,53 @@ describe("POST /admin/retention/run", () => {
 		]);
 	});
 
-	it("reads the omitempty path and checksum on a live export action", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue(
-				jsonResponse({
-					dry_run: false,
-					actions: [
-						{
-							action: "export",
-							table: "knowledge_events",
-							partition: "knowledge_events_y2025m12",
-							rows: 51120,
-							path: "/var/lib/knowledge-sovereign/archives/knowledge_events_y2025m12_20260812.jsonl.gz",
-							checksum: "sha256:112233445566778899aabbccddeeff00",
-							status: "exported",
-						},
-					],
-				}),
-			),
-		);
-		const { runSovereignRetention } = await importClient();
-
-		const result = await runSovereignRetention(false);
+	// retentionAction tags path and checksum omitempty, so only a live export
+	// carries them.
+	it("reads the omitempty path and checksum on a live export action", () => {
+		const result = normalizeRetentionRun({
+			dry_run: false,
+			actions: [
+				{
+					action: "export",
+					table: "knowledge_events",
+					partition: "knowledge_events_y2025m12",
+					rows: 51120,
+					path: "/var/lib/knowledge-sovereign/archives/knowledge_events_y2025m12_20260812.jsonl.gz",
+					checksum: "sha256:112233445566778899aabbccddeeff00",
+					status: "exported",
+				},
+			],
+		});
 
 		expect(result.dry_run).toBe(false);
 		expect(result.actions[0]?.rows).toBe(51120);
 		expect(result.actions[0]?.path).toContain("y2025m12_20260812.jsonl.gz");
 	});
 
-	// RunRetention builds retentionRunResponse{DryRun: dryRun} and only appends
-	// to Actions, so a run that plans nothing encodes the nil slice as the JSON
-	// literal null. The result panel iterates actions unconditionally.
-	it("turns a null actions slice into an empty array", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue(jsonResponse({ dry_run: true, actions: null })),
-		);
-		const { runSovereignRetention } = await importClient();
-
-		const result = await runSovereignRetention(true);
-
-		expect(result.actions).toEqual([]);
-		expect(result.actions.length).toBe(0);
-	});
-
 	// The handler answers 200 with the error text in the body when RunRetention
-	// fails its "no valid snapshot" precondition, and Actions is nil there too.
-	it("keeps the error text while still exposing an iterable actions array", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue(
-				jsonResponse({
-					dry_run: false,
-					actions: null,
-					error:
-						"no valid snapshot found; create a snapshot before running retention",
-				}),
-			),
-		);
-		const { runSovereignRetention } = await importClient();
-
-		const result = await runSovereignRetention(false);
+	// fails its "no valid snapshot" precondition, and the response it built
+	// before failing still carries the empty Actions slice it starts from.
+	it("keeps the error text alongside the empty actions array", () => {
+		const result = normalizeRetentionRun({
+			dry_run: false,
+			actions: [],
+			error:
+				"no valid snapshot found; create a snapshot before running retention",
+		});
 
 		expect(result.error).toBe(
 			"no valid snapshot found; create a snapshot before running retention",
 		);
 		expect(result.actions).toEqual([]);
+	});
+
+	// RunRetention seeds Actions with an empty slice today, so null is not a
+	// shape the handler emits; the panel still reads .length unconditionally, so
+	// pin that the client stays total if that initializer is ever dropped.
+	it("turns a null actions slice into an empty array", () => {
+		const result = normalizeRetentionRun({ dry_run: true, actions: null });
+
+		expect(result.actions).toEqual([]);
+		expect(result.actions.length).toBe(0);
 	});
 });
