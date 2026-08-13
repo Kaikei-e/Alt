@@ -123,3 +123,23 @@ async def test_upsert_run_diagnostics_uses_conflict_update():
     stmt = session.execute.await_args_list[0].args[0]
     assert "ON CONFLICT" in str(stmt)
     assert "recap_run_diagnostics" in str(stmt)
+
+
+@pytest.mark.asyncio
+async def test_fail_orphaned_runs_updates_every_running_row():
+    session = AsyncMock()
+    result = MagicMock()
+    result.all = MagicMock(return_value=[(1,), (2,)])
+    session.execute.return_value = result
+    dao = SubworkerDAO(session)
+
+    swept = await dao.fail_orphaned_runs("orphaned by restart")
+
+    assert swept == 2
+    stmt = session.execute.await_args.args[0]
+    compiled = stmt.compile()
+    assert "UPDATE recap_subworker_runs SET status" in str(compiled)
+    assert "WHERE recap_subworker_runs.status = " in str(compiled)
+    assert "failed" in compiled.params.values()
+    assert "running" in compiled.params.values()
+    assert "orphaned by restart" in compiled.params.values()

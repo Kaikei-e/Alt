@@ -2,14 +2,18 @@ package backend_api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"search-indexer/domain"
 	datahubv1 "search-indexer/gen/proto/services/datahub/v1"
+	"search-indexer/gen/proto/services/datahub/v1/datahubv1connect"
 )
 
 // TestToDriverArticle_PublishedAt covers the mapping that decides what
@@ -108,5 +112,67 @@ func TestClient_TimesOutOnSlowBackend(t *testing.T) {
 	}
 	if elapsed > 2*time.Second {
 		t.Fatalf("call took %s; expected fast timeout via context/client", elapsed)
+	}
+}
+
+// notFoundDataHub answers GetArticleByID exactly the way alt-data-hub does
+// for a missing (or soft-deleted) row: the handler turns every repository
+// error, pgx.ErrNoRows included, into connect.CodeNotFound.
+type notFoundDataHub struct {
+	datahubv1connect.UnimplementedDataHubServiceHandler
+	code connect.Code
+}
+
+func (s *notFoundDataHub) GetArticleByID(context.Context, *connect.Request[datahubv1.GetArticleByIDRequest]) (*connect.Response[datahubv1.GetArticleByIDResponse], error) {
+	return nil, connect.NewError(s.code, errors.New("article not found"))
+}
+
+func newDataHubTestServer(t *testing.T, code connect.Code) *Client {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	mux.Handle(datahubv1connect.NewDataHubServiceHandler(&notFoundDataHub{code: code}))
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	return NewClient(srv.URL, "test-token", srv.Client())
+}
+
+// TestClient_GetArticleByID_NotFoundIsSentinel pins the only signal the batch
+// indexer can act on. alt-data-hub reports a missing row as a Connect
+// NotFound error, never as an empty response, so the driver must translate
+// that code into domain.ErrArticleNotFound -- otherwise
+// ExecuteBatchArticles's skip branch is unreachable and one deleted article
+// drags every healthy article in the same batch to the DLQ.
+func TestClient_GetArticleByID_NotFoundIsSentinel(t *testing.T) {
+	t.Parallel()
+
+	c := newDataHubTestServer(t, connect.CodeNotFound)
+
+	article, err := c.GetArticleByID(context.Background(), "art-missing")
+
+	if article != nil {
+		t.Fatalf("GetArticleByID() article = %+v, want nil", article)
+	}
+	if !errors.Is(err, domain.ErrArticleNotFound) {
+		t.Fatalf("GetArticleByID() error = %v, want errors.Is(err, domain.ErrArticleNotFound)", err)
+	}
+}
+
+// TestClient_GetArticleByID_OtherCodesAreNotSentinel keeps the translation
+// narrow: a transport or backend failure must still abort the batch and get
+// retried instead of being silently skipped as "article gone".
+func TestClient_GetArticleByID_OtherCodesAreNotSentinel(t *testing.T) {
+	t.Parallel()
+
+	c := newDataHubTestServer(t, connect.CodeUnavailable)
+
+	_, err := c.GetArticleByID(context.Background(), "art-001")
+
+	if err == nil {
+		t.Fatal("GetArticleByID() error = nil, want an error")
+	}
+	if errors.Is(err, domain.ErrArticleNotFound) {
+		t.Fatalf("GetArticleByID() error = %v, must not be ErrArticleNotFound for a non-NotFound failure", err)
 	}
 }

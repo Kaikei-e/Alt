@@ -79,29 +79,20 @@ test.describe("session — authenticated", () => {
 	});
 
 	test("GET /session identifies the session it was given @contract", async ({ hub, session }) => {
-		// Deliberately weaker than it looks, and the weakness is the finding.
-		//
-		// `usecase.GetSession` sets `SessionResult.SessionID = cookieValue` and
-		// `session.go` copies that straight into `session.id`, so this field is
-		// currently the raw `ory_kratos_session` cookie — the bearer credential
-		// itself — rather than the Kratos session UUID that `session.identity`
-		// and the JWT's `sid` would suggest. That is a credential echoed into a
-		// JSON body the SPA may log or store, and it is why the schema types the
-		// field as `string`, not `uuidSchema`.
+		// `session.id` must be Kratos's session UUID, the same value the backend
+		// JWT carries as `sid`. It must never be the raw `ory_kratos_session`
+		// cookie: that is the bearer credential itself, and this JSON body is
+		// something the SPA may log or store.
 		//
 		// `05-session-happy.hurl` asserted `jsonpath "$.session.id" exists`, which
-		// told nobody any of this. This test pins the observable invariant that
-		// holds either way — the field identifies *this* session and is not empty
-		// — and deliberately does not bless either spelling, so that fixing the
-		// leak does not require touching a test that would otherwise read as
-		// endorsing it.
+		// told nobody any of this.
 		const body = await expectJsonStatus(
 			await hub.get("/session", { headers: { Cookie: session.cookieHeader } }),
 			200,
 			sessionResponseSchema,
 		);
-		expect(body.session.id.length).toBeGreaterThan(0);
-		expect([session.cookie, session.kratosSessionId]).toContain(body.session.id);
+		expect(body.session.id).toBe(session.kratosSessionId);
+		expect(body.session.id).not.toBe(session.cookie);
 	});
 
 	test("GET /session sets the backend token header @contract", async ({ hub, session }) => {

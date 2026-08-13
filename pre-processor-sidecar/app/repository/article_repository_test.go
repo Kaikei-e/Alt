@@ -160,3 +160,90 @@ func TestCreateWithResult_Update_ShorterContent_PreservesExisting(t *testing.T) 
 	assert.True(t, result.ContentKept)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestCreateBatchWithResult_PartialFailure_KeepsLastError(t *testing.T) {
+	repo, mock := newTestRepo(t)
+
+	ok := newTestArticle()
+	failing := newTestArticle()
+	failing.InoreaderID = "tag:google.com,2005:reader/item/00000000cafebabe"
+	failing.SubscriptionID = uuid.Nil // rejected by pre-validation, no DB round trip
+
+	mock.ExpectQuery(selectContentLengthQuery).
+		WithArgs(ok.InoreaderID).
+		WillReturnError(pgx.ErrNoRows)
+	mock.ExpectQuery(upsertFullQuery).
+		WithArgs(
+			ok.ID, ok.InoreaderID, ok.SubscriptionID,
+			ok.ArticleURL, ok.Title, ok.Author,
+			ok.PublishedAt, ok.FetchedAt, ok.Processed,
+			ok.Content, ok.ContentLength, ok.ContentType,
+		).
+		WillReturnRows(pgxmock.NewRows([]string{"was_inserted"}).AddRow(true))
+
+	result := repo.CreateBatchWithResult(context.Background(), []*models.Article{ok, failing})
+
+	assert.Equal(t, 1, result.Inserted)
+	assert.Equal(t, 1, result.Failed)
+	require.Error(t, result.LastError, "partial failure must stay visible to the caller")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateBatch_PartialFailure_ReturnsFailedCount(t *testing.T) {
+	repo, mock := newTestRepo(t)
+
+	ok := newTestArticle()
+	failing := newTestArticle()
+	failing.InoreaderID = "tag:google.com,2005:reader/item/00000000cafebabe"
+	failing.SubscriptionID = uuid.Nil
+
+	mock.ExpectQuery(selectContentLengthQuery).
+		WithArgs(ok.InoreaderID).
+		WillReturnError(pgx.ErrNoRows)
+	mock.ExpectQuery(upsertFullQuery).
+		WithArgs(
+			ok.ID, ok.InoreaderID, ok.SubscriptionID,
+			ok.ArticleURL, ok.Title, ok.Author,
+			ok.PublishedAt, ok.FetchedAt, ok.Processed,
+			ok.Content, ok.ContentLength, ok.ContentType,
+		).
+		WillReturnRows(pgxmock.NewRows([]string{"was_inserted"}).AddRow(true))
+
+	created, failed, err := repo.CreateBatch(context.Background(), []*models.Article{ok, failing})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, created)
+	assert.Equal(t, 1, failed)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUnresolvableReason(t *testing.T) {
+	nilSubscription := newTestArticle()
+	nilSubscription.SubscriptionID = uuid.Nil
+
+	emptyURL := newTestArticle()
+	emptyURL.ArticleURL = ""
+
+	// Retryable: an empty inoreader_id is rejected by validation but is not part
+	// of the permanent-drop set, so it must stay countable as a failure.
+	emptyInoreaderID := newTestArticle()
+	emptyInoreaderID.InoreaderID = ""
+
+	assert.Equal(t, "nil_subscription_id", UnresolvableReason(nilSubscription))
+	assert.Equal(t, "empty_article_url", UnresolvableReason(emptyURL))
+	assert.Empty(t, UnresolvableReason(emptyInoreaderID))
+	assert.Empty(t, UnresolvableReason(newTestArticle()))
+}
+
+func TestCreateBatch_AllFailed_ReturnsError(t *testing.T) {
+	repo, _ := newTestRepo(t)
+
+	failing := newTestArticle()
+	failing.SubscriptionID = uuid.Nil
+
+	created, failed, err := repo.CreateBatch(context.Background(), []*models.Article{failing})
+
+	require.Error(t, err)
+	assert.Equal(t, 0, created)
+	assert.Equal(t, 1, failed)
+}

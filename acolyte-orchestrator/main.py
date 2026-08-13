@@ -186,7 +186,7 @@ def create_app() -> Starlette:
         )
         reconciled = await ReconcileOrphanedRunsUsecase(_job_queue).execute()
         if reconciled:
-            logger.warning("Reconciled orphaned running runs left by a prior process", count=reconciled)
+            logger.warning("Reconciled orphaned runs left by a prior process", count=reconciled)
         cert_watch_task: asyncio.Task[None] | None = None
         if _mtls_reloader is not None:
             cert_watch_task = asyncio.create_task(

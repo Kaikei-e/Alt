@@ -48,6 +48,10 @@ class RunRepositoryPort(Protocol):
         """Mark a run as failed."""
         ...
 
+    async def fail_orphaned_runs(self, error_message: str) -> int:
+        """Mark every run still flagged 'running' as failed and return the count."""
+        ...
+
     async def insert_clusters(
         self, run_id: int, clusters: list[PersistedCluster]
     ) -> None:

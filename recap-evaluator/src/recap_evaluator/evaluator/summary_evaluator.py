@@ -329,28 +329,43 @@ class SummaryEvaluator:
         return weighted_sum / total_weight if total_weight > 0 else 0.0
 
     def _determine_alert_level(self, metrics: SummaryMetrics) -> AlertLevel:
+        # success_count is the only explicit record of whether the judge ran.
+        # The G-Eval axes and the composite sit at 0.0 both when nothing was
+        # measured and when the judge scored the batch at rock bottom, so
+        # measurement is decided here and never inferred from a value.
+        geval_measured = metrics.success_count > 0
+
+        if metrics.sample_count > 0 and not geval_measured:
+            logger.error(
+                "geval_produced_no_measurements",
+                sample_count=metrics.sample_count,
+            )
+            return AlertLevel.CRITICAL
+
         critical_count = 0
         warn_count = 0
 
-        for dim in ["coherence", "consistency", "fluency", "relevance"]:
-            warn = self._thresholds.get_warn(f"geval_{dim}")
-            critical = self._thresholds.get_critical(f"geval_{dim}")
-            value = getattr(metrics, dim)
+        if geval_measured:
+            for dim in ["coherence", "consistency", "fluency", "relevance"]:
+                warn = self._thresholds.get_warn(f"geval_{dim}")
+                critical = self._thresholds.get_critical(f"geval_{dim}")
+                value = getattr(metrics, dim)
 
-            if critical is not None and value > 0 and value < critical:
-                critical_count += 1
-            elif warn is not None and value > 0 and value < warn:
-                warn_count += 1
+                if critical is not None and value < critical:
+                    critical_count += 1
+                elif warn is not None and value < warn:
+                    warn_count += 1
 
         if metrics.hallucination_rate > 0.5:
             critical_count += 1
         elif metrics.hallucination_rate > 0.3:
             warn_count += 1
 
-        if metrics.overall_quality_score > 0 and metrics.overall_quality_score < 0.3:
-            critical_count += 1
-        elif metrics.overall_quality_score > 0 and metrics.overall_quality_score < 0.5:
-            warn_count += 1
+        if geval_measured:
+            if metrics.overall_quality_score < 0.3:
+                critical_count += 1
+            elif metrics.overall_quality_score < 0.5:
+                warn_count += 1
 
         if critical_count >= 2:
             return AlertLevel.CRITICAL

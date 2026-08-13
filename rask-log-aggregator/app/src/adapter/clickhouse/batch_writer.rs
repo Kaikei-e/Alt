@@ -27,9 +27,18 @@ const FLUSH_INTERVAL_SECS: u64 = 5;
 const MAX_BATCH_SIZE: usize = 5000;
 
 /// Maximum number of attempts (including the first) to flush a single batch
-/// to ClickHouse before giving up and dropping it. Bounds how long a
-/// transient ClickHouse outage can stall the flush loop.
-const MAX_FLUSH_ATTEMPTS: u32 = 3;
+/// to ClickHouse before handing the batch back to the caller. With
+/// `retry_backoff` this spans just over 60s, so a whole ClickHouse restart
+/// (10-30s) is ridden out inside a single flush.
+const MAX_FLUSH_ATTEMPTS: u32 = 12;
+
+/// Attempts allowed for the final flush on shutdown.
+///
+/// The shutdown flush has no next round to hand the batch back to, and the
+/// process must exit within the container's stop grace period — spending
+/// the whole budget on the first buffer would leave the other two
+/// unattempted.
+const SHUTDOWN_FLUSH_ATTEMPTS: u32 = 2;
 
 /// ClickHouse inserter configuration
 const INSERTER_SEND_TIMEOUT: Duration = Duration::from_secs(10);
@@ -37,12 +46,16 @@ const INSERTER_END_TIMEOUT: Duration = Duration::from_secs(10);
 const INSERTER_MAX_BYTES: u64 = 50_000_000;
 const INSERTER_MAX_ROWS: u64 = 10_000;
 
-/// Delay between failed flush attempts within `flush_with_retry`.
+/// Delay before the second flush attempt; doubles on each further failure.
 ///
 /// Avoids hammering a ClickHouse instance that is already struggling (e.g.
 /// mid-restart) with back-to-back retries at the same rate the previous
 /// attempt just failed at.
-const RETRY_BACKOFF: Duration = Duration::from_millis(250);
+const INITIAL_RETRY_BACKOFF: Duration = Duration::from_millis(250);
+
+/// Ceiling for the exponential backoff, so late attempts still probe often
+/// enough to notice ClickHouse coming back.
+const MAX_RETRY_BACKOFF: Duration = Duration::from_secs(10);
 
 /// Batch writer that buffers rows through channels before writing to ClickHouse.
 ///
@@ -163,14 +176,17 @@ async fn flush_loop(
         tokio::select! {
             // Periodic flush
             _ = flush_interval.tick() => {
-                flush_all(&client, &mut log_buf, &mut otel_log_buf, &mut otel_trace_buf).await;
+                flush_all(
+                    &client, &mut log_buf, &mut otel_log_buf, &mut otel_trace_buf,
+                    MAX_FLUSH_ATTEMPTS,
+                ).await;
             }
 
             // Drain log rows
             Some(rows) = log_rx.recv() => {
                 log_buf.extend(rows);
                 if log_buf.len() >= MAX_BATCH_SIZE {
-                    flush_rows(&client, "logs", &mut log_buf).await;
+                    flush_rows(&client, "logs", &mut log_buf, MAX_FLUSH_ATTEMPTS).await;
                 }
             }
 
@@ -178,7 +194,7 @@ async fn flush_loop(
             Some(rows) = otel_log_rx.recv() => {
                 otel_log_buf.extend(rows);
                 if otel_log_buf.len() >= MAX_BATCH_SIZE {
-                    flush_rows(&client, "otel_logs", &mut otel_log_buf).await;
+                    flush_rows(&client, "otel_logs", &mut otel_log_buf, MAX_FLUSH_ATTEMPTS).await;
                 }
             }
 
@@ -186,7 +202,7 @@ async fn flush_loop(
             Some(rows) = otel_trace_rx.recv() => {
                 otel_trace_buf.extend(rows);
                 if otel_trace_buf.len() >= MAX_BATCH_SIZE {
-                    flush_rows(&client, "otel_traces", &mut otel_trace_buf).await;
+                    flush_rows(&client, "otel_traces", &mut otel_trace_buf, MAX_FLUSH_ATTEMPTS).await;
                 }
             }
 
@@ -196,7 +212,14 @@ async fn flush_loop(
                 drain_channel(&mut log_rx, &mut log_buf);
                 drain_channel(&mut otel_log_rx, &mut otel_log_buf);
                 drain_channel(&mut otel_trace_rx, &mut otel_trace_buf);
-                flush_all(&client, &mut log_buf, &mut otel_log_buf, &mut otel_trace_buf).await;
+                flush_all(
+                    &client, &mut log_buf, &mut otel_log_buf, &mut otel_trace_buf,
+                    SHUTDOWN_FLUSH_ATTEMPTS,
+                ).await;
+                let unwritten = log_buf.len() + otel_log_buf.len() + otel_trace_buf.len();
+                if unwritten > 0 {
+                    error!(unwritten, "Exiting with rows ClickHouse never accepted");
+                }
                 break;
             }
         }
@@ -223,15 +246,16 @@ async fn flush_all(
     log_buf: &mut Vec<LogRow>,
     otel_log_buf: &mut Vec<OTelLogRow>,
     otel_trace_buf: &mut Vec<OTelTraceRow>,
+    max_attempts: u32,
 ) {
     if !log_buf.is_empty() {
-        flush_rows(client, "logs", log_buf).await;
+        flush_rows(client, "logs", log_buf, max_attempts).await;
     }
     if !otel_log_buf.is_empty() {
-        flush_rows(client, "otel_logs", otel_log_buf).await;
+        flush_rows(client, "otel_logs", otel_log_buf, max_attempts).await;
     }
     if !otel_trace_buf.is_empty() {
-        flush_rows(client, "otel_traces", otel_trace_buf).await;
+        flush_rows(client, "otel_traces", otel_trace_buf, max_attempts).await;
     }
 }
 
@@ -239,9 +263,10 @@ async fn flush_rows<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize>
     client: &Client,
     table: &str,
     buf: &mut Vec<T>,
+    max_attempts: u32,
 ) {
     let sink = ClickHouseSink { client, table };
-    flush_with_retry(table, buf, &sink).await;
+    flush_with_retry(table, buf, &sink, max_attempts).await;
 }
 
 /// Destination for a batch flush. Exists so `flush_with_retry` can be
@@ -263,40 +288,54 @@ impl<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize> FlushSink<T>
     }
 }
 
-/// Flush `buf` via `sink`, retrying up to `MAX_FLUSH_ATTEMPTS` times on
-/// failure.
+/// Exponential backoff before the attempt following `attempt`, capped at
+/// `MAX_RETRY_BACKOFF`.
+fn retry_backoff(attempt: u32) -> Duration {
+    INITIAL_RETRY_BACKOFF
+        .saturating_mul(1_u32.checked_shl(attempt - 1).unwrap_or(u32::MAX))
+        .min(MAX_RETRY_BACKOFF)
+}
+
+/// Flush `buf` via `sink`, retrying up to `max_attempts` times on failure.
 ///
-/// The buffer is only cleared once a write succeeds, or once the retry
-/// budget is exhausted. A transient ClickHouse outage must not lose rows
-/// that were never durably written — draining the buffer before the write
-/// attempt (as the old code did) means a failed insert silently discards
-/// that whole period's logs.
-async fn flush_with_retry<T>(table: &str, buf: &mut Vec<T>, sink: &impl FlushSink<T>) {
+/// The buffer is cleared only once a write succeeds. Rows that ClickHouse
+/// never accepted stay buffered and are retried on the next flush: the
+/// forwarder was already answered 200, so this process holds the only copy
+/// of them. Holding them also stalls the flush loop, which is the intended
+/// backpressure — the bounded row channels fill up and ingest handlers park
+/// on `send`, pushing the backlog back to the forwarder (which has its own
+/// retry and disk fallback) instead of acknowledging logs this process is
+/// about to discard.
+async fn flush_with_retry<T>(
+    table: &str,
+    buf: &mut Vec<T>,
+    sink: &impl FlushSink<T>,
+    max_attempts: u32,
+) {
     if buf.is_empty() {
         return;
     }
     let count = buf.len();
 
-    for attempt in 1..=MAX_FLUSH_ATTEMPTS {
+    for attempt in 1..=max_attempts {
         match sink.write(buf.as_slice()).await {
             Ok(()) => {
                 info!(table, count, attempt, "Flushed batch to ClickHouse");
                 buf.clear();
                 return;
             }
-            Err(e) if attempt < MAX_FLUSH_ATTEMPTS => {
+            Err(e) if attempt < max_attempts => {
                 warn!(
                     table, count, attempt, error = %e,
                     "Failed to flush batch to ClickHouse, retrying"
                 );
-                tokio::time::sleep(RETRY_BACKOFF).await;
+                tokio::time::sleep(retry_backoff(attempt)).await;
             }
             Err(e) => {
                 error!(
                     table, count, attempts = attempt, error = %e,
-                    "Dropping batch after exhausting flush retry budget"
+                    "Flush retry budget exhausted; retaining batch and applying backpressure"
                 );
-                buf.clear();
             }
         }
     }
@@ -596,7 +635,7 @@ mod tests {
                 Ok(())
             },
         };
-        flush_with_retry("t", &mut buf, &sink).await;
+        flush_with_retry("t", &mut buf, &sink, MAX_FLUSH_ATTEMPTS).await;
 
         assert!(buf.is_empty());
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
@@ -613,7 +652,7 @@ mod tests {
                 Ok(())
             },
         };
-        flush_with_retry("t", &mut buf, &sink).await;
+        flush_with_retry("t", &mut buf, &sink, MAX_FLUSH_ATTEMPTS).await;
 
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
@@ -640,7 +679,7 @@ mod tests {
                 }
             },
         };
-        flush_with_retry("t", &mut buf, &sink).await;
+        flush_with_retry("t", &mut buf, &sink, MAX_FLUSH_ATTEMPTS).await;
 
         assert!(buf.is_empty(), "buffer clears once the retry succeeds");
         assert_eq!(attempt.load(std::sync::atomic::Ordering::SeqCst), 2);
@@ -666,20 +705,21 @@ mod tests {
                 }
             },
         };
-        flush_with_retry("t", &mut buf, &sink).await;
+        flush_with_retry("t", &mut buf, &sink, MAX_FLUSH_ATTEMPTS).await;
 
         let ts = timestamps.into_inner().unwrap();
         assert_eq!(ts.len(), MAX_FLUSH_ATTEMPTS as usize);
-        for pair in ts.windows(2) {
+        for (i, pair) in ts.windows(2).enumerate() {
+            let attempt = u32::try_from(i).unwrap() + 1;
             assert!(
-                pair[1] - pair[0] >= RETRY_BACKOFF,
-                "must wait at least RETRY_BACKOFF before the next attempt"
+                pair[1] - pair[0] >= retry_backoff(attempt),
+                "must wait the backoff for attempt {attempt} before the next one"
             );
         }
     }
 
-    #[tokio::test]
-    async fn flush_with_retry_drops_batch_after_retry_budget_exhausted() {
+    #[tokio::test(start_paused = true)]
+    async fn flush_with_retry_retains_batch_after_retry_budget_exhausted() {
         let mut buf = vec![1_i32, 2, 3];
         let attempts = std::sync::atomic::AtomicU32::new(0);
 
@@ -691,15 +731,72 @@ mod tests {
                 ))
             },
         };
-        flush_with_retry("t", &mut buf, &sink).await;
+        flush_with_retry("t", &mut buf, &sink, MAX_FLUSH_ATTEMPTS).await;
 
-        assert!(
-            buf.is_empty(),
-            "batch must be dropped (not retried forever) once the retry budget is exhausted"
+        assert_eq!(
+            buf,
+            vec![1, 2, 3],
+            "batch must be retained for the next flush (backpressure), not discarded: \
+             the forwarder was already answered 200, so no other copy exists"
         );
         assert_eq!(
             attempts.load(std::sync::atomic::Ordering::SeqCst),
             MAX_FLUSH_ATTEMPTS
+        );
+    }
+
+    /// A ClickHouse restart takes 10-30s. A retry budget that expires in
+    /// under a second turns every restart into total log loss for the whole
+    /// downtime window.
+    #[tokio::test(start_paused = true)]
+    async fn flush_with_retry_budget_outlasts_a_clickhouse_restart() {
+        let mut buf = vec![1_i32];
+
+        let sink = MockSink {
+            write_fn: |_rows: &[i32]| {
+                Err(AggregatorError::ClickHouse(
+                    clickhouse::error::Error::Custom("connection refused".to_string()),
+                ))
+            },
+        };
+        let start = tokio::time::Instant::now();
+        flush_with_retry("t", &mut buf, &sink, MAX_FLUSH_ATTEMPTS).await;
+        let spent = start.elapsed();
+
+        assert!(
+            spent >= Duration::from_mins(1),
+            "retry budget must keep trying for at least 60s across a ClickHouse \
+             restart, but gave up after {spent:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn flush_with_retry_backoff_grows_exponentially() {
+        let mut buf = vec![1_i32];
+        let timestamps = std::sync::Mutex::new(Vec::new());
+
+        let sink = MockSink {
+            write_fn: |_rows: &[i32]| {
+                timestamps.lock().unwrap().push(tokio::time::Instant::now());
+                Err(AggregatorError::ClickHouse(
+                    clickhouse::error::Error::Custom("still down".to_string()),
+                ))
+            },
+        };
+        flush_with_retry("t", &mut buf, &sink, MAX_FLUSH_ATTEMPTS).await;
+
+        let ts = timestamps.into_inner().unwrap();
+        let gaps: Vec<Duration> = ts.windows(2).map(|p| p[1] - p[0]).collect();
+        assert!(gaps.len() >= 4, "budget too small to observe growth");
+        for pair in gaps.windows(2) {
+            assert!(
+                pair[1] >= pair[0],
+                "backoff must never shrink between attempts: {gaps:?}"
+            );
+        }
+        assert!(
+            gaps[3] >= gaps[0] * 8,
+            "backoff must grow exponentially, not linearly: {gaps:?}"
         );
     }
 }

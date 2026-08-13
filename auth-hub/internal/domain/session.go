@@ -16,11 +16,15 @@ type Identity struct {
 	CreatedAt time.Time
 }
 
-// CachedSession holds session data stored in the cache.
+// CachedSession holds session data stored in the cache. The cache is keyed on
+// the raw ory_kratos_session cookie, so SessionID must be cached alongside it:
+// it is the only stable session identifier available on a cache hit, and
+// substituting the key would put the bearer credential into the sid claim.
 type CachedSession struct {
 	UserID    string
 	TenantID  string
 	Email     string
 	Role      string
+	SessionID string
 	CreatedAt time.Time
 }

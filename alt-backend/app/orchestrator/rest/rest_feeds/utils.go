@@ -171,14 +171,20 @@ func formatAuthor(author domain.Author, authors []domain.Author) string {
 	return ""
 }
 
-// DeriveNextCursorFromFeeds extracts the next cursor from the feed list
+// DeriveNextCursorFromFeeds extracts the next cursor from the feed list.
+//
+// The cursor is formatted with sub-second precision because it comes back as
+// the right-hand side of a strict `created_at < $1`: created_at is microsecond
+// precision and one harvester transaction stamps a whole batch inside the same
+// second, so a cursor truncated to the second skips every remaining row of
+// that second permanently.
 func DeriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
 	if len(feeds) == 0 {
 		return "", false
 	}
 	lastFeed := feeds[len(feeds)-1]
 	if !lastFeed.PublishedParsed.IsZero() {
-		return lastFeed.PublishedParsed.Format(time.RFC3339), true
+		return lastFeed.PublishedParsed.Format(time.RFC3339Nano), true
 	}
 
 	published := strings.TrimSpace(lastFeed.Published)
@@ -191,7 +197,7 @@ func DeriveNextCursorFromFeeds(feeds []*domain.FeedItem) (string, bool) {
 		return "", false
 	}
 
-	return parsed.Format(time.RFC3339), true
+	return parsed.Format(time.RFC3339Nano), true
 }
 
 // OptimizeFeedsResponseForSearch optimizes feeds response specifically for search results

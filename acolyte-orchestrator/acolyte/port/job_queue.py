@@ -17,7 +17,16 @@ class JobQueuePort(Protocol):
 
     async def get_latest_run_for_report(self, report_id: UUID) -> ReportRun | None: ...
 
-    async def list_running_runs(self) -> list[ReportRun]: ...
+    async def list_running_runs(self) -> list[ReportRun]:
+        """Return every unfinished run — run_status 'pending' or 'running' — across
+        all reports, for startup reconciliation.
+
+        'pending' is in scope because create_run persists the run before the
+        pipeline reaches mark_running, so a restart in that window strands a run
+        that never became 'running'. An implementation scoped to 'running' alone
+        leaves such a run wedging get_active_run_for_report for its report forever.
+        """
+        ...
 
     async def claim_job(self, worker_id: str) -> ReportJob | None: ...
 

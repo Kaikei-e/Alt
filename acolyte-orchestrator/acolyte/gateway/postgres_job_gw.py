@@ -168,12 +168,19 @@ class PostgresJobGateway:
             )
 
     async def list_running_runs(self) -> list[ReportRun]:
-        """Return every run currently in 'running' status, across all reports.
+        """Return every unfinished run — 'pending' or 'running' — across all reports.
 
         Used at process startup to reconcile runs a crashed/previous process
         left stuck — nothing else in this service polls for them, so without
-        this they stay 'running' forever and wedge has_active_run /
+        this they stay unfinished forever and wedge has_active_run /
         GetReport.active_run for their report indefinitely.
+
+        'pending' has to be in scope: create_run commits the row before the
+        pipeline task queues behind the 4-slot run semaphore, and that wait can
+        outlast a redeploy, so a restart in that window strands a run that never
+        reached 'running'. Failing it is safe — the row's only trace is its own
+        report_runs/report_jobs pair (nothing claims report_jobs, and
+        mark_running is the first pipeline side effect).
         """
         async with self._pool.connection() as conn:
             cur = await conn.execute(
@@ -181,7 +188,7 @@ class PostgresJobGateway:
                 "planner_model, writer_model, critic_model, "
                 "started_at, finished_at, failure_code, failure_message "
                 "FROM report_runs "
-                "WHERE run_status = 'running'",
+                "WHERE run_status IN ('pending', 'running')",
             )
             rows = await cur.fetchall()
             return [

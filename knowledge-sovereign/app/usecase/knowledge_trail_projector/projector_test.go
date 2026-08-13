@@ -73,10 +73,19 @@ type fakeRepo struct {
 	// reproject swap RPC) having moved the row since the batch read it.
 	advanceRejected bool
 	listCalls       int
-	upserts         map[string]sovereign_db.TrailFootprint
-	branches        map[string]sovereign_db.TrailBranch
-	states          map[string]string
-	outcomes        map[string]sovereign_db.TrailActOutcome
+	// frontiers are handed out one per ReadSequenceGapFrontier call, the last
+	// one repeating; each one's HoleOpen is filled in from events rather than
+	// scripted. The default stands for a write transaction that never ends:
+	// its id sits below the ceiling of the first sighting, so a hole in the
+	// sequence is never mistaken for a burned one unless a test says so.
+	frontiers []sovereign_db.SequenceGapFrontier
+	// beforeGapFrontier runs inside the gap frontier read, standing for a
+	// writer that commits after the batch was read and before the verdict.
+	beforeGapFrontier func()
+	upserts           map[string]sovereign_db.TrailFootprint
+	branches          map[string]sovereign_db.TrailBranch
+	states            map[string]string
+	outcomes          map[string]sovereign_db.TrailActOutcome
 }
 
 // fakeAdvance is one recorded compare-and-set attempt.
@@ -94,6 +103,7 @@ func newFakeRepo(events []sovereign_db.KnowledgeEvent) *fakeRepo {
 		events:           events,
 		checkpointAt:     fakeCheckpointAt,
 		checkpointExists: true,
+		frontiers:        []sovereign_db.SequenceGapFrontier{{Ceiling: 101, Xmin: 100}},
 		upserts:          map[string]sovereign_db.TrailFootprint{},
 		branches:         map[string]sovereign_db.TrailBranch{},
 		states:           map[string]string{},
@@ -193,6 +203,27 @@ func (f *fakeRepo) ListKnowledgeEventsSince(_ context.Context, afterSeq int64, l
 	}
 	return out, nil
 }
+func (f *fakeRepo) ReadSequenceGapFrontier(_ context.Context, firstSeq, lastSeq int64) (sovereign_db.SequenceGapFrontier, error) {
+	if f.beforeGapFrontier != nil {
+		f.beforeGapFrontier()
+	}
+	next := f.frontiers[0]
+	if len(f.frontiers) > 1 {
+		f.frontiers = f.frontiers[1:]
+	}
+	// The real query answers both halves from one snapshot, so the fake reads
+	// the run out of the same events the batch read came from — a scripted
+	// "still empty" that the events contradict is a state the server cannot
+	// produce.
+	next.HoleOpen = true
+	for _, evt := range f.events {
+		if evt.EventSeq >= firstSeq && evt.EventSeq <= lastSeq {
+			next.HoleOpen = false
+		}
+	}
+	return next, nil
+}
+
 func (f *fakeRepo) UpsertTrailFootprint(_ context.Context, fp sovereign_db.TrailFootprint, _ int) error {
 	f.upserts[fp.FootprintKey] = fp
 	return nil
@@ -647,4 +678,181 @@ func TestProjector_RejectedCheckpointAdvanceStopsTheTickAndIsReportedLoudly(t *t
 	assert.EqualValues(t, 0, rec.Attrs["expected_seq"])
 	assert.EqualValues(t, 2, rec.Attrs["attempted_seq"])
 	assert.Equal(t, projectorName, rec.Attrs["projector"])
+}
+
+// event_seq is handed out when a transaction inserts, not when it commits, so
+// a transaction holding seq 1 can still be in flight while a later
+// transaction's seq 2 is already visible. Folding whatever the query returned
+// and advancing to its maximum moves the checkpoint to 2, and seq 1 — asked
+// for as "event_seq > 2" from then on — is never folded: the footprint is lost
+// from the spine permanently, with nothing left behind that says so.
+func TestProjector_StopsAtASequenceGapLeftByAnUncommittedTransaction(t *testing.T) {
+	user := userPtr()
+	at := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		actEvent(2, "HomeItemOpened", "article:b", "d-2", at, user),
+	})
+	p := NewProjector(repo, nil, Config{BatchSize: 500, MaxBatchesPerTick: 4})
+
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.Zero(t, repo.checkpoint, "the checkpoint must not step over a sequence that is missing rather than absent")
+	assert.Empty(t, repo.upserts, "an event beyond the gap must wait for the gap to resolve, so folds stay in sequence order")
+
+	// The transaction holding seq 1 commits.
+	repo.events = append([]sovereign_db.KnowledgeEvent{
+		actEvent(1, "HomeItemOpened", "article:a", "d-1", at, user),
+	}, repo.events...)
+
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.EqualValues(t, 2, repo.checkpoint, "once the gap is filled the batch folds through to the tip")
+	assert.Len(t, repo.upserts, 2, "both footprints must reach the spine")
+}
+
+// A rolled-back transaction burns its sequence value: the hole it leaves is
+// never filled, and waiting for it forever would wedge the spine at that
+// sequence for good. Once every transaction that had written when the hole was
+// first seen has finished, no live writer can still hold the value, and the
+// projection steps over it — loudly, because a burned sequence is a
+// producer-side rollback worth seeing.
+func TestProjector_StepsPastASequenceBurnedByARolledBackTransaction(t *testing.T) {
+	user := userPtr()
+	at := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		actEvent(2, "HomeItemOpened", "article:b", "d-2", at, user),
+	})
+	repo.frontiers = []sovereign_db.SequenceGapFrontier{
+		{Ceiling: 101, Xmin: 100}, // the writer that took seq 1 wrote below this ceiling and is still in flight
+		{Ceiling: 140, Xmin: 101}, // xmin has reached that ceiling: it finished, and seq 1 never arrived
+	}
+	logs := &recordingHandler{}
+	p := NewProjector(repo, slog.New(logs), Config{})
+
+	require.NoError(t, p.RunBatch(context.Background()))
+	assert.Zero(t, repo.checkpoint, "the hole is still fillable on this tick")
+
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.EqualValues(t, 2, repo.checkpoint, "a sequence no live transaction can still commit must not wedge the projection")
+	assert.Len(t, repo.upserts, 1, "the events past the burned sequence must be folded")
+
+	rec, ok := logs.find("trail.sequence_gap_abandoned")
+	require.True(t, ok, "abandoning a sequence must be reported, never silent")
+	assert.Equal(t, slog.LevelWarn, rec.Level)
+	assert.EqualValues(t, 1, rec.Attrs["gap_seq"])
+}
+
+// The mirror of the case above: while the transaction that took the missing
+// sequence is still running, no number of ticks may step over it.
+func TestProjector_WaitsWhileTheTransactionHoldingTheMissingSequenceIsInFlight(t *testing.T) {
+	user := userPtr()
+	at := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		actEvent(2, "HomeItemOpened", "article:b", "d-2", at, user),
+	})
+	p := NewProjector(repo, nil, Config{})
+
+	for i := 0; i < 3; i++ {
+		require.NoError(t, p.RunBatch(context.Background()))
+	}
+
+	assert.Zero(t, repo.checkpoint, "an in-flight writer still owns seq 1; the checkpoint must stay behind it")
+	assert.Empty(t, repo.upserts)
+}
+
+// A hole in the middle of a batch cuts it there: everything below the hole is
+// folded and the checkpoint stops one short of it, so the missing sequence is
+// still the next thing asked for when its transaction commits.
+func TestProjector_FoldsUpToAMidBatchSequenceGapAndResumesAcrossIt(t *testing.T) {
+	user := userPtr()
+	at := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		actEvent(1, "HomeItemOpened", "article:a", "d-1", at, user),
+		actEvent(2, "HomeItemOpened", "article:b", "d-2", at, user),
+		actEvent(4, "HomeItemOpened", "article:d", "d-4", at, user),
+	})
+	p := NewProjector(repo, nil, Config{})
+
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.EqualValues(t, 2, repo.checkpoint, "the checkpoint must stop one short of the hole")
+	assert.Len(t, repo.upserts, 2)
+
+	repo.events = append(repo.events[:2], append([]sovereign_db.KnowledgeEvent{
+		actEvent(3, "HomeItemOpened", "article:c", "d-3", at, user),
+	}, repo.events[2:]...)...)
+
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.EqualValues(t, 4, repo.checkpoint)
+	assert.Len(t, repo.upserts, 4, "the event that was in flight must reach the spine")
+}
+
+// A run of sequences burned together — a batch of appends that all rolled back
+// — is stepped over in one advance, not one sequence per tick: every value
+// below the first visible event was taken before that event's, so the same
+// frontier decides the whole run at once.
+func TestProjector_StepsPastAWholeRunOfBurnedSequencesAtOnce(t *testing.T) {
+	user := userPtr()
+	at := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		actEvent(4, "HomeItemOpened", "article:d", "d-4", at, user),
+	})
+	repo.frontiers = []sovereign_db.SequenceGapFrontier{
+		{Ceiling: 101, Xmin: 100},
+		{Ceiling: 140, Xmin: 101},
+	}
+	logs := &recordingHandler{}
+	p := NewProjector(repo, slog.New(logs), Config{})
+
+	require.NoError(t, p.RunBatch(context.Background()))
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.EqualValues(t, 4, repo.checkpoint)
+	assert.Len(t, repo.upserts, 1)
+
+	rec, ok := logs.find("trail.sequence_gap_abandoned")
+	require.True(t, ok)
+	assert.EqualValues(t, 1, rec.Attrs["gap_seq"])
+	assert.EqualValues(t, 3, rec.Attrs["gap_through"], "the whole burned run is reported, not just its head")
+}
+
+// The verdict is a second round trip, and Read Committed gives it its own
+// snapshot: a writer that commits between the batch read and the verdict is
+// missing from the batch while the ids already count it finished. Judging on
+// that pair alone steps the checkpoint over an event that is committed and
+// readable, and the footprint is lost from the spine with nothing left behind
+// that says so. The frontier re-reads the run itself for exactly this case.
+func TestProjector_NeverStepsOverASequenceThatCommittedAfterTheBatchWasRead(t *testing.T) {
+	user := userPtr()
+	at := time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{
+		actEvent(2, "HomeItemOpened", "article:b", "d-2", at, user),
+	})
+	repo.frontiers = []sovereign_db.SequenceGapFrontier{
+		{Ceiling: 101, Xmin: 100},
+		{Ceiling: 140, Xmin: 101}, // by the ids alone, every writer below the first ceiling has finished
+	}
+	p := NewProjector(repo, nil, Config{})
+
+	require.NoError(t, p.RunBatch(context.Background()))
+	require.Zero(t, repo.checkpoint, "the hole is still fillable on this tick")
+
+	// The writer holding seq 1 commits after this tick's batch read and before
+	// its verdict.
+	repo.beforeGapFrontier = func() {
+		repo.beforeGapFrontier = nil
+		repo.events = append([]sovereign_db.KnowledgeEvent{
+			actEvent(1, "HomeItemOpened", "article:a", "d-1", at, user),
+		}, repo.events...)
+	}
+
+	require.NoError(t, p.RunBatch(context.Background()))
+	assert.Zero(t, repo.checkpoint, "the sequence arrived; the checkpoint must not step over it")
+
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.EqualValues(t, 2, repo.checkpoint)
+	assert.Len(t, repo.upserts, 2, "the event that committed mid-tick must still reach the spine")
 }

@@ -6,6 +6,15 @@ use uuid::Uuid;
 
 use super::types::{ClassificationResult, NewQueuedJob, QueuedJob, QueuedJobId, QueuedJobStatus};
 
+/// How long a claim on a row is good for. `started_at` *is* the lease: a
+/// worker killed mid-job leaves its row in 'running' and nothing else rewinds
+/// it (`enqueue`'s ON CONFLICT only pulls 'failed' back to 'pending'), so an
+/// expired claim has to be reclaimable by the same statement that picks fresh
+/// work. Sized well above a chunk's normal turnaround; a premature reclaim
+/// re-POSTs the chunk under the same `Idempotency-Key`, so the subworker joins
+/// the in-flight run instead of classifying it twice.
+const CLAIM_LEASE_SECS: f64 = 900.0;
+
 #[derive(Debug, Clone)]
 pub(crate) struct QueueStore {
     pool: PgPool,
@@ -60,18 +69,31 @@ impl QueueStore {
     /// lock) as soon as the SELECT completes, letting a concurrent caller
     /// (another worker, or this worker's own next loop iteration) observe
     /// the same row as still 'pending' and pick it again.
+    ///
+    /// Fresh work and crash reclaim come out of the same statement: a
+    /// 'running' row whose `started_at` lease has elapsed is picked exactly
+    /// like a pending one, and the pick re-stamps `started_at` so the reclaim
+    /// takes its own lease rather than staying due for every other worker.
+    /// There is no separate reclaim sweeper, and therefore none to forget to
+    /// schedule at boot.
     /// Returns None if no job is available.
     pub(crate) async fn pick_next_job(&self) -> Result<Option<QueuedJob>> {
         let row = sqlx::query(
             r"
             UPDATE classification_job_queue
             SET status = 'running',
-                started_at = COALESCE(started_at, NOW())
+                started_at = NOW()
             WHERE id = (
                 SELECT id
                 FROM classification_job_queue
-                WHERE status IN ('pending', 'retrying')
-                  AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                WHERE (
+                        status IN ('pending', 'retrying')
+                        AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+                      )
+                   OR (
+                        status = 'running'
+                        AND started_at < NOW() - make_interval(secs => $1::double precision)
+                      )
                 ORDER BY created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
@@ -81,6 +103,7 @@ impl QueueStore {
                       created_at, started_at, completed_at
             ",
         )
+        .bind(CLAIM_LEASE_SECS)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| RecapError::Db(format!("failed to pick next job: {e}")))?;
@@ -370,6 +393,7 @@ mod tests {
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 started_at TIMESTAMPTZ,
                 completed_at TIMESTAMPTZ,
+                next_retry_at TIMESTAMPTZ,
                 UNIQUE(recap_job_id, chunk_idx)
             );
             ",
@@ -494,6 +518,77 @@ mod tests {
         assert!(
             second.is_none(),
             "job was already claimed; nothing should be left to pick"
+        );
+
+        cleanup(&pool, recap_job_id).await;
+        Ok(())
+    }
+
+    /// A worker killed mid-job (SIGKILL, container OOM) leaves its row in
+    /// 'running' and nothing ever rewinds it: `enqueue`'s ON CONFLICT only
+    /// pulls 'failed' back to 'pending'. Without a lease the row is dead
+    /// weight — `pick_next_job` never selects it again, `all_jobs_completed`
+    /// never fires, and the resumed run burns the whole classification
+    /// timeout before failing. So an expired claim must be reclaimable, while
+    /// a live one must stay untouched.
+    #[tokio::test]
+    async fn pick_next_job_reclaims_running_row_after_lease_expires() -> anyhow::Result<()> {
+        let Ok(database_url) = std::env::var("DATABASE_URL") else {
+            return Ok(());
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&database_url)
+            .await?;
+        setup_classification_queue_table(&pool).await?;
+
+        let recap_job_id = Uuid::new_v4();
+        let store = QueueStore::new(pool.clone());
+        store
+            .enqueue(NewQueuedJob {
+                recap_job_id,
+                chunk_idx: 0,
+                texts: vec!["hello".to_string()],
+                max_retries: 3,
+            })
+            .await?;
+
+        let picked = store
+            .pick_next_job()
+            .await?
+            .expect("the only pending job should be picked");
+
+        assert!(
+            store.pick_next_job().await?.is_none(),
+            "a running row still inside its lease must not be stolen from the worker holding it"
+        );
+
+        sqlx::query(
+            "UPDATE classification_job_queue
+             SET started_at = NOW() - INTERVAL '1 day'
+             WHERE id = $1",
+        )
+        .bind(picked.id)
+        .execute(&pool)
+        .await?;
+
+        let reclaimed = store
+            .pick_next_job()
+            .await?
+            .expect("a running row past its lease must be reclaimed, not stranded forever");
+        assert_eq!(reclaimed.id, picked.id);
+        assert_eq!(reclaimed.status, QueuedJobStatus::Running);
+
+        let leased_at = reclaimed
+            .started_at
+            .expect("a reclaimed row must carry a lease timestamp");
+        assert!(
+            leased_at > Utc::now() - chrono::Duration::seconds(60),
+            "reclaim must re-stamp started_at, otherwise every worker reclaims the same row at once: {leased_at}"
+        );
+        assert!(
+            store.pick_next_job().await?.is_none(),
+            "the fresh lease taken by the reclaim must hold like any other claim"
         );
 
         cleanup(&pool, recap_job_id).await;

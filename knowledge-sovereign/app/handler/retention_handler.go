@@ -170,7 +170,7 @@ func (h *RetentionHandler) handleEligiblePartitions(w http.ResponseWriter, r *ht
 // RunRetention executes the retention cycle: export → verify → log.
 // If dryRun is true, only reports what would be done without modifying data.
 func (h *RetentionHandler) RunRetention(ctx context.Context, dryRun bool) (retentionRunResponse, error) {
-	resp := retentionRunResponse{DryRun: dryRun}
+	resp := retentionRunResponse{DryRun: dryRun, Actions: []retentionAction{}}
 	now := time.Now()
 
 	// Safety check: require a valid snapshot before archiving

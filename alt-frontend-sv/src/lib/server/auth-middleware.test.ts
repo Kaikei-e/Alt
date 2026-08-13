@@ -91,6 +91,49 @@ describe("validateSession cache key derivation", () => {
 		expect(toSession).not.toHaveBeenCalled();
 	});
 
+	it("does not cache a result whose backend token is missing, so an auth-hub blip is not held for the full TTL", async () => {
+		const { validateSession } = await import("./auth-middleware");
+
+		const cookie = "ory_kratos_session=flaky-auth-hub-token";
+		toSession.mockResolvedValue(identityFor("flakyUser"));
+		vi.stubGlobal(
+			"fetch",
+			vi
+				.fn()
+				.mockRejectedValueOnce(new DOMException("aborted", "AbortError"))
+				.mockResolvedValue({
+					ok: true,
+					headers: new Headers({ "X-Alt-Backend-Token": "recovered-token" }),
+				}),
+		);
+
+		const first = await validateSession(cookie);
+		expect(first.backendToken).toBeNull();
+
+		// auth-hub recovered immediately; the very next request must see it
+		// instead of a cached tokenless session that 401s every /api/v2 call.
+		const second = await validateSession(cookie);
+		expect(second.backendToken).toBe("recovered-token");
+	});
+
+	it("logs when the auth-hub token fetch fails instead of swallowing the error", async () => {
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		const { validateSession } = await import("./auth-middleware");
+
+		toSession.mockResolvedValue(identityFor("loggingUser"));
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockRejectedValue(new DOMException("aborted", "AbortError")),
+		);
+
+		await validateSession("ory_kratos_session=logging-user-token");
+
+		expect(consoleError).toHaveBeenCalled();
+		consoleError.mockRestore();
+	});
+
 	it("re-fetches from Kratos after invalidateSessionCache is called for that cookie (logout must bust the cache)", async () => {
 		const { validateSession, invalidateSessionCache } = await import(
 			"./auth-middleware"

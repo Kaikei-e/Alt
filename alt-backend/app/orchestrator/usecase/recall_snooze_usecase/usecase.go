@@ -38,10 +38,6 @@ func (u *RecallSnoozeUsecase) Execute(ctx context.Context, userID uuid.UUID, ten
 	occurredAt := time.Now()
 	until := occurredAt.Add(time.Duration(snoozeHours) * time.Hour)
 
-	if err := u.candidatePort.SnoozeRecallCandidate(ctx, userID, itemKey, until, occurredAt); err != nil {
-		return fmt.Errorf("snooze recall candidate: %w", err)
-	}
-
 	payload, _ := json.Marshal(map[string]any{
 		"item_key":      itemKey,
 		"snooze_hours":  snoozeHours,
@@ -62,6 +58,18 @@ func (u *RecallSnoozeUsecase) Execute(ctx context.Context, userID uuid.UUID, ten
 		Payload:       payload,
 	}
 
-	_, _ = u.eventPort.AppendKnowledgeEvent(ctx, event)
+	// The event is the durable write: snoozed_until is refolded from the event
+	// log on reproject, so a snooze that only reached recall_candidate_view
+	// reverts to NULL and the item resurfaces. Append first and fail the
+	// command if it does not land — the dedupe key makes a client retry
+	// idempotent.
+	if _, err := u.eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
+		return fmt.Errorf("append recall snoozed event: %w", err)
+	}
+
+	if err := u.candidatePort.SnoozeRecallCandidate(ctx, userID, itemKey, until, occurredAt); err != nil {
+		return fmt.Errorf("snooze recall candidate: %w", err)
+	}
+
 	return nil
 }

@@ -67,12 +67,15 @@ class PipelineEvaluator:
         job_id_set = set(job_ids)
         relevant_jobs = [j for j in all_jobs if j["job_id"] in job_id_set]
 
+        # recap_jobs holds a single status per job_id and callers build job_ids
+        # from the completed-status query, so failed jobs are scoped by the
+        # window alone — intersecting them with job_ids is empty by
+        # construction and pins success_rate at 1.0 forever.
         failed_jobs = await self._db.fetch_recent_jobs(days=window_days, status="failed")
-        relevant_failed = [j for j in failed_jobs if j["job_id"] in job_id_set]
 
-        total = len(relevant_jobs) + len(relevant_failed)
+        total = len(relevant_jobs) + len(failed_jobs)
         completed = len(relevant_jobs)
-        failed = len(relevant_failed)
+        failed = len(failed_jobs)
 
         # Use batch query for stage logs
         stage_logs_map = await self._db.fetch_stage_logs_batch(job_ids)

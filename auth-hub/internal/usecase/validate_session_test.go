@@ -48,16 +48,17 @@ func (m *mockCache) Set(sessionID string, session domain.CachedSession) {
 
 func TestValidateSession_CacheHit(t *testing.T) {
 	cache := newMockCache()
-	cache.Set("session-abc", domain.CachedSession{
-		UserID:   "user-123",
-		TenantID: "user-123",
-		Email:    "test@example.com",
+	cache.Set("cookie-abc", domain.CachedSession{
+		UserID:    "user-123",
+		TenantID:  "user-123",
+		Email:     "test@example.com",
+		SessionID: "session-abc",
 	})
 	validator := &mockValidator{}
 	logger := slog.Default()
 
 	uc := NewValidateSession(validator, cache, logger)
-	identity, err := uc.Execute(context.Background(), "session-abc")
+	identity, err := uc.Execute(context.Background(), "cookie-abc")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "user-123", identity.UserID)
@@ -70,24 +71,25 @@ func TestValidateSession_CacheMiss(t *testing.T) {
 	cache := newMockCache()
 	validator := &mockValidator{
 		identity: &domain.Identity{
-			UserID: "user-456",
-			Email:  "new@example.com",
+			UserID:    "user-456",
+			Email:     "new@example.com",
+			SessionID: "session-xyz",
 		},
 	}
 	logger := slog.Default()
 
 	uc := NewValidateSession(validator, cache, logger)
-	identity, err := uc.Execute(context.Background(), "session-xyz")
+	identity, err := uc.Execute(context.Background(), "cookie-xyz")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "user-456", identity.UserID)
 	assert.Equal(t, "new@example.com", identity.Email)
 	assert.Equal(t, "session-xyz", identity.SessionID)
 	assert.True(t, validator.called)
-	assert.Equal(t, "ory_kratos_session=session-xyz", validator.cookie)
+	assert.Equal(t, "ory_kratos_session=cookie-xyz", validator.cookie)
 
 	// Verify cache was populated
-	cached, found := cache.Get("session-xyz")
+	cached, found := cache.Get("cookie-xyz")
 	assert.True(t, found)
 	assert.Equal(t, "user-456", cached.UserID)
 }
@@ -152,6 +154,61 @@ func TestValidateSession_AdminRole_CacheMiss(t *testing.T) {
 	cached, found := cache.Get("admin-session")
 	assert.True(t, found)
 	assert.Equal(t, "admin", cached.Role, "cached session must retain Role so cache hits don't downgrade privilege")
+}
+
+// TestValidateSession_CacheMiss_SessionIDIsKratosSessionID pins that the
+// SessionID travelling into the sid claim of the 30-minute backend JWT is the
+// stable Kratos session id, never the raw ory_kratos_session cookie. JWT
+// payloads are base64url, not encrypted, so echoing the cookie there turns any
+// captured token into the long-lived bearer credential itself.
+func TestValidateSession_CacheMiss_SessionIDIsKratosSessionID(t *testing.T) {
+	const rawCookie = "MTc0N2E5ZTQtcmF3LWNvb2tpZS1zZWNyZXQ"
+
+	cache := newMockCache()
+	validator := &mockValidator{
+		identity: &domain.Identity{
+			UserID:    "user-456",
+			Email:     "new@example.com",
+			SessionID: "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70",
+		},
+	}
+	logger := slog.Default()
+
+	uc := NewValidateSession(validator, cache, logger)
+	identity, err := uc.Execute(context.Background(), rawCookie)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", identity.SessionID)
+	assert.NotEqual(t, rawCookie, identity.SessionID, "the raw session cookie must never leave as SessionID")
+
+	cached, found := cache.Get(rawCookie)
+	assert.True(t, found)
+	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", cached.SessionID,
+		"cache must carry the Kratos session id so cache hits do not fall back to the cookie")
+}
+
+// TestValidateSession_CacheHit_SessionIDIsKratosSessionID is the cache-hit half
+// of the same invariant: a warm cache must not reintroduce the cookie value.
+func TestValidateSession_CacheHit_SessionIDIsKratosSessionID(t *testing.T) {
+	const rawCookie = "MTc0N2E5ZTQtcmF3LWNvb2tpZS1zZWNyZXQ"
+
+	cache := newMockCache()
+	cache.Set(rawCookie, domain.CachedSession{
+		UserID:    "user-123",
+		TenantID:  "user-123",
+		Email:     "test@example.com",
+		SessionID: "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70",
+	})
+	validator := &mockValidator{}
+	logger := slog.Default()
+
+	uc := NewValidateSession(validator, cache, logger)
+	identity, err := uc.Execute(context.Background(), rawCookie)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", identity.SessionID)
+	assert.NotEqual(t, rawCookie, identity.SessionID, "the raw session cookie must never leave as SessionID")
+	assert.False(t, validator.called, "should not call Kratos on cache hit")
 }
 
 // TestValidateSession_AdminRole_CacheHit is the regression test for the bug

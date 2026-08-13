@@ -47,13 +47,19 @@ func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 }
 
 // deriveNextCursor extracts the next cursor from the feed list.
+//
+// The cursor is formatted with sub-second precision because it comes back as
+// the right-hand side of a strict `created_at < $1`: created_at is microsecond
+// precision and one harvester transaction stamps a whole batch inside the same
+// second, so a cursor truncated to the second skips every remaining row of
+// that second permanently.
 func deriveNextCursor(feeds []*domain.FeedItem, hasMore bool) *string {
 	if !hasMore || len(feeds) == 0 {
 		return nil
 	}
 	lastFeed := feeds[len(feeds)-1]
 	if !lastFeed.PublishedParsed.IsZero() {
-		cursor := lastFeed.PublishedParsed.Format(time.RFC3339)
+		cursor := lastFeed.PublishedParsed.Format(time.RFC3339Nano)
 		return &cursor
 	}
 
@@ -67,7 +73,7 @@ func deriveNextCursor(feeds []*domain.FeedItem, hasMore bool) *string {
 		return nil
 	}
 
-	cursor := parsed.Format(time.RFC3339)
+	cursor := parsed.Format(time.RFC3339Nano)
 	return &cursor
 }
 

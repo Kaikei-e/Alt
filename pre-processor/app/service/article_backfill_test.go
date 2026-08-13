@@ -25,13 +25,16 @@ func testLoggerBackfill() *slog.Logger {
 type stubBackfillArticleRepo struct {
 	repository.ArticleRepository
 	emptyFeedArticles []*domain.Article
+	scannedThrough    time.Time
+	fetchCursors      []time.Time
 	upsertedArticles  []*domain.Article
 	fetchErr          error
 	upsertErr         error
 }
 
-func (s *stubBackfillArticleRepo) FetchInoreaderArticlesForEmptyFeeds(_ context.Context, _ time.Time, _ int) ([]*domain.Article, error) {
-	return s.emptyFeedArticles, s.fetchErr
+func (s *stubBackfillArticleRepo) FetchInoreaderArticlesForEmptyFeeds(_ context.Context, fetchedAfter time.Time, _ int) ([]*domain.Article, time.Time, error) {
+	s.fetchCursors = append(s.fetchCursors, fetchedAfter)
+	return s.emptyFeedArticles, s.scannedThrough, s.fetchErr
 }
 
 func (s *stubBackfillArticleRepo) UpsertArticlesWithFeedID(_ context.Context, articles []*domain.Article) error {
@@ -210,5 +213,82 @@ func TestBackfillEmptyFeeds_PreservesFeedID(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, articleRepo.upsertedArticles, 1)
 		assert.Equal(t, "pre-resolved-feed-uuid", articleRepo.upsertedArticles[0].FeedID)
+	})
+}
+
+func TestBackfillEmptyFeeds_AdvancesCursorPastFilteredRows(t *testing.T) {
+	t.Run("should advance the cursor when the empty-feed filter drops every scanned row", func(t *testing.T) {
+		scannedThrough := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+		articleRepo := &stubBackfillArticleRepo{
+			emptyFeedArticles: nil,
+			scannedThrough:    scannedThrough,
+		}
+		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
+
+		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+
+		assert.NoError(t, svc.BackfillEmptyFeeds(context.Background()))
+		assert.NoError(t, svc.BackfillEmptyFeeds(context.Background()))
+
+		assert.Len(t, articleRepo.fetchCursors, 2)
+		assert.True(t, articleRepo.fetchCursors[0].IsZero())
+		assert.Equal(t, scannedThrough, articleRepo.fetchCursors[1])
+	})
+}
+
+func TestBackfillEmptyFeeds_CursorUsesScanWatermark(t *testing.T) {
+	t.Run("should advance the cursor to the last row scanned, not the last row returned", func(t *testing.T) {
+		scannedThrough := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+		articleRepo := &stubBackfillArticleRepo{
+			emptyFeedArticles: []*domain.Article{
+				{
+					ID:        "inoreader-1",
+					URL:       "https://example.com/article1",
+					Title:     "Article 1",
+					Content:   "<p>Valid content long enough to survive sanitization.</p>",
+					FeedID:    "feed-uuid-1",
+					CreatedAt: scannedThrough.Add(-6 * time.Hour),
+				},
+			},
+			scannedThrough: scannedThrough,
+		}
+		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
+
+		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+
+		assert.NoError(t, svc.BackfillEmptyFeeds(context.Background()))
+		assert.NoError(t, svc.BackfillEmptyFeeds(context.Background()))
+
+		assert.Len(t, articleRepo.fetchCursors, 2)
+		assert.Equal(t, scannedThrough, articleRepo.fetchCursors[1])
+	})
+}
+
+func TestBackfillEmptyFeeds_KeepsCursorWhenUpsertFails(t *testing.T) {
+	t.Run("should not advance the cursor when the batch was never persisted", func(t *testing.T) {
+		scannedThrough := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+		articleRepo := &stubBackfillArticleRepo{
+			emptyFeedArticles: []*domain.Article{
+				{
+					ID:        "inoreader-1",
+					URL:       "https://example.com/article1",
+					Title:     "Article 1",
+					Content:   "<p>Valid content long enough to survive sanitization.</p>",
+					FeedID:    "feed-uuid-1",
+					CreatedAt: scannedThrough,
+				},
+			},
+			scannedThrough: scannedThrough,
+			upsertErr:      fmt.Errorf("datahub unavailable"),
+		}
+		externalAPI := &stubBackfillExternalAPI{userID: "system-user-id"}
+
+		svc := NewArticleSyncService(articleRepo, externalAPI, testLoggerBackfill())
+
+		assert.Error(t, svc.BackfillEmptyFeeds(context.Background()))
+		assert.Error(t, svc.BackfillEmptyFeeds(context.Background()))
+
+		assert.Len(t, articleRepo.fetchCursors, 2)
+		assert.True(t, articleRepo.fetchCursors[1].IsZero())
 	})
 }

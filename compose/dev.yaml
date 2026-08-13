@@ -95,6 +95,9 @@ services:
       - BACKEND_BASE_URL=http://alt-backend:9000
       - BACKEND_CONNECT_URL=http://alt-backend:9101
       - PUBLIC_API_BASE_URL=http://localhost:9000
+      # No knowledge-sovereign in this stack, so the admin client runs tokenless
+      # by explicit choice rather than by an unset secret.
+      - SOVEREIGN_ADMIN_AUTH=disabled
     depends_on:
       mock-auth:
         condition: service_healthy

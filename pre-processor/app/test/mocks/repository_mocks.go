@@ -89,12 +89,13 @@ func (mr *MockArticleRepositoryMockRecorder) FetchInoreaderArticles(ctx, since a
 }
 
 // FetchInoreaderArticlesForEmptyFeeds mocks base method.
-func (m *MockArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, error) {
+func (m *MockArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, time.Time, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FetchInoreaderArticlesForEmptyFeeds", ctx, fetchedAfter, limit)
 	ret0, _ := ret[0].([]*domain.Article)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(time.Time)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // FetchInoreaderArticlesForEmptyFeeds indicates an expected call of FetchInoreaderArticlesForEmptyFeeds.

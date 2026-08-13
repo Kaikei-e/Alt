@@ -44,8 +44,8 @@ func (s *stubArticleRepo) FetchInoreaderArticles(_ context.Context, _ time.Time)
 	return nil, nil
 }
 func (s *stubArticleRepo) UpsertArticles(_ context.Context, _ []*domain.Article) error { return nil }
-func (s *stubArticleRepo) FetchInoreaderArticlesForEmptyFeeds(_ context.Context, _ time.Time, _ int) ([]*domain.Article, error) {
-	return nil, nil
+func (s *stubArticleRepo) FetchInoreaderArticlesForEmptyFeeds(_ context.Context, _ time.Time, _ int) ([]*domain.Article, time.Time, error) {
+	return nil, time.Time{}, nil
 }
 func (s *stubArticleRepo) UpsertArticlesWithFeedID(_ context.Context, _ []*domain.Article) error {
 	return nil

@@ -126,8 +126,42 @@ class TestSummaryEvaluator:
             relevance=2.5,
             hallucination_rate=0.6,
             overall_quality_score=0.25,
+            sample_count=5,
+            success_count=5,
         )
 
         level = summary_evaluator._determine_alert_level(metrics)
 
         assert level == AlertLevel.CRITICAL
+
+    def test_determine_alert_level_critical_when_judge_measured_nothing(
+        self, summary_evaluator
+    ):
+        """An unreachable judge leaves every G-Eval axis at 0.0. Those zeros
+        mean "not measured", not "measured as perfect", so a sampled batch
+        with no successful judgement is itself a critical condition.
+        """
+        metrics = SummaryMetrics(sample_count=10, success_count=0)
+
+        level = summary_evaluator._determine_alert_level(metrics)
+
+        assert level == AlertLevel.CRITICAL
+
+    async def test_evaluate_batch_alerts_when_geval_returns_all_zeros(
+        self, summary_evaluator, mock_db, mock_ollama
+    ):
+        batch_result = mock_ollama.evaluate_batch.return_value
+        batch_result.success_count = 0
+        batch_result.avg_coherence = 0.0
+        batch_result.avg_consistency = 0.0
+        batch_result.avg_fluency = 0.0
+        batch_result.avg_relevance = 0.0
+        batch_result.avg_overall = 0.0
+        mock_db.fetch_outputs.return_value = [SAMPLE_OUTPUT]
+        mock_db.fetch_job_articles.return_value = [SAMPLE_ARTICLE]
+
+        from uuid import uuid4
+        result = await summary_evaluator.evaluate_batch([uuid4()])
+
+        assert result.success_count == 0
+        assert result.alert_level == AlertLevel.CRITICAL

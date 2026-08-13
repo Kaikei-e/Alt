@@ -22,6 +22,10 @@ func NewValidateSession(v domain.SessionValidator, c domain.SessionCache, l *slo
 
 // Execute validates the session identified by cookieValue.
 // Returns the identity with TenantID set (single-tenant: TenantID == UserID).
+// cookieValue is the bearer credential and is used only as the in-process cache
+// key; the SessionID that leaves this usecase is the identity provider's stable
+// session id, because it ends up in the sid claim of a token downstream services
+// can read.
 func (uc *ValidateSession) Execute(ctx context.Context, cookieValue string) (*domain.Identity, error) {
 	// Check cache first
 	if cached, found := uc.cache.Get(cookieValue); found {
@@ -30,7 +34,7 @@ func (uc *ValidateSession) Execute(ctx context.Context, cookieValue string) (*do
 			TenantID:  cached.TenantID,
 			Email:     cached.Email,
 			Role:      cached.Role,
-			SessionID: cookieValue,
+			SessionID: cached.SessionID,
 		}, nil
 	}
 
@@ -50,10 +54,10 @@ func (uc *ValidateSession) Execute(ctx context.Context, cookieValue string) (*do
 		TenantID:  identity.UserID,
 		Email:     identity.Email,
 		Role:      identity.Role,
+		SessionID: identity.SessionID,
 		CreatedAt: identity.CreatedAt,
 	})
 
-	identity.SessionID = cookieValue
 	identity.TenantID = identity.UserID // Single-tenant fallback
 	return identity, nil
 }

@@ -14,21 +14,24 @@ import (
 
 // mockTokenIssuer implements domain.TokenIssuer for testing.
 type mockTokenIssuer struct {
-	token string
-	err   error
+	token           string
+	err             error
+	issuedSessionID string
 }
 
-func (m *mockTokenIssuer) IssueBackendToken(_ *domain.Identity, _ string) (string, error) {
+func (m *mockTokenIssuer) IssueBackendToken(_ *domain.Identity, sessionID string) (string, error) {
+	m.issuedSessionID = sessionID
 	return m.token, m.err
 }
 
 func TestGetSession_CacheHit(t *testing.T) {
 	createdAt := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
 	cache := newMockCache()
-	cache.Set("session-abc", domain.CachedSession{
+	cache.Set("cookie-abc", domain.CachedSession{
 		UserID:    "user-123",
 		TenantID:  "tenant-123",
 		Email:     "test@example.com",
+		SessionID: "session-abc",
 		CreatedAt: createdAt,
 	})
 	validator := &mockValidator{}
@@ -36,7 +39,7 @@ func TestGetSession_CacheHit(t *testing.T) {
 	logger := slog.Default()
 
 	uc := NewGetSession(validator, cache, tokenIssuer, logger)
-	result, err := uc.Execute(context.Background(), "session-abc")
+	result, err := uc.Execute(context.Background(), "cookie-abc")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "user-123", result.UserID)
@@ -154,6 +157,65 @@ func TestGetSession_EmptyRole_DefaultsToUser(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, "user", result.Role)
+}
+
+// TestGetSession_CacheMiss_SessionIDIsKratosSessionID pins the same invariant
+// as the /validate path for /session: the value that becomes the JWT sid claim
+// and the session.id field of the JSON body is the stable Kratos session id,
+// never the raw ory_kratos_session cookie.
+func TestGetSession_CacheMiss_SessionIDIsKratosSessionID(t *testing.T) {
+	const rawCookie = "MTc0N2E5ZTQtcmF3LWNvb2tpZS1zZWNyZXQ"
+
+	cache := newMockCache()
+	validator := &mockValidator{
+		identity: &domain.Identity{
+			UserID:    "user-456",
+			Email:     "new@example.com",
+			SessionID: "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70",
+		},
+	}
+	tokenIssuer := &mockTokenIssuer{token: "jwt-new-token"}
+	logger := slog.Default()
+
+	uc := NewGetSession(validator, cache, tokenIssuer, logger)
+	result, err := uc.Execute(context.Background(), rawCookie)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", result.SessionID)
+	assert.NotEqual(t, rawCookie, result.SessionID, "the raw session cookie must never leave in the response body")
+	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", tokenIssuer.issuedSessionID,
+		"the sid claim must carry the Kratos session id, not the cookie")
+
+	cached, found := cache.Get(rawCookie)
+	assert.True(t, found)
+	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", cached.SessionID)
+}
+
+// TestGetSession_CacheHit_SessionIDIsKratosSessionID is the cache-hit half of
+// the same invariant.
+func TestGetSession_CacheHit_SessionIDIsKratosSessionID(t *testing.T) {
+	const rawCookie = "MTc0N2E5ZTQtcmF3LWNvb2tpZS1zZWNyZXQ"
+
+	cache := newMockCache()
+	cache.Set(rawCookie, domain.CachedSession{
+		UserID:    "user-123",
+		TenantID:  "tenant-123",
+		Email:     "test@example.com",
+		SessionID: "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70",
+	})
+	validator := &mockValidator{}
+	tokenIssuer := &mockTokenIssuer{token: "jwt-token-123"}
+	logger := slog.Default()
+
+	uc := NewGetSession(validator, cache, tokenIssuer, logger)
+	result, err := uc.Execute(context.Background(), rawCookie)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", result.SessionID)
+	assert.NotEqual(t, rawCookie, result.SessionID, "the raw session cookie must never leave in the response body")
+	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", tokenIssuer.issuedSessionID,
+		"the sid claim must carry the Kratos session id, not the cookie")
+	assert.False(t, validator.called)
 }
 
 func TestGetSession_TokenGenerationError(t *testing.T) {

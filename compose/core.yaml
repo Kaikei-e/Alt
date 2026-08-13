@@ -136,6 +136,12 @@ services:
       - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-http://auth-hub:8888}
       - PUBLIC_USE_CONNECT_STREAMING=${PUBLIC_USE_CONNECT_STREAMING:-false}
       - SOVEREIGN_METRICS_URL=${SOVEREIGN_METRICS_URL:-http://knowledge-sovereign:9501}
+      # Same Bearer token knowledge-sovereign gates /admin/* with; without it
+      # every admin call comes back 401. Startup fails if the file is missing —
+      # calling the admin surface unauthenticated requires SOVEREIGN_ADMIN_AUTH=disabled.
+      - SOVEREIGN_ADMIN_TOKEN_FILE=/run/secrets/sovereign_admin_token
+    secrets:
+      - sovereign_admin_token
     ports:
       # plecto-proxy is the only edge; it reaches the frontend as
       # alt-frontend-sv:4173 over the container network.

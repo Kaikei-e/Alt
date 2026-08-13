@@ -1,11 +1,20 @@
 /**
- * TypeScript interfaces for knowledge-sovereign admin REST API responses.
+ * View types for the knowledge-sovereign admin panel.
  *
  * Group A endpoints: plain REST on knowledge-sovereign metrics port (:9501).
- * All PascalCase Go fields are normalized to camelCase by the server layer.
+ * These are not the wire types. knowledge-sovereign tags every field
+ * snake_case and wraps each list in a named envelope ("tables", "snapshots",
+ * "logs", "partitions"); $lib/server/sovereign-admin.ts unwraps the envelope
+ * and maps the rows onto the shapes below, renaming and dropping fields the
+ * panel has no use for. Read the wire shape from the Go json tags — pinned in
+ * src/test/contracts/sovereign-admin-contract.test.ts — never from these names.
  */
 
-/** Storage stats for a knowledge table (from GET /admin/storage/stats). */
+/**
+ * Storage stats for a knowledge table (from GET /admin/storage/stats).
+ * `table_name` arrives on the wire as `name`; the wire's `table_size` /
+ * `index_size` breakdown is dropped, since the panel only renders `total_size`.
+ */
 export interface TableStorageInfo {
 	table_name: string;
 	row_count: number;

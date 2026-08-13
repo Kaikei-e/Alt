@@ -104,8 +104,10 @@ export async function validateSession(
 		backendToken,
 	};
 
-	// Cache the result
-	if (cacheKey) {
+	// A result without a backend token is never cached: a momentary auth-hub
+	// failure would otherwise pin this session to a tokenless result for the
+	// whole TTL, 401-ing every /api/v2 call long after auth-hub recovered.
+	if (cacheKey && result.backendToken) {
 		sessionCache.set(cacheKey, {
 			result,
 			expiresAt: now + SESSION_CACHE_TTL_MS,
@@ -130,7 +132,8 @@ async function fetchBackendToken(cookie: string): Promise<string | null> {
 			return null;
 		}
 		return response.headers.get("X-Alt-Backend-Token");
-	} catch {
+	} catch (error) {
+		console.error("[auth-middleware] auth-hub token fetch failed:", error);
 		return null;
 	}
 }

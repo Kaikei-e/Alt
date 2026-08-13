@@ -18,11 +18,11 @@ _ORPHANED_FAILURE_CODE = "orphaned_after_restart"
 
 
 class ReconcileOrphanedRunsUsecase:
-    """Fail every run left 'running' by a crashed/restarted process.
+    """Fail every unfinished run left behind by a crashed/restarted process.
 
-    Nothing else in this service revisits a 'running' report_runs row —
+    Nothing else in this service revisits an unfinished report_runs row —
     there is no poller and no automatic checkpoint-driven resume — so a run
-    orphaned by a crash mid-pipeline stays 'running' forever, wedging
+    orphaned by a crash stays 'pending' or 'running' forever, wedging
     has_active_run (delete_report guard) and GetReport.active_run for its
     report indefinitely. This usecase runs once at lifespan startup, before
     the service accepts traffic, and moves every such run to 'failed' so a
@@ -41,13 +41,15 @@ class ReconcileOrphanedRunsUsecase:
         orphaned = await self._job_queue.list_running_runs()
         for run in orphaned:
             logger.warning(
-                "Reconciling orphaned running run at startup",
+                "Reconciling orphaned run at startup",
                 run_id=str(run.run_id),
                 report_id=str(run.report_id),
+                run_status=run.run_status,
             )
             await self._job_queue.fail_run(
                 run.run_id,
                 _ORPHANED_FAILURE_CODE,
-                "Run was still 'running' at process startup — likely a crash or restart mid-pipeline.",
+                f"Run was still '{run.run_status}' at process startup — "
+                "likely a crash or restart before the pipeline finished.",
             )
         return len(orphaned)

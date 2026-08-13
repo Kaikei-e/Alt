@@ -212,11 +212,19 @@ func TestVerifySearchIndexerProviderContracts(t *testing.T) {
 		},
 	}
 
+	// FailIfNoPactsFound turns "the Broker held nothing for this provider" from
+	// a warning into a failure. Without it the verifier logs `Ignoring no pacts
+	// error` and reports a green verification of zero interactions, so a Broker
+	// that never received these pacts — or selectors that resolve to nothing —
+	// is indistinguishable from a provider that satisfies every consumer.
+	// The file-mode branch always supplies a pact, because the test skips
+	// earlier when none exists, so the flag can only fire against the Broker.
 	verifyRequest := provider.VerifyRequest{
-		Provider:        "search-indexer",
-		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
-		PactFiles:       pactFiles,
-		StateHandlers:   stateHandlers,
+		Provider:           "search-indexer",
+		ProviderBaseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
+		PactFiles:          pactFiles,
+		StateHandlers:      stateHandlers,
+		FailIfNoPactsFound: true,
 	}
 
 	if brokerURL := os.Getenv("PACT_BROKER_BASE_URL"); brokerURL != "" {

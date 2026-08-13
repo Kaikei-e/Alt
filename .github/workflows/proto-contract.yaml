@@ -384,8 +384,21 @@ jobs:
           # from that moment every selector for that consumer answers "no pacts
           # found" while the pact sits on the older version. Verified against a
           # local broker: two versions -> 0 pacts, one shared version -> 1.
+          #
+          # The branch is pinned to main rather than taken from the ref under
+          # test. This Broker is a job service container that starts empty on
+          # every run, so the branch recorded here is fixture data — the only
+          # thing that ever reads it back is the `MainBranch: true` selector in
+          # the provider steps below. A Broker assigns a pacticipant its main
+          # branch only when a version arrives on a branch named develop, main
+          # or master (docs.pact.io/pact_broker/branches), so publishing a pull
+          # request under its head ref left every pacticipant without one and
+          # every selector resolved to zero pacts. That is silent in any
+          # verifier that does not set FailIfNoPactsFound. The production
+          # Broker is published by scripts/pact-check.sh on the deploy host and
+          # is never reached from here.
           VERSION="${GITHUB_SHA}"
-          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          BRANCH=main
           curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-ruby-standalone/master/install.sh | PACT_CLI_VERSION=v2.4.10 bash
           export PATH="${PATH}:${PWD}/pact/bin"
           pact-broker publish collected-pacts \
@@ -557,9 +570,10 @@ jobs:
         run: |
           # Full SHA, matching PACT_PROVIDER_VERSION below — see the Go verify
           # job's publish step for why a pacticipant must not end up with two
-          # versions for one commit.
+          # versions for one commit, and for why the branch is pinned to main
+          # against a Broker that starts empty every run.
           VERSION="${GITHUB_SHA}"
-          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          BRANCH=main
           curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-ruby-standalone/master/install.sh | PACT_CLI_VERSION=v2.4.10 bash
           export PATH="${PATH}:${PWD}/pact/bin"
           pact-broker publish collected-pacts \

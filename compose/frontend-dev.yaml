@@ -76,6 +76,9 @@ services:
       - BACKEND_BASE_URL=http://mock-auth:4003
       - BACKEND_CONNECT_URL=http://mock-auth:4003
       - PUBLIC_API_BASE_URL=http://localhost:4003
+      # No knowledge-sovereign in this stack, so the admin client runs tokenless
+      # by explicit choice rather than by an unset secret.
+      - SOVEREIGN_ADMIN_AUTH=disabled
     depends_on:
       mock-auth:
         condition: service_healthy

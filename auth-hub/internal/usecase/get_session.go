@@ -34,6 +34,9 @@ func NewGetSession(v domain.SessionValidator, c domain.SessionCache, t domain.To
 }
 
 // Execute validates the session and generates a backend JWT token.
+// cookieValue is the bearer credential and is used only as the in-process cache
+// key; the session id that reaches the sid claim and the JSON response body is
+// the identity provider's stable session id.
 func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*SessionResult, error) {
 	var identity *domain.Identity
 	var tenantID string
@@ -48,7 +51,7 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 			TenantID:  cached.TenantID,
 			Email:     cached.Email,
 			Role:      cached.Role,
-			SessionID: cookieValue,
+			SessionID: cached.SessionID,
 		}
 		tenantID = cached.TenantID
 		role = cached.Role
@@ -62,7 +65,6 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 		}
 
 		identity = kratosIdentity
-		identity.SessionID = cookieValue
 		tenantID = identity.UserID // Single-tenant: tenant == user
 		identity.TenantID = tenantID
 		role = identity.Role
@@ -74,12 +76,13 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 			TenantID:  tenantID,
 			Email:     identity.Email,
 			Role:      identity.Role,
+			SessionID: identity.SessionID,
 			CreatedAt: identity.CreatedAt,
 		})
 	}
 
 	// Generate backend JWT
-	backendToken, err := uc.token.IssueBackendToken(identity, cookieValue)
+	backendToken, err := uc.token.IssueBackendToken(identity, identity.SessionID)
 	if err != nil {
 		uc.logger.ErrorContext(ctx, "failed to issue backend token", "error", err)
 		return nil, fmt.Errorf("%w: %w", domain.ErrTokenGeneration, err)
@@ -94,7 +97,7 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 		TenantID:     tenantID,
 		Email:        identity.Email,
 		Role:         role,
-		SessionID:    cookieValue,
+		SessionID:    identity.SessionID,
 		CreatedAt:    createdAt,
 		BackendToken: backendToken,
 	}, nil

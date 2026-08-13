@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"search-indexer/domain"
 	"search-indexer/tokenize"
+	"slices"
 	"testing"
 	"time"
 )
@@ -720,5 +721,160 @@ func TestFlushSynonyms_IndexingAloneDoesNotPUT(t *testing.T) {
 	}
 	if engine.synonymsCallCount != 1 {
 		t.Fatalf("RegisterSynonyms call count = %d after 2nd flush with nothing new, want 1", engine.synonymsCallCount)
+	}
+}
+
+// mockPerIDArticleRepo fails GetArticleByID for selected IDs only, which is
+// what a transient backend problem looks like from the batch's point of view:
+// most IDs resolve, a few return CodeInternal / CodeUnavailable while a
+// connection pool is exhausted or the database blips.
+type mockPerIDArticleRepo struct {
+	articles map[string]*domain.Article
+	errByID  map[string]error
+}
+
+func (m *mockPerIDArticleRepo) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
+	return nil, nil, "", errors.New("mockPerIDArticleRepo: GetArticlesWithTags not used by this test")
+}
+
+func (m *mockPerIDArticleRepo) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
+	return nil, nil, "", errors.New("mockPerIDArticleRepo: GetArticlesWithTagsForward not used by this test")
+}
+
+func (m *mockPerIDArticleRepo) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]string, *time.Time, error) {
+	return nil, nil, nil
+}
+
+func (m *mockPerIDArticleRepo) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
+	return nil, nil
+}
+
+func (m *mockPerIDArticleRepo) GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error) {
+	if err, ok := m.errByID[articleID]; ok {
+		return nil, err
+	}
+	if a, ok := m.articles[articleID]; ok {
+		return a, nil
+	}
+	return nil, domain.ErrArticleNotFound
+}
+
+// batchOfArticles builds n articles named art-0..art-(n-1).
+func batchOfArticles(t *testing.T, n int) (map[string]*domain.Article, []string) {
+	t.Helper()
+	now := time.Now()
+	articles := make(map[string]*domain.Article, n)
+	ids := make([]string, 0, n)
+	for i := range n {
+		id := fmt.Sprintf("art-%d", i)
+		a, err := domain.NewArticle(id, "Title", "Content", nil, now.Add(time.Duration(i)*time.Second), "user")
+		if err != nil {
+			t.Fatalf("NewArticle(%s): %v", id, err)
+		}
+		articles[id] = a
+		ids = append(ids, id)
+	}
+	return articles, ids
+}
+
+// TestExecuteBatchArticles_PartialFailureIndexesHealthyArticles covers the
+// second half of the batch-indexing HIGH finding. Skipping deleted articles
+// fixed the not-found case, but any other per-article error still aborted the
+// whole batch: 10 events in, 1 transient backend failure, 0 articles indexed
+// and 0 messages ACKed, so all 10 burned a delivery attempt and eventually
+// landed in a DLQ nothing reads. Now that alt-data-hub correctly reports
+// pool exhaustion / database blips as CodeInternal / CodeUnavailable instead
+// of collapsing them into CodeNotFound, this is the common failure shape, so
+// the batch must index and report the 9 healthy articles and isolate the
+// failure to the one ID that actually failed.
+func TestExecuteBatchArticles_PartialFailureIndexesHealthyArticles(t *testing.T) {
+	articles, ids := batchOfArticles(t, 10)
+	transient := &domain.RepositoryError{Op: "GetArticleByID", Err: errors.New("connection pool exhausted")}
+	delete(articles, "art-4")
+	repo := &mockPerIDArticleRepo{articles: articles, errByID: map[string]error{"art-4": transient}}
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(repo, engine, nil)
+
+	result, err := u.ExecuteBatchArticles(context.Background(), ids)
+
+	if err == nil {
+		t.Fatal("ExecuteBatchArticles() error = nil, want non-nil: the caller must be able to see that one article failed")
+	}
+	if !errors.Is(err, transient) {
+		t.Errorf("ExecuteBatchArticles() error = %v, want it to wrap the underlying per-article failure", err)
+	}
+	if result == nil {
+		t.Fatal("ExecuteBatchArticles() result = nil on partial failure; the caller cannot ACK the 9 durable articles without it")
+	}
+	if result.IndexedCount != 9 {
+		t.Errorf("IndexedCount = %d, want 9 (the healthy articles must not be dropped with the failing one)", result.IndexedCount)
+	}
+	if len(engine.indexedDocs) != 9 {
+		t.Errorf("indexed docs = %d, want 9", len(engine.indexedDocs))
+	}
+	if !slices.Equal(result.FailedIDs, []string{"art-4"}) {
+		t.Errorf("FailedIDs = %v, want [art-4]", result.FailedIDs)
+	}
+	if len(result.IndexedIDs) != 9 || slices.Contains(result.IndexedIDs, "art-4") {
+		t.Errorf("IndexedIDs = %v, want the 9 healthy IDs without art-4", result.IndexedIDs)
+	}
+	if len(result.SkippedIDs) != 0 {
+		t.Errorf("SkippedIDs = %v, want empty (a transient failure is not a skip)", result.SkippedIDs)
+	}
+}
+
+// TestExecuteBatchArticles_ReportsSkippedSeparatelyFromFailed keeps the two
+// terminal-vs-retryable outcomes distinguishable for the caller: a deleted
+// article is safe to ACK forever, a transient failure must be retried.
+func TestExecuteBatchArticles_ReportsSkippedSeparatelyFromFailed(t *testing.T) {
+	articles, _ := batchOfArticles(t, 3)
+	transient := errors.New("upstream unavailable")
+	repo := &mockPerIDArticleRepo{
+		articles: articles,
+		errByID:  map[string]error{"art-2": transient},
+	}
+	engine := &mockSearchEngineForIndexing{}
+	u := NewIndexArticlesUsecase(repo, engine, nil)
+
+	result, err := u.ExecuteBatchArticles(context.Background(), []string{"art-0", "deleted-id", "art-2"})
+	if err == nil {
+		t.Fatal("ExecuteBatchArticles() error = nil, want non-nil for the transient failure")
+	}
+	if result == nil {
+		t.Fatal("ExecuteBatchArticles() result = nil on partial failure; the caller cannot tell a terminal skip from a retryable failure")
+	}
+	if !slices.Equal(result.IndexedIDs, []string{"art-0"}) {
+		t.Errorf("IndexedIDs = %v, want [art-0]", result.IndexedIDs)
+	}
+	if !slices.Equal(result.SkippedIDs, []string{"deleted-id"}) {
+		t.Errorf("SkippedIDs = %v, want [deleted-id]", result.SkippedIDs)
+	}
+	if !slices.Equal(result.FailedIDs, []string{"art-2"}) {
+		t.Errorf("FailedIDs = %v, want [art-2]", result.FailedIDs)
+	}
+}
+
+// TestExecuteBatchArticles_IndexWriteFailureFailsEveryFetchedID pins the
+// other direction: IndexDocuments is one Meilisearch write covering the whole
+// batch, so when it fails nothing in it is durable and every fetched ID must
+// be reported as failed (never as indexed).
+func TestExecuteBatchArticles_IndexWriteFailureFailsEveryFetchedID(t *testing.T) {
+	articles, ids := batchOfArticles(t, 3)
+	repo := &mockPerIDArticleRepo{articles: articles}
+	engine := &mockSearchEngineForIndexing{err: errors.New("meilisearch unreachable")}
+	u := NewIndexArticlesUsecase(repo, engine, nil)
+
+	result, err := u.ExecuteBatchArticles(context.Background(), ids)
+	if err == nil {
+		t.Fatal("ExecuteBatchArticles() error = nil, want non-nil when the index write fails")
+	}
+	if result == nil {
+		t.Fatal("ExecuteBatchArticles() result = nil; the caller cannot tell which IDs to retry")
+	}
+	if result.IndexedCount != 0 || len(result.IndexedIDs) != 0 {
+		t.Errorf("IndexedCount = %d, IndexedIDs = %v, want 0 / empty when nothing was durably written", result.IndexedCount, result.IndexedIDs)
+	}
+	if !slices.Equal(result.FailedIDs, ids) {
+		t.Errorf("FailedIDs = %v, want all fetched IDs %v", result.FailedIDs, ids)
 	}
 }

@@ -53,6 +53,9 @@ class PgRunRepository:
     ) -> None:
         await self._dao.mark_run_failure(run_id, status, error_message)
 
+    async def fail_orphaned_runs(self, error_message: str) -> int:
+        return await self._dao.fail_orphaned_runs(error_message)
+
     async def insert_clusters(
         self, run_id: int, clusters: list[PersistedCluster]
     ) -> None:

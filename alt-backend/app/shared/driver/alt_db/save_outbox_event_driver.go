@@ -35,7 +35,44 @@ type OutboxEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// FetchAndLockPendingOutboxEvents retrieves pending events within a transaction,
+// outboxClaimLease is how long a claim owns a row before another worker may
+// take it back. It has to exceed the outbox-worker job's own timeout plus the
+// detached status write that follows it, or a batch that is merely slow — ten
+// heavy articles through the local embedder — would be stolen from a live
+// worker and delivered twice.
+const outboxClaimLease = 15 * time.Minute
+
+// claimOutboxBatchQuery selects the rows this worker is about to own.
+//
+// Fresh work and crash reclaim are the same predicate, as in push_deliveries:
+// a PROCESSING row whose lease has elapsed is due again, so a harvester killed
+// mid-batch recovers on the next tick instead of stranding its rows forever.
+// There is no separate reclaim sweeper, and therefore none to forget to
+// schedule. Terminal rows (PROCESSED, FAILED) never match.
+//
+// The order stays created_at rather than the lease horizon: an outbox delivers
+// oldest event first, and a reclaimed row is older than everything queued
+// behind it.
+const claimOutboxBatchQuery = `
+	SELECT id, event_type, payload, status, created_at
+	FROM outbox_events
+	WHERE status IN ('PENDING', 'PROCESSING')
+	  AND next_attempt_at <= clock_timestamp()
+	ORDER BY created_at ASC
+	LIMIT $1
+	FOR UPDATE SKIP LOCKED
+`
+
+// takeOutboxLeaseQuery marks a selected row claimed and pushes its lease
+// horizon out by the lease window.
+const takeOutboxLeaseQuery = `
+	UPDATE outbox_events
+	SET status = 'PROCESSING',
+	    next_attempt_at = clock_timestamp() + make_interval(secs => $2::double precision)
+	WHERE id = $1
+`
+
+// FetchAndLockPendingOutboxEvents retrieves due events within a transaction,
 // locks them with FOR UPDATE SKIP LOCKED, and atomically sets status to PROCESSING.
 // This prevents multiple workers from processing the same event.
 func (r *OutboxRepository) FetchAndLockPendingOutboxEvents(ctx context.Context, limit int) ([]OutboxEvent, error) {
@@ -45,14 +82,7 @@ func (r *OutboxRepository) FetchAndLockPendingOutboxEvents(ctx context.Context, 
 	}
 	defer tx.Rollback(ctx)
 
-	rows, err := tx.Query(ctx, `
-		SELECT id, event_type, payload, status, created_at
-		FROM outbox_events
-		WHERE status = 'PENDING'
-		ORDER BY created_at ASC
-		LIMIT $1
-		FOR UPDATE SKIP LOCKED
-	`, limit)
+	rows, err := tx.Query(ctx, claimOutboxBatchQuery, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch pending outbox events: %w", err)
 	}
@@ -75,7 +105,7 @@ func (r *OutboxRepository) FetchAndLockPendingOutboxEvents(ctx context.Context, 
 
 	// Atomically mark all selected events as PROCESSING within the same transaction
 	for _, e := range events {
-		if _, err := tx.Exec(ctx, `UPDATE outbox_events SET status = 'PROCESSING' WHERE id = $1`, e.ID); err != nil {
+		if _, err := tx.Exec(ctx, takeOutboxLeaseQuery, e.ID, outboxClaimLease.Seconds()); err != nil {
 			return nil, fmt.Errorf("failed to mark event %s as PROCESSING: %w", e.ID, err)
 		}
 	}
@@ -94,9 +124,15 @@ func (r *OutboxRepository) UpdateOutboxEventStatus(ctx context.Context, id strin
 		processedAt = time.Now()
 	}
 
+	// A release back to PENDING drops the lease with it: the worker releases a
+	// row so the next tick retries it, and leaving the claim's horizon in place
+	// would make every retry wait out the whole lease window instead.
 	query := `
 		UPDATE outbox_events
-		SET status = $1, processed_at = $2, error_message = $3
+		SET status = $1,
+		    processed_at = $2,
+		    error_message = $3,
+		    next_attempt_at = CASE WHEN $1 = 'PENDING' THEN clock_timestamp() ELSE next_attempt_at END
 		WHERE id = $4
 	`
 

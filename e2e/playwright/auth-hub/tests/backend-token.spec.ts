@@ -105,8 +105,12 @@ test.describe("backend token", () => {
 		expect(stringClaim(decoded, "role"), "role").toBe("user");
 
 		// `sid` is the session binding: it is what lets alt-backend tie an action
-		// back to a specific Kratos session rather than only to a user.
-		expect(stringClaim(decoded, "sid"), "sid").toBe(session.cookie);
+		// back to a specific Kratos session rather than only to a user. It must be
+		// Kratos's session UUID and never the `ory_kratos_session` cookie: a JWT
+		// payload is base64url, not encrypted, so a cookie there would make one
+		// captured 30-minute token equivalent to the 720h session credential.
+		expect(stringClaim(decoded, "sid"), "sid").toBe(session.kratosSessionId);
+		expect(stringClaim(decoded, "sid"), "sid").not.toBe(session.cookie);
 	});
 
 	test("expires exactly BACKEND_TOKEN_TTL after issue @contract", async ({ hub, session }) => {
@@ -179,6 +183,6 @@ test.describe("backend token", () => {
 		expect(stringClaim(mine, "sub")).not.toBe(stringClaim(theirs, "sub"));
 		expect(stringClaim(theirs, "sub")).toBe(other.userId);
 		expect(stringClaim(theirs, "email")).toBe(other.email);
-		expect(stringClaim(theirs, "sid")).toBe(other.cookie);
+		expect(stringClaim(theirs, "sid")).toBe(other.kratosSessionId);
 	});
 });

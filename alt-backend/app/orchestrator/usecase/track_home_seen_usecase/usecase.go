@@ -7,6 +7,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -45,6 +46,11 @@ func (u *TrackHomeSeenUsecase) Execute(ctx context.Context, userID uuid.UUID, te
 	// 5-minute bucket for deduplication
 	bucket := now.Truncate(5 * time.Minute).Format(time.RFC3339)
 
+	// Impression events have no outbox and no DLQ, so a dropped append is lost
+	// for good. Every item is still attempted, but the failures travel back to
+	// the caller so the RPC fails and the persisted/failed counters stay honest.
+	var failures []error
+
 	for _, itemKey := range itemKeys {
 		dedupeKey := fmt.Sprintf("%s:%s:seen:%s", userID, itemKey, bucket)
 		payload, _ := json.Marshal(map[string]string{
@@ -65,9 +71,9 @@ func (u *TrackHomeSeenUsecase) Execute(ctx context.Context, userID uuid.UUID, te
 		if err := u.userEventPort.AppendKnowledgeUserEvent(ctx, event); err != nil {
 			logger.Logger.ErrorContext(ctx, "failed to append seen event",
 				"error", err, "item_key", itemKey)
-			// Continue with other items
+			failures = append(failures, fmt.Errorf("append seen event for %s: %w", itemKey, err))
 		}
 	}
 
-	return nil
+	return errors.Join(failures...)
 }
