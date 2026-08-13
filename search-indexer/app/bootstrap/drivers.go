@@ -81,6 +81,40 @@ func readSecretEnv(key string) string {
 	return os.Getenv(key)
 }
 
+// meilisearchHTTPClient builds the client every meilisearch-go call runs on.
+//
+// The SDK's default client sets no response timeout: the 30s in its
+// baseTransport is the net.Dialer's dial budget, which a saturated
+// Meilisearch passes -- it accepts the connection and then never answers. A
+// call that carries no context of its own therefore hangs forever, and the
+// SDK's non-context methods (Health, FetchInfo, ...) bake context.Background()
+// in, so no caller can rescue them. At startup that means the process never
+// reaches ListenAndServe and :9300 / :9301 never bind at all.
+//
+// http.DefaultTransport carries the same proxy, dial timeout, keep-alive,
+// idle-pool, TLS-handshake and expect-continue settings as the SDK's own
+// baseTransport; only the per-host idle cap differs, so it is pinned to
+// match.
+func meilisearchHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = transport.MaxIdleConns
+	return &http.Client{
+		Timeout:   config.MeiliTimeout,
+		Transport: transport,
+	}
+}
+
+// probeMeilisearchHealth bounds the startup health probe twice over: by the
+// caller's context, so SIGTERM during the retry loop is honoured, and by
+// MeiliTimeout, so a context without a deadline (Run passes the bare signal
+// context) still cannot wait forever.
+func probeMeilisearchHealth(ctx context.Context, client meilisearch.ServiceManager) error {
+	healthCtx, cancel := context.WithTimeout(ctx, config.MeiliTimeout)
+	defer cancel()
+	_, err := client.HealthWithContext(healthCtx)
+	return err
+}
+
 // initMeilisearchClients initializes one admin client (required) and,
 // if configured, a separate search-only client for read operations (L-001).
 // Operators can provision the search key via MEILISEARCH_SEARCH_API_KEY or
@@ -103,9 +137,12 @@ func initMeilisearchClients(ctx context.Context) (admin meilisearch.ServiceManag
 	)
 
 	for i := range maxRetries {
-		admin = meilisearch.New(meilisearchHost, meilisearch.WithAPIKey(adminKey))
+		admin = meilisearch.New(meilisearchHost,
+			meilisearch.WithAPIKey(adminKey),
+			meilisearch.WithCustomClient(meilisearchHTTPClient()),
+		)
 
-		if _, healthErr := admin.Health(); healthErr != nil {
+		if healthErr := probeMeilisearchHealth(ctx, admin); healthErr != nil {
 			logger.Logger.Warn("Meilisearch not ready, retrying", "attempt", i+1, "max", maxRetries, "err", healthErr)
 			if i < maxRetries-1 {
 				if err := sleepOrDone(ctx, retryDelay); err != nil {
@@ -121,7 +158,10 @@ func initMeilisearchClients(ctx context.Context) (admin meilisearch.ServiceManag
 	}
 
 	if searchKey != "" && searchKey != adminKey {
-		search = meilisearch.New(meilisearchHost, meilisearch.WithAPIKey(searchKey))
+		search = meilisearch.New(meilisearchHost,
+			meilisearch.WithAPIKey(searchKey),
+			meilisearch.WithCustomClient(meilisearchHTTPClient()),
+		)
 	}
 
 	return admin, search, nil

@@ -745,10 +745,21 @@ func (d *MeilisearchDriver) PruneTaskHistory(ctx context.Context, olderThan time
 
 	waitCtx, cancel := context.WithTimeout(ctx, pruneTaskWaitTimeout)
 	defer cancel()
-	if _, err := d.client.WaitForTaskWithContext(waitCtx, task.TaskUID, d.taskPollInterval); err != nil {
+	// WaitForTaskWithContext reports a nil error for every terminal status,
+	// TaskStatusFailed included, so a taskDeletion Meilisearch rejected reads
+	// as a completed prune unless the status is inspected here -- and a prune
+	// that silently never happens is exactly how the task database refills.
+	pruned, err := d.client.WaitForTaskWithContext(waitCtx, task.TaskUID, d.taskPollInterval)
+	if err != nil {
 		return &DriverError{
 			Op:  "PruneTaskHistory",
 			Err: fmt.Errorf("failed to wait for task deletion: %w", err),
+		}
+	}
+	if pruned != nil && pruned.Status == meilisearch.TaskStatusFailed {
+		return &DriverError{
+			Op:  "PruneTaskHistory",
+			Err: fmt.Errorf("meilisearch task %d failed: %s (code=%s)", pruned.UID, pruned.Error.Message, pruned.Error.Code),
 		}
 	}
 
