@@ -19,6 +19,7 @@ import (
 	datahubv1 "search-indexer/gen/proto/services/datahub/v1"
 	"search-indexer/gen/proto/services/datahub/v1/datahubv1connect"
 
+	"search-indexer/domain"
 	"search-indexer/driver"
 )
 
@@ -190,6 +191,13 @@ func (c *Client) GetArticleByID(ctx context.Context, articleID string) (*driver.
 
 	resp, err := c.client.GetArticleByID(ctx, req)
 	if err != nil {
+		// alt-data-hub reports a missing (or soft-deleted) row as
+		// connect.CodeNotFound, never as an empty response, so this is the
+		// only place the batch indexer's skip-and-continue sentinel can be
+		// produced.
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return nil, fmt.Errorf("GetArticleByID %s: %w", articleID, domain.ErrArticleNotFound)
+		}
 		return nil, fmt.Errorf("GetArticleByID: %w", err)
 	}
 

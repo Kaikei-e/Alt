@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"search-indexer/domain"
 	"search-indexer/port"
 	"search-indexer/usecase"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +21,9 @@ import (
 type mockArticleRepo struct {
 	articles map[string]*domain.Article
 	err      error
+	// errByID fails only the listed article IDs, modelling a transient
+	// backend problem that affects part of a batch rather than all of it.
+	errByID map[string]error
 }
 
 func (m *mockArticleRepo) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
@@ -40,6 +45,9 @@ func (m *mockArticleRepo) GetLatestCreatedAt(ctx context.Context) (*time.Time, e
 func (m *mockArticleRepo) GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error) {
 	if m.err != nil {
 		return nil, m.err
+	}
+	if err, ok := m.errByID[articleID]; ok {
+		return nil, err
 	}
 	if a, ok := m.articles[articleID]; ok {
 		return a, nil
@@ -453,5 +461,154 @@ func TestIndexEventHandler_HandleEvent_UnknownType_AcksImmediately(t *testing.T)
 
 	if got := acker.ackedIDs(); len(got) != 1 || got[0] != "3-0" {
 		t.Fatalf("acked IDs = %v, want [\"3-0\"] immediately for an unknown event type", got)
+	}
+}
+
+// TestIndexEventHandler_Flush_PartialFailureAcksOnlyIndexedMessages is the
+// consumer-side half of the batch-indexing HIGH finding. Each Redis Stream
+// message names exactly one article, so ACK granularity can follow indexing
+// granularity: one transient backend failure inside a 10-message batch must
+// cost exactly one un-ACKed message, not ten. Before this, ExecuteBatchArticles
+// aborted on the first non-not-found error and flush() ACKed nothing, so all
+// ten messages were redelivered, all ten burned a delivery attempt against
+// MaxDeliveries, and a backend outage lasting a few reaper intervals pushed
+// perfectly healthy messages into a DLQ no code in this repository reads.
+func TestIndexEventHandler_Flush_PartialFailureAcksOnlyIndexedMessages(t *testing.T) {
+	now := time.Now()
+	articles := make(map[string]*domain.Article, batchFlushSize)
+	for i := range batchFlushSize {
+		id := fmt.Sprintf("art-%d", i)
+		a, err := domain.NewArticle(id, "Title", "Content", nil, now.Add(time.Duration(i)*time.Second), "user")
+		if err != nil {
+			t.Fatalf("NewArticle(%s): %v", id, err)
+		}
+		articles[id] = a
+	}
+	delete(articles, "art-4")
+
+	repo := &mockArticleRepo{
+		articles: articles,
+		errByID: map[string]error{
+			"art-4": &domain.RepositoryError{Op: "GetArticleByID", Err: errors.New("connection pool exhausted")},
+		},
+	}
+	se := &mockSearchEngine{}
+	uc := usecase.NewIndexArticlesUsecase(repo, se, (*tokenizer.Tokenizer)(nil))
+	handler := NewIndexEventHandler(uc, slog.Default())
+	defer handler.Stop()
+
+	acker := &fakeAcker{}
+	handler.SetAcker(acker)
+
+	for i := range batchFlushSize {
+		payload, _ := json.Marshal(ArticleCreatedPayload{ArticleID: fmt.Sprintf("art-%d", i)})
+		if err := handler.HandleEvent(context.Background(), Event{
+			EventType: "ArticleCreated",
+			EventID:   fmt.Sprintf("evt-%d", i),
+			MessageID: fmt.Sprintf("%d-0", i),
+			Payload:   payload,
+		}); err != nil {
+			t.Fatalf("HandleEvent(%d) error = %v", i, err)
+		}
+	}
+
+	handler.Stop()
+
+	acked := acker.ackedIDs()
+	slices.Sort(acked)
+	want := []string{"0-0", "1-0", "2-0", "3-0", "5-0", "6-0", "7-0", "8-0", "9-0"}
+	if !slices.Equal(acked, want) {
+		t.Fatalf("acked IDs = %v, want %v (the 9 healthy messages ACKed, only the failing article's message left pending)", acked, want)
+	}
+	if len(se.indexedDocs) != batchFlushSize-1 {
+		t.Fatalf("indexed docs = %d, want %d (healthy articles must not be dropped alongside the failing one)", len(se.indexedDocs), batchFlushSize-1)
+	}
+}
+
+// TestIndexEventHandler_Flush_AcksMessagesForDeletedArticles covers the
+// terminal half of the same split: an article that no longer exists upstream
+// can never be indexed, so leaving its message un-ACKed would just burn
+// delivery attempts until the reaper routed it to the DLQ. It must be ACKed
+// exactly like a successfully indexed one.
+func TestIndexEventHandler_Flush_AcksMessagesForDeletedArticles(t *testing.T) {
+	now := time.Now()
+	kept, err := domain.NewArticle("art-kept", "Title", "Content", nil, now, "user")
+	if err != nil {
+		t.Fatalf("NewArticle: %v", err)
+	}
+	repo := &mockArticleRepo{
+		articles: map[string]*domain.Article{"art-kept": kept},
+		errByID:  map[string]error{"art-deleted": domain.ErrArticleNotFound},
+	}
+	se := &mockSearchEngine{}
+	uc := usecase.NewIndexArticlesUsecase(repo, se, (*tokenizer.Tokenizer)(nil))
+	handler := NewIndexEventHandler(uc, slog.Default())
+	defer handler.Stop()
+
+	acker := &fakeAcker{}
+	handler.SetAcker(acker)
+
+	for i, id := range []string{"art-kept", "art-deleted"} {
+		payload, _ := json.Marshal(ArticleCreatedPayload{ArticleID: id})
+		if err := handler.HandleEvent(context.Background(), Event{
+			EventType: "ArticleCreated",
+			EventID:   "evt-" + id,
+			MessageID: fmt.Sprintf("%d-0", i),
+			Payload:   payload,
+		}); err != nil {
+			t.Fatalf("HandleEvent(%s) error = %v", id, err)
+		}
+	}
+
+	handler.Stop()
+
+	acked := acker.ackedIDs()
+	slices.Sort(acked)
+	if !slices.Equal(acked, []string{"0-0", "1-0"}) {
+		t.Fatalf("acked IDs = %v, want [0-0 1-0]: a deleted article is terminal, not retryable", acked)
+	}
+}
+
+// TestIndexEventHandler_Flush_AcksEveryMessageNamingASucceededArticle guards
+// the dedup path: flush() collapses duplicate article IDs into one usecase
+// call, so the per-article outcome must fan back out to every message that
+// named it. Missing that would leave duplicate messages pending forever and
+// eventually DLQ them despite the article being indexed.
+func TestIndexEventHandler_Flush_AcksEveryMessageNamingASucceededArticle(t *testing.T) {
+	now := time.Now()
+	article, err := domain.NewArticle("dup-1", "Title", "Content", nil, now, "user")
+	if err != nil {
+		t.Fatalf("NewArticle: %v", err)
+	}
+	repo := &mockArticleRepo{articles: map[string]*domain.Article{"dup-1": article}}
+	se := &mockSearchEngine{}
+	uc := usecase.NewIndexArticlesUsecase(repo, se, (*tokenizer.Tokenizer)(nil))
+	handler := NewIndexEventHandler(uc, slog.Default())
+	defer handler.Stop()
+
+	acker := &fakeAcker{}
+	handler.SetAcker(acker)
+
+	for i := range 3 {
+		payload, _ := json.Marshal(ArticleCreatedPayload{ArticleID: "dup-1"})
+		if err := handler.HandleEvent(context.Background(), Event{
+			EventType: "ArticleCreated",
+			EventID:   "evt-dup",
+			MessageID: fmt.Sprintf("%d-0", i),
+			Payload:   payload,
+		}); err != nil {
+			t.Fatalf("HandleEvent(%d) error = %v", i, err)
+		}
+	}
+
+	handler.Stop()
+
+	acked := acker.ackedIDs()
+	slices.Sort(acked)
+	if !slices.Equal(acked, []string{"0-0", "1-0", "2-0"}) {
+		t.Fatalf("acked IDs = %v, want all three messages naming the indexed article", acked)
+	}
+	if len(se.indexedDocs) != 1 {
+		t.Fatalf("indexed docs = %d, want 1 (dedup still applies to the write)", len(se.indexedDocs))
 	}
 }

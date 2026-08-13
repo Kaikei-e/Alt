@@ -197,11 +197,16 @@ func (h *IndexEventHandler) enqueue(articleID, messageID string) {
 }
 
 // flush sends all buffered article IDs to the usecase in one batch call and
-// ACKs their source message IDs only after the write durably succeeds. On
-// failure the message IDs are left un-ACKed -- the reclaim loop's
-// XAUTOCLAIM sweep redelivers them for a retry (or routes them to the DLQ
-// once MaxDeliveries is exceeded), per
-// .claude/rules/event-stream-consumer.md.
+// ACKs their source message IDs only after the write durably succeeds. ACK
+// granularity follows the outcome of the individual article each message
+// names, not the batch as a whole: every event carries exactly one
+// article_id, so one failing article costs exactly one un-ACKed message. The
+// failed ones stay in the PEL for the reclaim loop's XAUTOCLAIM sweep to
+// redeliver (or to route to the DLQ once MaxDeliveries is exceeded), per
+// .claude/rules/event-stream-consumer.md. Batch-wide withholding used to
+// mean a single transient backend error made all ten messages in a batch
+// burn a delivery attempt, so a few minutes of backend trouble DLQ'd healthy
+// articles that had never actually failed.
 func (h *IndexEventHandler) flush(ctx context.Context) {
 	h.mu.Lock()
 	if len(h.buffer) == 0 {
@@ -216,33 +221,64 @@ func (h *IndexEventHandler) flush(ctx context.Context) {
 	}
 	h.mu.Unlock()
 
-	// Deduplicate article IDs for the usecase call, but keep every message
-	// ID -- including duplicates -- so all of them get ACKed once the batch
-	// write is durable.
-	seen := make(map[string]struct{}, len(items))
+	// Deduplicate article IDs for the usecase call while keeping the reverse
+	// index from article ID to every message that named it -- duplicates
+	// included -- so one article's outcome fans back out to all of them.
+	messagesByArticle := make(map[string][]string, len(items))
 	unique := make([]string, 0, len(items))
-	messageIDs := make([]string, 0, len(items))
 	for _, item := range items {
-		if item.messageID != "" {
-			messageIDs = append(messageIDs, item.messageID)
-		}
-		if _, ok := seen[item.articleID]; !ok {
-			seen[item.articleID] = struct{}{}
+		if _, ok := messagesByArticle[item.articleID]; !ok {
 			unique = append(unique, item.articleID)
+			messagesByArticle[item.articleID] = nil
+		}
+		if item.messageID != "" {
+			messagesByArticle[item.articleID] = append(messagesByArticle[item.articleID], item.messageID)
 		}
 	}
 
 	h.logger.Info("flushing batch", "count", len(unique))
 
 	result, err := h.indexUsecase.ExecuteBatchArticles(ctx, unique)
-	if err != nil {
-		h.logger.Error("batch indexing failed", "count", len(unique), "error", err)
+	if result == nil {
+		// ExecuteBatchArticles documents a non-nil result even on error. If
+		// that ever stops holding, ACK nothing: redelivering the whole batch
+		// is recoverable, ACKing an unwritten article is not.
+		h.logger.Error("batch indexing returned no result; leaving every message un-ACKed for redelivery",
+			"count", len(unique), "error", err)
 		return
 	}
 
-	h.logger.Info("batch indexed successfully", "indexed", result.IndexedCount)
+	if err != nil {
+		// Partial success stays visibly partial: the failed article IDs are
+		// named here and their messages stay in the PEL, so "9 of 10 worked"
+		// never reads as "the batch worked".
+		h.logger.Error("batch indexing failed for part of the batch; leaving those messages un-ACKed for redelivery",
+			"batch_size", len(unique),
+			"indexed", len(result.IndexedIDs),
+			"skipped_deleted", len(result.SkippedIDs),
+			"failed", len(result.FailedIDs),
+			"failed_article_ids", result.FailedIDs,
+			"error", err,
+		)
+	} else {
+		h.logger.Info("batch indexed successfully",
+			"indexed", result.IndexedCount,
+			"skipped_deleted", len(result.SkippedIDs),
+		)
+	}
 
-	h.ack(ctx, messageIDs)
+	// ACK the messages whose article is durably indexed, plus those naming an
+	// article that no longer exists upstream -- that outcome is terminal, and
+	// withholding the ACK would only burn delivery attempts until the reaper
+	// mistook it for a poison message.
+	ackable := make([]string, 0, len(items))
+	for _, id := range result.IndexedIDs {
+		ackable = append(ackable, messagesByArticle[id]...)
+	}
+	for _, id := range result.SkippedIDs {
+		ackable = append(ackable, messagesByArticle[id]...)
+	}
+	h.ack(ctx, ackable)
 
 	// Signal flush completion (non-blocking for tests)
 	select {

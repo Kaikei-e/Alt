@@ -3,12 +3,14 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"search-indexer/domain"
 	"search-indexer/port"
 	"search-indexer/tokenize"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +57,16 @@ type IndexResult struct {
 	Phase           IndexPhase
 	BackfillDone    bool
 	IncrementalMark *time.Time
+
+	// IndexedIDs, SkippedIDs and FailedIDs partition the article IDs handed
+	// to ExecuteBatchArticles by outcome, so an event-driven caller can ACK
+	// per message instead of per batch. IndexedIDs are durably written,
+	// SkippedIDs no longer exist upstream (terminal — retrying can only
+	// fail again), and FailedIDs hit a retryable error and must be left
+	// un-ACKed for redelivery. Only ExecuteBatchArticles populates them.
+	IndexedIDs []string
+	SkippedIDs []string
+	FailedIDs  []string
 }
 
 func NewIndexArticlesUsecase(articleRepo port.ArticleRepository, searchEngine port.SearchEngine, tokenizer *tokenizer.Tokenizer) *IndexArticlesUsecase {
@@ -197,40 +209,120 @@ func (u *IndexArticlesUsecase) IndexDocumentsDirectly(ctx context.Context, docs 
 	return &IndexResult{IndexedCount: len(docs)}, nil
 }
 
-// ExecuteBatchArticles indexes multiple articles by their IDs in a single batch.
+// BatchArticleFailure pairs an article ID with the error that kept it out of
+// the batch's index write.
+type BatchArticleFailure struct {
+	ArticleID string
+	Err       error
+}
+
+// BatchIndexError reports that some — possibly all — of a batch's article IDs
+// could not be indexed. ExecuteBatchArticles returns it alongside a non-nil
+// IndexResult so a partial success stays visibly partial: the caller can act
+// on the durable articles via IndexResult.IndexedIDs while this error keeps
+// the failures from being mistaken for success.
+type BatchIndexError struct {
+	// Failures lists every article ID that failed and why.
+	Failures []BatchArticleFailure
+	// Total is how many article IDs the batch was asked to index.
+	Total int
+}
+
+func (e *BatchIndexError) Error() string {
+	const listed = 3
+	var b strings.Builder
+	fmt.Fprintf(&b, "batch index: %d of %d articles failed", len(e.Failures), e.Total)
+	for i, f := range e.Failures {
+		if i == listed {
+			fmt.Fprintf(&b, "; +%d more", len(e.Failures)-listed)
+			break
+		}
+		sep := "; "
+		if i == 0 {
+			sep = ": "
+		}
+		fmt.Fprintf(&b, "%s%s: %v", sep, f.ArticleID, f.Err)
+	}
+	return b.String()
+}
+
+// Unwrap exposes every underlying failure so callers can classify the causes
+// with errors.Is / errors.As instead of matching on the message text.
+func (e *BatchIndexError) Unwrap() []error {
+	errs := make([]error, 0, len(e.Failures))
+	for _, f := range e.Failures {
+		errs = append(errs, f.Err)
+	}
+	return errs
+}
+
+// ExecuteBatchArticles indexes multiple articles by their IDs in a single
+// batch, partitioning them by outcome instead of collapsing the batch on the
+// first problem. Each article ID reaches this call from its own Redis Stream
+// message, so an all-or-nothing batch made one bad article cost every other
+// message in the batch a delivery attempt: nothing was indexed, nothing was
+// ACKed, and a backend outage lasting a few reaper intervals pushed healthy
+// messages past MaxDeliveries into the DLQ. Now the healthy articles are
+// written and reported in IndexedIDs, deleted ones land in SkippedIDs
+// (terminal — the caller may ACK them), and only genuinely failed IDs land in
+// FailedIDs, paired with a non-nil *BatchIndexError so the partial failure
+// cannot read as success.
+//
+// The returned *IndexResult is always non-nil, including when the error is.
 func (u *IndexArticlesUsecase) ExecuteBatchArticles(ctx context.Context, articleIDs []string) (*IndexResult, error) {
+	result := &IndexResult{}
 	if len(articleIDs) == 0 {
-		return &IndexResult{IndexedCount: 0}, nil
+		return result, nil
 	}
 
-	var docs []domain.SearchDocument
+	docs := make([]domain.SearchDocument, 0, len(articleIDs))
+	fetched := make([]string, 0, len(articleIDs))
+	var failures []BatchArticleFailure
+
 	for _, id := range articleIDs {
 		article, err := u.articleRepo.GetArticleByID(ctx, id)
 		if errors.Is(err, domain.ErrArticleNotFound) {
 			// The article was deleted (or the ID was never valid) between
-			// the event being published and this batch running. Skip just
-			// this ID instead of failing the whole batch — a hard error
-			// here would drop every other, already-durable article in the
-			// same batch.
+			// the event being published and this batch running. Terminal:
+			// a retry can only produce the same answer.
+			result.SkippedIDs = append(result.SkippedIDs, id)
 			continue
 		}
 		if err != nil {
-			return nil, err
+			// Retryable: alt-data-hub reports pool exhaustion and database
+			// blips as CodeInternal / CodeUnavailable rather than folding
+			// them into CodeNotFound, so this branch is where a transient
+			// outage shows up. Isolate it to this ID.
+			failures = append(failures, BatchArticleFailure{ArticleID: id, Err: err})
+			continue
 		}
 		docs = append(docs, domain.NewSearchDocument(article))
+		fetched = append(fetched, id)
 	}
 
-	if len(docs) == 0 {
-		return &IndexResult{IndexedCount: 0}, nil
+	if len(docs) > 0 {
+		if err := u.searchEngine.IndexDocuments(ctx, docs); err != nil {
+			// One write covers the whole batch, so on failure nothing in it
+			// is durable: every fetched ID is a failure, none is indexed.
+			for _, id := range fetched {
+				failures = append(failures, BatchArticleFailure{ArticleID: id, Err: err})
+			}
+		} else {
+			u.registerBatchSynonyms(ctx, docs)
+			result.IndexedIDs = fetched
+			result.IndexedCount = len(fetched)
+		}
 	}
 
-	if err := u.searchEngine.IndexDocuments(ctx, docs); err != nil {
-		return nil, err
+	if len(failures) == 0 {
+		return result, nil
 	}
 
-	u.registerBatchSynonyms(ctx, docs)
-
-	return &IndexResult{IndexedCount: len(docs)}, nil
+	result.FailedIDs = make([]string, 0, len(failures))
+	for _, f := range failures {
+		result.FailedIDs = append(result.FailedIDs, f.ArticleID)
+	}
+	return result, &BatchIndexError{Failures: failures, Total: len(articleIDs)}
 }
 
 // registerBatchSynonyms merges synonyms for every doc in the batch into the
