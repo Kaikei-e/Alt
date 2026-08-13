@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"knowledge-sovereign/driver/sovereign_db"
+	"knowledge-sovereign/usecase/projection_gap"
 	"knowledge-sovereign/usecase/trail_planner"
 )
 
@@ -59,6 +60,11 @@ type Repository interface {
 	ReadProjectionCheckpointForAdvance(ctx context.Context, projectorName string) (sovereign_db.ProjectionCheckpoint, error)
 	AdvanceProjectionCheckpointIfUnchanged(ctx context.Context, projectorName string, from sovereign_db.ProjectionCheckpoint, toSeq int64) (bool, error)
 	ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
+	// The gap frontier tells a hole in event_seq that a still-running writer
+	// will fill apart from one a rollback burned. It re-reads the hole itself
+	// rather than trusting the batch above, because the two reads land on
+	// different snapshots — see usecase/projection_gap.
+	ReadSequenceGapFrontier(ctx context.Context, firstSeq, lastSeq int64) (sovereign_db.SequenceGapFrontier, error)
 	UpsertTrailFootprint(ctx context.Context, fp sovereign_db.TrailFootprint, projectionVersion int) error
 	UpsertTrailBranch(ctx context.Context, userID, tenantID uuid.UUID, b sovereign_db.TrailBranch, createdAt time.Time, projectionVersion int) error
 	SetTrailBranchState(ctx context.Context, userID uuid.UUID, branchKey, state string) error
@@ -76,6 +82,7 @@ type Projector struct {
 	repo   Repository
 	logger *slog.Logger
 	cfg    Config
+	gaps   projection_gap.Tracker
 }
 
 func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
@@ -93,6 +100,12 @@ func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 
 // RunBatch drains up to MaxBatchesPerTick batches from the event log, folding
 // each act event into a footprint and advancing the checkpoint.
+//
+// A batch only ever covers the contiguous run of sequences following the
+// checkpoint: event_seq is taken at INSERT and not at COMMIT, so the query can
+// return 101 while 100 is still uncommitted, and advancing to the maximum
+// would drop 100 forever (see usecase/projection_gap). The tick stops at the
+// first hole and the next one re-reads it.
 //
 // The checkpoint is advanced with a compare-and-set against the state read at
 // the start of the batch. If another writer moved it in the meantime the
@@ -112,8 +125,32 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			return nil
 		}
 
+		batch, hole := projection_gap.ContiguousPrefix(events, checkpoint.LastEventSeq)
+		if len(batch) == 0 {
+			abandon, err := p.mayAbandonHole(ctx, hole)
+			if err != nil {
+				return err
+			}
+			if !abandon {
+				return nil
+			}
+			applied, err := p.repo.AdvanceProjectionCheckpointIfUnchanged(ctx, projectorName, checkpoint, hole.Last)
+			if err != nil {
+				return fmt.Errorf("advance checkpoint: %w", err)
+			}
+			if !applied {
+				p.logger.ErrorContext(ctx, "trail.checkpoint_advance_rejected",
+					slog.String("projector", projectorName),
+					slog.Int64("expected_seq", checkpoint.LastEventSeq),
+					slog.Int64("attempted_seq", hole.Last),
+					slog.Int("batch_events", 0))
+				return nil
+			}
+			continue
+		}
+
 		var maxSeq int64
-		for _, evt := range events {
+		for _, evt := range batch {
 			if evt.EventSeq > maxSeq {
 				maxSeq = evt.EventSeq
 			}
@@ -163,7 +200,10 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 				slog.String("projector", projectorName),
 				slog.Int64("expected_seq", checkpoint.LastEventSeq),
 				slog.Int64("attempted_seq", maxSeq),
-				slog.Int("batch_events", len(events)))
+				slog.Int("batch_events", len(batch)))
+			return nil
+		}
+		if hole.Open() {
 			return nil
 		}
 		if len(events) < p.cfg.BatchSize {
@@ -171,6 +211,31 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// mayAbandonHole reports whether the sequences blocking this batch may be
+// treated as burned by rolled-back transactions rather than as ones writers
+// still in flight are about to commit.
+func (p *Projector) mayAbandonHole(ctx context.Context, hole projection_gap.Hole) (bool, error) {
+	frontier, err := p.repo.ReadSequenceGapFrontier(ctx, hole.First, hole.Last)
+	if err != nil {
+		return false, fmt.Errorf("read sequence gap frontier: %w", err)
+	}
+	if !p.gaps.MayAbandon(hole, frontier) {
+		p.logger.InfoContext(ctx, "trail.sequence_gap_waiting",
+			slog.String("projector", projectorName),
+			slog.Int64("gap_seq", hole.First),
+			slog.Int64("gap_through", hole.Last),
+			slog.Int64("xmin", frontier.Xmin),
+			slog.Int64("ceiling_xid", frontier.Ceiling),
+			slog.Bool("hole_open", frontier.HoleOpen))
+		return false, nil
+	}
+	p.logger.WarnContext(ctx, "trail.sequence_gap_abandoned",
+		slog.String("projector", projectorName),
+		slog.Int64("gap_seq", hole.First),
+		slog.Int64("gap_through", hole.Last))
+	return true, nil
 }
 
 // foldBranch folds a trail.branch_proposed.v1 event into the branch read model.

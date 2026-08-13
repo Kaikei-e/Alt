@@ -27,7 +27,86 @@ type KnowledgeEvent struct {
 	Payload       json.RawMessage
 }
 
+// SequenceGapFrontier is what one snapshot says about a run of event_seq values
+// missing from a projector's batch: whether the run is still empty, and the
+// transaction ids that bound who could still fill it. It is what tells a hole
+// that will still fill in apart from one that never will.
+//
+// All three come from a single statement, and that is the load-bearing part.
+// Read Committed gives every statement its own snapshot — "two successive
+// SELECT commands can see different data, even though they are within a single
+// transaction, if other transactions commit changes after the first SELECT
+// starts and before the second SELECT starts" (PostgreSQL 16 §13.2.1) — so a
+// writer that commits between a batch read and a frontier read of its own is
+// missing from the first and finished by the second, and a verdict drawn from
+// that pair burns a sequence whose event is committed and sitting in the table.
+// Asked in one statement, HoleOpen and Xmin are two facts about one snapshot:
+// pg_current_snapshot returns the snapshot the statement's own scans are
+// already reading under.
+//
+// Ceiling is the id PostgreSQL gave the reading transaction itself. Ids are
+// handed out sequentially, at a transaction's first write, so "lower-numbered
+// xids started writing before higher-numbered xids" (PostgreSQL 16 §74.1). A
+// writer holding a sequence the batch did not see has written twice already —
+// the dedupe row, then the event row that took the sequence — so its id is
+// below any id handed out afterwards, Ceiling among them.
+//
+// That reasoning also reads the sequence backwards: a visible event_seq is
+// taken to prove every lower value was handed out before it. Only a CACHE 1
+// sequence says so — "with a cache setting greater than one you should only
+// assume that the nextval values are all distinct, not that they are generated
+// purely sequentially" (PostgreSQL 16, CREATE SEQUENCE). knowledge_events'
+// BIGSERIAL is CACHE 1 and must stay there: raising it for append throughput
+// lets a writer hold a low sequence it took after Ceiling was handed out, and
+// this verdict then burns live events silently.
+//
+// Xmin is the oldest transaction still running when the snapshot was taken:
+// "All transaction IDs less than xmin are either committed and visible, or
+// rolled back and dead" (PostgreSQL 16, Table 9.81). An Xmin that has reached
+// an earlier Ceiling therefore leaves a writer that holds one of these
+// sequences only those two states, and HoleOpen — from the same snapshot —
+// rules the first one out: committed and visible it is not, so it rolled back.
+//
+// The snapshot's xmax cannot stand in for Ceiling. It is "one past the highest
+// completed transaction ID" — the highest id handed out is not bounded by it,
+// and a writer that took the newest id sits at or above it, so a verdict drawn
+// from xmax declares live writers finished and skips the sequences they hold.
+// Nor can pg_snapshot_xip: it lists in-progress ids in [xmin, xmax) only, which
+// is precisely the range such a writer is outside of.
+type SequenceGapFrontier struct {
+	Ceiling  int64
+	Xmin     int64
+	HoleOpen bool
+}
+
+// ReadSequenceGapFrontier reads the frontier for the run of sequences
+// [firstSeq, lastSeq] — the ones missing from a projector's batch — in one
+// statement, so the emptiness of the run and the ids that bound its possible
+// writers describe the same snapshot. xid8 is a 64-bit counter that does not
+// wrap, so both ids are comparable as plain integers.
+//
+// Reading this costs one transaction id, which is why projectors call it only
+// while a hole actually blocks them: pg_current_xact_id_if_assigned would spend
+// nothing, but a read-only transaction has no id and so yields no ceiling. The
+// EXISTS adds an index probe per partition (idx_knowledge_events_seq).
+func (r *Repository) ReadSequenceGapFrontier(ctx context.Context, firstSeq, lastSeq int64) (SequenceGapFrontier, error) {
+	query := `SELECT pg_current_xact_id()::text::bigint,
+		pg_snapshot_xmin(pg_current_snapshot())::text::bigint,
+		NOT EXISTS (SELECT 1 FROM knowledge_events WHERE event_seq BETWEEN $1 AND $2)`
+	var f SequenceGapFrontier
+	if err := r.pool.QueryRow(ctx, query, firstSeq, lastSeq).Scan(&f.Ceiling, &f.Xmin, &f.HoleOpen); err != nil {
+		return SequenceGapFrontier{}, fmt.Errorf("ReadSequenceGapFrontier: %w", err)
+	}
+	return f, nil
+}
+
 // ListKnowledgeEventsSince returns events after the given sequence number.
+//
+// event_seq is BIGSERIAL: the value is taken when a transaction inserts, not
+// when it commits, so this returns a run with holes in it whenever a writer
+// that took a lower sequence is still in flight. Callers that fold the result
+// and move a cursor past it must advance only across the contiguous prefix —
+// see usecase/projection_gap.
 func (r *Repository) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]KnowledgeEvent, error) {
 	query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
 		actor_type, actor_id, event_type, aggregate_type, aggregate_id,
@@ -91,7 +170,12 @@ func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEv
 // Both INSERTs run inside a single transaction: a crash between the two
 // would otherwise leave the dedupe key registered with no corresponding
 // event row, permanently losing the event (any resend is then treated as
-// an already-applied duplicate and silently dropped).
+// an already-applied duplicate and silently dropped). Their order carries a
+// second guarantee: the dedupe INSERT gives the transaction its id before the
+// event INSERT takes an event_seq, so a writer holding a sequence always has
+// an id older than the sequence — see SequenceGapFrontier. An append that
+// inserted the event row first would take its sequence before PostgreSQL had
+// given it an id, and no ceiling read afterwards would stand above it.
 //
 // Flow:
 //  1. INSERT into knowledge_event_dedupes (ON CONFLICT DO NOTHING)

@@ -127,6 +127,21 @@ func pgSeedArticleEvent(ctx context.Context, t *testing.T, db *pgxpool.Pool, ten
 	return seq
 }
 
+// pgDrainFromCheckpointZero folds the whole log with one projector, starting
+// from a checkpoint of 0.
+//
+// A freshly migrated database hands out event_seq from 2 (the partitioning
+// migration leaves the sequence at 1, already called), so a projector at
+// checkpoint 0 is blocked by a hole at sequence 1 that no writer will ever
+// fill. Burning it takes two sightings by the same projector — the tracker's
+// verdict is per-instance — and so does every later start from a checkpoint a
+// rebuild reset to 0.
+func pgDrainFromCheckpointZero(ctx context.Context, t *testing.T, p *Projector) {
+	t.Helper()
+	require.NoError(t, p.RunBatch(ctx))
+	require.NoError(t, p.RunBatch(ctx))
+}
+
 func pgCountHomeItems(ctx context.Context, t *testing.T, db *pgxpool.Pool) int64 {
 	t.Helper()
 	var n int64
@@ -169,7 +184,7 @@ func TestProjector_InFlightBatchMustNotOverwriteAConcurrentRebuildsCheckpointRes
 	for i := 1; i <= 3; i++ {
 		pgSeedArticleEvent(ctx, t, db, tenantID, userID, i)
 	}
-	require.NoError(t, NewProjector(repo, slog.New(&pgRecordingHandler{}), Config{}).RunBatch(ctx))
+	pgDrainFromCheckpointZero(ctx, t, NewProjector(repo, slog.New(&pgRecordingHandler{}), Config{}))
 
 	settled, exists := pgCheckpointSeq(ctx, t, db)
 	require.True(t, exists, "precondition: the first tick must leave a checkpoint row")
@@ -208,9 +223,9 @@ func TestProjector_InFlightBatchMustNotOverwriteAConcurrentRebuildsCheckpointRes
 	assert.EqualValues(t, settled, rejected.Attrs["expected_seq"])
 	assert.EqualValues(t, tip, rejected.Attrs["attempted_seq"])
 
-	// The whole point of the reset surviving: the very next tick re-folds the
-	// entire log, so every article is back in the read model.
-	require.NoError(t, NewProjector(repo, slog.New(&pgRecordingHandler{}), Config{}).RunBatch(ctx))
+	// The whole point of the reset surviving: the projector re-folds the entire
+	// log, so every article is back in the read model.
+	pgDrainFromCheckpointZero(ctx, t, NewProjector(repo, slog.New(&pgRecordingHandler{}), Config{}))
 	assert.EqualValues(t, 5, pgCountHomeItems(ctx, t, db),
 		"the next tick must re-fold the whole event log into the rebuilt read model")
 	seq, _ = pgCheckpointSeq(ctx, t, db)

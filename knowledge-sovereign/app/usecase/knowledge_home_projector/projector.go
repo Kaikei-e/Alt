@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 
 	"knowledge-sovereign/driver/sovereign_db"
+	"knowledge-sovereign/usecase/projection_gap"
 )
 
 const (
@@ -84,6 +85,11 @@ type Repository interface {
 	ReadProjectionCheckpointForAdvance(ctx context.Context, projectorName string) (sovereign_db.ProjectionCheckpoint, error)
 	AdvanceProjectionCheckpointIfUnchanged(ctx context.Context, projectorName string, from sovereign_db.ProjectionCheckpoint, toSeq int64) (bool, error)
 	ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
+	// The gap frontier tells a hole in event_seq that a still-running writer
+	// will fill apart from one a rollback burned. It re-reads the hole itself
+	// rather than trusting the batch above, because the two reads land on
+	// different snapshots — see usecase/projection_gap.
+	ReadSequenceGapFrontier(ctx context.Context, firstSeq, lastSeq int64) (sovereign_db.SequenceGapFrontier, error)
 	// GetActiveProjectionVersion resolves knowledge_projection_versions'
 	// status='active' row — the same source of truth read paths already use
 	// via activeProjectionVersionSQL (see driver/sovereign_db/sql_fragments.go),
@@ -113,6 +119,7 @@ type Projector struct {
 	repo   Repository
 	logger *slog.Logger
 	cfg    Config
+	gaps   projection_gap.Tracker
 }
 
 // NewProjector builds a Projector. logger defaults to slog.Default() when
@@ -161,6 +168,30 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			return nil
 		}
 
+		batch, hole := projection_gap.ContiguousPrefix(events, checkpoint.LastEventSeq)
+		if len(batch) == 0 {
+			abandon, err := p.mayAbandonHole(ctx, hole)
+			if err != nil {
+				return err
+			}
+			if !abandon {
+				return nil
+			}
+			applied, err := p.repo.AdvanceProjectionCheckpointIfUnchanged(ctx, projectorName, checkpoint, hole.Last)
+			if err != nil {
+				return fmt.Errorf("advance checkpoint: %w", err)
+			}
+			if !applied {
+				p.logger.ErrorContext(ctx, "knowledge_home_projector.checkpoint_advance_rejected",
+					slog.String("projector", projectorName),
+					slog.Int64("expected_seq", checkpoint.LastEventSeq),
+					slog.Int64("attempted_seq", hole.Last),
+					slog.Int("batch_events", 0))
+				return nil
+			}
+			continue
+		}
+
 		// Resolved once per batch — not per event (wasteful), not only at
 		// process start (a reproject cutover would go unnoticed until
 		// restart). This is projection metadata, the same class the read
@@ -177,7 +208,7 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 
 		lastGoodSeq := checkpoint.LastEventSeq
 		var foldErr error
-		for _, evt := range events {
+		for _, evt := range batch {
 			if err := p.foldEvent(ctx, evt, activeVersion.Version); err != nil {
 				foldErr = fmt.Errorf("fold event %s (seq=%d): %w", evt.EventType, evt.EventSeq, err)
 				break
@@ -209,18 +240,46 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 					slog.String("projector", projectorName),
 					slog.Int64("expected_seq", checkpoint.LastEventSeq),
 					slog.Int64("attempted_seq", lastGoodSeq),
-					slog.Int("batch_events", len(events)))
+					slog.Int("batch_events", len(batch)))
 				return foldErr
 			}
 		}
 		if foldErr != nil {
 			return foldErr
 		}
+		if hole.Open() {
+			return nil
+		}
 		if len(events) < p.cfg.BatchSize {
 			return nil
 		}
 	}
 	return nil
+}
+
+// mayAbandonHole reports whether the sequences blocking this batch may be
+// treated as burned by rolled-back transactions rather than as ones writers
+// still in flight are about to commit.
+func (p *Projector) mayAbandonHole(ctx context.Context, hole projection_gap.Hole) (bool, error) {
+	frontier, err := p.repo.ReadSequenceGapFrontier(ctx, hole.First, hole.Last)
+	if err != nil {
+		return false, fmt.Errorf("read sequence gap frontier: %w", err)
+	}
+	if !p.gaps.MayAbandon(hole, frontier) {
+		p.logger.InfoContext(ctx, "knowledge_home_projector.sequence_gap_waiting",
+			slog.String("projector", projectorName),
+			slog.Int64("gap_seq", hole.First),
+			slog.Int64("gap_through", hole.Last),
+			slog.Int64("xmin", frontier.Xmin),
+			slog.Int64("ceiling_xid", frontier.Ceiling),
+			slog.Bool("hole_open", frontier.HoleOpen))
+		return false, nil
+	}
+	p.logger.WarnContext(ctx, "knowledge_home_projector.sequence_gap_abandoned",
+		slog.String("projector", projectorName),
+		slog.Int64("gap_seq", hole.First),
+		slog.Int64("gap_through", hole.Last))
+	return true, nil
 }
 
 // foldEvent dispatches a single event to its fold function, stamping every
