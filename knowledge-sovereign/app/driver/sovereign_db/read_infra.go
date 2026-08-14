@@ -328,16 +328,69 @@ func (r *Repository) AdvanceProjectionCheckpointIfUnchanged(
 	return tag.RowsAffected() == 1, nil
 }
 
-// GetProjectionLag returns how many events the farthest-behind projector
-// checkpoint trails the knowledge_events tip (max(event_seq) - min(checkpoint)).
+// projectionLagQuery measures the lag as a duration, because that is what the
+// field it fills means: GetProjectionLagResponse.lag_seconds, which alt-backend
+// multiplies by time.Second and publishes as alt_home_projector_lag_seconds,
+// alerted on at > 600 (ticket) and > 1800 (page).
+//
+// The duration is the age of the oldest event no live projector has folded yet
+// — the frontier is the minimum checkpoint, and the first event past it is the
+// one that has been waiting longest. A caught-up projection has no such event
+// and so has no lag; the COALESCE turns that into 0 rather than a NULL the
+// float64 scan destination could not take. GREATEST clamps a future-dated event
+// to 0, since alt-backend reads a negative lag as its "unavailable" sentinel.
+//
+// The frontier is bound to the roster rather than taken over the whole
+// checkpoint table. Retiring a projection drops its read models but leaves its
+// checkpoint row behind (migration 00028 for the Knowledge Loop, whose
+// `knowledge-loop-projector` and `surface_planner_v2` rows the loop runbook
+// still documents), and a frozen row is the permanent minimum: the reported lag
+// would climb forever while every running projector stayed current. LEFT JOIN,
+// not inner: a projector that has never run has no row at all, and that is the
+// worst lag there is, not an absence to skip.
+//
+// The frontier probe is an ordered LIMIT 1 over idx_knowledge_events_seq rather
+// than an aggregate, for the reason spelled out on
+// knowledgeEventLastOccurrenceAgesQuery — a MergeAppend across the partitions
+// stopped after the first row, instead of a scan that evicts the read path's
+// shared_buffers pages on every sample.
+const projectionLagQuery = `
+WITH frontier AS (
+	SELECT COALESCE(MIN(COALESCE(c.last_event_seq, 0)), 0) AS seq
+	FROM unnest($1::text[]) AS p(projector_name)
+	LEFT JOIN knowledge_projection_checkpoints c USING (projector_name)
+)
+SELECT COALESCE((
+	SELECT GREATEST(EXTRACT(EPOCH FROM (now() - ke.occurred_at)), 0)
+	FROM knowledge_events ke
+	WHERE ke.event_seq > (SELECT seq FROM frontier)
+	ORDER BY ke.event_seq
+	LIMIT 1
+), 0)::float8`
+
+// liveProjectorNames is the checkpoint roster the lag gauge measures: the
+// projectors this process actually runs. It is derived from the rebuild
+// allowlist because those targets already carry the checkpoint key of each
+// in-process projector, so a projector can never be added to one list and
+// forgotten in the other.
+func liveProjectorNames() []string {
+	targets := RebuildTargets()
+	names := make([]string, 0, len(targets))
+	for _, t := range targets {
+		names = append(names, t.ProjectorName())
+	}
+	return names
+}
+
+// GetProjectionLag returns how many SECONDS the farthest-behind live projector
+// is behind the event log — the age of the oldest event it has not folded yet,
+// 0 when it is caught up. Seconds, not events: the value is forwarded verbatim
+// as lag_seconds and alerted on in seconds, and the two units do not correlate
+// (a healthy projector 700 events behind would page, an hour-dead one 100
+// events behind would stay silent).
 func (r *Repository) GetProjectionLag(ctx context.Context) (float64, error) {
-	query := `SELECT GREATEST(
-		(SELECT COALESCE(MAX(event_seq), 0) FROM knowledge_events) -
-		(SELECT COALESCE(MIN(last_event_seq), 0) FROM knowledge_projection_checkpoints),
-		0
-	)::float8`
 	var lag float64
-	if err := r.pool.QueryRow(ctx, query).Scan(&lag); err != nil {
+	if err := r.pool.QueryRow(ctx, projectionLagQuery, liveProjectorNames()).Scan(&lag); err != nil {
 		return 0, fmt.Errorf("GetProjectionLag: %w", err)
 	}
 	return lag, nil

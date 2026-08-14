@@ -179,6 +179,10 @@ func (r *Runner) runByDateRange(ctx context.Context, cursor Cursor) error {
 	fromDate = time.Date(fromDate.Year(), fromDate.Month(), fromDate.Day(), 0, 0, 0, 0, time.UTC)
 	toDate = time.Date(toDate.Year(), toDate.Month(), toDate.Day(), 0, 0, 0, 0, time.UTC)
 
+	// Once an article fails the cursor is pinned in front of it, so the
+	// remaining days must not move the resume point either.
+	cursorHeld := false
+
 	// Process newest first (DESC order)
 	for day := toDate; !day.Before(fromDate); day = day.AddDate(0, 0, -1) {
 		select {
@@ -197,7 +201,7 @@ func (r *Runner) runByDateRange(ctx context.Context, cursor Cursor) error {
 
 		r.logger.Info("processing date", slog.String("date", dayStr))
 
-		count, err := r.processDay(ctx, day, &cursor)
+		count, held, err := r.processDay(ctx, day, &cursor, cursorHeld)
 		if err != nil {
 			return fmt.Errorf("process day %s: %w", dayStr, err)
 		}
@@ -206,6 +210,20 @@ func (r *Runner) runByDateRange(ctx context.Context, cursor Cursor) error {
 			slog.String("date", dayStr),
 			slog.Int("articles", count),
 		)
+
+		if held {
+			if !cursorHeld {
+				// This day still owns a failed article: keep it as the resume
+				// point instead of marking it done, otherwise the retry is
+				// skipped forever. Older days are still processed below.
+				cursor.CurrentDate = dayStr
+				if err := r.cursorManager.Save(cursor); err != nil {
+					r.logger.Warn("failed to save cursor", slog.String("error", err.Error()))
+				}
+				cursorHeld = true
+			}
+			continue
+		}
 
 		// Update cursor to next day
 		cursor.CurrentDate = day.AddDate(0, 0, -1).Format("2006-01-02")
@@ -219,13 +237,16 @@ func (r *Runner) runByDateRange(ctx context.Context, cursor Cursor) error {
 	r.logger.Info("backfill completed",
 		slog.Int64("total_processed", atomic.LoadInt64(&r.stats.Processed)),
 		slog.Int64("total_failed", atomic.LoadInt64(&r.stats.Failed)),
+		slog.Bool("cursor_held", cursorHeld),
 	)
 
 	return nil
 }
 
 // processDay processes all articles for a single day.
-func (r *Runner) processDay(ctx context.Context, day time.Time, cursor *Cursor) (int, error) {
+// cursorHeld carries over the "a failed article pinned the cursor" state from
+// earlier days; the updated state is returned to the caller.
+func (r *Runner) processDay(ctx context.Context, day time.Time, cursor *Cursor, cursorHeld bool) (int, bool, error) {
 	dayStart := day
 	dayEnd := day.AddDate(0, 0, 1)
 
@@ -247,7 +268,7 @@ func (r *Runner) processDay(ctx context.Context, day time.Time, cursor *Cursor) 
 
 	query += ` ORDER BY created_at DESC, id DESC`
 
-	return r.processBatches(ctx, query, args, cursor)
+	return r.processBatches(ctx, query, args, cursor, cursorHeld)
 }
 
 // runAll processes all articles using cursor-based pagination.
@@ -267,7 +288,7 @@ func (r *Runner) runAll(ctx context.Context, cursor Cursor) error {
 
 	query += ` ORDER BY created_at DESC, id DESC`
 
-	_, err := r.processBatches(ctx, query, args, &cursor)
+	_, cursorHeld, err := r.processBatches(ctx, query, args, &cursor, false)
 	if err != nil {
 		return err
 	}
@@ -275,16 +296,21 @@ func (r *Runner) runAll(ctx context.Context, cursor Cursor) error {
 	r.logger.Info("backfill completed",
 		slog.Int64("total_processed", atomic.LoadInt64(&r.stats.Processed)),
 		slog.Int64("total_failed", atomic.LoadInt64(&r.stats.Failed)),
+		slog.Bool("cursor_held", cursorHeld),
 	)
 
 	return nil
 }
 
 // processBatches processes articles in batches from the given query.
-func (r *Runner) processBatches(ctx context.Context, query string, args []interface{}, cursor *Cursor) (int, error) {
+// It returns whether the cursor is held: the keyset predicate is
+// `(created_at, id) < cursor`, so any row the cursor passes over is never
+// selected again. A per-article failure therefore pins the cursor in front of
+// that row for the rest of the run.
+func (r *Runner) processBatches(ctx context.Context, query string, args []interface{}, cursor *Cursor, cursorHeld bool) (int, bool, error) {
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return 0, fmt.Errorf("query articles: %w", err)
+		return 0, cursorHeld, fmt.Errorf("query articles: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -309,22 +335,23 @@ func (r *Runner) processBatches(ctx context.Context, query string, args []interf
 		}
 
 		// Process batch concurrently
+		failed := make([]bool, len(batch))
 		var wg sync.WaitGroup
-		for _, a := range batch {
+		for i, a := range batch {
 			select {
 			case <-ctx.Done():
-				return totalCount, ctx.Err()
+				return totalCount, cursorHeld, ctx.Err()
 			default:
 			}
 
 			// Rate limit
 			if err := r.limiter.Wait(ctx); err != nil {
-				return totalCount, err
+				return totalCount, cursorHeld, err
 			}
 
 			wg.Add(1)
 			sem <- struct{}{}
-			go func(article Article) {
+			go func(idx int, article Article) {
 				defer wg.Done()
 				defer func() { <-sem }()
 
@@ -342,23 +369,44 @@ func (r *Runner) processBatches(ctx context.Context, query string, args []interf
 						slog.String("id", article.ID),
 						slog.String("error", err.Error()),
 					)
+					failed[idx] = true
 					atomic.AddInt64(&r.stats.Failed, 1)
 				} else {
 					atomic.AddInt64(&r.stats.Processed, 1)
 				}
-			}(a)
+			}(i, a)
 		}
 		wg.Wait()
 
-		// Update cursor
-		lastArticle := batch[len(batch)-1]
-		cursor.LastCreatedAt = lastArticle.CreatedAt
-		cursor.LastID = lastArticle.ID
-		cursor.ProcessedCount += len(batch)
+		// Advance the cursor over the leading run of successes only. Stopping
+		// in front of the first failure is what makes the next run pick that
+		// article up again instead of losing it to the keyset predicate.
+		if !cursorHeld {
+			indexed := 0
+			for indexed < len(batch) && !failed[indexed] {
+				indexed++
+			}
 
-		if !r.cfg.DryRun {
-			if err := r.cursorManager.Save(*cursor); err != nil {
-				r.logger.Warn("failed to save cursor", slog.String("error", err.Error()))
+			if indexed < len(batch) {
+				cursorHeld = true
+				r.logger.Warn("cursor held in front of failed article",
+					slog.String("article_id", batch[indexed].ID),
+					slog.Time("article_created_at", batch[indexed].CreatedAt),
+					slog.Int("advanced", indexed),
+				)
+			}
+
+			if indexed > 0 {
+				lastArticle := batch[indexed-1]
+				cursor.LastCreatedAt = lastArticle.CreatedAt
+				cursor.LastID = lastArticle.ID
+				cursor.ProcessedCount += indexed
+
+				if !r.cfg.DryRun {
+					if err := r.cursorManager.Save(*cursor); err != nil {
+						r.logger.Warn("failed to save cursor", slog.String("error", err.Error()))
+					}
+				}
 			}
 		}
 
@@ -366,10 +414,10 @@ func (r *Runner) processBatches(ctx context.Context, query string, args []interf
 	}
 
 	if err := rows.Err(); err != nil {
-		return totalCount, fmt.Errorf("iterate rows: %w", err)
+		return totalCount, cursorHeld, fmt.Errorf("iterate rows: %w", err)
 	}
 
-	return totalCount, nil
+	return totalCount, cursorHeld, nil
 }
 
 // indexArticle dispatches to direct indexer or HTTP depending on mode.

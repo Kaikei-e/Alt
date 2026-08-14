@@ -38,8 +38,16 @@ func (c *Consumer) sendToDLQ(ctx context.Context, message redis.XMessage, delive
 		values[k] = v
 	}
 
+	// The DLQ is capped here or nowhere: mq-hub's periodic XTRIM pass only
+	// walks the four live streams in domain.AllStreamKeys(), and no service
+	// consumes a DLQ, so its only bound is the one its producer attaches.
+	// Unlike mq-hub's live-stream publishes this deliberately omits Mode
+	// "ACKED": the DLQ has no consumer group, so restricting trimming to
+	// fully-acked entries would trim nothing and leave the cap decorative.
 	if err := c.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: c.config.DLQStreamKey,
+		MaxLen: c.config.effectiveDLQMaxLen(),
+		Approx: true,
 		Values: values,
 	}).Err(); err != nil {
 		c.logger.Error("failed to write DLQ entry", "message_id", message.ID, "error", err)
@@ -60,28 +68,36 @@ func (c *Consumer) sendToDLQ(ctx context.Context, message redis.XMessage, delive
 
 // deliveryCounts looks up the current delivery counter for each given
 // message (already updated by the XAUTOCLAIM claim that preceded this
-// call).
+// call). It queries per message ID -- Start/End pinned to that exact ID --
+// rather than a single Start:"-",End:"+" sweep bounded by a Count derived
+// from len(messages): when this consumer's PEL holds more pending entries
+// than that Count, the ascending-ID-ordered sweep returns only the earliest
+// entries and silently omits any message in this batch whose ID sorts later,
+// making its delivery count read as zero regardless of its real value. That
+// falsely keeps shouldSendToDLQ from ever firing for it, so every sweep
+// re-runs the poison message's handler. See mq-hub/CLAUDE.md rule 5.
 func (c *Consumer) deliveryCounts(ctx context.Context, messages []redis.XMessage) map[string]int64 {
 	counts := make(map[string]int64, len(messages))
-	if len(messages) == 0 {
-		return counts
-	}
 
-	pending, err := c.client.XPendingExt(ctx, &redis.XPendingExtArgs{
-		Stream:   c.config.StreamKey,
-		Group:    c.config.GroupName,
-		Consumer: c.config.ConsumerName,
-		Start:    "-",
-		End:      "+",
-		Count:    int64(len(messages)) * 2,
-	}).Result()
-	if err != nil {
-		c.logger.Error("failed to look up delivery counts for reclaimed messages", "error", err)
-		return counts
-	}
-
-	for _, p := range pending {
-		counts[p.ID] = p.RetryCount
+	for _, message := range messages {
+		pending, err := c.client.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream:   c.config.StreamKey,
+			Group:    c.config.GroupName,
+			Consumer: c.config.ConsumerName,
+			Start:    message.ID,
+			End:      message.ID,
+			Count:    1,
+		}).Result()
+		if err != nil {
+			c.logger.Error("failed to look up delivery count for reclaimed message",
+				"message_id", message.ID,
+				"error", err,
+			)
+			continue
+		}
+		for _, p := range pending {
+			counts[p.ID] = p.RetryCount
+		}
 	}
 	return counts
 }

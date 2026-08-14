@@ -57,20 +57,20 @@ func TestParseScore(t *testing.T) {
 		description   string
 	}{
 		"valid_xml_format": {
-			input:         "<score>15</score>",
-			expectedScore: 15,
+			input:         "<score>7</score>",
+			expectedScore: 7,
 			expectedError: false,
 			description:   "Should parse valid XML-formatted score",
 		},
 		"valid_xml_with_whitespace": {
-			input:         "  <score>20</score>  ",
-			expectedScore: 20,
+			input:         "  <score>8</score>  ",
+			expectedScore: 8,
 			expectedError: false,
 			description:   "Should parse XML score with surrounding whitespace",
 		},
 		"valid_xml_with_surrounding_text": {
-			input:         "The quality is <score>25</score> out of 30",
-			expectedScore: 25,
+			input:         "The quality is <score>6</score> out of 10",
+			expectedScore: 6,
 			expectedError: false,
 			description:   "Should extract XML score from surrounding text",
 		},
@@ -80,41 +80,71 @@ func TestParseScore(t *testing.T) {
 			expectedError: false,
 			description:   "Should parse score without closing tag (Ollama stop sequence truncates it)",
 		},
-		"score_at_minimum_boundary": {
-			input:         "<score>0</score>",
-			expectedScore: 0,
+		"tag_with_surrounding_whitespace": {
+			input:         "<score> 8 </score>",
+			expectedScore: 8,
 			expectedError: false,
-			description:   "Should handle score at minimum boundary (0)",
+			description:   "Should parse a score padded with spaces inside the anchored tag",
+		},
+		"tag_with_newline_before_digits": {
+			input:         "<score>\n8",
+			expectedScore: 8,
+			expectedError: false,
+			description:   "Should parse a score on its own line inside the anchored tag",
+		},
+		"tag_then_prose_starting_with_a_digit": {
+			input:         "<score>\n3 つの事実が欠けている。",
+			expectedScore: 0,
+			expectedError: true,
+			description:   "Must not adopt a prose integer that merely follows the opening tag — that is the delete → re-summarize loop this parser exists to prevent",
+		},
+		"tag_then_prose_after_a_space": {
+			input:         "<score> 4 つの問題がある",
+			expectedScore: 0,
+			expectedError: true,
+			description:   "Whitespace tolerance must not extend to digits that begin a sentence",
+		},
+		"score_at_minimum_boundary": {
+			input:         "<score>1</score>",
+			expectedScore: 1,
+			expectedError: false,
+			description:   "Should handle score at minimum boundary (1)",
 		},
 		"score_at_maximum_boundary": {
-			input:         "<score>30</score>",
-			expectedScore: 30,
+			input:         "<score>10</score>",
+			expectedScore: 10,
 			expectedError: false,
-			description:   "Should handle score at maximum boundary (30)",
+			description:   "Should handle score at maximum boundary (10)",
 		},
-		"score_above_maximum_clamped": {
+		"error_score_above_scale": {
 			input:         "<score>50</score>",
-			expectedScore: 30,
-			expectedError: false,
-			description:   "Should clamp score above maximum to 30",
+			expectedScore: 0,
+			expectedError: true,
+			description:   "Should reject a score above the 1-10 scale instead of clamping it",
 		},
-		"score_below_minimum_clamped": {
+		"error_score_below_scale": {
+			input:         "<score>0</score>",
+			expectedScore: 0,
+			expectedError: true,
+			description:   "Should reject a score below the 1-10 scale instead of clamping it",
+		},
+		"error_negative_score": {
 			input:         "<score>-5</score>",
-			expectedScore: 5, // Regex extracts "5" from "-5", which is then clamped if needed
-			expectedError: false,
-			description:   "Should extract positive digit from negative score",
+			expectedScore: 0,
+			expectedError: true,
+			description:   "Should reject a negative score instead of reading its absolute value",
 		},
-		"fallback_plain_number": {
-			input:         "The score is 18",
-			expectedScore: 18,
-			expectedError: false,
-			description:   "Should use fallback parsing for plain number",
+		"error_plain_number_without_tag": {
+			input:         "The score is 8",
+			expectedScore: 0,
+			expectedError: true,
+			description:   "Should reject a bare integer: only the anchored <score> tag counts",
 		},
-		"fallback_first_number": {
-			input:         "Quality: 12 out of 30 points",
-			expectedScore: 12,
-			expectedError: false,
-			description:   "Should extract first number in fallback mode",
+		"error_integer_in_prose": {
+			input:         "この要約には 3 つの事実が欠けている。",
+			expectedScore: 0,
+			expectedError: true,
+			description:   "Should reject an integer that is part of the model's prose",
 		},
 		"error_no_score_found": {
 			input:         "No score available",
@@ -150,69 +180,6 @@ func TestParseScore(t *testing.T) {
 	}
 }
 
-// TestAttemptEmergencyParsing tests the emergency parsing fallback logic
-func TestAttemptEmergencyParsing(t *testing.T) {
-	tests := map[string]struct {
-		input         string
-		expectedScore *int
-		description   string
-	}{
-		"simple_number": {
-			input:         "15",
-			expectedScore: intPtr(15),
-			description:   "Should extract simple number",
-		},
-		"number_with_text": {
-			input:         "The quality score is 22 points",
-			expectedScore: intPtr(22),
-			description:   "Should extract number from text",
-		},
-		"number_with_special_chars": {
-			input:         "Score: [18] (good)",
-			expectedScore: intPtr(18),
-			description:   "Should extract number ignoring special characters",
-		},
-		"multiple_numbers_takes_first": {
-			input:         "12 out of 30",
-			expectedScore: intPtr(12),
-			description:   "Should take first number when multiple present",
-		},
-		"clamp_above_maximum": {
-			input:         "100",
-			expectedScore: intPtr(30),
-			description:   "Should clamp score above 30",
-		},
-		"clamp_below_minimum": {
-			input:         "-10",
-			expectedScore: intPtr(10), // Regex \b(\d+)\b only matches positive digits
-			description:   "Should extract positive digits from negative number",
-		},
-		"no_numbers": {
-			input:         "No score available",
-			expectedScore: nil,
-			description:   "Should return nil when no numbers found",
-		},
-		"empty_string": {
-			input:         "",
-			expectedScore: nil,
-			description:   "Should return nil for empty string",
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			result := attemptEmergencyParsing(tc.input)
-
-			if tc.expectedScore == nil {
-				assert.Nil(t, result, tc.description)
-			} else {
-				require.NotNil(t, result, tc.description)
-				assert.Equal(t, *tc.expectedScore, result.Overall, tc.description)
-			}
-		})
-	}
-}
-
 // TestScoreSummary tests the scoreSummary function with mocked HTTP server
 func TestScoreSummary(t *testing.T) {
 	tests := map[string]struct {
@@ -224,33 +191,33 @@ func TestScoreSummary(t *testing.T) {
 		"successful_score_response": {
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
 				response := ollamaResponse{
-					Response: "<score>20</score>",
+					Response: "<score>9</score>",
 					Done:     true,
 				}
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(response)
 			},
-			expectedScore: intPtr(20),
+			expectedScore: intPtr(9),
 			expectedError: false,
 			description:   "Should successfully parse valid Ollama response",
 		},
 		"response_with_text_and_score": {
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
 				response := ollamaResponse{
-					Response: "The article quality is <score>25</score> because it's well-written.",
+					Response: "The article quality is <score>8</score> because it's well-written.",
 					Done:     true,
 				}
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(response)
 			},
-			expectedScore: intPtr(25),
+			expectedScore: intPtr(8),
 			expectedError: false,
 			description:   "Should extract score from response with surrounding text",
 		},
 		"response_incomplete": {
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
 				response := ollamaResponse{
-					Response: "<score>15</score>",
+					Response: "<score>8</score>",
 					Done:     false, // Not completed
 				}
 				w.WriteHeader(http.StatusOK)
@@ -260,10 +227,10 @@ func TestScoreSummary(t *testing.T) {
 			expectedError: true,
 			description:   "Should error when Ollama response not completed",
 		},
-		"response_with_fallback_parsing": {
+		"response_without_score_tag_returns_error": {
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
 				response := ollamaResponse{
-					Response: "Score is 18 points",
+					Response: "Score is 8 points",
 					Done:     true,
 				}
 				w.WriteHeader(http.StatusOK)
@@ -271,9 +238,9 @@ func TestScoreSummary(t *testing.T) {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 				}
 			},
-			expectedScore: intPtr(18),
-			expectedError: false,
-			description:   "Should use fallback parsing when XML format not found",
+			expectedScore: nil,
+			expectedError: true,
+			description:   "Should error when the anchored <score> tag is missing, rather than adopting a bare integer",
 		},
 		"response_unparseable_returns_error": {
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
@@ -349,7 +316,7 @@ func TestScoreSummaryWithRetry(t *testing.T) {
 		"success_on_first_attempt": {
 			serverBehavior: []func(w http.ResponseWriter, r *http.Request){
 				func(w http.ResponseWriter, r *http.Request) {
-					response := ollamaResponse{Response: "<score>20</score>", Done: true}
+					response := ollamaResponse{Response: "<score>9</score>", Done: true}
 					w.WriteHeader(http.StatusOK)
 					if err := json.NewEncoder(w).Encode(response); err != nil {
 						http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -357,7 +324,7 @@ func TestScoreSummaryWithRetry(t *testing.T) {
 				},
 			},
 			maxRetries:    3,
-			expectedScore: intPtr(20),
+			expectedScore: intPtr(9),
 			expectedError: false,
 			description:   "Should succeed on first attempt",
 		},
@@ -367,7 +334,7 @@ func TestScoreSummaryWithRetry(t *testing.T) {
 					w.WriteHeader(http.StatusInternalServerError)
 				},
 				func(w http.ResponseWriter, r *http.Request) {
-					response := ollamaResponse{Response: "<score>15</score>", Done: true}
+					response := ollamaResponse{Response: "<score>8</score>", Done: true}
 					w.WriteHeader(http.StatusOK)
 					if err := json.NewEncoder(w).Encode(response); err != nil {
 						http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -375,7 +342,7 @@ func TestScoreSummaryWithRetry(t *testing.T) {
 				},
 			},
 			maxRetries:    3,
-			expectedScore: intPtr(15),
+			expectedScore: intPtr(8),
 			expectedError: false,
 			description:   "Should succeed on second attempt after first failure",
 		},
@@ -473,7 +440,7 @@ func TestJudgeArticleQualityScoring(t *testing.T) {
 	// Test that scoring logic works correctly by mocking HTTP server
 	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := ollamaResponse{
-			Response: "<score>25</score>", // High score
+			Response: "<score>9</score>", // High score
 			Done:     true,
 		}
 		w.WriteHeader(http.StatusOK)
@@ -562,24 +529,33 @@ func TestScoreSummaryContextCancellation(t *testing.T) {
 	require.Error(t, err, "Should error when context is cancelled")
 }
 
-// TestScoreBoundaryConditions tests score clamping edge cases
+// TestScoreBoundaryConditions pins the edges of the 1-10 scale JudgeTemplate
+// asks for. Values outside it are rejected rather than clamped: a clamped-down
+// value deletes a good summary and a clamped-up one passes a bad summary, both
+// without any signal that the model broke the output contract.
 func TestScoreBoundaryConditions(t *testing.T) {
 	tests := []struct {
-		input    string
-		expected int
-		desc     string
+		input       string
+		expected    int
+		expectError bool
+		desc        string
 	}{
-		{"<score>-1</score>", 1, "Regex extracts 1 from -1"},
-		{"<score>0</score>", 0, "Zero score should remain 0"},
-		{"<score>30</score>", 30, "Max score should remain 30"},
-		{"<score>31</score>", 30, "Above max should clamp to 30"},
-		{"<score>1000</score>", 30, "Large value should clamp to 30"},
-		{"<score>-1000</score>", 30, "Regex extracts 1000 from -1000, clamped to 30"},
+		{"<score>1</score>", 1, false, "Min score should remain 1"},
+		{"<score>10</score>", 10, false, "Max score should remain 10"},
+		{"<score>0</score>", 0, true, "Zero is below the scale and must be rejected"},
+		{"<score>11</score>", 0, true, "Above max must be rejected"},
+		{"<score>1000</score>", 0, true, "Large value must be rejected"},
+		{"<score>-1</score>", 0, true, "Negative value must be rejected, not read as 1"},
+		{"<score>-1000</score>", 0, true, "Negative value must be rejected, not read as 1000"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
 			score, err := parseScore(tc.input)
+			if tc.expectError {
+				require.Error(t, err, tc.desc)
+				return
+			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, score.Overall)
 		})
@@ -758,7 +734,7 @@ func TestJudgeArticleQualityContentWithinLimit(t *testing.T) {
 	// Create a server that returns a high score
 	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := ollamaResponse{
-			Response: "<score>20</score>",
+			Response: "<score>9</score>",
 			Done:     true,
 		}
 		w.WriteHeader(http.StatusOK)
@@ -845,7 +821,7 @@ func TestJudgeArticleQualityContentBoundary(t *testing.T) {
 				// For proceed cases, we need a mock server
 				withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					response := ollamaResponse{
-						Response: "<score>20</score>",
+						Response: "<score>9</score>",
 						Done:     true,
 					}
 					w.WriteHeader(http.StatusOK)
@@ -1082,6 +1058,117 @@ func TestJudgeArticleQualityParseFailureDoesNotDelete(t *testing.T) {
 	err := JudgeArticleQuality(context.Background(), repo, nil, article)
 	require.Error(t, err, "a completely unparseable score response must surface as an error")
 	assert.False(t, repo.deleteCalled, "a parse failure must not delete the summary")
+}
+
+// TestJudgeArticleQualityMalformedScoreDoesNotDelete pins the data-loss path
+// behind the fallback parsers: any integer that is not an in-range
+// <score>N</score> used to be adopted as the score. Prose such as
+// 「3 つの事実が欠けている」 became Score{Overall: 3}, below lowScoreThreshold,
+// so the summary was deleted and the article went back on the summarize queue —
+// a delete → re-summarize loop for as long as the model's output format stayed
+// broken. A malformed score must surface as an error and leave the summary alone.
+func TestJudgeArticleQualityMalformedScoreDoesNotDelete(t *testing.T) {
+	tests := map[string]struct {
+		modelResponse string
+		description   string
+	}{
+		"prose_with_stray_integer": {
+			modelResponse: "この要約には 3 つの事実が欠けている。",
+			description:   "An integer inside prose is not a score",
+		},
+		"negative_anchored_score": {
+			modelResponse: "<score>-5</score>",
+			description:   "A negative score must not be read as its absolute value",
+		},
+		"anchored_score_above_scale": {
+			modelResponse: "<score>50</score>",
+			description:   "A score outside the 1-10 scale must not be silently clamped",
+		},
+		"anchored_score_below_scale": {
+			modelResponse: "<score>0</score>",
+			description:   "A score outside the 1-10 scale must not be treated as low quality",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				response := ollamaResponse{
+					Response: tc.modelResponse,
+					Done:     true,
+				}
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(response)
+			}))
+
+			originalURL := qualityCheckerAPIURL
+			qualityCheckerAPIURL = testQualityCheckerURL
+			t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
+
+			article := &driver.ArticleWithSummary{
+				ArticleID:       "test-article-malformed-score",
+				Content:         "Test content",
+				SummaryJapanese: "テスト要約",
+			}
+
+			repo := &deleteTrackingSummaryRepo{}
+
+			err := JudgeArticleQuality(context.Background(), repo, nil, article)
+			require.Error(t, err, tc.description)
+			assert.False(t, repo.deleteCalled, "a malformed score must not delete the summary: %s", tc.description)
+		})
+	}
+}
+
+// TestJudgeArticleQualityAcceptsWhitespaceInScoreTag pins the other side of the
+// anchored-parser contract: dropping the fallback parsers also dropped the only
+// tolerance for whitespace inside the tag, so a reply such as `<score> 8 </score>`
+// failed to parse, burned all three scoreSummaryWithRetry attempts and made
+// JudgeArticleQuality error on every pass for that article. Whitespace padding is
+// still an anchored score, not prose — it must be accepted.
+func TestJudgeArticleQualityAcceptsWhitespaceInScoreTag(t *testing.T) {
+	tests := map[string]struct {
+		modelResponse string
+		description   string
+	}{
+		"spaces_inside_tag": {
+			modelResponse: "<score> 8 </score>",
+			description:   "Spaces padding the digits inside the tag",
+		},
+		"newline_before_digits": {
+			modelResponse: "<score>\n8",
+			description:   "Digits on the line after the opening tag (closing tag cut by the stop sequence)",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				response := ollamaResponse{
+					Response: tc.modelResponse,
+					Done:     true,
+				}
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(response)
+			}))
+
+			originalURL := qualityCheckerAPIURL
+			qualityCheckerAPIURL = testQualityCheckerURL
+			t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
+
+			article := &driver.ArticleWithSummary{
+				ArticleID:       "test-article-whitespace-score",
+				Content:         "Test content",
+				SummaryJapanese: "テスト要約",
+			}
+
+			repo := &deleteTrackingSummaryRepo{}
+
+			err := JudgeArticleQuality(context.Background(), repo, nil, article)
+			require.NoError(t, err, "a whitespace-padded score tag must parse: %s", tc.description)
+			assert.False(t, repo.deleteCalled, "score 8 is above lowScoreThreshold, the summary must be kept")
+		})
+	}
 }
 
 // --- Gemma 4 chat template token tests ---

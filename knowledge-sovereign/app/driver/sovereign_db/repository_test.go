@@ -297,7 +297,8 @@ func TestUpsertTodayDigest_PreservesPulseRefsFromPayload(t *testing.T) {
 		"pulse_refs": ["cluster:42", "cluster:99"],
 		"updated_at": "2026-05-04T03:00:00Z",
 		"weekly_recap_available": true,
-		"evening_pulse_available": true
+		"evening_pulse_available": true,
+		"last_event_seq": 1201
 	}`)
 
 	require.NoError(t, repo.UpsertTodayDigest(context.Background(), payload))
@@ -331,7 +332,8 @@ func TestUpsertTodayDigest_UsesMergeSafeSQL(t *testing.T) {
 		"digest_date": "2026-05-04",
 		"top_tags": ["go"],
 		"pulse_refs": ["cluster:1"],
-		"updated_at": "2026-05-04T03:00:00Z"
+		"updated_at": "2026-05-04T03:00:00Z",
+		"last_event_seq": 1202
 	}`)
 	require.NoError(t, repo.UpsertTodayDigest(context.Background(), payload))
 	require.Len(t, mock.execCalls, 1)
@@ -361,10 +363,13 @@ func TestUpsertTodayDigest_UsesMergeSafeSQL(t *testing.T) {
 // new_articles/summarized_articles/unsummarized_articles are additive
 // deltas contributed per source event — an unconditional col = col + delta
 // double-counts on an at-least-once RPC resend or a full reprojection
-// replay of the same event. The fix guards the UPDATE with
-// EXCLUDED.updated_at > today_digest_view.updated_at: since updated_at is
-// always the source event's OccurredAt (never wall-clock), replaying the
-// identical event becomes a no-op.
+// replay of the same event. The UPDATE is therefore guarded on the fold's
+// own knowledge_events.event_seq: an event whose seq the row has already
+// absorbed is a no-op.
+//
+// The discriminator used to be EXCLUDED.updated_at, which is the event's
+// occurred_at and thus a producer wall clock; TestUpsertTodayDigest_
+// ReplayGuardOrdersByEventSeqNotWallClock covers why that lost increments.
 func TestUpsertTodayDigest_ReplayGuardPreventsDoubleCounting(t *testing.T) {
 	mock := &mockPgx{}
 	repo := &Repository{pool: mock}
@@ -373,13 +378,14 @@ func TestUpsertTodayDigest_ReplayGuardPreventsDoubleCounting(t *testing.T) {
 		"user_id": "11111111-1111-4111-8111-111111111111",
 		"digest_date": "2026-05-04",
 		"new_articles": 1,
-		"updated_at": "2026-05-04T03:00:00Z"
+		"updated_at": "2026-05-04T03:00:00Z",
+		"last_event_seq": 1203
 	}`)
 	require.NoError(t, repo.UpsertTodayDigest(context.Background(), payload))
 	require.Len(t, mock.execCalls, 1)
 	sql := mock.execCalls[0].SQL
 
-	assert.Contains(t, sql, "WHERE EXCLUDED.updated_at > today_digest_view.updated_at",
+	assert.Contains(t, sql, "WHERE EXCLUDED.last_event_seq > today_digest_view.last_event_seq",
 		"additive counters must be guarded by a strictly-newer-event check")
 }
 

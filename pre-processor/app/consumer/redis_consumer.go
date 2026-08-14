@@ -37,6 +37,31 @@ type Config struct {
 	// MaxDeliveries is the maximum number of times a single message may be
 	// delivered before it is moved to the DLQ. Zero disables DLQ routing.
 	MaxDeliveries int64
+	// DLQMaxLen caps the DLQ stream's length at XADD time. Zero or negative
+	// falls back to defaultDLQMaxLen -- see effectiveDLQMaxLen.
+	DLQMaxLen int64
+}
+
+// defaultDLQMaxLen bounds the DLQ stream when no cap is configured. Nothing
+// else trims it: mq-hub's periodic XTRIM pass only walks the four live streams
+// in domain.AllStreamKeys(), and no service consumes a DLQ. redis-streams runs
+// maxmemory 1gb under noeviction where XADD is denyoom, so an unbounded DLQ
+// carrying whole original payloads eventually rejects every producer's publish
+// (compose/mq.yaml records that self-locking condition). The value matches
+// mq-hub's STREAM_MAX_LEN so the DLQ can never outgrow the live stream it
+// shadows.
+const defaultDLQMaxLen int64 = 10000
+
+// effectiveDLQMaxLen resolves the cap actually handed to XADD. An unset cap
+// resolves to the bounded default rather than to "unbounded": bootstrap/wire.go
+// builds Config as a struct literal, and an unbounded DLQ is precisely the
+// failure mode this cap exists to prevent, so forgetting a field must not be
+// able to reach it.
+func (c Config) effectiveDLQMaxLen() int64 {
+	if c.DLQMaxLen <= 0 {
+		return defaultDLQMaxLen
+	}
+	return c.DLQMaxLen
 }
 
 // DefaultConfig returns a default consumer configuration.
@@ -52,6 +77,7 @@ func DefaultConfig() Config {
 		Enabled:       false,
 		DLQStreamKey:  "alt:events:articles:dlq",
 		MaxDeliveries: 5,
+		DLQMaxLen:     defaultDLQMaxLen,
 	}
 }
 
@@ -133,6 +159,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"consumer", c.config.ConsumerName,
 		"dlq_stream", c.config.DLQStreamKey,
 		"max_deliveries", c.config.MaxDeliveries,
+		"dlq_max_len", c.config.effectiveDLQMaxLen(),
 	)
 
 	go c.consumeLoop(ctx)

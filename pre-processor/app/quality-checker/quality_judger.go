@@ -20,6 +20,14 @@ import (
 	logger "pre-processor/utils/logger"
 )
 
+// minValidScore/maxValidScore are the scale JudgeTemplate asks the model for
+// ("a single integer score from 1 to 10"), and the scale lowScoreThreshold is
+// compared against. A score outside it is a broken response, not a verdict.
+const (
+	minValidScore = 1
+	maxValidScore = 10
+)
+
 var (
 	// qualityCheckerAPIURL can be overridden in tests
 	qualityCheckerAPIURL = "http://news-creator:11434/api/generate"
@@ -270,22 +278,12 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 
 	score, err := parseScore(responseText)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to parse score, attempting fallback", "error", err, "response", responseText)
-
-		// Try emergency fallback parsing strategies
-		fallbackScore := attemptEmergencyParsing(responseText)
-		if fallbackScore != nil {
-			logger.Logger.InfoContext(ctx, "Successfully parsed score using emergency fallback", "score", fallbackScore)
-			return fallbackScore, nil
-		}
-
-		// All parsing strategies exhausted. Return an error instead of a
-		// fabricated low score: Score{Overall: 1} falls below
-		// lowScoreThreshold and would get JudgeArticleQuality to delete a
-		// perfectly good summary purely because the model's output format
-		// broke, not because the summary is actually low quality — and a
-		// broken format tends to repeat, deleting summaries in a loop.
-		logger.Logger.ErrorContext(ctx, "Failed to parse score after all fallback strategies, skipping quality check", "response", responseText)
+		// No fallback parsing. A malformed response must skip the article
+		// rather than yield a fabricated score: anything below
+		// lowScoreThreshold gets JudgeArticleQuality to delete a perfectly good
+		// summary purely because the model's output format broke, and a broken
+		// format tends to repeat, deleting summaries in a loop.
+		logger.Logger.ErrorContext(ctx, "Failed to parse score, skipping quality check", "error", err, "response", responseText)
 		return nil, fmt.Errorf("could not parse score from model response: %w", err)
 	}
 
@@ -293,88 +291,54 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 	return &score, nil
 }
 
+// parseScore extracts the score from an anchored <score>N</score> tag and
+// rejects everything else.
+//
+// There is deliberately no "find any integer" fallback. An unanchored integer
+// is almost always part of the model's prose — 「3 つの事実が欠けている」 parsed
+// as Score{Overall: 3}, below lowScoreThreshold, so a perfectly good summary was
+// deleted and the article went back on the summarize queue. Because a broken
+// output format repeats, that turned into a delete → re-summarize loop.
 func parseScore(response string) (Score, error) {
 	response = strings.TrimSpace(response)
 	logger.Logger.Info("Parsing response", "original_response", response)
 
-	// Try to extract score from <score>X</score> pattern
 	// Closing tag is optional because Ollama's stop sequence includes "</score>",
 	// causing it to stop generating before outputting the closing tag.
-	re := regexp.MustCompile(`<score>(\d+)(?:</score>)?`)
+	//
+	// Whitespace around the digits is tolerated: `<score> 8 </score>` and
+	// `<score>\n8` are the model padding its own output, not prose, so rejecting
+	// them only burns all three scoreSummaryWithRetry attempts and leaves the
+	// article permanently unscoreable.
+	//
+	// The digits must still be followed by the closing tag or the end of the
+	// reply. Without that, `<score>\n3 つの事実が欠けている。` parses as 3 — the
+	// same prose adoption the removed fallback caused, just one tag further in.
+	re := regexp.MustCompile(`<score>\s*(\d+)\s*(?:</score>|$)`)
 	matches := re.FindStringSubmatch(response)
 
-	if len(matches) == 2 {
-		scoreStr := matches[1]
-		score, err := strconv.ParseInt(scoreStr, 10, strconv.IntSize)
-		if err != nil {
-			logger.Logger.Error("Failed to convert score to integer", "score_str", scoreStr, "error", err)
-			return Score{}, fmt.Errorf("failed to convert score to integer: %w", err)
-		}
-
-		// Clamp score to valid range (0-30)
-		if score < 0 {
-			score = 0
-		} else if score > 30 {
-			score = 30
-		}
-
-		return Score{Overall: int(score)}, nil
+	if len(matches) != 2 {
+		logger.Logger.Error("Could not extract score tag from response", "response", response)
+		return Score{}, fmt.Errorf("could not extract <score> tag from response: %s", response)
 	}
 
-	// Fallback: try to find any integer in the response
-	re = regexp.MustCompile(`\b(\d+)\b`)
-	matches = re.FindStringSubmatch(response)
-
-	if len(matches) == 2 {
-		scoreStr := matches[1]
-		score, err := strconv.ParseInt(scoreStr, 10, strconv.IntSize)
-		if err != nil {
-			logger.Logger.Error("Failed to convert fallback score to integer", "score_str", scoreStr, "error", err)
-			return Score{}, fmt.Errorf("failed to convert fallback score to integer: %w", err)
-		}
-
-		// Clamp score to valid range (0-30)
-		if score < 0 {
-			score = 0
-		} else if score > 30 {
-			score = 30
-		}
-
-		logger.Logger.Info("Used fallback score parsing", "score", score)
-		return Score{Overall: int(score)}, nil
+	scoreStr := matches[1]
+	score, err := strconv.ParseInt(scoreStr, 10, strconv.IntSize)
+	if err != nil {
+		logger.Logger.Error("Failed to convert score to integer", "score_str", scoreStr, "error", err)
+		return Score{}, fmt.Errorf("failed to convert score to integer: %w", err)
 	}
 
-	logger.Logger.Error("Could not extract score from response", "response", response)
-	return Score{}, fmt.Errorf("could not extract score from response: %s", response)
-}
-
-// attemptEmergencyParsing tries very aggressive parsing strategies as a last resort
-func attemptEmergencyParsing(response string) *Score {
-	// Remove all non-alphanumeric characters except spaces
-	cleaned := regexp.MustCompile(`[^\w\s]`).ReplaceAllString(response, " ")
-
-	// Find all integers in the response
-	re := regexp.MustCompile(`\b(\d+)\b`)
-	numbers := re.FindAllString(cleaned, -1)
-
-	// If we have at least 1 number, use the first one
-	if len(numbers) >= 1 {
-		score, err := strconv.ParseInt(numbers[0], 10, strconv.IntSize)
-		if err == nil {
-			// Clamp score to valid range (0-30)
-			if score < 0 {
-				score = 0
-			} else if score > 30 {
-				score = 30
-			}
-
-			logger.Logger.Info("Emergency parsing successful", "number", numbers[0], "score", score)
-			return &Score{Overall: int(score)}
-		}
+	// Out-of-scale values are rejected, not clamped: clamping down deletes a
+	// good summary and clamping up passes a bad one, both silently, when what
+	// actually happened is that the model ignored the output contract.
+	if score < minValidScore || score > maxValidScore {
+		logger.Logger.Error("Score outside the scale requested by JudgeTemplate",
+			"score", score, "min", minValidScore, "max", maxValidScore)
+		return Score{}, fmt.Errorf("score %d outside valid range %d-%d", score, minValidScore, maxValidScore)
 	}
 
-	logger.Logger.Warn("All emergency parsing strategies failed", "response", response)
-	return nil
+	return Score{Overall: int(score)}, nil
 }
 
 // RemoveLowScoreSummary deletes a low-quality summary via the repository.

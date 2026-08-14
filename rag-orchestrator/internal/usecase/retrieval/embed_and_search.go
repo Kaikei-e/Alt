@@ -20,7 +20,13 @@ import (
 // inside the SQL query. It only applies to the unscoped (no candidate
 // article IDs) case: HybridSearcher has no SearchWithinArticles-equivalent,
 // so candidate-scoped retrieval (e.g. Morning Letter) falls back to the
-// bm25Searcher/chunkRepo path below.
+// chunkRepo path below.
+//
+// Candidate-scoped retrieval runs the vector arm alone. SearchBM25 takes no
+// article filter, so a BM25 arm would search the whole corpus and
+// fuseHybridResults would inject its out-of-scope hits — a 24h Morning Letter
+// citing a half-year-old article, dated year 1 because a BM25-only hit has no
+// Chunk.CreatedAt.
 func EmbedAndSearch(
 	ctx context.Context,
 	sc *StageContext,
@@ -58,7 +64,16 @@ func EmbedAndSearch(
 	// goroutine E: BM25 Search (original + expanded queries for cross-language matching)
 	// Skipped when useHybridSearcher: the in-DB hybrid search below already
 	// fuses lexical + vector signals, so a separate BM25 arm would be redundant.
-	if !useHybridSearcher && hybridEnabled && bm25Searcher != nil {
+	// Skipped when hasCandidateArticles: BM25 cannot honour the article scope
+	// (see the doc comment above).
+	bm25Available := hybridEnabled && bm25Searcher != nil
+	if bm25Available && hasCandidateArticles {
+		logger.Info("hybrid_bm25_search_skipped",
+			slog.String("retrieval_id", sc.RetrievalID),
+			slog.String("reason", "candidate_article_scope"),
+			slog.Int("candidate_articles", len(sc.CandidateArticleIDs)))
+	}
+	if bm25Available && !useHybridSearcher && !hasCandidateArticles {
 		g.Go(func() error {
 			bm25Start := time.Now()
 

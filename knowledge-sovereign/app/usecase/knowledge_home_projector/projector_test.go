@@ -80,6 +80,11 @@ type capturedDigest struct {
 	UnsummarizedArticles int       `json:"unsummarized_articles"`
 	TopTags              []string  `json:"top_tags"`
 	UpdatedAt            time.Time `json:"updated_at"`
+	// LastEventSeq is a pointer for the same reason the driver's unmarshal
+	// target is: a payload that omits the key must be distinguishable from
+	// one that sends an explicit 0, because the driver rejects both and the
+	// fake has to reject them the same way.
+	LastEventSeq *int64 `json:"last_event_seq"`
 }
 
 type capturedRecallCandidate struct {
@@ -346,12 +351,25 @@ func (f *fakeRepo) ClearSupersedeState(_ context.Context, payload json.RawMessag
 }
 
 func (f *fakeRepo) UpsertTodayDigest(_ context.Context, payload json.RawMessage) error {
-	if f.todayDigestErr != nil {
-		return f.todayDigestErr
-	}
 	var w capturedDigest
 	if err := json.Unmarshal(payload, &w); err != nil {
 		return fmt.Errorf("fakeRepo.UpsertTodayDigest: %w", err)
+	}
+	// Mirror sovereign_db.UpsertTodayDigest's producer-wiring guard: the
+	// merge-safe UPSERT gates its additive counters on last_event_seq, so a
+	// payload that omits the key — or sends the 0 that a BIGSERIAL never
+	// issues — is refused before anything reaches the row rather than
+	// silently falling back to the wall clock. A fake that accepted what the
+	// driver refuses is how a fold that writes no last_event_seq stayed green
+	// here while today_digest_view stopped being written in production.
+	if w.LastEventSeq == nil {
+		return fmt.Errorf("fakeRepo.UpsertTodayDigest: last_event_seq is required")
+	}
+	if *w.LastEventSeq <= 0 {
+		return fmt.Errorf("fakeRepo.UpsertTodayDigest: last_event_seq must be a positive event_seq, got %d", *w.LastEventSeq)
+	}
+	if f.todayDigestErr != nil {
+		return f.todayDigestErr
 	}
 	f.digests[w.UserID.String()] = w
 	return nil
@@ -517,7 +535,18 @@ func TestProjector_ArticleCreated_ScoreIsIndependentOfIngestTimeStaleness(t *tes
 		"score must not depend on published_at's age at ingest time — that is a read-time ranking concern")
 }
 
-func TestProjector_ArticleCreated_TodayDigestFailureIsNonFatal(t *testing.T) {
+// TestProjector_ArticleCreated_TodayDigestFailureStallsTheCheckpoint used to
+// pin the opposite: the fold logged the digest failure at WARN and returned
+// nil, so the checkpoint advanced past the event. That is fine for a side
+// effect that can be recomputed, and today_digest_view cannot be — the write
+// is an *additive delta*, so an event folded past is a counter increment that
+// no later event and no reprojection will ever contribute again (a rebuild
+// truncates and replays the same log, hitting the same failure). Swallowing
+// it also made a producer/consumer schema skew — exactly the one that shipped
+// when the driver started requiring last_event_seq — indistinguishable from a
+// healthy run, which is what Alt Rule 8 forbids. A digest failure therefore
+// stops the batch and leaves the event in the log to be retried.
+func TestProjector_ArticleCreated_TodayDigestFailureStallsTheCheckpoint(t *testing.T) {
 	tenant := uuid.New()
 	user := userPtr()
 	articleID := uuid.New()
@@ -536,12 +565,14 @@ func TestProjector_ArticleCreated_TodayDigestFailureIsNonFatal(t *testing.T) {
 	p := NewProjector(repo, nil, Config{})
 
 	err := p.RunBatch(context.Background())
-	require.NoError(t, err, "a today_digest upsert failure must not fail the batch (non-fatal side effect)")
+	require.Error(t, err, "a lost today_digest delta must fail the batch, not be logged and forgotten")
+	assert.Contains(t, err.Error(), "today_digest_view unavailable")
 
 	itemKey := fmt.Sprintf("article:%s", articleID)
 	_, ok := repo.homeItems[itemKey]
-	assert.True(t, ok, "the home item upsert must still succeed even when today_digest fails")
-	assert.Equal(t, int64(1), repo.checkpoint, "checkpoint still advances past a non-fatal side-effect failure")
+	assert.True(t, ok, "the home item upsert already succeeded and stays — the fold is idempotent on retry")
+	assert.Equal(t, int64(0), repo.checkpoint,
+		"the checkpoint must not move past an event whose counter delta was never applied")
 }
 
 // ── ArticleUrlBackfilled ──

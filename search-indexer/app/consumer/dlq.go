@@ -38,8 +38,15 @@ func (c *Consumer) sendToDLQ(ctx context.Context, message redis.XMessage, delive
 		values[k] = v
 	}
 
+	// The DLQ is capped here or by mq-hub's periodic XTRIM pass, and by
+	// nothing else -- no service consumes a DLQ, so its length only ever
+	// grows. Unlike mq-hub's live-stream publishes this deliberately omits
+	// Mode "ACKED": the DLQ has no consumer group, so restricting trimming to
+	// fully-acked entries would trim nothing and leave the cap decorative.
 	if err := c.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: c.config.DLQStreamKey,
+		MaxLen: c.config.effectiveDLQMaxLen(),
+		Approx: true,
 		Values: values,
 	}).Err(); err != nil {
 		c.logger.Error("failed to write DLQ entry", "message_id", message.ID, "error", err)

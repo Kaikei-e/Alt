@@ -392,6 +392,15 @@ type digestWrite struct {
 	UnsummarizedArticles int       `json:"unsummarized_articles"`
 	TopTags              []string  `json:"top_tags"`
 	UpdatedAt            time.Time `json:"updated_at"`
+	// LastEventSeq is the folding event's own knowledge_events.event_seq.
+	// The counters above are additive deltas, so sovereign_db's merge-safe
+	// UPSERT needs a monotonic discriminator to tell "already folded" from
+	// "another producer's clock is ahead" and applies the DO UPDATE only
+	// above the row's stored high-water mark. UpdatedAt cannot serve: it is
+	// the event's OccurredAt, stamped by whichever producer emitted it. The
+	// driver rejects a payload that omits this rather than falling back, so
+	// every digestWrite literal must set it.
+	LastEventSeq int64 `json:"last_event_seq"`
 }
 
 type recallReasonWire struct {
@@ -504,12 +513,23 @@ func (p *Projector) upsertHomeItem(ctx context.Context, item homeItemWrite) erro
 	return nil
 }
 
+// upsertDigest's error is fatal to the fold, unlike the recall-candidate and
+// clear-supersede side effects below. today_digest_view's counters are
+// additive deltas keyed on the folding event's event_seq: an event the
+// checkpoint walks past contributes its increment exactly never again, and a
+// RebuildProjection cannot recover it either — the rebuild truncates and
+// replays the same log into the same failure. Logging at WARN and returning
+// nil here is also precisely what hid the producer/consumer skew that stopped
+// today_digest_view being written at all (Alt Rule 8).
 func (p *Projector) upsertDigest(ctx context.Context, digest digestWrite) error {
 	raw, err := json.Marshal(digest)
 	if err != nil {
 		return fmt.Errorf("marshal today_digest_view payload: %w", err)
 	}
-	return p.repo.UpsertTodayDigest(ctx, raw)
+	if err := p.repo.UpsertTodayDigest(ctx, raw); err != nil {
+		return fmt.Errorf("upsert today_digest_view: %w", err)
+	}
+	return nil
 }
 
 func (p *Projector) upsertRecallCandidate(ctx context.Context, candidate recallCandidateWrite) error {
@@ -588,12 +608,9 @@ func (p *Projector) foldArticleCreated(ctx context.Context, evt sovereign_db.Kno
 		NewArticles:          1,
 		UnsummarizedArticles: 1,
 		UpdatedAt:            occurredAt,
+		LastEventSeq:         evt.EventSeq,
 	}
-	if err := p.upsertDigest(ctx, digest); err != nil {
-		p.logger.WarnContext(ctx, "knowledge_home_projector: today_digest upsert failed for ArticleCreated",
-			slog.String("event_id", evt.EventID.String()), slog.Any("error", err))
-	}
-	return nil
+	return p.upsertDigest(ctx, digest)
 }
 
 // isHTTPURL allowlists {http, https}. Mirrors the FE-side safeArticleHref
@@ -700,12 +717,9 @@ func (p *Projector) foldSummaryVersionCreated(ctx context.Context, evt sovereign
 		SummarizedArticles:   summarizedArticles,
 		UnsummarizedArticles: unsummarizedDelta,
 		UpdatedAt:            occurredAt,
+		LastEventSeq:         evt.EventSeq,
 	}
-	if err := p.upsertDigest(ctx, digest); err != nil {
-		p.logger.WarnContext(ctx, "knowledge_home_projector: today_digest upsert failed for SummaryVersionCreated",
-			slog.String("event_id", evt.EventID.String()), slog.Any("error", err))
-	}
-	return nil
+	return p.upsertDigest(ctx, digest)
 }
 
 // foldTagSetVersionCreated: design change (F-01) — tags travel on the event
@@ -745,15 +759,13 @@ func (p *Projector) foldTagSetVersionCreated(ctx context.Context, evt sovereign_
 	// touching the row would still bump its updated_at.
 	if len(payload.Tags) > 0 {
 		digest := digestWrite{
-			UserID:     userID,
-			DigestDate: occurredAt.Format(time.DateOnly),
-			TopTags:    payload.Tags,
-			UpdatedAt:  occurredAt,
+			UserID:       userID,
+			DigestDate:   occurredAt.Format(time.DateOnly),
+			TopTags:      payload.Tags,
+			UpdatedAt:    occurredAt,
+			LastEventSeq: evt.EventSeq,
 		}
-		if err := p.upsertDigest(ctx, digest); err != nil {
-			p.logger.WarnContext(ctx, "knowledge_home_projector: today_digest upsert failed for TagSetVersionCreated",
-				slog.String("event_id", evt.EventID.String()), slog.Any("error", err))
-		}
+		return p.upsertDigest(ctx, digest)
 	}
 	return nil
 }
@@ -982,10 +994,11 @@ func (p *Projector) foldReasonMerged(ctx context.Context, evt sovereign_db.Knowl
 // recall_candidate_view is a disposable projection (immutable-design-guard),
 // so a TRUNCATE + full reproject replay must reach the same snoozed/dismissed
 // state alt-backend's write-through usecases already applied directly. Unlike
-// the today_digest/recall_candidate side effects on other events (which are
-// secondary and non-fatal), the write here IS the event's entire purpose, so
-// a repository failure is a hard-fail: it stops the batch rather than
-// silently advancing the checkpoint past a lost snooze/dismiss.
+// the recall_candidate side effect on HomeItemOpened (which a later open
+// re-derives, and which is therefore non-fatal), the write here IS the
+// event's entire purpose, so a repository failure is a hard-fail: it stops
+// the batch rather than silently advancing the checkpoint past a lost
+// snooze/dismiss.
 
 func (p *Projector) foldRecallSnoozed(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
 	var payload recallSnoozedPayload

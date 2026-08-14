@@ -15,6 +15,12 @@ import (
 	"pre-processor-sidecar/models"
 )
 
+// ErrNoUsageRecordToday reports that api_usage_tracking simply has no row for the
+// current date yet — the ordinary first-call-of-the-day condition, not a failure.
+// Callers seed a zero-valued counter on it and then write that counter back over
+// the day's row, so it must stay distinguishable from a query that failed.
+var ErrNoUsageRecordToday = errors.New("no api usage record found for today")
+
 // PostgreSQLAPIUsageRepository implements APIUsageRepository using PostgreSQL.
 type PostgreSQLAPIUsageRepository struct {
 	pool   PgxIface
@@ -47,7 +53,7 @@ func (r *PostgreSQLAPIUsageRepository) GetTodaysUsage(ctx context.Context) (*mod
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("no api usage record found for today: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrNoUsageRecordToday, err)
 		}
 		return nil, fmt.Errorf("failed to get today's api usage: %w", err)
 	}

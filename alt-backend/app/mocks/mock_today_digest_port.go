@@ -58,44 +58,6 @@ func (mr *MockGetTodayDigestPortMockRecorder) GetTodayDigest(ctx, userID, date a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTodayDigest", reflect.TypeOf((*MockGetTodayDigestPort)(nil).GetTodayDigest), ctx, userID, date)
 }
 
-// MockUpsertTodayDigestPort is a mock of UpsertTodayDigestPort interface.
-type MockUpsertTodayDigestPort struct {
-	ctrl     *gomock.Controller
-	recorder *MockUpsertTodayDigestPortMockRecorder
-	isgomock struct{}
-}
-
-// MockUpsertTodayDigestPortMockRecorder is the mock recorder for MockUpsertTodayDigestPort.
-type MockUpsertTodayDigestPortMockRecorder struct {
-	mock *MockUpsertTodayDigestPort
-}
-
-// NewMockUpsertTodayDigestPort creates a new mock instance.
-func NewMockUpsertTodayDigestPort(ctrl *gomock.Controller) *MockUpsertTodayDigestPort {
-	mock := &MockUpsertTodayDigestPort{ctrl: ctrl}
-	mock.recorder = &MockUpsertTodayDigestPortMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockUpsertTodayDigestPort) EXPECT() *MockUpsertTodayDigestPortMockRecorder {
-	return m.recorder
-}
-
-// UpsertTodayDigest mocks base method.
-func (m *MockUpsertTodayDigestPort) UpsertTodayDigest(ctx context.Context, digest domain.TodayDigest) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertTodayDigest", ctx, digest)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpsertTodayDigest indicates an expected call of UpsertTodayDigest.
-func (mr *MockUpsertTodayDigestPortMockRecorder) UpsertTodayDigest(ctx, digest any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertTodayDigest", reflect.TypeOf((*MockUpsertTodayDigestPort)(nil).UpsertTodayDigest), ctx, digest)
-}
-
 // MockGetProjectionFreshnessPort is a mock of GetProjectionFreshnessPort interface.
 type MockGetProjectionFreshnessPort struct {
 	ctrl     *gomock.Controller

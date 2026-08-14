@@ -126,6 +126,11 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"consumer", c.config.ConsumerName,
 		"dlq_stream", c.config.DLQStreamKey,
 		"max_deliveries", c.config.MaxDeliveries,
+		// The effective cap, not the raw field: effectiveDLQMaxLen resolving an
+		// unset DLQMaxLen to the default is only defensible while the value it
+		// picked is visible here, so an operator can tell a configured cap from
+		// an unwired one.
+		"dlq_max_len", c.config.effectiveDLQMaxLen(),
 	)
 
 	c.wg.Add(2)
