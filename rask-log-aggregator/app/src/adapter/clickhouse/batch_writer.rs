@@ -12,7 +12,7 @@ use clickhouse::{Client, RowOwned, RowWrite};
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -57,12 +57,17 @@ const INITIAL_RETRY_BACKOFF: Duration = Duration::from_millis(250);
 /// enough to notice ClickHouse coming back.
 const MAX_RETRY_BACKOFF: Duration = Duration::from_secs(10);
 
+/// Resolves once the batch it travelled with is durably in ClickHouse, or with
+/// the error that stopped it. The ingest handler awaits this before it answers,
+/// so a 2xx means the rows are written and the forwarder may drop its copy.
+type LogAck = oneshot::Sender<Result<(), AggregatorError>>;
+
 /// Batch writer that buffers rows through channels before writing to ClickHouse.
 ///
 /// Implements both `LogExporter` and `OTelExporter`. Handlers send rows
 /// through bounded channels; a background task drains and flushes them.
 pub struct BatchWriter {
-    logs: mpsc::Sender<Vec<LogRow>>,
+    logs: mpsc::Sender<(Vec<LogRow>, LogAck)>,
     otel_logs: mpsc::Sender<Vec<OTelLogRow>>,
     otel_traces: mpsc::Sender<Vec<OTelTraceRow>>,
 }
@@ -77,7 +82,7 @@ impl BatchWriter {
     /// on shutdown, silently losing the final batch.
     #[must_use]
     pub fn spawn(client: Client, shutdown_token: CancellationToken) -> (Self, JoinHandle<()>) {
-        let (logs_tx, logs_rx) = mpsc::channel::<Vec<LogRow>>(CHANNEL_CAPACITY);
+        let (logs_tx, logs_rx) = mpsc::channel::<(Vec<LogRow>, LogAck)>(CHANNEL_CAPACITY);
         let (otel_logs_tx, otel_logs_rx) = mpsc::channel::<Vec<OTelLogRow>>(CHANNEL_CAPACITY);
         let (otel_traces_tx, otel_traces_rx) = mpsc::channel::<Vec<OTelTraceRow>>(CHANNEL_CAPACITY);
 
@@ -110,10 +115,20 @@ impl crate::port::LogExporter for BatchWriter {
                 return Ok(());
             }
             let rows: Vec<LogRow> = logs.into_iter().map(LogRow::from).collect();
+            let (ack_tx, ack_rx) = oneshot::channel();
             self.logs
-                .send(rows)
+                .send((rows, ack_tx))
                 .await
-                .map_err(|_| AggregatorError::Export("log batch channel closed".to_string()))
+                .map_err(|_| AggregatorError::Export("log batch channel closed".to_string()))?;
+            // Park until the flush loop has actually written the rows. Without
+            // this the caller is told Ok while the batch is still only in
+            // memory, and a SIGKILL in that window loses it with the forwarder
+            // already instructed to discard its copy.
+            ack_rx.await.unwrap_or_else(|_| {
+                Err(AggregatorError::Export(
+                    "flush loop dropped the batch before acknowledging it".to_string(),
+                ))
+            })
         })
     }
 }
@@ -158,12 +173,16 @@ impl crate::port::OTelExporter for BatchWriter {
 
 async fn flush_loop(
     client: Client,
-    mut log_rx: mpsc::Receiver<Vec<LogRow>>,
+    mut log_rx: mpsc::Receiver<(Vec<LogRow>, LogAck)>,
     mut otel_log_rx: mpsc::Receiver<Vec<OTelLogRow>>,
     mut otel_trace_rx: mpsc::Receiver<Vec<OTelTraceRow>>,
     shutdown_token: CancellationToken,
 ) {
     let mut log_buf: Vec<LogRow> = Vec::new();
+    // One entry per caller currently parked on `export_batch`, covering the
+    // rows sitting in `log_buf`. Resolved together whenever that buffer is
+    // flushed, so nobody is answered before their rows land.
+    let mut log_acks: Vec<LogAck> = Vec::new();
     let mut otel_log_buf: Vec<OTelLogRow> = Vec::new();
     let mut otel_trace_buf: Vec<OTelTraceRow> = Vec::new();
     let mut flush_interval = tokio::time::interval(Duration::from_secs(FLUSH_INTERVAL_SECS));
@@ -177,17 +196,32 @@ async fn flush_loop(
             // Periodic flush
             _ = flush_interval.tick() => {
                 flush_all(
-                    &client, &mut log_buf, &mut otel_log_buf, &mut otel_trace_buf,
+                    &client, &mut log_buf, &mut log_acks, &mut otel_log_buf, &mut otel_trace_buf,
                     MAX_FLUSH_ATTEMPTS,
                 ).await;
             }
 
             // Drain log rows
-            Some(rows) = log_rx.recv() => {
+            Some((rows, ack)) = log_rx.recv() => {
                 log_buf.extend(rows);
-                if log_buf.len() >= MAX_BATCH_SIZE {
-                    flush_rows(&client, "logs", &mut log_buf, MAX_FLUSH_ATTEMPTS).await;
+                log_acks.push(ack);
+
+                // Opportunistic batching: absorb whatever else is already
+                // queued so ClickHouse still sees large inserts, but do not
+                // wait for the tick - every batch here has a caller parked on
+                // its ack, and holding them for up to FLUSH_INTERVAL_SECS
+                // would put that latency on the forwarder's request.
+                while log_buf.len() < MAX_BATCH_SIZE {
+                    match log_rx.try_recv() {
+                        Ok((more, more_ack)) => {
+                            log_buf.extend(more);
+                            log_acks.push(more_ack);
+                        }
+                        Err(_) => break,
+                    }
                 }
+
+                flush_logs(&client, &mut log_buf, &mut log_acks, MAX_FLUSH_ATTEMPTS).await;
             }
 
             // Drain OTel log rows
@@ -209,11 +243,11 @@ async fn flush_loop(
             // Shutdown signal
             () = shutdown_token.cancelled() => {
                 info!("BatchWriter shutting down: draining channels before final flush");
-                drain_channel(&mut log_rx, &mut log_buf);
+                drain_log_channel(&mut log_rx, &mut log_buf, &mut log_acks);
                 drain_channel(&mut otel_log_rx, &mut otel_log_buf);
                 drain_channel(&mut otel_trace_rx, &mut otel_trace_buf);
                 flush_all(
-                    &client, &mut log_buf, &mut otel_log_buf, &mut otel_trace_buf,
+                    &client, &mut log_buf, &mut log_acks, &mut otel_log_buf, &mut otel_trace_buf,
                     SHUTDOWN_FLUSH_ATTEMPTS,
                 ).await;
                 let unwritten = log_buf.len() + otel_log_buf.len() + otel_trace_buf.len();
@@ -241,15 +275,87 @@ fn drain_channel<T>(rx: &mut mpsc::Receiver<Vec<T>>, buf: &mut Vec<T>) {
     }
 }
 
+/// `drain_channel` for the log channel, which carries a durability ack
+/// alongside its rows. The acks are collected too, so the final flush can
+/// answer callers that were still parked when shutdown began.
+fn drain_log_channel(
+    rx: &mut mpsc::Receiver<(Vec<LogRow>, LogAck)>,
+    buf: &mut Vec<LogRow>,
+    acks: &mut Vec<LogAck>,
+) {
+    rx.close();
+    while let Ok((rows, ack)) = rx.try_recv() {
+        buf.extend(rows);
+        acks.push(ack);
+    }
+}
+
+/// Flush the log buffer and settle every caller waiting on it.
+///
+/// A caller is answered Ok only when the buffer actually drained. If the retry
+/// budget is exhausted the rows stay buffered for the next attempt *and* the
+/// callers are answered Err, so the forwarder keeps its copy and retries
+/// rather than discarding rows this process may still lose.
+async fn flush_logs(
+    client: &Client,
+    buf: &mut Vec<LogRow>,
+    acks: &mut Vec<LogAck>,
+    max_attempts: u32,
+) {
+    let sink = ClickHouseSink {
+        client,
+        table: "logs",
+    };
+    flush_logs_via(&sink, buf, acks, max_attempts).await;
+}
+
+/// The sink-generic half of `flush_logs`, so the ack contract can be exercised
+/// against a failing write without a ClickHouse connection.
+async fn flush_logs_via<S: FlushSink<LogRow>>(
+    sink: &S,
+    buf: &mut Vec<LogRow>,
+    acks: &mut Vec<LogAck>,
+    max_attempts: u32,
+) {
+    if buf.is_empty() {
+        settle(acks, &Ok(()));
+        return;
+    }
+
+    let pending = buf.len();
+    flush_with_retry("logs", buf, sink, max_attempts).await;
+
+    let outcome = if buf.is_empty() {
+        Ok(())
+    } else {
+        Err(AggregatorError::Export(format!(
+            "ClickHouse did not accept {pending} rows within {max_attempts} attempts"
+        )))
+    };
+    settle(acks, &outcome);
+}
+
+/// Resolve and clear every parked caller with the same outcome.
+fn settle(acks: &mut Vec<LogAck>, outcome: &Result<(), AggregatorError>) {
+    for ack in acks.drain(..) {
+        // Err means the caller's request was already cancelled; nothing to do.
+        let _ = ack.send(match outcome {
+            Ok(()) => Ok(()),
+            Err(e) => Err(AggregatorError::Export(e.to_string())),
+        });
+    }
+}
+
 async fn flush_all(
     client: &Client,
     log_buf: &mut Vec<LogRow>,
+    log_acks: &mut Vec<LogAck>,
     otel_log_buf: &mut Vec<OTelLogRow>,
     otel_trace_buf: &mut Vec<OTelTraceRow>,
     max_attempts: u32,
 ) {
-    if !log_buf.is_empty() {
-        flush_rows(client, "logs", log_buf, max_attempts).await;
+    if !log_buf.is_empty() || !log_acks.is_empty() {
+        flush_logs(client, log_buf, log_acks, max_attempts).await;
     }
     if !otel_log_buf.is_empty() {
         flush_rows(client, "otel_logs", otel_log_buf, max_attempts).await;
@@ -352,18 +458,41 @@ async fn write_batch<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize
         .with_max_bytes(INSERTER_MAX_BYTES)
         .with_max_rows(INSERTER_MAX_ROWS);
 
-    // Individual row failures here are per-row (de)serialization problems,
-    // not transient network errors - retrying the batch wouldn't help them.
-    // Count and report them as a single aggregated error (rather than one
-    // `error!` per row, and rather than swallowing them with no signal at
-    // all) so a persistently non-zero drop count is visible.
+    // A failure here is usually a per-row (de)serialization problem, which
+    // retrying the batch would not help - so those rows are counted and
+    // reported in aggregate rather than aborting their whole batch.
+    //
+    // But `Inserter::write` also opens the connection on first use, so an
+    // unreachable ClickHouse fails on *every* row and never reaches `end()`.
+    // Treating that as a pile of bad rows returned Ok having sent nothing,
+    // which cleared the buffer in `flush_with_retry`; the retry ladder and the
+    // durability ack were both sitting behind a write that could not fail.
+    // A batch where nothing could be written is therefore an error, not a
+    // drop.
     let mut dropped = 0usize;
+    let mut last_error = None;
     for row in rows {
         if let Err(e) = inserter.write(row).await {
             warn!(table, error = %e, "Failed to write row to ClickHouse inserter, dropping row");
             dropped += 1;
+            last_error = Some(e);
         }
     }
+
+    if dropped == rows.len() && !rows.is_empty() {
+        let detail = last_error.map_or_else(|| "unknown".to_string(), |e| e.to_string());
+        error!(
+            table,
+            total = rows.len(),
+            error = %detail,
+            "No row in the batch could be written; treating as a failed flush"
+        );
+        return Err(AggregatorError::Export(format!(
+            "no row of {} could be written to {table}: {detail}",
+            rows.len()
+        )));
+    }
+
     if dropped > 0 {
         error!(
             table,
@@ -454,13 +583,13 @@ mod tests {
 
     type WriterChannels = (
         BatchWriter,
-        mpsc::Receiver<Vec<LogRow>>,
+        mpsc::Receiver<(Vec<LogRow>, LogAck)>,
         mpsc::Receiver<Vec<OTelLogRow>>,
         mpsc::Receiver<Vec<OTelTraceRow>>,
     );
 
     fn make_writer() -> WriterChannels {
-        let (logs_tx, logs_rx) = mpsc::channel(16);
+        let (logs_tx, logs_rx) = mpsc::channel::<(Vec<LogRow>, LogAck)>(16);
         let (otel_logs_tx, otel_logs_rx) = mpsc::channel(16);
         let (otel_traces_tx, otel_traces_rx) = mpsc::channel(16);
         let writer = BatchWriter {
@@ -493,14 +622,53 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn export_batch_sends_rows_to_channel() {
+    async fn export_batch_sends_rows_to_channel_and_waits_for_the_ack() {
         let (writer, mut logs_rx, _, _) = make_writer();
 
         let entries = vec![make_enriched_log(), make_enriched_log()];
-        writer.export_batch(entries).await.unwrap();
+        let export = tokio::spawn(async move { writer.export_batch(entries).await });
 
-        let received = logs_rx.recv().await.unwrap();
+        let (received, ack) = logs_rx.recv().await.unwrap();
         assert_eq!(received.len(), 2);
+
+        // Still parked: the rows are queued but nothing has written them yet.
+        assert!(!export.is_finished());
+
+        ack.send(Ok(())).unwrap();
+        export.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn export_batch_surfaces_a_failed_durable_write() {
+        let (writer, mut logs_rx, _, _) = make_writer();
+
+        let export =
+            tokio::spawn(async move { writer.export_batch(vec![make_enriched_log()]).await });
+        let (_rows, ack) = logs_rx.recv().await.unwrap();
+        ack.send(Err(AggregatorError::Export("clickhouse down".to_string())))
+            .unwrap();
+
+        let result = export.await.unwrap();
+        assert!(
+            result.is_err(),
+            "a rejected durable write must reach the handler so it answers 5xx and the \
+             forwarder keeps its copy"
+        );
+    }
+
+    #[tokio::test]
+    async fn export_batch_errors_when_the_flush_loop_drops_the_ack() {
+        let (writer, mut logs_rx, _, _) = make_writer();
+
+        let export =
+            tokio::spawn(async move { writer.export_batch(vec![make_enriched_log()]).await });
+        let (_rows, ack) = logs_rx.recv().await.unwrap();
+        drop(ack);
+
+        assert!(
+            export.await.unwrap().is_err(),
+            "a dropped ack must not read as a successful export"
+        );
     }
 
     #[tokio::test]
@@ -797,6 +965,82 @@ mod tests {
         assert!(
             gaps[3] >= gaps[0] * 8,
             "backoff must grow exponentially, not linearly: {gaps:?}"
+        );
+    }
+
+    /// A 200 from the aggregate handler must mean the rows are in ClickHouse.
+    /// `export_batch` used to resolve Ok as soon as the rows were queued on the
+    /// in-process channel, so the forwarder dropped its only copy while the
+    /// batch was still sitting in `log_buf` - and a SIGKILL in that window lost
+    /// it silently.
+    #[tokio::test]
+    async fn a_batch_clickhouse_never_accepted_is_acked_as_a_failure() {
+        let mut buf = vec![LogRow::from(make_enriched_log())];
+        let mut acks = Vec::new();
+        let (ack_tx, ack_rx) = oneshot::channel();
+        acks.push(ack_tx);
+
+        let sink = FailingLogSink;
+        flush_logs_via(&sink, &mut buf, &mut acks, 2).await;
+
+        assert!(
+            ack_rx.await.unwrap().is_err(),
+            "a caller must not be told Ok for rows ClickHouse rejected; a 200 built on this \
+             tells the forwarder to discard rows that exist nowhere else"
+        );
+        assert_eq!(
+            buf.len(),
+            1,
+            "rejected rows stay buffered for the next attempt"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_batch_clickhouse_accepted_is_acked_as_a_success() {
+        let mut buf = vec![LogRow::from(make_enriched_log())];
+        let mut acks = Vec::new();
+        let (ack_tx, ack_rx) = oneshot::channel();
+        acks.push(ack_tx);
+
+        flush_logs_via(&AcceptingLogSink, &mut buf, &mut acks, 2).await;
+
+        assert!(ack_rx.await.unwrap().is_ok());
+        assert!(buf.is_empty(), "a written batch must leave the buffer");
+    }
+
+    struct FailingLogSink;
+    impl FlushSink<LogRow> for FailingLogSink {
+        async fn write(&self, _rows: &[LogRow]) -> Result<(), AggregatorError> {
+            Err(AggregatorError::Export(
+                "clickhouse unreachable".to_string(),
+            ))
+        }
+    }
+
+    struct AcceptingLogSink;
+    impl FlushSink<LogRow> for AcceptingLogSink {
+        async fn write(&self, _rows: &[LogRow]) -> Result<(), AggregatorError> {
+            Ok(())
+        }
+    }
+
+    /// `Inserter::write` opens the HTTP connection lazily, so an unreachable
+    /// ClickHouse fails there rather than at `end()`. Counting those as
+    /// per-row serialization drops made `write_batch` return Ok having sent
+    /// nothing - which cleared the buffer in `flush_with_retry`, so the retry
+    /// ladder, the disk fallback and the durability ack all sat behind a write
+    /// that always claimed success.
+    #[tokio::test]
+    async fn write_batch_fails_when_no_row_could_be_written() {
+        let client = Client::default().with_url("http://127.0.0.1:1");
+        let rows = vec![LogRow::from(make_enriched_log())];
+
+        let result = write_batch(&client, "logs", &rows).await;
+
+        assert!(
+            result.is_err(),
+            "a batch where every row failed is an unreachable server, not a batch of \
+             malformed rows; returning Ok silently discards it"
         );
     }
 }
