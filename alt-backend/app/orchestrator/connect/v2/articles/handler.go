@@ -75,14 +75,20 @@ type Handler struct {
 	deps   ArticleHandlerDeps
 	logger *slog.Logger
 	cfg    *config.Config
+
+	// warmSlots is the fixed pool of detached cache warms BatchPrefetchImages
+	// is allowed to have in flight. Sending claims a slot, the goroutine
+	// returns it. See maxConcurrentCacheWarms.
+	warmSlots chan struct{}
 }
 
 // NewHandler creates a new Article service handler.
 func NewHandler(deps ArticleHandlerDeps, cfg *config.Config, logger *slog.Logger) *Handler {
 	return &Handler{
-		deps:   deps,
-		logger: logger,
-		cfg:    cfg,
+		deps:      deps,
+		logger:    logger,
+		cfg:       cfg,
+		warmSlots: make(chan struct{}, maxConcurrentCacheWarms),
 	}
 }
 
@@ -110,6 +116,23 @@ const (
 	// is still ours — excusing either from the breaker would hide a real
 	// outage behind "the site is slow".
 	FailureScopeHost = "host"
+
+	// maxArticlesPageSize is the largest page the cursor RPCs will serve.
+	//
+	// It sits one below the usecases' own ceiling of 100 on purpose: these
+	// handlers ask for limit+1 rows so they can answer has_more without a
+	// separate COUNT, so a page of 100 would fetch 101 and the usecase would
+	// reject it. Clamping to 100 turned the documented maximum page size into
+	// an opaque CodeInternal.
+	maxArticlesPageSize = 99
+
+	// maxConcurrentCacheWarms bounds the detached OGP cache warms a handler
+	// may hold at once. BatchPrefetchImages hands each warm a WithoutCancel
+	// context and a 60-second budget, so a warm outlives the RPC that asked
+	// for it; the Connect listener has no rate limit of its own and WarmCache
+	// parks on the per-host limiter, so an unbounded fan-out grows with the
+	// arrival rate instead of the completion rate.
+	maxConcurrentCacheWarms = 32
 )
 
 // withFailureScope stamps the blast radius onto a Connect error.
@@ -285,8 +308,8 @@ func (h *Handler) FetchArticlesCursor(
 	if limit <= 0 {
 		limit = 20 // default
 	}
-	if limit > 100 {
-		limit = 100
+	if limit > maxArticlesPageSize {
+		limit = maxArticlesPageSize
 	}
 
 	// Parse cursor if provided
@@ -384,8 +407,8 @@ func (h *Handler) FetchArticlesByTag(
 	if limit <= 0 {
 		limit = 20 // default
 	}
-	if limit > 100 {
-		limit = 100
+	if limit > maxArticlesPageSize {
+		limit = maxArticlesPageSize
 	}
 
 	// Parse cursor if provided
@@ -713,9 +736,24 @@ func (h *Handler) BatchPrefetchImages(
 
 	// Warm cache for images in background. WithoutCancel keeps request values
 	// (trace/auth metadata) while allowing work to finish after the RPC returns.
+	//
+	// Bounded by warmSlots and shed — not queued — when the pool is full: a
+	// dropped warm costs one uncached image on the next view, while a queued
+	// one costs a goroutine holding a request context for up to a minute, and
+	// the queue would only ever grow because warms arrive faster than the
+	// per-host limiter lets them finish.
 	for _, ogURL := range ogURLs {
+		select {
+		case h.warmSlots <- struct{}{}:
+		default:
+			h.logger.DebugContext(ctx, "cache warm shed, warm pool saturated",
+				"url", ogURL, "operation", "BatchPrefetchImages")
+			continue
+		}
+
 		ogURLCopy := ogURL
 		go func() {
+			defer func() { <-h.warmSlots }()
 			warmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
 			defer cancel()
 			h.deps.ImageProxy.WarmCache(warmCtx, ogURLCopy)

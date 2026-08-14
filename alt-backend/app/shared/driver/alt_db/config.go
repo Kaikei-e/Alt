@@ -2,6 +2,7 @@ package alt_db
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -73,14 +74,21 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
+// getEnvIntOrDefault は key を int として読む。defaultValue に落ちるのは
+// 変数が未設定のときだけで、設定されているのに使えない値（非数値 / int 範囲外）は
+// 起動失敗にする。黙って既定値に落とすと、起動ログは実効値しか出さないので
+// compose の DB_MAX_CONNS=40 が 20 で動いていることが運用から見えない
+// （CLAUDE.md rule 9: fail-fast startup config）。
 func getEnvIntOrDefault(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		if intValue, err := strconv.ParseInt(value, 10, 64); err == nil {
-			// Check bounds for int type (platform-dependent)
-			if intValue <= int64(^int(0)>>1) && intValue >= int64(-^int(0)>>1)-1 {
-				return int(intValue)
-			}
-		}
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
 	}
-	return defaultValue
+	// Atoi は bitSize=0（= int）でパースするので、プラットフォーム依存の
+	// int 範囲外は ErrRange として返ってくる。
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		panic(fmt.Errorf("invalid %s=%q: must be an integer in [%d, %d]: %w", key, value, math.MinInt, math.MaxInt, err))
+	}
+	return intValue
 }

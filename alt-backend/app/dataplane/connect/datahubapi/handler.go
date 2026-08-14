@@ -119,8 +119,11 @@ type Handler struct {
 	systemUser     SystemUserPort
 	recentArticles RecentArticlesUsecase
 
-	// Event publishing. The mq-hub publisher is genuinely optional — it
-	// carries notifications, and it says so itself through IsEnabled.
+	// Event publishing. The mq-hub publisher is switchable — it carries
+	// notifications, and it says so itself through IsEnabled — but switchable
+	// is not the same as omissible: "off" is a configuration the publisher
+	// reports, and a nil one is a composition root that forgot the option, so
+	// CreateArticle panics on it rather than skipping it.
 	eventPublisher event_publisher_port.EventPublisherPort
 
 	// The knowledge event sink is not: it is where CreateArticle appends the
@@ -315,9 +318,27 @@ func WithSummarizationPorts(
 }
 
 // WithEventPublisher configures the event publisher for domain events.
+//
+// The publisher can be switched off — mq-hub answers IsEnabled from its own
+// config — and that is a deployment saying "no notifications", not a wiring
+// mistake. The two are told apart here, where the boot log names which one
+// this process is in, and at the call site in CreateArticle, which panics on
+// the unwired one (CLAUDE.md rule 8 / ADR-000928). Logging rather than
+// panicking on nil: the composition root passes this option unconditionally,
+// so a nil arriving here is the field being nil, and the process that has to
+// stop is the one that reaches the publish, not the one that mounts the mux.
 func WithEventPublisher(ep event_publisher_port.EventPublisherPort) HandlerOption {
 	return func(h *Handler) {
 		h.eventPublisher = ep
+		switch {
+		case ep == nil:
+			h.logger.Error("datahub.event_publisher_unwired",
+				"detail", "DataHubService.CreateArticle will panic on its first call")
+		case ep.IsEnabled():
+			h.logger.Info("datahub.event_publisher_enabled")
+		default:
+			h.logger.Info("datahub.event_publisher_disabled")
+		}
 	}
 }
 
@@ -544,9 +565,23 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 			errors.New("user_id is required and must be a UUID"))
 	}
 
-	var publishedAt time.Time
-	if req.Msg.PublishedAt != nil {
-		publishedAt = req.Msg.PublishedAt.AsTime()
+	// Not every feed item has a pubDate, and published_at is a message field:
+	// an omitted one arrives as a nil Timestamp. The absence travels as an
+	// absence to the ArticleCreated payload, which is written once and never
+	// again — see appendArticleCreated.
+	//
+	// The upsert and the mq-hub notification below still type it as a
+	// non-nullable time.Time, so they get the zero. For the upsert that is the
+	// 0001-01-01 that lands in articles.published_at, where NULL is the
+	// column's own "unknown" and what the knowledge backfill's
+	// COALESCE(published_at, created_at) reads. Carrying it through as a NULL
+	// needs CreateArticleParams to hold a *time.Time and the ON CONFLICT to
+	// COALESCE it — the port, the gateway and the driver rather than this
+	// handler.
+	publishedAtOrZero := timeOrZero(req.Msg.PublishedAt)
+	var publishedAt *time.Time
+	if !publishedAtOrZero.IsZero() {
+		publishedAt = &publishedAtOrZero
 	}
 
 	articleID, created, err := h.createArticle.CreateArticle(ctx, internal_article_port.CreateArticleParams{
@@ -556,7 +591,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 		FeedID:      req.Msg.FeedId,
 		UserID:      req.Msg.UserId,
 		Language:    req.Msg.Language,
-		PublishedAt: publishedAt,
+		PublishedAt: publishedAtOrZero,
 	})
 	if err != nil {
 		h.logger.Error("CreateArticle failed", "error", err)
@@ -567,8 +602,20 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 		return nil, err
 	}
 
+	// A publisher that reports itself off is a deployment without
+	// notifications; a nil one is a composition root that dropped the option,
+	// and skipping it would write the article, answer 200, and leave
+	// summarisation and indexing with nothing to consume — the two states must
+	// not look alike from in here (CLAUDE.md rule 8 / ADR-000928).
+	if h.eventPublisher == nil {
+		panic("datahubapi: event_publisher_port.EventPublisherPort is nil — " +
+			"DataHubService.CreateArticle is where mq-hub learns about an ingested article; " +
+			"wire it at the composition root, and wire a disabled publisher to turn it off " +
+			"(see .claude/rules/di-wiring.md)")
+	}
+
 	// Fire-and-forget: publish ArticleCreated event for downstream consumers
-	if h.eventPublisher != nil && h.eventPublisher.IsEnabled() {
+	if h.eventPublisher.IsEnabled() {
 		if created {
 			if pubErr := h.eventPublisher.PublishArticleCreated(ctx, event_publisher_port.ArticleCreatedEvent{
 				ArticleID:   articleID,
@@ -577,7 +624,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 				Title:       req.Msg.Title,
 				URL:         req.Msg.Url,
 				Content:     req.Msg.Content,
-				PublishedAt: publishedAt,
+				PublishedAt: publishedAtOrZero,
 			}); pubErr != nil {
 				h.logger.Warn("failed to publish ArticleCreated event (non-fatal)",
 					"article_id", articleID, "error", pubErr)
@@ -589,7 +636,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 			Title:       req.Msg.Title,
 			URL:         req.Msg.Url,
 			Content:     req.Msg.Content,
-			PublishedAt: publishedAt,
+			PublishedAt: publishedAtOrZero,
 		}); pubErr != nil {
 			h.logger.Warn("failed to publish ArticleUpdated event (non-fatal)",
 				"article_id", articleID, "error", pubErr)
@@ -626,12 +673,25 @@ func (h *Handler) appendArticleCreated(
 	articleID string,
 	userID uuid.UUID,
 	msg *datahubv1.CreateArticleRequest,
-	publishedAt time.Time,
+	publishedAt *time.Time,
 ) error {
 	if h.knowledgeEventPort == nil {
 		panic("datahubapi: knowledge_event_port.AppendKnowledgeEventPort is nil — " +
 			"DataHubService.CreateArticle is a Knowledge Home ArticleCreated producer and " +
 			"must be wired at the composition root (see .claude/rules/di-wiring.md)")
+	}
+
+	// An article whose feed gave no pubDate travels with an empty
+	// published_at, not with the formatted zero time. knowledge_events is
+	// INSERT-only, so whatever goes in here is what Knowledge Home reads
+	// forever, and the read model ranks recency over
+	// COALESCE(published_at, generated_at): a 0001-01-01 item scores as two
+	// millennia stale and never re-enters a recent or today window. Empty is
+	// the payload's "unknown" — the projector folds it to a NULL published_at
+	// and the ranking falls back to this event's own generated_at.
+	publishedAtWire := ""
+	if publishedAt != nil {
+		publishedAtWire = publishedAt.Format(time.RFC3339)
 	}
 
 	// Canonical wire schema — see domain.ArticleCreatedPayload comment and
@@ -641,7 +701,7 @@ func (h *Handler) appendArticleCreated(
 	payload, err := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   articleID,
 		Title:       msg.Title,
-		PublishedAt: publishedAt.Format(time.RFC3339),
+		PublishedAt: publishedAtWire,
 		TenantID:    userID.String(),
 		URL:         msg.Url,
 	})

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"alt/orchestrator/gateway/rag_gateway"
 	"alt/orchestrator/port/rag_integration_port"
@@ -57,13 +58,13 @@ func TestAugurAdapter_UpsertArticle_ClassifiesFailures(t *testing.T) {
 		}
 	})
 
-	t.Run("caller's own context deadline expiring mid-request is NOT transient", func(t *testing.T) {
-		// This is the outbox worker's job timeout firing while
-		// UpsertIndexWithResponse is still in flight, not a
-		// rag-orchestrator-side failure. Classifying it transient would
-		// have the worker release the row and retry it into the same job
-		// timeout again on the very next tick — stalling the whole worker
-		// for another full timeout window per attempt instead of once.
+	t.Run("caller's job context dying mid-request IS transient", func(t *testing.T) {
+		// SIGTERM during a redeploy cancels the harvester's job context
+		// while UpsertIndexWithResponse is in flight. Nothing about this
+		// article failed — it simply never got its turn. Classifying it
+		// terminal wrote the row FAILED, which the PENDING-only claim
+		// query never re-fetches and outbox-prune never removes, so every
+		// redeploy permanently un-indexed whichever article was mid-upsert.
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client := NewMockRagClientInterface(ctrl)
@@ -79,8 +80,45 @@ func TestAugurAdapter_UpsertArticle_ClassifiesFailures(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected an error")
 		}
-		if errors.Is(err, rag_integration_port.ErrRagUpsertTransient) {
-			t.Errorf("a caller-context cancellation must not be classified transient, got: %v", err)
+		if !errors.Is(err, rag_integration_port.ErrRagUpsertTransient) {
+			t.Errorf("a caller-context cancellation must be classified transient so the row returns to PENDING, got: %v", err)
+		}
+	})
+
+	t.Run("one upsert cannot spend the caller's whole budget", func(t *testing.T) {
+		// Releasing a canceled upsert back to PENDING is only affordable
+		// because a single article cannot occupy the worker for the whole
+		// job timeout: without a budget of its own, one article that never
+		// returns starves the other nine rows of the batch until the job
+		// times out, and each retry costs another full window. The budget
+		// caps that at one article's worth, and the outbox's attempt
+		// budget caps how often it is paid.
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		client := NewMockRagClientInterface(ctrl)
+		client.EXPECT().
+			UpsertIndexWithResponse(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, _ rag_gateway.UpsertIndexJSONRequestBody, _ ...rag_gateway.RequestEditorFn) (*rag_gateway.UpsertIndexResponse, error) {
+				<-ctx.Done() // the embedder never answers
+				return nil, ctx.Err()
+			})
+
+		// The caller's context carries no deadline at all, so anything
+		// that bounds this call has to come from the adapter itself.
+		adapter := &AugurAdapter{client: client, upsertTimeout: 50 * time.Millisecond}
+		done := make(chan error, 1)
+		go func() { done <- adapter.UpsertArticle(context.Background(), input) }()
+
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !errors.Is(err, rag_integration_port.ErrRagUpsertTransient) {
+				t.Errorf("a blown per-article budget must stay retryable, got: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("UpsertArticle never returned: it has no budget of its own and inherits the caller's")
 		}
 	})
 

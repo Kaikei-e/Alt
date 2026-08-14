@@ -1,10 +1,13 @@
 package rest
 
 import (
+	"alt/config"
 	"alt/di"
+	middleware_custom "alt/middleware"
 	"alt/orchestrator/port/rag_integration_port"
 	"alt/orchestrator/usecase/answer_chat_usecase"
 	"alt/orchestrator/usecase/retrieve_context_usecase"
+	"alt/utils/logger"
 	"encoding/json"
 	"net/http"
 
@@ -242,8 +245,23 @@ func splitLines(s string) []string {
 	return lines
 }
 
-func RegisterAugurRoutes(e *echo.Echo, g *echo.Group, container *di.ApplicationComponents) {
+// RegisterAugurRoutes registers the Augur (RAG) surface. Both endpoints return
+// user-derived knowledge context and spend LLM budget, so they require a valid
+// JWT exactly like every other /v1 group in routes.go — before this guard they
+// were the only user-facing routes reachable anonymously from the compose
+// network or 127.0.0.1:9000.
+func RegisterAugurRoutes(e *echo.Echo, g *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
+
 	handler := NewAugurHandler(container.RetrieveContextUsecase, container.AnswerChatUsecase)
-	g.GET("/rag/context", handler.RetrieveContext)
-	e.POST("/sse/v1/rag/answer", handler.Answer)
+
+	rag := g.Group("/rag", authMiddleware.RequireAuth())
+	rag.GET("/context", handler.RetrieveContext)
+
+	// The streaming answer keeps its root-mounted /sse/v1/... path and takes
+	// RequireAuth as per-route middleware instead: the BodyLimit, Timeout and
+	// Gzip skippers in routes.go all key off `strings.Contains(c.Path(), "/sse/")`,
+	// so relocating it under /v1 would silently re-impose the 2MB body limit,
+	// the read timeout and gzip framing on an SSE response.
+	e.POST("/sse/v1/rag/answer", handler.Answer, authMiddleware.RequireAuth())
 }

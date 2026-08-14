@@ -206,10 +206,18 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		Payload:       knowledgePayload,
 	}
 
+	// Fatal, and deliberately ahead of every projection write below.
+	// knowledge_events is the only durable record of the action: the read
+	// models it feeds (knowledge_home_items in particular) are TRUNCATEd and
+	// replayed by RebuildProjection. Writing dismissed_at through to the
+	// projection after a failed append would survive only until the next
+	// reproject, at which point the dismissed item returns to the Home rail
+	// while the caller was told the action succeeded. Failing here instead
+	// lets the client retry the whole action.
 	if _, err := u.knowledgeEventPort.AppendKnowledgeEvent(ctx, knowledgeEvent); err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to append knowledge event for action",
-			"error", err, "action_type", actionType)
-		// Non-fatal: user event was already recorded
+			"error", err, "action_type", actionType, "item_key", itemKey)
+		return fmt.Errorf("track home action: append knowledge event: %w", err)
 	}
 
 	if actionType == "dismiss" && u.dismissPort != nil {

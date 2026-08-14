@@ -109,14 +109,17 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 	})
 }
 
-// successRagIntegration is a RagIntegrationPort that always succeeds UpsertArticle.
-type successRagIntegration struct{}
+// successRagIntegration is a RagIntegrationPort that always succeeds
+// UpsertArticle, counting the calls: an upsert is the 10-30s embedding run,
+// so "how many times was it called" is the cost this worker is spending.
+type successRagIntegration struct{ upserts int }
 
 func (s *successRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string) ([]rag_integration_port.RagContext, error) {
 	return nil, nil
 }
 
 func (s *successRagIntegration) UpsertArticle(_ context.Context, _ rag_integration_port.UpsertArticleInput) error {
+	s.upserts++
 	return nil
 }
 
@@ -234,9 +237,13 @@ func (m *mockOutboxRepo) statusOf(id string) string {
 	return status
 }
 
-// blockingRagIntegration simulates the local embedder taking longer than the
-// job timeout: UpsertArticle only returns once the caller's context is done,
-// the same way a 500KB+ article with 100+ chunks legitimately can.
+// blockingRagIntegration simulates the local embedder still working when the
+// job context dies: UpsertArticle only returns once the caller's context is
+// done, the same way a 500KB+ article with 100+ chunks legitimately can.
+//
+// It returns the error augur_adapter produces for that case — transient —
+// rather than a bare ctx.Err(), so tests driving this stub describe the real
+// classification instead of a taxonomy no implementation returns.
 type blockingRagIntegration struct {
 	started chan struct{}
 }
@@ -248,7 +255,7 @@ func (b *blockingRagIntegration) RetrieveContext(_ context.Context, _ string, _ 
 func (b *blockingRagIntegration) UpsertArticle(ctx context.Context, _ rag_integration_port.UpsertArticleInput) error {
 	close(b.started)
 	<-ctx.Done()
-	return ctx.Err()
+	return fmt.Errorf("%w: failed to call UpsertIndex: %w", rag_integration_port.ErrRagUpsertTransient, ctx.Err())
 }
 
 func (b *blockingRagIntegration) Answer(_ context.Context, _ rag_integration_port.AnswerInput) (<-chan string, error) {
@@ -295,17 +302,16 @@ func outboxUpsertEventFixture(id string) domain.OutboxEvent {
 	}
 }
 
-// TestProcessOutboxEvents_CancelMidProcessing_MarksInFlightEventFailed is a
-// worker-layer unit test: GIVEN a plain (non-transient) error from
-// UpsertArticle — which is what a job-timeout cancellation now produces
-// through the real classifier, see augur_adapter_test.go's "context deadline
-// exceeded" case and the integration test right below this one — the worker
-// must mark the row FAILED, not leave it PROCESSING. blockingRagIntegration
-// stands in for any RagIntegrationPort implementation raising that kind of
-// error; it does not by itself prove augur_adapter classifies a caller-side
-// timeout this way, which is why the adapter-level and integration tests
-// exist as a separate, non-bypassable check on that classification.
-func TestProcessOutboxEvents_CancelMidProcessing_MarksInFlightEventFailed(t *testing.T) {
+// TestProcessOutboxEvents_CancelMidProcessing_ReleasesInFlightEventForRetry is
+// a worker-layer unit test: GIVEN the transient error a canceled UpsertArticle
+// produces, the row must end PENDING — not PROCESSING (invisible to the
+// PENDING-only claim query) and not FAILED (invisible to it forever).
+// blockingRagIntegration stands in for any RagIntegrationPort implementation
+// raising that kind of error; it does not by itself prove augur_adapter
+// classifies a caller-side cancellation this way, which is why the
+// adapter-level and integration tests exist as a separate, non-bypassable
+// check on that classification.
+func TestProcessOutboxEvents_CancelMidProcessing_ReleasesInFlightEventForRetry(t *testing.T) {
 	logger.InitLogger()
 
 	eventID := uuid.New().String()
@@ -333,19 +339,21 @@ func TestProcessOutboxEvents_CancelMidProcessing_MarksInFlightEventFailed(t *tes
 		t.Fatal("processOutboxEvents did not return promptly after context cancellation")
 	}
 
-	assert.Equal(t, "FAILED", repo.statusOf(eventID), "in-flight event must end FAILED, not stuck PROCESSING")
+	assert.Equal(t, "PENDING", repo.statusOf(eventID), "in-flight event must be released for retry, not stuck PROCESSING nor terminally FAILED")
 }
 
-// TestProcessOutboxEvents_JobTimeoutMidUpsert_ThroughRealAdapter_EndsFailedNotRetried
+// TestProcessOutboxEvents_JobCanceledMidUpsert_ThroughRealAdapter_ReleasesForRetry
 // is the integration check the test above cannot be: it wires the real
-// augur_adapter.AugurAdapter (not a stub that bypasses its classification) so
-// a mutation reinstating defect 2 — augur_adapter marking a caller-context
-// cancellation transient — actually turns this test red. Without going
-// through the real adapter, a job-timeout mid-upsert would be classified
-// ErrRagUpsertTransient and released to PENDING instead of failing once,
-// costing the worker another full job timeout on the very next tick (see
-// augur_adapter.go's transport-error branch).
-func TestProcessOutboxEvents_JobTimeoutMidUpsert_ThroughRealAdapter_EndsFailedNotRetried(t *testing.T) {
+// augur_adapter.AugurAdapter (not a stub that bypasses its classification), so
+// it pins what the harvester actually does when SIGTERM cancels the job
+// context mid-upsert during a redeploy.
+//
+// That row must come back as PENDING. Ending it FAILED — the pre-fix
+// behavior — took it out of the PENDING-only claim query for good: nothing
+// re-claims a FAILED row, outbox-prune does not delete it, and there is no
+// requeue path, so whichever article was mid-upsert stayed out of the RAG
+// index permanently, once per deploy.
+func TestProcessOutboxEvents_JobCanceledMidUpsert_ThroughRealAdapter_ReleasesForRetry(t *testing.T) {
 	logger.InitLogger()
 
 	eventID := uuid.New().String()
@@ -382,8 +390,8 @@ func TestProcessOutboxEvents_JobTimeoutMidUpsert_ThroughRealAdapter_EndsFailedNo
 		t.Fatal("processOutboxEvents did not return promptly after context cancellation")
 	}
 
-	assert.Equal(t, "FAILED", repo.statusOf(eventID),
-		"a job-timeout mid-upsert, classified by the real adapter, must end FAILED on the first attempt — not be released for a same-worker retry that burns another full job timeout")
+	assert.Equal(t, "PENDING", repo.statusOf(eventID),
+		"a job-context cancellation mid-upsert, classified by the real adapter, must release the row for retry — a FAILED row is claimed by nobody, pruned by nothing and requeued by no path")
 }
 
 func TestProcessOutboxEvents_CancelMidBatch_ResetsUnattemptedClaimedEventsToPending(t *testing.T) {
@@ -421,7 +429,7 @@ func TestProcessOutboxEvents_CancelMidBatch_ResetsUnattemptedClaimedEventsToPend
 		t.Fatal("processOutboxEvents did not return promptly after context cancellation")
 	}
 
-	assert.Equal(t, "FAILED", repo.statusOf(blockedID), "in-flight event must end FAILED, not stuck PROCESSING")
+	assert.Equal(t, "PENDING", repo.statusOf(blockedID), "in-flight event must be released for retry, not stuck PROCESSING nor terminally FAILED")
 	assert.Equal(t, "PENDING", repo.statusOf(unattemptedID1), "unattempted claimed event must be released back to PENDING")
 	assert.Equal(t, "PENDING", repo.statusOf(unattemptedID2), "unattempted claimed event must be released back to PENDING")
 }
@@ -516,6 +524,62 @@ func TestProcessOutboxEvents_TransientRagFailure_SurvivesRealisticRedeployWindow
 
 	assert.Equal(t, "PENDING", repo.statusOf(eventID),
 		"a %s outage (%d ticks) must not exhaust the %d-attempt retry budget", observedWorstCaseRedeploy, ticksInWindow, maxOutboxUpsertAttempts)
+}
+
+// TestProcessOutboxEvents_ArticleCreatedFailure_ExhaustsRetryBudgetThenFails
+// puts the ArticleCreated leg on the same attempt budget as the RAG leg.
+//
+// The release after a failed append used to be unconditional, so a
+// knowledge-sovereign outage pinned the same rows at the front of the
+// oldest-first claim forever: every tick re-claimed them, and (before the
+// skip below) re-ran their embeddings, while newer articles queued behind an
+// event that would never make progress until sovereign came back.
+func TestProcessOutboxEvents_ArticleCreatedFailure_ExhaustsRetryBudgetThenFails(t *testing.T) {
+	logger.InitLogger()
+
+	eventID := uuid.New().String()
+	repo := &mockOutboxRepo{events: []domain.OutboxEvent{outboxUpsertEventFixture(eventID)}}
+	rag := &successRagIntegration{}
+	knowledgePort := &stubKnowledgeEventPort{err: fmt.Errorf("sovereign AppendKnowledgeEvent: unavailable")}
+	retries := newOutboxRetryTracker()
+
+	for attempt := 1; attempt <= maxOutboxUpsertAttempts; attempt++ {
+		require.NoError(t, processOutboxEvents(context.Background(), repo, rag, knowledgePort, retries))
+		if attempt < maxOutboxUpsertAttempts {
+			require.Equal(t, "PENDING", repo.statusOf(eventID), "attempt %d of %d must still be retried", attempt, maxOutboxUpsertAttempts)
+		}
+	}
+
+	assert.Equal(t, "FAILED", repo.statusOf(eventID),
+		"a sovereign outage outliving the attempt budget must end the row, not hold the head of the claim queue indefinitely")
+}
+
+// TestProcessOutboxEvents_ArticleCreatedRetry_DoesNotReUpsertToRag pins the
+// other half of that fix: a row released only because the ArticleCreated
+// append failed has already delivered its RAG upsert, so retrying it must
+// retry the append alone. Re-running the 10-30s embedding for an index entry
+// that is already there is what made a sovereign outage cost the whole batch
+// its tick.
+func TestProcessOutboxEvents_ArticleCreatedRetry_DoesNotReUpsertToRag(t *testing.T) {
+	logger.InitLogger()
+
+	eventID := uuid.New().String()
+	repo := &mockOutboxRepo{events: []domain.OutboxEvent{outboxUpsertEventFixture(eventID)}}
+	rag := &successRagIntegration{}
+	knowledgePort := &stubKnowledgeEventPort{err: fmt.Errorf("sovereign AppendKnowledgeEvent: unavailable")}
+	retries := newOutboxRetryTracker()
+
+	require.NoError(t, processOutboxEvents(context.Background(), repo, rag, knowledgePort, retries))
+	require.Equal(t, "PENDING", repo.statusOf(eventID))
+	require.Equal(t, 1, rag.upserts)
+
+	knowledgePort.err = nil
+	require.NoError(t, processOutboxEvents(context.Background(), repo, rag, knowledgePort, retries))
+
+	assert.Equal(t, "PROCESSED", repo.statusOf(eventID))
+	assert.Equal(t, 1, rag.upserts,
+		"the RAG upsert already succeeded on the first tick; the retry exists for the ArticleCreated append alone")
+	assert.Len(t, knowledgePort.events, 2, "the append must be retried (dedupe-safe upstream)")
 }
 
 // releaseFailingOutboxRepo simulates the release-to-PENDING RPC itself

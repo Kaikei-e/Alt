@@ -332,13 +332,34 @@ func NewConfig() (*Config, error) {
 		}
 	}
 
-	// Load backend token secret from file if configured (Docker Secrets support)
+	// Load backend token secret from file if configured (Docker Secrets support).
+	//
+	// Unlike the two blocks above this one does NOT fall back to the env value
+	// on failure. middleware/jwt_middleware.go and
+	// connect/v2/middleware/auth_interceptor.go verify every browser token
+	// against this secret, and an empty one rejects all of them: the container
+	// stays healthy, /health answers 200, and every authenticated REST and
+	// Connect call answers 401 with nothing in the log to say why. That cannot
+	// be a fallback state, so a mounted-but-unreadable or mounted-but-empty
+	// secret exits non-zero here (CLAUDE.md rule 9).
+	//
+	// The guard is deliberately environment-independent. validateAuthConfig
+	// only requires the secret when APP_ENV == "production", and APP_ENV is set
+	// in no compose file — the same trap validateImageProxyConfig documents.
 	if config.Auth.BackendTokenSecretFile != "" {
 		content, err := os.ReadFile(config.Auth.BackendTokenSecretFile)
-		if err == nil {
-			config.Auth.BackendTokenSecret = strings.TrimSpace(string(content))
+		if err != nil {
+			return nil, fmt.Errorf("read BACKEND_TOKEN_SECRET_FILE %s: %w",
+				config.Auth.BackendTokenSecretFile, err)
 		}
-		// If file read fails, we fall back to the env var value (if any) or keep it empty
+		secret := strings.TrimSpace(string(content))
+		if secret == "" {
+			return nil, fmt.Errorf("BACKEND_TOKEN_SECRET_FILE=%s resolved to an empty secret: "+
+				"every authenticated request would be rejected with 401 while the container stayed healthy; "+
+				"mount a non-empty secret or set BACKEND_TOKEN_SECRET instead",
+				config.Auth.BackendTokenSecretFile)
+		}
+		config.Auth.BackendTokenSecret = secret
 	}
 
 	// Set defaults for JWT issuer and audience if not provided

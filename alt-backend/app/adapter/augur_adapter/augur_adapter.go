@@ -17,13 +17,31 @@ type RagClientInterface interface {
 	AnswerWithRAGStream(ctx context.Context, body rag_gateway.AnswerWithRAGStreamJSONRequestBody, reqEditors ...rag_gateway.RequestEditorFn) (*http.Response, error)
 }
 
+// upsertArticleTimeout is how long one UpsertIndex call may run before this
+// adapter gives up on it, independent of whatever budget the caller has.
+//
+// The caller is the outbox worker, whose job timeout is 5 minutes for a batch
+// of 10 events (see orchestrator/job/registry.go). Without a per-article
+// budget a single article that never answers consumes that whole window, and
+// the other nine claimed rows are released unattempted — so the worker's
+// throughput is set by its slowest article rather than by its batch size.
+// 60s is double the 10-30s a heavy article (500+KB, 100+ chunks) takes on the
+// local embedder, and a tenth of the job budget, so one stuck article costs
+// one article's worth of a tick instead of the whole tick.
+const upsertArticleTimeout = 60 * time.Second
+
 type AugurAdapter struct {
 	client RagClientInterface
+	// upsertTimeout is a field rather than a direct use of the constant so a
+	// test can shorten it; NewAugurAdapter is the only production path and
+	// always sets upsertArticleTimeout.
+	upsertTimeout time.Duration
 }
 
 func NewAugurAdapter(client RagClientInterface) rag_integration_port.RagIntegrationPort {
 	return &AugurAdapter{
-		client: client,
+		client:        client,
+		upsertTimeout: upsertArticleTimeout,
 	}
 }
 
@@ -43,22 +61,22 @@ func (a *AugurAdapter) UpsertArticle(ctx context.Context, input rag_integration_
 		UserId:      input.UserID,
 	}
 
-	resp, err := a.client.UpsertIndexWithResponse(ctx, reqBody)
+	callCtx, cancel := context.WithTimeout(ctx, a.upsertTimeout)
+	defer cancel()
+
+	resp, err := a.client.UpsertIndexWithResponse(callCtx, reqBody)
 	if err != nil {
-		if ctx.Err() != nil {
-			// The caller's own deadline (the outbox worker's per-tick job
-			// timeout) expired mid-request, not a rag-orchestrator failure.
-			// Classifying this transient would have the outbox worker
-			// release the row and retry it through the same job timeout
-			// again — for an article that legitimately takes this long,
-			// that stalls the whole worker for another full timeout window
-			// per attempt instead of once, head-of-line blocking every
-			// event behind it.
-			return fmt.Errorf("failed to call UpsertIndex: %w", err)
-		}
-		// A transport failure (dial/timeout/DNS) has the same chance of
-		// succeeding on retry as a 5xx below — the request never reached
-		// rag-orchestrator's handler either way.
+		// Every failure that arrives without a verdict from
+		// rag-orchestrator is retryable, and a context cancellation is the
+		// clearest case of one: the article was never rejected, it just
+		// never got its turn. That includes the caller's job context dying
+		// on SIGTERM, which is a redeploy rather than an article problem —
+		// treating it terminal wrote the row FAILED, and a FAILED row is
+		// outside the PENDING claim query, untouched by outbox-prune and
+		// reachable by no requeue path, so every deploy permanently
+		// un-indexed whichever article was mid-upsert. Retries are bounded
+		// by the outbox worker's own attempt budget, and one attempt is
+		// bounded by upsertArticleTimeout above.
 		return fmt.Errorf("%w: failed to call UpsertIndex: %w", rag_integration_port.ErrRagUpsertTransient, err)
 	}
 

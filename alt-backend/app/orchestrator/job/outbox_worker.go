@@ -56,9 +56,12 @@ const outboxClaimBatchSize = 10
 // exactly how the budget went stale the first time (see maxOutboxUpsertAttempts).
 const outboxWorkerTickInterval = 5 * time.Second
 
-// maxOutboxUpsertAttempts bounds how many times a transient RAG upsert
-// failure (see rag_integration_port.ErrRagUpsertTransient) is released back
-// to PENDING before the row is given up as terminally FAILED.
+// maxOutboxUpsertAttempts bounds how many times a row is released back to
+// PENDING before it is given up as terminally FAILED. One budget covers both
+// of the row's side effects — a transient RAG upsert failure (see
+// rag_integration_port.ErrRagUpsertTransient) and a failed ArticleCreated
+// append — because what it rations is claim slots, and a row occupies one
+// whichever leg sent it back.
 //
 // There is no attempt_count column on outbox_events, so this count lives in
 // process memory (outboxRetryTracker) and resets on every harvester restart.
@@ -79,15 +82,21 @@ const outboxWorkerTickInterval = 5 * time.Second
 // unbounded and unattended.
 const maxOutboxUpsertAttempts = 24
 
-// outboxRetryTracker counts consecutive transient UpsertArticle failures per
-// outbox row, across worker ticks, in process memory only.
+// outboxRetryTracker counts consecutive delivery failures per outbox row,
+// across worker ticks, in process memory only. It also remembers which rows
+// already got their RAG upsert in, so a row released for the sake of its
+// second side effect does not pay for the first one twice.
 type outboxRetryTracker struct {
-	mu       sync.Mutex
-	attempts map[string]int
+	mu          sync.Mutex
+	attempts    map[string]int
+	ragUpserted map[string]bool
 }
 
 func newOutboxRetryTracker() *outboxRetryTracker {
-	return &outboxRetryTracker{attempts: make(map[string]int)}
+	return &outboxRetryTracker{
+		attempts:    make(map[string]int),
+		ragUpserted: make(map[string]bool),
+	}
 }
 
 // recordFailure increments and returns the attempt count for id.
@@ -98,13 +107,31 @@ func (t *outboxRetryTracker) recordFailure(id string) int {
 	return t.attempts[id]
 }
 
+// markRagUpserted records that id's article reached the RAG index.
+func (t *outboxRetryTracker) markRagUpserted(id string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.ragUpserted[id] = true
+}
+
+// ragUpsertDone reports whether this process already delivered id's article to
+// the RAG index. Only ever false-negative: a restart forgets, and the row is
+// upserted again — which is safe, the upsert is idempotent on article_id, and
+// costs one embedding run rather than a missed one.
+func (t *outboxRetryTracker) ragUpsertDone(id string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.ragUpserted[id]
+}
+
 // clear forgets id. Called once a row reaches a terminal status (PROCESSED or
-// FAILED) so a long-running harvester process does not grow this map by one
+// FAILED) so a long-running harvester process does not grow these maps by one
 // entry per outbox row for the life of the process.
 func (t *outboxRetryTracker) clear(id string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.attempts, id)
+	delete(t.ragUpserted, id)
 }
 
 // These OTel counters are this file's fix for a specific gap: before this
@@ -199,19 +226,31 @@ func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegrat
 			// codebase: the outbox is the sole delivery route into the RAG
 			// index, not a reliability backstop for a separate direct-call
 			// path.
-			if err := ragIntegration.UpsertArticle(ctx, upsertInput); err != nil {
-				handleUpsertFailure(ctx, repo, retries, event.ID, err)
-				// Knowledge Home must not wait on RAG success (ADR-000578):
-				// still attempt ArticleCreated. Emit failure on this branch
-				// cannot reopen a terminally FAILED row — orphan repair
-				// covers that case. On a transient RAG release the next
-				// tick retries both side effects (ArticleCreated is
-				// dedupe-safe).
-				if emitErr := emitArticleCreatedEvent(ctx, knowledgeEventPort, event.Payload); emitErr != nil {
-					logger.Logger.ErrorContext(ctx, "ArticleCreated emit failed after RAG upsert failure",
-						"event_id", event.ID, "error", emitErr)
+			//
+			// It is skipped for a row this process already upserted, which is
+			// a row released only because its ArticleCreated append failed.
+			// Repeating the upsert would re-run 10-30s of embedding for a
+			// document already in the index, and it is exactly the rows in
+			// that state that a sovereign outage re-claims every tick.
+			if retries.ragUpsertDone(event.ID) {
+				logger.Logger.InfoContext(ctx, "Skipping RAG upsert already delivered in an earlier tick, retrying ArticleCreated only",
+					"event_id", event.ID)
+			} else {
+				if err := ragIntegration.UpsertArticle(ctx, upsertInput); err != nil {
+					handleUpsertFailure(ctx, repo, retries, event.ID, err)
+					// Knowledge Home must not wait on RAG success (ADR-000578):
+					// still attempt ArticleCreated. Emit failure on this branch
+					// cannot reopen a terminally FAILED row — orphan repair
+					// covers that case. On a transient RAG release the next
+					// tick retries both side effects (ArticleCreated is
+					// dedupe-safe).
+					if emitErr := emitArticleCreatedEvent(ctx, knowledgeEventPort, event.Payload); emitErr != nil {
+						logger.Logger.ErrorContext(ctx, "ArticleCreated emit failed after RAG upsert failure",
+							"event_id", event.ID, "error", emitErr)
+					}
+					continue
 				}
-				continue
+				retries.markRagUpserted(event.ID)
 			}
 
 			// ACK only after both side effects are durable. Marking
@@ -221,13 +260,7 @@ func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegrat
 			// via SummaryVersionCreated with blank title/url and Trail
 			// fell back to article:<uuid>.
 			if err := emitArticleCreatedEvent(ctx, knowledgeEventPort, event.Payload); err != nil {
-				logger.Logger.ErrorContext(ctx, "ArticleCreated emit failed after RAG success; releasing outbox event for retry",
-					"event_id", event.ID, "error", err)
-				if releaseForRetry(ctx, repo, event.ID) {
-					outboxRetriedCounter.Add(ctx, 1)
-				} else {
-					outboxReleaseFailedCounter.Add(ctx, 1)
-				}
+				handleArticleCreatedFailure(ctx, repo, retries, event.ID, err)
 				continue
 			}
 
@@ -288,6 +321,37 @@ func handleUpsertFailure(ctx context.Context, repo outboxRepository, retries *ou
 	retries.clear(eventID)
 	markProcessed(ctx, repo, eventID, domain.OutboxFailed, err.Error())
 	outboxFailedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "non_retryable_error")))
+}
+
+// handleArticleCreatedFailure decides whether a row whose RAG upsert
+// succeeded but whose ArticleCreated append did not gets another try.
+//
+// Every append failure is transient by construction — an invalid payload is
+// skipped inside emitArticleCreatedEvent rather than returned — so unlike
+// handleUpsertFailure there is no permanent class to sort out here. What it
+// does share is the budget: the release used to be unconditional, which made
+// this the one delivery path with no ceiling at all. The claim is oldest-first
+// LIMIT 10, so an unbounded release is not "this row waits" but "this row
+// occupies a tenth of every tick and every newer article waits behind it",
+// for as long as knowledge-sovereign is down.
+func handleArticleCreatedFailure(ctx context.Context, repo outboxRepository, retries *outboxRetryTracker, eventID string, err error) {
+	attempt := retries.recordFailure(eventID)
+	if attempt < maxOutboxUpsertAttempts {
+		logger.Logger.WarnContext(ctx, "ArticleCreated emit failed after RAG success; releasing outbox event for retry",
+			"event_id", eventID, "attempt", attempt, "max_attempts", maxOutboxUpsertAttempts, "error", err)
+		if releaseForRetry(ctx, repo, eventID) {
+			outboxRetriedCounter.Add(ctx, 1)
+		} else {
+			outboxReleaseFailedCounter.Add(ctx, 1)
+		}
+		return
+	}
+
+	logger.Logger.ErrorContext(ctx, "ArticleCreated emit exhausted retries, marking outbox event FAILED",
+		"event_id", eventID, "attempts", attempt, "error", err)
+	retries.clear(eventID)
+	markProcessed(ctx, repo, eventID, domain.OutboxFailed, err.Error())
+	outboxFailedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "article_created_retries_exhausted")))
 }
 
 // releaseForRetry returns a transiently-failed event to PENDING on a context

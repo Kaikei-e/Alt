@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"alt/utils/rate_limiter"
+
 	rssFeed "github.com/mmcdole/gofeed"
 )
 
@@ -511,6 +513,14 @@ func TestIs403Error(t *testing.T) {
 	}
 }
 
+// fastRetryLimiter keeps the retry ladder inside the test's own budget. The
+// backoff is measured in host intervals, so a millisecond interval makes the
+// retries immediate without changing how many of them there are — and the
+// limiter is what these subtests exercise the retries through.
+func fastRetryLimiter() *rate_limiter.HostRateLimiter {
+	return rate_limiter.NewHostRateLimiter(time.Millisecond)
+}
+
 func TestFetchWithRetryOn403(t *testing.T) {
 	t.Run("first attempt succeeds without retry", func(t *testing.T) {
 		expectedFeed := &rssFeed.Feed{Title: "Test Feed"}
@@ -520,7 +530,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 			return expectedFeed, nil
 		}
 
-		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed", fastRetryLimiter())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -543,7 +553,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 			return expectedFeed, nil
 		}
 
-		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed", fastRetryLimiter())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -566,7 +576,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 			return expectedFeed, nil
 		}
 
-		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed", fastRetryLimiter())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -585,7 +595,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 			return nil, errorWithMessage("HTTP error: 403 Forbidden")
 		}
 
-		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed", fastRetryLimiter())
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -607,7 +617,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 			return nil, errorWithMessage("HTTP error: 404 Not Found")
 		}
 
-		_, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		_, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed", fastRetryLimiter())
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -625,7 +635,7 @@ func TestFetchWithRetryOn403(t *testing.T) {
 			return nil, errorWithMessage("HTTP error: 403 Forbidden")
 		}
 
-		_, err := fetchWithRetryOn403(ctx, fetchFn, "https://example.com/feed")
+		_, err := fetchWithRetryOn403(ctx, fetchFn, "https://example.com/feed", fastRetryLimiter())
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
