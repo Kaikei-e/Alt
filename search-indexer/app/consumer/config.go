@@ -35,6 +35,31 @@ type Config struct {
 	// ReaperInterval is how often the consumer scans the pending entries list
 	// for messages that have exceeded MaxDeliveries.
 	ReaperInterval time.Duration
+	// DLQMaxLen caps the DLQ stream's length at XADD time. Zero or negative
+	// falls back to defaultDLQMaxLen -- see effectiveDLQMaxLen.
+	DLQMaxLen int64
+}
+
+// defaultDLQMaxLen bounds the DLQ stream when no cap is configured. Its own
+// XADD is the DLQ's first line of defence: mq-hub's periodic XTRIM pass is the
+// only other bound, and no service consumes a DLQ. redis-streams runs
+// maxmemory 1gb under noeviction where XADD is denyoom, so an unbounded DLQ
+// carrying whole original payloads eventually rejects every producer's publish
+// (compose/mq.yaml records that self-locking condition). The value matches
+// mq-hub's STREAM_MAX_LEN so the DLQ can never outgrow the live stream it
+// shadows.
+const defaultDLQMaxLen int64 = 10000
+
+// effectiveDLQMaxLen resolves the cap actually handed to XADD. An unset cap
+// resolves to the bounded default rather than to "unbounded": Config is also
+// built as a struct literal (tests, future call sites), and an unbounded DLQ
+// is precisely the failure mode this cap exists to prevent, so forgetting a
+// field must not be able to reach it.
+func (c Config) effectiveDLQMaxLen() int64 {
+	if c.DLQMaxLen > 0 {
+		return c.DLQMaxLen
+	}
+	return defaultDLQMaxLen
 }
 
 // DefaultConfig returns a default consumer configuration.
@@ -51,6 +76,7 @@ func DefaultConfig() Config {
 		DLQStreamKey:   "alt:events:articles:dlq",
 		MaxDeliveries:  5,
 		ReaperInterval: 60 * time.Second,
+		DLQMaxLen:      defaultDLQMaxLen,
 	}
 }
 
@@ -89,6 +115,11 @@ func ConfigFromEnv() Config {
 	if v := os.Getenv("CONSUMER_REAPER_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.ReaperInterval = d
+		}
+	}
+	if v := os.Getenv("CONSUMER_DLQ_MAX_LEN"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			cfg.DLQMaxLen = n
 		}
 	}
 

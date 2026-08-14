@@ -194,14 +194,11 @@ class TestTagGeneratorEventHandler:
             "title": "Test Article",
             "content": "Some content",
         }
-        mock_service._process_single_article.return_value = True
-
         await handler._handle_article_created(event)
 
-        # Verify _process_single_article received article with feed_id supplemented
-        mock_service._process_single_article.assert_called_once()
-        article_arg = mock_service._process_single_article.call_args[0][1]
-        assert article_arg["feed_id"] == "feed-456"
+        # Verify the upsert received the feed_id supplemented from the event
+        mock_service.tag_inserter.upsert_tags.assert_called_once()
+        assert mock_service.tag_inserter.upsert_tags.call_args[0][3] == "feed-456"
 
     @pytest.mark.anyio
     async def test_handle_article_created_without_feed_id(self, handler, mock_service):
@@ -224,13 +221,10 @@ class TestTagGeneratorEventHandler:
             "title": "Test Article",
             "content": "Some content",
         }
-        mock_service._process_single_article.return_value = True
-
         await handler._handle_article_created(event)
 
-        # Article should not have feed_id added
-        article_arg = mock_service._process_single_article.call_args[0][1]
-        assert "feed_id" not in article_arg
+        # No feed_id anywhere means the upsert is told so explicitly
+        assert mock_service.tag_inserter.upsert_tags.call_args[0][3] == ""
 
     @pytest.mark.anyio
     async def test_handle_article_created_does_not_overwrite_existing_feed_id(self, handler, mock_service):
@@ -256,12 +250,9 @@ class TestTagGeneratorEventHandler:
             "content": "Some content",
             "feed_id": "feed-existing",
         }
-        mock_service._process_single_article.return_value = True
-
         await handler._handle_article_created(event)
 
-        article_arg = mock_service._process_single_article.call_args[0][1]
-        assert article_arg["feed_id"] == "feed-existing"
+        assert mock_service.tag_inserter.upsert_tags.call_args[0][3] == "feed-existing"
 
     @pytest.mark.anyio
     async def test_handle_event_ignores_unknown_events(self, handler, mock_stream_consumer):
@@ -282,11 +273,11 @@ class TestTagGeneratorEventHandler:
         mock_stream_consumer.publish_reply.assert_not_called()
 
     @pytest.mark.anyio
-    async def test_handle_article_created_raises_when_processing_fails(self, handler, mock_service):
-        """A False result from _process_single_article (extraction/upsert failure)
-        must propagate as an exception so the stream consumer does not XACK the
-        message -- otherwise the failed article is silently dropped from the PEL
-        with no redelivery/DLQ path (see event-stream-consumer.md ACK discipline).
+    async def test_handle_article_created_raises_when_upsert_fails(self, handler, mock_service):
+        """A failed upsert must propagate as an exception so the stream consumer
+        does not XACK the message -- otherwise the article's tags are silently
+        lost with no redelivery/DLQ path (see event-stream-consumer.md ACK
+        discipline).
         """
         event = Event(
             message_id="msg-1",
@@ -303,7 +294,34 @@ class TestTagGeneratorEventHandler:
             "title": "Test Article",
             "content": "Some content",
         }
-        mock_service._process_single_article.return_value = False
+        mock_service.tag_inserter.upsert_tags.return_value = {"success": False}
 
-        with pytest.raises(RuntimeError, match="tag processing failed for article article-123"):
+        with pytest.raises(RuntimeError, match="tag upsert failed for article article-123"):
             await handler._handle_article_created(event)
+
+    @pytest.mark.anyio
+    async def test_handle_article_created_does_not_raise_when_nothing_is_extractable(self, handler, mock_service):
+        """The counterpart: zero extracted tags is a terminal answer, not a
+        failure. Raising here re-ran the ML pipeline on every reclaim pass and
+        dead-lettered the article on the fifth.
+        """
+        event = Event(
+            message_id="msg-1",
+            event_id="evt-1",
+            event_type="ArticleCreated",
+            source="alt-backend",
+            created_at=datetime.now(),
+            payload={"article_id": "article-123", "title": "Test Article"},
+            metadata={},
+        )
+
+        mock_service.article_fetcher.fetch_article_by_id.return_value = {
+            "article_id": "article-123",
+            "title": "Test Article",
+            "content": "Some content",
+        }
+        mock_service.tag_extractor.extract_tags_with_metrics.return_value.tags = []
+
+        await handler._handle_article_created(event)
+
+        mock_service.tag_inserter.upsert_tags.assert_not_called()

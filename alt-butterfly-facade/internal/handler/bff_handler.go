@@ -4,6 +4,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -395,12 +396,27 @@ func (h *BFFHandler) executeRequest(r *http.Request, userID, endpoint string, bo
 	}
 	defer resp.Body.Close()
 
-	// Record success/failure for the endpoint's dependency-class circuit breaker
-	h.recordOutcome(endpoint, resp.StatusCode, resp.Header)
+	// Read the response body before charging the breaker. A body that ends
+	// mid-stream is a failed response whatever its status line said, and
+	// recording the outcome first got that backwards twice over: the breaker
+	// banked a success (so a backend dying halfway through every response
+	// never trips it, and a half-open trial passes on a torn body) and the
+	// truncated bytes went on to be cached, handing every caller a parse
+	// error behind X-Cache: HIT for the rest of the endpoint's TTL.
+	respBody, err := io.ReadAll(resp.Body)
+
+	// Invalidation stays keyed on the status line: a 2xx means the mutation
+	// already landed upstream, so read-your-writes has to hold even when the
+	// response carrying it was cut short.
 	h.invalidateUnreadProjectionOnMutation(userID, endpoint, resp.StatusCode)
 
-	// Read response body
-	respBody, _ := io.ReadAll(resp.Body)
+	if err != nil {
+		h.recordFailure(endpoint)
+		return nil, fmt.Errorf("read backend response body: %w", err)
+	}
+
+	// Record success/failure for the endpoint's dependency-class circuit breaker
+	h.recordOutcome(endpoint, resp.StatusCode, resp.Header)
 
 	// Cache successful responses (epoch-fenced when applicable)
 	if h.shouldCacheResponse(r.Method, endpoint, resp.StatusCode) {

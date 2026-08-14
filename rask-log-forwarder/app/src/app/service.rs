@@ -247,6 +247,7 @@ impl ServiceManager {
                 self.config.disk_fallback_config.retention_hours * 3600,
             ),
             compression: self.config.disk_fallback_config.compression,
+            enabled: self.config.disk_fallback_config.enabled,
         };
 
         let metrics_config = crate::reliability::MetricsConfig {

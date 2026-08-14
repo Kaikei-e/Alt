@@ -22,11 +22,18 @@ if [ ! -d "secrets" ]; then
     # Note: generate-secrets.sh writes to current directory (./secrets) which is PROJECT_ROOT now.
 fi
 
-# Ensure kratos.yml exists from template
-if [ ! -f "kratos/kratos.yml" ]; then
+# Regenerate kratos.yml from the template on every run. kratos.yml is a derived,
+# gitignored file, but it used to be created once and never refreshed — so a
+# template change (password policy, HIBP, session lifespan) silently never
+# reached any host that had already started the stack. The dev seds below are
+# idempotent and re-applied straight after, so regenerating costs nothing.
+if [ -f "kratos/kratos.yml" ]; then
+    cp kratos/kratos.yml kratos/kratos.yml.bak
+    echo "Regenerating kratos.yml from template (previous copy kept as kratos.yml.bak)..."
+else
     echo "Creating kratos.yml from template..."
-    cp kratos/kratos_template.yml kratos/kratos.yml
 fi
+cp kratos/kratos_template.yml kratos/kratos.yml
 
 # Ensure kratos.yml has correct base_url for dev
 if [ -f "kratos/kratos.yml" ]; then

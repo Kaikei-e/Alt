@@ -1,5 +1,7 @@
 """Clustering quality evaluator with DI."""
 
+from collections.abc import Iterable
+from typing import Final
 from uuid import UUID
 
 import numpy as np
@@ -18,6 +20,21 @@ from recap_evaluator.domain.models import AlertLevel, ClusterMetrics
 from recap_evaluator.port.database_port import DatabasePort
 
 logger = structlog.get_logger()
+
+_SEVERITY_RANK: Final[dict[AlertLevel, int]] = {
+    AlertLevel.OK: 0,
+    AlertLevel.WARN: 1,
+    AlertLevel.CRITICAL: 2,
+}
+
+
+def _worst(levels: Iterable[AlertLevel]) -> AlertLevel:
+    """Highest severity among *levels*, OK when there is none.
+
+    Same rule as usecase.AlertResolver.resolve, kept local because the
+    evaluator layer sits below usecase and must not depend upward.
+    """
+    return max(levels, key=_SEVERITY_RANK.__getitem__, default=AlertLevel.OK)
 
 
 class ClusterEvaluator:
@@ -168,13 +185,21 @@ class ClusterEvaluator:
             warn = self._thresholds.get_warn("clustering_silhouette")
             critical = self._thresholds.get_critical("clustering_silhouette")
             if sil is None:
-                alert = AlertLevel.OK
+                sil_alert = AlertLevel.OK
             elif critical is not None and sil < critical:
-                alert = AlertLevel.CRITICAL
+                sil_alert = AlertLevel.CRITICAL
             elif warn is not None and sil < warn:
-                alert = AlertLevel.WARN
+                sil_alert = AlertLevel.WARN
             else:
-                alert = AlertLevel.OK
+                sil_alert = AlertLevel.OK
+
+            # The per-job alerts are the only signal the DB-only path ever
+            # produces (cluster-count heuristic in evaluate_job); recomputing
+            # the aggregate from silhouette alone would drop every one of them
+            # and report OK on the night a genre collapsed to one cluster.
+            # Keep the worst severity rather than an average — one bad night
+            # in a healthy window is exactly what the alert is for.
+            alert = _worst([m.alert_level for m in metrics_list] + [sil_alert])
 
             aggregated[genre] = ClusterMetrics(
                 num_clusters=int(np.mean([m.num_clusters for m in metrics_list])),

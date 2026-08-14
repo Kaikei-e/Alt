@@ -456,6 +456,54 @@ func TestTrackHomeActionUsecase_ArticleURLRetry(t *testing.T) {
 	})
 }
 
+func TestTrackHomeActionUsecase_KnowledgeEventAppendFailureIsFatal(t *testing.T) {
+	logger.InitLogger()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	itemKey := "article:test-uuid"
+
+	// knowledge_home_items is a disposable projection: RebuildProjection
+	// TRUNCATEs it and replays knowledge_events. A dismiss whose append failed
+	// therefore has no record to replay, so write-through alone puts the item
+	// back on the Home rail at the next reproject while the user was told the
+	// dismiss stuck. The event log is the only durable answer — if it rejects
+	// the append, the action did not happen.
+	t.Run("dismiss append failure skips write-through and fails the call", func(t *testing.T) {
+		knPort := &mockKnowledgeEventPort{err: errors.New("sovereign unavailable")}
+		dismissPort := &mockDismissPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, dismissPort, &mockActiveProjectionVersionPort{}, nil)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
+
+		require.Error(t, err, "a dismiss that never reached the event log must not report success")
+		assert.Contains(t, err.Error(), "sovereign unavailable")
+		assert.Empty(t, dismissPort.calls,
+			"the read model must not be written when the event it derives from was rejected")
+	})
+
+	t.Run("non dismiss append failure also fails the call", func(t *testing.T) {
+		knPort := &mockKnowledgeEventPort{err: errors.New("sovereign unavailable")}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, nil, nil, nil, nil)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+
+		require.Error(t, err, "a lost open event silently drops the signal the Home rail is ranked on")
+	})
+
+	t.Run("append failure skips the recall signal", func(t *testing.T) {
+		knPort := &mockKnowledgeEventPort{err: errors.New("sovereign unavailable")}
+		recallPort := &mockRecallSignalPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, knPort, nil, recallPort, nil, nil, nil)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+
+		require.Error(t, err)
+		assert.Empty(t, recallPort.appendedSignals,
+			"a signal derived from an event that was never appended is unreproducible")
+	})
+}
+
 func TestTrackHomeActionUsecase_UserEventCarriesDedupeKey(t *testing.T) {
 	userID := uuid.New()
 	tenantID := uuid.New()

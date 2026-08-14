@@ -20,9 +20,11 @@ type KratosClient interface {
 
 // authHubClientImpl implements KratosClient by calling auth-hub.
 type authHubClientImpl struct {
-	authHubURL   string
-	sharedSecret string
-	httpClient   *http.Client
+	authHubURL string
+	// internalAuthSecret is auth-hub's INTERNAL_AUTH_SECRET, not its JWT
+	// signing key. See NewKratosClient.
+	internalAuthSecret string
+	httpClient         *http.Client
 }
 
 // systemUserResponse represents the response from auth-hub /internal/system-user endpoint.
@@ -33,10 +35,17 @@ type systemUserResponse struct {
 // NewKratosClient creates a new auth-hub client.
 // Note: Despite the name, this now calls auth-hub instead of Kratos directly.
 // This provides abstraction so alt-backend doesn't need to know about Kratos.
-func NewKratosClient(authHubURL string, sharedSecret string) KratosClient {
+//
+// internalAuthSecret must be config.Auth.InternalAuthSecret
+// (INTERNAL_AUTH_SECRET), never config.Auth.BackendTokenSecret. GetFirstIdentityID
+// puts this value verbatim into a plaintext X-Internal-Auth header on every
+// call, so it is copied into nginx access logs and OTel span attributes; the
+// HS256 key that signs every browser token must not be reachable from there.
+// auth-hub refuses to start when the two are the same value.
+func NewKratosClient(authHubURL string, internalAuthSecret string) KratosClient {
 	return &authHubClientImpl{
-		authHubURL:   authHubURL,
-		sharedSecret: sharedSecret,
+		authHubURL:         authHubURL,
+		internalAuthSecret: internalAuthSecret,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -51,7 +60,7 @@ func (c *authHubClientImpl) GetFirstIdentityID(ctx context.Context) (string, err
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("X-Internal-Auth", c.sharedSecret)
+	req.Header.Set("X-Internal-Auth", c.internalAuthSecret)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

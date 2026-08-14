@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"pre-processor-sidecar/models"
+	"pre-processor-sidecar/repository"
 	"pre-processor-sidecar/utils"
 )
 
@@ -72,12 +74,17 @@ func (s *InoreaderService) zone1Snapshot() (usage, limit int) {
 	return s.rateLimitInfo.Zone1Usage, s.rateLimitInfo.Zone1Limit
 }
 
-// incrementZone1UsageLocally bumps the local fallback counter used when
-// UpdateAPIUsageFromHeaders fails, returning the new value for logging.
-func (s *InoreaderService) incrementZone1UsageLocally() int {
+// incrementUsageLocally bumps the in-process counter for the zone the endpoint
+// belongs to and returns the new Zone-1 value, which is what CheckAPIRateLimit
+// gates on.
+func (s *InoreaderService) incrementUsageLocally(zone1 bool) int {
 	s.rateLimitMu.Lock()
 	defer s.rateLimitMu.Unlock()
-	s.rateLimitInfo.Zone1Usage++
+	if zone1 {
+		s.rateLimitInfo.Zone1Usage++
+	} else {
+		s.rateLimitInfo.Zone2Usage++
+	}
 	return s.rateLimitInfo.Zone1Usage
 }
 
@@ -105,6 +112,15 @@ func NewInoreaderService(inoreaderClient InoreaderClientInterface, apiUsageRepo 
 	// TDD Phase 3 - REFACTOR: Initialize Monitoring
 	monitoringConfig := utils.DefaultMonitoringConfig()
 	monitor := utils.NewMonitor(monitoringConfig, logger)
+
+	// Announce the tracking wiring instead of discovering it call by call: without
+	// the repository the Zone 1 budget is only counted in-process and a restart
+	// hands the fetch loop a fresh 100 requests.
+	if apiUsageRepo == nil {
+		logger.Warn("api_usage_tracking_disabled",
+			"reason", "no APIUsageRepository wired",
+			"effect", "Zone 1 quota counted in-process only, reset on restart")
+	}
 
 	return &InoreaderService{
 		inoreaderClient:       inoreaderClient,
@@ -196,12 +212,11 @@ func (s *InoreaderService) FetchSubscriptions(ctx context.Context) ([]*models.Su
 			return fmt.Errorf("failed to parse subscriptions: %w", parseErr)
 		}
 
-		// CRITICAL FIX: Update API usage tracking after each API call
-		if updateErr := s.UpdateAPIUsageFromHeaders(ctx, "/subscription/list"); updateErr != nil {
-			s.logger.Warn("Failed to update API usage from headers", "error", updateErr)
-			// Increment local counter as fallback
-			newUsage := s.incrementZone1UsageLocally()
-			s.logger.Debug("Incremented local API usage counter", "zone1_usage", newUsage)
+		// Charge the call against the 100 req/day Zone 1 budget. The in-process
+		// counter has already advanced when this returns an error, so the guard
+		// keeps working even if the write to api_usage_tracking failed.
+		if usageErr := s.recordAPIUsage(ctx, "/subscription/list"); usageErr != nil {
+			s.logger.Warn("Failed to persist API usage tracking", "error", usageErr)
 		}
 
 		usage, _ := s.zone1Snapshot()
@@ -281,13 +296,10 @@ func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, co
 		// Resolve subscription UUIDs for articles
 		articles = s.resolveSubscriptionUUIDs(articles)
 
-		// CRITICAL FIX: Update API usage tracking after each API call
+		// Charge the call against the 100 req/day Zone 1 budget (see FetchSubscriptions).
 		endpoint := "/stream/contents/" + streamID
-		if updateErr := s.UpdateAPIUsageFromHeaders(ctx, endpoint); updateErr != nil {
-			s.logger.Warn("Failed to update API usage from headers", "error", updateErr, "stream_id", streamID)
-			// Increment local counter as fallback
-			newUsage := s.incrementZone1UsageLocally()
-			s.logger.Debug("Incremented local API usage counter", "zone1_usage", newUsage)
+		if usageErr := s.recordAPIUsage(ctx, endpoint); usageErr != nil {
+			s.logger.Warn("Failed to persist API usage tracking", "error", usageErr, "stream_id", streamID)
 		}
 
 		usage, _ := s.zone1Snapshot()
@@ -360,13 +372,10 @@ func (s *InoreaderService) FetchUnreadStreamContents(ctx context.Context, stream
 	// Resolve subscription UUIDs for articles
 	articles = s.resolveSubscriptionUUIDs(articles)
 
-	// CRITICAL FIX: Update API usage tracking after each API call
+	// Charge the call against the 100 req/day Zone 1 budget (see FetchSubscriptions).
 	endpoint := "/stream/contents/" + streamID + "?xt=user/-/state/com.google/read"
-	if err := s.UpdateAPIUsageFromHeaders(ctx, endpoint); err != nil {
-		s.logger.Warn("Failed to update API usage from headers", "error", err, "stream_id", streamID)
-		// Increment local counter as fallback
-		newUsage := s.incrementZone1UsageLocally()
-		s.logger.Debug("Incremented local API usage counter", "zone1_usage", newUsage)
+	if usageErr := s.recordAPIUsage(ctx, endpoint); usageErr != nil {
+		s.logger.Warn("Failed to persist API usage tracking", "error", usageErr, "stream_id", streamID)
 	}
 
 	usage, _ := s.zone1Snapshot()
@@ -411,28 +420,42 @@ func (s *InoreaderService) resolveSubscriptionUUIDs(articles []*models.Article) 
 	return articles
 }
 
-// UpdateAPIUsageFromHeaders updates API usage tracking from response headers
-// DEPRECATED: This method should not make additional API calls just for headers
-// Instead, headers should be captured during the actual API calls
-func (s *InoreaderService) UpdateAPIUsageFromHeaders(ctx context.Context, endpoint string) error {
-	s.logger.Warn("UpdateAPIUsageFromHeaders called - this should be replaced with header capture during API calls",
-		"endpoint", endpoint)
+// recordAPIUsage charges one Inoreader call against the daily quota.
+//
+// The in-process counter that CheckAPIRateLimit gates on is advanced first and
+// unconditionally: a Postgres hiccup must never be indistinguishable from an
+// unlimited budget. Persistence to api_usage_tracking follows, so the 100 req/day
+// Zone 1 limit survives a sidecar restart instead of starting over at zero.
+//
+// Inoreader's X-Reader-Zone1-* response headers would be the authoritative source,
+// but the client layer returns only the decoded body and drops them; until it
+// forwards them, the counter is derived from the calls we make.
+func (s *InoreaderService) recordAPIUsage(ctx context.Context, endpoint string) error {
+	newUsage := s.incrementUsageLocally(s.isReadOnlyEndpoint(endpoint))
 
-	// Return success to avoid breaking existing code, but log the issue
-	s.logger.Debug("API usage repository not configured or headers not available, skipping usage tracking")
-	return nil
-}
-
-// processAPIUsageHeaders processes API response headers for usage tracking
-func (s *InoreaderService) processAPIUsageHeaders(ctx context.Context, headers map[string]string, endpoint string) error {
 	if s.apiUsageRepo == nil {
-		s.logger.Debug("API usage repository not configured, skipping usage tracking")
-		return nil
+		return fmt.Errorf("api usage repository not wired: %s counted in-process only (zone1_usage=%d)", endpoint, newUsage)
 	}
 
-	// Get or create today's usage record
+	return s.processAPIUsageHeaders(ctx, nil, endpoint)
+}
+
+// processAPIUsageHeaders persists one API call — and any rate limit headers that
+// came back with it — to today's api_usage_tracking row. recordAPIUsage is the
+// gatekeeper for a nil repository; reaching here without one is a wiring bug.
+func (s *InoreaderService) processAPIUsageHeaders(ctx context.Context, headers map[string]string, endpoint string) error {
+	// Get or create today's usage record. Only "there is no row for today yet" may
+	// seed a fresh counter: UpdateUsageRecord below rewrites the row's counters
+	// wholesale, so treating a transient read failure as a new day would overwrite
+	// a day already at 61/100 with 1 — invisible until the next restart inherits
+	// the 1 and spends the real Inoreader budget a second time.
 	usage, err := s.apiUsageRepo.GetTodaysUsage(ctx)
 	if err != nil {
+		if !errors.Is(err, repository.ErrNoUsageRecordToday) {
+			s.logger.Error("Failed to read today's API usage record", "error", err)
+			return fmt.Errorf("failed to read today's API usage record: %w", err)
+		}
+
 		// Create new usage record for today
 		usage = models.NewAPIUsageTracking()
 		if err := s.apiUsageRepo.CreateUsageRecord(ctx, usage); err != nil {
@@ -443,17 +466,21 @@ func (s *InoreaderService) processAPIUsageHeaders(ctx context.Context, headers m
 	}
 
 	// Check if usage should be reset (new day)
-	if usage.ShouldResetUsage() {
+	resetForNewDay := usage.ShouldResetUsage()
+	if resetForNewDay {
 		usage.ResetUsage()
 		s.logger.Info("Reset API usage counters for new day")
 	}
 
-	// Parse and update rate limit headers
-	headerMap := make(map[string]interface{})
-	for key, value := range headers {
-		headerMap[key] = value
+	// Parse and update rate limit headers. Skipped when the caller had none, or an
+	// empty map would wipe the headers the last header-bearing response stored.
+	if len(headers) > 0 {
+		headerMap := make(map[string]interface{}, len(headers))
+		for key, value := range headers {
+			headerMap[key] = value
+		}
+		usage.UpdateRateLimitHeaders(headerMap)
 	}
-	usage.UpdateRateLimitHeaders(headerMap)
 
 	// Increment appropriate usage counter based on endpoint
 	if s.isReadOnlyEndpoint(endpoint) {
@@ -464,8 +491,8 @@ func (s *InoreaderService) processAPIUsageHeaders(ctx context.Context, headers m
 		s.logger.Debug("Incremented Zone 2 API usage", "endpoint", endpoint, "new_count", usage.Zone2Requests)
 	}
 
-	// Update rate limit info from headers
-	s.updateRateLimitInfoFromHeaders(headers, usage)
+	// Update rate limit info from the persisted counters and any headers
+	s.updateRateLimitInfoFromHeaders(headers, usage, resetForNewDay)
 
 	// Save updated usage record
 	if err := s.apiUsageRepo.UpdateUsageRecord(ctx, usage); err != nil {
@@ -484,10 +511,24 @@ func (s *InoreaderService) processAPIUsageHeaders(ctx context.Context, headers m
 	return nil
 }
 
-// updateRateLimitInfoFromHeaders updates internal rate limit info from API response headers
-func (s *InoreaderService) updateRateLimitInfoFromHeaders(headers map[string]string, usage *models.APIUsageTracking) {
+// updateRateLimitInfoFromHeaders refreshes the in-process rate limit view from the
+// persisted daily counters and, when the response carried them, Inoreader's own
+// X-Reader-Zone* headers.
+func (s *InoreaderService) updateRateLimitInfoFromHeaders(headers map[string]string, usage *models.APIUsageTracking, resetForNewDay bool) {
 	s.rateLimitMu.Lock()
 	defer s.rateLimitMu.Unlock()
+
+	// api_usage_tracking outlives the process, so it — not the counter this process
+	// happens to have accumulated — is the real budget. Adopt it whenever it is
+	// ahead (restart mid-day, a run that died after the write). Follow it downwards
+	// only across a day rollover, or a freshly reset row would leave the guard
+	// latched at yesterday's count.
+	if resetForNewDay || usage.Zone1Requests > s.rateLimitInfo.Zone1Usage {
+		s.rateLimitInfo.Zone1Usage = usage.Zone1Requests
+	}
+	if resetForNewDay || usage.Zone2Requests > s.rateLimitInfo.Zone2Usage {
+		s.rateLimitInfo.Zone2Usage = usage.Zone2Requests
+	}
 
 	// Parse Inoreader-specific rate limit headers
 	if zone1Usage, ok := headers["X-Reader-Zone1-Usage"]; ok {

@@ -3,6 +3,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -110,7 +111,7 @@ func NewServerWithTransports(
 
 	// Create aggregation handler
 	aggregationHandler := handler.NewAggregationHandler(
-		createQueryFetcher(backendClient),
+		createQueryFetcher(backendClient, cfg.RequestTimeout),
 		cfg.Secret,
 		cfg.Issuer,
 		cfg.Audience,
@@ -404,10 +405,22 @@ type TelemetryStatsSlice struct {
 }
 
 // createQueryFetcher creates a query fetcher function for the aggregation handler.
-func createQueryFetcher(backendClient *client.BackendClient) handler.QueryFetcher {
+//
+// requestTimeout bounds each fan-out call. AggregationHandler blocks on a
+// WaitGroup until every query goroutine returns, and the backend client runs
+// with http.Client.Timeout unset, so a request built on a deadline-less
+// context strands N goroutines per aggregation whenever alt-backend stops
+// answering. QueryFetcher takes no context, so the inbound request's
+// cancellation cannot reach here yet — see the note on the deadline below.
+func createQueryFetcher(backendClient *client.BackendClient, requestTimeout time.Duration) handler.QueryFetcher {
 	return func(path string, token string, body []byte) (*handler.AggregatedResult, error) {
+		// Deadline only, not inbound cancellation: widening QueryFetcher to
+		// carry the caller's context is the remaining half of this fix.
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancel()
+
 		// Create a mock request to forward
-		req, err := http.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, path, bytes.NewReader(body))
 		if err != nil {
 			return &handler.AggregatedResult{
 				Error:      err.Error(),
@@ -426,7 +439,19 @@ func createQueryFetcher(backendClient *client.BackendClient) handler.QueryFetche
 		}
 		defer resp.Body.Close()
 
-		respBody, _ := io.ReadAll(resp.Body)
+		// A body that ends mid-stream is a failed fetch whatever its status
+		// line said, and the deadline above is now the ordinary way that
+		// happens: a backend that answers headers promptly and then stalls has
+		// its read cut off here, not at ForwardRequest. Swallowing the error
+		// would report the upstream's 200 with a truncated JSON prefix in Data
+		// — the same defect already fixed in BFFHandler.forwardToBackend.
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return &handler.AggregatedResult{
+				Error:      err.Error(),
+				StatusCode: http.StatusBadGateway,
+			}, nil
+		}
 
 		return &handler.AggregatedResult{
 			Data:       respBody,

@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -41,6 +42,18 @@ _GROUP_CREATE_BACKOFF_CAP_SECONDS = 5.0
 # hung Redis still surfaces as a TimeoutError, just after `_read_and_process`
 # waited the full block window rather than seconds short of it.
 _SOCKET_TIMEOUT_MARGIN_SECONDS = 10.0
+
+# Nothing reads or trims the DLQ -- mq-hub's AllStreamKeys covers only the four
+# live streams -- so an uncapped DLQ grows until redis-streams hits its 1gb
+# maxmemory, and under noeviction that refuses *every* producer's XADD, not just
+# ours. Same cap and same approximate trim as publish_reply below: enough
+# backlog to diagnose a poison-pill run, bounded enough not to lock the instance.
+_DLQ_MAXLEN = 1000
+
+# Entries whose DLQ copy is durable but whose XACK has not landed yet. Bounded:
+# a Redis that keeps refusing XACK must not grow this map without limit, and
+# evicting the oldest entry costs at most one duplicate DLQ copy.
+_DLQ_AWAITING_ACK_MAX = 1024
 
 
 def is_group_already_exists(error: redis.ResponseError) -> bool:
@@ -204,6 +217,7 @@ class StreamConsumer:
         self.handler = handler
         self.client: redis.Redis | None = None
         self._shutdown = False
+        self._dlq_awaiting_ack: OrderedDict[str, None] = OrderedDict()
 
     async def start(self) -> None:
         """Start the consumer."""
@@ -339,17 +353,25 @@ class StreamConsumer:
             cursor = next_cursor
 
     async def _process_claimed_messages(self, messages: list[Any]) -> None:
-        """Reprocess reclaimed messages, dead-lettering ones over the retry limit."""
+        """Reprocess reclaimed messages, dead-lettering ones over the retry limit.
+
+        Every Redis call for an entry -- the PEL lookup and the dead-letter
+        write included -- sits inside that entry's own try. One entry Redis
+        refuses to serve must not unwind the sweep: the healthy entries behind
+        it in the same batch would then wait another interval for the
+        redelivery this loop exists to give them.
+        """
         if self.client is None:
             raise RuntimeError("Redis client is not initialized")
         for message_id, data in messages:
-            delivery_count = await self._get_delivery_count(message_id)
-            if delivery_count > self.config.max_delivery_count:
-                await self._move_to_dlq(message_id, data, delivery_count)
-                continue
-
             event = self._parse_event(message_id, data)
+            delivery_count = 0
             try:
+                delivery_count = await self._get_delivery_count(message_id)
+                if delivery_count > self.config.max_delivery_count:
+                    await self._move_to_dlq(message_id, data, delivery_count)
+                    continue
+
                 await self.handler.handle_event(event)
                 await self.client.xack(self.config.stream_key, self.config.group_name, message_id)
             except Exception as e:
@@ -379,19 +401,67 @@ class StreamConsumer:
 
     async def _move_to_dlq(self, message_id: str, data: dict[str, Any], delivery_count: int) -> None:
         """Dead-letter a message that exceeded max_delivery_count and ACK it
-        so it stops occupying the PEL."""
+        so it stops occupying the PEL.
+
+        The copy and the ACK fail independently, so they are handled apart. A
+        refused XADD must leave the entry in the PEL, or the payload is lost the
+        moment Redis is under the memory pressure that refused it. A landed XADD
+        followed by a refused XACK must not be re-copied on the next sweep --
+        that piles a duplicate of the same payload into the DLQ every reclaim
+        interval, filling the very stream the cap is there to bound.
+        """
         if self.client is None:
             raise RuntimeError("Redis client is not initialized")
         dlq_stream = f"{self.config.stream_key}:dlq"
-        dlq_fields = {**data, "original_message_id": message_id, "delivery_count": str(delivery_count)}
-        await self.client.xadd(dlq_stream, cast(dict[Any, Any], dlq_fields))
-        await self.client.xack(self.config.stream_key, self.config.group_name, message_id)
+
+        if message_id not in self._dlq_awaiting_ack:
+            dlq_fields = {**data, "original_message_id": message_id, "delivery_count": str(delivery_count)}
+            try:
+                await self.client.xadd(
+                    dlq_stream,
+                    cast(dict[Any, Any], dlq_fields),
+                    maxlen=_DLQ_MAXLEN,
+                    approximate=True,
+                )
+            except Exception as e:
+                logger.error(
+                    "dlq_write_failed",
+                    message_id=message_id,
+                    delivery_count=delivery_count,
+                    dlq_stream=dlq_stream,
+                    error=str(e),
+                )
+                # Don't ACK -- a later sweep dead-letters it once Redis is writable.
+                return
+            self._remember_dlq_write(message_id)
+
+        try:
+            await self.client.xack(self.config.stream_key, self.config.group_name, message_id)
+        except Exception as e:
+            logger.error(
+                "dlq_ack_failed",
+                message_id=message_id,
+                delivery_count=delivery_count,
+                dlq_stream=dlq_stream,
+                error=str(e),
+            )
+            # The copy is durable; the next sweep owes only the ACK.
+            return
+
+        self._dlq_awaiting_ack.pop(message_id, None)
         logger.error(
             "message_moved_to_dlq",
             message_id=message_id,
             delivery_count=delivery_count,
             dlq_stream=dlq_stream,
         )
+
+    def _remember_dlq_write(self, message_id: str) -> None:
+        """Record that this entry's DLQ copy is durable, evicting the oldest
+        entries so a Redis that keeps refusing XACK cannot grow the map."""
+        self._dlq_awaiting_ack[message_id] = None
+        while len(self._dlq_awaiting_ack) > _DLQ_AWAITING_ACK_MAX:
+            self._dlq_awaiting_ack.popitem(last=False)
 
     async def _read_and_process(self) -> None:
         """Read events from stream and process them."""

@@ -4,7 +4,7 @@ import asyncio
 import random
 import re
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Literal
+from typing import Any, Final, Literal
 from uuid import UUID
 
 import structlog
@@ -23,6 +23,15 @@ from recap_evaluator.gateway.ollama_gateway import OllamaGateway
 from recap_evaluator.port.database_port import DatabasePort
 
 logger = structlog.get_logger()
+
+# The axes that carry a weight in the composite score. An axis that raised in
+# _run_multi_evaluation never reaches _apply_result, so its metrics stay at
+# 0.0 — indistinguishable from a genuinely terrible measurement. Coverage is
+# therefore tracked by name and never inferred from a value, for the same
+# reason success_count exists for the G-Eval axis.
+_COMPOSITE_AXES: Final[frozenset[str]] = frozenset(
+    {"geval", "bertscore", "faithfulness", "rouge"}
+)
 
 
 class SummaryEvaluator:
@@ -100,18 +109,23 @@ class SummaryEvaluator:
         )
 
         if all_eval_items:
-            metrics = await self._run_multi_evaluation(all_eval_items)
+            metrics, measured_axes = await self._run_multi_evaluation(all_eval_items)
         else:
             metrics = SummaryMetrics(sample_count=0, success_count=0)
+            measured_axes = frozenset()
 
         await self._apply_morning_letter_axes(metrics, all_outputs_flat)
 
-        metrics.alert_level = self._determine_alert_level(metrics)
+        metrics.alert_level = self._determine_alert_level(metrics, measured_axes)
 
         logger.info(
             "Multi-dimensional batch evaluation completed",
             sample_count=metrics.sample_count,
             overall_quality_score=metrics.overall_quality_score,
+            # The composite is only comparable between runs when the same
+            # axes fed it, and SummaryMetrics has nowhere to carry that, so
+            # the coverage lives in the run log.
+            measured_axes=sorted(measured_axes),
             alert_level=metrics.alert_level.value,
         )
 
@@ -127,7 +141,7 @@ class SummaryEvaluator:
 
     async def _run_multi_evaluation(
         self, eval_items: list[tuple[str, str]]
-    ) -> SummaryMetrics:
+    ) -> tuple[SummaryMetrics, frozenset[str]]:
         sources = [item[0] for item in eval_items]
         summaries = [item[1] for item in eval_items]
 
@@ -184,6 +198,7 @@ class SummaryEvaluator:
         # would cancel siblings on the first exception (DECREE §6 prefers
         # TaskGroup for all-or-nothing fan-out; this path needs best-effort).
 
+        measured_axes: set[str] = set()
         for i, (name, _) in enumerate(tasks):
             result = results[i]
             if isinstance(result, BaseException):
@@ -194,9 +209,18 @@ class SummaryEvaluator:
                 )
                 continue
             self._apply_result(metrics, name, result)
+            measured_axes.add(name)
 
-        metrics.overall_quality_score = self._calculate_composite_score(metrics)
-        return metrics
+        # The G-Eval task can return without a single successful judgement
+        # (every item errored inside the gateway). success_count is the only
+        # record of that, so the axis counts as unmeasured even though the
+        # task itself did not raise.
+        if metrics.success_count == 0:
+            measured_axes.discard("geval")
+
+        axes = frozenset(measured_axes)
+        metrics.overall_quality_score = self._calculate_composite_score(metrics, axes)
+        return metrics, axes
 
     async def _run_geval(self, eval_items: list[tuple[str, str]]) -> dict:
         # self._ollama.evaluate_batch() already absorbs per-item failures via
@@ -305,35 +329,67 @@ class SummaryEvaluator:
             metrics.faithfulness_score = result.get("faithfulness_score", 0.0)
             metrics.hallucination_rate = result.get("hallucination_rate", 0.0)
 
-    def _calculate_composite_score(self, metrics: SummaryMetrics) -> float:
-        total_weight = 0.0
+    def _calculate_composite_score(
+        self, metrics: SummaryMetrics, measured_axes: frozenset[str]
+    ) -> float:
+        """Weighted mean over the *configured* weights, not the surviving ones.
+
+        Dividing by the surviving weight makes an outage look like an
+        improvement — losing the 40 % G-Eval axis used to leave a score of
+        ~0.71, comfortably above the 0.50 warn line — and makes the value
+        stored in recap_evaluation_runs incomparable between runs. An
+        unmeasured axis contributes nothing and is still paid for, so the
+        composite is a floor on quality that only ever moves downward.
+        """
         weighted_sum = 0.0
 
-        if metrics.geval_overall > 0:
+        if "geval" in measured_axes:
             geval_normalized = (metrics.geval_overall - 1) / 4
             weighted_sum += self._weights.geval * geval_normalized
-            total_weight += self._weights.geval
 
-        if metrics.bertscore_f1 > 0:
+        if "bertscore" in measured_axes:
             weighted_sum += self._weights.bertscore * metrics.bertscore_f1
-            total_weight += self._weights.bertscore
 
-        if metrics.faithfulness_score > 0:
+        if "faithfulness" in measured_axes:
             weighted_sum += self._weights.faithfulness * metrics.faithfulness_score
-            total_weight += self._weights.faithfulness
 
-        if metrics.rouge_l_f1 > 0:
+        if "rouge" in measured_axes:
             weighted_sum += self._weights.rouge_l * metrics.rouge_l_f1
-            total_weight += self._weights.rouge_l
 
-        return weighted_sum / total_weight if total_weight > 0 else 0.0
+        # EvaluatorWeights.validate_sum keeps this at 1.0 ± 0.001.
+        total_weight = (
+            self._weights.geval
+            + self._weights.bertscore
+            + self._weights.faithfulness
+            + self._weights.rouge_l
+        )
+        return weighted_sum / total_weight
 
-    def _determine_alert_level(self, metrics: SummaryMetrics) -> AlertLevel:
-        # success_count is the only explicit record of whether the judge ran.
+    def _count_geval_breaches(self, metrics: SummaryMetrics) -> tuple[int, int]:
+        """(critical, warn) counts across the four G-Eval dimensions."""
+        critical_count = 0
+        warn_count = 0
+
+        for dim in ["coherence", "consistency", "fluency", "relevance"]:
+            warn = self._thresholds.get_warn(f"geval_{dim}")
+            critical = self._thresholds.get_critical(f"geval_{dim}")
+            value = getattr(metrics, dim)
+
+            if critical is not None and value < critical:
+                critical_count += 1
+            elif warn is not None and value < warn:
+                warn_count += 1
+
+        return critical_count, warn_count
+
+    def _determine_alert_level(
+        self, metrics: SummaryMetrics, measured_axes: frozenset[str]
+    ) -> AlertLevel:
+        # measured_axes is the only explicit record of whether an axis ran.
         # The G-Eval axes and the composite sit at 0.0 both when nothing was
         # measured and when the judge scored the batch at rock bottom, so
         # measurement is decided here and never inferred from a value.
-        geval_measured = metrics.success_count > 0
+        geval_measured = "geval" in measured_axes
 
         if metrics.sample_count > 0 and not geval_measured:
             logger.error(
@@ -345,23 +401,34 @@ class SummaryEvaluator:
         critical_count = 0
         warn_count = 0
 
-        if geval_measured:
-            for dim in ["coherence", "consistency", "fluency", "relevance"]:
-                warn = self._thresholds.get_warn(f"geval_{dim}")
-                critical = self._thresholds.get_critical(f"geval_{dim}")
-                value = getattr(metrics, dim)
+        # An axis that never ran leaves its metrics at 0.0, so the composite
+        # is a floor rather than a measurement — one outage already makes the
+        # run's quality verdict unreliable, two make it worthless. Counting
+        # them as failed dimensions is what keeps a silent evaluator outage
+        # from being reported as healthy summaries.
+        missing_axes = sorted(_COMPOSITE_AXES - measured_axes)
+        if metrics.sample_count > 0 and missing_axes:
+            logger.error(
+                "composite_axes_unmeasured",
+                missing_axes=missing_axes,
+                sample_count=metrics.sample_count,
+            )
+            critical_count += len(missing_axes)
 
-                if critical is not None and value < critical:
-                    critical_count += 1
-                elif warn is not None and value < warn:
-                    warn_count += 1
+        if geval_measured:
+            geval_critical, geval_warn = self._count_geval_breaches(metrics)
+            critical_count += geval_critical
+            warn_count += geval_warn
 
         if metrics.hallucination_rate > 0.5:
             critical_count += 1
         elif metrics.hallucination_rate > 0.3:
             warn_count += 1
 
-        if geval_measured:
+        # Only judge the composite when every weighted axis fed it; an
+        # incomplete composite is already counted above and reading it as a
+        # quality signal would just double-count the same outage.
+        if geval_measured and not missing_axes:
             if metrics.overall_quality_score < 0.3:
                 critical_count += 1
             elif metrics.overall_quality_score < 0.5:

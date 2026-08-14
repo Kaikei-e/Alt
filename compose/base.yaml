@@ -7,6 +7,15 @@ name: alt
 secrets:
   backend_token_secret:
     file: ../secrets/backend_token_secret.txt
+  # The shared bearer auth-hub's /internal group compares X-Internal-Auth
+  # against. Deliberately a different value from backend_token_secret: that one
+  # is the HS256 key auth-hub signs browser tokens with, and it used to do both
+  # jobs — which put the signing key in a plaintext header on every
+  # alt-data-hub GetSystemUser call, and from there into nginx access logs and
+  # OTel span attributes. auth-hub refuses to start when the two match.
+  # Unrelated to internal_auth_token below, which is auth-token-manager's.
+  auth_hub_internal_secret:
+    file: ../secrets/auth_hub_internal_secret.txt
   postgres_password:
     file: ../secrets/postgres_password.txt
   db_password:

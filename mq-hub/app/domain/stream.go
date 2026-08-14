@@ -18,14 +18,25 @@ const (
 	StreamKeyTags StreamKey = "alt:events:tags"
 	// StreamKeyIndex is the stream for index commands.
 	StreamKeyIndex StreamKey = "alt:events:index"
+	// StreamKeyArticlesDLQ is the dead-letter stream shadowing
+	// StreamKeyArticles. pre-processor, search-indexer and tag-generator all
+	// consume alt:events:articles under their own consumer group and all
+	// derive the same DLQ key, so this single entry covers all three.
+	//
+	// mq-hub never publishes here -- the consumers XADD into it directly when
+	// a message exceeds their MaxDeliveries -- but it must still be listed:
+	// nothing consumes a DLQ, so the only things that ever shorten it are the
+	// producer's own XADD cap and the trim pass below.
+	StreamKeyArticlesDLQ StreamKey = "alt:events:articles:dlq"
 )
 
 // validStreamKeys contains all valid stream keys.
 var validStreamKeys = map[StreamKey]bool{
-	StreamKeyArticles:  true,
-	StreamKeySummaries: true,
-	StreamKeyTags:      true,
-	StreamKeyIndex:     true,
+	StreamKeyArticles:    true,
+	StreamKeySummaries:   true,
+	StreamKeyTags:        true,
+	StreamKeyIndex:       true,
+	StreamKeyArticlesDLQ: true,
 }
 
 // IsValid returns true if the stream key is a known valid key.
@@ -43,6 +54,7 @@ func AllStreamKeys() []StreamKey {
 		StreamKeySummaries,
 		StreamKeyTags,
 		StreamKeyIndex,
+		StreamKeyArticlesDLQ,
 	}
 }
 

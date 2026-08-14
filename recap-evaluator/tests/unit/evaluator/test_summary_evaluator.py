@@ -9,6 +9,11 @@ from recap_evaluator.domain.models import AlertLevel, SummaryMetrics
 from recap_evaluator.evaluator.summary_evaluator import SummaryEvaluator
 from tests.fixtures.job_data import SAMPLE_ARTICLE, SAMPLE_OUTPUT
 
+# Every weighted axis reported a result. Spelled out here rather than imported
+# from the evaluator so a renamed axis fails these tests instead of following
+# the implementation silently.
+ALL_AXES = frozenset({"geval", "bertscore", "faithfulness", "rouge"})
+
 
 @pytest.fixture
 def mock_rouge():
@@ -98,7 +103,7 @@ class TestSummaryEvaluator:
             rouge_l_f1=0.4,
         )
 
-        score = summary_evaluator._calculate_composite_score(metrics)
+        score = summary_evaluator._calculate_composite_score(metrics, ALL_AXES)
 
         assert score == pytest.approx(0.715, abs=0.001)
 
@@ -112,7 +117,7 @@ class TestSummaryEvaluator:
             overall_quality_score=0.7,
         )
 
-        level = summary_evaluator._determine_alert_level(metrics)
+        level = summary_evaluator._determine_alert_level(metrics, ALL_AXES)
 
         assert level == AlertLevel.OK
 
@@ -130,7 +135,7 @@ class TestSummaryEvaluator:
             success_count=5,
         )
 
-        level = summary_evaluator._determine_alert_level(metrics)
+        level = summary_evaluator._determine_alert_level(metrics, ALL_AXES)
 
         assert level == AlertLevel.CRITICAL
 
@@ -143,9 +148,70 @@ class TestSummaryEvaluator:
         """
         metrics = SummaryMetrics(sample_count=10, success_count=0)
 
-        level = summary_evaluator._determine_alert_level(metrics)
+        level = summary_evaluator._determine_alert_level(metrics, frozenset())
 
         assert level == AlertLevel.CRITICAL
+
+    async def test_evaluate_batch_does_not_inflate_score_when_an_axis_dies(
+        self, summary_evaluator, mock_db, mock_bertscore
+    ):
+        """A dead 25 % axis must not make the composite read *better*.
+
+        Re-normalizing over the surviving axes turns an outage into a score
+        of 0.711 — higher than the 0.708 a fully measured healthy batch
+        scores. The missing weight stays in the denominator instead, and the
+        incomplete run warns rather than passing silently.
+        """
+        mock_db.fetch_outputs.return_value = [SAMPLE_OUTPUT]
+        mock_db.fetch_job_articles.return_value = [SAMPLE_ARTICLE]
+        mock_bertscore.evaluate_batch.side_effect = RuntimeError("model not loaded")
+
+        from uuid import uuid4
+        result = await summary_evaluator.evaluate_batch([uuid4()])
+
+        # 0.40*((4.075-1)/4) + 0.25*0.75 + 0.10*0.38, bertscore contributing 0
+        assert result.overall_quality_score == pytest.approx(0.533, abs=0.001)
+        assert result.alert_level == AlertLevel.WARN
+
+    async def test_evaluate_batch_criticals_when_half_the_weight_is_unmeasured(
+        self, summary_evaluator, mock_db, mock_bertscore, mock_faithfulness_evaluator
+    ):
+        """Meta-test: losing 50 % of the weighted axes must trip CRITICAL.
+
+        Under the survivors-only normalization the same batch scored 0.691 —
+        within a rounding error of the healthy 0.708 — and reported OK.
+        """
+        mock_db.fetch_outputs.return_value = [SAMPLE_OUTPUT]
+        mock_db.fetch_job_articles.return_value = [SAMPLE_ARTICLE]
+        mock_bertscore.evaluate_batch.side_effect = RuntimeError("model not loaded")
+        mock_faithfulness_evaluator.detect_batch.side_effect = RuntimeError("NLI down")
+
+        from uuid import uuid4
+        result = await summary_evaluator.evaluate_batch([uuid4()])
+
+        assert result.overall_quality_score == pytest.approx(0.3455, abs=0.001)
+        assert result.alert_level == AlertLevel.CRITICAL
+
+    def test_calculate_composite_score_keeps_missing_weight_in_denominator(
+        self, summary_evaluator
+    ):
+        """An unmeasured axis contributes nothing and is still paid for.
+
+        Same metrics as test_calculate_composite_score minus the G-Eval axis:
+        0.25*0.7 + 0.25*0.8 + 0.10*0.4 = 0.415, not 0.415/0.60 = 0.692.
+        """
+        metrics = SummaryMetrics(
+            geval_overall=4.0,
+            bertscore_f1=0.7,
+            faithfulness_score=0.8,
+            rouge_l_f1=0.4,
+        )
+
+        score = summary_evaluator._calculate_composite_score(
+            metrics, frozenset({"bertscore", "faithfulness", "rouge"})
+        )
+
+        assert score == pytest.approx(0.415, abs=0.001)
 
     async def test_evaluate_batch_alerts_when_geval_returns_all_zeros(
         self, summary_evaluator, mock_db, mock_ollama

@@ -145,10 +145,20 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 		}, nil
 	}
 
-	// 3. Extract article IDs for context retrieval
+	// 3. Extract article IDs for context retrieval and index the authoritative
+	// publication times. ContextItem.PublishedAt is derived from
+	// rag_chunks.created_at (the index time), so alt-backend's published_at is
+	// the only real publication date available to the boost and the citations.
+	// A zero value means alt-backend could not report one (see
+	// adapter/altdb/article_client.go) and must stay "unknown".
 	articleIDs := make([]string, len(articles))
+	publishedAtByArticleID := make(map[string]time.Time, len(articles))
 	for i, a := range articles {
-		articleIDs[i] = a.ID.String()
+		id := a.ID.String()
+		articleIDs[i] = id
+		if !a.PublishedAt.IsZero() {
+			publishedAtByArticleID[id] = a.PublishedAt
+		}
 	}
 
 	// 4. Retrieve context with temporal filtering
@@ -173,7 +183,7 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 	}
 
 	// 5. Apply temporal boost to context scores
-	boostedContexts := u.applyTemporalBoost(retrieveOutput.Contexts, now)
+	boostedContexts := u.applyTemporalBoost(retrieveOutput.Contexts, publishedAtByArticleID, now)
 
 	// 5.5 Dynamic token-based context limiting (same pattern as answer_with_rag_usecase)
 	// Prevents prompt from exceeding LLM context window.
@@ -247,19 +257,37 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 	}, nil
 }
 
-// applyTemporalBoost increases scores for more recent articles
-// using configurable boost factors from TemporalBoostConfig.
-func (u *morningLetterUsecase) applyTemporalBoost(contexts []ContextItem, now time.Time) []ContextItem {
+// applyTemporalBoost stamps each context with its article's real publication
+// time and increases the scores of recent ones using the configurable boost
+// factors from TemporalBoostConfig.
+//
+// The PublishedAt the retrieval pipeline fills in is rag_chunks.created_at
+// (see retrieval/allocate.go), i.e. the index time: after a re-index every
+// chunk carries the same instant, which makes the boost a no-op and hands the
+// prompt and the citations an index date dressed up as a publication date.
+// publishedAt therefore carries alt-backend's article metadata, keyed by
+// article ID. A context whose article has no known publication date keeps its
+// raw score and carries no date at all rather than an invented one.
+func (u *morningLetterUsecase) applyTemporalBoost(contexts []ContextItem, publishedAt map[string]time.Time, now time.Time) []ContextItem {
+	unresolved := 0
 	for i := range contexts {
-		publishedAt, err := time.Parse(time.RFC3339, contexts[i].PublishedAt)
-		if err != nil {
+		pub, ok := publishedAt[contexts[i].ArticleID]
+		if !ok {
+			contexts[i].PublishedAt = ""
+			unresolved++
 			continue
 		}
-		hoursSince := now.Sub(publishedAt).Hours()
+		contexts[i].PublishedAt = pub.Format(time.RFC3339)
 
 		// Use configurable temporal boost factors
-		boost := u.temporalBoostCfg.GetBoostFactor(hoursSince)
+		boost := u.temporalBoostCfg.GetBoostFactor(now.Sub(pub).Hours())
 		contexts[i].Score *= boost
+	}
+
+	if unresolved > 0 {
+		u.logger.Warn("morning_letter_published_at_unresolved",
+			slog.Int("unresolved_count", unresolved),
+			slog.Int("context_count", len(contexts)))
 	}
 
 	// Re-sort by boosted score
@@ -348,7 +376,9 @@ type rawTopicSummary struct {
 // back to the numbered context list the prompt showed it and hydrates them
 // into domain.ArticleRef with the real article UUID/title/URL. Out-of-range
 // indices, duplicates, and contexts without a parseable ArticleID are
-// dropped rather than surfaced as fake refs.
+// dropped rather than surfaced as fake refs. The date is the publication time
+// applyTemporalBoost stamped on the context, and stays zero when alt-backend
+// reported none.
 func enrichArticleRefs(refs []int, contexts []ContextItem) []domain.ArticleRef {
 	enriched := make([]domain.ArticleRef, 0, len(refs))
 	seen := make(map[int]struct{}, len(refs))

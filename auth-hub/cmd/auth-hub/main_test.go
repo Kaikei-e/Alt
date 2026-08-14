@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"auth-hub/config"
+
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
@@ -15,12 +17,12 @@ import (
 // signal to skip auth (CLAUDE.md Rule 8).
 func TestWireInternalAuth_PanicsOnEmptySecret(t *testing.T) {
 	assert.Panics(t, func() {
-		wireInternalAuth("")
+		wireInternalAuth(&config.Config{})
 	})
 }
 
 func TestWireInternalAuth_FailsClosedWithoutHeader(t *testing.T) {
-	mw := wireInternalAuth("this-is-a-valid-backend-token-secret-32-chars-long")
+	mw := wireInternalAuth(separatedSecretsConfig())
 
 	e := echo.New()
 	e.Use(mw)
@@ -36,8 +38,8 @@ func TestWireInternalAuth_FailsClosedWithoutHeader(t *testing.T) {
 }
 
 func TestWireInternalAuth_AllowsValidSecret(t *testing.T) {
-	secret := "this-is-a-valid-backend-token-secret-32-chars-long"
-	mw := wireInternalAuth(secret)
+	cfg := separatedSecretsConfig()
+	mw := wireInternalAuth(cfg)
 
 	e := echo.New()
 	e.Use(mw)
@@ -46,7 +48,7 @@ func TestWireInternalAuth_AllowsValidSecret(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/internal/system-user", nil)
-	req.Header.Set("X-Internal-Auth", secret)
+	req.Header.Set("X-Internal-Auth", cfg.InternalAuthSecret)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

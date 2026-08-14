@@ -12,18 +12,51 @@ import (
 	"pre-processor/utils"
 )
 
+// syncStartupLookback bounds the first article-sync run of a process. The sync
+// watermark lives in memory, so after a restart the job re-scans this much
+// history instead of replaying the whole inoreader_articles table; every later
+// run starts strictly above what it already synced.
+const syncStartupLookback = 24 * time.Hour
+
+// maxRefusalHold bounds how far behind the scan front a refused row may pin the
+// watermark. A feed subscribed in Inoreader but never registered in alt-db is a
+// stable state, not a transient one — nothing here calls RegisterFeedLink — so
+// an unbounded hold keeps the scan window open forever and re-upserts every
+// already-synced article inside it on every run. Past this distance the row is
+// abandoned with a WARN naming the feed, which is what the fixed 24h window did
+// anyway, only silently.
+const maxRefusalHold = 24 * time.Hour
+
+// SyncArticleRepository is the article port article-sync needs: everything in
+// repository.ArticleRepository plus an upsert that reports what it refused to
+// write. Plain UpsertArticles returns nil even when the write path drops rows
+// for reasons external to them — a subscription row the sidecar has not
+// written yet, a feed alt-db has not registered yet — and those rows are the
+// ones the watermark must not step over, since nothing bumps their fetched_at
+// when the missing piece finally arrives.
+type SyncArticleRepository interface {
+	repository.ArticleRepository
+
+	// UpsertArticlesReportingSkipped upserts the batch and returns the
+	// articles it refused to write. A real failure (network, auth) is an
+	// error and aborts the batch as before.
+	UpsertArticlesReportingSkipped(ctx context.Context, articles []*domain.Article) ([]*domain.Article, error)
+}
+
 // ArticleSyncService implementation.
 type articleSyncService struct {
-	articleRepo     repository.ArticleRepository
+	articleRepo     SyncArticleRepository
 	externalAPIRepo repository.ExternalAPIRepository
 	sanitizer       *utils.Sanitizer
 	logger          *slog.Logger
 
-	// mu guards userID and lastBackfillFetchedAt, which are read and written
-	// by SyncArticles and BackfillEmptyFeeds — two independent JobRunner
-	// goroutines (article-sync, article-backfill) sharing this instance.
+	// mu guards userID, lastSyncedFetchedAt and lastBackfillFetchedAt, which
+	// are read and written by SyncArticles and BackfillEmptyFeeds — two
+	// independent JobRunner goroutines (article-sync, article-backfill)
+	// sharing this instance.
 	mu                    sync.Mutex
 	userID                string    // Cached system UserID
+	lastSyncedFetchedAt   time.Time // Watermark for sync progress (advances once a batch is upserted)
 	lastBackfillFetchedAt time.Time // Cursor for backfill progress (advances with each batch)
 }
 
@@ -49,6 +82,38 @@ func (s *articleSyncService) systemUserID(ctx context.Context) (string, error) {
 	s.mu.Unlock()
 
 	return userID, nil
+}
+
+// syncCursor returns the fetched_at watermark of the newest article-sync batch
+// that made it into alt-db.
+func (s *articleSyncService) syncCursor() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastSyncedFetchedAt
+}
+
+// advanceSyncCursor moves the sync watermark forward, never backward.
+func (s *articleSyncService) advanceSyncCursor(t time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t.After(s.lastSyncedFetchedAt) {
+		s.lastSyncedFetchedAt = t
+	}
+}
+
+// recordSyncProgress moves the watermark to the fetched_at of the last row the
+// run scanned, which includes the rows validation dropped: a skipped row never
+// becomes valid on its own, and if the sidecar later fixes it the upsert bumps
+// fetched_at, so the repaired row reappears above the watermark anyway. Rows
+// the write path refused are a different story and are excluded by the caller
+// — see holdWatermarkBelow.
+func (s *articleSyncService) recordSyncProgress(ctx context.Context, scannedThrough time.Time) {
+	if !scannedThrough.After(s.syncCursor()) {
+		return
+	}
+
+	s.advanceSyncCursor(scannedThrough)
+	s.logger.InfoContext(ctx, "sync watermark advanced", "watermark", s.syncCursor())
 }
 
 // backfillCursor returns the current backfill progress cursor.
@@ -83,7 +148,7 @@ func (s *articleSyncService) recordBackfillProgress(ctx context.Context, scanned
 
 // NewArticleSyncService creates a new article sync service.
 func NewArticleSyncService(
-	articleRepo repository.ArticleRepository,
+	articleRepo SyncArticleRepository,
 	externalAPIRepo repository.ExternalAPIRepository,
 	logger *slog.Logger,
 ) ArticleSyncService {
@@ -107,9 +172,15 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 	}
 	s.logger.InfoContext(ctx, "retrieved system user id", "user_id", userID)
 
-	// Fetch articles from the last 24 hours (or configurable)
-	// For now, let's look back 24 hours to catch any lag
-	since := time.Now().Add(-24 * time.Hour)
+	// Take only what the sidecar wrote after the last batch we synced. The
+	// query is fetched_at > since with no LIMIT, so a fixed 24h window would
+	// re-upsert every article once per hourly run — 24 CreateArticle RPCs and
+	// 24 ArticleUpdated events per article. The 24h window is the startup
+	// re-scan only, until the first batch sets the watermark.
+	since := s.syncCursor()
+	if since.IsZero() {
+		since = time.Now().Add(-syncStartupLookback)
+	}
 
 	articles, err := s.articleRepo.FetchInoreaderArticles(ctx, since)
 	if err != nil {
@@ -124,8 +195,17 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 
 	s.logger.InfoContext(ctx, "processing articles for sync", "count", len(articles))
 
+	// scannedThrough is the fetched_at watermark of this run. It is the max over
+	// every row fetched rather than the last one returned, because the fetch
+	// ordering is the driver's business, not this service's.
+	var scannedThrough time.Time
+
 	var validArticles []*domain.Article
 	for _, article := range articles {
+		if article.CreatedAt.After(scannedThrough) {
+			scannedThrough = article.CreatedAt
+		}
+
 		// 1. Sanitize content (Zero-Trust)
 		sanitizedContent := s.sanitizer.SanitizeHTMLAndTrim(article.Content)
 
@@ -150,16 +230,85 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 
 	// 3. Upsert
 	if len(validArticles) > 0 {
-		if err := s.articleRepo.UpsertArticles(ctx, validArticles); err != nil {
+		refused, err := s.articleRepo.UpsertArticlesReportingSkipped(ctx, validArticles)
+		if err != nil {
 			s.logger.ErrorContext(ctx, "failed to upsert articles", "error", err)
 			return fmt.Errorf("failed to upsert articles: %w", err)
 		}
-		s.logger.InfoContext(ctx, "successfully synced articles", "count", len(validArticles))
+		s.logger.InfoContext(ctx, "successfully synced articles",
+			"count", len(validArticles)-len(refused),
+			"refused", len(refused))
+
+		scannedThrough = s.holdWatermarkBelow(ctx, articles, refused, scannedThrough)
 	} else {
 		s.logger.InfoContext(ctx, "no valid articles to upsert after validation")
 	}
 
+	// Only now that the batch is durable in alt-db: a failed upsert returns
+	// above, leaving the watermark where it was so the next run retries it.
+	s.recordSyncProgress(ctx, scannedThrough)
+
 	return nil
+}
+
+// holdWatermarkBelow pulls this run's watermark back under the oldest row the
+// write path refused, so the next run re-offers it. Refusals are external to
+// the row — the subscription or the feed shows up in alt-db hours later
+// without inoreader_articles.fetched_at moving — so a watermark left at
+// scannedThrough would sink those articles under `fetched_at > since` forever.
+// The next query is strictly greater-than, hence the watermark stops at the
+// newest row scanned *before* the refusal, not at the refusal itself.
+func (s *articleSyncService) holdWatermarkBelow(ctx context.Context, scanned, refused []*domain.Article, scannedThrough time.Time) time.Time {
+	holdFloor := scannedThrough.Add(-maxRefusalHold)
+
+	var refusedFrom time.Time
+	var abandoned []*domain.Article
+	for _, article := range refused {
+		// A row this far behind the scan front is not waiting on a registration
+		// that is about to happen; holding for it costs every later run.
+		if article.CreatedAt.Before(holdFloor) {
+			abandoned = append(abandoned, article)
+			continue
+		}
+		if refusedFrom.IsZero() || article.CreatedAt.Before(refusedFrom) {
+			refusedFrom = article.CreatedAt
+		}
+	}
+
+	if len(abandoned) > 0 {
+		s.logger.WarnContext(ctx, "abandoning rows the upsert has refused for longer than the hold window",
+			"abandoned", len(abandoned),
+			"oldest_url", abandoned[0].URL,
+			"oldest_feed_url", abandoned[0].FeedURL,
+			"hold_window", maxRefusalHold)
+	}
+
+	if refusedFrom.IsZero() {
+		return scannedThrough
+	}
+
+	var held time.Time
+	for _, article := range scanned {
+		if article.CreatedAt.Before(refusedFrom) && article.CreatedAt.After(held) {
+			held = article.CreatedAt
+		}
+	}
+
+	// recordSyncProgress never moves the cursor backwards, so the watermark that
+	// actually takes effect is whichever of the two is newer. Logging `held`
+	// alone reports 0001-01-01 whenever the oldest scanned row is the refused
+	// one, which reads as "the cursor was reset to the epoch".
+	effective := held
+	if cursor := s.syncCursor(); cursor.After(effective) {
+		effective = cursor
+	}
+
+	s.logger.WarnContext(ctx, "holding sync watermark below rows the upsert refused",
+		"refused", len(refused),
+		"refused_from", refusedFrom,
+		"watermark", effective)
+
+	return held
 }
 
 // BackfillEmptyFeeds inserts Inoreader articles as core articles for feeds that have no articles.

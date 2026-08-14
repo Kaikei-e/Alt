@@ -48,7 +48,6 @@ services:
     restart: always
     networks:
       - alt-network
-    tty: true
     labels:
       - rask.group=pre-processor-sidecar
     logging:
@@ -133,7 +132,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    tty: true
     labels:
       - rask.group=search-indexer
     logging:
@@ -213,7 +211,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    tty: true
     restart: unless-stopped
     labels:
       - rask.group=tag-generator

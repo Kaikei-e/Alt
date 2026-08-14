@@ -12,6 +12,7 @@ async fn test_store_and_retrieve_batch() {
         max_disk_usage: 100 * 1024 * 1024,           // 100MB
         retention_period: Duration::from_secs(3600), // 1 hour
         compression: true,
+        enabled: true,
     };
 
     let mut disk_fallback = DiskFallback::new(config).await.unwrap();
@@ -39,6 +40,7 @@ async fn test_list_stored_batches() {
         max_disk_usage: 100 * 1024 * 1024,
         retention_period: Duration::from_secs(3600),
         compression: true,
+        enabled: true,
     };
 
     let mut disk_fallback = DiskFallback::new(config).await.unwrap();
@@ -71,6 +73,7 @@ async fn test_disk_usage_limits() {
         max_disk_usage: 1024, // Very small limit (1KB)
         retention_period: Duration::from_secs(3600),
         compression: true,
+        enabled: true,
     };
 
     let mut disk_fallback = DiskFallback::new(config).await.unwrap();
@@ -91,6 +94,7 @@ async fn test_batch_cleanup_by_age() {
         max_disk_usage: 100 * 1024 * 1024,
         retention_period: Duration::from_secs(1), // 1 second retention for testing
         compression: false,
+        enabled: true,
     };
 
     let mut disk_fallback = DiskFallback::new(config).await.unwrap();
@@ -120,6 +124,7 @@ async fn test_delete_batch() {
         max_disk_usage: 100 * 1024 * 1024,
         retention_period: Duration::from_secs(3600),
         compression: false,
+        enabled: true,
     };
 
     let mut disk_fallback = DiskFallback::new(config).await.unwrap();

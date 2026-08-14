@@ -30,16 +30,26 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// wireInternalAuth is the sole choke point for /internal auth wiring. It
-// panics on an empty secret instead of falling back to an unauthenticated
-// no-op: config.Validate() already requires a non-empty BackendTokenSecret,
-// so reaching this branch with an empty secret means that invariant broke,
-// not that internal auth should be silently disabled (CLAUDE.md Rule 8).
-func wireInternalAuth(secret string) echo.MiddlewareFunc {
-	if secret == "" {
-		panic("main: BACKEND_TOKEN_SECRET must be set before wiring internal auth")
+// wireInternalAuth is the sole choke point for /internal auth wiring. It takes
+// the whole config rather than a bare string so the caller cannot hand it the
+// wrong secret: the group is keyed on InternalAuthSecret, never on the HS256
+// key that signs backend JWTs. alt-backend puts whatever this group accepts
+// into a plaintext X-Internal-Auth header on every GetSystemUser call, which
+// spreads it to nginx access logs and OTel span attributes — a place the
+// signing key must never reach.
+//
+// Both guards panic instead of degrading. config.Validate() already requires a
+// non-empty InternalAuthSecret distinct from BackendTokenSecret, so reaching
+// either branch means that invariant broke, not that internal auth should be
+// silently disabled or silently keyed on the signing key (CLAUDE.md Rule 8).
+func wireInternalAuth(cfg *config.Config) echo.MiddlewareFunc {
+	if cfg.InternalAuthSecret == "" {
+		panic("main: INTERNAL_AUTH_SECRET must be set before wiring internal auth")
 	}
-	return appmiddleware.InternalAuth(secret)
+	if cfg.InternalAuthSecret == cfg.BackendTokenSecret {
+		panic("main: INTERNAL_AUTH_SECRET must not equal BACKEND_TOKEN_SECRET")
+	}
+	return appmiddleware.InternalAuth(cfg.InternalAuthSecret)
 }
 
 func main() {
@@ -179,12 +189,17 @@ func main() {
 	e.POST("/csrf", csrfHandler.Handle, csrfRL.Middleware())
 	e.GET("/health", healthHandler.Handle)
 
-	// Internal routes (protected by shared secret)
+	// Internal routes (protected by a shared bearer that is deliberately not
+	// the JWT signing key — see wireInternalAuth)
 	internalGroup := e.Group("/internal",
 		internalRL.Middleware(),
 	)
-	internalGroup.Use(wireInternalAuth(cfg.BackendTokenSecret))
+	internalGroup.Use(wireInternalAuth(cfg))
 	internalGroup.GET("/system-user", internalHandler.HandleSystemUser)
+	// Names the secret this group is keyed on, never its value: an operator
+	// reading the log can tell the two secrets apart without a way to learn
+	// either (auth-hub Rule 3).
+	slog.InfoContext(ctx, "internal_auth_enabled", "secret_source", "INTERNAL_AUTH_SECRET")
 
 	// Start server with errgroup for graceful shutdown
 	address := fmt.Sprintf(":%s", cfg.Port)

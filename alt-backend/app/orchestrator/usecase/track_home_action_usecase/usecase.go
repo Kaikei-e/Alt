@@ -11,6 +11,8 @@ import (
 	"alt/shared/port/knowledge_event_port"
 	"alt/utils/logger"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +27,20 @@ import (
 // `articles` row (item_key = "article:<uuid>"). Used to gate the article-URL
 // payload enrichment so non-article home items skip the lookup entirely.
 const articleItemKeyPrefix = "article:"
+
+// metadataIdempotencyKeyField is the metadata_json field through which a client
+// hands us its own retry-stable key. metadata_json is the only channel the
+// TrackHomeAction RPC has for one without a proto change.
+const metadataIdempotencyKeyField = "idempotency_key"
+
+// dedupeBucket is how coarsely the clock is quantised when the client supplies
+// no idempotency key. A retry has to land in the same bucket as the attempt it
+// repeats to be recognised as a retry, so the width has to exceed any realistic
+// retry delay; it also bounds how long two byte-identical repeats of an action
+// collapse into one event. The sibling impression path
+// (track_home_seen_usecase) buckets at 5 minutes, but actions are far rarer and
+// each carries more signal, so this is deliberately tighter.
+const dedupeBucket = time.Minute
 
 // Valid action types.
 var validActionTypes = map[string]string{
@@ -84,6 +100,66 @@ func NewTrackHomeActionUsecase(
 	}
 }
 
+// buildDedupeKey derives the at-least-once key that both appends of one action
+// share. sovereign rejects an empty dedupe_key outright: the value gates a
+// partial unique index conditioned on the key being non-empty, so an empty one
+// would silently disable dedup rather than fail.
+//
+// The key has to survive a retry. The knowledge_events append below is fatal,
+// so Execute can return an error with the user event already committed, and the
+// caller's only recovery is to re-issue the same action — append-first buys
+// idempotency from the dedupe registry, which only collapses the second append
+// when the key is byte-identical. A key carrying now.UnixMilli() cannot do
+// that: the retry lands on a new millisecond, so it stacks a duplicate row.
+// The same resolution failed in the other direction too — two genuinely
+// distinct actions issued inside one millisecond collided and the second was
+// deduped away.
+//
+// A client-supplied idempotency key is stable by construction, so it decides
+// the key whenever one is present. Otherwise the clock is quantised into a
+// coarse bucket and combined with a fingerprint of the action's metadata: a
+// retry inside the bucket collapses, while two different actions on one item
+// (two tags clicked, two searches run) keep distinct keys. The residual hole is
+// a retry that straddles a bucket boundary, which is bounded and far narrower
+// than "every retry duplicates".
+func buildDedupeKey(userID uuid.UUID, actionType string, itemKey string, metadataJSON string, now time.Time) string {
+	prefix := fmt.Sprintf("%s:%s:%s", userID, actionType, itemKey)
+
+	// Still namespaced by the action tuple, so a client that reuses one key by
+	// mistake collapses only its own repeats of that exact action.
+	if clientKey := clientIdempotencyKey(metadataJSON); clientKey != "" {
+		return prefix + ":" + clientKey
+	}
+
+	bucket := now.UTC().Truncate(dedupeBucket).Format(time.RFC3339)
+	return fmt.Sprintf("%s:%s:%s", prefix, bucket, metadataFingerprint(metadataJSON))
+}
+
+// clientIdempotencyKey pulls the caller-supplied retry key out of metadata_json.
+// Metadata that is absent, malformed, or carries no key is not an error here:
+// the field is optional and free-form, and the time bucket still yields a
+// usable key.
+func clientIdempotencyKey(metadataJSON string) string {
+	if metadataJSON == "" {
+		return ""
+	}
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(metadataJSON), &meta); err != nil {
+		return ""
+	}
+	key, _ := meta[metadataIdempotencyKeyField].(string)
+	return key
+}
+
+// metadataFingerprint keeps two different actions on one item inside the same
+// bucket apart — clicking tag "rust" then tag "go" is two facts, not a retry.
+// A retry replays the same serialized metadata byte for byte, so hashing the
+// raw string is enough and avoids re-encoding differences of our own making.
+func metadataFingerprint(metadataJSON string) string {
+	sum := sha256.Sum256([]byte(metadataJSON))
+	return hex.EncodeToString(sum[:8])
+}
+
 // Execute records a user action on a knowledge home item.
 func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, actionType string, itemKey string, metadataJSON string) error {
 	eventType, ok := validActionTypes[actionType]
@@ -105,10 +181,7 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 	now := time.Now()
 
 	// One action is one fact, so both appends below carry the same key.
-	// sovereign rejects an empty dedupe_key outright: it gates a
-	// `WHERE dedupe_key != ''` partial unique index, so an empty value would
-	// silently disable at-least-once dedup rather than fail.
-	dedupeKey := fmt.Sprintf("%s:%s:%s:%d", userID, actionType, itemKey, now.UnixMilli())
+	dedupeKey := buildDedupeKey(userID, actionType, itemKey, metadataJSON, now)
 
 	// Record user event
 	payload, _ := json.Marshal(map[string]string{
@@ -206,10 +279,18 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		Payload:       knowledgePayload,
 	}
 
+	// Fatal, and deliberately ahead of every projection write below.
+	// knowledge_events is the only durable record of the action: the read
+	// models it feeds (knowledge_home_items in particular) are TRUNCATEd and
+	// replayed by RebuildProjection. Writing dismissed_at through to the
+	// projection after a failed append would survive only until the next
+	// reproject, at which point the dismissed item returns to the Home rail
+	// while the caller was told the action succeeded. Failing here instead
+	// lets the client retry the whole action.
 	if _, err := u.knowledgeEventPort.AppendKnowledgeEvent(ctx, knowledgeEvent); err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to append knowledge event for action",
-			"error", err, "action_type", actionType)
-		// Non-fatal: user event was already recorded
+			"error", err, "action_type", actionType, "item_key", itemKey)
+		return fmt.Errorf("track home action: append knowledge event: %w", err)
 	}
 
 	if actionType == "dismiss" && u.dismissPort != nil {

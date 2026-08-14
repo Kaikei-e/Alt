@@ -8,6 +8,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { PUBLIC_SERVICES } from "$lib/gen/allowlist";
+import { parseConnectPath } from "$lib/server/connect-path";
 
 const BACKEND_CONNECT_URL =
 	env.BACKEND_CONNECT_URL || "http://alt-backend:9101";
@@ -27,14 +28,18 @@ const BACKEND_CONNECT_URL =
  */
 const PROXYABLE_SERVICES = new Set<string>(PUBLIC_SERVICES);
 
+/**
+ * The allowlist only decides *which* service may be reached; it says nothing
+ * about the rest of the path. `parseConnectPath` supplies that half, in the
+ * positive direction — see its doc comment for why splitting on "/" and
+ * counting segments cannot: SvelteKit decodes `%5C` before we see it and the
+ * URL parser in `fetch` then reads that backslash as a separator, so
+ * `alt.feeds.v2.FeedService/Get\..\..\v1\dashboard` looks like two segments
+ * here and resolves to `/v1/dashboard` there.
+ */
 function isProxyableService(path: string): boolean {
-	const [service, method, ...rest] = path.split("/");
-	return (
-		rest.length === 0 &&
-		!!method &&
-		!!service &&
-		PROXYABLE_SERVICES.has(service)
-	);
+	const parsed = parseConnectPath(path);
+	return parsed !== null && PROXYABLE_SERVICES.has(parsed.service);
 }
 
 /**
@@ -51,7 +56,7 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 			JSON.stringify({
 				level: "warn",
 				source: "connect-proxy",
-				msg: "rejected non-proxyable Connect-RPC service",
+				msg: "rejected non-proxyable Connect-RPC path",
 				path,
 			}),
 		);

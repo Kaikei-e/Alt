@@ -124,6 +124,37 @@ func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (boo
 	return false, nil
 }
 
+// CheckExistsWithFeedID reports whether any of urls already exists under the
+// given feed.
+//
+// Unlike CheckExists it takes a feed_id the caller has already resolved. That
+// is the only form alt-data-hub can answer for an article URL: GetFeedID
+// matches feed_links.url, so looking a feed up from an article URL always
+// comes back NotFound and the check degrades to a silent "nothing exists".
+func (r *ArticleRepository) CheckExistsWithFeedID(ctx context.Context, feedID string, urls []string) (bool, error) {
+	if feedID == "" {
+		return false, fmt.Errorf("CheckExistsWithFeedID: feedID is required")
+	}
+
+	for _, u := range urls {
+		protoReq := &datahubv1.CheckArticleExistsRequest{
+			Url:    u,
+			FeedId: feedID,
+		}
+		req := connect.NewRequest(protoReq)
+		r.client.addAuth(req)
+
+		resp, err := r.client.client.CheckArticleExists(ctx, req)
+		if err != nil {
+			return false, fmt.Errorf("CheckArticleExists for %s: %w", u, err)
+		}
+		if resp.Msg.Exists {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // FindForSummarization finds articles that need summarization via the backend API.
 func (r *ArticleRepository) FindForSummarization(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
 	protoReq := &datahubv1.ListUnsummarizedArticlesRequest{
@@ -262,28 +293,45 @@ func (r *ArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Cont
 	return result, scannedThrough, nil
 }
 
-// UpsertArticles batch upserts articles.
-// Articles with unresolvable feeds are skipped (matching legacy DB behavior),
-// while real errors (network, auth) abort the batch immediately.
+// UpsertArticles batch upserts articles, discarding the report of what it
+// refused. Callers that track a fetched_at watermark must use
+// UpsertArticlesReportingSkipped instead.
+func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*domain.Article) error {
+	_, err := r.UpsertArticlesReportingSkipped(ctx, articles)
+	return err
+}
+
+// UpsertArticlesReportingSkipped batch upserts articles and returns the ones it
+// refused to write. Articles with unresolvable feeds are skipped (matching
+// legacy DB behavior), while real errors (network, auth) abort the batch
+// immediately.
+//
+// The refusals are reported rather than swallowed because none of them is a
+// property of the article: a missing inoreader_subscriptions row and a feed
+// alt-db has not registered yet both get fixed later without ever touching
+// inoreader_articles.fetched_at. A caller that advanced a fetched_at watermark
+// over such a row would sink it below its own window forever.
 //
 // A per-batch FeedURL → FeedID cache coalesces GetFeedID calls so a fan-out of
 // articles for the same feed only hits alt-backend once (Pillar 4, 2026-05-26).
 // The cache also remembers misses ("" sentinel) so a single unregistered feed
 // no longer produces N "feed not found" log lines — one warn per feed per
 // batch is enough to drive operator action.
-func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*domain.Article) error {
+func (r *ArticleRepository) UpsertArticlesReportingSkipped(ctx context.Context, articles []*domain.Article) ([]*domain.Article, error) {
 	if len(articles) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	feedIDCache := make(map[string]string) // FeedURL → FeedID; "" means already-resolved miss.
 
 	var created int
 	var skippedFeedNotFound int
+	var skipped []*domain.Article
 	for _, article := range articles {
 		// Skip articles with empty FeedURL and no FeedID
 		if article.FeedURL == "" && article.FeedID == "" {
 			slog.WarnContext(ctx, "skipping article with empty FeedURL", "url", article.URL)
+			skipped = append(skipped, article)
 			continue
 		}
 
@@ -297,7 +345,7 @@ func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*doma
 						// Real errors (network, auth, backend outage) abort the
 						// batch immediately instead of being silently treated as
 						// a missing feed — see doc comment above.
-						return fmt.Errorf("getFeedID for %s: %w", article.FeedURL, err)
+						return nil, fmt.Errorf("getFeedID for %s: %w", article.FeedURL, err)
 					}
 					// Feed not found in backend — log once per feed, cache the miss,
 					// and skip the rest of the batch's articles for the same URL.
@@ -316,6 +364,7 @@ func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*doma
 			}
 			if cached == "" {
 				skippedFeedNotFound++
+				skipped = append(skipped, article)
 				continue
 			}
 			article.FeedID = cached
@@ -323,7 +372,7 @@ func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*doma
 
 		// Create article — real errors (network, auth, etc.) abort the batch
 		if err := r.Create(ctx, article); err != nil {
-			return fmt.Errorf("upsert article %s: %w", article.URL, err)
+			return nil, fmt.Errorf("upsert article %s: %w", article.URL, err)
 		}
 		created++
 	}
@@ -332,7 +381,7 @@ func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*doma
 		"created", created,
 		"total", len(articles),
 		"skipped_feed_not_found", skippedFeedNotFound)
-	return nil
+	return skipped, nil
 }
 
 // UpsertArticlesWithFeedID batch inserts articles that already have FeedID resolved.
@@ -350,8 +399,11 @@ func (r *ArticleRepository) UpsertArticlesWithFeedID(ctx context.Context, articl
 			continue
 		}
 
-		// Check existence first to avoid overwriting (ON CONFLICT DO NOTHING semantics)
-		exists, err := r.CheckExists(ctx, []string{article.URL})
+		// Check existence first to avoid overwriting (ON CONFLICT DO NOTHING
+		// semantics). The FeedID is already resolved here, so ask under it
+		// directly — CheckExists would try to re-derive a feed from the
+		// article URL and never find one.
+		exists, err := r.CheckExistsWithFeedID(ctx, article.FeedID, []string{article.URL})
 		if err != nil {
 			slog.WarnContext(ctx, "failed to check article existence, skipping", "url", article.URL, "error", err)
 			skipped++

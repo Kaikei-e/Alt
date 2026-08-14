@@ -6,6 +6,7 @@ import asyncio
 import os
 from contextlib import asynccontextmanager, suppress
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import httpx
 import structlog
@@ -168,6 +169,102 @@ async def health_endpoint(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "acolyte-orchestrator"})
 
 
+# Shutdown budget for pipelines still inside the graph. compose/acolyte.yaml sets
+# no stop_grace_period, so the whole teardown has to fit inside Docker's 10s
+# default. The window is not there to let a 70-minute run finish — it is there so
+# a pipeline one await away from complete_run lands its own terminal write
+# instead of being cancelled in FinalizerNode's gap, between the version bump and
+# the run's completion. Not settings-driven: it is a property of the container's
+# stop grace, not a business knob.
+_PIPELINE_DRAIN_GRACE_SECONDS = 2.0
+
+# Deliberately distinct from ReconcileOrphanedRunsUsecase's
+# 'orphaned_after_restart'. That code means "found this row already stale at
+# boot"; this one means "we stopped it on purpose, and the row is accurate as of
+# now" — which is what a scale-down needs, since no later startup may ever come
+# to reconcile it.
+_SHUTDOWN_FAILURE_CODE = "shutdown_interrupted"
+
+# Mirrors the task name AcolyteConnectService.start_report_run assigns
+# (f"acolyte-run-{run_id}"), the only handle a cancelled task carries back to
+# its run row.
+_RUN_TASK_NAME_PREFIX = "acolyte-run-"
+
+# The statuses list_running_runs treats as unfinished — the only ones a shutdown
+# is entitled to rewrite.
+_UNFINISHED_RUN_STATUSES = frozenset({"pending", "running"})
+
+
+async def _fail_interrupted_run(task: asyncio.Task[None]) -> None:
+    """Mark the run behind a shutdown-cancelled pipeline task as failed."""
+    try:
+        run_id = UUID(task.get_name().removeprefix(_RUN_TASK_NAME_PREFIX))
+    except ValueError:
+        # The naming contract with start_report_run broke. Loud, but not fatal:
+        # raising here would skip the pool close and leak connections, and the
+        # next boot's ReconcileOrphanedRunsUsecase still catches the row.
+        logger.exception("Interrupted pipeline task carries no run id", task_name=task.get_name())
+        return
+
+    # Both statements talk to the Postgres this teardown is about to let go of,
+    # so neither may hold the rest of the shutdown hostage — the pool and the
+    # HTTP client still have to close.
+    try:
+        # The cancellation can land after complete_run's UPDATE committed but
+        # before the coroutine returned. fail_run is an unconditional UPDATE, so
+        # without this read it would pair a bumped report version with a failed
+        # run — the corruption the drain exists to prevent.
+        run = await _job_queue.get_run(run_id)
+        if run is not None and run.run_status not in _UNFINISHED_RUN_STATUSES:
+            logger.info(
+                "Interrupted pipeline had already settled its run",
+                run_id=str(run_id),
+                run_status=run.run_status,
+            )
+            return
+        await _job_queue.fail_run(
+            run_id,
+            _SHUTDOWN_FAILURE_CODE,
+            "Run was cancelled while the process was shutting down.",
+        )
+    except Exception as exc:
+        logger.exception("Failed to mark interrupted run failed during shutdown", run_id=str(run_id), error=str(exc))
+
+
+async def _drain_report_pipelines(service: AcolyteConnectService) -> None:
+    """Settle in-flight pipelines before the pool and HTTP client go away.
+
+    Nothing else awaits the background tasks start_report_run spawns. Closing
+    the pool underneath one raises PoolClosed inside the pipeline, and its own
+    crash handler then fails to write fail_run through that same dead pool — so
+    the run row says 'running' forever, wedging has_active_run (the
+    delete_report guard) and GetReport.active_run for its report. Every
+    redeploy that lands mid-run does this.
+    """
+    # Snapshotted: the handler's done-callback mutates the set as tasks finish.
+    in_flight = set(service._background_tasks)
+    if not in_flight:
+        return
+
+    logger.info(
+        "Draining in-flight report pipelines",
+        count=len(in_flight),
+        grace_seconds=_PIPELINE_DRAIN_GRACE_SECONDS,
+    )
+    _, unfinished = await asyncio.wait(in_flight, timeout=_PIPELINE_DRAIN_GRACE_SECONDS)
+    for task in unfinished:
+        task.cancel()
+    # return_exceptions, because a pipeline can settle with something other than
+    # CancelledError — _run_pipeline_locked raises outside its own except clause
+    # on an unconfigured graph. Letting that escape here unwinds the lifespan
+    # finally and skips the HTTP client and pool closes below it, leaking both
+    # on every redeploy.
+    await asyncio.gather(*unfinished, return_exceptions=True)
+    for task in unfinished:
+        logger.warning("Pipeline cancelled by shutdown", task_name=task.get_name())
+        await _fail_interrupted_run(task)
+
+
 def create_app() -> Starlette:
     """Create Starlette ASGI application instance."""
     initial_graph = None if settings.checkpoint_enabled else _compile_graph()
@@ -199,21 +296,39 @@ def create_app() -> Starlette:
                 _relay.run_forever(_relay_config.interval_seconds),
                 name="notification-outbox-relay",
             )
-        try:
-            if settings.checkpoint_enabled:
-                async with create_checkpointer(_dsn) as checkpointer:
-                    connect_service.set_graph(_compile_graph(checkpointer=checkpointer))
-                    logger.info("LangGraph checkpointing enabled")
-                    yield
-            else:
-                logger.info("LangGraph checkpointing disabled")
-                yield
-        finally:
+
+        async def _drain() -> None:
+            # Periodic loops first — they hold no in-flight business state. The
+            # pipelines then get their window while the checkpointer connection,
+            # the pool and the HTTP client are all still usable.
             for task in (relay_task, cert_watch_task):
                 if task is not None:
                     task.cancel()
                     with suppress(asyncio.CancelledError):
                         await task
+            await _drain_report_pipelines(connect_service)
+
+        try:
+            # The drain sits *inside* the checkpointer scope on purpose. With
+            # CHECKPOINT_ENABLED=true the graph runs durability="sync", so every
+            # super-step writes through the single connection create_checkpointer
+            # owns; draining after that context exits would hand a pipeline its
+            # grace window with nothing left to write the terminal checkpoint to.
+            if settings.checkpoint_enabled:
+                async with create_checkpointer(_dsn) as checkpointer:
+                    connect_service.set_graph(_compile_graph(checkpointer=checkpointer))
+                    logger.info("LangGraph checkpointing enabled")
+                    try:
+                        yield
+                    finally:
+                        await _drain()
+            else:
+                logger.info("LangGraph checkpointing disabled")
+                try:
+                    yield
+                finally:
+                    await _drain()
+        finally:
             await _http_client.aclose()
             await _pool.close()
             logger.info("Shutting down acolyte-orchestrator")

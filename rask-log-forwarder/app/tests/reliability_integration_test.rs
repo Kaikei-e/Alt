@@ -24,6 +24,7 @@ async fn test_reliability_manager_success_path() {
         max_disk_usage: 10 * 1024 * 1024, // 10MB
         retention_period: Duration::from_secs(3600),
         compression: true,
+        enabled: true,
     };
 
     let metrics_config = MetricsConfig {
@@ -91,6 +92,7 @@ async fn test_reliability_manager_metrics_collection() {
         max_disk_usage: 10 * 1024 * 1024,
         retention_period: Duration::from_secs(3600),
         compression: false,
+        enabled: true,
     };
     let metrics_config = MetricsConfig::default();
     let health_config = HealthConfig::default();
@@ -140,6 +142,7 @@ async fn test_reliability_manager_health_monitoring() {
         max_disk_usage: 10 * 1024 * 1024,
         retention_period: Duration::from_secs(3600),
         compression: false,
+        enabled: true,
     };
     let metrics_config = MetricsConfig::default();
     let health_config = HealthConfig::default();

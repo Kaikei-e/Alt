@@ -5,6 +5,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"regexp"
 	"testing"
@@ -73,8 +74,25 @@ func TestGetTodaysUsage_NotFound(t *testing.T) {
 	mock.ExpectQuery(selectTodaysUsageQuery).WillReturnError(pgx.ErrNoRows)
 
 	usage, err := repo.GetTodaysUsage(context.Background())
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrNoUsageRecordToday)
 	assert.Nil(t, usage)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// A query that failed is not a day that has no row yet. Callers seed a fresh
+// zero-valued counter on ErrNoUsageRecordToday and then overwrite the row with
+// it, so collapsing the two would let one connection reset wipe the day's
+// persisted Zone 1 count.
+func TestGetTodaysUsage_QueryFailureIsNotMissingRow(t *testing.T) {
+	repo, mock := newTestAPIUsageRepo(t)
+
+	queryErr := errors.New("read tcp 10.0.0.5:5432: connection reset by peer")
+	mock.ExpectQuery(selectTodaysUsageQuery).WillReturnError(queryErr)
+
+	usage, err := repo.GetTodaysUsage(context.Background())
+	assert.Nil(t, usage)
+	assert.ErrorIs(t, err, queryErr)
+	assert.NotErrorIs(t, err, ErrNoUsageRecordToday)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

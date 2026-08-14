@@ -195,6 +195,19 @@ type AuthConfig struct {
 	BackendTokenSecretFile string `json:"-" env:"BACKEND_TOKEN_SECRET_FILE"`
 	BackendTokenIssuer     string `json:"backend_token_issuer" env:"BACKEND_TOKEN_ISSUER"`
 	BackendTokenAudience   string `json:"backend_token_audience" env:"BACKEND_TOKEN_AUDIENCE"`
+
+	// InternalAuthSecret is the shared bearer cmd/datahub puts in the
+	// X-Internal-Auth header of every auth-hub /internal/system-user call.
+	// di/datahub's composition root is its only consumer: it hands this — not
+	// BackendTokenSecret — to kratos_client.NewKratosClient.
+	//
+	// The two are separate because that header crosses the network in
+	// plaintext and lands in nginx access logs and OTel span attributes, and
+	// the HS256 key that signs every browser token must never reach those
+	// places. NewConfig exits non-zero if they are set to the same value, and
+	// auth-hub refuses to start on the same condition.
+	InternalAuthSecret     string `json:"-" env:"INTERNAL_AUTH_SECRET"`
+	InternalAuthSecretFile string `json:"-" env:"INTERNAL_AUTH_SECRET_FILE"`
 }
 
 type ServerConfig struct {
@@ -332,13 +345,66 @@ func NewConfig() (*Config, error) {
 		}
 	}
 
-	// Load backend token secret from file if configured (Docker Secrets support)
+	// Load backend token secret from file if configured (Docker Secrets support).
+	//
+	// Unlike the two blocks above this one does NOT fall back to the env value
+	// on failure. middleware/jwt_middleware.go and
+	// connect/v2/middleware/auth_interceptor.go verify every browser token
+	// against this secret, and an empty one rejects all of them: the container
+	// stays healthy, /health answers 200, and every authenticated REST and
+	// Connect call answers 401 with nothing in the log to say why. That cannot
+	// be a fallback state, so a mounted-but-unreadable or mounted-but-empty
+	// secret exits non-zero here (CLAUDE.md rule 9).
+	//
+	// The guard is deliberately environment-independent. validateAuthConfig
+	// only requires the secret when APP_ENV == "production", and APP_ENV is set
+	// in no compose file — the same trap validateImageProxyConfig documents.
 	if config.Auth.BackendTokenSecretFile != "" {
 		content, err := os.ReadFile(config.Auth.BackendTokenSecretFile)
-		if err == nil {
-			config.Auth.BackendTokenSecret = strings.TrimSpace(string(content))
+		if err != nil {
+			return nil, fmt.Errorf("read BACKEND_TOKEN_SECRET_FILE %s: %w",
+				config.Auth.BackendTokenSecretFile, err)
 		}
-		// If file read fails, we fall back to the env var value (if any) or keep it empty
+		secret := strings.TrimSpace(string(content))
+		if secret == "" {
+			return nil, fmt.Errorf("BACKEND_TOKEN_SECRET_FILE=%s resolved to an empty secret: "+
+				"every authenticated request would be rejected with 401 while the container stayed healthy; "+
+				"mount a non-empty secret or set BACKEND_TOKEN_SECRET instead",
+				config.Auth.BackendTokenSecretFile)
+		}
+		config.Auth.BackendTokenSecret = secret
+	}
+
+	// Same shape for the /internal shared bearer, and for the same reason: an
+	// empty result is not a disabled feature. cmd/datahub would then send an
+	// empty X-Internal-Auth and auth-hub would answer 401 to every
+	// GetSystemUser call while both containers stayed healthy.
+	if config.Auth.InternalAuthSecretFile != "" {
+		content, err := os.ReadFile(config.Auth.InternalAuthSecretFile)
+		if err != nil {
+			return nil, fmt.Errorf("read INTERNAL_AUTH_SECRET_FILE %s: %w",
+				config.Auth.InternalAuthSecretFile, err)
+		}
+		secret := strings.TrimSpace(string(content))
+		if secret == "" {
+			return nil, fmt.Errorf("INTERNAL_AUTH_SECRET_FILE=%s resolved to an empty secret: "+
+				"auth-hub would reject every /internal/system-user call with 401 while the container stayed healthy; "+
+				"mount a non-empty secret or set INTERNAL_AUTH_SECRET instead",
+				config.Auth.InternalAuthSecretFile)
+		}
+		config.Auth.InternalAuthSecret = secret
+	}
+
+	// The two secrets exist precisely so the signing key stays inside the
+	// process. Handing both jobs one value again is the exposure this split
+	// removed, so it exits non-zero instead of degrading back to it. The guard
+	// is environment-independent for the same reason the one above is: APP_ENV
+	// is set in no compose file.
+	if config.Auth.InternalAuthSecret != "" &&
+		config.Auth.InternalAuthSecret == config.Auth.BackendTokenSecret {
+		return nil, fmt.Errorf("INTERNAL_AUTH_SECRET must not equal BACKEND_TOKEN_SECRET: " +
+			"the /internal shared bearer travels in a plaintext X-Internal-Auth header and reaches " +
+			"access logs and OTel span attributes, which is no place for the JWT signing key")
 	}
 
 	// Set defaults for JWT issuer and audience if not provided

@@ -136,7 +136,22 @@ class CuratorNode:
 
         try:
             selected_ids = json.loads(response.text)
-            id_set = set(selected_ids)
-            return [e for e in section_evidence if e.get("id") in id_set]
+            by_id = {e.get("id"): e for e in section_evidence}
+            # Small models echo back every candidate they were shown, so the
+            # cap has to hold on the success path too — otherwise the whole
+            # section pool floods hydrate/compress/quote_selector. Walk the
+            # model's order (the prompt asks for relevance order) so the
+            # truncation keeps its top picks, not the pool's head.
+            selected: list[dict] = []
+            seen: set[str] = set()
+            for selected_id in selected_ids:
+                item = by_id.get(selected_id)
+                if item is None or selected_id in seen:
+                    continue
+                seen.add(selected_id)
+                selected.append(item)
+                if len(selected) >= self._max_evidence:
+                    break
         except (json.JSONDecodeError, TypeError):  # fmt: skip
             return section_evidence[: self._max_evidence]
+        return selected

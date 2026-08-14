@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import structlog
 from pydantic import ValidationError
 
+from tag_generator.domain.models import TagExtractionResult
 from tag_generator.handler.event_payload import TagGenerationRequestPayload
 from tag_generator.stream_consumer import Event, EventHandler, StreamConsumer
 
@@ -98,30 +99,64 @@ class TagGeneratorEventHandler(EventHandler):
         )
 
     def _process_article_sync(self, article_id: str, feed_id: str = "") -> None:
-        """Synchronous wrapper for processing an article."""
+        """Synchronous wrapper for processing an article.
+
+        Runs the two steps of `TagGeneratorService._process_single_article`
+        separately instead of calling it, because its single bool answer cannot
+        say *which* step declined: an article with no extractable tags (short
+        body, or one the sanitizer strips) and a failed UpsertArticleTags RPC
+        both come back False. Raising on both re-ran the whole ML pipeline
+        every reclaim interval and dead-lettered an article whose only fault was
+        having nothing to tag -- the batch path has always treated an empty
+        extraction as terminal (`max_empty_extraction_retries`).
+        """
         # API mode: conn is None, backend handles everything
         article = self.service.article_fetcher.fetch_article_by_id(None, article_id)
-        if article:
-            if feed_id and not article.get("feed_id"):
-                article["feed_id"] = feed_id
-            success = self.service._process_single_article(None, article)
-            if success:
-                logger.info(
-                    "article_processed_for_tags",
-                    article_id=article_id,
-                )
-            else:
-                # Tag extraction or DB upsert failed. Raise instead of just
-                # logging: the caller's try/except (_handle_article_created)
-                # re-raises so stream_consumer._read_and_process does not
-                # XACK -- the message stays in the PEL for XAUTOCLAIM
-                # redelivery / DLQ instead of being silently dropped.
-                raise RuntimeError(f"tag processing failed for article {article_id}")
-        else:
+        if not article:
             logger.warning(
                 "article_not_found",
                 article_id=article_id,
             )
+            return
+
+        if feed_id and not article.get("feed_id"):
+            article["feed_id"] = feed_id
+
+        # An extraction that raises is a broken run, not a verdict on the
+        # article, so it propagates: _handle_article_created re-raises and
+        # stream_consumer leaves the entry in the PEL for redelivery.
+        outcome = self.service.tag_extractor.extract_tags_with_metrics(
+            article.get("title", ""),
+            article.get("content", ""),
+        )
+        extraction = TagExtractionResult.from_outcome(article_id, outcome)
+
+        if extraction.is_empty:
+            # Terminal: redelivering this costs a full inference and yields the
+            # same nothing. Returning normally lets the consumer XACK.
+            logger.info(
+                "no_tags_extracted_for_article",
+                article_id=article_id,
+            )
+            return
+
+        result = self.service.tag_inserter.upsert_tags(
+            None,
+            article_id,
+            extraction.tag_names,
+            article.get("feed_id") or "",
+        )
+        if not result.get("success"):
+            # Retryable: the tags exist, only persisting them failed. Raise so
+            # the message stays in the PEL for XAUTOCLAIM redelivery / DLQ
+            # instead of being silently dropped.
+            raise RuntimeError(f"tag upsert failed for article {article_id}")
+
+        logger.info(
+            "article_processed_for_tags",
+            article_id=article_id,
+            tag_count=len(extraction.tags),
+        )
 
     async def _handle_tag_generation_requested(self, event: Event) -> None:
         """Handle a synchronous tag generation request with reply.

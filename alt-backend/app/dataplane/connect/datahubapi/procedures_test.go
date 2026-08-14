@@ -2,6 +2,7 @@ package datahubapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -468,6 +469,7 @@ func TestCreateArticle_Success(t *testing.T) {
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithEventPublisher(&stubEventPublisher{}),
 		WithKnowledgeEventPort(&stubKnowledgeEventPort{}))
 
 	mockCreate.EXPECT().
@@ -1003,6 +1005,10 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	mockPublisher := mocks.NewMockEventPublisherPort(ctrl)
+	// IsEnabled is read twice: once by the option, which names the
+	// publisher's wiring state in the boot log, and once on the publish
+	// path itself.
+	mockPublisher.EXPECT().IsEnabled().Return(true).AnyTimes()
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
@@ -1023,7 +1029,6 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 		}).
 		Return("new-article-id", true, nil)
 
-	mockPublisher.EXPECT().IsEnabled().Return(true)
 	mockPublisher.EXPECT().
 		PublishArticleCreated(gomock.Any(), event_publisher_port.ArticleCreatedEvent{
 			ArticleID:   "new-article-id",
@@ -1054,13 +1059,56 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 	}
 }
 
-func TestCreateArticle_NilEventPublisher(t *testing.T) {
+// CLAUDE.md rule 8, the same refusal the knowledge event port gets one
+// function below: an unwired producer must not be mistakable for a switched
+// off one. mq-hub answers IsEnabled from its own configuration, so "publish
+// nothing" is a state this handler can legitimately be in — reached by wiring
+// a disabled publisher, never by omitting the option. Skipping a nil one
+// writes the article, answers 200, and leaves summarisation and indexing with
+// nothing to consume, which is the ADR-000928 failure mode exactly.
+//
+// This test replaces TestCreateArticle_NilEventPublisher, which pinned the
+// skip.
+func TestCreateArticle_PanicsWhenEventPublisherIsUnwired(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 
 	// No WithEventPublisher — eventPublisher is nil
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithKnowledgeEventPort(&stubKnowledgeEventPort{}),
+	)
+
+	mockCreate.EXPECT().
+		CreateArticle(gomock.Any(), gomock.Any()).
+		Return("article-1", true, nil)
+
+	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
+		Title:  "Test",
+		Url:    "http://example.com",
+		FeedId: "feed-1",
+		UserId: testTenantID,
+	})
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("CreateArticle returned instead of panicking on an unwired event publisher")
+		}
+	}()
+	_, _ = h.CreateArticle(context.Background(), req)
+}
+
+// And the disabled half of the same distinction: a publisher that is wired and
+// reports itself off is a deployment choice, so the RPC succeeds and publishes
+// nothing.
+func TestCreateArticle_WiredButDisabledPublisherPublishesNothing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
+	publisher := &stubEventPublisher{}
+
+	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithEventPublisher(publisher),
 		WithKnowledgeEventPort(&stubKnowledgeEventPort{}),
 	)
 
@@ -1082,12 +1130,49 @@ func TestCreateArticle_NilEventPublisher(t *testing.T) {
 	if resp.Msg.ArticleId != "article-1" {
 		t.Errorf("expected article_id article-1, got %s", resp.Msg.ArticleId)
 	}
+	if len(publisher.created) != 0 {
+		t.Errorf("expected no publish while disabled, got %d", len(publisher.created))
+	}
 }
+
+// stubEventPublisher stands in for mq-hub wherever a test is about something
+// else. enabled is what the real gateway reads off its own client config, so
+// the zero value is a wired publisher that is switched off — the state the
+// handler must tell apart from a missing option.
+type stubEventPublisher struct {
+	enabled bool
+	created []event_publisher_port.ArticleCreatedEvent
+	updated []event_publisher_port.ArticleUpdatedEvent
+}
+
+func (s *stubEventPublisher) PublishArticleCreated(_ context.Context, e event_publisher_port.ArticleCreatedEvent) error {
+	s.created = append(s.created, e)
+	return nil
+}
+
+func (s *stubEventPublisher) PublishArticleUpdated(_ context.Context, e event_publisher_port.ArticleUpdatedEvent) error {
+	s.updated = append(s.updated, e)
+	return nil
+}
+
+func (s *stubEventPublisher) PublishSummarizeRequested(context.Context, event_publisher_port.SummarizeRequestedEvent) error {
+	return nil
+}
+
+func (s *stubEventPublisher) PublishIndexArticle(context.Context, event_publisher_port.IndexArticleEvent) error {
+	return nil
+}
+
+func (s *stubEventPublisher) IsEnabled() bool { return s.enabled }
 
 func TestCreateArticle_EventPublishFailureDoesNotFailRPC(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	mockPublisher := mocks.NewMockEventPublisherPort(ctrl)
+	// IsEnabled is read twice: once by the option, which names the
+	// publisher's wiring state in the boot log, and once on the publish
+	// path itself.
+	mockPublisher.EXPECT().IsEnabled().Return(true).AnyTimes()
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
@@ -1099,7 +1184,6 @@ func TestCreateArticle_EventPublishFailureDoesNotFailRPC(t *testing.T) {
 		CreateArticle(gomock.Any(), gomock.Any()).
 		Return("article-2", true, nil)
 
-	mockPublisher.EXPECT().IsEnabled().Return(true)
 	mockPublisher.EXPECT().
 		PublishArticleCreated(gomock.Any(), gomock.Any()).
 		Return(errors.New("redis connection refused"))
@@ -1125,6 +1209,10 @@ func TestCreateArticle_PublishesArticleUpdatedEventForUpsert(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	mockPublisher := mocks.NewMockEventPublisherPort(ctrl)
+	// IsEnabled is read twice: once by the option, which names the
+	// publisher's wiring state in the boot log, and once on the publish
+	// path itself.
+	mockPublisher.EXPECT().IsEnabled().Return(true).AnyTimes()
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
@@ -1138,7 +1226,6 @@ func TestCreateArticle_PublishesArticleUpdatedEventForUpsert(t *testing.T) {
 		CreateArticle(gomock.Any(), gomock.Any()).
 		Return("existing-article-id", false, nil)
 
-	mockPublisher.EXPECT().IsEnabled().Return(true)
 	mockPublisher.EXPECT().
 		PublishArticleUpdated(gomock.Any(), event_publisher_port.ArticleUpdatedEvent{
 			ArticleID:   "existing-article-id",
@@ -1173,6 +1260,10 @@ func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
 	mockPublisher := mocks.NewMockEventPublisherPort(ctrl)
+	// IsEnabled is read twice: once by the option, which names the
+	// publisher's wiring state in the boot log, and once on the publish
+	// path itself.
+	mockPublisher.EXPECT().IsEnabled().Return(false).AnyTimes()
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
@@ -1184,7 +1275,6 @@ func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 		CreateArticle(gomock.Any(), gomock.Any()).
 		Return("article-3", true, nil)
 
-	mockPublisher.EXPECT().IsEnabled().Return(false)
 	// PublishArticleCreated should NOT be called when disabled
 
 	req := connect.NewRequest(&datahubv1.CreateArticleRequest{
@@ -1456,6 +1546,7 @@ func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithEventPublisher(&stubEventPublisher{}),
 		WithKnowledgeEventPort(stub),
 	)
 
@@ -1490,6 +1581,68 @@ func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {
 	}
 }
 
+// Not every feed item carries a pubDate, and published_at is a message field:
+// an omitted one arrives here as a nil Timestamp and used to be formatted into
+// the payload as the Go zero time, 0001-01-01.
+//
+// That is not a harmless placeholder. knowledge_events is INSERT-only, so the
+// value the projector reads is the value Knowledge Home keeps forever, and the
+// read model ranks recency over COALESCE(published_at, generated_at) — a
+// year-1 item scores as two millennia stale and never appears in a recent or
+// today window again. The payload's own "unknown" is the empty string, which
+// the projector folds to a NULL published_at and the ranking then replaces
+// with the event's generated_at.
+func TestCreateArticle_OmittedPublishedAtIsUnknownRatherThanYearOne(t *testing.T) {
+	publishedAt := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name        string
+		publishedAt *timestamppb.Timestamp
+		want        string
+	}{
+		{name: "omitted", publishedAt: nil, want: ""},
+		{name: "sent", publishedAt: timestamppb.New(publishedAt), want: publishedAt.Format(time.RFC3339)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockCreate := mocks.NewMockCreateArticlePort(ctrl)
+			stub := &stubKnowledgeEventPort{}
+
+			h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
+				WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+				WithEventPublisher(&stubEventPublisher{}),
+				WithKnowledgeEventPort(stub),
+			)
+
+			mockCreate.EXPECT().
+				CreateArticle(gomock.Any(), gomock.Any()).
+				Return("article-published-at", true, nil)
+
+			req := connect.NewRequest(&datahubv1.CreateArticleRequest{
+				Title:       "Test Article",
+				Url:         "http://example.com/test",
+				FeedId:      "feed-1",
+				UserId:      testTenantID,
+				PublishedAt: tt.publishedAt,
+			})
+
+			if _, err := h.CreateArticle(context.Background(), req); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			var payload domain.ArticleCreatedPayload
+			if err := json.Unmarshal(stub.lastEvent.Payload, &payload); err != nil {
+				t.Fatalf("unmarshal ArticleCreated payload: %v", err)
+			}
+			if payload.PublishedAt != tt.want {
+				t.Errorf("ArticleCreated published_at = %q, want %q", payload.PublishedAt, tt.want)
+			}
+		})
+	}
+}
+
 // An upsert is where the repair happens, not where it is skipped.
 //
 // created=false says alt-db already held the (url, user_id) row; it says
@@ -1505,6 +1658,7 @@ func TestCreateArticle_AppendsKnowledgeEventOnUpsert(t *testing.T) {
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithEventPublisher(&stubEventPublisher{}),
 		WithKnowledgeEventPort(stub),
 	)
 
@@ -1545,6 +1699,7 @@ func TestCreateArticle_DedupedKnowledgeEventIsNotAFailure(t *testing.T) {
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithEventPublisher(&stubEventPublisher{}),
 		WithKnowledgeEventPort(stub),
 	)
 
@@ -1576,6 +1731,7 @@ func TestCreateArticle_KnowledgeEventFailureFailsRPC(t *testing.T) {
 
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithEventPublisher(&stubEventPublisher{}),
 		WithKnowledgeEventPort(stub),
 	)
 

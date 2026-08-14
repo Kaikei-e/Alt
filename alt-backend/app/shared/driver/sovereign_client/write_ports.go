@@ -84,18 +84,11 @@ func (c *Client) ClearSupersedeState(ctx context.Context, userID uuid.UUID, item
 	})
 }
 
-// UpsertTodayDigest implements today_digest_port.UpsertTodayDigestPort.
-func (c *Client) UpsertTodayDigest(ctx context.Context, digest domain.TodayDigest) error {
-	payload, err := json.Marshal(digest)
-	if err != nil {
-		return fmt.Errorf("sovereign UpsertTodayDigest marshal: %w", err)
-	}
-	return c.ApplyProjectionMutation(ctx, knowledge_sovereign_port.ProjectionMutation{
-		MutationType: knowledge_sovereign_port.MutationUpsertTodayDigest,
-		EntityID:     fmt.Sprintf("digest:%s", digest.UserID),
-		Payload:      payload,
-	})
-}
+// There is deliberately no UpsertTodayDigest here. knowledge-sovereign's
+// knowledge_home_projector is the sole writer of today_digest_view: its rows are
+// additive deltas folded from the event log, so a direct write from alt-backend
+// would be a state the log cannot reproduce. The driver enforces this by
+// requiring last_event_seq, which only a fold can supply.
 
 // UpsertRecallCandidate implements recall_candidate_port.UpsertRecallCandidatePort.
 func (c *Client) UpsertRecallCandidate(ctx context.Context, candidate domain.RecallCandidate) error {

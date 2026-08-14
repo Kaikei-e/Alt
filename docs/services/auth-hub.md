@@ -97,12 +97,11 @@ flowchart LR
 ### /session (Session Info + Backend Token)
 - セッション検証 + バックエンドトークン (JWT) を一括発行
 - `X-Alt-Backend-Token` レスポンスヘッダーに JWT を含む
-- `X-Alt-Shared-Secret` レスポンスヘッダー (レガシー互換、`AUTH_SHARED_SECRET` 設定時のみ)
 - BFF (alt-butterfly-facade) がバックエンドへのリクエスト時に使用
 
 ### /internal/system-user
 - 内部サービス間通信用エンドポイント
-- `AUTH_SHARED_SECRET` が設定されている場合、`X-Internal-Auth` ヘッダーによる認証が必要
+- `INTERNAL_AUTH_SECRET` (必須) を `X-Internal-Auth` ヘッダーで提示する。未設定なら auth-hub は起動時に exit 1 するので、認証が無効な状態は存在しない
 - Kratos Admin API から最初の identity ID を取得して返却
 - レスポンス: `{"user_id": "<kratos-identity-id>"}`
 
@@ -130,8 +129,8 @@ flowchart LR
 | `PORT` | 8888 | サービスポート |
 | `CACHE_TTL` | 5m | セッションキャッシュ TTL |
 | `CSRF_SECRET` | (required) | CSRF シークレット (最低 32 文字, `_FILE` サフィックス対応) |
-| `AUTH_SHARED_SECRET` | (optional) | 内部 API 認証用共有シークレット (`_FILE` サフィックス対応) |
 | `BACKEND_TOKEN_SECRET` | (required) | JWT 署名シークレット (最低 32 文字, `_FILE` サフィックス対応) |
+| `INTERNAL_AUTH_SECRET` | (required) | `/internal` 共有ベアラ (最低 32 文字, `BACKEND_TOKEN_SECRET` と別値必須, `_FILE` サフィックス対応) |
 | `BACKEND_TOKEN_ISSUER` | auth-hub | JWT issuer claim |
 | `BACKEND_TOKEN_AUDIENCE` | alt-backend | JWT audience claim |
 | `BACKEND_TOKEN_TTL` | 5m | JWT 有効期限 |
@@ -142,6 +141,12 @@ flowchart LR
 | `DEPLOYMENT_ENV` | development | デプロイ環境 (OTel リソース) |
 
 > **Note:** すべてのシークレット変数は `_FILE` サフィックスでファイルパス指定が可能 (Docker secrets 対応)。例: `CSRF_SECRET_FILE=/run/secrets/csrf_secret`
+>
+> `INTERNAL_AUTH_SECRET` には専用の docker secret `auth_hub_internal_secret` を用意してある
+> (`INTERNAL_AUTH_SECRET_FILE=/run/secrets/auth_hub_internal_secret`)。
+> `BACKEND_TOKEN_SECRET` と同じ値を入れると起動時に exit 1 する — `/internal` ベアラは
+> 平文の `X-Internal-Auth` ヘッダで流れ、アクセスログと OTel span attribute に残るため、
+> JWT 署名鍵をそこに出さないことが分離の目的。呼び出し側 (alt-data-hub) にも同じ値を渡す。
 
 ## Rate Limiting
 

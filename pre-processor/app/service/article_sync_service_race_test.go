@@ -7,14 +7,13 @@ import (
 	"time"
 
 	"pre-processor/domain"
-	"pre-processor/repository"
 )
 
-// raceArticleRepo implements the subset of repository.ArticleRepository used
-// by both SyncArticles and BackfillEmptyFeeds so the two code paths can be
-// driven concurrently in the same test.
+// raceArticleRepo implements the subset of SyncArticleRepository used by both
+// SyncArticles and BackfillEmptyFeeds so the two code paths can be driven
+// concurrently in the same test.
 type raceArticleRepo struct {
-	repository.ArticleRepository
+	SyncArticleRepository
 }
 
 func (r *raceArticleRepo) FetchInoreaderArticles(_ context.Context, _ time.Time) ([]*domain.Article, error) {
@@ -23,8 +22,8 @@ func (r *raceArticleRepo) FetchInoreaderArticles(_ context.Context, _ time.Time)
 	}, nil
 }
 
-func (r *raceArticleRepo) UpsertArticles(_ context.Context, _ []*domain.Article) error {
-	return nil
+func (r *raceArticleRepo) UpsertArticlesReportingSkipped(_ context.Context, _ []*domain.Article) ([]*domain.Article, error) {
+	return nil, nil
 }
 
 func (r *raceArticleRepo) FetchInoreaderArticlesForEmptyFeeds(_ context.Context, _ time.Time, _ int) ([]*domain.Article, time.Time, error) {

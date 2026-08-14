@@ -106,7 +106,7 @@ func CollectMultipleFeeds(ctx context.Context, feedLinks []domain.FeedLink, rate
 
 		feed, err := fetchWithRetryOn403(ctx, func() (*rssFeed.Feed, error) {
 			return fp.ParseURL(feedURL.String())
-		}, feedURL.String())
+		}, feedURL.String(), rateLimiter)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Error parsing feed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
@@ -208,16 +208,33 @@ func is403Error(err error) bool {
 
 const max403Retries = 3
 
+// unlimitedRetryInterval is the retry unit for a caller with no host limiter to
+// ask: CLAUDE.md rule 2's floor, which is what the limiter would have been
+// handing out turns at.
+const unlimitedRetryInterval = 5 * time.Second
+
+// base403RetryBackoff is the unit of the retry ladder when a limiter is holding
+// the host to an interval: this feed's own penalty for the 403, paid on top of
+// the turn the retry waits for anyway.
+const base403RetryBackoff = 1 * time.Second
+
 // fetchWithRetryOn403 retries the fetch with exponential backoff when a 403 is received.
 // After max403Retries, the 403 error is returned and treated as persistent by the caller.
-func fetchWithRetryOn403(ctx context.Context, fetchFn func() (*rssFeed.Feed, error), feedURL string) (*rssFeed.Feed, error) {
+//
+// A retry is another request to the same publisher, so it goes through the host
+// limiter exactly like the first attempt did. It used to sleep its own 1s/2s/4s
+// ladder and re-enter gofeed directly, which put four requests on one host
+// inside seven seconds — under rule 2's floor, and unseen by both the
+// in-process bucket and the shared slot, which only ever heard about attempt
+// one.
+func fetchWithRetryOn403(ctx context.Context, fetchFn func() (*rssFeed.Feed, error), feedURL string, rateLimiter *rate_limiter.HostRateLimiter) (*rssFeed.Feed, error) {
 	feed, err := fetchFn()
 	if err == nil || !is403Error(err) {
 		return feed, err
 	}
 
 	for attempt := 1; attempt <= max403Retries; attempt++ {
-		backoff := time.Duration(1<<uint(attempt-1)) * time.Second // 1s, 2s, 4s
+		backoff := backoffFor403Retry(rateLimiter, feedURL, attempt)
 		slog.WarnContext(ctx, "403 received, retrying with exponential backoff",
 			"url", feedURL, "attempt", attempt, "backoff", backoff)
 
@@ -227,6 +244,16 @@ func fetchWithRetryOn403(ctx context.Context, fetchFn func() (*rssFeed.Feed, err
 		case <-time.After(backoff):
 		}
 
+		// The backoff above is this feed's own penalty; the retry still has to
+		// be handed a turn like every other request to the host, or it jumps
+		// the queue of the feeds waiting on the same publisher and the shared
+		// slot never learns the request happened.
+		if rateLimiter != nil {
+			if waitErr := rateLimiter.WaitForHost(ctx, feedURL); waitErr != nil {
+				return nil, fmt.Errorf("rate limiting failed before 403 retry: %w", waitErr)
+			}
+		}
+
 		feed, err = fetchFn()
 		if err == nil || !is403Error(err) {
 			return feed, err
@@ -234,6 +261,27 @@ func fetchWithRetryOn403(ctx context.Context, fetchFn func() (*rssFeed.Feed, err
 	}
 
 	return nil, err
+}
+
+// backoffFor403Retry returns how long to hold before the given retry attempt:
+// a doubling 1s/2s/4s ladder, clamped to the interval the limiter is already
+// enforcing.
+//
+// The unit used to be that interval rather than a second, which charged it
+// twice — the retry waits for a host turn regardless (see the WaitForHost call
+// above) — and, since a 429 widens the interval up to an hour, let one
+// publisher answering nothing but 403 hold the collector's tick for hours.
+// Holding longer than one interval buys nothing the limiter is not already
+// buying, so the clamp is the ceiling and the ladder is the floor.
+//
+// With no limiter wired there is no turn to wait for, so the ladder carries
+// CLAUDE.md rule 2's floor by itself.
+func backoffFor403Retry(rateLimiter *rate_limiter.HostRateLimiter, feedURL string, attempt int) time.Duration {
+	step := time.Duration(1 << uint(attempt-1))
+	if rateLimiter == nil {
+		return step * unlimitedRetryInterval
+	}
+	return min(step*base403RetryBackoff, rateLimiter.RetryAfterFor(feedURL))
 }
 
 // is429Error returns true if the error indicates rate limiting by the target site.

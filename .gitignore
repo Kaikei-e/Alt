@@ -111,6 +111,7 @@ argocd/
 x-setup/
 auth-service/deployments/k8s/base/kratos-secrets.yaml
 kratos/kratos.yml
+kratos/kratos.yml.bak
 
 # ============================================
 # Load testing

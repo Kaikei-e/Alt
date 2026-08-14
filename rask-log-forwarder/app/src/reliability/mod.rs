@@ -18,7 +18,10 @@ use tokio_util::sync::CancellationToken;
 
 pub struct ReliabilityManager {
     retry_manager: Arc<Mutex<RetryManager>>,
-    disk_fallback: Arc<Mutex<DiskFallback>>,
+    /// `None` when ENABLE_DISK_FALLBACK is false. Not a "might not be wired
+    /// yet" option: the two states are distinguished by a startup log, and the
+    /// disabled branch fails loudly rather than pretending the batch was saved.
+    disk_fallback: Option<Arc<Mutex<DiskFallback>>>,
     metrics_collector: Arc<Mutex<MetricsCollector>>,
     health_monitor: Arc<HealthMonitor>,
     log_sender: LogSender,
@@ -34,7 +37,22 @@ impl ReliabilityManager {
         log_sender: LogSender,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let retry_manager = Arc::new(Mutex::new(RetryManager::new(retry_config)));
-        let disk_fallback = Arc::new(Mutex::new(DiskFallback::new(disk_config).await?));
+        // Loud either way, so "operator turned it off" is never confused with
+        // "the wiring forgot about it" (CLAUDE.md rule 8).
+        let disk_fallback = if disk_config.enabled {
+            tracing::info!(
+                storage_path = %disk_config.storage_path.display(),
+                max_disk_usage = disk_config.max_disk_usage,
+                "disk_fallback_enabled"
+            );
+            Some(Arc::new(Mutex::new(DiskFallback::new(disk_config).await?)))
+        } else {
+            tracing::warn!(
+                "disk_fallback_disabled: batches that exhaust the retry budget will be dropped, \
+                 not persisted"
+            );
+            None
+        };
         let metrics_collector = Arc::new(Mutex::new(
             MetricsCollector::new(metrics_config).unwrap_or_else(|e| {
                 tracing::error!(
@@ -177,13 +195,29 @@ impl ReliabilityManager {
         let batch_id = batch.id().to_string();
         let entry_count = batch.size();
 
+        let Some(store) = self.disk_fallback.as_ref() else {
+            // Disabled by config, so this batch is genuinely lost. Say so at
+            // error level with the count — silently returning Ok here would
+            // report a successful persist that never happened.
+            tracing::error!(
+                batch_id = %batch_id,
+                entry_count,
+                "disk_fallback_disabled: dropping batch that exhausted its retry budget"
+            );
+            return Err(TransmissionError::ClientError(
+                crate::sender::ClientError::InvalidConfiguration(
+                    "disk fallback is disabled; batch dropped after retry exhaustion".to_string(),
+                ),
+            ));
+        };
+
         tracing::warn!(
             "Storing batch {} to disk fallback after failed retries",
             batch_id
         );
 
         {
-            let mut disk_fallback = self.disk_fallback.lock().await;
+            let mut disk_fallback = store.lock().await;
             if let Err(e) = disk_fallback.store_batch(batch).await {
                 tracing::error!("Failed to store batch {batch_id} to disk: {e}");
                 self.health_monitor
@@ -222,15 +256,22 @@ impl ReliabilityManager {
     /// protects against data loss on the wire, but nothing ever reads the
     /// data back out and forwards it on.
     pub async fn replay_stored_batches(&self) -> Result<usize, DiskError> {
+        // Nothing was ever written when the store is off, so there is nothing
+        // to replay. Not a silent skip: construction already logged
+        // disk_fallback_disabled.
+        let Some(store) = self.disk_fallback.as_ref() else {
+            return Ok(0);
+        };
+
         let batch_ids = {
-            let disk_fallback = self.disk_fallback.lock().await;
+            let disk_fallback = store.lock().await;
             disk_fallback.list_stored_batches().await?
         };
 
         let mut replayed = 0;
         for batch_id in batch_ids {
             let batch = {
-                let disk_fallback = self.disk_fallback.lock().await;
+                let disk_fallback = store.lock().await;
                 match disk_fallback.retrieve_batch(&batch_id).await {
                     Ok(batch) => batch,
                     Err(e) => {
@@ -253,7 +294,7 @@ impl ReliabilityManager {
             };
 
             if sent {
-                let mut disk_fallback = self.disk_fallback.lock().await;
+                let mut disk_fallback = store.lock().await;
                 if let Err(e) = disk_fallback.delete_batch(&batch_id).await {
                     tracing::error!(
                         "Disk fallback replay: resent batch {batch_id} but failed to delete it from disk: {e}"
@@ -297,8 +338,23 @@ impl ReliabilityManager {
     /// to replay (e.g. the aggregator rejects them with a persistent 4xx)
     /// stay on disk forever and eventually trip `DiskSpaceExceeded`.
     pub async fn cleanup_disk_fallback(&self) -> Result<u32, DiskError> {
-        let mut disk_fallback = self.disk_fallback.lock().await;
+        // Nothing is stored when the fallback is off, so there is nothing to
+        // reap. Construction already logged disk_fallback_disabled.
+        let Some(store) = self.disk_fallback.as_ref() else {
+            return Ok(0);
+        };
+        let mut disk_fallback = store.lock().await;
         disk_fallback.cleanup_old_batches().await
+    }
+
+    /// Test-only handle on the disk store. Panics when the fallback is
+    /// disabled, so a test that means to exercise storage cannot quietly pass
+    /// against a manager that has no store at all.
+    #[cfg(test)]
+    fn disk_store(&self) -> &Arc<Mutex<DiskFallback>> {
+        self.disk_fallback
+            .as_ref()
+            .expect("this test requires DiskConfig::enabled = true")
     }
 
     /// Spawns a periodic task that deletes disk-fallback batches past their
@@ -419,7 +475,7 @@ mod replay_tests {
         // down replay behavior in isolation.
         let batch = Batch::new(vec![test_entry()], BatchType::SizeBased);
         {
-            let mut disk_fallback = manager.disk_fallback.lock().await;
+            let mut disk_fallback = manager.disk_store().lock().await;
             disk_fallback.store_batch(batch).await.unwrap();
         }
         assert_eq!(storage_dir.path().read_dir().unwrap().count(), 1);
@@ -447,7 +503,7 @@ mod replay_tests {
 
         let batch = Batch::new(vec![test_entry()], BatchType::SizeBased);
         {
-            let mut disk_fallback = manager.disk_fallback.lock().await;
+            let mut disk_fallback = manager.disk_store().lock().await;
             disk_fallback.store_batch(batch).await.unwrap();
         }
 
@@ -504,7 +560,7 @@ mod replay_tests {
 
         let batch = Batch::new(vec![test_entry()], BatchType::SizeBased);
         {
-            let mut disk_fallback = manager.disk_fallback.lock().await;
+            let mut disk_fallback = manager.disk_store().lock().await;
             disk_fallback.store_batch(batch).await.unwrap();
         }
         assert_eq!(storage_dir.path().read_dir().unwrap().count(), 1);
@@ -546,5 +602,45 @@ mod replay_tests {
             .await
             .expect("disk cleanup task must stop once cancelled")
             .expect("disk cleanup task must not panic");
+    }
+
+    /// ENABLE_DISK_FALLBACK=false must actually turn the disk store off.
+    /// The flag was parsed into Config and then never read, so every forwarder
+    /// kept gzipping batches into its fallback directory regardless — up to
+    /// max_disk_usage per container, on hosts where an operator had explicitly
+    /// said no.
+    #[tokio::test]
+    async fn disk_fallback_is_not_created_when_disabled_in_config() {
+        let temp = tempfile::tempdir().unwrap();
+        let storage_path = temp.path().join("fallback");
+
+        let log_sender = LogSender::new(ClientConfig {
+            endpoint: "http://127.0.0.1:1".to_string(),
+            timeout: Duration::from_millis(500),
+            connection_timeout: Duration::from_millis(500),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let _manager = ReliabilityManager::new(
+            RetryConfig::default(),
+            DiskConfig {
+                storage_path: storage_path.clone(),
+                enabled: false,
+                ..Default::default()
+            },
+            MetricsConfig::default(),
+            HealthConfig::default(),
+            log_sender,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            !storage_path.exists(),
+            "ENABLE_DISK_FALLBACK=false must not stand up the disk-fallback store; \
+             every forwarder otherwise keeps writing gzip batches an operator turned off"
+        );
     }
 }

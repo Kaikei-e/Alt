@@ -20,6 +20,14 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// maxArticlesPageSize is the largest page the cursor handlers will serve.
+//
+// It sits one below the usecases' own ceiling of 100 on purpose: these
+// handlers ask for limit+1 rows so they can answer has_more without a separate
+// COUNT, so a page of 100 would fetch 101 and the usecase would reject it.
+// Clamping to 100 turned the documented maximum page size into an opaque 500.
+const maxArticlesPageSize = 99
+
 func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
 	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())
@@ -169,8 +177,8 @@ func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.Handler
 				return HandleValidationError(c, "Invalid limit parameter", "limit", limitStr)
 			}
 			limit = parsedLimit
-			if limit > 100 {
-				limit = 100
+			if limit > maxArticlesPageSize {
+				limit = maxArticlesPageSize
 			}
 		}
 
@@ -265,8 +273,8 @@ func handleFetchArticlesByTag(container *di.ApplicationComponents) echo.HandlerF
 				return HandleValidationError(c, "Invalid limit parameter", "limit", limitStr)
 			}
 			limit = parsedLimit
-			if limit > 100 {
-				limit = 100
+			if limit > maxArticlesPageSize {
+				limit = maxArticlesPageSize
 			}
 		}
 

@@ -23,7 +23,7 @@ func testLoggerBackfill() *slog.Logger {
 // --- Stubs ---
 
 type stubBackfillArticleRepo struct {
-	repository.ArticleRepository
+	SyncArticleRepository
 	emptyFeedArticles []*domain.Article
 	scannedThrough    time.Time
 	fetchCursors      []time.Time

@@ -20,6 +20,16 @@ logger = structlog.get_logger(__name__)
 # Re-export for callers that historically imported from this module.
 __all__ = ["PostgresReportGateway", "StaleVersionError"]
 
+# LangGraph writes a checkpoint per super-step (article bodies included) into
+# tables AsyncPostgresSaver.setup() creates — they are outside Atlas and carry
+# no FK to reports, so nothing but this gateway ever reclaims them. Same three
+# tables AsyncPostgresSaver.adelete_thread() clears, in FK-safe order.
+_CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+
+# Must stay in step with AcolyteConnectService._thread_id_for_run: the
+# checkpoint namespace is derived from run_id and is the only link back.
+_THREAD_ID_PREFIX = "acolyte-run:"
+
 
 class PostgresReportGateway:
     """Report CRUD and versioning backed by PostgreSQL."""
@@ -330,8 +340,38 @@ class PostgresReportGateway:
             return bool(r and r[0])
 
     async def delete_report(self, report_id: UUID) -> None:
-        async with self._pool.connection() as conn:
+        async with self._pool.connection() as conn, conn.transaction():
+            # Read the runs first: DELETE FROM reports cascades report_runs away,
+            # and afterwards nothing can tell which checkpoint threads were this
+            # report's. Same transaction so the purge commits with the delete.
+            cur = await conn.execute("SELECT run_id FROM report_runs WHERE report_id = %s", [report_id])
+            thread_ids = [f"{_THREAD_ID_PREFIX}{r[0]}" for r in await cur.fetchall()]
+            if thread_ids:
+                await self._purge_checkpoint_threads(conn, thread_ids)
             await conn.execute("DELETE FROM reports WHERE report_id = %s", [report_id])
+
+    async def _purge_checkpoint_threads(self, conn: object, thread_ids: list[str]) -> None:
+        """Drop the LangGraph checkpoints of these threads inside the caller's transaction."""
+        cur = await conn.execute("SELECT to_regclass('checkpoints') IS NOT NULL")  # type: ignore[attr-defined]
+        row = await cur.fetchone()
+        if row is None or not row[0]:
+            # CHECKPOINT_ENABLED=false never calls setup(), so the tables do not
+            # exist and there is nothing to reclaim — but the delete must still
+            # go through. Logged rather than swallowed: with checkpointing on,
+            # this line means setup() never ran against this database.
+            logger.info(
+                "checkpoint_purge_skipped",
+                reason="langgraph checkpoint tables absent in acolyte-db",
+                thread_count=len(thread_ids),
+            )
+            return
+
+        for table in _CHECKPOINT_TABLES:
+            await conn.execute(  # type: ignore[attr-defined]
+                f"DELETE FROM {table} WHERE thread_id = ANY(%s)",  # noqa: S608 — table names are the module constant, never input
+                [thread_ids],
+            )
+        logger.info("checkpoint_purged", thread_count=len(thread_ids))
 
     async def get_section_version(self, report_id: UUID, section_key: str, version_no: int) -> SectionVersion | None:
         async with self._pool.connection() as conn:

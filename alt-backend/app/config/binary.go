@@ -322,6 +322,14 @@ func ValidateHarvesterConfig(cfg *Config) error {
 }
 
 // ValidateDataHubConfig checks the upstreams DataHubService calls.
+//
+// INTERNAL_AUTH_SECRET is on this list because di/datahub hands it to
+// kratos_client, which puts it verbatim into the X-Internal-Auth header of
+// every auth-hub /internal/system-user call. Unset is not a disabled feature:
+// alt-data-hub would report healthy while auth-hub answered 401 to every
+// GetSystemUser call. NewConfig only catches INTERNAL_AUTH_SECRET_FILE that
+// resolves to empty, so the plain-unset case has to fail here (CLAUDE.md
+// rule 9).
 func ValidateDataHubConfig(cfg *Config) error {
 	required := []struct {
 		env   string
@@ -329,6 +337,7 @@ func ValidateDataHubConfig(cfg *Config) error {
 	}{
 		{"AUTH_HUB_URL", cfg.AuthHub.URL},
 		{"BACKEND_TOKEN_SECRET", cfg.Auth.BackendTokenSecret},
+		{"INTERNAL_AUTH_SECRET", cfg.Auth.InternalAuthSecret},
 		{"SOVEREIGN_URL", cfg.Sovereign.URL},
 		{"MQHUB_CONNECT_URL", cfg.MQHub.ConnectURL},
 	}

@@ -40,10 +40,26 @@ selfservice:
     password:
       enabled: true
       config:
-        haveibeenpwned_enabled: false
+        # session.lifespan が 720h でロックアウトも無いので、当たった 1 本が
+        # そのまま 30 日分のセッションになる。ここは Ory 既定より緩めない。
+        haveibeenpwned_enabled: true
+        # 0 = 漏洩リストに 1 件でも載っていれば拒否（Ory 既定かつ最も厳しい値）
         max_breaches: 0
-        min_password_length: 6
-        identifier_similarity_check_enabled: false
+        # HIBP 到達不能時は fail-closed。true（Ory 既定）だと
+        # validator.go の該当分岐が素の `return nil` で、ロガーも
+        # `io.Discard` 固定のため、照合が飛ばされたことがどこにも残らない。
+        # 漏洩パスワードが素通りしたか否かを事後に判定できない状態は
+        # CLAUDE.md rule 8 / 9 の無言フォールバックそのものなので取らない。
+        #
+        # 代償: api.pwnedpasswords.com へ到達できない間は登録と
+        # パスワード変更が失敗する。Kratos の resilient client は
+        # retryMax 4 / connect timeout 1s なので、失敗が確定するまで
+        # 15〜20 秒かかる。DB 障害と誤診しないこと。
+        # → egress 断は「登録できない」として顕在化する。
+        ignore_network_errors: false
+        # NIST SP 800-63B の SHALL は 8 文字。12 はその上を取った Alt 側の判断
+        min_password_length: 12
+        identifier_similarity_check_enabled: true
 
     totp:
       config:

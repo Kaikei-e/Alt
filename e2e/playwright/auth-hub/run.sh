@@ -26,10 +26,16 @@
 #     because the /internal limiter is 10 req/min burst 3. Nothing is shared
 #     between tests now, and each test carries its own synthetic client
 #     address, so the suite runs `fullyParallel`.
-#   * `--secret` redaction for the session cookie and the shared secret. The
-#     secret arrives here as a *path*, is read inside the test container, and
+#   * `--secret` redaction for the session cookie and the HS256 signing key.
+#     That key arrives here as a *path*, is read inside the test container, and
 #     never reaches a compose slice, `docker inspect`, or a CI env dump;
 #     `suite.sh`'s `redact_secrets` scrubs the log dump on failure.
+#     INTERNAL_AUTH_SECRET below is the one exception: it is exported as a
+#     value, so it does reach the container env and a CI env dump, and
+#     `redact_secrets` (JWS and PEM forms only) will not scrub it. That is
+#     acceptable only because the literal is already committed in plaintext in
+#     compose.staging.yaml — a path would buy nothing. Never give a real secret
+#     this treatment.
 #
 # Environment overrides beyond the shared ones (see _lib/suite.sh):
 #   BASE_URL           auth-hub REST URL as seen from the test container
@@ -60,15 +66,21 @@ suite_endpoint MTLS_URL          "https://auth-hub:9443"
 # Secrets and fixtures arrive as paths. The repo is bind-mounted into the test
 # container at the same absolute path, so these resolve unchanged inside it.
 #
-# alt_backend_token_secret does double duty, exactly as it does in the service:
-# compose mounts it as BACKEND_TOKEN_SECRET_FILE (the HS256 signing key) and
-# main.go passes the same value to wireInternalAuth (the X-Internal-Auth shared
-# secret). The suite needs it for both — to verify the JWT signature the way
-# alt-backend will, and to authenticate against /internal.
+# alt_backend_token_secret is the HS256 signing key and only that; the suite
+# needs it to verify the JWT signature the way alt-backend will. It no longer
+# opens /internal — main.go keys that group on INTERNAL_AUTH_SECRET, and
+# auth-hub refuses to start when the two are the same value.
 suite_endpoint BACKEND_TOKEN_SECRET_FILE \
   "$ROOT/e2e/fixtures/staging-secrets/alt_backend_token_secret.txt"
 suite_endpoint IDENTITY_EMAIL_FILE    "$ROOT/e2e/fixtures/auth-hub/test-identity-email.txt"
 suite_endpoint IDENTITY_PASSWORD_FILE "$ROOT/e2e/fixtures/auth-hub/test-identity-password.txt"
+
+# The /internal shared bearer — the one secret that arrives as a value rather
+# than a path, because compose.staging.yaml sets it inline on both auth-hub and
+# alt-data-hub. The default here has to be that same literal, or every
+# /internal call in the suite gets 403 instead of 200.
+suite_endpoint INTERNAL_AUTH_SECRET \
+  "staging-fixture-internal-auth-secret-not-a-real-key"
 
 # Mirrors of the three BACKEND_TOKEN_* values compose.staging.yaml configures
 # auth-hub with. They live here rather than as constants in the suite so that
