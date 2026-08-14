@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 )
 
@@ -381,6 +382,43 @@ func TestGenerateSecrets_ForceOverwrites(t *testing.T) {
 	after, _ := os.ReadFile(filepath.Join(dir, "test_password.txt"))
 	if string(original) == string(after) {
 		t.Error("force should generate a new value")
+	}
+}
+
+// Compose bind-mounts a `file:`-style secret into the container with the
+// host file's mode intact, and Alt's images run as nonroot (UID 65532): an
+// owner-only secret reads back as empty there and the service treats it as
+// "not configured" rather than failing (on koko-b that turned a 0600
+// meili_master_key into MEILISEARCH_API_KEY=placeholder and 403s). The
+// canonical secrets dir is also shared with a second user — the alt-prod CI
+// runner stages from it over the altcfg group — so owner-only files break
+// the deploy's staging step as well.
+//
+// The umask is forced here because os.WriteFile's perm argument is masked by
+// it: without an explicit chmod, an operator running altctl under umask 077
+// gets 0600 files and neither of the two readers above works.
+func TestGenerateSecrets_ModeStaysReadableUnderRestrictiveUmask(t *testing.T) {
+	old := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(old) })
+
+	dir := t.TempDir()
+	specs := []SecretSpec{
+		{Filename: "test_password.txt", AutoGenerate: true, Length: 32},
+		{Filename: "test_token.txt", AutoGenerate: false},
+	}
+
+	if _, err := GenerateSecrets(dir, specs, false); err != nil {
+		t.Fatalf("GenerateSecrets failed: %v", err)
+	}
+
+	for _, spec := range specs {
+		info, err := os.Stat(filepath.Join(dir, spec.Filename))
+		if err != nil {
+			t.Fatalf("stat %s: %v", spec.Filename, err)
+		}
+		if got := info.Mode().Perm(); got != 0o644 {
+			t.Errorf("%s has mode %#o, want 0644", spec.Filename, got)
+		}
 	}
 }
 

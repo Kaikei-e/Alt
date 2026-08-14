@@ -227,6 +227,17 @@ func DefaultSecretSpecs() ([]SecretSpec, error) {
 	return specs, nil
 }
 
+// secretFileMode is the mode every generated secret file gets. It is
+// deliberately not owner-only: compose bind-mounts a `file:`-style secret
+// into the container with the host file's mode intact, and Alt's images run
+// as nonroot (UID 65532), which cannot read an owner-only file — the service
+// then sees an empty secret and carries on with a placeholder instead of
+// failing. On the production host the same directory is read by a second
+// user as well (the CI runner stages from it over a shared group), so
+// owner-only files break the deploy's staging step too. Everything with
+// access to this directory is already trusted with its contents.
+const secretFileMode = 0o644
+
 // GenerateSecrets creates secret files in the given directory.
 // Existing files are skipped unless force is true.
 func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult, error) {
@@ -262,8 +273,13 @@ func GenerateSecrets(dir string, specs []SecretSpec, force bool) (*SecretsResult
 			}
 		}
 
-		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		if err := os.WriteFile(path, []byte(content), secretFileMode); err != nil {
 			return nil, fmt.Errorf("writing secret %s: %w", spec.Filename, err)
+		}
+		// WriteFile's perm is masked by the process umask, so the mode above is
+		// a request, not a guarantee. Chmod makes it one.
+		if err := os.Chmod(path, secretFileMode); err != nil {
+			return nil, fmt.Errorf("setting mode on secret %s: %w", spec.Filename, err)
 		}
 		result.Created = append(result.Created, spec.Filename)
 	}
