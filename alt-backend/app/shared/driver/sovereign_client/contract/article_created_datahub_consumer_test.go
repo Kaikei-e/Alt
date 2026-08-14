@@ -17,13 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"alt/dataplane/connect/datahubapi"
-	"alt/dataplane/port/internal_article_port"
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
-	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 )
 
 // This file pins the *second* ArticleCreated producer: the
@@ -38,31 +35,10 @@ import (
 // message the handler is free to never send. This is the same shape as the
 // datahub_gateway consumer pacts, which drive real gateways.
 
-// articleUpsertWriter answers CreateArticle the way the upsert does for an
-// article alt-db already holds: same id, created=false.
-type articleUpsertWriter struct {
-	articleID string
-	created   bool
-}
-
-func (w articleUpsertWriter) CreateArticle(context.Context, internal_article_port.CreateArticleParams) (string, bool, error) {
-	return w.articleID, w.created, nil
-}
-
-// The two required constructor arguments of datahubapi.NewHandler. Neither
-// procedure is exercised here; they exist because a handler cannot be built
-// without them.
-type unusedSystemUser struct{}
-
-func (unusedSystemUser) GetFirstIdentityID(context.Context) (string, error) {
-	return "", fmt.Errorf("GetSystemUser is not part of this contract")
-}
-
-type unusedRecentArticles struct{}
-
-func (unusedRecentArticles) Execute(context.Context, fetch_recent_articles_usecase.FetchRecentArticlesInput) (*fetch_recent_articles_usecase.FetchRecentArticlesOutput, error) {
-	return nil, fmt.Errorf("ListRecentArticles is not part of this contract")
-}
+// The handler under contract, the article writer standing in for alt-db and
+// the two unused constructor arguments live in create_article_handler_test.go,
+// which carries no build tag: the wiring they encode has to be checked where
+// libpact_ffi is not installed too.
 
 // connectAppender is the handler's knowledge event port, speaking to the Pact
 // mock server over the generated Connect client.
@@ -192,13 +168,8 @@ func TestCreateArticleAppendsArticleCreatedForAnExistingArticle(t *testing.T) {
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			appender.client = newSovereignClient(config)
 
-			h := datahubapi.NewHandler(nil, nil, nil, nil, nil,
-				unusedSystemUser{}, unusedRecentArticles{}, nil,
-				datahubapi.WithPhase2Ports(nil,
-					articleUpsertWriter{articleID: articleID, created: false},
-					nil, nil, nil, nil),
-				datahubapi.WithKnowledgeEventPort(appender),
-			)
+			h := newCreateArticleHandler(appender,
+				articleUpsertWriter{articleID: articleID, created: false})
 
 			_, err := h.CreateArticle(context.Background(), connect.NewRequest(&datahubv1.CreateArticleRequest{
 				Title:  articleTitle,

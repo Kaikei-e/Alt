@@ -28,9 +28,10 @@ const PROTECTED_ROUTES = [
 	{ group: "images (proxy)", path: `/v1/images/proxy/invalidsig/${encodeURIComponent("http://stub.invalid/x.png")}` },
 	{ group: "admin (dashboard)", path: "/v1/dashboard/metrics" },
 	{ group: "admin (scraping-domains)", path: "/v1/admin/scraping-domains" },
-	// The augur group is deliberately absent from this table — it is not
-	// authenticated at all. See tests/augur-rag.spec.ts, which pins that gap
-	// explicitly rather than letting its absence here read as an oversight.
+	{ group: "augur (rag context)", path: "/v1/rag/context?q=ai" },
+	// The augur pair's other half, `/sse/v1/rag/answer`, cannot join this table:
+	// it is POST-only, so a GET is answered 405 by Echo's router before any
+	// route middleware runs. It has its own test below.
 ] as const;
 
 test.describe("JWT auth boundary", () => {
@@ -39,6 +40,23 @@ test.describe("JWT auth boundary", () => {
 			await expectStatus(await restAnon.get(route.path), 401);
 		});
 	}
+
+	test("augur (sse answer): no token → 401", async ({ restAnon, csrf }) => {
+		// The half of the augur pair that is mounted on the Echo root rather than
+		// on the /v1 group — augur_handler.go keeps the `/sse/` prefix because the
+		// BodyLimit, Timeout and Gzip skippers in routes.go all match on it — so
+		// it takes RequireAuth as per-route middleware and is the one route here
+		// whose guard is not inherited from a Group.
+		//
+		// The CSRF token is sent even though this is an auth test: CSRFMiddleware
+		// is a global `e.Use` and therefore runs first, so without one the answer
+		// is 403 and says nothing about JWT.
+		const response = await restAnon.post("/sse/v1/rag/answer", {
+			headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+			data: { messages: [{ role: "user", content: "hello" }], stream: false },
+		});
+		await expectStatus(response, 401);
+	});
 
 	test("malformed token → 401", async ({ restAnon }) => {
 		const response = await restAnon.get("/v1/feeds/fetch/list", {

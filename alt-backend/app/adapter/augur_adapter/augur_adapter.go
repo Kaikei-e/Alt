@@ -25,10 +25,18 @@ type RagClientInterface interface {
 // budget a single article that never answers consumes that whole window, and
 // the other nine claimed rows are released unattempted — so the worker's
 // throughput is set by its slowest article rather than by its batch size.
-// 60s is double the 10-30s a heavy article (500+KB, 100+ chunks) takes on the
-// local embedder, and a tenth of the job budget, so one stuck article costs
-// one article's worth of a tick instead of the whole tick.
-const upsertArticleTimeout = 60 * time.Second
+//
+// It is derived from that job budget rather than from the embedder, because
+// too tight a ceiling does not cost a slow article one attempt: a blown budget
+// is transient (below), so the row goes back to PENDING, is re-claimed and is
+// cut at the same point every tick until the worker's attempt budget runs out
+// and marks it FAILED — the same permanent loss the transient classification
+// exists to prevent. Two minutes is under half the job budget, so a stuck
+// article still leaves the rest of the batch most of the window, and well over
+// the 10-30s a heavy article (500+KB, 100+ chunks) takes on the local embedder
+// even with a cold model load, so an article the job budget would have
+// finished still finishes.
+const upsertArticleTimeout = 2 * time.Minute
 
 type AugurAdapter struct {
 	client RagClientInterface

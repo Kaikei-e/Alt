@@ -213,6 +213,11 @@ const max403Retries = 3
 // handing out turns at.
 const unlimitedRetryInterval = 5 * time.Second
 
+// base403RetryBackoff is the unit of the retry ladder when a limiter is holding
+// the host to an interval: this feed's own penalty for the 403, paid on top of
+// the turn the retry waits for anyway.
+const base403RetryBackoff = 1 * time.Second
+
 // fetchWithRetryOn403 retries the fetch with exponential backoff when a 403 is received.
 // After max403Retries, the 403 error is returned and treated as persistent by the caller.
 //
@@ -258,17 +263,25 @@ func fetchWithRetryOn403(ctx context.Context, fetchFn func() (*rssFeed.Feed, err
 	return nil, err
 }
 
-// backoffFor403Retry returns how long to hold before the given retry attempt.
-// The unit is the host's own interval — the one the limiter hands out turns at,
-// widened if a 429 already backed that host off — so the ladder still doubles
-// (1x, 2x, 4x) but does it inside the rate-limit budget instead of underneath
-// it.
+// backoffFor403Retry returns how long to hold before the given retry attempt:
+// a doubling 1s/2s/4s ladder, clamped to the interval the limiter is already
+// enforcing.
+//
+// The unit used to be that interval rather than a second, which charged it
+// twice — the retry waits for a host turn regardless (see the WaitForHost call
+// above) — and, since a 429 widens the interval up to an hour, let one
+// publisher answering nothing but 403 hold the collector's tick for hours.
+// Holding longer than one interval buys nothing the limiter is not already
+// buying, so the clamp is the ceiling and the ladder is the floor.
+//
+// With no limiter wired there is no turn to wait for, so the ladder carries
+// CLAUDE.md rule 2's floor by itself.
 func backoffFor403Retry(rateLimiter *rate_limiter.HostRateLimiter, feedURL string, attempt int) time.Duration {
-	interval := unlimitedRetryInterval
-	if rateLimiter != nil {
-		interval = rateLimiter.RetryAfterFor(feedURL)
+	step := time.Duration(1 << uint(attempt-1))
+	if rateLimiter == nil {
+		return step * unlimitedRetryInterval
 	}
-	return time.Duration(1<<uint(attempt-1)) * interval
+	return min(step*base403RetryBackoff, rateLimiter.RetryAfterFor(feedURL))
 }
 
 // is429Error returns true if the error indicates rate limiting by the target site.

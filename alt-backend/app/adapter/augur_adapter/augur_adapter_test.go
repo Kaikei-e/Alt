@@ -122,6 +122,37 @@ func TestAugurAdapter_UpsertArticle_ClassifiesFailures(t *testing.T) {
 		}
 	})
 
+	t.Run("the budget is not the binding constraint on a heavy article", func(t *testing.T) {
+		// The budget exists so one stuck article cannot spend the outbox
+		// worker's whole window and release the other nine claimed rows
+		// unattempted. But it is a ceiling on a call that used to inherit
+		// that window, so setting it below what a legitimately heavy article
+		// takes does not cost that article one attempt: a blown budget is
+		// transient (the case above), so the row returns to PENDING, is
+		// re-claimed next tick, and is cut at the same point again until the
+		// worker's attempt budget is spent and the row is marked terminally
+		// FAILED. That is the same permanent loss the transient
+		// classification exists to prevent, reached by a different road.
+		//
+		// A heavy article (500+KB, 100+ chunks) takes 10-30s on the local
+		// embedder; three times the top of that range is the headroom for a
+		// cold model load or a host under batch load. Articles that slow used
+		// to finish on the job's context and must still finish.
+		const heavyArticleUpsertUnderLoad = 90 * time.Second
+		// The timeout orchestrator/job/registry.go registers outbox-worker
+		// with, for a batch of ten.
+		const outboxWorkerJobBudget = 5 * time.Minute
+
+		if upsertArticleTimeout < heavyArticleUpsertUnderLoad {
+			t.Errorf("per-article budget %s is under the %s a heavy article can legitimately take: every such article is cut, released to PENDING and cut again until it is marked FAILED",
+				upsertArticleTimeout, heavyArticleUpsertUnderLoad)
+		}
+		if upsertArticleTimeout > outboxWorkerJobBudget/2 {
+			t.Errorf("per-article budget %s leaves under half of the %s job budget for the other nine rows of the batch",
+				upsertArticleTimeout, outboxWorkerJobBudget)
+		}
+	})
+
 	t.Run("400 from rag-orchestrator is NOT transient", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()

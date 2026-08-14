@@ -57,11 +57,13 @@ const outboxClaimBatchSize = 10
 const outboxWorkerTickInterval = 5 * time.Second
 
 // maxOutboxUpsertAttempts bounds how many times a row is released back to
-// PENDING before it is given up as terminally FAILED. One budget covers both
-// of the row's side effects — a transient RAG upsert failure (see
+// PENDING before it is given up as terminally FAILED. Both of the row's side
+// effects draw on it — a transient RAG upsert failure (see
 // rag_integration_port.ErrRagUpsertTransient) and a failed ArticleCreated
 // append — because what it rations is claim slots, and a row occupies one
-// whichever leg sent it back.
+// whichever leg sent it back. Delivering one of them refreshes it (see
+// markRagUpserted): the two legs talk to two different services, and a budget
+// sized to outlast one service's redeploy is not a budget they can split.
 //
 // There is no attempt_count column on outbox_events, so this count lives in
 // process memory (outboxRetryTracker) and resets on every harvester restart.
@@ -107,11 +109,21 @@ func (t *outboxRetryTracker) recordFailure(id string) int {
 	return t.attempts[id]
 }
 
-// markRagUpserted records that id's article reached the RAG index.
+// markRagUpserted records that id's article reached the RAG index, and returns
+// the attempt budget to full.
+//
+// Reaching the index is progress, and the budget is sized to outlast one
+// downstream service being redeployed (see maxOutboxUpsertAttempts). The row's
+// two legs talk to two different services, so carrying a budget spent on a
+// rag-orchestrator outage over to the ArticleCreated leg hands that leg a
+// window far shorter than the one it was sized for — at worst a single attempt
+// — and ends the row FAILED on the tick both side effects were finally making
+// progress. ragUpserted deliberately survives: the upsert must not be re-run.
 func (t *outboxRetryTracker) markRagUpserted(id string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.ragUpserted[id] = true
+	delete(t.attempts, id)
 }
 
 // ragUpsertDone reports whether this process already delivered id's article to
@@ -329,11 +341,12 @@ func handleUpsertFailure(ctx context.Context, repo outboxRepository, retries *ou
 // Every append failure is transient by construction — an invalid payload is
 // skipped inside emitArticleCreatedEvent rather than returned — so unlike
 // handleUpsertFailure there is no permanent class to sort out here. What it
-// does share is the budget: the release used to be unconditional, which made
-// this the one delivery path with no ceiling at all. The claim is oldest-first
-// LIMIT 10, so an unbounded release is not "this row waits" but "this row
-// occupies a tenth of every tick and every newer article waits behind it",
-// for as long as knowledge-sovereign is down.
+// shares is the budget's size, not its remainder: a row whose upsert landed
+// starts this count from zero (markRagUpserted). The release used to be
+// unconditional, which made this the one delivery path with no ceiling at all.
+// The claim is oldest-first LIMIT 10, so an unbounded release is not "this row
+// waits" but "this row occupies a tenth of every tick and every newer article
+// waits behind it", for as long as knowledge-sovereign is down.
 func handleArticleCreatedFailure(ctx context.Context, repo outboxRepository, retries *outboxRetryTracker, eventID string, err error) {
 	attempt := retries.recordFailure(eventID)
 	if attempt < maxOutboxUpsertAttempts {

@@ -9,9 +9,12 @@ import (
 	"math"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 
 	articlesv2 "alt/gen/proto/alt/articles/v2"
 	"alt/gen/proto/alt/articles/v2/articlesv2connect"
@@ -80,6 +83,11 @@ type Handler struct {
 	// is allowed to have in flight. Sending claims a slot, the goroutine
 	// returns it. See maxConcurrentCacheWarms.
 	warmSlots chan struct{}
+
+	// Throttle state for the shed warning. See logCacheWarmShed.
+	warmShedMu      sync.Mutex
+	warmShedCount   int
+	lastWarmShedLog time.Time
 }
 
 // NewHandler creates a new Article service handler.
@@ -133,7 +141,72 @@ const (
 	// parks on the per-host limiter, so an unbounded fan-out grows with the
 	// arrival rate instead of the completion rate.
 	maxConcurrentCacheWarms = 32
+
+	// warmShedLogInterval throttles the shed warning. The warning has to be
+	// loud — shedding is thrown-away work — but one line per dropped warm is
+	// hundreds per second exactly when the pool is saturated and the log is
+	// least readable, so it is emitted once per window with the number of
+	// occurrences it stands for (same shape as host_rate_limiter's
+	// degraded_to_local warning).
+	warmShedLogInterval = 30 * time.Second
 )
+
+// These OTel counters close a specific gap: the shed used to be a
+// DebugContext line and nothing else, so above debug level — which is where
+// production runs — a saturated warm pool and a batch with nothing to warm
+// were the same observation. Both leave the response whole and the log silent,
+// and the only symptom is images that never warm.
+//
+// The started counter is what makes the shed counter readable: a zero shed
+// count next to a zero started count means idle, next to a non-zero started
+// count means healthy. Alert on the ratio, not the raw shed rate.
+var (
+	warmMeterOnce           sync.Once
+	cacheWarmStartedCounter metric.Int64Counter
+	cacheWarmShedCounter    metric.Int64Counter
+)
+
+func initCacheWarmMetrics() {
+	warmMeterOnce.Do(func() {
+		meter := otel.Meter("alt-backend.image-cache-warm")
+		cacheWarmStartedCounter, _ = meter.Int64Counter("alt_backend_image_cache_warm_started_total",
+			metric.WithDescription("OGP cache warms that claimed a warm-pool slot and were detached"))
+		cacheWarmShedCounter, _ = meter.Int64Counter("alt_backend_image_cache_warm_shed_total",
+			metric.WithDescription("OGP cache warms dropped because the warm pool was already full; a sustained rate means warms arrive faster than the per-host limiter lets them finish"))
+	})
+}
+
+// logCacheWarmShed records one dropped warm and emits the throttled warning
+// that stands for the window's worth of them.
+//
+// The per-URL detail stays at debug level for the lines the throttle swallows,
+// so turning the level down still answers "which images went uncached".
+func (h *Handler) logCacheWarmShed(ctx context.Context, ogURL string) {
+	cacheWarmShedCounter.Add(ctx, 1)
+
+	h.warmShedMu.Lock()
+	h.warmShedCount++
+	count := h.warmShedCount
+	now := time.Now()
+	shouldLog := h.lastWarmShedLog.IsZero() || now.Sub(h.lastWarmShedLog) >= warmShedLogInterval
+	if shouldLog {
+		h.lastWarmShedLog = now
+	}
+	h.warmShedMu.Unlock()
+
+	if !shouldLog {
+		h.logger.DebugContext(ctx, "cache warm shed, warm pool saturated",
+			"url", ogURL, "operation", "BatchPrefetchImages")
+		return
+	}
+
+	h.logger.WarnContext(ctx, "image_cache_warm.shed",
+		"url", ogURL,
+		"occurrences", count,
+		"pool_size", maxConcurrentCacheWarms,
+		"operation", "BatchPrefetchImages",
+		"impact", "each dropped warm leaves one image uncached on the next view")
+}
 
 // withFailureScope stamps the blast radius onto a Connect error.
 func withFailureScope(err *connect.Error, scope string) *connect.Error {
@@ -742,12 +815,13 @@ func (h *Handler) BatchPrefetchImages(
 	// one costs a goroutine holding a request context for up to a minute, and
 	// the queue would only ever grow because warms arrive faster than the
 	// per-host limiter lets them finish.
+	initCacheWarmMetrics()
 	for _, ogURL := range ogURLs {
 		select {
 		case h.warmSlots <- struct{}{}:
+			cacheWarmStartedCounter.Add(ctx, 1)
 		default:
-			h.logger.DebugContext(ctx, "cache warm shed, warm pool saturated",
-				"url", ogURL, "operation", "BatchPrefetchImages")
+			h.logCacheWarmShed(ctx, ogURL)
 			continue
 		}
 

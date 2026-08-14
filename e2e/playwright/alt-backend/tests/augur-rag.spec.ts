@@ -43,44 +43,13 @@ test.describe("GET /v1/rag/context", () => {
 });
 
 /**
- * ATTENTION — this endpoint pair is **not authenticated**.
- *
- * `RegisterAugurRoutes(e, v1, container)` registers
- * `g.GET("/rag/context", …)` on the bare `/v1` group and
- * `e.POST("/sse/v1/rag/answer", …)` on the root Echo instance. Neither carries
- * `authMiddleware.RequireAuth()`, unlike every other `/v1` group in
- * routes.go — so both reach the RAG orchestrator for any caller, with no JWT,
- * no tenant scoping, and no admin check.
- *
- * The Hurl suite sent a JWT on both calls and never probed the negative, so
- * this was invisible. The tests below pin the *current* behaviour rather than
- * the desired one, deliberately: changing who may call a live endpoint is a
- * product decision, not a test-suite decision. When the routes are moved under
- * RequireAuth, these two tests fail — which is the point. Delete them then and
- * add the two lines to the PROTECTED_ROUTES table in tests/auth.spec.ts.
+ * Both endpoints are authenticated, so both anonymous probes that used to sit
+ * here have moved into tests/auth.spec.ts's JWT boundary, where every other
+ * `/v1` group's 401 lives. They pinned the gap this file found — the pair was
+ * the only user-facing surface registered without `RequireAuth()` — and said
+ * to move them the day that changed; augur_handler.go now puts `/rag` behind
+ * a guarded group and hangs RequireAuth off the SSE route directly.
  */
-test.describe("augur authentication gap (pinned, not endorsed)", () => {
-	test("GET /v1/rag/context answers without a JWT", async ({ restAnon }) => {
-		const response = await restAnon.get("/v1/rag/context?q=ai");
-		expect(
-			response.status(),
-			"if this is now 401, the augur routes were put behind RequireAuth — " +
-				"move them into tests/auth.spec.ts's PROTECTED_ROUTES and delete this test",
-		).not.toBe(401);
-	});
-
-	test("POST /sse/v1/rag/answer answers without a JWT", async ({ restAnon, csrf }) => {
-		const response = await restAnon.post("/sse/v1/rag/answer", {
-			headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
-			data: { messages: [{ role: "user", content: "hello" }], stream: false },
-		});
-		expect(
-			response.status(),
-			"if this is now 401, the augur routes were put behind RequireAuth — " +
-				"move them into tests/auth.spec.ts's PROTECTED_ROUTES and delete this test",
-		).not.toBe(401);
-	});
-});
 
 test.describe("POST /sse/v1/rag/answer", () => {
 	test("a non-streaming answer returns 200 with an empty answer", async ({ rest, csrf }) => {
