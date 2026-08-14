@@ -51,9 +51,22 @@ def _build_pipeline_deps(settings: Settings, llm: LLMProviderPort) -> tuple[HyDE
     # imports out of module scope so `--help` stays fast.
     from acolyte.gateway.memory_content_store import MemoryContentStore  # noqa: PLC0415
     from acolyte.gateway.news_creator_hyde_gw import build_hyde_generator  # noqa: PLC0415
+    from acolyte.usecase.graph.report_graph import CONTENT_STORE_MISS_FAILURE_CODE  # noqa: PLC0415
 
     hyde_generator = build_hyde_generator(llm, settings)
     content_store = MemoryContentStore(max_size=settings.content_store_max_size)
+    # Article bodies only enter this LRU as a side effect of the gatherer's
+    # search, and this is a brand-new process — the bodies the original run
+    # cached died with it. A checkpoint that resumes past the gatherer will
+    # therefore hydrate 0/N and abort at hydration_guard. Say so up front so the
+    # operator reads "the cached bodies are gone", not "these articles have no
+    # body" (CLAUDE.md Rule 8: no silent fallback).
+    logger.warning(
+        "Content store starts empty for this resume",
+        max_size=settings.content_store_max_size,
+        hydration_failure_code=CONTENT_STORE_MISS_FAILURE_CODE,
+        remedy="re-run the gatherer (start a fresh run) if the checkpoint is already past it",
+    )
     return hyde_generator, content_store
 
 

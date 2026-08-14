@@ -396,8 +396,13 @@ async def test_full_pipeline_skips_finalizer_when_content_store_pipeline_is_holl
     """Run 2a4787e8 regression: curated evidence exists but the content_store
     (empty MemoryContentStore — nothing was ever cached for these IDs)
     hydrates 0 articles, so compressor/quote_selector/fact_normalizer all
-    produce nothing groundable. Must abort with 'no_content' before the
-    finalizer persists a hollow version."""
+    produce nothing groundable. Must abort before the finalizer persists a
+    hollow version.
+
+    The code is 'content_store_miss', not the finalize_guard's 'no_content':
+    hydration_guard now catches a total content-store miss at the hydration
+    boundary, which names the cause and skips the wasted LLM budget. The
+    finalize_guard's no_content verdict is exercised directly above."""
     llm = FakeLLM()
     evidence = ArticlesFoundButUnhydratableEvidence()
     repo = FakeReportRepo()
@@ -414,7 +419,7 @@ async def test_full_pipeline_skips_finalizer_when_content_store_pipeline_is_holl
     )
 
     assert result.get("final_version_no") is None
-    assert result.get("failure_code") == "no_content"
+    assert result.get("failure_code") == "content_store_miss"
     assert result.get("error")
     assert result.get("curated")  # curator did select evidence — the guard isn't just re-checking no_evidence
     assert repo.bump_version_calls == 0

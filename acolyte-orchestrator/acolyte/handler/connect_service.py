@@ -17,7 +17,7 @@ from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
 from acolyte.usecase.create_report_uc import CreateReportUsecase
 from acolyte.usecase.get_report_uc import GetReportUsecase
 from acolyte.usecase.list_reports_uc import ListReportsUsecase
-from acolyte.usecase.rerun_section_uc import RerunSectionUsecase
+from acolyte.usecase.rerun_section_uc import RerunRejectedError, RerunSectionUsecase
 from acolyte.usecase.start_run_uc import StartRunRejectedError, StartRunUsecase
 
 if TYPE_CHECKING:
@@ -398,6 +398,13 @@ class AcolyteConnectService:
             # Typed error raised from a lower layer (e.g. the usecase
             # re-mapping a repo ValueError). Preserve the code untouched.
             raise
+        except RerunRejectedError as e:
+            # An expected precondition, not a fault: a generation run owns the
+            # report and the caller can retry once it finishes. Falling through
+            # to the handler below would return INTERNAL and log a traceback
+            # into the error-rate SLI. delete_report answers the identical
+            # has_active_run check the same way.
+            raise ConnectError(Code.FAILED_PRECONDITION, str(e)) from e
         except Exception as exc:
             # Last-line visibility so a 500 still ships a traceback to
             # the structured log instead of disappearing behind the

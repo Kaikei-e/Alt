@@ -87,22 +87,11 @@ class FinalizerNode:
         if report is None:
             return {"error": f"Report {report_id} not found"}
 
-        change_items = [ChangeItem(field_name=f"section:{key}", change_kind="regenerated") for key in sections]
-
         change_reason = "LangGraph pipeline generation"
         critique = state.get("critique") or {}
         if critique.get("forced_accept"):
             revision_count = state.get("revision_count", 0)
             change_reason += f" [forced-accept-after-{revision_count}-revisions]"
-
-        new_version = await self._report_repo.bump_version(
-            report_id,
-            report.current_version,
-            change_reason,
-            change_items,
-            scope_snapshot=brief,
-            outline_snapshot=outline,
-        )
 
         # Persist the best revision body when available, not only when latest is empty.
         best = state.get("best_sections")
@@ -119,10 +108,40 @@ class FinalizerNode:
             for key in list(sections.keys()):
                 sections[key] = render_sources_footer(sections[key], sm)
 
-        # Persist sections
+        # Bodies first, version pointer last. bump_version stamps current_version
+        # plus the change_items that claim "these sections were regenerated at
+        # vN+1"; the repository exposes no cross-call transaction, so publishing
+        # that claim before the bodies are durable leaves a half-written report
+        # with no repair path. Ordering makes a mid-loop failure retryable instead:
+        # current_version still points at the last fully-written version.
+        persisted_keys = await self._persist_sections(report_id, outline, sections, section_citations)
+
+        change_items = [ChangeItem(field_name=f"section:{key}", change_kind="regenerated") for key in persisted_keys]
+
+        new_version = await self._report_repo.bump_version(
+            report_id,
+            report.current_version,
+            change_reason,
+            change_items,
+            scope_snapshot=brief,
+            outline_snapshot=outline,
+        )
+
+        logger.info("Finalizer completed", report_id=str(report_id), new_version=new_version)
+        return {"final_version_no": new_version}
+
+    async def _persist_sections(
+        self,
+        report_id: UUID,
+        outline: list[dict],
+        sections: dict[str, str],
+        section_citations: dict[str, list[SectionCitationDict]],
+    ) -> list[str]:
+        """Write every outline section body, returning the keys actually persisted."""
         existing_sections = await self._report_repo.get_sections(report_id)
         existing_keys = {s.section_key for s in existing_sections}
 
+        persisted: list[str] = []
         for i, section_def in enumerate(outline):
             key = section_def.get("key", "")
             body = sections.get(key, "")
@@ -137,9 +156,21 @@ class FinalizerNode:
                 expected_v = sec.current_version if sec else 0
 
             citations = section_citations.get(key)
-            await self._report_repo.bump_section_version(
-                report_id, key, expected_v, body, citations=cast(list[dict] | None, citations)
-            )
+            try:
+                await self._report_repo.bump_section_version(
+                    report_id, key, expected_v, body, citations=cast(list[dict] | None, citations)
+                )
+            except Exception:
+                # Each bump_section_version is its own transaction, so the sections
+                # already written here stay written. Name them so the failed run is
+                # visibly a partial write awaiting rollback, not a clean abort.
+                logger.exception(
+                    "Finalizer section persistence failed — report version not published",
+                    report_id=str(report_id),
+                    failed_section_key=key,
+                    persisted_section_keys=persisted,
+                )
+                raise
+            persisted.append(key)
 
-        logger.info("Finalizer completed", report_id=str(report_id), new_version=new_version)
-        return {"final_version_no": new_version}
+        return persisted
