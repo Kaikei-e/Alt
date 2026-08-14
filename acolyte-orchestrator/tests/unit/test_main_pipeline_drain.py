@@ -273,7 +273,9 @@ async def test_shutdown_still_closes_the_pool_when_a_pipeline_dies_uncancellably
     """
     _stub_lifespan_io(monkeypatch)
     pool_close = AsyncMock()
+    http_aclose = AsyncMock()
     monkeypatch.setattr(main_module._pool, "close", pool_close)
+    monkeypatch.setattr(main_module._http_client, "aclose", http_aclose)
     monkeypatch.setattr(main_module, "_PIPELINE_DRAIN_GRACE_SECONDS", 0.05)
     started = asyncio.Event()
 
@@ -296,4 +298,4 @@ async def test_shutdown_still_closes_the_pool_when_a_pipeline_dies_uncancellably
         await started.wait()
 
     pool_close.assert_awaited()
-    main_module._http_client.aclose.assert_awaited()
+    http_aclose.assert_awaited()
