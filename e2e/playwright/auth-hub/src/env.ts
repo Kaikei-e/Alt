@@ -38,18 +38,33 @@ export const env = {
 	mtlsURL: requiredEnv("MTLS_URL"),
 
 	/**
-	 * The HS256 secret auth-hub signs backend JWTs with, and the shared secret
-	 * the /internal middleware compares `X-Internal-Auth` against.
+	 * The HS256 secret auth-hub signs backend JWTs with — and nothing else.
 	 *
-	 * One value, two jobs: compose.staging.yaml mounts
-	 * `alt_backend_token_secret` as both `BACKEND_TOKEN_SECRET_FILE` (used by
-	 * `infrastructure/token/jwt.go`) and — via `wireInternalAuth(cfg.
-	 * BackendTokenSecret)` in main.go — as the internal shared secret.
+	 * It used to do two jobs: `main.go` keyed the /internal group on this same
+	 * value. It no longer does (`wireInternalAuth(cfg)` reads
+	 * `INTERNAL_AUTH_SECRET`), because the /internal bearer crosses the network
+	 * in a plaintext header and lands in nginx access logs and OTel span
+	 * attributes, which is no place for a signing key. auth-hub now refuses to
+	 * start when the two are equal, so sending this one to /internal is a 403.
+	 * See `internalAuthSecret` below.
 	 *
 	 * Arrives as a path rather than a value so it never lands in `docker
 	 * inspect` output, a rendered compose slice, or a CI environment dump.
 	 */
 	backendTokenSecret: requiredSecretFile("BACKEND_TOKEN_SECRET_FILE"),
+
+	/**
+	 * The shared bearer auth-hub's /internal group compares `X-Internal-Auth`
+	 * against (`middleware/internal_auth.go`, keyed on `INTERNAL_AUTH_SECRET`).
+	 *
+	 * A plain value rather than a path, unlike every other secret here, because
+	 * compose.staging.yaml sets it inline — it is a throwaway staging literal
+	 * that both auth-hub and alt-data-hub carry, and one literal is what keeps
+	 * the three in step. Reading it from the environment rather than hard-coding
+	 * it means a changed compose slice fails as a named 403 here instead of
+	 * passing against a secret nothing uses.
+	 */
+	internalAuthSecret: requiredEnv("INTERNAL_AUTH_SECRET"),
 
 	/**
 	 * The Kratos identity fixtures the Hurl suite used verbatim.

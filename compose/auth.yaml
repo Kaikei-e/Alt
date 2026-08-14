@@ -140,6 +140,12 @@ services:
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_TTL=30m
+      # The /internal group's shared bearer. Required, no default, and rejected
+      # at startup when it equals BACKEND_TOKEN_SECRET: alt-data-hub sends this
+      # value in a plaintext X-Internal-Auth header on every GetSystemUser call,
+      # so it reaches access logs and OTel span attributes — which is why the
+      # HS256 signing key above no longer doubles as it.
+      - INTERNAL_AUTH_SECRET_FILE=/run/secrets/auth_hub_internal_secret
       - MTLS_LISTEN=${MTLS_LISTEN:-true}
       - MTLS_PORT=9443
       - MTLS_CERT_FILE=/certs/svc-cert.pem
@@ -153,6 +159,7 @@ services:
     secrets:
       - csrf_secret
       - backend_token_secret
+      - auth_hub_internal_secret
     volumes:
       - auth_hub_certs:/certs:ro
       - pki_trust_bundle:/trust:ro

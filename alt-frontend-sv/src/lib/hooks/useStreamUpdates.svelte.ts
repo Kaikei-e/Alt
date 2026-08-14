@@ -11,9 +11,9 @@
  * - Exponential backoff reconnection
  */
 import { createClient } from "@connectrpc/connect";
+import type { StreamHomeUpdate } from "$lib/connect/knowledge_home";
 import { createClientTransport } from "$lib/connect/transport-client";
 import { KnowledgeHomeService } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
-import type { StreamHomeUpdate } from "$lib/connect/knowledge_home";
 
 const MAX_RETRIES = 10;
 const BASE_RETRY_DELAY = 1000;
@@ -22,6 +22,7 @@ const COALESCE_DELAY = 3000;
 const LEADER_CLAIM_TIMEOUT = 500;
 const LEADER_HEARTBEAT_INTERVAL = 5000;
 const LEADER_HEARTBEAT_TIMEOUT = 10000;
+const LEADER_TIMEOUT_JITTER = 2000;
 
 interface StreamUpdateOptions {
 	get enabled(): boolean;
@@ -277,8 +278,16 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 
 				case "leader_ack":
 				case "leader_announce":
-					// Another tab is already leader — become follower
-					becomeFollower();
+					// Both messages assert "I am the leader". While we are not leading
+					// there is nothing to arbitrate — defer, as before. While we are,
+					// this is a split brain: two claim timers fired in the same batch,
+					// so each tab announced and acked the other's in-flight claim.
+					// Demoting on both sides would leave nobody holding the stream and
+					// the synchronised re-claim would repeat the tie, so break it on
+					// tabId — lowest wins.
+					if (!isLeader || msg.tabId < tabId) {
+						becomeFollower();
+					}
 					break;
 
 				case "leader_heartbeat":
@@ -370,11 +379,15 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 		if (leaderTimeoutTimer) {
 			clearTimeout(leaderTimeoutTimer);
 		}
+		// Jitter the deadline: tabs demoted in the same batch would otherwise
+		// re-claim in the same batch too, replaying the same tie every round.
+		const delay =
+			LEADER_HEARTBEAT_TIMEOUT + Math.random() * LEADER_TIMEOUT_JITTER;
 		leaderTimeoutTimer = setTimeout(() => {
 			// Leader heartbeat timed out — re-claim
 			leaderTimeoutTimer = null;
 			claimLeadership();
-		}, LEADER_HEARTBEAT_TIMEOUT);
+		}, delay);
 	}
 
 	function closeChannel() {

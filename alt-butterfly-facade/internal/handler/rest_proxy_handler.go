@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -38,6 +39,15 @@ func NewRESTProxyHandler(
 
 // ServeHTTP implements http.Handler.
 func (h *RESTProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Bound the upstream call, like AdminProxyHandler does. The backend client
+	// runs with http.Client.Timeout unset on purpose, so this deadline is the
+	// only thing that frees the handler goroutine when alt-backend accepts the
+	// request and never answers — the server's WriteTimeout only hangs up on
+	// the caller's connection.
+	ctx, cancel := context.WithTimeout(r.Context(), h.requestTimeout)
+	defer cancel()
+	r = r.WithContext(ctx)
+
 	// Extract and validate JWT token
 	token := r.Header.Get(middleware.BackendTokenHeader)
 	_, err := h.authInterceptor.ValidateToken(token)

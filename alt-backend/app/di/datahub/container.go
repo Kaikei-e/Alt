@@ -175,8 +175,12 @@ type DataHubComponents struct {
 func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubComponents {
 	altDB := alt_db.NewAltDBRepository(pool)
 
-	// Identity lookup for /v1/internal/system-user.
-	kratosCli := kratos_client.NewKratosClient(cfg.AuthHub.URL, cfg.Auth.BackendTokenSecret)
+	// Identity lookup for /v1/internal/system-user. The bearer is
+	// INTERNAL_AUTH_SECRET, which is what auth-hub's /internal group is keyed
+	// on — handing it BackendTokenSecret instead puts the HS256 signing key in
+	// a plaintext header and gets 403 on every call, since auth-hub refuses to
+	// start with the two secrets equal.
+	kratosCli := kratos_client.NewKratosClient(cfg.AuthHub.URL, cfg.Auth.InternalAuthSecret)
 
 	// Event publishing.
 	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled)

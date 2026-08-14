@@ -25,6 +25,7 @@ func TestLoad(t *testing.T) {
 				os.Unsetenv("PORT")
 				os.Unsetenv("CACHE_TTL")
 				os.Unsetenv("CSRF_SECRET")
+				os.Unsetenv("INTERNAL_AUTH_SECRET")
 			},
 			cleanupEnv:  func() {},
 			expected:    nil,
@@ -39,6 +40,7 @@ func TestLoad(t *testing.T) {
 				os.Setenv("CACHE_TTL", "10m")
 				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 				os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 			},
 			cleanupEnv: func() {
 				os.Unsetenv("KRATOS_URL")
@@ -46,6 +48,7 @@ func TestLoad(t *testing.T) {
 				os.Unsetenv("CACHE_TTL")
 				os.Unsetenv("CSRF_SECRET")
 				os.Unsetenv("BACKEND_TOKEN_SECRET")
+				os.Unsetenv("INTERNAL_AUTH_SECRET")
 			},
 			expected: &Config{
 				KratosURL:  "http://custom-kratos:4444",
@@ -73,6 +76,7 @@ func TestLoad(t *testing.T) {
 				os.Setenv("KRATOS_URL", "http://localhost:4433")
 				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 				os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 				os.Unsetenv("PORT")
 				os.Unsetenv("CACHE_TTL")
 			},
@@ -80,6 +84,7 @@ func TestLoad(t *testing.T) {
 				os.Unsetenv("KRATOS_URL")
 				os.Unsetenv("CSRF_SECRET")
 				os.Unsetenv("BACKEND_TOKEN_SECRET")
+				os.Unsetenv("INTERNAL_AUTH_SECRET")
 			},
 			expected: &Config{
 				KratosURL:  "http://localhost:4433",
@@ -121,9 +126,11 @@ func TestLoad(t *testing.T) {
 func TestLoad_ValidateRateLimit_Default(t *testing.T) {
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 	defer func() {
 		os.Unsetenv("CSRF_SECRET")
 		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("INTERNAL_AUTH_SECRET")
 		os.Unsetenv("VALIDATE_RATE_LIMIT")
 	}()
 
@@ -135,10 +142,12 @@ func TestLoad_ValidateRateLimit_Default(t *testing.T) {
 func TestLoad_ValidateRateLimit_EnvOverride(t *testing.T) {
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 	os.Setenv("VALIDATE_RATE_LIMIT", "50.0")
 	defer func() {
 		os.Unsetenv("CSRF_SECRET")
 		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("INTERNAL_AUTH_SECRET")
 		os.Unsetenv("VALIDATE_RATE_LIMIT")
 	}()
 
@@ -150,10 +159,12 @@ func TestLoad_ValidateRateLimit_EnvOverride(t *testing.T) {
 func TestLoad_ValidateRateLimit_Invalid(t *testing.T) {
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 	os.Setenv("VALIDATE_RATE_LIMIT", "not-a-number")
 	defer func() {
 		os.Unsetenv("CSRF_SECRET")
 		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("INTERNAL_AUTH_SECRET")
 		os.Unsetenv("VALIDATE_RATE_LIMIT")
 	}()
 
@@ -165,9 +176,11 @@ func TestLoad_ValidateRateLimit_Invalid(t *testing.T) {
 func TestLoad_CSRFRateLimit_Default(t *testing.T) {
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 	defer func() {
 		os.Unsetenv("CSRF_SECRET")
 		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("INTERNAL_AUTH_SECRET")
 		os.Unsetenv("CSRF_RATE_LIMIT")
 	}()
 
@@ -179,10 +192,12 @@ func TestLoad_CSRFRateLimit_Default(t *testing.T) {
 func TestLoad_CSRFRateLimit_EnvOverride(t *testing.T) {
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 	os.Setenv("CSRF_RATE_LIMIT", "50.0")
 	defer func() {
 		os.Unsetenv("CSRF_SECRET")
 		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("INTERNAL_AUTH_SECRET")
 		os.Unsetenv("CSRF_RATE_LIMIT")
 	}()
 
@@ -194,10 +209,12 @@ func TestLoad_CSRFRateLimit_EnvOverride(t *testing.T) {
 func TestLoad_CSRFRateLimit_Invalid(t *testing.T) {
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 	os.Setenv("CSRF_RATE_LIMIT", "not-a-number")
 	defer func() {
 		os.Unsetenv("CSRF_SECRET")
 		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("INTERNAL_AUTH_SECRET")
 		os.Unsetenv("CSRF_RATE_LIMIT")
 	}()
 
@@ -221,6 +238,7 @@ func TestConfig_Validate(t *testing.T) {
 				CacheTTL:           5 * time.Minute,
 				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr: false,
 		},
@@ -294,6 +312,7 @@ func TestConfig_Validate(t *testing.T) {
 				CacheTTL:           5 * time.Minute,
 				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
+				InternalAuthSecret: "this-is-a-distinct-internal-auth-secret-32-chars",
 			},
 			wantErr: false,
 		},

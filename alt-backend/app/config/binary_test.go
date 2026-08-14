@@ -21,9 +21,15 @@ func baseConfig() *Config {
 		Rag:           RAGConfig{OrchestratorURL: "http://rag-orchestrator:9010", OrchestratorConnectURL: "http://rag-orchestrator:9011"},
 		MQHub:         MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
 		AuthHub:       AuthHubConfig{URL: "http://auth-hub:8888"},
-		Auth:          AuthConfig{BackendTokenSecret: "a-backend-token-secret-value"},
-		Sovereign:     SovereignConfig{URL: "http://knowledge-sovereign:9500"},
-		WebPush:       WebPushConfig{PublicKey: "a-vapid-public-key-value"},
+		// Two distinct secrets, as every environment must supply: the /internal
+		// shared bearer travels in a plaintext header and the signing key must
+		// not be reachable from there.
+		Auth: AuthConfig{
+			BackendTokenSecret: "a-backend-token-secret-value",
+			InternalAuthSecret: "a-distinct-internal-auth-secret-value",
+		},
+		Sovereign: SovereignConfig{URL: "http://knowledge-sovereign:9500"},
+		WebPush:   WebPushConfig{PublicKey: "a-vapid-public-key-value"},
 	}
 }
 

@@ -658,6 +658,12 @@ services:
       # every token auth-hub has already minted.
       BACKEND_TOKEN_AUDIENCE: alt-backend
       AUTH_HUB_URL: http://auth-hub:8888
+      # The bearer this binary puts in X-Internal-Auth when it asks auth-hub
+      # for the system user. Separate from backend_token_secret on purpose:
+      # that header is plaintext and is copied into nginx access logs and OTel
+      # span attributes, so the JWT signing key must not be what opens
+      # auth-hub's /internal group. auth-hub exits non-zero if the two match.
+      INTERNAL_AUTH_SECRET_FILE: /run/secrets/auth_hub_internal_secret
       # SOVEREIGN_URL has no default; unset means the sovereign client no-ops
       # every append while the caller still records success.
       SOVEREIGN_URL: http://knowledge-sovereign:9500
@@ -682,6 +688,7 @@ services:
     secrets:
       - postgres_password
       - backend_token_secret
+      - auth_hub_internal_secret
     deploy:
       # See alt-harvester: mem_limit and deploy.resources.limits cannot both
       # be set unless they agree, so memory lives in the limits block.

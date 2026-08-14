@@ -37,7 +37,13 @@ type SecretsResult struct {
 // internal/stack uses for the stack registry. A secret base.yaml declares
 // that has no entry here still gets generated, via defaultSecretMeta.
 var knownSecretMeta = map[string]secretMeta{
-	"backend_token_secret.txt":              {"Backend JWT token secret", true, 32, 0},
+	"backend_token_secret.txt": {"Backend JWT token secret", true, 32, 0},
+	// Separate from backend_token_secret so the HS256 signing key stays inside
+	// auth-hub: this one is the /internal shared bearer alt-data-hub puts in a
+	// plaintext X-Internal-Auth header, and auth-hub refuses to start when the
+	// two files hold the same value. Both are auto-generated independently, so
+	// a fresh `altctl init` can never produce the collision.
+	"auth_hub_internal_secret.txt":          {"auth-hub /internal shared bearer (X-Internal-Auth)", true, 32, 0},
 	"postgres_password.txt":                 {"PostgreSQL superuser password", true, 32, 0},
 	"db_password.txt":                       {"Application database password", true, 32, 0},
 	"pre_processor_sidecar_db_password.txt": {"Pre-processor sidecar DB password", true, 32, 0},

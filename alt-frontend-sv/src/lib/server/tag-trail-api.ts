@@ -78,8 +78,11 @@ export async function getArticleTags(
 	cookie: string | null,
 	articleId: string,
 ): Promise<ArticleTagsResponse> {
+	// params.id reaches here already decodeURIComponent'd by SvelteKit and with
+	// no format check, so re-encoding is what keeps a caller-supplied id from
+	// escaping this endpoint and taking the backend token somewhere else.
 	return callBackendAPI<ArticleTagsResponse>(
-		`/v1/articles/${articleId}/tags`,
+		`/v1/articles/${encodeURIComponent(articleId)}/tags`,
 		cookie,
 	);
 }
@@ -94,7 +97,7 @@ export async function getFeedTagsById(
 	limit = 20,
 ): Promise<FeedTagsResponse> {
 	return callBackendAPI<FeedTagsResponse>(
-		`/v1/feeds/${feedId}/tags?limit=${limit}`,
+		`/v1/feeds/${encodeURIComponent(feedId)}/tags?limit=${limit}`,
 		cookie,
 	);
 }

@@ -1260,6 +1260,9 @@ services:
       - BACKEND_TOKEN_ISSUER=alt-staging-auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - AUTH_HUB_URL=http://auth-hub/
+      # Must match auth-hub's INTERNAL_AUTH_SECRET below, and must differ from
+      # alt_backend_token_secret — see the comment on the auth-hub service.
+      - INTERNAL_AUTH_SECRET=staging-fixture-internal-auth-secret-not-a-real-key
       - SOVEREIGN_URL=http://knowledge-sovereign
       # A disabled mq-hub client no-ops every publish while the article RPCs
       # still answer 200 (ADR-000928), so the enabled value is carried into
@@ -1408,6 +1411,14 @@ services:
       # is shared with alt-backend so the JWT auth-hub issues is
       # verifiable by anyone already trusting alt_backend_token_secret.
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/alt_backend_token_secret
+      # The /internal group's shared bearer, and deliberately NOT the HS256
+      # secret above: alt-data-hub sends this value in a plaintext
+      # X-Internal-Auth header, so a signing key doing both jobs ends up in
+      # access logs and OTel span attributes. auth-hub exits non-zero when the
+      # two match. Inline rather than a fixture file for the same reason
+      # VAPID_PUBLIC_KEY is: this is a throwaway staging value that the suite
+      # also needs to send, and one literal keeps the two in step.
+      - INTERNAL_AUTH_SECRET=staging-fixture-internal-auth-secret-not-a-real-key
       - CSRF_SECRET_FILE=/run/secrets/auth_hub_csrf_secret
       - MTLS_LISTEN=false
       - LOG_LEVEL=info

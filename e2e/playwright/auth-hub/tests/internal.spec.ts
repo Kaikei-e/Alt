@@ -36,7 +36,7 @@ import { echoErrorSchema, systemUserSchema } from "../src/schemas.js";
 
 /** A wrong secret of the same length as the real one — the timing-safe case. */
 function lengthMatchedWrongSecret(): string {
-	return "x".repeat(env.backendTokenSecret.length);
+	return "x".repeat(env.internalAuthSecret.length);
 }
 
 test.describe("internal system-user", () => {
@@ -46,7 +46,7 @@ test.describe("internal system-user", () => {
 	}) => {
 		const body = await expectJsonStatus(
 			await hub.get("/internal/system-user", {
-				headers: { "X-Internal-Auth": env.backendTokenSecret },
+				headers: { "X-Internal-Auth": env.internalAuthSecret },
 			}),
 			200,
 			// `strict()`: this is a service-to-service response guarded only by a
@@ -70,7 +70,7 @@ test.describe("internal system-user", () => {
 		// Two calls, not more: the /internal limiter is burst 3 (main.go:174) and
 		// runs before the auth middleware, so this test's private bucket has room
 		// for exactly three.
-		const headers = { "X-Internal-Auth": env.backendTokenSecret };
+		const headers = { "X-Internal-Auth": env.internalAuthSecret };
 		const first = await expectJsonStatus(
 			await hub.get("/internal/system-user", { headers }),
 			200,
@@ -160,7 +160,7 @@ test.describe("internal auth boundary", () => {
 		// correct shared secret — a 401 or 403 would mean the group middleware
 		// ran in an order this test does not model.
 		const response = await hub.post("/internal/system-user", {
-			headers: { "X-Internal-Auth": env.backendTokenSecret },
+			headers: { "X-Internal-Auth": env.internalAuthSecret },
 		});
 		await expectStatusIn(response, [404, 405]);
 	});
@@ -174,7 +174,7 @@ test.describe("internal auth boundary", () => {
 		// probe could just be a middleware ordering artefact.
 		await expectStatus(
 			await hub.get("/internal/identities", {
-				headers: { "X-Internal-Auth": env.backendTokenSecret },
+				headers: { "X-Internal-Auth": env.internalAuthSecret },
 			}),
 			404,
 		);

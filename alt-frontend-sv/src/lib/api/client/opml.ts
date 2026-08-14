@@ -1,27 +1,7 @@
 import { browser } from "$app/environment";
 import { base } from "$app/paths";
+import { getClientCSRFToken } from "$lib/api/client/core";
 import type { OPMLImportResult } from "$lib/schema/opml";
-
-let cachedCSRFToken: string | null = null;
-let csrfTokenExpiry = 0;
-
-async function getCSRFToken(): Promise<string | null> {
-	if (cachedCSRFToken && Date.now() < csrfTokenExpiry) {
-		return cachedCSRFToken;
-	}
-	try {
-		const response = await fetch(`${base}/api/auth/csrf`, {
-			credentials: "include",
-		});
-		if (!response.ok) return null;
-		const data = await response.json();
-		cachedCSRFToken = data.csrf_token;
-		csrfTokenExpiry = Date.now() + 5 * 60 * 1000;
-		return cachedCSRFToken;
-	} catch {
-		return null;
-	}
-}
 
 /**
  * Export all feeds as OPML 2.0 XML.
@@ -52,23 +32,35 @@ export async function importOPMLClient(file: File): Promise<OPMLImportResult> {
 		throw new Error("This function can only be called from the client");
 	}
 
-	const csrfToken = await getCSRFToken();
+	// Issuance lives in core.ts alone: every /api/auth/csrf call re-mints the
+	// token and overwrites the browser-wide cookie, so a second cache here
+	// would hand out a token that any other client write has already invalidated.
+	const csrfToken = await getClientCSRFToken();
 
 	const formData = new FormData();
 	formData.append("file", file);
 
-	const headers: Record<string, string> = {};
-	if (csrfToken) {
-		headers["X-CSRF-Token"] = csrfToken;
-	}
-
 	const url = `${base}/api/v1/rss-feed-link/import/opml`;
-	const response = await fetch(url, {
-		method: "POST",
-		body: formData,
-		headers,
-		credentials: "include",
-	});
+	const sendRequest = (token: string | null): Promise<Response> =>
+		fetch(url, {
+			method: "POST",
+			body: formData,
+			headers: token ? { "X-CSRF-Token": token } : {},
+			credentials: "include",
+		});
+
+	let response = await sendRequest(csrfToken);
+
+	// Same replay callClientAPI does, and the importer needs it more: the
+	// upload is the longest-running write in the app, so any concurrent write
+	// has the whole transfer in which to rotate the shared cookie. The guard
+	// rejects with 403 before importing anything, so retrying once is safe.
+	if (response.status === 403 && csrfToken) {
+		const retryToken = await getClientCSRFToken();
+		if (retryToken) {
+			response = await sendRequest(retryToken);
+		}
+	}
 
 	if (!response.ok) {
 		const errorText = await response.text().catch(() => "");
