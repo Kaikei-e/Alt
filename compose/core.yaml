@@ -30,7 +30,11 @@ x-alt-go-common: &alt-go-common
   restart: always
   networks:
     - alt-network
-  tty: true
+  # Deliberately no `tty: true`. A TTY puts stdout and stderr on one pty, so
+  # Docker's log endpoint returns a raw headerless stream and every frame
+  # reaches rask-log-forwarder as Console -> Stdout. That makes
+  # `WHERE stream='stderr'` permanently empty for this service, panics
+  # included, and leaves ANSI colour codes in the text stored in ClickHouse.
   ulimits:
     nofile:
       soft: 65536
@@ -98,7 +102,6 @@ services:
       resources:
         reservations:
           memory: 256M
-    tty: true
     labels:
       - rask.group=alt-frontend
     logging:
@@ -128,7 +131,12 @@ services:
     environment:
       - PORT=4173
       - ORIGIN=${ORIGIN:-http://localhost:4173}
-      - BODY_SIZE_LIMIT=Infinity
+      # The nginx cutover took `client_max_body_size 32m` with it, and that
+      # directive was the authoritative limit precisely because this value was
+      # Infinity. plecto's manifest declares no body limit, so adapter-node is
+      # now the only thing standing between a POST under /api/ and this
+      # container's 512m — state the cap here rather than leave it implied.
+      - BODY_SIZE_LIMIT=32M
       - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL:-http://kratos:4433}
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-http://localhost:9000}
@@ -157,7 +165,6 @@ services:
       resources:
         reservations:
           memory: 256M
-    tty: true
     healthcheck:
       test: ["CMD-SHELL", "bun -e \"const n=require('net');const s=n.createConnection(4173,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))\""]
       interval: 10s
@@ -339,9 +346,17 @@ services:
       # pushes, so the signing key stays out of it — see alt-notifier below.
       - vapid_public_key
     deploy:
+      # memory used to sit under reservations alone, which is a scheduling
+      # hint and not a cap: a leak in the user-facing API would have run until
+      # the host's OOM killer picked a victim, and that victim is as likely to
+      # be alt-db or news-creator-backend as this container. The limit sits
+      # above the reservation so the steady-state working set is still
+      # guaranteed. No mem_limit here — see alt-harvester for why the two
+      # cannot coexist.
       resources:
         limits:
           cpus: '4.0'
+          memory: 3G
         reservations:
           memory: 2G
           cpus: '2.0'
@@ -359,7 +374,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    tty: true
     labels:
       - rask.group=alt-backend
     logging:

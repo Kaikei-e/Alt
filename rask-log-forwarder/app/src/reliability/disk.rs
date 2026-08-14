@@ -34,6 +34,10 @@ pub struct DiskConfig {
     pub max_disk_usage: u64, // bytes
     pub retention_period: Duration,
     pub compression: bool,
+    /// Mirrors ENABLE_DISK_FALLBACK. When false the store is never constructed,
+    /// so no directory is created and no batch is ever written; a batch that
+    /// exhausts its retry budget is then dropped loudly instead of persisted.
+    pub enabled: bool,
 }
 
 impl Default for DiskConfig {
@@ -43,6 +47,7 @@ impl Default for DiskConfig {
             max_disk_usage: 1024 * 1024 * 1024, // 1GB
             retention_period: Duration::from_secs(24 * 3600), // 24 hours
             compression: true,
+            enabled: true,
         }
     }
 }

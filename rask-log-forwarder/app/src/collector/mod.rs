@@ -1,11 +1,13 @@
 pub mod discovery;
 pub mod docker;
 
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 // Ensure zero-copy processing by using Bytes throughout
+use bollard::container::LogOutput;
 use bytes::Bytes;
 
 /// Initial delay before the first reconnect attempt after a Docker log
@@ -45,14 +47,56 @@ pub enum CollectorError {
     CollectionStopped,
 }
 
-/// Raw collected log line. `log`/`stream`/`time` are deliberately absent:
-/// they get re-derived from `raw_bytes` by the downstream Docker JSON parser,
-/// so allocating placeholder values for them here would be pure waste on the
-/// per-line hot path.
+/// Which of the container's standard streams Docker demultiplexed a line
+/// from. It has to be carried explicitly: `LogOutput::into_bytes()` drops the
+/// variant, and the payload bollard hands us has no frame header left, so
+/// nothing downstream can tell a panic backtrace from ordinary output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogStream {
+    Stdout,
+    Stderr,
+}
+
+impl LogStream {
+    /// Value written to the aggregator's `stream` column, which
+    /// `WHERE stream='stderr'` matches against.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
+        }
+    }
+
+    /// Classify a Docker log frame. Variants are listed exhaustively rather
+    /// than collapsed into `_` so a new bollard variant breaks the build
+    /// instead of quietly being recorded as stdout.
+    pub(crate) fn from_log_output(output: &LogOutput) -> Self {
+        match output {
+            LogOutput::StdErr { .. } => Self::Stderr,
+            LogOutput::StdOut { .. } => Self::Stdout,
+            // TTY-attached containers: Docker merges both streams into a
+            // single console stream and reports it as stdout.
+            LogOutput::Console { .. } => Self::Stdout,
+            // Only produced by the attach endpoint's input side, never by
+            // `docker logs`.
+            LogOutput::StdIn { .. } => Self::Stdout,
+        }
+    }
+}
+
+/// Raw collected log line. `log`/`time` are deliberately absent: they get
+/// re-derived from `raw_bytes` by the downstream Docker JSON parser, so
+/// allocating placeholder values for them here would be pure waste on the
+/// per-line hot path. `stream` and `container` are the opposite case - they
+/// are known here and nowhere else, so dropping them loses them for good.
 #[derive(Debug, Clone)]
 pub struct LogEntry {
-    pub id: String,
-    pub container_id: String,
+    /// Container metadata discovery resolved for the connection this line
+    /// arrived on, including the `rask.group` label. Shared per connection
+    /// rather than cloned per line.
+    pub container: Arc<ContainerInfo>,
+    pub stream: LogStream,
     pub raw_bytes: Bytes,
 }
 
@@ -80,7 +124,7 @@ pub struct LogCollector {
     #[allow(dead_code)]
     config: CollectorConfig,
     discovery: discovery::ServiceDiscovery,
-    container_info: Option<discovery::ContainerInfo>,
+    container_info: Option<Arc<discovery::ContainerInfo>>,
     target_service: String,
 }
 
@@ -131,7 +175,10 @@ impl LogCollector {
                 .find_container_by_service(&self.target_service)
                 .await
             {
-                Ok(info) => info,
+                // Shared with every entry streamed off this connection, so
+                // the `rask.group` resolved here reaches the aggregator
+                // instead of being rebuilt (and lost) further downstream.
+                Ok(info) => Arc::new(info),
                 Err(e) => {
                     tracing::warn!(
                         "Container discovery failed for service '{}': {e}; retrying in {:?}",
@@ -145,7 +192,7 @@ impl LogCollector {
                     continue;
                 }
             };
-            self.container_info = Some(container_info.clone());
+            self.container_info = Some(Arc::clone(&container_info));
 
             let docker_collector = match DockerCollector::new().await {
                 Ok(c) => c,
@@ -172,7 +219,7 @@ impl LogCollector {
             match self
                 .start_docker_api_streaming(
                     docker_collector,
-                    &container_info.id,
+                    &container_info,
                     tx.clone(),
                     cancel_token.clone(),
                 )
@@ -221,7 +268,7 @@ impl LogCollector {
     async fn start_docker_api_streaming(
         &self,
         docker_collector: DockerCollector,
-        container_id: &str,
+        container: &Arc<ContainerInfo>,
         tx: mpsc::Sender<LogEntry>,
         cancel_token: CancellationToken,
     ) -> Result<StreamExit, CollectorError> {
@@ -243,7 +290,7 @@ impl LogCollector {
             ..Default::default()
         };
 
-        let mut stream = docker.logs(container_id, Some(options));
+        let mut stream = docker.logs(&container.id, Some(options));
 
         loop {
             tokio::select! {
@@ -256,14 +303,16 @@ impl LogCollector {
                 log_output = stream.next() => {
                     match log_output {
                         Some(Ok(log_chunk)) => {
-                            // Convert Docker log output to LogEntry
-                            let log_bytes = log_chunk.into_bytes();
+                            // Read the stream off the frame before into_bytes()
+                            // discards the variant - it is the only place
+                            // stderr is still distinguishable.
+                            let stream = LogStream::from_log_output(&log_chunk);
 
                             // Create LogEntry with raw bytes - let the parser handle the actual parsing
                             let entry = LogEntry {
-                                id: container_id.to_string(),
-                                container_id: container_id.to_string(),
-                                raw_bytes: log_bytes,
+                                container: Arc::clone(container),
+                                stream,
+                                raw_bytes: log_chunk.into_bytes(),
                             };
 
                             // Bounded channel: block (apply backpressure) rather than
@@ -298,7 +347,43 @@ impl LogCollector {
     }
 
     pub fn get_container_info(&self) -> Option<&discovery::ContainerInfo> {
-        self.container_info.as_ref()
+        self.container_info.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod log_stream_tests {
+    use super::*;
+
+    fn frame_of(output: &LogOutput) -> &'static str {
+        LogStream::from_log_output(output).as_str()
+    }
+
+    #[test]
+    fn docker_frame_variant_decides_the_stream() {
+        let message = Bytes::from_static(b"boom\n");
+
+        assert_eq!(
+            frame_of(&LogOutput::StdErr {
+                message: message.clone()
+            }),
+            "stderr"
+        );
+        assert_eq!(
+            frame_of(&LogOutput::StdOut {
+                message: message.clone()
+            }),
+            "stdout"
+        );
+        // TTY containers only ever produce Console frames; Docker itself
+        // reports those as stdout.
+        assert_eq!(
+            frame_of(&LogOutput::Console {
+                message: message.clone()
+            }),
+            "stdout"
+        );
+        assert_eq!(frame_of(&LogOutput::StdIn { message }), "stdout");
     }
 }
 

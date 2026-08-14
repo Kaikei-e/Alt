@@ -61,8 +61,8 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
     } = params;
 
     info!(
-        "Starting main processing loop (batch_size={}, flush_interval={:?}, channel_capacity={})",
-        batch_size, flush_interval, channel_capacity
+        "Starting main processing loop for service '{}' (batch_size={}, flush_interval={:?}, channel_capacity={})",
+        target_service, batch_size, flush_interval, channel_capacity
     );
 
     // Bounded log collection channel. Backpressure policy: once full, the
@@ -86,11 +86,6 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
 
     // Buffer for batching logs - directly collect EnrichedLogEntry (no double conversion)
     let mut log_batch: Vec<EnrichedLogEntry> = Vec::with_capacity(batch_size);
-
-    // Cache of the current container's info, rebuilt only when the
-    // collector reports a different container id (e.g. after a reconnect).
-    // Avoids a fresh `ContainerInfo` allocation on every single log entry.
-    let mut container_info_cache: Option<crate::collector::ContainerInfo> = None;
 
     // Fire flush ticks on a fixed cadence, created once outside the loop so a
     // steady stream of incoming logs (faster than flush_interval) can never
@@ -124,8 +119,7 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
         tokio::select! {
             // Process incoming log entries
             Some(log_entry) = log_rx.recv() => {
-                let container_info = container_info_for(&mut container_info_cache, &log_entry.id, &target_service);
-                log_batch.push(enrich_log_entry(&parser, log_entry, container_info).await);
+                log_batch.push(enrich_log_entry(&parser, log_entry).await);
 
                 // Send batch when it reaches the configured size
                 if log_batch.len() >= batch_size {
@@ -150,8 +144,7 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
                 // final flush - otherwise logs in flight at shutdown are lost.
                 log_rx.close();
                 while let Ok(log_entry) = log_rx.try_recv() {
-                    let container_info = container_info_for(&mut container_info_cache, &log_entry.id, &target_service);
-                    log_batch.push(enrich_log_entry(&parser, log_entry, container_info).await);
+                    log_batch.push(enrich_log_entry(&parser, log_entry).await);
                 }
 
                 // Flush any remaining logs before shutting down
@@ -167,55 +160,43 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
     info!("Main processing loop stopped");
 }
 
-/// Returns a `ContainerInfo` for `id`, reusing the cached one when it still
-/// matches instead of allocating a fresh one for every single log entry.
-/// Only a container reconnect (id change) rebuilds it.
-fn container_info_for<'a>(
-    cache: &'a mut Option<crate::collector::ContainerInfo>,
-    id: &str,
-    target_service: &str,
-) -> &'a crate::collector::ContainerInfo {
-    let needs_rebuild = !matches!(cache, Some(info) if info.id == id);
-    if needs_rebuild {
-        *cache = Some(crate::collector::ContainerInfo {
-            id: id.to_string(),
-            service_name: target_service.to_string(),
-            group: None,
-            labels: std::collections::HashMap::new(),
-        });
-    }
-    cache.as_ref().expect("just initialized above")
-}
-
 /// Parse a raw collected log entry into an `EnrichedLogEntry`, falling back to
 /// a plain-text entry if parsing fails. Shared by the main select loop and the
 /// shutdown drain path so both apply identical enrichment.
+///
+/// The container metadata and the stream both ride along on the collected
+/// entry: discovery resolved the `rask.group` label and Docker demultiplexed
+/// the stream, and neither can be reconstructed from the payload here.
 async fn enrich_log_entry(
     parser: &UniversalParser,
     log_entry: crate::collector::LogEntry,
-    container_info: &crate::collector::ContainerInfo,
 ) -> EnrichedLogEntry {
-    match parser.parse_docker_log(log_entry.raw_bytes.as_ref(), container_info) {
+    let container = &log_entry.container;
+    match parser.parse_docker_log_with_stream(
+        log_entry.raw_bytes.as_ref(),
+        container,
+        log_entry.stream,
+    ) {
         Ok(enriched_entry) => enriched_entry,
         Err(e) => {
             error!("Failed to parse log entry: {}", e);
             // Fallback: create a plain text EnrichedLogEntry directly
             EnrichedLogEntry {
-                service_type: container_info.service_name.clone(),
+                service_type: container.service_name.clone(),
                 log_type: "plain".to_string(),
                 message: String::from_utf8_lossy(&log_entry.raw_bytes).to_string(),
                 level: Some(crate::domain::LogLevel::Info),
                 timestamp: chrono::Utc::now().to_rfc3339(),
-                stream: "stdout".to_string(),
+                stream: log_entry.stream.as_str().to_string(),
                 method: None,
                 path: None,
                 status_code: None,
                 response_size: None,
                 ip_address: None,
                 user_agent: None,
-                container_id: log_entry.container_id.clone(),
-                service_name: container_info.service_name.clone(),
-                service_group: None,
+                container_id: container.id.clone(),
+                service_name: container.service_name.clone(),
+                service_group: container.group.clone(),
                 trace_id: None,
                 span_id: None,
                 fields: std::collections::HashMap::new(),
@@ -329,6 +310,20 @@ mod tests {
         }
     }
 
+    /// What `ServiceDiscovery::find_container_by_service` hands back for a
+    /// container labelled `rask.group=alt-backend`.
+    fn discovered_container() -> Arc<crate::collector::ContainerInfo> {
+        Arc::new(crate::collector::ContainerInfo {
+            id: "abc123def456".to_string(),
+            service_name: "alt-backend".to_string(),
+            labels: std::collections::HashMap::from([(
+                "rask.group".to_string(),
+                "alt-backend".to_string(),
+            )]),
+            group: Some("alt-backend".to_string()),
+        })
+    }
+
     fn test_entry(message: &str) -> EnrichedLogEntry {
         EnrichedLogEntry {
             service_type: "test".to_string(),
@@ -439,6 +434,62 @@ mod tests {
         assert_eq!(
             stored, 1,
             "the failed batch should actually be persisted to disk, not just counted"
+        );
+    }
+
+    /// Discovery resolves `rask.group` off the container's labels. An entry
+    /// that reaches the aggregator without it is stored with service_group set
+    /// to the literal "unknown" (adapter/clickhouse/row.rs), so every query or
+    /// Grafana panel that groups by service_group collapses each such service
+    /// into one shared bucket.
+    ///
+    /// Not a partitioning concern: 001_create_logs_table.sql does partition by
+    /// (service_group, service_name), but entrypoint-wrapper.sh rebuilds the
+    /// table as `PARTITION BY toDate(timestamp)` on first boot, leaving
+    /// service_group an ordinary LowCardinality column.
+    #[tokio::test]
+    async fn enriched_entries_keep_the_discovered_rask_group() {
+        let parser = UniversalParser::new();
+
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::Stdout,
+            raw_bytes: bytes::Bytes::from_static(b"backend is up\n"),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        assert_eq!(
+            enriched.service_group,
+            Some("alt-backend".to_string()),
+            "the rask.group discovery already resolved must survive to the aggregator, \
+             otherwise every row lands in the 'unknown' partition"
+        );
+    }
+
+    /// Docker demultiplexes stdout/stderr for us and bollard exposes it as the
+    /// `LogOutput` variant. `into_bytes()` throws that away, and nothing
+    /// downstream can recover it - `WHERE stream='stderr'` then returns zero
+    /// rows for every service, panic backtraces included.
+    #[tokio::test]
+    async fn stderr_lines_are_recorded_as_stderr() {
+        let parser = UniversalParser::new();
+
+        let frame = bollard::container::LogOutput::StdErr {
+            message: bytes::Bytes::from_static(b"thread 'main' panicked at src/main.rs:10:5\n"),
+        };
+
+        let collected = crate::collector::LogEntry {
+            container: discovered_container(),
+            stream: crate::collector::LogStream::from_log_output(&frame),
+            raw_bytes: frame.into_bytes(),
+        };
+
+        let enriched = enrich_log_entry(&parser, collected).await;
+
+        assert_eq!(
+            enriched.stream, "stderr",
+            "a line Docker demultiplexed onto stderr must be recorded as stderr"
         );
     }
 

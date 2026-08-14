@@ -7,6 +7,18 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
+/// Docker's `stop_grace_period` for the forwarder containers
+/// (`compose/logging.yaml`): SIGKILL lands this long after SIGTERM.
+const STOP_GRACE_PERIOD: Duration = Duration::from_secs(12);
+
+/// Deadline for the processing loop to drain the channel and flush its last
+/// batch. That final flush goes through the retry ladder before it reaches
+/// disk fallback, so it needs as much of the grace period as we can give it -
+/// a shorter deadline drops the batch without sending it or persisting it.
+/// The remaining headroom is for the runtime to unwind and the tracing
+/// subscriber to flush before Docker SIGKILLs us.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(STOP_GRACE_PERIOD.as_secs() - 2);
+
 #[derive(Debug)]
 pub struct ShutdownHandle {
     shutdown_tx: mpsc::UnboundedSender<()>,
@@ -39,11 +51,7 @@ impl ShutdownHandle {
         // polling a flag it sets - this resolves the instant the task exits
         // instead of up to 100ms late, and doesn't spin a wakeup every tick
         // while shutdown is in progress.
-        // Note: 4 seconds is chosen to fit within Docker's stop_grace_period (12s)
-        // while leaving buffer time for cleanup operations
-        let timeout_duration = Duration::from_secs(4);
-
-        match tokio::time::timeout(timeout_duration, self.processing_loop).await {
+        match tokio::time::timeout(SHUTDOWN_TIMEOUT, self.processing_loop).await {
             Ok(Ok(())) => {
                 info!("Graceful shutdown completed");
                 Ok(())
@@ -218,6 +226,105 @@ mod tests {
         assert!(
             wait_result.is_err(),
             "wait() returned before any signal was observed"
+        );
+    }
+
+    /// Stands in for `pipeline::run_processing_loop`: wakes on the shutdown
+    /// signal, then spends `flush_duration` draining and flushing its last
+    /// batch (the real one walks the retry ladder before disk fallback).
+    fn fake_processing_loop(
+        flush_duration: Duration,
+    ) -> (mpsc::UnboundedSender<()>, tokio::task::JoinHandle<()>) {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let handle = tokio::spawn(async move {
+            rx.recv().await;
+            tokio::time::sleep(flush_duration).await;
+        });
+        (tx, handle)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_waits_for_a_final_flush_that_needs_most_of_the_grace_period() {
+        // The last batch only reaches the aggregator (or disk fallback) after
+        // the retry ladder has run, which routinely takes several seconds. A
+        // deadline that expires first drops those entries entirely.
+        let (tx, processing_loop) = fake_processing_loop(Duration::from_secs(9));
+
+        ShutdownHandle::new(tx, test_handler(), processing_loop)
+            .shutdown()
+            .await
+            .expect(
+                "shutdown must wait out the final flush - giving up early drops the last batch \
+                 without sending it or persisting it to disk",
+            );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_gives_up_inside_the_container_stop_grace_period() {
+        // The deadline still has to land before Docker's SIGKILL, otherwise
+        // the process is killed mid-flush instead of reporting the timeout.
+        let (tx, processing_loop) = fake_processing_loop(Duration::from_secs(300));
+
+        let started = tokio::time::Instant::now();
+        let result = ShutdownHandle::new(tx, test_handler(), processing_loop)
+            .shutdown()
+            .await;
+
+        assert!(
+            matches!(result, Err(ServiceError::ShutdownTimeout)),
+            "a processing loop that never finishes must surface as a shutdown timeout"
+        );
+        // Lower bound first: this is what makes the test a regression guard for
+        // the 4s deadline. Without it the assertion below is satisfied by
+        // construction, since SHUTDOWN_TIMEOUT is derived from STOP_GRACE_PERIOD.
+        assert!(
+            started.elapsed() >= SHUTDOWN_TIMEOUT,
+            "shutdown gave up after {:?}, short of the {SHUTDOWN_TIMEOUT:?} deadline - the final \
+             flush is being cut off early",
+            started.elapsed()
+        );
+        assert!(
+            started.elapsed() < STOP_GRACE_PERIOD,
+            "shutdown gave up after {:?}, at or past the {STOP_GRACE_PERIOD:?} stop_grace_period - \
+             Docker would SIGKILL us before we could report it",
+            started.elapsed()
+        );
+    }
+
+    /// The deadline and compose's `stop_grace_period` are one contract living in
+    /// two files. Parse the container spec rather than trusting the local
+    /// constant, so raising STOP_GRACE_PERIOD here without touching
+    /// compose/logging.yaml fails the build here instead of in production.
+    #[test]
+    fn stop_grace_period_matches_the_compose_service_spec() {
+        const LOGGING_COMPOSE: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../compose/logging.yaml"
+        ));
+
+        let declared: Vec<u64> = LOGGING_COMPOSE
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("stop_grace_period:"))
+            .map(|value| {
+                value
+                    .trim()
+                    .trim_end_matches('s')
+                    .parse::<u64>()
+                    .expect("stop_grace_period must be a whole number of seconds")
+            })
+            .collect();
+
+        assert_eq!(
+            declared.len(),
+            1,
+            "expected exactly one stop_grace_period in compose/logging.yaml, found {declared:?} - \
+             this test would otherwise pin the wrong service's value"
+        );
+        assert_eq!(
+            STOP_GRACE_PERIOD.as_secs(),
+            declared[0],
+            "STOP_GRACE_PERIOD disagrees with compose/logging.yaml; the deadline derived from it \
+             would let Docker SIGKILL the forwarder mid-flush"
         );
     }
 }

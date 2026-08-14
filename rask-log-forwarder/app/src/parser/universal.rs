@@ -7,7 +7,7 @@ use super::{
         PostgresParser, PythonStructlogParser, RustTracingParser, ServiceParser,
     },
 };
-use crate::collector::ContainerInfo;
+use crate::collector::{ContainerInfo, LogStream};
 use std::collections::HashMap;
 
 // Re-export EnrichedLogEntry from the domain layer (canonical definition)
@@ -214,6 +214,24 @@ impl UniversalParser {
         Ok(())
     }
 
+    /// Parse a log line for which the OS stream is already known, because
+    /// Docker demultiplexed it for us (see `collector::LogStream`). Callers
+    /// reading straight off the Docker API must use this: once bollard has
+    /// stripped the frame header the payload alone cannot say whether the
+    /// line went to stdout or stderr.
+    pub fn parse_docker_log_with_stream(
+        &self,
+        log_bytes: &[u8],
+        container_info: &ContainerInfo,
+        stream: LogStream,
+    ) -> Result<EnrichedLogEntry, ParseError> {
+        self.parse_docker_log_inner(log_bytes, container_info, Some(stream))
+    }
+
+    /// Parse a log line with no out-of-band stream information, so the stream
+    /// can only come from the payload itself (Docker json-file format) and
+    /// otherwise defaults to stdout.
+    ///
     /// Pure CPU-bound parsing - no `.await` points, so this is a plain
     /// (non-async) fn rather than paying for a per-line `Future` for no
     /// reason.
@@ -221,6 +239,15 @@ impl UniversalParser {
         &self,
         log_bytes: &[u8],
         container_info: &ContainerInfo,
+    ) -> Result<EnrichedLogEntry, ParseError> {
+        self.parse_docker_log_inner(log_bytes, container_info, None)
+    }
+
+    fn parse_docker_log_inner(
+        &self,
+        log_bytes: &[u8],
+        container_info: &ContainerInfo,
+        stream_hint: Option<LogStream>,
     ) -> Result<EnrichedLogEntry, ParseError> {
         // Validate input size first
         self.validate_input_size(log_bytes)?;
@@ -247,7 +274,12 @@ impl UniversalParser {
             self.validate_field_size(&docker_entry.stream, "stream")?;
             self.validate_field_size(&docker_entry.time, "timestamp")?;
 
-            (log, docker_entry.stream, docker_entry.time)
+            // The demultiplexed frame wins when we have one: a payload that
+            // merely looks like json-file format (an application logging its
+            // own "log" key) must not talk us out of the real stream.
+            let stream = stream_hint.map_or(docker_entry.stream, |s| s.as_str().to_string());
+
+            (log, stream, docker_entry.time)
         } else {
             // This is raw application log (when timestamps: false in Docker API)
             // Remove trailing newline/carriage return
@@ -255,7 +287,11 @@ impl UniversalParser {
                 .trim_end_matches('\n')
                 .trim_end_matches('\r')
                 .to_string();
-            (log, "stdout".to_string(), chrono::Utc::now().to_rfc3339())
+            let stream = stream_hint
+                .unwrap_or(LogStream::Stdout)
+                .as_str()
+                .to_string();
+            (log, stream, chrono::Utc::now().to_rfc3339())
         };
 
         // Now parse the actual log content
