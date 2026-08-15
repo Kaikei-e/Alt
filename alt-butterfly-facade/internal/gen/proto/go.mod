@@ -5,6 +5,6 @@
 // sufficed. Same shape as rag-orchestrator/internal/gen/proto.
 module alt/gen/proto
 
-go 1.26.3
+go 1.26.6
 
 require google.golang.org/protobuf v1.36.11

@@ -1,6 +1,6 @@
 module alt
 
-go 1.26.5
+go 1.26.6
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.2

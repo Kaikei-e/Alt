@@ -1,3 +1,3 @@
 module mock-rss-server
 
-go 1.26.3
+go 1.26.6
