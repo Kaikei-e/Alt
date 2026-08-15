@@ -29,6 +29,15 @@ function logDiagnostic(level, message, data = null) {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function updateStatus(text, color, error = null) {
   if (statusSpan) {
     statusSpan.innerText = text;
@@ -214,16 +223,16 @@ function handleDataUpdate(data) {
         data.gpu.gpus.forEach(gpu => {
           html += `
                     <div style="flex: 1; min-width: 250px; background: #262730; padding: 15px; border-radius: 5px; color: white;">
-                        <h4>${gpu.name} (${gpu.index})</h4>
-                        <div>Util: ${gpu.utilization}%</div>
+                        <h4>${escapeHtml(gpu.name)} (${escapeHtml(gpu.index)})</h4>
+                        <div>Util: ${escapeHtml(gpu.utilization)}%</div>
                         <div style="height: 5px; background: #444; margin: 5px 0; border-radius: 3px;">
-                            <div style="height: 100%; width: ${gpu.utilization}%; background: #e91e63;"></div>
+                            <div style="height: 100%; width: ${escapeHtml(gpu.utilization)}%; background: #e91e63;"></div>
                         </div>
-                        <div>Mem: ${gpu.memory_percent}%</div>
+                        <div>Mem: ${escapeHtml(gpu.memory_percent)}%</div>
                         <div style="height: 5px; background: #444; margin: 5px 0; border-radius: 3px;">
-                            <div style="height: 100%; width: ${gpu.memory_percent}%; background: #9c27b0;"></div>
+                            <div style="height: 100%; width: ${escapeHtml(gpu.memory_percent)}%; background: #9c27b0;"></div>
                         </div>
-                        <div style="font-size: 0.8em; color: #aaa;">${gpu.temperature}°C</div>
+                        <div style="font-size: 0.8em; color: #aaa;">${escapeHtml(gpu.temperature)}°C</div>
                     </div>
                     `;
         });
@@ -235,28 +244,33 @@ function handleDataUpdate(data) {
         } else if (data.gpu.message) {
           message = data.gpu.message;
         }
-        gpuContainer.innerHTML = '<div style="color: #aaa; padding: 10px;">' + message + '</div>';
+        gpuContainer.replaceChildren();
+        const gpuMsg = document.createElement('div');
+        gpuMsg.style.color = '#aaa';
+        gpuMsg.style.padding = '10px';
+        gpuMsg.textContent = message;
+        gpuContainer.appendChild(gpuMsg);
       }
     }
 
     // Processes - Top 10 only
     const tbody = document.getElementById('proc-body');
     if (tbody) {
-      let rows = '';
       const top10Processes = data.top_processes.slice(0, 10);
       logDiagnostic('debug', `Updating ${top10Processes.length} processes`);
+      tbody.replaceChildren();
       top10Processes.forEach(p => {
         const truncatedName = p.name.length > 30 ? p.name.substring(0, 30) + '...' : p.name;
-        rows += `
-                <tr style="border-bottom: 1px solid #444;">
-                    <td style="padding: 6px;">${p.pid}</td>
-                    <td style="padding: 6px;">${truncatedName}</td>
-                    <td style="padding: 6px;">${p.cpu_percent}%</td>
-                    <td style="padding: 6px;">${p.memory_mb.toFixed(1)}</td>
-                </tr>
-                `;
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #444';
+        [p.pid, truncatedName, p.cpu_percent + '%', p.memory_mb.toFixed(1)].forEach(text => {
+          const td = document.createElement('td');
+          td.style.padding = '6px';
+          td.textContent = String(text);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
       });
-      tbody.innerHTML = rows;
     }
   } catch (error) {
     logDiagnostic('error', 'Error handling data update', error);
