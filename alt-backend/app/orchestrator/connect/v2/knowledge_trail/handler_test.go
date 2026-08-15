@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"testing"
 	"time"
 
@@ -122,6 +123,16 @@ func TestGetTrail_SingleContactKeepsCountOne(t *testing.T) {
 	require.Len(t, resp.Msg.Footprints, 1)
 	assert.Equal(t, int32(1), resp.Msg.Footprints[0].ContactCount)
 	assert.Equal(t, resp.Msg.Footprints[0].OccurredAt, resp.Msg.Footprints[0].FirstOccurredAt)
+}
+
+func TestMapFootprint_ContactCountDoesNotWrapOnOverflow(t *testing.T) {
+	fp := mapFootprint(domain.TrailFootprint{
+		ContactCount: math.MaxInt32 + 1,
+		OccurredAt:   time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC),
+	})
+	require.NotNil(t, fp)
+	assert.Equal(t, int32(math.MaxInt32), fp.ContactCount, "ContactCount must clamp to MaxInt32, not wrap negative")
+	assert.Greater(t, fp.ContactCount, int32(0))
 }
 
 // Episodes (D24/D30, Wave 8) map through to the wire, keyed/ordered exactly

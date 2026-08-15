@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"time"
+
+	"alt/utils/randutil"
 )
 
 // CLAUDE.md rule 2 ("5-second minimum intervals between external API calls")
@@ -179,8 +180,18 @@ func (h *HostRateLimiter) waitForSlot(ctx context.Context, host string) error {
 			wait = slotRetryFloor
 		}
 		// Jitter keeps two processes that started blocked on the same host
-		// from retrying in lockstep forever.
-		wait += time.Duration(rand.Int64N(int64(wait/8) + 1))
+		// from retrying in lockstep forever. crypto/rand failure skips the
+		// extra jitter rather than crashing the limiter — the computed wait
+		// still holds.
+		extra, jitterErr := randutil.JitterInt64(int64(wait / 8))
+		if jitterErr != nil {
+			h.log().WarnContext(ctx, "host_rate_limiter.jitter_unavailable",
+				"host", host,
+				"error", jitterErr.Error(),
+				"impact", "retrying without extra jitter; processes may align")
+		} else {
+			wait += time.Duration(extra)
+		}
 
 		timer := time.NewTimer(wait)
 		select {

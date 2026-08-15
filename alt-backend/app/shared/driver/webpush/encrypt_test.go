@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/ecdh"
 	"encoding/base64"
+	"math"
 	"strings"
 	"testing"
 )
@@ -87,6 +88,30 @@ func TestEncryptRecord_RFC8291Vector(t *testing.T) {
 	}
 	if len(got) != len(want) {
 		t.Errorf("body length = %d, want %d", len(got), len(want))
+	}
+}
+
+func TestRFC8291IDLen_RejectsOverflow(t *testing.T) {
+	n := math.MaxUint8 + 1
+	got, err := rfc8291IDLen(n)
+	if err == nil {
+		t.Fatalf("rfc8291IDLen(%d) succeeded with byte %d; overflow must be rejected so the idlen octet does not wrap", n, got)
+	}
+}
+
+func TestRFC8291IDLen_AcceptsP256UncompressedLen(t *testing.T) {
+	got, err := rfc8291IDLen(publicKeyLength)
+	if err != nil {
+		t.Fatalf("rfc8291IDLen(%d): %v", publicKeyLength, err)
+	}
+	if got != byte(publicKeyLength) {
+		t.Errorf("idlen = %d, want %d", got, publicKeyLength)
+	}
+}
+
+func TestRFC8291IDLen_RejectsNegative(t *testing.T) {
+	if _, err := rfc8291IDLen(-1); err == nil {
+		t.Fatal("rfc8291IDLen(-1) succeeded; negative length must be rejected")
 	}
 }
 

@@ -331,3 +331,33 @@ func TestDispatchBatch_AppliesPerKindDeliveryPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestFullJitterBackoff_NeverExceedsCapAndIsNonNegative(t *testing.T) {
+	cases := []struct {
+		name    string
+		attempt int
+		max     time.Duration
+	}{
+		{name: "first attempt stays in the base window", attempt: 0, max: backoffBase},
+		{name: "capped attempts never exceed backoffCap", attempt: 20, max: backoffCap},
+		{name: "attempt at the shift cap stays at backoffCap", attempt: 12, max: backoffCap},
+	}
+
+	const samples = 200
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for i := 0; i < samples; i++ {
+				got := fullJitterBackoff(tc.attempt)
+				if got < 0 {
+					t.Fatalf("fullJitterBackoff(%d) = %v, want non-negative", tc.attempt, got)
+				}
+				if got > tc.max {
+					t.Fatalf("fullJitterBackoff(%d) = %v, want <= %v", tc.attempt, got, tc.max)
+				}
+				if got > backoffCap {
+					t.Fatalf("fullJitterBackoff(%d) = %v, exceeds backoffCap %v", tc.attempt, got, backoffCap)
+				}
+			}
+		})
+	}
+}

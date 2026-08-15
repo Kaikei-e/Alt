@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -116,6 +117,10 @@ func encryptRecord(plaintext, uaPublic, authSecret, salt []byte, asPrivate *ecdh
 	}
 
 	asPublic := asPrivate.PublicKey().Bytes()
+	idlen, err := rfc8291IDLen(len(asPublic))
+	if err != nil {
+		return nil, fmt.Errorf("webpush encode idlen: %w", err)
+	}
 	keys, err := deriveContentKeys(ecdhSecret, authSecret, salt, uaPublic, asPublic)
 	if err != nil {
 		return nil, err
@@ -137,7 +142,7 @@ func encryptRecord(plaintext, uaPublic, authSecret, salt []byte, asPrivate *ecdh
 	body := make([]byte, 0, headerLength+len(padded)+gcmTagLength)
 	body = append(body, salt...)
 	body = binary.BigEndian.AppendUint32(body, recordSize)
-	body = append(body, byte(len(asPublic)))
+	body = append(body, idlen)
 	body = append(body, asPublic...)
 
 	// The record sequence number is zero for the only record, so NONCE is used
@@ -229,4 +234,12 @@ var base64URLReplacer = strings.NewReplacer("+", "-", "/", "_")
 func decodeBase64(value string) ([]byte, error) {
 	normalised := base64URLReplacer.Replace(strings.TrimRight(value, "="))
 	return base64.RawURLEncoding.DecodeString(normalised)
+}
+
+// rfc8291IDLen encodes a key length as the RFC 8291 / RFC 8188 1-octet idlen.
+func rfc8291IDLen(n int) (byte, error) {
+	if n < 0 || n > math.MaxUint8 {
+		return 0, fmt.Errorf("webpush RFC 8291 idlen is 1 byte; got key length %d", n)
+	}
+	return byte(n), nil
 }

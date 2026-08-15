@@ -1,6 +1,7 @@
 package datahub_gateway
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -156,4 +157,78 @@ func TestParseUUIDTreatsEmptyAsNew(t *testing.T) {
 
 	_, err = parseUUID("nope")
 	require.Error(t, err)
+}
+
+func TestImageProxyCacheEntryToProto_PixelDimsDoNotWrapOnOverflow(t *testing.T) {
+	got := imageProxyCacheEntryToProto(&domain.ImageProxyCacheEntry{
+		Width:  math.MaxInt32 + 1,
+		Height: math.MaxInt32 + 1,
+	})
+	require.NotNil(t, got)
+	assert.Equal(t, int32(math.MaxInt32), got.Width, "Width must clamp to MaxInt32, not wrap negative")
+	assert.Equal(t, int32(math.MaxInt32), got.Height, "Height must clamp to MaxInt32, not wrap negative")
+	assert.GreaterOrEqual(t, got.Width, int32(0))
+	assert.GreaterOrEqual(t, got.Height, int32(0))
+}
+
+// Clamping, not zeroing: 0 means "caching disallowed", so coercing an
+// overflowing value to 0 would silently invert the recorded policy.
+func TestScrapingDomainToProto_AllowCacheDaysClampsOnOverflow(t *testing.T) {
+	got := scrapingDomainToProto(&domain.ScrapingDomain{
+		AllowCacheDays: math.MaxInt32 + 1,
+	})
+	require.NotNil(t, got)
+	assert.Equal(t, int32(math.MaxInt32), got.AllowCacheDays, "out-of-range days must clamp, not flip to 'caching disallowed'")
+}
+
+func TestScrapingDomainToProto_HTTPStatusOutOfRangeIsOmitted(t *testing.T) {
+	overflow := math.MaxInt32 + 1
+	got := scrapingDomainToProto(&domain.ScrapingDomain{RobotsTxtLastStatus: &overflow})
+	require.NotNil(t, got)
+	assert.Nil(t, got.RobotsTxtLastStatus, "overflowing HTTP status must not wrap onto the wire")
+
+	tooBig := 1000
+	got = scrapingDomainToProto(&domain.ScrapingDomain{RobotsTxtLastStatus: &tooBig})
+	assert.Nil(t, got.RobotsTxtLastStatus, "HTTP status outside 0..999 must be omitted")
+
+	negative := -1
+	got = scrapingDomainToProto(&domain.ScrapingDomain{RobotsTxtLastStatus: &negative})
+	assert.Nil(t, got.RobotsTxtLastStatus)
+
+	ok := 404
+	got = scrapingDomainToProto(&domain.ScrapingDomain{RobotsTxtLastStatus: &ok})
+	require.NotNil(t, got.RobotsTxtLastStatus)
+	assert.Equal(t, int32(404), *got.RobotsTxtLastStatus)
+}
+
+// Clamping, not omitting: an absent optional field reads as "no crawl delay
+// known", which would let the crawler speed up exactly when the recorded
+// delay was huge.
+func TestScrapingDomainToProto_CrawlDelayClampsOnOverflow(t *testing.T) {
+	overflow := math.MaxInt32 + 1
+	got := scrapingDomainToProto(&domain.ScrapingDomain{RobotsCrawlDelaySec: &overflow})
+	require.NotNil(t, got)
+	require.NotNil(t, got.RobotsCrawlDelaySec, "overflowing crawl delay must stay on the wire")
+	assert.Equal(t, int32(math.MaxInt32), *got.RobotsCrawlDelaySec)
+
+	ok := 10
+	got = scrapingDomainToProto(&domain.ScrapingDomain{RobotsCrawlDelaySec: &ok})
+	require.NotNil(t, got.RobotsCrawlDelaySec)
+	assert.Equal(t, int32(10), *got.RobotsCrawlDelaySec)
+}
+
+// Clamping, not omitting: in an update message an absent optional field means
+// "do not change", so dropping the field would silently discard the caller's
+// requested change while the RPC still reports success.
+func TestScrapingPolicyUpdateToProto_AllowCacheDaysClampsOnOverflow(t *testing.T) {
+	overflow := math.MaxInt32 + 1
+	got := scrapingPolicyUpdateToProto(&domain.ScrapingPolicyUpdate{AllowCacheDays: &overflow})
+	require.NotNil(t, got)
+	require.NotNil(t, got.AllowCacheDays, "a requested change must never be dropped silently")
+	assert.Equal(t, int32(math.MaxInt32), *got.AllowCacheDays)
+
+	ok := 7
+	got = scrapingPolicyUpdateToProto(&domain.ScrapingPolicyUpdate{AllowCacheDays: &ok})
+	require.NotNil(t, got.AllowCacheDays)
+	assert.Equal(t, int32(7), *got.AllowCacheDays)
 }

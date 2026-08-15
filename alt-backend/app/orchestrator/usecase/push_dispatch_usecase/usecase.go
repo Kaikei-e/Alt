@@ -14,11 +14,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"time"
 
 	"alt/domain"
 	"alt/orchestrator/port/push_dispatch_port"
+	"alt/utils/randutil"
 )
 
 const (
@@ -102,7 +102,17 @@ func fullJitterBackoff(attempt int) time.Duration {
 	if window > backoffCap {
 		window = backoffCap
 	}
-	return time.Duration(rand.Int64N(int64(window) + 1))
+	n, err := randutil.JitterInt64(int64(window))
+	if err != nil {
+		// Fail closed: wait the full window rather than panicking on the
+		// request path. crypto/rand failure is an OS entropy problem, not
+		// a missing dependency.
+		slog.Warn("push_dispatch.jitter_unavailable",
+			"attempt", attempt,
+			"error", err)
+		return window
+	}
+	return time.Duration(n)
 }
 
 // DispatchBatch claims up to limit deliveries and settles each one.

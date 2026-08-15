@@ -14,6 +14,7 @@ import (
 
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/utils/safeconv"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -153,8 +154,8 @@ func imageProxyCacheEntryToProto(e *domain.ImageProxyCacheEntry) *datahubv1.Imag
 		OriginalUrl: e.OriginalURL,
 		Data:        e.Data,
 		ContentType: e.ContentType,
-		Width:       int32(e.Width),  //nolint:gosec // pixel dimensions, bounded by the resizer
-		Height:      int32(e.Height), //nolint:gosec // pixel dimensions, bounded by the resizer
+		Width:       safeconv.Int32(e.Width),
+		Height:      safeconv.Int32(e.Height),
 		SizeBytes:   int64(e.SizeBytes),
 		Etag:        e.ETag,
 		CreatedAt:   timeToProto(e.CreatedAt),
@@ -219,12 +220,15 @@ func scrapingDomainToProto(sd *domain.ScrapingDomain) *datahubv1.ScrapingDomain 
 		return nil
 	}
 	out := &datahubv1.ScrapingDomain{
-		Id:                  sd.ID.String(),
-		Domain:              sd.Domain,
-		Scheme:              sd.Scheme,
-		AllowFetchBody:      sd.AllowFetchBody,
-		AllowMlTraining:     sd.AllowMLTraining,
-		AllowCacheDays:      int32(sd.AllowCacheDays), //nolint:gosec // days, operator-supplied and small
+		Id:              sd.ID.String(),
+		Domain:          sd.Domain,
+		Scheme:          sd.Scheme,
+		AllowFetchBody:  sd.AllowFetchBody,
+		AllowMlTraining: sd.AllowMLTraining,
+		// Clamped, never zeroed or dropped: 0 means "caching disallowed" and
+		// an absent optional means "unknown", so both would silently invert
+		// an out-of-range value's intent (rule 8: no silent fallback).
+		AllowCacheDays:      safeconv.Int32(sd.AllowCacheDays),
 		ForceRespectRobots:  sd.ForceRespectRobots,
 		RobotsDisallowPaths: sd.RobotsDisallowPaths,
 		RobotsTxtFetchedAt:  timePtrToProto(sd.RobotsTxtFetchedAt),
@@ -234,11 +238,15 @@ func scrapingDomainToProto(sd *domain.ScrapingDomain) *datahubv1.ScrapingDomain 
 	out.RobotsTxtUrl = sd.RobotsTxtURL
 	out.RobotsTxtContent = sd.RobotsTxtContent
 	if sd.RobotsTxtLastStatus != nil {
-		v := int32(*sd.RobotsTxtLastStatus) //nolint:gosec // HTTP status code
-		out.RobotsTxtLastStatus = &v
+		// Domain validation, not overflow handling: anything outside the
+		// HTTP status range is garbage and stays off the wire.
+		if n := *sd.RobotsTxtLastStatus; n >= 0 && n <= 999 {
+			v := int32(n)
+			out.RobotsTxtLastStatus = &v
+		}
 	}
 	if sd.RobotsCrawlDelaySec != nil {
-		v := int32(*sd.RobotsCrawlDelaySec) //nolint:gosec // seconds, from robots.txt
+		v := safeconv.Int32(*sd.RobotsCrawlDelaySec)
 		out.RobotsCrawlDelaySec = &v
 	}
 	return out
@@ -254,7 +262,10 @@ func scrapingPolicyUpdateToProto(u *domain.ScrapingPolicyUpdate) *datahubv1.Scra
 		ForceRespectRobots: u.ForceRespectRobots,
 	}
 	if u.AllowCacheDays != nil {
-		v := int32(*u.AllowCacheDays) //nolint:gosec // days, operator-supplied and small
+		// Clamped, never dropped: an absent field in an update means "do not
+		// change", which would discard the caller's requested change while
+		// the RPC still reports success (rule 8: no silent fallback).
+		v := safeconv.Int32(*u.AllowCacheDays)
 		out.AllowCacheDays = &v
 	}
 	return out

@@ -2,6 +2,7 @@
 package knowledge_trail
 
 import (
+	"alt/utils/safeconv"
 	"context"
 	"errors"
 	"log/slog"
@@ -251,7 +252,7 @@ func mapFootprint(fp domain.TrailFootprint) *knowledgetrailv1.Footprint {
 	if firstOccurredAt.IsZero() {
 		firstOccurredAt = fp.OccurredAt
 	}
-	contactCount := max(fp.ContactCount, 1)
+	wireCount := safeconv.Int32(max(fp.ContactCount, 1))
 	return &knowledgetrailv1.Footprint{
 		FootprintKey:    fp.FootprintKey,
 		Verb:            fp.Verb,
@@ -262,7 +263,7 @@ func mapFootprint(fp domain.TrailFootprint) *knowledgetrailv1.Footprint {
 		Note:            fp.Note,
 		OccurredAt:      fp.OccurredAt.UTC().Format(time.RFC3339),
 		Wear:            fp.Wear,
-		ContactCount:    int32(contactCount), //nolint:gosec // >= 1, bounded upstream
+		ContactCount:    wireCount,
 		FirstOccurredAt: firstOccurredAt.UTC().Format(time.RFC3339),
 	}
 }
