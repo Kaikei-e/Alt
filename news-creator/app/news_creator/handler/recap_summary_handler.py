@@ -74,7 +74,7 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
                 "Invalid recap summary request",
                 extra={"error": str(exc), "job_id": str(request.job_id)},
             )
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail="Invalid request") from exc
 
         except PreemptedException as exc:
             logger.warning(
@@ -85,7 +85,9 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
                     "genre": request.genre,
                 },
             )
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except RuntimeError as exc:
             logger.error(
@@ -95,8 +97,11 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
                     "job_id": str(request.job_id),
                     "genre": request.genre,
                 },
+                exc_info=True,
             )
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except Exception as exc:
             logger.exception(

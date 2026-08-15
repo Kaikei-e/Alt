@@ -44,13 +44,15 @@ def create_plan_query_router(plan_query_usecase: PlanQueryUsecase) -> APIRouter:
 
         except ValueError as exc:
             logger.warning("Invalid plan-query request", extra={"error": str(exc)})
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail="Invalid request") from exc
 
         except RuntimeError as exc:
             logger.error(
                 "Failed to plan query", extra={"error": str(exc)}, exc_info=True
             )
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except Exception as exc:
             logger.exception("Unexpected error in plan-query")

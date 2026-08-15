@@ -122,17 +122,14 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
 
         except ValueError as exc:
             logger.warning("Invalid /api/generate payload", extra={"error": str(exc)})
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail="Invalid request") from exc
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            # Network/timeout errors are surfaced directly as 502 here -- a
+            # Network/timeout errors are surfaced as 502 here -- a
             # `raise RuntimeError(...)` in this block would NOT be caught by
             # the `except RuntimeError` below (a raise inside an except
             # clause of the same try is not re-matched against sibling
             # except clauses), so it would escape as an unhandled 500.
-            error_msg = (
-                f"Network error during LLM request: {type(exc).__name__} - {str(exc)}"
-            )
             logger.error(
                 "Network error in /api/generate",
                 extra={
@@ -144,20 +141,23 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                 },
                 exc_info=True,
             )
-            raise HTTPException(status_code=502, detail=error_msg) from exc
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except RuntimeError as exc:
-            error_detail = str(exc)
             logger.error(
                 "LLM generate request failed",
                 extra={
-                    "error": error_detail,
+                    "error": str(exc),
                     "error_type": type(exc).__name__,
                     "model": request.model if hasattr(request, "model") else None,
                 },
-                exc_info=True,  # Include full traceback for debugging
+                exc_info=True,
             )
-            raise HTTPException(status_code=502, detail=error_detail) from exc
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except Exception as exc:
             logger.exception(

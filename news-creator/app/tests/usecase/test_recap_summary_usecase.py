@@ -309,7 +309,8 @@ async def test_generate_batch_summary_partial_failure():
     assert len(response.errors) == 1
     assert response.responses[0].genre == "tech"
     assert response.errors[0].genre == "politics"
-    assert "LLM service unavailable" in response.errors[0].error
+    assert response.errors[0].error == "summary_generation_failed"
+    assert "LLM service unavailable" not in response.errors[0].error
 
 
 @pytest.mark.asyncio
@@ -333,6 +334,8 @@ async def test_generate_batch_summary_all_fail():
 
     assert len(response.responses) == 0
     assert len(response.errors) == 2
+    assert all(err.error == "summary_generation_failed" for err in response.errors)
+    assert all("LLM service unavailable" not in err.error for err in response.errors)
 
 
 @pytest.mark.asyncio

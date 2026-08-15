@@ -101,7 +101,7 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
                     "query": request.query[:100] if request.query else "",
                 },
             )
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail="Invalid request") from exc
 
         except RuntimeError as exc:
             logger.error(
@@ -112,7 +112,9 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
                 },
                 exc_info=True,
             )
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except Exception as exc:
             logger.exception(

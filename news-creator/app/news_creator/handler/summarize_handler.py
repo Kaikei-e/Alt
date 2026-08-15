@@ -199,7 +199,9 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                 # Surface the failure to the client instead of
                                 # letting the stream end silently and look
                                 # like a normal (if short) completed summary.
-                                await data_queue.put(("error", str(e)))
+                                await data_queue.put(
+                                    ("error", "summary generation failed")
+                                )
                             finally:
                                 stopped.set()
                                 await data_queue.put(None)  # Sentinel to stop
@@ -360,7 +362,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
 
         except ValueError as exc:
             logger.warning("Invalid summarize request", extra={"error": str(exc)})
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail="Invalid request") from exc
 
         except RuntimeError as exc:
             error_detail = str(exc)
@@ -373,7 +375,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                     },
                 )
                 raise HTTPException(
-                    status_code=422, detail=f"Content not processable: {error_detail}"
+                    status_code=422, detail="Content not processable"
                 ) from exc
             logger.error(
                 "Failed to generate summary",
@@ -383,9 +385,11 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                     "error_type": type(exc).__name__,
                     "content_length": len(request.content) if request.content else 0,
                 },
-                exc_info=True,  # Include full traceback for debugging
+                exc_info=True,
             )
-            raise HTTPException(status_code=502, detail=error_detail) from exc
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except Exception as exc:
             logger.exception(

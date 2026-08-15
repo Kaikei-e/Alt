@@ -97,7 +97,7 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
                     "query": request.query[:100] if request.query else "",
                 },
             )
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail="Invalid request") from exc
 
         except RuntimeError as exc:
             logger.error(
@@ -109,7 +109,9 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
                 },
                 exc_info=True,
             )
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except Exception as exc:
             logger.exception(

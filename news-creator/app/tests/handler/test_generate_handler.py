@@ -56,3 +56,46 @@ def test_generate_returns_200_on_success():
 
     assert response.status_code == 200
     assert response.json()["response"] == "hello"
+
+
+def test_generate_value_error_does_not_leak_exception_text():
+    """Regression: ValueError must not leak to the client body."""
+    secret = (
+        "invalid generate payload at /app/news_creator/gateway/ollama_gateway.py:88"
+    )
+    mock_provider = _make_mock_provider(side_effect=ValueError(secret))
+    client = _make_client(mock_provider)
+
+    response = client.post("/api/generate", json={"prompt": "hello"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid request"
+    assert secret not in response.text
+
+
+def test_generate_runtime_error_does_not_leak_exception_text():
+    """Regression: RuntimeError must not leak to the client body."""
+    secret = "Ollama connection refused at http://ollama.internal:11434"
+    mock_provider = _make_mock_provider(side_effect=RuntimeError(secret))
+    client = _make_client(mock_provider)
+
+    response = client.post("/api/generate", json={"prompt": "hello"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Upstream service error"
+    assert secret not in response.text
+
+
+def test_generate_timeout_does_not_leak_exception_text():
+    """Regression: timeout errors must not leak host details to the client."""
+    import asyncio
+
+    secret = "timed out connecting to ollama.internal:11434"
+    mock_provider = _make_mock_provider(side_effect=asyncio.TimeoutError(secret))
+    client = _make_client(mock_provider)
+
+    response = client.post("/api/generate", json={"prompt": "hello"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Upstream service error"
+    assert secret not in response.text

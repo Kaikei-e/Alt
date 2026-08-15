@@ -81,12 +81,11 @@ def test_summarize_returns_200_on_success():
 
 def test_empty_summary_returns_422():
     """RuntimeError with 'empty/whitespace summary' should return HTTP 422."""
-    mock_usecase = _make_mock_usecase(
-        side_effect=RuntimeError(
-            "LLM returned empty/whitespace summary 2 times consecutively for article test-123. "
-            "Model may be in a bad state."
-        )
+    secret = (
+        "LLM returned empty/whitespace summary 2 times consecutively for article secret-id. "
+        "Model may be in a bad state."
     )
+    mock_usecase = _make_mock_usecase(side_effect=RuntimeError(secret))
     client = _make_client(mock_usecase)
 
     response = client.post(
@@ -95,17 +94,14 @@ def test_empty_summary_returns_422():
     )
 
     assert response.status_code == 422
-    data = response.json()
-    assert (
-        "not processable" in data["detail"].lower() or "empty" in data["detail"].lower()
-    )
+    assert response.json()["detail"] == "Content not processable"
+    assert secret not in response.text
 
 
 def test_other_runtime_error_returns_502():
     """RuntimeError without 'empty/whitespace' should still return HTTP 502."""
-    mock_usecase = _make_mock_usecase(
-        side_effect=RuntimeError("LLM connection timeout")
-    )
+    secret = "LLM connection timeout to ollama.internal:11434"
+    mock_usecase = _make_mock_usecase(side_effect=RuntimeError(secret))
     client = _make_client(mock_usecase)
 
     response = client.post(
@@ -114,5 +110,45 @@ def test_other_runtime_error_returns_502():
     )
 
     assert response.status_code == 502
-    data = response.json()
-    assert "LLM connection timeout" in data["detail"]
+    assert response.json()["detail"] == "Upstream service error"
+    assert secret not in response.text
+
+
+def test_summarize_value_error_does_not_leak_exception_text():
+    """ValueError from usecase returns 400 without leaking exception text."""
+    secret = (
+        "invalid summarize request at /app/news_creator/usecase/summarize_usecase.py:12"
+    )
+    mock_usecase = _make_mock_usecase(side_effect=ValueError(secret))
+    client = _make_client(mock_usecase)
+
+    response = client.post(
+        "/api/v1/summarize",
+        json={"article_id": "test-123", "content": "A" * 200, "stream": False},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid request"
+    assert secret not in response.text
+
+
+def test_summarize_stream_error_does_not_leak_exception_text():
+    """SSE error events must not include exception / traceback text."""
+    secret = "Ollama crash at /usr/lib/ollama/runner.py:412"
+
+    async def failing_stream(*args, **kwargs):
+        raise RuntimeError(secret)
+        yield  # pragma: no cover — marks this as an async generator
+
+    mock_usecase = _make_mock_usecase()
+    mock_usecase.generate_summary_stream = failing_stream
+    client = _make_client(mock_usecase)
+
+    response = client.post(
+        "/api/v1/summarize",
+        json={"article_id": "test-123", "content": "A" * 200, "stream": True},
+    )
+
+    assert response.status_code == 200
+    assert secret not in response.text
+    assert "summary generation failed" in response.text

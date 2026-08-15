@@ -72,11 +72,10 @@ def test_health_check_with_no_models_loaded(client, mock_ollama_gateway):
 
 
 def test_health_check_handles_ollama_unavailable(client, mock_ollama_gateway):
-    """Test health check handles Ollama service unavailability gracefully."""
+    """Test health check handles Ollama unavailability without leaking exception details."""
     # Arrange
-    mock_ollama_gateway.list_models.side_effect = RuntimeError(
-        "Ollama service unavailable"
-    )
+    secret = "Ollama service unavailable at http://internal:11434/secret-path"
+    mock_ollama_gateway.list_models.side_effect = RuntimeError(secret)
 
     # Act
     response = client.get("/health")
@@ -88,8 +87,9 @@ def test_health_check_handles_ollama_unavailable(client, mock_ollama_gateway):
     assert data["service"] == "news-creator"
     assert "models" in data
     assert len(data["models"]) == 0
-    assert "error" in data
-    assert "Ollama service unavailable" in data["error"]
+    assert data["error"] == "ollama_unavailable"
+    assert secret not in response.text
+    assert "Traceback" not in response.text
 
 
 def test_queue_status_returns_correct_state(client, mock_ollama_gateway):
@@ -126,11 +126,12 @@ def test_queue_status_with_saturated_queue(client, mock_ollama_gateway):
 
 
 def test_health_check_handles_network_timeout(client, mock_ollama_gateway):
-    """Test health check handles network timeout gracefully."""
+    """Test health check handles network timeout without leaking exception details."""
     # Arrange
     import asyncio
 
-    mock_ollama_gateway.list_models.side_effect = asyncio.TimeoutError()
+    secret = "timed out connecting to ollama.internal:11434"
+    mock_ollama_gateway.list_models.side_effect = asyncio.TimeoutError(secret)
 
     # Act
     response = client.get("/health")
@@ -142,4 +143,6 @@ def test_health_check_handles_network_timeout(client, mock_ollama_gateway):
     assert data["service"] == "news-creator"
     assert "models" in data
     assert len(data["models"]) == 0
-    assert "error" in data
+    assert data["error"] == "ollama_unavailable"
+    assert secret not in response.text
+    assert "Traceback" not in response.text

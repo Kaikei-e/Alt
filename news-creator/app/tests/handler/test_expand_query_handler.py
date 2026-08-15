@@ -109,27 +109,30 @@ def test_expand_query_handler_with_conversation_history():
 
 
 def test_expand_query_handler_value_error():
-    """Test that ValueError results in 400 response."""
+    """ValueError from usecase returns 400 without leaking exception text."""
     usecase = AsyncMock()
-    usecase.expand_query.side_effect = ValueError("query cannot be empty")
+    secret = (
+        "query cannot be empty at /app/news_creator/usecase/expand_query_usecase.py:40"
+    )
+    usecase.expand_query.side_effect = ValueError(secret)
 
     app = FastAPI()
     app.include_router(create_expand_query_router(usecase))
     client = TestClient(app)
 
-    payload = {"query": ""}
+    payload = {"query": "test query"}
     resp = client.post("/api/v1/expand-query", json=payload)
 
-    # Note: pydantic validation may catch this first, but if it gets through:
-    # The handler should return 400 for ValueError from usecase
-    # If pydantic catches it, it will be 422
-    assert resp.status_code in (400, 422)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid request"
+    assert secret not in resp.text
 
 
 def test_expand_query_handler_runtime_error():
-    """Test that RuntimeError results in 502 response."""
+    """RuntimeError from usecase returns 502 without leaking exception text."""
     usecase = AsyncMock()
-    usecase.expand_query.side_effect = RuntimeError("LLM service unavailable")
+    secret = "LLM service unavailable at http://ollama.internal:11434"
+    usecase.expand_query.side_effect = RuntimeError(secret)
 
     app = FastAPI()
     app.include_router(create_expand_query_router(usecase))
@@ -139,7 +142,8 @@ def test_expand_query_handler_runtime_error():
     resp = client.post("/api/v1/expand-query", json=payload)
 
     assert resp.status_code == 502
-    assert resp.json()["detail"] == "LLM service unavailable"
+    assert resp.json()["detail"] == "Upstream service error"
+    assert secret not in resp.text
 
 
 def test_expand_query_handler_queue_full_returns_429():

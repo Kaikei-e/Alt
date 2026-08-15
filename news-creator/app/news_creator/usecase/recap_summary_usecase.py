@@ -345,12 +345,14 @@ class RecapSummaryUsecase:
                     "job_id": str(request.job_id),
                     "genre": request.genre,
                     "error": str(e),
+                    "error_type": type(e).__name__,
                 },
+                exc_info=True,
             )
             return BatchRecapSummaryError(
                 job_id=request.job_id,
                 genre=request.genre,
-                error=str(e),
+                error="summary_generation_failed",
             )
 
     def _should_bypass_llm(self, request: RecapSummaryRequest) -> bool:

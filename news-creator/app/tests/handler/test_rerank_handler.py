@@ -102,26 +102,30 @@ class TestRerankHandler:
         assert response.status_code == 422
 
     def test_rerank_usecase_value_error(self, client, mock_usecase):
-        """Test rerank request when usecase raises ValueError."""
-        mock_usecase.rerank.side_effect = ValueError("Invalid input")
+        """ValueError from usecase returns 400 without leaking exception text."""
+        secret = "Invalid input at /app/news_creator/usecase/rerank_usecase.py:12"
+        mock_usecase.rerank.side_effect = ValueError(secret)
 
         response = client.post(
             "/v1/rerank", json={"query": "test query", "candidates": ["candidate 1"]}
         )
 
         assert response.status_code == 400
-        assert "Invalid input" in response.json()["detail"]
+        assert response.json()["detail"] == "Invalid request"
+        assert secret not in response.text
 
     def test_rerank_usecase_runtime_error(self, client, mock_usecase):
-        """Test rerank request when usecase raises RuntimeError."""
-        mock_usecase.rerank.side_effect = RuntimeError("Model failed")
+        """RuntimeError from usecase returns 502 without leaking exception text."""
+        secret = "Model failed at http://ollama.internal:11434"
+        mock_usecase.rerank.side_effect = RuntimeError(secret)
 
         response = client.post(
             "/v1/rerank", json={"query": "test query", "candidates": ["candidate 1"]}
         )
 
         assert response.status_code == 502
-        assert "Model failed" in response.json()["detail"]
+        assert response.json()["detail"] == "Upstream service error"
+        assert secret not in response.text
 
     def test_rerank_unexpected_error(self, client, mock_usecase):
         """Test rerank request when usecase raises unexpected error."""

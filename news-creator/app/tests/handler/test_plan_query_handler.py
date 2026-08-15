@@ -83,12 +83,29 @@ def test_plan_query_empty_query_returns_422():
 def test_plan_query_llm_error_returns_502():
     """POST /api/v1/plan-query returns 502 when LLM fails with RuntimeError."""
     mock_usecase = AsyncMock()
-    mock_usecase.plan_query.side_effect = RuntimeError("Ollama connection refused")
+    secret = "Ollama connection refused at http://ollama.internal:11434"
+    mock_usecase.plan_query.side_effect = RuntimeError(secret)
     client = _make_app(mock_usecase)
 
     resp = client.post("/api/v1/plan-query", json={"query": "テスト"})
 
     assert resp.status_code == 502
+    assert resp.json()["detail"] == "Upstream service error"
+    assert secret not in resp.text
+
+
+def test_plan_query_value_error_does_not_leak_exception_text():
+    """Regression: ValueError from usecase must not leak to the client body."""
+    mock_usecase = AsyncMock()
+    secret = "internal validation failed at /app/news_creator/usecase/plan_query_usecase.py:90"
+    mock_usecase.plan_query.side_effect = ValueError(secret)
+    client = _make_app(mock_usecase)
+
+    resp = client.post("/api/v1/plan-query", json={"query": "テスト"})
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid request"
+    assert secret not in resp.text
 
 
 def test_plan_query_unexpected_error_returns_500():
@@ -100,3 +117,4 @@ def test_plan_query_unexpected_error_returns_500():
     resp = client.post("/api/v1/plan-query", json={"query": "テスト"})
 
     assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"

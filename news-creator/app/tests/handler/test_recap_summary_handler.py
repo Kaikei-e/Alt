@@ -56,7 +56,8 @@ def test_recap_summary_handler_success():
 
 def test_recap_summary_handler_value_error():
     usecase = AsyncMock()
-    usecase.generate_summary.side_effect = ValueError("invalid payload")
+    secret = "invalid payload at /app/news_creator/usecase/recap_summary_usecase.py:80"
+    usecase.generate_summary.side_effect = ValueError(secret)
 
     app = FastAPI()
     app.include_router(create_recap_summary_router(usecase))
@@ -66,12 +67,14 @@ def test_recap_summary_handler_value_error():
     resp = client.post("/v1/summary/generate", json=payload)
 
     assert resp.status_code == 400
-    assert resp.json()["detail"] == "invalid payload"
+    assert resp.json()["detail"] == "Invalid request"
+    assert secret not in resp.text
 
 
 def test_recap_summary_handler_runtime_error():
     usecase = AsyncMock()
-    usecase.generate_summary.side_effect = RuntimeError("llm failure")
+    secret = "llm failure at http://ollama.internal:11434"
+    usecase.generate_summary.side_effect = RuntimeError(secret)
 
     app = FastAPI()
     app.include_router(create_recap_summary_router(usecase))
@@ -81,7 +84,8 @@ def test_recap_summary_handler_runtime_error():
     resp = client.post("/v1/summary/generate", json=payload)
 
     assert resp.status_code == 502
-    assert resp.json()["detail"] == "llm failure"
+    assert resp.json()["detail"] == "Upstream service error"
+    assert secret not in resp.text
 
 
 def test_recap_summary_handler_queue_full_returns_429():
@@ -119,9 +123,8 @@ def test_recap_summary_handler_preempted_returns_502():
     from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
 
     usecase = AsyncMock()
-    usecase.generate_summary.side_effect = PreemptedException(
-        "request preempted during generation"
-    )
+    secret = "request preempted during generation at slot 3"
+    usecase.generate_summary.side_effect = PreemptedException(secret)
 
     app = FastAPI()
     app.include_router(create_recap_summary_router(usecase))
@@ -131,7 +134,8 @@ def test_recap_summary_handler_preempted_returns_502():
     resp = client.post("/v1/summary/generate", json=payload)
 
     assert resp.status_code == 502
-    assert "preempt" in resp.json()["detail"].lower()
+    assert resp.json()["detail"] == "Upstream service error"
+    assert secret not in resp.text
 
 
 # ============================================================================
@@ -248,7 +252,7 @@ def test_batch_recap_summary_handler_partial_failure():
             BatchRecapSummaryError(
                 job_id=job_id_2,
                 genre="politics",
-                error="LLM service unavailable",
+                error="summary_generation_failed",
             ),
         ],
     )

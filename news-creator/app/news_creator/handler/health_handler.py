@@ -61,9 +61,12 @@ def create_health_router(ollama_gateway: LLMProviderPort | None = None) -> APIRo
                 models = await ollama_gateway.list_models()
                 response["models"] = models
                 logger.debug(f"Health check: {len(models)} models available")
-            except Exception as err:
-                logger.warning(f"Failed to fetch models during health check: {err}")
-                response["error"] = str(err)
+            except Exception:
+                logger.warning(
+                    "Failed to fetch models during health check",
+                    exc_info=True,
+                )
+                response["error"] = "ollama_unavailable"
                 # Still return healthy status - service is up even if Ollama is not ready
 
         return response
