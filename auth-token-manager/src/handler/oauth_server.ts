@@ -31,6 +31,60 @@ function timingSafeEqualString(a: string, b: string): boolean {
   return diff === 0;
 }
 
+function extractBearerToken(authorizationHeader: string | null): string {
+  if (authorizationHeader === null) {
+    return "";
+  }
+  const spaceIndex = authorizationHeader.indexOf(" ");
+  if (spaceIndex < 0) {
+    return "";
+  }
+  const scheme = authorizationHeader.substring(0, spaceIndex);
+  if (scheme.toLowerCase() !== "bearer") {
+    return "";
+  }
+  return authorizationHeader.substring(spaceIndex + 1);
+}
+
+async function extractFormToken(req: Request): Promise<string> {
+  try {
+    const form = await req.formData();
+    const token = form.get("token");
+    return typeof token === "string" ? token : "";
+  } catch {
+    // A body that is not form data is just an unauthenticated request.
+    return "";
+  }
+}
+
+// The browser path for the operator re-auth flow: a navigation cannot attach
+// Authorization: Bearer, so /auth serves this form and takes the token from
+// the POST body — never from the URL (CWE-598).
+const AUTH_TOKEN_FORM = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>auth-token-manager</title></head>
+<body>
+<h1>Inoreader re-authorization</h1>
+<p>Paste the operator token (INTERNAL_AUTH_TOKEN) to start the OAuth consent flow.</p>
+<form method="post" action="/auth">
+  <input type="password" name="token" autocomplete="off" autofocus>
+  <button type="submit">Authorize</button>
+</form>
+</body>
+</html>
+`;
+
+function authTokenPromptResponse(): Response {
+  return new Response(AUTH_TOKEN_FORM, {
+    status: 401,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
+}
+
 export class OAuthServer {
   private pendingStates = new Map<string, PendingAuthState>();
 
@@ -165,7 +219,7 @@ export class OAuthServer {
     // public port can complete the OAuth flow with their own account and
     // overwrite the stored tokens.
     if (reqUrl.pathname === "/" || reqUrl.pathname === "/auth") {
-      return await this.handleAuthRedirect(reqUrl);
+      return await this.handleAuthRedirect(req);
     }
 
     // Callback
@@ -184,7 +238,7 @@ export class OAuthServer {
     return new Response("Not Found", { status: 404 });
   }
 
-  private async handleAuthRedirect(reqUrl: URL): Promise<Response> {
+  private async handleAuthRedirect(req: Request): Promise<Response> {
     const expectedToken = config.getEnvOrFile("INTERNAL_AUTH_TOKEN");
 
     // Fail closed: without a configured secret there is no way to
@@ -200,9 +254,15 @@ export class OAuthServer {
       );
     }
 
-    const providedToken = reqUrl.searchParams.get("token") ?? "";
+    // CWE-598: never accept INTERNAL_AUTH_TOKEN via ?token= (access logs,
+    // browser history, proxies). Scripts send Authorization: Bearer; a
+    // browser gets the form and POSTs the token in the request body.
+    let providedToken = extractBearerToken(req.headers.get("Authorization"));
+    if (providedToken === "" && req.method === "POST") {
+      providedToken = await extractFormToken(req);
+    }
     if (!(timingSafeEqualString(providedToken, expectedToken))) {
-      return new Response("Unauthorized", { status: 401 });
+      return authTokenPromptResponse();
     }
 
     // Clean expired states
@@ -220,10 +280,8 @@ export class OAuthServer {
       status: 302,
       headers: {
         Location: url,
-        // The redirect target is Inoreader's own OAuth authorize endpoint.
-        // Without this, a browser following the redirect would send this
-        // request's URL (including the ?token=... internal secret) as the
-        // Referer header on that cross-origin navigation.
+        // Defense in depth: do not send this request's URL as Referer to
+        // Inoreader's OAuth authorize endpoint.
         "Referrer-Policy": "no-referrer",
       },
     });

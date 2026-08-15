@@ -155,16 +155,104 @@ describe("OAuthServer /api/token", {
     assertEquals(body.refresh_token, undefined);
   });
 
-  it("should set Referrer-Policy: no-referrer on the /auth redirect so the internal auth token in the query string is not leaked to Inoreader via the Referer header", async () => {
+  it("should 302 to Inoreader when Authorization Bearer matches INTERNAL_AUTH_TOKEN", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/auth`, {
+      redirect: "manual",
+      headers: { Authorization: "Bearer correct-token" },
+    });
+
+    assertEquals(res.status, 302);
+    assertEquals(res.headers.get("Referrer-Policy"), "no-referrer");
+    const location = res.headers.get("Location") ?? "";
+    assertEquals(
+      location.startsWith("https://www.inoreader.com/oauth2/auth"),
+      true,
+    );
+    await res.body?.cancel();
+  });
+
+  it("should return 401 when /auth is called without an Authorization header", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/auth`, {
+      redirect: "manual",
+    });
+    assertEquals(res.status, 401);
+    await res.body?.cancel();
+  });
+
+  it("should return 401 when /auth is called with the wrong Bearer token", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/auth`, {
+      redirect: "manual",
+      headers: { Authorization: "Bearer wrong-token" },
+    });
+    assertEquals(res.status, 401);
+    await res.body?.cancel();
+  });
+
+  it("should return 401 when /auth is given the correct token only as ?token=", async () => {
     Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
 
     const res = await fetch(
       `http://localhost:${TEST_PORT}/auth?token=correct-token`,
       { redirect: "manual" },
     );
+    assertEquals(res.status, 401);
+    await res.body?.cancel();
+  });
+
+  it("should serve a token form on an unauthenticated browser GET without echoing the secret", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/auth`, {
+      redirect: "manual",
+    });
+    assertEquals(res.status, 401);
+    assertEquals(
+      (res.headers.get("Content-Type") ?? "").startsWith("text/html"),
+      true,
+    );
+
+    const body = await res.text();
+    assertEquals(body.includes('action="/auth"'), true);
+    assertEquals(body.includes('method="post"'), true);
+    assertEquals(body.includes('type="password"'), true);
+    assertEquals(body.includes("correct-token"), false);
+  });
+
+  it("should 302 to Inoreader when the operator token arrives as a POSTed form field", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/auth`, {
+      method: "POST",
+      redirect: "manual",
+      body: new URLSearchParams({ token: "correct-token" }),
+    });
 
     assertEquals(res.status, 302);
     assertEquals(res.headers.get("Referrer-Policy"), "no-referrer");
+    const location = res.headers.get("Location") ?? "";
+    assertEquals(
+      location.startsWith("https://www.inoreader.com/oauth2/auth"),
+      true,
+    );
+    await res.body?.cancel();
+  });
+
+  it("should return 401 when the POSTed form token is wrong", async () => {
+    Deno.env.set("INTERNAL_AUTH_TOKEN", "correct-token");
+
+    const res = await fetch(`http://localhost:${TEST_PORT}/auth`, {
+      method: "POST",
+      redirect: "manual",
+      body: new URLSearchParams({ token: "wrong-token" }),
+    });
+    assertEquals(res.status, 401);
+    await res.body?.cancel();
   });
 
   it("should accept the token when only INTERNAL_AUTH_TOKEN_FILE is set (compose secrets)", async () => {
