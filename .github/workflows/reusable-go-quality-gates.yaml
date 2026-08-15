@@ -171,7 +171,12 @@ jobs:
           mkdir -p ./_reports
           # Mask paths in gosec output by redirecting stderr and filtering
           # Note: ::add-mask:: already masks these values in logs, but we also filter here for extra safety
-          gosec -no-fail -fmt sarif -out ./_reports/gosec.sarif ./... 2>&1 | \
+          # protobuf-gen-go uses unsafe, so G103 on gen/ trees is noise. Scoped to
+          # directories literally named "gen": -exclude-generated would skip every
+          # file carrying a "Code generated" header from ALL rules (including
+          # scaffolded-then-hand-maintained ones), and a bare -exclude-dir=gen is
+          # substring-matched by gosec ("agent" would match too).
+          gosec -exclude-dir='(^|/)gen(/|$)' -no-fail -fmt sarif -out ./_reports/gosec.sarif ./... 2>&1 | \
             sed "s|${GITHUB_WORKSPACE}|***|g" | \
             sed "s|${RUNNER_TEMP}|***|g" | \
             sed "s|/home/runner|***|g" | \
