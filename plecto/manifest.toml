@@ -1,5 +1,5 @@
 # Plecto edge/ingress manifest for Alt.
-# Built against ghcr.io/kaikei-e/plecto:0.7.0. The image series and the
+# Built against ghcr.io/kaikei-e/plecto:0.8.0. The image series and the
 # `plecto:filter@` contract series are independent — see compose/core.yaml.
 # [state] is omitted (defaults to "memory" — zero-config; rate-limit counters/KV don't
 # survive a restart, acceptable for this deployment).
@@ -16,11 +16,29 @@ isolation = "trusted"        # first-party, Alt-authored filter
 [observability]
 admin_addr = "0.0.0.0:8080"   # /metrics /healthz /readyz — replaces nginx stub_status
 access_log = true
+# The edge is the one hop that sees every request, and until now its half of a
+# trace existed only as the access log's trace_id — nothing hung a span off it.
+# Points at the OTLP/HTTP receiver every other service already exports to
+# (rask-log-aggregator, compose/logging.yaml); the exporter appends /v1/traces.
+# Export is a bounded queue drained by a pump, never the request path: a down
+# collector costs dropped spans (plecto_otlp_dropped_spans_total), not latency.
+# Captured at startup like admin_addr — changing it is a restart, not a reload.
+otlp_endpoint = "http://rask-log-aggregator:4318"
 
 [listen]
 addr = "0.0.0.0:8443"          # published as host 80 -> container 8443 (nonroot: no <1024 bind)
 [listen.trusted_proxy]
 trusted = ["172.18.0.1/32"]
+[listen.drain]
+# The default drain window is 30 s and Docker's default SIGKILL follows SIGTERM by
+# 10 s, so the graceful path never finished: every recreate cut in-flight requests
+# mid-response. 8 s fits inside the 12 s stop_grace_period declared in
+# compose/core.yaml, with headroom for the OTLP exporter's own 3 s shutdown flush.
+# Longer buys nothing here — the SSE routes hold connections open indefinitely, so
+# any window is spent waiting on streams that were never going to close by themselves.
+window_ms = 8000
+# readiness_grace_ms is deliberately absent: nothing fronts this proxy, so there is
+# no rotation to fall out of before the drain starts.
 
 [[upstream]]
 name = "alt-backend"

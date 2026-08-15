@@ -77,10 +77,14 @@ services:
     # this binary loads 0.1.0 / 0.2.0 / 0.3.0 / 0.4.0 through load-time adapters,
     # so bumping the image never requires rebuilding or re-signing a filter, and
     # a patch release is always safe to take on its own.
-    image: ghcr.io/kaikei-e/plecto:0.7.0
+    image: ghcr.io/kaikei-e/plecto:0.8.0
     command: ["/etc/plecto/manifest.toml"]
     restart: always
     mem_limit: 512m
+    # Declared, not inherited: the manifest's [listen.drain] window is 8 s and the
+    # OTLP exporter flushes for up to 3 s after it, which does not fit Docker's
+    # 10 s default before SIGKILL.
+    stop_grace_period: 12s
     ports:
       - "80:8443"
       - "127.0.0.1:8080:8080"  # admin: /metrics /healthz /readyz (replaces nginx-exporter's job)
