@@ -204,9 +204,31 @@ function handleKeydown(e: KeyboardEvent) {
 	<!-- Content Area -->
 	<div class="flex-1 overflow-y-auto px-6 py-5">
 		{#if summarizer.summary}
-			<div class="mb-5 p-4 rounded-lg border" style="background: var(--badge-teal-bg); border-color: var(--badge-teal-border);">
+			<div class="mb-5 p-4 rounded-lg border" data-testid="ai-summary" style="background: var(--badge-teal-bg); border-color: var(--badge-teal-border);">
 				<p class="text-xs font-semibold mb-2" style="color: var(--badge-teal-text);">AI Summary</p>
 				<p class="text-sm leading-relaxed" style="color: var(--text-primary);">{summarizer.summary}</p>
+				{#if summarizer.summaryError}
+					<!-- A cut stream leaves its partial text on screen. Without this
+					     notice a truncated summary reads as a clean short one. -->
+					<p
+						class="mt-3 pl-3 border-l-[3px] text-xs"
+						data-testid="summary-interrupted"
+						role="alert"
+						style="border-color: var(--alt-error); color: var(--alt-error);"
+					>
+						Stream interrupted. Summary may be incomplete.
+					</p>
+				{/if}
+			</div>
+		{:else if summarizer.summaryError}
+			<div
+				class="mb-5 p-4 rounded-lg border"
+				data-testid="summary-error"
+				role="alert"
+				style="border-color: var(--alt-error);"
+			>
+				<p class="text-xs font-semibold mb-2" style="color: var(--alt-error);">Summarize Error</p>
+				<p class="text-sm leading-relaxed" style="color: var(--text-primary);">{summarizer.summaryError}</p>
 			</div>
 		{/if}
 

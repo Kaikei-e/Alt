@@ -55,9 +55,14 @@ export function simulateTypewriterEffect(
 	const { tick, delay = 10 } = options;
 	let queue = Promise.resolve();
 	let isCancelled = false;
+	// Characters that have been received but not yet typed out. The queue is
+	// FIFO, so emitting always consumes this from the front.
+	let backlog = "";
 
 	const add = (newText: string) => {
 		if (!newText || isCancelled) return;
+
+		backlog += newText;
 
 		// Queue typewriter rendering to prevent overlapping
 		queue = queue
@@ -68,6 +73,7 @@ export function simulateTypewriterEffect(
 					for (let i = 0; i < newText.length; i++) {
 						if (isCancelled) break;
 						onChar(newText[i]!);
+						backlog = backlog.slice(1);
 
 						// Wait for delay
 						if (i < newText.length - 1 && delay > 0) {
@@ -95,9 +101,24 @@ export function simulateTypewriterEffect(
 		isCancelled = true;
 	};
 
+	/**
+	 * Write out everything received but not yet typed, then stop.
+	 *
+	 * The sink appends, so one multi-character write lands exactly the text the
+	 * remaining per-character writes would have produced.
+	 */
+	const flushRemaining = () => {
+		isCancelled = true;
+		const remaining = backlog;
+		backlog = "";
+		if (remaining) {
+			onChar(remaining);
+		}
+	};
+
 	const getPromise = () => queue;
 
-	return { add, cancel, getPromise };
+	return { add, cancel, flushRemaining, getPromise };
 }
 
 /**
@@ -186,6 +207,21 @@ export function createStreamingRenderer(
 	};
 
 	/**
+	 * Render what was received but has not been typed out yet, then stop.
+	 *
+	 * For a stream cut by the network, everything that arrived belongs on the
+	 * reading surface: the typewriter ceiling is slower than arrival, so at the
+	 * moment of the cut a backlog of received characters is still queued.
+	 * `cancel()` keeps the opposite behaviour, for a reader who aborted.
+	 */
+	const flushPending = () => {
+		isCancelled = true;
+		if (typewriterEffect) {
+			typewriterEffect.flushRemaining();
+		}
+	};
+
+	/**
 	 * Cancel rendering (useful for cleanup when stream is interrupted)
 	 */
 	const cancel = () => {
@@ -207,6 +243,7 @@ export function createStreamingRenderer(
 	return {
 		processChunk: processChunk as (decoded: string) => Promise<void>,
 		flush,
+		flushPending,
 		reset,
 		cancel,
 		getChunkCount: () => chunkCount,

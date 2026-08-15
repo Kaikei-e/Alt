@@ -54,6 +54,21 @@ export interface StreamSummarizeAdapterResult {
 }
 
 // =============================================================================
+// Error Handling
+// =============================================================================
+
+/**
+ * Whether the stream ended because the reader cancelled it locally.
+ *
+ * Only then is the untyped backlog theirs to lose. A stream cut by the network
+ * ("missing EndStreamResponse" and friends) leaves received text queued behind
+ * the typewriter, and dropping it hides the words the server already sent.
+ */
+function isLocalAbort(error: Error, controller?: AbortController): boolean {
+	return error.name === "AbortError" || controller?.signal.aborted === true;
+}
+
+// =============================================================================
 // Shared Chunk Processor
 // =============================================================================
 
@@ -122,9 +137,10 @@ export async function streamSummarizeWithRenderer(
 ): Promise<StreamSummarizeAdapterResult> {
 	const renderer = createStreamingRenderer(updateState, rendererOptions);
 	const processor = createChunkProcessor(renderer, rendererOptions);
+	let controller: AbortController | undefined;
 
 	return new Promise((resolve, reject) => {
-		streamSummarizeWithAbort(
+		controller = streamSummarizeWithAbort(
 			transport,
 			{
 				feedUrl: options.feedUrl,
@@ -146,7 +162,11 @@ export async function streamSummarizeWithRenderer(
 				});
 			},
 			(error: Error) => {
-				renderer.cancel();
+				if (isLocalAbort(error, controller)) {
+					renderer.cancel();
+				} else {
+					renderer.flushPending();
+				}
 				reject(error);
 			},
 		);
@@ -167,8 +187,11 @@ export function streamSummarizeWithAbortAdapter(
 ): AbortController {
 	const renderer = createStreamingRenderer(updateState, rendererOptions);
 	const processor = createChunkProcessor(renderer, rendererOptions);
+	// Assigned below; the error callback may run before the assignment lands
+	// (the validation failure surfaces synchronously), so it reads it lazily.
+	let controller: AbortController | undefined;
 
-	return streamSummarizeWithAbort(
+	controller = streamSummarizeWithAbort(
 		transport,
 		{
 			feedUrl: options.feedUrl,
@@ -192,10 +215,18 @@ export function streamSummarizeWithAbortAdapter(
 			}
 		},
 		(error: Error) => {
-			renderer.cancel();
+			if (isLocalAbort(error, controller)) {
+				renderer.cancel();
+			} else {
+				// Everything received reaches the UI before the error does, so a
+				// cut stream shows the words the server did send.
+				renderer.flushPending();
+			}
 			if (onError) {
 				onError(error);
 			}
 		},
 	);
+
+	return controller;
 }

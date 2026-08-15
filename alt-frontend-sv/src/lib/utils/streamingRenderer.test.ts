@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { simulateTypewriterEffect } from "./streamingRenderer";
+import {
+	createStreamingRenderer,
+	simulateTypewriterEffect,
+} from "./streamingRenderer";
 
 describe("simulateTypewriterEffect", () => {
 	beforeEach(() => {
@@ -75,5 +78,139 @@ describe("simulateTypewriterEffect", () => {
 		await typewriter.getPromise();
 
 		expect(chars).toEqual(["L", "o"]);
+	});
+
+	test("flushRemaining() emits every queued-but-untyped character at once", async () => {
+		const emitted: string[] = [];
+		const typewriter = simulateTypewriterEffect((text) => emitted.push(text), {
+			delay: 20,
+		});
+
+		typewriter.add("LongText");
+
+		await vi.advanceTimersByTimeAsync(0); // "L"
+		await vi.advanceTimersByTimeAsync(20); // "o"
+
+		typewriter.flushRemaining();
+
+		expect(emitted.join("")).toBe("LongText");
+	});
+
+	test("flushRemaining() emits nothing more once the backlog is drained", async () => {
+		const emitted: string[] = [];
+		const typewriter = simulateTypewriterEffect((text) => emitted.push(text), {
+			delay: 20,
+		});
+
+		typewriter.add("LongText");
+		await vi.advanceTimersByTimeAsync(0); // "L"
+		typewriter.flushRemaining();
+
+		// Draining the pending timers must not re-emit the flushed tail, and a
+		// second flush must not duplicate it either.
+		await vi.advanceTimersByTimeAsync(1000);
+		typewriter.flushRemaining();
+		await typewriter.getPromise();
+
+		expect(emitted.join("")).toBe("LongText");
+	});
+
+	test("flushRemaining() is a no-op when nothing was ever queued", () => {
+		const emitted: string[] = [];
+		const typewriter = simulateTypewriterEffect((text) => emitted.push(text), {
+			delay: 20,
+		});
+
+		typewriter.flushRemaining();
+
+		expect(emitted).toEqual([]);
+	});
+});
+
+describe("createStreamingRenderer typewriter backlog", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	test("flushPending() renders the received-but-untyped text to the UI", async () => {
+		let rendered = "";
+		const renderer = createStreamingRenderer(
+			(text) => {
+				rendered += text;
+			},
+			{
+				typewriter: true,
+				typewriterDelay: 10,
+			},
+		);
+
+		await renderer.processChunk("Received before the cut");
+		await vi.advanceTimersByTimeAsync(10); // only two characters typed so far
+
+		renderer.flushPending();
+
+		expect(rendered).toBe("Received before the cut");
+	});
+
+	test("cancel() still drops the untyped backlog", async () => {
+		let rendered = "";
+		const renderer = createStreamingRenderer(
+			(text) => {
+				rendered += text;
+			},
+			{
+				typewriter: true,
+				typewriterDelay: 10,
+			},
+		);
+
+		await renderer.processChunk("Received before the cut");
+		await vi.advanceTimersByTimeAsync(10);
+
+		renderer.cancel();
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(rendered).toBe("Re");
+	});
+
+	test("flushPending() stops later chunks from being rendered", async () => {
+		let rendered = "";
+		const renderer = createStreamingRenderer(
+			(text) => {
+				rendered += text;
+			},
+			{
+				typewriter: true,
+				typewriterDelay: 10,
+			},
+		);
+
+		await renderer.processChunk("Ab");
+		renderer.flushPending();
+		await renderer.processChunk("Cd");
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(rendered).toBe("Ab");
+	});
+
+	test("flushPending() is harmless without the typewriter effect", async () => {
+		let rendered = "";
+		const renderer = createStreamingRenderer((text) => {
+			rendered += text;
+		});
+
+		// The chunk path yields through a zero-delay timer, which fake timers
+		// only release on demand.
+		const processed = renderer.processChunk("Whole chunk");
+		await vi.advanceTimersByTimeAsync(0);
+		await processed;
+
+		renderer.flushPending();
+
+		expect(rendered).toBe("Whole chunk");
 	});
 });

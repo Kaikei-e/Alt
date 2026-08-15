@@ -316,6 +316,17 @@ $effect(() => {
 				<span>AI SUMMARY</span>
 			</p>
 			<div class="ai-summary__body">{summarizer.summary}</div>
+			{#if summarizer.summaryError}
+				<!-- A cut stream leaves its partial text on screen. Without this
+				     notice a truncated summary reads as a clean short one. -->
+				<p
+					class="ai-summary__interrupted"
+					data-testid="summary-interrupted"
+					role="alert"
+				>
+					Stream interrupted. Summary may be incomplete.
+				</p>
+			{/if}
 		</section>
 	{:else if summarizer.summaryError}
 		<section class="ai-summary ai-summary--error" role="alert">
@@ -524,6 +535,15 @@ $effect(() => {
 	letter-spacing: 0.14em;
 	text-transform: uppercase;
 	color: var(--alt-ash, #999999);
+}
+
+.ai-summary__interrupted {
+	margin: 0;
+	padding-left: 0.75rem;
+	border-left: 3px solid var(--alt-error, #8c1d1d);
+	font-family: var(--font-body);
+	font-size: 0.82rem;
+	color: var(--alt-error, #8c1d1d);
 }
 
 .ai-summary__body {

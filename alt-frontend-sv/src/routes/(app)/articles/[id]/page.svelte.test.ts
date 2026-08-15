@@ -219,6 +219,68 @@ describe("Article page Alt-Paper mobile layout", () => {
 		await expect.element(summary).toHaveTextContent("Condensed bullet list");
 	});
 
+	it("flags an interrupted stream alongside the partial summary", async () => {
+		// A cut stream leaves text on screen. Without the notice the reader
+		// cannot tell a truncated summary from a short one.
+		summarizerOverride = {
+			summary: "Half a sentence before the stream",
+			summaryError: "[unknown] missing EndStreamResponse",
+			buttonState: "error",
+		};
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Article body</p>",
+			article_id: "a1",
+		});
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByTestId("ai-summary"))
+			.toHaveTextContent("Half a sentence before the stream");
+		await expect
+			.element(testPage.getByTestId("summary-interrupted"))
+			.toHaveTextContent("Stream interrupted. Summary may be incomplete.");
+	});
+
+	it("shows the summarize error on its own when no text arrived", async () => {
+		summarizerOverride = {
+			summary: null,
+			summaryError: "Failed to generate summary",
+			buttonState: "error",
+		};
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Article body</p>",
+			article_id: "a1",
+		});
+
+		renderPage();
+
+		const alert = testPage.getByRole("alert");
+		await expect.element(alert).toHaveTextContent("SUMMARIZE ERROR");
+		await expect.element(alert).toHaveTextContent("Failed to generate summary");
+	});
+
+	it("shows no interruption notice for a summary that completed", async () => {
+		summarizerOverride = {
+			summary: "Condensed bullet list",
+			summaryError: null,
+			buttonState: "success",
+		};
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Article body</p>",
+			article_id: "a1",
+		});
+
+		const { container } = renderPage();
+
+		await expect
+			.element(testPage.getByTestId("ai-summary"))
+			.toBeInTheDocument();
+		expect(
+			container.querySelector('[data-testid="summary-interrupted"]'),
+		).toBeNull();
+	});
+
 	it("exposes icon-only actions with accessible labels on mobile", async () => {
 		mockGetFeedContent.mockResolvedValueOnce({
 			content: "<p>Article body</p>",
