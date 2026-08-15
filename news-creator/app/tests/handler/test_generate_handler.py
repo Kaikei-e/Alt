@@ -58,6 +58,26 @@ def test_generate_returns_200_on_success():
     assert response.json()["response"] == "hello"
 
 
+def test_generate_prompt_over_cap_keeps_its_validation_detail():
+    """The prompt-length 400 is static validation feedback, not internal detail.
+
+    The E2E contract asserts /prompt too long/i on this response; collapsing it
+    into the generic "Invalid request" broke the one client-actionable hint
+    while protecting nothing (the message carries only the client's own prompt
+    length and the cap).
+    """
+    mock_provider = _make_mock_provider()
+    client = _make_client(mock_provider)
+
+    response = client.post(
+        "/api/generate", json={"prompt": "a" * 240_001, "stream": False}
+    )
+
+    assert response.status_code == 400
+    assert "prompt too long" in response.json()["detail"].lower()
+    mock_provider.generate.assert_not_awaited()
+
+
 def test_generate_value_error_does_not_leak_exception_text():
     """Regression: ValueError must not leak to the client body."""
     secret = (

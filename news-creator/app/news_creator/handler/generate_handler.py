@@ -72,8 +72,16 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                         "model": request.model,
                     },
                 )
-                raise ValueError(
-                    f"Prompt too long ({len(request.prompt)} chars). Max {MAX_PROMPT_LENGTH_CHARS} chars."
+                # Static validation feedback, safe to surface: it carries only
+                # the client's own prompt length and the cap (the E2E contract
+                # asserts on it). Raised as HTTPException so the generic
+                # except-ValueError sanitizer below cannot swallow it.
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Prompt too long ({len(request.prompt)} chars). "
+                        f"Max {MAX_PROMPT_LENGTH_CHARS} chars."
+                    ),
                 )
 
             # Call LLM provider
@@ -158,6 +166,12 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
             raise HTTPException(
                 status_code=502, detail="Upstream service error"
             ) from exc
+
+        except HTTPException:
+            # Deliberate client-facing errors (the prompt-length 400 above)
+            # pass through; without this, the catch-all below would rewrite
+            # them into a 500.
+            raise
 
         except Exception as exc:
             logger.exception(
