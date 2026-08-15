@@ -16,6 +16,12 @@ const readHeaderTimeout = 10 * time.Second
 // connectIdleTimeout bounds Connect-RPC keep-alive connections.
 const connectIdleTimeout = 120 * time.Second
 
+// connectReadTimeout is the request-body read bound of the cleartext HTTP/2
+// Connect listener. It MUST stay non-zero; see NewConnectServer. The value
+// matches the REST listener's configured default because it bounds the same
+// thing there: how long a request body may take to arrive.
+const connectReadTimeout = 300 * time.Second
+
 // cleartextHTTP2 is the protocol set every plaintext Connect-RPC listener
 // serves: HTTP/1.1 for unary Connect and the browser, plus cleartext HTTP/2
 // (h2c) for Connect's gRPC and gRPC-Web protocols, which require it.
@@ -46,19 +52,27 @@ func NewRESTServer(addr string, h http.Handler, cfg *config.Config) *http.Server
 
 // NewConnectServer builds the user-facing Connect-RPC listener.
 //
-// ReadTimeout and WriteTimeout are deliberately 0 (unbounded): server-streaming
-// responses outlive any fixed write deadline, and client-streaming uploads
-// outlive any fixed read deadline. ReadHeaderTimeout still bounds the
-// slow-header attack, and IdleTimeout still reaps idle keep-alives, so
-// "unbounded" applies only to an in-flight stream. Stated explicitly rather
-// than left at the zero value so the choice is visible (bp-go rule 15).
+// ReadTimeout MUST be non-zero on a listener that serves cleartext HTTP/2.
+// Since Go 1.26.6 net/http arms the ReadHeaderTimeout deadline at the top of
+// (*conn).serve, before the h2c preface is checked, so the deadline is already
+// on the socket when the connection is handed to the HTTP/2 server — and the
+// HTTP/2 server only clears it inside a `ReadTimeout > 0` guard. Leaving
+// ReadTimeout at 0 therefore tears every h2c connection down exactly
+// ReadHeaderTimeout after it is established, killing all of its multiplexed
+// streams mid-flight. With ReadTimeout > 0 the deadline is cleared and
+// re-armed per stream against the request body only, so server-streaming
+// responses stay unbounded, which is what this listener needs.
+//
+// WriteTimeout is 0 for that same reason: a server-streaming response outlives
+// any fixed write deadline, and unlike ReadTimeout nothing re-scopes it to a
+// single stream. IdleTimeout still reaps idle keep-alives.
 func NewConnectServer(addr string, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           h,
 		Protocols:         cleartextHTTP2(),
 		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       0,
+		ReadTimeout:       connectReadTimeout,
 		WriteTimeout:      0,
 		IdleTimeout:       connectIdleTimeout,
 	}
