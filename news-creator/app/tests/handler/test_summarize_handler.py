@@ -1,5 +1,7 @@
 """Tests for summarize handler - HTTP 429 queue full behavior."""
 
+import time
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
@@ -152,3 +154,39 @@ def test_summarize_stream_error_does_not_leak_exception_text():
     assert response.status_code == 200
     assert secret not in response.text
     assert "summary generation failed" in response.text
+
+
+def test_summarize_stream_reaches_eof_right_after_last_chunk():
+    """The SSE body must reach EOF as soon as the generator is done.
+
+    Downstream consumers persist the summary only after reading EOF, so any
+    delay between the final data chunk and the end of the body is data loss
+    waiting to happen.
+    """
+    chunks = ["Alpha", "Beta", "Gamma"]
+
+    async def fast_stream(*args, **kwargs):
+        for chunk in chunks:
+            yield chunk
+
+    mock_usecase = _make_mock_usecase()
+    mock_usecase.generate_summary_stream = fast_stream
+    client = _make_client(mock_usecase)
+
+    body = ""
+    started_at = time.monotonic()
+    with client.stream(
+        "POST",
+        "/api/v1/summarize",
+        json={"article_id": "test-123", "content": "A" * 200, "stream": True},
+    ) as response:
+        assert response.status_code == 200
+        for part in response.iter_text():
+            body += part
+    elapsed = time.monotonic() - started_at
+
+    # The fake generator yields instantly, so anything close to the heartbeat
+    # interval means the body was held open after the last chunk.
+    assert elapsed < 1.0, f"stream stayed open for {elapsed:.2f}s"
+    # SSE wire format is contractual - keep it byte-identical.
+    assert body == "".join(f'data: "{chunk}"\n\n' for chunk in chunks)

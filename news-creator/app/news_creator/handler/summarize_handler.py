@@ -128,7 +128,16 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                             """Send heartbeat comments periodically, but only when no data is flowing."""
                             try:
                                 while not stopped.is_set():
-                                    await asyncio.sleep(heartbeat_interval)
+                                    # Interruptible sleep: wake as soon as the stream
+                                    # is done instead of ticking out the whole interval.
+                                    try:
+                                        await asyncio.wait_for(
+                                            stopped.wait(),
+                                            timeout=heartbeat_interval,
+                                        )
+                                        break
+                                    except asyncio.TimeoutError:
+                                        pass
                                     if await http_request.is_disconnected():
                                         stopped.set()
                                         break
@@ -212,9 +221,6 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
 
                         try:
                             # Process items from queues with priority for data chunks
-                            data_sentinel_received = False
-                            heartbeat_sentinel_received = False
-
                             while True:
                                 # Prioritize data queue - check it first with timeout
                                 try:
@@ -223,13 +229,14 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                         data_queue.get(), timeout=0.1
                                     )
                                     if item is None:
-                                        data_sentinel_received = True
-                                        if (
-                                            data_sentinel_received
-                                            and heartbeat_sentinel_received
-                                        ):
-                                            break
-                                        continue
+                                        # Generator is done, so end the body now.
+                                        # The heartbeat task is torn down in the
+                                        # finally block; waiting for its sentinel
+                                        # here would hold the connection open for
+                                        # up to a full heartbeat interval, and the
+                                        # consumer only persists the summary once
+                                        # it has read EOF.
+                                        break
 
                                     item_type, content = item
                                     if item_type == "data":
@@ -263,12 +270,8 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                     try:
                                         heartbeat_item = heartbeat_queue.get_nowait()
                                         if heartbeat_item is None:
-                                            heartbeat_sentinel_received = True
-                                            if (
-                                                data_sentinel_received
-                                                and heartbeat_sentinel_received
-                                            ):
-                                                break
+                                            # Heartbeats are over; keep forwarding
+                                            # data until the generator finishes.
                                             continue
 
                                         heartbeat_type, heartbeat_content = (
