@@ -5,7 +5,6 @@ import urllib.request
 from pathlib import Path
 
 import pandas as pd
-from datasets import load_dataset
 
 logger = logging.getLogger(__name__)
 DATA_DIR = Path("data")
@@ -38,14 +37,24 @@ AG_NEWS_MAP = {
     4: 'consumer_tech', # Sci/Tech -> Consumer Tech (dominant) or Science. Let's pick Consumer Tech as it's more common.
 }
 
+def extract_tar_under_dir(tar_path: Path, dest_dir: Path) -> None:
+    """Extract a gzip tarball, rejecting any member that would escape dest_dir."""
+    dest = dest_dir.resolve()
+    with tarfile.open(tar_path, "r:gz") as tar:
+        for member in tar.getmembers():
+            target = (dest / member.name).resolve()
+            if not target.is_relative_to(dest):
+                msg = f"refusing to extract {member.name!r}: path escapes {dest}"
+                raise ValueError(msg)
+        tar.extractall(path=dest, filter="data")
+
 def download_livedoor():
     if not LIVEDOOR_DIR.exists():
         logger.info("Downloading Livedoor News Corpus...")
         tar_path = DATA_DIR / "ldcc.tar.gz"
         urllib.request.urlretrieve(LIVEDOOR_URL, tar_path)
         logger.info("Extracting...")
-        with tarfile.open(tar_path, "r:gz") as tar:
-            tar.extractall(path=DATA_DIR)
+        extract_tar_under_dir(tar_path, DATA_DIR)
         os.remove(tar_path)
     else:
         logger.info("Livedoor data already exists.")
@@ -80,6 +89,11 @@ def process_livedoor():
 
 def process_ag_news():
     logger.info("Loading AG News...")
+    # Lazy import (the package is heavy), but deliberately outside the try:
+    # a missing or broken `datasets` install must fail loudly, not degrade to
+    # a Japanese-only training corpus.
+    from datasets import load_dataset
+
     try:
         dataset = load_dataset("ag_news", split="train") # 120k samples
         rows = []

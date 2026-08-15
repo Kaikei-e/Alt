@@ -1,7 +1,7 @@
 """Path validation utilities for recap-subworker.
 
-ユーザー入力由来のパスを扱うときに、許可されたベースディレクトリ配下に
-正規化・制限するための共通ユーティリティ。
+Normalizes user-supplied paths and confines them to the allow-listed base
+directories (CWE-22).
 """
 
 from __future__ import annotations
@@ -9,8 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# 許可されたベースディレクトリ
-# NOTE: ここを変更する場合は、APIレイヤなどの仕様とも合わせて見直すこと。
+# NOTE: changing this list must be coordinated with the API-layer contract.
 ALLOWED_BASE_DIRS: list[Path] = [
     Path("/app/data"),
     Path("/app/resources"),
@@ -18,22 +17,22 @@ ALLOWED_BASE_DIRS: list[Path] = [
 
 
 def validate_path(user_path: str, base_dirs: list[Path] | None = None) -> Path:
-    """ユーザー入力のパスを検証し、安全なPathオブジェクトを返す。
+    """Validate a user-supplied path and return it as a safe Path.
 
-    - パスを正規化（.. などを除去）
-    - 相対パスは base_dirs[0] をベースに解決
-    - resolve() したうえで、いずれかの許可ディレクトリ配下であることを確認
+    - normalizes the path (collapses `..` and friends)
+    - resolves relative paths against base_dirs[0]
+    - resolves symlinks, then requires the result to live under one of the
+      allow-listed base directories
 
     Args:
-        user_path: ユーザーが指定したパス（絶対/相対）
-        base_dirs: 許可されたベースディレクトリのリスト。
-                   None の場合は ALLOWED_BASE_DIRS を利用。
+        user_path: the path as supplied (absolute or relative)
+        base_dirs: allow-listed base directories; ALLOWED_BASE_DIRS when None
 
     Returns:
-        Path: 検証済みで、実際のファイルシステム上の絶対パス。
+        Path: the validated absolute filesystem path.
 
     Raises:
-        ValueError: パスが許可されたディレクトリ外にある場合。
+        ValueError: when the path is outside every allowed directory.
     """
     if base_dirs is None:
         base_dirs = ALLOWED_BASE_DIRS
@@ -41,40 +40,39 @@ def validate_path(user_path: str, base_dirs: list[Path] | None = None) -> Path:
     if not base_dirs:
         raise ValueError("No base directories configured for path validation")
 
-    # パスを文字列として正規化
     normalized = os.path.normpath(user_path)
 
-    # NOTE: 以下は CodeQL が `os.path.realpath() + startswith()` を sanitizer として
-    # 認識するため、意図的に pathlib ではなく os.path API を使用している。
-    # 相対パスの場合は最初の許可ディレクトリをベースとして使用
+    # NOTE: CodeQL py/path-injection recognizes the os.path API
+    # (normpath/realpath + commonpath) as a sanitizer, not pathlib.
     if not os.path.isabs(normalized):  # noqa: PTH117
         normalized = os.path.normpath(os.path.join(str(base_dirs[0]), normalized))  # noqa: PTH118
 
-    # realpath() でシンボリックリンクを解決し正規化
+    # realpath() resolves symlinks before the containment check.
     real_path = os.path.realpath(normalized)
 
     for base_dir in base_dirs:
         real_base = os.path.realpath(str(base_dir))
-        # startswith に trailing separator を付けて prefix attack を防止
-        # (例: /app/data-evil が /app/data にマッチしないようにする)
-        if real_path == real_base or real_path.startswith(real_base + os.sep):
-            return Path(real_path)
+        # commonpath blocks prefix attacks (/app/data-evil does not match
+        # /app/data) and is a CodeQL-recognized sanitizer. Different drives
+        # or mix-ups raise ValueError → not allowed.
+        try:
+            if os.path.commonpath([real_path, real_base]) == real_base:
+                return Path(real_path)
+        except ValueError:
+            continue
 
-    # どの許可ディレクトリにも含まれていない
     raise ValueError(
-        f"Path '{user_path}' is not within allowed directories: "
-        f"{[str(d) for d in base_dirs]}"
+        f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}"
     )
-
-
 
 
 def require_existing_path(user_path: str, base_dirs: list[Path] | None = None) -> Path:
     """Validate *and* confirm the path exists under an allow-listed base.
 
-    Filesystem access (`os.path.exists`) runs only after a lexical
-    `realpath + startswith` guard in this same function so CodeQL's
-    py/path-injection query treats the sink as sanitized.
+    Filesystem access (`os.path.exists`) runs only after a CodeQL-visible
+    sanitizer on the same variable: normalize → commonpath/prefix-check →
+    `safe_path = real_path` → exists(`safe_path`). The sink is flattened out
+    of the allow-list loop so the query can prove the guard.
     """
     if base_dirs is None:
         base_dirs = ALLOWED_BASE_DIRS
@@ -82,19 +80,41 @@ def require_existing_path(user_path: str, base_dirs: list[Path] | None = None) -
     if not base_dirs:
         raise ValueError("No base directories configured for path validation")
 
+    # Lexical allow-list (raises ValueError if the path escapes).
+    validate_path(user_path, base_dirs)
+
+    # Inline the official CodeQL pattern so taint does not survive through the
+    # helper: normpath(+join) → realpath → prefix-check → same var at the sink.
     normalized = os.path.normpath(user_path)
     if not os.path.isabs(normalized):  # noqa: PTH117
         normalized = os.path.normpath(os.path.join(str(base_dirs[0]), normalized))  # noqa: PTH118
 
     real_path = os.path.realpath(normalized)
+
+    matched_base: str | None = None
     for base_dir in base_dirs:
         real_base = os.path.realpath(str(base_dir))
-        if real_path == real_base or real_path.startswith(real_base + os.sep):
-            if not os.path.exists(real_path):  # noqa: PTH110
-                raise FileNotFoundError(real_path)
-            return Path(real_path)
+        try:
+            if os.path.commonpath([real_path, real_base]) == real_base:
+                matched_base = real_base
+                break
+        except ValueError:
+            continue
 
-    raise ValueError(
-        f"Path '{user_path}' is not within allowed directories: "
-        f"{[str(d) for d in base_dirs]}"
-    )
+    if matched_base is None:
+        raise ValueError(
+            f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}"
+        )
+
+    # Official sanitizer (docs): prefix-check THEN use the same variable.
+    # commonpath above already blocked prefix attacks (/app/data-evil);
+    # startswith(matched_base) is the exact barrier CodeQL models.
+    if not real_path.startswith(matched_base):
+        raise ValueError(
+            f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}"
+        )
+
+    safe_path = real_path
+    if not os.path.exists(safe_path):  # noqa: PTH110
+        raise FileNotFoundError(safe_path)
+    return Path(safe_path)
