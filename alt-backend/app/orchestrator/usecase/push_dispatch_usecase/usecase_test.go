@@ -3,6 +3,8 @@ package push_dispatch_usecase
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -223,8 +225,109 @@ func TestDispatchBatch_DeadLettersTerminalRejections(t *testing.T) {
 		if len(deliveries.dead) != 1 {
 			t.Fatalf("status %d: expected dead-letter, got %v", status, deliveries.dead)
 		}
+		if want := fmt.Sprintf("push service rejected: status=%d", status); deliveries.dead[0].reason != want {
+			t.Fatalf("status %d: reason = %q, want %q", status, deliveries.dead[0].reason, want)
+		}
 		if len(subs.deleted) != 0 {
 			t.Fatalf("status %d: our own bug must not delete the user's subscription", status)
+		}
+	}
+}
+
+// TestDispatchBatch_DeadLetterReasonCarriesTheRejection is the row an operator
+// reads four days later. "unclassified send failure" says only that something
+// went wrong; the push service's own words say which knob is wrong.
+func TestDispatchBatch_DeadLetterReasonCarriesTheRejection(t *testing.T) {
+	tests := []struct {
+		name    string
+		outcome push_dispatch_port.SendOutcome
+		sendErr error
+		want    string
+	}{
+		{
+			name: "rejection with a reason body",
+			outcome: push_dispatch_port.SendOutcome{
+				StatusCode:  400,
+				BodyExcerpt: `{"reason":"BadJwtToken"}`,
+			},
+			sendErr: errors.New("webpush web.push.apple.com returned 400 Bad Request"),
+			want:    `push service rejected: status=400 body="{\"reason\":\"BadJwtToken\"}"`,
+		},
+		{
+			name:    "rejection with an empty body still names the status",
+			outcome: push_dispatch_port.SendOutcome{StatusCode: 403},
+			sendErr: errors.New("webpush web.push.apple.com returned 403 Forbidden"),
+			want:    "push service rejected: status=403",
+		},
+		{
+			// No status means no response: the request never reached a push
+			// service, so calling it a rejection would misdirect the reader.
+			name:    "failure before any response",
+			outcome: push_dispatch_port.SendOutcome{},
+			sendErr: errors.New("webpush encrypt payload: invalid p256dh"),
+			want:    "send failed before any response",
+		},
+		{
+			// The sender reported a terminal status without an error. Same row,
+			// same question from the operator, so the same answer.
+			name: "terminal status reported without an error",
+			outcome: push_dispatch_port.SendOutcome{
+				StatusCode:  413,
+				BodyExcerpt: "payload too large",
+			},
+			want: `push service rejected: status=413 body="payload too large"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deliveries := &fakeDeliveries{batch: []domain.PushDelivery{delivery(1)}}
+			sender := &fakeSender{outcome: tt.outcome, err: tt.sendErr}
+
+			if _, err := newUsecase(deliveries, &fakeSubscriptions{}, sender).
+				DispatchBatch(context.Background(), 10); err != nil {
+				t.Fatalf("DispatchBatch: %v", err)
+			}
+
+			if len(deliveries.dead) != 1 {
+				t.Fatalf("expected one dead-letter, got %v", deliveries.dead)
+			}
+			if got := deliveries.dead[0].reason; got != tt.want {
+				t.Errorf("reason = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDispatchBatch_DeadLetterReasonNeverCarriesTheEndpoint pins the security
+// half: the stored reason is read by anyone with database access, and the
+// endpoint path is a bearer capability for that device. The sender's error
+// string is exactly where an endpoint would sneak in, so it is never copied
+// into the reason.
+func TestDispatchBatch_DeadLetterReasonNeverCarriesTheEndpoint(t *testing.T) {
+	const capabilityToken = "JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
+
+	d := delivery(1)
+	d.Endpoint = "https://web.push.apple.com/push/" + capabilityToken
+
+	deliveries := &fakeDeliveries{batch: []domain.PushDelivery{d}}
+	sender := &fakeSender{
+		outcome: push_dispatch_port.SendOutcome{StatusCode: 400, BodyExcerpt: `{"reason":"BadJwtToken"}`},
+		err:     errors.New("webpush post to " + d.Endpoint + " failed with Authorization vapid t=leaked.jwt.value"),
+	}
+
+	if _, err := newUsecase(deliveries, &fakeSubscriptions{}, sender).
+		DispatchBatch(context.Background(), 10); err != nil {
+		t.Fatalf("DispatchBatch: %v", err)
+	}
+
+	if len(deliveries.dead) != 1 {
+		t.Fatalf("expected one dead-letter, got %v", deliveries.dead)
+	}
+	reason := deliveries.dead[0].reason
+	for _, secret := range []string{capabilityToken, d.Endpoint, "vapid t=", "leaked.jwt.value"} {
+		if strings.Contains(reason, secret) {
+			t.Errorf("stored reason %q leaks %q", reason, secret)
 		}
 	}
 }

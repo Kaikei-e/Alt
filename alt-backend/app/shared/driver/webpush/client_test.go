@@ -1,12 +1,15 @@
 package webpush
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -488,6 +491,240 @@ func TestClient_Send_DoesNotMutateCallerPayload(t *testing.T) {
 
 	if string(payload) != original {
 		t.Errorf("caller payload mutated to %q, want %q", payload, original)
+	}
+}
+
+// captureLogs redirects the default logger for the duration of one test, so a
+// test can assert on what an operator would actually see.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &buf
+}
+
+func hostOfTestServer(t *testing.T, rawURL string) string {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	return parsed.Host
+}
+
+// TestClient_Send_RejectionCarriesBodyExcerpt is the diagnosability contract.
+//
+// A push service answers a rejection with a reason — Apple's BadJwtToken,
+// VapidPkHashMismatch, TopicTooLong — and that string is the only thing that
+// says why the send failed. Discarding it leaves an operator with a bare 400
+// and no way to tell a wrong subject from a rotated key.
+func TestClient_Send_RejectionCarriesBodyExcerpt(t *testing.T) {
+	logs := captureLogs(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, "{\"reason\":\"BadJwtToken\"}\n")
+	}))
+	defer server.Close()
+
+	sub := rfcSubscription()
+	sub.Endpoint = server.URL + "/push/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
+	client := newTestClient(t, testHTTPClient())
+
+	result, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
+	if err == nil {
+		t.Fatal("expected an error for a 400 response")
+	}
+	if result.StatusCode != http.StatusBadRequest {
+		t.Errorf("StatusCode = %d, want 400", result.StatusCode)
+	}
+	if want := `{"reason":"BadJwtToken"}`; result.BodyExcerpt != want {
+		t.Errorf("BodyExcerpt = %q, want %q", result.BodyExcerpt, want)
+	}
+
+	line := logs.String()
+	for _, want := range []string{"webpush_send_rejected", hostOfTestServer(t, server.URL), "400", "BadJwtToken"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("log line %q must mention %q", line, want)
+		}
+	}
+}
+
+func TestClient_Send_BodyExcerptIsSingleLineAndBounded(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "newlines collapse so one rejection stays one log line",
+			body: "<html>\n  <body>\r\n    Bad Request\n  </body>\n</html>",
+			want: "<html> <body> Bad Request </body> </html>",
+		},
+		{
+			name: "empty body yields an empty excerpt rather than quoted whitespace",
+			body: "   \n\t ",
+			want: "",
+		},
+		{
+			name: "control characters are not written into the log",
+			body: "bad\x00request\x07",
+			want: "bad request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+
+			sub := rfcSubscription()
+			sub.Endpoint = server.URL + "/push/abc"
+			client := newTestClient(t, testHTTPClient())
+
+			result, _ := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
+			if result.BodyExcerpt != tt.want {
+				t.Errorf("BodyExcerpt = %q, want %q", result.BodyExcerpt, tt.want)
+			}
+		})
+	}
+}
+
+// TestClient_Send_BodyExcerptIsTruncated keeps a push service that answers with
+// a full HTML error page out of both the log and the delivery row.
+func TestClient_Send_BodyExcerptIsTruncated(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, strings.Repeat("verbose ", 4096))
+	}))
+	defer server.Close()
+
+	sub := rfcSubscription()
+	sub.Endpoint = server.URL + "/push/abc"
+	client := newTestClient(t, testHTTPClient())
+
+	result, _ := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
+	if len(result.BodyExcerpt) > maxBodyExcerptLength {
+		t.Errorf("BodyExcerpt is %d bytes, want at most %d", len(result.BodyExcerpt), maxBodyExcerptLength)
+	}
+	if !strings.HasSuffix(result.BodyExcerpt, excerptEllipsis) {
+		t.Errorf("BodyExcerpt = %q, want a truncation marker so nobody reads it as the whole body", result.BodyExcerpt)
+	}
+}
+
+// TestClient_Send_RejectionNeverLeaksTheCapabilityURL is the security half of
+// the same change. The endpoint path is a bearer capability: anyone holding it
+// can push to that device, so it must not reach a log, an error string or a
+// stored reason — not even when the push service echoes the request back.
+func TestClient_Send_RejectionNeverLeaksTheCapabilityURL(t *testing.T) {
+	const capabilityToken = "JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
+
+	var sentAuthorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sentAuthorization = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusBadRequest)
+		// A hostile-shaped response: the service quotes the request line and
+		// the credentials it was given straight back at us.
+		_, _ = io.WriteString(w, "rejected POST "+r.URL.String()+" with Authorization "+sentAuthorization)
+	}))
+	defer server.Close()
+
+	logs := captureLogs(t)
+
+	sub := rfcSubscription()
+	sub.Endpoint = server.URL + "/push/" + capabilityToken
+	client := newTestClient(t, testHTTPClient())
+
+	result, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
+	if err == nil {
+		t.Fatal("expected an error for a 400 response")
+	}
+	if sentAuthorization == "" {
+		t.Fatal("the request carried no Authorization header; the leak assertions below would be vacuous")
+	}
+
+	jwt := strings.TrimSuffix(strings.TrimPrefix(sentAuthorization, "vapid t="), ", k="+client.PublicKey())
+	secrets := map[string]string{
+		"capability token":     capabilityToken,
+		"full endpoint":        sub.Endpoint,
+		"authorization header": sentAuthorization,
+		"vapid jwt":            jwt,
+		// A truncated echo must be caught too: a service that quotes only the
+		// first half of the token still hands out a usable prefix.
+		"vapid jwt prefix": jwt[:len(jwt)/2],
+	}
+
+	surfaces := map[string]string{
+		"body excerpt": result.BodyExcerpt,
+		"error string": err.Error(),
+		"log output":   logs.String(),
+	}
+
+	for surfaceName, surface := range surfaces {
+		for secretName, secret := range secrets {
+			if strings.Contains(surface, secret) {
+				t.Errorf("%s leaks the %s", surfaceName, secretName)
+			}
+		}
+	}
+
+	// The host is not a secret and is the one thing that identifies which push
+	// service rejected us, so it must survive the scrubbing.
+	host := hostOfTestServer(t, server.URL)
+	if !strings.Contains(logs.String(), host) {
+		t.Errorf("log output %q must still name the push service host %q", logs.String(), host)
+	}
+}
+
+// TestClient_Send_TransportErrorNamesHostOnly covers the other error path out
+// of Send: no response arrived, so there is no body, but the error still must
+// not carry the capability URL.
+func TestClient_Send_TransportErrorNamesHostOnly(t *testing.T) {
+	const capabilityToken = "JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	endpoint := server.URL + "/push/" + capabilityToken
+	host := hostOfTestServer(t, server.URL)
+	server.Close() // nothing is listening now
+
+	sub := rfcSubscription()
+	sub.Endpoint = endpoint
+	client := newTestClient(t, testHTTPClient())
+
+	_, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
+	if err == nil {
+		t.Fatal("expected a transport error")
+	}
+	if strings.Contains(err.Error(), capabilityToken) {
+		t.Errorf("transport error %q leaks the capability token", err)
+	}
+	if !strings.Contains(err.Error(), host) {
+		t.Errorf("transport error %q must name the push service host %q", err, host)
+	}
+}
+
+func TestClient_Send_SuccessCarriesNoBodyExcerpt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, "accepted")
+	}))
+	defer server.Close()
+
+	sub := rfcSubscription()
+	sub.Endpoint = server.URL + "/push/abc"
+	client := newTestClient(t, testHTTPClient())
+
+	result, err := client.Send(context.Background(), sub, Message{Payload: []byte("x"), TTL: time.Minute})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if result.BodyExcerpt != "" {
+		t.Errorf("BodyExcerpt = %q, want empty on success", result.BodyExcerpt)
 	}
 }
 

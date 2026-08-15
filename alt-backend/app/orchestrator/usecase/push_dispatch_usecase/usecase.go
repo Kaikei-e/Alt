@@ -226,7 +226,7 @@ func (u *Usecase) settle(ctx context.Context, delivery domain.PushDelivery, stat
 	case sendErr != nil:
 		// Not classified as retryable and not a status we recognise: treat it
 		// as terminal rather than looping on something we cannot characterise.
-		u.finalize(ctx, delivery, outcome.StatusCode, "unclassified send failure")
+		u.finalize(ctx, delivery, outcome.StatusCode, rejectionReason(outcome))
 		stats.Dead++
 		stats.record(outcome.StatusCode, "dead")
 
@@ -244,10 +244,30 @@ func (u *Usecase) settle(ctx context.Context, delivery domain.PushDelivery, stat
 		// reproduces it exactly. The 401/403 alert is what gets a human here;
 		// the subscription is deliberately left alone, because a malformed
 		// request of ours is no evidence about the user's device.
-		u.finalize(ctx, delivery, outcome.StatusCode, "terminal rejection")
+		u.finalize(ctx, delivery, outcome.StatusCode, rejectionReason(outcome))
 		stats.Dead++
 		stats.record(outcome.StatusCode, "dead")
 	}
+}
+
+// rejectionReason is what an operator reads off a dead-lettered row, so it has
+// to answer "why" and not merely "it failed".
+//
+// It is built from the outcome's own fields rather than from the sender's
+// error: that error carries the endpoint, which is a bearer capability for the
+// device, and a reason string outlives the incident in the database.
+func rejectionReason(outcome push_dispatch_port.SendOutcome) string {
+	if outcome.StatusCode == 0 {
+		// Nothing was rejected — the request never produced a response, so
+		// naming a push service here would send the reader to the wrong place.
+		return "send failed before any response"
+	}
+	if outcome.BodyExcerpt == "" {
+		return fmt.Sprintf("push service rejected: status=%d", outcome.StatusCode)
+	}
+	// %q so a body with newlines or quotes cannot break the surrounding log
+	// line or the column it is read out of.
+	return fmt.Sprintf("push service rejected: status=%d body=%q", outcome.StatusCode, outcome.BodyExcerpt)
 }
 
 // BacklogAge reports the queue's freshness for the gauge the stalled-delivery

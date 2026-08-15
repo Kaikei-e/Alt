@@ -5,9 +5,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Urgency is the RFC 8030 section 5.3 delivery urgency.
@@ -27,8 +33,17 @@ const (
 	// parties, so an unbounded wait is a wedged worker.
 	defaultTimeout = 10 * time.Second
 
-	// errorBodyLimit caps how much of an error response is quoted back.
+	// errorBodyLimit caps how much of an error response is read off the wire.
 	errorBodyLimit = 1024
+
+	// maxBodyExcerptLength caps what survives sanitising. The excerpt is stored
+	// on a delivery row and repeated in a log line, and a push service that
+	// answers with an HTML error page would otherwise put a kilobyte of markup
+	// in both. Every push service's actual reason is a short JSON object.
+	maxBodyExcerptLength = 256
+	excerptEllipsis      = "..."
+
+	redactionMarker = "[redacted]"
 )
 
 // Message is one push message. TTL is always transmitted: RFC 8030 makes the
@@ -53,6 +68,14 @@ type SendResult struct {
 	Retryable bool
 	// RetryAfter is the server's requested delay, when it sent one.
 	RetryAfter time.Duration
+	// BodyExcerpt is the push service's own account of why it refused, made
+	// safe to store and to log: single line, printable, bounded, and with the
+	// capability URL and the VAPID credentials scrubbed out. Empty on success.
+	//
+	// It exists because the status code alone cannot distinguish a rotated
+	// VAPID key from a malformed subject from a topic the service dislikes —
+	// all three are a flat 400, and the body is the only thing that says which.
+	BodyExcerpt string
 }
 
 // Client delivers Web Push messages. It is safe for concurrent use.
@@ -123,11 +146,22 @@ func (c *Client) Send(ctx context.Context, sub Subscription, msg Message) (SendR
 		req.Header.Set("Topic", msg.Topic)
 	}
 
+	// The host is the only part of the endpoint that may be named anywhere an
+	// operator can read: the path is a bearer capability for that device.
+	host := hostOf(sub.Endpoint)
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		// No response reached us, so the message may or may not have been
 		// delivered; retrying is the safe choice for an at-least-once sender.
-		return SendResult{Retryable: true}, fmt.Errorf("webpush post to %s: %w", sub.Endpoint, err)
+		//
+		// net/http puts the full request URL in its own message, so the message
+		// is scrubbed while the error itself stays wrapped — callers still match
+		// context.Canceled and friends with errors.Is.
+		return SendResult{Retryable: true}, fmt.Errorf("webpush post to %s: %w", host, &redactedError{
+			message: sanitizeExcerpt(err.Error(), sub.Endpoint, authorization),
+			cause:   err,
+		})
 	}
 	// Closing a response body cannot fail in a way the caller can act on: the
 	// status has already been read, and the only cost of a failed close is a
@@ -136,7 +170,21 @@ func (c *Client) Send(ctx context.Context, sub Subscription, msg Message) (SendR
 
 	result := c.classify(resp)
 	if result.Gone || result.Retryable || resp.StatusCode >= 300 {
-		return result, fmt.Errorf("webpush %s returned %s: %s", sub.Endpoint, resp.Status, readErrorBody(resp.Body))
+		result.BodyExcerpt = sanitizeExcerpt(readErrorBody(resp.Body), sub.Endpoint, authorization)
+
+		// Logged here rather than left to the caller because this is the only
+		// place the response body exists. A dispatcher that dead-letters every
+		// delivery with nothing but a status code is undiagnosable, and the
+		// host is what says whether it is one push service or all of them.
+		slog.WarnContext(ctx, "webpush_send_rejected",
+			"push_host", host,
+			"status", resp.StatusCode,
+			"gone", result.Gone,
+			"retryable", result.Retryable,
+			"body_excerpt", result.BodyExcerpt,
+		)
+
+		return result, fmt.Errorf("webpush %s returned %s: %s", host, resp.Status, result.BodyExcerpt)
 	}
 
 	// Drain so the connection can be reused for the next send.
@@ -221,4 +269,88 @@ func readErrorBody(body io.Reader) string {
 		return ""
 	}
 	return string(bytes.TrimSpace(snippet))
+}
+
+// redactedError replaces an error's message while keeping its identity, so
+// errors.Is still reaches context.Canceled through a scrubbed transport error.
+type redactedError struct {
+	message string
+	cause   error
+}
+
+func (e *redactedError) Error() string { return e.message }
+func (e *redactedError) Unwrap() error { return e.cause }
+
+// hostOf reduces an endpoint to its host, which is the only part of a
+// subscription URL that is safe to write down: the path is a bearer capability
+// and anyone holding it can push to that device. Endpoints reaching here have
+// already been parsed by the VAPID signer, so a failure means an empty host
+// rather than a leak.
+func hostOf(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "unknown"
+	}
+	if parsed.Host == "" {
+		return "unknown"
+	}
+	return parsed.Host
+}
+
+// bearerRun matches a long run of the base64url alphabet — the shape of both a
+// VAPID JWT segment and a subscription's capability token.
+var bearerRun = regexp.MustCompile(`[A-Za-z0-9_-]{32,}`)
+
+// sanitizeExcerpt turns whatever a push service said into something that can be
+// stored on a delivery row and printed in a log: one line, printable, bounded,
+// and carrying no credential.
+//
+// The scrubbing is two-layered on purpose. Exact removal of the secrets we know
+// we sent handles a service that quotes the request back verbatim; the
+// base64url sweep handles one that quotes back only a fragment, which exact
+// matching would miss while still handing out a usable prefix.
+func sanitizeExcerpt(raw string, secrets ...string) string {
+	cleaned := strings.ToValidUTF8(raw, "")
+	for _, secret := range secrets {
+		if len(secret) < 8 {
+			continue
+		}
+		cleaned = strings.ReplaceAll(cleaned, secret, redactionMarker)
+	}
+	cleaned = bearerRun.ReplaceAllString(cleaned, redactionMarker)
+	return truncateExcerpt(collapseWhitespace(cleaned))
+}
+
+// collapseWhitespace folds every run of whitespace or control characters into a
+// single space, so a multi-line HTML error page cannot break one log line into
+// many or smuggle terminal escapes into an operator's console.
+func collapseWhitespace(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	pendingSpace := false
+	for _, r := range s {
+		if unicode.IsSpace(r) || !unicode.IsPrint(r) {
+			pendingSpace = b.Len() > 0
+			continue
+		}
+		if pendingSpace {
+			b.WriteByte(' ')
+			pendingSpace = false
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func truncateExcerpt(s string) string {
+	if len(s) <= maxBodyExcerptLength {
+		return s
+	}
+	cut := maxBodyExcerptLength - len(excerptEllipsis)
+	// Never split a multi-byte rune: the excerpt is quoted into a log line and
+	// stored in a text column, both of which expect valid UTF-8.
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + excerptEllipsis
 }

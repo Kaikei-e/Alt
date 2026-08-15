@@ -30,6 +30,15 @@ type SendOutcome struct {
 	// RetryAfter is the push service's own requested delay, when it sent one.
 	// It outranks any backoff the dispatcher would have computed.
 	RetryAfter time.Duration
+	// BodyExcerpt is the push service's stated reason for refusing, already
+	// sanitised by the sender: single line, bounded, and free of the endpoint
+	// and of any credential. Empty when the service sent no body, or when no
+	// response arrived at all.
+	//
+	// It is carried across the port because the status code cannot answer the
+	// only question a dead-lettered row raises — 400 is equally "the JWT is
+	// stale", "the subject is malformed" and "the topic is too long".
+	BodyExcerpt string
 }
 
 // DeliveryPort is the push_deliveries queue, reached over mTLS via
