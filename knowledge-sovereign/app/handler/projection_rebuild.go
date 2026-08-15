@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -83,24 +82,25 @@ func (h *ProjectionRebuildHandler) handleRebuild(w http.ResponseWriter, r *http.
 	var req projectionRebuildRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		if errors.Is(err, io.EOF) {
-			http.Error(w, fmt.Sprintf(`{"error": %q}`, "target is required"), http.StatusBadRequest)
+			http.Error(w, `{"error":"target is required"}`, http.StatusBadRequest)
 			return
 		}
-		http.Error(w, fmt.Sprintf(`{"error": %q}`, fmt.Sprintf("invalid request body: %v", err)), http.StatusBadRequest)
+		slog.WarnContext(ctx, "projection.rebuild.invalid_body", "error", err)
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
 
 	target, err := sovereign_db.LookupRebuildTarget(req.Target)
 	if err != nil {
 		slog.WarnContext(ctx, "projection.rebuild.rejected", "requested_target", req.Target, "error", err)
-		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusBadRequest)
+		http.Error(w, `{"error":"unknown rebuild target"}`, http.StatusBadRequest)
 		return
 	}
 
 	result, err := h.repo.RebuildProjection(ctx, target)
 	if err != nil {
 		slog.ErrorContext(ctx, "projection.rebuild.failed", "target", target.Name(), "error", err)
-		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+		http.Error(w, `{"error":"projection rebuild failed"}`, http.StatusInternalServerError)
 		return
 	}
 

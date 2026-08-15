@@ -28,6 +28,10 @@ type RetentionRepository interface {
 	GetMaxEventSeq(ctx context.Context) (int64, error)
 }
 
+// errNoValidSnapshot is the archive precondition. Its text is static and safe
+// to return to clients, unlike wrapped repository errors.
+var errNoValidSnapshot = errors.New("no valid snapshot found; create a snapshot before running retention")
+
 // RetentionHandler provides HTTP endpoints for retention operations.
 type RetentionHandler struct {
 	repo       RetentionRepository
@@ -79,7 +83,8 @@ func (h *RetentionHandler) handleRunRetention(w http.ResponseWriter, r *http.Req
 
 	var req retentionRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		slog.ErrorContext(ctx, "invalid retention request body", "error", err)
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
 	// Default to dry-run for safety when the field is absent (including an
@@ -92,7 +97,13 @@ func (h *RetentionHandler) handleRunRetention(w http.ResponseWriter, r *http.Req
 	result, err := h.RunRetention(ctx, dryRun)
 	if err != nil {
 		slog.ErrorContext(ctx, "retention run failed", "error", err)
-		result.Error = err.Error()
+		// Only the static precondition text may reach the client; anything
+		// else could carry driver/DSN detail (CWE-209).
+		if errors.Is(err, errNoValidSnapshot) {
+			result.Error = errNoValidSnapshot.Error()
+		} else {
+			result.Error = "retention failed"
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -109,11 +120,19 @@ func (h *RetentionHandler) handleRetentionStatus(w http.ResponseWriter, r *http.
 	ctx := r.Context()
 	logs, err := h.repo.ListRetentionLogs(ctx, 20)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+		slog.ErrorContext(ctx, "retention status failed", "error", err)
+		http.Error(w, `{"error":"retention status failed"}`, http.StatusInternalServerError)
 		return
 	}
 	if logs == nil {
 		logs = []sovereign_db.RetentionLogEntry{}
+	}
+	// The stored message is raw err.Error() for operators reading the DB;
+	// the HTTP surface stays generic (CWE-209).
+	for i := range logs {
+		if logs[i].ErrorMessage != "" {
+			logs[i].ErrorMessage = "retention failed"
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(retentionStatusResponse{Logs: logs}); err != nil {
@@ -145,7 +164,8 @@ func (h *RetentionHandler) handleEligiblePartitions(w http.ResponseWriter, r *ht
 	for _, tableName := range []string{"knowledge_events", "knowledge_user_events"} {
 		parts, err := h.repo.ListPartitions(ctx, tableName)
 		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+			slog.ErrorContext(ctx, "retention eligible list failed", "error", err)
+			http.Error(w, `{"error":"retention eligible failed"}`, http.StatusInternalServerError)
 			return
 		}
 		eligible := h.policy.PartitionsEligibleForArchive(tableName, parts, now)
@@ -175,8 +195,11 @@ func (h *RetentionHandler) RunRetention(ctx context.Context, dryRun bool) (reten
 
 	// Safety check: require a valid snapshot before archiving
 	snapshot, err := h.repo.GetLatestValidSnapshot(ctx)
-	if err != nil || snapshot == nil {
-		return resp, fmt.Errorf("no valid snapshot found; create a snapshot before running retention")
+	if err != nil {
+		return resp, fmt.Errorf("get latest valid snapshot: %w", err)
+	}
+	if snapshot == nil {
+		return resp, errNoValidSnapshot
 	}
 
 	// Process each partitioned table

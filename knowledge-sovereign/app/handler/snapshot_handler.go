@@ -60,7 +60,7 @@ func (h *SnapshotHandler) handleCreateSnapshot(w http.ResponseWriter, r *http.Re
 	snapshot, err := h.CreateSnapshot(ctx)
 	if err != nil {
 		slog.ErrorContext(ctx, "snapshot creation failed", "error", err)
-		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+		http.Error(w, `{"error":"snapshot failed"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -78,7 +78,8 @@ func (h *SnapshotHandler) handleListSnapshots(w http.ResponseWriter, r *http.Req
 	ctx := r.Context()
 	snapshots, err := h.repo.ListSnapshots(ctx, 20)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+		slog.ErrorContext(ctx, "snapshot list failed", "error", err)
+		http.Error(w, `{"error":"snapshot list failed"}`, http.StatusInternalServerError)
 		return
 	}
 	if snapshots == nil {
@@ -94,7 +95,8 @@ func (h *SnapshotHandler) handleGetLatestSnapshot(w http.ResponseWriter, r *http
 	ctx := r.Context()
 	snapshot, err := h.repo.GetLatestValidSnapshot(ctx)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+		slog.ErrorContext(ctx, "snapshot latest failed", "error", err)
+		http.Error(w, `{"error":"snapshot latest failed"}`, http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

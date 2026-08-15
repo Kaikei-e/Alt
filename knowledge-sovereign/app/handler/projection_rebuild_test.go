@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -90,12 +89,14 @@ func TestProjectionRebuildHandler_RejectsAnythingOutsideTheAllowlist(t *testing.
 
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
 			assert.Empty(t, repo.calls, "a rejected request must never reach the database")
+			assert.NotContains(t, rec.Body.String(), "invalid request body:")
+			assert.NotContains(t, rec.Body.String(), "unexpected EOF")
 		})
 	}
 }
 
 func TestProjectionRebuildHandler_RepositoryFailureIsServerError(t *testing.T) {
-	repo := &fakeRebuildRepo{err: errors.New("lock timeout")}
+	repo := &fakeRebuildRepo{err: wrappedInternalErr()}
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/projections/rebuild",
 		strings.NewReader(`{"target":"knowledge-trail"}`))
@@ -103,7 +104,8 @@ func TestProjectionRebuildHandler_RepositoryFailureIsServerError(t *testing.T) {
 	rebuildMux(repo).ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
-	assert.Contains(t, rec.Body.String(), "lock timeout")
+	assert.Contains(t, rec.Body.String(), `"error":"projection rebuild failed"`)
+	assertNoInternalLeak(t, rec.Body.String())
 }
 
 // The targets endpoint is the operator's preview: it says exactly which tables
