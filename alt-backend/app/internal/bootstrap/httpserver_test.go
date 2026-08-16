@@ -151,7 +151,7 @@ func TestConnectServer_H2CStreamOutlivesReadHeaderTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("h2c round trip: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
