@@ -81,6 +81,7 @@ services:
     secrets:
       - pushover_user_key
       - pushover_token
+      - deadman_ping_url
     networks:
       - alt-network
     healthcheck:
@@ -182,3 +183,18 @@ volumes:
 secrets:
   grafana_admin_password:
     file: ../secrets/grafana_admin_password.txt
+  # Ping URL of the off-host dead man's switch, read by the `deadman` receiver
+  # in observability/alertmanager/alertmanager.yml. Operator-provided: create
+  # secrets/deadman_ping_url.txt containing the single-line URL issued by the
+  # heartbeat service, with no trailing newline, and configure that service to
+  # notify on a grace period of a few minutes (Alertmanager re-sends the
+  # Watchdog every 1m).
+  #
+  # A compose `secrets:` entry rather than a bind mount, and that choice is the
+  # fail-fast: a missing file here aborts container creation with a clear
+  # error, whereas Docker would happily materialise a missing bind source as an
+  # empty directory and leave the notifier starting up healthy with a heartbeat
+  # that goes nowhere. `docker compose config` stays green either way, so the
+  # error surfaces at `up`, not in CI.
+  deadman_ping_url:
+    file: ../secrets/deadman_ping_url.txt

@@ -1,0 +1,279 @@
+# promtool unit tests for the monitoring-stack meta alerts.
+#
+#   docker exec alt-prometheus-1 promtool test rules \
+#     /etc/prometheus/tests/meta-monitoring-alerts_test.yml
+#
+# Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
+# test file parsed as a rule group is a fatal config error, not a skip.
+#
+# What these pin, in order of how badly it hurt: that the Watchdog fires
+# unconditionally (a heartbeat with a condition is not a heartbeat), that
+# AlertmanagerDown survives its target being *removed* rather than merely
+# failing, and that the delivery-failure ratio stays quiet when nothing is
+# being delivered — a meta-monitor that cries wolf on an idle night gets muted,
+# and a muted meta-monitor is the state we are trying to leave.
+
+rule_files:
+  - ../rules/meta-monitoring-alerts.yml
+
+evaluation_interval: 30s
+
+tests:
+  # Everything healthy. The Watchdog still fires — that is the contract, and
+  # asserting it here is what stops a future edit from adding a condition to
+  # it. Nothing else fires.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="alertmanager",service="alertmanager",instance="alertmanager:9093"}'
+        values: '1x30'
+      - series: 'up{job="prometheus",service="prometheus",instance="localhost:9090"}'
+        values: '1x30'
+      - series: 'prometheus_config_last_reload_successful{job="prometheus",service="prometheus",instance="localhost:9090"}'
+        values: '1x30'
+      - series: 'prometheus_notifications_queue_length{job="prometheus",service="prometheus",instance="localhost:9090"}'
+        values: '0x30'
+      # Alertmanager pre-registers an integration series for every notifier it
+      # supports, so a healthy stack carries fifteen idle ones alongside the
+      # one it actually uses. They are here because they are the realistic
+      # input: without the denominator guard each of them is a 0/0 ratio.
+      - series: 'alertmanager_notifications_total{job="alertmanager",instance="alertmanager:9093",integration="pushover"}'
+        values: '0+1x30'
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="alertmanager:9093",integration="pushover",reason="serverError"}'
+        values: '0x30'
+      - series: 'alertmanager_notifications_total{job="alertmanager",instance="alertmanager:9093",integration="discord"}'
+        values: '0x30'
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="alertmanager:9093",integration="discord",reason="serverError"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels:
+              severity: deadman
+              stack: monitoring
+            exp_annotations:
+              summary: "Prometheus to Alertmanager pipeline is alive"
+              description: |
+                This alert always fires and always will. Receiving it certifies
+                the whole notification pipeline end to end: rule evaluation, the
+                Prometheus-to-Alertmanager connection, Alertmanager routing and
+                notification egress.
+                If the off-host monitor paged because this STOPPED arriving,
+                assume Prometheus, Alertmanager, Docker, the host or its network
+                is down, and check the host before anything else.
+      - eval_time: 11m
+        alertname: AlertmanagerDown
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: PrometheusRuleEvaluationFailures
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: PrometheusConfigReloadFailed
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: PrometheusNotificationsBacklog
+        exp_alerts: []
+
+  # Container stopped but still in the scrape config: up flips to 0.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="alertmanager",service="alertmanager",instance="alertmanager:9093"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: AlertmanagerDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: monitoring
+              job: alertmanager
+              service: alertmanager
+              instance: alertmanager:9093
+            exp_annotations:
+              summary: "Alertmanager is not answering Prometheus scrapes"
+              description: |
+                up{job="alertmanager"} is 0, or the target has gone from the
+                scrape config entirely. Alerts are still evaluated and are now
+                going nowhere.
+                This page cannot be delivered by the Alertmanager it describes —
+                it lands once the process returns and Prometheus re-sends. The
+                Watchdog heartbeat is the out-of-band net for the case where it
+                does not return.
+                Check: docker compose -f compose/observability.yaml -p alt logs alertmanager
+
+  # The scrape job itself was deleted from prometheus.yml. There is no `up`
+  # series to compare against zero, so only the absent() half of the expression
+  # can see this — the failure mode a plain `up == 0` rule is blind to.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="prometheus",service="prometheus",instance="localhost:9090"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: AlertmanagerDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: monitoring
+              job: alertmanager
+            exp_annotations:
+              summary: "Alertmanager is not answering Prometheus scrapes"
+              description: |
+                up{job="alertmanager"} is 0, or the target has gone from the
+                scrape config entirely. Alerts are still evaluated and are now
+                going nowhere.
+                This page cannot be delivered by the Alertmanager it describes —
+                it lands once the process returns and Prometheus re-sends. The
+                Watchdog heartbeat is the out-of-band net for the case where it
+                does not return.
+                Check: docker compose -f compose/observability.yaml -p alt logs alertmanager
+
+  # Every notification attempt rejected — a revoked token or an exhausted
+  # Pushover quota looks exactly like this. Failures arrive split across two
+  # `reason` values, which the numerator's sum has to collapse: the denominator
+  # has no such label, so an expression that forgot to aggregate would find no
+  # matching series and stay silent through a total delivery outage.
+  - interval: 30s
+    input_series:
+      - series: 'alertmanager_notifications_total{job="alertmanager",instance="alertmanager:9093",integration="pushover"}'
+        values: '0+2x30'
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="alertmanager:9093",integration="pushover",reason="serverError"}'
+        values: '0+1x30'
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="alertmanager:9093",integration="pushover",reason="clientError"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: monitoring
+              integration: pushover
+            exp_annotations:
+              summary: "Alertmanager pushover delivery failing (100%)"
+              description: |
+                Notifications are being attempted and rejected. Alt sends few
+                enough of them that any sustained ratio here means the channel is
+                down rather than degraded — an expired Pushover token, an
+                exhausted quota, or the host having no egress.
+                Check: docker compose -f compose/observability.yaml -p alt logs alertmanager
+                then the credential files behind /run/secrets in that container.
+
+  # One rejection in two hundred (0.5%) is under the threshold. Pinned so the
+  # ratio cannot be quietly turned into "any failure at all".
+  - interval: 30s
+    input_series:
+      - series: 'alertmanager_notifications_total{job="alertmanager",instance="alertmanager:9093",integration="pushover"}'
+        values: '0+200x30'
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="alertmanager:9093",integration="pushover",reason="serverError"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts: []
+
+  # Idle: no notifications sent at all. The ratio is 0/0 and must stay quiet —
+  # this is the case that decides whether the meta-monitor is trustworthy on a
+  # night when nothing happens.
+  - interval: 30s
+    input_series:
+      - series: 'alertmanager_notifications_total{job="alertmanager",instance="alertmanager:9093",integration="pushover"}'
+        values: '0x30'
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="alertmanager:9093",integration="pushover",reason="serverError"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts: []
+
+  # A rule group errors for a while and then recovers. Both halves matter: the
+  # alert has to fire during the errors and clear once they stop, or an old
+  # failure keeps paging forever.
+  - interval: 30s
+    input_series:
+      - series: 'prometheus_rule_evaluation_failures_total{job="prometheus",instance="localhost:9090",rule_group="/etc/prometheus/rules/knowledge-loop-rules.yml;knowledge_loop"}'
+        values: '0 0 0 1 1x26'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: PrometheusRuleEvaluationFailures
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: monitoring
+              job: prometheus
+              instance: localhost:9090
+              rule_group: /etc/prometheus/rules/knowledge-loop-rules.yml;knowledge_loop
+            exp_annotations:
+              summary: "Prometheus rule evaluation failing in /etc/prometheus/rules/knowledge-loop-rules.yml;knowledge_loop"
+              description: |
+                A rule group raised evaluation errors in the last 3m. Its rules
+                return nothing, which reads downstream exactly like "the condition
+                is false".
+                Find the failing expression in the Prometheus log, then run
+                scripts/observability-validate.sh locally before reloading.
+      - eval_time: 8m
+        alertname: PrometheusRuleEvaluationFailures
+        exp_alerts: []
+
+  # A reload was rejected: the process kept its old config, so anything
+  # committed since is deployed on disk and absent in memory.
+  - interval: 30s
+    input_series:
+      - series: 'prometheus_config_last_reload_successful{job="prometheus",service="prometheus",instance="localhost:9090"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PrometheusConfigReloadFailed
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: monitoring
+              job: prometheus
+              service: prometheus
+              instance: localhost:9090
+            exp_annotations:
+              summary: "Prometheus rejected its configuration on last reload"
+              description: |
+                prometheus_config_last_reload_successful is not 1. The process is
+                still serving the previous configuration, so any rule or scrape
+                target added since the last successful reload does not exist.
+                Check: docker compose -f compose/observability.yaml -p alt logs prometheus
+                Runbook: docs/runbooks/observability-config-reload.md
+
+  # Send queue never empties across a full window.
+  - interval: 30s
+    input_series:
+      - series: 'prometheus_notifications_queue_length{job="prometheus",service="prometheus",instance="localhost:9090"}'
+        values: '5x30'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: PrometheusNotificationsBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              stack: monitoring
+              job: prometheus
+              service: prometheus
+              instance: localhost:9090
+            exp_annotations:
+              summary: "Prometheus notification queue has not drained for 10m"
+              description: |
+                Alerts are being produced faster than Alertmanager accepts them,
+                or the connection to it is stalling. Nothing is lost yet, but the
+                queue is bounded and overflow is silent.
+                Check Alertmanager reachability from Prometheus first, then
+                whether an alert is flapping hard enough to saturate the queue.
+
+  # A burst that drains to zero once is a working queue, not a backlog. This is
+  # what min_over_time buys over a plain `> 0`.
+  - interval: 30s
+    input_series:
+      - series: 'prometheus_notifications_queue_length{job="prometheus",service="prometheus",instance="localhost:9090"}'
+        values: '5 5 5 0 5x26'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: PrometheusNotificationsBacklog
+        exp_alerts: []

@@ -30,6 +30,22 @@ scrape_configs:
         labels:
           service: 'prometheus'
 
+  # Alertmanager self-monitoring. The `alerting:` block above makes Prometheus
+  # a *client* of alertmanager:9093; this makes it a *scraper* of the same
+  # process, which is a different question. Without it the whole delivery path
+  # is unobserved: a revoked Pushover token, an exhausted quota or a stalled
+  # send loop all present as "no notifications arrive", which is exactly what a
+  # quiet night looks like. alertmanager_notifications_failed_total and friends
+  # are the only in-band evidence that the notifier is doing its job — see
+  # rules/meta-monitoring-alerts.yml.
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+        labels:
+          service: 'alertmanager'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
   # Plecto edge/ingress metrics — native /metrics on the admin port (replaces
   # nginx + nginx-exporter). See compose/core.yaml plecto-proxy service.
   - job_name: 'plecto-proxy'

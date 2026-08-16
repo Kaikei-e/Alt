@@ -54,7 +54,12 @@ var allowlist = []allowEntry{
 		// acolyte-orchestrator has no relay job: its API listener authenticates
 		// nobody, so a /metrics route on it would be a new unauthenticated
 		// surface, and a topology test asserts the route's absence.
-		promql:     `min by (job) (up{job=~"prometheus|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-data-hub|alt-notifier|pre-processor|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
+		//
+		// alertmanager sits next to prometheus because the notifier's own
+		// death is otherwise the least visible outage in the stack: alerts
+		// keep evaluating and stop being delivered, which from inside looks
+		// like a quiet night.
+		promql:     `min by (job) (up{job=~"prometheus|alertmanager|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-data-hub|alt-notifier|pre-processor|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
 		grafanaURL: "/d/otel-overview",
 	},
 	{

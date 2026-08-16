@@ -50,6 +50,36 @@ route:
   repeat_interval: 4h
 
   routes:
+    # Dead man's switch. First, and deliberately not a human tier.
+    #
+    # The Watchdog rule fires permanently (`vector(1)`), so what travels this
+    # route is a heartbeat rather than an alert: an off-host monitor receives
+    # it every minute and pages when it STOPS. Everything else in this file
+    # can only report a failure the stack is still alive enough to observe —
+    # a dead host, a dead Docker daemon or a dead Prometheus reports nothing
+    # at all, which is the seven-hour blind spot of 2026-08-10 in its purest
+    # form.
+    #
+    # Matched on alertname rather than severity so that the heartbeat's route
+    # cannot be broken by a severity relabel elsewhere. `continue` is false —
+    # explicit because it is load-bearing here: if the heartbeat also fell
+    # through to the tiers below it would buzz the operator's phone every
+    # minute, and the first thing anyone does with that is mute the channel.
+    #
+    # The intervals are the heartbeat period, not a notification policy.
+    # group_wait 0s so a restart re-establishes the pulse immediately rather
+    # than 30s into the monitor's grace window; group_interval and
+    # repeat_interval at 1m so the receiving end can use a grace period of a
+    # few minutes and still distinguish "one ping lost" from "the host is
+    # gone". max_alerts on the receiver keeps the payload a fixed size.
+    - matchers:
+        - alertname="Watchdog"
+      receiver: deadman
+      continue: false
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
+
     # Wake-the-operator tier. `critical` is included because
     # KnowledgeLoopCrossUserIsolationViolation uses it and is strictly more
     # severe than anything labelled `page`.
@@ -73,6 +103,32 @@ route:
       repeat_interval: 24h
 
 receivers:
+  # The heartbeat destination: an off-host service that expects a POST on a
+  # schedule and notifies the operator when one fails to arrive. It is the only
+  # receiver here that is not Pushover, and it must stay that way — a heartbeat
+  # delivered through the same path as the pages would prove nothing about that
+  # path being independent of the thing it is watching.
+  #
+  # `url_file` for the same reason as the Pushover credentials: the ping URL is
+  # a bearer credential (anyone holding it can forge the heartbeat and hide an
+  # outage), so it is read from a Docker secret at notify time and never
+  # appears in this file, in the container environment, or in this repository.
+  # See compose/observability.yaml for the secret definition. The endpoint has
+  # to accept POST with a JSON body — that is the only shape Alertmanager's
+  # webhook speaks, and heartbeat services that only document a GET ping URL
+  # will reject every beat while looking correctly configured from this side.
+  #
+  # send_resolved is false because the Watchdog never resolves; a "resolved"
+  # POST from here would mean the rule was deleted, which is a change to review
+  # in git, not a ping to send. max_alerts caps the body at the single alert
+  # this route can ever carry, so a heartbeat endpoint with a small payload
+  # limit cannot start rejecting pings.
+  - name: deadman
+    webhook_configs:
+      - url_file: /run/secrets/deadman_ping_url
+        send_resolved: false
+        max_alerts: 1
+
   - name: pushover-page
     pushover_configs:
       - user_key_file: /run/secrets/pushover_user_key
@@ -164,8 +220,17 @@ inhibit_rules:
   # A page and a warning describing the same condition should not both be
   # delivered. Scoped by alertname as well as the grouping labels so this
   # cannot silently suppress an unrelated warning that merely shares a stack.
+  #
+  # The Watchdog is excluded by name, not merely by carrying `severity:
+  # deadman` which no matcher here selects. An inhibited heartbeat is
+  # indistinguishable from a dead host at the receiving end — it would page
+  # the operator for an outage that is not happening, or worse, teach them
+  # that the deadman monitor cries wolf. That property has to survive someone
+  # relabelling the rule, so it is asserted here rather than inferred from the
+  # severity value.
   - source_matchers:
       - severity=~"page|critical"
     target_matchers:
       - severity=~"warning|ticket"
+      - alertname!="Watchdog"
     equal: ['alertname', 'stack', 'subject']
