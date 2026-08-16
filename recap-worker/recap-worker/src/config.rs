@@ -1275,6 +1275,8 @@ mod tests {
             ("MTLS_ENFORCE", None),
             ("RECAP_WORKER_EMBEDDING_REQUIRED", None),
             ("TAG_GENERATOR_ENABLED", None),
+            ("RECAP_KNOWLEDGE_EMIT", None),
+            ("RECAP_KNOWLEDGE_SOVEREIGN_URL", None),
             ("RECAP_KNOWLEDGE_OWNER_USER_ID", None),
             ("RECAP_KNOWLEDGE_OWNER_TENANT_ID", None),
             ("RECAP_MAX_DEGRADED_GENRE_RATIO", None),
@@ -1291,6 +1293,7 @@ mod tests {
             ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
             ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
             ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+            ("RECAP_KNOWLEDGE_EMIT", Some("false")),
         ]);
         vars
     }
@@ -1300,6 +1303,11 @@ mod tests {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
         let mut vars = required_base();
         vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
             (
                 "RECAP_KNOWLEDGE_OWNER_USER_ID",
                 Some("44444444-4444-4444-4444-444444444444"),
@@ -1368,6 +1376,136 @@ mod tests {
             assert!(
                 config.knowledge_owner().is_none(),
                 "an unparsable owner uuid must degrade to no owner (loud warn, not fatal)"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_emit_flag_absent() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_KNOWLEDGE_EMIT")
+            .collect();
+        temp_env::with_vars(vars, || {
+            assert!(
+                Config::from_env().is_err(),
+                "RECAP_KNOWLEDGE_EMIT must be an explicit true/false; an unset \
+                 variable must not be inferred as disabled"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_emit_enabled_without_owner() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            assert!(
+                Config::from_env().is_err(),
+                "emit enabled with no owner ids must abort startup, not limp \
+                 with emission silently off"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_emit_enabled_with_partial_owner() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            assert!(
+                Config::from_env().is_err(),
+                "emit enabled with only one owner id must abort startup"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_emit_enabled_with_invalid_owner_uuid() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
+            ("RECAP_KNOWLEDGE_OWNER_USER_ID", Some("not-a-uuid")),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            assert!(
+                Config::from_env().is_err(),
+                "emit enabled with an unparsable owner uuid must abort startup"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_emit_enabled_without_sovereign_url() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            assert!(
+                Config::from_env().is_err(),
+                "emit enabled without a sovereign URL must abort startup"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_owner_gated_off_when_emit_disabled() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert!(
+                config.knowledge_owner().is_none(),
+                "with emit explicitly disabled the owner must not scope jobs — \
+                 half-enabled states are what let the producer die silently"
             );
         });
     }
