@@ -33,6 +33,11 @@ on:
       - 'compose/**.yaml'
       - 'compose/**.yml'
       - 'scripts/compose-port-audit.py'
+      - 'scripts/compose-netns-cascade-audit.py'
+      - 'scripts/tests/test-compose-netns-cascade-audit.py'
+      - 'scripts/cascade-pki-sidecars.sh'
+      - 'scripts/check-compose-variables.sh'
+      - '.env.template'
       - '.github/workflows/compose-audit.yaml'
   pull_request:
     branches: [main]
@@ -40,6 +45,11 @@ on:
       - 'compose/**.yaml'
       - 'compose/**.yml'
       - 'scripts/compose-port-audit.py'
+      - 'scripts/compose-netns-cascade-audit.py'
+      - 'scripts/tests/test-compose-netns-cascade-audit.py'
+      - 'scripts/cascade-pki-sidecars.sh'
+      - 'scripts/check-compose-variables.sh'
+      - '.env.template'
       - '.github/workflows/compose-audit.yaml'
   workflow_dispatch:
 
@@ -136,3 +146,55 @@ jobs:
 
       - name: Assert every published port is loopback-bound
         run: python3 scripts/compose-port-audit.py
+
+  netns-cascade-invariant:
+    # `network_mode: service:X` pins the sidecar to the parent's container id,
+    # and `depends_on.restart: true` does not fire on a force-recreate of the
+    # parent alone — so recreating the parent leaves the sidecar attached to a
+    # dead netns with no listener and no error. scripts/cascade-pki-sidecars.sh
+    # repairs that, but only for the sidecars hand-listed in it, and the list
+    # has already fallen behind compose once. This job is what keeps the two
+    # in step. No .env or docker needed: the audit reads the compose files.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pin the audit parsers
+        run: python3 scripts/tests/test-compose-netns-cascade-audit.py
+
+      - name: Assert every netns-sharing sidecar is covered by the cascade script
+        run: python3 scripts/compose-netns-cascade-audit.py
+
+  interpolation-invariant:
+    # An unset `${VAR}` renders as an empty string and only warns on stderr,
+    # so an incomplete env file reaches production as a service configured
+    # with "" (PM-2026-048: a wrong Meilisearch key ran for 24 hours).
+    # scripts/check-compose-variables.sh gates the deploy against the host's
+    # real .env; this job runs the same gate against .env.template, so the
+    # template stays a complete render input instead of drifting behind
+    # compose/ until the next operator sets up a host from it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Stage .env.template as the render input
+        run: |
+          # compose/compose.yaml is a pure `include:` aggregator and every
+          # included file interpolates against the .env in its own directory,
+          # so the template must be staged at compose/.env as well — a
+          # top-level `--env-file` does not reach the includes. Root .env is
+          # separately required because services carry `env_file: ../.env`.
+          # DOCKER_GROUP_ID is the one `${VAR:?}` variable and is derived from
+          # the host (scripts/get-docker-gid.sh), so it is intentionally not
+          # in the template; any numeric GID renders.
+          { cat .env.template; echo; echo 'DOCKER_GROUP_ID=0'; } > .env
+          cp .env compose/.env
+
+      - name: Assert .env.template resolves every interpolation variable
+        run: ./scripts/check-compose-variables.sh

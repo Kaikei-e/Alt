@@ -34,11 +34,19 @@ perf-build: $(ENV_FILE)
 	@echo "Building alt-perf image..."
 	docker compose -p alt -f compose/base.yaml -f compose/perf.yaml build alt-perf
 
-# コンテナ、イメージ、ボリュームなどを全てクリーンアップするターゲット
-clean: down-volumes
-	@echo "Cleaning up dangling images and build cache..."
-	docker system prune -f --all # 全ての未使用のコンテナ、ネットワーク、イメージを削除
-	docker builder prune -f      # ビルドキャッシュを削除
+# Reclaim images, containers and build cache.
+#
+# This used to depend on a `down-volumes` target that does not exist (so it
+# aborted before running anything) and then ran `docker system prune -f --all`.
+# A blanket prune deletes the image of every container that happens to be
+# stopped, so a sidecar between restarts has nothing left to start from, and
+# the `--volumes` variants delete the data of any service that is down.
+# Removal now goes through the protected cleanup script, which computes the
+# in-use image set before deleting anything and never prunes volumes.
+# For a stack teardown, run `docker compose -f compose/compose.yaml -p alt down`.
+clean:
+	@echo "Cleaning up unused images and build cache (protected sweep)..."
+	@LOG_FILE=$(DOCKER_CLEANUP_LOG) ./scripts/docker-cleanup.sh
 
 # .env ファイルを削除するターゲット
 clean-env:
@@ -170,9 +178,23 @@ acolyte-migrate-validate:
 	@docker compose -f compose/compose.yaml -p alt run --rm -T --no-deps acolyte-db-migrator syntax-check
 
 # Docker disk space management targets
+#
+# Every destructive target here delegates to scripts/docker-cleanup.sh. That
+# script protects the images of all existing containers plus the ones the
+# compose project declares, aborts rather than sweeping with an empty protected
+# set, and never prunes volumes. Do not add a raw `docker image prune -a`,
+# `docker system prune --all` or `docker volume prune` back to this file.
+#
+# The script logs to /var/log by default, which only the systemd unit (running
+# as root) can write, so make runs are pointed at a writable path.
+DOCKER_CLEANUP_LOG ?= /tmp/alt-docker-cleanup.log
+# Keep-age used by the "aggressive" target. Never zero: an unbounded sweep buys
+# a few hundred MB and risks the image of whatever restarted last.
+DOCKER_CLEANUP_AGGRESSIVE_AGE_HOURS ?= 6
+
 docker-cleanup:
 	@echo "Running Docker disk space cleanup..."
-	@./scripts/docker-cleanup.sh
+	@LOG_FILE=$(DOCKER_CLEANUP_LOG) ./scripts/docker-cleanup.sh
 
 docker-cleanup-install:
 	@echo "Installing Docker cleanup systemd timer..."
@@ -208,28 +230,18 @@ docker-disk-usage:
 	@echo "Detailed breakdown:"
 	@docker system df -v
 
-# Memory-focused cleanup targets
+# Memory-focused cleanup targets.
+#
+# These used to be hand-rolled prune sequences: `docker image prune -a` removed
+# the image of every container that was stopped at that moment, and
+# `docker volume prune` removed the data of every service that was down.
+# Both now run the protected sweep instead; the difference between them is the
+# keep-age, not how much protection is dropped.
 docker-cleanup-memory:
 	@echo "=== Docker Memory Cleanup ==="
-	@echo "This will free up memory by removing unused Docker resources."
+	@echo "Removing unused containers, images, build cache and networks."
 	@echo ""
-	@echo "1. Removing stopped containers..."
-	@docker container prune -f || true
-	@echo ""
-	@echo "2. Removing unused images (older than 24h)..."
-	@docker image prune -a -f --filter "until=24h" || true
-	@echo ""
-	@echo "3. Removing build cache..."
-	@docker builder prune -f --filter "until=24h" || true
-	@echo ""
-	@echo "4. Removing unused volumes (excluding active ones)..."
-	@docker volume prune -f || true
-	@echo ""
-	@echo "5. Removing unused networks..."
-	@docker network prune -f || true
-	@echo ""
-	@echo "6. Cleaning up old logs..."
-	@docker compose logs --tail=0 2>/dev/null || true
+	@LOG_FILE=$(DOCKER_CLEANUP_LOG) ./scripts/docker-cleanup.sh
 	@echo ""
 	@echo "=== Cleanup Complete ==="
 	@echo "Current Docker resource usage:"
@@ -237,35 +249,22 @@ docker-cleanup-memory:
 
 docker-cleanup-memory-aggressive:
 	@echo "=== Aggressive Docker Memory Cleanup ==="
-	@echo "WARNING: This will remove ALL unused resources, including recent ones."
+	@echo "This reaches back to $(DOCKER_CLEANUP_AGGRESSIVE_AGE_HOURS)h instead of the default 24h."
+	@echo "Images in use, compose-owned containers and volumes are still protected."
 	@echo ""
 	@read -p "Are you sure? (yes/no): " confirm && [ "$$confirm" = "yes" ] || exit 1
 	@echo ""
-	@echo "1. Removing all stopped containers..."
-	@docker container prune -f || true
-	@echo ""
-	@echo "2. Removing all unused images..."
-	@docker image prune -a -f || true
-	@echo ""
-	@echo "3. Removing all build cache..."
-	@docker builder prune -a -f || true
-	@echo ""
-	@echo "4. Removing unused volumes (CAREFUL: may remove data)..."
-	@docker volume prune -f || true
-	@echo ""
-	@echo "5. Removing unused networks..."
-	@docker network prune -f || true
-	@echo ""
-	@echo "6. System-wide cleanup..."
-	@docker system prune -a -f --volumes || true
+	@LOG_FILE=$(DOCKER_CLEANUP_LOG) \
+		DOCKER_CLEANUP_KEEP_AGE_HOURS=$(DOCKER_CLEANUP_AGGRESSIVE_AGE_HOURS) \
+		./scripts/docker-cleanup.sh
 	@echo ""
 	@echo "=== Aggressive Cleanup Complete ==="
 	@echo "Current Docker resource usage:"
 	@docker system df
 
 docker-remove-old-volumes:
-	@echo "=== Removing Old/Unused Volumes ==="
-	@echo "WARNING: This will remove unused volumes. Active volumes will be preserved."
+	@echo "=== Removing Old Volumes ==="
+	@echo "Removes the two named legacy volumes below. Everything else is only listed."
 	@echo ""
 	@echo "Checking for old db_data volume (PostgreSQL 16, no longer used)..."
 	@if docker volume inspect alt_db_data >/dev/null 2>&1; then \
@@ -279,8 +278,11 @@ docker-remove-old-volumes:
 		docker volume rm alt-db_data 2>/dev/null || echo "Could not remove alt-db_data (may be in use)"; \
 	fi
 	@echo ""
-	@echo "Removing all unused volumes (safe - only removes volumes not attached to any container)..."
-	@docker volume prune -f || true
+	@echo "Unattached volumes (review, then remove by name):"
+	@echo "A blanket 'docker volume prune' is not run here - a volume becomes"
+	@echo "unattached the moment its container is stopped or recreated, so the"
+	@echo "sweep would delete the data of every service that is merely down."
+	@docker volume ls --filter dangling=true
 	@echo "=== Volume Cleanup Complete ==="
 
 docker-memory-stats:
@@ -396,6 +398,12 @@ rust-clean:
 	@cd recap-worker/recap-worker && cargo clean 2>/dev/null && echo "    cleaned." || echo "    skipped (no target/)."
 	@echo "Rust cleanup complete."
 
+# Fail if any compose interpolation variable is unset — an unset ${VAR}
+# renders as an empty string and only warns. Same gate scripts/deploy.sh runs
+# first; run it by hand after editing .env or compose/.
+check-compose-variables:
+	@./scripts/check-compose-variables.sh
+
 # c2quay — Pact-gated deployer used by scripts/deploy.sh.
 # Downloads, checksums, and installs the release tarball to INSTALL_DIR
 # (default /usr/local/bin, sudo required for that path).
@@ -417,4 +425,4 @@ install-c2quay:
 	  rm -rf "$$tmp"
 	@c2quay version
 
-.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean install-c2quay
+.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean check-compose-variables install-c2quay
