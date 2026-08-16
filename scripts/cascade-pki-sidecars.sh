@@ -20,10 +20,17 @@ COMPOSE_FILE="${COMPOSE_FILE:-$REPO_ROOT/compose/compose.yaml}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-alt}"
 
 # compose_service : sidecar_container_name : parent_container_name
-# Add a row here when a new service uses `network_mode: service:X` for pki-agent.
+# Add a row here when a new service uses `network_mode: service:X` for
+# pki-agent. Container names are what compose creates: the service's own
+# `container_name:` when it declares one, otherwise `alt-<service>-1`. A name
+# that does not exist makes this script print "skip: ... not running" and exit
+# 0, so scripts/compose-netns-cascade-audit.py checks both the coverage and
+# the names against compose on every CI run.
 NETNS_SIDECARS=(
   "pki-agent-acolyte-orchestrator:alt-pki-agent-acolyte-orchestrator-1:acolyte-orchestrator"
-  "pki-agent-tag-generator:alt-pki-agent-tag-generator-1:tag-generator"
+  "pki-agent-tag-generator:alt-pki-agent-tag-generator-1:alt-tag-generator-1"
+  "pki-agent-recap-subworker:alt-pki-agent-recap-subworker-1:alt-recap-subworker-1"
+  "pki-agent-news-creator:alt-pki-agent-news-creator-1:news-creator"
 )
 
 for entry in "${NETNS_SIDECARS[@]}"; do
