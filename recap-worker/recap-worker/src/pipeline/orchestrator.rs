@@ -276,34 +276,21 @@ impl PipelineOrchestrator {
         let _ = tag_generator_client;
 
         // Knowledge Sovereign client wiring (Wave 4-B, ADR-000905 §PR-C2).
-        // Env var names follow the recap-worker convention (`RECAP_*` prefix,
-        // matching RECAP_DB_*, RECAP_KNOWLEDGE_*) and the compose default
-        // declared in `compose/recap.yaml`:
-        //   RECAP_KNOWLEDGE_EMIT=${RECAP_KNOWLEDGE_EMIT:-true}
-        //   RECAP_KNOWLEDGE_SOVEREIGN_URL=${RECAP_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
-        // The :-true compose default flips emit ON at deploy time; production
-        // can still override to "false" without redeploying for an
-        // operational kill switch.
-        let sovereign_client: Option<Arc<KnowledgeSovereignClient>> = {
-            let enabled = std::env::var("RECAP_KNOWLEDGE_EMIT")
-                .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
-            let base_url = std::env::var("RECAP_KNOWLEDGE_SOVEREIGN_URL").ok();
-            match (enabled, base_url) {
-                (true, Some(url)) if !url.trim().is_empty() => {
-                    match KnowledgeSovereignClient::new(url) {
-                        Ok(client) => Some(Arc::new(client)),
-                        Err(err) => {
-                            tracing::warn!(
-                                error = ?err,
-                                "knowledge-sovereign client init failed; recap.topic_snapshotted.v1 emit disabled"
-                            );
-                            None
-                        }
-                    }
-                }
-                _ => None,
-            }
-        };
+        // Config validation already enforced the contract: a URL is present
+        // exactly when RECAP_KNOWLEDGE_EMIT=true, together with the owner id
+        // pair. A client that cannot be built at that point is a broken
+        // deployment, so it panics instead of degrading to a producer that
+        // reports success while never emitting.
+        let sovereign_client: Option<Arc<KnowledgeSovereignClient>> = config
+            .knowledge_sovereign_url()
+            .map(|url| match KnowledgeSovereignClient::new(url) {
+                Ok(client) => Arc::new(client),
+                Err(err) => panic!(
+                    "RECAP_KNOWLEDGE_EMIT=true but the knowledge-sovereign \
+                         client cannot be built from RECAP_KNOWLEDGE_SOVEREIGN_URL \
+                         ({err:#}); refusing to run with emission silently disabled"
+                ),
+            });
         PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
@@ -633,6 +620,7 @@ mod new_tests {
             ("NEWS_CREATOR_BASE_URL", Some("https://news-creator:9443")),
             ("SUBWORKER_BASE_URL", Some("https://recap-subworker:9443")),
             ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
+            ("RECAP_KNOWLEDGE_EMIT", Some("false")),
             ("MTLS_ENFORCE", Some("true")),
             ("MTLS_CERT_FILE", None),
             ("MTLS_KEY_FILE", None),

@@ -181,7 +181,8 @@ async fn main() -> anyhow::Result<()> {
     let default_genres = registry.config().recap_genres().to_vec();
     // Knowledge-loop owner for the persist-stage recap.topic_snapshotted.v1
     // emit. Resolved once from env; threaded into every JobContext both
-    // daemons build. `None` keeps emission off (intentionally disabled).
+    // daemons build. `None` only ever means RECAP_KNOWLEDGE_EMIT=false —
+    // config validation refuses a half-wired emit at startup.
     let knowledge_owner = registry.config().knowledge_owner();
 
     // Coordinates graceful shutdown across every long-running consumer:

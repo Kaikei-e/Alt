@@ -341,6 +341,7 @@ mod tests {
                 ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
                 ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
                     Some("/tmp/test-token-which-does-not-exist"),

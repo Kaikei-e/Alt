@@ -27,8 +27,9 @@ fn apply_knowledge_owner(ctx: JobContext, owner: Option<KnowledgeOwnerIds>) -> J
 }
 
 /// Loud startup log of the topic-snapshot emit wiring state (CLAUDE.md #8).
-/// Emission being off is a legitimate per-deployment choice, so we log rather
-/// than panic — but the state is always surfaced, never silent.
+/// Config validation refuses every half-wired combination at startup, so
+/// `None` here can only mean the explicit RECAP_KNOWLEDGE_EMIT=false — a
+/// legitimate per-deployment choice, logged rather than fatal.
 fn log_topic_snapshot_emit_wiring(owner: Option<KnowledgeOwnerIds>, daemon: &'static str) {
     if let Some(owner) = owner {
         info!(
@@ -39,7 +40,7 @@ fn log_topic_snapshot_emit_wiring(owner: Option<KnowledgeOwnerIds>, daemon: &'st
     } else {
         warn!(
             daemon,
-            "recap_topic_snapshot_emit_disabled: RECAP_KNOWLEDGE_OWNER_USER_ID / RECAP_KNOWLEDGE_OWNER_TENANT_ID not both set — recap.topic_snapshotted.v1 will not be emitted"
+            "recap_topic_snapshot_emit_disabled: RECAP_KNOWLEDGE_EMIT=false — recap.topic_snapshotted.v1 will not be emitted"
         );
     }
 }

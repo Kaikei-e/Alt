@@ -123,20 +123,36 @@ pub struct Config {
     clustering_stuck_threshold: Duration,
     batch_summary_chunk_size: usize,
     embedding_required: FeatureToggle,
-    knowledge_owner: Option<KnowledgeOwnerIds>,
+    knowledge_emit: KnowledgeEmit,
     max_degraded_genre_ratio: f64,
 }
 
 /// Resolved knowledge-loop owner ids sourced from
 /// `RECAP_KNOWLEDGE_OWNER_USER_ID` / `RECAP_KNOWLEDGE_OWNER_TENANT_ID`.
 ///
-/// Present only when BOTH env vars parse as UUIDs. The persist-stage
-/// `recap.topic_snapshotted.v1` emit guard needs both ids set, so a partial
-/// owner is treated as "no owner" (emission stays off).
+/// Only consulted when `RECAP_KNOWLEDGE_EMIT=true`, in which case both ids
+/// must parse as UUIDs — anything less aborts startup (see
+/// [`KnowledgeEmit`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KnowledgeOwnerIds {
     pub user_id: uuid::Uuid,
     pub tenant_id: uuid::Uuid,
+}
+
+/// Wiring state of the persist-stage `recap.topic_snapshotted.v1` emit.
+///
+/// The half-enabled states (client built but no owner to scope jobs, owner
+/// set but emit flag off) are unrepresentable: `Enabled` carries everything
+/// emission needs, and the only other value is an explicit `Disabled`. The
+/// producer ran for months with the emit flag on but the owner unset, limping
+/// scopeless and never emitting — this type is why that cannot recur.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum KnowledgeEmit {
+    Enabled {
+        owner: KnowledgeOwnerIds,
+        sovereign_url: String,
+    },
+    Disabled,
 }
 
 #[derive(Debug, Error)]
@@ -306,7 +322,7 @@ impl Config {
         } else {
             FeatureToggle::Disabled
         };
-        let knowledge_owner = load_knowledge_owner();
+        let knowledge_emit = load_knowledge_emit()?;
         // Default 0.5: a job where more than half of its dispatched genres
         // degraded (LLM overload, "Missing from batch response", ...) is a
         // quality collapse that must surface as `failed`, not silently
@@ -331,7 +347,7 @@ impl Config {
             clustering_min_success_genres,
             clustering_stuck_threshold,
             embedding_required,
-            knowledge_owner,
+            knowledge_emit,
             max_degraded_genre_ratio,
         ))
     }
@@ -355,7 +371,7 @@ impl Config {
         clustering_min_success_genres: usize,
         clustering_stuck_threshold: Duration,
         embedding_required: FeatureToggle,
-        knowledge_owner: Option<KnowledgeOwnerIds>,
+        knowledge_emit: KnowledgeEmit,
         max_degraded_genre_ratio: f64,
     ) -> Self {
         Self {
@@ -420,7 +436,7 @@ impl Config {
             clustering_stuck_threshold,
             batch_summary_chunk_size: basic.batch_summary_chunk_size,
             embedding_required,
-            knowledge_owner,
+            knowledge_emit,
             max_degraded_genre_ratio,
         }
     }
@@ -786,8 +802,23 @@ impl Config {
     /// `None` means the scheduler leaves every `JobContext` scopeless and the
     /// persist-stage emit guard keeps emission off.
     #[must_use]
+    /// Owner ids that scope every JobContext for the topic-snapshot emit.
+    /// `Some` exactly when `RECAP_KNOWLEDGE_EMIT=true` (config validation
+    /// guarantees the pair); `None` means emission is explicitly disabled.
     pub fn knowledge_owner(&self) -> Option<KnowledgeOwnerIds> {
-        self.knowledge_owner
+        match &self.knowledge_emit {
+            KnowledgeEmit::Enabled { owner, .. } => Some(*owner),
+            KnowledgeEmit::Disabled => None,
+        }
+    }
+
+    /// Base URL of knowledge-sovereign for the topic-snapshot emit.
+    /// `Some` exactly when `RECAP_KNOWLEDGE_EMIT=true`.
+    pub fn knowledge_sovereign_url(&self) -> Option<&str> {
+        match &self.knowledge_emit {
+            KnowledgeEmit::Enabled { sovereign_url, .. } => Some(sovereign_url),
+            KnowledgeEmit::Disabled => None,
+        }
     }
 
     /// Maximum tolerated ratio of failed/degraded genres among a job's
@@ -1053,14 +1084,59 @@ fn load_classification_queue_config() -> Result<QueueConfig, ConfigError> {
     })
 }
 
+/// Resolve the `recap.topic_snapshotted.v1` emit wiring from env.
+///
+/// `RECAP_KNOWLEDGE_EMIT` must be explicitly `true` or `false` — an unset
+/// variable is a startup error, never inferred as disabled. When `true`, the
+/// owner id pair and the sovereign URL are required; a producer that would
+/// run without them is refused at startup instead of limping scopeless and
+/// never emitting.
+fn load_knowledge_emit() -> Result<KnowledgeEmit, ConfigError> {
+    let raw = env_var("RECAP_KNOWLEDGE_EMIT")?;
+    let enabled = match raw.to_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => true,
+        "false" | "0" | "no" | "off" => false,
+        _ => {
+            return Err(invalid_config(
+                "RECAP_KNOWLEDGE_EMIT",
+                format!("invalid boolean value: {raw}"),
+            ));
+        }
+    };
+    if !enabled {
+        return Ok(KnowledgeEmit::Disabled);
+    }
+    let owner = load_knowledge_owner().ok_or_else(|| {
+        invalid_config(
+            "RECAP_KNOWLEDGE_EMIT",
+            "emit is enabled but RECAP_KNOWLEDGE_OWNER_USER_ID / \
+             RECAP_KNOWLEDGE_OWNER_TENANT_ID are not both valid UUIDs; set \
+             both or set RECAP_KNOWLEDGE_EMIT=false explicitly",
+        )
+    })?;
+    let sovereign_url = env_var_optional("RECAP_KNOWLEDGE_SOVEREIGN_URL")
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+        .ok_or_else(|| {
+            invalid_config(
+                "RECAP_KNOWLEDGE_EMIT",
+                "emit is enabled but RECAP_KNOWLEDGE_SOVEREIGN_URL is unset \
+                 or empty; set it or set RECAP_KNOWLEDGE_EMIT=false explicitly",
+            )
+        })?;
+    Ok(KnowledgeEmit::Enabled {
+        owner,
+        sovereign_url,
+    })
+}
+
 /// Resolve the knowledge-loop owner from the two owner env vars.
 ///
 /// Returns `Some` only when BOTH `RECAP_KNOWLEDGE_OWNER_USER_ID` and
-/// `RECAP_KNOWLEDGE_OWNER_TENANT_ID` are set to valid UUIDs. A partially-set
-/// or unparsable pair degrades to `None` (emission disabled) rather than
-/// failing startup, because the owner is a per-deployment optional feature.
-/// The daemon emits the loud enabled/disabled startup log; here we only warn
-/// on the surprising partial/invalid cases so a typo is never swallowed.
+/// `RECAP_KNOWLEDGE_OWNER_TENANT_ID` are set to valid UUIDs. Only called on
+/// the emit-enabled path, where `None` is promoted to a startup error by
+/// [`load_knowledge_emit`]; the warns keep the exact defect (partial pair,
+/// bad UUID) visible next to that error.
 fn load_knowledge_owner() -> Option<KnowledgeOwnerIds> {
     let user_raw = env_var_optional("RECAP_KNOWLEDGE_OWNER_USER_ID");
     let tenant_raw = env_var_optional("RECAP_KNOWLEDGE_OWNER_TENANT_ID");
@@ -1275,7 +1351,10 @@ mod tests {
             ("MTLS_ENFORCE", None),
             ("RECAP_WORKER_EMBEDDING_REQUIRED", None),
             ("TAG_GENERATOR_ENABLED", None),
-            ("RECAP_KNOWLEDGE_EMIT", None),
+            // Explicit false, not a reset: RECAP_KNOWLEDGE_EMIT is required,
+            // so every fixture must state its intent. Tests that exercise the
+            // enabled or absent cases override or filter this entry.
+            ("RECAP_KNOWLEDGE_EMIT", Some("false")),
             ("RECAP_KNOWLEDGE_SOVEREIGN_URL", None),
             ("RECAP_KNOWLEDGE_OWNER_USER_ID", None),
             ("RECAP_KNOWLEDGE_OWNER_TENANT_ID", None),
@@ -1293,7 +1372,6 @@ mod tests {
             ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
             ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
             ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
-            ("RECAP_KNOWLEDGE_EMIT", Some("false")),
         ]);
         vars
     }

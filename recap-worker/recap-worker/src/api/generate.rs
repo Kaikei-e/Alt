@@ -147,6 +147,7 @@ mod tests {
                 ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
                 ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",

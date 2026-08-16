@@ -736,6 +736,10 @@ services:
       - NEWS_CREATOR_BASE_URL=http://rw-stub-news-creator/
       - SUBWORKER_BASE_URL=http://rw-stub-subworker/
       - ALT_BACKEND_BASE_URL=http://rw-stub-alt-backend/
+      # Explicit disable: the emit flag is required config (true demands the
+      # knowledge owner id pair) and the staging suite has no
+      # knowledge-sovereign to emit into.
+      - RECAP_KNOWLEDGE_EMIT=false
       - TAG_GENERATOR_BASE_URL=http://rw-stub-tag-generator/
       - HUGGING_FACE_TOKEN_PATH=/tmp/staging-hf-token-not-used
       # Staging has no real HF token (path above is intentionally absent),
