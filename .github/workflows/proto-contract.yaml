@@ -283,7 +283,11 @@ jobs:
         working-directory: ${{ matrix.service }}
         env:
           CGO_ENABLED: "1"
-        run: go test -tags=contract ${{ matrix.test-path }} -v
+        # -count=1: the pact JSON is a side effect of executing the tests. With
+        # the restored GOCACHE, an unchanged module replays yesterday's cached
+        # output without running anything, no pact file is written, and the
+        # upload step fails on an empty pact dir.
+        run: go test -tags=contract -count=1 ${{ matrix.test-path }} -v
 
       - name: Upload pact files
         if: matrix.pact-dir != ''
