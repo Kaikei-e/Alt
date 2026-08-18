@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -95,6 +96,30 @@ func TestResolveVolumes_IncludeUnknownName(t *testing.T) {
 	_, err := ResolveVolumes(r, ProfileAll, []string{"nonexistent_volume"}, nil)
 	if err == nil {
 		t.Error("Expected error for unknown include volume name")
+	}
+}
+
+func TestResolveVolumes_ExcludeUnknownName(t *testing.T) {
+	r := NewVolumeRegistry()
+	_, err := ResolveVolumes(r, ProfileAll, nil, []string{"rask"})
+	if err == nil {
+		t.Fatal("Expected error for unknown exclude volume name")
+	}
+
+	if !strings.Contains(err.Error(), "rask") {
+		t.Errorf("Error should name the unknown volume, got %q", err.Error())
+	}
+}
+
+func TestResolveVolumes_ExcludeMixedKnownAndUnknown(t *testing.T) {
+	r := NewVolumeRegistry()
+	_, err := ResolveVolumes(r, ProfileAll, nil, []string{"clickhouse_data", "nonexistent_volume"})
+	if err == nil {
+		t.Fatal("Expected error when exclude mixes known and unknown volume names")
+	}
+
+	if !strings.Contains(err.Error(), "nonexistent_volume") {
+		t.Errorf("Error should name the unknown volume, got %q", err.Error())
 	}
 }
 
