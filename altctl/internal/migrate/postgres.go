@@ -184,8 +184,8 @@ func (p *PostgresBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPa
 // safety gate), a composeFileList error here is not fatal: this is only a
 // best-effort container-name lookup used to target pg_dump/pg_restore at the
 // right container, and the static fallback naming already exists for the
-// "no compose files" case. A registry load failure degrades the same way,
-// with a warning so it's visible rather than silent.
+// "no compose files" case. A missing aggregate compose.yaml degrades the
+// same way, with a warning so it's visible rather than silent.
 func (p *PostgresBackuper) resolveContainer(ctx context.Context, spec VolumeSpec) string {
 	files, err := composeFileList(p.composeDir)
 	if err != nil {

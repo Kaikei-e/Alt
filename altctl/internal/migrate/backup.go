@@ -343,54 +343,52 @@ func (m *Migrator) backupVolumeWithTiming(ctx context.Context, spec VolumeSpec, 
 	return timing
 }
 
-// composeFileList returns the full paths to every compose file the stack
-// registry derives from composeDir, in a stable order. Backup and restore
-// both use this as their single source of truth for "which compose files
-// make up this project" so container detection / stop operations can't
-// silently drift out of sync and miss a stack (e.g. sovereign.yaml, whose DB
-// volume would otherwise be overwritten by a restore while its container is
-// still up).
+// composeFileList returns the -f file list for every docker compose
+// invocation this package builds (running-container detection, pre-restore
+// "down", live container-ID lookup): the aggregate compose/compose.yaml
+// alone. Backup and restore both use this as their single source of truth
+// so container detection / stop operations can't silently drift out of
+// sync and miss a stack (e.g. sovereign.yaml, whose DB volume would
+// otherwise be overwritten by a restore while its container is still up) --
+// the aggregate reaches every stack of the real project through its
+// include: graph (drift is guarded by internal/stack's aggregate tests).
 //
-// The stack registry now derives stacks from compose/*.yaml on disk rather
-// than a hardcoded list (see internal/stack.NewRegistry), so this looks for
-// an altctl config file (stack semantics: depends_on, optional, ...) as a
-// sibling of composeDir's parent directory -- the conventional
-// <project root>/compose + <project root>/.altctl.yaml layout.
+// Concatenating every stack's own file (the pre-C3 strategy) is
+// structurally broken here just as it was for up/down: multiple -f flags
+// MERGE same-named services (include: does not), and the isolated
+// local-dev overlays dev.yaml / frontend-dev.yaml redeclare
+// alt-frontend-sv / alt-backend with resource limits that conflict with
+// core.yaml's ("services.alt-frontend-sv: can't set distinct values on
+// 'mem_limit' and 'deploy.resources.limits.memory': invalid compose
+// project"), so docker compose rejects the merged project before ps/down
+// can run at all. Those isolated stacks run under their own compose
+// project names and never mount this project's volumes, so leaving them
+// out loses nothing (see cmd/compose_target.go).
 //
-// Two distinct failure shapes come back from stack.NewRegistry, and they
-// must NOT be treated alike (C1):
+// Two distinct failure shapes, which must NOT be treated alike (C1):
 //
-//   - composeDir itself does not exist at all (discoverComposeStacks'
-//     os.ReadDir fails with ENOENT). This is genuinely "nothing to back up
-//     or stop" -- e.g. a synthetic test path like "/tmp/compose" that was
-//     never meant to be a real project, or `altctl` invoked outside a repo
-//     checkout. Tolerated: returns (nil, nil).
-//   - anything else -- a malformed .altctl.yaml, a stack declared in
-//     .altctl.yaml with no matching compose file (registry.go's hard
-//     fail-fast, Critical Rule 9), a permission error reading composeDir,
-//     ... -- is a real load failure and must ABORT loudly. Swallowing this
-//     into an empty file list previously made getRunningContainers report
+//   - composeDir itself does not exist at all. This is genuinely "nothing
+//     to back up or stop" -- e.g. a synthetic test path like "/tmp/compose"
+//     that was never meant to be a real project, or `altctl` invoked
+//     outside a repo checkout. Tolerated: returns (nil, nil).
+//   - composeDir exists but the aggregate file is missing (or unreadable).
+//     A real project layout problem that must ABORT loudly. Degrading it
+//     into an empty file list would make getRunningContainers report
 //     "nothing running" even when a live stack's containers were up,
 //     letting restore skip the stop-running-containers guard and overwrite
 //     their volumes out from under them.
 func composeFileList(composeDir string) ([]string, error) {
-	configPath := filepath.Join(filepath.Dir(composeDir), ".altctl.yaml")
-	registry, err := stack.NewRegistry(composeDir, configPath)
-	if err != nil {
+	if _, err := os.Stat(composeDir); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("loading stack registry from %s: %w", composeDir, err)
+		return nil, fmt.Errorf("reading compose dir %s: %w", composeDir, err)
 	}
-	stacks := registry.All()
-	files := make([]string, 0, len(stacks))
-	for _, s := range stacks {
-		if s.ComposeFile == "" {
-			continue
-		}
-		files = append(files, filepath.Join(composeDir, s.ComposeFile))
+	aggregate := filepath.Join(composeDir, stack.AggregateComposeFile)
+	if _, err := os.Stat(aggregate); err != nil {
+		return nil, fmt.Errorf("aggregate compose file %s: %w", aggregate, err)
 	}
-	return files, nil
+	return []string{aggregate}, nil
 }
 
 // getRunningContainers returns a list of running containers for this project

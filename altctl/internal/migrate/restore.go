@@ -201,11 +201,11 @@ func (m *Migrator) stopContainers(ctx context.Context) error {
 }
 
 // buildComposeArgs builds docker compose command arguments. The compose file
-// list comes from composeFileList (backed by the stack registry) so it can't
-// drift out of sync with getRunningContainers — a pre-restore "down" must
-// stop every stack, including sovereign.yaml, or its DB volume/dump can be
-// overwritten while the container is still running. A composeFileList error
-// (broken .altctl.yaml, a declared stack with no matching compose file, ...)
+// list comes from composeFileList (the aggregate compose.yaml alone) so it
+// can't drift out of sync with getRunningContainers — a pre-restore "down"
+// must stop every stack, including sovereign.yaml, or its DB volume/dump can
+// be overwritten while the container is still running. A composeFileList
+// error (composeDir exists but the aggregate compose.yaml is missing, ...)
 // propagates instead of silently building a "down" with zero -f flags, which
 // would stop nothing while still reporting success (C1).
 func (m *Migrator) buildComposeArgs(args ...string) ([]string, error) {
