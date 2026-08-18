@@ -362,3 +362,24 @@ func TestClient_PS_DecodesServiceField(t *testing.T) {
 		t.Errorf("status[1]: got Name=%q Service=%q, want Name=alt-db Service=db", statuses[1].Name, statuses[1].Service)
 	}
 }
+
+// TestClient_PS_ListsExitedContainers guards the one-shot Ready rule's data
+// source: without --all, `docker compose ps` omits exited containers
+// entirely, so migrators/init jobs that already ran to completion never
+// appear in the poll and the Ready-wait reports them "missing" forever —
+// the exited(0)-means-Ready rule in internal/health can only fire on
+// entries that are actually listed. doctor's runComposePS already passes
+// --all for the same reason.
+func TestClient_PS_ListsExitedContainers(t *testing.T) {
+	fake := &fakeExecutor{}
+	client := NewClientWithExecutor(fake, "/proj", "/proj/compose", nil)
+
+	if _, err := client.PS(context.Background(), []string{"compose.yaml"}); err != nil {
+		t.Fatalf("PS failed: %v", err)
+	}
+
+	argv := strings.Join(fake.lastCall(), " ")
+	if !strings.Contains(argv, "--all") {
+		t.Errorf("expected ps argv to include --all (exited one-shots must be listed), got %q", argv)
+	}
+}
