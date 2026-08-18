@@ -309,9 +309,12 @@ func classifyServices(stacks []*stack.Stack, statuses []compose.ServiceStatus) s
 		}
 	}
 
+	// Key by compose service name, not s.Name: ps reports Name as the
+	// container name, which only matches expected[] for services whose
+	// container_name equals the service name.
 	actual := make(map[string]compose.ServiceStatus)
 	for _, s := range statuses {
-		actual[s.Name] = s
+		actual[s.Service] = s
 	}
 
 	var diag serviceDiag
@@ -431,7 +434,10 @@ func waitForReady(ctx context.Context, printer *output.Printer, client *compose.
 		}
 		out := make([]health.ServiceStatus, len(statuses))
 		for i, s := range statuses {
-			out[i] = health.ServiceStatus{Name: s.Name, State: s.State, Health: s.Health, ExitCode: s.ExitCode}
+			// health.ServiceStatus.Name carries the compose SERVICE name
+			// (what Target.Service is matched against) — s.Name is the
+			// container name and must not leak in here.
+			out[i] = health.ServiceStatus{Name: s.Service, State: s.State, Health: s.Health, ExitCode: s.ExitCode}
 		}
 		return out, nil
 	}

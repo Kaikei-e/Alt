@@ -95,10 +95,11 @@ func showStatus(ctx context.Context, jsonOutput bool) error {
 		return psError(err)
 	}
 
-	// Build a map of service name to status
+	// Keyed by compose service name (s.Name is the container name; the
+	// lookups below are by stack.Stack.Services entries).
 	statusMap := make(map[string]compose.ServiceStatus)
 	for _, s := range statuses {
-		statusMap[s.Name] = s
+		statusMap[s.Service] = s
 	}
 
 	if jsonOutput {
