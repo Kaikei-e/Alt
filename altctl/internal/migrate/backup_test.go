@@ -6,15 +6,18 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/alt-project/altctl/internal/stack"
 )
 
 // fakeBackupEngine is a backupEngine stub that simulates volume backup/restore
 // failures without invoking a real Docker daemon. calls counts every
 // Backup/Restore invocation so tests can assert an abort happened before any
-// volume was touched (see TestMigrator_Restore_AbortsOnBrokenRegistry).
+// volume was touched (see TestMigrator_Restore_AbortsOnMissingAggregate).
 //
 // Migrator.Backup fans volumes out over an errgroup, so the counter is written
 // from several goroutines at once and has to be atomic.
@@ -369,14 +372,13 @@ func TestComposeFileList_MissingComposeDir_TolerantEmpty(t *testing.T) {
 	}
 }
 
-// TestComposeFileList_BrokenAltctlConfig_Aborts is the C1 regression test at
-// the composeFileList level: a stack declared in .altctl.yaml with no
-// matching compose file is stack.NewRegistry's hard fail-fast error
-// (Critical Rule 9), and it must propagate as an error here -- not degrade
-// to an empty file list the way a merely-missing compose dir does. This is
-// the distinction the fix hinges on: composeDir exists and has content, only
-// the *registry* fails to load.
-func TestComposeFileList_BrokenAltctlConfig_Aborts(t *testing.T) {
+// TestComposeFileList_MissingAggregate_Aborts is the C1 case under the
+// aggregate-file strategy: composeDir exists (this is a real project
+// layout) but the aggregate compose.yaml is missing. This must ABORT
+// loudly, not degrade to an empty file list -- an empty list makes
+// getRunningContainers report "nothing running" and bypasses the
+// stop-running-containers guard.
+func TestComposeFileList_MissingAggregate_Aborts(t *testing.T) {
 	root := t.TempDir()
 	composeDir := filepath.Join(root, "compose")
 	if err := os.MkdirAll(composeDir, 0755); err != nil {
@@ -385,59 +387,73 @@ func TestComposeFileList_BrokenAltctlConfig_Aborts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	brokenConfig := "stacks:\n  sovereign:\n    optional: false\n"
-	if err := os.WriteFile(filepath.Join(root, ".altctl.yaml"), []byte(brokenConfig), 0644); err != nil {
-		t.Fatal(err)
-	}
 
 	files, err := composeFileList(composeDir)
 	if err == nil {
-		t.Fatalf("expected an error for a stack declared with no matching compose file, got files=%v", files)
+		t.Fatalf("expected an error when the aggregate compose.yaml is missing, got files=%v", files)
 	}
 }
 
-// TestComposeFileList_IncludesSovereign guards against configuration drift:
-// the compose file list backup/restore use to detect and stop running
-// containers must be derived from the stack registry (the single source of
-// truth also used by `altctl up`/`down`), not a hand-maintained list that can
-// forget a stack such as sovereign.yaml.
-func TestComposeFileList_IncludesSovereign(t *testing.T) {
+// TestComposeFileList_AggregateFileOnly guards the C3 strategy at the
+// migrate level: every docker compose invocation this package builds
+// (running-container guard, pre-restore down, container-ID lookup) must
+// anchor on the aggregate compose/compose.yaml ALONE. Concatenating every
+// stack's own file merges same-named services across files (multiple -f
+// flags merge; include: does not), and the isolated local-dev overlays
+// dev.yaml / frontend-dev.yaml redeclare alt-frontend-sv with resource
+// limits that conflict with core.yaml's -- docker compose rejects the
+// merged project ("services.alt-frontend-sv: can't set distinct values on
+// 'mem_limit' and 'deploy.resources.limits.memory'") before ps/down can
+// run at all, which broke `altctl migrate backup` outright.
+func TestComposeFileList_AggregateFileOnly(t *testing.T) {
 	composeDir := repoComposeDirForTest(t)
 	files, err := composeFileList(composeDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	want := filepath.Join(composeDir, "sovereign.yaml")
-	found := false
-	for _, f := range files {
-		if f == want {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected composeFileList to include %q, got %v", want, files)
+	want := filepath.Join(composeDir, "compose.yaml")
+	if len(files) != 1 || files[0] != want {
+		t.Errorf("expected exactly [%s], got %v", want, files)
 	}
 }
 
-// TestMigrator_BuildComposeArgs_IncludesSovereignWhenPresent verifies that
-// restore's pre-restore "down" (buildComposeArgs, restore.go) draws from the
-// same composeFileList as backup's getRunningContainers, so a stack like
-// sovereign can't be stopped by one code path and missed by the other.
-func TestMigrator_BuildComposeArgs_IncludesSovereignWhenPresent(t *testing.T) {
+// TestComposeFileList_AggregateCoversSovereign preserves the drift guard the
+// per-stack file list used to provide: the single file migrate hands docker
+// must still reach sovereign.yaml through compose.yaml's include: graph, or
+// a pre-restore "down" would miss the sovereign DB while its volume gets
+// overwritten.
+func TestComposeFileList_AggregateCoversSovereign(t *testing.T) {
+	composeDir := repoComposeDirForTest(t)
+	configPath := filepath.Join(filepath.Dir(composeDir), ".altctl.yaml")
+	registry, err := stack.NewRegistry(composeDir, configPath)
+	if err != nil {
+		t.Fatalf("loading stack registry: %v", err)
+	}
+	s, ok := registry.Get("sovereign")
+	if !ok {
+		t.Fatal("expected a sovereign stack in the registry")
+	}
+	if !s.AggregateCovered {
+		t.Error("sovereign.yaml is not reachable through compose.yaml's include: graph; migrate's aggregate-file invocations would miss it")
+	}
+}
+
+// TestMigrator_BuildComposeArgs_UsesAggregateFileOnly verifies that
+// restore's pre-restore "down" (buildComposeArgs, restore.go) anchors on
+// the aggregate compose.yaml alone -- the same file getRunningContainers
+// uses -- so the two code paths can't drift AND per-stack files (dev.yaml
+// here) are never merged in via extra -f flags.
+func TestMigrator_BuildComposeArgs_UsesAggregateFileOnly(t *testing.T) {
 	dir := t.TempDir()
-	// base.yaml legitimately has no services (shared resources only, like
-	// the real one); db.yaml and sovereign.yaml need at least one service
-	// each to be discovered as stacks under the derived registry model.
 	writeFile := func(name, body string) {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	writeFile("base.yaml", "services: {}\n")
+	writeFile("compose.yaml", "name: alt\ninclude:\n  - db.yaml\n")
 	writeFile("db.yaml", "services:\n  db:\n    image: postgres\n")
-	writeFile("sovereign.yaml", "services:\n  knowledge-sovereign-db:\n    image: postgres\n")
+	writeFile("dev.yaml", "services:\n  db:\n    image: postgres\n    mem_limit: 512m\n")
 
 	m := &Migrator{composeDir: dir}
 	args, err := m.buildComposeArgs("down")
@@ -445,15 +461,8 @@ func TestMigrator_BuildComposeArgs_IncludesSovereignWhenPresent(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	wantFlag := filepath.Join(dir, "sovereign.yaml")
-	found := false
-	for _, a := range args {
-		if a == wantFlag {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected buildComposeArgs to reference %q, got %v", wantFlag, args)
+	want := []string{"compose", "-f", filepath.Join(dir, "compose.yaml"), "down"}
+	if !reflect.DeepEqual(args, want) {
+		t.Errorf("expected args %v, got %v", want, args)
 	}
 }
