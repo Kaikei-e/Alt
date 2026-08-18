@@ -36,12 +36,19 @@ func profileCategories(profile BackupProfile) []VolumeCategory {
 //  2. If include is non-empty, intersect (keep only named volumes)
 //  3. If exclude is non-empty, subtract (remove named volumes)
 //
-// Returns an error if any name in include does not exist in the registry.
+// Returns an error if any name in include or exclude does not exist in the registry.
 func ResolveVolumes(registry *VolumeRegistry, profile BackupProfile, include, exclude []string) ([]VolumeSpec, error) {
 	// Validate include names exist in registry
 	for _, name := range include {
 		if _, ok := registry.Get(name); !ok {
 			return nil, fmt.Errorf("unknown volume in --include: %s", name)
+		}
+	}
+
+	// Validate exclude names exist in registry
+	for _, name := range exclude {
+		if _, ok := registry.Get(name); !ok {
+			return nil, fmt.Errorf("unknown volume in --exclude: %s", name)
 		}
 	}
 
