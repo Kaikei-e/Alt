@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -126,9 +128,11 @@ func workersStack() *stack.Stack {
 
 func TestDiagnosePartialStartup_SomeServicesMissing(t *testing.T) {
 	stacks := []*stack.Stack{workersStack()}
+	// Realistic `docker compose ps` shape: Name is the container name,
+	// Service is the compose service name classifyServices must key on.
 	statuses := []compose.ServiceStatus{
-		{Name: "tag-generator", State: "running"},
-		{Name: "auth-token-manager", State: "running"},
+		{Name: "alt-tag-generator-1", Service: "tag-generator", State: "running"},
+		{Name: "alt-auth-token-manager-1", Service: "auth-token-manager", State: "running"},
 	}
 
 	diag := classifyServices(stacks, statuses)
@@ -161,9 +165,9 @@ func TestDiagnosePartialStartup_SomeServicesMissing(t *testing.T) {
 func TestDiagnosePartialStartup_AllServicesRunning(t *testing.T) {
 	stacks := []*stack.Stack{workersStack()}
 	statuses := []compose.ServiceStatus{
-		{Name: "auth-token-manager", State: "running"},
-		{Name: "search-indexer", State: "running"},
-		{Name: "tag-generator", State: "running"},
+		{Name: "alt-auth-token-manager-1", Service: "auth-token-manager", State: "running"},
+		{Name: "alt-search-indexer-1", Service: "search-indexer", State: "running"},
+		{Name: "alt-tag-generator-1", Service: "tag-generator", State: "running"},
 	}
 
 	diag := classifyServices(stacks, statuses)
@@ -207,9 +211,9 @@ func TestDiagnosePartialStartup_NoServicesRunning(t *testing.T) {
 func TestDiagnosePartialStartup_UnhealthyService(t *testing.T) {
 	stacks := []*stack.Stack{workersStack()}
 	statuses := []compose.ServiceStatus{
-		{Name: "auth-token-manager", State: "running"},
-		{Name: "search-indexer", State: "running", Health: "unhealthy"},
-		{Name: "tag-generator", State: "running"},
+		{Name: "alt-auth-token-manager-1", Service: "auth-token-manager", State: "running"},
+		{Name: "alt-search-indexer-1", Service: "search-indexer", State: "running", Health: "unhealthy"},
+		{Name: "alt-tag-generator-1", Service: "tag-generator", State: "running"},
 	}
 
 	diag := classifyServices(stacks, statuses)
@@ -517,5 +521,47 @@ func TestUp_LoadTest_CombinesAggregateWithOwnFile(t *testing.T) {
 	}
 	if !strings.Contains(argv, "mock-rss-server") {
 		t.Errorf("up load-test argv %q missing mock-rss-server", argv)
+	}
+}
+
+// cannedPSExecutor is a compose.Executor whose RunWithOutput always returns
+// the canned `docker compose ps --format json` payload, for driving
+// waitForReady against realistic ps output.
+type cannedPSExecutor struct {
+	ps string
+}
+
+func (c *cannedPSExecutor) Run(ctx context.Context, cmd string, args []string) error { return nil }
+
+func (c *cannedPSExecutor) RunWithOutput(ctx context.Context, cmd string, args []string) ([]byte, error) {
+	return []byte(c.ps), nil
+}
+
+func (c *cannedPSExecutor) RunWithPipes(ctx context.Context, cmd string, args []string, stdout, stderr io.Writer) error {
+	return nil
+}
+
+// TestWaitForReady_MatchesComposeServiceName is the regression test for the
+// "3/29 Ready — everything (missing)" failure: `docker compose ps` reports
+// Name as the CONTAINER name ("alt-alt-butterfly-facade-1") and the compose
+// service name in Service. The Ready-wait targets are service names
+// (stack.Stack.Services), so the poller must hand the waiter Service, not
+// Name — keying on Name left every service whose container_name differs
+// from its service name permanently "missing", and `altctl up` sat at the
+// Ready-wait until timeout with the whole stack actually healthy.
+func TestWaitForReady_MatchesComposeServiceName(t *testing.T) {
+	exec := &cannedPSExecutor{
+		ps: `{"Name":"alt-alt-butterfly-facade-1","Service":"alt-butterfly-facade","State":"running","Health":"healthy","ExitCode":0}`,
+	}
+	client := compose.NewClientWithExecutor(exec, t.TempDir(), t.TempDir(), logger)
+	printer := output.NewPrinter(false)
+	stacks := []*stack.Stack{{Name: "bff", Services: []string{"alt-butterfly-facade"}}}
+
+	result, err := waitForReady(context.Background(), printer, client, []string{"compose.yaml"}, stacks, 3*time.Second)
+	if err != nil {
+		t.Fatalf("waitForReady failed: %v", err)
+	}
+	if !result.Ready {
+		t.Fatalf("expected Ready for a healthy running container of the target service, got states %+v", result.States)
 	}
 }

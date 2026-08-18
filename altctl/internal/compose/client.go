@@ -108,12 +108,19 @@ type LogsOptions struct {
 	Since      string
 }
 
-// ServiceStatus represents the status of a running service
+// ServiceStatus represents the status of a running service.
+//
+// Name is the CONTAINER name ("alt-alt-backend-1", or the container_name:
+// override); Service is the compose service name ("alt-backend"). Anything
+// comparing against stack.Stack.Services must key on Service — keying on
+// Name only matches the coincidental subset of services whose
+// container_name: equals the service name.
 type ServiceStatus struct {
-	Name   string `json:"Name"`
-	State  string `json:"State"`
-	Health string `json:"Health"`
-	Ports  string `json:"Ports"`
+	Name    string `json:"Name"`
+	Service string `json:"Service"`
+	State   string `json:"State"`
+	Health  string `json:"Health"`
+	Ports   string `json:"Ports"`
 	// ExitCode is the container's exit code once it has exited. It is 0
 	// while the container is still running. Used by internal/health to
 	// distinguish a clean one-shot exit (migrator/init job) from a crash.

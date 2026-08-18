@@ -17,6 +17,9 @@ import (
 // --no-deps/--force-recreate, ...) instead of parsing dry-run log text.
 type fakeExecutor struct {
 	calls [][]string
+	// output is returned verbatim from RunWithOutput (e.g. canned
+	// `docker compose ps --format json` lines for PS decode tests).
+	output []byte
 }
 
 func (f *fakeExecutor) Run(ctx context.Context, cmd string, args []string) error {
@@ -26,7 +29,7 @@ func (f *fakeExecutor) Run(ctx context.Context, cmd string, args []string) error
 
 func (f *fakeExecutor) RunWithOutput(ctx context.Context, cmd string, args []string) ([]byte, error) {
 	f.calls = append(f.calls, append([]string{cmd}, args...))
-	return nil, nil
+	return f.output, nil
 }
 
 func (f *fakeExecutor) RunWithPipes(ctx context.Context, cmd string, args []string, stdout, stderr io.Writer) error {
@@ -328,5 +331,34 @@ func TestBuildFileArgs_EmptyFiles(t *testing.T) {
 	}
 	if args[0] != "--env-file" || args[1] != envFile {
 		t.Errorf("expected [--env-file %s], got %v", envFile, args)
+	}
+}
+
+// TestClient_PS_DecodesServiceField guards the Name/Service distinction in
+// `docker compose ps --format json` output: Name is the container name
+// ("alt-alt-backend-1"), Service is the compose service name
+// ("alt-backend"). Readiness/diagnostic code compares against
+// stack.Stack.Services, so PS must surface Service — losing it forced
+// callers to key on container names, which only match services whose
+// container_name: happens to equal the service name.
+func TestClient_PS_DecodesServiceField(t *testing.T) {
+	fake := &fakeExecutor{output: []byte(
+		`{"Name":"alt-alt-backend-1","Service":"alt-backend","State":"running","Health":"healthy","ExitCode":0}` + "\n" +
+			`{"Name":"alt-db","Service":"db","State":"running","Health":"healthy","ExitCode":0}`,
+	)}
+	client := NewClientWithExecutor(fake, "/proj", "/proj/compose", nil)
+
+	statuses, err := client.PS(context.Background(), []string{"compose.yaml"})
+	if err != nil {
+		t.Fatalf("PS failed: %v", err)
+	}
+	if len(statuses) != 2 {
+		t.Fatalf("expected 2 statuses, got %d", len(statuses))
+	}
+	if statuses[0].Service != "alt-backend" || statuses[0].Name != "alt-alt-backend-1" {
+		t.Errorf("status[0]: got Name=%q Service=%q, want Name=alt-alt-backend-1 Service=alt-backend", statuses[0].Name, statuses[0].Service)
+	}
+	if statuses[1].Service != "db" || statuses[1].Name != "alt-db" {
+		t.Errorf("status[1]: got Name=%q Service=%q, want Name=alt-db Service=db", statuses[1].Name, statuses[1].Service)
 	}
 }
