@@ -296,8 +296,10 @@ func (c *Client) Logs(ctx context.Context, files []string, services []string, op
 
 // PS returns the status of running services
 func (c *Client) PS(ctx context.Context, files []string) ([]ServiceStatus, error) {
+	// --all: exited containers must be listed too, or completed one-shot
+	// migrators/init jobs read as "missing" instead of exited(0)=Ready.
 	args := c.buildFileArgs(files)
-	args = append(args, "ps", "--format", "json")
+	args = append(args, "ps", "--all", "--format", "json")
 
 	output, err := c.executor.RunWithOutput(ctx, "docker", append([]string{"compose"}, args...))
 	if err != nil {
