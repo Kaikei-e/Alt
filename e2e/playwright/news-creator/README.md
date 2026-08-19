@@ -54,7 +54,7 @@ cd e2e/playwright/news-creator && \
 
 | Surface | Spec |
 |---|---|
-| `GET /health` | `health.spec.ts` |
+| `GET /health`, `GET /health/deep` | `health.spec.ts` |
 | `GET /queue/status` | `queue.spec.ts`, `queue-drain.spec.ts` |
 | `POST /api/v1/summarize` | `summarize.spec.ts`, `streaming.spec.ts` |
 | `POST /api/generate` | `generate.spec.ts` |

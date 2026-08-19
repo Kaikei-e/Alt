@@ -27,6 +27,7 @@ import { openApiSchema } from "../src/schemas.js";
  */
 const EXPECTED_ROUTES = [
 	{ path: "/health", method: "get", owner: "create_health_router" },
+	{ path: "/health/deep", method: "get", owner: "create_health_router" },
 	{ path: "/queue/status", method: "get", owner: "create_health_router" },
 	{ path: "/api/v1/summarize", method: "post", owner: "create_summarize_router" },
 	{ path: "/api/generate", method: "post", owner: "create_generate_router" },

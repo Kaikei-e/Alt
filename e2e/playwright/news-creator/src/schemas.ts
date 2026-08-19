@@ -13,7 +13,7 @@ import { z } from "zod";
  * news-creator promises its callers (pre-processor, recap-worker,
  * rag-orchestrator, alt-backend's Morning Letter usecase), not a freeze on the
  * ones it may add. The one deliberate exception is `healthSchema`, which uses
- * a refinement to insist `error` is *absent* — see below.
+ * a refinement to insist `models` is *absent* — see below.
  */
 
 export { fastapiErrorSchema } from "../../_shared/schemas.js";
@@ -23,41 +23,59 @@ import { uuidSchema } from "../../_shared/schemas.js";
 export { uuidSchema };
 
 // ---------------------------------------------------------------------------
-// /health, /queue/status  — handler/health_handler.py
+// /health, /health/deep, /queue/status  — handler/health_handler.py
 // ---------------------------------------------------------------------------
 
 /**
- * One entry of `/api/tags`'s `models[]`, forwarded verbatim by
- * `OllamaGateway.list_models()`.
+ * `{status, service}` — cheap liveness, and **no `models[]`**.
  *
- * Only `name` is pinned: it is the field `/health` consumers read, and the
- * rest of Ollama's model record (`digest`, `details`, …) is upstream's to
- * change.
- */
-export const modelSchema = z.object({ name: z.string().min(1) }).passthrough();
-
-/**
- * `{status, service, models[]}` — and **no `error` key**.
- *
- * `health_check` attaches `error` only when `list_models()` raises, and still
- * answers 200 with `status: "healthy"` when it does
- * (handler/health_handler.py). So a stack whose upstream LLM is unreachable
- * looks identical to a healthy one on status alone; the absence of `error` is
- * the only thing that distinguishes them, which is why it is part of the
- * schema rather than a separate spot check.
+ * `/health` is what compose's healthcheck probes, so it must not fan out to
+ * Ollama: a liveness path that does upstream I/O restart-loops the container
+ * whenever the LLM hiccups (docs/runbooks/health-deep-contract.md). Upstream
+ * reachability moved to `/health/deep`. `models` is therefore asserted
+ * *absent* rather than merely unrequired — its return would be the regression
+ * the split exists to prevent, and `passthrough()` would otherwise let it
+ * through unnoticed.
  */
 export const healthSchema = z
 	.object({
 		status: z.literal("healthy"),
 		service: z.literal("news-creator"),
-		models: z.array(modelSchema).min(1, "`/health` advertised no models"),
 	})
 	.passthrough()
-	.refine((body) => !("error" in body), {
+	.refine((body) => !("models" in body), {
 		message:
-			"`/health` carried an `error` key, which health_handler only sets when " +
-			"list_models() raised — the upstream LLM is unreachable",
+			"`/health` carried `models[]`, so the compose probe path is calling " +
+			"list_models() again — that belongs to `/health/deep`",
 	});
+
+/** One row of `/health/deep`'s `checks[]` (infra/health_deep.py `CheckResult`). */
+export const deepCheckSchema = z
+	.object({
+		name: z.string().min(1),
+		status: z.enum(["pass", "warn", "fail"]),
+		critical: z.boolean(),
+		latency_ms: z.number().int().nonnegative(),
+		reason: z.enum(["timeout", "unavailable", "not_ready"]).optional(),
+	})
+	.passthrough();
+
+/**
+ * `/health/deep` — `DeepHealthRunner.run()` rendered by `Report.as_dict()`.
+ *
+ * `status` is the fold over `checks[]`: a failing *critical* check makes the
+ * report `fail` and the response 503, which is what keeps a dependency outage
+ * out of the liveness path while still being observable.
+ */
+export const deepHealthSchema = z
+	.object({
+		status: z.enum(["pass", "warn", "fail"]),
+		service: z.literal("news-creator"),
+		checks: z.array(deepCheckSchema).min(1),
+		latency_ms: z.number().int().nonnegative(),
+		cached: z.boolean(),
+	})
+	.passthrough();
 
 /**
  * `HybridPrioritySemaphore.queue_status()` (gateway/hybrid_priority_semaphore.py:846).

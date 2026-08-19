@@ -1,34 +1,55 @@
 import { test, expect } from "../src/fixtures.js";
 import { expectHeaderContains, expectJsonStatus } from "../../_shared/http.js";
-import { env } from "../src/env.js";
-import { healthSchema } from "../src/schemas.js";
+import { deepHealthSchema, healthSchema } from "../src/schemas.js";
 
 /**
- * `/health` — the port of `00-setup.hurl` + `01-health-schema.hurl`.
+ * `/health` and `/health/deep` — the port of `00-setup.hurl` +
+ * `01-health-schema.hurl`.
  *
  * The retry/readiness half of `00-setup.hurl` moved to
  * `setup/global-setup.ts`; what is left here is the contract, which is what
  * compose's healthcheck, Prometheus blackbox probes and pre-processor's
  * upstream check all read.
+ *
+ * The two paths are one contract with two halves: `/health` answers without
+ * touching Ollama so the compose probe cannot restart-loop on an upstream
+ * hiccup, and `/health/deep` is where that reachability became visible
+ * (docs/runbooks/health-deep-contract.md).
  */
 test.describe("health", () => {
-	test("GET /health reports healthy, names the service and lists models @smoke @contract", async ({
+	test("GET /health reports healthy and names the service without upstream I/O @smoke @contract", async ({
 		api,
 	}) => {
 		const response = await api.get("/health");
-		const body = await expectJsonStatus(response, 200, healthSchema);
+		await expectJsonStatus(response, 200, healthSchema);
 
 		// FastAPI's default encoder, so snake_case JSON — not the proto3-JSON
 		// camelCase the Go/Connect services emit. Pinning the content type keeps
 		// a future `Response(..., media_type=...)` slip visible.
 		expectHeaderContains(response, "Content-Type", "application/json");
+	});
 
-		// `models` is `list_models()` forwarded verbatim. Asserting the model the
-		// slice configured (LLM_MODEL / the stub's /api/tags) is what turns
-		// "some list came back" into "the gateway is talking to the LLM this
-		// deployment was pointed at". A gateway wired to the wrong upstream
-		// answers a well-formed, entirely wrong list.
-		expect(body.models.map((model) => model.name)).toContain(env.stubModel);
+	test("GET /health/deep reports the critical ollama check passing @smoke @contract", async ({
+		api,
+	}) => {
+		const response = await api.get("/health/deep");
+		const body = await expectJsonStatus(response, 200, deepHealthSchema);
+
+		// `ollama` is the check `create_health_router` registers as critical, and
+		// its probe fails unless `list_models()` returned a non-empty list. That
+		// is the claim `/health` used to carry in `models[]`: the gateway is
+		// wired and the upstream this deployment points at answered. Which model
+		// it answered with is asserted where a caller can see it — generate /
+		// chat / rag specs compare `body.model` to env.stubModel.
+		const ollama = body.checks.find((check) => check.name === "ollama");
+		expect(
+			ollama,
+			"`/health/deep` listed no `ollama` check — create_health_router built " +
+				"its DeepHealthRunner without one (handler/health_handler.py)",
+		).toBeDefined();
+		expect(ollama?.critical).toBe(true);
+		expect(ollama?.status).toBe("pass");
+		expect(body.status).toBe("pass");
 	});
 
 	test("a junk credential does not turn /health into a 401 @smoke @authz", async ({ api }) => {
@@ -72,8 +93,8 @@ test.describe("health", () => {
 		// *accepted*" — is deliberately not asserted, because it is not
 		// observable from outside. `dispatch` writes the peer onto
 		// `request.state.peer_identity` and onto the *request* headers, and
-		// `/health` builds its `{status, service, models}` dict without reading
-		// either (handler/health_handler.py:44-60), so an accepted forgery is
+		// `/health` builds its `{status, service}` dict without reading
+		// either (handler/health_handler.py), so an accepted forgery is
 		// byte-identical to a rejected one. Comparing this response's status to
 		// an unforged one's is likewise not a claim: both traverse the same
 		// branch, so they agree even when both have regressed together. Gating

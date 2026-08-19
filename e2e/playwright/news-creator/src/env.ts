@@ -35,8 +35,9 @@ export const env = {
 
 	/**
 	 * The model name the staging stub advertises through `/api/tags`, which is
-	 * also `LLM_MODEL` in the slice. `/health` republishes it verbatim from
-	 * `list_models()`.
+	 * also `LLM_MODEL` in the slice. Every generation response echoes it back,
+	 * which is where the specs assert the gateway talks to the upstream this
+	 * deployment was pointed at.
 	 */
 	stubModel: requiredEnv("STUB_MODEL"),
 
