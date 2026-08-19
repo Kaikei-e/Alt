@@ -102,7 +102,20 @@ services:
       - "127.0.0.1:9510:9500"
       - "127.0.0.1:9511:9501"
     volumes:
-      - ../backups/sovereign-snapshots:/tmp/snapshots
+      # Projection snapshots (knowledge_home_items / today_digest_view /
+      # recall_candidate_view as .jsonl.gz). Same host-path rule as
+      # recap-subworker's /app/data: a path relative to this compose file
+      # resolves into the deploy runner's per-job checkout, which the next
+      # job deletes — and retention only checks the snapshot *row*, so it
+      # would keep archiving events against a payload that is gone. No
+      # read_only: this is the write sink. A bind rather than a named volume
+      # because the image's /tmp/snapshots is root:root 0755 while the
+      # process runs as nonroot ([[000585]] / [[000765]]).
+      - type: bind
+        source: ${KNOWLEDGE_SOVEREIGN_SNAPSHOTS_HOST_PATH:-/var/lib/alt-knowledge-sovereign-snapshots}
+        target: /tmp/snapshots
+        bind:
+          create_host_path: false
     secrets:
       - sovereign_db_password
       - sovereign_admin_token

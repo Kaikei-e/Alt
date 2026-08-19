@@ -201,10 +201,14 @@ def file_bind_violations(
 # needs its payload staged on the prod host first, so they are reported as
 # debt rather than failing the gate — a *new* one still fails.
 KNOWN_WORKSPACE_SOURCES = {
-    ("restic-backup", "../backups"): "backup profile only; never rolled by deploy",
-    ("restic-backup", "../backups/postgres"): "backup profile only; never rolled by deploy",
-    ("knowledge-sovereign", "../backups/sovereign-snapshots"): (
-        "snapshot sink; a deploy roll writes into the workspace copy instead of the host one"
+    # `compose config` without --profile backup drops this service from the
+    # rendered model, so no roll can materialise the source in the workspace.
+    # The source is also the live restic repository and the tree
+    # `altctl migrate backup -o ./backups` writes to; moving it would fork
+    # the two and orphan the offsite copy lineage.
+    ("restic-backup", "../backups"): (
+        "backup profile only; excluded from the rendered model, and the source "
+        "is the live restic repo shared with altctl's ./backups output"
     ),
 }
 
