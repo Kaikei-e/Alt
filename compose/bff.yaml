@@ -1,10 +1,21 @@
 # compose/bff.yaml - Backend for Frontend service
 # Transparent proxy between alt-frontend-sv and alt-backend.
-# Cert lifecycle is owned by pki-agent-alt-butterfly-facade in compose/pki.yaml.
+# Enrollment is in-process (PKI_ENROLLMENT=enabled). There is no pki-agent
+# sidecar; a leftover sidecar on alt_butterfly_facade_certs is a dual writer.
 
 include:
   - base.yaml
   - pki.yaml
+
+# Distroless nonroot (uid 65532) must own the cert volume before the parent
+# writes 0400 keys. Idempotent. Mode 0750 — world-writable cert dirs are forbidden.
+x-pki-cert-volume-chown: &pki-cert-volume-chown
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown 65532:65532 /certs && chmod 0750 /certs
 
 services:
   alt-butterfly-facade:
@@ -60,26 +71,40 @@ services:
       # was never read by this binary at all (newMTLSBackendTransport leaves
       # ServerName empty on purpose so SNI follows each request's URL host).
       - MTLS_ENFORCE=${ALT_BUTTERFLY_FACADE_MTLS_ENFORCE:-false}
-      # Acolyte runs an nginx mTLS sidecar on :9443. Read only when
+      # Acolyte runs in-process mTLS on :9443. Read only when
       # MTLS_ENFORCE is true, so it is inert with the default above.
       - ACOLYTE_CONNECT_MTLS_URL=https://acolyte-orchestrator:9443
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=alt-butterfly-facade
+      - CERT_SANS=alt-butterfly-facade,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-alt-butterfly-facade
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-alt-butterfly-facade-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
     secrets:
       - backend_token_secret
+      - pki-agent-alt-butterfly-facade-jwk
     ports:
       # The frontend calls the BFF over the container network; browsers reach
       # it through plecto. Loopback bind keeps local curl / e2e working.
       - "127.0.0.1:9250:9250"
       # mTLS :9443 intentionally not published (internal east-west only)
     volumes:
-      - alt_butterfly_facade_certs:/certs:ro
+      - alt_butterfly_facade_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown
     depends_on:
       alt-backend:
         condition: service_healthy
       auth-hub:
         condition: service_healthy
-      pki-agent-alt-butterfly-facade:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "/alt-butterfly-facade", "healthcheck"]
       interval: 5s

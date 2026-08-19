@@ -19,7 +19,6 @@ services:
       - "127.0.0.1:9090:9090"
     volumes:
       - prometheus_data:/prometheus
-      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       # rule_files: /etc/prometheus/rules/*.yml in prometheus.yml — without
       # this mount the glob matches nothing and recording/alerting rules
       # silently fail to load. Knowledge Loop Completion Phase 1 §5.
@@ -27,6 +26,10 @@ services:
       # promtool unit tests, mounted outside the rules glob so Prometheus never
       # parses them as rule groups (a test file there is a fatal config error).
       - ../observability/prometheus/tests:/etc/prometheus/tests:ro
+    configs:
+      - source: prometheus_yml
+        target: /etc/prometheus/prometheus.yml
+        mode: 0444
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -71,7 +74,10 @@ services:
       # Holds silences and the notification log. Without persistence a restart
       # re-sends every active alert and silently drops in-flight silences.
       - alertmanager_data:/alertmanager
-      - ../observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    configs:
+      - source: alertmanager_yml
+        target: /etc/alertmanager/alertmanager.yml
+        mode: 0444
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
@@ -106,9 +112,12 @@ services:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ../observability/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
       - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    configs:
+      - source: grafana_ini
+        target: /etc/grafana/grafana.ini
+        mode: 0444
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
@@ -179,6 +188,14 @@ services:
 volumes:
   grafana_data:
   prometheus_data:
+
+configs:
+  prometheus_yml:
+    file: ../observability/prometheus/prometheus.yml
+  alertmanager_yml:
+    file: ../observability/alertmanager/alertmanager.yml
+  grafana_ini:
+    file: ../observability/grafana/grafana.ini
 
 secrets:
   grafana_admin_password:

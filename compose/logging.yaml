@@ -19,7 +19,12 @@ x-rask-forwarder: &rask-forwarder
     rask-log-aggregator:
       condition: service_healthy
   volumes:
-    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - type: bind
+      source: /var/run/docker.sock
+      target: /var/run/docker.sock
+      read_only: true
+      bind:
+        create_host_path: false
     - /var/lib/docker/containers:/var/lib/docker/containers:ro
   group_add:
     # Fail-fast when unset: a wrong fallback GID silently breaks sock access.

@@ -1,11 +1,18 @@
 # compose/recap.yaml - Recap services
 # Article summarization and evaluation
+# Enrollment is in-process (PKI_ENROLLMENT=enabled). No pki-agent sidecar.
 
 include:
   - base.yaml
   - pki.yaml
 
-# Cert lifecycle for recap-worker is owned by pki-agent-recap-worker in compose/pki.yaml.
+x-pki-cert-volume-chown: &pki-cert-volume-chown
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown 999:999 /certs && chmod 0750 /certs
 
 services:
   recap-db:
@@ -30,8 +37,13 @@ services:
       - recap_db_data:/var/lib/postgresql
       # Note: initスクリプトはAtlasマイグレーションに移行済みのため削除
       # - ../recap-worker/recap-db/init:/docker-entrypoint-initdb.d:rw
-      - ../docker/postgres/postgresql-recap.conf:/etc/postgresql/postgresql.conf:ro
-      - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    configs:
+      - source: postgres_postgresql_recap_conf
+        target: /etc/postgresql/postgresql.conf
+        mode: 0444
+      - source: postgres_pg_hba_conf
+        target: /etc/postgresql/pg_hba.conf
+        mode: 0444
     ports:
       - "127.0.0.1:5435:5432"
     healthcheck:
@@ -103,6 +115,17 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=recap-worker
+      - CERT_SANS=recap-worker,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-recap-worker
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-recap-worker-jwk
+      - RENEW_AT_FRACTION=0.66
+      - PKI_METRICS_BIND=0.0.0.0:9110
       # Outbound mTLS to the data plane. The recap article reads moved out of
       # alt-backend in the 3-binary split (ADR-000954); cmd/backend opens no
       # mTLS listener any more and cmd/datahub serves that surface alone, as
@@ -111,7 +134,7 @@ services:
       # REST pair were both deleted in Wave 2-C).
       # pipeline/orchestrator.rs and pipeline/morning.rs derive SNI from this
       # URL's host, so `alt-data-hub` must be a SAN of the leaf
-      # pki-agent-alt-data-hub mints (CERT_SANS=alt-data-hub,localhost) — it
+      # alt-data-hub mints in-process (CERT_SANS=alt-data-hub,localhost) — it
       # is. This container's leaf is CN/SAN `recap-worker`, which is in
       # alt-data-hub's DATAHUB_ALLOWED_PEERS (compose/core.yaml).
       - ALT_BACKEND_MTLS_URL=https://alt-data-hub:9443
@@ -158,8 +181,9 @@ services:
     secrets:
       - recap_db_password
       - hugging_face_token
+      - pki-agent-recap-worker-jwk
     volumes:
-      - recap_worker_certs:/certs:ro
+      - recap_worker_certs:/certs
       - pki_trust_bundle:/trust:ro
       # Host-side populate (altctldeploy recap populate-cache) で焼いた
       # rust-bert キャッシュを共有。bind を :rw にしているのは rust-bert の
@@ -169,11 +193,13 @@ services:
       # populate 済前提の前提崩れに対する防御は ADR-000827 の
       # RECAP_WORKER_EMBEDDING_REQUIRED=true によるアプリ層 fail-closed に寄せる。
       - /opt/rustbert-cache:/opt/rustbert-cache:rw
+    pre_start:
+      - <<: *pki-cert-volume-chown
     depends_on:
       recap-db:
         condition: service_healthy
-      pki-agent-recap-worker:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     restart: unless-stopped
     deploy:
       resources:
@@ -242,20 +268,35 @@ services:
       # Numba threading: TBB is thread-safe, workqueue/omp are not
       - NUMBA_THREADING_LAYER=tbb
       - LD_LIBRARY_PATH=/app/.venv/lib
-      # Declares that pki-agent-recap-subworker verifies client certificates,
-      # so the X-Alt-Peer-Identity it forwards names a real caller. The app
-      # also requires the request to arrive from the sidecar's loopback
-      # upstream; this flag alone does not grant trust.
-      - PEER_IDENTITY_TRUSTED=${RECAP_SUBWORKER_VERIFY_CLIENT:-on}
+      # Wave 4: inbound TLS is in-process. Identity comes from the verified
+      # client cert on :9443; never from a caller-supplied header.
+      - INBOUND_MTLS=true
+      - MTLS_CERT_FILE=/certs/svc-cert.pem
+      - MTLS_KEY_FILE=/certs/svc-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - MTLS_ALLOWED_PEERS=${RECAP_SUBWORKER_MTLS_ALLOWED_PEERS:-recap-worker}
+      - PEER_IDENTITY_TRUSTED=off
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=recap-subworker
+      - CERT_SANS=recap-subworker,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-recap-subworker
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-recap-subworker-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-subworker
     ports:
-      # Plaintext twin of the mTLS :9443 served by pki-agent-recap-subworker
-      # from this netns; only recap-worker should reach it.
+      # Plaintext twin of the in-process mTLS :9443; only recap-worker
+      # should reach the TLS port. Loopback bind for cheap health.
       - "127.0.0.1:8002:8002"
     secrets:
       - recap_db_password
+      - pki-agent-recap-subworker-jwk
     volumes:
       # joblib artefacts (genre_classifier*.joblib, tfidf_vectorizer*.joblib,
       # genre_thresholds*.json, golden_classification.json) live on the
@@ -269,21 +310,37 @@ services:
       # copy (e.g. ../recap-subworker/data) when running compose on a
       # workstation that keeps artefacts in the repo tree.
       #
-      # Directory-scoped bind mount: from Docker Compose v2.24 onward,
-      # compose refuses to create the container if the host source
-      # directory is missing (no silent empty-directory auto-create).
-      # That is the deploy-time fail-closed contract replacing the
-      # earlier named-volume + init-container pattern, which was
-      # incompatible with per-service `--no-deps` rolling. See
-      # ADR-000825 addendum.
-      - ${RECAP_SUBWORKER_DATA_HOST_PATH:-/var/lib/alt-recap-subworker-data}:/app/data:ro
+      # Directory-scoped bind mount with create_host_path: false: Engine
+      # refuses to create the container if the host source directory is
+      # missing (no silent empty-directory auto-create). Short syntax
+      # cannot set that flag. That is the deploy-time fail-closed
+      # contract replacing the earlier named-volume + init-container
+      # pattern, which was incompatible with per-service `--no-deps`
+      # rolling. See ADR-000825 addendum / Wave 0 feature gate.
+      - type: bind
+        source: ${RECAP_SUBWORKER_DATA_HOST_PATH:-/var/lib/alt-recap-subworker-data}
+        target: /app/data
+        read_only: true
+        bind:
+          create_host_path: false
       # Learning Machine model artifacts — directory bind, same fail-fast
       # guarantee as /app/data; source is in-repo so this one works from
       # the workspace.
-      - ../recap-subworker/recap_subworker/learning_machine/artifacts:/app/recap_subworker/learning_machine/artifacts:ro
+      - type: bind
+        source: ../recap-subworker/recap_subworker/learning_machine/artifacts
+        target: /app/recap_subworker/learning_machine/artifacts
+        read_only: true
+        bind:
+          create_host_path: false
+      - recap_subworker_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown
     depends_on:
       recap-worker:
         condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     deploy:
       resources:
         reservations:

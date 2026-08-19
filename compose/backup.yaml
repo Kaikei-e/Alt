@@ -49,7 +49,14 @@ services:
       # directly, and it enforces the actual scoping above (unlike the RW bind
       # mount this replaces on restic-backup, the read-only direction here is
       # legitimate because docker-socket-proxy is the trusted enforcement point).
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Long syntax + create_host_path: false: a missing socket must refuse,
+      # not become an empty directory named docker.sock (PM-2026-036).
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+        bind:
+          create_host_path: false
     networks:
       - backup-docker-proxy
     profiles:
@@ -88,9 +95,21 @@ services:
       docker-socket-proxy:
         condition: service_started
     volumes:
-      # Configured SSH keys for remote sync
-      - ../secrets/ssh/id_ed25519_backup:/root/.ssh/id_ed25519:ro
-      - ../secrets/ssh/known_hosts:/root/.ssh/known_hosts:ro
+      # Configured SSH keys for remote sync. Host-only files: long-syntax
+      # bind + create_host_path: false so a missing key refuses rather
+      # than mounting as an empty directory (PM-2026-036).
+      - type: bind
+        source: ../secrets/ssh/id_ed25519_backup
+        target: /root/.ssh/id_ed25519
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../secrets/ssh/known_hosts
+        target: /root/.ssh/known_hosts
+        read_only: true
+        bind:
+          create_host_path: false
       # Backup destination
       - ../backups:/backups
       # PostgreSQL logical backups

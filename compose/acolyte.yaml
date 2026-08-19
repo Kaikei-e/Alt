@@ -2,17 +2,21 @@
 # acolyte-db: dedicated PostgreSQL for report versioning tables
 # acolyte-db-migrator: Atlas migration runner
 # acolyte-orchestrator: Python service (Starlette + Connect-RPC + LangGraph)
+# Enrollment is in-process (PKI_ENROLLMENT=enabled). No pki-agent sidecar.
+# Wave 4: inbound mTLS lives in-process on :9443. Plaintext :8090 stays
+# loopback-only for cheap health; it is not an external mTLS fallback.
 
 include:
   - base.yaml
   - pki.yaml
 
-# Cert lifecycle for acolyte-orchestrator is owned by
-# pki-agent-acolyte-orchestrator in compose/pki.yaml.
-
-# nginx TLS sidecar replaced by pki-agent proxy mode (ADR-000747, F-007).
-# pki-agent-acolyte-orchestrator in compose/pki.yaml handles both cert lifecycle
-# AND mTLS reverse proxy (:9443 → :8090) via Go certReloader hot-reload.
+x-pki-cert-volume-chown: &pki-cert-volume-chown
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown 1000:1000 /certs && chmod 0750 /certs
 
 services:
   acolyte-db:
@@ -102,8 +106,10 @@ services:
       context: ../acolyte-orchestrator
       dockerfile: Dockerfile
     volumes:
-      - acolyte_orchestrator_certs:/certs:ro
+      - acolyte_orchestrator_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown
     environment:
       - ACOLYTE_DB_DSN=postgresql://${ACOLYTE_DB_USER:-acolyte_user}:placeholder@acolyte-db:5432/${ACOLYTE_DB_NAME:-acolyte}
       - ACOLYTE_DB_PASSWORD_FILE=/run/secrets/acolyte_db_password
@@ -144,21 +150,34 @@ services:
       - NOTIFICATIONS_ENABLED=${ACOLYTE_NOTIFICATIONS_ENABLED:-false}
       - NOTIFICATION_USER_ID=${ALT_NOTIFICATION_USER_ID:-}
       - DATAHUB_URL=https://alt-data-hub:9443
-      # trust X-Alt-Peer-Identity header iff the perimeter sidecar
-      # enforces client certs. Must track VERIFY_CLIENT above.
-      - PEER_IDENTITY_TRUSTED=${ACOLYTE_ORCHESTRATOR_VERIFY_CLIENT:-on}
+      # Wave 4: inbound TLS is in-process. Identity comes from the verified
+      # client cert on :9443; never from a caller-supplied header.
+      - INBOUND_TLS_ENABLED=true
+      - MTLS_ALLOWED_PEERS=${ACOLYTE_ORCHESTRATOR_MTLS_ALLOWED_PEERS:-alt-butterfly-facade}
+      - PEER_IDENTITY_TRUSTED=off
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=acolyte-orchestrator
+      - CERT_SANS=acolyte-orchestrator,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-acolyte-orchestrator
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-acolyte-orchestrator-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=acolyte-orchestrator
     secrets:
       - acolyte_db_password
+      - pki-agent-acolyte-orchestrator-jwk
     extra_hosts:
       - "llm-external:${ACOLYTE_LLM_HOST:-127.0.0.1}"
     ports:
-      # Plaintext twin of the mTLS :9443 that pki-agent-acolyte-orchestrator
-      # serves from this container's netns. AcolyteService authenticates
-      # nobody on it, so publishing it on every NIC is a second entrance the
-      # sidecar cannot see (ADR-000757 rejected exactly this). Loopback bind.
+      # Plaintext twin of the in-process mTLS :9443. AcolyteService
+      # authenticates nobody on it, so publishing it on every NIC is a
+      # second entrance the TLS listener cannot see. Loopback bind.
       - "127.0.0.1:8090:8090"
     networks:
       - alt-network
@@ -166,6 +185,8 @@ services:
       acolyte-db:
         condition: service_healthy
       acolyte-db-migrator:
+        condition: service_completed_successfully
+      step-ca-bootstrap:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health"]

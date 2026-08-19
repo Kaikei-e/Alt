@@ -1,0 +1,245 @@
+# P2-14 operational-surface inventory. Metadata only.
+# Service names come from compose/compose.yaml's include chain;
+# this file must not be a second hand-typed name list.
+#
+# class: essential | accidental | platform | ephemeral
+# kind:  app | store | sidecar-netns | sidecar-cert | sidecar-logs | platform | ephemeral
+# Optional keys: exception, sunset, offset_of
+# Caps are frozen. --write-baseline does not raise them.
+schema_version: 1
+source: compose/compose.yaml include chain
+measured_at: "2026-08-19"
+accidental_osu_baseline: 16
+long_running_osu_baseline: 63
+units:
+  acolyte-db:
+    class: essential
+    kind: store
+  acolyte-db-migrator:
+    class: ephemeral
+    kind: ephemeral
+  acolyte-orchestrator:
+    class: essential
+    kind: app
+  alertmanager:
+    class: platform
+    kind: platform
+  alt-backend:
+    class: essential
+    kind: app
+  alt-backend-logs:
+    class: accidental
+    kind: sidecar-logs
+  alt-butterfly-facade:
+    class: essential
+    kind: app
+  alt-data-hub:
+    class: essential
+    kind: app
+  alt-data-hub-logs:
+    class: accidental
+    kind: sidecar-logs
+  alt-frontend-sv:
+    class: essential
+    kind: app
+  alt-harvester:
+    class: essential
+    kind: app
+  alt-harvester-logs:
+    class: accidental
+    kind: sidecar-logs
+  alt-notifier:
+    class: essential
+    kind: app
+  alt-perf:
+    class: ephemeral
+    kind: ephemeral
+  auth-hub:
+    class: essential
+    kind: app
+  auth-hub-logs:
+    class: accidental
+    kind: sidecar-logs
+  auth-token-manager:
+    class: essential
+    kind: app
+  cadvisor:
+    class: platform
+    kind: platform
+  clickhouse:
+    class: essential
+    kind: store
+  clickhouse-migrator:
+    class: ephemeral
+    kind: ephemeral
+  dashboard:
+    class: essential
+    kind: app
+  dashboard-logs:
+    class: accidental
+    kind: sidecar-logs
+  db:
+    class: essential
+    kind: store
+  docker-socket-proxy:
+    class: ephemeral
+    kind: ephemeral
+  grafana:
+    class: platform
+    kind: platform
+  k6:
+    class: ephemeral
+    kind: ephemeral
+  knowledge-embedder-local:
+    class: essential
+    kind: app
+  knowledge-sovereign:
+    class: essential
+    kind: app
+  knowledge-sovereign-db:
+    class: essential
+    kind: store
+  knowledge-sovereign-db-migrator:
+    class: ephemeral
+    kind: ephemeral
+  kratos:
+    class: essential
+    kind: app
+  kratos-db:
+    class: essential
+    kind: store
+  kratos-migrate:
+    class: ephemeral
+    kind: ephemeral
+  meilisearch:
+    class: essential
+    kind: store
+  migrate:
+    class: ephemeral
+    kind: ephemeral
+  mq-hub:
+    class: essential
+    kind: app
+  mq-hub-logs:
+    class: accidental
+    kind: sidecar-logs
+  news-creator:
+    class: essential
+    kind: app
+  news-creator-backend:
+    class: essential
+    kind: app
+  news-creator-backend-logs:
+    class: accidental
+    kind: sidecar-logs
+  news-creator-logs:
+    class: accidental
+    kind: sidecar-logs
+  nginx-logs:
+    class: accidental
+    kind: sidecar-logs
+  oauth-token-init:
+    class: ephemeral
+    kind: ephemeral
+  pact-broker:
+    class: platform
+    kind: platform
+  pact-db:
+    class: platform
+    kind: platform
+  pgbouncer:
+    class: platform
+    kind: platform
+  pgbouncer-kratos:
+    class: platform
+    kind: platform
+  plecto-proxy:
+    class: essential
+    kind: app
+  pre-processor:
+    class: essential
+    kind: app
+  pre-processor-db:
+    class: essential
+    kind: store
+  pre-processor-db-migrator:
+    class: ephemeral
+    kind: ephemeral
+  pre-processor-logs:
+    class: accidental
+    kind: sidecar-logs
+  pre-processor-sidecar:
+    class: essential
+    kind: app
+  prometheus:
+    class: platform
+    kind: platform
+  rag-db:
+    class: essential
+    kind: store
+  rag-db-migrator:
+    class: ephemeral
+    kind: ephemeral
+  rag-orchestrator:
+    class: essential
+    kind: app
+  rag-orchestrator-logs:
+    class: accidental
+    kind: sidecar-logs
+  rask-log-aggregator:
+    class: platform
+    kind: platform
+  recap-db:
+    class: essential
+    kind: store
+  recap-db-migrator:
+    class: ephemeral
+    kind: ephemeral
+  recap-evaluator:
+    class: essential
+    kind: app
+  recap-evaluator-logs:
+    class: accidental
+    kind: sidecar-logs
+  recap-subworker:
+    class: essential
+    kind: app
+  recap-subworker-logs:
+    class: accidental
+    kind: sidecar-logs
+  recap-worker:
+    class: essential
+    kind: app
+  recap-worker-logs:
+    class: accidental
+    kind: sidecar-logs
+  redis-cache:
+    class: essential
+    kind: store
+  redis-streams:
+    class: essential
+    kind: store
+  rerank-local:
+    class: essential
+    kind: app
+  restic-backup:
+    class: ephemeral
+    kind: ephemeral
+  search-indexer:
+    class: essential
+    kind: app
+  search-indexer-logs:
+    class: accidental
+    kind: sidecar-logs
+  step-ca:
+    class: platform
+    kind: platform
+  step-ca-bootstrap:
+    class: ephemeral
+    kind: ephemeral
+  tag-generator:
+    class: essential
+    kind: app
+  tag-generator-logs:
+    class: accidental
+    kind: sidecar-logs

@@ -6,9 +6,9 @@ include:
   - bff.yaml
   - pki.yaml
 
-# Cert provisioning is owned by compose/pki.yaml's pki-agent sidecars.
-# The compose-embedded shell cert-init/cert-renewer pair was removed in the
-# pki-agent cutover (see docs/ADR/000747.md).
+# Cert provisioning for every east-west parent is in-process
+# (PKI_ENROLLMENT=enabled). Do not run a pki-agent sidecar against the
+# same cert volume as an in-process parent.
 
 # --- alt-backend 3-binary split -------------------------------------------
 # alt-backend / alt-harvester / alt-data-hub are three binaries out of the one
@@ -44,6 +44,18 @@ x-alt-go-common: &alt-go-common
     options:
       max-size: "10m"
       max-file: "3"
+
+# Distroless nonroot (uid 65532) must own the cert volume before the parent
+# writes 0400 keys. Idempotent; shares the service mounts so
+# `up --no-deps --force-recreate` still chowns (PM-2026-037). Mode 0750 is
+# required — world-writable cert dirs are forbidden.
+x-pki-cert-volume-chown: &pki-cert-volume-chown
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown 65532:65532 /certs && chmod 0750 /certs
 
 # APP_ENV is delivered by `env_file: ../.env` and deliberately absent here —
 # see the comment on alt-backend's environment block for why an `environment:`
@@ -218,8 +230,12 @@ services:
     networks:
       - alt-network
     volumes:
-      - alt_backend_certs:/certs:ro
+      - alt_backend_certs:/certs
       - pki_trust_bundle:/trust:ro
+    # Named volumes start as root:root. Distroless cannot mkdir/write 0400
+    # keys until this hook runs. Idempotent.
+    pre_start:
+      - <<: *pki-cert-volume-chown
     depends_on:
       # alt-data-hub is the layer underneath: it owns the write path once
       # wave 3 lands, so it must be healthy before anything above it starts.
@@ -237,8 +253,8 @@ services:
         condition: service_healthy
       search-indexer:
         condition: service_healthy
-      pki-agent-alt-backend:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     environment:
       # APP_ENV (development | staging | production, validated at startup) is
       # delivered by the `env_file: ../.env` above and deliberately NOT repeated
@@ -273,6 +289,19 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      # In-process enrollment. Old images that ignore these knobs plus this
+      # compose (no sidecar) have no cert writer — deploy new images first.
+      # Missing JWK file / CA URL fails startup (native issuer, no plaintext).
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=alt-backend
+      - CERT_SANS=alt-backend,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-alt-backend
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-alt-backend-jwk
+      - RENEW_AT_FRACTION=0.66
       # No DB_* block. ADR-000954 Wave 3 batch 6 moved the last two
       # capabilities that needed a pool here — the Tag Trail's paged read and
       # the recall rail's article fallback — onto alt-data-hub, and cmd/backend
@@ -349,6 +378,7 @@ services:
       # Public half only. This process serves the key to browsers and sends no
       # pushes, so the signing key stays out of it — see alt-notifier below.
       - vapid_public_key
+      - pki-agent-alt-backend-jwk
     deploy:
       # memory used to sit under reservations alone, which is a scheduling
       # hint and not a cap: a leak in the user-facing API would have run until
@@ -402,13 +432,15 @@ services:
     # ports: intentionally absent. A job runner has no user-facing surface,
     # and :9110 is for Prometheus inside alt-network only.
     volumes:
-      - alt_harvester_certs:/certs:ro
+      - alt_harvester_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown
     depends_on:
       alt-data-hub:
         condition: service_healthy
-      pki-agent-alt-harvester:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
       mq-hub:
         condition: service_healthy
       knowledge-sovereign:
@@ -436,7 +468,7 @@ services:
       # and did not. Listener variables (SERVER_PORT / CONNECT_PORT /
       # MTLS_LISTEN) are absent for the same reason — this binary opens no
       # listener but the ops one, so a value here would be equally inert.
-      # --- outbound mTLS (client side; leaf cert from pki-agent) ----------
+      # --- outbound mTLS (client side; in-process enrollment) -------------
       # Live since ADR-000954 Wave 3 batch 1. Five of the eight jobs go
       # through alt-data-hub now — outbox-worker and outbox-prune entirely
       # (catalog §2.A), og-image-retention entirely (§2.D / §2.E),
@@ -460,6 +492,18 @@ services:
       MTLS_CERT_FILE: /certs/svc-cert.pem
       MTLS_KEY_FILE: /certs/svc-key.pem
       MTLS_CA_FILE: /trust/ca-bundle.pem
+      # In-process enrollment. Old images that ignore these knobs plus this
+      # compose (no sidecar) have no cert writer — deploy new images first.
+      PKI_ENROLLMENT: enabled
+      CERT_SUBJECT: alt-harvester
+      CERT_SANS: alt-harvester,localhost
+      CERT_PATH: /certs/svc-cert.pem
+      KEY_PATH: /certs/svc-key.pem
+      STEP_CA_URL: https://step-ca:9000
+      STEP_CA_ROOT_FILE: /trust/ca-bundle.pem
+      STEP_CA_PROVISIONER: pki-agent-alt-harvester
+      STEP_CA_PROVISIONER_PASSWORD_FILE: /run/secrets/pki-agent-alt-harvester-jwk
+      RENEW_AT_FRACTION: "0.66"
       # --- upstreams the jobs call --------------------------------------
       SOVEREIGN_URL: http://knowledge-sovereign:9500
       # https makes alt-harvester present its leaf cert; rag-orchestrator
@@ -482,6 +526,7 @@ services:
     secrets:
       # postgres_password went with the DB_* block (ADR-000954 Wave 3 batch 6).
       - image_proxy_secret
+      - pki-agent-alt-harvester-jwk
     deploy:
       # Memory belongs under deploy.resources.limits, not mem_limit: compose
       # rejects a project that sets both unless the values agree, and the
@@ -527,17 +572,29 @@ services:
       args:
         BINARY: notifier
     volumes:
-      - alt_notifier_certs:/certs:ro
+      - alt_notifier_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown
     depends_on:
       alt-data-hub:
         condition: service_healthy
-      pki-agent-alt-notifier:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     environment:
       # No DB_* block: cmd/notifier does not link the driver, same as the other
       # two non-datahub binaries.
       OPS_LISTEN: ":9110"
+      PKI_ENROLLMENT: enabled
+      CERT_SUBJECT: alt-notifier
+      CERT_SANS: alt-notifier,localhost
+      CERT_PATH: /certs/svc-cert.pem
+      KEY_PATH: /certs/svc-key.pem
+      STEP_CA_URL: https://step-ca:9000
+      STEP_CA_ROOT_FILE: /trust/ca-bundle.pem
+      STEP_CA_PROVISIONER: pki-agent-alt-notifier
+      STEP_CA_PROVISIONER_PASSWORD_FILE: /run/secrets/pki-agent-alt-notifier-jwk
+      RENEW_AT_FRACTION: "0.66"
       # --- outbound mTLS to the data plane ---------------------------------
       DATA_HUB_MTLS_URL: https://alt-data-hub:9443
       DATA_HUB_SERVER_NAME: alt-data-hub
@@ -564,6 +621,7 @@ services:
       OTEL_SERVICE_NAME: alt-notifier
     secrets:
       - vapid_private_key
+      - pki-agent-alt-notifier-jwk
     deploy:
       resources:
         limits:
@@ -601,9 +659,9 @@ services:
   # Compose states L2/L3; config.LoadDataHubConfig and bootstrap.NewOpsHandler
   # are what make them fail-fast rather than aspirational.
   #
-  # The pki-agent sidecar is cert-only (pattern A, no network_mode sharing):
-  # this is Go and terminates mTLS in-process, so there is no plaintext
-  # upstream for a proxy-mode sidecar to sit in front of.
+  # Enrollment is in-process (PKI_ENROLLMENT=enabled). There is no pki-agent
+  # sidecar and no plaintext upstream. Dual-writing this cert volume with a
+  # leftover sidecar is forbidden.
   alt-data-hub:
     <<: *alt-go-common
     env_file:
@@ -615,8 +673,10 @@ services:
       args:
         BINARY: datahub
     volumes:
-      - alt_data_hub_certs:/certs:ro
+      - alt_data_hub_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown
     depends_on:
       # Deliberately shallow. alt-backend's search-indexer /
       # knowledge-sovereign / mq-hub edges are NOT inherited: those services
@@ -628,8 +688,8 @@ services:
         condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
-      pki-agent-alt-data-hub:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     environment:
       <<: *alt-db-env
       # --- the only east-west listener (config.LoadDataHubConfig) ---------
@@ -643,6 +703,18 @@ services:
       DATAHUB_TLS_CERT_FILE: /certs/svc-cert.pem
       DATAHUB_TLS_KEY_FILE: /certs/svc-key.pem
       DATAHUB_TLS_CA_FILE: /trust/ca-bundle.pem
+      # In-process enrollment. Old images that ignore these knobs plus this
+      # compose (no sidecar) have no cert writer — deploy new images first.
+      PKI_ENROLLMENT: enabled
+      CERT_SUBJECT: alt-data-hub
+      CERT_SANS: alt-data-hub,localhost
+      CERT_PATH: /certs/svc-cert.pem
+      KEY_PATH: /certs/svc-key.pem
+      STEP_CA_URL: https://step-ca:9000
+      STEP_CA_ROOT_FILE: /trust/ca-bundle.pem
+      STEP_CA_PROVISIONER: pki-agent-alt-data-hub
+      STEP_CA_PROVISIONER_PASSWORD_FILE: /run/secrets/pki-agent-alt-data-hub-jwk
+      RENEW_AT_FRACTION: "0.66"
       # There is no client-auth knob: cmd/datahub always requires and
       # verifies a peer certificate. This list is the whole authorisation
       # decision, so wave 2 widens it *before* repointing each worker — the
@@ -707,6 +779,7 @@ services:
       - postgres_password
       - backend_token_secret
       - auth_hub_internal_secret
+      - pki-agent-alt-data-hub-jwk
     deploy:
       # See alt-harvester: mem_limit and deploy.resources.limits cannot both
       # be set unless they agree, so memory lives in the limits block.

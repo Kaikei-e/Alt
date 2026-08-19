@@ -60,8 +60,9 @@ narrow per-stack subset. This isn't a style choice: a narrow subset is
 **rejected by real `docker compose`**, e.g. what `altctl up core` used to
 build (`-f base.yaml -f db.yaml -f pgbouncer.yaml -f auth.yaml -f
 sovereign.yaml -f core.yaml`) fails compose project validation, because
-several per-stack files transitively `include: pki.yaml`, whose pki-agent
-sidecars `depends_on` services scattered across many other stacks. Even a
+several per-stack files transitively `include: pki.yaml`, whose
+`step-ca-bootstrap` and other cross-file `depends_on` reach services
+defined in other stacks. Even a
 *single* stack's own file can fail alone for the same reason.
 
 The rule:

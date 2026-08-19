@@ -34,9 +34,44 @@ on:
       - 'compose/**.yml'
       - 'scripts/compose-port-audit.py'
       - 'scripts/compose-netns-cascade-audit.py'
+      - 'scripts/compose-file-bind-audit.py'
+      - 'scripts/compose-init-edge-audit.py'
+      - 'scripts/compose-pre-start-audit.py'
+      - 'scripts/compose-ops-surface-audit.py'
+      - 'scripts/compose-feature-gate.py'
+      - 'scripts/compose_include.py'
+      - 'scripts/ops-surface-baseline.json'
+      - 'scripts/ops-surface-inventory.yaml'
+      - 'scripts/compose-feature-gate.report.json'
       - 'scripts/tests/test-compose-netns-cascade-audit.py'
+      - 'scripts/tests/test-compose-file-bind-audit.py'
+      - 'scripts/tests/test-compose-init-edge-audit.py'
+      - 'scripts/tests/test-compose-pre-start-audit.py'
+      - 'scripts/tests/test-compose-ops-surface-audit.py'
+      - 'scripts/tests/test-compose-feature-gate.py'
+      - 'scripts/tests/test-pki-wave4-acceptance.py'
+      - 'scripts/tests/test-pki-subject-scoped-provisioners.py'
+      - 'scripts/tests/test-pki-agent-recovery-runbook.py'
+      - 'scripts/tests/test-health-deep-contract.py'
+      - 'scripts/tests/test-p2-doc-contracts.py'
+      - 'docs/runbooks/pki-agent-recovery.md'
+      - 'docs/runbooks/health-deep-contract.md'
+      - 'docs/ADR/000978.md'
+      - 'docs/ADR/000979.md'
+      - 'docs/ADR/000980.md'
+      - 'pki-agent/CLAUDE.md'
+      - 'compose/pki.yaml'
+      - 'scripts/observability-config-audit.py'
+      - 'scripts/tests/test-observability-config-audit.py'
+      - 'observability/prometheus/**'
       - 'scripts/cascade-pki-sidecars.sh'
+      - 'scripts/deploy.sh'
+      - 'scripts/retire-alt-pki-agent-leftovers.sh'
       - 'scripts/check-compose-variables.sh'
+      - 'pki-agent/scripts/**'
+      - 'tests/scripts/test_deploy.sh'
+      - 'tests/scripts/test_cascade_pki_sidecars.sh'
+      - 'tests/scripts/lib.sh'
       - '.env.template'
       - '.github/workflows/compose-audit.yaml'
   pull_request:
@@ -46,9 +81,44 @@ on:
       - 'compose/**.yml'
       - 'scripts/compose-port-audit.py'
       - 'scripts/compose-netns-cascade-audit.py'
+      - 'scripts/compose-file-bind-audit.py'
+      - 'scripts/compose-init-edge-audit.py'
+      - 'scripts/compose-pre-start-audit.py'
+      - 'scripts/compose-ops-surface-audit.py'
+      - 'scripts/compose-feature-gate.py'
+      - 'scripts/compose_include.py'
+      - 'scripts/ops-surface-baseline.json'
+      - 'scripts/ops-surface-inventory.yaml'
+      - 'scripts/compose-feature-gate.report.json'
       - 'scripts/tests/test-compose-netns-cascade-audit.py'
+      - 'scripts/tests/test-compose-file-bind-audit.py'
+      - 'scripts/tests/test-compose-init-edge-audit.py'
+      - 'scripts/tests/test-compose-pre-start-audit.py'
+      - 'scripts/tests/test-compose-ops-surface-audit.py'
+      - 'scripts/tests/test-compose-feature-gate.py'
+      - 'scripts/tests/test-pki-wave4-acceptance.py'
+      - 'scripts/tests/test-pki-subject-scoped-provisioners.py'
+      - 'scripts/tests/test-pki-agent-recovery-runbook.py'
+      - 'scripts/tests/test-health-deep-contract.py'
+      - 'scripts/tests/test-p2-doc-contracts.py'
+      - 'docs/runbooks/pki-agent-recovery.md'
+      - 'docs/runbooks/health-deep-contract.md'
+      - 'docs/ADR/000978.md'
+      - 'docs/ADR/000979.md'
+      - 'docs/ADR/000980.md'
+      - 'pki-agent/CLAUDE.md'
+      - 'compose/pki.yaml'
+      - 'scripts/observability-config-audit.py'
+      - 'scripts/tests/test-observability-config-audit.py'
+      - 'observability/prometheus/**'
       - 'scripts/cascade-pki-sidecars.sh'
+      - 'scripts/deploy.sh'
+      - 'scripts/retire-alt-pki-agent-leftovers.sh'
       - 'scripts/check-compose-variables.sh'
+      - 'pki-agent/scripts/**'
+      - 'tests/scripts/test_deploy.sh'
+      - 'tests/scripts/test_cascade_pki_sidecars.sh'
+      - 'tests/scripts/lib.sh'
       - '.env.template'
       - '.github/workflows/compose-audit.yaml'
   workflow_dispatch:
@@ -148,13 +218,11 @@ jobs:
         run: python3 scripts/compose-port-audit.py
 
   netns-cascade-invariant:
-    # `network_mode: service:X` pins the sidecar to the parent's container id,
-    # and `depends_on.restart: true` does not fire on a force-recreate of the
-    # parent alone — so recreating the parent leaves the sidecar attached to a
-    # dead netns with no listener and no error. scripts/cascade-pki-sidecars.sh
-    # repairs that, but only for the sidecars hand-listed in it, and the list
-    # has already fallen behind compose once. This job is what keeps the two
-    # in step. No .env or docker needed: the audit reads the compose files.
+    # Wave 4 retired `network_mode: service:X` for pki-agent. This job
+    # asserts the forbidden topology stays gone: zero pki-agent sidecars
+    # share a parent netns, and the cascade script has no NETNS_SIDECARS
+    # array to drift. Re-adding a netns sidecar fails this job. No .env
+    # or docker needed: the audit reads the compose files.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -165,8 +233,57 @@ jobs:
       - name: Pin the audit parsers
         run: python3 scripts/tests/test-compose-netns-cascade-audit.py
 
-      - name: Assert every netns-sharing sidecar is covered by the cascade script
+      - name: Assert zero forbidden netns-sharing pki sidecars
         run: python3 scripts/compose-netns-cascade-audit.py
+
+  pki-wave4-invariant:
+    # Final in-process PKI cutover: 14 parents own enrollment, pki-agent
+    # workload fleet is 0. Dual writers, shared root secrets, and a silent
+    # in-process series drop all fail this job. The recovery runbook test
+    # is an executed python3 step (YAML `run:`), not a comment/string pin.
+    # No live stack.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Pin Wave 4 PKI acceptance (Go cohort + Pattern B)
+        run: python3 scripts/tests/test-pki-wave4-acceptance.py
+
+      - name: Pin subject-scoped provisioner bootstrap mapping
+        run: python3 scripts/tests/test-pki-subject-scoped-provisioners.py
+
+      - name: Pin pki-agent recovery runbook against compose
+        run: python3 scripts/tests/test-pki-agent-recovery-runbook.py
+
+      - name: Pin health-deep listener matrix
+        run: python3 scripts/tests/test-health-deep-contract.py
+
+      - name: Pin P2 documentation contracts
+        run: python3 scripts/tests/test-p2-doc-contracts.py
+
+  deploy-cutover-invariant:
+    # ADR-000978: leftover pki-agent-* in project=alt are dual writers.
+    # deploy.sh must stop/rm them with exact labels and a zero docker ps
+    # gate before any PKI_ENROLLMENT=enabled parent up. Cascade is a
+    # retired tombstone. No live stack; docker is stubbed in the tests.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pin leftover sweep before parent up
+        run: bash tests/scripts/test_deploy.sh
+
+      - name: Pin retired cascade tombstone
+        run: bash tests/scripts/test_cascade_pki_sidecars.sh
 
   interpolation-invariant:
     # An unset `${VAR}` renders as an empty string and only warns on stderr,
@@ -198,3 +315,93 @@ jobs:
 
       - name: Assert .env.template resolves every interpolation variable
         run: ./scripts/check-compose-variables.sh
+
+  file-bind-invariant:
+    # PM-2026-036: short-syntax file binds create empty directories when
+    # the host source is missing. Wave 1 converted production mounts to
+    # configs: or long-syntax bind + create_host_path: false. This job
+    # fails on any remaining unguarded file / socket / artefact-directory
+    # bind. Parser tests must stay green either way. No .env or docker needed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Pin the file-bind parser
+        run: python3 scripts/tests/test-compose-file-bind-audit.py
+
+      - name: Assert production compose has 0 unguarded file binds
+        run: python3 scripts/compose-file-bind-audit.py
+
+  init-edge-invariant:
+    # PM-2026-037: service_completed_successfully onto restart: "no" is
+    # skipped by rolling up --no-deps. Wave 1b moved two chown-only
+    # inits onto pre_start; remaining one-shots stay on the allowlist.
+    # A new edge without a baseline row fails.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Pin the init-edge parser
+        run: python3 scripts/tests/test-compose-init-edge-audit.py
+
+      - name: Pin Wave 1b pre_start chown hooks
+        run: python3 scripts/tests/test-compose-pre-start-audit.py
+
+      - name: Assert one-shot SCS edges match the ops-surface allowlist
+        run: python3 scripts/compose-init-edge-audit.py
+
+      - name: Assert the two chown-only inits are pre_start on the consumer
+        run: python3 scripts/compose-pre-start-audit.py
+
+  ops-surface-invariant:
+    # P2-14 budget: compose is the source of long-running names (77
+    # declared after Wave 4 removed pki-agent workload sidecars; default
+    # render 73, full 77). scripts/ops-surface-inventory.yaml holds only
+    # class/kind/exception metadata. F1–F5 freeze accidental OSU (16) and
+    # require offset_of or a dated exception before a new long-running
+    # unit lands.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Pin the inventory parser
+        run: python3 scripts/tests/test-compose-ops-surface-audit.py
+
+      - name: Assert production compose inventory and P2-14 budget hold
+        run: python3 scripts/compose-ops-surface-audit.py
+
+  compose-feature-gate:
+    # Records whether this runner's Compose can host pre_start / whether
+    # the committed operator-host probe still says create_host_path:false
+    # is real. No live docker probe here (avoids pulling alpine); the
+    # operator-host measurement is scripts/compose-feature-gate.report.json.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pin the version / report parser
+        run: python3 scripts/tests/test-compose-feature-gate.py
+
+      - name: Validate the committed operator-host gate report
+        run: python3 scripts/compose-feature-gate.py --gate-report

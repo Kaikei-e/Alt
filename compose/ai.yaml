@@ -1,11 +1,26 @@
 # compose/ai.yaml - AI/LLM services
 # news-creator (FastAPI app), news-creator-backend (Ollama), pre-processor, redis-cache
+# Enrollment is in-process (PKI_ENROLLMENT=enabled). No pki-agent sidecar.
 
 include:
   - base.yaml
   - pki.yaml
 
-# Cert lifecycle for pre-processor is owned by pki-agent-pre-processor in compose/pki.yaml.
+x-pki-cert-volume-chown-distroless: &pki-cert-volume-chown-distroless
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown 65532:65532 /certs && chmod 0750 /certs
+
+x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown 1000:1000 /certs && chmod 0750 /certs
 
 services:
   # Redis cache for news-creator recap summaries
@@ -94,9 +109,17 @@ services:
       - "127.0.0.1:11435:11435"
     networks:
       - alt-network
-    depends_on:
-      news-creator-volume-init:
-        condition: service_completed_successfully
+    # Wave 1b / P2-13: chown the named volume before the non-root
+    # ollama-user (uid 2000) starts. alpine runs as root; idempotent.
+    # Shares the service mounts, so rolling `up --no-deps --force-recreate`
+    # still runs the hook (PM-2026-037).
+    pre_start:
+      - image: alpine:3.21
+        user: "0:0"
+        command:
+          - sh
+          - -c
+          - mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11435/api/tags"]
       interval: 30s
@@ -163,11 +186,27 @@ services:
       - DISTRIBUTED_BE_COOLDOWN_SECONDS=${DISTRIBUTED_BE_COOLDOWN_SECONDS:-60}
       - DISTRIBUTED_BE_REMOTE_MODEL=${DISTRIBUTED_BE_REMOTE_MODEL:-gemma4-e4b-q4km}
       - DISTRIBUTED_BE_MODEL_OVERRIDES=${DISTRIBUTED_BE_MODEL_OVERRIDES:-}
-      # Declares that pki-agent-news-creator verifies client certificates, so
-      # the X-Alt-Peer-Identity it forwards names a real caller. The app also
-      # requires the request to arrive from the sidecar's loopback upstream;
-      # this flag alone does not grant trust.
-      - PEER_IDENTITY_TRUSTED=${NEWS_CREATOR_VERIFY_CLIENT:-on}
+      # Wave 4: inbound TLS is in-process on news-creator FastAPI :11434
+      # (Ollama on :11435 is an upstream, not the mTLS parent). Identity
+      # comes from the verified client cert; never from a caller-supplied
+      # header.
+      - INBOUND_MTLS=true
+      - MTLS_CERT_FILE=/certs/svc-cert.pem
+      - MTLS_KEY_FILE=/certs/svc-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - MTLS_ALLOWED_PEERS=${NEWS_CREATOR_MTLS_ALLOWED_PEERS:-recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator}
+      - PEER_IDENTITY_TRUSTED=off
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=news-creator
+      - CERT_SANS=news-creator,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-news-creator
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-news-creator-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=news-creator
@@ -176,11 +215,20 @@ services:
       - "127.0.0.1:11434:11434"
     networks:
       - alt-network
+    secrets:
+      - pki-agent-news-creator-jwk
+    volumes:
+      - news_creator_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown-appuser
     depends_on:
       news-creator-backend:
         condition: service_healthy
       redis-cache:
         condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/health"]
       interval: 30s
@@ -195,19 +243,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  news-creator-volume-init:
-    image: alpine:3.21
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["chown -R 2000:2000 /home/ollama-user/.ollama"]
-    user: "0:0"
-    volumes:
-      - news_creator_models:/home/ollama-user/.ollama
-    networks:
-      - alt-network
-    restart: "no"
-    labels:
-      - rask.group=news-creator-init
 
   pre-processor:
     env_file:
@@ -224,8 +259,8 @@ services:
         condition: service_healthy
       pre-processor-db-migrator:
         condition: service_completed_successfully
-      pki-agent-pre-processor:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     environment:
       - MTLS_LISTEN=${MTLS_LISTEN:-true}
       - MTLS_PORT=9443
@@ -234,6 +269,17 @@ services:
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_CLIENT_AUTH=${PRE_PROCESSOR_MTLS_CLIENT_AUTH:-}
       - MTLS_ALLOWED_PEERS=${PRE_PROCESSOR_MTLS_ALLOWED_PEERS:-}
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=pre-processor
+      - CERT_SANS=pre-processor,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-pre-processor
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-pre-processor-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
       # Outbound mTLS to the data plane. The data plane and /v1/internal
       # moved out of alt-backend in the 3-binary split
       # (ADR-000954): cmd/backend opens no mTLS listener at all, and
@@ -244,7 +290,7 @@ services:
       - MTLS_ENFORCE=${PRE_PROCESSOR_MTLS_ENFORCE:-true}
       - BACKEND_API_MTLS_URL=https://alt-data-hub:9443
       # bootstrap/wire.go pins tls.Config.ServerName from this, so it must be
-      # the SAN pki-agent-alt-data-hub mints (CERT_SANS=alt-data-hub,localhost).
+      # the SAN alt-data-hub mints in-process (CERT_SANS=alt-data-hub,localhost).
       - BACKEND_MTLS_SERVER_NAME=alt-data-hub
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
       # alt-backend's operator listener and carries no data plane at all —
@@ -269,6 +315,7 @@ services:
       - OTEL_SERVICE_NAME=pre-processor
     secrets:
       - pp_db_password
+      - pki-agent-pre-processor-jwk
     restart: always
     ports:
       # East-west surfaces. Loopback bind so the only cross-host entrance is
@@ -280,8 +327,10 @@ services:
     networks:
       - alt-network
     volumes:
-      - pre_processor_certs:/certs:ro
+      - pre_processor_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown-distroless
     healthcheck:
       test: ["CMD", "/pre-processor", "healthcheck"]
       interval: 10s

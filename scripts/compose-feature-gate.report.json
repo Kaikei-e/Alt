@@ -1,0 +1,41 @@
+{
+  "compose_version": "Docker Compose version v5.5.0",
+  "compose_version_tuple": [
+    5,
+    5,
+    0
+  ],
+  "pre_start": {
+    "min_version": [
+      5,
+      4,
+      0
+    ],
+    "ok": true,
+    "supported_by_version": true,
+    "live": {
+      "supported": true,
+      "exit_code": 0,
+      "detail": " Container alt-wave0-prestart-probe-1 Started"
+    },
+    "detail": " Container alt-wave0-prestart-probe-1 Started"
+  },
+  "create_host_path_false": {
+    "ok": true,
+    "noop": false,
+    "missing_file": {
+      "refuses": true,
+      "created_empty_dir": false,
+      "path_exists_after": false,
+      "exit_code": 1,
+      "detail": "Error response from daemon: invalid mount config for type \"bind\": bind source path does not exist: <tmpdir>/missing-file/missing.conf"
+    },
+    "missing_directory": {
+      "refuses": true,
+      "created_empty_dir": false,
+      "path_exists_after": false,
+      "exit_code": 1,
+      "detail": "Error response from daemon: invalid mount config for type \"bind\": bind source path does not exist: <tmpdir>/missing-dir/missing-dir"
+    }
+  }
+}

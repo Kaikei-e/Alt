@@ -23,7 +23,6 @@ Exit 0 when clean, exit 1 with a per-violation report otherwise.
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -131,19 +130,22 @@ def audit_file(path: Path, registry: dict[str, str]) -> list[str]:
     return violations
 
 
-def audit_pki_anchor(path: Path) -> list[str]:
-    """pki.yaml uses a YAML anchor for pki-agent — check the raw text."""
+def audit_pki_workload_fleet(path: Path) -> list[str]:
+    """Final cutover: pki.yaml must not declare pki-agent-* workload services."""
     if path.name != "pki.yaml":
         return []
-    raw = path.read_text(encoding="utf-8")
-    match = re.search(r"x-pki-agent:\s*&pki-agent\n((?:\s{2,}.*\n)+)", raw)
-    if not match:
-        return [f"{path.name}: x-pki-agent anchor block not found"]
-    body = match.group(1)
-    if "image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-pki-agent:" not in body:
+    from compose_include import load_yaml
+
+    data = load_yaml(path)
+    leftovers = [
+        name
+        for name in (data.get("services") or {})
+        if str(name).startswith("pki-agent-")
+    ]
+    if leftovers:
         return [
-            f"{path.name}: x-pki-agent anchor must set "
-            "image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-pki-agent:${IMAGE_TAG:-main}"
+            f"{path.name}: pki-agent workload services still declared: "
+            f"{sorted(leftovers)} (dual writer after in-process cutover)"
         ]
     return []
 
@@ -158,7 +160,7 @@ def main() -> int:
     all_violations: list[str] = []
     for path in files:
         all_violations.extend(audit_file(path, registry))
-        all_violations.extend(audit_pki_anchor(path))
+        all_violations.extend(audit_pki_workload_fleet(path))
 
     if all_violations:
         sys.stderr.write(

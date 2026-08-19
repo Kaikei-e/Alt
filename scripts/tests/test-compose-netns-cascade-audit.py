@@ -92,8 +92,12 @@ check(
     == [("pki-agent-live", "alt-pki-agent-live-1", "alt-live-1")],
 )
 check(
-    "a renamed array raises instead of reporting full coverage",
-    raises(lambda: audit.parse_cascade_rows('SIDECARS=(\n  "a:b:c"\n)\n')),
+    "a renamed array is the tombstone form (zero rows), not silent coverage",
+    audit.parse_cascade_rows('SIDECARS=(\n  "a:b:c"\n)\n') == [],
+)
+check(
+    "a missing NETNS_SIDECARS array is zero rows, not a parser crash",
+    audit.parse_cascade_rows("# retired tombstone\nexit 1\n") == [],
 )
 check(
     "a row missing the parent field raises",
@@ -137,6 +141,22 @@ check(
     "a sidecar inherits the derived form from the pki-agent anchor",
     audit.container_name("pki-agent-tag-generator", NAMED)
     == "alt-pki-agent-tag-generator-1",
+)
+
+print("production Wave 4: zero forbidden netns pki sidecars")
+
+prod_violations = audit.audit()
+check(
+    "production compose has zero network_mode: service: pki sidecars",
+    prod_violations == [],
+)
+if prod_violations:
+    for item in prod_violations:
+        print(f"        {item}")
+cascade_text = audit.CASCADE_SCRIPT.read_text(encoding="utf-8")
+check(
+    "retired cascade script has no NETNS_SIDECARS array",
+    audit.parse_cascade_rows(cascade_text) == [],
 )
 
 print(f"\n{PASS} passed, {FAIL} failed")

@@ -1,12 +1,26 @@
 # compose/workers.yaml - Background worker services
 # pre-processor-sidecar, search-indexer, tag-generator, auth-token-manager
+# Enrollment is in-process (PKI_ENROLLMENT=enabled). No pki-agent sidecar.
 
 include:
   - base.yaml
   - pki.yaml
 
-# Cert lifecycle for search-indexer / tag-generator is owned by
-# pki-agent-search-indexer / pki-agent-tag-generator in compose/pki.yaml.
+x-pki-cert-volume-chown-distroless: &pki-cert-volume-chown-distroless
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown 65532:65532 /certs && chmod 0750 /certs
+
+x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown 1000:1000 /certs && chmod 0750 /certs
 
 services:
   pre-processor-sidecar:
@@ -69,8 +83,8 @@ services:
     depends_on:
       redis-streams:
         condition: service_healthy
-      pki-agent-search-indexer:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     environment:
       - MTLS_LISTEN=${MTLS_LISTEN:-true}
       - MTLS_PORT=9443
@@ -79,6 +93,17 @@ services:
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_CLIENT_AUTH=${SEARCH_INDEXER_MTLS_CLIENT_AUTH:-}
       - MTLS_ALLOWED_PEERS=${SEARCH_INDEXER_MTLS_ALLOWED_PEERS:-}
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=search-indexer
+      - CERT_SANS=search-indexer,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-search-indexer
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-search-indexer-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
       # Outbound mTLS to the data plane. The data plane moved out of
       # alt-backend in the 3-binary split (ADR-000954) — cmd/backend opens no
       # mTLS listener at all now, cmd/datahub serves
@@ -89,7 +114,7 @@ services:
       - MTLS_ENFORCE=${SEARCH_INDEXER_MTLS_ENFORCE:-true}
       - BACKEND_API_MTLS_URL=https://alt-data-hub:9443
       # bootstrap/drivers.go pins tls.Config.ServerName from this, so it must
-      # be a SAN of the alt-data-hub leaf (pki-agent-alt-data-hub mints
+      # be a SAN of the alt-data-hub leaf (in-process enrollment mints
       # CERT_SANS=alt-data-hub,localhost).
       - BACKEND_MTLS_SERVER_NAME=alt-data-hub
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
@@ -115,11 +140,14 @@ services:
     secrets:
       - meili_master_key
       - meili_search_key
+      - pki-agent-search-indexer-jwk
     networks:
       - alt-network
     volumes:
-      - search_indexer_certs:/certs:ro
+      - search_indexer_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown-distroless
     ports:
       # The peer-identity allowlist lives on the mTLS :9443 listener only, so
       # these two are the unguarded twins. Loopback bind.
@@ -140,9 +168,8 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # nginx TLS sidecar replaced by pki-agent proxy mode (ADR-000747, F-007).
-  # pki-agent-tag-generator in compose/pki.yaml handles both cert lifecycle
-  # AND mTLS reverse proxy (:9443 → :9400).
+  # nginx TLS sidecar replaced by in-process mTLS (Wave 4 Pattern B).
+  # Enrollment is in-process (PKI_ENROLLMENT=enabled). No pki-agent sidecar.
 
   tag-generator:
     env_file:
@@ -155,14 +182,15 @@ services:
     depends_on:
       redis-streams:
         condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     networks:
       - alt-network
     ports:
-      # /extract-tags and /health carry no @require_auth, and verify_service_token
-      # is a no-op that assumes the sidecar already rejected the caller — which
-      # only holds for traffic that actually went through :9443. Loopback bind.
+      # /extract-tags and /health carry no @require_auth on plaintext :9400.
+      # Wave 4 in-process mTLS owns :9443. Loopback bind for the cheap health
+      # port — it is not an external mTLS fallback.
       - "127.0.0.1:9400:9400"
-      # mTLS :9443 served by pki-agent-tag-generator (shares net ns via network_mode)
     environment:
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
       # alt-backend's operator listener and carries no data plane at all —
@@ -175,14 +203,27 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      # trust X-Alt-Peer-Identity header iff the sidecar above
-      # enforces client certs. Must track TAG_GENERATOR_VERIFY_CLIENT.
-      - PEER_IDENTITY_TRUSTED=${TAG_GENERATOR_VERIFY_CLIENT:-on}
+      # Wave 4: inbound TLS is in-process. Identity comes from the verified
+      # client cert on :9443; never from a caller-supplied header.
+      - INBOUND_TLS_ENABLED=true
+      - MTLS_ALLOWED_PEERS=${TAG_GENERATOR_MTLS_ALLOWED_PEERS:-alt-butterfly-facade,alt-backend,search-indexer,recap-worker}
+      - PEER_IDENTITY_TRUSTED=off
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=tag-generator
+      - CERT_SANS=tag-generator,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-tag-generator
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-tag-generator-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
       # Outbound mTLS to the data plane. The data plane moved out of
       # alt-backend in the 3-binary split (ADR-000954); cmd/datahub serves it
       # as `services.datahub.v1.DataHubService`.
       # driver/connect_client_factory.py derives SNI from this URL's host, so
-      # `alt-data-hub` must be a SAN of the leaf pki-agent-alt-data-hub mints
+      # `alt-data-hub` must be a SAN of the leaf alt-data-hub mints in-process
       # (CERT_SANS=alt-data-hub,localhost) — it is. This container's own leaf
       # is CN/SAN `tag-generator`, which is in DATAHUB_ALLOWED_PEERS.
       - BACKEND_API_MTLS_URL=https://alt-data-hub:9443
@@ -200,11 +241,15 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=tag-generator
+    secrets:
+      - pki-agent-tag-generator-jwk
     volumes:
       - ../scripts:/scripts:ro
       - ../tag-generator/models/onnx:/models/onnx:ro
-      - tag_generator_certs:/certs:ro
+      - tag_generator_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown-appuser
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9400/health')"]
       interval: 10s

@@ -34,8 +34,13 @@ services:
     volumes:
       - db_data_17:/var/lib/postgresql/data
       - ../db/init:/docker-entrypoint-initdb.d:ro
-      - ../docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
-      - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    configs:
+      - source: postgres_postgresql_conf
+        target: /etc/postgresql/postgresql.conf
+        mode: 0444
+      - source: postgres_pg_hba_conf
+        target: /etc/postgresql/pg_hba.conf
+        mode: 0444
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
@@ -105,11 +110,18 @@ services:
       - "127.0.0.1:8123:8123"
       - "127.0.0.1:9009:9000"
     volumes:
-      - ../clickhouse/entrypoint-wrapper.sh:/entrypoint-wrapper.sh:ro
       - ../clickhouse/migrations:/migrations:ro
-      - ../clickhouse/config/system_tables.xml:/etc/clickhouse-server/config.d/system_tables.xml:ro
-      - ../clickhouse/config/disable_profiler.xml:/etc/clickhouse-server/users.d/disable_profiler.xml:ro
       - clickhouse_data:/var/lib/clickhouse
+    configs:
+      - source: clickhouse_entrypoint_wrapper
+        target: /entrypoint-wrapper.sh
+        mode: 0555
+      - source: clickhouse_system_tables
+        target: /etc/clickhouse-server/config.d/system_tables.xml
+        mode: 0444
+      - source: clickhouse_disable_profiler
+        target: /etc/clickhouse-server/users.d/disable_profiler.xml
+        mode: 0444
     networks:
       - alt-network
     ulimits:
@@ -161,8 +173,11 @@ services:
     secrets:
       - clickhouse_password
     volumes:
-      - ../clickhouse/entrypoint-wrapper.sh:/entrypoint-wrapper.sh:ro
       - ../clickhouse/migrations:/migrations:ro
+    configs:
+      - source: clickhouse_entrypoint_wrapper
+        target: /entrypoint-wrapper.sh
+        mode: 0555
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -231,3 +246,11 @@ services:
     restart: "no"
     labels:
       - rask.group=pre-processor-db-migrator
+
+configs:
+  clickhouse_entrypoint_wrapper:
+    file: ../clickhouse/entrypoint-wrapper.sh
+  clickhouse_system_tables:
+    file: ../clickhouse/config/system_tables.xml
+  clickhouse_disable_profiler:
+    file: ../clickhouse/config/disable_profiler.xml

@@ -1,31 +1,20 @@
 #!/usr/bin/env python3
-"""Fail when a netns-piggyback sidecar has no row in the cascade script.
+"""Fail when a forbidden netns-piggyback pki sidecar exists.
 
-`network_mode: "service:X"` freezes the *container id* of X into the
-sidecar's netns. When the deploy tool force-recreates X alone, the sidecar
-keeps pointing at the dead netns and its reverse-proxy listener disappears
-from the network — and `depends_on.restart: true` does not fire on a
-force-recreate, so compose never notices. scripts/cascade-pki-sidecars.sh
-closes that hole by recreating each sidecar whose netns no longer matches
-its parent, but only for the rows hand-written in its NETNS_SIDECARS array.
+Wave 4 Pattern B cutover moved inbound TLS into the parent process.
+`network_mode: service:<parent>` is forbidden for pki-agent sidecars:
+sharing the parent's netns is what made :9443 a sidecar listener that
+a parent-only force-recreate could orphan (ADR-000782 / ADR-000802).
 
-A sidecar added to compose and forgotten in that array is therefore an
-armed netns-orphan incident with no signal until east-west mTLS traffic to
-the parent starts failing in production. This audit is that signal: it
-compares the two lists in both directions and checks that each row names
-container names that actually exist by compose's own naming rules.
+scripts/cascade-pki-sidecars.sh is a hard-failing tombstone. There is
+no NETNS_SIDECARS array to keep in lockstep. This audit is the signal
+that the forbidden topology has not come back:
 
-Rules:
-
-- Every service in the production include chain with
-  `network_mode: service:<parent>` MUST have a NETNS_SIDECARS row.
-- Every NETNS_SIDECARS row MUST name a service that still uses
-  `network_mode: service:<parent>` (no stale rows — a stale row makes the
-  script inspect a container that no longer exists and report "skip").
-- Each row's container names MUST match what compose actually creates:
-  the service's own `container_name:` when it declares one, otherwise
-  `<project>-<service>-1`. A row naming a container that never exists
-  fails open: the script prints "skip: ... not running" and exits 0.
+- Zero `network_mode: service:<parent>` pki-agent services in the
+  production include chain. An empty success is the Wave 4 contract,
+  not a parser no-op.
+- Re-adding a netns sidecar fails this job with the service name.
+- Re-adding a NETNS_SIDECARS array to the tombstone also fails.
 
 Usage: python3 scripts/compose-netns-cascade-audit.py
 Exit 0 when clean, 1 with a per-violation report otherwise.
@@ -66,9 +55,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ROOT_COMPOSE = REPO_ROOT / "compose" / "compose.yaml"
 CASCADE_SCRIPT = REPO_ROOT / "scripts" / "cascade-pki-sidecars.sh"
 
-# Matches the COMPOSE_PROJECT default in cascade-pki-sidecars.sh, which is
-# also what scripts/deploy.sh runs with. Compose derives the container name
-# of a service without `container_name:` as `<project>-<service>-<index>`.
+# Matches the COMPOSE_PROJECT default the retired cascade script used.
 COMPOSE_PROJECT = "alt"
 
 NETNS_PARENT_RE = re.compile(r"^service:(.+)$")
@@ -130,18 +117,15 @@ def netns_sidecars(services: dict[str, dict]) -> dict[str, str]:
 
 
 def parse_cascade_rows(text: str) -> list[tuple[str, str, str]]:
-    """Parse the NETNS_SIDECARS array of cascade-pki-sidecars.sh.
+    """Parse a NETNS_SIDECARS array if present.
 
-    Raises SystemExit rather than returning empty when the array cannot be
-    found: a parser that silently sees nothing turns this audit green for
-    every sidecar at once, which is the failure mode it exists to prevent.
+    A missing array is the tombstone form (zero rows). A present-but
+    unparseable array still raises: that is how a silently empty parser
+    is prevented from reporting "full coverage" of a list it cannot see.
     """
     block = ARRAY_RE.search(text)
     if block is None:
-        raise SystemExit(
-            f"NETNS_SIDECARS=( ... ) array not found in {CASCADE_SCRIPT}; "
-            "the audit parser and the script have diverged"
-        )
+        return []
     rows: list[tuple[str, str, str]] = []
     for line in block.group(1).splitlines():
         code = line.split("#", 1)[0]
@@ -159,43 +143,27 @@ def parse_cascade_rows(text: str) -> list[tuple[str, str, str]]:
 def audit() -> list[str]:
     services = production_services()
     sidecars = netns_sidecars(services)
-    if not sidecars:
-        raise SystemExit(
-            "no `network_mode: service:<parent>` service found in the "
-            "production compose chain; the audit parser is broken"
-        )
-
-    rows = parse_cascade_rows(CASCADE_SCRIPT.read_text(encoding="utf-8"))
-    by_service = {row[0]: row for row in rows}
-
     violations: list[str] = []
 
     for svc, parent in sorted(sidecars.items()):
-        expected = (svc, container_name(svc, services), container_name(parent, services))
-        row = by_service.get(svc)
-        if row is None:
+        if svc.startswith("pki-agent-"):
             violations.append(
-                f"{svc} shares the netns of {parent} but has no NETNS_SIDECARS row; "
-                f"a force-recreate of {parent} orphans it silently. Add:\n"
-                f'      "{":".join(expected)}"'
+                f"{svc} uses network_mode: service:{parent}; Wave 4 forbids "
+                "pki-agent netns sharing. Convert to cert-only (independent netns)."
             )
-            continue
-        if row[1] != expected[1]:
+        else:
             violations.append(
-                f"{svc}: row names sidecar container {row[1]!r} but compose creates "
-                f"{expected[1]!r}; the cascade skips a container it cannot inspect"
-            )
-        if row[2] != expected[2]:
-            violations.append(
-                f"{svc}: row names parent container {row[2]!r} but compose creates "
-                f"{expected[2]!r}; the cascade skips a container it cannot inspect"
+                f"{svc} uses network_mode: service:{parent}; no cascade repair "
+                "surface remains. Do not reintroduce netns sharing."
             )
 
-    for svc in sorted(by_service):
-        if svc not in sidecars:
+    if CASCADE_SCRIPT.is_file():
+        text = CASCADE_SCRIPT.read_text(encoding="utf-8")
+        rows = parse_cascade_rows(text)
+        for row in rows:
             violations.append(
-                f"{svc} has a NETNS_SIDECARS row but no longer uses "
-                "`network_mode: service:<parent>`; drop the stale row"
+                f"{row[0]} has a NETNS_SIDECARS row in the retired cascade "
+                "script; drop the array — Wave 4 left no netns to repair"
             )
 
     return violations
@@ -205,18 +173,16 @@ def main() -> int:
     violations = audit()
     if violations:
         sys.stderr.write(
-            "compose-netns-cascade-audit FAILED — scripts/cascade-pki-sidecars.sh\n"
-            "must list every service that joins a parent's network namespace, with\n"
-            "the container names compose actually creates. Anything missing here is\n"
-            "a sidecar that survives a parent force-recreate pointing at a dead\n"
-            "netns, with no listener and no error.\n\n"
+            "compose-netns-cascade-audit FAILED — Wave 4 forbids "
+            "`network_mode: service:<parent>` on pki-agent sidecars. "
+            "Inbound TLS lives in the parent process; a netns-sharing "
+            "sidecar re-opens the orphan class this audit exists to close.\n\n"
         )
         for v in violations:
             sys.stderr.write(f"  - {v}\n")
         return 1
 
-    rows = parse_cascade_rows(CASCADE_SCRIPT.read_text(encoding="utf-8"))
-    print(f"compose-netns-cascade-audit OK — {len(rows)} netns sidecar(s) covered.")
+    print("compose-netns-cascade-audit OK — 0 forbidden netns pki sidecar(s).")
     return 0
 
 

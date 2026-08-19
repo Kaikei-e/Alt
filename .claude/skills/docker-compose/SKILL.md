@@ -51,6 +51,6 @@ docker compose -f compose/compose.yaml -p alt ps
 環境固有で、素直に推測すると外す点。
 
 - **`restart` は host port を再 bind しない。** bind に失敗したコンテナは `--force-recreate` が必要で、`restart` では直らない
-- **`network_mode: service:` の pki-agent サイドカーは親と同時に recreate する。** 親だけ再作成すると相乗りサイドカーが孤立し、無言で壊れる。`--force-recreate <親> pki-agent-<親>` と並べて指定する
+- **pki-agent は cert-only で独立 netns。** Wave 4 で `network_mode: service:` は廃止。親だけ再作成しても :9443 は親プロセスが持つ。`scripts/cascade-pki-sidecars.sh` は tombstone（呼ぶと non-zero）
 - **起動しないときは `down` してから `up -d`。** 中途半端な状態からの `up` は依存解決に失敗しやすい
 - ポート衝突は `docker ps` で占有コンテナを先に特定する

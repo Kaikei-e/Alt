@@ -78,6 +78,38 @@ secrets:
     file: ../secrets/vapid_public_key.txt
   step_ca_root_password:
     file: ../secrets/step_ca_root_password.txt
+  # Wave 4 first Go in-process cohort. Operator-created, gitignored.
+  # Bootstrap with pki-agent/scripts/bootstrap-pki-provisioner.sh BEFORE
+  # cutting the parents over: compose `file:` fail-fasts on a missing path
+  # (no secret bytes in the repo). Never reuse step_ca_root_password here.
+  pki-agent-alt-backend-jwk:
+    file: ../secrets/pki-agent-alt-backend-jwk.txt
+  pki-agent-alt-harvester-jwk:
+    file: ../secrets/pki-agent-alt-harvester-jwk.txt
+  pki-agent-alt-data-hub-jwk:
+    file: ../secrets/pki-agent-alt-data-hub-jwk.txt
+  pki-agent-alt-notifier-jwk:
+    file: ../secrets/pki-agent-alt-notifier-jwk.txt
+  pki-agent-alt-butterfly-facade-jwk:
+    file: ../secrets/pki-agent-alt-butterfly-facade-jwk.txt
+  pki-agent-auth-hub-jwk:
+    file: ../secrets/pki-agent-auth-hub-jwk.txt
+  pki-agent-search-indexer-jwk:
+    file: ../secrets/pki-agent-search-indexer-jwk.txt
+  pki-agent-rag-orchestrator-jwk:
+    file: ../secrets/pki-agent-rag-orchestrator-jwk.txt
+  pki-agent-pre-processor-jwk:
+    file: ../secrets/pki-agent-pre-processor-jwk.txt
+  pki-agent-tag-generator-jwk:
+    file: ../secrets/pki-agent-tag-generator-jwk.txt
+  pki-agent-recap-worker-jwk:
+    file: ../secrets/pki-agent-recap-worker-jwk.txt
+  pki-agent-acolyte-orchestrator-jwk:
+    file: ../secrets/pki-agent-acolyte-orchestrator-jwk.txt
+  pki-agent-recap-subworker-jwk:
+    file: ../secrets/pki-agent-recap-subworker-jwk.txt
+  pki-agent-news-creator-jwk:
+    file: ../secrets/pki-agent-news-creator-jwk.txt
   pact_broker_basic_auth_password:
     file: ../secrets/pact_broker_basic_auth_password.txt
   # Separate from broker basic-auth so DB credentials are not shared with
@@ -97,6 +129,20 @@ secrets:
     file: ../secrets/pushover_user_key.txt
   pushover_token:
     file: ../secrets/pushover_token.txt
+
+# In-repo static files. Compose `configs:` refuse a missing source at
+# `up` (unlike short-syntax file binds, which become empty directories —
+# PM-2026-036). Shared here because db / kratos-db / rag-db / recap-db
+# all include this file.
+configs:
+  postgres_postgresql_conf:
+    file: ../docker/postgres/postgresql.conf
+  postgres_pg_hba_conf:
+    file: ../docker/postgres/pg_hba.conf
+  postgres_postgresql_rag_conf:
+    file: ../docker/postgres/postgresql-rag.conf
+  postgres_postgresql_recap_conf:
+    file: ../docker/postgres/postgresql-recap.conf
 
 networks:
   alt-network:

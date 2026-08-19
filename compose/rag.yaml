@@ -1,9 +1,18 @@
 # compose/rag.yaml - RAG extension services
 # RAG database and orchestrator
+# Enrollment is in-process (PKI_ENROLLMENT=enabled). No pki-agent sidecar.
 
 include:
   - base.yaml
   - pki.yaml
+
+x-pki-cert-volume-chown: &pki-cert-volume-chown
+  image: alpine:3.21
+  user: "0:0"
+  command:
+    - sh
+    - -c
+    - mkdir -p /certs && chown 65532:65532 /certs && chmod 0750 /certs
 
 services:
   rag-db:
@@ -26,8 +35,13 @@ services:
       - rag_db_password
     volumes:
       - rag_db_data:/var/lib/postgresql
-      - ../docker/postgres/postgresql-rag.conf:/etc/postgresql/postgresql.conf:ro
-      - ../docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    configs:
+      - source: postgres_postgresql_rag_conf
+        target: /etc/postgresql/postgresql.conf
+        mode: 0444
+      - source: postgres_pg_hba_conf
+        target: /etc/postgresql/pg_hba.conf
+        mode: 0444
     ports:
       - "127.0.0.1:5436:5432"
     healthcheck:
@@ -138,15 +152,15 @@ services:
       - DATAHUB_MTLS_URL=${RAG_ORCHESTRATOR_DATAHUB_MTLS_URL:-https://alt-data-hub:9443}
       # Pins tls.Config.ServerName. Leaving it empty would also work here —
       # crypto/tls derives it from the URL host, and `alt-data-hub` is a SAN of
-      # the leaf pki-agent-alt-data-hub mints (CERT_SANS=alt-data-hub,localhost)
+      # the leaf alt-data-hub mints in-process (CERT_SANS=alt-data-hub,localhost)
       # — but naming it keeps the URL and the identity independently editable.
       - DATAHUB_MTLS_SERVER_NAME=alt-data-hub
       - DATAHUB_TIMEOUT=${RAG_ORCHESTRATOR_DATAHUB_TIMEOUT:-30}
       # Required inbound peer-auth mode for the Connect-RPC listener (:9011).
-      # mtls: terminate TLS with the pki-agent leaf and only admit allowlisted
+      # mtls: terminate TLS with the in-process leaf and only admit allowlisted
       # client-cert CNs. Override to "disabled" to fall back to plaintext h2c.
       - PEER_IDENTITY_MODE=${RAG_ORCHESTRATOR_PEER_IDENTITY_MODE:-mtls}
-      # One pki-agent-provisioned leaf serves both directions: presented to
+      # One in-process leaf serves both directions: presented to
       # inbound callers by the listener above, and presented AS a client
       # certificate to alt-data-hub. Its CN/SAN is `rag-orchestrator`, which is
       # in alt-data-hub's DATAHUB_ALLOWED_PEERS (compose/core.yaml). These
@@ -157,11 +171,25 @@ services:
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - PEER_IDENTITY_ALLOWED_PEERS=${RAG_ORCHESTRATOR_ALLOWED_PEERS:-alt-backend}
+      - PKI_ENROLLMENT=enabled
+      - CERT_SUBJECT=rag-orchestrator
+      - CERT_SANS=rag-orchestrator,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=pki-agent-rag-orchestrator
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-rag-orchestrator-jwk
+      - RENEW_AT_FRACTION=0.66
+      - OPS_LISTEN=:9110
     secrets:
       - rag_db_password
+      - pki-agent-rag-orchestrator-jwk
     volumes:
-      - rag_orchestrator_certs:/certs:ro
+      - rag_orchestrator_certs:/certs
       - pki_trust_bundle:/trust:ro
+    pre_start:
+      - <<: *pki-cert-volume-chown
     ports:
       # East-west only. With PEER_IDENTITY_MODE=disabled the Connect listener
       # is plaintext h2c and augur/handler.go trusts X-Alt-User-Id from the
@@ -171,8 +199,8 @@ services:
     depends_on:
       rag-db:
         condition: service_healthy
-      pki-agent-rag-orchestrator:
-        condition: service_healthy
+      step-ca-bootstrap:
+        condition: service_completed_successfully
     networks:
       - alt-network
     restart: unless-stopped
@@ -239,9 +267,17 @@ services:
       - LD_LIBRARY_PATH=/usr/lib/ollama:/usr/lib/ollama/cuda_v12:/usr/lib/ollama/cuda_v13:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
     volumes:
       - knowledge_embedder_local_models:/home/ollama-user/.ollama
-    depends_on:
-      knowledge-embedder-local-volume-init:
-        condition: service_completed_successfully
+    # Wave 1b / P2-13: chown the named volume before uid 2000 starts.
+    # alpine is the chown image (not the ollama runtime). Idempotent.
+    # Shares the service mounts, so rolling `up --no-deps --force-recreate`
+    # still runs the hook (PM-2026-037).
+    pre_start:
+      - image: alpine:3.21
+        user: "0:0"
+        command:
+          - sh
+          - -c
+          - mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama
     ports:
       - "127.0.0.1:11437:11434"
     networks:
@@ -260,17 +296,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  knowledge-embedder-local-volume-init:
-    image: ollama/ollama:0.22.1
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama"]
-    user: "0:0"
-    volumes:
-      - knowledge_embedder_local_models:/home/ollama-user/.ollama
-    networks:
-      - alt-network
-    restart: "no"
 
   # Local CPU reranker (ONNX int8 dynamic quantization, avx2). Replaces the
   # remote Mac reranker for local deployments — rag-orchestrator still points

@@ -1,59 +1,13 @@
 #!/usr/bin/env bash
-# Cascades recreate of netns-sharing pki-agent sidecars when their parent
-# container id has changed. Closes the gap that compose
-# `depends_on.restart: true` leaves open when the deploy tool recreates a
-# single parent service: the sidecar keeps pointing at the parent's old
-# netns and silently loses its reverse-proxy listener.
+# Retired. Wave 4 Pattern B cutover moved inbound TLS into the parent
+# process. There are zero `network_mode: service:` pki-agent sidecars,
+# so cascading recreate of a shared netns is not a valid operation.
 #
-# Invoked by scripts/deploy.sh right after the deploy tool returns.
-# Idempotent — exits 0 when all sidecars already match their parents.
-#
-# Environment overrides (for tests):
-#   DOCKER_BIN        — defaults to `docker`
-#   COMPOSE_FILE      — defaults to compose/compose.yaml in the repo root
-#   COMPOSE_PROJECT   — defaults to `alt`
+# If you are calling this script, the caller is stale. Do not add a
+# NETNS_SIDECARS array back — the compose-netns-cascade-audit fails
+# when that array reappears, and fails when a pki-agent joins a
+# parent's netns.
 set -euo pipefail
-
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DOCKER_BIN="${DOCKER_BIN:-docker}"
-COMPOSE_FILE="${COMPOSE_FILE:-$REPO_ROOT/compose/compose.yaml}"
-COMPOSE_PROJECT="${COMPOSE_PROJECT:-alt}"
-
-# compose_service : sidecar_container_name : parent_container_name
-# Add a row here when a new service uses `network_mode: service:X` for
-# pki-agent. Container names are what compose creates: the service's own
-# `container_name:` when it declares one, otherwise `alt-<service>-1`. A name
-# that does not exist makes this script print "skip: ... not running" and exit
-# 0, so scripts/compose-netns-cascade-audit.py checks both the coverage and
-# the names against compose on every CI run.
-NETNS_SIDECARS=(
-  "pki-agent-acolyte-orchestrator:alt-pki-agent-acolyte-orchestrator-1:acolyte-orchestrator"
-  "pki-agent-tag-generator:alt-pki-agent-tag-generator-1:alt-tag-generator-1"
-  "pki-agent-recap-subworker:alt-pki-agent-recap-subworker-1:alt-recap-subworker-1"
-  "pki-agent-news-creator:alt-pki-agent-news-creator-1:news-creator"
-)
-
-for entry in "${NETNS_SIDECARS[@]}"; do
-  IFS=':' read -r svc sidecar parent <<<"$entry"
-
-  parent_id="$("$DOCKER_BIN" inspect --format '{{.Id}}' "$parent" 2>/dev/null || true)"
-  sidecar_netns="$("$DOCKER_BIN" inspect --format '{{.HostConfig.NetworkMode}}' "$sidecar" 2>/dev/null || true)"
-
-  if [[ -z "$parent_id" ]]; then
-    echo "skip: parent '$parent' not running"
-    continue
-  fi
-  if [[ -z "$sidecar_netns" ]]; then
-    echo "skip: sidecar '$sidecar' not running"
-    continue
-  fi
-
-  expected="container:$parent_id"
-  if [[ "$sidecar_netns" == "$expected" ]]; then
-    echo "ok: $sidecar netns matches parent $parent"
-    continue
-  fi
-
-  echo "netns mismatch for $sidecar (expected=$expected actual=$sidecar_netns) — cascading recreate"
-  "$DOCKER_BIN" compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" up -d --no-deps --force-recreate "$svc"
-done
+echo "cascade-pki-sidecars.sh is retired: no netns-sharing pki sidecars remain (Wave 4 Pattern B)." >&2
+echo "Inbound TLS lives in the parent process; parent-only recreate no longer orphans :9443." >&2
+exit 1

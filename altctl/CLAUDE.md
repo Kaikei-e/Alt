@@ -63,8 +63,9 @@ altctl migrate status                             # Backup health check
 `buildStackInvocation`) build their `-f` list around `compose/compose.yaml`
 (the `include:` aggregate) instead of a per-stack subset — a narrow subset
 is rejected by real `docker compose` (several per-stack files transitively
-`include: pki.yaml`, whose pki-agent sidecars `depends_on` services
-scattered across many other stacks; even a single stack's own file can fail
+`include: pki.yaml`, whose `step-ca-bootstrap` and other cross-file
+`depends_on` — e.g. `migrate` → `db` — reach services defined in other
+stacks; even a single stack's own file can fail
 alone, e.g. `-f core.yaml`: `migrate` depends on undefined service `db`).
 
 - Every stack reachable through `compose.yaml`'s `include:` graph
@@ -166,8 +167,8 @@ docker compose up -d --no-deps --force-recreate <svcs>
 
 - **Stack name** = compose filename stem (`db.yaml` -> `db`).
 - **Services** = that file's own top-level `services:` map keys, read fresh every
-  call (`gopkg.in/yaml.v3`, via `yaml.Node` so anchors/merge keys like
-  `pki.yaml`'s `<<: *pki-agent` never need resolving) — so this table can never
+  call (`gopkg.in/yaml.v3`, via `yaml.Node` so anchors/merge keys
+  never need resolving) — so this table can never
   drift from what's actually in compose/.
 - **Semantics that YAML can't express** (`depends_on`, `optional`, `requires_gpu`,
   `startup_timeout`, `provides`/`requires_features`) live in the root
@@ -253,8 +254,8 @@ any optional stack with containers; explicit args narrow it.
 - **Aggregate probe first**: `ps`/`config` run once against
   `compose/compose.yaml` (the `include:` aggregate), not per-stack `-f`
   combinations -- several per-stack files transitively `include: pki.yaml`,
-  whose pki-agent sidecars `depends_on` services scattered across many other
-  stacks, so a narrow `-f` subset fails compose project validation even for
+  whose `step-ca-bootstrap` (and other cross-stack `depends_on`) reach
+  services defined in other stacks, so a narrow `-f` subset fails compose project validation even for
   an otherwise-unrelated stack. `dev`/`frontend-dev`/`load-test` aren't in
   the aggregate (local-dev-only); they're probed in isolation via
   `stack.NewDependencyResolver`, and only when explicitly named.
