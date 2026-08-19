@@ -56,7 +56,7 @@ func main() {
 	pkiReg := prometheus.NewRegistry()
 	pkiHandle, err := pki.StartWithRegisterer(ctx, log, "rag-orchestrator", pkiReg)
 	if err != nil {
-		log.Error("pki enrollment failed", "error", err)
+		log.Error("pki enrollment failed", "error_type", pki.LogSafeError(err))
 		os.Exit(1)
 	}
 	defer pkiHandle.Stop()

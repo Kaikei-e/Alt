@@ -192,7 +192,7 @@ func (s *NativeStepCAIssuer) guardProvisioner() error {
 		return fmt.Errorf("%w (got %q)", ErrSharedProvisioner, s.Provisioner)
 	}
 	if strings.Contains(s.PasswordFile, "step_ca_root_password") {
-		return fmt.Errorf("%w (got %q)", ErrSharedRootSecret, s.PasswordFile)
+		return ErrSharedRootSecret
 	}
 	return nil
 }
@@ -806,13 +806,13 @@ func readProvisionerPassword(path string) ([]byte, error) {
 	raw, err := readRegularNoFollow(path, maxPasswordBytes)
 	if err != nil {
 		if strings.Contains(err.Error(), "exceeds") {
-			return nil, fmt.Errorf("%w: %v", ErrPasswordTooLarge, err)
+			return nil, ErrPasswordTooLarge
 		}
-		return nil, fmt.Errorf("pki: provisioner password file: %w", err)
+		return nil, ErrPasswordUnreadable
 	}
 	password := bytes.TrimSpace(raw)
 	if len(password) == 0 {
-		return nil, fmt.Errorf("pki: provisioner password file %q is empty", path)
+		return nil, ErrPasswordEmpty
 	}
 	return password, nil
 }

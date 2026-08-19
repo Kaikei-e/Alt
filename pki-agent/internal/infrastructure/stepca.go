@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -51,16 +52,12 @@ func (s *StepCACLI) Issue(ctx context.Context, subject string, sans []string) (c
 		tokenArgs = append(tokenArgs, "--san", san)
 	}
 	tokenArgs = append(tokenArgs, s.TokenExtraArgs...)
-	var tokOut, tokErr bytes.Buffer
+	var tokOut bytes.Buffer
 	cmd := exec.CommandContext(ctx, step, tokenArgs...)
 	cmd.Stdout = &tokOut
-	cmd.Stderr = &tokErr
+	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
-		// step-cli stderr can echo back invocation details (e.g. the
-		// password-file path or a partial OTT on usage errors); keep it out
-		// of the error chain that main.go logs at Error level and only
-		// surface it at Debug for local troubleshooting.
-		slog.Debug("step ca token failed", "subject", subject, "stderr", tokErr.String())
+		slog.Debug("step ca token failed", "subject", subject, "reason", "step_cli_failed")
 		return nil, nil, fmt.Errorf("%w: token command failed: %v", domain.ErrTokenSign, err)
 	}
 	ott := bytes.TrimSpace(tokOut.Bytes())
@@ -87,11 +84,10 @@ func (s *StepCACLI) Issue(ctx context.Context, subject string, sans []string) (c
 		"--force",
 	}
 	certArgs = append(certArgs, s.CertExtraArgs...)
-	var certErr bytes.Buffer
 	cmd = exec.CommandContext(ctx, step, certArgs...)
-	cmd.Stderr = &certErr
+	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
-		slog.Debug("step ca certificate failed", "subject", subject, "stderr", certErr.String())
+		slog.Debug("step ca certificate failed", "subject", subject, "reason", "step_cli_failed")
 		return nil, nil, fmt.Errorf("%w: certificate command failed: %v", domain.ErrCARejected, err)
 	}
 

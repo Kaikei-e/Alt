@@ -59,7 +59,7 @@ func Run(ctx context.Context) error {
 
 	pkiHandle, err := pki.Start(ctx, logger.Logger, "search-indexer")
 	if err != nil {
-		logger.Logger.Error("pki enrollment failed", "error", err)
+		logger.Logger.Error("pki enrollment failed", "error_type", pki.LogSafeError(err))
 		return fmt.Errorf("pki enrollment: %w", err)
 	}
 	if pkiHandle != nil {

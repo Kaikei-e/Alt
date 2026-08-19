@@ -18,3 +18,27 @@ var (
 	// ErrCertChainInvalid: issued leaf did not verify against configured root.
 	ErrCertChainInvalid = errors.New("pki-agent: leaf failed chain verification")
 )
+
+// LogSafeError returns a stable, non-secret identifier for ops logs.
+// It never echoes PasswordFile paths or password bytes.
+func LogSafeError(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, ErrCertNotFound):
+		return "cert_not_found"
+	case errors.Is(err, ErrCertParseFailed):
+		return "cert_parse_failed"
+	case errors.Is(err, ErrCAUnreachable):
+		return "ca_unreachable"
+	case errors.Is(err, ErrCARejected):
+		return "ca_rejected"
+	case errors.Is(err, ErrTokenSign):
+		return "token_sign"
+	case errors.Is(err, ErrCertChainInvalid):
+		return "cert_chain_invalid"
+	default:
+		return "tick_error"
+	}
+}

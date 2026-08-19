@@ -6,6 +6,11 @@ import (
 	"alt/internal/pki"
 )
 
+// EnrollmentErrorType is a non-secret identifier for process-level PKI logs.
+func EnrollmentErrorType(err error) string {
+	return pki.LogSafeError(err)
+}
+
 // StartEnrollment is the composition-root hook for in-process cert lifecycle.
 // Missing required config when enabled is a non-zero startup (caller exits).
 func StartEnrollment(ctx context.Context, rt *Runtime, serviceName string) error {

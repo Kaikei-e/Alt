@@ -78,7 +78,7 @@ func (m *Manager) Enroll(ctx context.Context) error {
 		last = err
 		m.observer().OnRetry(i, err)
 		m.logger().ErrorContext(ctx, "pki_enrollment_retry",
-			"subject", m.Cfg.Subject, "attempt", i, "attempts", attempts, "error", err)
+			"subject", m.Cfg.Subject, "attempt", i, "attempts", attempts, "error_type", LogSafeError(err))
 		if i == attempts {
 			break
 		}
@@ -135,13 +135,13 @@ func (m *Manager) issue(ctx context.Context, reason string) (State, error) {
 	if err != nil {
 		m.observer().OnRenewed(false)
 		m.logger().ErrorContext(ctx, "pki_enrollment_failed",
-			"subject", m.Cfg.Subject, "reason", reason, "error", err)
+			"subject", m.Cfg.Subject, "reason", reason, "error_type", LogSafeError(err))
 		return StateExpired, fmt.Errorf("pki: issue cert: %w", err)
 	}
 	if err := m.Files.Write(ctx, certPEM, keyPEM); err != nil {
 		m.observer().OnRenewed(false)
 		m.logger().ErrorContext(ctx, "pki_enrollment_failed",
-			"subject", m.Cfg.Subject, "reason", reason, "error", err)
+			"subject", m.Cfg.Subject, "reason", reason, "error_type", LogSafeError(err))
 		return StateExpired, fmt.Errorf("pki: write cert: %w", err)
 	}
 	m.observer().OnRenewed(true)
@@ -172,13 +172,13 @@ func (m *Manager) rekey(ctx context.Context, r RekeyIssuer) (State, error) {
 	if err != nil {
 		m.observer().OnRenewed(false)
 		m.logger().ErrorContext(ctx, "pki_enrollment_failed",
-			"subject", m.Cfg.Subject, "reason", "near_expiry", "error", err)
+			"subject", m.Cfg.Subject, "reason", "near_expiry", "error_type", LogSafeError(err))
 		return StateExpired, fmt.Errorf("pki: rekey cert: %w", err)
 	}
 	if err := m.Files.Write(ctx, newCert, newKey); err != nil {
 		m.observer().OnRenewed(false)
 		m.logger().ErrorContext(ctx, "pki_enrollment_failed",
-			"subject", m.Cfg.Subject, "reason", "near_expiry", "error", err)
+			"subject", m.Cfg.Subject, "reason", "near_expiry", "error_type", LogSafeError(err))
 		return StateExpired, fmt.Errorf("pki: write rekeyed cert: %w", err)
 	}
 	m.observer().OnRenewed(true)
@@ -208,7 +208,7 @@ func (m *Manager) Run(ctx context.Context) error {
 		case <-ticker.C:
 			if _, err := m.Tick(ctx); err != nil {
 				m.logger().ErrorContext(ctx, "pki_enrollment_tick_failed",
-					"subject", m.Cfg.Subject, "error", err)
+					"subject", m.Cfg.Subject, "error_type", LogSafeError(err))
 			}
 		}
 	}

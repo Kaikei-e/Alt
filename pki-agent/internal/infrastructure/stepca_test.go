@@ -1,10 +1,13 @@
 package infrastructure
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"pki-agent/internal/domain"
@@ -23,7 +26,7 @@ func fakeStepBin(t *testing.T, dir string) string {
 	script := `#!/usr/bin/env sh
 set -e
 if [ -n "$STEPFAIL" ]; then
-  echo "fake step error" >&2
+  echo "fake step error: $*" >&2
   exit 2
 fi
 case "$2" in
@@ -73,6 +76,37 @@ func TestStepCACLI_Issue(t *testing.T) {
 	}
 	if len(cert) == 0 || len(key) == 0 {
 		t.Fatalf("empty pem bytes")
+	}
+}
+
+func TestStepCACLI_Issue_TokenFailure_DoesNotLogPasswordFile(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	prev := slog.Default()
+	slog.SetDefault(log)
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	dir := t.TempDir()
+	bin := fakeStepBin(t, dir)
+	pw := filepath.Join(dir, "pki-agent-alt-backend-jwk")
+	if err := os.WriteFile(pw, []byte("hunter2"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &StepCACLI{StepBinary: bin, PasswordFile: pw, CAURL: "u", RootFile: pw, Provisioner: "p"}
+	t.Setenv("STEPFAIL", "1")
+	_, _, err := s.Issue(context.Background(), "alt-backend", nil)
+	if !errors.Is(err, domain.ErrTokenSign) {
+		t.Fatalf("want ErrTokenSign, got %v", err)
+	}
+	logs := buf.String()
+	if !strings.Contains(logs, "step_cli_failed") {
+		t.Fatalf("expected step_cli_failed, got %s", logs)
+	}
+	for _, leakStr := range []string{pw, "--password-file", "hunter2", `"stderr"`} {
+		if strings.Contains(logs, leakStr) {
+			t.Fatalf("password file leaked in step-cli logs: %q in %s", leakStr, logs)
+		}
 	}
 }
 

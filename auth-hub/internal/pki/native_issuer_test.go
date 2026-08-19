@@ -815,14 +815,32 @@ func TestNativeStepCAIssuer_PasswordFileErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			path := tt.file(t)
+			subject := strings.TrimPrefix(ca.provisioner, "pki-agent-")
 			iss := &NativeStepCAIssuer{
 				CAURL: url, RootFile: root,
-				Provisioner:  "pki-agent-auth-hub",
-				PasswordFile: tt.file(t),
+				Provisioner:  ca.provisioner,
+				PasswordFile: path,
 				Timeout:      time.Second,
 			}
-			if _, _, err := iss.Issue(context.Background(), "auth-hub", []string{"auth-hub"}); err == nil {
+			_, _, err := iss.Issue(context.Background(), subject, []string{subject})
+			if err == nil {
 				t.Fatal("expected password file error")
+			}
+			assertNoPasswordFileInError(t, err, path, "secret")
+			switch tt.name {
+			case "empty":
+				if !errors.Is(err, ErrPasswordEmpty) {
+					t.Fatalf("got %v, want ErrPasswordEmpty", err)
+				}
+			case "too-large":
+				if !errors.Is(err, ErrPasswordTooLarge) {
+					t.Fatalf("got %v, want ErrPasswordTooLarge", err)
+				}
+			default:
+				if !errors.Is(err, ErrPasswordUnreadable) {
+					t.Fatalf("got %v, want ErrPasswordUnreadable", err)
+				}
 			}
 		})
 	}
@@ -835,15 +853,17 @@ func TestNativeStepCAIssuer_DoesNotLogSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Error paths must also keep the password out of the error chain.
-	iss.PasswordFile = filepath.Join(t.TempDir(), "missing")
+	missing := filepath.Join(t.TempDir(), "missing")
+	iss.PasswordFile = missing
 	iss.cred = nil
-	_, _, err := iss.Issue(context.Background(), "auth-hub", []string{"auth-hub"})
+	_, _, err := iss.Issue(context.Background(), strings.TrimPrefix(iss.Provisioner, "pki-agent-"), []string{strings.TrimPrefix(iss.Provisioner, "pki-agent-")})
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if strings.Contains(err.Error(), "super-secret-jwk-password") {
-		t.Fatal("password leaked in error")
+	if !errors.Is(err, ErrPasswordUnreadable) {
+		t.Fatalf("got %v, want ErrPasswordUnreadable", err)
 	}
+	assertNoPasswordFileInError(t, err, missing, "super-secret-jwk-password", "/run/secrets/")
 }
 
 func TestNativeStepCAIssuer_RejectsSharedProvisioner(t *testing.T) {

@@ -92,7 +92,7 @@ func main() {
 
 	pkiHandle, err := pki.Start(ctx, slog.Default(), "auth-hub")
 	if err != nil {
-		slog.ErrorContext(ctx, "pki enrollment failed", "error", err)
+		slog.ErrorContext(ctx, "pki enrollment failed", "error_type", pki.LogSafeError(err))
 		os.Exit(1)
 	}
 	if pkiHandle != nil {

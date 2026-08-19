@@ -53,6 +53,12 @@ var (
 	ErrProvisionerPageLimit = errors.New("pki: provisioner listing exceeded page cap")
 	// ErrPasswordTooLarge is F-003: provisioner password file exceeded 4KiB.
 	ErrPasswordTooLarge = errors.New("pki: provisioner password file exceeded size cap")
+	// ErrPasswordEmpty is the provisioner password file was empty after trim.
+	ErrPasswordEmpty = errors.New("pki: provisioner password file is empty")
+	// ErrPasswordUnreadable is the provisioner password file could not be read as a regular file.
+	ErrPasswordUnreadable = errors.New("pki: provisioner password file is unreadable")
+	// ErrPasswordFileName is the provisioner password file is not the subject-scoped JWK secret.
+	ErrPasswordFileName = errors.New("pki: provisioner password file is not the subject-scoped JWK secret")
 	// ErrCARejected is F-007: step-ca returned 4xx (no body in the error).
 	ErrCARejected = errors.New("pki: CA rejected the request")
 	// ErrCAUnavailable is F-007: step-ca returned 5xx (no body in the error).
@@ -227,15 +233,15 @@ func (c *Config) validate() error {
 		return fmt.Errorf("pki: provisioner %q must be exactly %q", c.Provisioner, wantProv)
 	}
 	if strings.Contains(c.PasswordFile, "step_ca_root_password") {
-		return fmt.Errorf("%w (got %q)", ErrSharedRootSecret, c.PasswordFile)
+		return ErrSharedRootSecret
 	}
 	wantBase := provisionerPasswordBasename(c.Subject)
 	if filepath.Base(c.PasswordFile) != wantBase {
-		return fmt.Errorf("pki: provisioner password file basename %q must be exactly %q", filepath.Base(c.PasswordFile), wantBase)
+		return ErrPasswordFileName
 	}
 	cleaned := filepath.Clean(c.PasswordFile)
 	if filepath.Dir(cleaned) == "/run/secrets" && cleaned != ProvisionerPasswordFile(c.Subject) {
-		return fmt.Errorf("pki: provisioner password file %q must be %q", c.PasswordFile, ProvisionerPasswordFile(c.Subject))
+		return ErrPasswordFileName
 	}
 	for _, pair := range []struct{ name, val string }{
 		{"CERT_PATH", c.CertPath},

@@ -30,6 +30,7 @@ import (
 
 	"pki-agent/config"
 	"pki-agent/internal/adapter/handler"
+	"pki-agent/internal/domain"
 	"pki-agent/internal/infrastructure"
 	"pki-agent/internal/usecase"
 )
@@ -48,7 +49,7 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("config", "err", err)
+		logConfigFailure(logger, err)
 		os.Exit(2)
 	}
 	slog.Info("pki-agent starting",
@@ -88,7 +89,7 @@ func main() {
 	state, err := rotator.Tick(tickCtx, time.Now())
 	tickCancel()
 	if err != nil {
-		slog.Error("initial tick failed", "err", err, "state", state.String())
+		logTickFailure(logger, "initial tick failed", err, state.String(), 0)
 	} else {
 		slog.Info("initial tick ok", "state", state.String())
 	}
@@ -173,11 +174,23 @@ func main() {
 			tickCancel()
 			if err != nil {
 				consecutiveFailures++
-				slog.Error("tick failed", "err", err, "state", state.String(), "consecutive_failures", consecutiveFailures)
+				logTickFailure(logger, "tick failed", err, state.String(), consecutiveFailures)
 				continue
 			}
 			consecutiveFailures = 0
 			slog.Info("tick ok", "state", state.String())
 		}
 	}
+}
+
+func logTickFailure(logger *slog.Logger, msg string, err error, state string, consecutive int) {
+	args := []any{"error_type", domain.LogSafeError(err), "state", state}
+	if consecutive > 0 {
+		args = append(args, "consecutive_failures", consecutive)
+	}
+	logger.Error(msg, args...)
+}
+
+func logConfigFailure(logger *slog.Logger, err error) {
+	logger.Error("config", "error_type", domain.LogSafeError(err))
 }

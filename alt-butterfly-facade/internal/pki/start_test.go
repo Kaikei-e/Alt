@@ -3,6 +3,7 @@ package pki
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -78,9 +79,14 @@ func TestStartWith_EnabledEnrollsAndStops(t *testing.T) {
 	if _, err := os.Stat(cfg.CertPath); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), "pki_enrollment_enabled") {
-		t.Fatalf("log=%s", buf.String())
+	logs := buf.String()
+	if !strings.Contains(logs, "pki_enrollment_enabled") {
+		t.Fatalf("log=%s", logs)
 	}
+	if !strings.Contains(logs, `"password_file_configured":true`) {
+		t.Fatalf("expected password_file_configured=true, log=%s", logs)
+	}
+	assertNoPasswordFileInLogs(t, logs, cfg.PasswordFile, "/run/secrets/")
 	h.Stop()
 }
 
@@ -135,7 +141,12 @@ func TestStart_EnabledSharedSecretRejected(t *testing.T) {
 	t.Setenv("PKI_ENROLLMENT", ModeEnabled)
 	t.Setenv("CERT_SUBJECT", "alt-butterfly-facade")
 	t.Setenv("STEP_CA_PROVISIONER_PASSWORD_FILE", "/run/secrets/step_ca_root_password")
-	if _, err := Start(context.Background(), slog.Default(), "alt-butterfly-facade"); err == nil {
-		t.Fatal("expected shared root secret to fail")
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+	_, err := Start(context.Background(), log, "alt-butterfly-facade")
+	if !errors.Is(err, ErrSharedRootSecret) {
+		t.Fatalf("got %v", err)
 	}
+	assertNoPasswordFileInError(t, err, "/run/secrets/", "/run/secrets/step_ca_root_password")
+	assertNoPasswordFileInLogs(t, buf.String(), "/run/secrets/", "/run/secrets/step_ca_root_password")
 }

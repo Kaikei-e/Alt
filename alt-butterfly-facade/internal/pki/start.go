@@ -95,7 +95,7 @@ func StartWithObserver(ctx context.Context, log *slog.Logger, cfg *Config, issue
 	log.InfoContext(ctx, "pki_enrollment_enabled",
 		"service", cfg.Subject,
 		"provisioner", cfg.Provisioner,
-		"password_file", cfg.PasswordFile,
+		"password_file_configured", true,
 		"cert_path", cfg.CertPath,
 	)
 	if issuer == nil {

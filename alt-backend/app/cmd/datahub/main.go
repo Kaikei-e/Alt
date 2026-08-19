@@ -65,7 +65,7 @@ func main() {
 		os.Exit(1)
 	}
 	if err := bootstrap.StartEnrollment(ctx, rt, serviceName); err != nil {
-		log.ErrorContext(ctx, "pki enrollment failed", "error", err)
+		log.ErrorContext(ctx, "pki enrollment failed", "error_type", bootstrap.EnrollmentErrorType(err))
 		os.Exit(1)
 	}
 

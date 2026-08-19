@@ -53,6 +53,7 @@ func TestLoadConfig_EnabledRejectsSharedRootSecret(t *testing.T) {
 	if !errors.Is(err, ErrSharedRootSecret) {
 		t.Fatalf("got %v", err)
 	}
+	assertNoPasswordFileInError(t, err, "/run/secrets/", "/run/secrets/step_ca_root_password")
 }
 
 func TestLoadConfig_EnabledSubjectScopedDefaults(t *testing.T) {
