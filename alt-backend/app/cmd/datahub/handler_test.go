@@ -25,7 +25,7 @@ func TestDataHubHandler_ServesOnlyTheServiceToServiceSurface(t *testing.T) {
 	connectMux.Handle("/services.datahub.v1.DataHubService/", sourceHandler("connect"))
 	connectMux.Handle("/health", sourceHandler("connect"))
 
-	h := dataHubHandler(connectMux)
+	h := dataHubHandler(connectMux, nil)
 
 	tests := []struct {
 		name       string
@@ -79,7 +79,7 @@ func TestDataHubHandler_UnknownConnectMethodReachesTheConnectMux(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	})
 
-	h := dataHubHandler(connectMux)
+	h := dataHubHandler(connectMux, nil)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/DoesNotExist", nil))
@@ -104,7 +104,7 @@ func TestDataHubHandler_LegacyNamespaceAliasServesRetiredDataHubName(t *testing.
 	connectMux := http.NewServeMux()
 	connectMux.Handle("/services.datahub.v1.DataHubService/", sourceHandler("connect"))
 
-	h := datahubapi.LegacyNamespaceAlias(dataHubHandler(connectMux))
+	h := datahubapi.LegacyNamespaceAlias(dataHubHandler(connectMux, nil))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/alt.datahub.v1.DataHubService/CreateArticle", nil))

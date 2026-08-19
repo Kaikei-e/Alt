@@ -25,6 +25,7 @@ import (
 	datahubdi "alt/di/datahub"
 	"alt/internal/bootstrap"
 	"alt/internal/bootstrap/dbboot"
+	"alt/internal/healthdeep"
 	"alt/middleware"
 	"alt/tlsutil"
 )
@@ -63,6 +64,10 @@ func main() {
 		log.ErrorContext(ctx, "ops listener config invalid", "error", err)
 		os.Exit(1)
 	}
+	if err := bootstrap.StartEnrollment(ctx, rt, serviceName); err != nil {
+		log.ErrorContext(ctx, "pki enrollment failed", "error", err)
+		os.Exit(1)
+	}
 
 	// The pool is opened here rather than by MustBoot, and by a package the
 	// other two binaries do not import. That is what makes "only alt-data-hub
@@ -91,10 +96,20 @@ func main() {
 		"client_auth", "require_and_verify",
 		"allowed_peers", dcfg.AllowedPeers,
 		"plaintext_listeners", 0,
-		"surfaces", "DataHubService,/health",
+		"surfaces", "DataHubService,/health,/health/deep",
 	)
 
-	handler := dataHubHandler(datahubconnect.CreateServer(container, cfg, log))
+	deep := newDeepHealthHandler(func(ctx context.Context) error {
+		if err := pool.Ping(ctx); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return healthdeep.ErrUnavailable
+		}
+		return nil
+	})
+	log.InfoContext(ctx, "health_deep_enabled", "path", "/health/deep", "checks", "database")
+	handler := dataHubHandler(datahubconnect.CreateServer(container, cfg, log), deep)
 	// Transitional (ADR-000955): consumers deployed before the namespace
 	// rename still call the retired name. Loud by design (Rule 8) — the log
 	// is the evidence the alias is a deliberate wiring state, and its absence

@@ -12,6 +12,7 @@ import (
 
 	"alt-butterfly-facade/config"
 	"alt-butterfly-facade/internal/logger"
+	"alt-butterfly-facade/internal/pki"
 	"alt-butterfly-facade/internal/server"
 	"alt-butterfly-facade/internal/tlsutil"
 
@@ -67,6 +68,29 @@ func main() {
 		"acolyte_url", cfg.AcolyteConnectURL,
 		"issuer", cfg.BackendTokenIssuer,
 		"audience", cfg.BackendTokenAudience)
+
+	pkiHandle, err := pki.Start(ctx, slog.Default(), "alt-butterfly-facade")
+	if err != nil {
+		slog.ErrorContext(ctx, "pki enrollment failed", "error", err)
+		os.Exit(1)
+	}
+	if pkiHandle != nil {
+		defer pkiHandle.Stop()
+	}
+	var pkiMetrics http.Handler
+	if pkiHandle != nil {
+		pkiMetrics = pkiHandle.MetricsHandler()
+	}
+	opsSrv, err := pki.ListenOps(ctx, slog.Default(), "alt-butterfly-facade", pkiMetrics)
+	if err != nil {
+		slog.ErrorContext(ctx, "pki ops listener failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = pki.ShutdownOps(shutdownCtx, opsSrv)
+	}()
 
 	// Load backend token secret
 	secret, err := cfg.LoadBackendTokenSecret()
@@ -141,6 +165,8 @@ func main() {
 		WriteTimeout: cfg.StreamingTimeout + 10*time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
+	// Go 1.24+: stdlib unencrypted HTTP/2 replaces deprecated x/net/http2/h2c.
+	server.EnableCleartextHTTP2(srv)
 
 	// Start server in a goroutine
 	go func() {

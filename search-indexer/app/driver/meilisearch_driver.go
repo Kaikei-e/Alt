@@ -87,6 +87,22 @@ func NewMeilisearchDriverWithClients(adminClient meilisearch.ServiceManager, sea
 	return d
 }
 
+// Ping is the /health/deep Meilisearch probe. Errors are opaque so the
+// deep envelope cannot leak MEILISEARCH_HOST.
+func (d *MeilisearchDriver) Ping(ctx context.Context) error {
+	if d.client == nil {
+		return errors.New("unavailable")
+	}
+	_, err := d.client.HealthWithContext(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errors.New("unavailable")
+	}
+	return nil
+}
+
 // waitForTask polls until a Meilisearch task completes or a bounded timeout
 // elapses. See the package-level comment on meilisearchTaskWaitTimeout for
 // why this can't just call WaitForTask(taskUID, timeout) directly.

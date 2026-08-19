@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"alt/domain"
 	knowledgehomev1 "alt/gen/proto/alt/knowledge_home/v1"
@@ -21,8 +23,26 @@ import (
 func (h *Handler) GetKnowledgeHome(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.GetKnowledgeHomeRequest],
-) (*connect.Response[knowledgehomev1.GetKnowledgeHomeResponse], error) {
+) (resp *connect.Response[knowledgehomev1.GetKnowledgeHomeResponse], err error) {
 	start := time.Now()
+	defer func() {
+		if h.metrics == nil {
+			return
+		}
+		status := "ok"
+		if err != nil {
+			status = "error"
+		}
+		h.metrics.RequestsTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", status)))
+		if h.metrics.Snapshot != nil {
+			h.metrics.Snapshot.RecordRequest()
+		}
+		if err != nil {
+			return
+		}
+		h.metrics.RequestDurationSeconds.Record(ctx, time.Since(start).Seconds())
+	}()
+
 	user, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
@@ -122,7 +142,7 @@ func (h *Handler) GetKnowledgeHome(
 		}
 	}
 
-	resp := &knowledgehomev1.GetKnowledgeHomeResponse{
+	respPayload := &knowledgehomev1.GetKnowledgeHomeResponse{
 		TodayDigest:    digest,
 		Items:          protoItems,
 		NextCursor:     result.NextCursor,
@@ -133,14 +153,7 @@ func (h *Handler) GetKnowledgeHome(
 		ServiceQuality: &serviceQuality,
 	}
 
-	// Record metrics
 	if h.metrics != nil {
-		duration := time.Since(start).Seconds()
-		h.metrics.RequestsTotal.Add(ctx, 1)
-		h.metrics.RequestDurationSeconds.Record(ctx, duration)
-		if h.metrics.Snapshot != nil {
-			h.metrics.Snapshot.RecordRequest()
-		}
 		if serviceQuality == "degraded" || serviceQuality == "fallback" {
 			h.metrics.DegradedResponsesTotal.Add(ctx, 1)
 			if h.metrics.Snapshot != nil {
@@ -160,15 +173,15 @@ func (h *Handler) GetKnowledgeHome(
 	// with PR 13; the rail surfaces unconditionally when the projector has
 	// candidates for the user.
 	if h.recallRailUsecase != nil {
-		candidates, err := h.recallRailUsecase.Execute(ctx, user.UserID, 5)
-		if err == nil {
+		candidates, railErr := h.recallRailUsecase.Execute(ctx, user.UserID, 5)
+		if railErr == nil {
 			for _, c := range candidates {
-				resp.RecallCandidates = append(resp.RecallCandidates, convertRecallCandidateToProto(c))
+				respPayload.RecallCandidates = append(respPayload.RecallCandidates, convertRecallCandidateToProto(c))
 			}
 		}
 	}
 
-	return connect.NewResponse(resp), nil
+	return connect.NewResponse(respPayload), nil
 }
 
 // StreamKnowledgeHomeUpdates streams real-time updates for the home feed.

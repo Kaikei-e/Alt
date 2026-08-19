@@ -51,6 +51,10 @@ func main() {
 		log.ErrorContext(ctx, "ops listener config invalid", "error", err)
 		os.Exit(1)
 	}
+	if err := bootstrap.StartEnrollment(ctx, rt, serviceName); err != nil {
+		log.ErrorContext(ctx, "pki enrollment failed", "error", err)
+		os.Exit(1)
+	}
 
 	container := di.NewHarvesterComponents(cfg)
 

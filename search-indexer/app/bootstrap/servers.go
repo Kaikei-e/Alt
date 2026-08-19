@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"search-indexer/config"
 	connectv2 "search-indexer/connect/v2"
+	"search-indexer/healthdeep"
 	"search-indexer/middleware"
 	"search-indexer/rest"
 	"search-indexer/usecase"
@@ -18,7 +20,7 @@ import (
 )
 
 // newHTTPServer creates the REST HTTP server.
-func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase, otelCfg appOtel.Config, rlCfg config.RateLimitConfig) *http.Server {
+func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase, otelCfg appOtel.Config, rlCfg config.RateLimitConfig, meiliPing func(context.Context) error) *http.Server {
 	restHandler := rest.NewHandler(searchByUserUsecase, searchArticlesUsecase)
 
 	mux := http.NewServeMux()
@@ -29,19 +31,33 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArtic
 		_, _ = io.WriteString(w, `{"status":"ok"}`)
 	})
 
+	deep := healthdeep.NewRunner(healthdeep.Config{
+		Service: "search-indexer",
+		Checks: []healthdeep.Check{{
+			Name:     "meilisearch",
+			Critical: true,
+			Probe:    meiliPing,
+		}},
+	})
+
 	// /v1/search is gated at the transport layer (mTLS peer-identity on the
 	// :9443 listener, see newMTLSMuxHandler). The plaintext :9300 path here
 	// serves only rate-limited handlers; auth has been removed pending
 	// retirement of the listener itself.
 	rateLimiter := middleware.NewRateLimiter(rate.Limit(rlCfg.RequestsPerSecond), rlCfg.Burst)
 	searchHandler := rateLimiter.Middleware(http.HandlerFunc(restHandler.SearchArticles))
+	// /health/deep must always return the pass|warn|fail envelope. Sharing
+	// the user-search token bucket turned ops probes into generic 429s.
+	deepHandler := deep.Handler()
 
 	if otelCfg.Enabled {
 		mux.Handle("/v1/search", middleware.OTelStatusHandler(searchHandler, "GET /v1/search"))
 		mux.Handle("/health", middleware.OTelStatusHandlerFunc(healthHandler, "GET /health"))
+		mux.Handle("/health/deep", middleware.OTelStatusHandler(deepHandler, "GET /health/deep"))
 	} else {
 		mux.Handle("/v1/search", searchHandler)
 		mux.Handle("/health", healthHandler)
+		mux.Handle("/health/deep", deepHandler)
 	}
 
 	return &http.Server{

@@ -19,9 +19,11 @@ import (
 	connectv2 "alt/connect/v2"
 	"alt/di"
 	"alt/internal/bootstrap"
+	"alt/internal/healthdeep"
 	"alt/internal/profiling"
 	"alt/middleware"
 	"alt/orchestrator/rest"
+	"alt/shared/driver/datahub_client"
 	altotel "alt/utils/otel"
 
 	"github.com/labstack/echo/v4"
@@ -72,6 +74,10 @@ func main() {
 		log.ErrorContext(ctx, "ops listener config invalid", "error", err)
 		os.Exit(1)
 	}
+	if err := bootstrap.StartEnrollment(ctx, rt, serviceName); err != nil {
+		log.ErrorContext(ctx, "pki enrollment failed", "error", err)
+		os.Exit(1)
+	}
 
 	pprofSrv := profiling.Start(ctx, log)
 	defer pprofSrv.Close()
@@ -108,9 +114,30 @@ func main() {
 	)
 	operatorSrv := bootstrap.NewServiceServer(operatorAddr, newOperatorHandler(container, cfg, log), cfg)
 
-	// ---- Listener 4: ops (/health + /metrics), shared with the other two binaries ----
-	bootstrap.LogOpsWiring(ctx, log, opsAddr, rt.MetricsHandler != nil)
-	opsSrv := bootstrap.NewOpsServer(opsAddr, bootstrap.NewOpsHandler(serviceName, rt.MetricsHandler), cfg)
+	// ---- Listener 4: ops (/health + /metrics + /health/deep) ----
+	dhCfg, err := config.LoadDataHubClientConfig()
+	if err != nil {
+		log.ErrorContext(ctx, "data-hub client configuration is invalid", "error", err)
+		os.Exit(1)
+	}
+	dhHealthClient, err := datahub_client.NewHTTPClient(dhCfg, healthdeep.DefaultGlobalBudget)
+	if err != nil {
+		log.ErrorContext(ctx, "data-hub health client failed", "error", err)
+		os.Exit(1)
+	}
+	deep := healthdeep.NewRunner(healthdeep.Config{
+		Service: serviceName,
+		Checks: []healthdeep.Check{{
+			Name:     "datahub",
+			Critical: true,
+			Probe: func(ctx context.Context) error {
+				return datahub_client.Ping(ctx, dhHealthClient, dhCfg.BaseURL)
+			},
+		}},
+	})
+	log.InfoContext(ctx, "health_deep_enabled", "path", "/health/deep", "checks", "datahub")
+	bootstrap.LogOpsWiring(ctx, log, opsAddr, rt.MetricsHandler != nil, "/health/deep")
+	opsSrv := bootstrap.NewOpsServer(opsAddr, bootstrap.NewOpsHandler(serviceName, rt.MetricsHandler, bootstrap.WithDeepHealth(deep.Handler())), cfg)
 
 	sup := bootstrap.NewSupervisor(log)
 	sup.AddServer("rest", func() error { return e.StartServer(restSrv) }, e.Shutdown)

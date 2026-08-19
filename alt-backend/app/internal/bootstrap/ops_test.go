@@ -30,6 +30,7 @@ func TestNewOpsHandler(t *testing.T) {
 	}{
 		{name: "health", method: http.MethodGet, path: "/health", wantStatus: http.StatusOK},
 		{name: "metrics", method: http.MethodGet, path: "/metrics", wantStatus: http.StatusOK},
+		{name: "deep health is absent unless wired", method: http.MethodGet, path: "/health/deep", wantStatus: http.StatusNotFound},
 		{name: "public health route is not here", method: http.MethodGet, path: "/v1/health", wantStatus: http.StatusNotFound},
 		{name: "internal REST is not here", method: http.MethodGet, path: "/v1/internal/system-user", wantStatus: http.StatusNotFound},
 		{
@@ -102,6 +103,28 @@ func TestNewOpsHandlerWithoutMetrics(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("GET /health without an exporter = %d, want 200", rec.Code)
+	}
+}
+
+func TestNewOpsHandlerWithDeepHealth(t *testing.T) {
+	deep := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"pass"}`))
+	})
+	h := NewOpsHandler("alt-backend", stubMetrics(), WithDeepHealth(deep))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /health/deep = %d, want 200", rec.Code)
+	}
+
+	// Cheap liveness must stay independent of the deep handler.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /health = %d, want 200", rec.Code)
 	}
 }
 

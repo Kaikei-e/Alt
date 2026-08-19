@@ -13,6 +13,7 @@ import (
 	"search-indexer/driver"
 	"search-indexer/driver/recap_api"
 	"search-indexer/gateway"
+	"search-indexer/internal/pki"
 	"search-indexer/logger"
 	"search-indexer/tlsutil"
 	"search-indexer/tokenize"
@@ -20,6 +21,7 @@ import (
 	appOtel "search-indexer/utils/otel"
 
 	"github.com/cenkalti/backoff/v6"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -54,6 +56,29 @@ func Run(ctx context.Context) error {
 		"service", otelCfg.ServiceName,
 		"otel_enabled", otelCfg.Enabled,
 	)
+
+	pkiHandle, err := pki.Start(ctx, logger.Logger, "search-indexer")
+	if err != nil {
+		logger.Logger.Error("pki enrollment failed", "error", err)
+		return fmt.Errorf("pki enrollment: %w", err)
+	}
+	if pkiHandle != nil {
+		defer pkiHandle.Stop()
+	}
+	var pkiGatherer prometheus.Gatherer
+	if pkiHandle != nil {
+		pkiGatherer = pkiHandle.Gatherer()
+	}
+	opsSrv, err := pki.ListenOps(ctx, logger.Logger, "search-indexer", opsMetricsHandler(pkiGatherer))
+	if err != nil {
+		logger.Logger.Error("pki ops listener failed", "error", err)
+		return fmt.Errorf("pki ops listener: %w", err)
+	}
+	defer func() {
+		opsCtx, opsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer opsCancel()
+		_ = pki.ShutdownOps(opsCtx, opsSrv)
+	}()
 
 	// ── Tokenizer ──
 	// Fail-fast: a nil tokenizer silently injected into the usecase used to
@@ -203,7 +228,7 @@ func Run(ctx context.Context) error {
 
 	// ── Servers ──
 	app := &App{
-		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg, appCfg.RateLimit),
+		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg, appCfg.RateLimit, searchDriver.Ping),
 		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, appCfg.RateLimit),
 		redisConsumer: redisConsumer,
 		eventHandler:  eventHandler,

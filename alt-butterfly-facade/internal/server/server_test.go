@@ -31,6 +31,17 @@ func TestNewServer(t *testing.T) {
 	assert.NotNil(t, handler)
 }
 
+func TestEnableCleartextHTTP2(t *testing.T) {
+	srv := &http.Server{}
+	EnableCleartextHTTP2(srv)
+	require.NotNil(t, srv.Protocols)
+	assert.True(t, srv.Protocols.HTTP1())
+	assert.True(t, srv.Protocols.UnencryptedHTTP2())
+	assert.False(t, srv.Protocols.HTTP2())
+
+	EnableCleartextHTTP2(nil) // must not panic
+}
+
 func TestServer_HealthEndpoint(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",
@@ -76,6 +87,34 @@ func TestServer_ProxyEndpoint_Unauthorized(t *testing.T) {
 	handler.ServeHTTP(recorder, req)
 
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
+func TestServer_MetricsExposesUserJourneyCounter(t *testing.T) {
+	cfg := Config{
+		BackendURL:       "http://localhost:9101",
+		Secret:           []byte("test-secret"),
+		Issuer:           "auth-hub",
+		Audience:         "alt-backend",
+		RequestTimeout:   30 * time.Second,
+		StreamingTimeout: 5 * time.Minute,
+	}
+	handler := NewServer(cfg, nil)
+
+	unauth := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", nil)
+	handler.ServeHTTP(httptest.NewRecorder(), unauth)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	body := recorder.Body.String()
+	assert.Contains(t, body, "alt_user_journey_requests_total")
+	assert.Contains(t, body, "alt_user_journey_instrumented")
+	assert.Contains(t, body, `journey="feeds"`)
+	assert.Contains(t, body, `journey="login"`)
+	assert.Contains(t, body, `status="error"`)
+	assert.NotContains(t, body, `journey="search"`)
 }
 
 func TestServer_ProxyEndpoint_Success(t *testing.T) {

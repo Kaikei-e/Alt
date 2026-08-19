@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"pre-processor/internal/pki"
 	logger "pre-processor/utils/logger"
 	"pre-processor/utils/otel"
 )
@@ -44,7 +45,14 @@ func Run(ctx context.Context) error {
 		"otel_enabled", otelCfg.Enabled,
 		"service", otelCfg.ServiceName)
 
-	// Build all dependencies
+	enroll, err := startEnrollment(ctx, log)
+	if err != nil {
+		return fmt.Errorf("pki enrollment failed: %w", err)
+	}
+	defer enroll.stop()
+
+	// Build all dependencies. Enrollment must have written cert files before
+	// the mTLS client (BuildDependencies) and mTLS listener (StartConnectServer).
 	deps, cleanup, err := BuildDependencies(ctx, log, otelCfg.Enabled)
 	if err != nil {
 		return fmt.Errorf("failed to build dependencies: %w", err)
@@ -69,6 +77,15 @@ func Run(ctx context.Context) error {
 	if deps.MetricsCollector == nil {
 		return fmt.Errorf("metrics collector is not wired: the notification-outbox relay gauges would have no scrape target")
 	}
+	opsSrv, err := pki.ListenOps(ctx, log, pkiServiceName, enroll.metricsHandler())
+	if err != nil {
+		return fmt.Errorf("pki ops listener failed: %w", err)
+	}
+	defer func() {
+		opsCtx, opsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer opsCancel()
+		_ = pki.ShutdownOps(opsCtx, opsSrv)
+	}()
 	if err := deps.MetricsCollector.Start(ctx, errCh); err != nil {
 		return fmt.Errorf("failed to start metrics listener: %w", err)
 	}

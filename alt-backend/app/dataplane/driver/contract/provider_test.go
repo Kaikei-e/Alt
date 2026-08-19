@@ -544,6 +544,7 @@ func startStubServer(t *testing.T) int {
 
 	mountWave3Procedures(mux)
 	mountPushProcedures(mux)
+	mountDeepHealth(mux)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -1045,7 +1046,7 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub accepts feed og image resolutions",
 			"alt-data-hub accepts feed og image refusals",
 			"alt-data-hub holds feed og images past the retention window",
-		), backlogStates()), true)
+		), withStates(backlogStates(), deepHealthStates())), true)
 }
 
 // Verified without failIfNoPactsFound, unlike its siblings: services.yaml keeps
@@ -2123,14 +2124,62 @@ func mountPushProcedures(mux *http.ServeMux) {
 	dataHubProcedure(mux, "MarkNotificationDead", jsonPost(map[string]interface{}{}))
 }
 
+// mountDeepHealth serves GET /health/deep on the data-plane mux — the same
+// listener as DataHubService, not ops :9110. The envelope is the one
+// datahub_client.Ping reads; latency_ms and cached are omitted so the
+// contract does not pin timings.
+func mountDeepHealth(mux *http.ServeMux) {
+	mux.HandleFunc("/health/deep", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+
+		status := "pass"
+		httpStatus := http.StatusOK
+		checkStatus := "pass"
+		switch deepHealthMode(deepHealth.Load()) {
+		case deepHealthWarn:
+			status = "warn"
+		case deepHealthFail:
+			status = "fail"
+			checkStatus = "fail"
+			httpStatus = http.StatusServiceUnavailable
+		}
+
+		body := map[string]interface{}{
+			"status":  status,
+			"service": "alt-data-hub",
+		}
+		if status != "warn" {
+			body["checks"] = []map[string]interface{}{
+				{"name": "database", "status": checkStatus, "critical": true},
+			}
+		}
+		w.WriteHeader(httpStatus)
+		_ = json.NewEncoder(w).Encode(body)
+	})
+}
+
 // unsubscribedDeployment selects which of the two agreed backlog readings the
 // stub returns.
 //
 // The verifier drives states and requests on its own goroutines, hence the
-// atomic. It is the only piece of state in this stub: every other procedure
+// atomics. These two flags are the only stub state: every other procedure
 // answers the same body for every interaction because every other procedure's
 // contract is about shape.
 var unsubscribedDeployment atomic.Bool
+
+type deepHealthMode uint32
+
+const (
+	deepHealthPass deepHealthMode = iota
+	deepHealthWarn
+	deepHealthFail
+)
+
+var deepHealth atomic.Uint32
 
 // backlogStates toggles the flag above from the two provider states that name
 // the difference, and resets it on teardown so a state left set cannot leak
@@ -2145,5 +2194,26 @@ func backlogStates() models.StateHandlers {
 	return models.StateHandlers{
 		"alt-data-hub has a push delivery queue with pending rows and registered devices": set(false),
 		"alt-data-hub has a drained push delivery queue and no registered devices":        set(true),
+	}
+}
+
+// deepHealthStates selects which /health/deep envelope the stub returns.
+// Teardown resets to pass so a fail/warn left set cannot leak into the next
+// interaction.
+func deepHealthStates() models.StateHandlers {
+	set := func(mode deepHealthMode) models.StateHandler {
+		return func(setUp bool, _ models.ProviderState) (models.ProviderStateResponse, error) {
+			if setUp {
+				deepHealth.Store(uint32(mode))
+			} else {
+				deepHealth.Store(uint32(deepHealthPass))
+			}
+			return nil, nil
+		}
+	}
+	return models.StateHandlers{
+		"alt-data-hub database is reachable":   set(deepHealthPass),
+		"alt-data-hub data path is degraded":   set(deepHealthWarn),
+		"alt-data-hub database is unavailable": set(deepHealthFail),
 	}
 }

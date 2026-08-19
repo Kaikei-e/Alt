@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"strings"
+
+	"alt/internal/healthdeep"
 )
 
 // connectRPCPrefix is the URL path prefix served by the Connect-RPC mux.
@@ -25,8 +28,8 @@ func isConnectRPCPath(path string) bool {
 }
 
 // dataHubHandler composes the single handler behind data-hub's mutual-TLS
-// listener: Connect-RPC traffic and /health to connectMux, and a 404 for
-// everything else.
+// listener: Connect-RPC traffic, cheap /health, and /health/deep (owned
+// DB/pool probe). Everything else is 404.
 //
 // The 404 is the point. Its predecessor (buildMTLSHandler) fell through to the
 // full browser-facing Echo router, so one socket answered for the user API,
@@ -36,13 +39,30 @@ func isConnectRPCPath(path string) bool {
 // surfaces are not compiled into this binary, and the /v1/internal REST group
 // that shared this listener through Wave 2 was folded into DataHubService by
 // ADR-000954 D6 and deleted.
-func dataHubHandler(connectMux http.Handler) http.Handler {
+func dataHubHandler(connectMux http.Handler, deep http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/health/deep":
+			if deep == nil {
+				http.NotFound(w, r)
+				return
+			}
+			deep.ServeHTTP(w, r)
 		case isConnectRPCPath(r.URL.Path), r.URL.Path == "/health":
 			connectMux.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
 	})
+}
+
+func newDeepHealthHandler(ping func(context.Context) error) http.Handler {
+	return healthdeep.NewRunner(healthdeep.Config{
+		Service: "alt-data-hub",
+		Checks: []healthdeep.Check{{
+			Name:     "database",
+			Critical: true,
+			Probe:    ping,
+		}},
+	}).Handler()
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	connectserver "rag-orchestrator/internal/adapter/connect"
@@ -26,6 +27,7 @@ import (
 	"rag-orchestrator/internal/infra/otel"
 	"rag-orchestrator/internal/infra/tlsutil"
 	peermw "rag-orchestrator/internal/middleware"
+	"rag-orchestrator/internal/pki"
 )
 
 func main() {
@@ -49,6 +51,29 @@ func main() {
 
 	// 3. Initialize Logger with OTel support (also installs slog.SetDefault)
 	log := logger.NewWithOTel(otelCfg.Enabled)
+	serverErr := make(chan error, 3)
+
+	pkiReg := prometheus.NewRegistry()
+	pkiHandle, err := pki.StartWithRegisterer(ctx, log, "rag-orchestrator", pkiReg)
+	if err != nil {
+		log.Error("pki enrollment failed", "error", err)
+		os.Exit(1)
+	}
+	defer pkiHandle.Stop()
+
+	opsAddr, err := pki.LoadOpsListenAddr()
+	if err != nil {
+		log.Error("pki ops listen addr", "error", err)
+		os.Exit(1)
+	}
+	opsServer := pki.NewOpsServer(opsAddr, pki.NewOpsHandler(pkiReg))
+	go func() {
+		log.Info("pki_ops_listener_enabled", "addr", opsAddr, "surfaces", "/health,/metrics")
+		if err := opsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("pki ops listener failed", "error", err)
+			serverErr <- err
+		}
+	}()
 
 	// PEER_IDENTITY_MODE is required (config.Load fails hard when unset).
 	// "mtls" terminates TLS on the Connect-RPC listener and wires
@@ -133,11 +158,11 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
 	})
 
-	// 9.1 Prometheus /metrics. Exposes the rag_orchestrator_knowledge_event_emitter_*
-	// counters (Knowledge Loop Completion Phase 1 §1) and any future
-	// promauto-registered process metrics. The default registry is fine — no
-	// need to namespace per-instance because the Prometheus scrape job
-	// already labels rows with service="rag-orchestrator".
+	// 9.1 Prometheus /metrics on the Echo API mux. Exposes the
+	// rag_orchestrator_knowledge_event_emitter_* counters (Knowledge Loop
+	// Completion Phase 1 §1). PKI enrollment series live on the dedicated
+	// ops listener (:9110, private registry) — they must not land here via
+	// DefaultRegisterer.
 	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 
 	// 10. Start Echo Server
@@ -150,7 +175,6 @@ func main() {
 	e.Server.ReadTimeout = 30 * time.Second
 	e.Server.IdleTimeout = 120 * time.Second
 	e.Server.MaxHeaderBytes = 1 << 20 // 1 MiB
-	serverErr := make(chan error, 2)
 	go func() {
 		log.Info("Starting Echo server", "addr", e.Server.Addr)
 		if err := e.StartServer(e.Server); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -204,6 +228,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	if err := opsServer.Shutdown(ctx); err != nil {
+		log.Error("pki ops listener shutdown error", "error", err)
+	}
 	if err := connectServer.Shutdown(ctx); err != nil {
 		log.Error("Connect-RPC server shutdown error", "error", err)
 	}

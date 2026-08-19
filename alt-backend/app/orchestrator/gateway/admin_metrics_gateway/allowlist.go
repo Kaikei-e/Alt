@@ -34,11 +34,9 @@ var allowlist = []allowEntry{
 		// TestAllowlist_AvailabilityJobsMatchPrometheusScrapeConfig.
 		//
 		// `min by (job)` collapses multi-target jobs to their worst target.
-		// pki-agent is one job fanned out over one sidecar per east-west
-		// service; every consumer keys rows by `job`, so without the
-		// aggregation those series overwrite each other and one dead sidecar
-		// reads "up" whenever a healthy sibling happens to be last. Guarded by
-		// TestAllowlist_AvailabilityAggregatesMultiTargetJobs.
+		// PKI ops jobs are one :9110 target each (`*-ops` when an app-port job
+		// already exists). They are listed by exact job_name — app-port jobs
+		// are not substitutes for ops :9110, and pki-agent is gone.
 		//
 		// alt-harvester, alt-data-hub and alt-notifier are the binaries split out
 		// of alt-backend. They are listed as separate jobs, not folded into
@@ -59,7 +57,7 @@ var allowlist = []allowEntry{
 		// death is otherwise the least visible outage in the stack: alerts
 		// keep evaluating and stop being delivered, which from inside looks
 		// like a quiet night.
-		promql:     `min by (job) (up{job=~"prometheus|alertmanager|plecto-proxy|cadvisor|mq-hub|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-data-hub|alt-notifier|pre-processor|pki-agent|knowledge-sovereign|rag-orchestrator"})`,
+		promql:     `min by (job) (up{job=~"prometheus|alertmanager|plecto-proxy|cadvisor|mq-hub|pre-processor|recap-worker|recap-subworker|news-creator|alt-backend|alt-harvester|alt-notifier|alt-data-hub|alt-butterfly-facade-ops|auth-hub|search-indexer|rag-orchestrator-ops|pre-processor-ops|tag-generator|recap-worker-ops|acolyte-orchestrator|recap-subworker-ops|news-creator-ops|knowledge-sovereign|rag-orchestrator|alt-butterfly-facade"})`,
 		grafanaURL: "/d/otel-overview",
 	},
 	{

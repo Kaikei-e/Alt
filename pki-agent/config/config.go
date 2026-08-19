@@ -50,15 +50,28 @@ type Config struct {
 	ProxyResponseHeaderTimeout time.Duration
 }
 
+// ProvisionerName is the Wave 4 JWK name for a CERT_SUBJECT. Distinct from
+// the shared "pki-agent" provisioner (F-001 blast radius).
+func ProvisionerName(subject string) string {
+	return "pki-agent-" + subject
+}
+
+// ProvisionerPasswordFile is the in-container secret path for a subject's
+// JWK password. It must never be the shared step_ca_root_password file.
+func ProvisionerPasswordFile(subject string) string {
+	return "/run/secrets/pki-agent-" + subject + "-jwk"
+}
+
 // Load parses environment variables (with _FILE support for secrets) into
 // a validated Config. Returns an error if any required field is absent.
 func Load() (*Config, error) {
+	subject := getEnv("CERT_SUBJECT", "")
 	c := &Config{
 		CAURL:        getEnv("STEP_CA_URL", "https://step-ca:9000"),
 		RootFile:     getEnv("STEP_CA_ROOT_FILE", "/trust/ca-bundle.pem"),
-		Provisioner:  getEnv("STEP_CA_PROVISIONER", "pki-agent"),
-		PasswordFile: getEnv("STEP_CA_PROVISIONER_PASSWORD_FILE", "/run/secrets/step_ca_root_password"),
-		Subject:      getEnv("CERT_SUBJECT", ""),
+		Subject:      subject,
+		Provisioner:  getEnv("STEP_CA_PROVISIONER", ProvisionerName(subject)),
+		PasswordFile: getEnv("STEP_CA_PROVISIONER_PASSWORD_FILE", ProvisionerPasswordFile(subject)),
 		CertPath:     getEnv("CERT_PATH", "/certs/svc-cert.pem"),
 		KeyPath:      getEnv("KEY_PATH", "/certs/svc-key.pem"),
 		MetricsAddr:  getEnv("METRICS_ADDR", ":9510"),

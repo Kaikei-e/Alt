@@ -767,6 +767,156 @@
       }
     },
     {
+      "description": "a GET /health/deep from alt-backend when a non-critical check failed",
+      "providerStates": [
+        {
+          "name": "alt-data-hub data path is degraded"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/health/deep"
+      },
+      "response": {
+        "body": {
+          "service": "alt-data-hub",
+          "status": "warn"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.service": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GET /health/deep from alt-backend when the data path is up",
+      "providerStates": [
+        {
+          "name": "alt-data-hub database is reachable"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/health/deep"
+      },
+      "response": {
+        "body": {
+          "checks": [
+            {
+              "critical": true,
+              "name": "database",
+              "status": "pass"
+            }
+          ],
+          "service": "alt-data-hub",
+          "status": "pass"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.checks": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.checks[*].critical": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.service": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GET /health/deep from alt-backend when the owned DB is down",
+      "providerStates": [
+        {
+          "name": "alt-data-hub database is unavailable"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/health/deep"
+      },
+      "response": {
+        "body": {
+          "checks": [
+            {
+              "critical": true,
+              "name": "database",
+              "status": "fail"
+            }
+          ],
+          "service": "alt-data-hub",
+          "status": "fail"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.checks": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.checks[*].critical": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.service": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 503
+      }
+    },
+    {
       "description": "a GetAllReadFeedIDs request from alt-backend",
       "providerStates": [
         {

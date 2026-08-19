@@ -18,6 +18,7 @@ import (
 	"auth-hub/internal/usecase"
 
 	"auth-hub/config"
+	"auth-hub/internal/pki"
 	appmiddleware "auth-hub/middleware"
 	"auth-hub/tlsutil"
 	"auth-hub/utils/logger"
@@ -89,6 +90,29 @@ func main() {
 		"port", cfg.Port,
 		"cache_ttl", cfg.CacheTTL)
 
+	pkiHandle, err := pki.Start(ctx, slog.Default(), "auth-hub")
+	if err != nil {
+		slog.ErrorContext(ctx, "pki enrollment failed", "error", err)
+		os.Exit(1)
+	}
+	if pkiHandle != nil {
+		defer pkiHandle.Stop()
+	}
+	var pkiMetrics http.Handler
+	if pkiHandle != nil {
+		pkiMetrics = pkiHandle.MetricsHandler()
+	}
+	opsSrv, err := pki.ListenOps(ctx, slog.Default(), "auth-hub", pkiMetrics)
+	if err != nil {
+		slog.ErrorContext(ctx, "pki ops listener failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		opsCtx, opsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer opsCancel()
+		_ = pki.ShutdownOps(opsCtx, opsSrv)
+	}()
+
 	// Infrastructure
 	sessionCache := infracache.NewSessionCache(cfg.CacheTTL)
 	kratosGateway := gateway.NewKratosGateway(cfg.KratosURL, cfg.KratosAdminURL, 5*time.Second)
@@ -135,7 +159,8 @@ func main() {
 	// Request logging
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		Skipper: func(c echo.Context) bool {
-			return c.Request().URL.Path == "/health"
+			path := c.Request().URL.Path
+			return path == "/health"
 		},
 		LogStatus:   true,
 		LogURI:      true,

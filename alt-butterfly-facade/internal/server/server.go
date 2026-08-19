@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"alt-butterfly-facade/internal/client"
 	"alt-butterfly-facade/internal/handler"
+	"alt-butterfly-facade/internal/metrics"
 	"alt-butterfly-facade/internal/middleware"
 )
 
@@ -121,6 +121,14 @@ func NewServerWithTransports(
 	// Auth for internal-info endpoints (e.g. /v1/bff/stats) that are not
 	// backend proxies and so don't go through a *ProxyHandler's authInterceptor.
 	statsAuth := middleware.NewAuthInterceptor(logger, cfg.Secret, cfg.Issuer, cfg.Audience)
+
+	journeyMetrics := metrics.Default()
+
+	// Operator scrape. Same listener as /health on purpose: this process has
+	// no dedicated ops port, and /health is already unauthenticated on :9250.
+	// Prometheus scrapes alt-butterfly-facade:9250 over the compose network;
+	// plecto must not expose /metrics to browsers (see compose/bff.yaml).
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Register health endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -253,7 +261,7 @@ func NewServerWithTransports(
 				http.NotFound(w, r)
 				return
 			}
-			restProxy.ServeHTTP(w, r)
+			journeyMetrics.Handler(restProxy).ServeHTTP(w, r)
 		}))
 	}
 
@@ -350,11 +358,25 @@ func NewServerWithTransports(
 			http.NotFound(w, r)
 			return
 		}
-		mainHandler.ServeHTTP(w, r)
+		journeyMetrics.Handler(mainHandler).ServeHTTP(w, r)
 	}))
 
-	// Support HTTP/2 without TLS (h2c) for Connect-RPC streaming
-	return h2c.NewHandler(mux, &http2.Server{})
+	// Cleartext HTTP/2 (h2c) is enabled on the http.Server via
+	// EnableCleartextHTTP2 — not by wrapping the handler (x/net/http2/h2c is deprecated).
+	return mux
+}
+
+// EnableCleartextHTTP2 configures srv to accept HTTP/1.1 and unencrypted
+// HTTP/2 with prior knowledge. Call this on the plaintext listener used for
+// Connect-RPC streaming; do not wrap the handler with golang.org/x/net/http2/h2c.
+func EnableCleartextHTTP2(srv *http.Server) {
+	if srv == nil {
+		return
+	}
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	srv.Protocols = protocols
 }
 
 // BFFStats holds statistics about BFF features.

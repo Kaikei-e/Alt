@@ -33,6 +33,12 @@ linters:
       - path: 'server\.gen\.go$'
         linters:
           - all
+      # PKI tests mint disposable certs, talk to a fake CA, and (when
+      # PKI_NATIVE_LIVE_CA=1) launch docker. gosec's credential/path/subprocess
+      # rules fire on those fixtures; production code in internal/pki stays covered.
+      - path: 'internal/pki/.*_test\.go$'
+        linters:
+          - gosec
 
 formatters:
   enable:

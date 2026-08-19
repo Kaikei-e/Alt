@@ -18,18 +18,10 @@ func registerSecurityRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	// CSRF token generation endpoint
 	v1.GET("/csrf-token", middleware_custom.CSRFTokenHandler(container.CSRFTokenUsecase))
 
-	// Health check with database connectivity test
-	v1.GET("/health", func(c echo.Context) error {
-		// Set cache headers for health check
-		c.Response().Header().Set("Cache-Control", "public, max-age=30")
-
-		response := map[string]string{
-			"status": "healthy",
-		}
-
-		response["database"] = "connected"
-		return c.JSON(http.StatusOK, response)
-	})
+	// Health check is liveness only. Dependency reachability lives on the
+	// ops listener at /health/deep — this public route used to hardcode
+	// `"database":"connected"` while cmd/backend has no database at all.
+	v1.GET("/health", restHandleLiveness)
 
 	// CSP report endpoint
 	e.POST("/security/csp-report", func(c echo.Context) error {
@@ -64,5 +56,12 @@ func registerSecurityRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 
 		// Return 204 No Content for CSP reports
 		return c.NoContent(http.StatusNoContent)
+	})
+}
+
+func restHandleLiveness(c echo.Context) error {
+	c.Response().Header().Set("Cache-Control", "public, max-age=30")
+	return c.JSON(http.StatusOK, map[string]string{
+		"status": "healthy",
 	})
 }

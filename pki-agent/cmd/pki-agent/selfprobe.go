@@ -6,13 +6,9 @@ package main
 // unless-stopped` policy keeps the stale `network_mode: service:<parent>`
 // reference after a self-exit, so on restart the sidecar tries to rejoin
 // the *old* parent's netns — which has already been garbage-collected —
-// and the restart fails with `No such container: <old parent id>`. The
-// container ends up exited and unrecoverable, making the symptom worse
-// rather than better.
+// and the restart fails with `No such container: <old parent id>`.
 //
-// The detection half of the feature lives on in `probeNetns` (see
-// healthcheck.go) and is invoked by the Docker HEALTHCHECK subcommand, so
-// an orphan is now visible as `State.Health.Status = unhealthy` within the
-// 15 s healthcheck interval. Self-heal requires an external force-recreate
-// (alt-deploy cascade per ADR-000783, or an operator running
-// `docker compose up --no-deps --force-recreate pki-agent-<svc>` manually).
+// Wave 4 Pattern B cutover retired the shared-netns topology entirely.
+// Inbound TLS lives in the parent process; pki-agent is cert-only on its
+// own netns. There is no netns-orphan class left for a healthcheck to
+// detect, and scripts/cascade-pki-sidecars.sh is a hard-failing tombstone.

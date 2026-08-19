@@ -2,34 +2,42 @@
 
 ## Overview
 
-Single-responsibility mTLS cert lifecycle sidecar. One instance per east-west
-service — **13 subjects** as of ADR-000954:
+**Tooling only.** Compose workload sidecars are **0**. Leaf issue/renew is
+in-process on **14 parents** (`PKI_ENROLLMENT=enabled`, [[000978]]). Do not
+re-add `pki-agent-*` services — a leftover container on the same cert volume
+is a **dual writer**.
+
+The 14 parents:
 
 ```
-alt-backend      alt-harvester    alt-data-hub     alt-butterfly-facade
-auth-hub         pre-processor    search-indexer   tag-generator
-recap-worker     recap-subworker  news-creator     rag-orchestrator
-acolyte-orchestrator
+alt-backend          alt-harvester           alt-data-hub
+alt-notifier         alt-butterfly-facade    auth-hub
+pre-processor        search-indexer          tag-generator
+recap-worker         recap-subworker         news-creator
+rag-orchestrator     acolyte-orchestrator
 ```
 
-`alt-harvester` and `alt-data-hub` joined in ADR-000954, which split
-alt-backend into three binaries: the harvester is an mTLS *client*
-(outbox-worker → rag-orchestrator, all jobs → alt-data-hub:9443) and
-alt-data-hub is the mTLS *server* for the data plane, whose only listener is
-`:9443` with a fail-closed peer allowlist.
+`compose/pki.yaml` is **step-ca + step-ca-bootstrap** only. This directory
+keeps the Go binary, image, and bootstrap / CN-allowlist scripts so
+operators can mint emergency leaves and provision subject-scoped JWKs.
 
-The authoritative list is `SUBJECTS` in
+The authoritative CN list is `SUBJECTS` in
 `pki-agent/scripts/bootstrap-pki-provisioner.sh`, kept in lockstep with
 `EXPECTED_CNS` in `pki-agent/scripts/verify-cn-allowlist.sh` and with the
-`pki-agent-*` services in `compose/pki.yaml`. Adding a service means adding it
-to the step-ca CN allowlist **first** — otherwise the sidecar cannot mint a
-leaf, goes unhealthy, and `depends_on` keeps the whole stack down.
+14 in-process parents. Adding a service means adding it to the step-ca CN
+allowlist **first**.
+
+Live Prometheus scrape is parent `:9110` `pki_enrollment_*` (unpublished
+ops). `:9510` / `pki_agent_*` are the **historical sidecar surface**, not
+the current scrape job.
 
 Replaces the brittle compose-embedded `*-cert-init` + `*-cert-renewer` shell
-pair.
+pair (and later the 14 workload sidecars).
 
-Responsibility (strictly one): keep `/certs/svc-cert.pem` + `/certs/svc-key.pem`
-inside the target volume within its validity window. Period.
+Responsibility of the remaining **tooling** binary: keep
+`/certs/svc-cert.pem` + `/certs/svc-key.pem` inside a target volume within
+its validity window when an operator runs it by hand (emergency mint).
+Period. Production writers are the 14 parents.
 
 ## Architecture
 
@@ -40,7 +48,7 @@ cmd/pki-agent/main.go                  # wiring + graceful shutdown
 internal/
   domain/                              # CertState, sentinel errors, port interfaces
   usecase/rotate.go                    # Tick() state machine (pure)
-  adapter/handler/server.go            # /healthz + /metrics
+  adapter/handler/server.go            # /healthz + /metrics (tooling :9510)
   infrastructure/
     certfile.go                        # atomic write + Load (domain.CertLoader + CertWriter)
     stepca.go                          # step-cli subprocess wrapper (domain.CAIssuer)
@@ -68,10 +76,10 @@ go test ./... -race
 # Build local binary
 go build -o pki-agent ./cmd/pki-agent
 
-# Build image (same base as existing cert sidecars)
+# Build tooling image (not a compose workload)
 docker build -t alt/pki-agent:dev .
 
-# Smoke test against running step-ca
+# Smoke test against running step-ca (emergency / bootstrap only)
 docker run --rm --network alt_alt-network \
   -e STEP_CA_URL=https://step-ca:9000 \
   -e STEP_CA_ROOT_FILE=/trust/ca-bundle.pem \
@@ -90,8 +98,8 @@ docker run --rm --network alt_alt-network \
 |-----|---------|-------|
 | STEP_CA_URL | https://step-ca:9000 | internal only |
 | STEP_CA_ROOT_FILE | /trust/ca-bundle.pem | published by step-ca-bootstrap |
-| STEP_CA_PROVISIONER | pki-agent | dedicated provisioner; bootstrap is fallback |
-| STEP_CA_PROVISIONER_PASSWORD_FILE | /run/secrets/step_ca_root_password | Docker secret |
+| STEP_CA_PROVISIONER | pki-agent-\<CERT_SUBJECT\> | per-subject JWK. Shared name `pki-agent` is forbidden for workload enrollment |
+| STEP_CA_PROVISIONER_PASSWORD_FILE | /run/secrets/pki-agent-\<CERT_SUBJECT\>-jwk | per-subject Docker secret; never `step_ca_root_password` |
 | CERT_SUBJECT | (required) | e.g. alt-backend |
 | CERT_SANS | = subject | CSV |
 | CERT_PATH | /certs/svc-cert.pem | |
@@ -100,8 +108,8 @@ docker run --rm --network alt_alt-network \
 | CERT_OWNER_GID | = UID | |
 | RENEW_AT_FRACTION | 0.66 | (0,1) |
 | TICK_INTERVAL | 5m | Go time.Duration |
-| METRICS_ADDR | :9510 | plaintext inside alt-network |
-| PROXY_RESPONSE_HEADER_TIMEOUT | 15s | proxy mode only. Wait for the upstream's response headers. Raise it above the caller's own deadline for upstreams that run LLM inference before answering; exceeding it returns 504 |
+| METRICS_ADDR | :9510 | tooling / historical sidecar listen. Live scrape is parent `:9110` |
+| PROXY_RESPONSE_HEADER_TIMEOUT | 15s | proxy mode only. Historical; inbound TLS is in the parent |
 
 ## Critical rules
 
@@ -109,16 +117,15 @@ docker run --rm --network alt_alt-network \
 2. **Never reuse keys** — each Issue() call generates a fresh keypair via step-cli.
 3. **No renew-after-expiry** — re-enroll with a fresh OTT instead. See security audit F-005.
 4. **Atomic writes only** — tmpfile in same dir + rename. chown/chmod before rename.
-5. **Provisioner scope** — step-ca's `pki-agent` provisioner has `allowedNames` CN allowlist.
+5. **Provisioner scope** — each CERT_SUBJECT has its own JWK (`pki-agent-<subject>`) and password file. Authority-level CN allowlist still applies. Do not ship the shared root/JWK password into a workload.
 
 ## Prometheus metrics
 
-- `pki_agent_cert_not_after_seconds{subject}` — gauge, unix ts
-- `pki_agent_cert_remaining_seconds{subject}` — gauge, seconds
-- `pki_agent_last_rotation_timestamp_seconds{subject}` — gauge
-- `pki_agent_renewal_total{subject, result}` — counter
-- `pki_agent_reissue_total{subject, reason}` — counter
-- `pki_agent_up{subject}` — gauge 1
-- `pki_agent_healthy{subject}` — gauge 1/0
+Live (14 parents, `:9110/metrics`):
 
-Scraped by Prometheus inside alt-network via `pki-agent-<svc>:9510/metrics`.
+- `pki_enrollment_healthy{subject}` and siblings — scraped by Prometheus.
+  Absence pages via `absent()`.
+
+Historical sidecar surface (`pki_agent_*` on `:9510`) is **not** a current
+scrape job. Leftover `pki-agent-*` containers are dual writers; detect them
+with `docker ps` labels, not Prometheus.

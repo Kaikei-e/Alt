@@ -160,7 +160,7 @@ func (c *Collector) RegisterExporter(name string, exporter PrometheusExporter) e
 
 // exportRegistered renders every registered exporter, sorted by name so the
 // exposition is stable across scrapes.
-func (c *Collector) exportRegistered() string {
+func (c *Collector) exportRegistered() (string, error) {
 	c.exportersMu.RLock()
 	defer c.exportersMu.RUnlock()
 
@@ -172,9 +172,20 @@ func (c *Collector) exportRegistered() string {
 
 	var builder strings.Builder
 	for _, name := range names {
-		builder.WriteString(c.exporters[name].Prometheus())
+		exp := c.exporters[name]
+		if f, ok := exp.(interface {
+			PrometheusWithError() (string, error)
+		}); ok {
+			s, err := f.PrometheusWithError()
+			if err != nil {
+				return "", err
+			}
+			builder.WriteString(s)
+			continue
+		}
+		builder.WriteString(exp.Prometheus())
 	}
-	return builder.String()
+	return builder.String(), nil
 }
 
 // RecordRequest records a request metric for a domain
@@ -305,8 +316,18 @@ func (c *Collector) ExportJSON() ([]byte, error) {
 
 // ExportPrometheus exports metrics in Prometheus format
 func (c *Collector) ExportPrometheus() string {
-	if !c.enabled {
+	s, err := c.ExportPrometheusWithError()
+	if err != nil {
 		return ""
+	}
+	return s
+}
+
+// ExportPrometheusWithError is the scrape path: gather/encode failures
+// must surface so the HTTP handler can return 500 instead of panicking.
+func (c *Collector) ExportPrometheusWithError() (string, error) {
+	if !c.enabled {
+		return "", nil
 	}
 
 	c.mu.RLock()
@@ -341,34 +362,38 @@ func (c *Collector) ExportPrometheus() string {
 	for _, domain := range domains {
 		metrics := c.metrics[domain]
 
-		builder.WriteString(fmt.Sprintf("preprocessor_requests_total{domain=\"%s\"} %d\n",
-			domain, metrics.TotalRequests))
-		builder.WriteString(fmt.Sprintf("preprocessor_requests_success_total{domain=\"%s\"} %d\n",
-			domain, metrics.SuccessCount))
-		builder.WriteString(fmt.Sprintf("preprocessor_requests_failure_total{domain=\"%s\"} %d\n",
-			domain, metrics.FailureCount))
-		builder.WriteString(fmt.Sprintf("preprocessor_response_time_seconds{domain=\"%s\"} %.6f\n",
-			domain, metrics.AvgResponseTime.Seconds()))
-		builder.WriteString(fmt.Sprintf("preprocessor_success_rate{domain=\"%s\"} %.4f\n",
-			domain, metrics.SuccessRate))
+		fmt.Fprintf(&builder, "preprocessor_requests_total{domain=%q} %d\n",
+			domain, metrics.TotalRequests)
+		fmt.Fprintf(&builder, "preprocessor_requests_success_total{domain=%q} %d\n",
+			domain, metrics.SuccessCount)
+		fmt.Fprintf(&builder, "preprocessor_requests_failure_total{domain=%q} %d\n",
+			domain, metrics.FailureCount)
+		fmt.Fprintf(&builder, "preprocessor_response_time_seconds{domain=%q} %.6f\n",
+			domain, metrics.AvgResponseTime.Seconds())
+		fmt.Fprintf(&builder, "preprocessor_success_rate{domain=%q} %.4f\n",
+			domain, metrics.SuccessRate)
 	}
 
 	// Write aggregate metrics
 	aggregate := c.GetAggregateMetrics()
-	builder.WriteString(fmt.Sprintf("preprocessor_requests_total{domain=\"_aggregate\"} %d\n",
-		aggregate.TotalRequests))
-	builder.WriteString(fmt.Sprintf("preprocessor_requests_success_total{domain=\"_aggregate\"} %d\n",
-		aggregate.SuccessCount))
-	builder.WriteString(fmt.Sprintf("preprocessor_requests_failure_total{domain=\"_aggregate\"} %d\n",
-		aggregate.FailureCount))
-	builder.WriteString(fmt.Sprintf("preprocessor_response_time_seconds{domain=\"_aggregate\"} %.6f\n",
-		aggregate.AvgResponseTime.Seconds()))
-	builder.WriteString(fmt.Sprintf("preprocessor_success_rate{domain=\"_aggregate\"} %.4f\n",
-		aggregate.SuccessRate))
+	fmt.Fprintf(&builder, "preprocessor_requests_total{domain=%q} %d\n",
+		"_aggregate", aggregate.TotalRequests)
+	fmt.Fprintf(&builder, "preprocessor_requests_success_total{domain=%q} %d\n",
+		"_aggregate", aggregate.SuccessCount)
+	fmt.Fprintf(&builder, "preprocessor_requests_failure_total{domain=%q} %d\n",
+		"_aggregate", aggregate.FailureCount)
+	fmt.Fprintf(&builder, "preprocessor_response_time_seconds{domain=%q} %.6f\n",
+		"_aggregate", aggregate.AvgResponseTime.Seconds())
+	fmt.Fprintf(&builder, "preprocessor_success_rate{domain=%q} %.4f\n",
+		"_aggregate", aggregate.SuccessRate)
 
-	builder.WriteString(c.exportRegistered())
+	registered, err := c.exportRegistered()
+	if err != nil {
+		return "", err
+	}
+	builder.WriteString(registered)
 
-	return builder.String()
+	return builder.String(), nil
 }
 
 // Reset clears all collected metrics
@@ -459,8 +484,14 @@ func (c *Collector) Start(ctx context.Context, errCh chan<- error) error {
 
 	// Prometheus metrics endpoint
 	mux.HandleFunc(c.path+"/prometheus", func(w http.ResponseWriter, r *http.Request) {
+		body, err := c.ExportPrometheusWithError()
+		if err != nil {
+			c.logger.Error("failed to export Prometheus metrics", "error", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		if _, err := w.Write([]byte(c.ExportPrometheus())); err != nil {
+		if _, err := w.Write([]byte(body)); err != nil {
 			c.logger.Error("failed to write Prometheus response", "error", err)
 		}
 	})

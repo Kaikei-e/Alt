@@ -507,6 +507,8 @@ func TestIsWhitelistedPath_DoesNotMatchSubstrings(t *testing.T) {
 	allow := []string{"/v1/health", "/v1/feeds/summarize/stream", "/security/csp-report", "/v1/images/proxy/"}
 
 	require.True(t, isWhitelistedPath("/v1/health", allow))
+	require.False(t, isWhitelistedPath("/health/deep", allow), "deep health must not be DoS-whitelisted")
+	require.False(t, isWhitelistedPath("/v1/health/deep", allow), "deep health must not be DoS-whitelisted")
 	require.True(t, isWhitelistedPath("/v1/feeds/summarize/stream", allow))
 	require.True(t, isWhitelistedPath("/v1/images/proxy/abc.png", allow), "prefix path under /v1/images/proxy/ allowed")
 

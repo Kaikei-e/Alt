@@ -4,6 +4,7 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -566,6 +567,27 @@ func TestMetricsCollector_ServesRegisteredExportersOnItsOwnListener(t *testing.T
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, string(body), "notification_outbox_oldest_pending_age_seconds 0")
 	assert.Contains(t, string(body), "notification_outbox_last_tick_timestamp_seconds")
+}
+
+type boomExporter struct{}
+
+func (boomExporter) Prometheus() string { return "" }
+
+func (boomExporter) PrometheusWithError() (string, error) {
+	return "", errors.New("gather boom")
+}
+
+func TestMetricsCollector_PrometheusExporterErrorReturns500(t *testing.T) {
+	collector, err := NewCollector(serveTestConfig(), testLogger())
+	require.NoError(t, err)
+	require.NoError(t, collector.RegisterExporter("pki_enrollment", boomExporter{}))
+	require.NoError(t, collector.Start(context.Background(), make(chan error, 1)))
+	t.Cleanup(func() { require.NoError(t, collector.Stop(context.Background())) })
+
+	resp, err := http.Get(localURL(t, collector.Addr(), "/metrics/prometheus")) // #nosec G107 -- loopback address of the listener under test
+	require.NoError(t, err)
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 }
 
 // TestMetricsCollector_StartFailsWhenThePortIsAlreadyBound is the fail-fast

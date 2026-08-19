@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"alt/config"
 )
@@ -19,20 +20,38 @@ import (
 // is a stack where every container reports unhealthy and every scrape target
 // is down. OPS_LISTEN is the single knob that replaced them.
 //
-// The surface is deliberately two routes. /health is what the healthcheck
-// subcommand and compose probe read; /metrics is what Prometheus scrapes.
-// Neither authenticates a caller, and neither is allowed to become a door into
-// anything that would need to — see e2e/hurl/alt-harvester/
-// 01-operator-surface-only.hurl and e2e/hurl/alt-data-hub/03-ops-listener.hurl,
-// which assert the 404s from outside the process.
-
-// NewOpsHandler builds the ops surface: /health and /metrics, nothing else.
+// Cheap /health is what the healthcheck subcommand and compose probe read;
+// /metrics is what Prometheus scrapes. /health/deep is optional (cmd/backend
+// wires it) and is never a compose probe — see docs/runbooks/health-deep-contract.md.
+// Neither cheap route authenticates a caller. Deep health lives here because
+// the public REST DoS whitelist must not include it.
 //
 // The mux is explicit and never http.DefaultServeMux — that is where
 // net/http/pprof registers itself via init(), so reusing it would publish heap
 // and goroutine dumps from the monitoring port of any binary that ever linked
 // alt/internal/profiling.
-func NewOpsHandler(serviceName string, metrics http.Handler) http.Handler {
+
+// OpsOption customises NewOpsHandler.
+type OpsOption func(*opsOptions)
+
+type opsOptions struct {
+	deep http.Handler
+}
+
+// WithDeepHealth mounts GET /health/deep on the ops listener. Pass nil to
+// leave the route absent (404), which is what harvester and data-hub do.
+func WithDeepHealth(h http.Handler) OpsOption {
+	return func(o *opsOptions) { o.deep = h }
+}
+
+// NewOpsHandler builds the ops surface: /health and /metrics, plus /health/deep
+// when WithDeepHealth is given.
+func NewOpsHandler(serviceName string, metrics http.Handler, opts ...OpsOption) http.Handler {
+	var o opsOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -43,6 +62,10 @@ func NewOpsHandler(serviceName string, metrics http.Handler) http.Handler {
 			"service": serviceName,
 		})
 	})
+
+	if o.deep != nil {
+		mux.Handle("/health/deep", o.deep)
+	}
 
 	if metrics != nil {
 		mux.Handle("/metrics", metrics)
@@ -73,11 +96,15 @@ func NewOpsServer(addr string, h http.Handler, cfg *config.Config) *http.Server 
 // LogOpsWiring states the ops listener's bind, reach and metrics availability
 // at startup. Compose files and Prometheus targets both encode assumptions
 // about this port; this is the process saying what it actually did.
-func LogOpsWiring(ctx context.Context, log *slog.Logger, addr string, metricsEnabled bool) {
+func LogOpsWiring(ctx context.Context, log *slog.Logger, addr string, metricsEnabled bool, extraSurfaces ...string) {
+	surfaces := "/health,/metrics"
+	if len(extraSurfaces) > 0 {
+		surfaces = surfaces + "," + strings.Join(extraSurfaces, ",")
+	}
 	log.InfoContext(ctx, "ops_listener.wiring",
 		"addr", addr,
 		"reach", string(config.ListenAddrReach(addr)),
-		"surfaces", "/health,/metrics",
+		"surfaces", surfaces,
 		"auth", "none",
 		"metrics_enabled", metricsEnabled,
 	)
