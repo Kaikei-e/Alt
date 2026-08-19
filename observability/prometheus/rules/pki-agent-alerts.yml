@@ -1,114 +1,131 @@
-# Prometheus alerting rules for pki-agent sidecars.
+# Prometheus alerting rules for in-process mTLS enrollment.
 #
 # Fires early when any east-west mTLS leaf is close to expiry, so we never
 # lose a Knowledge Home / alt-backend RPC path to a silent rotation failure
-# (see ADR-000747 and the 2026-04-15 incident).
+# (see ADR-000747, ADR-000978, and the 2026-04-15 incident).
 #
-# Metric source: pki-agent/internal/infrastructure/metrics.go
+# Workload pki-agent sidecars are retired. Leftover detection is the
+# Docker-label gate (compose audits / runbook sweep), not Prometheus scrape
+# of :9510. Live cert alerts are in-process only (`pki_enrollment_*`).
 
 groups:
-  - name: pki_agent_cert_lifecycle
+  - name: pki_enrollment_cert_lifecycle
     interval: 30s
     rules:
-      # PAGE: cert has less than 4h remaining. At 24h leaves this is ~83%
-      # elapsed — well past the 66% renewal point. Something broke the renew
-      # loop.
-      - alert: PkiAgentCertExpirySoon
-        expr: pki_agent_cert_remaining_seconds < 4 * 3600
+      # PAGE: in-process manager reports <4h remaining on a Go parent leaf.
+      - alert: PkiEnrollmentCertExpirySoon
+        expr: pki_enrollment_cert_remaining_seconds < 4 * 3600
         for: 2m
         labels:
           severity: page
           stack: mtls
         annotations:
-          summary: "{{ $labels.subject }} mTLS cert expires in under 4h"
+          summary: "{{ $labels.subject }} in-process mTLS cert expires in under 4h"
           description: |
-            pki-agent-{{ $labels.subject }} reports only
-            {{ humanize $value }}s left on the leaf certificate.
-            Check: docker logs alt-pki-agent-{{ $labels.subject }}-1
+            {{ $labels.subject }} reports only {{ humanize $value }}s left
+            on the leaf certificate (in-process enrollment, not pki-agent).
+            Check: docker logs alt-{{ $labels.subject }}-1
             Runbook: docs/runbooks/pki-agent-recovery.md
 
-      # PAGE: cert already expired. Consumer mTLS will be failing.
-      - alert: PkiAgentCertExpired
-        expr: pki_agent_healthy == 0
+      - alert: PkiEnrollmentCertExpired
+        expr: pki_enrollment_healthy == 0
         for: 1m
         labels:
           severity: page
           stack: mtls
         annotations:
-          summary: "{{ $labels.subject }} mTLS cert expired / missing / corrupt"
+          summary: "{{ $labels.subject }} in-process mTLS cert expired / missing / corrupt"
           description: |
-            pki_agent_healthy=0 for subject {{ $labels.subject }}.
+            pki_enrollment_healthy=0 for subject {{ $labels.subject }}.
             Consumer east-west calls will fail until rotation succeeds.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
-      # PAGE: a renewal attempt failed. A single failure is noise; sustained
-      # failures for 15m means the CA is unreachable or the provisioner is
-      # rejecting us.
-      - alert: PkiAgentRenewalFailing
+      - alert: PkiEnrollmentRenewalFailing
         expr: |
-          rate(pki_agent_renewal_total{result="failure"}[15m]) > 0
-          and
-          rate(pki_agent_renewal_total{result="success"}[15m]) == 0
+          rate(pki_enrollment_renewal_total{result="failure"}[15m]) > 0
+          unless on(subject)
+          rate(pki_enrollment_renewal_total{result="success"}[15m]) > 0
         for: 15m
         labels:
           severity: page
           stack: mtls
         annotations:
-          summary: "pki-agent-{{ $labels.subject }} renewal loop failing"
+          summary: "{{ $labels.subject }} in-process renewal loop failing"
           description: |
             Renewal attempts are failing and no success in the last 15m.
-            Check step-ca health and the provisioner allowlist.
-
-      # PAGE: pki-agent process not reachable by Prometheus. This was a ticket
-      # until 2026-08-10, when a swept sidecar took seven hours to notice. The
-      # two expiry alerts above cannot cover this case — they read metrics the
-      # deleted container was the only source of — so this is the one that
-      # catches it, and a cert-rotation outage does not deserve a ticket.
-      - alert: PkiAgentDown
-        expr: up{job="pki-agent"} == 0
-        for: 5m
-        labels:
-          severity: page
-          stack: mtls
-        annotations:
-          summary: "pki-agent-{{ $labels.subject }} Prometheus scrape failing"
-          description: |
-            /metrics scrape failed for pki-agent-{{ $labels.subject }}. With static
-            targets a deleted container reports up=0 rather than vanishing,
-            so this is the alert that catches a swept sidecar.
+            Check step-ca health and the subject-scoped JWK provisioner.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
-      # PAGE: the target list itself shrank. Every alert above is per-subject,
-      # so a target dropped from prometheus.yml takes that subject's coverage
-      # with it and nothing complains. Only a count sees this.
-      - alert: PkiAgentFleetIncomplete
-        expr: count(up{job="pki-agent"}) < 14
+      # PAGE: the three in-process series shrank. count() is the only
+      # signal that a parent stopped exporting after the sidecar was removed.
+      - alert: PkiEnrollmentFleetIncomplete
+        expr: (count(count by (subject) (pki_enrollment_healthy)) or vector(0)) != 14
         for: 10m
         labels:
           severity: page
           stack: mtls
         annotations:
-          summary: "pki-agent fleet is short: {{ $value }} of 14 sidecars scraped"
+          summary: "in-process PKI unique-subject fleet is {{ $value }} (want exactly 14)"
           description: |
-            compose/pki.yaml defines 14 pki-agent sidecars but Prometheus is
-            scraping fewer. A target missing from prometheus.yml silences
-            every per-subject cert alert for that subject.
+            All 14 east-west parents must each export pki_enrollment_healthy
+            on :9110. Raw series count can be padded by duplicate labels; this
+            pin is unique subjects, and `or vector(0)` fires when every series
+            is absent.
             Runbook: docs/runbooks/pki-agent-recovery.md
 
-      # PAGE: the metric family is gone entirely. Every expiry alert here is
-      # expression-based on a timeseries, which means their silence is
-      # indistinguishable between "all certs healthy" and "there is nothing
-      # left to measure". Ask the absence question explicitly.
-      - alert: PkiAgentMetricsAbsent
-        expr: absent_over_time(pki_agent_healthy[10m])
+      - alert: PkiEnrollmentOpsDown
+        expr: >-
+          up{job=~"alt-backend|alt-harvester|alt-data-hub|alt-notifier|alt-butterfly-facade-ops|auth-hub|search-indexer|rag-orchestrator-ops|pre-processor-ops|tag-generator|recap-worker-ops|acolyte-orchestrator|recap-subworker-ops|news-creator-ops"} == 0
         for: 5m
         labels:
           severity: page
           stack: mtls
         annotations:
-          summary: "pki_agent_healthy has reported nothing for 10m"
+          summary: "{{ $labels.job }} PKI ops scrape failing"
           description: |
-            No pki_agent_healthy series at all. Every cert-expiry alert is
-            expression-based on this metric, so their silence is not
-            evidence of health.
+            Prometheus cannot scrape {{ $labels.job }} :9110. Static targets
+            report up=0 rather than vanishing, so this is the parent-ops
+            scrape-down alert. Leftover pki-agent sidecars are a Docker-label
+            gate, not this scrape.
+            Runbook: docs/runbooks/pki-agent-recovery.md
+
+      - alert: PkiEnrollmentWorkloadMetricsAbsent
+        expr: |
+          absent(pki_enrollment_healthy{subject="alt-backend"})
+          or absent(pki_enrollment_healthy{subject="alt-harvester"})
+          or absent(pki_enrollment_healthy{subject="alt-data-hub"})
+          or absent(pki_enrollment_healthy{subject="alt-notifier"})
+          or absent(pki_enrollment_healthy{subject="alt-butterfly-facade"})
+          or absent(pki_enrollment_healthy{subject="auth-hub"})
+          or absent(pki_enrollment_healthy{subject="search-indexer"})
+          or absent(pki_enrollment_healthy{subject="rag-orchestrator"})
+          or absent(pki_enrollment_healthy{subject="pre-processor"})
+          or absent(pki_enrollment_healthy{subject="tag-generator"})
+          or absent(pki_enrollment_healthy{subject="recap-worker"})
+          or absent(pki_enrollment_healthy{subject="acolyte-orchestrator"})
+          or absent(pki_enrollment_healthy{subject="recap-subworker"})
+          or absent(pki_enrollment_healthy{subject="news-creator"})
+        for: 5m
+        labels:
+          severity: page
+          stack: mtls
+        annotations:
+          summary: "an in-process PKI workload metric is absent"
+          description: |
+            One of the 14 in-process parents is not exporting
+            pki_enrollment_healthy. After sidecar removal that series is the
+            only cert-lifecycle signal for the subject.
+            Runbook: docs/runbooks/pki-agent-recovery.md
+
+      - alert: PkiEnrollmentMetricsAbsent
+        expr: absent_over_time(pki_enrollment_healthy[10m])
+        for: 5m
+        labels:
+          severity: page
+          stack: mtls
+        annotations:
+          summary: "pki_enrollment_healthy has reported nothing for 10m"
+          description: |
+            No in-process enrollment series at all. Live cert alerts are
+            in-process only; leftover sidecars are a Docker-label gate.
             Runbook: docs/runbooks/pki-agent-recovery.md

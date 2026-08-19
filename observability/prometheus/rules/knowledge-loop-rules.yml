@@ -208,6 +208,25 @@ groups:
             binding). Cluster relations cannot form without this fuel.
           runbook_url: "docs/ADR/000939.md"
 
+      # Heartbeat complement: an absent freshness series makes the age>48h
+      # comparison an empty vector, which is silently false. This is not a
+      # ratio SLO — recap jobs are scheduled, not a request stream.
+      - alert: RecapTopicSnapshotHeartbeatMissing
+        expr: absent(knowledge_event_last_occurrence_age_seconds{event_type="recap.topic_snapshotted.v1"})
+        for: 15m
+        labels:
+          severity: ticket
+          sli: freshness
+          service: knowledge-sovereign
+          source: recap-worker
+        annotations:
+          summary: "recap topic-snapshot freshness series is absent"
+          description: |
+            knowledge_event_last_occurrence_age_seconds{event_type="recap.topic_snapshotted.v1"}
+            has no samples. KnowledgeLoopRecapTopicSnapshotProducerDead cannot
+            fire on an empty vector. Check knowledge-sovereign /metrics.
+          runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+
       # ADR-000939 producer liveness — augur links (recording rule, not a page).
       # augur.conversation_linked.v1 is USER-DRIVEN, so a long silence is
       # legitimately "no usage", not necessarily a dead producer. We expose the

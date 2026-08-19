@@ -110,3 +110,27 @@ tests:
       - eval_time: 65m
         alertname: KnowledgeLoopRecapTopicSnapshotProducerDead
         exp_alerts: []
+      - eval_time: 65m
+        alertname: RecapTopicSnapshotHeartbeatMissing
+        exp_alerts: []
+
+  # Freshness series gone entirely — age>48h cannot see an empty vector.
+  - interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: RecapTopicSnapshotHeartbeatMissing
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              sli: freshness
+              service: knowledge-sovereign
+              source: recap-worker
+              event_type: "recap.topic_snapshotted.v1"
+            exp_annotations:
+              summary: "recap topic-snapshot freshness series is absent"
+              description: |
+                knowledge_event_last_occurrence_age_seconds{event_type="recap.topic_snapshotted.v1"}
+                has no samples. KnowledgeLoopRecapTopicSnapshotProducerDead cannot
+                fire on an empty vector. Check knowledge-sovereign /metrics.
+              runbook_url: "docs/runbooks/user-journey-slo-gameday.md"

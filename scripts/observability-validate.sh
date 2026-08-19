@@ -11,6 +11,8 @@
 #   5. observability-config-audit.py — the structural invariants promtool cannot
 #                                see (rule glob coverage, Grafana provisioning,
 #                                dashboard uids, alertmanager wiring)
+#   6. user-journey / SLO / PKI wave4 / compose-image / synthetic-probes
+#                                contract tests (executed stages, not comments)
 #
 # Tool resolution, in order of preference:
 #   $PROMTOOL / $AMTOOL           — explicit binary path (what CI sets)
@@ -35,17 +37,13 @@ PROM_RULES_DIR="observability/prometheus/rules"
 PROM_TESTS_DIR="observability/prometheus/tests"
 AM_CONFIG="observability/alertmanager/alertmanager.yml"
 
-# Read the image tag straight out of the compose file so the validator can
-# never validate against a different version than the one that loads the file.
-image_from_compose() {
-  local repo="$1" fallback="$2" found
-  found="$(grep -oE "image:[[:space:]]*${repo}:[^[:space:]\"']+" "$COMPOSE_OBS" 2>/dev/null \
-    | head -1 | sed -E 's/image:[[:space:]]*//')"
-  printf '%s' "${found:-$fallback}"
-}
-
-PROM_IMAGE="$(image_from_compose 'prom/prometheus' 'prom/prometheus:latest')"
-AM_IMAGE="$(image_from_compose 'prom/alertmanager' 'prom/alertmanager:latest')"
+# PyYAML parse of compose/observability.yaml — comments cannot select a
+# version, and missing / :latest pins fail closed (no grep, no fallback).
+eval "$(python3 scripts/observability-compose-tool-images.py --export-shell --compose "$COMPOSE_OBS")"
+if [[ -z "${PROM_IMAGE:-}" || -z "${AM_IMAGE:-}" ]]; then
+  echo "::error::compose tool images did not export PROM_IMAGE and AM_IMAGE"
+  exit 1
+fi
 
 resolve_tool() {
   # $1 = tool name, $2 = env override value, $3 = docker image
@@ -136,6 +134,21 @@ fi
 
 stage "structural audit — scripts/observability-config-audit.py"
 python3 scripts/observability-config-audit.py --repo-root "$REPO_ROOT"
+
+stage "wave4 PKI observability contract — scripts/tests/test-pki-wave4-acceptance.py"
+python3 scripts/tests/test-pki-wave4-acceptance.py
+
+stage "user-journey SLO counter wiring — scripts/tests/test-user-journey-slo-counters.py"
+python3 scripts/tests/test-user-journey-slo-counters.py
+
+stage "SLO evaluator contract — scripts/tests/test-slo-evaluator-contract.py"
+python3 scripts/tests/test-slo-evaluator-contract.py
+
+stage "compose tool image pins — scripts/tests/test-observability-compose-tool-images.py"
+python3 scripts/tests/test-observability-compose-tool-images.py
+
+stage "synthetic probes audit — scripts/tests/test-synthetic-probes-audit.py"
+python3 scripts/tests/test-synthetic-probes-audit.py
 
 echo ""
 echo "==> observability config validation passed"

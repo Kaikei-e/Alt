@@ -27,6 +27,8 @@ func TestRequireAdminToken_EnabledGatesAdminPaths(t *testing.T) {
 		{"admin without token", "/admin/snapshots/create", "", http.StatusUnauthorized},
 		{"admin with wrong token", "/admin/snapshots/create", "Bearer nope", http.StatusUnauthorized},
 		{"admin with right token", "/admin/snapshots/create", "Bearer super-secret-admin-token-value", http.StatusOK},
+		{"deep health without token", "/health/deep", "", http.StatusUnauthorized},
+		{"deep health with right token", "/health/deep", "Bearer super-secret-admin-token-value", http.StatusOK},
 		{"non-admin path", "/metrics", "", http.StatusOK},
 	}
 

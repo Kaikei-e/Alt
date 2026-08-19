@@ -1,15 +1,14 @@
-# promtool unit tests for the pki-agent cert-lifecycle alerts.
+# promtool unit tests for in-process PKI cert-lifecycle alerts.
 #
-#   docker exec alt-prometheus-1 promtool test rules \
-#     /etc/prometheus/tests/pki-agent-alerts_test.yml
+#   ./scripts/observability-validate.sh
+#   # or:
+#   promtool test rules observability/prometheus/tests/pki-agent-alerts_test.yml
 #
 # Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
 # test file parsed as a rule group is a fatal config error, not a skip.
 #
-# These pin the three gaps that let a deleted sidecar go unnoticed for seven
-# hours: a scrape failure that only raised a ticket, a target list that can
-# shrink without anyone noticing, and expiry alerts whose expressions need the
-# very timeseries that a deleted container takes with it.
+# Sidecar pki-agent alerts are gone. Leftover detection is the Docker-label
+# gate; live alerts are pki_enrollment_*.
 
 rule_files:
   - ../rules/pki-agent-alerts.yml
@@ -17,168 +16,325 @@ rule_files:
 evaluation_interval: 30s
 
 tests:
-  # A deleted container keeps its static target, so up flips to 0 rather than
-  # disappearing. This is what actually happened; it must page, not ticket.
+  # In-process: absence of one of 14 parent metrics must page.
   - interval: 30s
     input_series:
-      - series: 'up{job="pki-agent",service="pki-agent",subject="alt-data-hub"}'
-        values: '0x30'
+      - series: 'pki_enrollment_healthy{subject="alt-backend"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-harvester"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-notifier"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-butterfly-facade"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="auth-hub"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="search-indexer"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="rag-orchestrator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="pre-processor"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="tag-generator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="recap-worker"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="acolyte-orchestrator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="recap-subworker"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="news-creator"}'
+        values: '1x30'
     alert_rule_test:
       - eval_time: 6m
-        alertname: PkiAgentDown
+        alertname: PkiEnrollmentWorkloadMetricsAbsent
         exp_alerts:
           - exp_labels:
               severity: page
               stack: mtls
-              job: pki-agent
-              service: pki-agent
               subject: alt-data-hub
             exp_annotations:
-              summary: "pki-agent-alt-data-hub Prometheus scrape failing"
+              summary: "an in-process PKI workload metric is absent"
               description: |
-                /metrics scrape failed for pki-agent-alt-data-hub. With static
-                targets a deleted container reports up=0 rather than vanishing,
-                so this is the alert that catches a swept sidecar.
+                One of the 14 in-process parents is not exporting
+                pki_enrollment_healthy. After sidecar removal that series is the
+                only cert-lifecycle signal for the subject.
                 Runbook: docs/runbooks/pki-agent-recovery.md
-
-  # The fleet is 14 sidecars. If a target is dropped from prometheus.yml the
-  # per-target alerts above go quiet with it — only a count notices.
-  - interval: 30s
-    input_series:
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s01"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s02"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s03"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s04"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s05"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s06"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s07"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s08"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s09"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s10"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s11"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s12"}'
-        values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s13"}'
-        values: '1x30'
-    alert_rule_test:
       - eval_time: 11m
-        alertname: PkiAgentFleetIncomplete
+        alertname: PkiEnrollmentFleetIncomplete
         exp_alerts:
           - exp_labels:
               severity: page
               stack: mtls
             exp_annotations:
-              summary: "pki-agent fleet is short: 13 of 14 sidecars scraped"
+              summary: "in-process PKI unique-subject fleet is 13 (want exactly 14)"
               description: |
-                compose/pki.yaml defines 14 pki-agent sidecars but Prometheus is
-                scraping fewer. A target missing from prometheus.yml silences
-                every per-subject cert alert for that subject.
+                All 14 east-west parents must each export pki_enrollment_healthy
+                on :9110. Raw series count can be padded by duplicate labels; this
+                pin is unique subjects, and `or vector(0)` fires when every series
+                is absent.
                 Runbook: docs/runbooks/pki-agent-recovery.md
 
-  # All 14 present and up: nothing fires.
+  # All 14 in-process series present: workload-absent does not fire.
   - interval: 30s
     input_series:
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s01"}'
+      - series: 'pki_enrollment_healthy{subject="alt-backend"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s02"}'
+      - series: 'pki_enrollment_healthy{subject="alt-harvester"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s03"}'
+      - series: 'pki_enrollment_healthy{subject="alt-data-hub"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s04"}'
+      - series: 'pki_enrollment_healthy{subject="alt-notifier"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s05"}'
+      - series: 'pki_enrollment_healthy{subject="alt-butterfly-facade"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s06"}'
+      - series: 'pki_enrollment_healthy{subject="auth-hub"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s07"}'
+      - series: 'pki_enrollment_healthy{subject="search-indexer"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s08"}'
+      - series: 'pki_enrollment_healthy{subject="rag-orchestrator"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s09"}'
+      - series: 'pki_enrollment_healthy{subject="pre-processor"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s10"}'
+      - series: 'pki_enrollment_healthy{subject="tag-generator"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s11"}'
+      - series: 'pki_enrollment_healthy{subject="recap-worker"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s12"}'
+      - series: 'pki_enrollment_healthy{subject="acolyte-orchestrator"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s13"}'
+      - series: 'pki_enrollment_healthy{subject="recap-subworker"}'
         values: '1x30'
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s14"}'
+      - series: 'pki_enrollment_healthy{subject="news-creator"}'
         values: '1x30'
-      - series: 'pki_agent_healthy{subject="s01"}'
-        values: '1x30'
+      - series: 'pki_enrollment_cert_remaining_seconds{subject="alt-backend"}'
+        values: '86400x30'
     alert_rule_test:
       - eval_time: 11m
-        alertname: PkiAgentFleetIncomplete
+        alertname: PkiEnrollmentWorkloadMetricsAbsent
         exp_alerts: []
       - eval_time: 11m
-        alertname: PkiAgentDown
+        alertname: PkiEnrollmentFleetIncomplete
         exp_alerts: []
       - eval_time: 11m
-        alertname: PkiAgentMetricsAbsent
+        alertname: PkiEnrollmentMetricsAbsent
         exp_alerts: []
 
-  # Total blackout: the metric family is gone entirely (job renamed, network
-  # partition, every sidecar swept). The expiry alerts cannot fire here because
-  # their expressions need the series that just vanished.
+  # In-process expiry still pages.
   - interval: 30s
     input_series:
-      - series: 'up{job="pki-agent",service="pki-agent",subject="s01"}'
-        values: '1x60'
-    alert_rule_test:
-      - eval_time: 16m
-        alertname: PkiAgentMetricsAbsent
-        exp_alerts:
-          - exp_labels:
-              severity: page
-              stack: mtls
-            exp_annotations:
-              summary: "pki_agent_healthy has reported nothing for 10m"
-              description: |
-                No pki_agent_healthy series at all. Every cert-expiry alert is
-                expression-based on this metric, so their silence is not
-                evidence of health.
-                Runbook: docs/runbooks/pki-agent-recovery.md
-      # The expiry alerts are structurally blind here — assert that, so nobody
-      # mistakes their silence for a healthy fleet.
-      - eval_time: 16m
-        alertname: PkiAgentCertExpired
-        exp_alerts: []
-      - eval_time: 16m
-        alertname: PkiAgentCertExpirySoon
-        exp_alerts: []
-
-  # Expiry alerts still work when the series is present.
-  - interval: 30s
-    input_series:
-      - series: 'pki_agent_cert_remaining_seconds{subject="alt-backend"}'
+      - series: 'pki_enrollment_cert_remaining_seconds{subject="alt-backend"}'
         values: '3599x30'
-      - series: 'pki_agent_healthy{subject="alt-backend"}'
+      - series: 'pki_enrollment_healthy{subject="alt-backend"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-harvester"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-data-hub"}'
         values: '1x30'
     alert_rule_test:
       - eval_time: 3m
-        alertname: PkiAgentCertExpirySoon
+        alertname: PkiEnrollmentCertExpirySoon
         exp_alerts:
           - exp_labels:
               severity: page
               stack: mtls
               subject: alt-backend
             exp_annotations:
-              summary: "alt-backend mTLS cert expires in under 4h"
+              summary: "alt-backend in-process mTLS cert expires in under 4h"
               description: |
-                pki-agent-alt-backend reports only
-                3.599ks left on the leaf certificate.
-                Check: docker logs alt-pki-agent-alt-backend-1
+                alt-backend reports only 3.599ks left
+                on the leaf certificate (in-process enrollment, not pki-agent).
+                Check: docker logs alt-alt-backend-1
                 Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Unhealthy leaf (healthy==0) must page even when remaining is still positive.
+  - interval: 30s
+    input_series:
+      - series: 'pki_enrollment_healthy{subject="auth-hub"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: PkiEnrollmentCertExpired
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              subject: auth-hub
+            exp_annotations:
+              summary: "auth-hub in-process mTLS cert expired / missing / corrupt"
+              description: |
+                pki_enrollment_healthy=0 for subject auth-hub.
+                Consumer east-west calls will fail until rotation succeeds.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Parent ops target is down: up==0 on an exact :9110 job name.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="recap-worker-ops"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PkiEnrollmentOpsDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              job: recap-worker-ops
+            exp_annotations:
+              summary: "recap-worker-ops PKI ops scrape failing"
+              description: |
+                Prometheus cannot scrape recap-worker-ops :9110. Static targets
+                report up=0 rather than vanishing, so this is the parent-ops
+                scrape-down alert. Leftover pki-agent sidecars are a Docker-label
+                gate, not this scrape.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Every in-process series gone: fleet pin uses or vector(0); MetricsAbsent fires.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="prometheus"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: PkiEnrollmentFleetIncomplete
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "in-process PKI unique-subject fleet is 0 (want exactly 14)"
+              description: |
+                All 14 east-west parents must each export pki_enrollment_healthy
+                on :9110. Raw series count can be padded by duplicate labels; this
+                pin is unique subjects, and `or vector(0)` fires when every series
+                is absent.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 16m
+        alertname: PkiEnrollmentMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "pki_enrollment_healthy has reported nothing for 10m"
+              description: |
+                No in-process enrollment series at all. Live cert alerts are
+                in-process only; leftover sidecars are a Docker-label gate.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Duplicate labels cannot pad the fleet pin. 14 series, 13 unique subjects.
+  - interval: 30s
+    input_series:
+      - series: 'pki_enrollment_healthy{subject="alt-backend"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-backend",instance="dup"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-harvester"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-notifier"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="alt-butterfly-facade"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="auth-hub"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="search-indexer"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="rag-orchestrator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="pre-processor"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="tag-generator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="recap-worker"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="acolyte-orchestrator"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="recap-subworker"}'
+        values: '1x30'
+      - series: 'pki_enrollment_healthy{subject="news-creator"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: PkiEnrollmentFleetIncomplete
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+            exp_annotations:
+              summary: "in-process PKI unique-subject fleet is 13 (want exactly 14)"
+              description: |
+                All 14 east-west parents must each export pki_enrollment_healthy
+                on :9110. Raw series count can be padded by duplicate labels; this
+                pin is unique subjects, and `or vector(0)` fires when every series
+                is absent.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+      - eval_time: 6m
+        alertname: PkiEnrollmentWorkloadMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              subject: alt-data-hub
+            exp_annotations:
+              summary: "an in-process PKI workload metric is absent"
+              description: |
+                One of the 14 in-process parents is not exporting
+                pki_enrollment_healthy. After sidecar removal that series is the
+                only cert-lifecycle signal for the subject.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Renewal: failures exist, success series absent — must fire (unless on(subject)).
+  - interval: 30s
+    input_series:
+      - series: 'pki_enrollment_renewal_total{subject="auth-hub",result="failure"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: PkiEnrollmentRenewalFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              subject: auth-hub
+              result: failure
+            exp_annotations:
+              summary: "auth-hub in-process renewal loop failing"
+              description: |
+                Renewal attempts are failing and no success in the last 15m.
+                Check step-ca health and the subject-scoped JWK provisioner.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Renewal: failures exist, success rate is zero (constant series).
+  - interval: 30s
+    input_series:
+      - series: 'pki_enrollment_renewal_total{subject="auth-hub",result="failure"}'
+        values: '0+1x40'
+      - series: 'pki_enrollment_renewal_total{subject="auth-hub",result="success"}'
+        values: '5x40'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: PkiEnrollmentRenewalFailing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stack: mtls
+              subject: auth-hub
+              result: failure
+            exp_annotations:
+              summary: "auth-hub in-process renewal loop failing"
+              description: |
+                Renewal attempts are failing and no success in the last 15m.
+                Check step-ca health and the subject-scoped JWK provisioner.
+                Runbook: docs/runbooks/pki-agent-recovery.md
+
+  # Renewal: success rate > 0 suppresses the alert.
+  - interval: 30s
+    input_series:
+      - series: 'pki_enrollment_renewal_total{subject="auth-hub",result="failure"}'
+        values: '0+1x40'
+      - series: 'pki_enrollment_renewal_total{subject="auth-hub",result="success"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: PkiEnrollmentRenewalFailing
+        exp_alerts: []
+

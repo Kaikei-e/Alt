@@ -174,68 +174,87 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: /metrics
 
-  # pki-agent sidecars: one per east-west service. Expose cert expiry and
-  # rotation outcomes so cert-lifecycle regressions (like the 2026-04-15
-  # Knowledge Home outage and its 2026-08-10 repeat) are paged before they go
-  # dark.
-  #
-  # compose/pki.yaml defines exactly 14 sidecars, and they come in two
-  # networking shapes. Keep this list at 14 — PkiAgentFleetIncomplete asserts
-  # count(up{job="pki-agent"}) >= 14 precisely because a target dropped from
-  # here silences every per-subject cert alert for that subject without any
-  # other signal.
-  #
-  #   Pattern A — the sidecar joins `alt-network` on its own. It gets its own
-  #   Docker DNS name, so the target is `pki-agent-<subject>:9510`.
-  #
-  #   Pattern B — the sidecar declares `network_mode: "service:<parent>"` and
-  #   `networks: !override []`, because it also runs the mTLS reverse proxy
-  #   that fronts the parent on :9443. Sharing the parent's netns is what lets
-  #   the proxy reach the parent over 127.0.0.1, but it also means the sidecar
-  #   HAS NO DNS NAME OF ITS OWN: `pki-agent-<subject>` does not resolve, and
-  #   Docker's embedded resolver answers NXDOMAIN. The sidecar's :9510 listener
-  #   lives in the PARENT's network namespace, so the correct scrape target is
-  #   the PARENT service name — `<parent>:9510`. This is not a typo and must
-  #   not be "fixed" to `pki-agent-<subject>:9510`: doing so is what left
-  #   tag-generator and acolyte-orchestrator with a permanently firing
-  #   PkiAgentDown from 2026-08-09, i.e. no cert monitoring at all for them.
-  #   The `subject` label below is authoritative for which agent a series
-  #   belongs to; the address is only how we reach it.
-  - job_name: 'pki-agent'
+  # In-process PKI ops :9110. Each parent exports pki_enrollment_* here.
+  # Existing application metrics stay on their original jobs/ports.
+  # Never publish :9110 to the host — Prometheus scrapes over alt-network.
+  - job_name: 'alt-butterfly-facade-ops'
     static_configs:
-      # --- Pattern A: sidecar has its own alt-network identity -------------
-      - targets: ['pki-agent-alt-backend:9510']
-        labels: { service: 'pki-agent', subject: 'alt-backend' }
-      - targets: ['pki-agent-alt-harvester:9510']
-        labels: { service: 'pki-agent', subject: 'alt-harvester' }
-      - targets: ['pki-agent-alt-notifier:9510']
-        labels: { service: 'pki-agent', subject: 'alt-notifier' }
-      - targets: ['pki-agent-alt-data-hub:9510']
-        labels: { service: 'pki-agent', subject: 'alt-data-hub' }
-      - targets: ['pki-agent-alt-butterfly-facade:9510']
-        labels: { service: 'pki-agent', subject: 'alt-butterfly-facade' }
-      - targets: ['pki-agent-rag-orchestrator:9510']
-        labels: { service: 'pki-agent', subject: 'rag-orchestrator' }
-      - targets: ['pki-agent-auth-hub:9510']
-        labels: { service: 'pki-agent', subject: 'auth-hub' }
-      - targets: ['pki-agent-pre-processor:9510']
-        labels: { service: 'pki-agent', subject: 'pre-processor' }
-      - targets: ['pki-agent-search-indexer:9510']
-        labels: { service: 'pki-agent', subject: 'search-indexer' }
-      - targets: ['pki-agent-recap-worker:9510']
-        labels: { service: 'pki-agent', subject: 'recap-worker' }
-      # --- Pattern B: sidecar shares the parent's netns ---------------------
-      # Address is the PARENT service name on purpose. See the block comment
-      # above; `pki-agent-<subject>` does not resolve for these four.
-      - targets: ['tag-generator:9510']
-        labels: { service: 'pki-agent', subject: 'tag-generator' }
-      - targets: ['acolyte-orchestrator:9510']
-        labels: { service: 'pki-agent', subject: 'acolyte-orchestrator' }
-      - targets: ['recap-subworker:9510']
-        labels: { service: 'pki-agent', subject: 'recap-subworker' }
-      - targets: ['news-creator:9510']
-        labels: { service: 'pki-agent', subject: 'news-creator' }
-    scrape_interval: 30s
+      - targets: ['alt-butterfly-facade:9110']
+        labels:
+          service: 'alt-butterfly-facade'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'auth-hub'
+    static_configs:
+      - targets: ['auth-hub:9110']
+        labels:
+          service: 'auth-hub'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'search-indexer'
+    static_configs:
+      - targets: ['search-indexer:9110']
+        labels:
+          service: 'search-indexer'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'rag-orchestrator-ops'
+    static_configs:
+      - targets: ['rag-orchestrator:9110']
+        labels:
+          service: 'rag-orchestrator'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'pre-processor-ops'
+    static_configs:
+      - targets: ['pre-processor:9110']
+        labels:
+          service: 'pre-processor'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'tag-generator'
+    static_configs:
+      - targets: ['tag-generator:9110']
+        labels:
+          service: 'tag-generator'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'recap-worker-ops'
+    static_configs:
+      - targets: ['recap-worker:9110']
+        labels:
+          service: 'recap-worker'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'acolyte-orchestrator'
+    static_configs:
+      - targets: ['acolyte-orchestrator:9110']
+        labels:
+          service: 'acolyte-orchestrator'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'recap-subworker-ops'
+    static_configs:
+      - targets: ['recap-subworker:9110']
+        labels:
+          service: 'recap-subworker'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'news-creator-ops'
+    static_configs:
+      - targets: ['news-creator:9110']
+        labels:
+          service: 'news-creator'
+    scrape_interval: 15s
     metrics_path: /metrics
 
   # knowledge-sovereign: /metrics on container port 9501 (host 9511 is for
@@ -261,5 +280,15 @@ scrape_configs:
       - targets: ['rag-orchestrator:9010']
         labels:
           service: 'rag-orchestrator'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # BFF: user-journey SLO counters (feeds / login / search). /metrics shares
+  # the :9250 listener with /health; Prometheus scrapes over alt-network.
+  - job_name: 'alt-butterfly-facade'
+    static_configs:
+      - targets: ['alt-butterfly-facade:9250']
+        labels:
+          service: 'alt-butterfly-facade'
     scrape_interval: 15s
     metrics_path: /metrics

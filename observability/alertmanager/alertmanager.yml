@@ -177,49 +177,12 @@ receivers:
           {{ end -}}
 
 inhibit_rules:
-  # --- pki-agent: collapse the fleet-wide failure modes ---------------------
-  #
-  # These two rules are the reason group_by can afford to include `subject`.
-  # The pki-agent alert set is deliberately layered — per-subject expiry, a
-  # per-subject scrape check, a fleet count, and an absence check — so that no
-  # single failure is silent. The flip side is that one root cause lights up
-  # every layer at once: the 2026-08-10 incident would have delivered five
-  # subjects x two expiry alerts plus a fleet-count alert as separate
-  # emergency notifications, and an operator being buzzed a dozen times learns
-  # to dismiss the channel rather than read it.
-
-  # 1. `pki_agent_healthy` has reported nothing at all. Every per-subject cert
-  #    alert is an expression over series from that same metric family, so
-  #    while this fires those alerts carry no independent information — their
-  #    firing or not firing is an artefact of what happens to still be in the
-  #    TSDB, which is precisely the ambiguity PkiAgentMetricsAbsent exists to
-  #    resolve.
-  - source_matchers:
-      - alertname="PkiAgentMetricsAbsent"
-    target_matchers:
-      - alertname=~"PkiAgentCertExpirySoon|PkiAgentCertExpired|PkiAgentRenewalFailing|PkiAgentDown|PkiAgentFleetIncomplete"
-    # PkiAgentMetricsAbsent comes from absent_over_time() and so carries only
-    # the rule's own labels (severity, stack) — there is no subject to match
-    # on. `stack` is what scopes the suppression to the mTLS alert family
-    # instead of the whole platform.
-    equal: ['stack']
-
-  # 2. A subject's sidecar is unreachable. Its cert gauges are then stale by
-  #    definition, and any expiry alert for that subject is reporting the last
-  #    value scraped before the container went away — not the current state of
-  #    the certificate. PkiAgentDown is the actionable one; the expiry alerts
-  #    for that subject are its shadow.
-  - source_matchers:
-      - alertname="PkiAgentDown"
-    target_matchers:
-      - alertname=~"PkiAgentCertExpirySoon|PkiAgentCertExpired"
-    equal: ['subject']
-
   # --- generic severity ladder ---------------------------------------------
   #
-  # A page and a warning describing the same condition should not both be
-  # delivered. Scoped by alertname as well as the grouping labels so this
-  # cannot silently suppress an unrelated warning that merely shares a stack.
+  # A page and a ticket describing the same SLI must not both notify.
+  # Matched on stable SLI labels (stack / sli / service / journey), not
+  # alertname: 14.4x and 6x burn are different alertnames for one condition,
+  # and matching on alertname delivered both Emergency and Normal.
   #
   # The Watchdog is excluded by name, not merely by carrying `severity:
   # deadman` which no matcher here selects. An inhibited heartbeat is
@@ -228,9 +191,12 @@ inhibit_rules:
   # that the deadman monitor cries wolf. That property has to survive someone
   # relabelling the rule, so it is asserted here rather than inferred from the
   # severity value.
+  #
+  # Sidecar pki-agent inhibit rules were removed with that alert group.
+  # Leftover sidecars are a Docker-label gate; live cert alerts are in-process.
   - source_matchers:
       - severity=~"page|critical"
     target_matchers:
       - severity=~"warning|ticket"
       - alertname!="Watchdog"
-    equal: ['alertname', 'stack', 'subject']
+    equal: ['stack', 'sli', 'service', 'journey']

@@ -32,7 +32,6 @@ import { uuidSchema } from "../../_shared/schemas.js";
 export const healthSchema = z
 	.object({
 		status: z.literal("healthy"),
-		database: z.literal("connected"),
 	})
 	.passthrough();
 

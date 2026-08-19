@@ -14,8 +14,9 @@
 #   amtool check-config — only when observability/alertmanager/alertmanager.yml
 #     exists, so a tree without Alertmanager stays green
 #   scripts/observability-config-audit.py — the structural invariants no
-#     upstream tool covers: rule-glob coverage against the compose bind mount,
-#     Grafana provisioning YAML, dashboard uid collisions
+#     upstream tool covers: rule-glob coverage against compose file
+#     attachments (bind mount or configs:), Grafana provisioning YAML,
+#     dashboard uid collisions
 #
 # Tooling is downloaded from the upstream GitHub releases at exactly the
 # versions compose/observability.yaml runs, so validation and production never
@@ -34,9 +35,23 @@ on:
     branches: [main]
     paths:
       - 'observability/**'
+      - 'compose/**.yaml'
+      - 'compose/**.yml'
       - 'compose/observability.yaml'
       - 'scripts/observability-validate.sh'
       - 'scripts/observability-config-audit.py'
+      - 'scripts/tests/test-observability-config-audit.py'
+      - 'scripts/tests/test-pki-wave4-acceptance.py'
+      - 'scripts/tests/test-user-journey-slo-counters.py'
+      - 'scripts/tests/test-slo-evaluator-contract.py'
+      - 'observability/synthetic/**'
+      - 'scripts/synthetic-probes-audit.py'
+      - 'scripts/tests/test-synthetic-probes-audit.py'
+      - 'scripts/observability-compose-tool-images.py'
+      - 'scripts/tests/test-observability-compose-tool-images.py'
+      - 'plecto/**'
+      - 'alt-butterfly-facade/**'
+      - 'scripts/compose_include.py'
       - 'scripts/observability-drift-check.py'
       - 'scripts/tests/test-observability-drift-check.py'
       - '.github/workflows/observability-validate.yaml'
@@ -44,9 +59,23 @@ on:
     branches: [main]
     paths:
       - 'observability/**'
+      - 'compose/**.yaml'
+      - 'compose/**.yml'
       - 'compose/observability.yaml'
       - 'scripts/observability-validate.sh'
       - 'scripts/observability-config-audit.py'
+      - 'scripts/tests/test-observability-config-audit.py'
+      - 'scripts/tests/test-pki-wave4-acceptance.py'
+      - 'scripts/tests/test-user-journey-slo-counters.py'
+      - 'scripts/tests/test-slo-evaluator-contract.py'
+      - 'observability/synthetic/**'
+      - 'scripts/synthetic-probes-audit.py'
+      - 'scripts/tests/test-synthetic-probes-audit.py'
+      - 'scripts/observability-compose-tool-images.py'
+      - 'scripts/tests/test-observability-compose-tool-images.py'
+      - 'plecto/**'
+      - 'alt-butterfly-facade/**'
+      - 'scripts/compose_include.py'
       - 'scripts/observability-drift-check.py'
       - 'scripts/tests/test-observability-drift-check.py'
       - '.github/workflows/observability-validate.yaml'
@@ -78,32 +107,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          compose=compose/observability.yaml
-
-          prom="$(grep -oE 'image:[[:space:]]*prom/prometheus:v[0-9.]+' "$compose" \
-            | head -1 | sed -E 's#.*:v##')"
-          if [[ -z "$prom" ]]; then
-            echo "::error::could not read a pinned prom/prometheus version from $compose."
-            echo "::error::Validation must run the version production runs; refusing to guess."
-            exit 1
-          fi
-          echo "prometheus=$prom" >> "$GITHUB_OUTPUT"
-          echo "Prometheus tooling: v$prom"
-
-          am=""
-          if [[ -f observability/alertmanager/alertmanager.yml ]]; then
-            am="$(grep -oE 'image:[[:space:]]*prom/alertmanager:v[0-9.]+' "$compose" \
-              | head -1 | sed -E 's#.*:v##')"
-            if [[ -z "$am" ]]; then
-              echo "::error::observability/alertmanager/alertmanager.yml exists but $compose"
-              echo "::error::pins no prom/alertmanager version — amtool cannot be matched to production."
-              exit 1
-            fi
-            echo "Alertmanager tooling: v$am"
-          else
-            echo "observability/alertmanager/alertmanager.yml absent — amtool not needed"
-          fi
-          echo "alertmanager=$am" >> "$GITHUB_OUTPUT"
+          python3 scripts/observability-compose-tool-images.py \
+            --compose compose/observability.yaml
+          python3 scripts/observability-compose-tool-images.py --github-output \
+            --compose compose/observability.yaml >> "$GITHUB_OUTPUT"
 
       - name: Cache promtool and amtool
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -154,3 +161,6 @@ jobs:
       # unconditionally, so "drift" and "no drift" looked identical.
       - name: Drift-check self-tests
         run: python3 scripts/tests/test-observability-drift-check.py
+
+      - name: Config-audit self-tests
+        run: python3 scripts/tests/test-observability-config-audit.py

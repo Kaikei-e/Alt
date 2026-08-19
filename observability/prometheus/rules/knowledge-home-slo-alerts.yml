@@ -13,7 +13,8 @@ groups:
       # SLI-A: Availability - multi-window multi-burn-rate
       # ---------------------------------------------------------------
 
-      # Page: 14.4x burn rate consumes 30-day budget in ~2 hours
+      # Page: 14.4x of a 99.5% SLO consumes the 30-day budget in ~50 hours.
+      # increase >= 1 is the observation gate: 0/0 stays quiet.
       - alert: KnowledgeHomeAvailabilityBurnRateHigh
         expr: |
           (
@@ -25,15 +26,19 @@ groups:
             sum(rate(alt_home_requests_total{status="error"}[1h])) /
             sum(rate(alt_home_requests_total[1h]))
           ) > 14.4 * (1 - 0.995)
+          and
+          sum(increase(alt_home_requests_total[1h])) >= 1
         for: 2m
         labels:
           severity: page
           sli: availability
           service: alt-backend
           domain: knowledge-home
+          stack: knowledge-home
+          journey: knowledge-home
         annotations:
           summary: "Knowledge Home availability burn rate is critical"
-          description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows. 30-day budget will be exhausted in ~2 hours at this rate."
+          description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows. 30-day budget will be exhausted in ~50 hours at this rate."
           runbook_url: "docs/runbooks/knowledge-home-degraded-mode.md"
 
       # Ticket: 6x burn rate consumes 30-day budget in ~5 hours
@@ -48,12 +53,16 @@ groups:
             sum(rate(alt_home_requests_total{status="error"}[6h])) /
             sum(rate(alt_home_requests_total[6h]))
           ) > 6 * (1 - 0.995)
+          and
+          sum(increase(alt_home_requests_total[6h])) >= 1
         for: 5m
         labels:
           severity: ticket
           sli: availability
           service: alt-backend
           domain: knowledge-home
+          stack: knowledge-home
+          journey: knowledge-home
         annotations:
           summary: "Knowledge Home availability burn rate is elevated"
           description: "Error rate exceeds 6x burn rate across both 30m and 6h windows."
@@ -72,6 +81,8 @@ groups:
           sli: freshness
           service: alt-backend
           domain: knowledge-home
+          stack: knowledge-home
+          journey: knowledge-home
         annotations:
           summary: "Knowledge Home projection lag exceeds 10 minutes"
           description: "Projector lag is {{ $value | humanizeDuration }}. Users may see stale Knowledge Home data. Check projector logs and DB connectivity."
@@ -86,6 +97,8 @@ groups:
           sli: freshness
           service: alt-backend
           domain: knowledge-home
+          stack: knowledge-home
+          journey: knowledge-home
         annotations:
           summary: "Knowledge Home projection lag exceeds 30 minutes"
           description: "Projector lag is {{ $value | humanizeDuration }}. Degraded mode likely active. Immediate investigation required."
@@ -105,6 +118,8 @@ groups:
           sli: action_durability
           service: alt-backend
           domain: knowledge-home
+          stack: knowledge-home
+          journey: knowledge-home
         annotations:
           summary: "Knowledge Home tracking failure rate exceeds 5%"
           description: "User actions (open, dismiss, expose) are failing to persist at {{ $value | humanizePercentage }}. Personalization accuracy will degrade."
@@ -124,6 +139,8 @@ groups:
           sli: stream_continuity
           service: alt-backend
           domain: knowledge-home
+          stack: knowledge-home
+          journey: knowledge-home
         annotations:
           summary: "Knowledge Home stream disconnect rate exceeds 80%"
           description: "Server-side stream disconnects are at {{ $value | humanizePercentage }}. Users will fall back to unary polling. Check alt-backend memory, PgBouncer, and network."
@@ -143,6 +160,8 @@ groups:
           sli: correctness_proxy
           service: alt-backend
           domain: knowledge-home
+          stack: knowledge-home
+          journey: knowledge-home
         annotations:
           summary: "Knowledge Home empty response rate exceeds 1%"
           description: "{{ $value | humanizePercentage }} of responses are empty. Projector may be behind, or event store may be unhealthy."
@@ -158,6 +177,8 @@ groups:
           sli: correctness_proxy
           service: alt-backend
           domain: knowledge-home
+          stack: knowledge-home
+          journey: knowledge-home
         annotations:
           summary: "Knowledge Home malformed why rate exceeds 0.1%"
           description: "Why-recommended explanations are malformed at {{ $value | humanizePercentage }}. Check recent projector changes and event payloads."
@@ -177,6 +198,8 @@ groups:
           sli: availability
           service: alt-backend
           domain: knowledge-home
+          stack: knowledge-home
+          journey: knowledge-home
         annotations:
           summary: "Knowledge Home degraded response rate exceeds 5%"
           description: "{{ $value | humanizePercentage }} of responses are served in degraded mode. Check projection freshness and DB health."

@@ -1,0 +1,301 @@
+# promtool unit tests for user-journey SLO burn-rate alerting.
+#
+#   ./scripts/observability-validate.sh
+#   # or:
+#   promtool test rules observability/prometheus/tests/user-journey-slo-alerts_test.yml
+#
+# Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
+# test file parsed as a rule group is a fatal config error, not a skip.
+#
+# Pins:
+#   - 14.4x (5m ∧ 1h) with increase1h >= 1 → page (solo-ops: one observed failure can page)
+#   - short window spike only → no fire
+#   - recovery when the short window drops → page clears
+#   - zero observations → burn stays quiet (zeros do not count as coverage)
+#   - 6x (30m ∧ 6h) fire / no-fire / zero-observation
+#   - whole-family scrape absence (instrumented gauge) → UserJourneyRequestsAbsent
+#   - per-journey no-observation pages only when synthetics are activated
+
+rule_files:
+  - ../rules/user-journey-slo-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Sustained 10% errors (above 7.2%) on both the 5m and 1h windows.
+  # `for: 2m` needs the condition true across two extra evals after the
+  # 1h window is populated.
+  - interval: 1m
+    input_series:
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="error"}'
+        values: '0+10x80'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0+90x80'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x80'
+    alert_rule_test:
+      - eval_time: 62m
+        alertname: UserJourneyAvailabilityBurnRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              sli: availability
+              service: alt-butterfly-facade
+              domain: user-journey
+              stack: user-journey
+              journey: feeds
+            exp_annotations:
+              summary: "User journey feeds availability burn rate is critical"
+              description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows for journey feeds. 30-day budget will be exhausted in ~50 hours at this rate."
+              runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+
+  # 20% errors for 6m on top of an hour of clean traffic. The 5m window
+  # is above 14.4x; the 1h window stays under it. AND must stay false.
+  - interval: 1m
+    input_series:
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="error"}'
+        values: '0x54 20+20x9'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0+100x54 5480+80x9'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x64'
+    alert_rule_test:
+      - eval_time: 64m
+        alertname: UserJourneyAvailabilityBurnRateHigh
+        exp_alerts: []
+
+  # Both windows high long enough to page, then the 5m window drops to
+  # zero errors. Resolve is immediate once the AND is false.
+  - interval: 1m
+    input_series:
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="error"}'
+        values: '0+10x69 690+0x20'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0+90x89'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x89'
+    alert_rule_test:
+      - eval_time: 62m
+        alertname: UserJourneyAvailabilityBurnRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              sli: availability
+              service: alt-butterfly-facade
+              domain: user-journey
+              stack: user-journey
+              journey: feeds
+            exp_annotations:
+              summary: "User journey feeds availability burn rate is critical"
+              description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows for journey feeds. 30-day budget will be exhausted in ~50 hours at this rate."
+              runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+      - eval_time: 76m
+        alertname: UserJourneyAvailabilityBurnRateHigh
+        exp_alerts: []
+
+  # Observed low-volume outage: 100% errors, 12 events in 1h. Solo-ops
+  # traffic is below 50/h; any observed failure at 14.4x must page.
+  - interval: 1m
+    input_series:
+      - series: 'alt_user_journey_requests_total{journey="search",status="error"}'
+        values: '0x50 0+1x12'
+      - series: 'alt_user_journey_requests_total{journey="search",status="ok"}'
+        values: '0x62'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x62'
+    alert_rule_test:
+      - eval_time: 62m
+        alertname: UserJourneyAvailabilityBurnRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              sli: availability
+              service: alt-butterfly-facade
+              domain: user-journey
+              stack: user-journey
+              journey: search
+            exp_annotations:
+              summary: "User journey search availability burn rate is critical"
+              description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows for journey search. 30-day budget will be exhausted in ~50 hours at this rate."
+              runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+
+  # Pre-created zeros / no observations: ratio is undefined, burn must stay quiet.
+  - interval: 1m
+    input_series:
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="error"}'
+        values: '0x70'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0x70'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x70'
+    alert_rule_test:
+      - eval_time: 62m
+        alertname: UserJourneyAvailabilityBurnRateHigh
+        exp_alerts: []
+
+  # No series at all (BFF not scraped / counter unwired). Instrumented
+  # gauge is also absent → page. Pre-created request zeros must not hide this.
+  - interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: UserJourneyRequestsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              sli: availability
+              service: alt-butterfly-facade
+              domain: user-journey
+              stack: user-journey
+            exp_annotations:
+              summary: "User-journey SLO counter has no samples"
+              description: "alt_user_journey_instrumented has been absent for 15m. Burn-rate pages cannot fire. Check alt-butterfly-facade /metrics and the Prometheus scrape job."
+              runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+
+  # Instrumented gauge present: request zeros do not fake coverage for
+  # UserJourneyRequestsAbsent (that alert is scrape/wiring, not traffic).
+  - interval: 1m
+    input_series:
+      - series: 'alt_user_journey_instrumented'
+        values: '1x30'
+      - series: 'alt_user_journey_requests_total{journey="login",status="ok"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UserJourneyRequestsAbsent
+        exp_alerts: []
+
+  # Activation-pending: no per-journey synthetic heartbeat. Idle zeros
+  # must not Emergency-page (ADR-000980 ops gate).
+  - interval: 1m
+    input_series:
+      - series: 'alt_user_journey_instrumented'
+        values: '1x30'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UserJourneyNoObservation
+        exp_alerts: []
+
+  # Generic exporter liveness is not a per-journey heartbeat. Login whoami
+  # is Kratos and cannot increment the BFF login counter; up{job=synthetic}
+  # must not arm feeds/login/search no-observation.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="synthetic"}'
+        values: '1x30'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x30'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0x30'
+      - series: 'alt_user_journey_requests_total{journey="login",status="ok"}'
+        values: '0x30'
+      - series: 'alt_user_journey_requests_total{journey="search",status="ok"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UserJourneyNoObservation
+        exp_alerts: []
+
+  # Feeds heartbeat present (even result=0) + BFF feeds increase=0 pages
+  # feeds only. Login heartbeat must not false-page. Search with traffic
+  # stays quiet.
+  - interval: 1m
+    input_series:
+      - series: 'alt_synthetic_probe_result{journey="feeds",probe="feeds_cursor"}'
+        values: '0x30'
+      - series: 'alt_synthetic_probe_result{journey="login",probe="login_session"}'
+        values: '1x30'
+      - series: 'alt_synthetic_probe_result{journey="search",probe="knowledge_search"}'
+        values: '1x30'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x30'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0x30'
+      - series: 'alt_user_journey_requests_total{journey="login",status="ok"}'
+        values: '0x30'
+      - series: 'alt_user_journey_requests_total{journey="search",status="ok"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UserJourneyNoObservation
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              sli: availability
+              service: alt-butterfly-facade
+              domain: user-journey
+              stack: user-journey
+              journey: feeds
+            exp_annotations:
+              summary: "User journey feeds has no SLO observations while its synthetic heartbeat is fresh"
+              description: "increase(alt_user_journey_requests_total{journey=\"feeds\"}[15m]) is 0 while alt_synthetic_probe_result for that journey was present in the last 15m. Login whoami is Kratos and is not armed here. Check the synthetic probe and BFF Record path."
+              runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+
+  # Stale feeds heartbeat (older than 15m) does not arm no-observation.
+  - interval: 1m
+    input_series:
+      - series: 'alt_synthetic_probe_result{journey="feeds",probe="feeds_cursor"}'
+        values: '1x4 _x25'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x30'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UserJourneyNoObservation
+        exp_alerts: []
+
+  # 6x fire: 10% errors across 30m and 6h, with observations.
+  - interval: 5m
+    input_series:
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="error"}'
+        values: '0+10x80'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0+90x80'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x80'
+    alert_rule_test:
+      - eval_time: 6h10m
+        alertname: UserJourneyAvailabilityBurnRateElevated
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              sli: availability
+              service: alt-butterfly-facade
+              domain: user-journey
+              stack: user-journey
+              journey: feeds
+            exp_annotations:
+              summary: "User journey feeds availability burn rate is elevated"
+              description: "Error rate exceeds 6x burn rate across both 30m and 6h windows for journey feeds."
+              runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+
+  # 6x no-fire: 30m window high, 6h window still clean.
+  - interval: 5m
+    input_series:
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="error"}'
+        values: '0x70 0+20x10'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0+100x70 7000+80x10'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x80'
+    alert_rule_test:
+      - eval_time: 6h10m
+        alertname: UserJourneyAvailabilityBurnRateElevated
+        exp_alerts: []
+
+  # 6x low-volume: zero increase over 6h. High-ratio 0/0 must not ticket.
+  - interval: 5m
+    input_series:
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="error"}'
+        values: '0x80'
+      - series: 'alt_user_journey_requests_total{journey="feeds",status="ok"}'
+        values: '0x80'
+      - series: 'alt_user_journey_instrumented'
+        values: '1x80'
+    alert_rule_test:
+      - eval_time: 6h10m
+        alertname: UserJourneyAvailabilityBurnRateElevated
+        exp_alerts: []

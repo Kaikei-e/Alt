@@ -69,6 +69,7 @@ func main() {
 	// Metrics / health server
 	metricsMux := http.NewServeMux()
 	metricsMux.HandleFunc("/health", handler.HealthHandler)
+	metricsMux.Handle("/health/deep", handler.NewDeepHealthHandler(repo))
 	// Prometheus scrape endpoint. Default registry collectors include
 	// process / Go runtime metrics out of the box; projection_health gauges
 	// and projector counters register with the same default registry via promauto.
@@ -317,8 +318,9 @@ func startPartitionMaintainer(ctx context.Context, wg *sync.WaitGroup, runner pa
 	}()
 }
 
-// requireAdminToken wraps next so that /admin/* requests must carry
-// "Authorization: Bearer <token>" matching the configured admin token.
+// requireAdminToken wraps next so that /admin/* and /health/deep requests
+// must carry "Authorization: Bearer <token>" matching the configured admin
+// token. Cheap /health stays unauthenticated so compose probes keep working.
 // Pass-through happens only when enabled is false, which config.Load grants
 // solely for an explicit ADMIN_AUTH=disabled. An empty token with the gate on
 // denies every request rather than opening the surface.
@@ -327,7 +329,7 @@ func requireAdminToken(token string, enabled bool, next http.Handler) http.Handl
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/admin/") {
+		if !strings.HasPrefix(r.URL.Path, "/admin/") && r.URL.Path != "/health/deep" {
 			next.ServeHTTP(w, r)
 			return
 		}

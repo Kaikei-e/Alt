@@ -1,0 +1,147 @@
+# Provider-agnostic synthetic probe spec (P2-11).
+#
+# This file is the machine-readable contract for edge journeys.
+# Import it into an external provider, or run it from a runner that is
+# NOT on alt-network. In-host blackbox_exporter does not complete P2-11.
+#
+# Placeholders (provider substitution, never committed as real values):
+#   {{EDGE_BASE_URL}}     public HTTPS edge (nginx), no trailing slash
+#   {{SYNTHETIC_USER}}    min-privilege Kratos identity (not admin)
+#   {{SYNTHETIC_PASSWORD}} provider secret store only
+#
+# status: spec_only — external activation is an ops gate. See
+# docs/runbooks/synthetic-monitoring.md.
+
+version: 1
+status: spec_only
+activation: pending
+note: >
+  In-host blackbox (loopback or compose-network /health scrapes) does
+  not complete P2-11. Activation requires an out-of-host provider or
+  runner against the public edge.
+
+paging:
+  consecutive_failures: 3
+  on_first_failure: observe
+  credential_class: min_privilege
+
+# interval_s is the per-probe cadence (>=60s). min_external_interval_s is
+# the repo-wide 5s floor between any two calls to the public edge. A
+# provider that fires all four probes in one burst violates the gap even
+# when each probe's own interval is 60s — stagger by scheduling.min_gap_s.
+defaults:
+  timeout_ms: 8000
+  interval_s: 60
+  min_external_interval_s: 5
+  follow_redirects: false
+  tls:
+    verify: true
+  headers:
+    Accept: application/json
+    User-Agent: alt-synthetic/p2-11
+  cookies:
+    host_only: true
+    same_site: Lax
+    forward_on_redirect: false
+  credentials:
+    mode: same-origin
+
+scheduling:
+  min_gap_s: 5
+
+# Provider-independent heartbeat for UserJourneyNoObservation.
+# Any sample of alt_synthetic_probe_result (1=success, 0=failure) is a
+# fresh heartbeat for that journey. Do not arm every journey from
+# up{job=synthetic}: login whoami is Kratos and never increments the BFF
+# login counter. Native consecutive-failure paging on the provider may
+# still page login independently of Prometheus.
+heartbeat:
+  metric: alt_synthetic_probe_result
+  freshness: 15m
+  labels:
+    required: [journey, probe]
+  bff_observation_journeys: [feeds, search]
+
+probes:
+  - id: login_session
+    journey: login
+    bff_observation: false
+    description: Session whoami through the live edge — cookie or session JSON, not a bare 200.
+    method: GET
+    url: "{{EDGE_BASE_URL}}/ory/sessions/whoami"
+    auth:
+      type: session_cookie
+      user: "{{SYNTHETIC_USER}}"
+      password_ref: provider_secret:SYNTHETIC_PASSWORD
+    expect:
+      status: 200
+      body:
+        - jsonpath: "$.identity"
+          exists: true
+        - jsonpath: "$.active"
+          equals: true
+    page_on: consecutive_failures
+
+  - id: feeds_cursor
+    journey: feeds
+    bff_observation: true
+    description: Authenticated feed cursor — envelope must carry a list, not only HTTP 200.
+    method: GET
+    url: "{{EDGE_BASE_URL}}/api/v1/feeds/fetch/cursor"
+    auth:
+      type: session_cookie
+      user: "{{SYNTHETIC_USER}}"
+      password_ref: provider_secret:SYNTHETIC_PASSWORD
+    expect:
+      status: 200
+      body:
+        - jsonpath: "$.data"
+          type: array
+    page_on: consecutive_failures
+
+  - id: knowledge_home
+    journey: knowledge_home
+    bff_observation: false
+    description: Knowledge Home payload schema through the BFF/edge (Connect JSON).
+    method: POST
+    url: "{{EDGE_BASE_URL}}/api/v2/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome"
+    auth:
+      type: session_cookie
+      user: "{{SYNTHETIC_USER}}"
+      password_ref: provider_secret:SYNTHETIC_PASSWORD
+    headers:
+      Content-Type: application/json
+      Connect-Protocol-Version: "1"
+    body:
+      json:
+        limit: 20
+    expect:
+      status: 200
+      body:
+        - jsonpath: "$.items"
+          exists: true
+    page_on: consecutive_failures
+
+  - id: knowledge_search
+    journey: search
+    bff_observation: true
+    description: Search through the edge Connect JSON endpoint — hits field present (may be empty).
+    method: POST
+    url: "{{EDGE_BASE_URL}}/api/v2/alt.search.v2.SearchService/SearchArticles"
+    auth:
+      type: session_cookie
+      user: "{{SYNTHETIC_USER}}"
+      password_ref: provider_secret:SYNTHETIC_PASSWORD
+    headers:
+      Content-Type: application/json
+      Connect-Protocol-Version: "1"
+    body:
+      json:
+        query: alt
+        limit: 5
+    expect:
+      status: 200
+      body:
+        - jsonpath: "$.hits"
+          exists: true
+    page_on: consecutive_failures

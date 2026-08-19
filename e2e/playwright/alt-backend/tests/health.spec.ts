@@ -13,7 +13,7 @@ import { csrfTokenSchema, healthSchema } from "../src/schemas.js";
  * incidental; tests/topology.spec.ts asserts it is gone from :9000.
  */
 test.describe("public surface", () => {
-	test("GET /v1/health reports healthy and DB-connected", async ({ restAnon }) => {
+	test("GET /v1/health reports healthy", async ({ restAnon }) => {
 		const response = await restAnon.get("/v1/health");
 		await expectJsonStatus(response, 200, healthSchema);
 		expectHeaderContains(response, "Cache-Control", "max-age=30");

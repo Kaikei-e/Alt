@@ -1,0 +1,167 @@
+# promtool unit tests for Knowledge Home SLO burn-rate alerting.
+#
+#   ./scripts/observability-validate.sh
+#   # or:
+#   promtool test rules observability/prometheus/tests/knowledge-home-slo-alerts_test.yml
+#
+# Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
+# test file parsed as a rule group is a fatal config error, not a skip.
+#
+# Pins the multi-window multi-burn-rate contract for
+# KnowledgeHomeAvailabilityBurnRateHigh (14.4x of a 99.5% SLO = 7.2% error)
+# and KnowledgeHomeAvailabilityBurnRateElevated (6x):
+#   - both windows above threshold with increase >= 1 → fire
+#   - short window spike only → no fire
+#   - recovery when the short window drops → page clears
+#   - zero observations → no fire
+
+rule_files:
+  - ../rules/knowledge-home-slo-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Sustained 10% errors (above 7.2%) on both the 5m and 1h windows.
+  # `for: 2m` needs the condition true across two extra evals after the
+  # 1h window is populated.
+  - interval: 1m
+    input_series:
+      - series: 'alt_home_requests_total{status="error"}'
+        values: '0+10x80'
+      - series: 'alt_home_requests_total{status="ok"}'
+        values: '0+90x80'
+    alert_rule_test:
+      - eval_time: 62m
+        alertname: KnowledgeHomeAvailabilityBurnRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              sli: availability
+              service: alt-backend
+              domain: knowledge-home
+              stack: knowledge-home
+              journey: knowledge-home
+            exp_annotations:
+              summary: "Knowledge Home availability burn rate is critical"
+              description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows. 30-day budget will be exhausted in ~50 hours at this rate."
+              runbook_url: "docs/runbooks/knowledge-home-degraded-mode.md"
+
+  # 20% errors for 6m on top of an hour of clean traffic. The 5m window
+  # is above 14.4x; the 1h window stays under it. AND must stay false.
+  - interval: 1m
+    input_series:
+      - series: 'alt_home_requests_total{status="error"}'
+        values: '0x54 20+20x9'
+      - series: 'alt_home_requests_total{status="ok"}'
+        values: '0+100x54 5480+80x9'
+    alert_rule_test:
+      - eval_time: 64m
+        alertname: KnowledgeHomeAvailabilityBurnRateHigh
+        exp_alerts: []
+
+  # Both windows high long enough to page, then the 5m window drops to
+  # zero errors. Resolve is immediate once the AND is false.
+  - interval: 1m
+    input_series:
+      - series: 'alt_home_requests_total{status="error"}'
+        values: '0+10x69 690+0x20'
+      - series: 'alt_home_requests_total{status="ok"}'
+        values: '0+90x89'
+    alert_rule_test:
+      - eval_time: 62m
+        alertname: KnowledgeHomeAvailabilityBurnRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              sli: availability
+              service: alt-backend
+              domain: knowledge-home
+              stack: knowledge-home
+              journey: knowledge-home
+            exp_annotations:
+              summary: "Knowledge Home availability burn rate is critical"
+              description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows. 30-day budget will be exhausted in ~50 hours at this rate."
+              runbook_url: "docs/runbooks/knowledge-home-degraded-mode.md"
+      - eval_time: 76m
+        alertname: KnowledgeHomeAvailabilityBurnRateHigh
+        exp_alerts: []
+
+  # Observed low-volume: one error in a quiet hour is 100% > 7.2% and
+  # increase1h >= 1, so the page must fire. Idle 0/0 must not (next case).
+  - interval: 1m
+    input_series:
+      - series: 'alt_home_requests_total{status="error"}'
+        values: '0x50 0+1x12'
+      - series: 'alt_home_requests_total{status="ok"}'
+        values: '0x62'
+    alert_rule_test:
+      - eval_time: 62m
+        alertname: KnowledgeHomeAvailabilityBurnRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              sli: availability
+              service: alt-backend
+              domain: knowledge-home
+              stack: knowledge-home
+              journey: knowledge-home
+            exp_annotations:
+              summary: "Knowledge Home availability burn rate is critical"
+              description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows. 30-day budget will be exhausted in ~50 hours at this rate."
+              runbook_url: "docs/runbooks/knowledge-home-degraded-mode.md"
+
+  - interval: 1m
+    input_series:
+      - series: 'alt_home_requests_total{status="error"}'
+        values: '0x70'
+      - series: 'alt_home_requests_total{status="ok"}'
+        values: '0x70'
+    alert_rule_test:
+      - eval_time: 62m
+        alertname: KnowledgeHomeAvailabilityBurnRateHigh
+        exp_alerts: []
+
+  # 6x fire / no-fire / zero-observation.
+  - interval: 5m
+    input_series:
+      - series: 'alt_home_requests_total{status="error"}'
+        values: '0+10x80'
+      - series: 'alt_home_requests_total{status="ok"}'
+        values: '0+90x80'
+    alert_rule_test:
+      - eval_time: 6h10m
+        alertname: KnowledgeHomeAvailabilityBurnRateElevated
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+              sli: availability
+              service: alt-backend
+              domain: knowledge-home
+              stack: knowledge-home
+              journey: knowledge-home
+            exp_annotations:
+              summary: "Knowledge Home availability burn rate is elevated"
+              description: "Error rate exceeds 6x burn rate across both 30m and 6h windows."
+              runbook_url: "docs/runbooks/knowledge-home-degraded-mode.md"
+
+  - interval: 5m
+    input_series:
+      - series: 'alt_home_requests_total{status="error"}'
+        values: '0x70 0+20x10'
+      - series: 'alt_home_requests_total{status="ok"}'
+        values: '0+100x70 7000+80x10'
+    alert_rule_test:
+      - eval_time: 6h10m
+        alertname: KnowledgeHomeAvailabilityBurnRateElevated
+        exp_alerts: []
+
+  - interval: 5m
+    input_series:
+      - series: 'alt_home_requests_total{status="error"}'
+        values: '0x80'
+      - series: 'alt_home_requests_total{status="ok"}'
+        values: '0x80'
+    alert_rule_test:
+      - eval_time: 6h10m
+        alertname: KnowledgeHomeAvailabilityBurnRateElevated
+        exp_alerts: []

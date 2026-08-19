@@ -1,0 +1,152 @@
+# Prometheus alerting + recording rules for user-journey SLOs.
+#
+# Counters are emitted at the BFF edge (alt-butterfly-facade), the hop closest
+# to user impact: auth 401s, circuit-breaker 503s and upstream 5xx. Metric:
+#
+#   alt_user_journey_requests_total{journey="feeds|login|search",status="ok|error"}
+#   alt_user_journey_instrumented  # 1 while the counter is registered
+#
+# SLO: 99.5% availability (same error budget as Knowledge Home).
+# Page  = 14.4× burn on (1h ∧ 5m), observation gate increase1h >= 1.
+# Ticket = 6× burn on (6h ∧ 30m), observation gate increase6h >= 1.
+# Solo-ops: any observed journey failure at 14.4x can page; 6× is ticket
+# (Pushover normal), never Emergency.
+#
+# Canonical alerting is Prometheus. Grafana Unified Alerting copies of
+# Knowledge Home SLOs are not provisioned (empty groups) so they cannot
+# double-evaluate. Synthetic activation is per-journey (ADR-000980):
+# UserJourneyNoObservation evaluates feeds/search only when that journey's
+# alt_synthetic_probe_result sample is present in the last 15m (success or
+# failure — result=0 is still a heartbeat). Login whoami is Kratos and
+# never increments the BFF login counter, so a live exporter must not arm
+# login no-observation. Provider-native consecutive-failure paging for
+# login may still fire independently.
+
+groups:
+  - name: user_journey_slo_recordings
+    interval: 15s
+    rules:
+      - record: alt:user_journey:error_ratio:rate5m
+        expr: |
+          sum by (journey) (rate(alt_user_journey_requests_total{status="error"}[5m]))
+          /
+          clamp_min(sum by (journey) (rate(alt_user_journey_requests_total[5m])), 1e-9)
+
+      - record: alt:user_journey:error_ratio:rate30m
+        expr: |
+          sum by (journey) (rate(alt_user_journey_requests_total{status="error"}[30m]))
+          /
+          clamp_min(sum by (journey) (rate(alt_user_journey_requests_total[30m])), 1e-9)
+
+      - record: alt:user_journey:error_ratio:rate1h
+        expr: |
+          sum by (journey) (rate(alt_user_journey_requests_total{status="error"}[1h]))
+          /
+          clamp_min(sum by (journey) (rate(alt_user_journey_requests_total[1h])), 1e-9)
+
+      - record: alt:user_journey:error_ratio:rate6h
+        expr: |
+          sum by (journey) (rate(alt_user_journey_requests_total{status="error"}[6h]))
+          /
+          clamp_min(sum by (journey) (rate(alt_user_journey_requests_total[6h])), 1e-9)
+
+      - record: alt:user_journey:requests:increase1h
+        expr: sum by (journey) (increase(alt_user_journey_requests_total[1h]))
+
+      - record: alt:user_journey:requests:increase6h
+        expr: sum by (journey) (increase(alt_user_journey_requests_total[6h]))
+
+      - record: alt:user_journey:expected
+        expr: |
+          label_replace(vector(1), "journey", "feeds", "", "")
+          or label_replace(vector(1), "journey", "login", "", "")
+          or label_replace(vector(1), "journey", "search", "", "")
+
+  - name: user_journey_slo_alerts
+    interval: 15s
+    rules:
+      # Page: 14.4x of a 99.5% SLO = 7.2% error, both short and long windows.
+      # increase >= 1 is the observation gate: 0/0 stays quiet; a single
+      # observed failure at this ratio pages (solo-ops traffic is << 50/h).
+      - alert: UserJourneyAvailabilityBurnRateHigh
+        expr: |
+          alt:user_journey:error_ratio:rate5m > 14.4 * (1 - 0.995)
+          and
+          alt:user_journey:error_ratio:rate1h > 14.4 * (1 - 0.995)
+          and
+          alt:user_journey:requests:increase1h >= 1
+        for: 2m
+        labels:
+          severity: page
+          sli: availability
+          service: alt-butterfly-facade
+          domain: user-journey
+          stack: user-journey
+        annotations:
+          summary: "User journey {{ $labels.journey }} availability burn rate is critical"
+          description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows for journey {{ $labels.journey }}. 30-day budget will be exhausted in ~50 hours at this rate."
+          runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+
+      # Ticket: 6x burn. Solo-ops — this is not Emergency / Pushover priority 2.
+      - alert: UserJourneyAvailabilityBurnRateElevated
+        expr: |
+          alt:user_journey:error_ratio:rate30m > 6 * (1 - 0.995)
+          and
+          alt:user_journey:error_ratio:rate6h > 6 * (1 - 0.995)
+          and
+          alt:user_journey:requests:increase6h >= 1
+        for: 5m
+        labels:
+          severity: ticket
+          sli: availability
+          service: alt-butterfly-facade
+          domain: user-journey
+          stack: user-journey
+        annotations:
+          summary: "User journey {{ $labels.journey }} availability burn rate is elevated"
+          description: "Error rate exceeds 6x burn rate across both 30m and 6h windows for journey {{ $labels.journey }}."
+          runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+
+      # Scrape / wiring absence. The instrumented gauge is 1 whenever New()
+      # ran; request zeros must not keep this quiet and must not fake coverage.
+      - alert: UserJourneyRequestsAbsent
+        expr: absent_over_time(alt_user_journey_instrumented[15m])
+        for: 2m
+        labels:
+          severity: page
+          sli: availability
+          service: alt-butterfly-facade
+          domain: user-journey
+          stack: user-journey
+        annotations:
+          summary: "User-journey SLO counter has no samples"
+          description: "alt_user_journey_instrumented has been absent for 15m. Burn-rate pages cannot fire. Check alt-butterfly-facade /metrics and the Prometheus scrape job."
+          runbook_url: "docs/runbooks/user-journey-slo-gameday.md"
+
+      # Per-journey missing BFF traffic. Pre-created zeros have increase==0
+      # and are not coverage. Armed only for feeds/search when that journey's
+      # synthetic heartbeat is fresh. Login is excluded: whoami is Kratos.
+      - alert: UserJourneyNoObservation
+        expr: |
+          (
+            alt:user_journey:expected{journey=~"feeds|search"}
+            unless on(journey)
+              (sum by (journey) (increase(alt_user_journey_requests_total[15m])) > 0)
+          )
+          and on(journey)
+            (
+              max by (journey) (
+                present_over_time(alt_synthetic_probe_result{journey=~"feeds|search"}[15m]) == 1
+              )
+            )
+        for: 2m
+        labels:
+          severity: page
+          sli: availability
+          service: alt-butterfly-facade
+          domain: user-journey
+          stack: user-journey
+        annotations:
+          summary: "User journey {{ $labels.journey }} has no SLO observations while its synthetic heartbeat is fresh"
+          description: "increase(alt_user_journey_requests_total{journey=\"{{ $labels.journey }}\"}[15m]) is 0 while alt_synthetic_probe_result for that journey was present in the last 15m. Login whoami is Kratos and is not armed here. Check the synthetic probe and BFF Record path."
+          runbook_url: "docs/runbooks/user-journey-slo-gameday.md"

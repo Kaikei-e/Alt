@@ -56,8 +56,7 @@ export default async function globalSetup(): Promise<void> {
 				if (
 					typeof body !== "object" ||
 					body === null ||
-					(body as Record<string, unknown>)["status"] !== "healthy" ||
-					(body as Record<string, unknown>)["database"] !== "connected"
+					(body as Record<string, unknown>)["status"] !== "healthy"
 				) {
 					throw new Error(`unexpected body ${JSON.stringify(body)}`);
 				}
