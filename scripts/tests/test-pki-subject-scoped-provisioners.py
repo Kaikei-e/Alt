@@ -14,6 +14,13 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+import safe_log  # noqa: E402
+from safe_log import check  # noqa: E402
+
+safe_log.reset()
+
 BOOTSTRAP = ROOT / "pki-agent" / "scripts" / "bootstrap-pki-provisioner.sh"
 VERIFY = ROOT / "pki-agent" / "scripts" / "verify-cn-allowlist.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "compose-audit.yaml"
@@ -35,21 +42,6 @@ WORKLOAD = (
     "news-creator",
     "rag-orchestrator",
 )
-
-PASS = 0
-FAIL = 0
-
-
-def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
-    if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
-        return
-    print(f"  FAIL  {name}")
-    if detail:
-        print(f"        {detail}")
-    FAIL += 1
 
 
 def extract_subjects(text: str, array_name: str) -> list[str]:
@@ -75,7 +67,6 @@ check(
     and "step_ca_root_password" not in re.findall(
         r"--password-file\s+(\S+)", bootstrap
     ),
-    f"password-file args: {re.findall(r'--password-file\\s+(\\S+)', bootstrap)!r}",
 )
 check(
     "bootstrap names provisioners pki-agent-<subject> via helper",
@@ -218,5 +209,5 @@ for event in ("push", "pull_request"):
         f"missing {PKI_SCRIPTS_GLOB}; provisioner contract would skip",
     )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+print(f"\n{safe_log.PASS} passed, {safe_log.FAIL} failed")
+sys.exit(1 if safe_log.FAIL else 0)

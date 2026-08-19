@@ -24,8 +24,13 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from compose_include import load_yaml, production_compose_files  # noqa: E402
+import safe_log  # noqa: E402
+from safe_log import check  # noqa: E402
+
+safe_log.reset()
 
 spec = importlib.util.spec_from_file_location(
     "netns_cascade_audit", ROOT / "scripts" / "compose-netns-cascade-audit.py"
@@ -197,21 +202,6 @@ PRESERVED_NON_PKI_SCRAPES = (
 
 CUTOVER_SIDECARS = tuple(f"pki-agent-{name}" for name in INPROCESS_PARENTS)
 PKI_FLEET_SIZE = 0
-
-PASS = 0
-FAIL = 0
-
-
-def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
-    if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
-        return
-    print(f"  FAIL  {name}")
-    if detail:
-        print(f"        {detail}")
-    FAIL += 1
 
 
 def env_map(svc: dict) -> dict[str, str]:
@@ -458,13 +448,11 @@ for parent, meta in INPROCESS.items():
     check(
         f"{parent} provisioner password file is the subject-scoped JWK secret",
         password_file == f"/run/secrets/{secret_id}",
-        f"STEP_CA_PROVISIONER_PASSWORD_FILE={password_file!r}",
     )
     check(
         f"{parent} does not mount step_ca_root_password",
         "step_ca_root_password" not in secret_names(parent_svc)
         and "step_ca_root_password" not in password_file,
-        f"secrets={sorted(secret_names(parent_svc))} password_file={password_file!r}",
     )
     check(
         f"{parent} mounts only its matching JWK secret {secret_id}",
@@ -574,7 +562,6 @@ check(
 check(
     "in-process JWK secret files are distinct",
     len(set(seen_password_files.values())) == len(INPROCESS_PARENTS),
-    f"{seen_password_files!r}",
 )
 check(
     "in-process compose secret names are distinct",
@@ -684,5 +671,5 @@ check(
     and "InsecureSkipVerify" not in runbook,
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+print(f"\n{safe_log.PASS} passed, {safe_log.FAIL} failed")
+sys.exit(1 if safe_log.FAIL else 0)
