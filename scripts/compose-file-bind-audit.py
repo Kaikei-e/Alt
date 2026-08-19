@@ -15,10 +15,12 @@ Exit 0 when clean, 1 with a per-violation report otherwise.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent
+REPO_ROOT = _SCRIPTS.parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
@@ -194,11 +196,99 @@ def file_bind_violations(
     return found
 
 
+# (service, source) pairs that still bind a gitignored repo path, with why
+# they have not moved to a host path yet. They predate the check and each
+# needs its payload staged on the prod host first, so they are reported as
+# debt rather than failing the gate — a *new* one still fails.
+KNOWN_WORKSPACE_SOURCES = {
+    ("restic-backup", "../backups"): "backup profile only; never rolled by deploy",
+    ("restic-backup", "../backups/postgres"): "backup profile only; never rolled by deploy",
+    ("knowledge-sovereign", "../backups/sovereign-snapshots"): (
+        "snapshot sink; a deploy roll writes into the workspace copy instead of the host one"
+    ),
+    ("tag-generator", "../tag-generator/models/onnx"): (
+        "479 MB of gitignored ONNX models; a deploy roll masks them with an empty dir"
+    ),
+}
+
+
+def _default_is_ignored(path: Path) -> bool:
+    """True when git excludes `path`, so a fresh checkout will not have it."""
+    proc = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", str(path)],
+        capture_output=True,
+        check=False,
+    )
+    return proc.returncode == 0
+
+
+def ephemeral_source_violations(
+    services: dict[str, dict],
+    compose_dir: Path | None = None,
+    is_ignored=_default_is_ignored,
+) -> list[str]:
+    """Bind sources that a fresh checkout of this repo would not contain.
+
+    `create_host_path: false` makes a missing source fail loudly rather than
+    materialise as an empty directory, but it cannot say *where* the source
+    should live. A repo-relative source resolves against the compose file, so
+    on the deploy runner it lands inside the per-job workspace — which holds
+    only tracked files. Point such a mount at a host path (see
+    RECAP_SUBWORKER_DATA_HOST_PATH) instead.
+
+    Interpolated and absolute sources are the host-path form and are skipped:
+    their value comes from the host's .env, which this audit cannot resolve.
+    """
+    if compose_dir is None:
+        return []
+    found: list[str] = []
+    for name, svc in sorted(services.items()):
+        for raw in svc.get("volumes") or []:
+            if isinstance(raw, str):
+                split = split_short_volume(raw)
+            elif isinstance(raw, dict):
+                split = _long_bind(raw)
+            else:
+                continue
+            if split is None:
+                continue
+            source, target = split
+            if is_named_volume(source) or "${" in source or source.startswith("/"):
+                continue
+            resolved = (compose_dir / source).resolve()
+            if not is_ignored(resolved):
+                continue
+            found.append(
+                f"{name} bind source {source} -> {target} is gitignored, so the "
+                f"deploy checkout resolves it to an empty path (use a host path)"
+            )
+    return found
+
+
 def audit_production() -> list[str]:
     found: list[str] = []
     for path, name, svc in iter_production_services():
         found.extend(file_bind_violations({name: svc}, path.parent))
     return found
+
+
+def audit_production_sources() -> list[str]:
+    """Unacknowledged gitignored bind sources across production compose."""
+    found: list[str] = []
+    for path, name, svc in iter_production_services():
+        for violation in ephemeral_source_violations({name: svc}, path.parent):
+            source = violation.split(" bind source ", 1)[1].split(" -> ", 1)[0]
+            if (name, source) in KNOWN_WORKSPACE_SOURCES:
+                continue
+            found.append(violation)
+    return found
+
+
+def acknowledged_workspace_sources() -> list[str]:
+    return [
+        f"{service} {source} — {why}"
+        for (service, source), why in sorted(KNOWN_WORKSPACE_SOURCES.items())
+    ]
 
 
 def main() -> int:
@@ -234,7 +324,23 @@ def main() -> int:
             "or a configs: entry. Short syntax cannot refuse a missing file."
         )
         return 1
-    print("OK: 0 unguarded file binds")
+    ephemeral = audit_production_sources()
+    if ephemeral:
+        print("Bind sources a fresh checkout cannot provide:")
+        for v in ephemeral:
+            print(f"  - {v}")
+        print(
+            "\nThe deploy runner checks Alt out per job, so only tracked files "
+            "are there. Move the source to a host path with a ${VAR:-/var/lib/...} "
+            "default, as recap-subworker /app/data already does."
+        )
+        return 1
+    acknowledged = acknowledged_workspace_sources()
+    if acknowledged:
+        print("Known gitignored bind sources (staged debt, not gating):")
+        for entry in acknowledged:
+            print(f"  - {entry}")
+    print("OK: 0 unguarded file binds, 0 unacknowledged gitignored bind sources")
     return 0
 
 

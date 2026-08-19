@@ -323,11 +323,15 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      # Learning Machine model artifacts — directory bind, same fail-fast
-      # guarantee as /app/data; source is in-repo so this one works from
-      # the workspace.
+      # Learning Machine model artifacts — same host-path rule as /app/data
+      # above, and for the same reason: the 5.4 GB of student/teacher models
+      # are gitignored, so a path relative to this compose file resolves into
+      # the deploy runner's per-job checkout and is empty there. Populate the
+      # host path once (docs/runbooks/runner-setup.md §2.6) and override
+      # RECAP_SUBWORKER_ARTIFACTS_HOST_PATH on a workstation that keeps the
+      # artefacts in the repo tree.
       - type: bind
-        source: ../recap-subworker/recap_subworker/learning_machine/artifacts
+        source: ${RECAP_SUBWORKER_ARTIFACTS_HOST_PATH:-/var/lib/alt-recap-subworker-artifacts}
         target: /app/recap_subworker/learning_machine/artifacts
         read_only: true
         bind:
