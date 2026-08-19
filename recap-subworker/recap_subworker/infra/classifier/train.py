@@ -90,6 +90,25 @@ def load_hyperparams(params_path: Path | None) -> dict:
     return result
 
 
+def clamp_svd_components(requested: int, *, n_samples: int, n_features: int) -> int:
+    """Cap TruncatedSVD rank to what sklearn 1.8.0 will actually fit.
+
+    Randomized SVD accepts ``n_components <= n_features`` and the matrix rank
+    is ``min(n_samples, n_features)``. Passing the hyperparam unchanged crashes
+    training when TF-IDF yields a smaller vocabulary than ``svd_components``.
+    """
+    if n_features < 2:
+        raise ValueError(
+            f"TruncatedSVD requires at least 2 TF-IDF features, got n_features={n_features}"
+        )
+    if requested < 1:
+        raise ValueError(f"svd_components must be >= 1, got {requested}")
+    cap = min(int(n_samples), int(n_features))
+    if cap < 1:
+        raise ValueError(f"TruncatedSVD requires at least 1 sample, got n_samples={n_samples}")
+    return min(int(requested), cap)
+
+
 # --- Custom Transformer for Embeddings ---
 class EmbeddingTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, embedder: Embedder):
@@ -224,8 +243,22 @@ async def main(
     X_test_tfidf = tfidf.transform(X_test)
 
     # Apply TruncatedSVD to reduce TF-IDF dimensionality
+    n_samples, n_features = X_train_tfidf.shape
+    n_components = clamp_svd_components(
+        hyperparams["svd_components"],
+        n_samples=n_samples,
+        n_features=n_features,
+    )
+    if n_components != hyperparams["svd_components"]:
+        logger.info(
+            "Clamped svd_components from %s to %s (n_samples=%s n_features=%s)",
+            hyperparams["svd_components"],
+            n_components,
+            n_samples,
+            n_features,
+        )
     logger.info("Applying TruncatedSVD to TF-IDF features...")
-    svd = TruncatedSVD(n_components=hyperparams["svd_components"], random_state=42)
+    svd = TruncatedSVD(n_components=n_components, random_state=42)
     X_train_tfidf_svd = svd.fit_transform(X_train_tfidf)
     X_test_tfidf_svd = svd.transform(X_test_tfidf)
     logger.info(f"SVD explained variance ratio: {svd.explained_variance_ratio_.sum():.4f}")
@@ -408,6 +441,8 @@ async def main(
     logger.info(f"  - {thresholds_path}")
     logger.info(f"  - {meta_path}")
     logger.info("Done!")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train genre classification model with configurable hyperparameters"
