@@ -136,7 +136,7 @@ def _pki_hook(uid_gid: str) -> dict:
         "command": [
             "sh",
             "-c",
-            f"mkdir -p /certs && chown {uid}:{gid} /certs && chmod 0750 /certs",
+            f"mkdir -p /certs && chown -R {uid}:{gid} /certs && chmod 0750 /certs",
         ],
     }
 

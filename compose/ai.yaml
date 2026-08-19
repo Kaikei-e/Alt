@@ -12,7 +12,7 @@ x-pki-cert-volume-chown-distroless: &pki-cert-volume-chown-distroless
   command:
     - sh
     - -c
-    - mkdir -p /certs && chown 65532:65532 /certs && chmod 0750 /certs
+    - mkdir -p /certs && chown -R 65532:65532 /certs && chmod 0750 /certs
 
 x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
   image: alpine:3.21
@@ -20,7 +20,7 @@ x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
   command:
     - sh
     - -c
-    - mkdir -p /certs && chown 1000:1000 /certs && chmod 0750 /certs
+    - mkdir -p /certs && chown -R 1000:1000 /certs && chmod 0750 /certs
 
 services:
   # Redis cache for news-creator recap summaries

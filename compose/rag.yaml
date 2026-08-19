@@ -12,7 +12,7 @@ x-pki-cert-volume-chown: &pki-cert-volume-chown
   command:
     - sh
     - -c
-    - mkdir -p /certs && chown 65532:65532 /certs && chmod 0750 /certs
+    - mkdir -p /certs && chown -R 65532:65532 /certs && chmod 0750 /certs
 
 services:
   rag-db:

@@ -140,11 +140,18 @@ def is_chown_hook(hook: object, path: str, uid_gid: str) -> bool:
 
 
 def is_pki_cert_chown_hook(hook: object, path: str, uid_gid: str) -> bool:
-    """Wave 4 cert volume: chown to the distroless uid, never world-writable."""
+    """Wave 4 cert volume: chown to the distroless uid, never world-writable.
+
+    The chown must recurse. A volume that carried a pki-agent sidecar holds
+    a root-owned 0400 `svc-key.pem`, and chowning only the directory leaves
+    the parent unable to open the key it is now responsible for renewing.
+    """
     if not is_chown_hook(hook, path, uid_gid):
         return False
     text = hook_command_text(hook)
     if "0777" in text or " chmod 777" in f" {text}":
+        return False
+    if "chown -R" not in text and "chown --recursive" not in text:
         return False
     return "0750" in text or "0700" in text or "chmod 750" in text or "chmod 700" in text
 
