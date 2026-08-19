@@ -88,21 +88,58 @@ if ! curl -fs "http://localhost:11435/api/tags" >/dev/null 2>&1; then
   exit 1
 fi
 
-# --- ensure base model (GGUF import from ggml-org) ----------------------------------------
-# Gemma4:E4B text-only Q4_0 (~4.59GB) — fits ~8GB-class local VRAM.
-# After the 2026-07-15 stealth weight refresh, ggml-org dropped Q4_K_M and
-# ships Q4_0 / Q8_0 / BF16 only (repo lastModified 2026-07-16).
+# --- ensure base model (GGUF import from Google) ----------------------------------------
+# Gemma4:E4B text-only QAT Q4_0 (~5.15GB) — fits ~8GB-class local VRAM.
+# Quantization-Aware Training simulates 4-bit math during training, so quality
+# tracks bf16 far more closely than the post-training quantization ggml-org
+# ships. Google publishes the GGUF itself under Apache 2.0, which removes the
+# third-party requantization step from the supply chain.
 # Ollama registry gemma4:e4b (~9.6GB, multimodal projector) still does not fit.
-# See: https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF
+# See: https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf
 BASE_MODEL="${OLLAMA_BASE_MODEL:-gemma4-e4b-q4km}"
 VARIANT_MODELS=("gemma4-e4b-8k" "gemma4-e4b-12k")
-GGUF_URL="https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf"
+GGUF_URL="https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf"
 GGUF_DIR="/tmp/gguf"
-GGUF_FILE="${GGUF_DIR}/gemma-4-E4B-it-Q4_0.gguf"
+GGUF_FILE="${GGUF_DIR}/gemma-4-E4B_q4_0-it.gguf"
+# Multi-token prediction draft head. Ollama hands it to llama-server as
+# --spec-type draft-mtp, which measured 1.96x generation throughput on the
+# local RTX 4060 without changing the output: speculative decoding resamples
+# rejected drafts from the base model, so the distribution is unchanged.
+# Google's QAT repo ships no MTP head, so the draft comes from ggml-org.
+# The variant tags inherit the draft layer through FROM.
+MTP_GGUF_URL="https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/mtp-gemma-4-E4B-it-Q4_0.gguf"
+MTP_GGUF_FILE="${GGUF_DIR}/mtp-gemma-4-E4B-it-Q4_0.gguf"
 FORCE_MODEL_REFRESH="${FORCE_MODEL_REFRESH:-0}"
-# Optional integrity pin: when set, downloaded GGUF must match or startup fails.
-# Captured from the 2026-07-16 ggml-org Q4_0 refresh used in ADR-000947.
+# Optional integrity pins: when set, a downloaded GGUF must match or startup fails.
+# Captured from the Google QAT Q4_0 GGUF (repo lastModified 2026-07-17) and the
+# ggml-org MTP draft head.
 GGUF_SHA256_EXPECTED="${GGUF_SHA256_EXPECTED:-}"
+MTP_SHA256_EXPECTED="${MTP_SHA256_EXPECTED:-}"
+
+# Downloads $2 to $3 and fails unless its sha256 matches $4. An empty $4 logs
+# the digest without comparing. $1 labels the file in every message.
+fetch_gguf() {
+  local label=$1 url=$2 dest=$3 expected=$4 actual
+  if ! curl -fSL --progress-bar -o "$dest" "$url"; then
+    echo "Error: Failed to download ${label} from HuggingFace"
+    return 1
+  fi
+  echo "  ${label} downloaded successfully"
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    echo "Error: sha256sum required to verify ${label} integrity"
+    return 1
+  fi
+  actual="$(sha256sum "$dest" | awk '{print $1}')"
+  echo "  ${label} SHA256=${actual}"
+  if [ -n "$expected" ]; then
+    if [ "$actual" != "$expected" ]; then
+      echo "Error: ${label} SHA256 mismatch (expected ${expected}, got ${actual})"
+      return 1
+    fi
+    echo "  ${label} SHA256 matches expected digest"
+  fi
+  return 0
+}
 
 MODELFILE_DIR="$(dirname "$0")"
 if [ ! -f "$MODELFILE_DIR/Modelfile.gemma4-e4b-q4km" ]; then
@@ -111,7 +148,7 @@ fi
 
 if [ "$FORCE_MODEL_REFRESH" = "1" ]; then
   echo "gemma4.refresh.forced=true"
-  echo "WARNING: FORCE_MODEL_REFRESH=1 will DELETE local Gemma4 tags and re-download ~4.6GB."
+  echo "WARNING: FORCE_MODEL_REFRESH=1 will DELETE local Gemma4 tags and re-download ~5.2GB."
   echo "WARNING: Use as a one-shot only; set FORCE_MODEL_REFRESH=0 after success to avoid wipe-on-restart."
   for model_name in "$BASE_MODEL" "${VARIANT_MODELS[@]}"; do
     if ollama list 2>/dev/null | grep -q "^${model_name}"; then
@@ -128,40 +165,26 @@ fi
 
 echo "Ensuring ${BASE_MODEL} model exists..."
 if ! ollama list 2>/dev/null | grep -q "^${BASE_MODEL}"; then
-  echo "  Model not found. Downloading GGUF from ggml-org (Q4_0, ~4.59GB)..."
+  echo "  Model not found. Downloading QAT GGUF from Google (Q4_0, ~5.15GB)..."
   mkdir -p "$GGUF_DIR"
-  if curl -fSL --progress-bar -o "$GGUF_FILE" "$GGUF_URL"; then
-    echo "  GGUF downloaded successfully"
-    if ! command -v sha256sum >/dev/null 2>&1; then
-      echo "Error: sha256sum required to verify GGUF integrity"
-      rm -f "$GGUF_FILE"
-      exit 1
-    fi
-    GGUF_SHA256="$(sha256sum "$GGUF_FILE" | awk '{print $1}')"
-    echo "  GGUF SHA256=${GGUF_SHA256}"
-    if [ -n "$GGUF_SHA256_EXPECTED" ]; then
-      if [ "$GGUF_SHA256" != "$GGUF_SHA256_EXPECTED" ]; then
-        echo "Error: GGUF SHA256 mismatch (expected ${GGUF_SHA256_EXPECTED}, got ${GGUF_SHA256})"
-        rm -f "$GGUF_FILE"
-        exit 1
-      fi
-      echo "  GGUF SHA256 matches GGUF_SHA256_EXPECTED"
-    fi
-    echo "  Importing GGUF via ollama create ${BASE_MODEL}..."
-    if ollama create "$BASE_MODEL" -f "$MODELFILE_DIR/Modelfile.gemma4-e4b-q4km"; then
-      echo "  Model ${BASE_MODEL} created successfully"
-    else
-      echo "Error: Failed to create model from GGUF"
-      rm -f "$GGUF_FILE"
-      exit 1
-    fi
-    echo "  Cleaning up GGUF file..."
-    rm -f "$GGUF_FILE"
-    rmdir "$GGUF_DIR" 2>/dev/null || true
-  else
-    echo "Error: Failed to download GGUF from HuggingFace"
+  if ! fetch_gguf "GGUF" "$GGUF_URL" "$GGUF_FILE" "$GGUF_SHA256_EXPECTED"; then
+    rm -rf "$GGUF_DIR"
     exit 1
   fi
+  echo "  Downloading MTP draft head from ggml-org (~60MB)..."
+  if ! fetch_gguf "MTP draft" "$MTP_GGUF_URL" "$MTP_GGUF_FILE" "$MTP_SHA256_EXPECTED"; then
+    rm -rf "$GGUF_DIR"
+    exit 1
+  fi
+  echo "  Importing GGUF via ollama create ${BASE_MODEL}..."
+  if ! ollama create "$BASE_MODEL" -f "$MODELFILE_DIR/Modelfile.gemma4-e4b-q4km"; then
+    echo "Error: Failed to create model from GGUF"
+    rm -rf "$GGUF_DIR"
+    exit 1
+  fi
+  echo "  Model ${BASE_MODEL} created successfully"
+  echo "  Cleaning up GGUF files..."
+  rm -rf "$GGUF_DIR"
 else
   echo "  Model ${BASE_MODEL} already exists"
   echo "gemma4.refresh.skipped=${BASE_MODEL}"

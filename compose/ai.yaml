@@ -75,14 +75,16 @@ services:
       - OLLAMA_HOME=/home/ollama-user/.ollama
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - OLLAMA_HOST=0.0.0.0:11435
-      # Gemma4:E4B — 4.5B effective, ggml-org Q4_0 (~4.59GB), 128K context
+      # Gemma4:E4B — 4.5B effective, Google QAT Q4_0 (~5.15GB), 128K context
       # Set OLLAMA_BASE_MODEL=gemma3:4b-it-qat for rollback to Gemma3
       # FORCE_MODEL_REFRESH=1 is a destructive one-shot (ollama rm + re-download).
       # Always return to 0 after a successful refresh — leaving it at 1 wipes models on every restart.
       - OLLAMA_BASE_MODEL=${OLLAMA_BASE_MODEL:-gemma4-e4b-q4km}
       - FORCE_MODEL_REFRESH=${FORCE_MODEL_REFRESH:-0}
-      # Optional: pin expected GGUF digest (2026-07-16 ggml-org Q4_0). Empty = log-only verify.
-      - GGUF_SHA256_EXPECTED=${GGUF_SHA256_EXPECTED:-a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2}
+      # Optional: pin expected GGUF digest (Google QAT Q4_0). Empty = log-only verify.
+      - GGUF_SHA256_EXPECTED=${GGUF_SHA256_EXPECTED:-676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee}
+      # Same pin for the ggml-org MTP draft head that drives speculative decoding.
+      - MTP_SHA256_EXPECTED=${MTP_SHA256_EXPECTED:-d19a11e4fd5019967d9296f77f4d3e139c8903909f70c3a9cf009c9af4b9b88d}
       # KV cache quantization: q8_0 halves KV cache memory vs f16 (resolve recommendation)
       - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
       # RAG-dedicated mode: favor a single larger context slot over dual-slot concurrency

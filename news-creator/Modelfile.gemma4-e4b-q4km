@@ -1,7 +1,11 @@
-# ggml-org dropped Q4_K_M after the 2026-07-15 weight refresh; Q4_0 is the
-# official 4-bit text GGUF (~4.59GB). Ollama tag gemma4-e4b-q4km is kept for
-# consumer env compatibility (PM-2026-016).
-FROM /tmp/gguf/gemma-4-E4B-it-Q4_0.gguf
+# Google's Quantization-Aware Training 4-bit text GGUF (~5.15GB). The Ollama
+# tag gemma4-e4b-q4km is kept for consumer env compatibility (PM-2026-016)
+# even though the quantization is Q4_0, not Q4_K_M.
+FROM /tmp/gguf/gemma-4-E4B_q4_0-it.gguf
+
+# Multi-token prediction draft head, from ggml-org because Google's QAT repo
+# ships none. The 8k / 12k tags inherit this layer through FROM.
+DRAFT /tmp/gguf/mtp-gemma-4-E4B-it-Q4_0.gguf
 
 TEMPLATE """{{- $system := "" }}
 {{- range .Messages }}
