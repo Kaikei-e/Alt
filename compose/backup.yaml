@@ -95,17 +95,22 @@ services:
       docker-socket-proxy:
         condition: service_started
     volumes:
-      # Configured SSH keys for remote sync. Host-only files: long-syntax
-      # bind + create_host_path: false so a missing key refuses rather
-      # than mounting as an empty directory (PM-2026-036).
+      # Configured SSH keys for remote sync. Host-only files: a path relative
+      # to this compose file follows the `secrets` symlink on an operator host
+      # and resolves into the deploy runner's per-job checkout, where the
+      # gitignored files are absent. Same host-path rule as recap-subworker
+      # artefacts. Override RESTIC_SSH_*_HOST_PATH in a local .env to point at
+      # ../secrets/ssh/... on a workstation that keeps the keys in the repo
+      # tree. Long-syntax bind + create_host_path: false so a missing key
+      # refuses rather than mounting as an empty directory (PM-2026-036).
       - type: bind
-        source: ../secrets/ssh/id_ed25519_backup
+        source: ${RESTIC_SSH_KEY_HOST_PATH:-/var/lib/alt-restic/ssh/id_ed25519_backup}
         target: /root/.ssh/id_ed25519
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ../secrets/ssh/known_hosts
+        source: ${RESTIC_SSH_KNOWN_HOSTS_HOST_PATH:-/var/lib/alt-restic/ssh/known_hosts}
         target: /root/.ssh/known_hosts
         read_only: true
         bind:

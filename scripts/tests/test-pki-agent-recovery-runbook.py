@@ -49,7 +49,11 @@ BASH_TEST = re.compile(r"^bash\s+(\S+\.sh)\s*$")
 PASS = 0
 FAIL = 0
 
-CHOWN_CERTS = re.compile(r"chown\s+(\d+):(\d+)\s+/certs")
+# pre_start must chown the volume *contents* (`-R`). A directory-only
+# chown leaves 0400 keys owned by root after a previous mint, and the
+# parent cannot rewrite them. Optional -R so an older non-recursive
+# form still parses until every stack file has moved.
+CHOWN_CERTS = re.compile(r"chown\s+(?:-R\s+)?(\d+):(\d+)\s+/certs")
 BASH_FENCE = re.compile(r"```(?:bash)?\n(.*?)```", re.S)
 ASSOC_ARRAY = re.compile(
     r"declare\s+-A\s+(?P<name>[A-Z_]+)=\((?P<body>.*?)\)",
@@ -281,6 +285,18 @@ def inprocess_parents() -> dict[str, tuple[str, str]]:
 
 
 print("pki-agent recovery runbook structure")
+
+check(
+    "pre_start chown regex matches recursive -R (volume contents, not just the dir)",
+    CHOWN_CERTS.search(
+        "mkdir -p /certs && chown -R 65532:65532 /certs && chmod 0750 /certs"
+    )
+    is not None,
+)
+check(
+    "pre_start chown regex still matches a non-recursive chown of /certs",
+    CHOWN_CERTS.search("chown 65532:65532 /certs") is not None,
+)
 
 runbook = RUNBOOK.read_text(encoding="utf-8")
 parents = inprocess_parents()

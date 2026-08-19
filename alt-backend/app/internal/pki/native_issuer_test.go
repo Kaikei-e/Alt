@@ -262,7 +262,14 @@ func writeCAError(w http.ResponseWriter, status int, msg string) {
 
 func (f *fakeStepCA) handleSign(w http.ResponseWriter, r *http.Request) {
 	if f.signDelay > 0 {
-		time.Sleep(f.signDelay)
+		timer := time.NewTimer(f.signDelay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-r.Context().Done():
+			writeCAError(w, http.StatusGatewayTimeout, "canceled")
+			return
+		}
 	}
 	if f.blockSign != nil {
 		select {

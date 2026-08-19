@@ -275,6 +275,61 @@ check(
     == [],
 )
 
+# restic SSH keys live under gitignored `secrets/`. A path relative to this
+# compose file follows the `secrets` symlink on an operator host (so a local
+# audit can miss them) and resolves inside the deploy checkout on CI, where
+# the files are absent. Same host-path rule as recap-subworker artefacts.
+RESTIC_SSH_RELATIVE = {
+    "restic-backup": {
+        "volumes": [
+            {
+                "type": "bind",
+                "source": "../secrets/ssh/id_ed25519_backup",
+                "target": "/root/.ssh/id_ed25519",
+                "read_only": True,
+                "bind": {"create_host_path": False},
+            }
+        ]
+    }
+}
+check(
+    "repo-relative restic SSH key bind is a gitignored-source violation",
+    any(
+        "restic-backup" in v and "id_ed25519_backup" in v
+        for v in audit.ephemeral_source_violations(
+            RESTIC_SSH_RELATIVE, pathlib.Path("/repo/compose"), is_ignored=lambda _p: True
+        )
+    ),
+)
+
+RESTIC_SSH_HOST = {
+    "restic-backup": {
+        "volumes": [
+            {
+                "type": "bind",
+                "source": "${RESTIC_SSH_KEY_HOST_PATH:-/var/lib/alt-restic/ssh/id_ed25519_backup}",
+                "target": "/root/.ssh/id_ed25519",
+                "read_only": True,
+                "bind": {"create_host_path": False},
+            },
+            {
+                "type": "bind",
+                "source": "${RESTIC_SSH_KNOWN_HOSTS_HOST_PATH:-/var/lib/alt-restic/ssh/known_hosts}",
+                "target": "/root/.ssh/known_hosts",
+                "read_only": True,
+                "bind": {"create_host_path": False},
+            },
+        ]
+    }
+}
+check(
+    "host-path restic SSH binds are never checked against gitignore",
+    audit.ephemeral_source_violations(
+        RESTIC_SSH_HOST, pathlib.Path("/repo/compose"), is_ignored=lambda _p: True
+    )
+    == [],
+)
+
 NAMED_VOLUME = {
     "recap-subworker": {"volumes": ["recap_subworker_certs:/certs"]}
 }
@@ -296,6 +351,23 @@ for v in ephemeral:
 if prod:
     for v in prod:
         print(f"    leftover: {v}")
+
+restic_ssh_sources = []
+for _path, name, svc in audit.iter_production_services():
+    if name != "restic-backup":
+        continue
+    for raw in svc.get("volumes") or []:
+        if not isinstance(raw, dict):
+            continue
+        if not str(raw.get("target") or "").startswith("/root/.ssh/"):
+            continue
+        restic_ssh_sources.append(str(raw.get("source") or ""))
+check(
+    "production restic SSH binds use host-path interpolation",
+    any("${RESTIC_SSH_KEY_HOST_PATH" in s for s in restic_ssh_sources)
+    and any("${RESTIC_SSH_KNOWN_HOSTS_HOST_PATH" in s for s in restic_ssh_sources)
+    and not any("../secrets/" in s for s in restic_ssh_sources),
+)
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
