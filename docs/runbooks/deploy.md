@@ -26,6 +26,12 @@ pact-broker-cli --version   # → 0.6.3 以降
 cd ~/alt
 git pull origin main
 ./scripts/deploy.sh production
+
+# First install only: no com.docker.compose.project=alt containers visible.
+# matching pki-agent=0 on a running stack is a steady no-op and does not
+# need this ACK. Wrong Docker context / rootless looks empty — do not
+# set the ACK unless the host has never run project=alt.
+# ALT_ACK_FRESH_INSTALL=1 ./scripts/deploy.sh production
 ```
 
 `scripts/deploy.sh` が以下を順に行う:

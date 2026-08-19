@@ -1,6 +1,6 @@
 ---
 title: Runbooks 索引 — カテゴリ・型・鮮度の構造化マップ
-date: 2026-07-07
+date: 2026-08-19
 tags:
   - runbook
   - index
@@ -9,7 +9,7 @@ tags:
 
 # Runbooks 索引
 
-`docs/runbooks/` 全 27 本の構造化索引。**症状から入るなら下の対応表、横断知識なら [[crystallized-knowledge]]** へ。
+`docs/runbooks/` 全 35 本の構造化索引。**症状から入るなら下の対応表、横断知識なら [[crystallized-knowledge]]** へ。
 
 各ランブックは 3 つの型に分類する:
 - **incident** — 症状起点のインシデント対応 (アラート / ユーザー報告 → 調査 → 復旧)
@@ -27,13 +27,18 @@ tags:
 | "why" 表示が壊れている | [[knowledge-home-malformed-why-spike]] |
 | リアルタイム更新が止まる / stream 切断多発 | [[knowledge-home-stream-disconnect-surge]] + [[connect-rpc-streaming-checklist]] |
 | `buf breaking` で PR がブロック | [[knowledge-home-contract-break]] |
-| cert 期限切れ / TLS handshake 失敗 / BFF 502 | [[pki-agent-recovery]] → [[mtls-cutover]] |
+| cert 期限切れ / TLS handshake 失敗 / leftover pki-agent / BFF 502 | [[pki-agent-recovery]] |
 | Acolyte レポートが止まる / stuck run | [[acolyte-pipeline-recovery]] / [[acolyte-checkpoint-resume]] |
 | Acolyte の LLM timeout / JSON 切断 | [[acolyte-llm-timeout]] |
 | Acolyte 依存ダウン時の縮退 | [[acolyte-degraded-mode]] |
 | レポート再生成したい | [[acolyte-manual-regeneration]] |
 | projector が silent stall / 通知が来ない | [[sovereign-projector-notification]] |
 | recap の deploy が artefact で落ちる | [[3days-recap-artefact-recovery]] + [[runner-setup]] |
+| 新しい compose bind / 静的設定ファイルを足す | [[compose-bind-mount-policy]] |
+| 新しい compose サービス / サイドカーを足す | [[ops-surface-budget]] |
+| `/health` は緑なのに依存が死んでいる | [[health-deep-contract]] |
+| エッジのログイン / Home / 検索が死んでいる | [[synthetic-monitoring]] |
+| feeds / login / search の burn-rate / UserJourneyRequestsAbsent | [[user-journey-slo-gameday]] |
 | Pact Broker 401 / verification failure / can-i-deploy ブロック | [[pact-broker-ops]] |
 | データ喪失・破損 / restore が必要 | [[backup-restore]] |
 | Admin 監視画面の異常 | [[admin-observability]] |
@@ -44,19 +49,20 @@ tags:
 ### 0. 横断知識
 - [[crystallized-knowledge]] — **ADR 940 本 / PM 46 本の結晶化知識** (障害パターン百科 / 診断の定石 / Critical Rules 出典 / ADR 時代区分マップ)
 
-### 1. デプロイ & CI/CD (4)
+### 1. デプロイ & CI/CD (5)
 | ランブック | 型 | 一言 |
 |---|---|---|
 | [[deploy]] ⚠️ | operation | 手動本番デプロイ (Pact gate → rolling recreate → smoke) |
 | [[pact-broker-ops]] ⚠️ | operation + incident | Broker の起動 / 認証 / バックアップ / failed-verify 調査 |
 | [[runner-setup]] ⚠️ | operation | self-hosted runner (alt-builder / alt-prod) の bootstrap |
 | [[3days-recap-artefact-recovery]] ⏳⚠️ | incident | rustbert-cache / joblib artefact 復旧で deploy を unblock |
+| [[ops-surface-budget]] | checklist | P2-14 OSU freeze（77/63/16、F1–F5）。新 long-running は offset か sunset（[[000979]]） |
 
 ### 2. mTLS / PKI (2)
 | ランブック | 型 | 一言 |
 |---|---|---|
 | [[mtls-cutover]] ⚠️ | operation + incident | X-Service-Token → mTLS 切替手順 + 事象別対応 + cert rotation |
-| [[pki-agent-recovery]] | incident | cert 期限切れ / pki-agent サイドカー障害の緊急対応 |
+| [[pki-agent-recovery]] | incident | in-process enrollment の cert 期限切れ / leftover sidecar dual-writer / deploy-rollback 順（[[000978]]） |
 
 ### 3. Knowledge Home / Loop インシデント対応 (6)
 | ランブック | 型 | 一言 |
@@ -86,7 +92,7 @@ tags:
 | [[acolyte-manual-regeneration]] | operation | レポート手動再生成 (full / scope / batch) + 品質 SQL |
 | [[acolyte-pipeline-recovery]] | incident | orphaned runs / checkpoint 破損 / stuck job の系統復旧 |
 
-### 6. プラットフォーム横断 (5)
+### 6. プラットフォーム横断 (9)
 | ランブック | 型 | 一言 |
 |---|---|---|
 | [[admin-observability]] | operation | Admin UI Observability タブの運用 (flag / trust boundary / metric allowlist) |
@@ -94,6 +100,10 @@ tags:
 | [[backup-restore]] ⚠️ | operation + incident | 3-2-1 バックアップ、restore 4 シナリオ、DR 訓練 |
 | [[connect-rpc-streaming-checklist]] | checklist | 新規 streaming service の 5 軸チェック + 月次 audit |
 | [[knowledge-home-gameday-checklist]] ⚠️ | checklist | chaos 訓練 5 シナリオの台本 |
+| [[compose-bind-mount-policy]] | operation | file bind 禁止 / `configs:` / `create_host_path: false`（[[000979]]） |
+| [[health-deep-contract]] | checklist | `/health/deep` pass\|warn\|fail。compose probe は cheap liveness のまま（[[000980]]） |
+| [[synthetic-monitoring]] | checklist | エッジ旅程の provider-agnostic spec。activation は ops gate（[[000980]]） |
+| [[user-journey-slo-gameday]] | checklist | feeds / login / search MWMBR と KH `status=`。BFF rebuild が Prometheus reload より先 |
 
 ## 整備課題（2026-07-07 棚卸し）
 
@@ -105,7 +115,7 @@ tags:
 4. **[[backup-restore]]** の CRITICAL 対象一覧に acolyte-db / knowledge-sovereign-db / pre-processor-db が欠落 — データ保護の実害リスク
 5. **[[acolyte-degraded-mode]]** が search-indexer の health を 7700 (Meilisearch のポート) で確認する誤記あり
 6. **時限性ランブックの寿命管理** — [[knowledge-loop-recall-deprecation]] / [[sovereign-cutover]] / [[3days-recap-artefact-recovery]] は完了状態の追記がなく、生きているか終わったか判別不能。完了時は冒頭に `status: archived` を追記する規約とする
-7. **宣言済み未作成** — `distribution-paths.md` と `compose-bind-mount-policy.md` が [[3days-recap-artefact-recovery]] 内で作成予定と明記されたまま未着手
+7. **宣言済み未作成** — `distribution-paths.md` が [[3days-recap-artefact-recovery]] 内で作成予定と明記されたまま未着手。`compose-bind-mount-policy.md` は 2026-08-18 に追加 (PM-036 AI #10)
 
 ## カバレッジギャップ（ランブックが無い頻出領域）
 

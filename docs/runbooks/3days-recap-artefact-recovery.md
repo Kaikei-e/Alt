@@ -185,7 +185,7 @@ ORDER BY created_at DESC;
 | compose up が "bind source path does not exist" で failed | host `/var/lib/alt-recap-subworker-data/` 不在 | `ls -la /var/lib/alt-recap-subworker-data/` |
 | recap-subworker が起動しない (validator panic) | `RECAP_SUBWORKER_GENRE_CLASSIFIER_MODEL_PATH_*` env が dir を指している | `docker compose logs recap-subworker` の冒頭に ValidationError |
 | recap-subworker 起動するが classify-runs タイムアウト | recap-worker 側 dispatch の real-timeout (LLM 側の issue 等) | recap-worker の `recap_failed_tasks.error` |
-| 上記以外で `classification returned 0 results ...` 復活 | [[PM-2026-033]] 系の mTLS scheme drift 再発の可能性 | recap-worker / pki-agent-recap-subworker のログ照合 |
+| 上記以外で `classification returned 0 results ...` 復活 | [[PM-2026-033]] 系の mTLS scheme drift 再発の可能性 | recap-worker / recap-subworker 親プロセスのログ照合（pki-agent sidecar は 0。[[000978]]） |
 
 ## ロールバック
 
@@ -212,7 +212,7 @@ ORDER BY created_at DESC;
 - [ ] **AI #6 (期限 2026-05-15)**: `/v1/classify-runs` 実データ smoke を `e2e/hurl/recap-subworker/` として新設 (現状 short-circuit)
 - [ ] **AI #7 (期限 2026-05-15)**: `recap_failed_tasks.error_message` の区分集計を Prometheus exporter で expose
 - [ ] **AI #8 (期限 2026-05-15)**: recap-worker 側の `classification returned 0 results ...` エラーを upstream error kind 毎に区別 (PM-033/035/036 で 3 PM 連続同文)
-- [ ] **AI #10 (期限 2026-05-31)**: `docs/runbooks/compose-bind-mount-policy.md` で file-scoped bind 使用 policy を明文化
+- [x] **AI #10 (期限 2026-05-31)**: `docs/runbooks/compose-bind-mount-policy.md` で file-scoped bind 使用 policy を明文化。CI は `python3 scripts/compose-file-bind-audit.py` が exit 0
 - [ ] **AI #11 (期限 2026-05-15)**: classifier.py の optional artefact 全 path (`tfidf` / `svd` / `scaler` / `thresholds`) を `.is_file()` に tighten
 
 ## 緊急時連絡・エスカレーション

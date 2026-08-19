@@ -81,7 +81,7 @@ ADR-000001〜000940 (940 本) と PM-2026-001〜046 (46 本) を全件解析し�
 
 **予防原則**:
 - 設定は「配管 → 実効化」の 2 段で空振りする。code に入れても compose environment に載せなければ死んでいる ([[000800]] [[000886]])
-- **file-scoped bind mount は原則禁止**。host source 欠落を warning なしに空ディレクトリ化し `Path.exists()` を素通りする — `is_file()` + directory bind / named volume (PM-2026-036 [[000825]])
+- **file-scoped bind mount は原則禁止**。host source 欠落を warning なしに空ディレクトリ化し `Path.exists()` を素通りする — `configs:` か long-syntax + `create_host_path: false`、artefact は directory bind + `is_file()` (PM-2026-036 [[000825]] [[compose-bind-mount-policy]])
 - init container (`service_completed_successfully`) は rolling deploy (`--no-deps`) で一度も走らない。compose パターンは deploy model との整合を ADR セルフチェック項目に (PM-2026-037 [[000826]])
 - host bind artefact を導入する PR は populate 責任 (誰が/いつ/どのコマンド) を同一 PR で確立 (PM-2026-038)
 - 永続化ファイル (token 等) は tmpfile + rename + fsync。disk full 中の非 atomic write は 0 byte 化する (PM-2026-043)
@@ -91,7 +91,7 @@ ADR-000001〜000940 (940 本) と PM-2026-001〜046 (46 本) を全件解析し�
 
 **定義**: cert の発行・更新・ロード・提示のどこかが欠け、「cert は更新された ≠ サービスが新 cert を使っている」となる。PM-2026-028→034 の 7 連鎖 (netns 幽霊化は計 4 回再発)。
 
-**代表事例**: PM-2026-028〜034、[[000747]] [[000748]] [[000757]] [[000773]] [[000774]] [[000782]] [[000783]] [[000784]] [[000802]]
+**代表事例**: PM-2026-028〜034、[[000747]] [[000748]] [[000757]] [[000773]] [[000774]] [[000782]] [[000783]] [[000784]] [[000802]] [[000978]]
 
 **即応**: [[pki-agent-recovery]] / [[mtls-cutover]] へ。切り分け定型:
 - `docker cp` + `openssl x509 -dates` で「ディスク上の cert」と「提示されている cert」の両端比較 (PM-2026-032)
@@ -100,7 +100,7 @@ ADR-000001〜000940 (940 本) と PM-2026-001〜046 (46 本) を全件解析し�
 
 **予防原則**:
 - cert hot-reload は **サーバ・クライアント両側で対称に** (handshake ごと mtime 比較 → 再読込)。片側だけだと 24h ローテで必ず発火 ([[000773]] PM-2026-032)
-- nginx は起動時にしか cert をロードしない。TLS 終端は reload 機構をミドルウェア選択の一級要件に ([[000748]] PM-2026-029)。uvicorn/pyqwest も hot-swap 不可 — Python 系は pki-agent reverse-proxy sidecar に寄せる ([[000774]])
+- nginx は起動時にしか cert をロードしない。TLS 終端は reload 機構をミドルウェア選択の一級要件に ([[000748]] PM-2026-029)。uvicorn/pyqwest も hot-swap 不可だったため Pattern B は pki-agent reverse-proxy sidecar に寄せた（[[000774]]）。**現行は inbound TLS を親プロセスが終端**し、workload sidecar は 0（[[000978]]）。`network_mode: service:X` を pki-agent に戻さない
 - cert-init の「ファイルが存在すれば exit 0」は期限切れを温存する致命的欠陥。期限切れは renew でなく新 OTT re-enrollment ([[000747]])
 - healthcheck は cert 鮮度でなく **担う機能そのもの** (listener liveness / netns topology) をプローブ。self-probe は旧 netns 内 loopback で常に成功する罠 (PM-2026-034 [[000784]] → [[000802]])
 - Docker の HEALTHCHECK unhealthy は restart を trigger しない (K8s livenessProbe と違う)。自己治癒は deploy レイヤの cascade recreate に委譲 (PM-2026-034)
@@ -229,10 +229,11 @@ ADR-000001〜000940 (940 本) と PM-2026-001〜046 (46 本) を全件解析し�
 
 ## §11. Docker / Compose 構造的 footgun
 
-**代表事例**: PM-2026-023/030/034/036/037、[[000578]] [[000761]] [[000782]] [[000802]] [[000809]] [[000825]] [[000826]] [[000895]]
+**代表事例**: PM-2026-023/030/034/036/037、[[000578]] [[000761]] [[000782]] [[000802]] [[000809]] [[000825]] [[000826]] [[000895]] [[000978]] [[000979]]
 
 **予防原則**:
-- `network_mode: service:X` は作成時に container id を一度だけ解決 — 親 force-recreate で sidecar は旧 netns に孤立。`depends_on.<parent>.restart: true` は force-recreate では発火しない ([[000782]] [[000802]])
+- `network_mode: service:X` is forbidden for pki-agent (Wave 4 Pattern B cutover, [[000978]]). Inbound TLS lives in the parent; a shared netns re-opens the orphan class. `scripts/compose-netns-cascade-audit.py` asserts zero such sidecars ([[000782]] [[000802]])
+- file-bind / `pre_start` / init-edge 22 / OSU 77·63·16 は CI freeze（[[000979]] [[compose-bind-mount-policy]] [[ops-surface-budget]]）
 - `docker compose restart` は host port を再 bind しない — bind 失敗コンテナは `--force-recreate` (運用 memory 由来)
 - `depends_on.condition: service_healthy` の参照先に healthcheck が無いと `up --wait` が abort — compose config render の CI ゲートで検知 ([[000809]])
 - 長時間稼働サービスに `restart: always` + 依存元に `depends_on` を明示 — 欠けると 33h silent degradation (PM-2026-023 [[000703]])

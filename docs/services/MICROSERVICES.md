@@ -1,10 +1,10 @@
 # Alt Platform Microservices
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: August 19, 2026_
 
 ## Overview
 
-Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームです。Docker Compose がオーケストレーションの source of truth であり、複数のプロファイルでオプションの AI、Recap、RAG、メッセージング、ロギング機能を提供します。
+Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームです。Docker Compose がオーケストレーションの source of truth です。AI / Recap / RAG / logging は本番 `include:` チェーン（`compose/compose.yaml`）に入っている。profiled-only は `alt-perf` / `docker-socket-proxy` / `k6` / `restic-backup` の **4** 本。本番 include チェーンは **77 declared / 63 long-running**（ephemeral 10 + profiled 4）。accidental OSU cap は **16**（`*-logs` のみ）。会計の正本は [[ops-surface-budget]] / [[000979]]。
 
 > **インシデント対応・障害パターンの入口**: 症状起点の調査は [[README|runbooks 索引]] (症状 → runbook 対応表)、横断的な障害パターン知識は [[crystallized-knowledge]] (ADR 940 本 / PM 46 本の結晶化) から入る。
 
@@ -101,8 +101,11 @@ all interfaces and are out of scope here.
 ### PKI Services
 | Service | Language | Port(s) | Compose File | Health Endpoint |
 |---------|----------|---------|--------------|-----------------|
-| step-ca | - (smallstep/step-ca 0.27.5) | - | pki.yaml | - |
-| pki-agent (per-service sidecars) | Go 1.26+ | - | pki.yaml | `/pki-agent healthcheck` |
+| step-ca | - (smallstep/step-ca 0.30.2) | - | pki.yaml | `step ca health` |
+| step-ca-bootstrap | oneshot | - | pki.yaml | - |
+| pki-agent | Go 1.26+ | - | **not a compose workload** | tooling only |
+
+> **Workload sidecar は退役**（[[000978]]）。east-west 14 親（alt-backend / alt-harvester / alt-data-hub / alt-notifier / alt-butterfly-facade / auth-hub / pre-processor / search-indexer / tag-generator / recap-worker / acolyte-orchestrator / recap-subworker / news-creator / rag-orchestrator）が **in-process** で enroll / renew する（`PKI_ENROLLMENT=enabled`、subject-scoped JWK `pki-agent-<subject>`）。pki-agent イメージと `pki-agent/scripts/bootstrap-pki-provisioner.sh` は **CA 側 tooling**（provisioner + CN allowlist）として残る。compose に `pki-agent-*` を再宣言すると同一 cert volume の dual writer になる。ops `:9110` は親プロセスの private 面で、ホストへ publish しない。
 
 ### Data Stores
 | Service | Type | Port(s) | Compose File | Health Endpoint |
@@ -148,7 +151,7 @@ all interfaces and are out of scope here.
 | rag.yaml | rag-db, rag-db-migrator, rag-orchestrator | rag-extension |
 | acolyte.yaml | acolyte-db, acolyte-db-migrator, acolyte-orchestrator | acolyte |
 | sovereign.yaml | knowledge-sovereign-db, knowledge-sovereign-db-migrator, knowledge-sovereign | - |
-| pki.yaml | step-ca, step-ca-bootstrap, per-service pki-agent sidecars | - |
+| pki.yaml | step-ca, step-ca-bootstrap（workload pki-agent sidecar は 0。enrollment は親 in-process） | - |
 | logging.yaml | rask-log-aggregator, 16x rask-log-forwarder | logging |
 | perf.yaml | alt-perf | perf |
 | compose.augur.yaml | knowledge-augur, knowledge-augur-volume-init, knowledge-embedder, knowledge-embedder-volume-init | standalone |
@@ -390,8 +393,10 @@ and nowhere else. `(→ N)` is the in-container port when it differs from the ho
 DNS name: `alt-harvester` (:9110), `alt-data-hub` (:9443 mTLS, :9110),
 `auth-hub` (:8888), `kratos` admin (:4434), `pgbouncer` (:6432),
 `rask-log-aggregator` (:9600, :4317, :4318), `redis-cache`, `pre-processor-sidecar`,
-`step-ca`, and every `pki-agent-*` sidecar. `curl http://localhost:<port>` against any
-of these cannot work; use `docker compose exec <service> …` instead.
+`step-ca`. `curl http://localhost:<port>` against any of these cannot work;
+use `docker compose exec <service> …` instead. The 14 parents' PKI ops `:9110`
+are also unpublished (Prometheus scrapes via Compose DNS). Workload
+`pki-agent-*` sidecars are not declared.
 
 `alt-data-hub` の publish ゼロは意図的な境界であり、
 `scripts/compose-port-audit.py` が CI で門にしている（[[000954]] D5）。
@@ -402,40 +407,17 @@ of these cannot work; use `docker compose exec <service> …` instead.
 
 ## Getting Started
 
-### Default Stack (Core + Auth + DB + Workers)
+### Default Stack (production include)
+
 ```bash
 altctl up
 # または
-docker compose -f compose/core.yaml -f compose/bff.yaml \
-  -f compose/db.yaml -f compose/auth.yaml \
-  -f compose/workers.yaml -f compose/mq.yaml up -d
+docker compose -f compose/compose.yaml -p alt up -d
 ```
 
-### With AI Services
-```bash
-docker compose --profile ollama up -d
-```
+AI / Recap / RAG / logging は上記 include に含まれる。`--profile ollama` 等は使わない。
 
-### With Recap Pipeline
-```bash
-docker compose --profile recap --profile ollama up -d
-```
-
-### With RAG Extension
-```bash
-docker compose --profile rag-extension up -d
-```
-
-### With Logging (Observability)
-```bash
-docker compose --profile logging up -d
-```
-
-### Full Stack
-```bash
-docker compose --profile ollama --profile recap \
-  --profile rag-extension --profile logging up -d
-```
+profiled-only（明示 `--profile`）: `alt-perf`, `docker-socket-proxy`, `k6`, `restic-backup`。
 
 ### Stack Teardown
 ```bash
@@ -587,5 +569,6 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 - **alt-data-hub is the sole data owner for alt-db** ([[000241]] の原則を [[000954]] がプロセス境界として物理化)。alt-backend / alt-harvester を含む全 consumer は `services.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ alt-db に触れる。consumer は alt-backend / alt-harvester / pre-processor / search-indexer / tag-generator / recap-worker / rag-orchestrator の 7 主体で、`DATAHUB_ALLOWED_PEERS` が peer CN で fail-closed に検証する
 - GPU requirements: news-creator, recap-subworker (NVIDIA GPU); knowledge-augur (AMD ROCm iGPU, CPU fallback available)
 - Log aggregation: rask-log-forwarder → rask-log-aggregator → ClickHouse
+- **mTLS leaf ライフサイクル**: 14 親が in-process enrollment を所有する。pki-agent は compose ワークロードではない（[[000978]]）。ホスト cutover の前提は 14 JWK ファイル + subject-scoped provisioner + 新イメージ（runbook [[pki-agent-recovery]]）。本カタログはデプロイ済みを主張しない
 - Tag Verse (3D tag cloud): alt-backend `alt.articles.v2` `FetchTagCloud` RPC → Barnes-Hut O(n log n) server-side layout → alt-frontend-sv (Three.js/Threlte v8 WebGPU); tag co-occurrence data は alt-data-hub の `services.datahub.v1` `FetchTagCloud` capability 経由（`feed_tags` × `article_tags` CTE query）、alt-backend 側で 30 min TTL キャッシュ。定期ジョブ `tag-cloud-cache-warmer` は [[000954]] Wave 1 で廃止され、初回リクエスト時の遅延ウォームに置き換わっている（プロセス内キャッシュを別プロセスから温めても効かないため）
 - **Knowledge Home**: Event-sourced personalized feed (CQRS pattern). alt-backend hosts projector, backfill, and reproject jobs. 9 tables in alt-db (`knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_reproject_runs`, `knowledge_projection_audits`). Admin API accessible via alt-butterfly-facade（`KnowledgeHomeAdminService` は alt-backend の loopback オペレータリスナー `:9102` に残る。認証は到達可能性 + BFF の admin ロールチェックで、service token は使わない）。altctl provides CLI commands (`home reproject`, `home slo`). Frontend admin at `/admin/knowledge-home`. SLO framework with 5 SLIs and multi-window burn-rate alerting

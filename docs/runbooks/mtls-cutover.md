@@ -9,6 +9,12 @@ tags:
 ---
 # mTLS 全面移行 cutover runbook
 
+> **Historical.** This procedure is the sidecar / cert-init / nginx TLS era
+> (X-Service-Token → mTLS peer identity). It is **not** the current PKI
+> contract. Live leaf lifecycle, leftover sweep, and deploy/rollback locks
+> are [[000978]] and [[pki-agent-recovery]]. Do not restart a pki-agent or
+> nginx TLS sidecar as if it still terminated inbound TLS.
+
 X-Service-Token の shared secret から mTLS peer identity へ全面切替するための
 手順集。ADR-000737 (search-indexer REST peer-identity 化 + Acolyte sidecar
 VERIFY_CLIENT=on) 完了時点を起点にする。

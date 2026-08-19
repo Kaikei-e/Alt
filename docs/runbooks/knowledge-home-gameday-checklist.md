@@ -14,6 +14,8 @@ Structured chaos scenarios to validate Knowledge Home SLO alerting, degraded mod
 
 Related: [[000418]]
 
+Journey-level feeds / login / search burn-rate pages: [[user-journey-slo-gameday]].
+
 ## Prerequisites
 
 - All Knowledge Home services are healthy (`curl http://localhost:9000/v1/health`).
