@@ -79,8 +79,11 @@ def _not_after_from_der(der: bytes) -> str:
 
 def _handshake_enddate(port: int) -> str:
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.maximum_version = ssl.TLSVersion.TLSv1_3
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
+    assert ctx.minimum_version >= ssl.TLSVersion.TLSv1_2
     with (
         socket.create_connection(("127.0.0.1", port), timeout=5) as sock,
         ctx.wrap_socket(sock, server_hostname="localhost") as ssock,
@@ -209,9 +212,11 @@ def test_inbound_rejects_tls12(tmp_path: Path) -> None:
     server.start()
     try:
         client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        client_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         client_ctx.maximum_version = ssl.TLSVersion.TLSv1_2
         client_ctx.check_hostname = False
         client_ctx.verify_mode = ssl.CERT_NONE
+        assert client_ctx.minimum_version >= ssl.TLSVersion.TLSv1_2
         with (
             socket.create_connection(("127.0.0.1", server.port), timeout=5) as sock,
             pytest.raises(ssl.SSLError),
@@ -274,8 +279,11 @@ def test_slow_first_byte_is_not_cut_by_header_timeout(tmp_path: Path) -> None:
     thread.start()
     try:
         client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        client_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        client_ctx.maximum_version = ssl.TLSVersion.TLSv1_3
         client_ctx.check_hostname = False
         client_ctx.verify_mode = ssl.CERT_NONE
+        assert client_ctx.minimum_version >= ssl.TLSVersion.TLSv1_2
         client_ctx.load_cert_chain(str(cert), str(key))
         started = time.monotonic()
         with (

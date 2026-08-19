@@ -83,8 +83,11 @@ def _not_after_from_der(der: bytes) -> str:
 
 def _handshake_enddate(port: int, client_cert: Path, client_key: Path) -> str:
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.maximum_version = ssl.TLSVersion.TLSv1_3
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
+    assert ctx.minimum_version >= ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(certfile=str(client_cert), keyfile=str(client_key))
     with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
         with ctx.wrap_socket(sock, server_hostname="localhost") as ssock:
@@ -232,9 +235,11 @@ def test_inbound_listener_rejects_tls12(tmp_path: Path) -> None:
     server.start()
     try:
         client = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        client.minimum_version = ssl.TLSVersion.TLSv1_2
         client.maximum_version = ssl.TLSVersion.TLSv1_2
         client.check_hostname = False
         client.verify_mode = ssl.CERT_NONE
+        assert client.minimum_version >= ssl.TLSVersion.TLSv1_2
         client.load_cert_chain(str(cert), str(key))
         with socket.create_connection(("127.0.0.1", server.port), timeout=5) as sock:
             with pytest.raises(ssl.SSLError):
@@ -251,8 +256,11 @@ def test_inbound_listener_rejects_untrusted_client_cert(tmp_path: Path) -> None:
     server.start()
     try:
         client = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        client.minimum_version = ssl.TLSVersion.TLSv1_2
+        client.maximum_version = ssl.TLSVersion.TLSv1_3
         client.check_hostname = False
         client.verify_mode = ssl.CERT_NONE
+        assert client.minimum_version >= ssl.TLSVersion.TLSv1_2
         client.load_cert_chain(str(evil_cert), str(evil_key))
         with socket.create_connection(("127.0.0.1", server.port), timeout=5) as sock:
             ssock = client.wrap_socket(sock, server_hostname="localhost")
