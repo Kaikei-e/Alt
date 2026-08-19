@@ -100,9 +100,12 @@ cleanup_smoke_password() {
 
 echo "=== Assertion 3: CA rejects cert request for attacker.local ==="
 # Mint inside step-ca with the subject-scoped JWK. Do not use the CA root
-# password, and do not print token/password bytes.
+# password, and do not print token/password bytes. `-u 0` because
+# install_smoke_password writes the password file as root with mode 400 —
+# the image's default `step` user cannot read it, and `step ca token` then
+# fails for a reason that has nothing to do with the policy under test.
 if install_smoke_password; then
-  if docker exec "$STEP_CA" sh -c "
+  if docker exec -u 0 "$STEP_CA" sh -c "
         TOKEN=\$(step ca token attacker.local \
           --ca-url https://localhost:9000 \
           --root /home/step/certs/root_ca.crt \
@@ -125,7 +128,7 @@ fi
 echo "=== Assertion 4: CA rejects non-DNS SAN types (IP/URI/email) ==="
 # step-ca policy is deny-by-default for name types not listed in allow.
 for san in "10.0.0.99" "https://evil.com" "attacker@evil.com"; do
-  if docker exec "$STEP_CA" sh -c "
+  if docker exec -u 0 "$STEP_CA" sh -c "
         TOKEN=\$(step ca token $SMOKE_SUBJECT \
           --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
           --provisioner '$SMOKE_PROVISIONER' --password-file '$SMOKE_PW_CA' \
@@ -143,7 +146,7 @@ for san in "10.0.0.99" "https://evil.com" "attacker@evil.com"; do
 done
 
 echo "=== Assertion 5: CA accepts cert request for ${SMOKE_SUBJECT} (smoke) ==="
-if docker exec "$STEP_CA" sh -c "
+if docker exec -u 0 "$STEP_CA" sh -c "
       TOKEN=\$(step ca token $SMOKE_SUBJECT \
         --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
         --provisioner '$SMOKE_PROVISIONER' --password-file '$SMOKE_PW_CA' \
