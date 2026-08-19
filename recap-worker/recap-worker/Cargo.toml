@@ -86,13 +86,26 @@ rand = "0.10"
 md5 = "0.8"
 num_cpus = "1.17"
 prometheus = { version = "0.14", default-features = false }
+# In-process step-ca enrollment (Wave 4). JOSE/JWE/JWT via josekit; CSR/key
+# via rcgen; chain verify via rustls (pinned root, never skip). Do not add a
+# `step` CLI wrapper — NativeStepCAIssuer in alt-backend/app/internal/pki is
+# the contract this module ports.
+josekit = "=0.10.3"
+libc = "0.2"
+rcgen = { version = "0.14", features = ["crypto", "pem", "x509-parser"] }
+x509-parser = { version = "0.17", features = ["verify"] }
+sha2 = "0.10"
+zeroize = { version = "1.8", features = ["alloc"] }
 rayon = "1.12"
 rustc-hash = "2.1"
 smallvec = "1.15"
 regex = "1.12"
 aho-corasick = "1.1"
 fst = "0.4"
-rust-bert = "0.23.0"
+# default-features (remote + default-tls) pull cached-path → reqwest 0.11 →
+# h2 0.3.27 (RUSTSEC-2026-0258) and native-tls. Runtime load is
+# SentenceEmbeddingsBuilder::local only; keep those features off.
+rust-bert = { version = "0.23.0", default-features = false }
 console = "0.16"
 ndarray = { version = "0.17", features = ["serde", "rayon"] }
 petgraph = "0.8"
@@ -109,7 +122,7 @@ hyper-util = { version = "0.1", features = [
   "server",
 ] }
 filetime = "0.2"
-rcgen = "0.14"
+http-body-util = "0.1"
 rstest = "0.26"
 tokio = { version = "1.52", features = ["rt", "macros"] }
 wiremock = "0.6"
@@ -117,6 +130,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 testcontainers = "0.27"
 temp-env = { version = "0.3", features = ["async_closure"] }
 tempfile = "3.27"
+time = { version = "0.3", features = ["std"] }
 pact_consumer = "1.4"
 pact_models = "1.3"
 unicode-width = "0.2"

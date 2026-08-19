@@ -226,6 +226,7 @@ async fn main() -> anyhow::Result<()> {
     // forward would leave a claimed row waiting out its whole lease.
     let notification_relay_task = registry.spawn_notification_relay(shutdown_token.clone());
 
+    let pki = registry.pki_handle();
     let router = build_router(registry);
 
     // When MTLS_ENFORCE=true, bind the axum router to a rustls-backed
@@ -266,6 +267,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     scheduler.shutdown().await;
+    if let Some(handle) = pki {
+        handle.stop().await;
+    }
     telemetry.shutdown();
 
     Ok(())

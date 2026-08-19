@@ -93,7 +93,7 @@ impl ReloadingCertResolver {
     /// Same as `new`, but with an explicit mtime-recheck interval. Split out
     /// so tests can use a zero interval and observe reloads immediately
     /// instead of waiting out the production `RELOAD_CHECK_INTERVAL`.
-    fn new_with_check_interval(
+    pub(crate) fn new_with_check_interval(
         cert_path: impl Into<PathBuf>,
         key_path: impl Into<PathBuf>,
         check_interval: Duration,
@@ -118,7 +118,7 @@ impl ReloadingCertResolver {
     /// file's mtime has advanced. Falls back to the cached value when the
     /// fresh read fails so a transient truncation window cannot take the
     /// TLS stack down.
-    fn current(&self) -> Option<Arc<CertifiedKey>> {
+    pub(crate) fn current(&self) -> Option<Arc<CertifiedKey>> {
         let mut guard = self
             .state
             .lock()

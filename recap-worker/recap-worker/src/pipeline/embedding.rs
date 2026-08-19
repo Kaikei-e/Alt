@@ -262,6 +262,7 @@ mod tests {
         require_or_degrade,
     };
     use rust_bert::RustBertError;
+    use rust_bert::pipelines::sentence_embeddings::SentenceEmbeddingsBuilder;
 
     fn populate(dir: &std::path::Path, files: &[&str]) {
         for rel in files {
@@ -315,6 +316,48 @@ mod tests {
 
         assert!(message.contains("rust_model.ot"), "got: {message}");
         assert!(message.contains("1_Pooling/config.json"), "got: {message}");
+    }
+
+    /// rust-bert `default-features = false` drops `remote`/`cached-path`.
+    /// `SentenceEmbeddingsBuilder::local` must remain on the link line.
+    #[test]
+    fn sentence_embeddings_builder_local_is_linked() {
+        let dir = tempfile::tempdir().unwrap();
+        let _builder = SentenceEmbeddingsBuilder::local(dir.path());
+    }
+
+    /// Real AllMiniLM load + 384-d encode when a baked `::local` directory is
+    /// supplied. Skips when the dir is absent so `cargo test` stays hermetic.
+    #[test]
+    fn local_all_minilm_encodes_384_when_model_dir_present() {
+        let raw = match std::env::var("RECAP_WORKER_EMBEDDING_MODEL_DIR") {
+            Ok(v) if !v.is_empty() => v,
+            _ => {
+                eprintln!(
+                    "skipping: set RECAP_WORKER_EMBEDDING_MODEL_DIR to a complete \
+                     SentenceEmbeddingsBuilder::local AllMiniLM directory"
+                );
+                return;
+            }
+        };
+        let dir = std::path::Path::new(&raw);
+        let missing = missing_model_files(dir);
+        if !missing.is_empty() {
+            eprintln!(
+                "skipping: incomplete model dir {}, missing {missing:?}",
+                dir.display()
+            );
+            return;
+        }
+        let svc = EmbeddingService::from_dir(dir).expect("local AllMiniLM must load");
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let vectors = rt
+            .block_on(svc.encode(&["recap-worker local embedding smoke".into()]))
+            .expect("encode");
+        assert_eq!(vectors.len(), 1);
+        assert_eq!(vectors[0].len(), 384, "AllMiniLmL12V2 must be 384-d");
+        let norm: f32 = vectors[0].iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!(norm > 1e-3, "embedding must be non-zero, norm={norm}");
     }
 
     /// PM-2026-038 regression: a model failure must surface as `Err`, never

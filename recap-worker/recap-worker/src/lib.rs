@@ -17,6 +17,7 @@ pub(crate) mod language_detection;
 pub(crate) mod notification;
 pub mod observability;
 pub mod pipeline;
+pub(crate) mod pki;
 pub(crate) mod queue;
 pub mod replay;
 pub mod scheduler;

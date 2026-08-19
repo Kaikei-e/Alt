@@ -36,6 +36,8 @@ pub struct ComponentRegistry {
     /// so "nobody wired the relay" can never masquerade as "it is off on
     /// purpose" (CLAUDE.md rule 8).
     notification_relay: Option<Arc<NotificationRelay>>,
+    /// `None` when `PKI_ENROLLMENT=disabled` (sidecar still owns cert files).
+    pki: Option<crate::pki::Handle>,
 }
 
 impl AppState {
@@ -82,6 +84,14 @@ impl ComponentRegistry {
     pub async fn build(config: Config) -> Result<Self> {
         let config = Arc::new(config);
         let telemetry = Telemetry::new()?;
+
+        // In-process cert lifecycle must run before any rustls client or
+        // server loads the leaf: ReloadingCertResolver::new is fail-closed
+        // on a missing pair. Disabled mode logs loudly and leaves files to
+        // the pki-agent sidecar (no compose cutover yet).
+        let pki = crate::pki::start("recap-worker")
+            .await
+            .context("pki enrollment (fail-closed when PKI_ENROLLMENT=enabled)")?;
 
         // When MTLS_ENFORCE=true, present the recap-worker leaf cert on every
         // outbound request. Fail-closed: missing cert/key/CA fails startup.
@@ -175,6 +185,7 @@ impl ComponentRegistry {
             recap_dao,
             recap_pool,
             notification_relay,
+            pki,
         })
     }
 
@@ -202,6 +213,17 @@ impl ComponentRegistry {
     #[must_use]
     pub fn telemetry(&self) -> &Telemetry {
         &self.telemetry
+    }
+
+    pub async fn stop_pki(&self) {
+        if let Some(handle) = self.pki.as_ref() {
+            handle.stop().await;
+        }
+    }
+
+    #[must_use]
+    pub fn pki_handle(&self) -> Option<crate::pki::Handle> {
+        self.pki.clone()
     }
 }
 
