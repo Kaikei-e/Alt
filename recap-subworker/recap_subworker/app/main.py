@@ -95,6 +95,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     container = ServiceContainer(settings)
     app.state.container = container
+    app.state.deep_health_runner = health.build_deep_health_runner(settings)
     try:
         yield
     finally:
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
         PeerIdentityMiddleware,
         allowed_peers_from_env,
     )
+
     app.add_middleware(
         PeerIdentityMiddleware,
         allowed=allowed_peers_from_env(),

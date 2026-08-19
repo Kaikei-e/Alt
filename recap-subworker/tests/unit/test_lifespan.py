@@ -56,3 +56,17 @@ def test_separate_apps_have_independent_containers(app_factory) -> None:
         container_a = app_a.state.container
         container_b = app_b.state.container
         assert container_a is not container_b
+
+
+def test_lifespan_binds_deep_health_runner(app_factory) -> None:
+    app = app_factory()
+    with TestClient(app):
+        runner = getattr(app.state, "deep_health_runner", None)
+        assert runner is not None, "app.state.deep_health_runner must be set by lifespan"
+
+
+def test_separate_apps_have_independent_deep_health_runners(app_factory) -> None:
+    app_a = app_factory()
+    app_b = app_factory()
+    with TestClient(app_a), TestClient(app_b):
+        assert app_a.state.deep_health_runner is not app_b.state.deep_health_runner

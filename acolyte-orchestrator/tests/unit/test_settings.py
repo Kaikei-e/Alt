@@ -16,6 +16,8 @@ def test_settings_default_values() -> None:
     assert s.db_pool_max_size == 10
     assert s.worker_id == "acolyte-1"
     assert s.peer_identity_strict is False
+    assert s.inbound_tls_enabled is False
+    assert s.inbound_tls_port == 9443
 
 
 def test_peer_identity_strict_from_env(monkeypatch: pytest.MonkeyPatch) -> None:

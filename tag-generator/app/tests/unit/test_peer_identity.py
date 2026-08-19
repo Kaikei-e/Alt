@@ -110,6 +110,54 @@ def test_allowed_peers_from_env(monkeypatch):
     assert allowed_peers_from_env() == ["recap-worker", "mq-hub", "alt-backend"]
 
 
+def test_tls_cn_wins_over_spoofed_header():
+    from starlette.requests import Request
+
+    from tag_generator.infra.peer_identity import resolve_authenticated_peer
+
+    os.environ["PEER_IDENTITY_TRUSTED"] = "on"
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "https",
+        "path": "/echo",
+        "raw_path": b"/echo",
+        "query_string": b"",
+        "headers": [(b"x-alt-peer-identity", b"spoofed-root")],
+        "client": DIRECT,
+        "server": ("127.0.0.1", 9443),
+        "root_path": "",
+        "extensions": {"tls": {"client_cn": "recap-worker"}},
+    }
+    assert resolve_authenticated_peer(Request(scope)) == "recap-worker"
+
+
+def test_tls_cn_is_used_even_when_trust_env_is_off():
+    from starlette.requests import Request
+
+    from tag_generator.infra.peer_identity import resolve_authenticated_peer
+
+    os.environ["PEER_IDENTITY_TRUSTED"] = "off"
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "https",
+        "path": "/echo",
+        "raw_path": b"/echo",
+        "query_string": b"",
+        "headers": [(b"x-alt-peer-identity", b"spoofed-root")],
+        "client": DIRECT,
+        "server": ("127.0.0.1", 9443),
+        "root_path": "",
+        "extensions": {"tls": {"client_cn": "mq-hub"}},
+    }
+    assert resolve_authenticated_peer(Request(scope)) == "mq-hub"
+
+
 @pytest.fixture(autouse=True)
 def _reset_env():
     yield

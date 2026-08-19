@@ -8,6 +8,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
+from news_creator.infra.inbound_tls import forget_tls_peer, remember_tls_peer
 from news_creator.infra.peer_identity import (
     PEER_IDENTITY_HEADER,
     PeerIdentityMiddleware,
@@ -94,3 +95,32 @@ def test_strict_rejects_peer_from_non_sidecar_transport(
 def test_allowed_peers_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", " alt-backend , recap-worker ,  ")
     assert allowed_peers_from_env() == ["alt-backend", "recap-worker"]
+
+
+def test_tls_peer_cn_wins_over_spoofed_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = ("10.0.8.4", 44444)
+    remember_tls_peer(client, "recap-worker")
+    try:
+        app = _build_app(
+            monkeypatch, allowed=["recap-worker"], strict=True, verify_client="off"
+        )
+        with TestClient(app, client=client) as http:
+            resp = http.get("/echo", headers={PEER_IDENTITY_HEADER: "root"})
+            assert resp.status_code == 200
+            assert resp.json() == {"peer": "recap-worker"}
+    finally:
+        forget_tls_peer(client)
+
+
+def test_tls_peer_cn_is_allowlisted(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = ("10.0.8.5", 44444)
+    remember_tls_peer(client, "impostor")
+    try:
+        app = _build_app(
+            monkeypatch, allowed=["recap-worker"], strict=True, verify_client="on"
+        )
+        with TestClient(app, client=client) as http:
+            resp = http.get("/echo", headers={PEER_IDENTITY_HEADER: "recap-worker"})
+            assert resp.status_code == 403
+    finally:
+        forget_tls_peer(client)

@@ -98,6 +98,19 @@ class Settings(BaseSettings):
     # False during mTLS rollout; flip via PEER_IDENTITY_STRICT=true at cutover.
     peer_identity_strict: bool = False
 
+    # Wave 4 in-process inbound mTLS. Default off so the Pattern B sidecar
+    # can keep owning :9443 until compose/pki.yaml drops PROXY_LISTEN.
+    # When true, the process binds INBOUND_TLS_HOST:INBOUND_TLS_PORT
+    # (default 0.0.0.0:9443) with a long-lived SSLContext. The existing
+    # host:port plaintext listener stays for in-container health and is
+    # published on loopback only — it is not an external mTLS fallback.
+    inbound_tls_enabled: bool = False
+    inbound_tls_host: str = "0.0.0.0"
+    inbound_tls_port: int = 9443
+    inbound_tls_cert_file: str = ""
+    inbound_tls_key_file: str = ""
+    inbound_tls_ca_file: str = ""
+
     # Content store — bounded LRU cache for article bodies (process-global,
     # shared across every run; see MemoryContentStore docstring).
     content_store_max_size: int = 2000

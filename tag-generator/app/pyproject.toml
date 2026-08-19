@@ -18,33 +18,26 @@ requires-python = ">=3.14,<3.15"
 dependencies = [
     # Japanese Text Processing (self-contained)
     "fugashi[unidic-lite]>=1.5.1", # includes unidic-lite, no external MecAB needed
-
     # Language Processing (minimal)
     # >=3.10.0: CVE-2026-54293 path traversal in nltk.data.load()
     "nltk>=3.10.0",
     "langdetect>=1.0.9",
-
     # Database
     "psycopg2-binary>=2.9.0",
     "psycopg[binary]>=3.2.0",
     "psycopg-pool>=3.2.0",
-
     # Logging and Data Validation
     "structlog>=25.4.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.7.0",
-
     # Security
     "nh3>=0.2.18",
-
     # HTML readability extraction
     "readability-lxml>=0.8.4.1",
     "lxml>=5.3.0",
-
     # Connect-RPC (typed backend API client)
     "connect-python>=0.9.0",
     "protobuf>=6.33.5,<7.0",
-
     # Authentication and API
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
@@ -52,15 +45,17 @@ dependencies = [
     "redis>=5.0.0",  # Redis Streams consumer
     "PyJWT>=2.12.0",
     "python-multipart>=0.0.27",
-
     # OpenTelemetry
     "opentelemetry-sdk>=1.29.0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
     "opentelemetry-instrumentation-logging>=0.50b0",
-
     # NOTE: Heavy ML packages removed for ultra-minimal build
     # keybert, sentence-transformers, transformers must be installed in external models
     # or use runtime installation with lazy loading
+    "cryptography>=50.0.0,<51",
+    "jwcrypto>=1.5.8,<2",
+    "prometheus-client>=0.26.0,<1",
+    "httpx>=0.28.1,<0.29",
 ]
 
 [dependency-groups]
@@ -118,7 +113,14 @@ ml-extended = [
 ]
 
 [tool.uv]
-constraint-dependencies = ["protobuf>=6.33.5,<7.0", "Pygments>=2.20.0"]
+constraint-dependencies = [
+    "protobuf>=6.33.5,<7.0",
+    "Pygments>=2.20.0",
+    "cryptography>=50.0.0,<51",
+    "jwcrypto>=1.5.8,<2",
+    "prometheus-client>=0.26.0,<1",
+    "httpx>=0.28.1,<0.29",
+]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]
@@ -170,8 +172,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = ["S101", "S105", "S603", "S110"]
-"tests/**" = ["S101", "S105", "S603", "S110"]
+"test_*.py" = ["S101", "S105", "S106", "S603", "S607", "S110"]
+"tests/**" = ["S101", "S105", "S106", "S603", "S607", "S110"]
 "auth_service.py" = [
     "S104",
 ] # Allow binding to all interfaces for development server

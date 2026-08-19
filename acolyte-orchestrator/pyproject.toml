@@ -8,32 +8,28 @@ dependencies = [
     # Web framework (ASGI)
     "starlette>=0.46.0",
     "uvicorn[standard]>=0.34.0",
-
     # Data validation & configuration
     "pydantic>=2.12.0",
     "pydantic-settings>=2.7.0",
-
     # Logging
     "structlog>=25.4.0",
-
     # Connect-RPC (typed service boundary)
     "connect-python>=0.9.0",
     "protobuf>=6.33.5,<7.0",
-
     # Database
     "psycopg[binary]>=3.2.0",
     "psycopg-pool>=3.2.0",
-
     # HTTP client (for news-creator, search-indexer)
-    "httpx>=0.28.0",
-
+    "httpx>=0.28.0,<0.29",
     # LangGraph orchestration
     "langgraph>=0.4.0",
-    "langgraph-checkpoint-postgres>=2.0.0",
-
+    "langgraph-checkpoint-postgres>=3.1.1,<3.2",
     # OpenTelemetry
     "opentelemetry-sdk>=1.29.0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
+    "cryptography>=50.0.0,<51",
+    "jwcrypto>=1.5.8,<2",
+    "prometheus-client>=0.26.0,<1",
 ]
 
 [dependency-groups]
@@ -44,7 +40,7 @@ dev = [
     "pytest-cov>=6.0.0",
     "pytest-mock>=3.14.0",
     "hypothesis>=6.100.0",
-    "httpx>=0.28.0",
+    "httpx>=0.28.0,<0.29",
 
     # Code Quality
     "ruff>=0.12.0",
@@ -56,7 +52,14 @@ dev = [
 ]
 
 [tool.uv]
-constraint-dependencies = ["protobuf>=6.33.5,<7.0"]
+constraint-dependencies = [
+    "protobuf>=6.33.5,<7.0",
+    "cryptography>=50.0.0,<51",
+    "jwcrypto>=1.5.8,<2",
+    "prometheus-client>=0.26.0,<1",
+    "httpx>=0.28.0,<0.29",
+    "langgraph-checkpoint-postgres>=3.1.1,<3.2",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

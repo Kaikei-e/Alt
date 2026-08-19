@@ -1,12 +1,12 @@
 """Health check handler."""
 
-import logging
-from fastapi import APIRouter
 from typing import Any
 
-from news_creator.port.llm_provider_port import LLMProviderPort
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
-logger = logging.getLogger(__name__)
+from news_creator.infra.health_deep import Check, DeepHealthRunner
+from news_creator.port.llm_provider_port import LLMProviderPort
 
 
 def create_health_router(ollama_gateway: LLMProviderPort | None = None) -> APIRouter:
@@ -21,6 +21,23 @@ def create_health_router(ollama_gateway: LLMProviderPort | None = None) -> APIRo
         Configured APIRouter
     """
     router = APIRouter()
+
+    async def probe_ollama() -> None:
+        if ollama_gateway is None:
+            raise RuntimeError("unavailable")
+        try:
+            models = await ollama_gateway.list_models()
+        except TimeoutError:
+            raise
+        except (RuntimeError, OSError, ConnectionError, ValueError) as exc:
+            raise RuntimeError("unavailable") from exc
+        if not models:
+            raise RuntimeError("unavailable")
+
+    deep_runner = DeepHealthRunner(
+        "news-creator",
+        [Check(name="ollama", critical=True, probe=probe_ollama)],
+    )
 
     @router.get("/queue/status")
     async def queue_status() -> dict[str, Any]:
@@ -42,33 +59,14 @@ def create_health_router(ollama_gateway: LLMProviderPort | None = None) -> APIRo
         }
 
     @router.get("/health")
-    async def health_check() -> dict[str, Any]:
-        """
-        Health check endpoint that includes Ollama model status.
+    async def health_check() -> dict[str, str]:
+        """Cheap liveness. No upstream I/O; /health/deep owns Ollama reachability."""
+        return {"status": "healthy", "service": "news-creator"}
 
-        Returns:
-            Dict with status, service name, models list, and optional error
-        """
-        response: dict[str, Any] = {
-            "status": "healthy",
-            "service": "news-creator",
-            "models": [],
-        }
-
-        # If ollama_gateway is provided, check for available models
-        if ollama_gateway is not None:
-            try:
-                models = await ollama_gateway.list_models()
-                response["models"] = models
-                logger.debug(f"Health check: {len(models)} models available")
-            except Exception:
-                logger.warning(
-                    "Failed to fetch models during health check",
-                    exc_info=True,
-                )
-                response["error"] = "ollama_unavailable"
-                # Still return healthy status - service is up even if Ollama is not ready
-
-        return response
+    @router.get("/health/deep")
+    async def health_deep() -> JSONResponse:
+        """Dependency reachability. Compose probes must not hit this path."""
+        report = await deep_runner.run()
+        return JSONResponse(status_code=report.http_status, content=report.as_dict())
 
     return router

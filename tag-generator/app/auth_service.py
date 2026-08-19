@@ -399,6 +399,10 @@ def _run_background_tag_generation():
         _background_service_healthy = False
 
 
+from tag_generator.infra.inbound_tls import resolve_inbound_tls_bind, start_inbound_tls_listener  # noqa: E402
+from tag_generator.infra.pki import start_enrollment  # noqa: E402
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
@@ -409,6 +413,18 @@ async def lifespan(app: FastAPI):
     # Initialize API service
     await tag_service.initialize()
     logger.info("API service initialized")
+
+    # Cert lifecycle must finish (or explicitly disable) before :9443
+    # consumes the leaf. Disabled is the dual-run default until compose
+    # cutover sets PKI_ENROLLMENT=enabled.
+    pki_handle = await start_enrollment("tag-generator")
+    inbound_tls_runtime = await start_inbound_tls_listener(
+        app,
+        resolve_inbound_tls_bind(
+            plaintext_host="0.0.0.0",
+            plaintext_port=int(os.getenv("PORT", "9400")),
+        ),
+    )
 
     # Start background tag generation service in a separate thread
     logger.info("Starting background tag generation service thread")
@@ -422,6 +438,10 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     logger.info("FastAPI lifespan: shutdown phase")
+    if inbound_tls_runtime is not None:
+        await inbound_tls_runtime.aclose()
+    if pki_handle is not None:
+        await pki_handle.aclose()
     await tag_service.cleanup()
     # Note: Background thread will be terminated when main process exits
     logger.info("Tag generator service shutting down")
@@ -430,10 +450,9 @@ async def lifespan(app: FastAPI):
 # FastAPI application with authentication
 app = FastAPI(title="Tag Generator Service", version="1.0.0", lifespan=lifespan)
 
-# peer-identity capture. The nginx TLS sidecar (VERIFY_CLIENT=on,
-# ADR-000737) verifies every client cert and sets X-Alt-Peer-Identity. This
-# middleware attaches the CN to request.state + structlog context so the
-# Python app can audit caller identity and enforce allowlists.
+# Wave 4 in-process mTLS injects the verified client-cert CN into
+# request.state. The sidecar header is honoured only on the plaintext
+# loopback dual-run path until compose/pki.yaml drops PROXY_LISTEN.
 from tag_generator.infra.peer_identity import (  # noqa: E402
     PeerIdentityMiddleware,
     allowed_peers_from_env,
@@ -444,10 +463,10 @@ app.add_middleware(
     allowed=allowed_peers_from_env(),
     strict=False,  # flip to True once all callers present client certs
 )
-# Flipping strict=True is safe with respect to header forgery: the middleware
-# honours X-Alt-Peer-Identity only for requests that arrive from the sidecar's
-# loopback upstream. It still rejects every caller that has not moved to
-# :9443, which is why it is not flipped here.
+# Flipping strict=True is safe with respect to header forgery: in-process
+# mTLS takes identity from the client cert, and the sidecar header is
+# honoured only on loopback. It still rejects every caller that has not
+# moved to :9443, which is why it is not flipped here.
 
 
 @app.post("/api/v1/generate-tags")
@@ -576,5 +595,8 @@ async def extract_tags_endpoint(
 if __name__ == "__main__":
     import uvicorn
 
+    # Plaintext health / dual-run listener. Compose publishes 127.0.0.1:9400
+    # only. East-west mTLS is INBOUND_TLS_HOST:INBOUND_TLS_PORT (:9443) when
+    # INBOUND_TLS_ENABLED=true — that port has no plaintext fallback.
     port = int(os.getenv("PORT", "9400"))
     uvicorn.run(app, host="0.0.0.0", port=port)

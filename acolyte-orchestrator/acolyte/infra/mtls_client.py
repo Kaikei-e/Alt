@@ -86,7 +86,10 @@ class SslContextReloader:
             return False
         try:
             self._ctx.load_cert_chain(certfile=self._cert_path, keyfile=self._key_path)
-        except ssl.SSLError, OSError:
+        except (
+            ssl.SSLError,
+            OSError,
+        ):
             return False
         self._cert_mtime = cm
         self._key_mtime = km

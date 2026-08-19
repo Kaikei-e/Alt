@@ -72,4 +72,4 @@ EXPOSE 11434
 
 USER appuser
 
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "11434", "--log-level", "info"]
+CMD ["python", "-m", "news_creator"]

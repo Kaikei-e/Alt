@@ -21,6 +21,8 @@ from starlette.datastructures import MutableHeaders
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import PlainTextResponse
 
+from recap_subworker.app.infra.inbound_tls import verified_peer_cn
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
 
@@ -75,18 +77,23 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        peer = request.headers.get(PEER_IDENTITY_HEADER, "").strip()
-
-        # Two conditions, and the header is honoured only under both.
-        # PEER_IDENTITY_TRUSTED is set to "on" by compose only when the
-        # perimeter sidecar enforces client certs; unset means the trust
-        # boundary was never configured, so fail closed. The transport check
-        # is what makes that claim binding: config alone cannot tell the
-        # sidecar's traffic apart from a caller that skipped it, and the
-        # plaintext port is reachable without any credential.
-        mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
-        if not mtls_on or not arrived_via_sidecar(request):
-            peer = ""
+        tls_peer = verified_peer_cn(request.client)
+        if tls_peer:
+            # In-process mTLS: the verified leaf CN is the only identity.
+            # A caller-supplied X-Alt-Peer-Identity is attacker-controlled.
+            peer = tls_peer
+        else:
+            peer = request.headers.get(PEER_IDENTITY_HEADER, "").strip()
+            # Two conditions, and the header is honoured only under both.
+            # PEER_IDENTITY_TRUSTED is set to "on" by compose only when the
+            # perimeter sidecar enforces client certs; unset means the trust
+            # boundary was never configured, so fail closed. The transport check
+            # is what makes that claim binding: config alone cannot tell the
+            # sidecar's traffic apart from a caller that skipped it, and the
+            # plaintext port is reachable without any credential.
+            mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
+            if not mtls_on or not arrived_via_sidecar(request):
+                peer = ""
 
         if self._strict:
             if not peer:

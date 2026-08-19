@@ -65,8 +65,9 @@ WORKDIR /app
 # asyncpg は libpq 非依存 (wire protocol を直接話す)。psycopg2-binary は依存から
 # 除外済みのため、libpq5 の apt パッケージは不要。
 
-# 非rootユーザー作成
-RUN groupadd -r recap && useradd -r -g recap recap
+# 非rootユーザー作成 — pin uid 999 so pki-agent CERT_OWNER_UID matches
+# (Wave 4 in-process mTLS reads the 0400 key; root-owned is unreadable).
+RUN groupadd -r -g 999 recap && useradd -r -u 999 -g recap recap
 
 # 環境変数
 # HOME設定はdeepevalが~/.deepevalを作成するため必要
@@ -105,4 +106,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
 # Use uvicorn directly instead of gunicorn to avoid CUDA fork issues
 # PyTorch CUDA does not support fork() - see https://docs.pytorch.org/docs/stable/notes/multiprocessing.html
 # Gunicorn uses fork to create workers, which breaks CUDA. Uvicorn in single-process mode avoids this.
-CMD ["python", "-m", "uvicorn", "recap_subworker.app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["python", "-m", "recap_subworker"]

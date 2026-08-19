@@ -32,8 +32,10 @@ from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
 from acolyte.gateway.vllm_gw import VllmGateway
 from acolyte.gen.proto.alt.acolyte.v1.acolyte_connect import AcolyteServiceASGIApplication
 from acolyte.handler.connect_service import AcolyteConnectService
+from acolyte.infra.inbound_tls import resolve_inbound_tls_bind, start_inbound_tls_listener
 from acolyte.infra.logging import configure_logging
 from acolyte.infra.peer_identity import PeerIdentityMiddleware, allowed_peers_from_env
+from acolyte.infra.pki import start_enrollment
 from acolyte.usecase.graph.report_graph import build_report_graph
 from acolyte.usecase.reconcile_orphaned_runs_uc import ReconcileOrphanedRunsUsecase
 from acolyte.usecase.relay_notifications_uc import RelayNotificationsUsecase
@@ -265,7 +267,7 @@ async def _drain_report_pipelines(service: AcolyteConnectService) -> None:
         await _fail_interrupted_run(task)
 
 
-def create_app() -> Starlette:
+def create_app() -> Starlette:  # noqa: PLR0915 — composition root wires pool, relay, TLS, graph
     """Create Starlette ASGI application instance."""
     initial_graph = None if settings.checkpoint_enabled else _compile_graph()
     connect_service = AcolyteConnectService(settings, _report_repo, _job_queue, initial_graph, llm=_llm_gw)
@@ -290,6 +292,14 @@ def create_app() -> Starlette:
                 watch_cert_rotation(_mtls_reloader, interval_seconds=30.0),
                 name="mtls-cert-rotation-watch",
             )
+        # Cert lifecycle must finish (or explicitly disable) before :9443
+        # consumes the leaf. Disabled is the dual-run default until compose
+        # cutover sets PKI_ENROLLMENT=enabled.
+        pki_handle = await start_enrollment("acolyte-orchestrator")
+        inbound_tls_runtime = await start_inbound_tls_listener(
+            app,
+            resolve_inbound_tls_bind(plaintext_host=settings.host, plaintext_port=settings.port),
+        )
         relay_task: asyncio.Task[None] | None = None
         if _relay is not None and _relay_config is not None:
             relay_task = asyncio.create_task(
@@ -301,6 +311,10 @@ def create_app() -> Starlette:
             # Periodic loops first — they hold no in-flight business state. The
             # pipelines then get their window while the checkpointer connection,
             # the pool and the HTTP client are all still usable.
+            if inbound_tls_runtime is not None:
+                await inbound_tls_runtime.aclose()
+            if pki_handle is not None:
+                await pki_handle.aclose()
             for task in (relay_task, cert_watch_task):
                 if task is not None:
                     task.cancel()
@@ -335,8 +349,10 @@ def create_app() -> Starlette:
 
     asgi_app = AcolyteServiceASGIApplication(connect_service)
 
-    # capture the peer CN injected by the nginx mTLS sidecar
-    # (VERIFY_CLIENT=on) and propagate into request.state + log context.
+    # PeerIdentityMiddleware sits on both listeners so handlers can
+    # capture the peer CN. Wave 4 in-process mTLS injects the verified
+    # client-cert CN into request.state; the sidecar header is honoured
+    # only on the plaintext loopback dual-run path.
     # peer_identity_strict defaults False during rollout; set
     # PEER_IDENTITY_STRICT=true at cutover (no rebuild required).
     peer_identity_middleware = Middleware(

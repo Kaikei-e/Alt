@@ -1,10 +1,13 @@
 """Peer identity ASGI middleware (tag-generator).
 
-Reads the X-Alt-Peer-Identity header injected by the nginx mTLS sidecar
-(VERIFY_CLIENT=on) and attaches the authenticated caller CN to the request
-state + structlog context. Defense-in-depth companion to the perimeter
-mTLS enforcement; the sidecar actually rejects bad certs at TLS layer,
-and this middleware surfaces the CN to application logs + allowlist.
+Authenticated caller identity comes from the TLS client certificate when
+Wave 4 in-process mTLS is serving :9443. The inbound ``X-Alt-Peer-Identity``
+header is never trusted on that path — the listener strips it and injects
+the verified CN into ``scope["extensions"]["tls"]["client_cn"]``.
+
+During Pattern B dual-run the pki-agent sidecar still proxies to the
+plaintext health port and injects the header. That header is honoured only
+when ``PEER_IDENTITY_TRUSTED=on`` AND the transport peer is loopback.
 
 Identical to acolyte-orchestrator's implementation — keep in sync with
 `acolyte-orchestrator/acolyte/infra/peer_identity.py`. If this pattern
@@ -47,6 +50,8 @@ def arrived_via_sidecar(request: Request) -> bool:
     `http://127.0.0.1:9400`, so a loopback transport peer is the only one that
     could have terminated mTLS and set the identity header. Every other peer
     reached the plaintext port directly and wrote whatever header it liked.
+    Wave 4 in-process TLS does not use this path: peer CN comes from the
+    client certificate, not the header.
     """
     client = request.client
     if client is None:
@@ -55,6 +60,29 @@ def arrived_via_sidecar(request: Request) -> bool:
         return ipaddress.ip_address(client.host).is_loopback
     except ValueError:
         return False
+
+
+def tls_authenticated_cn(request: Request) -> str:
+    """CN injected by the in-process mTLS listener after client-cert verify."""
+    extensions = request.scope.get("extensions") or {}
+    tls = extensions.get("tls") or {}
+    return str(tls.get("client_cn") or "").strip()
+
+
+def resolve_authenticated_peer(request: Request) -> str:
+    """Return the verified peer CN, or empty when identity is unauthenticated.
+
+    TLS-authenticated CN always wins. The inbound header is used only for the
+    Pattern B sidecar dual-run (trusted env + loopback transport).
+    """
+    tls_cn = tls_authenticated_cn(request)
+    if tls_cn:
+        return tls_cn
+    header = request.headers.get(PEER_IDENTITY_HEADER, "").strip()
+    mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
+    if mtls_on and arrived_via_sidecar(request):
+        return header
+    return ""
 
 
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
@@ -76,18 +104,7 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        peer = request.headers.get(PEER_IDENTITY_HEADER, "").strip()
-
-        # Two conditions, and the header is honoured only under both.
-        # PEER_IDENTITY_TRUSTED is set to "on" by compose only when the
-        # perimeter sidecar enforces client certs; unset means the trust
-        # boundary was never configured, so fail closed. The transport check
-        # is what makes that claim binding: config alone cannot tell the
-        # sidecar's traffic apart from a caller that skipped it, and the
-        # plaintext port is reachable without any credential.
-        mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
-        if not mtls_on or not arrived_via_sidecar(request):
-            peer = ""
+        peer = resolve_authenticated_peer(request)
 
         if self._strict:
             if not peer:

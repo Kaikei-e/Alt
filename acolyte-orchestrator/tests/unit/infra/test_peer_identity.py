@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pytest
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -14,10 +13,8 @@ from acolyte.infra.peer_identity import (
     PEER_IDENTITY_HEADER,
     PeerIdentityMiddleware,
     allowed_peers_from_env,
+    resolve_authenticated_peer,
 )
-
-if TYPE_CHECKING:
-    from starlette.requests import Request
 
 # pki-agent shares this container's network namespace and proxies to
 # 127.0.0.1:8090, so a loopback transport peer is the sidecar. Anything else
@@ -131,3 +128,43 @@ def test_allowed_peers_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_allowed_peers_from_env_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MTLS_ALLOWED_PEERS", raising=False)
     assert allowed_peers_from_env() == []
+
+
+def test_tls_cn_wins_over_spoofed_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "https",
+        "path": "/echo",
+        "raw_path": b"/echo",
+        "query_string": b"",
+        "headers": [(b"x-alt-peer-identity", b"spoofed-root")],
+        "client": DIRECT,
+        "server": ("127.0.0.1", 9443),
+        "root_path": "",
+        "extensions": {"tls": {"client_cn": "alt-backend"}},
+    }
+    assert resolve_authenticated_peer(Request(scope)) == "alt-backend"
+
+
+def test_tls_cn_is_used_even_when_trust_env_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "off")
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "https",
+        "path": "/echo",
+        "raw_path": b"/echo",
+        "query_string": b"",
+        "headers": [(b"x-alt-peer-identity", b"spoofed-root")],
+        "client": DIRECT,
+        "server": ("127.0.0.1", 9443),
+        "root_path": "",
+        "extensions": {"tls": {"client_cn": "bff"}},
+    }
+    assert resolve_authenticated_peer(Request(scope)) == "bff"

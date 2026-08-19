@@ -3,7 +3,7 @@
 import os
 from typing import Final
 
-import uvicorn
+from recap_subworker.app.infra.inbound_server import serve_app
 
 DEFAULT_HOST: Final[str] = "0.0.0.0"
 DEFAULT_PORT: Final[int] = 8002
@@ -19,12 +19,9 @@ def main() -> None:
     except ValueError:
         port = DEFAULT_PORT
 
-    uvicorn.run(
-        "recap_subworker.app.main:create_app",
-        factory=True,
+    serve_app(
         host=host,
         port=port,
-        reload=False,
         log_level=os.getenv("RECAP_SUBWORKER_LOG_LEVEL", "info"),
     )
 
