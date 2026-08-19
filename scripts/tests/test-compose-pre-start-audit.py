@@ -90,7 +90,7 @@ PKI_HOOK = {
     "command": [
         "sh",
         "-c",
-        "mkdir -p /certs && chown 65532:65532 /certs && chmod 0750 /certs",
+        "mkdir -p /certs && chown -R 65532:65532 /certs && chmod 0750 /certs",
     ],
 }
 check(
@@ -103,6 +103,22 @@ check(
         {
             "image": "alpine:3.21",
             "command": ["sh", "-c", "chown 65532:65532 /certs && chmod 0777 /certs"],
+        },
+        "/certs",
+        "65532:65532",
+    ),
+)
+
+check(
+    "a chown that skips the files already in the volume is rejected",
+    not audit.is_pki_cert_chown_hook(
+        {
+            "image": "alpine:3.21",
+            "command": [
+                "sh",
+                "-c",
+                "mkdir -p /certs && chown 65532:65532 /certs && chmod 0750 /certs",
+            ],
         },
         "/certs",
         "65532:65532",
