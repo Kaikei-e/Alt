@@ -2,6 +2,11 @@
 
 Lifecycle: create at app startup, close at shutdown.
 Tables are auto-created by setup().
+
+GHSA-47pj-3jcm-6whg lives in PostgresStore search/list namespace prefix matching.
+This factory only constructs AsyncPostgresSaver (checkpoint thread_id isolation).
+Keep langgraph-checkpoint-postgres >=3.1.1 so a later store adoption cannot
+revive the leak.
 """
 
 from __future__ import annotations

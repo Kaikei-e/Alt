@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
+import inspect
+from importlib.metadata import version
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from acolyte.gateway.checkpoint_factory import create_checkpointer
+
+
+def test_checkpoint_postgres_is_patched_for_ghsa_47pj() -> None:
+    """GHSA-47pj-3jcm-6whg / PYSEC-2026-3635: namespace prefix must not cross segments.
+
+    Acolyte wires AsyncPostgresSaver, not PostgresStore search/list. Still require
+    the patched 3.1.1 line so a later store adoption cannot revive the leak.
+    """
+    parts = tuple(int(p) for p in version("langgraph-checkpoint-postgres").split(".")[:3])
+    assert parts >= (3, 1, 1)
+    src = inspect.getsource(create_checkpointer)
+    assert "PostgresStore" not in src
+    assert "AsyncPostgresSaver" in src
 
 
 @pytest.mark.asyncio
