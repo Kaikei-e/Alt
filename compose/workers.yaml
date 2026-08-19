@@ -245,7 +245,16 @@ services:
       - pki-agent-tag-generator-jwk
     volumes:
       - ../scripts:/scripts:ro
-      - ../tag-generator/models/onnx:/models/onnx:ro
+      # ONNX classifier models — 479 MB and gitignored, so a path relative to
+      # this compose file resolves into the deploy runner's per-job checkout
+      # and is empty there; the short syntax used to auto-create it and mask
+      # the models. Same host-path rule as recap-subworker's /app/data.
+      - type: bind
+        source: ${TAG_GENERATOR_ONNX_HOST_PATH:-/var/lib/alt-tag-generator-onnx}
+        target: /models/onnx
+        read_only: true
+        bind:
+          create_host_path: false
       - tag_generator_certs:/certs
       - pki_trust_bundle:/trust:ro
     pre_start:

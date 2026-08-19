@@ -206,9 +206,6 @@ KNOWN_WORKSPACE_SOURCES = {
     ("knowledge-sovereign", "../backups/sovereign-snapshots"): (
         "snapshot sink; a deploy roll writes into the workspace copy instead of the host one"
     ),
-    ("tag-generator", "../tag-generator/models/onnx"): (
-        "479 MB of gitignored ONNX models; a deploy roll masks them with an empty dir"
-    ),
 }
 
 
