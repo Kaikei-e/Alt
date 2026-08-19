@@ -116,6 +116,13 @@ FORCE_MODEL_REFRESH="${FORCE_MODEL_REFRESH:-0}"
 GGUF_SHA256_EXPECTED="${GGUF_SHA256_EXPECTED:-}"
 MTP_SHA256_EXPECTED="${MTP_SHA256_EXPECTED:-}"
 
+# True when $1 names an existing tag. Matches the whole name: the prefix match
+# this replaced accepted gemma4-e4b-12k-mtp as gemma4-e4b-12k and skipped a
+# creation that never happened, leaving every consumer request to 404.
+model_exists() {
+  ollama list 2>/dev/null | awk -v n="$1" 'NR > 1 && ($1 == n || $1 == n ":latest") { found = 1 } END { exit !found }'
+}
+
 # Downloads $2 to $3 and fails unless its sha256 matches $4. An empty $4 logs
 # the digest without comparing. $1 labels the file in every message.
 fetch_gguf() {
@@ -151,7 +158,7 @@ if [ "$FORCE_MODEL_REFRESH" = "1" ]; then
   echo "WARNING: FORCE_MODEL_REFRESH=1 will DELETE local Gemma4 tags and re-download ~5.2GB."
   echo "WARNING: Use as a one-shot only; set FORCE_MODEL_REFRESH=0 after success to avoid wipe-on-restart."
   for model_name in "$BASE_MODEL" "${VARIANT_MODELS[@]}"; do
-    if ollama list 2>/dev/null | grep -q "^${model_name}"; then
+    if model_exists "$model_name"; then
       echo "  Removing ${model_name} for forced refresh..."
       if ! ollama rm "$model_name"; then
         echo "Error: failed to remove ${model_name} during forced refresh"
@@ -164,7 +171,7 @@ else
 fi
 
 echo "Ensuring ${BASE_MODEL} model exists..."
-if ! ollama list 2>/dev/null | grep -q "^${BASE_MODEL}"; then
+if ! model_exists "$BASE_MODEL"; then
   echo "  Model not found. Downloading QAT GGUF from Google (Q4_0, ~5.15GB)..."
   mkdir -p "$GGUF_DIR"
   if ! fetch_gguf "GGUF" "$GGUF_URL" "$GGUF_FILE" "$GGUF_SHA256_EXPECTED"; then
@@ -207,7 +214,7 @@ create_model() {
   if [ "$FORCE_MODEL_REFRESH" != "1" ] &&
     [ -n "$want_digest" ] &&
     [ "$want_digest" = "$(cat "$digest_file" 2>/dev/null)" ] &&
-    ollama list 2>/dev/null | grep -q "^$model_name"; then
+    model_exists "$model_name"; then
     echo "  Model $model_name already exists with an unchanged Modelfile, skipping creation"
     echo "gemma4.refresh.skipped=${model_name}"
   else
@@ -229,19 +236,29 @@ create_model "gemma4-e4b-12k" "$MODELFILE_DIR/Modelfile.gemma4-e4b-12k"
 
 echo "Model variants created (if needed)."
 
+# A skipped or failed create must not reach preload as a success. Without the
+# tag every consumer request 404s, and the preload call below cannot tell that
+# apart from a slow load.
+for model_name in "$BASE_MODEL" "${VARIANT_MODELS[@]}"; do
+  if ! model_exists "$model_name"; then
+    echo "Error: ${model_name} is missing after model creation"
+    exit 1
+  fi
+done
+
 # --- preload default RAG model only ------------------------
 # num_gpu pins the offload split for the runner this preload starts: Ollama
 # forwards --n-gpu-layers only when the option is in the request, and a partial
 # CPU/GPU split aborts gemma4 at load.
 echo "Preloading 12K model only (8K remains available on-demand)..."
 echo "  Loading 12K model (attempt 1/3)..."
-if curl -s -X POST http://localhost:11435/api/generate \
+if curl -fs -X POST http://localhost:11435/api/generate \
   -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1,"num_gpu":99}}' \
   >/dev/null 2>&1; then
   echo "  12K model preloaded successfully (will be kept in GPU memory)"
   sleep 2
   echo "  Verifying 12K model is loaded (attempt 2/3)..."
-  if curl -s -X POST http://localhost:11435/api/generate \
+  if curl -fs -X POST http://localhost:11435/api/generate \
     -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1,"num_gpu":99}}' \
     >/dev/null 2>&1; then
     echo "  12K model confirmed to be loaded in GPU memory (keep_alive: 24h)"
