@@ -838,6 +838,71 @@ func TestSSRFValidator_CanonicalRequestURL(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestCanonicalRequestURLRe(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "https with path and query", raw: "https://example.com/a/b?x=1", want: true},
+		{name: "http with path", raw: "http://example.com/article", want: true},
+		{name: "public IPv4", raw: "https://93.184.216.34/article", want: true},
+		{name: "query may contain at-sign", raw: "https://example.com/a?email=user@host.com", want: true},
+		{name: "IPv6 host", raw: "https://[2001:db8::1]/", want: true},
+		{name: "userinfo rejected", raw: "https://user@example.com/foo", want: false},
+		{name: "javascript scheme", raw: "javascript:alert(1)", want: false},
+		{name: "ftp scheme", raw: "ftp://example.com/file", want: false},
+		{name: "empty", raw: "", want: false},
+		{name: "scheme relative", raw: "//example.com/foo", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, canonicalRequestURLRe.MatchString(tt.raw))
+		})
+	}
+}
+
+func TestSSRFValidator_CanonicalRequestURL_AllowlistedSchemeOnly(t *testing.T) {
+	validator := NewSSRFValidator()
+	validator.SetTestingMode(true)
+
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "https reconstructed without fragment or userinfo",
+			raw:  "https://example.com/a/b?x=1#frag",
+			want: "https://example.com/a/b?x=1",
+		},
+		{
+			name: "http allowlisted scheme",
+			raw:  "http://example.com/article",
+			want: "http://example.com/article",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u, err := url.Parse(tt.raw)
+			require.NoError(t, err)
+
+			got, err := validator.CanonicalRequestURL(context.Background(), u)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+			assert.True(t, canonicalRequestURLRe.MatchString(got))
+			assert.True(t, strings.HasPrefix(got, "https://") || strings.HasPrefix(got, "http://"))
+			assert.NotContains(t, strings.SplitN(got, "/", 3)[2], "@")
+		})
+	}
+
+	userinfo, err := url.Parse("https://user:pass@example.com/secret")
+	require.NoError(t, err)
+	_, err = validator.CanonicalRequestURL(context.Background(), userinfo)
+	require.Error(t, err)
+}
+
 func TestSSRFValidator_CanonicalRequestURL_PreservesPercentEncodedPath(t *testing.T) {
 	validator := NewSSRFValidator()
 	validator.SetTestingMode(true)

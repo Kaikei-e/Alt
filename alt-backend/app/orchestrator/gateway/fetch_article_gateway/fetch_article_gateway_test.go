@@ -43,7 +43,15 @@ func TestFetchArticleGateway_Fetch_Success_WithTestingOverride(t *testing.T) {
 	rl := rate_limiter.NewHostRateLimiter(1 * time.Millisecond)
 
 	// Fake RoundTripper to avoid real network
+	var sawURL string
 	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		sawURL = req.URL.String()
+		if req.URL.User != nil {
+			t.Errorf("outbound request URL must not contain userinfo: %s", req.URL.Redacted())
+		}
+		if req.URL.Scheme != "https" && req.URL.Scheme != "http" {
+			t.Errorf("outbound request scheme %q is not allowlisted", req.URL.Scheme)
+		}
 		resp := &http.Response{
 			StatusCode: 200,
 			Body:       io.NopCloser(strings.NewReader("<h1>OK</h1>")),
@@ -63,7 +71,9 @@ func TestFetchArticleGateway_Fetch_Success_WithTestingOverride(t *testing.T) {
 	if content == nil || *content == "" {
 		t.Fatalf("expected non-empty content, got %v", content)
 	}
-	// HTML should be stripped roughly (we don't assert exact value here)
+	if sawURL != "https://93.184.216.34/article" {
+		t.Fatalf("expected canonical outbound URL, got %q", sawURL)
+	}
 }
 
 func TestFetchArticleGateway_InvalidURL(t *testing.T) {

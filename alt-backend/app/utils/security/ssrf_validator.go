@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -85,11 +86,17 @@ func (v *SSRFValidator) CanonicalRequestURL(ctx context.Context, u *url.URL) (st
 	if err := v.ValidateURL(ctx, u); err != nil {
 		return "", err
 	}
+	scheme, err := allowlistedRequestScheme(u.Scheme)
+	if err != nil {
+		return "", err
+	}
 	// Path carries the decoded form and RawPath its original encoding;
 	// setting Path to EscapedPath() would make String() escape it a second
 	// time (%2C -> %252C), corrupting signed CDN URLs.
+	// Scheme is an allowlisted constant (http/https); Host/Path/Query are
+	// copied only after ValidateURL. Userinfo, fragment, and opaque are dropped.
 	safe := &url.URL{
-		Scheme:   strings.ToLower(u.Scheme),
+		Scheme:   scheme,
 		Host:     u.Host,
 		Path:     u.Path,
 		RawPath:  u.RawPath,
@@ -98,7 +105,35 @@ func (v *SSRFValidator) CanonicalRequestURL(ctx context.Context, u *url.URL) (st
 	if safe.Path == "" {
 		safe.Path = "/"
 	}
-	return safe.String(), nil
+	canonical := safe.String()
+	// Match the reconstructed string (same SSA value we return). go/request-forgery
+	// treats regexp.MatchString as a URL sanitizer; returning a different expression
+	// would leave taint on the caller's request URL.
+	if !canonicalRequestURLRe.MatchString(canonical) {
+		return "", &ValidationError{
+			Message: "reconstructed URL is not a canonical http(s) request URL",
+			Type:    "CANONICAL_URL_REJECTED",
+		}
+	}
+	return canonical, nil
+}
+
+// canonicalRequestURLRe is the shape CanonicalRequestURL may return: http(s),
+// no userinfo, non-empty host. Unexported so it is not an SSRF-safety API.
+var canonicalRequestURLRe = regexp.MustCompile(`^https?://[^/?#@]+(?:[/?#].*)?$`)
+
+func allowlistedRequestScheme(scheme string) (string, error) {
+	switch strings.ToLower(scheme) {
+	case "https":
+		return "https", nil
+	case "http":
+		return "http", nil
+	default:
+		return "", &ValidationError{
+			Message: "only HTTP and HTTPS schemes allowed",
+			Type:    "SCHEME_VALIDATION_ERROR",
+		}
+	}
 }
 
 // ValidateURL performs comprehensive URL validation including DNS rebinding protection

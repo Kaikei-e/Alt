@@ -1,3 +1,7 @@
 name: "Alt Go CodeQL"
+# Local model pack (qlpack.yml: library + extensionTargets + dataExtensions).
+# GitHub code-scanning config lists it under packs so the CLI can inject
+# models into codeql/go-all. Go model-pack support on github.com is preview-uneven;
+# CanonicalRequestURL + regexp.MatchString is the stock-query-visible sanitizer.
 packs:
   - ./.github/codeql

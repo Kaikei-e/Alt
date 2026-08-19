@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"syscall"
 	"time"
 
@@ -71,6 +72,11 @@ func isUpstreamUnreachable(err error) bool {
 // GBs resident — the same decompression-bomb guard image_fetch_gateway applies
 // via io.LimitReader (ADR-000702).
 const maxArticleBodyBytes = 10 * 1024 * 1024
+
+// canonicalRequestURLRe is the shape CanonicalRequestURL may return: http(s),
+// no userinfo, non-empty host. MatchString must run on the same SSA value passed
+// to http.NewRequestWithContext so go/request-forgery sees a stock sanitizer.
+var canonicalRequestURLRe = regexp.MustCompile(`^https?://[^/?#@]+(?:[/?#].*)?$`)
 
 type FetchArticleGateway struct {
 	rateLimiter   *rate_limiter.HostRateLimiter
@@ -204,6 +210,11 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 	if err != nil {
 		return nil, fmt.Errorf("ssrf validation failed for %q: %w", parsedURL.String(), err)
 	}
+	// Intra-procedural regexp barrier for go/request-forgery: MatchString the same
+	// SSA value passed to NewRequest. CreateSecureHTTPClient still checks IPs on dial.
+	if !canonicalRequestURLRe.MatchString(safeURL) {
+		return nil, fmt.Errorf("ssrf validation failed for %q: reconstructed URL is not canonical", parsedURL.String())
+	}
 
 	// Build request with context and safe client
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, safeURL, nil)
@@ -214,8 +225,6 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	// Do NOT set Accept-Encoding manually to allow Go transport to auto-decompress
 
-	// SSRF: CanonicalRequestURL + CreateSecureHTTPClient (connection-time IP + redirect checks).
-	// codeql[go/request-forgery] - URL reconstructed by SSRFValidator.CanonicalRequestURL
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
 		if isUpstreamUnreachable(err) {

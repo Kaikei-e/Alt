@@ -3,5 +3,9 @@ extensions:
       pack: codeql/go-all
       extensible: barrierModel
     data:
-      # CanonicalRequestURL validates + reconstructs; return value is safe for request-forgery sinks.
+      # Official Go MaD: ReturnValue is the first result of a method with a body.
+      # ReturnValue[0] is the same slot, explicit for (string, error).
+      # Package path is the Go import path (module alt + utils/security).
+      # Optional backup; go/request-forgery #571 is closed by MatchString at the fetch sink.
+      - ["alt/utils/security", "SSRFValidator", True, "CanonicalRequestURL", "", "", "ReturnValue", "request-forgery", "manual"]
       - ["alt/utils/security", "SSRFValidator", True, "CanonicalRequestURL", "", "", "ReturnValue[0]", "request-forgery", "manual"]
