@@ -5,17 +5,17 @@ import { env } from "../src/env.js";
  * Readiness gate — the direct replacement for `00-setup.hurl`.
  *
  * `run.sh` already waits on the compose healthcheck, but a healthy container
- * is not a ready service: the healthcheck only proves `/health` answered 200,
- * and `health_check` answers 200 with `status: "healthy"` *even when
- * `list_models()` raised* and it had to attach an `error` key
+ * is not a ready service: the healthcheck probes `/health`, which is cheap
+ * liveness and answers `{"status":"healthy"}` without touching Ollama
  * (handler/health_handler.py). A stack whose Ollama stub is not up yet
  * therefore passes compose's gate and then fails every LLM-touching spec with
  * a 502.
  *
- * So the probe asserts the thing the healthcheck cannot: that
- * `models[]` is non-empty and `error` is absent. That is the FastAPI lifespan
- * having finished wiring `OllamaGateway` *and* the stub having answered
- * `/api/tags`.
+ * So the probe asserts the thing the liveness path cannot: `/health/deep`
+ * runs the critical `ollama` check, which fails unless `list_models()`
+ * returned a non-empty list — the FastAPI lifespan having finished wiring
+ * `OllamaGateway` *and* the stub having answered `/api/tags`. It answers 503
+ * until then, which `httpBody` keeps polling through.
  *
  * This belongs here rather than in a spec because a readiness check inside the
  * suite is order-dependent by construction, and `fullyParallel` has no notion
@@ -26,16 +26,21 @@ import { env } from "../src/env.js";
 export default async function globalSetup(): Promise<void> {
 	await waitForReady([
 		httpBody(
-			`${env.baseURL}/health`,
+			`${env.baseURL}/health/deep`,
 			(body) => {
 				if (typeof body !== "object" || body === null) return false;
 				const record = body as Record<string, unknown>;
-				if (record["status"] !== "healthy") return false;
+				if (record["status"] !== "pass") return false;
 				if (record["service"] !== "news-creator") return false;
-				if ("error" in record) return false;
-				return Array.isArray(record["models"]) && record["models"].length > 0;
+				const checks = record["checks"];
+				if (!Array.isArray(checks)) return false;
+				return checks.some((check) => {
+					if (typeof check !== "object" || check === null) return false;
+					const row = check as Record<string, unknown>;
+					return row["name"] === "ollama" && row["status"] === "pass";
+				});
 			},
-			`GET ${env.baseURL}/health reports healthy with a non-empty models[] and no error key`,
+			`GET ${env.baseURL}/health/deep reports the ollama check passing`,
 		),
 
 		/**

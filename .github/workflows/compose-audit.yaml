@@ -39,6 +39,7 @@ on:
       - 'scripts/compose-pre-start-audit.py'
       - 'scripts/compose-ops-surface-audit.py'
       - 'scripts/compose-feature-gate.py'
+      - 'scripts/ci-install-compose.sh'
       - 'scripts/compose_include.py'
       - 'scripts/ops-surface-baseline.json'
       - 'scripts/ops-surface-inventory.yaml'
@@ -86,6 +87,7 @@ on:
       - 'scripts/compose-pre-start-audit.py'
       - 'scripts/compose-ops-surface-audit.py'
       - 'scripts/compose-feature-gate.py'
+      - 'scripts/ci-install-compose.sh'
       - 'scripts/compose_include.py'
       - 'scripts/ops-surface-baseline.json'
       - 'scripts/ops-surface-inventory.yaml'
@@ -138,6 +140,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Install the Compose build production renders with
+        run: ./scripts/ci-install-compose.sh
 
       - name: Stage a dummy .env so compose config resolves
         run: |
@@ -206,6 +211,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Install the Compose build production renders with
+        run: ./scripts/ci-install-compose.sh
 
       - name: Stage a dummy .env so compose config resolves
         # Several services carry `env_file: ../.env`, and compose config
@@ -299,6 +307,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Install the Compose build production renders with
+        run: ./scripts/ci-install-compose.sh
 
       - name: Stage .env.template as the render input
         run: |

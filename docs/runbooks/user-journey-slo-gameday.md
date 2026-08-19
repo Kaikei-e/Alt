@@ -43,6 +43,7 @@ curl -s http://127.0.0.1:9250/metrics | grep '^alt_user_journey_requests_total'
 
 - [ ] `alt_user_journey_instrumented 1` is present (counter is wired). Request series appear only after real Record samples — zeros at boot are not coverage.
 - [ ] Prometheus target `alt-butterfly-facade` is UP at `http://127.0.0.1:9090/targets`.
+- [ ] After all three journeys have been exercised in both outcomes, `alt_user_journey_requests_total` carries six series — `journey="feeds|search|login"` × `status="ok|error"`. The BFF exposes `/metrics` from boot, so a series short of six means that journey never recorded that outcome, not a missing endpoint.
 
 ## Scenario B: Burn-rate page (synthetic)
 

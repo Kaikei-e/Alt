@@ -7,10 +7,14 @@ on:
     branches: [main, develop]
     paths:
       - "recap-subworker/**"
+      - "compose/recap.yaml"
+      - ".github/workflows/recap-subworker.yml"
   pull_request:
     branches: [main, develop]
     paths:
       - "recap-subworker/**"
+      - "compose/recap.yaml"
+      - ".github/workflows/recap-subworker.yml"
   workflow_dispatch:
 
 concurrency:
@@ -26,7 +30,9 @@ jobs:
     with:
       working-directory: "recap-subworker"
       python-version: "3.14"
-      sparse-checkout: "recap-subworker"
+      sparse-checkout: |
+        recap-subworker
+        compose
       coverage-flags: "recap-subworker"
       upload-coverage: true
       job-type: "test"
