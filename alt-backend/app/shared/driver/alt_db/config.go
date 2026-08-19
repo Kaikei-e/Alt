@@ -92,3 +92,39 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 	}
 	return intValue
 }
+
+// parseEnvInt32 reads key as a base-10 int32 via strconv.ParseInt bitSize 32.
+// Unset → defaultValue. Non-integer or out of int32 range → error.
+// Never silent-clamps (CLAUDE.md rule 9: fail-fast startup config).
+func parseEnvInt32(key string, defaultValue int32) (int32, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue, nil
+	}
+	n, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s=%q: must be an integer in [%d, %d]: %w", key, value, math.MinInt32, math.MaxInt32, err)
+	}
+	return int32(n), nil
+}
+
+// poolConnsFromEnv loads DB_MAX_CONNS / DB_MIN_CONNS as int32 pool sizes.
+// Values that fit a platform int but not int32, or that are invalid for a
+// pgx pool (MaxConns <= 0, MinConns < 0), fail instead of being clamped.
+func poolConnsFromEnv() (maxConns, minConns int32, err error) {
+	maxConns, err = parseEnvInt32("DB_MAX_CONNS", 20)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read DB_MAX_CONNS: %w", err)
+	}
+	if maxConns <= 0 {
+		return 0, 0, fmt.Errorf("invalid DB_MAX_CONNS=%d: must be a positive int32", maxConns)
+	}
+	minConns, err = parseEnvInt32("DB_MIN_CONNS", 5)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read DB_MIN_CONNS: %w", err)
+	}
+	if minConns < 0 {
+		return 0, 0, fmt.Errorf("invalid DB_MIN_CONNS=%d: must be a non-negative int32", minConns)
+	}
+	return maxConns, minConns, nil
+}

@@ -3,7 +3,6 @@ package alt_db
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"time"
 
@@ -14,6 +13,14 @@ import (
 )
 
 func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
+	// Fail-fast on pool sizes before DSN construction: NewDatabaseConfigFromEnv
+	// still uses platform Atoi for unused MaxConns/MinConns fields and would
+	// panic on non-integers, or accept values that fit int but not int32.
+	maxConns, minConns, err := poolConnsFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("invalid pool size config: %w", err)
+	}
+
 	connStr, err := getDBConnectionString()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build connection string: %w", err)
@@ -25,22 +32,8 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("invalid connection string: %w", err)
 	}
 
-	// プール設定を明示的に設定（bounds checking付き）
-	maxConns := getEnvIntOrDefault("DB_MAX_CONNS", 20)
-	if maxConns > math.MaxInt32 {
-		logger.Logger.WarnContext(ctx, "DB_MAX_CONNS value too large, using maximum allowed value",
-			"provided", maxConns, "max_allowed", math.MaxInt32)
-		maxConns = math.MaxInt32
-	}
-	config.MaxConns = int32(maxConns)
-
-	minConns := getEnvIntOrDefault("DB_MIN_CONNS", 5)
-	if minConns > math.MaxInt32 {
-		logger.Logger.WarnContext(ctx, "DB_MIN_CONNS value too large, using maximum allowed value",
-			"provided", minConns, "max_allowed", math.MaxInt32)
-		minConns = math.MaxInt32
-	}
-	config.MinConns = int32(minConns)
+	config.MaxConns = maxConns
+	config.MinConns = minConns
 
 	// PgBouncer transaction pooling互換: simple protocolを使用
 	// 拡張プロトコルのprepared statementキャッシュがtransaction poolingで問題になるのを回避
