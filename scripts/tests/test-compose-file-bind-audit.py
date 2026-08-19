@@ -217,9 +217,82 @@ check(
     audit.file_bind_violations(CONFIGS_ONLY, pathlib.Path("/compose")) == [],
 )
 
+print("ephemeral_source_violations")
+
+# The deploy job checks Alt out fresh into the runner workspace, so a bind
+# whose source is a repo-relative path only holds what git tracks. A
+# gitignored source resolves to a path that is absent there — and with
+# `create_host_path: false` the roll fails at preflight, while without it
+# Engine mounts a silently empty directory (PM-2026-036 again, one layer up).
+IGNORED_RELATIVE = {
+    "recap-subworker": {
+        "volumes": [
+            {
+                "type": "bind",
+                "source": "../recap-subworker/recap_subworker/learning_machine/artifacts",
+                "target": "/app/recap_subworker/learning_machine/artifacts",
+                "read_only": True,
+                "bind": {"create_host_path": False},
+            }
+        ]
+    }
+}
+check(
+    "repo-relative bind whose source is gitignored is a violation",
+    any(
+        "recap-subworker" in v and "artifacts" in v
+        for v in audit.ephemeral_source_violations(
+            IGNORED_RELATIVE, pathlib.Path("/repo/compose"), is_ignored=lambda _p: True
+        )
+    ),
+)
+check(
+    "repo-relative bind whose source is tracked is clean",
+    audit.ephemeral_source_violations(
+        IGNORED_RELATIVE, pathlib.Path("/repo/compose"), is_ignored=lambda _p: False
+    )
+    == [],
+)
+
+HOST_ABSOLUTE = {
+    "recap-subworker": {
+        "volumes": [
+            {
+                "type": "bind",
+                "source": "${RECAP_SUBWORKER_ARTIFACTS_HOST_PATH:-/var/lib/alt-recap-subworker-artifacts}",
+                "target": "/app/recap_subworker/learning_machine/artifacts",
+                "read_only": True,
+                "bind": {"create_host_path": False},
+            }
+        ]
+    }
+}
+check(
+    "host-path bind is never checked against gitignore",
+    audit.ephemeral_source_violations(
+        HOST_ABSOLUTE, pathlib.Path("/repo/compose"), is_ignored=lambda _p: True
+    )
+    == [],
+)
+
+NAMED_VOLUME = {
+    "recap-subworker": {"volumes": ["recap_subworker_certs:/certs"]}
+}
+check(
+    "named volume is not a source path",
+    audit.ephemeral_source_violations(
+        NAMED_VOLUME, pathlib.Path("/repo/compose"), is_ignored=lambda _p: True
+    )
+    == [],
+)
+
 print("production")
 prod = audit.audit_production()
 check("production compose has 0 unguarded file binds", prod == [])
+ephemeral = audit.audit_production_sources()
+check("production compose has 0 gitignored bind sources", ephemeral == [])
+for v in ephemeral:
+    print(f"    leftover: {v}")
 if prod:
     for v in prod:
         print(f"    leftover: {v}")
