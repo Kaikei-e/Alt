@@ -66,6 +66,9 @@ func (h *AdminProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	copyResponseHeaders(resp.Header, w.Header())
 	w.WriteHeader(resp.StatusCode)
+	if ct := w.Header().Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
 	_, _ = io.Copy(w, resp.Body)
 }
 

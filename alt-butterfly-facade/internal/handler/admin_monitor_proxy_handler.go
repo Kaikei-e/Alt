@@ -74,6 +74,9 @@ func (h *AdminMonitorProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		w.Header().Set("X-Accel-Buffering", "no")
 	}
 	w.WriteHeader(resp.StatusCode)
+	if ct := w.Header().Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
 
 	flusher, _ := w.(http.Flusher)
 	if flusher == nil {

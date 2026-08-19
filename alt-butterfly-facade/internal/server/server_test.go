@@ -89,6 +89,43 @@ func TestServer_ProxyEndpoint_Unauthorized(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 }
 
+func TestServer_ErrorResponsesDoNotReflectHTMLFromRequest(t *testing.T) {
+	const xss = `<script>alert("xss")</script>`
+
+	cfg := Config{
+		BackendURL:       "http://localhost:9101",
+		Secret:           []byte("test-secret"),
+		Issuer:           "auth-hub",
+		Audience:         "alt-backend",
+		RequestTimeout:   30 * time.Second,
+		StreamingTimeout: 5 * time.Minute,
+	}
+	h := NewServerWithTransport(cfg, nil, http.DefaultTransport)
+
+	t.Run("rejected connect path", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/alt.notreal.v1.NopeService/Do", strings.NewReader(`{}`))
+		req.URL.Path = "/alt.notreal.v1.NopeService/" + xss
+		req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+		assert.NotContains(t, rec.Body.String(), "<script>")
+		assert.NotContains(t, rec.Body.String(), xss)
+	})
+
+	t.Run("unauthorized allowlisted path", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader(`{}`))
+		req.URL.RawQuery = "q=" + xss
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		assert.NotContains(t, rec.Body.String(), "<script>")
+		assert.NotContains(t, rec.Body.String(), xss)
+	})
+}
+
 func TestServer_MetricsExposesUserJourneyCounter(t *testing.T) {
 	cfg := Config{
 		BackendURL:       "http://localhost:9101",

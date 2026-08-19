@@ -78,6 +78,10 @@ func (h *RESTProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Write status code
 	w.WriteHeader(resp.StatusCode)
 
+	if ct := w.Header().Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+
 	// Stream response body
 	if _, err := io.Copy(w, resp.Body); err != nil {
 		if h.logger != nil {

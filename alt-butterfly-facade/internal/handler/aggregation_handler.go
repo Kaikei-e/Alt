@@ -4,6 +4,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -118,7 +119,7 @@ func (h *AggregationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := req.Validate(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, html.EscapeString(err.Error()), http.StatusBadRequest)
 		return
 	}
 

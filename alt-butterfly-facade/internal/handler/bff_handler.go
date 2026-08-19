@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -479,6 +480,9 @@ func (h *BFFHandler) writeCachedResponse(w http.ResponseWriter, entry *cache.Cac
 	}
 	w.Header().Set("X-Cache", "HIT")
 	w.WriteHeader(entry.StatusCode)
+	if ct := w.Header().Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
 	w.Write(entry.Response)
 }
 
@@ -531,6 +535,9 @@ func (h *BFFHandler) writeResult(w http.ResponseWriter, result *DedupResult) {
 	}
 	w.Header().Set("X-Cache", "MISS")
 	w.WriteHeader(result.StatusCode)
+	if ct := w.Header().Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
 	w.Write(result.Body)
 }
 
@@ -549,7 +556,7 @@ func (h *BFFHandler) handleError(w http.ResponseWriter, statusCode int, message,
 		return
 	}
 
-	http.Error(w, message, statusCode)
+	http.Error(w, html.EscapeString(message), statusCode)
 }
 
 // handleBackendError handles a backend error.

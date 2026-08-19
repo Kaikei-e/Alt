@@ -1,0 +1,10 @@
+extensions:
+  - addsTo:
+      pack: codeql/go-all
+      extensible: barrierModel
+    data:
+      # Backup only. go/reflected-xss is closed by a local Content-Type
+      # Header().Set next to Write (Xss.qll getAContentTypeNode), not by MaD.
+      # GitHub Go model packs may not load. Kind is html-injection per
+      # https://codeql.github.com/docs/codeql-language-guides/customizing-library-models-for-go/
+      - ["alt-butterfly-facade/internal/metrics", "statusRecorder", True, "Write", "", "", "Argument[0]", "html-injection", "manual"]

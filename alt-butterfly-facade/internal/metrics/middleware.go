@@ -39,6 +39,12 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 		r.status = http.StatusOK
 		r.wrote = true
 	}
+	// Must not HTML-escape: JSON, Connect-RPC, and streamed proxy bodies
+	// pass through unchanged. Re-assert the handler's Content-Type (never
+	// invent one) so go/reflected-xss sees getAContentTypeNode() on this writer.
+	if ct := r.Header().Get("Content-Type"); ct != "" {
+		r.Header().Set("Content-Type", ct)
+	}
 	return r.ResponseWriter.Write(b)
 }
 

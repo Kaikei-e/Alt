@@ -138,6 +138,10 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Write status code
 	w.WriteHeader(resp.StatusCode)
 
+	if ct := w.Header().Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+
 	// Copy response body
 	if isStreaming {
 		h.streamResponse(w, resp)
@@ -165,6 +169,9 @@ func (h *ProxyHandler) streamResponse(w http.ResponseWriter, resp *http.Response
 // buffered until the backend closes the connection. Shared by ProxyHandler
 // and BFFHandler so both streaming code paths present true chunk delivery.
 func streamCopy(w http.ResponseWriter, body io.Reader, logger *slog.Logger) {
+	if ct := w.Header().Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
 	flusher, canFlush := w.(http.Flusher)
 
 	buf := make([]byte, 4096)

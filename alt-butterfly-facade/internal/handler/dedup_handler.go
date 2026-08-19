@@ -196,6 +196,9 @@ func DedupMiddleware(dedup *RequestDeduplicator, userIDExtractor UserIDExtractor
 					}
 				}
 				w.WriteHeader(result.StatusCode)
+				if ct := w.Header().Get("Content-Type"); ct != "" {
+					w.Header().Set("Content-Type", ct)
+				}
 				w.Write(result.Body)
 			}
 		})
