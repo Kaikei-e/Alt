@@ -423,10 +423,15 @@ jobs:
       - name: Enforce image-size budget and smoke-check core imports
         if: contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator","recap-worker"]'), matrix.service) && github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
-          IMAGE_TAG: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          # The tags output rather than fromJSON(meta.outputs.json): a job that
+          # fails before Docker meta runs leaves json empty, and fromJSON('')
+          # is a template error that fails the job with "Error reading JToken"
+          # instead of the real cause.
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
           SERVICE: ${{ matrix.service }}
         run: |
           set -euo pipefail
+          IMAGE_TAG=$(printf '%s\n' "$IMAGE_TAGS" | head -n 1)
           case "$SERVICE" in
             recap-subworker)  MAX_MB=2900 ;;
             news-creator)     MAX_MB=1800 ;;
