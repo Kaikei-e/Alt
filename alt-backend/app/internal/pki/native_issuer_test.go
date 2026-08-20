@@ -701,6 +701,11 @@ func TestNativeStepCAIssuer_Timeout(t *testing.T) {
 	ca := newFakeStepCA(t, "pki-agent-alt-backend", []byte("pw-timeout"))
 	ca.signDelay = 2 * time.Second
 	iss := newNativeIssuer(t, ca)
+	// Warm the provisioner JWK: its 600k-iteration KDF costs more than the
+	// request window measured below and would otherwise dominate it.
+	if _, err := iss.credentials(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	iss.Timeout = 50 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()

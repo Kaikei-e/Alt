@@ -66,7 +66,7 @@ func TestManager_DoesNotLogPasswordFile(t *testing.T) {
 		m, _, _ := newTestManager(t, iss, time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC))
 		m.Cfg.PasswordFile = passwordFile
 		m.Cfg.TickInterval = time.Millisecond
-		var buf bytes.Buffer
+		var buf syncBuffer
 		m.Log = slog.New(slog.NewJSONHandler(&buf, nil))
 		ctx, cancel := context.WithCancel(withT(context.Background(), t))
 		done := make(chan struct{})
@@ -75,10 +75,7 @@ func TestManager_DoesNotLogPasswordFile(t *testing.T) {
 			_ = m.Run(ctx)
 		}()
 		deadline := time.After(2 * time.Second)
-		for {
-			if strings.Contains(buf.String(), "pki_enrollment_tick_failed") {
-				break
-			}
+		for !strings.Contains(buf.String(), "pki_enrollment_tick_failed") {
 			select {
 			case <-deadline:
 				cancel()
