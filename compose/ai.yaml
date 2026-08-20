@@ -85,8 +85,13 @@ services:
       - GGUF_SHA256_EXPECTED=${GGUF_SHA256_EXPECTED:-676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee}
       # Same pin for the ggml-org MTP draft head that drives speculative decoding.
       - MTP_SHA256_EXPECTED=${MTP_SHA256_EXPECTED:-d19a11e4fd5019967d9296f77f4d3e139c8903909f70c3a9cf009c9af4b9b88d}
-      # KV cache quantization: q8_0 halves KV cache memory vs f16 (resolve recommendation)
-      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
+      # KV cache precision. q8_0 saves only 134 MiB here — Gemma 4 E4B keeps KV on
+      # just 24 of 42 layers and sizes 20 of those by the 512-token sliding window
+      # — and measured 21% SLOWER generation on CUDA (108 -> 131 tok/s switching to
+      # f16), because the dequantization cost outweighs the bandwidth saved at this
+      # cache size. f16 also keeps the MTP draft cache unquantized, which llama.cpp
+      # #25725 reports as an acceptance-rate hazard.
+      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-f16}
       # RAG-dedicated mode: favor a single larger context slot over dual-slot concurrency
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
       # Allow the RAG generation model and the Meilisearch hybrid-search embedding
