@@ -227,7 +227,19 @@ type ServerConfig struct {
 }
 
 type RateLimitConfig struct {
-	ExternalAPIInterval time.Duration `json:"external_api_interval" env:"RATE_LIMIT_EXTERNAL_API_INTERVAL" default:"10s"`
+	// The per-host outbound interval, and the only knob CLAUDE.md rule 2 is
+	// about. 7.5s sits deliberately between the 5s floor the rule sets (see
+	// MinExternalAPIInterval in validation.go, which refuses to start below it)
+	// and the 10s this shipped with, which cost more collection latency than
+	// the politeness bought.
+	//
+	// It is the first default in this struct that is not a whole number of
+	// seconds. Everything downstream — the token bucket, the Redis slot TTL,
+	// the 429 backoff, the Retry-After hint — is time.Duration arithmetic and
+	// keeps the half second; utils/rate_limiter/fractional_interval_test.go and
+	// shared/driver/redis_slot_store/fractional_ttl_test.go pin that, because a
+	// truncation to 7s would break rule 2 with nothing in the log to say so.
+	ExternalAPIInterval time.Duration `json:"external_api_interval" env:"RATE_LIMIT_EXTERNAL_API_INTERVAL" default:"7.5s"`
 	ExternalAPIBurst    int           `json:"external_api_burst" env:"RATE_LIMIT_EXTERNAL_API_BURST" default:"3"`
 	FeedFetchLimit      int           `json:"feed_fetch_limit" env:"RATE_LIMIT_FEED_FETCH_LIMIT" default:"100"`
 

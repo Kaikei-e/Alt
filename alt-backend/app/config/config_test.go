@@ -28,7 +28,10 @@ func TestNewConfig_WithDefaults(t *testing.T) {
 					ConnectionTimeout: 30 * time.Second,
 				},
 				RateLimit: RateLimitConfig{
-					ExternalAPIInterval: 10 * time.Second,
+					// 7.5s, deliberately not a whole number of seconds — see
+					// external_api_interval_test.go for the floor and the
+					// no-truncation guarantees that go with it.
+					ExternalAPIInterval: 7500 * time.Millisecond,
 					FeedFetchLimit:      100,
 				},
 				Cache: CacheConfig{
@@ -102,6 +105,8 @@ func TestNewConfig_WithEnvironmentOverrides(t *testing.T) {
 			},
 		},
 		{
+			// 10s must stay different from the shipping default (7.5s), or
+			// this stops testing the override and starts testing the default.
 			name: "override rate limit interval",
 			envVars: map[string]string{
 				"RATE_LIMIT_EXTERNAL_API_INTERVAL": "10s",
