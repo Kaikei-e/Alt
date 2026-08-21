@@ -1,7 +1,9 @@
 package pki
 
 import (
+	"bytes"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -31,4 +33,23 @@ func assertNoPasswordFileInError(t *testing.T, err error, secrets ...string) {
 			t.Fatalf("secret material %q leaked in error: %v", s, err)
 		}
 	}
+}
+
+// syncBuffer captures slog output that a test polls while the code under test
+// is still writing to it from another goroutine.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
