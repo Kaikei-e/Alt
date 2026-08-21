@@ -1,6 +1,8 @@
 package di
 
 import (
+	"alt/config"
+	"alt/orchestrator/connect/v2/articles"
 	"alt/orchestrator/driver/preprocessor_client"
 	"alt/orchestrator/gateway/archive_article_gateway"
 	"alt/orchestrator/gateway/article_content_cache_gateway"
@@ -28,6 +30,8 @@ import (
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
 	"alt/shared/usecase/fetch_tag_cloud_usecase"
 	"alt/utils/batch_article_fetcher"
+	"alt/utils/rate_limiter"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -54,6 +58,16 @@ type ArticleModule struct {
 	FetchArticleSummariesUsecase *fetch_article_summaries_usecase.Usecase
 	PreProcessorSummarizeGateway *preprocessor_summarize_gateway.Gateway
 
+	// Article-content prefetch (BatchPrefetchArticleContent). A second
+	// ArticleUsecase over the same repository, robots and scraping-policy
+	// ports as ArticleUsecase, differing only in its fetch gateway — see
+	// newArticleModule for why the scraping-policy instance must be shared and
+	// the fetch gateway must not be.
+	PrefetchArticleUsecase fetch_article_usecase.ArticleUsecase
+	PrefetchArticleProbe   articles.StoredArticleProbe
+	PrefetchHostSlots      articles.HostSlotGate
+	PrefetchWiring         articles.ArticlePrefetchWiring
+
 	// Gateways exposed for cross-module wiring
 	FetchArticleTagsGateway *fetch_article_tags_gateway.FetchArticleTagsGateway
 	FetchArticleGateway     *fetch_article_gateway.FetchArticleGateway
@@ -73,6 +87,50 @@ func logInteractiveSlotWait(budget time.Duration) {
 	}
 
 	slog.Info("fetch_article_gateway.interactive_slot_wait_enabled", "budget", budget)
+}
+
+// newArticlePrefetchWiring decides, once, whether this binary warms article
+// bodies on request, and with what budget.
+//
+// The decision is a declaration rather than an inference from a nil pointer
+// (ADR-000966 §2): every port a prefetch uses is shared with the interactive
+// read path, so "the ports are there" says nothing about whether warming is
+// meant to happen. RATE_LIMIT_PREFETCH_SLOT_WAIT=off is the only way to turn
+// it off, and it is a value an operator writes rather than one they omit.
+func newArticlePrefetchWiring(rl config.RateLimitConfig) (articles.ArticlePrefetchWiring, error) {
+	budget, enabled, err := rl.PrefetchSlotWaitSetting()
+	if err != nil {
+		return articles.ArticlePrefetchWiring{}, err
+	}
+
+	if !enabled {
+		return articles.ArticlePrefetchWiring{
+			Enabled:        false,
+			DisabledReason: "RATE_LIMIT_PREFETCH_SLOT_WAIT=off",
+		}, nil
+	}
+
+	return articles.ArticlePrefetchWiring{Enabled: true, SlotWait: budget}, nil
+}
+
+// logArticlePrefetchWiring states, once at startup, which of the two states
+// this process is in. Without it, "prefetch is deliberately off" and "prefetch
+// was never wired" are the same silence — the failure ADR-000928 is about, and
+// the reason CLAUDE.md rule 8 asks for a loud line either way.
+func logArticlePrefetchWiring(wiring articles.ArticlePrefetchWiring) {
+	if !wiring.Enabled {
+		slog.Warn("article_prefetch.disabled",
+			"reason", wiring.DisabledReason,
+			"impact", "BatchPrefetchArticleContent answers FAILED_PRECONDITION; article bodies are fetched only when a reader opens one")
+		return
+	}
+
+	slog.Info("article_prefetch.enabled",
+		"slot_wait", wiring.SlotWait.String(),
+		"namespace", rate_limiter.NamespaceExternalAPI,
+		"max_urls_per_call", 5,
+		"one_url_per_host", true,
+		"note", "warms take a host's turn from the same limiter and namespace as interactive fetches, and give it up after slot_wait rather than queueing for it")
 }
 
 func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integration_port.RagIntegrationPort) *ArticleModule {
@@ -105,6 +163,41 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	fetchArticleUC := fetch_article_usecase.NewArticleUsecaseWithScrapingPolicy(
 		fetchArticleGw, infra.RobotsTxtGateway, articleRepoGw, ragAdapter, scrapingPolicyGw,
 	)
+
+	// The third fetch class: article-content prefetch. Same repository, robots
+	// and scraping-policy ports as the interactive usecase above, a different
+	// fetch gateway.
+	//
+	// Sharing scrapingPolicyGw is load bearing, not incidental. Crawl-delay
+	// state lives in that gateway instance (lastRequestTime), and a granted
+	// CanFetchArticle *reserves* the window rather than merely reporting on
+	// it. A second instance would give the reader and the warmer one grant
+	// each inside a single crawl delay — two requests where the publisher was
+	// promised one.
+	//
+	// Not sharing the fetch gateway is equally load bearing. The prefetch
+	// gateway holds no rate limiter because the handler takes the host's turn
+	// itself, before the usecase reaches the policy gate; see
+	// NewPrefetchFetchArticleGateway and BatchPrefetchArticleContent for why
+	// that order is the difference between a warm that helps the reader and
+	// one that starves them.
+	prefetchWiring, wiringErr := newArticlePrefetchWiring(infra.Config.RateLimit)
+	if wiringErr != nil {
+		// config.validateRateLimitConfig refuses these values at Load(), so
+		// arriving here means this root was handed a config that never went
+		// through it. That is a wiring bug, and it must stop the process
+		// rather than pick a budget on the operator's behalf.
+		panic(fmt.Sprintf("article prefetch wiring: %v", wiringErr))
+	}
+	logArticlePrefetchWiring(prefetchWiring)
+
+	var prefetchArticleUC fetch_article_usecase.ArticleUsecase
+	if prefetchWiring.Enabled {
+		prefetchArticleUC = fetch_article_usecase.NewArticleUsecaseWithScrapingPolicy(
+			fetch_article_gateway.NewPrefetchFetchArticleGateway(),
+			infra.RobotsTxtGateway, articleRepoGw, ragAdapter, scrapingPolicyGw,
+		)
+	}
 
 	// Batch article fetcher for efficient multi-URL fetching with domain-based rate limiting
 	batchFetcher := batch_article_fetcher.NewBatchArticleFetcher(infra.RateLimiter, infra.HTTPClient)
@@ -196,6 +289,11 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 		BatchArticleFetcher:        batchFetcher,
 		FetchTagCloudUsecase:       fetchTagCloudUC,
 		GetArticleSourceURLUsecase: getArticleSourceURLUC,
+
+		PrefetchArticleUsecase: prefetchArticleUC,
+		PrefetchArticleProbe:   articleRepoGw,
+		PrefetchHostSlots:      infra.RateLimiter,
+		PrefetchWiring:         prefetchWiring,
 
 		SummarizeArticleUsecase:      summarizeArticleUC,
 		FetchArticleSummariesUsecase: fetchArticleSummariesUC,

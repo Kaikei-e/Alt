@@ -259,8 +259,67 @@ type RateLimitConfig struct {
 	// startup so it cannot be confused with wiring that went missing.
 	InteractiveSlotWait time.Duration `json:"interactive_slot_wait" env:"RATE_LIMIT_INTERACTIVE_SLOT_WAIT" default:"2s"`
 
+	// PrefetchSlotWait is the third fetch class: how long a *prefetch* — a
+	// warm nobody is waiting on — queues for its turn at a host before giving
+	// the turn up for good.
+	//
+	// It is a string rather than a Duration because the class needs a state a
+	// Duration cannot express. Zero already means "wait as long as the context
+	// allows" to the gateway that reads it, which for a prefetch is the
+	// priority inversion this class exists to avoid; so zero has to be
+	// *refused*, and "disabled" has to be a value of its own. The literal is
+	// "off" (see PrefetchSlotWaitSetting), which is a value an operator writes
+	// down rather than a variable they forgot — the distinction rule 9 draws.
+	//
+	// The default is short on purpose. A prefetch that cannot have a host's
+	// turn immediately should not have it at all: ADR-000959's rule is to give
+	// up fast rather than knock more, and ADR-000884 already refused to widen
+	// the interval this waits on.
+	PrefetchSlotWait string `json:"prefetch_slot_wait" env:"RATE_LIMIT_PREFETCH_SLOT_WAIT" default:"250ms"`
+
 	// DOS Protection Configuration
 	DOSProtection DOSProtectionConfig `json:"dos_protection"`
+}
+
+// prefetchDisabledLiteral is the one value that turns article-content
+// prefetch off. It is spelled rather than encoded as a number so that reading
+// the compose file answers "is prefetch on?" without knowing that zero means
+// something different here than it does two fields up.
+const prefetchDisabledLiteral = "off"
+
+// PrefetchSlotWaitSetting decodes RATE_LIMIT_PREFETCH_SLOT_WAIT into the two
+// things the composition root needs: whether to wire article-content prefetch
+// at all, and the budget to wire it with.
+//
+// An error from here is a startup error. There is no third answer where the
+// process runs with prefetch in an undefined state — that is the warn-and-limp
+// shape rule 9 forbids.
+func (c RateLimitConfig) PrefetchSlotWaitSetting() (time.Duration, bool, error) {
+	raw := strings.ToLower(strings.TrimSpace(c.PrefetchSlotWait))
+
+	switch raw {
+	case prefetchDisabledLiteral:
+		return 0, false, nil
+	case "":
+		return 0, false, fmt.Errorf(
+			"RATE_LIMIT_PREFETCH_SLOT_WAIT is empty; set a duration such as 250ms, or %q to disable article-content prefetch",
+			prefetchDisabledLiteral)
+	}
+
+	budget, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, false, fmt.Errorf(
+			"RATE_LIMIT_PREFETCH_SLOT_WAIT must be a duration or %q, got %q: %w",
+			prefetchDisabledLiteral, c.PrefetchSlotWait, err)
+	}
+	if budget <= 0 {
+		return 0, false, fmt.Errorf(
+			"RATE_LIMIT_PREFETCH_SLOT_WAIT must be positive, got %q; zero would queue a background warm "+
+				"for a host until its context expired, in front of a reader who is waiting. Use %q to disable prefetch instead",
+			c.PrefetchSlotWait, prefetchDisabledLiteral)
+	}
+
+	return budget, true, nil
 }
 
 type DOSProtectionConfig struct {

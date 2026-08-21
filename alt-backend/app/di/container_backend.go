@@ -129,6 +129,11 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 		FetchTagCloudUsecase:       article.FetchTagCloudUsecase,
 		GetArticleSourceURLUsecase: article.GetArticleSourceURLUsecase,
 
+		PrefetchArticleUsecase: article.PrefetchArticleUsecase,
+		PrefetchArticleProbe:   article.PrefetchArticleProbe,
+		PrefetchHostSlots:      article.PrefetchHostSlots,
+		PrefetchWiring:         article.PrefetchWiring,
+
 		SummarizeArticleUsecase:      article.SummarizeArticleUsecase,
 		FetchArticleSummariesUsecase: article.FetchArticleSummariesUsecase,
 		PreProcessorSummarizeGateway: article.PreProcessorSummarizeGateway,

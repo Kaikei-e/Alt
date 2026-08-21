@@ -62,6 +62,15 @@ var telemetryEndpoints = map[string]struct{}{
 	"/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction":    {},
 	"/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeItemsSeen": {},
 	"/alt.knowledge_trail.v1.KnowledgeTrailService/EmitTrailOutcome": {},
+	// BatchPrefetchArticleContent is fire-and-forget in the same sense: it
+	// returns an acceptance receipt before any publisher is contacted, and the
+	// reader discards it. It is deliberately not in externalContentEndpoints
+	// above — membership there requires the outbound fetch to be on the
+	// response path, and here the fetch happens after the response, detached.
+	// Charging warms to the external-content budget would let a run of dead
+	// links open the breaker in front of FetchArticleContent, blacking out the
+	// reads the warms exist to speed up.
+	"/alt.articles.v2.ArticleService/BatchPrefetchArticleContent": {},
 }
 
 // ClassForEndpoint returns the dependency class for a Connect-RPC path.

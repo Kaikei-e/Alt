@@ -546,6 +546,10 @@ func startStubServer(t *testing.T) int {
 	mountPushProcedures(mux)
 	mountDeepHealth(mux)
 
+	// The one route on this stub server that is not a stub: see
+	// articles_prefetch_provider_test.go.
+	mountArticleServiceProcedures(mux)
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
@@ -674,6 +678,13 @@ func TestVerifyAltButterflyFacadeContract(t *testing.T) {
 				return nil, nil
 			},
 			"knowledge home admin service is available": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			// No-op: the prefetch procedure's precondition is a
+			// composition-root setting, and the handler mounted for this
+			// verification declares it enabled. A state handler that flipped
+			// it would only be testing the state handler.
+			"article content prefetch is enabled": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 		},

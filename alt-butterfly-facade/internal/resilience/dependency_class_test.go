@@ -60,7 +60,7 @@ func TestClassForEndpoint_Telemetry(t *testing.T) {
 		assert.Equal(t, ClassTelemetry, ClassForEndpoint(ep), ep)
 	}
 	assert.Equal(t, "telemetry", ClassTelemetry.String())
-	assert.Equal(t, 3, TelemetryEndpointCount())
+	assert.Equal(t, 4, TelemetryEndpointCount())
 }
 
 func TestClassForEndpoint_UnclassifiedDefaultsNonCritical(t *testing.T) {
@@ -89,5 +89,30 @@ func TestUnreadProjectionEndpoints(t *testing.T) {
 	assert.Equal(t, 2, CriticalMutationEndpointCount())
 	assert.Equal(t, 3, UnreadProjectionEndpointCount())
 	assert.Equal(t, 5, CriticalEndpointCount())
+	assert.Equal(t, 1, ExternalContentEndpointCount())
+}
+
+// TestClassForEndpoint_BatchPrefetchArticleContentIsTelemetry pins the
+// classification of the article-body warm.
+//
+// It is deliberately NOT external_content, even though the work it triggers
+// leaves the cluster. Membership in that class requires an outbound fetch *on
+// the response path*, and this RPC returns an acceptance receipt before any
+// publisher is contacted — its status and latency report alt-backend's health,
+// never a publisher's. Charging a shared external-content budget with warms
+// would let a run of dead links open the breaker in front of
+// FetchArticleContent, blacking out the reads the warms exist to make faster.
+//
+// Telemetry is the right class for the same reason TrackHomeAction is there:
+// the caller discards the result, so its failures carry no read-path signal
+// and must not gate anything.
+func TestClassForEndpoint_BatchPrefetchArticleContentIsTelemetry(t *testing.T) {
+	assert.Equal(t, ClassTelemetry,
+		ClassForEndpoint("/alt.articles.v2.ArticleService/BatchPrefetchArticleContent"))
+
+	// The blocking read stays where it was: it is the one that waits on a
+	// publisher and therefore the one the bulkhead is for.
+	assert.Equal(t, ClassExternalContent,
+		ClassForEndpoint("/alt.articles.v2.ArticleService/FetchArticleContent"))
 	assert.Equal(t, 1, ExternalContentEndpointCount())
 }

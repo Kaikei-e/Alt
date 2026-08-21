@@ -73,6 +73,19 @@ func isUpstreamUnreachable(err error) bool {
 // via io.LimitReader (ADR-000702).
 const maxArticleBodyBytes = 10 * 1024 * 1024
 
+// prefetchFetchConcurrency sizes the prefetch gateway's own concurrency
+// semaphore to match the handler's warm pool (maxConcurrentContentWarms), so a
+// warm never queues here.
+//
+// The default of 3 would be a queue in the one place a queue is not allowed to
+// form. A warm reaches this semaphore *after* the scraping-policy gate has
+// granted, and a grant reserves the publisher's crawl-delay window; parking
+// there long enough to run out of budget would burn that window without
+// sending anything. The concurrency is already bounded upstream — one warm per
+// host, and each holds a host slot — so this ceiling is only here to keep the
+// gateway's shared shape.
+const prefetchFetchConcurrency = 8
+
 // canonicalRequestURLRe is the shape CanonicalRequestURL may return: http(s),
 // no userinfo, non-empty host. MatchString must run on the same SSA value passed
 // to http.NewRequestWithContext so go/request-forgery sees a stock sanitizer.
@@ -123,6 +136,33 @@ func NewInteractiveFetchArticleGateway(rateLimiter *rate_limiter.HostRateLimiter
 	gw := NewFetchArticleGateway(rateLimiter, httpClient)
 	gw.slotWaitBudget = slotWaitBudget
 	return gw
+}
+
+// NewPrefetchFetchArticleGateway builds the third fetch class: warms for
+// articles a user has not opened yet, and may never open.
+//
+// It carries no rate limiter, and that is the class, not an omission. Its only
+// caller — BatchPrefetchArticleContent — takes the host's turn itself, from the
+// same shared limiter and the same NamespaceExternalAPI, *before* it reaches
+// the usecase. The order is forced by what each gate costs to lose: failing to
+// get a turn consumes nothing, while the scraping-policy gate the usecase asks
+// on the way here reserves the publisher's crawl-delay window the moment it
+// grants. Taking the turn first means a granted window is always followed by a
+// real request instead of by a shed — otherwise a warm that gave up would have
+// spent the window that the reader's own fetch of that article needed.
+//
+// Giving this gateway a limiter would break that: it would try to take a turn
+// its caller already holds. Rule 2 is untouched — the turn is taken once, from
+// the same limiter, just one layer up. The invariant is asserted in
+// prefetch_gateway_test.go.
+func NewPrefetchFetchArticleGateway() *FetchArticleGateway {
+	validator := security.NewSSRFValidator()
+	return &FetchArticleGateway{
+		rateLimiter:   nil,
+		httpClient:    validator.CreateSecureHTTPClient(30 * time.Second),
+		ssrfValidator: validator,
+		fetchSem:      make(chan struct{}, prefetchFetchConcurrency),
+	}
 }
 
 // NewFetchArticleGatewayWithDeps allows dependency injection for testing and advanced configurations.

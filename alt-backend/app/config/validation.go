@@ -104,6 +104,13 @@ func validateRateLimitConfig(config *RateLimitConfig) error {
 			"leave it unset to run the per-host interval in local mode", config.CoordinationRedisURL)
 	}
 
+	// The prefetch class has no safe fallback: an unparseable or non-positive
+	// budget would leave the process guessing whether background warming may
+	// queue in front of a reader. Refuse to start instead (rule 9).
+	if _, _, err := config.PrefetchSlotWaitSetting(); err != nil {
+		return err
+	}
+
 	// Validate DOS protection configuration
 	if err := validateDOSProtectionConfig(&config.DOSProtection); err != nil {
 		return fmt.Errorf("DOS protection config validation failed: %w", err)

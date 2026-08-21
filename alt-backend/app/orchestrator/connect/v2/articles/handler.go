@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +56,67 @@ type OgImageURLLookup interface {
 	FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error)
 }
 
+// HostSlotGate is this process's turn-taking gate for one third-party host —
+// the shared *rate_limiter.HostRateLimiter, under NamespaceExternalAPI.
+//
+// BatchPrefetchArticleContent holds it directly instead of leaving it to the
+// fetch gateway, because *when* the turn is taken decides whether a prefetch
+// can hurt the reader. Losing this wait consumes nothing (the in-process
+// bucket restores its reservation and a lost SET NX takes no slot), while the
+// scraping-policy gate further down reserves the publisher's crawl-delay
+// window the moment it grants. Taking the free-to-lose gate first is what
+// keeps a prefetch from spending a window it will not use.
+//
+// It is deliberately the *same* limiter and the same namespace the interactive
+// fetch uses. A second namespace would let prefetch and read traffic each get
+// a turn per interval, doubling what the publisher actually sees while every
+// configured number stayed the same.
+type HostSlotGate interface {
+	WaitForHost(ctx context.Context, rawURL string) error
+}
+
+// StoredArticleProbe answers "is this body already in the store?" without
+// contacting anyone. It is the first thing a warm asks: an article already
+// stored has nothing to warm, and asking the host for a turn to discover that
+// would spend an interval the reader's next real fetch needs.
+type StoredArticleProbe interface {
+	FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error)
+}
+
+// ArticlePrefetchWiring declares whether this binary can warm article bodies.
+//
+// It is a declaration, not an inference from a nil dependency (ADR-000966 §2):
+// the ports behind a prefetch are all shared with the interactive read path,
+// so their presence says nothing about whether warming is meant to happen.
+// Exactly one of the two states is logged by the composition root at startup,
+// and the disabled one is reachable only from an explicit config value.
+type ArticlePrefetchWiring struct {
+	// Enabled declares that this binary warms article bodies on request.
+	Enabled bool
+
+	// DisabledReason is handed to the caller verbatim in the
+	// FAILED_PRECONDITION message. It names the setting to change, so an
+	// operator learns what is off rather than that "something" is.
+	DisabledReason string
+
+	// SlotWait bounds how long a warm queues for its turn at a host before
+	// giving the turn up. This is the third fetch class: a background job
+	// waits as long as its context allows, an interactive fetch waits
+	// RATE_LIMIT_INTERACTIVE_SLOT_WAIT because a user is watching, and a
+	// prefetch has nobody watching at all — so it takes only a turn that is
+	// already free and abandons the rest. Zero is refused at construction:
+	// for this class it would mean "queue like a background job", which is the
+	// priority inversion the class exists to avoid.
+	SlotWait time.Duration
+}
+
+func (w ArticlePrefetchWiring) disabledReason() string {
+	if w.DisabledReason != "" {
+		return w.DisabledReason
+	}
+	return "no article prefetch wiring was declared by the composition root"
+}
+
 // ArticleHandlerDeps holds the dependencies for the Article service handler.
 type ArticleHandlerDeps struct {
 	OgImageURLs             OgImageURLLookup
@@ -71,6 +133,17 @@ type ArticleHandlerDeps struct {
 	GetArticleSourceURL     *get_article_source_url_usecase.GetArticleSourceURLUsecase
 	ImageProxy              *image_proxy_usecase.ImageProxyUsecase
 	StreamArticleTags       *stream_article_tags_usecase.StreamArticleTagsUsecase
+
+	// The article-content prefetch trio. PrefetchArticle is a *second*
+	// ArticleUsecase over the same repository, robots and scraping-policy
+	// ports as Article, differing only in its fetch gateway — see
+	// di/article_module.go. Sharing the scraping-policy instance is load
+	// bearing: crawl-delay state lives in that gateway, so a second instance
+	// would hand the reader and the warmer a turn each inside one delay.
+	PrefetchArticle   fetch_article_usecase.ArticleUsecase
+	PrefetchHostSlots HostSlotGate
+	PrefetchProbe     StoredArticleProbe
+	PrefetchWiring    ArticlePrefetchWiring
 }
 
 // Handler implements the ArticleService Connect-RPC service.
@@ -88,15 +161,49 @@ type Handler struct {
 	warmShedMu      sync.Mutex
 	warmShedCount   int
 	lastWarmShedLog time.Time
+
+	// contentWarmSlots is the article-body equivalent of warmSlots, kept
+	// separate on purpose: an OGP warm is a CDN read on a 1s interval, an
+	// article warm is a publisher crawl on a 10s one, and one pool would let
+	// the cheap traffic decide how much of the expensive traffic runs.
+	contentWarmSlots chan struct{}
+
+	contentWarmShedMu      sync.Mutex
+	contentWarmShedCount   int
+	lastContentWarmShedLog time.Time
 }
 
 // NewHandler creates a new Article service handler.
+//
+// It panics when the prefetch capability is declared enabled but not actually
+// wired. That is a composition-root bug, not an operator setting, and the
+// alternative — discovering it as a nil check inside the RPC — is precisely
+// what CLAUDE.md rule 8 forbids: it makes "DI forgot" indistinguishable from
+// "deliberately off". Panicking here rather than in the request path is what
+// keeps ADR-000966's objection (an operator must not be able to crash the
+// service by pressing a button) from applying: nobody is waiting on a process
+// that has not finished starting.
 func NewHandler(deps ArticleHandlerDeps, cfg *config.Config, logger *slog.Logger) *Handler {
+	if deps.PrefetchWiring.Enabled {
+		switch {
+		case deps.PrefetchArticle == nil:
+			panic("article prefetch declared enabled but PrefetchArticle usecase is nil")
+		case deps.PrefetchHostSlots == nil:
+			panic("article prefetch declared enabled but PrefetchHostSlots is nil")
+		case deps.PrefetchProbe == nil:
+			panic("article prefetch declared enabled but PrefetchProbe is nil")
+		case deps.PrefetchWiring.SlotWait <= 0:
+			panic("article prefetch declared enabled with a non-positive SlotWait: " +
+				"zero would queue a warm behind a user who is waiting")
+		}
+	}
+
 	return &Handler{
-		deps:      deps,
-		logger:    logger,
-		cfg:       cfg,
-		warmSlots: make(chan struct{}, maxConcurrentCacheWarms),
+		deps:             deps,
+		logger:           logger,
+		cfg:              cfg,
+		warmSlots:        make(chan struct{}, maxConcurrentCacheWarms),
+		contentWarmSlots: make(chan struct{}, maxConcurrentContentWarms),
 	}
 }
 
@@ -141,6 +248,37 @@ const (
 	// parks on the per-host limiter, so an unbounded fan-out grows with the
 	// arrival rate instead of the completion rate.
 	maxConcurrentCacheWarms = 32
+
+	// maxPrefetchArticleURLs bounds one BatchPrefetchArticleContent call.
+	//
+	// Five, not ten, because the unit that matters is hosts rather than URLs:
+	// the per-host interval means a batch can only ever warm one item per host
+	// per interval, so a longer list buys nothing and only widens the window
+	// in which a warm can be holding a turn the reader wants.
+	maxPrefetchArticleURLs = 5
+
+	// maxConcurrentContentWarms bounds the detached article-body warms in
+	// flight. Each one may hold a publisher's turn for a full interval and
+	// then spend up to the usecase's external-fetch budget on the response, so
+	// this is the ceiling on how much of the process's politeness allowance
+	// background warming may occupy at once.
+	maxConcurrentContentWarms = 8
+
+	// contentWarmBudget is the detached warm's whole life: the host-slot wait,
+	// the policy check, the fetch, the extraction and the store write. It is
+	// generous relative to the 8s external-fetch timeout inside the usecase
+	// because a warm that is cut off *after* the policy gate granted has spent
+	// a publisher's crawl-delay window for nothing.
+	contentWarmBudget = 30 * time.Second
+
+	// minPrefetchStoredContentLength mirrors the floor
+	// fetch_article_usecase applies when deciding whether stored content
+	// counts as a hit. It is duplicated rather than exported because the
+	// consequence of the two drifting apart is bounded: too low and a warm is
+	// skipped that the usecase would have re-fetched, too high and a warm runs
+	// that the usecase then answers from the store. Neither is a correctness
+	// bug, and the usecase re-checks authoritatively either way.
+	minPrefetchStoredContentLength = 100
 
 	// warmShedLogInterval throttles the shed warning. The warning has to be
 	// loud — shedding is thrown-away work — but one line per dropped warm is
@@ -973,4 +1111,262 @@ func (h *Handler) GetArticleSourceURL(
 		SourceUrl: source.URL,
 		Title:     source.Title,
 	}), nil
+}
+
+// ---------------------------------------------------------------------------
+// Article content prefetch
+// ---------------------------------------------------------------------------
+
+// These counters exist for the same reason the image-warm ones do: every
+// outcome below the accepted count happens after the response is written, so
+// without them a saturated pool, a busy publisher and a batch that was already
+// cached are one indistinguishable silence.
+//
+// Read them as a funnel — accepted, then minus cached, minus host-busy, minus
+// failed, equals warms that actually stored a body. A high host-busy share is
+// the honest signal that the batch is not spanning enough distinct hosts for
+// this feature to be doing anything.
+var (
+	contentWarmMeterOnce              sync.Once
+	contentWarmStartedCounter         metric.Int64Counter
+	contentWarmShedCounter            metric.Int64Counter
+	contentWarmSkippedCachedCounter   metric.Int64Counter
+	contentWarmHostBusyCounter        metric.Int64Counter
+	contentWarmProbeFailedCounter     metric.Int64Counter
+	contentWarmFetchFailedCounter     metric.Int64Counter
+	contentWarmCompletedCounter       metric.Int64Counter
+	contentWarmRejectedURLCounter     metric.Int64Counter
+	contentWarmSkippedSameHostCounter metric.Int64Counter
+)
+
+func initContentWarmMetrics() {
+	contentWarmMeterOnce.Do(func() {
+		meter := otel.Meter("alt-backend.article-content-warm")
+		contentWarmStartedCounter, _ = meter.Int64Counter("alt_backend_article_content_warm_started_total",
+			metric.WithDescription("article-body warms that claimed a pool slot and were detached"))
+		contentWarmShedCounter, _ = meter.Int64Counter("alt_backend_article_content_warm_shed_total",
+			metric.WithDescription("article-body warms dropped because the warm pool was full; nothing was claimed and no publisher was contacted"))
+		contentWarmSkippedCachedCounter, _ = meter.Int64Counter("alt_backend_article_content_warm_skipped_cached_total",
+			metric.WithDescription("article-body warms that ended at the store probe because the body was already there"))
+		contentWarmHostBusyCounter, _ = meter.Int64Counter("alt_backend_article_content_warm_host_busy_total",
+			metric.WithDescription("article-body warms abandoned because the host's turn was taken; the crawl-delay gate was never asked"))
+		contentWarmProbeFailedCounter, _ = meter.Int64Counter("alt_backend_article_content_warm_probe_failed_total",
+			metric.WithDescription("article-body warms abandoned because the store probe could not answer"))
+		contentWarmFetchFailedCounter, _ = meter.Int64Counter("alt_backend_article_content_warm_fetch_failed_total",
+			metric.WithDescription("article-body warms that reached the publisher and did not come back with a body"))
+		contentWarmCompletedCounter, _ = meter.Int64Counter("alt_backend_article_content_warm_completed_total",
+			metric.WithDescription("article-body warms that stored a body"))
+		contentWarmRejectedURLCounter, _ = meter.Int64Counter("alt_backend_article_content_warm_rejected_url_total",
+			metric.WithDescription("prefetch URLs refused before anything was claimed: unparseable or outside the SSRF allowlist"))
+		contentWarmSkippedSameHostCounter, _ = meter.Int64Counter("alt_backend_article_content_warm_skipped_same_host_total",
+			metric.WithDescription("prefetch URLs dropped because an earlier entry in the same batch already claimed that host"))
+	})
+}
+
+// BatchPrefetchArticleContent warms the article bodies the reader believes the
+// user is about to open, and returns before any of them is fetched.
+//
+// The shape is BatchPrefetchImages': a capped list, a fixed pool of detached
+// warms, shed rather than queued when the pool is full, and a
+// context.WithoutCancel with its own budget so a warm outlives the RPC that
+// asked for it. What differs is what a warm costs. An OGP warm reads a CDN on
+// a one-second interval; an article warm crawls a publisher on a ten-second
+// one, and on the way it passes a gate that *reserves* that publisher's
+// crawl-delay window simply by being asked. So the order below is not
+// incidental:
+//
+//	validate → one per host → claim a pool slot   (synchronous, cheap, free to lose)
+//	  → probe the store                            (free)
+//	    → take the host's turn                     (authoritative; refusal costs nothing)
+//	      → ask the policy gate and fetch          (reserves the window — last, and once)
+//
+// Every step that can drop the work is placed above the step that cannot be
+// undone. The reverse order — ask the gate, then discover the pool or the host
+// is busy — burns the publisher's window on a fetch that never happens, and
+// the next thing denied by that window is the user's own read of the article
+// they just opened. Background work starving the foreground is the failure
+// this ordering exists to prevent.
+//
+// Errors: this RPC returns exactly two, and neither carries
+// X-Alt-Failure-Scope. Unauthenticated and FailedPrecondition are both ours —
+// a missing session and a disabled capability. Publisher outcomes are not
+// reachable from here at all, because they happen after the response; ADR-000963
+// reserves the host scope for failures positively attributed to a publisher,
+// and there is no such failure on this path to attribute.
+func (h *Handler) BatchPrefetchArticleContent(
+	ctx context.Context,
+	req *connect.Request[articlesv2.BatchPrefetchArticleContentRequest],
+) (*connect.Response[articlesv2.BatchPrefetchArticleContentResponse], error) {
+	user, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	// ADR-000966: a capability that is off says so by name, before argument
+	// validation, so the caller learns the thing that will not succeed on any
+	// retry rather than the thing that happened to be checked first.
+	if !h.deps.PrefetchWiring.Enabled {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("article content prefetch is disabled: %s", h.deps.PrefetchWiring.disabledReason()))
+	}
+
+	urls := req.Msg.GetUrls()
+	if len(urls) == 0 {
+		return connect.NewResponse(&articlesv2.BatchPrefetchArticleContentResponse{}), nil
+	}
+	if len(urls) > maxPrefetchArticleURLs {
+		urls = urls[:maxPrefetchArticleURLs]
+	}
+
+	initContentWarmMetrics()
+
+	var accepted, shed, rejected, skippedSameHost int32
+	claimedHosts := make(map[string]struct{}, len(urls))
+
+	for _, raw := range urls {
+		parsed, parseErr := url.Parse(raw)
+		if parseErr != nil {
+			rejected++
+			contentWarmRejectedURLCounter.Add(ctx, 1)
+			h.logger.DebugContext(ctx, "article_content_warm.rejected",
+				"url", raw, "reason", "unparseable", "error", parseErr)
+			continue
+		}
+		// The same SSRF allowlist FetchArticleContent applies. A batch path
+		// that skipped it would be a way to reach the loopback and metadata
+		// addresses the single-URL path refuses.
+		if allowErr := url_validator.IsAllowedURL(parsed); allowErr != nil {
+			rejected++
+			contentWarmRejectedURLCounter.Add(ctx, 1)
+			h.logger.DebugContext(ctx, "article_content_warm.rejected",
+				"url", raw, "reason", "not allowed", "error", allowErr)
+			continue
+		}
+
+		// One entry per host, decided before anything is claimed. A second
+		// URL on a host whose turn this batch already took could only be
+		// refused by the crawl-delay gate — after that refusal had cost the
+		// gate an ask, and the ask is what reserves the window.
+		host := parsed.Host
+		if _, taken := claimedHosts[host]; taken {
+			skippedSameHost++
+			contentWarmSkippedSameHostCounter.Add(ctx, 1)
+			continue
+		}
+		claimedHosts[host] = struct{}{}
+
+		select {
+		case h.contentWarmSlots <- struct{}{}:
+			contentWarmStartedCounter.Add(ctx, 1)
+		default:
+			shed++
+			h.logContentWarmShed(ctx, parsed.String())
+			continue
+		}
+
+		accepted++
+		warmURL := parsed
+		warmUser := *user
+		go func() {
+			defer func() { <-h.contentWarmSlots }()
+			// WithoutCancel keeps the request's trace and auth values while
+			// letting the warm outlive the RPC; the explicit budget is what
+			// keeps "outlives" from meaning "forever".
+			warmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), contentWarmBudget)
+			defer cancel()
+			h.warmArticleContent(warmCtx, warmURL, warmUser)
+		}()
+	}
+
+	return connect.NewResponse(&articlesv2.BatchPrefetchArticleContentResponse{
+		AcceptedCount:        accepted,
+		ShedCount:            shed,
+		RejectedCount:        rejected,
+		SkippedSameHostCount: skippedSameHost,
+	}), nil
+}
+
+// warmArticleContent runs one detached warm. It returns on the first reason
+// not to continue and never retries: this is one of four hops between the
+// browser and the publisher, and a retry here multiplies against the others
+// rather than adding to them.
+func (h *Handler) warmArticleContent(ctx context.Context, target *url.URL, user domain.UserContext) {
+	urlStr := target.String()
+
+	// 1. Is it already there? Free to ask, and it is the answer that most
+	//    often makes the rest unnecessary.
+	stored, probeErr := h.deps.PrefetchProbe.FetchArticleByURL(ctx, urlStr)
+	if probeErr != nil {
+		// A probe that cannot answer is not a reason to fetch harder. Nobody
+		// is waiting on this warm, so the cheap and polite move is to stop.
+		contentWarmProbeFailedCounter.Add(ctx, 1)
+		h.logger.DebugContext(ctx, "article_content_warm.probe_failed",
+			"url", urlStr, "error", probeErr)
+		return
+	}
+	if stored != nil && len(strings.TrimSpace(stored.Content)) >= minPrefetchStoredContentLength {
+		contentWarmSkippedCachedCounter.Add(ctx, 1)
+		h.logger.DebugContext(ctx, "article_content_warm.already_stored", "url", urlStr)
+		return
+	}
+
+	// 2. The host's turn, bounded by the prefetch class's budget. Losing this
+	//    wait costs nothing — x/time/rate returns the reservation it made and
+	//    a lost SET NX holds no slot — which is exactly why it comes before
+	//    the gate that cannot give anything back.
+	slotCtx, cancel := context.WithTimeout(ctx, h.deps.PrefetchWiring.SlotWait)
+	defer cancel()
+	if slotErr := h.deps.PrefetchHostSlots.WaitForHost(slotCtx, urlStr); slotErr != nil {
+		contentWarmHostBusyCounter.Add(ctx, 1)
+		h.logger.DebugContext(ctx, "article_content_warm.host_busy",
+			"url", urlStr,
+			"budget", h.deps.PrefetchWiring.SlotWait,
+			"impact", "warm abandoned; the crawl-delay gate was never asked, so the publisher's window is untouched")
+		return
+	}
+
+	// 3. The usecase asks the scraping-policy gate and, if it is granted,
+	//    issues the request immediately. The turn is already ours, so a grant
+	//    here is followed by a real fetch rather than by a shed.
+	if _, _, _, fetchErr := h.deps.PrefetchArticle.FetchCompliantArticle(ctx, target, user); fetchErr != nil {
+		contentWarmFetchFailedCounter.Add(ctx, 1)
+		// Debug, not warn: a publisher that refuses a warm is not an incident,
+		// and the reader's own fetch of the same article will report it
+		// properly if it happens again there.
+		h.logger.DebugContext(ctx, "article_content_warm.fetch_failed",
+			"url", urlStr, "error", fetchErr)
+		return
+	}
+
+	contentWarmCompletedCounter.Add(ctx, 1)
+}
+
+// logContentWarmShed records one dropped article warm and emits the throttled
+// warning that stands for the window's worth of them. Same shape, and same
+// reasoning, as logCacheWarmShed.
+func (h *Handler) logContentWarmShed(ctx context.Context, articleURL string) {
+	contentWarmShedCounter.Add(ctx, 1)
+
+	h.contentWarmShedMu.Lock()
+	h.contentWarmShedCount++
+	count := h.contentWarmShedCount
+	now := time.Now()
+	shouldLog := h.lastContentWarmShedLog.IsZero() || now.Sub(h.lastContentWarmShedLog) >= warmShedLogInterval
+	if shouldLog {
+		h.lastContentWarmShedLog = now
+	}
+	h.contentWarmShedMu.Unlock()
+
+	if !shouldLog {
+		h.logger.DebugContext(ctx, "article content warm shed, warm pool saturated",
+			"url", articleURL, "operation", "BatchPrefetchArticleContent")
+		return
+	}
+
+	h.logger.WarnContext(ctx, "article_content_warm.shed",
+		"url", articleURL,
+		"occurrences", count,
+		"pool_size", maxConcurrentContentWarms,
+		"operation", "BatchPrefetchArticleContent",
+		"impact", "each dropped warm leaves one article body to be fetched live when the user opens it")
 }

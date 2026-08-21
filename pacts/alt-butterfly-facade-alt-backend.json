@@ -4,6 +4,72 @@
   },
   "interactions": [
     {
+      "description": "a BatchPrefetchArticleContent fire-and-forget warm proxied by BFF",
+      "providerStates": [
+        {
+          "name": "article content prefetch is enabled"
+        }
+      ],
+      "request": {
+        "body": {
+          "urls": [
+            "https://example.com/next-article"
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Alt-Backend-Token": "header.payload.signature"
+        },
+        "matchingRules": {
+          "body": {
+            "$.urls": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          },
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.articles.v2.ArticleService/BatchPrefetchArticleContent"
+      },
+      "response": {
+        "body": {
+          "acceptedCount": 2
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a Connect-RPC request that returns a not_found error",
       "providerStates": [
         {

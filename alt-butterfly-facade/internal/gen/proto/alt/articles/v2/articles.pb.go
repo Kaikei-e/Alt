@@ -79,7 +79,7 @@ func (x StreamArticleTagsResponse_EventType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use StreamArticleTagsResponse_EventType.Descriptor instead.
 func (StreamArticleTagsResponse_EventType) EnumDescriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{22, 0}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{24, 0}
 }
 
 // FetchArticleContentRequest is the request for fetching article content
@@ -887,6 +887,145 @@ func (x *BatchPrefetchImagesResponse) GetImages() []*ImageProxyInfo {
 	return nil
 }
 
+// BatchPrefetchArticleContentRequest asks the server to warm the article
+// bodies the reader believes the user is about to open.
+//
+// Fire-and-forget: the RPC returns before any publisher is contacted, and the
+// caller is never told what came back. It exists so the *first* item a user
+// opens is a database read instead of a live fetch — not as a bulk download
+// API, and not as something a client may poll.
+type BatchPrefetchArticleContentRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Article URLs to warm, in the order the user is expected to reach them.
+	// At most 5 are considered, and at most one per host: the per-host politeness
+	// interval means a same-host batch could only ever warm its first entry, and
+	// asking for the rest would spend the host's turn without fetching anything.
+	Urls          []string `protobuf:"bytes,1,rep,name=urls,proto3" json:"urls,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchPrefetchArticleContentRequest) Reset() {
+	*x = BatchPrefetchArticleContentRequest{}
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchPrefetchArticleContentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchPrefetchArticleContentRequest) ProtoMessage() {}
+
+func (x *BatchPrefetchArticleContentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchPrefetchArticleContentRequest.ProtoReflect.Descriptor instead.
+func (*BatchPrefetchArticleContentRequest) Descriptor() ([]byte, []int) {
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *BatchPrefetchArticleContentRequest) GetUrls() []string {
+	if x != nil {
+		return x.Urls
+	}
+	return nil
+}
+
+// BatchPrefetchArticleContentResponse is an acceptance receipt, not a fetch
+// result.
+//
+// Every count describes a decision taken before the response was written. What
+// happened afterwards — whether the publisher answered, whether the body was
+// stored — is deliberately not reported: a client that could see it would
+// start waiting on it, and this RPC must never be on a path anybody waits on.
+type BatchPrefetchArticleContentResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// URLs that claimed a warm slot and were detached. Not a promise that any
+	// of them will be fetched, still less that they will be fetched by the time
+	// the user arrives.
+	AcceptedCount int32 `protobuf:"varint,1,opt,name=accepted_count,json=acceptedCount,proto3" json:"accepted_count,omitempty"`
+	// URLs dropped because the warm pool was already full. Shedding is the
+	// designed behaviour under load; the client must not resend them.
+	ShedCount int32 `protobuf:"varint,2,opt,name=shed_count,json=shedCount,proto3" json:"shed_count,omitempty"`
+	// URLs rejected before anything was attempted: unparseable, or refused by
+	// the same SSRF allowlist FetchArticleContent applies.
+	RejectedCount int32 `protobuf:"varint,3,opt,name=rejected_count,json=rejectedCount,proto3" json:"rejected_count,omitempty"`
+	// URLs dropped because an earlier entry in the same batch already claimed
+	// that host. See the one-per-host note on the request.
+	SkippedSameHostCount int32 `protobuf:"varint,4,opt,name=skipped_same_host_count,json=skippedSameHostCount,proto3" json:"skipped_same_host_count,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *BatchPrefetchArticleContentResponse) Reset() {
+	*x = BatchPrefetchArticleContentResponse{}
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchPrefetchArticleContentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchPrefetchArticleContentResponse) ProtoMessage() {}
+
+func (x *BatchPrefetchArticleContentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchPrefetchArticleContentResponse.ProtoReflect.Descriptor instead.
+func (*BatchPrefetchArticleContentResponse) Descriptor() ([]byte, []int) {
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *BatchPrefetchArticleContentResponse) GetAcceptedCount() int32 {
+	if x != nil {
+		return x.AcceptedCount
+	}
+	return 0
+}
+
+func (x *BatchPrefetchArticleContentResponse) GetShedCount() int32 {
+	if x != nil {
+		return x.ShedCount
+	}
+	return 0
+}
+
+func (x *BatchPrefetchArticleContentResponse) GetRejectedCount() int32 {
+	if x != nil {
+		return x.RejectedCount
+	}
+	return 0
+}
+
+func (x *BatchPrefetchArticleContentResponse) GetSkippedSameHostCount() int32 {
+	if x != nil {
+		return x.SkippedSameHostCount
+	}
+	return 0
+}
+
 // FetchArticlesByTagRequest is the request for fetching articles by tag
 type FetchArticlesByTagRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -904,7 +1043,7 @@ type FetchArticlesByTagRequest struct {
 
 func (x *FetchArticlesByTagRequest) Reset() {
 	*x = FetchArticlesByTagRequest{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[13]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -916,7 +1055,7 @@ func (x *FetchArticlesByTagRequest) String() string {
 func (*FetchArticlesByTagRequest) ProtoMessage() {}
 
 func (x *FetchArticlesByTagRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[13]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -929,7 +1068,7 @@ func (x *FetchArticlesByTagRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchArticlesByTagRequest.ProtoReflect.Descriptor instead.
 func (*FetchArticlesByTagRequest) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{13}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *FetchArticlesByTagRequest) GetTagId() string {
@@ -979,7 +1118,7 @@ type TagTrailArticleItem struct {
 
 func (x *TagTrailArticleItem) Reset() {
 	*x = TagTrailArticleItem{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[14]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -991,7 +1130,7 @@ func (x *TagTrailArticleItem) String() string {
 func (*TagTrailArticleItem) ProtoMessage() {}
 
 func (x *TagTrailArticleItem) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[14]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1004,7 +1143,7 @@ func (x *TagTrailArticleItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagTrailArticleItem.ProtoReflect.Descriptor instead.
 func (*TagTrailArticleItem) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{14}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *TagTrailArticleItem) GetId() string {
@@ -1057,7 +1196,7 @@ type FetchArticlesByTagResponse struct {
 
 func (x *FetchArticlesByTagResponse) Reset() {
 	*x = FetchArticlesByTagResponse{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[15]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1069,7 +1208,7 @@ func (x *FetchArticlesByTagResponse) String() string {
 func (*FetchArticlesByTagResponse) ProtoMessage() {}
 
 func (x *FetchArticlesByTagResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[15]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1082,7 +1221,7 @@ func (x *FetchArticlesByTagResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchArticlesByTagResponse.ProtoReflect.Descriptor instead.
 func (*FetchArticlesByTagResponse) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{15}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *FetchArticlesByTagResponse) GetArticles() []*TagTrailArticleItem {
@@ -1117,7 +1256,7 @@ type FetchArticleTagsRequest struct {
 
 func (x *FetchArticleTagsRequest) Reset() {
 	*x = FetchArticleTagsRequest{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[16]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1129,7 +1268,7 @@ func (x *FetchArticleTagsRequest) String() string {
 func (*FetchArticleTagsRequest) ProtoMessage() {}
 
 func (x *FetchArticleTagsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[16]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1142,7 +1281,7 @@ func (x *FetchArticleTagsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchArticleTagsRequest.ProtoReflect.Descriptor instead.
 func (*FetchArticleTagsRequest) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{16}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *FetchArticleTagsRequest) GetArticleId() string {
@@ -1167,7 +1306,7 @@ type ArticleTagItem struct {
 
 func (x *ArticleTagItem) Reset() {
 	*x = ArticleTagItem{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[17]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1179,7 +1318,7 @@ func (x *ArticleTagItem) String() string {
 func (*ArticleTagItem) ProtoMessage() {}
 
 func (x *ArticleTagItem) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[17]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1192,7 +1331,7 @@ func (x *ArticleTagItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArticleTagItem.ProtoReflect.Descriptor instead.
 func (*ArticleTagItem) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{17}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ArticleTagItem) GetId() string {
@@ -1229,7 +1368,7 @@ type FetchArticleTagsResponse struct {
 
 func (x *FetchArticleTagsResponse) Reset() {
 	*x = FetchArticleTagsResponse{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[18]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1241,7 +1380,7 @@ func (x *FetchArticleTagsResponse) String() string {
 func (*FetchArticleTagsResponse) ProtoMessage() {}
 
 func (x *FetchArticleTagsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[18]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1254,7 +1393,7 @@ func (x *FetchArticleTagsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchArticleTagsResponse.ProtoReflect.Descriptor instead.
 func (*FetchArticleTagsResponse) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{18}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *FetchArticleTagsResponse) GetArticleId() string {
@@ -1280,7 +1419,7 @@ type FetchRandomFeedRequest struct {
 
 func (x *FetchRandomFeedRequest) Reset() {
 	*x = FetchRandomFeedRequest{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[19]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1292,7 +1431,7 @@ func (x *FetchRandomFeedRequest) String() string {
 func (*FetchRandomFeedRequest) ProtoMessage() {}
 
 func (x *FetchRandomFeedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[19]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1305,7 +1444,7 @@ func (x *FetchRandomFeedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchRandomFeedRequest.ProtoReflect.Descriptor instead.
 func (*FetchRandomFeedRequest) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{19}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{21}
 }
 
 // FetchRandomFeedResponse contains a random feed
@@ -1329,7 +1468,7 @@ type FetchRandomFeedResponse struct {
 
 func (x *FetchRandomFeedResponse) Reset() {
 	*x = FetchRandomFeedResponse{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[20]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1341,7 +1480,7 @@ func (x *FetchRandomFeedResponse) String() string {
 func (*FetchRandomFeedResponse) ProtoMessage() {}
 
 func (x *FetchRandomFeedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[20]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1354,7 +1493,7 @@ func (x *FetchRandomFeedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchRandomFeedResponse.ProtoReflect.Descriptor instead.
 func (*FetchRandomFeedResponse) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{20}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *FetchRandomFeedResponse) GetId() string {
@@ -1416,7 +1555,7 @@ type StreamArticleTagsRequest struct {
 
 func (x *StreamArticleTagsRequest) Reset() {
 	*x = StreamArticleTagsRequest{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[21]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1428,7 +1567,7 @@ func (x *StreamArticleTagsRequest) String() string {
 func (*StreamArticleTagsRequest) ProtoMessage() {}
 
 func (x *StreamArticleTagsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[21]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1441,7 +1580,7 @@ func (x *StreamArticleTagsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamArticleTagsRequest.ProtoReflect.Descriptor instead.
 func (*StreamArticleTagsRequest) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{21}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *StreamArticleTagsRequest) GetArticleId() string {
@@ -1489,7 +1628,7 @@ type StreamArticleTagsResponse struct {
 
 func (x *StreamArticleTagsResponse) Reset() {
 	*x = StreamArticleTagsResponse{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[22]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1501,7 +1640,7 @@ func (x *StreamArticleTagsResponse) String() string {
 func (*StreamArticleTagsResponse) ProtoMessage() {}
 
 func (x *StreamArticleTagsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[22]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1514,7 +1653,7 @@ func (x *StreamArticleTagsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamArticleTagsResponse.ProtoReflect.Descriptor instead.
 func (*StreamArticleTagsResponse) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{22}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *StreamArticleTagsResponse) GetArticleId() string {
@@ -1556,7 +1695,7 @@ type FetchTagCloudRequest struct {
 
 func (x *FetchTagCloudRequest) Reset() {
 	*x = FetchTagCloudRequest{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[23]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1568,7 +1707,7 @@ func (x *FetchTagCloudRequest) String() string {
 func (*FetchTagCloudRequest) ProtoMessage() {}
 
 func (x *FetchTagCloudRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[23]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1581,7 +1720,7 @@ func (x *FetchTagCloudRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchTagCloudRequest.ProtoReflect.Descriptor instead.
 func (*FetchTagCloudRequest) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{23}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *FetchTagCloudRequest) GetLimit() int32 {
@@ -1608,7 +1747,7 @@ type TagCloudItem struct {
 
 func (x *TagCloudItem) Reset() {
 	*x = TagCloudItem{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[24]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1620,7 +1759,7 @@ func (x *TagCloudItem) String() string {
 func (*TagCloudItem) ProtoMessage() {}
 
 func (x *TagCloudItem) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[24]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1633,7 +1772,7 @@ func (x *TagCloudItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagCloudItem.ProtoReflect.Descriptor instead.
 func (*TagCloudItem) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{24}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *TagCloudItem) GetTagName() string {
@@ -1684,7 +1823,7 @@ type FetchTagCloudResponse struct {
 
 func (x *FetchTagCloudResponse) Reset() {
 	*x = FetchTagCloudResponse{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[25]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1696,7 +1835,7 @@ func (x *FetchTagCloudResponse) String() string {
 func (*FetchTagCloudResponse) ProtoMessage() {}
 
 func (x *FetchTagCloudResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[25]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1709,7 +1848,7 @@ func (x *FetchTagCloudResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchTagCloudResponse.ProtoReflect.Descriptor instead.
 func (*FetchTagCloudResponse) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{25}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *FetchTagCloudResponse) GetTags() []*TagCloudItem {
@@ -1742,7 +1881,7 @@ type GetArticleSourceURLRequest struct {
 
 func (x *GetArticleSourceURLRequest) Reset() {
 	*x = GetArticleSourceURLRequest{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[26]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1754,7 +1893,7 @@ func (x *GetArticleSourceURLRequest) String() string {
 func (*GetArticleSourceURLRequest) ProtoMessage() {}
 
 func (x *GetArticleSourceURLRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[26]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1767,7 +1906,7 @@ func (x *GetArticleSourceURLRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleSourceURLRequest.ProtoReflect.Descriptor instead.
 func (*GetArticleSourceURLRequest) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{26}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetArticleSourceURLRequest) GetArticleId() string {
@@ -1795,7 +1934,7 @@ type GetArticleSourceURLResponse struct {
 
 func (x *GetArticleSourceURLResponse) Reset() {
 	*x = GetArticleSourceURLResponse{}
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[27]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1807,7 +1946,7 @@ func (x *GetArticleSourceURLResponse) String() string {
 func (*GetArticleSourceURLResponse) ProtoMessage() {}
 
 func (x *GetArticleSourceURLResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_articles_v2_articles_proto_msgTypes[27]
+	mi := &file_alt_articles_v2_articles_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1820,7 +1959,7 @@ func (x *GetArticleSourceURLResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArticleSourceURLResponse.ProtoReflect.Descriptor instead.
 func (*GetArticleSourceURLResponse) Descriptor() ([]byte, []int) {
-	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{27}
+	return file_alt_articles_v2_articles_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetArticleSourceURLResponse) GetSourceUrl() string {
@@ -1900,7 +2039,15 @@ const file_alt_articles_v2_articles_proto_rawDesc = "" +
 	"\tproxy_url\x18\x02 \x01(\tR\bproxyUrl\x12\x1b\n" +
 	"\tis_cached\x18\x03 \x01(\bR\bisCached\"V\n" +
 	"\x1bBatchPrefetchImagesResponse\x127\n" +
-	"\x06images\x18\x01 \x03(\v2\x1f.alt.articles.v2.ImageProxyInfoR\x06images\"\xad\x01\n" +
+	"\x06images\x18\x01 \x03(\v2\x1f.alt.articles.v2.ImageProxyInfoR\x06images\"8\n" +
+	"\"BatchPrefetchArticleContentRequest\x12\x12\n" +
+	"\x04urls\x18\x01 \x03(\tR\x04urls\"\xc9\x01\n" +
+	"#BatchPrefetchArticleContentResponse\x12%\n" +
+	"\x0eaccepted_count\x18\x01 \x01(\x05R\racceptedCount\x12\x1d\n" +
+	"\n" +
+	"shed_count\x18\x02 \x01(\x05R\tshedCount\x12%\n" +
+	"\x0erejected_count\x18\x03 \x01(\x05R\rrejectedCount\x125\n" +
+	"\x17skipped_same_host_count\x18\x04 \x01(\x05R\x14skippedSameHostCount\"\xad\x01\n" +
 	"\x19FetchArticlesByTagRequest\x12\x1a\n" +
 	"\x06tag_id\x18\x01 \x01(\tH\x00R\x05tagId\x88\x01\x01\x12\x1e\n" +
 	"\btag_name\x18\x02 \x01(\tH\x01R\atagName\x88\x01\x01\x12\x1b\n" +
@@ -1989,7 +2136,8 @@ const file_alt_articles_v2_articles_proto_rawDesc = "" +
 	"\x1bGetArticleSourceURLResponse\x12\x1d\n" +
 	"\n" +
 	"source_url\x18\x01 \x01(\tR\tsourceUrl\x12\x14\n" +
-	"\x05title\x18\x02 \x01(\tR\x05title2\xbf\t\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title2\xca\n" +
+	"\n" +
 	"\x0eArticleService\x12p\n" +
 	"\x13FetchArticleContent\x12+.alt.articles.v2.FetchArticleContentRequest\x1a,.alt.articles.v2.FetchArticleContentResponse\x12a\n" +
 	"\x0eArchiveArticle\x12&.alt.articles.v2.ArchiveArticleRequest\x1a'.alt.articles.v2.ArchiveArticleResponse\x12p\n" +
@@ -1999,7 +2147,8 @@ const file_alt_articles_v2_articles_proto_rawDesc = "" +
 	"\x10FetchArticleTags\x12(.alt.articles.v2.FetchArticleTagsRequest\x1a).alt.articles.v2.FetchArticleTagsResponse\x12d\n" +
 	"\x0fFetchRandomFeed\x12'.alt.articles.v2.FetchRandomFeedRequest\x1a(.alt.articles.v2.FetchRandomFeedResponse\x12l\n" +
 	"\x11StreamArticleTags\x12).alt.articles.v2.StreamArticleTagsRequest\x1a*.alt.articles.v2.StreamArticleTagsResponse0\x01\x12p\n" +
-	"\x13BatchPrefetchImages\x12+.alt.articles.v2.BatchPrefetchImagesRequest\x1a,.alt.articles.v2.BatchPrefetchImagesResponse\x12^\n" +
+	"\x13BatchPrefetchImages\x12+.alt.articles.v2.BatchPrefetchImagesRequest\x1a,.alt.articles.v2.BatchPrefetchImagesResponse\x12\x88\x01\n" +
+	"\x1bBatchPrefetchArticleContent\x123.alt.articles.v2.BatchPrefetchArticleContentRequest\x1a4.alt.articles.v2.BatchPrefetchArticleContentResponse\x12^\n" +
 	"\rFetchTagCloud\x12%.alt.articles.v2.FetchTagCloudRequest\x1a&.alt.articles.v2.FetchTagCloudResponse\x12p\n" +
 	"\x13GetArticleSourceURL\x12+.alt.articles.v2.GetArticleSourceURLRequest\x1a,.alt.articles.v2.GetArticleSourceURLResponse\x1a\x04\x88\xb5\x18\x01B*Z(alt/gen/proto/alt/articles/v2;articlesv2b\x06proto3"
 
@@ -2016,72 +2165,76 @@ func file_alt_articles_v2_articles_proto_rawDescGZIP() []byte {
 }
 
 var file_alt_articles_v2_articles_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_alt_articles_v2_articles_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_alt_articles_v2_articles_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_alt_articles_v2_articles_proto_goTypes = []any{
-	(StreamArticleTagsResponse_EventType)(0), // 0: alt.articles.v2.StreamArticleTagsResponse.EventType
-	(*FetchArticleContentRequest)(nil),       // 1: alt.articles.v2.FetchArticleContentRequest
-	(*FetchArticleContentResponse)(nil),      // 2: alt.articles.v2.FetchArticleContentResponse
-	(*ArchiveArticleRequest)(nil),            // 3: alt.articles.v2.ArchiveArticleRequest
-	(*ArchiveArticleResponse)(nil),           // 4: alt.articles.v2.ArchiveArticleResponse
-	(*FetchArticlesCursorRequest)(nil),       // 5: alt.articles.v2.FetchArticlesCursorRequest
-	(*ArticleItem)(nil),                      // 6: alt.articles.v2.ArticleItem
-	(*FetchArticlesCursorResponse)(nil),      // 7: alt.articles.v2.FetchArticlesCursorResponse
-	(*FetchArticleSummaryRequest)(nil),       // 8: alt.articles.v2.FetchArticleSummaryRequest
-	(*ArticleSummaryItem)(nil),               // 9: alt.articles.v2.ArticleSummaryItem
-	(*FetchArticleSummaryResponse)(nil),      // 10: alt.articles.v2.FetchArticleSummaryResponse
-	(*BatchPrefetchImagesRequest)(nil),       // 11: alt.articles.v2.BatchPrefetchImagesRequest
-	(*ImageProxyInfo)(nil),                   // 12: alt.articles.v2.ImageProxyInfo
-	(*BatchPrefetchImagesResponse)(nil),      // 13: alt.articles.v2.BatchPrefetchImagesResponse
-	(*FetchArticlesByTagRequest)(nil),        // 14: alt.articles.v2.FetchArticlesByTagRequest
-	(*TagTrailArticleItem)(nil),              // 15: alt.articles.v2.TagTrailArticleItem
-	(*FetchArticlesByTagResponse)(nil),       // 16: alt.articles.v2.FetchArticlesByTagResponse
-	(*FetchArticleTagsRequest)(nil),          // 17: alt.articles.v2.FetchArticleTagsRequest
-	(*ArticleTagItem)(nil),                   // 18: alt.articles.v2.ArticleTagItem
-	(*FetchArticleTagsResponse)(nil),         // 19: alt.articles.v2.FetchArticleTagsResponse
-	(*FetchRandomFeedRequest)(nil),           // 20: alt.articles.v2.FetchRandomFeedRequest
-	(*FetchRandomFeedResponse)(nil),          // 21: alt.articles.v2.FetchRandomFeedResponse
-	(*StreamArticleTagsRequest)(nil),         // 22: alt.articles.v2.StreamArticleTagsRequest
-	(*StreamArticleTagsResponse)(nil),        // 23: alt.articles.v2.StreamArticleTagsResponse
-	(*FetchTagCloudRequest)(nil),             // 24: alt.articles.v2.FetchTagCloudRequest
-	(*TagCloudItem)(nil),                     // 25: alt.articles.v2.TagCloudItem
-	(*FetchTagCloudResponse)(nil),            // 26: alt.articles.v2.FetchTagCloudResponse
-	(*GetArticleSourceURLRequest)(nil),       // 27: alt.articles.v2.GetArticleSourceURLRequest
-	(*GetArticleSourceURLResponse)(nil),      // 28: alt.articles.v2.GetArticleSourceURLResponse
+	(StreamArticleTagsResponse_EventType)(0),    // 0: alt.articles.v2.StreamArticleTagsResponse.EventType
+	(*FetchArticleContentRequest)(nil),          // 1: alt.articles.v2.FetchArticleContentRequest
+	(*FetchArticleContentResponse)(nil),         // 2: alt.articles.v2.FetchArticleContentResponse
+	(*ArchiveArticleRequest)(nil),               // 3: alt.articles.v2.ArchiveArticleRequest
+	(*ArchiveArticleResponse)(nil),              // 4: alt.articles.v2.ArchiveArticleResponse
+	(*FetchArticlesCursorRequest)(nil),          // 5: alt.articles.v2.FetchArticlesCursorRequest
+	(*ArticleItem)(nil),                         // 6: alt.articles.v2.ArticleItem
+	(*FetchArticlesCursorResponse)(nil),         // 7: alt.articles.v2.FetchArticlesCursorResponse
+	(*FetchArticleSummaryRequest)(nil),          // 8: alt.articles.v2.FetchArticleSummaryRequest
+	(*ArticleSummaryItem)(nil),                  // 9: alt.articles.v2.ArticleSummaryItem
+	(*FetchArticleSummaryResponse)(nil),         // 10: alt.articles.v2.FetchArticleSummaryResponse
+	(*BatchPrefetchImagesRequest)(nil),          // 11: alt.articles.v2.BatchPrefetchImagesRequest
+	(*ImageProxyInfo)(nil),                      // 12: alt.articles.v2.ImageProxyInfo
+	(*BatchPrefetchImagesResponse)(nil),         // 13: alt.articles.v2.BatchPrefetchImagesResponse
+	(*BatchPrefetchArticleContentRequest)(nil),  // 14: alt.articles.v2.BatchPrefetchArticleContentRequest
+	(*BatchPrefetchArticleContentResponse)(nil), // 15: alt.articles.v2.BatchPrefetchArticleContentResponse
+	(*FetchArticlesByTagRequest)(nil),           // 16: alt.articles.v2.FetchArticlesByTagRequest
+	(*TagTrailArticleItem)(nil),                 // 17: alt.articles.v2.TagTrailArticleItem
+	(*FetchArticlesByTagResponse)(nil),          // 18: alt.articles.v2.FetchArticlesByTagResponse
+	(*FetchArticleTagsRequest)(nil),             // 19: alt.articles.v2.FetchArticleTagsRequest
+	(*ArticleTagItem)(nil),                      // 20: alt.articles.v2.ArticleTagItem
+	(*FetchArticleTagsResponse)(nil),            // 21: alt.articles.v2.FetchArticleTagsResponse
+	(*FetchRandomFeedRequest)(nil),              // 22: alt.articles.v2.FetchRandomFeedRequest
+	(*FetchRandomFeedResponse)(nil),             // 23: alt.articles.v2.FetchRandomFeedResponse
+	(*StreamArticleTagsRequest)(nil),            // 24: alt.articles.v2.StreamArticleTagsRequest
+	(*StreamArticleTagsResponse)(nil),           // 25: alt.articles.v2.StreamArticleTagsResponse
+	(*FetchTagCloudRequest)(nil),                // 26: alt.articles.v2.FetchTagCloudRequest
+	(*TagCloudItem)(nil),                        // 27: alt.articles.v2.TagCloudItem
+	(*FetchTagCloudResponse)(nil),               // 28: alt.articles.v2.FetchTagCloudResponse
+	(*GetArticleSourceURLRequest)(nil),          // 29: alt.articles.v2.GetArticleSourceURLRequest
+	(*GetArticleSourceURLResponse)(nil),         // 30: alt.articles.v2.GetArticleSourceURLResponse
 }
 var file_alt_articles_v2_articles_proto_depIdxs = []int32{
 	6,  // 0: alt.articles.v2.FetchArticlesCursorResponse.data:type_name -> alt.articles.v2.ArticleItem
 	9,  // 1: alt.articles.v2.FetchArticleSummaryResponse.matched_articles:type_name -> alt.articles.v2.ArticleSummaryItem
 	12, // 2: alt.articles.v2.BatchPrefetchImagesResponse.images:type_name -> alt.articles.v2.ImageProxyInfo
-	15, // 3: alt.articles.v2.FetchArticlesByTagResponse.articles:type_name -> alt.articles.v2.TagTrailArticleItem
-	18, // 4: alt.articles.v2.FetchArticleTagsResponse.tags:type_name -> alt.articles.v2.ArticleTagItem
-	18, // 5: alt.articles.v2.FetchRandomFeedResponse.tags:type_name -> alt.articles.v2.ArticleTagItem
-	18, // 6: alt.articles.v2.StreamArticleTagsResponse.tags:type_name -> alt.articles.v2.ArticleTagItem
+	17, // 3: alt.articles.v2.FetchArticlesByTagResponse.articles:type_name -> alt.articles.v2.TagTrailArticleItem
+	20, // 4: alt.articles.v2.FetchArticleTagsResponse.tags:type_name -> alt.articles.v2.ArticleTagItem
+	20, // 5: alt.articles.v2.FetchRandomFeedResponse.tags:type_name -> alt.articles.v2.ArticleTagItem
+	20, // 6: alt.articles.v2.StreamArticleTagsResponse.tags:type_name -> alt.articles.v2.ArticleTagItem
 	0,  // 7: alt.articles.v2.StreamArticleTagsResponse.event_type:type_name -> alt.articles.v2.StreamArticleTagsResponse.EventType
-	25, // 8: alt.articles.v2.FetchTagCloudResponse.tags:type_name -> alt.articles.v2.TagCloudItem
+	27, // 8: alt.articles.v2.FetchTagCloudResponse.tags:type_name -> alt.articles.v2.TagCloudItem
 	1,  // 9: alt.articles.v2.ArticleService.FetchArticleContent:input_type -> alt.articles.v2.FetchArticleContentRequest
 	3,  // 10: alt.articles.v2.ArticleService.ArchiveArticle:input_type -> alt.articles.v2.ArchiveArticleRequest
 	5,  // 11: alt.articles.v2.ArticleService.FetchArticlesCursor:input_type -> alt.articles.v2.FetchArticlesCursorRequest
 	8,  // 12: alt.articles.v2.ArticleService.FetchArticleSummary:input_type -> alt.articles.v2.FetchArticleSummaryRequest
-	14, // 13: alt.articles.v2.ArticleService.FetchArticlesByTag:input_type -> alt.articles.v2.FetchArticlesByTagRequest
-	17, // 14: alt.articles.v2.ArticleService.FetchArticleTags:input_type -> alt.articles.v2.FetchArticleTagsRequest
-	20, // 15: alt.articles.v2.ArticleService.FetchRandomFeed:input_type -> alt.articles.v2.FetchRandomFeedRequest
-	22, // 16: alt.articles.v2.ArticleService.StreamArticleTags:input_type -> alt.articles.v2.StreamArticleTagsRequest
+	16, // 13: alt.articles.v2.ArticleService.FetchArticlesByTag:input_type -> alt.articles.v2.FetchArticlesByTagRequest
+	19, // 14: alt.articles.v2.ArticleService.FetchArticleTags:input_type -> alt.articles.v2.FetchArticleTagsRequest
+	22, // 15: alt.articles.v2.ArticleService.FetchRandomFeed:input_type -> alt.articles.v2.FetchRandomFeedRequest
+	24, // 16: alt.articles.v2.ArticleService.StreamArticleTags:input_type -> alt.articles.v2.StreamArticleTagsRequest
 	11, // 17: alt.articles.v2.ArticleService.BatchPrefetchImages:input_type -> alt.articles.v2.BatchPrefetchImagesRequest
-	24, // 18: alt.articles.v2.ArticleService.FetchTagCloud:input_type -> alt.articles.v2.FetchTagCloudRequest
-	27, // 19: alt.articles.v2.ArticleService.GetArticleSourceURL:input_type -> alt.articles.v2.GetArticleSourceURLRequest
-	2,  // 20: alt.articles.v2.ArticleService.FetchArticleContent:output_type -> alt.articles.v2.FetchArticleContentResponse
-	4,  // 21: alt.articles.v2.ArticleService.ArchiveArticle:output_type -> alt.articles.v2.ArchiveArticleResponse
-	7,  // 22: alt.articles.v2.ArticleService.FetchArticlesCursor:output_type -> alt.articles.v2.FetchArticlesCursorResponse
-	10, // 23: alt.articles.v2.ArticleService.FetchArticleSummary:output_type -> alt.articles.v2.FetchArticleSummaryResponse
-	16, // 24: alt.articles.v2.ArticleService.FetchArticlesByTag:output_type -> alt.articles.v2.FetchArticlesByTagResponse
-	19, // 25: alt.articles.v2.ArticleService.FetchArticleTags:output_type -> alt.articles.v2.FetchArticleTagsResponse
-	21, // 26: alt.articles.v2.ArticleService.FetchRandomFeed:output_type -> alt.articles.v2.FetchRandomFeedResponse
-	23, // 27: alt.articles.v2.ArticleService.StreamArticleTags:output_type -> alt.articles.v2.StreamArticleTagsResponse
-	13, // 28: alt.articles.v2.ArticleService.BatchPrefetchImages:output_type -> alt.articles.v2.BatchPrefetchImagesResponse
-	26, // 29: alt.articles.v2.ArticleService.FetchTagCloud:output_type -> alt.articles.v2.FetchTagCloudResponse
-	28, // 30: alt.articles.v2.ArticleService.GetArticleSourceURL:output_type -> alt.articles.v2.GetArticleSourceURLResponse
-	20, // [20:31] is the sub-list for method output_type
-	9,  // [9:20] is the sub-list for method input_type
+	14, // 18: alt.articles.v2.ArticleService.BatchPrefetchArticleContent:input_type -> alt.articles.v2.BatchPrefetchArticleContentRequest
+	26, // 19: alt.articles.v2.ArticleService.FetchTagCloud:input_type -> alt.articles.v2.FetchTagCloudRequest
+	29, // 20: alt.articles.v2.ArticleService.GetArticleSourceURL:input_type -> alt.articles.v2.GetArticleSourceURLRequest
+	2,  // 21: alt.articles.v2.ArticleService.FetchArticleContent:output_type -> alt.articles.v2.FetchArticleContentResponse
+	4,  // 22: alt.articles.v2.ArticleService.ArchiveArticle:output_type -> alt.articles.v2.ArchiveArticleResponse
+	7,  // 23: alt.articles.v2.ArticleService.FetchArticlesCursor:output_type -> alt.articles.v2.FetchArticlesCursorResponse
+	10, // 24: alt.articles.v2.ArticleService.FetchArticleSummary:output_type -> alt.articles.v2.FetchArticleSummaryResponse
+	18, // 25: alt.articles.v2.ArticleService.FetchArticlesByTag:output_type -> alt.articles.v2.FetchArticlesByTagResponse
+	21, // 26: alt.articles.v2.ArticleService.FetchArticleTags:output_type -> alt.articles.v2.FetchArticleTagsResponse
+	23, // 27: alt.articles.v2.ArticleService.FetchRandomFeed:output_type -> alt.articles.v2.FetchRandomFeedResponse
+	25, // 28: alt.articles.v2.ArticleService.StreamArticleTags:output_type -> alt.articles.v2.StreamArticleTagsResponse
+	13, // 29: alt.articles.v2.ArticleService.BatchPrefetchImages:output_type -> alt.articles.v2.BatchPrefetchImagesResponse
+	15, // 30: alt.articles.v2.ArticleService.BatchPrefetchArticleContent:output_type -> alt.articles.v2.BatchPrefetchArticleContentResponse
+	28, // 31: alt.articles.v2.ArticleService.FetchTagCloud:output_type -> alt.articles.v2.FetchTagCloudResponse
+	30, // 32: alt.articles.v2.ArticleService.GetArticleSourceURL:output_type -> alt.articles.v2.GetArticleSourceURLResponse
+	21, // [21:33] is the sub-list for method output_type
+	9,  // [9:21] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -2096,17 +2249,17 @@ func file_alt_articles_v2_articles_proto_init() {
 	file_alt_articles_v2_articles_proto_msgTypes[2].OneofWrappers = []any{}
 	file_alt_articles_v2_articles_proto_msgTypes[4].OneofWrappers = []any{}
 	file_alt_articles_v2_articles_proto_msgTypes[6].OneofWrappers = []any{}
-	file_alt_articles_v2_articles_proto_msgTypes[13].OneofWrappers = []any{}
 	file_alt_articles_v2_articles_proto_msgTypes[15].OneofWrappers = []any{}
-	file_alt_articles_v2_articles_proto_msgTypes[21].OneofWrappers = []any{}
-	file_alt_articles_v2_articles_proto_msgTypes[22].OneofWrappers = []any{}
+	file_alt_articles_v2_articles_proto_msgTypes[17].OneofWrappers = []any{}
+	file_alt_articles_v2_articles_proto_msgTypes[23].OneofWrappers = []any{}
+	file_alt_articles_v2_articles_proto_msgTypes[24].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_alt_articles_v2_articles_proto_rawDesc), len(file_alt_articles_v2_articles_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   28,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
