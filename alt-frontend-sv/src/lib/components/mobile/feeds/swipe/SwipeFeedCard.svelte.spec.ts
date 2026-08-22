@@ -707,9 +707,18 @@ describe("SwipeFeedCard", () => {
 				props: defaultProps,
 			});
 
+			// The panel that explains the failure is shut, so the footer is the
+			// only place the reader can learn the body is gone: it has to say so
+			// in words. A bare "Try again" does not — it names no subject, and
+			// the reader never made a first attempt to repeat.
 			await expect
 				.element(page.getByTestId("article-action"))
-				.toHaveTextContent(/try again/i);
+				.toHaveTextContent(/article unavailable/i);
+			// And it says it WITHOUT giving up the noun: this is still the one
+			// control that opens the article, and it must stay findable as such.
+			await expect
+				.element(page.getByRole("button", { name: /article/i }))
+				.toBeInTheDocument();
 		});
 
 		it("treats an empty body from the background fetch as a state, not a no-op", async () => {
@@ -727,7 +736,10 @@ describe("SwipeFeedCard", () => {
 
 			await expect
 				.element(page.getByTestId("article-action"))
-				.toHaveTextContent(/try again/i);
+				.toHaveTextContent(/article unavailable/i);
+			await expect
+				.element(page.getByRole("button", { name: /article/i }))
+				.toBeInTheDocument();
 		});
 
 		it("shows the pending state, not an error, while the fetch is in flight", async () => {

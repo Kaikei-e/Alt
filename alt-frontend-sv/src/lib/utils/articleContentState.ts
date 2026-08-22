@@ -33,6 +33,19 @@ export const READ_ORIGINAL_LABEL = "Read on the original site";
 export const TRY_AGAIN_LABEL = "Try again";
 
 /**
+ * What a reading surface's own entry point says once a body the reader never
+ * asked for has come back gone.
+ *
+ * It keeps the noun deliberately. A background fetch that fails leaves nothing
+ * on a collapsed card explaining what was attempted, so relabelling the entry
+ * point to a bare `TRY_AGAIN_LABEL` asks the reader to repeat an attempt they
+ * never saw — and spends the one control that says "there is an article here"
+ * saying it. The verb belongs to the controls next to the notice that names
+ * the problem: `TRY_AGAIN_LABEL` and `READ_ORIGINAL_LABEL`, inside the panel.
+ */
+export const CONTENT_UNAVAILABLE_LABEL = "Article unavailable";
+
+/**
  * The "the server answered, with nothing" case, as an error object.
  *
  * `content: ""` is a state and never a falsy no-op — treating it as "not yet

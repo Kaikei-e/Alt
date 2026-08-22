@@ -24,6 +24,7 @@ import {
 	type ArticleContentPhase,
 	CONTENT_PENDING_LABEL,
 	CONTENT_RETRYING_LABEL,
+	CONTENT_UNAVAILABLE_LABEL,
 	EMPTY_CONTENT_ERROR,
 	foregroundRetryDelayMs,
 	READ_ORIGINAL_LABEL,
@@ -155,9 +156,27 @@ const publishedLabel = $derived.by(() => {
 // Derived button states
 const articleButtonState = $derived.by(() => {
 	if (isUserFetching) return "loading" as const;
-	if (contentPhase === "failed") return "error" as const;
+	if (contentPhase === "failed") {
+		// A failure the reader watched happen gets the verb: the panel is open,
+		// the notice naming the problem is in it, and pressing this really does
+		// re-fetch (`handleRefetchContent`).
+		//
+		// A background fetch they never asked for gets the noun instead. On a
+		// collapsed card nothing says what was attempted, so a bare "Try again"
+		// asks the reader to repeat an attempt they never saw, and it does it by
+		// spending the only control that says the card has an article to open —
+		// while the press still runs `handleToggleContent`, i.e. opens the panel.
+		// "Article unavailable" states the verdict the background fetch reached
+		// AND stays the way in; the remedies live behind it, next to the notice.
+		return isContentExpanded ? ("error" as const) : ("unavailable" as const);
+	}
 	return "idle" as const;
 });
+
+/** Both terminal labels carry the failed styling; only one carries the verb. */
+const articleButtonFailed = $derived(
+	articleButtonState === "error" || articleButtonState === "unavailable",
+);
 
 const summaryButtonState = $derived.by(() => {
 	if (isSummarizing) return "loading" as const;
@@ -760,16 +779,19 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
           type="button"
           data-testid="article-action"
           onclick={isContentExpanded ? handleRefetchContent : handleToggleContent}
-          class="action-btn {articleButtonState === 'error' ? 'action-btn--error' : ''} {isContentExpanded ? 'action-btn--active' : ''}"
+          class="action-btn {articleButtonFailed ? 'action-btn--error' : ''} {isContentExpanded ? 'action-btn--active' : ''}"
           disabled={isUserFetching}
-          class:action-btn--active={isContentExpanded && articleButtonState !== 'error'}
+          class:action-btn--active={isContentExpanded && !articleButtonFailed}
         >
           {#if articleButtonState === 'loading'}
             <div class="loading-dot-sm" aria-hidden="true"></div>
             Loading...
           {:else if articleButtonState === 'error'}
             <RefreshCw size={14} />
-            Try again
+            {TRY_AGAIN_LABEL}
+          {:else if articleButtonState === 'unavailable'}
+            <BookOpen size={14} />
+            {CONTENT_UNAVAILABLE_LABEL}
           {:else if isContentExpanded}
             <RefreshCw size={14} />
             Re-fetch
