@@ -20,7 +20,19 @@ import {
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
 import type { RenderFeed } from "$lib/schema/feed";
-import { isTransientError } from "$lib/utils/errorClassification";
+import {
+	type ArticleContentPhase,
+	CONTENT_PENDING_LABEL,
+	CONTENT_RETRYING_LABEL,
+	EMPTY_CONTENT_ERROR,
+	foregroundRetryDelayMs,
+	READ_ORIGINAL_LABEL,
+	TRY_AGAIN_LABEL,
+} from "$lib/utils/articleContentState";
+import {
+	articleContentErrorMessage,
+	isTransientError,
+} from "$lib/utils/errorClassification";
 import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
 
@@ -62,8 +74,22 @@ let isSummarizing = $state(false);
 
 let isContentExpanded = $state(false);
 let fullContent = $state<string | null>(null);
-let isLoadingContent = $state(false);
+// Three honest states, not two booleans. `pending` / `retrying` are explicitly
+// not `failed`: the background fetch used to swallow its rejection entirely
+// (console.error and nothing else), so a reader looking at the RSS description
+// had no way to tell a failure from a body that had simply not arrived yet.
+let contentPhase = $state<ArticleContentPhase>("idle");
 let contentError = $state<string | null>(null);
+// True only while a load the READER asked for is running. The background
+// fetch deliberately does not put the footer button into its loading state —
+// locking the button during a fetch nobody asked for is what keeps the reader
+// out of the panel where the pending state and the remedies live.
+let isUserFetching = $state(false);
+// The one automatic re-attempt this card is allowed per failure.
+let foregroundRetrySpent = false;
+let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
+// Monotonic token: a load applies its result only while it is the newest one.
+let contentToken = 0;
 
 let summaryAbortController = $state<AbortController | null>(null);
 let contentAbortController: AbortController | null = null;
@@ -74,8 +100,7 @@ let isFavoriting = $state(false);
 let isFavorited = $state(false);
 let favoriteError = $state<string | null>(null);
 
-// Retry counters
-let contentRetryCount = $state(0);
+// Retry counter (summary stream only; the article body has its own policy)
 let summaryRetryCount = $state(0);
 
 const debug = import.meta.env.DEV;
@@ -105,6 +130,12 @@ const sanitizedFullContent = $derived(
 	fullContent ? sanitizeHtml(fullContent) : null,
 );
 const hasDescription = $derived(Boolean(feed.description));
+const isContentPending = $derived(
+	contentPhase === "pending" || contentPhase === "retrying",
+);
+const pendingLabel = $derived(
+	contentPhase === "retrying" ? CONTENT_RETRYING_LABEL : CONTENT_PENDING_LABEL,
+);
 const publishedLabel = $derived.by(() => {
 	if (feed.created_at) {
 		try {
@@ -123,8 +154,8 @@ const publishedLabel = $derived.by(() => {
 
 // Derived button states
 const articleButtonState = $derived.by(() => {
-	if (isLoadingContent) return "loading" as const;
-	if (contentError) return "error" as const;
+	if (isUserFetching) return "loading" as const;
+	if (contentPhase === "failed") return "error" as const;
 	return "idle" as const;
 });
 
@@ -139,53 +170,31 @@ onMount(() => {
 	// Initialize with prop value if available
 	if (initialArticleContent) {
 		fullContent = initialArticleContent;
+		contentPhase = "ready";
 	}
 
 	// Use normalizedUrl for cache access (consistent with articlePrefetcher)
 	const cached = getCachedContent?.(feed.normalizedUrl);
 	if (cached) {
 		fullContent = cached;
+		contentPhase = "ready";
 		// Also check for cached articleId and notify parent
 		const cachedArticleId = getCachedArticleId?.(feed.normalizedUrl);
 		if (cachedArticleId && onArticleIdResolved) {
 			onArticleIdResolved(feed.link, cachedArticleId);
 		}
 	} else if (!fullContent) {
-		// Background fetch using normalizedUrl
-		contentAbortController = new AbortController();
-		const signal = contentAbortController.signal;
-
-		// Prefer the shared prefetcher: a card mounting mid-prefetch joins that
-		// request instead of firing a second, unserialized one at the same host.
-		// The shared promise is deliberately not abortable — other joiners and
-		// the cache depend on it — so unmount just stops applying the result.
-		const pending = requestContent
-			? requestContent(feed.normalizedUrl).then((content) => ({
-					content: content ?? "",
-					article_id: getCachedArticleId?.(feed.normalizedUrl) ?? "",
-				}))
-			: getFeedContentOnTheFlyClient(feed.normalizedUrl, { signal });
-
-		pending
-			.then((res) => {
-				if (signal.aborted) return;
-				if (res.content) {
-					fullContent = res.content;
-				}
-				// Notify parent if articleId was resolved (article created during fetch)
-				if (res.article_id && onArticleIdResolved) {
-					onArticleIdResolved(feed.link, res.article_id);
-				}
-			})
-			.catch((err) => {
-				if (signal.aborted) return;
-				console.error("[SwipeFeedCard] Error auto-fetching content:", err);
-			});
+		// Background fetch. It goes through the same loader as every tap, so a
+		// failure here lands in the same `failed` state with the same wording
+		// instead of being logged and forgotten.
+		void loadContent({ viaPrefetcher: true });
 	}
 
 	return () => {
+		contentToken++;
 		contentAbortController?.abort();
 		contentAbortController = null;
+		if (contentRetryTimer) clearTimeout(contentRetryTimer);
 		if (favoriteErrorTimer) clearTimeout(favoriteErrorTimer);
 		if (summaryRetryTimer) clearTimeout(summaryRetryTimer);
 		summaryAbortController?.abort();
@@ -237,84 +246,169 @@ $effect(() => {
 	};
 });
 
-async function fetchArticleContent(forceRefresh = false): Promise<boolean> {
-	try {
-		const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl, {
-			forceRefresh,
-		});
-		if (res.content) {
-			fullContent = res.content;
-			if (res.article_id && onArticleIdResolved) {
-				onArticleIdResolved(feed.link, res.article_id);
-			}
-			return true;
-		}
-		contentError = "Could not fetch article content";
-		return false;
-	} catch (err) {
-		if (isTransientError(err) && contentRetryCount < 1) {
-			contentRetryCount++;
-			await new Promise((resolve) => setTimeout(resolve, 500));
-			try {
-				const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
-				if (res.content) {
-					fullContent = res.content;
-					if (res.article_id && onArticleIdResolved) {
-						onArticleIdResolved(feed.link, res.article_id);
-					}
-					return true;
-				}
-				contentError = "Could not fetch article content";
-				return false;
-			} catch {
-				contentError = "Could not fetch article content";
-				return false;
-			}
-		}
-		contentError = "Could not fetch article content";
+/**
+ * One request for the body.
+ *
+ * The background path prefers the shared prefetcher — a card mounting
+ * mid-prefetch joins that request instead of firing a second, unserialized one
+ * at the same host. A force-refresh always goes direct: the point of it is to
+ * bypass what the prefetcher has cached.
+ */
+async function requestBody(opts: {
+	viaPrefetcher?: boolean;
+	forceRefresh?: boolean;
+}): Promise<{ content: string; articleId: string }> {
+	if (opts.viaPrefetcher && requestContent && !opts.forceRefresh) {
+		const content = await requestContent(feed.normalizedUrl);
+		return {
+			content: content ?? "",
+			articleId: getCachedArticleId?.(feed.normalizedUrl) ?? "",
+		};
+	}
+
+	contentAbortController?.abort();
+	contentAbortController = new AbortController();
+	const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl, {
+		forceRefresh: opts.forceRefresh,
+		signal: contentAbortController.signal,
+	});
+	return { content: res.content ?? "", articleId: res.article_id ?? "" };
+}
+
+/**
+ * Record a terminal failure. The wording comes from articleContentErrorMessage
+ * and nowhere else — ADR-000959 §6 forbids putting the upstream `message`
+ * ("Service temporarily unavailable due to circuit breaker") on the reading
+ * surface.
+ */
+function failContent(err: unknown, token: number) {
+	if (token !== contentToken) return;
+	console.warn("[SwipeFeedCard] article content unavailable:", err);
+	contentError = articleContentErrorMessage(err);
+	contentPhase = "failed";
+}
+
+function applyBody(
+	body: { content: string; articleId: string },
+	token: number,
+): boolean {
+	if (token !== contentToken) return false;
+	if (!body.content) {
+		// `content: ""` is a state, not a falsy no-op (ADR-000581). The
+		// background path used to drop it silently, which left the card
+		// looking like it was still loading forever.
+		failContent(EMPTY_CONTENT_ERROR, token);
 		return false;
 	}
+	fullContent = body.content;
+	contentPhase = "ready";
+	contentError = null;
+	if (body.articleId && onArticleIdResolved) {
+		onArticleIdResolved(feed.link, body.articleId);
+	}
+	return true;
+}
+
+/**
+ * Load the body, with at most ONE automatic re-attempt.
+ *
+ * The re-attempt is admitted for exactly one condition — see
+ * foregroundRetryDelayMs — and announces itself while it waits instead of
+ * hiding behind a frozen frame of the failed state.
+ */
+async function loadContent(
+	opts: {
+		viaPrefetcher?: boolean;
+		forceRefresh?: boolean;
+		userInitiated?: boolean;
+	} = {},
+): Promise<boolean> {
+	const token = ++contentToken;
+	contentPhase = "pending";
+	contentError = null;
+	if (opts.userInitiated) isUserFetching = true;
+
+	try {
+		try {
+			return applyBody(await requestBody(opts), token);
+		} catch (err) {
+			if (token !== contentToken) return false;
+			if (isAbortReason(err)) return false;
+
+			const delayMs = foregroundRetrySpent ? null : foregroundRetryDelayMs(err);
+			if (delayMs === null) {
+				failContent(err, token);
+				return false;
+			}
+
+			foregroundRetrySpent = true;
+			contentPhase = "retrying";
+			await new Promise<void>((resolve) => {
+				if (contentRetryTimer) clearTimeout(contentRetryTimer);
+				contentRetryTimer = setTimeout(() => {
+					contentRetryTimer = null;
+					resolve();
+				}, delayMs);
+			});
+			if (token !== contentToken) return false;
+
+			contentPhase = "pending";
+			try {
+				return applyBody(await requestBody(opts), token);
+			} catch (retryErr) {
+				if (token !== contentToken || isAbortReason(retryErr)) return false;
+				failContent(retryErr, token);
+				return false;
+			}
+		}
+	} finally {
+		if (token === contentToken && opts.userInitiated) {
+			isUserFetching = false;
+		}
+	}
+}
+
+function isAbortReason(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	return (
+		err.name === "AbortError" ||
+		err.message.includes("abort") ||
+		err.message.includes("cancel")
+	);
 }
 
 async function handleRefetchContent() {
 	fullContent = null;
 	aiSummary = null;
 	summaryError = null;
-	contentError = null;
-	isLoadingContent = true;
-	const success = await fetchArticleContent(true);
-	isLoadingContent = false;
-	if (success) {
-		isContentExpanded = true;
-	}
+	// A reader asking again is a fresh budget: the automatic attempt is spent
+	// per failure, not once per card.
+	foregroundRetrySpent = false;
+	isContentExpanded = true;
+	await loadContent({ userInitiated: true, forceRefresh: true });
 }
 
 async function handleToggleContent() {
-	if (contentError && !isLoadingContent) {
-		isLoadingContent = true;
-		contentError = null;
-		const success = await fetchArticleContent();
-		isLoadingContent = false;
-		if (success) {
-			isContentExpanded = true;
-		}
+	if (isContentExpanded && contentPhase === "ready") {
+		isContentExpanded = false;
 		return;
 	}
 
-	if (!isContentExpanded && !fullContent) {
-		const cached = getCachedContent?.(feed.normalizedUrl);
-		if (cached) {
-			fullContent = cached;
-			isContentExpanded = true;
-			return;
-		}
+	// Open first, then fetch. Awaiting the body before expanding meant the
+	// panel's pending state could not be reached on a first tap: the panel
+	// arrived already in its final state, so a failure read as a card that had
+	// been broken all along. ADR-000963 §7 left this card's expansion order
+	// out of scope and recorded the mismatch with VisualPreviewCard as a
+	// tradeoff; this closes it.
+	isContentExpanded = true;
 
-		isLoadingContent = true;
-		contentError = null;
-		await fetchArticleContent();
-		isLoadingContent = false;
-	}
-	isContentExpanded = !isContentExpanded;
+	if (fullContent) return;
+	// A load is already running — join it rather than firing a second request
+	// at the same host. The panel shows its pending state either way.
+	if (isContentPending) return;
+
+	if (contentPhase === "failed") foregroundRetrySpent = false;
+	await loadContent({ userInitiated: true });
 }
 
 function handleGenerateAISummary(forceRefresh = false) {
@@ -594,20 +688,55 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
           transition:fade
         >
           <p class="section-label">Full Article</p>
-          {#if isLoadingContent}
-            <div class="loading-state">
+          {#if isContentPending}
+            <!-- A request in flight is not a verdict. It says what it is doing
+                 and keeps the RSS body underneath, so the panel is never a
+                 blank wait and never an error that has not happened yet. -->
+            <div class="loading-state" data-testid="article-content-pending">
               <div class="loading-dot" aria-hidden="true"></div>
-              <span class="loading-label">Loading article...</span>
+              <span class="loading-label">{pendingLabel}</span>
             </div>
-          {:else if contentError}
-            <p
-              class="fallback-notice"
-              role="alert"
-              data-testid="source-unavailable-notice"
-            >
-              {contentError} Showing summary.
-            </p>
-            {#if feed.description}
+            {#if hasDescription}
+              <div
+                class="summary-prose article-prose"
+                data-testid="article-fallback-summary"
+              >
+                {feed.description}
+              </div>
+            {/if}
+          {:else if contentPhase === "failed"}
+            <div data-testid="article-content-failed">
+              <p
+                class="fallback-notice"
+                role="alert"
+                data-testid="source-unavailable-notice"
+              >
+                {contentError} Showing summary.
+              </p>
+              <!-- Naming the problem without offering a way out is the defect
+                   (NN/g heuristic 9). Both remedies ship with the message. -->
+              <div class="remedy-row">
+                <button
+                  type="button"
+                  class="retry-btn"
+                  onclick={handleRefetchContent}
+                  disabled={isUserFetching}
+                  data-testid="retry-content"
+                >
+                  {TRY_AGAIN_LABEL}
+                </button>
+                <a
+                  class="remedy-link"
+                  href={feed.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="read-original-link"
+                >
+                  {READ_ORIGINAL_LABEL}
+                </a>
+              </div>
+            </div>
+            {#if hasDescription}
               <div
                 class="summary-prose article-prose"
                 data-testid="article-fallback-summary"
@@ -629,9 +758,10 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
       <div class="flex gap-3 w-full">
         <button
           type="button"
+          data-testid="article-action"
           onclick={isContentExpanded ? handleRefetchContent : handleToggleContent}
           class="action-btn {articleButtonState === 'error' ? 'action-btn--error' : ''} {isContentExpanded ? 'action-btn--active' : ''}"
-          disabled={isLoadingContent}
+          disabled={isUserFetching}
           class:action-btn--active={isContentExpanded && articleButtonState !== 'error'}
         >
           {#if articleButtonState === 'loading'}
@@ -650,6 +780,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
         </button>
         <button
           type="button"
+          data-testid="summary-action"
           onclick={() => handleGenerateAISummary(!!aiSummary)}
           class="action-btn {summaryButtonState === 'error' ? 'action-btn--error' : ''} {isAISummaryRequested && summaryButtonState !== 'error' ? 'action-btn--active' : ''}"
           disabled={isSummarizing}
@@ -936,6 +1067,54 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     color: var(--alt-ash);
     margin: 0 0 0.5rem;
     padding: 0;
+  }
+
+  /* ── Remedies for a terminal content failure ── */
+  .remedy-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 0 0 0.75rem;
+  }
+
+  .retry-btn {
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--alt-charcoal);
+    background: transparent;
+    border: 1.5px solid var(--alt-charcoal);
+    padding: 0.4rem 1rem;
+    min-height: 44px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .retry-btn:active:not(:disabled) {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  .retry-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .remedy-link {
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--alt-charcoal);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
   }
 
   /* ── Footer ── */

@@ -15,7 +15,14 @@ import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
-import { isTransientError } from "$lib/utils/errorClassification";
+import {
+	EMPTY_CONTENT_ERROR,
+	READ_ORIGINAL_LABEL,
+} from "$lib/utils/articleContentState";
+import {
+	articleContentErrorMessage,
+	isTransientError,
+} from "$lib/utils/errorClassification";
 import RenderFeedDetails from "./RenderFeedDetails.svelte";
 
 interface Props {
@@ -67,10 +74,14 @@ let feedDetails = $state<FeedContentOnTheFlyResponse | null>(
 // Transient-only with a hard attempt ceiling. The shape follows
 // $lib/utils/loadProxyImage — a permanent failure is terminal on the first
 // attempt, a transient one buys a finite number of retries from a backoff
-// table — and the budget is deliberately identical to the one
-// SwipeFeedCard.svelte already applies to getFeedContentOnTheFlyClient
-// (`contentRetryCount < 1` + a 500ms delay): the two mobile content paths hit
-// the same endpoints, so they must not retry at different rates.
+// table.
+//
+// This sheet fires TWO endpoints per attempt (summary + content) and reports
+// the attempts it spent, so it keeps its own budget rather than the
+// single-request policy in $lib/utils/articleContentState that the swipe
+// cards, the desktop modal and the article route share. What it does share is
+// the wording: the terminal message below comes from
+// articleContentErrorMessage like everywhere else.
 const CONTENT_RETRY_BACKOFFS_MS: readonly number[] = [500];
 const MAX_CONTENT_ATTEMPTS = CONTENT_RETRY_BACKOFFS_MS.length + 1;
 
@@ -80,6 +91,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // terminal message, so it must be the real count and never the ceiling: the
 // budget is abandoned early on a permanent failure.
 let contentAttemptCount = $state(0);
+// The last rejection seen by either endpoint, kept so the terminal message can
+// be formatted from the error rather than from a literal typed here. Plain
+// `let`: nothing renders from it directly.
+let lastContentError: unknown = null;
 let summaryRetryCount = $state(0);
 // Terminal state for the content fetch: the attempt budget is spent (or the
 // failure was permanent) and nothing will be retried until the user asks.
@@ -225,6 +240,7 @@ const resetForNewArticle = () => {
 	isLoading = false;
 	error = null;
 	contentAttemptCount = 0;
+	lastContentError = null;
 	summaryRetryCount = 0;
 	contentFetchExhausted = false;
 };
@@ -246,6 +262,7 @@ const attemptFetch = async (url: string) => {
 	// Fetch both summary and content independently
 	const summaryPromise = getArticleSummaryClient(url).catch((err: unknown) => {
 		sawTransient = sawTransient || isTransientError(err);
+		lastContentError = err;
 		console.error("Error fetching article summary:", err);
 		return null;
 	});
@@ -253,6 +270,9 @@ const attemptFetch = async (url: string) => {
 	const detailsPromise = getFeedContentOnTheFlyClient(url).catch(
 		(err: unknown) => {
 			sawTransient = sawTransient || isTransientError(err);
+			// The content endpoint wins the tie: it is the one whose failure the
+			// message is about.
+			lastContentError = err;
 			console.error("Error fetching article content:", err);
 			return null;
 		},
@@ -300,6 +320,7 @@ const fetchData = async () => {
 	isLoading = true;
 	error = null;
 	contentAttemptCount = 0;
+	lastContentError = null;
 	contentFetchExhausted = false;
 
 	try {
@@ -337,7 +358,10 @@ const fetchData = async () => {
 			if (token !== contentFetchToken) return;
 		}
 
-		error = "Unable to fetch article content";
+		// One formatter for every surface (ADR-000959 §6 keeps the upstream
+		// prose out of it). A run that ended with no rejection at all — both
+		// endpoints answered, with nothing in them — is the empty-body state.
+		error = articleContentErrorMessage(lastContentError ?? EMPTY_CONTENT_ERROR);
 		contentFetchExhausted = true;
 	} catch (err) {
 		console.error("Unexpected error:", err);
@@ -347,7 +371,7 @@ const fetchData = async () => {
 			// announcing "0 attempts" would be as untrue as announcing the
 			// ceiling.
 			contentAttemptCount = Math.max(contentAttemptCount, 1);
-			error = "Unexpected error occurred";
+			error = articleContentErrorMessage(err);
 			contentFetchExhausted = true;
 		}
 	} finally {
@@ -566,6 +590,20 @@ async function handleSummarize(forceRefresh = false) {
 					>
 						Reload article
 					</button>
+					<!-- Stating the problem without offering a way out is the
+					     defect (NN/g heuristic 9). The reload can fail again;
+					     the publisher is the exit that does not depend on us. -->
+					{#if feedURL}
+						<a
+							class="remedy-link"
+							href={feedURL}
+							target="_blank"
+							rel="noopener noreferrer"
+							data-testid="read-original-link"
+						>
+							{READ_ORIGINAL_LABEL}
+						</a>
+					{/if}
 				</div>
 			{/if}
 
@@ -735,6 +773,18 @@ async function handleSummarize(forceRefresh = false) {
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
+	}
+
+	.remedy-link {
+		font-family: var(--font-body);
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.25rem;
 	}
 
 	:global(.sheet-footer) {

@@ -23,6 +23,15 @@ import { Button } from "$lib/components/ui/button";
 import { useArticleEndBranches } from "$lib/hooks/useArticleEndBranches.svelte";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
 import { useTrailOutcome } from "$lib/hooks/useTrailOutcome.svelte";
+import {
+	type ArticleContentPhase,
+	CONTENT_PENDING_LABEL,
+	CONTENT_RETRYING_LABEL,
+	EMPTY_CONTENT_ERROR,
+	foregroundRetryDelayMs,
+	READ_ORIGINAL_LABEL,
+	TRY_AGAIN_LABEL,
+} from "$lib/utils/articleContentState";
 import { articleContentErrorMessage } from "$lib/utils/errorClassification";
 import { safeArticleHref } from "$lib/utils/safeHref";
 
@@ -95,11 +104,28 @@ $effect(() => {
 	};
 });
 
-let isFetching = $state(false);
+// One explicit phase instead of three booleans read as a truth table. The old
+// guard — `!articleContent && !isFetching && !contentError` — could not tell
+// "not fetched yet" from "fetched, came back empty", so an empty body left all
+// three false and the effect re-fired the moment isFetching cleared: the
+// ADR-000581 infinite loop, still open on this route.
+let contentPhase = $state<ArticleContentPhase>("idle");
 let articleContent = $state<string | null>(null);
 let fetchedArticleId = $state<string | null>(null);
 let contentError = $state<string | null>(null);
 let previousUrl = $state<string | null>(null);
+// The one automatic re-attempt allowed per failure.
+let foregroundRetrySpent = false;
+let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
+// Monotonic token: a load applies its result only while it is the newest one.
+let contentToken = 0;
+
+const isFetching = $derived(
+	contentPhase === "pending" || contentPhase === "retrying",
+);
+const pendingLabel = $derived(
+	contentPhase === "retrying" ? CONTENT_RETRYING_LABEL : CONTENT_PENDING_LABEL,
+);
 
 const summarizer = useSummarize();
 
@@ -108,7 +134,7 @@ const hasRail = $derived(railQuery.current);
 
 const fetchButtonState = $derived.by(() => {
 	if (isFetching) return "loading" as const;
-	if (contentError) return "error" as const;
+	if (contentPhase === "failed") return "error" as const;
 	if (articleContent) return "success" as const;
 	return "idle" as const;
 });
@@ -167,24 +193,89 @@ const summarizeAriaLabel = $derived.by(() => {
 
 onDestroy(() => {
 	summarizer.abort();
+	// A re-attempt parked in its Retry-After wait outlives the page otherwise.
+	contentToken++;
+	if (contentRetryTimer) clearTimeout(contentRetryTimer);
 });
 
+/**
+ * Record a terminal failure. The wording comes from articleContentErrorMessage
+ * and nowhere else — ADR-000959 §6 keeps the upstream `message` off the
+ * reading surface.
+ */
+function failContent(err: unknown, token: number) {
+	if (token !== contentToken) return;
+	contentError = articleContentErrorMessage(err);
+	contentPhase = "failed";
+}
+
+function applyResponse(
+	response: { content?: string; article_id?: string },
+	token: number,
+) {
+	if (token !== contentToken) return;
+	if (!response.content?.trim()) {
+		// `content: ""` is a state, never a falsy no-op (ADR-000581).
+		failContent(EMPTY_CONTENT_ERROR, token);
+		return;
+	}
+	articleContent = response.content;
+	fetchedArticleId = response.article_id || null;
+	contentError = null;
+	contentPhase = "ready";
+}
+
+/**
+ * Fetch the body, with at most ONE automatic re-attempt.
+ *
+ * The re-attempt lives here rather than in the auto-fetch $effect on purpose.
+ * Re-arming that effect is exactly what ADR-000581 closed; a retry that runs
+ * inside the call keeps the phase at pending/retrying for its whole duration,
+ * so the effect never sees a state that could start a second one.
+ */
 async function fetchContent(forceRefresh = false) {
 	if (!articleUrl) return;
 
-	isFetching = true;
+	const url = articleUrl;
+	const token = ++contentToken;
+	contentPhase = "pending";
 	contentError = null;
 
 	try {
-		const response = await getFeedContentOnTheFlyClient(articleUrl, {
-			forceRefresh,
-		});
-		articleContent = response.content || null;
-		fetchedArticleId = response.article_id || null;
+		applyResponse(
+			await getFeedContentOnTheFlyClient(url, { forceRefresh }),
+			token,
+		);
+		return;
 	} catch (err) {
-		contentError = articleContentErrorMessage(err);
-	} finally {
-		isFetching = false;
+		if (token !== contentToken) return;
+
+		const delayMs = foregroundRetrySpent ? null : foregroundRetryDelayMs(err);
+		if (delayMs === null) {
+			failContent(err, token);
+			return;
+		}
+
+		foregroundRetrySpent = true;
+		contentPhase = "retrying";
+		await new Promise<void>((resolve) => {
+			if (contentRetryTimer) clearTimeout(contentRetryTimer);
+			contentRetryTimer = setTimeout(() => {
+				contentRetryTimer = null;
+				resolve();
+			}, delayMs);
+		});
+		if (token !== contentToken) return;
+
+		contentPhase = "pending";
+		try {
+			applyResponse(
+				await getFeedContentOnTheFlyClient(url, { forceRefresh }),
+				token,
+			);
+		} catch (retryErr) {
+			failContent(retryErr, token);
+		}
 	}
 }
 
@@ -193,7 +284,10 @@ function handleFetch() {
 	if (isRefetch) {
 		summarizer.reset();
 	}
-	fetchContent(isRefetch);
+	// A reader asking again is a fresh budget: the automatic attempt is spent
+	// per failure, not once per page visit.
+	foregroundRetrySpent = false;
+	void fetchContent(isRefetch);
 }
 
 function handleSummarize() {
@@ -210,18 +304,24 @@ function handleSummarize() {
 $effect(() => {
 	if (articleUrl !== previousUrl) {
 		previousUrl = articleUrl;
+		contentToken++;
+		if (contentRetryTimer) clearTimeout(contentRetryTimer);
 		articleContent = null;
 		fetchedArticleId = null;
 		contentError = null;
-		isFetching = false;
+		contentPhase = "idle";
+		foregroundRetrySpent = false;
 		summarizer.reset();
 	}
 });
 
-// Fetch content only when idle and no result/error yet
+// Fetch once per article, and only from the one state that means "not asked
+// yet". Every other phase — pending, retrying, ready, failed — is a state the
+// effect must not act on: acting on `failed` is the ADR-000581 loop, and
+// acting on `pending` doubles the request rate at the publisher.
 $effect(() => {
-	if (articleUrl && !articleContent && !isFetching && !contentError) {
-		fetchContent();
+	if (articleUrl && contentPhase === "idle") {
+		void fetchContent();
 	}
 });
 
@@ -374,16 +474,42 @@ $effect(() => {
 					</Button>
 				</div>
 			{:else if isFetching}
-				<div class="placeholder placeholder--center">
+				<!-- A request in flight is not a failure, and it says which one
+				     it is: the first attempt, or the single re-attempt waiting
+				     out the Retry-After the server named. -->
+				<div
+					class="placeholder placeholder--center"
+					data-testid="article-content-pending"
+				>
 					<Loader2 class="h-5 w-5 animate-spin" />
-					<span>Loading article...</span>
+					<span>{pendingLabel}</span>
 				</div>
-			{:else if contentError}
-				<div class="placeholder">
+			{:else if contentPhase === "failed"}
+				<div class="placeholder" data-testid="article-content-failed" role="alert">
 					<p class="placeholder__error">{contentError}</p>
-					<Button variant="outline" onclick={() => fetchContent()} class="placeholder-cta mt-1">
-						Try again
-					</Button>
+					<!-- Stating the problem without offering a way out is the
+					     defect (NN/g heuristic 9). This route carries no RSS
+					     description to fall back to, so the remedies are all
+					     the reader has: ask again, or go to the publisher. -->
+					<div class="placeholder-remedies">
+						<Button
+							variant="outline"
+							onclick={handleFetch}
+							data-testid="retry-content"
+							class="placeholder-cta mt-1"
+						>
+							{TRY_AGAIN_LABEL}
+						</Button>
+						<a
+							href={articleUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="placeholder-link"
+							data-testid="read-original-link"
+						>
+							{READ_ORIGINAL_LABEL}
+						</a>
+					</div>
 				</div>
 			{:else if articleContent}
 				<div class="article-surface" data-testid="article-content-surface">
@@ -394,7 +520,7 @@ $effect(() => {
 							og_image_url: "",
 							og_image_proxy_url: "",
 						}}
-						error={contentError}
+						error={null}
 					/>
 				</div>
 				<ArticleEndBranches
@@ -580,6 +706,25 @@ $effect(() => {
 .placeholder__error {
 	color: var(--alt-error, #8c1d1d);
 	margin: 0;
+}
+
+.placeholder-remedies {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 1rem;
+	flex-wrap: wrap;
+}
+
+.placeholder-link {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--alt-primary, #2f4f4f);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+	min-height: 44px;
+	display: inline-flex;
+	align-items: center;
 }
 
 /* Tablet / Desktop — restore label text on wider viewports */
