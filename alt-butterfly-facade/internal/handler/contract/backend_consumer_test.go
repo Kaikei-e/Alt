@@ -234,3 +234,72 @@ func TestBFFProxyConnectError(t *testing.T) {
 		})
 	require.NoError(t, err)
 }
+
+// TestBFFProxyBatchPrefetchArticleContent records the BFF's expectation of
+// alt.articles.v2.ArticleService/BatchPrefetchArticleContent — the
+// fire-and-forget warm the reader issues for the next few items it thinks the
+// user is about to open.
+//
+// It is recorded here, on the consumer side, because CLAUDE.md rule 7 makes a
+// Pact CDC test the gate on any new cross-service RPC: "proto compiled + E2E
+// green" cannot tell a wired producer from a producer whose DI silently
+// handed it nothing (ADR-000928).
+//
+// Two properties of the shape matter and are pinned deliberately:
+//
+//   - The response is an *acceptance receipt*, not a fetch result. The warm
+//     runs after the RPC returns, so the body can only say how many URLs
+//     claimed a slot. A client that treats a 200 here as "the body is cached"
+//     is reading a promise this contract does not make.
+//   - Only acceptedCount is asserted. connect-go marshals with protojson's
+//     default options, which omit zero-valued scalars, so shedCount and
+//     rejectedCount are absent from the wire whenever they are zero. Pinning
+//     them at 0 would pin an encoder detail rather than the contract.
+func TestBFFProxyBatchPrefetchArticleContent(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("article content prefetch is enabled").
+		UponReceiving("a BatchPrefetchArticleContent fire-and-forget warm proxied by BFF").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.articles.v2.ArticleService/BatchPrefetchArticleContent"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{
+				"urls": matchers.EachLike("https://example.com/next-article", 1),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.Like(map[string]interface{}{
+				"acceptedCount": 2,
+			}),
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.articles.v2.ArticleService/BatchPrefetchArticleContent",
+				strings.NewReader(`{"urls":["https://example.com/next-article","https://example.org/the-one-after"]}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "acceptedCount")
+			return nil
+		})
+	require.NoError(t, err)
+}

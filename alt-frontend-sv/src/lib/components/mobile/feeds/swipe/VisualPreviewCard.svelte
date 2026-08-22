@@ -5,7 +5,7 @@ import {
 	SquareArrowOutUpRight,
 	Star,
 } from "@lucide/svelte";
-import { onMount, tick } from "svelte";
+import { onDestroy, onMount, tick } from "svelte";
 import { Spring } from "svelte/motion";
 import { fade } from "svelte/transition";
 import { type SwipeDirection, swipe } from "$lib/actions/swipe";
@@ -19,6 +19,16 @@ import {
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
 import type { RenderFeed } from "$lib/schema/feed";
+import {
+	type ArticleContentPhase,
+	CONTENT_PENDING_LABEL,
+	CONTENT_RETRYING_LABEL,
+	EMPTY_CONTENT_ERROR,
+	foregroundRetryDelayMs,
+	READ_ORIGINAL_LABEL,
+	TRY_AGAIN_LABEL,
+} from "$lib/utils/articleContentState";
+import { articleContentErrorMessage } from "$lib/utils/errorClassification";
 import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
 
@@ -63,8 +73,20 @@ let isSummarizing = $state(false);
 
 let isContentExpanded = $state(false);
 let fullContent = $state<string | null>(null);
-let isLoadingContent = $state(false);
+// Three honest states rather than two booleans. `pending` / `retrying` are
+// deliberately NOT `failed`: a request in flight used to render as
+// "Source content unavailable.", which announced a verdict before there was
+// one. `idle` only distinguishes "nothing asked for" from "asked, got nothing".
+let contentPhase = $state<ArticleContentPhase>("idle");
 let contentError = $state<string | null>(null);
+// The one automatic re-attempt this card is allowed per failure; a reader
+// tapping "Try again" buys a fresh one. A plain `let`: nothing renders from it.
+let foregroundRetrySpent = false;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+// Monotonic token. A load only applies its result while it is still the newest
+// one, so a re-attempt parked in its Retry-After wait cannot overwrite a body
+// the reader has since fetched by hand.
+let contentToken = 0;
 
 let summaryAbortController = $state<AbortController | null>(null);
 
@@ -107,6 +129,12 @@ const sanitizedFullContent = $derived(
 	fullContent ? sanitizeHtml(fullContent) : null,
 );
 const hasDescription = $derived(Boolean(feed.description));
+const isContentPending = $derived(
+	contentPhase === "pending" || contentPhase === "retrying",
+);
+const pendingLabel = $derived(
+	contentPhase === "retrying" ? CONTENT_RETRYING_LABEL : CONTENT_PENDING_LABEL,
+);
 const publishedLabel = $derived.by(() => {
 	if (feed.created_at) {
 		try {
@@ -159,22 +187,19 @@ onMount(() => {
 			onArticleIdResolved(feed.link, cachedArticleId);
 		}
 	} else if (!fullContent) {
-		fetchBody()
-			.then((content) => {
-				if (content) {
-					fullContent = content;
-				} else {
-					// ADR-000884: surface the unified fallback notice so the
-					// manual-tap and auto paths converge on the same
-					// "Source content unavailable" markup.
-					contentError = "Source content unavailable.";
-				}
-			})
-			.catch((err) => {
-				console.warn("[VisualPreviewCard] Error auto-fetching content:", err);
-				contentError = "Source content unavailable.";
-			});
+		// Same loader as the tap path. The auto-fetch used to have its own
+		// copy of the terminal wording and its own idea of what "failed"
+		// means; two paths writing two different sentences for one condition
+		// is how the reading surface ended up with three of them.
+		void loadContent();
 	}
+});
+
+onDestroy(() => {
+	// A re-attempt parked in its Retry-After wait outlives the card otherwise:
+	// it wakes after unmount and writes $state on a destroyed instance.
+	contentToken++;
+	if (retryTimer) clearTimeout(retryTimer);
 });
 
 // Set up swipe event listeners reactively
@@ -222,29 +247,89 @@ $effect(() => {
 	};
 });
 
-async function loadContent() {
+/**
+ * Record a terminal failure. The wording comes from articleContentErrorMessage
+ * and nowhere else — ADR-000959 §6: the upstream `message` (the BFF's
+ * "Service temporarily unavailable due to circuit breaker") must never reach
+ * the reader.
+ */
+function failContent(err: unknown, token: number) {
+	if (token !== contentToken) return;
+	contentError = articleContentErrorMessage(err);
+	contentPhase = "failed";
+}
+
+/**
+ * Load the body, with at most ONE automatic re-attempt.
+ *
+ * The re-attempt is admitted for exactly one condition — see
+ * foregroundRetryDelayMs — and is announced while it waits rather than being
+ * hidden behind a still frame of the failed state.
+ */
+async function loadContent(): Promise<void> {
 	const cached = getCachedContent?.(feed.normalizedUrl);
 	if (cached) {
 		fullContent = cached;
 		contentError = null;
+		contentPhase = "ready";
 		return;
 	}
 
-	isLoadingContent = true;
+	const token = ++contentToken;
+	contentPhase = "pending";
 	contentError = null;
 
+	let content: string | null;
+	try {
+		content = await fetchBody();
+	} catch (err) {
+		if (token !== contentToken) return;
+		await retryOrFail(err, token);
+		return;
+	}
+
+	if (token !== contentToken) return;
+	if (content) {
+		fullContent = content;
+		contentPhase = "ready";
+		return;
+	}
+	// `content: ""` is a state, not a falsy no-op (ADR-000581): say so.
+	failContent(EMPTY_CONTENT_ERROR, token);
+}
+
+async function retryOrFail(err: unknown, token: number): Promise<void> {
+	const delayMs = foregroundRetrySpent ? null : foregroundRetryDelayMs(err);
+	if (delayMs === null) {
+		console.warn("[VisualPreviewCard] article content unavailable:", err);
+		failContent(err, token);
+		return;
+	}
+
+	foregroundRetrySpent = true;
+	contentPhase = "retrying";
+	await new Promise<void>((resolve) => {
+		if (retryTimer) clearTimeout(retryTimer);
+		retryTimer = setTimeout(() => {
+			retryTimer = null;
+			resolve();
+		}, delayMs);
+	});
+	if (token !== contentToken) return;
+
+	contentPhase = "pending";
 	try {
 		const content = await fetchBody();
+		if (token !== contentToken) return;
 		if (content) {
 			fullContent = content;
-		} else {
-			contentError = "Source content unavailable.";
+			contentPhase = "ready";
+			return;
 		}
-	} catch (err) {
-		console.warn("Error fetching content:", err);
-		contentError = "Source content unavailable.";
-	} finally {
-		isLoadingContent = false;
+		failContent(EMPTY_CONTENT_ERROR, token);
+	} catch (retryErr) {
+		console.warn("[VisualPreviewCard] article content unavailable:", retryErr);
+		failContent(retryErr, token);
 	}
 }
 
@@ -266,13 +351,20 @@ async function handleToggleContent() {
 	// lifts, and requestContent() rations rather than refuses while it has not.
 	// Latching contentError here pinned the card to the summary for its whole
 	// lifetime.
-	if (!fullContent) {
+	//
+	// A load already in flight is joined rather than duplicated — the panel
+	// shows its pending state and the mount fetch fills it in. Firing a second
+	// request at the same host is what the shared prefetcher exists to avoid.
+	if (!fullContent && !isContentPending) {
 		await loadContent();
 	}
 }
 
 async function handleRetryContent() {
-	if (isLoadingContent) return;
+	if (isContentPending) return;
+	// A reader asking again is a fresh budget: the automatic attempt is spent
+	// per failure, not per card lifetime.
+	foregroundRetrySpent = false;
 	await loadContent();
 }
 
@@ -540,24 +632,53 @@ function handleImgError() {
             transition:fade
           >
             <p class="section-label">Full Article</p>
-            {#if isLoadingContent}
-              <div class="loading-state">
+            {#if isContentPending}
+              <!-- A request in flight is not a failure. It says what it is
+                   doing, and the RSS body stays underneath so the panel is
+                   never a blank wait. -->
+              <div class="loading-state" data-testid="article-content-pending">
                 <div class="loading-dot" aria-hidden="true"></div>
-                <span class="loading-label">Loading article...</span>
+                <span class="loading-label">{pendingLabel}</span>
               </div>
-            {:else if contentError}
-              <p class="fallback-notice" data-testid="source-unavailable-notice">
-                {contentError} Showing summary.
-              </p>
-              <button
-                type="button"
-                class="retry-btn"
-                onclick={handleRetryContent}
-                disabled={isLoadingContent}
-                data-testid="retry-content"
-              >
-                Try again
-              </button>
+              {#if hasDescription}
+                <div
+                  class="summary-prose article-prose"
+                  data-testid="article-fallback-summary"
+                >
+                  {feed.description}
+                </div>
+              {/if}
+            {:else if contentPhase === "failed"}
+              <div data-testid="article-content-failed">
+                <p
+                  class="fallback-notice"
+                  data-testid="source-unavailable-notice"
+                >
+                  {contentError} Showing summary.
+                </p>
+                <!-- Stating the problem without offering a way out is the
+                     defect (NN/g heuristic 9), so both remedies ship with it:
+                     ask again, or leave for the publisher. -->
+                <div class="remedy-row">
+                  <button
+                    type="button"
+                    class="retry-btn"
+                    onclick={handleRetryContent}
+                    data-testid="retry-content"
+                  >
+                    {TRY_AGAIN_LABEL}
+                  </button>
+                  <a
+                    class="remedy-link"
+                    href={feed.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="read-original-link"
+                  >
+                    {READ_ORIGINAL_LABEL}
+                  </a>
+                </div>
+              </div>
               {#if hasDescription}
                 <div
                   class="summary-prose article-prose"
@@ -579,18 +700,16 @@ function handleImgError() {
     <!-- Footer: reading actions only (keep judgment lives on the stamp) -->
     <footer class="card-footer" data-testid="action-footer">
       <div class="flex gap-3 w-full">
+        <!-- A pure toggle, never disabled. Disabling it while a background
+             fetch ran locked the reader out of the panel — and the panel is
+             where the pending state, the remedies and the RSS body all live. -->
         <button
           type="button"
           onclick={handleToggleContent}
           class="action-btn {isContentExpanded ? 'action-btn--active' : ''}"
-          disabled={isLoadingContent}
         >
           <BookOpen size={14} />
-          {isLoadingContent
-            ? "Loading..."
-            : isContentExpanded
-              ? "Hide"
-              : "Article"}
+          {isContentExpanded ? "Hide" : "Article"}
         </button>
         <button
           type="button"
@@ -962,6 +1081,28 @@ function handleImgError() {
   .retry-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  .remedy-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .remedy-link {
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--alt-charcoal);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    margin: 0 0 0.75rem;
   }
 
   /* ── Footer ── */

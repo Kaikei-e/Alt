@@ -4,6 +4,7 @@
  * Tests for the visual preview swipe card with thumbnail images.
  * Uses vitest-browser-svelte for component testing.
  */
+import { Code, ConnectError } from "@connectrpc/connect";
 import { page } from "@vitest/browser/context";
 import { flushSync, tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +12,16 @@ import { render } from "vitest-browser-svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client";
 import type { RenderFeed } from "$lib/schema/feed";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
+
+const connectError = (
+	code: Code,
+	headers: Record<string, string> = {},
+): ConnectError =>
+	new ConnectError(
+		"Service temporarily unavailable due to circuit breaker",
+		code,
+		headers,
+	);
 
 const mockFeed: RenderFeed = {
 	id: "feed-test-1",
@@ -302,8 +313,13 @@ describe("VisualPreviewCard", () => {
 				.element(page.getByTestId("content-section"))
 				.toBeInTheDocument();
 			await expect
-				.element(page.getByText(/loading article/i))
-				.toBeInTheDocument();
+				.element(page.getByTestId("article-content-pending"))
+				.toHaveTextContent("Fetching the full article");
+			// A request still in flight is not a verdict: the failed markup must
+			// not be on screen at the same time.
+			await expect
+				.element(page.getByTestId("article-content-failed"))
+				.not.toBeInTheDocument();
 
 			settle({ content: "<p>Full body.</p>", article_id: "article-123" });
 
@@ -371,6 +387,194 @@ describe("VisualPreviewCard", () => {
 
 			await expect
 				.element(page.getByTestId("source-unavailable-notice"))
+				.toBeInTheDocument();
+		});
+
+		it("states the transient wording for a retryable failure instead of a hardcoded literal", async () => {
+			// Every surface used to hardcode its own sentence, so the same
+			// condition read three different ways. The wording now comes from
+			// articleContentErrorMessage() alone, which also guarantees the
+			// upstream prose ("...circuit breaker") never reaches the reader.
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.Unavailable),
+			);
+
+			render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+
+			await page.getByRole("button", { name: /^article$/i }).click();
+
+			const notice = page.getByTestId("source-unavailable-notice");
+			await expect
+				.element(notice)
+				.toHaveTextContent(
+					"Source content is temporarily unavailable. Please try again shortly.",
+				);
+			await expect.element(notice).not.toHaveTextContent("circuit breaker");
+		});
+
+		it("offers both remedies — a retry control and the original site", async () => {
+			// NN/g heuristic 9: naming the problem without offering a way out is
+			// the defect, not the message.
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.Unavailable),
+			);
+
+			render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+
+			await page.getByRole("button", { name: /^article$/i }).click();
+
+			await expect
+				.element(page.getByTestId("retry-content"))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("read-original-link"))
+				.toHaveAttribute("href", mockFeed.link);
+			// ...and the RSS body stays on screen underneath, so the reader is
+			// never looking at a bare error.
+			await expect
+				.element(page.getByTestId("article-fallback-summary"))
+				.toBeInTheDocument();
+		});
+	});
+
+	describe("the one automatic foreground retry (ADR-000959 §4 / ADR-000963 §2)", () => {
+		it("retries an unstamped ResourceExhausted once, showing the retrying state", async () => {
+			// Unstamped means Alt's own host-slot gate rejected it: no packet
+			// reached the publisher and Retry-After says when the slot frees.
+			vi.mocked(getFeedContentOnTheFlyClient)
+				.mockRejectedValueOnce(
+					connectError(Code.ResourceExhausted, { "Retry-After": "0" }),
+				)
+				.mockResolvedValue({
+					content: "<p>Arrived on the second attempt.</p>",
+					article_id: "article-123",
+				} as never);
+
+			render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+
+			await page.getByRole("button", { name: /^article$/i }).click();
+
+			await expect
+				.element(page.getByTestId("article-content-pending"))
+				.toHaveTextContent("Retrying");
+
+			await expect
+				.element(page.getByText("Arrived on the second attempt."))
+				.toBeInTheDocument();
+			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(2);
+		});
+
+		// These count the requests the card sends ON ITS OWN, so none of them
+		// touches the card: a reader's tap is a separate, deliberate request
+		// that ADR-000963 §6 rations rather than refuses, and counting it here
+		// would measure the wrong thing.
+		it("stops after exactly one automatic retry, then states the failure", async () => {
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.ResourceExhausted, { "Retry-After": "0" }),
+			);
+
+			render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+
+			await new Promise((r) => setTimeout(r, 1200));
+			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(2);
+
+			await page.getByRole("button", { name: /^article$/i }).click();
+			await expect
+				.element(page.getByTestId("article-content-failed"))
+				.toBeInTheDocument();
+		});
+
+		it("does NOT retry a ResourceExhausted stamped as the publisher's own 429", async () => {
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.ResourceExhausted, {
+					"Retry-After": "0",
+					"X-Alt-Failure-Scope": "host",
+				}),
+			);
+
+			render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+
+			await new Promise((r) => setTimeout(r, 1200));
+			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(1);
+		});
+
+		it("does NOT retry Code.Unavailable — ADR-000959 rejected exactly that", async () => {
+			// Two components re-sending into an open circuit breaker was the
+			// incident. This test exists to keep it closed.
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.Unavailable, { "Retry-After": "0" }),
+			);
+
+			render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+
+			await new Promise((r) => setTimeout(r, 1200));
+			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(1);
+		});
+
+		it("still lets the reader ask again after an Unavailable failure", async () => {
+			// The auto-retry ban is on the card re-sending by itself. A tap is
+			// the reader deciding, which ADR-000963 §6 keeps reachable — the
+			// "TRY AGAIN that does nothing" was half of that incident.
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.Unavailable),
+			);
+
+			render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+
+			await page.getByRole("button", { name: /^article$/i }).click();
+			const retry = page.getByTestId("retry-content");
+			await expect.element(retry).toBeInTheDocument();
+
+			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
+				content: "<p>Back on its feet.</p>",
+				article_id: "article-123",
+			} as never);
+			await retry.click();
+
+			await expect
+				.element(page.getByText("Back on its feet."))
 				.toBeInTheDocument();
 		});
 	});

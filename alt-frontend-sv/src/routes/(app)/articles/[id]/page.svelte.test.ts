@@ -1,3 +1,4 @@
+import { Code, ConnectError } from "@connectrpc/connect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page as testPage } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -75,6 +76,16 @@ import Page from "./+page.svelte";
 function renderPage() {
 	return render(Page);
 }
+
+const connectError = (
+	code: Code,
+	headers: Record<string, string> = {},
+): ConnectError =>
+	new ConnectError(
+		"Service temporarily unavailable due to circuit breaker",
+		code,
+		headers,
+	);
 
 describe("Article page fetch button", () => {
 	beforeEach(() => {
@@ -374,5 +385,117 @@ describe("Article page masthead", () => {
 		const heading = testPage.getByRole("heading", { level: 1 });
 		await expect.element(heading).toBeInTheDocument();
 		await expect.element(heading).not.toHaveTextContent("www.theguardian.com");
+	});
+});
+
+describe("Article page content states", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(goto).mockImplementation(async () => {});
+		summarizerOverride = {};
+		currentPageURL = new URL(DEFAULT_PAGE_URL);
+	});
+
+	it("treats an empty body as a state instead of re-firing the effect forever", async () => {
+		// ADR-000581: `articleContent = response.content || null` left BOTH
+		// articleContent and contentError null on an empty body, so the
+		// auto-fetch $effect's guard passed again the moment isFetching
+		// cleared. That is the infinite loop that ADR closed on the desktop
+		// modal — it was still open here.
+		mockGetFeedContent.mockResolvedValue({ content: "", article_id: "" });
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByTestId("article-content-failed"))
+			.toBeInTheDocument();
+		await new Promise((r) => setTimeout(r, 600));
+		expect(mockGetFeedContent).toHaveBeenCalledTimes(1);
+	});
+
+	it("says what it is doing while the body is in flight", async () => {
+		mockGetFeedContent.mockReturnValue(new Promise(() => {}));
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByTestId("article-content-pending"))
+			.toHaveTextContent("Fetching the full article");
+		await expect
+			.element(testPage.getByTestId("article-content-failed"))
+			.not.toBeInTheDocument();
+	});
+
+	it("offers both remedies, and never the upstream prose, when it is terminal", async () => {
+		mockGetFeedContent.mockRejectedValue(connectError(Code.Unavailable));
+
+		renderPage();
+
+		const failed = testPage.getByTestId("article-content-failed");
+		await expect
+			.element(failed)
+			.toHaveTextContent(
+				"Source content is temporarily unavailable. Please try again shortly.",
+			);
+		// ADR-000959 §6: the backend's prose must not reach the reader.
+		await expect.element(failed).not.toHaveTextContent("circuit breaker");
+		await expect
+			.element(testPage.getByTestId("read-original-link"))
+			.toHaveAttribute("href", "https://example.com/article");
+		await expect
+			.element(testPage.getByTestId("retry-content"))
+			.toBeInTheDocument();
+	});
+
+	it("retries an unstamped ResourceExhausted exactly once, announcing the wait", async () => {
+		mockGetFeedContent
+			.mockRejectedValueOnce(
+				connectError(Code.ResourceExhausted, { "Retry-After": "0" }),
+			)
+			.mockResolvedValue({
+				content: "<p>Arrived on the second attempt.</p>",
+				article_id: "a1",
+			});
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByTestId("article-content-pending"))
+			.toHaveTextContent("Retrying");
+		await expect
+			.element(testPage.getByText("Arrived on the second attempt."))
+			.toBeInTheDocument();
+		expect(mockGetFeedContent).toHaveBeenCalledTimes(2);
+	});
+
+	it("does NOT retry Code.Unavailable — ADR-000959 rejected exactly that", async () => {
+		mockGetFeedContent.mockRejectedValue(
+			connectError(Code.Unavailable, { "Retry-After": "0" }),
+		);
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByTestId("article-content-failed"))
+			.toBeInTheDocument();
+		await new Promise((r) => setTimeout(r, 900));
+		expect(mockGetFeedContent).toHaveBeenCalledTimes(1);
+	});
+
+	it("does NOT retry a ResourceExhausted stamped as the publisher's own 429", async () => {
+		mockGetFeedContent.mockRejectedValue(
+			connectError(Code.ResourceExhausted, {
+				"Retry-After": "0",
+				"X-Alt-Failure-Scope": "host",
+			}),
+		);
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByTestId("article-content-failed"))
+			.toBeInTheDocument();
+		await new Promise((r) => setTimeout(r, 900));
+		expect(mockGetFeedContent).toHaveBeenCalledTimes(1);
 	});
 });

@@ -6,6 +6,16 @@ import (
 	"time"
 )
 
+// MinExternalAPIInterval is the floor CLAUDE.md rule 2 sets for outbound calls
+// to somebody else's server: at least five seconds between requests to the same
+// host. It is a lower bound on the configured value, never a default — the
+// shipping default is RateLimitConfig.ExternalAPIInterval's struct tag (7.5s),
+// which sits above this on purpose.
+//
+// Anything under it fails startup. The rule is about a host, not about a
+// process, so it cannot be left to configuration discipline.
+const MinExternalAPIInterval = 5 * time.Second
+
 // validateConfig validates the loaded configuration values
 func validateConfig(config *Config) error {
 	if err := validateServerConfig(&config.Server); err != nil {
@@ -83,9 +93,20 @@ func validateDatabaseConfig(config *DatabaseConfig) error {
 }
 
 func validateRateLimitConfig(config *RateLimitConfig) error {
-	// Validate external API interval (must be at least 1 second as per CLAUDE.md)
-	if config.ExternalAPIInterval < time.Second {
-		return fmt.Errorf("external API interval must be at least 1 second, got %v", config.ExternalAPIInterval)
+	// CLAUDE.md rule 2 promises every publisher's server a minimum of five
+	// seconds between our requests. This check is what makes that a property of
+	// the code rather than of whoever last edited a compose file: the floor used
+	// to be one second, so an operator could set RATE_LIMIT_EXTERNAL_API_INTERVAL=1s
+	// and start a process that quietly broke the promise five times over.
+	//
+	// Below the floor is a startup failure, not a clamp and not a warning
+	// (rule 9). Clamping would run the process at a value the operator never
+	// chose and cannot see; warning would leave the violation running.
+	if config.ExternalAPIInterval < MinExternalAPIInterval {
+		return fmt.Errorf(
+			"RATE_LIMIT_EXTERNAL_API_INTERVAL must be at least %v (CLAUDE.md rule 2: minimum interval between external API calls), got %v; "+
+				"raise it to %v or more — this value is a promise made to the publisher's server, so it is not clamped",
+			MinExternalAPIInterval, config.ExternalAPIInterval, MinExternalAPIInterval)
 	}
 
 	// Validate feed fetch limit
@@ -102,6 +123,13 @@ func validateRateLimitConfig(config *RateLimitConfig) error {
 		!strings.HasPrefix(config.CoordinationRedisURL, "rediss://") {
 		return fmt.Errorf("HOST_RATE_LIMITER_REDIS_URL must be a redis:// or rediss:// URL, got %q; "+
 			"leave it unset to run the per-host interval in local mode", config.CoordinationRedisURL)
+	}
+
+	// The prefetch class has no safe fallback: an unparseable or non-positive
+	// budget would leave the process guessing whether background warming may
+	// queue in front of a reader. Refuse to start instead (rule 9).
+	if _, _, err := config.PrefetchSlotWaitSetting(); err != nil {
+		return err
 	}
 
 	// Validate DOS protection configuration

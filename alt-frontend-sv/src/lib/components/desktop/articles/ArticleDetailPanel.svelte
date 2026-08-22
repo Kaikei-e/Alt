@@ -7,6 +7,15 @@ import {
 } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
+import {
+	type ArticleContentPhase,
+	CONTENT_PENDING_LABEL,
+	CONTENT_RETRYING_LABEL,
+	EMPTY_CONTENT_ERROR,
+	foregroundRetryDelayMs,
+	READ_ORIGINAL_LABEL,
+	TRY_AGAIN_LABEL,
+} from "$lib/utils/articleContentState";
 import { articleContentErrorMessage } from "$lib/utils/errorClassification";
 import {
 	X,
@@ -24,19 +33,31 @@ interface Props {
 
 const { article, onClose }: Props = $props();
 
-let isFetchingContent = $state(false);
+// Three honest states rather than a boolean pair. `pending` is not `failed`:
+// a body still in flight used to share its markup with a body that will never
+// arrive, and an empty response produced neither — just a blank panel.
+let contentPhase = $state<ArticleContentPhase>("idle");
 let fetchedResponse = $state<FeedContentOnTheFlyResponse | null>(null);
 let contentError = $state<string | null>(null);
 let fetchAbortController: AbortController | null = null;
+// The one automatic re-attempt allowed per failure.
+let foregroundRetrySpent = false;
+let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 const summarizer = useSummarize();
 
 const articleContent = $derived(fetchedResponse?.content ?? null);
 const fetchedArticleId = $derived(fetchedResponse?.article_id ?? null);
+const isFetchingContent = $derived(
+	contentPhase === "pending" || contentPhase === "retrying",
+);
+const pendingLabel = $derived(
+	contentPhase === "retrying" ? CONTENT_RETRYING_LABEL : CONTENT_PENDING_LABEL,
+);
 
 const fetchButtonState = $derived.by(() => {
 	if (isFetchingContent) return "loading" as const;
-	if (contentError) return "error" as const;
+	if (contentPhase === "failed") return "error" as const;
 	if (fetchedResponse) return "success" as const;
 	return "idle" as const;
 });
@@ -44,6 +65,7 @@ const fetchButtonState = $derived.by(() => {
 onDestroy(() => {
 	summarizer.abort();
 	fetchAbortController?.abort();
+	if (contentRetryTimer) clearTimeout(contentRetryTimer);
 });
 
 let prevArticleId = $state("");
@@ -52,32 +74,91 @@ $effect(() => {
 		prevArticleId = article.id;
 		fetchedResponse = null;
 		contentError = null;
+		contentPhase = "idle";
+		foregroundRetrySpent = false;
+		if (contentRetryTimer) clearTimeout(contentRetryTimer);
 		summarizer.reset();
-		fetchContent();
+		void fetchContent();
 	}
 });
 
-async function fetchContent(forceRefresh = false) {
-	if (!article.link) return;
-	const requestedId = article.id;
+/**
+ * Record a terminal failure. The wording comes from articleContentErrorMessage
+ * and nowhere else — ADR-000959 §6 keeps the upstream `message` off the
+ * reading surface.
+ */
+function failContent(err: unknown, requestedId: string) {
+	if (article.id !== requestedId) return;
+	contentError = articleContentErrorMessage(err);
+	contentPhase = "failed";
+}
+
+function applyResponse(
+	response: FeedContentOnTheFlyResponse,
+	requestedId: string,
+) {
+	if (article.id !== requestedId) return;
+	if (!response.content?.trim()) {
+		// `content: ""` is a state, not a falsy no-op (ADR-000581). Storing the
+		// empty response as a success left the panel with nothing to render and
+		// nothing to say about why.
+		failContent(EMPTY_CONTENT_ERROR, requestedId);
+		return;
+	}
+	fetchedResponse = response;
+	contentError = null;
+	contentPhase = "ready";
+}
+
+/** One request. Kept separate so the re-attempt reuses it verbatim. */
+async function requestBody(
+	forceRefresh: boolean,
+): Promise<FeedContentOnTheFlyResponse> {
 	fetchAbortController?.abort();
 	const controller = new AbortController();
 	fetchAbortController = controller;
-	isFetchingContent = true;
+	return await getFeedContentOnTheFlyClient(article.link, {
+		forceRefresh,
+		signal: controller.signal,
+	});
+}
+
+/** Fetch the body, with at most ONE automatic re-attempt. */
+async function fetchContent(forceRefresh = false) {
+	if (!article.link) return;
+	const requestedId = article.id;
+	contentPhase = "pending";
 	contentError = null;
+
 	try {
-		const response = await getFeedContentOnTheFlyClient(article.link, {
-			forceRefresh,
-			signal: controller.signal,
+		applyResponse(await requestBody(forceRefresh), requestedId);
+		return;
+	} catch (err) {
+		if (article.id !== requestedId) return;
+		if (fetchAbortController?.signal.aborted) return;
+
+		const delayMs = foregroundRetrySpent ? null : foregroundRetryDelayMs(err);
+		if (delayMs === null) {
+			failContent(err, requestedId);
+			return;
+		}
+
+		foregroundRetrySpent = true;
+		contentPhase = "retrying";
+		await new Promise<void>((resolve) => {
+			if (contentRetryTimer) clearTimeout(contentRetryTimer);
+			contentRetryTimer = setTimeout(() => {
+				contentRetryTimer = null;
+				resolve();
+			}, delayMs);
 		});
 		if (article.id !== requestedId) return;
-		fetchedResponse = response;
-	} catch (err) {
-		if (article.id !== requestedId || controller.signal.aborted) return;
-		contentError = articleContentErrorMessage(err);
-	} finally {
-		if (article.id === requestedId) {
-			isFetchingContent = false;
+
+		contentPhase = "pending";
+		try {
+			applyResponse(await requestBody(forceRefresh), requestedId);
+		} catch (retryErr) {
+			failContent(retryErr, requestedId);
 		}
 	}
 }
@@ -85,7 +166,9 @@ async function fetchContent(forceRefresh = false) {
 function handleFetch() {
 	const isRefetch = fetchButtonState === "success";
 	if (isRefetch) summarizer.reset();
-	fetchContent(isRefetch);
+	// A reader asking again is a fresh budget.
+	foregroundRetrySpent = false;
+	void fetchContent(isRefetch);
 }
 
 function handleSummarize() {
@@ -232,22 +315,55 @@ function handleKeydown(e: KeyboardEvent) {
 			</div>
 		{/if}
 
-		{#if contentError}
-			<div class="text-center py-8">
+		{#if isFetchingContent}
+			<!-- A request in flight is not a failure, and it says which attempt
+			     it is on rather than showing a bare spinner. -->
+			<div
+				class="flex flex-col items-center gap-3 py-12"
+				data-testid="article-content-pending"
+			>
+				<Loader2 class="h-6 w-6 animate-spin" style="color: var(--interactive-text);" />
+				<p class="text-sm" style="color: var(--text-secondary);">{pendingLabel}</p>
+			</div>
+		{:else if contentPhase === "failed"}
+			<div class="text-center py-8" data-testid="article-content-failed" role="alert">
 				<p class="text-sm" style="color: var(--text-secondary);">{contentError}</p>
+				<!-- Stating the problem without offering a way out is the defect
+				     (NN/g heuristic 9). A tag-trail article carries no RSS
+				     description, so the remedies are what the reader gets. -->
+				<div class="mt-4 flex items-center justify-center gap-4">
+					<button
+						type="button"
+						class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+						style="border-color: var(--surface-border); color: var(--text-primary); background: var(--action-surface);"
+						onclick={handleFetch}
+						data-testid="retry-content"
+					>
+						<RefreshCw class="h-3.5 w-3.5" />
+						{TRY_AGAIN_LABEL}
+					</button>
+					{#if article.link}
+						<a
+							href={article.link}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="text-xs font-medium underline underline-offset-2"
+							style="color: var(--interactive-text);"
+							data-testid="read-original-link"
+						>
+							{READ_ORIGINAL_LABEL}
+						</a>
+					{/if}
+				</div>
 			</div>
 		{:else if fetchedResponse}
 			<RenderFeedDetails feedDetails={fetchedResponse} />
-		{:else if !isFetchingContent}
+		{:else}
 			<div class="text-center py-12">
 				<FileText class="h-10 w-10 mx-auto mb-4" style="color: var(--text-muted);" />
 				<p class="text-sm font-medium" style="color: var(--text-secondary);">
 					Click "Fetch Content" to load the article.
 				</p>
-			</div>
-		{:else}
-			<div class="flex justify-center py-12">
-				<Loader2 class="h-6 w-6 animate-spin" style="color: var(--interactive-text);" />
 			</div>
 		{/if}
 	</div>

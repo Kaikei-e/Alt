@@ -181,7 +181,15 @@ const currentOgImage = $derived.by(() => {
 	return null;
 });
 
-// Prefetch next feeds
+// Prefetch next feeds.
+//
+// This drives both halves of the lookahead: the per-URL ladder that fills the
+// client cache for the next couple of cards, and the fire-and-forget
+// BatchPrefetchArticleContent warm the prefetcher sends for the slots beyond
+// them. The two never cover the same article, so nothing here doubles the
+// outbound rate to publishers. This effect re-runs far more often than a warm
+// is worth — every swipe, and every `feeds` reassignment — which is why the
+// prefetcher, not this call site, owns the interval that bounds it.
 $effect(() => {
 	if (feeds.length > 0) {
 		articlePrefetcher.triggerPrefetch(feeds, activeIndex, prefetchAhead);

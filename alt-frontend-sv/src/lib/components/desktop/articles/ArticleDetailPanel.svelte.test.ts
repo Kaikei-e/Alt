@@ -1,3 +1,4 @@
+import { Code, ConnectError } from "@connectrpc/connect";
 import { page as testPage } from "@vitest/browser/context";
 import { render } from "vitest-browser-svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,6 +43,16 @@ function renderPanel() {
 		props: { article: ARTICLE, onClose: () => {} },
 	});
 }
+
+const connectError = (
+	code: Code,
+	headers: Record<string, string> = {},
+): ConnectError =>
+	new ConnectError(
+		"Service temporarily unavailable due to circuit breaker",
+		code,
+		headers,
+	);
 
 describe("ArticleDetailPanel summary interruption", () => {
 	beforeEach(() => {
@@ -102,5 +113,78 @@ describe("ArticleDetailPanel summary interruption", () => {
 			container.querySelector('[data-testid="summary-interrupted"]'),
 		).toBeNull();
 		expect(container.querySelector('[data-testid="summary-error"]')).toBeNull();
+	});
+});
+
+describe("ArticleDetailPanel content states", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		summarizerOverride = {};
+	});
+
+	it("says what it is doing while the body is in flight", async () => {
+		mockGetFeedContent.mockReturnValue(new Promise(() => {}));
+
+		renderPanel();
+
+		await expect
+			.element(testPage.getByTestId("article-content-pending"))
+			.toHaveTextContent("Fetching the full article");
+		await expect
+			.element(testPage.getByTestId("article-content-failed"))
+			.not.toBeInTheDocument();
+	});
+
+	it("offers both remedies, and never the upstream prose, when it is terminal", async () => {
+		mockGetFeedContent.mockRejectedValue(connectError(Code.Unavailable));
+
+		renderPanel();
+
+		const failed = testPage.getByTestId("article-content-failed");
+		await expect
+			.element(failed)
+			.toHaveTextContent(
+				"Source content is temporarily unavailable. Please try again shortly.",
+			);
+		await expect.element(failed).not.toHaveTextContent("circuit breaker");
+		await expect
+			.element(testPage.getByTestId("retry-content"))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByTestId("read-original-link"))
+			.toHaveAttribute("href", ARTICLE.link);
+	});
+
+	it("treats an empty body as a stated failure rather than a blank panel", async () => {
+		mockGetFeedContent.mockResolvedValue({
+			content: "",
+			article_id: "",
+			og_image_url: "",
+			og_image_proxy_url: "",
+		});
+
+		renderPanel();
+
+		await expect
+			.element(testPage.getByTestId("article-content-failed"))
+			.toHaveTextContent("Source content unavailable.");
+	});
+
+	it("retries an unstamped ResourceExhausted once and never a Code.Unavailable", async () => {
+		mockGetFeedContent.mockRejectedValue(
+			connectError(Code.ResourceExhausted, { "Retry-After": "0" }),
+		);
+		const first = renderPanel();
+		await new Promise((r) => setTimeout(r, 1200));
+		expect(mockGetFeedContent).toHaveBeenCalledTimes(2);
+		first.unmount();
+
+		mockGetFeedContent.mockClear();
+		mockGetFeedContent.mockRejectedValue(
+			connectError(Code.Unavailable, { "Retry-After": "0" }),
+		);
+		renderPanel();
+		await new Promise((r) => setTimeout(r, 1200));
+		expect(mockGetFeedContent).toHaveBeenCalledTimes(1);
 	});
 });

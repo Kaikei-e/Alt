@@ -11,6 +11,15 @@ import {
 import type { RenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import {
+	type ArticleContentPhase,
+	CONTENT_PENDING_LABEL,
+	CONTENT_RETRYING_LABEL,
+	EMPTY_CONTENT_ERROR,
+	foregroundRetryDelayMs,
+	READ_ORIGINAL_LABEL,
+	TRY_AGAIN_LABEL,
+} from "$lib/utils/articleContentState";
+import {
 	articleContentErrorMessage,
 	isTransientError,
 } from "$lib/utils/errorClassification";
@@ -54,11 +63,19 @@ let {
 	isMarkingAsRead = false,
 }: Props = $props();
 
-// Content fetching state
-let isFetchingContent = $state(false);
+// Content fetching state.
+//
+// One explicit phase rather than a truth table of booleans. The auto-fetch
+// effect below keys off it, and `idle` is the ONLY phase it acts on: that is
+// what keeps ADR-000581's infinite loop closed now that an empty body is a
+// state of its own rather than a falsy no-op.
+let contentPhase = $state<ArticleContentPhase>("idle");
 let articleContent = $state<string | null>(null);
 let articleID = $state<string | null>(null);
 let contentError = $state<string | null>(null);
+// The one automatic re-attempt allowed per failure.
+let foregroundRetrySpent = false;
+let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 // AI summary state
 let isSummarizing = $state(false);
@@ -69,15 +86,21 @@ let abortController = $state<AbortController | null>(null);
 // Content fetch abort controller
 let contentAbortController = $state<AbortController | null>(null);
 
-// Retry counters
-let contentRetryCount = $state(0);
+// Retry counter (summary stream only; the article body has its own policy)
 let summaryRetryCount = $state(0);
+
+const isFetchingContent = $derived(
+	contentPhase === "pending" || contentPhase === "retrying",
+);
+const pendingLabel = $derived(
+	contentPhase === "retrying" ? CONTENT_RETRYING_LABEL : CONTENT_PENDING_LABEL,
+);
 
 // Derived button states
 const articleButtonState = $derived.by(() => {
 	if (isFetchingContent) return "loading" as const;
 	if (articleContent) return "success" as const;
-	if (contentError) return "error" as const;
+	if (contentPhase === "failed") return "error" as const;
 	return "idle" as const;
 });
 
@@ -155,11 +178,12 @@ $effect(() => {
 		articleContent = null;
 		articleID = null;
 		summary = null;
-		isFetchingContent = false;
+		contentPhase = "idle";
 		isSummarizing = false;
 		contentError = null;
 		summaryError = null;
-		contentRetryCount = 0;
+		foregroundRetrySpent = false;
+		if (contentRetryTimer) clearTimeout(contentRetryTimer);
 		summaryRetryCount = 0;
 		previousFeedUrl = null;
 	}
@@ -198,25 +222,30 @@ $effect(() => {
 	articleContent = null;
 	articleID = null;
 	summary = null;
-	isFetchingContent = false;
+	contentPhase = "idle";
 	isSummarizing = false;
 	contentError = null;
 	summaryError = null;
-	contentRetryCount = 0;
+	foregroundRetrySpent = false;
+	if (contentRetryTimer) clearTimeout(contentRetryTimer);
 	summaryRetryCount = 0;
 });
 
-// Auto-fetch article content when modal opens
+// Auto-fetch article content when modal opens.
+//
+// `idle` is the only phase this may act on. Acting on `failed` is ADR-000581's
+// loop; acting on `pending` doubles the request rate at the publisher.
 $effect(() => {
 	if (!open || !feed) return;
 	if (!feed.normalizedUrl) {
-		if (!contentError) {
+		if (contentPhase !== "failed") {
 			contentError = "Article URL is not available";
+			contentPhase = "failed";
 		}
 		return;
 	}
-	if (!articleContent && !isFetchingContent && !contentError) {
-		handleFetchFullArticle();
+	if (contentPhase === "idle") {
+		void handleFetchFullArticle();
 	}
 });
 
@@ -252,13 +281,77 @@ async function handleRefetchArticle() {
 	summary = null;
 	summaryError = null;
 	contentError = null;
+	// A reader asking again is a fresh budget: the automatic attempt is spent
+	// per failure, not once per modal.
+	foregroundRetrySpent = false;
 	await handleFetchFullArticle(true);
 }
 
+/**
+ * Record a terminal failure. The wording comes from articleContentErrorMessage
+ * and nowhere else — ADR-000959 §6 keeps the upstream `message` (the BFF's
+ * "Service temporarily unavailable due to circuit breaker") off the reading
+ * surface.
+ */
+function failContent(err: unknown, targetFeedUrl: string) {
+	if (feed?.normalizedUrl !== targetFeedUrl) return;
+	contentError = articleContentErrorMessage(err);
+	contentPhase = "failed";
+}
+
+function applyResult(
+	result: ReturnType<typeof processArticleFetchResponse>,
+	targetFeedUrl: string,
+) {
+	if (feed?.normalizedUrl !== targetFeedUrl) return;
+	if (result.contentError) {
+		// processArticleFetchResponse still owns the "is this body empty"
+		// decision — the guard ADR-000581 added — but not the wording. Empty
+		// bodies now read the same here as on every other surface.
+		failContent(EMPTY_CONTENT_ERROR, targetFeedUrl);
+		return;
+	}
+	articleContent = result.articleContent;
+	articleID = result.articleID;
+	contentError = null;
+	contentPhase = "ready";
+}
+
+function isAbortReason(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	return (
+		err.name === "AbortError" ||
+		err.message.includes("abort") ||
+		err.message.includes("cancel")
+	);
+}
+
+/** One request. Kept separate so the re-attempt reuses it verbatim. */
+async function requestBody(targetFeedUrl: string, forceRefresh: boolean) {
+	if (contentAbortController) contentAbortController.abort();
+	contentAbortController = new AbortController();
+	return await getFeedContentOnTheFlyClient(targetFeedUrl, {
+		signal: contentAbortController.signal,
+		forceRefresh,
+	});
+}
+
+/**
+ * Fetch the body, with at most ONE automatic re-attempt.
+ *
+ * The re-attempt replaces the old `isTransientError` + fixed 500ms retry. That
+ * predicate reads the error's MESSAGE, so what it re-sent into depended on
+ * prose the publisher and the gateway are free to change — and a message
+ * carrying "503" would have re-sent into an open circuit breaker, which is the
+ * outcome ADR-000959 was written to prevent. The replacement decides on the
+ * Connect code plus the declared failure scope and honours the server's own
+ * Retry-After.
+ */
 async function handleFetchFullArticle(forceRefresh = false) {
 	if (isFetchingContent) return;
 	if (!feed?.normalizedUrl) {
 		contentError = "Article URL is not available";
+		contentPhase = "failed";
 		return;
 	}
 
@@ -274,85 +367,57 @@ async function handleFetchFullArticle(forceRefresh = false) {
 			if (feed.normalizedUrl !== targetFeedUrl) return;
 			articleContent = cachedContent;
 			articleID = cachedArticleId;
+			contentError = null;
+			contentPhase = "ready";
 			return;
 		}
 	}
 
-	// Cancel previous content fetch request
-	if (contentAbortController) {
-		contentAbortController.abort();
-	}
-	contentAbortController = new AbortController();
-
-	isFetchingContent = true;
+	contentPhase = "pending";
 	contentError = null;
 
 	try {
-		// Use normalizedUrl for API call (consistent with prefetcher)
-		const response = await getFeedContentOnTheFlyClient(targetFeedUrl, {
-			signal: contentAbortController.signal,
-			forceRefresh,
-		});
-
-		// Defensive validation: discard stale response if feed changed
-		if (feed.normalizedUrl !== targetFeedUrl) return;
-
-		const result = processArticleFetchResponse(response);
-		articleContent = result.articleContent;
-		articleID = result.articleID;
-		if (result.contentError) {
-			contentError = result.contentError;
-		}
+		applyResult(
+			processArticleFetchResponse(
+				await requestBody(targetFeedUrl, forceRefresh),
+			),
+			targetFeedUrl,
+		);
+		return;
 	} catch (err) {
-		// Ignore AbortError and ConnectError wrapping abort (user cancelled)
-		if (err instanceof Error) {
-			if (err.name === "AbortError") return;
-			if (err.message.includes("abort") || err.message.includes("cancel"))
-				return;
-		}
-
+		if (isAbortReason(err)) return;
 		if (feed.normalizedUrl !== targetFeedUrl) return;
 
-		// Auto-retry for transient errors (1 attempt only)
-		if (isTransientError(err) && contentRetryCount < 1) {
-			contentRetryCount++;
-			try {
-				await new Promise((resolve) => setTimeout(resolve, 500));
-				if (feed.normalizedUrl !== targetFeedUrl) return;
-
-				contentAbortController = new AbortController();
-				const response = await getFeedContentOnTheFlyClient(targetFeedUrl, {
-					signal: contentAbortController.signal,
-				});
-
-				if (feed.normalizedUrl !== targetFeedUrl) return;
-
-				const retryResult = processArticleFetchResponse(response);
-				articleContent = retryResult.articleContent;
-				articleID = retryResult.articleID;
-				if (retryResult.contentError) {
-					contentError = retryResult.contentError;
-				}
-				return;
-			} catch (retryErr) {
-				if (retryErr instanceof Error) {
-					if (retryErr.name === "AbortError") return;
-					if (
-						retryErr.message.includes("abort") ||
-						retryErr.message.includes("cancel")
-					)
-						return;
-				}
-				if (feed.normalizedUrl === targetFeedUrl) {
-					contentError = articleContentErrorMessage(retryErr);
-				}
-				return;
-			}
+		const delayMs = foregroundRetrySpent ? null : foregroundRetryDelayMs(err);
+		if (delayMs === null) {
+			failContent(err, targetFeedUrl);
+			return;
 		}
 
-		contentError = articleContentErrorMessage(err);
+		foregroundRetrySpent = true;
+		contentPhase = "retrying";
+		await new Promise<void>((resolve) => {
+			if (contentRetryTimer) clearTimeout(contentRetryTimer);
+			contentRetryTimer = setTimeout(() => {
+				contentRetryTimer = null;
+				resolve();
+			}, delayMs);
+		});
+		if (feed.normalizedUrl !== targetFeedUrl) return;
+
+		contentPhase = "pending";
+		try {
+			applyResult(
+				processArticleFetchResponse(
+					await requestBody(targetFeedUrl, forceRefresh),
+				),
+				targetFeedUrl,
+			);
+		} catch (retryErr) {
+			if (isAbortReason(retryErr)) return;
+			failContent(retryErr, targetFeedUrl);
+		}
 	} finally {
-		isFetchingContent = false;
 		contentAbortController = null;
 	}
 }
@@ -531,13 +596,62 @@ async function handleSummarize(forceRefresh = false) {
 									<h3 class="section-label">FULL ARTICLE</h3>
 									<RenderFeedDetails
 										feedDetails={articleContent ? { content: articleContent, article_id: articleID ?? "", og_image_url: "", og_image_proxy_url: "" } : null}
-										error={contentError}
+										error={null}
 									/>
 								</section>
-							{:else if contentError}
-								<div class="error-stripe" role="alert">
-									<p>{contentError}</p>
-								</div>
+							{:else if isFetchingContent}
+								<!-- A request in flight is not a failure. It says which
+								     attempt it is on, and the RSS body sits underneath so
+								     the column is never a blank wait. -->
+								<section class="content-section">
+									<h3 class="section-label">FULL ARTICLE</h3>
+									<p class="pending-notice" data-testid="article-content-pending">
+										{pendingLabel}
+									</p>
+									{#if feed.description}
+										<p
+											class="section-prose"
+											data-testid="article-fallback-summary"
+										>{feed.description}</p>
+									{/if}
+								</section>
+							{:else if contentPhase === "failed"}
+								<section class="content-section">
+									<h3 class="section-label">FULL ARTICLE</h3>
+									<div class="error-stripe" role="alert" data-testid="article-content-failed">
+										<p>{contentError}</p>
+										<!-- Stating the problem without offering a way out is
+										     the defect (NN/g heuristic 9). -->
+										<div class="remedy-row">
+											<button
+												type="button"
+												class="action-btn"
+												onclick={handleRefetchArticle}
+												disabled={isFetchingContent}
+												data-testid="retry-content"
+											>
+												{TRY_AGAIN_LABEL}
+											</button>
+											{#if feed.link}
+												<a
+													class="remedy-link"
+													href={feed.link}
+													target="_blank"
+													rel="noopener noreferrer"
+													data-testid="read-original-link"
+												>
+													{READ_ORIGINAL_LABEL}
+												</a>
+											{/if}
+										</div>
+									</div>
+									{#if feed.description}
+										<p
+											class="section-prose"
+											data-testid="article-fallback-summary"
+										>{feed.description}</p>
+									{/if}
+								</section>
 							{/if}
 						</article>
 
@@ -808,6 +922,35 @@ async function handleSummarize(forceRefresh = false) {
 		font-family: var(--font-body);
 		font-size: 0.85rem;
 		color: var(--alt-terracotta);
+	}
+
+	.pending-notice {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		letter-spacing: 0.06em;
+		color: var(--alt-ash);
+		margin: 0 0 0.75rem;
+	}
+
+	.remedy-row {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		flex-wrap: wrap;
+		margin-top: 0.75rem;
+	}
+
+	.remedy-link {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		color: var(--alt-charcoal);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+		display: inline-flex;
+		align-items: center;
+		min-height: 2rem;
 	}
 
 	.modal-footer {

@@ -74,3 +74,28 @@ describe("POST /api/v2/[...path]", () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 });
+
+// The allowlist is generated per *service* from `(alt.api.v1.visibility)`, and
+// the gate reads only the service half of the path, so a new procedure on an
+// already-public service is proxyable the moment its proto lands — nothing to
+// regenerate, and nothing to hand-edit. Pinned because the alternative
+// (discovering it as a 404 from the browser) is indistinguishable from the RPC
+// not being deployed.
+describe("procedures on an already-public service", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response("{}", { status: 200 })),
+		);
+	});
+
+	it("proxies alt.articles.v2.ArticleService/BatchPrefetchArticleContent", async () => {
+		const res = await fallback(
+			makeEvent("alt.articles.v2.ArticleService/BatchPrefetchArticleContent"),
+		);
+
+		expect(res.status).toBe(200);
+		expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+	});
+});

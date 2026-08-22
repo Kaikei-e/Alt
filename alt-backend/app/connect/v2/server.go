@@ -107,6 +107,15 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		GetArticleSourceURL:     container.GetArticleSourceURLUsecase,
 		ImageProxy:              container.ImageProxyUsecase,
 		StreamArticleTags:       container.StreamArticleTagsUsecase,
+
+		// Article-content prefetch. All four move together: the wiring
+		// declaration is what NewHandler validates the other three against, so
+		// wiring three of them is a startup panic rather than a capability
+		// that half exists (CLAUDE.md rule 8).
+		PrefetchArticle:   container.PrefetchArticleUsecase,
+		PrefetchHostSlots: container.PrefetchHostSlots,
+		PrefetchProbe:     container.PrefetchArticleProbe,
+		PrefetchWiring:    container.PrefetchWiring,
 	}, cfg, logger)
 	articlePath, articleServiceHandler := articlesv2connect.NewArticleServiceHandler(articleHandler, opts)
 	mux.Handle(articlePath, articleServiceHandler)

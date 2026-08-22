@@ -3,6 +3,11 @@ import type {
 	FeedContentOnTheFlyResponse,
 	FetchArticleSummaryResponse,
 } from "$lib/api/client";
+import {
+	CONTENT_PENDING_LABEL,
+	EMPTY_CONTENT_ERROR,
+} from "$lib/utils/articleContentState";
+import { articleContentErrorMessage } from "$lib/utils/errorClassification";
 import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
 
 interface Props {
@@ -15,6 +20,11 @@ interface Props {
 }
 
 const { feedDetails, isLoading = false, error = null }: Props = $props();
+
+// The two "nothing to show" branches below are the same condition every other
+// surface calls "the body is not there": route them through the one formatter
+// so this renderer stops contributing a third and fourth sentence of its own.
+const emptyMessage = articleContentErrorMessage(EMPTY_CONTENT_ERROR);
 
 // Sanitize content for safe rendering with @html
 const safeArticleContent = $derived(
@@ -33,16 +43,27 @@ const safeOnTheFlyContent = $derived(
 </script>
 
 {#if isLoading}
-	<p class="text-center py-8 italic" style="color: var(--alt-text-secondary);">
-		Loading summary...
+	<p
+		class="text-center py-8 italic"
+		style="color: var(--alt-text-secondary);"
+		data-testid="article-content-pending"
+	>
+		{CONTENT_PENDING_LABEL}
 	</p>
 {:else if error}
-	<p class="text-center py-8 italic" style="color: var(--alt-text-secondary);">
+	<!-- No role="alert" here: this is a presentational renderer and its callers
+	     already announce their own failure stripe. Two alerts for one condition
+	     is one announcement too many. -->
+	<p
+		class="text-center py-8 italic"
+		style="color: var(--alt-text-secondary);"
+		data-testid="article-content-failed"
+	>
 		{error}
 	</p>
 {:else if !feedDetails}
 	<p class="text-center py-8 italic" style="color: var(--alt-text-secondary);">
-		Unable to load article content
+		{emptyMessage}
 	</p>
 {:else if "matched_articles" in feedDetails && feedDetails.matched_articles?.length > 0}
 	<!-- FetchArticleSummaryResponse - Rich article display -->
@@ -100,7 +121,7 @@ const safeOnTheFlyContent = $derived(
 	</div>
 {:else}
 	<p class="text-center py-8 italic" style="color: var(--alt-text-secondary);">
-		Article content is not available
+		{emptyMessage}
 	</p>
 {/if}
 

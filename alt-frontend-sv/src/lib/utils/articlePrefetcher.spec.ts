@@ -4,12 +4,19 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 vi.mock("$lib/api/client", () => ({
 	getFeedContentOnTheFlyClient: vi.fn(),
 }));
+vi.mock("$lib/api/client/articles", () => ({
+	batchPrefetchArticleContentClient: vi.fn(),
+}));
 
 import { getFeedContentOnTheFlyClient } from "$lib/api/client";
+import { batchPrefetchArticleContentClient } from "$lib/api/client/articles";
 import { ArticlePrefetcher } from "./articlePrefetcher";
 
 const mockGetFeedContentOnTheFlyClient = vi.mocked(
 	getFeedContentOnTheFlyClient,
+);
+const mockBatchPrefetchArticleContentClient = vi.mocked(
+	batchPrefetchArticleContentClient,
 );
 
 describe("ArticlePrefetcher", () => {
@@ -18,6 +25,14 @@ describe("ArticlePrefetcher", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.useFakeTimers();
+		// The warm is fired (never awaited) from triggerPrefetch, so it needs
+		// a promise to attach to even in tests that are not about it.
+		mockBatchPrefetchArticleContentClient.mockResolvedValue({
+			acceptedCount: 0,
+			shedCount: 0,
+			rejectedCount: 0,
+			skippedSameHostCount: 0,
+		});
 		prefetcher = new ArticlePrefetcher();
 	});
 
@@ -407,6 +422,7 @@ describe("ArticlePrefetcher", () => {
 			// API should have been called with normalizedUrl
 			expect(mockGetFeedContentOnTheFlyClient).toHaveBeenCalledWith(
 				normalizedUrl,
+				{ priority: "low" },
 			);
 		});
 

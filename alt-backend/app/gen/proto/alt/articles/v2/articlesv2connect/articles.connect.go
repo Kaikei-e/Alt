@@ -60,6 +60,9 @@ const (
 	// ArticleServiceBatchPrefetchImagesProcedure is the fully-qualified name of the ArticleService's
 	// BatchPrefetchImages RPC.
 	ArticleServiceBatchPrefetchImagesProcedure = "/alt.articles.v2.ArticleService/BatchPrefetchImages"
+	// ArticleServiceBatchPrefetchArticleContentProcedure is the fully-qualified name of the
+	// ArticleService's BatchPrefetchArticleContent RPC.
+	ArticleServiceBatchPrefetchArticleContentProcedure = "/alt.articles.v2.ArticleService/BatchPrefetchArticleContent"
 	// ArticleServiceFetchTagCloudProcedure is the fully-qualified name of the ArticleService's
 	// FetchTagCloud RPC.
 	ArticleServiceFetchTagCloudProcedure = "/alt.articles.v2.ArticleService/FetchTagCloud"
@@ -96,6 +99,17 @@ type ArticleServiceClient interface {
 	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest]) (*connect.ServerStreamForClient[v2.StreamArticleTagsResponse], error)
 	// BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
 	BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error)
+	// BatchPrefetchArticleContent warms article bodies for the next few items a
+	// user is about to open, and returns before any of them is fetched.
+	//
+	// Bounded and shed-not-queued, like BatchPrefetchImages: a dropped warm
+	// costs one uncached article, a queued one costs a goroutine holding a
+	// request context while the per-host interval refuses to let it finish.
+	//
+	// One attempt per URL per call. The server never retries and the client must
+	// not poll: browser, BFF, alt-backend and publisher are four hops, and a
+	// retry at each multiplies rather than adds.
+	BatchPrefetchArticleContent(context.Context, *connect.Request[v2.BatchPrefetchArticleContentRequest]) (*connect.Response[v2.BatchPrefetchArticleContentResponse], error)
 	// FetchTagCloud fetches tag cloud data (tag names with article counts)
 	// Used by Tag Verse 3D visualization
 	FetchTagCloud(context.Context, *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error)
@@ -172,6 +186,12 @@ func NewArticleServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(articleServiceMethods.ByName("BatchPrefetchImages")),
 			connect.WithClientOptions(opts...),
 		),
+		batchPrefetchArticleContent: connect.NewClient[v2.BatchPrefetchArticleContentRequest, v2.BatchPrefetchArticleContentResponse](
+			httpClient,
+			baseURL+ArticleServiceBatchPrefetchArticleContentProcedure,
+			connect.WithSchema(articleServiceMethods.ByName("BatchPrefetchArticleContent")),
+			connect.WithClientOptions(opts...),
+		),
 		fetchTagCloud: connect.NewClient[v2.FetchTagCloudRequest, v2.FetchTagCloudResponse](
 			httpClient,
 			baseURL+ArticleServiceFetchTagCloudProcedure,
@@ -189,17 +209,18 @@ func NewArticleServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 
 // articleServiceClient implements ArticleServiceClient.
 type articleServiceClient struct {
-	fetchArticleContent *connect.Client[v2.FetchArticleContentRequest, v2.FetchArticleContentResponse]
-	archiveArticle      *connect.Client[v2.ArchiveArticleRequest, v2.ArchiveArticleResponse]
-	fetchArticlesCursor *connect.Client[v2.FetchArticlesCursorRequest, v2.FetchArticlesCursorResponse]
-	fetchArticleSummary *connect.Client[v2.FetchArticleSummaryRequest, v2.FetchArticleSummaryResponse]
-	fetchArticlesByTag  *connect.Client[v2.FetchArticlesByTagRequest, v2.FetchArticlesByTagResponse]
-	fetchArticleTags    *connect.Client[v2.FetchArticleTagsRequest, v2.FetchArticleTagsResponse]
-	fetchRandomFeed     *connect.Client[v2.FetchRandomFeedRequest, v2.FetchRandomFeedResponse]
-	streamArticleTags   *connect.Client[v2.StreamArticleTagsRequest, v2.StreamArticleTagsResponse]
-	batchPrefetchImages *connect.Client[v2.BatchPrefetchImagesRequest, v2.BatchPrefetchImagesResponse]
-	fetchTagCloud       *connect.Client[v2.FetchTagCloudRequest, v2.FetchTagCloudResponse]
-	getArticleSourceURL *connect.Client[v2.GetArticleSourceURLRequest, v2.GetArticleSourceURLResponse]
+	fetchArticleContent         *connect.Client[v2.FetchArticleContentRequest, v2.FetchArticleContentResponse]
+	archiveArticle              *connect.Client[v2.ArchiveArticleRequest, v2.ArchiveArticleResponse]
+	fetchArticlesCursor         *connect.Client[v2.FetchArticlesCursorRequest, v2.FetchArticlesCursorResponse]
+	fetchArticleSummary         *connect.Client[v2.FetchArticleSummaryRequest, v2.FetchArticleSummaryResponse]
+	fetchArticlesByTag          *connect.Client[v2.FetchArticlesByTagRequest, v2.FetchArticlesByTagResponse]
+	fetchArticleTags            *connect.Client[v2.FetchArticleTagsRequest, v2.FetchArticleTagsResponse]
+	fetchRandomFeed             *connect.Client[v2.FetchRandomFeedRequest, v2.FetchRandomFeedResponse]
+	streamArticleTags           *connect.Client[v2.StreamArticleTagsRequest, v2.StreamArticleTagsResponse]
+	batchPrefetchImages         *connect.Client[v2.BatchPrefetchImagesRequest, v2.BatchPrefetchImagesResponse]
+	batchPrefetchArticleContent *connect.Client[v2.BatchPrefetchArticleContentRequest, v2.BatchPrefetchArticleContentResponse]
+	fetchTagCloud               *connect.Client[v2.FetchTagCloudRequest, v2.FetchTagCloudResponse]
+	getArticleSourceURL         *connect.Client[v2.GetArticleSourceURLRequest, v2.GetArticleSourceURLResponse]
 }
 
 // FetchArticleContent calls alt.articles.v2.ArticleService.FetchArticleContent.
@@ -247,6 +268,11 @@ func (c *articleServiceClient) BatchPrefetchImages(ctx context.Context, req *con
 	return c.batchPrefetchImages.CallUnary(ctx, req)
 }
 
+// BatchPrefetchArticleContent calls alt.articles.v2.ArticleService.BatchPrefetchArticleContent.
+func (c *articleServiceClient) BatchPrefetchArticleContent(ctx context.Context, req *connect.Request[v2.BatchPrefetchArticleContentRequest]) (*connect.Response[v2.BatchPrefetchArticleContentResponse], error) {
+	return c.batchPrefetchArticleContent.CallUnary(ctx, req)
+}
+
 // FetchTagCloud calls alt.articles.v2.ArticleService.FetchTagCloud.
 func (c *articleServiceClient) FetchTagCloud(ctx context.Context, req *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error) {
 	return c.fetchTagCloud.CallUnary(ctx, req)
@@ -285,6 +311,17 @@ type ArticleServiceHandler interface {
 	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.StreamArticleTagsResponse]) error
 	// BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
 	BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error)
+	// BatchPrefetchArticleContent warms article bodies for the next few items a
+	// user is about to open, and returns before any of them is fetched.
+	//
+	// Bounded and shed-not-queued, like BatchPrefetchImages: a dropped warm
+	// costs one uncached article, a queued one costs a goroutine holding a
+	// request context while the per-host interval refuses to let it finish.
+	//
+	// One attempt per URL per call. The server never retries and the client must
+	// not poll: browser, BFF, alt-backend and publisher are four hops, and a
+	// retry at each multiplies rather than adds.
+	BatchPrefetchArticleContent(context.Context, *connect.Request[v2.BatchPrefetchArticleContentRequest]) (*connect.Response[v2.BatchPrefetchArticleContentResponse], error)
 	// FetchTagCloud fetches tag cloud data (tag names with article counts)
 	// Used by Tag Verse 3D visualization
 	FetchTagCloud(context.Context, *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error)
@@ -357,6 +394,12 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 		connect.WithSchema(articleServiceMethods.ByName("BatchPrefetchImages")),
 		connect.WithHandlerOptions(opts...),
 	)
+	articleServiceBatchPrefetchArticleContentHandler := connect.NewUnaryHandler(
+		ArticleServiceBatchPrefetchArticleContentProcedure,
+		svc.BatchPrefetchArticleContent,
+		connect.WithSchema(articleServiceMethods.ByName("BatchPrefetchArticleContent")),
+		connect.WithHandlerOptions(opts...),
+	)
 	articleServiceFetchTagCloudHandler := connect.NewUnaryHandler(
 		ArticleServiceFetchTagCloudProcedure,
 		svc.FetchTagCloud,
@@ -389,6 +432,8 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 			articleServiceStreamArticleTagsHandler.ServeHTTP(w, r)
 		case ArticleServiceBatchPrefetchImagesProcedure:
 			articleServiceBatchPrefetchImagesHandler.ServeHTTP(w, r)
+		case ArticleServiceBatchPrefetchArticleContentProcedure:
+			articleServiceBatchPrefetchArticleContentHandler.ServeHTTP(w, r)
 		case ArticleServiceFetchTagCloudProcedure:
 			articleServiceFetchTagCloudHandler.ServeHTTP(w, r)
 		case ArticleServiceGetArticleSourceURLProcedure:
@@ -436,6 +481,10 @@ func (UnimplementedArticleServiceHandler) StreamArticleTags(context.Context, *co
 
 func (UnimplementedArticleServiceHandler) BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.BatchPrefetchImages is not implemented"))
+}
+
+func (UnimplementedArticleServiceHandler) BatchPrefetchArticleContent(context.Context, *connect.Request[v2.BatchPrefetchArticleContentRequest]) (*connect.Response[v2.BatchPrefetchArticleContentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.BatchPrefetchArticleContent is not implemented"))
 }
 
 func (UnimplementedArticleServiceHandler) FetchTagCloud(context.Context, *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error) {

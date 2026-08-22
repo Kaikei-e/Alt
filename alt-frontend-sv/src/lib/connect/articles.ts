@@ -9,6 +9,7 @@ import { createClient } from "@connectrpc/connect";
 import {
 	type ArchiveArticleResponse,
 	ArticleService,
+	type BatchPrefetchArticleContentResponse,
 	type BatchPrefetchImagesResponse,
 	type FetchArticleContentResponse,
 	type FetchArticleSummaryResponse,
@@ -166,12 +167,20 @@ export function createArticleClient(transport: Transport): ArticleClient {
 // API Functions
 // =============================================================================
 
+/** Deadline for one fire-and-forget warm batch. See batchPrefetchArticleContent. */
+const PREFETCH_WARM_TIMEOUT_MS = 5_000;
+
 /**
  * Fetches and extracts compliant article content via Connect-RPC.
  *
  * @param transport - The Connect transport to use
  * @param url - The article URL to fetch
  * @param signal - Optional AbortSignal to cancel the request
+ * @param forceRefresh - Skip the server-side store and re-fetch from the origin
+ * @param headers - Extra call headers. The only one Alt sets here is the
+ *   in-process fetch-priority sentinel, chosen by the browser-side caller in
+ *   `$lib/api/client/articles`; this module stays free of `transport-client`
+ *   (and so of `$app/paths`) because the BFF imports it server-side.
  * @returns The fetched article content
  */
 export async function fetchArticleContent(
@@ -179,11 +188,16 @@ export async function fetchArticleContent(
 	url: string,
 	signal?: AbortSignal,
 	forceRefresh?: boolean,
+	headers?: HeadersInit,
 ): Promise<FetchArticleContentResult> {
 	const client = createArticleClient(transport);
 	const response = (await client.fetchArticleContent(
 		{ url, forceRefresh },
-		{ timeoutMs: 120_000, ...(signal ? { signal } : {}) },
+		{
+			timeoutMs: 120_000,
+			...(signal ? { signal } : {}),
+			...(headers ? { headers } : {}),
+		},
 	)) as FetchArticleContentResponse;
 
 	return {
@@ -339,6 +353,63 @@ export async function batchPrefetchImages(
 			isCached: item.isCached,
 		}),
 	);
+}
+
+// =============================================================================
+// Article Content Prefetch (warm)
+// =============================================================================
+
+/**
+ * Acceptance receipt for a warm batch. Every count describes a decision the
+ * server took *before* it answered: what happened to the article afterwards is
+ * deliberately not reported, because a client that could see it would start
+ * waiting on it.
+ */
+export interface BatchPrefetchArticleContentResult {
+	acceptedCount: number;
+	shedCount: number;
+	rejectedCount: number;
+	skippedSameHostCount: number;
+}
+
+/**
+ * Asks the server to warm the article bodies the caller believes the reader is
+ * about to open, and returns before any publisher is contacted.
+ *
+ * This is a warm, not a fetch: it returns no content, it must never be awaited
+ * on a path a reader is waiting on, and the caller must not resend a URL the
+ * server shed. The server takes at most 5 URLs and at most one per host per
+ * call, and does not retry — browser, BFF, alt-backend and publisher are four
+ * hops, and a retry at each multiplies rather than adds.
+ *
+ * @param transport - The Connect transport to use
+ * @param urls - Article URLs to warm, in the order the reader should reach them
+ * @param headers - Extra call headers; see `fetchArticleContent`
+ */
+export async function batchPrefetchArticleContent(
+	transport: Transport,
+	urls: string[],
+	headers?: HeadersInit,
+): Promise<BatchPrefetchArticleContentResult> {
+	const client = createArticleClient(transport);
+	const response = (await client.batchPrefetchArticleContent(
+		{ urls },
+		{
+			// Short on purpose. Nobody is waiting on the answer, and the whole
+			// call is meant to return before any publisher is contacted, so a
+			// warm that has not been acknowledged in this long is a warm whose
+			// connection slot is better given back to the reader.
+			timeoutMs: PREFETCH_WARM_TIMEOUT_MS,
+			...(headers ? { headers } : {}),
+		},
+	)) as BatchPrefetchArticleContentResponse;
+
+	return {
+		acceptedCount: response.acceptedCount,
+		shedCount: response.shedCount,
+		rejectedCount: response.rejectedCount,
+		skippedSameHostCount: response.skippedSameHostCount,
+	};
 }
 
 // =============================================================================

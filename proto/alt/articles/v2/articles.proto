@@ -151,6 +151,48 @@ message BatchPrefetchImagesResponse {
 }
 
 // =============================================================================
+// Article Content Prefetch Messages
+// =============================================================================
+
+// BatchPrefetchArticleContentRequest asks the server to warm the article
+// bodies the reader believes the user is about to open.
+//
+// Fire-and-forget: the RPC returns before any publisher is contacted, and the
+// caller is never told what came back. It exists so the *first* item a user
+// opens is a database read instead of a live fetch — not as a bulk download
+// API, and not as something a client may poll.
+message BatchPrefetchArticleContentRequest {
+  // Article URLs to warm, in the order the user is expected to reach them.
+  // At most 5 are considered, and at most one per host: the per-host politeness
+  // interval means a same-host batch could only ever warm its first entry, and
+  // asking for the rest would spend the host's turn without fetching anything.
+  repeated string urls = 1;
+}
+
+// BatchPrefetchArticleContentResponse is an acceptance receipt, not a fetch
+// result.
+//
+// Every count describes a decision taken before the response was written. What
+// happened afterwards — whether the publisher answered, whether the body was
+// stored — is deliberately not reported: a client that could see it would
+// start waiting on it, and this RPC must never be on a path anybody waits on.
+message BatchPrefetchArticleContentResponse {
+  // URLs that claimed a warm slot and were detached. Not a promise that any
+  // of them will be fetched, still less that they will be fetched by the time
+  // the user arrives.
+  int32 accepted_count = 1;
+  // URLs dropped because the warm pool was already full. Shedding is the
+  // designed behaviour under load; the client must not resend them.
+  int32 shed_count = 2;
+  // URLs rejected before anything was attempted: unparseable, or refused by
+  // the same SSRF allowlist FetchArticleContent applies.
+  int32 rejected_count = 3;
+  // URLs dropped because an earlier entry in the same batch already claimed
+  // that host. See the one-per-host note on the request.
+  int32 skipped_same_host_count = 4;
+}
+
+// =============================================================================
 // Tag Trail Messages (ADR-167, ADR-168, ADR-169)
 // =============================================================================
 
@@ -370,6 +412,18 @@ service ArticleService {
 
   // BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
   rpc BatchPrefetchImages(BatchPrefetchImagesRequest) returns (BatchPrefetchImagesResponse);
+
+  // BatchPrefetchArticleContent warms article bodies for the next few items a
+  // user is about to open, and returns before any of them is fetched.
+  //
+  // Bounded and shed-not-queued, like BatchPrefetchImages: a dropped warm
+  // costs one uncached article, a queued one costs a goroutine holding a
+  // request context while the per-host interval refuses to let it finish.
+  //
+  // One attempt per URL per call. The server never retries and the client must
+  // not poll: browser, BFF, alt-backend and publisher are four hops, and a
+  // retry at each multiplies rather than adds.
+  rpc BatchPrefetchArticleContent(BatchPrefetchArticleContentRequest) returns (BatchPrefetchArticleContentResponse);
 
   // FetchTagCloud fetches tag cloud data (tag names with article counts)
   // Used by Tag Verse 3D visualization

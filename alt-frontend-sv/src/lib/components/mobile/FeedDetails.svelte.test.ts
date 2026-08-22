@@ -281,8 +281,9 @@ describe("FeedDetails retry", () => {
 			// Wait for fetch to fail
 			await new Promise((resolve) => setTimeout(resolve, 500));
 
-			// Error should be displayed (component shows error via RenderFeedDetails)
-			const container = page.getByText(/unable to fetch/i);
+			// Error should be displayed (component shows error via
+			// RenderFeedDetails), in the wording every surface now shares.
+			const container = page.getByText("Source content unavailable.");
 			await expect.element(container).toBeInTheDocument();
 
 			// ...and announced, which is what this test's name has always claimed.
@@ -313,7 +314,7 @@ describe("FeedDetails retry", () => {
 			});
 
 			await expect
-				.element(page.getByText(/unable to fetch/i))
+				.element(page.getByText("Source content unavailable."))
 				.toBeInTheDocument();
 
 			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(1);
@@ -516,6 +517,90 @@ describe("FeedDetails retry", () => {
 			// auto-fetch effect duplicate the request the click already started.
 			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(1);
 			expect(getArticleSummaryClient).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("honest content states", () => {
+		it("says what it is doing while the body is in flight", async () => {
+			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
+				await import("$lib/api/client");
+			const neverSettles = <T>() => new Promise<T>(() => {});
+			vi.mocked(getFeedContentOnTheFlyClient).mockImplementation(() =>
+				neverSettles<FeedContentOnTheFlyResponse>(),
+			);
+			vi.mocked(getArticleSummaryClient).mockImplementation(() =>
+				neverSettles<FetchArticleSummaryResponse>(),
+			);
+
+			render(FeedDetails, {
+				props: {
+					feedURL: testFeedURL,
+					feedTitle: testFeedTitle,
+					open: true,
+					onOpenChange: vi.fn(),
+					showButton: false,
+				},
+			});
+
+			await expect
+				.element(page.getByText("Fetching the full article…"))
+				.toBeInTheDocument();
+		});
+
+		it("offers the original site alongside the reload once it is terminal", async () => {
+			// NN/g heuristic 9: "Stopped after 1 attempt." states the problem.
+			// A reload the reader can press and a way out to the publisher are
+			// what make it a remedy rather than a verdict.
+			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
+				await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				new Error("Server error"),
+			);
+			vi.mocked(getArticleSummaryClient).mockRejectedValue(
+				new Error("Server error"),
+			);
+
+			render(FeedDetails, {
+				props: {
+					feedURL: testFeedURL,
+					feedTitle: testFeedTitle,
+					open: true,
+					onOpenChange: vi.fn(),
+					showButton: false,
+				},
+			});
+
+			await expect
+				.element(page.getByTestId("read-original-link"))
+				.toHaveAttribute("href", testFeedURL);
+		});
+
+		it("states the shared wording when the body comes back empty", async () => {
+			// A successful response carrying `content: ""` is a state, not a
+			// falsy no-op (ADR-000581), and it reads the same here as anywhere.
+			const { getFeedContentOnTheFlyClient, getArticleSummaryClient } =
+				await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
+				content: "",
+				article_id: "",
+			} as FeedContentOnTheFlyResponse);
+			vi.mocked(getArticleSummaryClient).mockResolvedValue({
+				matched_articles: [],
+			} as unknown as FetchArticleSummaryResponse);
+
+			render(FeedDetails, {
+				props: {
+					feedURL: testFeedURL,
+					feedTitle: testFeedTitle,
+					open: true,
+					onOpenChange: vi.fn(),
+					showButton: false,
+				},
+			});
+
+			await expect
+				.element(page.getByText("Source content unavailable."))
+				.toBeInTheDocument();
 		});
 	});
 

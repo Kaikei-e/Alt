@@ -1,6 +1,7 @@
 package di
 
 import (
+	"alt/orchestrator/connect/v2/articles"
 	"alt/orchestrator/driver/preprocessor_connect"
 	"alt/orchestrator/gateway/feature_flag_gateway"
 	"alt/orchestrator/gateway/fetch_article_gateway"
@@ -163,6 +164,15 @@ type ApplicationComponents struct {
 	StreamArticleTagsUsecase   *stream_article_tags_usecase.StreamArticleTagsUsecase
 	FetchTagCloudUsecase       *fetch_tag_cloud_usecase.FetchTagCloudUsecase
 	GetArticleSourceURLUsecase *get_article_source_url_usecase.GetArticleSourceURLUsecase
+
+	// Article-content prefetch (BatchPrefetchArticleContent). These four are
+	// one unit: PrefetchWiring declares the capability, the other three carry
+	// it, and articles.NewHandler refuses a set where the declaration and the
+	// dependencies disagree.
+	PrefetchArticleUsecase fetch_article_usecase.ArticleUsecase
+	PrefetchArticleProbe   articles.StoredArticleProbe
+	PrefetchHostSlots      articles.HostSlotGate
+	PrefetchWiring         articles.ArticlePrefetchWiring
 
 	// Legacy REST v1 summarize endpoints (POST /v1/feeds/summarize,
 	// /summarize/queue, GET /summarize/status/:job_id, POST /fetch/summary)

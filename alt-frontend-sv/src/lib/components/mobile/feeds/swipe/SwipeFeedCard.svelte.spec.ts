@@ -4,6 +4,7 @@
  * Tests for the swipeable feed card component using vitest-browser-svelte.
  * Tests interaction patterns, accessibility, and state management.
  */
+import { Code, ConnectError } from "@connectrpc/connect";
 import { page } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
@@ -70,6 +71,16 @@ vi.mock("$lib/connect", () => ({
 		},
 	),
 }));
+
+const connectError = (
+	code: Code,
+	headers: Record<string, string> = {},
+): ConnectError =>
+	new ConnectError(
+		"Service temporarily unavailable due to circuit breaker",
+		code,
+		headers,
+	);
 
 describe("SwipeFeedCard", () => {
 	const defaultProps = {
@@ -336,17 +347,21 @@ describe("SwipeFeedCard", () => {
 				props: defaultProps,
 			});
 
-			// Click Article button to trigger fetch
-			const articleButton = page.getByRole("button", { name: /article/i });
+			// Click the article action to trigger a fetch. Addressed by testid,
+			// not by name: the background fetch fails first now, so by the time
+			// the click lands the button may already read "Try again".
+			const articleButton = page.getByTestId("article-action");
 			await articleButton.click();
 
 			// Wait for error state
 			await new Promise((resolve) => setTimeout(resolve, 200));
 
-			// Button should show "Try again"
+			// Button should show "Try again". Addressed by testid: the panel's
+			// own retry control now carries that label too, so a name-based
+			// locator matches two elements.
 			await expect
-				.element(page.getByRole("button", { name: /try again/i }))
-				.toBeInTheDocument();
+				.element(page.getByTestId("article-action"))
+				.toHaveTextContent(/try again/i);
 		});
 
 		it("retries content fetch when error button is clicked", async () => {
@@ -364,13 +379,13 @@ describe("SwipeFeedCard", () => {
 				props: defaultProps,
 			});
 
-			// Click Article button
-			const articleButton = page.getByRole("button", { name: /article/i });
+			// Click the article action
+			const articleButton = page.getByTestId("article-action");
 			await articleButton.click();
 
 			// Wait for error state
-			const retryButton = page.getByRole("button", { name: /try again/i });
-			await expect.element(retryButton).toBeInTheDocument();
+			const retryButton = page.getByTestId("article-action");
+			await expect.element(retryButton).toHaveTextContent(/try again/i);
 
 			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
 				content: "<p>Loaded content</p>",
@@ -408,7 +423,7 @@ describe("SwipeFeedCard", () => {
 				props: defaultProps,
 			});
 
-			const articleButton = page.getByRole("button", { name: /article/i });
+			const articleButton = page.getByTestId("article-action");
 			await articleButton.click();
 
 			await new Promise((resolve) => setTimeout(resolve, 200));
@@ -466,8 +481,8 @@ describe("SwipeFeedCard", () => {
 
 			// Button should show "Try again"
 			await expect
-				.element(page.getByRole("button", { name: /try again/i }))
-				.toBeInTheDocument();
+				.element(page.getByTestId("summary-action"))
+				.toHaveTextContent(/try again/i);
 		});
 
 		it("shows summary error with role='alert'", async () => {
@@ -534,13 +549,21 @@ describe("SwipeFeedCard", () => {
 			// so the rejection installed by "summary retry" above survives into
 			// this test. Declaring the behaviour it depends on keeps it
 			// independent of the order the tests happen to run in.
-			const { summarizeArticleClient } = await import("$lib/api/client");
+			const { summarizeArticleClient, getFeedContentOnTheFlyClient } =
+				await import("$lib/api/client");
 			vi.mocked(summarizeArticleClient).mockResolvedValue({
 				success: true,
 				summary: "This is a test summary.",
 				article_id: "article-123",
 				feed_url: mockFeed.link,
 			});
+			// Same reason: a rejection left behind by an earlier test would put
+			// the ARTICLE button into its "Try again" state and make the
+			// summary-scoped assertion below fail for an unrelated reason.
+			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
+				content: "<p>Full article content here.</p>",
+				article_id: "article-123",
+			} as never);
 
 			render(SwipeFeedCard, {
 				props: defaultProps,
@@ -558,8 +581,8 @@ describe("SwipeFeedCard", () => {
 			// The fallback succeeded, so nothing may claim the summary failed.
 			await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
 			await expect
-				.element(page.getByRole("button", { name: /try again/i }))
-				.not.toBeInTheDocument();
+				.element(page.getByTestId("summary-action"))
+				.not.toHaveTextContent(/try again/i);
 		});
 	});
 
@@ -667,6 +690,129 @@ describe("SwipeFeedCard", () => {
 			await expect
 				.element(page.getByRole("button", { name: /favorited/i }))
 				.toBeInTheDocument();
+		});
+	});
+
+	describe("honest content states", () => {
+		it("surfaces a failed background auto-fetch instead of swallowing it", async () => {
+			// The onMount fetch used to console.error and stop. The reader was
+			// then shown the RSS description with no sign that anything had been
+			// attempted, let alone that it had failed.
+			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.Unavailable),
+			);
+
+			render(SwipeFeedCard, {
+				props: defaultProps,
+			});
+
+			// The panel that explains the failure is shut, so the footer is the
+			// only place the reader can learn the body is gone: it has to say so
+			// in words. A bare "Try again" does not — it names no subject, and
+			// the reader never made a first attempt to repeat.
+			await expect
+				.element(page.getByTestId("article-action"))
+				.toHaveTextContent(/article unavailable/i);
+			// And it says it WITHOUT giving up the noun: this is still the one
+			// control that opens the article, and it must stay findable as such.
+			await expect
+				.element(page.getByRole("button", { name: /article/i }))
+				.toBeInTheDocument();
+		});
+
+		it("treats an empty body from the background fetch as a state, not a no-op", async () => {
+			// `content: ""` is the ADR-000581 trap. It has to land somewhere
+			// explicit or it reads as "still loading" forever.
+			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
+				content: "",
+				article_id: "",
+			} as never);
+
+			render(SwipeFeedCard, {
+				props: defaultProps,
+			});
+
+			await expect
+				.element(page.getByTestId("article-action"))
+				.toHaveTextContent(/article unavailable/i);
+			await expect
+				.element(page.getByRole("button", { name: /article/i }))
+				.toBeInTheDocument();
+		});
+
+		it("shows the pending state, not an error, while the fetch is in flight", async () => {
+			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient).mockImplementation(
+				() => new Promise(() => {}),
+			);
+
+			render(SwipeFeedCard, {
+				props: defaultProps,
+			});
+
+			await page.getByTestId("article-action").click();
+
+			await expect
+				.element(page.getByTestId("article-content-pending"))
+				.toHaveTextContent("Fetching the full article");
+			await expect
+				.element(page.getByTestId("article-content-failed"))
+				.not.toBeInTheDocument();
+			// The RSS body is on screen underneath the wait, never a blank panel.
+			await expect
+				.element(page.getByTestId("article-fallback-summary"))
+				.toBeInTheDocument();
+		});
+
+		it("states the shared wording and both remedies when it is genuinely terminal", async () => {
+			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.Unavailable),
+			);
+
+			render(SwipeFeedCard, {
+				props: defaultProps,
+			});
+
+			await page.getByTestId("article-action").click();
+
+			const notice = page.getByTestId("source-unavailable-notice");
+			await expect
+				.element(notice)
+				.toHaveTextContent(
+					"Source content is temporarily unavailable. Please try again shortly.",
+				);
+			// ADR-000959 §6: the upstream prose never reaches the reader.
+			await expect.element(notice).not.toHaveTextContent("circuit breaker");
+			await expect
+				.element(page.getByTestId("read-original-link"))
+				.toHaveAttribute("href", mockFeed.link);
+			await expect
+				.element(page.getByTestId("article-fallback-summary"))
+				.toBeInTheDocument();
+		});
+
+		it("does not auto-retry Code.Unavailable (ADR-000959) but does retry an unstamped 429", async () => {
+			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.Unavailable, { "Retry-After": "0" }),
+			);
+
+			const unmount = render(SwipeFeedCard, { props: defaultProps });
+			await new Promise((r) => setTimeout(r, 1200));
+			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(1);
+			unmount.unmount();
+
+			vi.mocked(getFeedContentOnTheFlyClient).mockClear();
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.ResourceExhausted, { "Retry-After": "0" }),
+			);
+
+			render(SwipeFeedCard, { props: defaultProps });
+			await new Promise((r) => setTimeout(r, 1200));
+			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(2);
 		});
 	});
 });

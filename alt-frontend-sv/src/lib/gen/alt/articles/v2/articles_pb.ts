@@ -11,7 +11,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/articles/v2/articles.proto.
  */
 export const file_alt_articles_v2_articles: GenFile = /*@__PURE__*/
-  fileDesc("Ch5hbHQvYXJ0aWNsZXMvdjIvYXJ0aWNsZXMucHJvdG8SD2FsdC5hcnRpY2xlcy52MiJXChpGZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBILCgN1cmwYASABKAkSGgoNZm9yY2VfcmVmcmVzaBgCIAEoCEgAiAEBQhAKDl9mb3JjZV9yZWZyZXNoIoEBChtGZXRjaEFydGljbGVDb250ZW50UmVzcG9uc2USCwoDdXJsGAEgASgJEg8KB2NvbnRlbnQYAiABKAkSEgoKYXJ0aWNsZV9pZBgDIAEoCRIUCgxvZ19pbWFnZV91cmwYBCABKAkSGgoSb2dfaW1hZ2VfcHJveHlfdXJsGAUgASgJIkcKFUFyY2hpdmVBcnRpY2xlUmVxdWVzdBIQCghmZWVkX3VybBgBIAEoCRISCgV0aXRsZRgCIAEoCUgAiAEBQggKBl90aXRsZSIpChZBcmNoaXZlQXJ0aWNsZVJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiSwoaRmV0Y2hBcnRpY2xlc0N1cnNvclJlcXVlc3QSDQoFbGltaXQYASABKAUSEwoGY3Vyc29yGAIgASgJSACIAQFCCQoHX2N1cnNvciJqCgtBcnRpY2xlSXRlbRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRILCgN1cmwYAyABKAkSDwoHY29udGVudBgEIAEoCRIUCgxwdWJsaXNoZWRfYXQYBSABKAkSDAoEdGFncxgGIAMoCSKFAQobRmV0Y2hBcnRpY2xlc0N1cnNvclJlc3BvbnNlEioKBGRhdGEYASADKAsyHC5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZUl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiLwoaRmV0Y2hBcnRpY2xlU3VtbWFyeVJlcXVlc3QSEQoJZmVlZF91cmxzGAEgAygJIoEBChJBcnRpY2xlU3VtbWFyeUl0ZW0SDQoFdGl0bGUYASABKAkSDwoHY29udGVudBgCIAEoCRIOCgZhdXRob3IYAyABKAkSFAoMcHVibGlzaGVkX2F0GAQgASgJEhIKCmZldGNoZWRfYXQYBSABKAkSEQoJc291cmNlX2lkGAYgASgJIowBChtGZXRjaEFydGljbGVTdW1tYXJ5UmVzcG9uc2USPQoQbWF0Y2hlZF9hcnRpY2xlcxgBIAMoCzIjLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlU3VtbWFyeUl0ZW0SFQoNdG90YWxfbWF0Y2hlZBgCIAEoBRIXCg9yZXF1ZXN0ZWRfY291bnQYAyABKAUiMQoaQmF0Y2hQcmVmZXRjaEltYWdlc1JlcXVlc3QSEwoLYXJ0aWNsZV9pZHMYASADKAkiSgoOSW1hZ2VQcm94eUluZm8SEgoKYXJ0aWNsZV9pZBgBIAEoCRIRCglwcm94eV91cmwYAiABKAkSEQoJaXNfY2FjaGVkGAMgASgIIk4KG0JhdGNoUHJlZmV0Y2hJbWFnZXNSZXNwb25zZRIvCgZpbWFnZXMYASADKAsyHy5hbHQuYXJ0aWNsZXMudjIuSW1hZ2VQcm94eUluZm8ijgEKGUZldGNoQXJ0aWNsZXNCeVRhZ1JlcXVlc3QSEwoGdGFnX2lkGAEgASgJSACIAQESFQoIdGFnX25hbWUYAiABKAlIAYgBARITCgZjdXJzb3IYAyABKAlIAogBARINCgVsaW1pdBgEIAEoBUIJCgdfdGFnX2lkQgsKCV90YWdfbmFtZUIJCgdfY3Vyc29yImgKE1RhZ1RyYWlsQXJ0aWNsZUl0ZW0SCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDAoEbGluaxgDIAEoCRIUCgxwdWJsaXNoZWRfYXQYBCABKAkSEgoKZmVlZF90aXRsZRgFIAEoCSKQAQoaRmV0Y2hBcnRpY2xlc0J5VGFnUmVzcG9uc2USNgoIYXJ0aWNsZXMYASADKAsyJC5hbHQuYXJ0aWNsZXMudjIuVGFnVHJhaWxBcnRpY2xlSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciItChdGZXRjaEFydGljbGVUYWdzUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJIj4KDkFydGljbGVUYWdJdGVtEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSEgoKY3JlYXRlZF9hdBgDIAEoCSJdChhGZXRjaEFydGljbGVUYWdzUmVzcG9uc2USEgoKYXJ0aWNsZV9pZBgBIAEoCRItCgR0YWdzGAIgAygLMh8uYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdJdGVtIhgKFkZldGNoUmFuZG9tRmVlZFJlcXVlc3QioAEKF0ZldGNoUmFuZG9tRmVlZFJlc3BvbnNlEgoKAmlkGAEgASgJEgsKA3VybBgCIAEoCRINCgV0aXRsZRgDIAEoCRITCgtkZXNjcmlwdGlvbhgEIAEoCRItCgR0YWdzGAUgAygLMh8uYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdJdGVtEhkKEWxhdGVzdF9hcnRpY2xlX2lkGAYgASgJIpABChhTdHJlYW1BcnRpY2xlVGFnc1JlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRISCgV0aXRsZRgCIAEoCUgAiAEBEhQKB2NvbnRlbnQYAyABKAlIAYgBARIUCgdmZWVkX2lkGAQgASgJSAKIAQFCCAoGX3RpdGxlQgoKCF9jb250ZW50QgoKCF9mZWVkX2lkItYCChlTdHJlYW1BcnRpY2xlVGFnc1Jlc3BvbnNlEhIKCmFydGljbGVfaWQYASABKAkSLQoEdGFncxgCIAMoCzIfLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlVGFnSXRlbRJICgpldmVudF90eXBlGAMgASgOMjQuYWx0LmFydGljbGVzLnYyLlN0cmVhbUFydGljbGVUYWdzUmVzcG9uc2UuRXZlbnRUeXBlEhQKB21lc3NhZ2UYBCABKAlIAIgBASKJAQoJRXZlbnRUeXBlEhoKFkVWRU5UX1RZUEVfVU5TUEVDSUZJRUQQABIVChFFVkVOVF9UWVBFX0NBQ0hFRBABEhkKFUVWRU5UX1RZUEVfR0VORVJBVElORxACEhgKFEVWRU5UX1RZUEVfQ09NUExFVEVEEAMSFAoQRVZFTlRfVFlQRV9FUlJPUhAEQgoKCF9tZXNzYWdlIiUKFEZldGNoVGFnQ2xvdWRSZXF1ZXN0Eg0KBWxpbWl0GAEgASgFInMKDFRhZ0Nsb3VkSXRlbRIQCgh0YWdfbmFtZRgBIAEoCRIVCg1hcnRpY2xlX2NvdW50GAIgASgFEhIKCnBvc2l0aW9uX3gYAyABKAISEgoKcG9zaXRpb25feRgEIAEoAhISCgpwb3NpdGlvbl96GAUgASgCIlgKFUZldGNoVGFnQ2xvdWRSZXNwb25zZRIrCgR0YWdzGAEgAygLMh0uYWx0LmFydGljbGVzLnYyLlRhZ0Nsb3VkSXRlbRISCgp0b3RhbF90YWdzGAIgASgFIjAKGkdldEFydGljbGVTb3VyY2VVUkxSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkiQAobR2V0QXJ0aWNsZVNvdXJjZVVSTFJlc3BvbnNlEhIKCnNvdXJjZV91cmwYASABKAkSDQoFdGl0bGUYAiABKAkyvwkKDkFydGljbGVTZXJ2aWNlEnAKE0ZldGNoQXJ0aWNsZUNvbnRlbnQSKy5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlQ29udGVudFJlcXVlc3QaLC5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlQ29udGVudFJlc3BvbnNlEmEKDkFyY2hpdmVBcnRpY2xlEiYuYWx0LmFydGljbGVzLnYyLkFyY2hpdmVBcnRpY2xlUmVxdWVzdBonLmFsdC5hcnRpY2xlcy52Mi5BcmNoaXZlQXJ0aWNsZVJlc3BvbnNlEnAKE0ZldGNoQXJ0aWNsZXNDdXJzb3ISKy5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlc0N1cnNvclJlcXVlc3QaLC5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlc0N1cnNvclJlc3BvbnNlEnAKE0ZldGNoQXJ0aWNsZVN1bW1hcnkSKy5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlU3VtbWFyeVJlcXVlc3QaLC5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlU3VtbWFyeVJlc3BvbnNlEm0KEkZldGNoQXJ0aWNsZXNCeVRhZxIqLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQnlUYWdSZXF1ZXN0GisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZXNCeVRhZ1Jlc3BvbnNlEmcKEEZldGNoQXJ0aWNsZVRhZ3MSKC5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlVGFnc1JlcXVlc3QaKS5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlVGFnc1Jlc3BvbnNlEmQKD0ZldGNoUmFuZG9tRmVlZBInLmFsdC5hcnRpY2xlcy52Mi5GZXRjaFJhbmRvbUZlZWRSZXF1ZXN0GiguYWx0LmFydGljbGVzLnYyLkZldGNoUmFuZG9tRmVlZFJlc3BvbnNlEmwKEVN0cmVhbUFydGljbGVUYWdzEikuYWx0LmFydGljbGVzLnYyLlN0cmVhbUFydGljbGVUYWdzUmVxdWVzdBoqLmFsdC5hcnRpY2xlcy52Mi5TdHJlYW1BcnRpY2xlVGFnc1Jlc3BvbnNlMAEScAoTQmF0Y2hQcmVmZXRjaEltYWdlcxIrLmFsdC5hcnRpY2xlcy52Mi5CYXRjaFByZWZldGNoSW1hZ2VzUmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5CYXRjaFByZWZldGNoSW1hZ2VzUmVzcG9uc2USXgoNRmV0Y2hUYWdDbG91ZBIlLmFsdC5hcnRpY2xlcy52Mi5GZXRjaFRhZ0Nsb3VkUmVxdWVzdBomLmFsdC5hcnRpY2xlcy52Mi5GZXRjaFRhZ0Nsb3VkUmVzcG9uc2UScAoTR2V0QXJ0aWNsZVNvdXJjZVVSTBIrLmFsdC5hcnRpY2xlcy52Mi5HZXRBcnRpY2xlU291cmNlVVJMUmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5HZXRBcnRpY2xlU291cmNlVVJMUmVzcG9uc2UaBIi1GAFCKlooYWx0L2dlbi9wcm90by9hbHQvYXJ0aWNsZXMvdjI7YXJ0aWNsZXN2MmIGcHJvdG8z", [file_alt_api_v1_visibility]);
+  fileDesc("Ch5hbHQvYXJ0aWNsZXMvdjIvYXJ0aWNsZXMucHJvdG8SD2FsdC5hcnRpY2xlcy52MiJXChpGZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBILCgN1cmwYASABKAkSGgoNZm9yY2VfcmVmcmVzaBgCIAEoCEgAiAEBQhAKDl9mb3JjZV9yZWZyZXNoIoEBChtGZXRjaEFydGljbGVDb250ZW50UmVzcG9uc2USCwoDdXJsGAEgASgJEg8KB2NvbnRlbnQYAiABKAkSEgoKYXJ0aWNsZV9pZBgDIAEoCRIUCgxvZ19pbWFnZV91cmwYBCABKAkSGgoSb2dfaW1hZ2VfcHJveHlfdXJsGAUgASgJIkcKFUFyY2hpdmVBcnRpY2xlUmVxdWVzdBIQCghmZWVkX3VybBgBIAEoCRISCgV0aXRsZRgCIAEoCUgAiAEBQggKBl90aXRsZSIpChZBcmNoaXZlQXJ0aWNsZVJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiSwoaRmV0Y2hBcnRpY2xlc0N1cnNvclJlcXVlc3QSDQoFbGltaXQYASABKAUSEwoGY3Vyc29yGAIgASgJSACIAQFCCQoHX2N1cnNvciJqCgtBcnRpY2xlSXRlbRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRILCgN1cmwYAyABKAkSDwoHY29udGVudBgEIAEoCRIUCgxwdWJsaXNoZWRfYXQYBSABKAkSDAoEdGFncxgGIAMoCSKFAQobRmV0Y2hBcnRpY2xlc0N1cnNvclJlc3BvbnNlEioKBGRhdGEYASADKAsyHC5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZUl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiLwoaRmV0Y2hBcnRpY2xlU3VtbWFyeVJlcXVlc3QSEQoJZmVlZF91cmxzGAEgAygJIoEBChJBcnRpY2xlU3VtbWFyeUl0ZW0SDQoFdGl0bGUYASABKAkSDwoHY29udGVudBgCIAEoCRIOCgZhdXRob3IYAyABKAkSFAoMcHVibGlzaGVkX2F0GAQgASgJEhIKCmZldGNoZWRfYXQYBSABKAkSEQoJc291cmNlX2lkGAYgASgJIowBChtGZXRjaEFydGljbGVTdW1tYXJ5UmVzcG9uc2USPQoQbWF0Y2hlZF9hcnRpY2xlcxgBIAMoCzIjLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlU3VtbWFyeUl0ZW0SFQoNdG90YWxfbWF0Y2hlZBgCIAEoBRIXCg9yZXF1ZXN0ZWRfY291bnQYAyABKAUiMQoaQmF0Y2hQcmVmZXRjaEltYWdlc1JlcXVlc3QSEwoLYXJ0aWNsZV9pZHMYASADKAkiSgoOSW1hZ2VQcm94eUluZm8SEgoKYXJ0aWNsZV9pZBgBIAEoCRIRCglwcm94eV91cmwYAiABKAkSEQoJaXNfY2FjaGVkGAMgASgIIk4KG0JhdGNoUHJlZmV0Y2hJbWFnZXNSZXNwb25zZRIvCgZpbWFnZXMYASADKAsyHy5hbHQuYXJ0aWNsZXMudjIuSW1hZ2VQcm94eUluZm8iMgoiQmF0Y2hQcmVmZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBIMCgR1cmxzGAEgAygJIooBCiNCYXRjaFByZWZldGNoQXJ0aWNsZUNvbnRlbnRSZXNwb25zZRIWCg5hY2NlcHRlZF9jb3VudBgBIAEoBRISCgpzaGVkX2NvdW50GAIgASgFEhYKDnJlamVjdGVkX2NvdW50GAMgASgFEh8KF3NraXBwZWRfc2FtZV9ob3N0X2NvdW50GAQgASgFIo4BChlGZXRjaEFydGljbGVzQnlUYWdSZXF1ZXN0EhMKBnRhZ19pZBgBIAEoCUgAiAEBEhUKCHRhZ19uYW1lGAIgASgJSAGIAQESEwoGY3Vyc29yGAMgASgJSAKIAQESDQoFbGltaXQYBCABKAVCCQoHX3RhZ19pZEILCglfdGFnX25hbWVCCQoHX2N1cnNvciJoChNUYWdUcmFpbEFydGljbGVJdGVtEgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEgwKBGxpbmsYAyABKAkSFAoMcHVibGlzaGVkX2F0GAQgASgJEhIKCmZlZWRfdGl0bGUYBSABKAkikAEKGkZldGNoQXJ0aWNsZXNCeVRhZ1Jlc3BvbnNlEjYKCGFydGljbGVzGAEgAygLMiQuYWx0LmFydGljbGVzLnYyLlRhZ1RyYWlsQXJ0aWNsZUl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiLQoXRmV0Y2hBcnRpY2xlVGFnc1JlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCSI+Cg5BcnRpY2xlVGFnSXRlbRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEhIKCmNyZWF0ZWRfYXQYAyABKAkiXQoYRmV0Y2hBcnRpY2xlVGFnc1Jlc3BvbnNlEhIKCmFydGljbGVfaWQYASABKAkSLQoEdGFncxgCIAMoCzIfLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlVGFnSXRlbSIYChZGZXRjaFJhbmRvbUZlZWRSZXF1ZXN0IqABChdGZXRjaFJhbmRvbUZlZWRSZXNwb25zZRIKCgJpZBgBIAEoCRILCgN1cmwYAiABKAkSDQoFdGl0bGUYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkSLQoEdGFncxgFIAMoCzIfLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlVGFnSXRlbRIZChFsYXRlc3RfYXJ0aWNsZV9pZBgGIAEoCSKQAQoYU3RyZWFtQXJ0aWNsZVRhZ3NSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkSEgoFdGl0bGUYAiABKAlIAIgBARIUCgdjb250ZW50GAMgASgJSAGIAQESFAoHZmVlZF9pZBgEIAEoCUgCiAEBQggKBl90aXRsZUIKCghfY29udGVudEIKCghfZmVlZF9pZCLWAgoZU3RyZWFtQXJ0aWNsZVRhZ3NSZXNwb25zZRISCgphcnRpY2xlX2lkGAEgASgJEi0KBHRhZ3MYAiADKAsyHy5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0l0ZW0SSAoKZXZlbnRfdHlwZRgDIAEoDjI0LmFsdC5hcnRpY2xlcy52Mi5TdHJlYW1BcnRpY2xlVGFnc1Jlc3BvbnNlLkV2ZW50VHlwZRIUCgdtZXNzYWdlGAQgASgJSACIAQEiiQEKCUV2ZW50VHlwZRIaChZFVkVOVF9UWVBFX1VOU1BFQ0lGSUVEEAASFQoRRVZFTlRfVFlQRV9DQUNIRUQQARIZChVFVkVOVF9UWVBFX0dFTkVSQVRJTkcQAhIYChRFVkVOVF9UWVBFX0NPTVBMRVRFRBADEhQKEEVWRU5UX1RZUEVfRVJST1IQBEIKCghfbWVzc2FnZSIlChRGZXRjaFRhZ0Nsb3VkUmVxdWVzdBINCgVsaW1pdBgBIAEoBSJzCgxUYWdDbG91ZEl0ZW0SEAoIdGFnX25hbWUYASABKAkSFQoNYXJ0aWNsZV9jb3VudBgCIAEoBRISCgpwb3NpdGlvbl94GAMgASgCEhIKCnBvc2l0aW9uX3kYBCABKAISEgoKcG9zaXRpb25fehgFIAEoAiJYChVGZXRjaFRhZ0Nsb3VkUmVzcG9uc2USKwoEdGFncxgBIAMoCzIdLmFsdC5hcnRpY2xlcy52Mi5UYWdDbG91ZEl0ZW0SEgoKdG90YWxfdGFncxgCIAEoBSIwChpHZXRBcnRpY2xlU291cmNlVVJMUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJIkAKG0dldEFydGljbGVTb3VyY2VVUkxSZXNwb25zZRISCgpzb3VyY2VfdXJsGAEgASgJEg0KBXRpdGxlGAIgASgJMsoKCg5BcnRpY2xlU2VydmljZRJwChNGZXRjaEFydGljbGVDb250ZW50EisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZUNvbnRlbnRSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZUNvbnRlbnRSZXNwb25zZRJhCg5BcmNoaXZlQXJ0aWNsZRImLmFsdC5hcnRpY2xlcy52Mi5BcmNoaXZlQXJ0aWNsZVJlcXVlc3QaJy5hbHQuYXJ0aWNsZXMudjIuQXJjaGl2ZUFydGljbGVSZXNwb25zZRJwChNGZXRjaEFydGljbGVzQ3Vyc29yEisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZXNDdXJzb3JSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZXNDdXJzb3JSZXNwb25zZRJwChNGZXRjaEFydGljbGVTdW1tYXJ5EisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVN1bW1hcnlSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVN1bW1hcnlSZXNwb25zZRJtChJGZXRjaEFydGljbGVzQnlUYWcSKi5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlc0J5VGFnUmVxdWVzdBorLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQnlUYWdSZXNwb25zZRJnChBGZXRjaEFydGljbGVUYWdzEiguYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVRhZ3NSZXF1ZXN0GikuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVRhZ3NSZXNwb25zZRJkCg9GZXRjaFJhbmRvbUZlZWQSJy5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hSYW5kb21GZWVkUmVxdWVzdBooLmFsdC5hcnRpY2xlcy52Mi5GZXRjaFJhbmRvbUZlZWRSZXNwb25zZRJsChFTdHJlYW1BcnRpY2xlVGFncxIpLmFsdC5hcnRpY2xlcy52Mi5TdHJlYW1BcnRpY2xlVGFnc1JlcXVlc3QaKi5hbHQuYXJ0aWNsZXMudjIuU3RyZWFtQXJ0aWNsZVRhZ3NSZXNwb25zZTABEnAKE0JhdGNoUHJlZmV0Y2hJbWFnZXMSKy5hbHQuYXJ0aWNsZXMudjIuQmF0Y2hQcmVmZXRjaEltYWdlc1JlcXVlc3QaLC5hbHQuYXJ0aWNsZXMudjIuQmF0Y2hQcmVmZXRjaEltYWdlc1Jlc3BvbnNlEogBChtCYXRjaFByZWZldGNoQXJ0aWNsZUNvbnRlbnQSMy5hbHQuYXJ0aWNsZXMudjIuQmF0Y2hQcmVmZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBo0LmFsdC5hcnRpY2xlcy52Mi5CYXRjaFByZWZldGNoQXJ0aWNsZUNvbnRlbnRSZXNwb25zZRJeCg1GZXRjaFRhZ0Nsb3VkEiUuYWx0LmFydGljbGVzLnYyLkZldGNoVGFnQ2xvdWRSZXF1ZXN0GiYuYWx0LmFydGljbGVzLnYyLkZldGNoVGFnQ2xvdWRSZXNwb25zZRJwChNHZXRBcnRpY2xlU291cmNlVVJMEisuYWx0LmFydGljbGVzLnYyLkdldEFydGljbGVTb3VyY2VVUkxSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkdldEFydGljbGVTb3VyY2VVUkxSZXNwb25zZRoEiLUYAUIqWihhbHQvZ2VuL3Byb3RvL2FsdC9hcnRpY2xlcy92MjthcnRpY2xlc3YyYgZwcm90bzM", [file_alt_api_v1_visibility]);
 
 /**
  * FetchArticleContentRequest is the request for fetching article content
@@ -448,6 +448,89 @@ export const BatchPrefetchImagesResponseSchema: GenMessage<BatchPrefetchImagesRe
   messageDesc(file_alt_articles_v2_articles, 12);
 
 /**
+ * BatchPrefetchArticleContentRequest asks the server to warm the article
+ * bodies the reader believes the user is about to open.
+ *
+ * Fire-and-forget: the RPC returns before any publisher is contacted, and the
+ * caller is never told what came back. It exists so the *first* item a user
+ * opens is a database read instead of a live fetch — not as a bulk download
+ * API, and not as something a client may poll.
+ *
+ * @generated from message alt.articles.v2.BatchPrefetchArticleContentRequest
+ */
+export type BatchPrefetchArticleContentRequest = Message<"alt.articles.v2.BatchPrefetchArticleContentRequest"> & {
+  /**
+   * Article URLs to warm, in the order the user is expected to reach them.
+   * At most 5 are considered, and at most one per host: the per-host politeness
+   * interval means a same-host batch could only ever warm its first entry, and
+   * asking for the rest would spend the host's turn without fetching anything.
+   *
+   * @generated from field: repeated string urls = 1;
+   */
+  urls: string[];
+};
+
+/**
+ * Describes the message alt.articles.v2.BatchPrefetchArticleContentRequest.
+ * Use `create(BatchPrefetchArticleContentRequestSchema)` to create a new message.
+ */
+export const BatchPrefetchArticleContentRequestSchema: GenMessage<BatchPrefetchArticleContentRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 13);
+
+/**
+ * BatchPrefetchArticleContentResponse is an acceptance receipt, not a fetch
+ * result.
+ *
+ * Every count describes a decision taken before the response was written. What
+ * happened afterwards — whether the publisher answered, whether the body was
+ * stored — is deliberately not reported: a client that could see it would
+ * start waiting on it, and this RPC must never be on a path anybody waits on.
+ *
+ * @generated from message alt.articles.v2.BatchPrefetchArticleContentResponse
+ */
+export type BatchPrefetchArticleContentResponse = Message<"alt.articles.v2.BatchPrefetchArticleContentResponse"> & {
+  /**
+   * URLs that claimed a warm slot and were detached. Not a promise that any
+   * of them will be fetched, still less that they will be fetched by the time
+   * the user arrives.
+   *
+   * @generated from field: int32 accepted_count = 1;
+   */
+  acceptedCount: number;
+
+  /**
+   * URLs dropped because the warm pool was already full. Shedding is the
+   * designed behaviour under load; the client must not resend them.
+   *
+   * @generated from field: int32 shed_count = 2;
+   */
+  shedCount: number;
+
+  /**
+   * URLs rejected before anything was attempted: unparseable, or refused by
+   * the same SSRF allowlist FetchArticleContent applies.
+   *
+   * @generated from field: int32 rejected_count = 3;
+   */
+  rejectedCount: number;
+
+  /**
+   * URLs dropped because an earlier entry in the same batch already claimed
+   * that host. See the one-per-host note on the request.
+   *
+   * @generated from field: int32 skipped_same_host_count = 4;
+   */
+  skippedSameHostCount: number;
+};
+
+/**
+ * Describes the message alt.articles.v2.BatchPrefetchArticleContentResponse.
+ * Use `create(BatchPrefetchArticleContentResponseSchema)` to create a new message.
+ */
+export const BatchPrefetchArticleContentResponseSchema: GenMessage<BatchPrefetchArticleContentResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 14);
+
+/**
  * FetchArticlesByTagRequest is the request for fetching articles by tag
  *
  * @generated from message alt.articles.v2.FetchArticlesByTagRequest
@@ -487,7 +570,7 @@ export type FetchArticlesByTagRequest = Message<"alt.articles.v2.FetchArticlesBy
  * Use `create(FetchArticlesByTagRequestSchema)` to create a new message.
  */
 export const FetchArticlesByTagRequestSchema: GenMessage<FetchArticlesByTagRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 13);
+  messageDesc(file_alt_articles_v2_articles, 15);
 
 /**
  * TagTrailArticleItem represents an article in Tag Trail
@@ -536,7 +619,7 @@ export type TagTrailArticleItem = Message<"alt.articles.v2.TagTrailArticleItem">
  * Use `create(TagTrailArticleItemSchema)` to create a new message.
  */
 export const TagTrailArticleItemSchema: GenMessage<TagTrailArticleItem> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 14);
+  messageDesc(file_alt_articles_v2_articles, 16);
 
 /**
  * FetchArticlesByTagResponse contains articles matching the tag
@@ -571,7 +654,7 @@ export type FetchArticlesByTagResponse = Message<"alt.articles.v2.FetchArticlesB
  * Use `create(FetchArticlesByTagResponseSchema)` to create a new message.
  */
 export const FetchArticlesByTagResponseSchema: GenMessage<FetchArticlesByTagResponse> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 15);
+  messageDesc(file_alt_articles_v2_articles, 17);
 
 /**
  * FetchArticleTagsRequest is the request for fetching tags of an article
@@ -592,7 +675,7 @@ export type FetchArticleTagsRequest = Message<"alt.articles.v2.FetchArticleTagsR
  * Use `create(FetchArticleTagsRequestSchema)` to create a new message.
  */
 export const FetchArticleTagsRequestSchema: GenMessage<FetchArticleTagsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 16);
+  messageDesc(file_alt_articles_v2_articles, 18);
 
 /**
  * ArticleTagItem represents a tag on an article
@@ -627,7 +710,7 @@ export type ArticleTagItem = Message<"alt.articles.v2.ArticleTagItem"> & {
  * Use `create(ArticleTagItemSchema)` to create a new message.
  */
 export const ArticleTagItemSchema: GenMessage<ArticleTagItem> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 17);
+  messageDesc(file_alt_articles_v2_articles, 19);
 
 /**
  * FetchArticleTagsResponse contains tags for an article
@@ -655,7 +738,7 @@ export type FetchArticleTagsResponse = Message<"alt.articles.v2.FetchArticleTags
  * Use `create(FetchArticleTagsResponseSchema)` to create a new message.
  */
 export const FetchArticleTagsResponseSchema: GenMessage<FetchArticleTagsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 18);
+  messageDesc(file_alt_articles_v2_articles, 20);
 
 /**
  * FetchRandomFeedRequest is the request for getting a random feed
@@ -670,7 +753,7 @@ export type FetchRandomFeedRequest = Message<"alt.articles.v2.FetchRandomFeedReq
  * Use `create(FetchRandomFeedRequestSchema)` to create a new message.
  */
 export const FetchRandomFeedRequestSchema: GenMessage<FetchRandomFeedRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 19);
+  messageDesc(file_alt_articles_v2_articles, 21);
 
 /**
  * FetchRandomFeedResponse contains a random feed
@@ -726,7 +809,7 @@ export type FetchRandomFeedResponse = Message<"alt.articles.v2.FetchRandomFeedRe
  * Use `create(FetchRandomFeedResponseSchema)` to create a new message.
  */
 export const FetchRandomFeedResponseSchema: GenMessage<FetchRandomFeedResponse> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 20);
+  messageDesc(file_alt_articles_v2_articles, 22);
 
 /**
  * StreamArticleTagsRequest is the request for streaming tag updates
@@ -768,7 +851,7 @@ export type StreamArticleTagsRequest = Message<"alt.articles.v2.StreamArticleTag
  * Use `create(StreamArticleTagsRequestSchema)` to create a new message.
  */
 export const StreamArticleTagsRequestSchema: GenMessage<StreamArticleTagsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 21);
+  messageDesc(file_alt_articles_v2_articles, 23);
 
 /**
  * StreamArticleTagsResponse represents a streaming event for tag updates
@@ -810,7 +893,7 @@ export type StreamArticleTagsResponse = Message<"alt.articles.v2.StreamArticleTa
  * Use `create(StreamArticleTagsResponseSchema)` to create a new message.
  */
 export const StreamArticleTagsResponseSchema: GenMessage<StreamArticleTagsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 22);
+  messageDesc(file_alt_articles_v2_articles, 24);
 
 /**
  * EventType indicates the type of tag event
@@ -856,7 +939,7 @@ export enum StreamArticleTagsResponse_EventType {
  * Describes the enum alt.articles.v2.StreamArticleTagsResponse.EventType.
  */
 export const StreamArticleTagsResponse_EventTypeSchema: GenEnum<StreamArticleTagsResponse_EventType> = /*@__PURE__*/
-  enumDesc(file_alt_articles_v2_articles, 22, 0);
+  enumDesc(file_alt_articles_v2_articles, 24, 0);
 
 /**
  * FetchTagCloudRequest is the request for fetching tag cloud data
@@ -877,7 +960,7 @@ export type FetchTagCloudRequest = Message<"alt.articles.v2.FetchTagCloudRequest
  * Use `create(FetchTagCloudRequestSchema)` to create a new message.
  */
 export const FetchTagCloudRequestSchema: GenMessage<FetchTagCloudRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 23);
+  messageDesc(file_alt_articles_v2_articles, 25);
 
 /**
  * TagCloudItem represents a single tag with its article count and 3D position
@@ -922,7 +1005,7 @@ export type TagCloudItem = Message<"alt.articles.v2.TagCloudItem"> & {
  * Use `create(TagCloudItemSchema)` to create a new message.
  */
 export const TagCloudItemSchema: GenMessage<TagCloudItem> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 24);
+  messageDesc(file_alt_articles_v2_articles, 26);
 
 /**
  * FetchTagCloudResponse contains tag cloud data
@@ -950,7 +1033,7 @@ export type FetchTagCloudResponse = Message<"alt.articles.v2.FetchTagCloudRespon
  * Use `create(FetchTagCloudResponseSchema)` to create a new message.
  */
 export const FetchTagCloudResponseSchema: GenMessage<FetchTagCloudResponse> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 25);
+  messageDesc(file_alt_articles_v2_articles, 27);
 
 /**
  * GetArticleSourceURLRequest looks up the canonical external HTTPS URL for an
@@ -976,7 +1059,7 @@ export type GetArticleSourceURLRequest = Message<"alt.articles.v2.GetArticleSour
  * Use `create(GetArticleSourceURLRequestSchema)` to create a new message.
  */
 export const GetArticleSourceURLRequestSchema: GenMessage<GetArticleSourceURLRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 26);
+  messageDesc(file_alt_articles_v2_articles, 28);
 
 /**
  * GetArticleSourceURLResponse carries the resolved URL. The field is required
@@ -1009,7 +1092,7 @@ export type GetArticleSourceURLResponse = Message<"alt.articles.v2.GetArticleSou
  * Use `create(GetArticleSourceURLResponseSchema)` to create a new message.
  */
 export const GetArticleSourceURLResponseSchema: GenMessage<GetArticleSourceURLResponse> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 27);
+  messageDesc(file_alt_articles_v2_articles, 29);
 
 /**
  * ArticleService provides article-related operations
@@ -1114,6 +1197,25 @@ export const ArticleService: GenService<{
     methodKind: "unary";
     input: typeof BatchPrefetchImagesRequestSchema;
     output: typeof BatchPrefetchImagesResponseSchema;
+  },
+  /**
+   * BatchPrefetchArticleContent warms article bodies for the next few items a
+   * user is about to open, and returns before any of them is fetched.
+   *
+   * Bounded and shed-not-queued, like BatchPrefetchImages: a dropped warm
+   * costs one uncached article, a queued one costs a goroutine holding a
+   * request context while the per-host interval refuses to let it finish.
+   *
+   * One attempt per URL per call. The server never retries and the client must
+   * not poll: browser, BFF, alt-backend and publisher are four hops, and a
+   * retry at each multiplies rather than adds.
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.BatchPrefetchArticleContent
+   */
+  batchPrefetchArticleContent: {
+    methodKind: "unary";
+    input: typeof BatchPrefetchArticleContentRequestSchema;
+    output: typeof BatchPrefetchArticleContentResponseSchema;
   },
   /**
    * FetchTagCloud fetches tag cloud data (tag names with article counts)
