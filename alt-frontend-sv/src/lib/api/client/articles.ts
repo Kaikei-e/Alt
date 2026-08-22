@@ -1,5 +1,12 @@
-import type { ArticleSource } from "$lib/connect/articles";
-import { createClientTransport } from "$lib/connect/transport-client";
+import type {
+	ArticleSource,
+	BatchPrefetchArticleContentResult,
+} from "$lib/connect/articles";
+import {
+	type AltFetchPriority,
+	createClientTransport,
+	fetchPriorityHeaders,
+} from "$lib/connect/transport-client";
 
 /**
  * Safe HTML string type (server-sanitized)
@@ -90,7 +97,16 @@ export async function getArticleSummaryClient(
  */
 export async function getFeedContentOnTheFlyClient(
 	feedUrl: string,
-	options?: { signal?: AbortSignal; forceRefresh?: boolean },
+	options?: {
+		signal?: AbortSignal;
+		forceRefresh?: boolean;
+		/**
+		 * Fetch priority for this one call. `"high"` for a body the reader is
+		 * looking at, `"low"` for a lookahead. Omitted means "no hint", which
+		 * is the browser's own default of `auto`.
+		 */
+		priority?: AltFetchPriority;
+	},
 ): Promise<FeedContentOnTheFlyResponse> {
 	const transport = createClientTransport();
 	const { fetchArticleContent } = await import("$lib/connect/articles");
@@ -99,6 +115,7 @@ export async function getFeedContentOnTheFlyClient(
 		feedUrl,
 		options?.signal,
 		options?.forceRefresh,
+		options?.priority ? fetchPriorityHeaders(options.priority) : undefined,
 	);
 
 	return {
@@ -150,6 +167,27 @@ export async function batchPrefetchImagesClient(
 	const transport = createClientTransport();
 	const { batchPrefetchImages } = await import("$lib/connect/articles");
 	return batchPrefetchImages(transport, articleIds);
+}
+
+/**
+ * Ask the server to warm article bodies the reader is heading towards
+ * (クライアントサイド). Connect-RPC を使用。
+ *
+ * Fire-and-forget by contract: the promise resolves to an acceptance receipt,
+ * never to content, and the caller must not resend a URL the server shed. Only
+ * `articlePrefetcher` should call this — it owns the cooldown state and the
+ * per-URL ownership split that keeps a warm from racing the reader's own fetch.
+ */
+export async function batchPrefetchArticleContentClient(
+	urls: string[],
+): Promise<BatchPrefetchArticleContentResult> {
+	const transport = createClientTransport();
+	const { batchPrefetchArticleContent } = await import("$lib/connect/articles");
+	return batchPrefetchArticleContent(
+		transport,
+		urls,
+		fetchPriorityHeaders("low"),
+	);
 }
 
 /**

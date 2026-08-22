@@ -5,13 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("$lib/api/client", () => ({
 	getFeedContentOnTheFlyClient: vi.fn(),
 }));
+vi.mock("$lib/api/client/articles", () => ({
+	batchPrefetchArticleContentClient: vi.fn(),
+}));
 
 import { getFeedContentOnTheFlyClient } from "$lib/api/client";
-import type { FeedContentOnTheFlyResponse } from "$lib/api/client/articles";
+import {
+	batchPrefetchArticleContentClient,
+	type FeedContentOnTheFlyResponse,
+} from "$lib/api/client/articles";
 import type { RenderFeed } from "$lib/schema/feed";
 import { ArticlePrefetcher } from "./articlePrefetcher";
 
 const mockedGetContent = vi.mocked(getFeedContentOnTheFlyClient);
+const mockedWarm = vi.mocked(batchPrefetchArticleContentClient);
 
 function makeFeed(id: string, url: string): RenderFeed {
 	return {
@@ -34,6 +41,15 @@ describe("ArticlePrefetcher", () => {
 		// from a previous test do not leak into the next.
 		vi.resetAllMocks();
 		vi.useFakeTimers();
+		// resetAllMocks drops implementations, and the warm is fired (never
+		// awaited) from triggerPrefetch, so every test needs something that
+		// returns a promise even when the warm is not what it is about.
+		mockedWarm.mockResolvedValue({
+			acceptedCount: 0,
+			shedCount: 0,
+			rejectedCount: 0,
+			skippedSameHostCount: 0,
+		});
 		prefetcher = new ArticlePrefetcher();
 	});
 
@@ -136,6 +152,7 @@ describe("ArticlePrefetcher", () => {
 			expect(mockedGetContent).toHaveBeenNthCalledWith(
 				1,
 				"https://zenn.dev/article-1",
+				{ priority: "low" },
 			);
 
 			// Resolve first → second runs.
@@ -155,6 +172,7 @@ describe("ArticlePrefetcher", () => {
 			expect(mockedGetContent).toHaveBeenNthCalledWith(
 				2,
 				"https://zenn.dev/article-2",
+				{ priority: "low" },
 			);
 		});
 
@@ -360,7 +378,12 @@ describe("ArticlePrefetcher", () => {
 			// through on the second rung of the ladder.
 			await vi.advanceTimersByTimeAsync(5_000);
 			expect(mockedGetContent).toHaveBeenCalledTimes(1);
-			expect(mockedGetContent).toHaveBeenCalledWith("https://dev.to/article-a");
+			expect(mockedGetContent).toHaveBeenCalledWith(
+				"https://dev.to/article-a",
+				{
+					priority: "low",
+				},
+			);
 		});
 
 		it("holds a queued article for the whole window, then fires it", async () => {
@@ -465,6 +488,9 @@ describe("ArticlePrefetcher", () => {
 			});
 			expect(mockedGetContent).toHaveBeenCalledWith(
 				"https://zenn.dev/article-b",
+				{
+					priority: "low",
+				},
 			);
 		});
 
@@ -671,6 +697,7 @@ describe("ArticlePrefetcher", () => {
 			expect(mockedGetContent).toHaveBeenCalledTimes(2);
 			expect(mockedGetContent).toHaveBeenLastCalledWith(
 				"https://unrelated.example/article",
+				{ priority: "high" },
 			);
 		});
 
@@ -941,6 +968,7 @@ describe("ArticlePrefetcher", () => {
 			await vi.waitFor(() => {
 				expect(mockedGetContent).toHaveBeenCalledWith(
 					"https://example.com/next-1",
+					{ priority: "low" },
 				);
 			});
 		});
@@ -964,10 +992,13 @@ describe("ArticlePrefetcher", () => {
 			await vi.advanceTimersByTimeAsync(1_000);
 
 			await vi.waitFor(() => {
-				expect(mockedGetContent).toHaveBeenCalledWith("https://example.com/c");
+				expect(mockedGetContent).toHaveBeenCalledWith("https://example.com/c", {
+					priority: "low",
+				});
 			});
 			expect(mockedGetContent).not.toHaveBeenCalledWith(
 				"https://example.com/b",
+				{ priority: "low" },
 			);
 		});
 	});
@@ -1184,7 +1215,12 @@ describe("ArticlePrefetcher", () => {
 			prefetcher.triggerPrefetch(feeds, 0, 1);
 			await vi.advanceTimersByTimeAsync(600);
 			expect(mockedGetContent).toHaveBeenCalledTimes(1);
-			expect(mockedGetContent).toHaveBeenCalledWith("https://dev.to/article-1");
+			expect(mockedGetContent).toHaveBeenCalledWith(
+				"https://dev.to/article-1",
+				{
+					priority: "low",
+				},
+			);
 
 			// The reader swiped on. article-1 is behind them now; a retry would
 			// be spending a publisher's budget on a card nobody is heading for.
@@ -1305,6 +1341,7 @@ describe("ArticlePrefetcher", () => {
 			expect(mockedGetContent).toHaveBeenCalledTimes(2);
 			expect(mockedGetContent).toHaveBeenLastCalledWith(
 				"https://zenn.dev/article-c",
+				{ priority: "low" },
 			);
 		});
 
@@ -1333,6 +1370,7 @@ describe("ArticlePrefetcher", () => {
 			expect(mockedGetContent).toHaveBeenCalledTimes(2);
 			expect(mockedGetContent).toHaveBeenLastCalledWith(
 				"https://zenn.dev/free",
+				{ priority: "low" },
 			);
 		});
 
@@ -1349,7 +1387,10 @@ describe("ArticlePrefetcher", () => {
 				0,
 				3,
 			);
-			await vi.advanceTimersByTimeAsync(2_000);
+			// Long enough to cover the third slot's warm-settle window: it is
+			// the window's far slot, so it goes to the server first and only
+			// reaches the ladder once that warm can no longer be in flight.
+			await vi.advanceTimersByTimeAsync(12_000);
 
 			expect(mockedGetContent.mock.calls.map((call) => call[0])).toEqual([
 				"https://a.example/1",
@@ -1434,6 +1475,345 @@ describe("ArticlePrefetcher", () => {
 			expect(
 				prefetcher.getCachedArticleId("https://example.com/feed-0"),
 			).toBeNull();
+		});
+	});
+
+	// ADR-000884 cut the lookahead from 10 to 4 after a production 429, and the
+	// server-side warm does not reopen it. It moves work rather than adding it:
+	// the two nearest cards stay with the per-URL ladder, which is what fills
+	// the client cache, and everything further out is handed to the server as a
+	// fire-and-forget warm. The two sets are disjoint by construction, so no
+	// article is ever fetched by both — which matters more than it sounds,
+	// because the warm and the reader's own fetch share alt-backend's
+	// crawl-delay gate and the loser of that race comes back as a 429.
+	describe("server-side content warm (BatchPrefetchArticleContent)", () => {
+		const body = (content: string) =>
+			({
+				content,
+				article_id: "art-warm",
+				og_image_url: null,
+			}) as unknown as FeedContentOnTheFlyResponse;
+
+		const receipt = {
+			acceptedCount: 1,
+			shedCount: 0,
+			rejectedCount: 0,
+			skippedSameHostCount: 0,
+		};
+
+		/** Five feeds on five hosts: active card plus a four-slot window. */
+		const window4 = (): RenderFeed[] => [
+			makeFeed("0", "https://active.example/0"),
+			makeFeed("1", "https://a.example/1"),
+			makeFeed("2", "https://b.example/2"),
+			makeFeed("3", "https://c.example/3"),
+			makeFeed("4", "https://d.example/4"),
+		];
+
+		beforeEach(() => {
+			mockedGetContent.mockResolvedValue(body("<p>Body</p>"));
+			mockedWarm.mockResolvedValue(receipt);
+		});
+
+		it("hands the far slots to the server and keeps the near ones per-URL", async () => {
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(3_000);
+
+			expect(mockedWarm).toHaveBeenCalledTimes(1);
+			expect(mockedWarm).toHaveBeenCalledWith([
+				"https://c.example/3",
+				"https://d.example/4",
+			]);
+			expect(mockedGetContent.mock.calls.map((call) => call[0])).toEqual([
+				"https://a.example/1",
+				"https://b.example/2",
+			]);
+		});
+
+		// The reader's own fetch and the warm meet at alt-backend's shared
+		// scraping-policy gate. Whichever gets there second is told the crawl
+		// delay has not elapsed, which arrives at this class as a 429 and arms
+		// the host cooldown — the exact failure ADR-000884 was written about.
+		it("never warms a host the per-URL ladder is about to fetch from", async () => {
+			prefetcher.triggerPrefetch(
+				[
+					makeFeed("0", "https://active.example/0"),
+					makeFeed("1", "https://a.example/1"),
+					makeFeed("2", "https://b.example/2"),
+					makeFeed("3", "https://a.example/3"),
+					makeFeed("4", "https://d.example/4"),
+				],
+				0,
+				4,
+			);
+			await vi.advanceTimersByTimeAsync(3_000);
+
+			expect(mockedWarm).toHaveBeenCalledWith(["https://d.example/4"]);
+			expect(mockedGetContent.mock.calls.map((call) => call[0])).toContain(
+				"https://a.example/3",
+			);
+		});
+
+		it("never warms a host that is cooling down", async () => {
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError(
+					"external site returned 429",
+					Code.ResourceExhausted,
+					new Headers({ "X-Alt-Failure-Scope": "host" }),
+				),
+			);
+			prefetcher.triggerPrefetch(
+				[
+					makeFeed("0", "https://active.example/0"),
+					makeFeed("1", "https://c.example/3"),
+				],
+				0,
+				1,
+			);
+			await vi.advanceTimersByTimeAsync(600);
+			expect(mockedWarm).not.toHaveBeenCalled();
+
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockedWarm).toHaveBeenCalledWith(["https://d.example/4"]);
+		});
+
+		it("does not warm at all while the all-hosts pause is in force", async () => {
+			mockedGetContent.mockRejectedValueOnce(
+				new ConnectError(
+					"circuit breaker open",
+					Code.Unavailable,
+					new Headers({ "X-Alt-Failure-Scope": "global" }),
+				),
+			);
+			prefetcher.triggerPrefetch(
+				[
+					makeFeed("0", "https://active.example/0"),
+					makeFeed("1", "https://z.example/9"),
+				],
+				0,
+				1,
+			);
+			await vi.advanceTimersByTimeAsync(600);
+
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockedWarm).not.toHaveBeenCalled();
+		});
+
+		// The driving $effect re-runs on every swipe and on every feeds
+		// reassignment, which is far more often than a warm is worth. The
+		// server sheds rather than queues, so an unbounded client would just be
+		// paying BFF and backend cost to be refused.
+		it("sends at most one warm batch per five seconds", async () => {
+			const feeds = [
+				...window4(),
+				makeFeed("5", "https://e.example/5"),
+				makeFeed("6", "https://f.example/6"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 4);
+			prefetcher.triggerPrefetch(feeds, 1, 4);
+			prefetcher.triggerPrefetch(feeds, 2, 4);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockedWarm).toHaveBeenCalledTimes(1);
+			expect(mockedWarm).toHaveBeenCalledWith([
+				"https://c.example/3",
+				"https://d.example/4",
+			]);
+		});
+
+		it("warms again once the interval has elapsed", async () => {
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(6_000);
+
+			prefetcher.triggerPrefetch(
+				[
+					makeFeed("0", "https://active.example/0"),
+					makeFeed("1", "https://g.example/1"),
+					makeFeed("2", "https://h.example/2"),
+					makeFeed("3", "https://i.example/3"),
+					makeFeed("4", "https://j.example/4"),
+				],
+				0,
+				4,
+			);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockedWarm).toHaveBeenCalledTimes(2);
+			expect(mockedWarm).toHaveBeenLastCalledWith([
+				"https://i.example/3",
+				"https://j.example/4",
+			]);
+		});
+
+		// "The server never retries and the client must not poll." A warm that
+		// was shed is a warm that must not be resent.
+		it("never asks the server to warm the same article twice", async () => {
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(6_000);
+			expect(mockedWarm).toHaveBeenCalledTimes(1);
+
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(6_000);
+
+			expect(mockedWarm).toHaveBeenCalledTimes(1);
+		});
+
+		it("treats FAILED_PRECONDITION as 'this feature is off', once", async () => {
+			const info = vi.spyOn(console, "info").mockImplementation(() => {});
+			mockedWarm.mockRejectedValue(
+				new ConnectError(
+					"article content prefetch is disabled",
+					Code.FailedPrecondition,
+				),
+			);
+			const feeds = [
+				...window4(),
+				makeFeed("5", "https://e.example/5"),
+				makeFeed("6", "https://f.example/6"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 4);
+			await vi.advanceTimersByTimeAsync(6_000);
+			prefetcher.triggerPrefetch(feeds, 2, 4);
+			await vi.advanceTimersByTimeAsync(6_000);
+
+			expect(mockedWarm).toHaveBeenCalledTimes(1);
+			expect(info).toHaveBeenCalledTimes(1);
+			info.mockRestore();
+		});
+
+		it("hands the articles back to the per-URL ladder when the warm is refused", async () => {
+			mockedWarm.mockRejectedValue(
+				new ConnectError("disabled", Code.FailedPrecondition),
+			);
+			vi.spyOn(console, "info").mockImplementation(() => {});
+
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(3_000);
+
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(3_000);
+
+			expect(
+				new Set(mockedGetContent.mock.calls.map((call) => call[0])),
+			).toEqual(
+				new Set([
+					"https://a.example/1",
+					"https://b.example/2",
+					"https://c.example/3",
+					"https://d.example/4",
+				]),
+			);
+		});
+
+		// A warm nobody is waiting on must not be able to pause a reader who is.
+		// A refusal carrying the BFF's own global scope is the sharpest case:
+		// through the per-URL path that header pauses every host for 30s.
+		it("never arms a cooldown from a failed warm", async () => {
+			mockedWarm.mockRejectedValue(
+				new ConnectError(
+					"circuit breaker open",
+					Code.Unavailable,
+					new Headers({ "X-Alt-Failure-Scope": "global" }),
+				),
+			);
+
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(3_000);
+
+			expect(
+				new Set(mockedGetContent.mock.calls.map((call) => call[0])),
+			).toEqual(
+				new Set([
+					"https://a.example/1",
+					"https://b.example/2",
+					"https://c.example/3",
+					"https://d.example/4",
+				]),
+			);
+		});
+
+		// The other half of "no double fetch": the ladder does not merely skip
+		// a warmed article, it waits the warm out and then fetches it, which by
+		// then is a read from alt-backend's store rather than a second trip to
+		// the publisher.
+		it("fetches a warmed article per-URL only once the warm has settled", async () => {
+			prefetcher.triggerPrefetch(window4(), 0, 4);
+			await vi.advanceTimersByTimeAsync(3_000);
+
+			expect(mockedGetContent.mock.calls.map((call) => call[0])).toEqual([
+				"https://a.example/1",
+				"https://b.example/2",
+			]);
+
+			await vi.advanceTimersByTimeAsync(12_000);
+
+			expect(
+				new Set(mockedGetContent.mock.calls.map((call) => call[0])),
+			).toEqual(
+				new Set([
+					"https://a.example/1",
+					"https://b.example/2",
+					"https://c.example/3",
+					"https://d.example/4",
+				]),
+			);
+		});
+
+		it("leaves the two-card default lookahead entirely to the per-URL ladder", async () => {
+			prefetcher.triggerPrefetch(window4(), 0, 2);
+			await vi.advanceTimersByTimeAsync(3_000);
+
+			expect(mockedWarm).not.toHaveBeenCalled();
+			expect(mockedGetContent.mock.calls.map((call) => call[0])).toEqual([
+				"https://a.example/1",
+				"https://b.example/2",
+			]);
+		});
+	});
+
+	describe("fetch priority", () => {
+		it("asks for the low lane on the background ladder", async () => {
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Body</p>",
+				article_id: "art",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			prefetcher.triggerPrefetch(
+				[
+					makeFeed("0", "https://active.example/0"),
+					makeFeed("1", "https://a.example/1"),
+				],
+				0,
+				1,
+			);
+			await vi.advanceTimersByTimeAsync(600);
+
+			expect(mockedGetContent).toHaveBeenCalledWith("https://a.example/1", {
+				priority: "low",
+			});
+		});
+
+		it("asks for the high lane for the card the reader is looking at", async () => {
+			mockedGetContent.mockResolvedValue({
+				content: "<p>Body</p>",
+				article_id: "art",
+				og_image_url: null,
+			} as unknown as FeedContentOnTheFlyResponse);
+
+			void prefetcher.ensureContent("https://a.example/visible");
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(mockedGetContent).toHaveBeenCalledWith(
+				"https://a.example/visible",
+				{ priority: "high" },
+			);
 		});
 	});
 });
