@@ -52,7 +52,9 @@ export const FOREGROUND_RETRY_MIN_WAIT_MS = 500;
 
 /**
  * Ceiling for the foreground wait. `RATE_LIMIT_EXTERNAL_API_INTERVAL` defaults
- * to 10s per host ([[000959]]), so a legitimate slot wait fits underneath;
+ * to 7.5s per host ([[000982]] cut it from the 10s [[000959]] recorded), and
+ * the server rounds that up to an 8s `Retry-After` (RFC 9110 delta-seconds are
+ * integers), so a legitimate slot wait still fits underneath this ceiling;
  * anything larger is not something to hold a reading surface open for.
  */
 export const FOREGROUND_RETRY_MAX_WAIT_MS = 10_000;
