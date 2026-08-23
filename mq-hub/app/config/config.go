@@ -76,13 +76,13 @@ func NewConfig() (*Config, error) {
 	}
 
 	return &Config{
-		RedisURL:           getEnvOrDefault("REDIS_URL", "redis://localhost:6379"),
-		ConnectPort:        port,
-		LogLevel:           getEnvOrDefault("LOG_LEVEL", "info"),
-		RedisPoolSize:      poolSize,
-		MaxBatchSize:       maxBatchSize,
-		StreamMaxLen:       streamMaxLen,
-		StreamHardMaxLen:   streamHardMaxLen,
+		RedisURL:                getEnvOrDefault("REDIS_URL", "redis://localhost:6379"),
+		ConnectPort:             port,
+		LogLevel:                getEnvOrDefault("LOG_LEVEL", "info"),
+		RedisPoolSize:           poolSize,
+		MaxBatchSize:            maxBatchSize,
+		StreamMaxLen:            streamMaxLen,
+		StreamHardMaxLen:        streamHardMaxLen,
 		StreamTrimInterval:      time.Duration(trimIntervalSeconds) * time.Second,
 		ReplyStreamSweepEnabled: replyStreamSweepEnabled,
 	}, nil

@@ -50,7 +50,7 @@ func TestJobRunner_StopBeforeStart_IsNoOp(t *testing.T) {
 		return nil
 	}, testLogger())
 
-	runner.Stop()          // stop before start
+	runner.Stop()                      // stop before start
 	runner.Start(context.Background()) // must be ignored
 
 	time.Sleep(50 * time.Millisecond)
