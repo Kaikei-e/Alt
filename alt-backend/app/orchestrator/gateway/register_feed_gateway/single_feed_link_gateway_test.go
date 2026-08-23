@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -92,6 +93,51 @@ func TestDefaultRSSFeedFetcher_RedirectToAllowedHost_Followed(t *testing.T) {
 	}
 	if feed.Title != "Example Feed" {
 		t.Errorf("expected 'Example Feed', got %q", feed.Title)
+	}
+}
+
+func TestDefaultRSSFeedFetcher_DialToAllowlistedPrivateHost_Allowed(t *testing.T) {
+	// Regression (E2E alt-backend shard / staging): the fetcher points at a feed
+	// host that operators put on FEED_ALLOWED_HOSTS *because* it resolves to a
+	// private/loopback address — the deps stub answers only for stub.invalid, which
+	// maps to a container-internal IP (compose.staging.yaml:1165). The dial-time
+	// SSRF guard must honour that allow-list, exactly as CheckRedirect and
+	// URLSecurityValidator.isPrivateNetwork already do, or internal feed collection
+	// is blocked. Uses the PRODUCTION fetcher (allowLoopbackDial = false) so the
+	// only thing that can let the loopback dial through is the allow-list branch —
+	// which is precisely what the old Dialer.Control guard could not see.
+	server := newFeedServer(t)
+
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	// The httptest server binds to a loopback IP; trust exactly that host.
+	t.Setenv("FEED_ALLOWED_HOSTS", u.Hostname())
+
+	fetcher := NewDefaultRSSFeedFetcher()
+	feed, err := fetcher.FetchRSSFeed(context.Background(), server.URL+"/rss")
+	if err != nil {
+		t.Fatalf("expected an allow-listed private/loopback host to be dialable, got %v", err)
+	}
+	if feed.Title != "Example Feed" {
+		t.Errorf("expected 'Example Feed', got %q", feed.Title)
+	}
+}
+
+func TestDefaultRSSFeedFetcher_DialToNonAllowlistedPrivateIP_Blocked(t *testing.T) {
+	// The allow-list escape hatch must not weaken SSRF protection for anything
+	// else: a private IP that is NOT on FEED_ALLOWED_HOSTS must still be refused at
+	// connection time. Production fetcher, empty allow-list.
+	t.Setenv("FEED_ALLOWED_HOSTS", "")
+
+	fetcher := NewDefaultRSSFeedFetcher()
+	_, err := fetcher.FetchRSSFeed(context.Background(), "http://10.0.0.1/rss")
+	if err == nil {
+		t.Fatal("expected a non-allow-listed private IP to be blocked at dial time, got nil")
+	}
+	if !strings.Contains(err.Error(), "PRIVATE_IP_BLOCKED") {
+		t.Errorf("expected a PRIVATE_IP_BLOCKED SSRF error, got: %v", err)
 	}
 }
 
