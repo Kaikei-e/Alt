@@ -57,14 +57,14 @@ func articleCreatedEvent() *domain.Event {
 		URL:         "https://example.com/article",
 		Content:     "Full article content for direct indexing.",
 		Tags:        []string{"technology"},
-		PublishedAt: "2026-03-26T00:00:00Z",
+		PublishedAt: publishedAtFixture,
 	}
 	payloadJSON, _ := json.Marshal(payload)
 	event, _ := domain.NewEvent(
 		domain.EventTypeArticleCreated,
 		"alt-backend",
 		payloadJSON,
-		map[string]string{"trace_id": "trace-001"},
+		producerTraceMetadata(),
 	)
 	return event
 }
@@ -81,14 +81,14 @@ func articleUpdatedEvent() *domain.Event {
 		URL:         "https://example.com/article",
 		Content:     "Updated article content.",
 		Tags:        []string{"technology"},
-		PublishedAt: "2026-03-26T00:00:00Z",
+		PublishedAt: publishedAtFixture,
 	}
 	payloadJSON, _ := json.Marshal(payload)
 	event, _ := domain.NewEvent(
 		domain.EventTypeArticleUpdated,
 		"alt-backend",
 		payloadJSON,
-		map[string]string{"trace_id": "trace-001"},
+		producerTraceMetadata(),
 	)
 	return event
 }
@@ -105,7 +105,7 @@ func summarizeRequestedEvent() *domain.Event {
 		domain.EventTypeSummarizeRequested,
 		"alt-backend",
 		payloadJSON,
-		map[string]string{"trace_id": "trace-002"},
+		producerTraceMetadata(),
 	)
 	return event
 }
@@ -121,7 +121,7 @@ func indexArticleEvent() *domain.Event {
 		domain.EventTypeIndexArticle,
 		"alt-backend",
 		payloadJSON,
-		map[string]string{"trace_id": "trace-003"},
+		producerTraceMetadata(),
 	)
 	return event
 }

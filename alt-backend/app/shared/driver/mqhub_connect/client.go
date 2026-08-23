@@ -9,11 +9,33 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	mqhubv1 "alt/gen/proto/services/mqhub/v1"
 	"alt/gen/proto/services/mqhub/v1/mqhubv1connect"
 )
+
+// traceMetadata builds the event Metadata map from the OTel span context riding
+// on ctx. Every consumer of alt:events:* (search-indexer, pre-processor) pins a
+// $.metadata.trace_id type matcher on the envelope, so the producer is the party
+// contractually obliged to carry the current trace_id -- it is injected here from
+// the live span rather than fabricated, which keeps the CDC verification honest
+// against real producer output (CDC-1).
+//
+// When no valid span is on ctx (a publish outside any request/job span), no
+// trace_id is invented: an empty map is returned. Fabricating a value would make
+// "no trace context" indistinguishable from a real one and would plant a false
+// fact on the wire (CLAUDE.md Rules 8/9). In production every Publish* runs
+// inside a request or job span, so real events carry the id.
+func traceMetadata(ctx context.Context) map[string]string {
+	md := map[string]string{}
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		md["trace_id"] = sc.TraceID().String()
+		md["span_id"] = sc.SpanID().String()
+	}
+	return md
+}
 
 // StreamKey constants matching mq-hub domain.
 const (
@@ -111,7 +133,7 @@ func (c *Client) PublishArticleCreated(ctx context.Context, payload ArticleCreat
 		Source:    "alt-backend",
 		CreatedAt: timestamppb.Now(),
 		Payload:   payloadBytes,
-		Metadata:  map[string]string{},
+		Metadata:  traceMetadata(ctx),
 	}
 
 	resp, err := c.client.Publish(ctx, connect.NewRequest(&mqhubv1.PublishRequest{
@@ -139,7 +161,7 @@ func (c *Client) PublishArticleUpdated(ctx context.Context, payload ArticleCreat
 		Source:    "alt-backend",
 		CreatedAt: timestamppb.Now(),
 		Payload:   payloadBytes,
-		Metadata:  map[string]string{},
+		Metadata:  traceMetadata(ctx),
 	}
 
 	resp, err := c.client.Publish(ctx, connect.NewRequest(&mqhubv1.PublishRequest{
@@ -167,7 +189,7 @@ func (c *Client) PublishSummarizeRequested(ctx context.Context, payload Summariz
 		Source:    "alt-backend",
 		CreatedAt: timestamppb.Now(),
 		Payload:   payloadBytes,
-		Metadata:  map[string]string{},
+		Metadata:  traceMetadata(ctx),
 	}
 
 	resp, err := c.client.Publish(ctx, connect.NewRequest(&mqhubv1.PublishRequest{
@@ -195,7 +217,7 @@ func (c *Client) PublishIndexArticle(ctx context.Context, payload IndexArticlePa
 		Source:    "alt-backend",
 		CreatedAt: timestamppb.Now(),
 		Payload:   payloadBytes,
-		Metadata:  map[string]string{},
+		Metadata:  traceMetadata(ctx),
 	}
 
 	resp, err := c.client.Publish(ctx, connect.NewRequest(&mqhubv1.PublishRequest{

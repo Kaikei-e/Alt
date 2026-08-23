@@ -8,11 +8,42 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/trace"
 
 	"mq-hub/domain"
 )
 
 const pactDir = "../../../../pacts"
+
+// publishedAtFixture is the article publish time used across the article-event
+// fixtures. It is a time.Time (not a string) so ArticleCreatedPayload below can
+// mirror alt-backend's real producer struct field for field; a UTC time with no
+// sub-second component marshals to "2026-03-26T00:00:00Z", exactly what the real
+// producer emits.
+var publishedAtFixture = time.Date(2026, 3, 26, 0, 0, 0, 0, time.UTC)
+
+// producerTraceMetadata reproduces the Metadata map alt-backend's real mq-hub
+// producer attaches to every article event (shared/driver/mqhub_connect.
+// traceMetadata): trace_id and span_id derived from the live OTel span context.
+// mq-hub cannot import module `alt`, so the mechanism is replicated here against
+// the same go.opentelemetry.io/otel/trace API. Using a span-derived 32-/16-hex id
+// instead of a hand-typed placeholder like "abc-123" keeps the verified fixture
+// honest about the shape the producer actually puts on the wire (CDC-1): the
+// consumer pact's $.metadata.trace_id type matcher is now satisfied by data of
+// the real form.
+func producerTraceMetadata() map[string]string {
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+	return map[string]string{
+		"trace_id": sc.TraceID().String(),
+		"span_id":  sc.SpanID().String(),
+	}
+}
 
 // RedisStreamEvent represents the wire format of an event on Redis Streams.
 // This mirrors domain.Event as serialized by RedisDriver.eventToValues().
@@ -30,15 +61,22 @@ type RedisStreamEvent struct {
 // article_id against alt-backend -- but the fields stay here because alt-backend
 // still emits them, and the fixtures below must keep satisfying the pacts of
 // consumer versions that are still deployed.
+//
+// This struct mirrors alt-backend's real producer type
+// (shared/driver/mqhub_connect.ArticleCreatedPayload) field for field, including
+// PublishedAt as time.Time (not string): the whole point of these fixtures is to
+// verify the pact against what the producer actually serializes, so a type drift
+// here -- string vs time.Time -- would let the verification pass against a shape
+// the producer never emits (CDC-1).
 type ArticleCreatedPayload struct {
-	ArticleID   string   `json:"article_id"`
-	UserID      string   `json:"user_id"`
-	FeedID      string   `json:"feed_id"`
-	Title       string   `json:"title"`
-	URL         string   `json:"url"`
-	Content     string   `json:"content,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	PublishedAt string   `json:"published_at"`
+	ArticleID   string    `json:"article_id"`
+	UserID      string    `json:"user_id"`
+	FeedID      string    `json:"feed_id"`
+	Title       string    `json:"title"`
+	URL         string    `json:"url"`
+	Content     string    `json:"content,omitempty"`
+	Tags        []string  `json:"tags,omitempty"`
+	PublishedAt time.Time `json:"published_at"`
 }
 
 // TagGenerationRequestedPayload is the payload structure for TagGenerationRequested events.
@@ -59,7 +97,7 @@ func buildArticleCreatedEvent() *domain.Event {
 		URL:         "https://example.com/go-1-26",
 		Content:     "The Go team announced the release of Go 1.26 with exciting new features.",
 		Tags:        []string{"go", "programming"},
-		PublishedAt: "2026-03-26T00:00:00Z",
+		PublishedAt: publishedAtFixture,
 	}
 	payloadJSON, _ := json.Marshal(payload)
 
@@ -67,7 +105,7 @@ func buildArticleCreatedEvent() *domain.Event {
 		domain.EventTypeArticleCreated,
 		"alt-backend",
 		payloadJSON,
-		map[string]string{"trace_id": "abc-123"},
+		producerTraceMetadata(),
 	)
 	return event
 }
