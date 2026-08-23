@@ -114,9 +114,12 @@ func (g *ValidateAndFetchRSSGateway) ValidateAndFetch(ctx context.Context, link 
 			}
 
 			// Rule 2: throttle the external fetch per host, shared with the
-			// harvester's feed collector. Skipped only under the WithFetcher test
+			// harvester's feed collector. Skipped for FEED_ALLOWED_HOSTS hosts —
+			// operator-trusted internal/test sources are not third-party publishers
+			// the politeness interval protects, the same escape hatch the SSRF guard
+			// and CheckRedirect already honor. Also nil under the WithFetcher test
 			// constructor (mock fetcher, no real external call).
-			if g.rateLimiter != nil {
+			if g.rateLimiter != nil && !security.IsFeedHostAllowed(parsedURL.Hostname()) {
 				if waitErr := g.rateLimiter.WaitForHost(ctx, link); waitErr != nil {
 					return waitErr
 				}
