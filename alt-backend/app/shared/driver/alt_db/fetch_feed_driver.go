@@ -87,6 +87,10 @@ func (r *FeedRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, er
 		}
 		feeds = append(feeds, &feed)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating feeds list", "error", err)
+		return nil, errors.New("error scanning feeds list")
+	}
 
 	return feeds, nil
 }
@@ -113,6 +117,10 @@ func (r *FeedRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([]
 		}
 		feeds = append(feeds, &feed)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating feeds list limit", "error", err)
+		return nil, errors.New("error scanning feeds list offset")
+	}
 
 	return feeds, nil
 }
@@ -138,6 +146,10 @@ func (r *FeedRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*m
 			return nil, errors.New("error scanning feeds list page")
 		}
 		feeds = append(feeds, &feed)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating feeds list page", "error", err)
+		return nil, errors.New("error scanning feeds list page")
 	}
 
 	return feeds, nil
@@ -193,6 +205,10 @@ func (r *FeedRepository) FetchUnreadFeedsListPageForUser(ctx context.Context, us
 			return nil, errors.New("error scanning feeds list page")
 		}
 		feeds = append(feeds, &feed)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating unread feeds list page", "error", err)
+		return nil, errors.New("error scanning feeds list page")
 	}
 
 	return feeds, nil
@@ -304,6 +320,10 @@ func (r *FeedRepository) FetchUnreadFeedsListCursorForUser(ctx context.Context, 
 		}
 		feeds = append(feeds, &feed)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating unread feeds with cursor", "error", err)
+		return nil, errors.New("error scanning feeds list")
+	}
 
 	span.SetAttributes(attribute.Int("db.row_count", len(feeds)))
 	return feeds, nil
@@ -379,6 +399,10 @@ func (r *FeedRepository) FetchAllFeedsListCursorForUser(ctx context.Context, use
 		}
 		feeds = append(feeds, &feed)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating all feeds with cursor", "error", err)
+		return nil, errors.New("error scanning feeds list")
+	}
 
 	span.SetAttributes(attribute.Int("db.row_count", len(feeds)))
 	return feeds, nil
@@ -450,6 +474,10 @@ func (r *FeedRepository) FetchReadFeedsListCursorForUser(ctx context.Context, us
 		}
 		feeds = append(feeds, &feed)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating read feeds with cursor", "error", err)
+		return nil, errors.New("error scanning read feeds list")
+	}
 
 	span.SetAttributes(attribute.Int("db.row_count", len(feeds)))
 	return feeds, nil
@@ -513,6 +541,10 @@ func (r *FeedRepository) FetchFavoriteFeedsListCursorForUser(ctx context.Context
 			return nil, errors.New("error scanning favorite feeds list")
 		}
 		feeds = append(feeds, &feed)
+	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating favorite feeds with cursor", "error", err)
+		return nil, errors.New("error scanning favorite feeds list")
 	}
 
 	return feeds, nil

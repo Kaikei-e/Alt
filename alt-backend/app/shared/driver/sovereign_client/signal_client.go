@@ -15,7 +15,9 @@ import (
 // AppendRecallSignal implements recall_signal_port.AppendRecallSignalPort.
 func (c *Client) AppendRecallSignal(ctx context.Context, signal domain.RecallSignal) error {
 	if !c.enabled {
-		return nil
+		// A disabled write must reject, not fake success — see ErrSovereignDisabled
+		// in client.go (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
+		return ErrSovereignDisabled
 	}
 
 	payloadBytes, err := json.Marshal(signal.Payload)
@@ -79,7 +81,8 @@ func (c *Client) ListRecallSignalsByUser(ctx context.Context, userID uuid.UUID, 
 // AppendKnowledgeUserEvent implements knowledge_user_event_port.AppendKnowledgeUserEventPort.
 func (c *Client) AppendKnowledgeUserEvent(ctx context.Context, event domain.KnowledgeUserEvent) error {
 	if !c.enabled {
-		return nil
+		// A disabled write must reject, not fake success (CLAUDE.md rule 8).
+		return ErrSovereignDisabled
 	}
 
 	_, err := c.client.AppendKnowledgeUserEvent(ctx, connect.NewRequest(&sovereignv1.AppendKnowledgeUserEventRequest{

@@ -352,8 +352,26 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 func (h *BFFHandler) handleWithDedup(w http.ResponseWriter, r *http.Request, userID, endpoint string, body []byte, token, requestID string) {
 	dedupKey := BuildDedupKey(userID, r.Method, endpoint, body)
 
+	// Decouple the shared upstream call from the leader's request context.
+	// With singleflight the first caller (the leader) runs the single upstream
+	// request and every other concurrent caller of the same key shares its
+	// result. If that call rode on the leader's context, a leader disconnect
+	// (context.Cancel) would cancel the in-flight backend request and fail
+	// every waiter with 502 — a caller that never went away punished for one
+	// that did. context.WithoutCancel keeps the trace/values but drops the
+	// leader's cancellation and its deadline; re-impose a server-side deadline
+	// (defaultTimeout) so the shared call still cannot run unbounded, and so the
+	// budget does not depend on whichever caller happened to be the leader nor
+	// on its Connect-Timeout-Ms header.
+	upstreamCtx, cancelUpstream := context.WithTimeout(
+		context.WithoutCancel(r.Context()),
+		h.defaultTimeout,
+	)
+	defer cancelUpstream()
+	dedupReq := r.WithContext(upstreamCtx)
+
 	result, err := h.deduplicator.Do(dedupKey, func() (*DedupResult, error) {
-		return h.executeRequest(r, userID, endpoint, body, token, requestID)
+		return h.executeRequest(dedupReq, userID, endpoint, body, token, requestID)
 	})
 
 	if err != nil {

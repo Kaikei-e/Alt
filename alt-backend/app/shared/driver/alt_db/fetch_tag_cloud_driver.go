@@ -36,6 +36,10 @@ func (r *TagRepository) FetchTagCloud(ctx context.Context, limit int) ([]*domain
 		}
 		items = append(items, &item)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating tag cloud", "error", err)
+		return nil, errors.New("error scanning tag cloud item")
+	}
 
 	return items, nil
 }

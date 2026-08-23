@@ -257,6 +257,22 @@ func main() {
 			slog.ErrorContext(ctx, "mTLS listener config failed, aborting startup (fail-closed)", "error", err)
 			os.Exit(1)
 		}
+		// Surface the effective client-auth mode loudly. ClientAuth defaults to
+		// NoClientCert unless MTLS_CLIENT_AUTH=require_and_verify, so a listener
+		// named "mTLS" can silently accept unauthenticated peers. This log makes
+		// that state observable at startup (CLAUDE.md rule 9 / auth-hub Rule 4);
+		// enforcing fail-closed by default is deliberately NOT done here because
+		// it would break dev compose defaults.
+		clientAuthMode := tlsCfg.ClientAuth
+		if tlsutil.ClientAuthEnforced(clientAuthMode) {
+			slog.InfoContext(ctx, "mTLS client-auth enforced",
+				"client_auth_mode", tlsutil.ClientAuthLabel(clientAuthMode),
+				"allowed_peers_source", "MTLS_ALLOWED_PEERS")
+		} else {
+			slog.WarnContext(ctx, "mTLS listener is NOT verifying client certificates",
+				"client_auth_mode", tlsutil.ClientAuthLabel(clientAuthMode),
+				"remediation", "set MTLS_CLIENT_AUTH=require_and_verify to enforce client-cert auth")
+		}
 		{
 			mtlsServer = tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, e)
 			g.Go(func() error {

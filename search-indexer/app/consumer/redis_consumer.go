@@ -63,6 +63,13 @@ type Consumer struct {
 	shutdownChan chan struct{}
 	shutdownOnce sync.Once
 	wg           sync.WaitGroup
+
+	// dlqAwaitingAck tracks message IDs whose DLQ copy is durable but whose
+	// XACK on the source stream has not yet succeeded, so a later reclaim sweep
+	// retries only the ACK instead of re-copying the payload (ESC-6). Bounded by
+	// dlqAwaitingAckMax.
+	dlqMu          sync.Mutex
+	dlqAwaitingAck map[string]struct{}
 }
 
 // NewConsumer creates a new Redis Streams consumer.

@@ -74,4 +74,20 @@ func logBFFFeatureWiring(ctx context.Context, cfg *config.Config) {
 	)
 	slog.InfoContext(ctx, "bff.dedup.wiring", "enabled", cfg.EnableDedup)
 	slog.InfoContext(ctx, "bff.error_normalization.wiring", "enabled", cfg.EnableErrorNormalization)
+
+	// The acolyte orchestrator proxy is registered only when ACOLYTE_CONNECT_URL
+	// is set (internal/server/server.go). An unset URL therefore silently drops
+	// the whole /alt.acolyte.v1.AcolyteService/ route with no trace. Log its
+	// wiring state explicitly (CLAUDE.md Rule 8) so "acolyte disabled on purpose"
+	// is distinguishable from "someone forgot to set ACOLYTE_CONNECT_URL".
+	acolyteEnabled := cfg.AcolyteConnectURL != ""
+	acolyteReason := "ACOLYTE_CONNECT_URL set — acolyte proxy route registered"
+	if !acolyteEnabled {
+		acolyteReason = "ACOLYTE_CONNECT_URL unset — acolyte proxy route not registered"
+	}
+	slog.InfoContext(ctx, "bff.acolyte_proxy.wiring",
+		"enabled", acolyteEnabled,
+		"url", cfg.AcolyteConnectURL,
+		"reason", acolyteReason,
+	)
 }

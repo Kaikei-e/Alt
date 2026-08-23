@@ -100,7 +100,7 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	fetchFavoriteFeedsListCursorUC := fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGw)
 
 	// Register feed gateways / usecases
-	validateAndFetchRSSGw := validate_fetch_rss_gateway.NewValidateAndFetchRSSGateway()
+	validateAndFetchRSSGw := validate_fetch_rss_gateway.NewValidateAndFetchRSSGateway(infra.RateLimiter)
 	registerFeedLinkGw := register_feed_gateway.NewRegisterFeedLinkGateway(feedLinkGw)
 	registerFeedsGw := register_feed_gateway.NewRegisterFeedsGateway(feedGw)
 	registerFavoriteFeedGw := register_favorite_feed_gateway.NewRegisterFavoriteFeedGateway(infra.ReadStateGateway)

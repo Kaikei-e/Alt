@@ -628,7 +628,7 @@ func TestSaveArticleSummary_SummaryVersionEventFailureFailsRPC(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, &fakeSystemUser{}, &fakeRecentArticles{}, nil,
 		WithPhase2Ports(nil, nil, mockSave, nil, nil, nil),
 		WithKnowledgeVersionUsecases(
-			create_summary_version_usecase.NewCreateSummaryVersionUsecase(mockVersion, stub, nil),
+			create_summary_version_usecase.NewCreateSummaryVersionUsecase(mockVersion, stub, &fakeSummaryVersionPort{}),
 			nil,
 		))
 

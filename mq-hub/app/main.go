@@ -77,6 +77,12 @@ func run() error {
 	defer stopTrim()
 	startStreamTrimLoop(trimCtx, redisDriver, cfg)
 
+	// Temporary request-reply streams are deleted by GenerateTagsForArticle, but
+	// a worker's late reply can XADD-recreate one without a TTL, and the trim
+	// loop above only covers the fixed AllStreamKeys(). This sweep re-applies a
+	// bounded TTL to any such leaked key so it cannot live forever.
+	startReplyStreamSweepLoop(trimCtx, redisDriver, cfg)
+
 	// Initialize gateway
 	streamGateway := gateway.NewStreamGateway(redisDriver)
 
@@ -219,6 +225,50 @@ func startStreamTrimLoop(ctx context.Context, trimmer port.StreamTrimmer, cfg *c
 						"deleted", report.Deleted,
 						"per_stream", report.PerStream,
 						"hard_max_len", cfg.StreamHardMaxLen,
+					)
+				}
+			}
+		}
+	}()
+}
+
+// startReplyStreamSweepLoop runs the reply-stream safety-net sweep until ctx is
+// cancelled. It shares the trim loop's cadence (StreamTrimInterval).
+//
+// Disabling it is an explicit, logged choice (REPLY_STREAM_SWEEP_ENABLED=false),
+// never inferred from an unset variable.
+func startReplyStreamSweepLoop(ctx context.Context, sweeper port.ReplyStreamSweeper, cfg *config.Config) {
+	if !cfg.ReplyStreamSweepEnabled {
+		slog.WarnContext(ctx, "reply_stream_sweep_disabled",
+			"reason", "REPLY_STREAM_SWEEP_ENABLED=false; a late worker reply that recreates a reply stream without a TTL will not be reaped",
+		)
+		return
+	}
+
+	slog.InfoContext(ctx, "reply_stream_sweep_enabled",
+		"interval", cfg.StreamTrimInterval.String(),
+		"prefix", usecase.ReplyStreamPrefix,
+	)
+
+	uc := usecase.NewSweepReplyStreamsUsecase(sweeper)
+	go func() {
+		ticker := time.NewTicker(cfg.StreamTrimInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				slog.InfoContext(ctx, "reply_stream_sweep_loop_stopped")
+				return
+			case <-ticker.C:
+				report, err := uc.Execute(ctx)
+				if err != nil {
+					slog.ErrorContext(ctx, "reply_stream_sweep_failed", "error", err, "bounded", report.Bounded)
+				}
+				if report.Bounded > 0 {
+					// A leaked reply stream means GenerateTagsForArticle's own
+					// cleanup was outrun by a late reply. Worth surfacing.
+					slog.WarnContext(ctx, "reply_stream_sweep_bounded_leaked_streams",
+						"bounded", report.Bounded,
 					)
 				}
 			}

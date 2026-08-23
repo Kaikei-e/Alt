@@ -2,6 +2,8 @@ package validate_fetch_rss_gateway
 
 import (
 	"alt/utils/metrics"
+	"alt/utils/rate_limiter"
+	"alt/utils/resilience"
 	"context"
 	"errors"
 	"strings"
@@ -14,6 +16,54 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestValidateAndFetchRSSGateway_AllowlistedHost_SkipsHostRateLimit is the
+// regression guard for the E2E-breaking GO-3 change: FEED_ALLOWED_HOSTS hosts
+// (operator-trusted internal/test sources — e.g. the E2E deps stub) must not be
+// throttled by the per-host rate limiter, while every other host still is. The
+// gateway is built directly with a real limiter and a nil urlValidator so the
+// test stays hermetic (no DNS).
+func TestValidateAndFetchRSSGateway_AllowlistedHost_SkipsHostRateLimit(t *testing.T) {
+	newGateway := func() *ValidateAndFetchRSSGateway {
+		return &ValidateAndFetchRSSGateway{
+			feedFetcher:      newMockFetcher(),
+			rateLimiter:      rate_limiter.NewHostRateLimiter(2*time.Second, 1),
+			circuitBreaker:   resilience.NewSimpleCircuitBreaker(resilience.DefaultCircuitBreakerConfig()),
+			metricsCollector: metrics.NewBasicMetricsCollector(),
+			fetchSem:         make(chan struct{}, 50),
+			// urlValidator left nil: skip DNS-based SSRF validation so the test is hermetic.
+		}
+	}
+
+	t.Run("allow-listed host is not throttled", func(t *testing.T) {
+		t.Setenv("FEED_ALLOWED_HOSTS", "stub.invalid")
+		gw := newGateway()
+		start := time.Now()
+		for _, u := range []string{
+			"http://stub.invalid/a.xml",
+			"http://stub.invalid/b.xml",
+			"http://stub.invalid/c.xml",
+		} {
+			_, err := gw.ValidateAndFetch(context.Background(), u)
+			require.NoError(t, err)
+		}
+		// Three fetches to the same allow-listed host would take >=4s (2s interval)
+		// if throttled. Operator trust skips WaitForHost entirely.
+		require.Less(t, time.Since(start), time.Second, "allow-listed host must not be rate limited")
+	})
+
+	t.Run("non-allow-listed host is still throttled", func(t *testing.T) {
+		t.Setenv("FEED_ALLOWED_HOSTS", "")
+		gw := newGateway()
+		// First call to the host primes the limiter (immediate); the second must wait.
+		_, err := gw.ValidateAndFetch(context.Background(), "http://throttled.example/a.xml")
+		require.NoError(t, err)
+		start := time.Now()
+		_, err = gw.ValidateAndFetch(context.Background(), "http://throttled.example/b.xml")
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, time.Since(start), time.Second, "non-allow-listed host must remain rate limited")
+	})
+}
 
 // mockFetcher for testing
 type mockFetcher struct {

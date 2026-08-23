@@ -27,6 +27,19 @@ func NewCreateTagSetVersionUsecase(
 	eventPort knowledge_event_port.AppendKnowledgeEventPort,
 	markSupersededPort tag_set_version_port.MarkTagSetVersionSupersededPort,
 ) *CreateTagSetVersionUsecase {
+	// All three ports are required and wired unconditionally at composition root
+	// (di/datahub/container.go, di/knowledge_module.go). A nil is a DI wiring bug,
+	// not a disabled feature — panic instead of a defensive nil guard that would
+	// silently skip the supersede fact (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
+	if tagSetPort == nil {
+		panic("create_tag_set_version_usecase: CreateTagSetVersionPort is nil — wire it at composition root")
+	}
+	if eventPort == nil {
+		panic("create_tag_set_version_usecase: AppendKnowledgeEventPort is nil — wire it at composition root")
+	}
+	if markSupersededPort == nil {
+		panic("create_tag_set_version_usecase: MarkTagSetVersionSupersededPort is nil — wire it at composition root")
+	}
 	return &CreateTagSetVersionUsecase{
 		tagSetPort:         tagSetPort,
 		eventPort:          eventPort,
@@ -90,40 +103,42 @@ func (u *CreateTagSetVersionUsecase) Execute(ctx context.Context, tsv domain.Tag
 		return fmt.Errorf("append tag set version event: %w", err)
 	}
 
-	// Mark previous versions as superseded and emit TagSetSuperseded event
-	if u.markSupersededPort != nil {
-		prev, err := u.markSupersededPort.MarkTagSetVersionSuperseded(ctx, tsv.ArticleID, tsv.TagSetVersionID)
-		if err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to mark tag set version superseded",
+	// Mark previous versions as superseded and emit TagSetSuperseded event.
+	prev, err := u.markSupersededPort.MarkTagSetVersionSuperseded(ctx, tsv.ArticleID, tsv.TagSetVersionID)
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "failed to mark tag set version superseded",
+			"error", err, "article_id", tsv.ArticleID)
+	} else if prev != nil {
+		prevTagNames := tagNamesFromJSON(prev.TagsJSON)
+
+		supersedePayload, _ := json.Marshal(map[string]interface{}{
+			"article_id":             tsv.ArticleID.String(),
+			"new_tag_set_version_id": tsv.TagSetVersionID.String(),
+			"old_tag_set_version_id": prev.TagSetVersionID.String(),
+			"previous_tags":          prevTagNames,
+		})
+
+		supersedeEvent := domain.KnowledgeEvent{
+			EventID:       uuid.New(),
+			OccurredAt:    time.Now(),
+			TenantID:      tsv.UserID,
+			UserID:        &tsv.UserID,
+			ActorType:     domain.ActorService,
+			ActorID:       "tag-generator",
+			EventType:     domain.EventTagSetSuperseded,
+			AggregateType: domain.AggregateArticle,
+			AggregateID:   tsv.ArticleID.String(),
+			DedupeKey:     fmt.Sprintf("TagSetSuperseded:%s", tsv.TagSetVersionID),
+			Payload:       supersedePayload,
+		}
+
+		// Append-first durable write: a failure to land the supersede event must
+		// fail the command (like recall_snooze_usecase), not be swallowed. The
+		// dedupe_key makes the caller's retry idempotent.
+		if _, err := u.eventPort.AppendKnowledgeEvent(ctx, supersedeEvent); err != nil {
+			logger.Logger.ErrorContext(ctx, "failed to append TagSetSuperseded event",
 				"error", err, "article_id", tsv.ArticleID)
-		} else if prev != nil {
-			prevTagNames := tagNamesFromJSON(prev.TagsJSON)
-
-			supersedePayload, _ := json.Marshal(map[string]interface{}{
-				"article_id":             tsv.ArticleID.String(),
-				"new_tag_set_version_id": tsv.TagSetVersionID.String(),
-				"old_tag_set_version_id": prev.TagSetVersionID.String(),
-				"previous_tags":          prevTagNames,
-			})
-
-			supersedeEvent := domain.KnowledgeEvent{
-				EventID:       uuid.New(),
-				OccurredAt:    time.Now(),
-				TenantID:      tsv.UserID,
-				UserID:        &tsv.UserID,
-				ActorType:     domain.ActorService,
-				ActorID:       "tag-generator",
-				EventType:     domain.EventTagSetSuperseded,
-				AggregateType: domain.AggregateArticle,
-				AggregateID:   tsv.ArticleID.String(),
-				DedupeKey:     fmt.Sprintf("TagSetSuperseded:%s", tsv.TagSetVersionID),
-				Payload:       supersedePayload,
-			}
-
-			if _, err := u.eventPort.AppendKnowledgeEvent(ctx, supersedeEvent); err != nil {
-				logger.Logger.ErrorContext(ctx, "failed to append TagSetSuperseded event",
-					"error", err, "article_id", tsv.ArticleID)
-			}
+			return fmt.Errorf("append tag set superseded event: %w", err)
 		}
 	}
 

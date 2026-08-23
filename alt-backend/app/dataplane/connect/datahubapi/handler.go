@@ -628,6 +628,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 			}); pubErr != nil {
 				h.logger.Warn("failed to publish ArticleCreated event (non-fatal)",
 					"article_id", articleID, "error", pubErr)
+				recordArticlePublishFailure(ctx, "article_created")
 			}
 		} else if pubErr := h.eventPublisher.PublishArticleUpdated(ctx, event_publisher_port.ArticleUpdatedEvent{
 			ArticleID:   articleID,
@@ -640,6 +641,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 		}); pubErr != nil {
 			h.logger.Warn("failed to publish ArticleUpdated event (non-fatal)",
 				"article_id", articleID, "error", pubErr)
+			recordArticlePublishFailure(ctx, "article_updated")
 		}
 	}
 

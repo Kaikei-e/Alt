@@ -15,7 +15,8 @@ import (
 
 func (c *Client) CreateLens(ctx context.Context, lens domain.KnowledgeLens) error {
 	if !c.enabled {
-		return nil
+		// A disabled write must reject, not fake success (CLAUDE.md rule 8).
+		return ErrSovereignDisabled
 	}
 
 	pb := &sovereignv1.Lens{
@@ -42,7 +43,8 @@ func (c *Client) CreateLens(ctx context.Context, lens domain.KnowledgeLens) erro
 
 func (c *Client) CreateLensVersion(ctx context.Context, version domain.KnowledgeLensVersion) error {
 	if !c.enabled {
-		return nil
+		// A disabled write must reject, not fake success (CLAUDE.md rule 8).
+		return ErrSovereignDisabled
 	}
 
 	pv := &sovereignv1.LensVersion{
@@ -158,7 +160,8 @@ func (c *Client) GetCurrentLensVersion(ctx context.Context, lensID uuid.UUID) (*
 
 func (c *Client) SelectCurrentLens(ctx context.Context, current domain.KnowledgeCurrentLens) error {
 	if !c.enabled {
-		return nil
+		// A disabled write must reject, not fake success (CLAUDE.md rule 8).
+		return ErrSovereignDisabled
 	}
 
 	sel := &sovereignv1.CurrentLensSelection{
@@ -179,7 +182,8 @@ func (c *Client) SelectCurrentLens(ctx context.Context, current domain.Knowledge
 
 func (c *Client) ClearCurrentLens(ctx context.Context, userID uuid.UUID) error {
 	if !c.enabled {
-		return nil
+		// A disabled write must reject, not fake success (CLAUDE.md rule 8).
+		return ErrSovereignDisabled
 	}
 
 	_, err := c.client.ClearCurrentLens(ctx, connect.NewRequest(&sovereignv1.ClearCurrentLensRequest{
@@ -193,7 +197,8 @@ func (c *Client) ClearCurrentLens(ctx context.Context, userID uuid.UUID) error {
 
 func (c *Client) ArchiveLens(ctx context.Context, lensID uuid.UUID) error {
 	if !c.enabled {
-		return nil
+		// A disabled write must reject, not fake success (CLAUDE.md rule 8).
+		return ErrSovereignDisabled
 	}
 
 	_, err := c.client.ArchiveLens(ctx, connect.NewRequest(&sovereignv1.ArchiveLensRequest{

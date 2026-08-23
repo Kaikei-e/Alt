@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	connectv2 "pre-processor/connect/v2"
@@ -153,6 +154,35 @@ func StartConnectServer(deps *Dependencies, errCh chan<- error) *ConnectServers 
 		if mtlsPort == "" {
 			mtlsPort = "9443"
 		}
+
+		// Surface the effective client-auth posture loudly at startup. tlsutil
+		// downgrades to tls.NoClientCert whenever MTLS_CLIENT_AUTH is anything
+		// other than "require_and_verify" (the compose default leaves it empty),
+		// so "peer certificates are not enforced" must be an explicit, visible
+		// state in the logs rather than an inference from an unset variable
+		// (CLAUDE.md rule 8/9). NOTE: this only reports the posture; making the
+		// unset case fail-closed would break the dev compose default and is
+		// escalated for supervisor decision, not changed here.
+		clientAuthRaw := os.Getenv("MTLS_CLIENT_AUTH")
+		clientAuthMode := "none"
+		if strings.EqualFold(clientAuthRaw, "require_and_verify") {
+			clientAuthMode = "require_and_verify"
+		}
+		allowedPeersRaw := strings.TrimSpace(os.Getenv("MTLS_ALLOWED_PEERS"))
+		deps.Logger.Info("mTLS listener client-auth posture resolved",
+			"client_auth_mode", clientAuthMode,
+			"client_auth_raw", clientAuthRaw,
+			"allowed_peers_configured", allowedPeersRaw != "",
+			"allowed_peers", allowedPeersRaw,
+			"port", mtlsPort,
+		)
+		if clientAuthMode == "none" {
+			deps.Logger.Warn("mTLS listener does NOT require or verify client certificates: peer identity is unenforced (set MTLS_CLIENT_AUTH=require_and_verify to enforce)",
+				"client_auth_mode", clientAuthMode,
+				"allowed_peers_configured", allowedPeersRaw != "",
+			)
+		}
+
 		tlsCfg, err := tlsutil.LoadServerConfig(
 			os.Getenv("MTLS_CERT_FILE"),
 			os.Getenv("MTLS_KEY_FILE"),

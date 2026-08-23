@@ -30,6 +30,20 @@ func NewCreateSummaryVersionUsecase(
 	eventPort knowledge_event_port.AppendKnowledgeEventPort,
 	markSupersededPort summary_version_port.MarkSummaryVersionSupersededPort,
 ) *CreateSummaryVersionUsecase {
+	// All three ports are required. Both composition roots (di/knowledge_module.go
+	// and di/datahub/container.go) wire them unconditionally, so a nil here is a
+	// DI wiring bug, not a disabled feature — panic instead of a defensive
+	// `if x != nil` guard that would silently skip the supersede fact
+	// (CLAUDE.md rule 8 / .claude/rules/di-wiring.md).
+	if summaryPort == nil {
+		panic("create_summary_version_usecase: CreateSummaryVersionPort is nil — wire it at composition root")
+	}
+	if eventPort == nil {
+		panic("create_summary_version_usecase: AppendKnowledgeEventPort is nil — wire it at composition root")
+	}
+	if markSupersededPort == nil {
+		panic("create_summary_version_usecase: MarkSummaryVersionSupersededPort is nil — wire it at composition root")
+	}
 	return &CreateSummaryVersionUsecase{
 		summaryPort:        summaryPort,
 		eventPort:          eventPort,
@@ -101,42 +115,47 @@ func (u *CreateSummaryVersionUsecase) Execute(ctx context.Context, sv domain.Sum
 		return fmt.Errorf("append summary version event: %w", err)
 	}
 
-	// Mark previous versions as superseded and emit SummarySuperseded event
-	if u.markSupersededPort != nil {
-		prev, err := u.markSupersededPort.MarkSummaryVersionSuperseded(ctx, sv.ArticleID, sv.SummaryVersionID)
-		if err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to mark summary version superseded",
+	// Mark previous versions as superseded and emit SummarySuperseded event.
+	prev, err := u.markSupersededPort.MarkSummaryVersionSuperseded(ctx, sv.ArticleID, sv.SummaryVersionID)
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "failed to mark summary version superseded",
+			"error", err, "article_id", sv.ArticleID)
+		// Non-fatal: the version was already created
+	} else if prev != nil {
+		// Previous version existed — emit SummarySuperseded event
+		excerpt := textutil.TruncateValidUTF8(prev.SummaryText, maxPreviousExcerptLen)
+
+		supersedePayload, _ := json.Marshal(map[string]string{
+			"article_id":               sv.ArticleID.String(),
+			"new_summary_version_id":   sv.SummaryVersionID.String(),
+			"old_summary_version_id":   prev.SummaryVersionID.String(),
+			"previous_summary_excerpt": excerpt,
+		})
+
+		supersedeEvent := domain.KnowledgeEvent{
+			EventID:       uuid.New(),
+			OccurredAt:    time.Now(),
+			TenantID:      sv.UserID,
+			UserID:        &sv.UserID,
+			ActorType:     domain.ActorService,
+			ActorID:       "news-creator",
+			EventType:     domain.EventSummarySuperseded,
+			AggregateType: domain.AggregateArticle,
+			AggregateID:   sv.ArticleID.String(),
+			DedupeKey:     fmt.Sprintf("SummarySuperseded:%s", sv.SummaryVersionID),
+			Payload:       supersedePayload,
+		}
+
+		// The supersede event is a durable append-first write. A failure to land
+		// it must fail the command (like recall_snooze_usecase), not be swallowed
+		// as a WARN: the SummarySuperseded fact is how a reproject learns the old
+		// version was replaced, so a silent drop leaves the superseded version
+		// resurfacing after the next projection rebuild. The dedupe_key makes the
+		// caller's retry idempotent.
+		if _, err := u.eventPort.AppendKnowledgeEvent(ctx, supersedeEvent); err != nil {
+			logger.Logger.ErrorContext(ctx, "failed to append SummarySuperseded event",
 				"error", err, "article_id", sv.ArticleID)
-			// Non-fatal: the version was already created
-		} else if prev != nil {
-			// Previous version existed — emit SummarySuperseded event
-			excerpt := textutil.TruncateValidUTF8(prev.SummaryText, maxPreviousExcerptLen)
-
-			supersedePayload, _ := json.Marshal(map[string]string{
-				"article_id":               sv.ArticleID.String(),
-				"new_summary_version_id":   sv.SummaryVersionID.String(),
-				"old_summary_version_id":   prev.SummaryVersionID.String(),
-				"previous_summary_excerpt": excerpt,
-			})
-
-			supersedeEvent := domain.KnowledgeEvent{
-				EventID:       uuid.New(),
-				OccurredAt:    time.Now(),
-				TenantID:      sv.UserID,
-				UserID:        &sv.UserID,
-				ActorType:     domain.ActorService,
-				ActorID:       "news-creator",
-				EventType:     domain.EventSummarySuperseded,
-				AggregateType: domain.AggregateArticle,
-				AggregateID:   sv.ArticleID.String(),
-				DedupeKey:     fmt.Sprintf("SummarySuperseded:%s", sv.SummaryVersionID),
-				Payload:       supersedePayload,
-			}
-
-			if _, err := u.eventPort.AppendKnowledgeEvent(ctx, supersedeEvent); err != nil {
-				logger.Logger.ErrorContext(ctx, "failed to append SummarySuperseded event",
-					"error", err, "article_id", sv.ArticleID)
-			}
+			return fmt.Errorf("append summary superseded event: %w", err)
 		}
 	}
 

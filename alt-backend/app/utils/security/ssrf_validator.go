@@ -719,6 +719,47 @@ func (v *SSRFValidator) CreateSecureHTTPClient(timeout time.Duration) *http.Clie
 	}
 }
 
+// ValidateDialIP validates the resolved connection address (host is already an
+// IP, as passed to net.Dialer.Control) at dial time to defeat DNS rebinding: a
+// hostname that passed pre-fetch validation can re-resolve to a private or
+// cloud-metadata IP by the time the socket actually connects. Unlike
+// validateConnectionAddress it does NOT enforce the 80/443 port allow-list, so
+// callers that legitimately fetch from non-standard ports (RSS feeds) keep
+// working; it blocks only private/dangerous and cloud-metadata IPs.
+func (v *SSRFValidator) ValidateDialIP(network, address string) error {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return &ValidationError{
+			Message: "invalid connection address format",
+			Type:    "CONNECTION_ADDRESS_ERROR",
+			Details: map[string]interface{}{"address": address, "error": err.Error()},
+		}
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return &ValidationError{
+			Message: "invalid IP address in connection",
+			Type:    "INVALID_IP_ERROR",
+			Details: map[string]interface{}{"host": host, "port": port},
+		}
+	}
+	if v.isPrivateOrDangerous(ip) {
+		return &ValidationError{
+			Message: "connection to private/dangerous IP blocked",
+			Type:    "PRIVATE_IP_BLOCKED",
+			Details: map[string]interface{}{"ip": ip.String(), "host": host, "port": port},
+		}
+	}
+	if v.isMetadataEndpointIP(ip) {
+		return &ValidationError{
+			Message: "connection to metadata endpoint IP blocked",
+			Type:    "METADATA_IP_BLOCKED",
+			Details: map[string]interface{}{"ip": ip.String(), "host": host, "port": port},
+		}
+	}
+	return nil
+}
+
 // validateConnectionAddress validates IP addresses at connection time (Safeurl approach)
 // This prevents DNS rebinding attacks by validating the actual IP being connected to
 func (v *SSRFValidator) validateConnectionAddress(network, address string) error {

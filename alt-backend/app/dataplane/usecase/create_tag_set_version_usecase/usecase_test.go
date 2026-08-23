@@ -93,7 +93,7 @@ func TestCreateTagSetVersionUsecase_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewCreateTagSetVersionUsecase(tt.tagSetPort, tt.eventPort, nil)
+			uc := NewCreateTagSetVersionUsecase(tt.tagSetPort, tt.eventPort, &mockMarkTagSupersededPort{})
 			err := uc.Execute(context.Background(), tt.tsv)
 
 			if tt.wantErr {
@@ -122,7 +122,7 @@ func TestCreateTagSetVersionUsecase_EmitsTagsInPayload(t *testing.T) {
 	tagSetPort := &mockTagSetPort{}
 	eventPort := &mockEventPort{}
 
-	uc := NewCreateTagSetVersionUsecase(tagSetPort, eventPort, nil)
+	uc := NewCreateTagSetVersionUsecase(tagSetPort, eventPort, &mockMarkTagSupersededPort{})
 	err := uc.Execute(context.Background(), domain.TagSetVersion{
 		ArticleID: uuid.New(),
 		UserID:    uuid.New(),

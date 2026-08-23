@@ -84,28 +84,54 @@ type DefaultRSSFeedFetcher struct {
 	proxyStrategy    *proxy.Strategy
 	ssrfValidator    *security.SSRFValidator
 	httpClient       *http.Client // shared HTTP client with connection pooling
+	// allowLoopbackDial permits dialing loopback IPs in direct mode. It is false
+	// in production (NewDefaultRSSFeedFetcher) and set true only by tests that
+	// serve feeds from httptest loopback servers. It is deliberately independent
+	// of the redirect-time hostname validator, so redirect-to-internal is still
+	// blocked even when loopback dialing is allowed.
+	allowLoopbackDial bool
 }
 
 // NewDefaultRSSFeedFetcher creates a new DefaultRSSFeedFetcher with proxy configuration
 func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
+	return newDefaultRSSFeedFetcher(false)
+}
+
+// newDefaultRSSFeedFetcher is the shared builder. allowLoopbackDial is only ever
+// true from tests (loopback httptest servers); production always passes false so
+// the connection-time SSRF guard blocks private/metadata IPs.
+func newDefaultRSSFeedFetcher(allowLoopbackDial bool) *DefaultRSSFeedFetcher {
 	strategy := proxy.GetStrategy()
 	f := &DefaultRSSFeedFetcher{
-		proxyConfig:      getProxyConfigFromEnv(),
-		envoyProxyConfig: getEnvoyProxyConfigFromEnv(),
-		proxyStrategy:    strategy,
-		ssrfValidator:    security.NewSSRFValidator(),
+		proxyConfig:       getProxyConfigFromEnv(),
+		envoyProxyConfig:  getEnvoyProxyConfigFromEnv(),
+		proxyStrategy:     strategy,
+		ssrfValidator:     security.NewSSRFValidator(),
+		allowLoopbackDial: allowLoopbackDial,
 	}
 
 	// Create shared HTTP client with connection pooling (goroutine-safe)
+	baseDialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: false,
 			MinVersion:         tls.VersionTLS12,
 		},
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
+		// Connection-time SSRF validation happens in dialSecure (a DialContext
+		// wrapper), not a net.Dialer.Control hook. Control only ever sees the
+		// already-resolved IP:port, so it cannot honour the FEED_ALLOWED_HOSTS
+		// operator-trust allow-list that CheckRedirect and
+		// URLSecurityValidator.isPrivateNetwork already respect — it blocked dials to
+		// allow-listed hosts that resolve to private IPs (the staging/e2e stub).
+		// DialContext receives the original "host:port" (pre-resolution), so it can
+		// apply the allow-list before resolving, and pin the connection to the exact
+		// IP it validated to close the DNS-rebinding window.
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return f.dialSecure(ctx, baseDialer, network, address)
+		},
 		MaxIdleConns:        200,
 		MaxIdleConnsPerHost: 50,
 		IdleConnTimeout:     90 * time.Second,
@@ -137,6 +163,96 @@ func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
 	}
 
 	return f
+}
+
+// dialSecure performs connection-time SSRF validation before dialing. Go
+// re-resolves DNS at dial time, so a feed host that passed pre-fetch URL
+// validation can still rebind to a private/metadata IP before the socket
+// connects. Unlike a net.Dialer.Control hook — which only sees the already
+// resolved IP:port — this DialContext wrapper receives the original "host:port"
+// (pre-resolution), which lets it:
+//
+//  1. honour the FEED_ALLOWED_HOSTS operator-trust allow-list by hostname, the
+//     same escape hatch CheckRedirect and URLSecurityValidator.isPrivateNetwork
+//     use (this is what lets the staging/e2e stub, an allow-listed host that
+//     resolves to a container-internal IP, be fetched); and
+//  2. resolve the name itself, validate every candidate IP, and pin the
+//     connection to the first IP that passes — so we connect to exactly the IP we
+//     validated, closing the DNS-rebinding window.
+func (f *DefaultRSSFeedFetcher) dialSecure(ctx context.Context, dialer *net.Dialer, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+
+	// Proxy mode: the socket targets the trusted egress proxy, not the feed host,
+	// so validating (and pinning) the address would reject the proxy's internal
+	// address. Dial straight through, exactly as the old Control hook skipped.
+	if f.proxyStrategy != nil && f.proxyStrategy.Enabled {
+		return dialer.DialContext(ctx, network, address)
+	}
+
+	// Operator-allow-listed host (FEED_ALLOWED_HOSTS): an explicit trust decision,
+	// exactly as on redirects (CheckRedirect) and on the first hop
+	// (URLSecurityValidator.isPrivateNetwork). Dial through so an intentionally
+	// private/loopback-resolving trusted host connects.
+	if security.IsFeedHostAllowed(host) {
+		return dialer.DialContext(ctx, network, address)
+	}
+
+	// Loopback dialing is test-only (httptest servers). Kept independent of the
+	// hostname allow-list so redirect-to-internal stays blocked (see
+	// allowLoopbackDial). false in production.
+	if f.allowLoopbackDial && f.isLoopbackDialHost(ctx, host) {
+		return dialer.DialContext(ctx, network, address)
+	}
+
+	// Resolve the name ourselves so we validate and connect to the SAME IP. An IP
+	// literal resolves to itself, so metadata/private IP literals are validated too.
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+
+	var blockErr error
+	for _, addr := range addrs {
+		pinned := net.JoinHostPort(addr.IP.String(), port)
+		if verr := f.ssrfValidator.ValidateDialIP(network, pinned); verr != nil {
+			if blockErr == nil {
+				blockErr = verr
+			}
+			continue
+		}
+		// Pin to the exact IP we just validated; no re-resolution before connect.
+		return dialer.DialContext(ctx, network, pinned)
+	}
+
+	if blockErr != nil {
+		return nil, blockErr
+	}
+	return nil, &net.AddrError{Err: "no addresses resolved for host", Addr: host}
+}
+
+// isLoopbackDialHost reports whether host is (or resolves to) a loopback address.
+// Handles the literal pre-resolution forms ("localhost", "127.x", "::1") and,
+// for a name, resolves it and checks the results.
+func (f *DefaultRSSFeedFetcher) isLoopbackDialHost(ctx context.Context, host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return false
+	}
+	for _, addr := range addrs {
+		if addr.IP.IsLoopback() {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (*gofeed.Feed, error) {

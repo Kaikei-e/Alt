@@ -60,6 +60,10 @@ func (r *FeedRepository) FetchFeedTags(ctx context.Context, feedID string, curso
 		}
 		tags = append(tags, &tag)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating feed tags", "error", err)
+		return nil, errors.New("error scanning feed tags")
+	}
 
 	logger.Logger.InfoContext(ctx, "fetched feed tags from database", "feedID", feedID, "count", len(tags))
 	return tags, nil

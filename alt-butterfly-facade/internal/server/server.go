@@ -309,7 +309,25 @@ func NewServerWithTransports(
 	// Uses streaming timeout since report generation can be long-running.
 	if cfg.AcolyteConnectURL != "" {
 		acolyteTransport := transport
-		if acolyteTransport == nil || strings.HasPrefix(cfg.AcolyteConnectURL, "http://") {
+		if acolyteTransport != nil && strings.HasPrefix(cfg.AcolyteConnectURL, "http://") {
+			// An mTLS transport was provisioned for east-west calls (mTLS
+			// enforcement is on), yet the acolyte URL is plaintext http://, so
+			// the client falls back to the plaintext DefaultTransport. Never let
+			// that downgrade happen silently: an operator who turned enforcement
+			// on almost certainly meant this hop encrypted too. Surface it loudly
+			// (CLAUDE.md Rule 8 — no silent fallback) so a forgotten
+			// ACOLYTE_CONNECT_MTLS_URL is visible at startup instead of leaking
+			// acolyte traffic onto plaintext unnoticed.
+			if logger != nil {
+				logger.Warn("acolyte_transport_downgraded_to_plaintext",
+					"acolyte_url", cfg.AcolyteConnectURL,
+					"reason", "mTLS transport is active but ACOLYTE_CONNECT_URL is http://; set ACOLYTE_CONNECT_MTLS_URL=https://acolyte-orchestrator:9443 to keep this hop encrypted",
+				)
+			}
+			acolyteTransport = http.DefaultTransport
+		} else if acolyteTransport == nil {
+			// No mTLS transport supplied (enforcement off): plaintext is the
+			// intended dev path, not a downgrade.
 			acolyteTransport = http.DefaultTransport
 		}
 		acolyteClient := client.NewBackendClientWithTransport(

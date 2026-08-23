@@ -402,6 +402,10 @@ func Load() *Config {
 		},
 		Backend: BackendConfig{
 			Timeout: getEnvInt("ALT_BACKEND_TIMEOUT", 30),
+			// recap-worker listens on 9005 (compose/recap.yaml, and every other
+			// consumer's default). Resolved here so DI never silently
+			// falls back to a hardcoded URL (CLAUDE.md rule 8/9).
+			RecapWorkerURL: getEnv("RECAP_WORKER_URL", "http://recap-worker:9005"),
 		},
 		DataHub: loadDataHub(getEnvInt("DATAHUB_TIMEOUT", 30)),
 		Cache: CacheConfig{
