@@ -74,6 +74,26 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 		assert.Equal(t, "outbox-worker", ev.ActorID)
 	})
 
+	t.Run("occurred_at is the enqueue-time updated_at, not processing-time wall clock", func(t *testing.T) {
+		stub := &stubKnowledgeEventPort{}
+		updatedAt := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Second)
+		payload, _ := json.Marshal(map[string]any{
+			"article_id": uuid.New().String(),
+			"url":        "http://example.com/article",
+			"title":      "Test Article",
+			"user_id":    uuid.New().String(),
+			"updated_at": updatedAt.Format(time.RFC3339),
+		})
+
+		require.NoError(t, emitArticleCreatedEvent(context.Background(), stub, payload))
+		require.Len(t, stub.events, 1)
+		// occurred_at must equal the article-upsert fact's own timestamp so the
+		// event replays identically on reprocess (reproject-safe / no business
+		// fact time.Now()).
+		assert.Equal(t, updatedAt, stub.events[0].OccurredAt.UTC(),
+			"occurred_at must be derived from enqueue-time updated_at, not re-stamped at processing time")
+	})
+
 	t.Run("panics when port is nil (wiring bug must be loud, not silent)", func(t *testing.T) {
 		assert.Panics(t, func() {
 			_ = emitArticleCreatedEvent(context.Background(), nil, []byte(`{"article_id":"x"}`))

@@ -37,7 +37,7 @@ func newFeedServer(t *testing.T) *httptest.Server {
 func TestDefaultRSSFeedFetcher_NormalFeed_Fetched(t *testing.T) {
 	server := newFeedServer(t)
 
-	fetcher := NewDefaultRSSFeedFetcher()
+	fetcher := newDefaultRSSFeedFetcher(true)
 	feed, err := fetcher.FetchRSSFeed(context.Background(), server.URL+"/rss")
 	if err != nil {
 		t.Fatalf("expected no error for a normal feed, got %v", err)
@@ -62,7 +62,7 @@ func TestDefaultRSSFeedFetcher_RedirectToInternalHost_Blocked(t *testing.T) {
 	}))
 	defer redirector.Close()
 
-	fetcher := NewDefaultRSSFeedFetcher()
+	fetcher := newDefaultRSSFeedFetcher(true)
 	feed, err := fetcher.FetchRSSFeed(context.Background(), redirector.URL+"/rss")
 	if err == nil {
 		t.Fatalf("expected redirect to an internal host to be refused, got feed %q", feed.Title)
@@ -85,13 +85,29 @@ func TestDefaultRSSFeedFetcher_RedirectToAllowedHost_Followed(t *testing.T) {
 	}))
 	defer redirector.Close()
 
-	fetcher := NewDefaultRSSFeedFetcher()
+	fetcher := newDefaultRSSFeedFetcher(true)
 	feed, err := fetcher.FetchRSSFeed(context.Background(), redirector.URL+"/rss")
 	if err != nil {
 		t.Fatalf("expected redirect to an allow-listed host to be followed, got %v", err)
 	}
 	if feed.Title != "Example Feed" {
 		t.Errorf("expected 'Example Feed', got %q", feed.Title)
+	}
+}
+
+func TestDefaultRSSFeedFetcher_DialToMetadataIP_Blocked(t *testing.T) {
+	// Production fetcher (loopback dialing NOT allowed). A feed URL whose host is
+	// a cloud-metadata / link-local IP must be refused at connection time by the
+	// Dialer.Control SSRF guard, closing the DNS-rebinding window that pre-fetch
+	// URL validation alone leaves open. The error must be the SSRF policy block,
+	// not an incidental network failure.
+	fetcher := NewDefaultRSSFeedFetcher()
+	_, err := fetcher.FetchRSSFeed(context.Background(), "http://169.254.169.254/latest/meta-data/")
+	if err == nil {
+		t.Fatal("expected connection-time SSRF block for a metadata/link-local IP, got nil")
+	}
+	if !strings.Contains(err.Error(), "blocked") {
+		t.Errorf("expected an SSRF connection-time block error, got: %v", err)
 	}
 }
 
@@ -126,7 +142,7 @@ func TestDefaultRSSFeedFetcher_OversizedFeedBody_Rejected(t *testing.T) {
 	}))
 	defer server.Close()
 
-	fetcher := NewDefaultRSSFeedFetcher()
+	fetcher := newDefaultRSSFeedFetcher(true)
 	_, err := fetcher.FetchRSSFeed(context.Background(), server.URL+"/rss")
 	if err == nil {
 		t.Fatal("expected error for oversized feed body, got nil")

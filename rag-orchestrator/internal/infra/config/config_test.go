@@ -406,6 +406,20 @@ func TestLoad_CacheConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 10, cfg.Cache.TTL)
 }
 
+func TestLoad_Backend_RecapWorkerURL_DefaultAndFromEnv(t *testing.T) {
+	// Unset: Load() must resolve the default from config, not leave the field
+	// empty for a downstream silent fallback (CLAUDE.md rule 8/9). The default
+	// must be recap-worker's real listen port (9005) — the port every other
+	// consumer and the compose service definition use.
+	_ = os.Unsetenv("RECAP_WORKER_URL")
+	cfg := Load()
+	assert.Equal(t, "http://recap-worker:9005", cfg.Backend.RecapWorkerURL)
+
+	t.Setenv("RECAP_WORKER_URL", "http://recap-worker:9999")
+	cfg = Load()
+	assert.Equal(t, "http://recap-worker:9999", cfg.Backend.RecapWorkerURL)
+}
+
 func TestLoad_LLMBackend_DefaultAndFromEnv(t *testing.T) {
 	_ = os.Unsetenv("LLM_BACKEND")
 

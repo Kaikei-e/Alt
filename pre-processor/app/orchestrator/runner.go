@@ -24,8 +24,16 @@ type JobRunner struct {
 	config JobConfig
 	fn     func(ctx context.Context) error
 	logger *slog.Logger
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	// mu guards cancel/started/stopped so a concurrent Start and Stop (e.g.
+	// Add racing StopAll in the owning JobGroup) do not data-race on the
+	// cancel field or call wg.Add after wg.Wait. Once stopped, Start is a
+	// no-op so a runner added after StopAll can never leak a goroutine that
+	// nothing will ever stop.
+	mu      sync.Mutex
+	cancel  context.CancelFunc
+	started bool
+	stopped bool
+	wg      sync.WaitGroup
 }
 
 // NewJobRunner creates a new job runner.
@@ -37,22 +45,39 @@ func NewJobRunner(config JobConfig, fn func(ctx context.Context) error, logger *
 	}
 }
 
-// Start starts the job runner in a goroutine.
+// Start starts the job runner in a goroutine. It is a no-op if the runner has
+// already been started or if Stop has already run, so a Start that loses the
+// race with Stop cannot leave an orphaned goroutine behind.
 func (r *JobRunner) Start(ctx context.Context) {
+	r.mu.Lock()
+	if r.started || r.stopped {
+		r.mu.Unlock()
+		return
+	}
 	jobCtx, cancel := context.WithCancel(ctx)
 	r.cancel = cancel
-
+	r.started = true
 	r.wg.Add(1)
+	r.mu.Unlock()
+
 	go func() {
 		defer r.wg.Done()
 		r.run(jobCtx)
 	}()
 }
 
-// Stop stops the job runner and waits for it to finish.
+// Stop stops the job runner and waits for it to finish. Marking stopped under
+// the lock before reading cancel means a Start racing this call observes
+// stopped and returns without spawning, so wg.Add can never run after the
+// wg.Wait below.
 func (r *JobRunner) Stop() {
-	if r.cancel != nil {
-		r.cancel()
+	r.mu.Lock()
+	r.stopped = true
+	cancel := r.cancel
+	r.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
 	}
 	r.wg.Wait()
 }
@@ -157,6 +182,7 @@ func (r *JobRunner) nextBackoff(current time.Duration) time.Duration {
 type JobGroup struct {
 	mu      sync.Mutex
 	runners []*JobRunner
+	stopped bool
 	ctx     context.Context
 	logger  *slog.Logger
 }
@@ -167,18 +193,30 @@ func NewJobGroup(ctx context.Context, logger *slog.Logger) *JobGroup {
 	return &JobGroup{ctx: ctx, logger: logger}
 }
 
-// Add adds a job runner to the group and starts it immediately.
+// Add adds a job runner to the group and starts it immediately. Registration
+// and Start happen together under the lock, and both are skipped once StopAll
+// has run: otherwise a runner added concurrently with StopAll could be started
+// after StopAll had already snapshotted and stopped the group, leaving a
+// goroutine that nothing will ever stop.
 func (g *JobGroup) Add(runner *JobRunner) {
 	g.mu.Lock()
+	if g.stopped {
+		g.mu.Unlock()
+		g.logger.InfoContext(g.ctx, "job group already stopped, not starting job", "job", runner.config.Name)
+		return
+	}
 	g.runners = append(g.runners, runner)
-	g.mu.Unlock()
 	g.logger.InfoContext(g.ctx, "starting job", "job", runner.config.Name)
 	runner.Start(g.ctx)
+	g.mu.Unlock()
 }
 
-// StopAll stops all jobs in the group and waits for them to finish.
+// StopAll stops all jobs in the group and waits for them to finish. Setting
+// stopped under the lock before snapshotting means any Add still to come is a
+// no-op, so no runner escapes being stopped.
 func (g *JobGroup) StopAll() {
 	g.mu.Lock()
+	g.stopped = true
 	runners := make([]*JobRunner, len(g.runners))
 	copy(runners, g.runners)
 	g.mu.Unlock()

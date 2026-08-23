@@ -38,6 +38,10 @@ func (r *FeedRepository) FetchRSSFeedURLs(ctx context.Context) ([]domain.FeedLin
 
 		feedLinks = append(feedLinks, domain.FeedLink{ID: id, URL: link})
 	}
+	if err := rows.Err(); err != nil {
+		logger.SafeErrorContext(ctx, "Error iterating RSS links", "error", err)
+		return nil, errors.New("error scanning RSS link")
+	}
 
 	logger.SafeInfoContext(ctx, "RSS feed URL fetch summary", "total_found", len(feedLinks))
 	return feedLinks, nil

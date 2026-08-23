@@ -166,6 +166,25 @@ func TestClient_AppendKnowledgeEvent_DisabledReturnsErrSovereignDisabled(t *test
 	assert.Zero(t, seq)
 }
 
+// TestClient_DisabledWriteMethodsReturnErrSovereignDisabled extends the rule-8
+// contract to the recall-signal, knowledge-user-event, and lens write methods
+// (signal_client.go / lens_client.go). They used to `return nil` when disabled,
+// faking success for track_home_action / track_home_seen / lens flows — the same
+// silent-no-op the sentinel exists to forbid. Reads (ListLenses, GetLens, …)
+// deliberately keep returning empty, so they are not asserted here.
+func TestClient_DisabledWriteMethodsReturnErrSovereignDisabled(t *testing.T) {
+	client := NewClient("http://unused", false)
+	ctx := context.Background()
+
+	assert.ErrorIs(t, client.AppendRecallSignal(ctx, domain.RecallSignal{SignalID: uuid.New()}), ErrSovereignDisabled)
+	assert.ErrorIs(t, client.AppendKnowledgeUserEvent(ctx, domain.KnowledgeUserEvent{UserEventID: uuid.New()}), ErrSovereignDisabled)
+	assert.ErrorIs(t, client.CreateLens(ctx, domain.KnowledgeLens{LensID: uuid.New()}), ErrSovereignDisabled)
+	assert.ErrorIs(t, client.CreateLensVersion(ctx, domain.KnowledgeLensVersion{LensVersionID: uuid.New()}), ErrSovereignDisabled)
+	assert.ErrorIs(t, client.SelectCurrentLens(ctx, domain.KnowledgeCurrentLens{UserID: uuid.New()}), ErrSovereignDisabled)
+	assert.ErrorIs(t, client.ClearCurrentLens(ctx, uuid.New()), ErrSovereignDisabled)
+	assert.ErrorIs(t, client.ArchiveLens(ctx, uuid.New()), ErrSovereignDisabled)
+}
+
 func TestNewClient_SkipsHealthProbeWhenDisabled(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

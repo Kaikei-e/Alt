@@ -322,6 +322,51 @@ func (d *RedisDriver) Expire(ctx context.Context, stream domain.StreamKey, ttl t
 	return d.client.Expire(ctx, stream.String(), ttl).Err()
 }
 
+// replyStreamScanCount bounds how many keys each SCAN cursor step asks Redis to
+// examine. SCAN is cursor-based and non-blocking, so this only caps per-call
+// work; the caller loops until the cursor returns to 0.
+const replyStreamScanCount = 100
+
+// ScanReplyStreamsWithoutTTL returns every key matching prefix+"*" that
+// currently has no expiry set (TTL == -1). Missing keys (TTL == -2, a SCAN/TTL
+// race) are skipped.
+//
+// It exists for the reply-stream safety-net sweep: a worker's late reply can
+// XADD-recreate a request-reply stream after GenerateTagsForArticle's cleanup
+// already deleted it, leaving a TTL-less key that the length-cap trim pass never
+// touches (that pass only covers the fixed AllStreamKeys()). This scan finds
+// exactly those keys so the sweep can re-apply a bounded TTL.
+func (d *RedisDriver) ScanReplyStreamsWithoutTTL(ctx context.Context, prefix string) ([]domain.StreamKey, error) {
+	match := prefix + "*"
+	var (
+		leaked []domain.StreamKey
+		cursor uint64
+	)
+	for {
+		batch, next, err := d.client.Scan(ctx, cursor, match, replyStreamScanCount).Result()
+		if err != nil {
+			return nil, fmt.Errorf("scan %s: %w", match, err)
+		}
+		for _, key := range batch {
+			ttl, err := d.client.TTL(ctx, key).Result()
+			if err != nil {
+				return nil, fmt.Errorf("ttl %s: %w", key, err)
+			}
+			// go-redis maps Redis's TTL reply of -1 (key exists, no expiry) to
+			// -1ns and -2 (key missing) to -2ns. Only the no-expiry case needs
+			// a safety-net TTL applied.
+			if ttl == -1*time.Nanosecond {
+				leaked = append(leaked, domain.StreamKey(key))
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return leaked, nil
+}
+
 // parseEventFromMessage converts a Redis stream message to a domain Event.
 func (d *RedisDriver) parseEventFromMessage(msg redis.XMessage) *domain.Event {
 	event := &domain.Event{

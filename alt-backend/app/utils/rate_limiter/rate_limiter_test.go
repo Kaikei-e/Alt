@@ -325,22 +325,19 @@ func TestHostRateLimiter_RecordRateLimitHit_IncreasesBackoff(t *testing.T) {
 	// Record rate limit hit with 300ms backoff
 	limiter.RecordRateLimitHit(host, 300*time.Millisecond)
 
-	// First access after rate limit hit is immediate (token available)
-	err = limiter.WaitForHost(ctx, url)
-	if err != nil {
-		t.Fatalf("Second WaitForHost() failed: %v", err)
-	}
-
-	// Third access should wait for the new backoff
+	// The very next access after a 429 must already honour the backoff. A fresh
+	// rate.Limiter starts with a full token bucket, so recreating it on every hit
+	// let `burst` requests fire immediately and defeated the backoff — the exact
+	// behaviour this test now forbids.
 	start := time.Now()
 	err = limiter.WaitForHost(ctx, url)
 	if err != nil {
-		t.Fatalf("Third WaitForHost() failed: %v", err)
+		t.Fatalf("Second WaitForHost() failed: %v", err)
 	}
 	duration := time.Since(start)
 
 	// Should wait approximately 300ms (accounting for some tolerance)
 	if duration < 250*time.Millisecond {
-		t.Errorf("RecordRateLimitHit() did not increase backoff, wait was only %v", duration)
+		t.Errorf("RecordRateLimitHit() did not apply backoff to the immediate next request, wait was only %v", duration)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/utils/logger"
 	"alt/utils/metrics"
+	"alt/utils/rate_limiter"
 	"alt/utils/resilience"
 	"alt/utils/security"
 	"context"
@@ -29,9 +30,19 @@ type ValidateAndFetchRSSGateway struct {
 	metricsCollector *metrics.BasicMetricsCollector
 	fetchSem         chan struct{}
 	sfGroup          singleflight.Group // deduplicates concurrent fetches for the same URL
+	// rateLimiter throttles the external feed fetch per host (CLAUDE.md rule 2).
+	// Injected in production; nil only in the WithFetcher test constructor, whose
+	// fetcher is a mock that performs no real external call.
+	rateLimiter *rate_limiter.HostRateLimiter
 }
 
-func NewValidateAndFetchRSSGateway() *ValidateAndFetchRSSGateway {
+// NewValidateAndFetchRSSGateway builds the production gateway. rateLimiter is the
+// process-wide host limiter (shared with the harvester's feed collector) so
+// feed-registration fetches obey the same per-host 5s floor as scheduled polls.
+func NewValidateAndFetchRSSGateway(rateLimiter *rate_limiter.HostRateLimiter) *ValidateAndFetchRSSGateway {
+	if rateLimiter == nil {
+		panic("validate_fetch_rss_gateway: HostRateLimiter is required (CLAUDE.md rule 2) — wire infra.RateLimiter at composition root")
+	}
 	semSize := 50
 	if v := os.Getenv("FEED_FETCH_CONCURRENCY"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -44,10 +55,13 @@ func NewValidateAndFetchRSSGateway() *ValidateAndFetchRSSGateway {
 		circuitBreaker:   resilience.NewSimpleCircuitBreaker(resilience.DefaultCircuitBreakerConfig()),
 		metricsCollector: metrics.NewBasicMetricsCollector(),
 		fetchSem:         make(chan struct{}, semSize),
+		rateLimiter:      rateLimiter,
 	}
 }
 
 // NewValidateAndFetchRSSGatewayWithFetcher creates a gateway with a custom fetcher (for testing).
+// The rate limiter is left nil: the injected fetcher is a mock, so there is no
+// real external call to throttle.
 func NewValidateAndFetchRSSGatewayWithFetcher(fetcher register_feed_gateway.RSSFeedFetcher) *ValidateAndFetchRSSGateway {
 	return &ValidateAndFetchRSSGateway{
 		feedFetcher:      fetcher,
@@ -97,6 +111,15 @@ func (g *ValidateAndFetchRSSGateway) ValidateAndFetch(ctx context.Context, link 
 			}
 			if parsedURL.Scheme == "" {
 				return errors.New("URL must include a scheme (http or https)")
+			}
+
+			// Rule 2: throttle the external fetch per host, shared with the
+			// harvester's feed collector. Skipped only under the WithFetcher test
+			// constructor (mock fetcher, no real external call).
+			if g.rateLimiter != nil {
+				if waitErr := g.rateLimiter.WaitForHost(ctx, link); waitErr != nil {
+					return waitErr
+				}
 			}
 
 			feed, err := g.feedFetcher.FetchRSSFeed(ctx, link)

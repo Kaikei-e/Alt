@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"search-indexer/config"
@@ -254,6 +255,27 @@ func Run(ctx context.Context) error {
 		if mtlsPort == "" {
 			mtlsPort = "9443"
 		}
+		// Loud, unconditional record of the effective peer-authentication mode
+		// for the mTLS listener (MTLS-1). tlsutil.OptionsFromEnv only enforces
+		// client certificates when MTLS_CLIENT_AUTH=require_and_verify; any other
+		// value (unset, typo, "verify_if_given") silently leaves the listener at
+		// tls.NoClientCert, i.e. accepting anonymous peers. Making the effective
+		// mode explicit at startup turns that silent posture into an observable
+		// one. Fail-closed enforcement is intentionally NOT done here -- it would
+		// break the plaintext-migration window and dev compose defaults.
+		clientAuthEnv := os.Getenv("MTLS_CLIENT_AUTH")
+		if strings.EqualFold(clientAuthEnv, "require_and_verify") {
+			logger.Logger.Info("mtls client-auth ENABLED",
+				"mode", "require_and_verify",
+				"allowed_peers", os.Getenv("MTLS_ALLOWED_PEERS"),
+			)
+		} else {
+			logger.Logger.Warn("mtls client-auth DISABLED: listener accepts anonymous peers (peer identity NOT enforced)",
+				"MTLS_CLIENT_AUTH", clientAuthEnv,
+				"expected_to_enable", "require_and_verify",
+			)
+		}
+
 		tlsCfg, tlsErr := tlsutil.LoadServerConfig(
 			os.Getenv("MTLS_CERT_FILE"),
 			os.Getenv("MTLS_KEY_FILE"),
@@ -515,6 +537,18 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 	}
 }
 
+// recapBackfillMaxStalls bounds how many consecutive Phase-1 iterations may
+// report HasMore=true without advancing the cursor before the loop gives up on
+// backfill and hands off to the Phase-2 poller. See the stall handling in
+// runRecapIndexLoop for why the cursor can legitimately fail to advance.
+const recapBackfillMaxStalls = 10
+
+// recapBackfillStallPause is the interruptible wait inserted between Phase-1
+// iterations whose cursor did not advance, so a stalled backfill neither spins
+// the CPU nor hammers recap-worker while the stall counter climbs. It is a var
+// (not a const) only so tests can shrink it.
+var recapBackfillStallPause = 500 * time.Millisecond
+
 // runRecapIndexLoop runs dual-phase indexing for recap genres.
 // Phase 1: Backfill all existing recap genres.
 // Phase 2: Incremental polling for new recap genres.
@@ -530,6 +564,7 @@ func runRecapIndexLoop(ctx context.Context, indexRecapsUsecase *usecase.IndexRec
 
 	bo := newRetryBackoff()
 	var lastSince string
+	var stalls int
 	for {
 		select {
 		case <-ctx.Done():
@@ -553,6 +588,7 @@ func runRecapIndexLoop(ctx context.Context, indexRecapsUsecase *usecase.IndexRec
 		bo.Reset()
 		recordBatch(ctx, "recap_backfill", result.IndexedCount, 0, time.Since(start))
 
+		prevSince := lastSince
 		if result.LastSince != "" {
 			lastSince = result.LastSince
 		}
@@ -561,6 +597,36 @@ func runRecapIndexLoop(ctx context.Context, indexRecapsUsecase *usecase.IndexRec
 			logger.Logger.Info("Recap Phase 1 complete: backfill done", "indexed_last_batch", result.IndexedCount)
 			break
 		}
+
+		// HasMore is true but the cursor did not advance. ExecuteBackfill
+		// deliberately keeps `since` AT the batch's max ExecutedAt when the page
+		// was truncated (see usecase.nextRecapCursor) so a tie group split across
+		// pages is not silently dropped -- recap-worker's indexable endpoint
+		// orders by kicked_at with no secondary tiebreaker. But when a single
+		// recap job emits more genres than RECAP_INDEX_BATCH_SIZE, every fetch
+		// re-serves that identical boundary batch forever and the cursor can
+		// never move. Without a guard this success path spins with no wait,
+		// pinning a CPU and hammering recap-worker. Count consecutive no-progress
+		// iterations, pause between them so the loop cannot hot-spin, and abort
+		// Phase 1 for the periodic Phase 2 poller once the run exceeds the limit.
+		if lastSince == prevSince {
+			stalls++
+			if stalls >= recapBackfillMaxStalls {
+				logger.Logger.Error("Recap Phase 1 aborted: backfill cursor stalled with HasMore=true; a tie group likely exceeds RECAP_INDEX_BATCH_SIZE -- advancing to Phase 2",
+					"since", lastSince,
+					"consecutive_stalls", stalls,
+					"batch_size", config.RecapIndexBatchSize,
+				)
+				break
+			}
+			select {
+			case <-time.After(recapBackfillStallPause):
+			case <-ctx.Done():
+				return
+			}
+			continue
+		}
+		stalls = 0
 
 		logger.Logger.Info("recap backfill indexed", "count", result.IndexedCount)
 	}

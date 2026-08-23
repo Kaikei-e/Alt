@@ -50,6 +50,10 @@ func (r *TagRepository) FetchTagCooccurrences(ctx context.Context, tagNames []st
 		}
 		items = append(items, &item)
 	}
+	if err := rows.Err(); err != nil {
+		logger.Logger.ErrorContext(ctx, "error iterating tag cooccurrences", "error", err)
+		return nil, errors.New("error scanning tag cooccurrence")
+	}
 
 	return items, nil
 }

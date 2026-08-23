@@ -37,6 +37,9 @@ func (r *SubscriptionRepository) FetchSubscriptions(ctx context.Context, userID 
 		s.CreatedAt = createdAt
 		sources = append(sources, &s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate subscriptions: %w", err)
+	}
 
 	return sources, nil
 }

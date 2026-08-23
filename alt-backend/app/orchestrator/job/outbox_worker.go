@@ -430,6 +430,22 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 		publishedAt = time.Now().Format(time.RFC3339)
 	}
 
+	// occurred_at is the article-upsert fact's own timestamp, minted once at
+	// outbox-enqueue time (same source as published_at above). Re-stamping
+	// time.Now() here made the same event replay to a different occurred_at on
+	// every reprocess (worker poll delay, crash-and-reprocess), breaking the
+	// reproject-safe / no-business-fact-time.Now() invariant. Deriving it from
+	// updated_at keeps the append idempotent under the article-scoped dedupe_key.
+	occurredAt, occurredErr := time.Parse(time.RFC3339, publishedAt)
+	if occurredErr != nil {
+		// publishedAt is always RFC3339 (p.UpdatedAt from save_article_driver, or
+		// the wall-clock fallback above), so this is defensive. Surface it as a
+		// retryable failure rather than fabricating a fresh occurred_at.
+		logger.Logger.ErrorContext(ctx, "outbox payload updated_at not RFC3339, withholding knowledge event",
+			"article_id", p.ArticleID, "updated_at", publishedAt, "error", occurredErr)
+		return fmt.Errorf("parse outbox updated_at for occurred_at: %w", occurredErr)
+	}
+
 	// Marshal through the canonical domain.ArticleCreatedPayload struct so
 	// the wire key for the article URL is locked to "url" — using a raw
 	// map[string]any literal here historically wrote the legacy "link" key
@@ -450,7 +466,7 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 
 	kevent := domain.KnowledgeEvent{
 		EventID:       uuid.New(),
-		OccurredAt:    time.Now(),
+		OccurredAt:    occurredAt,
 		TenantID:      userID,
 		UserID:        &userID,
 		ActorType:     domain.ActorService,

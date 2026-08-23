@@ -133,6 +133,35 @@ func WithAllowedPeers(names ...string) ServerOption {
 	}
 }
 
+// ClientAuthLabel returns an operator-readable name for a tls.ClientAuthType,
+// so the startup log can state the effective client-auth mode of the mTLS
+// listener rather than an opaque integer.
+func ClientAuthLabel(mode tls.ClientAuthType) string {
+	switch mode {
+	case tls.NoClientCert:
+		return "no_client_cert"
+	case tls.RequestClientCert:
+		return "request_client_cert"
+	case tls.RequireAnyClientCert:
+		return "require_any_client_cert"
+	case tls.VerifyClientCertIfGiven:
+		return "verify_client_cert_if_given"
+	case tls.RequireAndVerifyClientCert:
+		return "require_and_verify_client_cert"
+	default:
+		return fmt.Sprintf("unknown(%d)", int(mode))
+	}
+}
+
+// ClientAuthEnforced reports whether mode both requires a client certificate
+// and verifies it against the configured CAs. Only RequireAndVerifyClientCert
+// closes the door on unauthenticated peers; every other mode (including the
+// zero-value NoClientCert default) lets an unauthenticated client complete the
+// handshake, which is what the startup warning must surface.
+func ClientAuthEnforced(mode tls.ClientAuthType) bool {
+	return mode == tls.RequireAndVerifyClientCert
+}
+
 // LoadServerConfig returns a *tls.Config wired up for a mTLS-capable server.
 func LoadServerConfig(certPath, keyPath, caPath string, opts ...ServerOption) (*tls.Config, error) {
 	reloader, err := newCertReloader(certPath, keyPath)

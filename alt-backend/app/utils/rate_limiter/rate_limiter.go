@@ -155,7 +155,19 @@ func (h *HostRateLimiter) RecordRateLimitHit(host string, retryAfter time.Durati
 	}
 
 	h.currentIntervals[host] = backoff
-	h.limiters[host] = rate.NewLimiter(rate.Every(backoff), h.burst)
+	// Widen the interval on the EXISTING limiter instead of swapping in a new
+	// one. A freshly constructed rate.Limiter starts with a full token bucket, so
+	// recreating it here refilled the bucket to `burst` on every 429 — handing
+	// back a full burst of immediate requests and skipping past the backoff we
+	// just computed. SetLimit preserves the current token deficit (whatever the
+	// process already consumed), so the next request actually waits the new
+	// interval. A host not seen yet has no throttle to preserve, so it gets a
+	// fresh limiter whose burst is intentionally available.
+	if lim, exists := h.limiters[host]; exists {
+		lim.SetLimit(rate.Every(backoff))
+	} else {
+		h.limiters[host] = rate.NewLimiter(rate.Every(backoff), h.burst)
+	}
 }
 
 // RecordSuccess decays a host's rate limiter back to the configured base

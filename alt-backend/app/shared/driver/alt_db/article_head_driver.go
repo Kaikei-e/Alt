@@ -110,6 +110,9 @@ func (r *ArticleRepository) FetchOgImageURLsByArticleIDs(ctx context.Context, ar
 			result[articleID] = ogURL
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to fetch og_image_urls: %w", err)
+	}
 	return result, nil
 }
 

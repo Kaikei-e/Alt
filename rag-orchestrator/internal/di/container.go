@@ -326,11 +326,13 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Ask Augur chat persistence (append-first rows in rag-db)
 	conversationUsecase := usecase.NewAugurConversationUsecase(augurConvRepo, nil)
 
-	// Morning letter fetcher for chat grounding (recap-worker REST)
+	// Morning letter fetcher for chat grounding (recap-worker REST).
+	// The URL is resolved in config.Load() (RECAP_WORKER_URL, default
+	// http://recap-worker:9005) — DI does not re-derive a fallback, so a
+	// misconfigured URL is visible in this startup log rather than hidden
+	// behind a hardcoded default (CLAUDE.md rule 8/9).
 	recapWorkerURL := cfg.Backend.RecapWorkerURL
-	if recapWorkerURL == "" {
-		recapWorkerURL = "http://recap-worker:8080"
-	}
+	log.Info("recap-worker letter fetcher configured", "url", recapWorkerURL)
 	letterFetcher := recap_worker.NewClient(recapWorkerURL, httpclient.NewPooledClient(10*time.Second))
 
 	// Factories for hyper-boost

@@ -4,6 +4,7 @@ package consumer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -113,6 +114,24 @@ type Consumer struct {
 	logger       *slog.Logger
 	shutdownOnce sync.Once
 	shutdownChan chan struct{}
+	// wg tracks the consume and reclaim loops so Stop can wait for them to
+	// actually exit before closing the Redis client. Without it, Stop closing
+	// the client races an in-flight XAck in processMessages: a message whose
+	// handler already succeeded loses its XAck against the closed client and
+	// is redelivered on restart. See .claude/rules/event-stream-consumer.md.
+	wg sync.WaitGroup
+
+	// dlqMu guards dlqAwaitingAck. sendToDLQ runs only from the single
+	// reclaimLoop goroutine today, but the map is small and the lock cheap, so
+	// guard it rather than depend on that staying true.
+	dlqMu sync.Mutex
+	// dlqAwaitingAck records message IDs whose DLQ copy is already durable but
+	// whose XACK against the source stream has not landed yet. A later reclaim
+	// sweep re-XACKs such a message instead of re-XADDing it, so a persistently
+	// refused XACK cannot pile a duplicate payload into the DLQ every interval.
+	// Bounded by dlqAwaitingAckMax; evicting an entry costs at most one
+	// duplicate DLQ copy if that message is ever swept again.
+	dlqAwaitingAck map[string]struct{}
 }
 
 // NewConsumer creates a new Redis Streams consumer.
@@ -162,17 +181,30 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"dlq_max_len", c.config.effectiveDLQMaxLen(),
 	)
 
-	go c.consumeLoop(ctx)
-	go c.reclaimLoop(ctx)
+	c.wg.Add(2)
+	go func() {
+		defer c.wg.Done()
+		c.consumeLoop(ctx)
+	}()
+	go func() {
+		defer c.wg.Done()
+		c.reclaimLoop(ctx)
+	}()
 	return nil
 }
 
-// Stop gracefully stops the consumer.
+// Stop gracefully stops the consumer. It signals the consume and reclaim
+// loops to exit, waits for them to actually return (so no XReadGroup /
+// XAutoClaim / XAck is still in flight), and only then closes the Redis
+// client. Closing the client before the loops drain would abort an in-flight
+// XAck for a message whose handler already succeeded, silently redelivering
+// it — the WaitGroup wait is what prevents that lost-ack race.
 func (c *Consumer) Stop() {
 	c.shutdownOnce.Do(func() {
 		if c.shutdownChan != nil {
 			close(c.shutdownChan)
 		}
+		c.wg.Wait()
 		if c.client != nil {
 			_ = c.client.Close()
 		}
@@ -219,7 +251,7 @@ func (c *Consumer) readAndProcess(ctx context.Context) error {
 		Block:    c.config.BlockTimeout,
 	}).Result()
 
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		// No messages available
 		return nil
 	}
@@ -346,13 +378,27 @@ func (c *Consumer) parseEvent(message redis.XMessage) Event {
 		event.Source = v
 	}
 	if v, ok := message.Values["created_at"].(string); ok {
-		event.CreatedAt, _ = time.Parse(time.RFC3339, v)
+		parsed, parseErr := time.Parse(time.RFC3339, v)
+		if parseErr != nil {
+			c.logger.Warn("failed to parse event created_at",
+				"message_id", message.ID,
+				"created_at", v,
+				"error", parseErr,
+			)
+		} else {
+			event.CreatedAt = parsed
+		}
 	}
 	if v, ok := message.Values["payload"].(string); ok {
 		event.Payload = json.RawMessage(v)
 	}
 	if v, ok := message.Values["metadata"].(string); ok {
-		_ = json.Unmarshal([]byte(v), &event.Metadata)
+		if unmarshalErr := json.Unmarshal([]byte(v), &event.Metadata); unmarshalErr != nil {
+			c.logger.Warn("failed to unmarshal event metadata",
+				"message_id", message.ID,
+				"error", unmarshalErr,
+			)
+		}
 	}
 
 	return event

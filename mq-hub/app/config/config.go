@@ -28,8 +28,15 @@ type Config struct {
 	// ignores consumer references, so it firing at all means the publish-time
 	// trim failed to keep up. 0 disables the pass.
 	StreamHardMaxLen int64
-	// StreamTrimInterval is how often the periodic trim pass runs.
+	// StreamTrimInterval is how often the periodic trim pass runs. It also
+	// paces the reply-stream safety-net sweep.
 	StreamTrimInterval time.Duration
+	// ReplyStreamSweepEnabled controls the periodic safety-net sweep that
+	// re-applies a TTL to temporary request-reply streams a late worker reply
+	// may have recreated without one. Defaults to true; set
+	// REPLY_STREAM_SWEEP_ENABLED=false to disable it as an explicit, logged
+	// choice rather than something inferred from an unset variable.
+	ReplyStreamSweepEnabled bool
 }
 
 // NewConfig creates a new Config from environment variables. It fails fast
@@ -63,6 +70,10 @@ func NewConfig() (*Config, error) {
 	if trimIntervalSeconds <= 0 {
 		return nil, fmt.Errorf("STREAM_TRIM_INTERVAL_SECONDS must be positive, got %d", trimIntervalSeconds)
 	}
+	replyStreamSweepEnabled, err := strconv.ParseBool(getEnvOrDefault("REPLY_STREAM_SWEEP_ENABLED", "true"))
+	if err != nil {
+		return nil, fmt.Errorf("parse REPLY_STREAM_SWEEP_ENABLED: %w", err)
+	}
 
 	return &Config{
 		RedisURL:           getEnvOrDefault("REDIS_URL", "redis://localhost:6379"),
@@ -72,7 +83,8 @@ func NewConfig() (*Config, error) {
 		MaxBatchSize:       maxBatchSize,
 		StreamMaxLen:       streamMaxLen,
 		StreamHardMaxLen:   streamHardMaxLen,
-		StreamTrimInterval: time.Duration(trimIntervalSeconds) * time.Second,
+		StreamTrimInterval:      time.Duration(trimIntervalSeconds) * time.Second,
+		ReplyStreamSweepEnabled: replyStreamSweepEnabled,
 	}, nil
 }
 

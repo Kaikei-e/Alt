@@ -94,7 +94,7 @@ func TestCreateSummaryVersionUsecase_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewCreateSummaryVersionUsecase(tt.summaryPort, tt.eventPort, nil)
+			uc := NewCreateSummaryVersionUsecase(tt.summaryPort, tt.eventPort, &mockMarkSupersededPort{})
 			err := uc.Execute(context.Background(), tt.sv)
 
 			if tt.wantErr {
@@ -115,7 +115,7 @@ func TestCreateSummaryVersionUsecase_PayloadCarriesArticleTitle(t *testing.T) {
 
 	summaryPort := &mockSummaryPort{}
 	eventPort := &mockEventPort{}
-	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, nil)
+	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, &mockMarkSupersededPort{})
 
 	err := uc.Execute(context.Background(), domain.SummaryVersion{
 		ArticleID:    uuid.New(),
@@ -143,7 +143,7 @@ func TestCreateSummaryVersionUsecase_PayloadOmitsEmptyArticleTitle(t *testing.T)
 
 	summaryPort := &mockSummaryPort{}
 	eventPort := &mockEventPort{}
-	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, nil)
+	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, &mockMarkSupersededPort{})
 
 	err := uc.Execute(context.Background(), domain.SummaryVersion{
 		ArticleID:   uuid.New(),
@@ -176,6 +176,52 @@ func TestCreateSummaryVersionUsecase_FirstVersion_NoSupersedeEvent(t *testing.T)
 	require.NoError(t, err)
 	assert.Len(t, eventPort.appended, 1, "first version: only SummaryVersionCreated, no SummarySuperseded")
 	assert.Equal(t, domain.EventSummaryVersionCreated, eventPort.appended[0].EventType)
+}
+
+// eventPortFailOnType errors only on appends whose EventType matches failType,
+// so the first (Created) append succeeds and the second (Superseded) append
+// fails — the exact partial-failure the fatal-append fix must surface.
+type eventPortFailOnType struct {
+	appended []domain.KnowledgeEvent
+	failType string
+}
+
+func (m *eventPortFailOnType) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
+	if event.EventType == m.failType {
+		return 0, assert.AnError
+	}
+	m.appended = append(m.appended, event)
+	return int64(len(m.appended)), nil
+}
+
+func TestCreateSummaryVersionUsecase_SupersedeEventAppendFailure_IsFatal(t *testing.T) {
+	logger.InitLogger()
+
+	articleID := uuid.New()
+	userID := uuid.New()
+
+	summaryPort := &mockSummaryPort{}
+	eventPort := &eventPortFailOnType{failType: domain.EventSummarySuperseded}
+	markPort := &mockMarkSupersededPort{
+		prev: &domain.SummaryVersion{
+			SummaryVersionID: uuid.New(),
+			ArticleID:        articleID,
+			UserID:           userID,
+			SummaryText:      "Old summary",
+		},
+	}
+
+	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, markPort)
+	err := uc.Execute(context.Background(), domain.SummaryVersion{
+		ArticleID:   articleID,
+		UserID:      userID,
+		SummaryText: "New summary",
+	})
+
+	// The supersede event is a durable append-first write; a failure to land it
+	// must fail the command so the caller retries (dedupe_key makes the retry
+	// idempotent), not be swallowed as a WARN.
+	require.Error(t, err, "supersede event append failure must be fatal")
 }
 
 func TestCreateSummaryVersionUsecase_SecondVersion_EmitsSupersedeEvent(t *testing.T) {

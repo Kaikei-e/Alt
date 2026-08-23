@@ -18,6 +18,24 @@ type StreamTrimmer interface {
 	TrimMaxLenApprox(ctx context.Context, stream domain.StreamKey, maxLen int64) (int64, error)
 }
 
+// ReplyStreamSweeper bounds the lifetime of temporary request-reply streams
+// (usecase.ReplyStreamPrefix + correlationID).
+//
+// GenerateTagsForArticle deletes its reply stream on completion/timeout, but a
+// worker replying late can XADD-recreate the key afterwards with no expiry, and
+// the length-cap trim pass (StreamTrimmer) only covers the fixed set of streams
+// in domain.AllStreamKeys(). Kept separate from StreamPort for the same reason
+// as StreamTrimmer: this is maintenance, not part of the publish/consume
+// contract every StreamPort implementation must satisfy.
+type ReplyStreamSweeper interface {
+	// ScanReplyStreamsWithoutTTL returns reply-stream keys matching prefix that
+	// currently have no expiry set.
+	ScanReplyStreamsWithoutTTL(ctx context.Context, prefix string) ([]domain.StreamKey, error)
+
+	// Expire sets a TTL on a stream key.
+	Expire(ctx context.Context, stream domain.StreamKey, ttl time.Duration) error
+}
+
 // StreamPort defines the interface for Redis Streams operations.
 type StreamPort interface {
 	// Publish publishes an event to a stream and returns the message ID.

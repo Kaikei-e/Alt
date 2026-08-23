@@ -17,6 +17,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mmcdole/gofeed"
@@ -84,16 +85,30 @@ type DefaultRSSFeedFetcher struct {
 	proxyStrategy    *proxy.Strategy
 	ssrfValidator    *security.SSRFValidator
 	httpClient       *http.Client // shared HTTP client with connection pooling
+	// allowLoopbackDial permits dialing loopback IPs in direct mode. It is false
+	// in production (NewDefaultRSSFeedFetcher) and set true only by tests that
+	// serve feeds from httptest loopback servers. It is deliberately independent
+	// of the redirect-time hostname validator, so redirect-to-internal is still
+	// blocked even when loopback dialing is allowed.
+	allowLoopbackDial bool
 }
 
 // NewDefaultRSSFeedFetcher creates a new DefaultRSSFeedFetcher with proxy configuration
 func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
+	return newDefaultRSSFeedFetcher(false)
+}
+
+// newDefaultRSSFeedFetcher is the shared builder. allowLoopbackDial is only ever
+// true from tests (loopback httptest servers); production always passes false so
+// the connection-time SSRF guard blocks private/metadata IPs.
+func newDefaultRSSFeedFetcher(allowLoopbackDial bool) *DefaultRSSFeedFetcher {
 	strategy := proxy.GetStrategy()
 	f := &DefaultRSSFeedFetcher{
-		proxyConfig:      getProxyConfigFromEnv(),
-		envoyProxyConfig: getEnvoyProxyConfigFromEnv(),
-		proxyStrategy:    strategy,
-		ssrfValidator:    security.NewSSRFValidator(),
+		proxyConfig:       getProxyConfigFromEnv(),
+		envoyProxyConfig:  getEnvoyProxyConfigFromEnv(),
+		proxyStrategy:     strategy,
+		ssrfValidator:     security.NewSSRFValidator(),
+		allowLoopbackDial: allowLoopbackDial,
 	}
 
 	// Create shared HTTP client with connection pooling (goroutine-safe)
@@ -105,6 +120,27 @@ func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
+			// Connection-time SSRF validation: Go re-resolves DNS at dial time, so
+			// a feed host that passed pre-fetch URL validation can still rebind to a
+			// private/metadata IP before the socket connects. Validating the actual
+			// dialed IP here (the same Dialer.Control approach as
+			// security.CreateSecureHTTPClient / the image proxy) closes that
+			// window. In proxy mode the socket targets the trusted egress proxy, not
+			// the feed host, so validation is skipped to avoid rejecting the proxy's
+			// internal address.
+			Control: func(network, address string, _ syscall.RawConn) error {
+				if f.proxyStrategy != nil && f.proxyStrategy.Enabled {
+					return nil
+				}
+				if f.allowLoopbackDial {
+					if host, _, splitErr := net.SplitHostPort(address); splitErr == nil {
+						if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+							return nil
+						}
+					}
+				}
+				return f.ssrfValidator.ValidateDialIP(network, address)
+			},
 		}).DialContext,
 		MaxIdleConns:        200,
 		MaxIdleConnsPerHost: 50,
