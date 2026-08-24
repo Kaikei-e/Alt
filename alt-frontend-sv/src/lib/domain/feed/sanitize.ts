@@ -23,16 +23,29 @@ export function decodeHtmlEntities(text: string): string {
 		.replace(/&amp;/g, "&");
 }
 
-function sanitizeContent(
-	content: string | null | undefined,
-	maxLength = 1000,
-): string {
+/**
+ * Reduce a feed's HTML blob to the text a reader can actually read.
+ *
+ * Tags are stripped BEFORE entities are decoded, never after: decoding first
+ * would turn an escaped `&lt;script&gt;` into real markup that the strip pass
+ * has already gone by. No length cap here — callers that need one apply it
+ * themselves, so a surface with its own "read more" cut is not silently
+ * shortened twice.
+ */
+export function stripHtmlToText(content: string | null | undefined): string {
 	if (!content) return "";
 	const textOnly = content
 		.replace(/<[^>]*>/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();
-	const decoded = decodeHtmlEntities(textOnly);
+	return decodeHtmlEntities(textOnly);
+}
+
+function sanitizeContent(
+	content: string | null | undefined,
+	maxLength = 1000,
+): string {
+	const decoded = stripHtmlToText(content);
 	return decoded.length > maxLength ? decoded.slice(0, maxLength) : decoded;
 }
 
