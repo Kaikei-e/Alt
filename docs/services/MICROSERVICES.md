@@ -24,7 +24,7 @@ all interfaces and are out of scope here.
 
 | Service | Language | Host Port(s) | Compose File | Health Endpoint | Notes |
 |---------|----------|--------------|--------------|-----------------|-------|
-| plecto-proxy | Rust (PlectoProxy 0.6.0) | 80 → 8443, 8080 | core.yaml | `plecto healthz` / admin `/healthz` `/readyz` (:8080) | Edge/ingress; replaced nginx. Routes in `plecto/manifest.toml` |
+| plecto-proxy | Rust (PlectoProxy 0.11.1) | 80 → 8443, 8080 | core.yaml | `plecto healthz` / admin `/healthz` `/readyz` (:8080) | Edge/ingress; replaced nginx. Routes in `plecto/manifest.toml` |
 | alt-frontend-sv | TypeScript (SvelteKit 2.x) | 4173 | core.yaml | `/health` | Knowledge Home admin at `/admin/knowledge-home` |
 | alt-backend | Go 1.26+ (Echo) | 9000, 9101, 9102 | core.yaml | `/v1/health` (:9000), `/health` (:9110) | User-facing API. Knowledge Home (event sourcing, projector, reproject, SLO) |
 | alt-harvester | Go 1.26+ | なし | core.yaml | `/health` (:9110) | 7 定期ジョブ専用。業務リスナーなし |
