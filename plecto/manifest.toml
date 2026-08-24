@@ -1,5 +1,5 @@
 # Plecto edge/ingress manifest for Alt.
-# Built against ghcr.io/kaikei-e/plecto:0.8.0. The image series and the
+# Built against ghcr.io/kaikei-e/plecto:0.11.1. The image series and the
 # `plecto:filter@` contract series are independent — see compose/core.yaml.
 # [state] is omitted (defaults to "memory" — zero-config; rate-limit counters/KV don't
 # survive a restart, acceptable for this deployment).
