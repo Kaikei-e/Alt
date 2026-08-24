@@ -9,6 +9,14 @@ vi.mock("$lib/api/client", () => ({
 	getArticleSummaryClient: vi.fn(() =>
 		Promise.resolve({ matched_articles: [] }),
 	),
+	getFeedContentOnTheFlyClient: vi.fn(() =>
+		Promise.resolve({
+			content: "<p>Full article body paragraph.</p>",
+			article_id: "article-123",
+			og_image_url: "",
+			og_image_proxy_url: "",
+		}),
+	),
 }));
 
 vi.mock("$lib/utils/transformFeedSearchResult", () => ({
