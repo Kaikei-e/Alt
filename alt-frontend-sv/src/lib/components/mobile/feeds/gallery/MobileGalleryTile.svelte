@@ -10,6 +10,7 @@
  * image height, and the image is what the reader is scanning here.
  */
 import type { RenderFeed } from "$lib/schema/feed";
+import { ogImageOverlay } from "$lib/stores/ogImageOverlay.svelte";
 import { formatCompactDate } from "$lib/utils/feed";
 import { ogImageResolver } from "$lib/utils/ogImageResolver";
 import { createProxyImage } from "$lib/utils/proxyImage.svelte";
@@ -24,8 +25,12 @@ const { feed, onSelect, isRead = false }: Props = $props();
 
 let imageContainer = $state<HTMLElement | null>(null);
 
+// See VisualFeedCard: a URL the grid backfilled after this tile rendered
+// arrives through the overlay, keyed by article, not by mutating `feed`.
+const overlayCell = $derived(ogImageOverlay.cell(feed.articleId));
+
 const image = createProxyImage({
-	url: () => feed.ogImageProxyUrl,
+	url: () => feed.ogImageProxyUrl || overlayCell?.url,
 	container: () => imageContainer,
 	// Feeds whose RSS carried no image resolve when the reader reaches them,
 	// keyed on the feed: most of these have no article row to key on.
@@ -52,7 +57,11 @@ const dateline = $derived(
   aria-label="Open {feed.title}"
   onclick={() => onSelect(feed)}
 >
-  <div class="tile-image-area" bind:this={imageContainer}>
+  <div
+    class="tile-image-area"
+    bind:this={imageContainer}
+    aria-busy={image.state === "idle" || image.state === "loading"}
+  >
     {#if showFallback}
       <div class="tile-fallback" data-testid="tile-image-fallback">
         <span class="tile-fallback-text">No preview</span>
@@ -128,6 +137,13 @@ const dateline = $derived(
     height: 100%;
     object-fit: cover;
     display: block;
+    animation: reveal 200ms ease-out;
+  }
+
+  @keyframes reveal {
+    from {
+      opacity: 0;
+    }
   }
 
   .tile-fallback {
@@ -161,7 +177,10 @@ const dateline = $derived(
       rgba(0, 0, 0, 0.03) 75%
     );
     background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
+    /* Bounded rather than `infinite`: a resolution can outlive several asks,
+       and an animation running past five seconds with no pause control fails
+       WCAG 2.2.2. The flat tint that remains still reads as "not here yet". */
+    animation: shimmer 1.5s linear 3 forwards;
   }
 
   /* Unread marker sits on the image, not in the text block, so the read/unread
@@ -226,6 +245,9 @@ const dateline = $derived(
     .tile-shimmer {
       animation: none;
       opacity: 0.7;
+    }
+    .tile-image {
+      animation: none;
     }
   }
 </style>

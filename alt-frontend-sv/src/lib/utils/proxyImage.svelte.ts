@@ -5,7 +5,7 @@
  *
  *   idle -> loading -> loaded | absent
  *
- * Two properties are the whole reason it exists as a unit rather than as
+ * Three properties are the whole reason it exists as a unit rather than as
  * per-component code:
  *
  *  - **Viewport gating.** The image proxy rate-limits per upstream host, so a
@@ -16,12 +16,21 @@
  *    happens. Collapsing to the fallback on the first failure is the regression
  *    that made mark-as-read blank out surviving cards on the desktop grid; the
  *    `absent` state is reached only once the loader has given up for good.
+ *  - **Resolution finishes after we stop listening.** `ResolveOgImages` fetches
+ *    the publisher's page inline behind a per-host slot, so a batch that cannot
+ *    finish inside one RPC leaves the reader's request dead and the images it
+ *    did resolve sitting in the store. A card that treated that as the origin's
+ *    answer stayed blank until the page was reloaded. It now re-asks, on a
+ *    short bounded ladder, and the second ask is answered from the store with
+ *    no origin request at all — which is what makes the grid fill itself in.
  *
  * Must be called during component initialisation — it registers `$effect`s and
  * an `onDestroy` hook against the calling component's lifecycle.
  */
 import { onDestroy } from "svelte";
 import { loadProxyImageDefault } from "./loadProxyImage";
+import type { OgImageOutcome } from "./ogImageResolver";
+import { MAX_RESOLVE_ATTEMPTS, ogImageRetryDelayMs } from "./ogImageRetry";
 
 export type ProxyImageState = "idle" | "loading" | "loaded" | "absent";
 
@@ -35,14 +44,14 @@ export interface ProxyImageOptions {
 	/** Injectable loader, for tests. */
 	load?: typeof loadProxyImageDefault;
 	/**
-	 * Obtains a proxy URL for a feed that arrived without one, called at most
-	 * once and only after the card has actually entered the viewport.
+	 * Obtains a proxy URL for a feed that arrived without one, called only
+	 * after the card has actually entered the viewport.
 	 *
 	 * This is what makes resolution on demand rather than a crawl: the request
 	 * exists because a reader reached this card. Omit it on surfaces that have
 	 * no feed to resolve, and a card with no URL settles straight to `absent`.
 	 */
-	resolve?: () => Promise<string | null>;
+	resolve?: () => Promise<OgImageOutcome>;
 }
 
 export interface ProxyImage {
@@ -68,14 +77,32 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 	let loadStartedForUrl: string | null = null;
 	let abortController: AbortController | null = null;
 	let resolveStarted = false;
+	let retryTimer: ReturnType<typeof setTimeout> | null = null;
+	let destroyed = false;
 
-	// The URL actually loaded: whatever the feed carried, else whatever we
-	// resolved for it.
-	const effectiveUrl = () => options.url() || resolvedUrl;
+	/**
+	 * The URL actually loaded.
+	 *
+	 * A URL we resolved on demand outranks one the feed list hands us later.
+	 * Both name the same publisher's image, and preferring the newcomer would
+	 * revoke a live object URL to re-download bytes already on screen — the
+	 * card flashing back to a shimmer for nothing. `reset()` clears
+	 * `resolvedUrl`, so a card genuinely handed a different feed still follows
+	 * the feed's own URL.
+	 */
+	const effectiveUrl = () => resolvedUrl || options.url() || null;
+
+	function clearRetry() {
+		if (retryTimer !== null) {
+			clearTimeout(retryTimer);
+			retryTimer = null;
+		}
+	}
 
 	function reset() {
 		abortController?.abort();
 		abortController = null;
+		clearRetry();
 		if (revokeUrl) {
 			URL.revokeObjectURL(revokeUrl);
 			revokeUrl = null;
@@ -87,15 +114,66 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 		resolveStarted = false;
 	}
 
-	// Restart when the URL changes (raw -> proxy backfill, or a recycled card
-	// being handed a different feed). Ordered before the load effect below so a
-	// URL change resets first and re-loads second, within the same flush.
+	/**
+	 * Ask for this feed's image, and keep asking while the answer is that we
+	 * could not ask.
+	 *
+	 * Only `unavailable` walks the ladder. `absent` is the origin's own answer,
+	 * recorded server-side, and re-asking it would cost the publisher a request
+	 * to be told the same thing.
+	 */
+	function startResolve(attempt: number) {
+		if (destroyed || !options.resolve) return;
+
+		state = "loading";
+		options
+			.resolve()
+			.then((outcome) => {
+				if (destroyed) return;
+				if (outcome.status === "resolved") {
+					resolvedUrl = outcome.url;
+					return;
+				}
+				if (outcome.status === "absent") {
+					state = "absent";
+					return;
+				}
+
+				const next = attempt + 1;
+				if (next >= MAX_RESOLVE_ATTEMPTS) {
+					// Out of asks. The card says "no preview" rather than
+					// shimmering for the rest of the session.
+					state = "absent";
+					return;
+				}
+				clearRetry();
+				retryTimer = setTimeout(
+					() => {
+						retryTimer = null;
+						startResolve(next);
+					},
+					ogImageRetryDelayMs(attempt, outcome.retryAfterMs),
+				);
+			})
+			.catch(() => {
+				if (!destroyed) state = "absent";
+			});
+	}
+
+	// Restart when the card is handed a *different* feed's URL.
+	//
+	// A first URL arriving where there was none is not that: it is the same
+	// feed's image being backfilled, and resetting there would throw away a
+	// resolution already in flight or an image already painted. Ordered before
+	// the load effect below so a genuine change resets first and re-loads
+	// second, within the same flush.
 	$effect(() => {
 		const url = options.url() ?? null;
-		if (url !== trackedUrl) {
-			trackedUrl = url;
-			reset();
-		}
+		if (url === trackedUrl) return;
+
+		const isBackfill = trackedUrl === null;
+		trackedUrl = url;
+		if (!isBackfill) reset();
 	});
 
 	// Observe viewport entry once; `inView` latches so scrolling back and forth
@@ -117,9 +195,7 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 		return () => io.disconnect();
 	});
 
-	// Resolve on demand: the card is in view and the feed carried no URL. One
-	// attempt per card — a second would mean a reader scrolling back and forth
-	// re-requesting someone else's page.
+	// Resolve on demand: the card is in view and the feed carried no URL.
 	$effect(() => {
 		if (!inView || resolveStarted || options.url()) return;
 
@@ -131,19 +207,7 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 		}
 
 		resolveStarted = true;
-		state = "loading";
-		options
-			.resolve()
-			.then((url) => {
-				if (url) {
-					resolvedUrl = url;
-				} else {
-					state = "absent";
-				}
-			})
-			.catch(() => {
-				state = "absent";
-			});
+		startResolve(0);
 	});
 
 	$effect(() => {
@@ -171,6 +235,8 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 	});
 
 	onDestroy(() => {
+		destroyed = true;
+		clearRetry();
 		abortController?.abort();
 		if (revokeUrl) URL.revokeObjectURL(revokeUrl);
 	});

@@ -27,8 +27,20 @@ let thumbnailContainer = $state<HTMLElement | null>(null);
 const thumbnail = createProxyImage({
 	url: () => null,
 	container: () => thumbnailContainer,
-	resolve: async () =>
-		articleId ? articleThumbnailResolver().resolve(articleId, sourceUrl) : null,
+	// `articleThumbnailResolver` still answers `string | null`, so a transport
+	// failure and "this article has no thumbnail" both arrive as null and both
+	// settle the card on its icon — the same collapse `ogImageResolver` was
+	// given three outcomes to end. Mapped, not fixed, here: this card is not
+	// the surface under change, and widening the retry policy of the augur
+	// thumbnails on the way past is not this diff's to decide.
+	resolve: async () => {
+		const url = articleId
+			? await articleThumbnailResolver().resolve(articleId, sourceUrl)
+			: null;
+		return url
+			? { status: "resolved" as const, url }
+			: { status: "absent" as const };
+	},
 });
 </script>
 
