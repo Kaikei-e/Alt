@@ -5047,9 +5047,19 @@ type FeedOgImageTarget struct {
 	// True when an earlier attempt was refused and that refusal still stands.
 	// The caller must not fetch: re-asking an origin that has already said no,
 	// every time a card scrolls past, is the crawl this design removes.
-	Suppressed    bool `protobuf:"varint,4,opt,name=suppressed,proto3" json:"suppressed,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Suppressed bool `protobuf:"varint,4,opt,name=suppressed,proto3" json:"suppressed,omitempty"`
+	// How many resolution attempts this feed has already cost. The bar on asking
+	// again grows with it, so a feed that keeps failing is asked about ever more
+	// rarely rather than on every scroll past. Reset to 1 by a resolution.
+	Attempts int32 `protobuf:"varint,5,opt,name=attempts,proto3" json:"attempts,omitempty"`
+	// Seconds remaining on the bar an earlier refusal set, or 0 when there is
+	// none — either because nothing is stored or because the refusal is settled
+	// for this retention window. `suppressed` says whether the bar still stands;
+	// this says how much of it is left, which is the only form the answer can
+	// take that a caller may pass on to a reader's client.
+	RetryAfterSeconds int64 `protobuf:"varint,6,opt,name=retry_after_seconds,json=retryAfterSeconds,proto3" json:"retry_after_seconds,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *FeedOgImageTarget) Reset() {
@@ -5108,6 +5118,20 @@ func (x *FeedOgImageTarget) GetSuppressed() bool {
 		return x.Suppressed
 	}
 	return false
+}
+
+func (x *FeedOgImageTarget) GetAttempts() int32 {
+	if x != nil {
+		return x.Attempts
+	}
+	return 0
+}
+
+func (x *FeedOgImageTarget) GetRetryAfterSeconds() int64 {
+	if x != nil {
+		return x.RetryAfterSeconds
+	}
+	return 0
 }
 
 type GetFeedOgImageTargetsRequest struct {
@@ -17455,7 +17479,7 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"\x1fListFeedsMissingOgImageResponse\x12M\n" +
 	"\n" +
 	"candidates\x18\x01 \x03(\v2-.services.datahub.v1.OgImageBackfillCandidateR\n" +
-	"candidates:\x02\x18\x01\"\x89\x01\n" +
+	"candidates:\x02\x18\x01\"\xd5\x01\n" +
 	"\x11FeedOgImageTarget\x12\x17\n" +
 	"\afeed_id\x18\x01 \x01(\tR\x06feedId\x12\x19\n" +
 	"\bpage_url\x18\x02 \x01(\tR\apageUrl\x12 \n" +
@@ -17463,7 +17487,9 @@ const file_services_datahub_v1_datahub_proto_rawDesc = "" +
 	"ogImageUrl\x12\x1e\n" +
 	"\n" +
 	"suppressed\x18\x04 \x01(\bR\n" +
-	"suppressed\"9\n" +
+	"suppressed\x12\x1a\n" +
+	"\battempts\x18\x05 \x01(\x05R\battempts\x12.\n" +
+	"\x13retry_after_seconds\x18\x06 \x01(\x03R\x11retryAfterSeconds\"9\n" +
 	"\x1cGetFeedOgImageTargetsRequest\x12\x19\n" +
 	"\bfeed_ids\x18\x01 \x03(\tR\afeedIds\"a\n" +
 	"\x1dGetFeedOgImageTargetsResponse\x12@\n" +

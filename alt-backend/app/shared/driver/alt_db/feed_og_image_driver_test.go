@@ -32,10 +32,10 @@ func TestFeedRepository_FetchFeedOgImageTargets(t *testing.T) {
 
 	mock.ExpectQuery(`(?s)website_url.*FROM feeds.*LEFT JOIN feed_og_images`).
 		WithArgs([]string{fetchable, suppressed, held}).
-		WillReturnRows(pgxmock.NewRows([]string{"feed_id", "page_url", "og_image_url", "suppressed"}).
-			AddRow(fetchable, "https://example.com/a", "", false).
-			AddRow(suppressed, "https://example.com/b", "", true).
-			AddRow(held, "https://example.com/c", "https://cdn.example.com/c.png", false))
+		WillReturnRows(pgxmock.NewRows([]string{"feed_id", "page_url", "og_image_url", "suppressed", "attempts", "retry_after_seconds"}).
+			AddRow(fetchable, "https://example.com/a", "", false, int32(2), int64(0)).
+			AddRow(suppressed, "https://example.com/b", "", true, int32(3), int64(20)).
+			AddRow(held, "https://example.com/c", "https://cdn.example.com/c.png", false, int32(1), int64(0)))
 
 	targets, err := repo.FetchFeedOgImageTargets(context.Background(), []string{fetchable, suppressed, held})
 	require.NoError(t, err)
@@ -45,6 +45,41 @@ func TestFeedRepository_FetchFeedOgImageTargets(t *testing.T) {
 	require.False(t, targets[1].NeedsFetch(), "a standing refusal must suppress the fetch")
 	require.False(t, targets[2].NeedsFetch(), "an image we already hold must suppress the fetch")
 
+	require.Equal(t, 2, targets[0].Attempts,
+		"the attempts already spent decide the next bar, so they must reach the caller")
+	require.Equal(t, int64(20), targets[1].RetryAfterSeconds,
+		"a suppressed feed must say how much of its bar is left; without it the caller can only answer 'never'")
+	require.Zero(t, targets[0].RetryAfterSeconds,
+		"an expired bar is no bar")
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// The remaining-seconds projection is computed in SQL rather than by returning
+// the raw retry_after instant, because the caller has no business comparing
+// timestamps against a clock that is not the database's.
+//
+// A row that has never been refused carries retry_after IS NULL, and that must
+// arrive as 0 rather than as a negative number or a NULL scan error.
+func TestFeedRepository_FetchFeedOgImageTargets_ProjectsRemainingSeconds(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &FeedRepository{pool: mock}
+	feedID := "44444444-4444-4444-4444-444444444444"
+
+	mock.ExpectQuery(`(?s)GREATEST\(0, EXTRACT\(EPOCH FROM \(foi\.retry_after - NOW\(\)\)\)\)`).
+		WithArgs([]string{feedID}).
+		WillReturnRows(pgxmock.NewRows([]string{"feed_id", "page_url", "og_image_url", "suppressed", "attempts", "retry_after_seconds"}).
+			AddRow(feedID, "https://example.com/a", "", false, int32(0), int64(0)))
+
+	targets, err := repo.FetchFeedOgImageTargets(context.Background(), []string{feedID})
+	require.NoError(t, err)
+	require.Len(t, targets, 1)
+	require.Zero(t, targets[0].Attempts,
+		"a feed with no row has spent no attempts; RetryAfter normalises the zero to the first rung")
+	require.Zero(t, targets[0].RetryAfterSeconds)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -78,6 +113,33 @@ func TestFeedRepository_SaveFeedOgImage_Resolved(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	require.NoError(t, repo.SaveFeedOgImage(context.Background(), feedID, imageURL, "", 0))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// A resolution resets the attempt counter; only a refusal increments it.
+//
+// The counter's whole job is to say how much patience this feed has already
+// cost, and a success is the proof that whatever was wrong is over. Counting
+// successes too meant a feed that had resolved cleanly for a week walked into
+// the largest bar on its first transient 502 — the escalation punishing the
+// well-behaved feeds instead of the failing ones.
+//
+// It is asserted on the SQL because the arithmetic happens in the statement:
+// there is no round trip to read the old value and no Go-side branch to test.
+func TestFeedRepository_SaveFeedOgImage_ResolutionResetsAttempts(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &FeedRepository{pool: mock}
+	feedID := "11111111-1111-1111-1111-111111111111"
+
+	mock.ExpectExec(`attempts = CASE WHEN EXCLUDED\.state = 'resolved' THEN 1 ELSE feed_og_images\.attempts \+ 1 END`).
+		WithArgs(feedID, "resolved", "https://cdn.example.com/a.png", "", nil).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	err = repo.SaveFeedOgImage(context.Background(), feedID, "https://cdn.example.com/a.png", "", 0)
+	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

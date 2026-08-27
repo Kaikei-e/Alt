@@ -14,6 +14,7 @@ import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import MobileGalleryTile from "$lib/components/mobile/feeds/gallery/MobileGalleryTile.svelte";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
+import { ogImageOverlay } from "$lib/stores/ogImageOverlay.svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import { selectOgImagePrefetchIds } from "$lib/utils/ogImagePrefetch";
 
@@ -43,6 +44,9 @@ let isMarkingAsRead = $state(false);
 // not count-based: a mark-as-read remove + replacement append can leave the
 // visible count unchanged, so keying backfill off the count drops the
 // replacement's image. Keying off articleId never misses a new card.
+//
+// Plain `Set`, not `SvelteSet`, on purpose: the effect below both reads and
+// writes it, and a reactive one would re-run the effect on its own writes.
 const requestedOgImageArticleIds = new Set<string>();
 
 onMount(async () => {
@@ -53,7 +57,16 @@ onMount(async () => {
 	}
 });
 
-// Batch prefetch OG images for visible feeds that have articleId but no ogImageProxyUrl
+// Batch prefetch OG images for visible feeds that have articleId but no ogImageProxyUrl.
+//
+// The result is written to the shared overlay keyed by article, never onto the
+// feed objects. Two reasons, both of which used to lose the picture silently:
+// the array read here is a snapshot taken before the request, so the feed it
+// would find afterwards may be one the grid has already replaced; and a feed
+// that came from SSR — or through a `$derived` that rebuilds its items — is not
+// a `$state` proxy, so assigning a field on it updates nothing on screen. A
+// keyed overlay is read by whichever object the card is rendering, so the
+// answer lands wherever the card ended up.
 $effect(() => {
 	if (!feedGridApi) return;
 	const visibleFeeds = feedGridApi.getVisibleFeeds();
@@ -61,6 +74,7 @@ $effect(() => {
 	const articleIds = selectOgImagePrefetchIds(
 		visibleFeeds,
 		requestedOgImageArticleIds,
+		ogImageOverlay.has,
 	);
 	if (articleIds.length === 0) return;
 
@@ -70,13 +84,7 @@ $effect(() => {
 	batchPrefetchImagesClient(articleIds)
 		.then((results) => {
 			for (const result of results) {
-				if (!result.proxyUrl) continue;
-				const feed = visibleFeeds.find(
-					(f: RenderFeed) => f.articleId === result.articleId,
-				);
-				if (feed) {
-					feed.ogImageProxyUrl = result.proxyUrl;
-				}
+				ogImageOverlay.resolve(result.articleId, result.proxyUrl);
 			}
 		})
 		.catch((err) => {

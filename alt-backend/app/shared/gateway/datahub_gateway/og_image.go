@@ -126,6 +126,11 @@ func (g *OgImageGateway) FetchFeedOgImageTargets(ctx context.Context, feedIDs []
 			PageURL:    t.GetPageUrl(),
 			OgImageURL: t.GetOgImageUrl(),
 			Suppressed: t.GetSuppressed(),
+			// Both counters cross unchanged. Attempts is the raw stored count,
+			// zero for a feed with no row, and RetryAfter normalises that at the
+			// point of use rather than here — see domain.FeedOgImageTarget.
+			Attempts:          int(t.GetAttempts()),
+			RetryAfterSeconds: t.GetRetryAfterSeconds(),
 		})
 	}
 	return targets, nil
@@ -134,19 +139,29 @@ func (g *OgImageGateway) FetchFeedOgImageTargets(ctx context.Context, feedIDs []
 // SaveFeedOgImage records one resolution outcome. An empty ogImageURL means the
 // origin refused, and `refusal` says why; that record is what stops the next
 // reader scrolling past the same card from causing the same request.
-func (g *OgImageGateway) SaveFeedOgImage(ctx context.Context, feedID, ogImageURL string, refusal domain.OgImageRefusal) error {
-	// The retry window is a property of *why* the origin said no, so it is
-	// derived here rather than asked of every caller: a robots.txt disallow and
-	// a transient 5xx deserve different answers, and a caller that had to
-	// choose would eventually choose "retry soon" for both.
-	//
-	// It is consulted only when there *is* a refusal. A successful resolution
-	// has nothing to retry, and asking an empty refusal for its window returns
-	// the catch-all six hours — a number that would then travel to the provider
-	// attached to a row that resolved fine.
+//
+// retryAfter is passed in rather than derived here, which reverses the earlier
+// arrangement. The window is still a property of *why* the origin said no —
+// nobody picks a number freely, they call
+// domain.OgImageRefusal.RetryAfter(attempts) — but it now also depends on how
+// many attempts this feed has already cost, and the caller is the only place
+// that holds both halves. It also has to report the same number to the reader's
+// client in the same breath, so deriving it twice from two different attempt
+// counts would let the bar the client waits out and the bar the row records
+// drift apart.
+//
+// A successful resolution passes zero, which is stored as "no bar". Asking an
+// empty refusal for its window would return the catch-all instead — a bar
+// attached to a row that resolved fine.
+func (g *OgImageGateway) SaveFeedOgImage(
+	ctx context.Context,
+	feedID, ogImageURL string,
+	refusal domain.OgImageRefusal,
+	retryAfter time.Duration,
+) error {
 	var retryAfterSeconds int64
-	if refusal != "" {
-		retryAfterSeconds = int64(refusal.RetryAfter().Seconds())
+	if refusal != "" && retryAfter > 0 {
+		retryAfterSeconds = int64(retryAfter.Seconds())
 	}
 
 	_, err := g.client.SaveFeedOgImage(ctx, connect.NewRequest(&datahubv1.SaveFeedOgImageRequest{

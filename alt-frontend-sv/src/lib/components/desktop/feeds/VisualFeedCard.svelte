@@ -1,6 +1,7 @@
 <script lang="ts">
 import { Eye } from "@lucide/svelte";
 import type { RenderFeed } from "$lib/schema/feed";
+import { ogImageOverlay } from "$lib/stores/ogImageOverlay.svelte";
 import { cn } from "$lib/utils";
 import { ogImageResolver } from "$lib/utils/ogImageResolver";
 import { createProxyImage } from "$lib/utils/proxyImage.svelte";
@@ -18,8 +19,15 @@ let { feed, onSelect, isRead = false }: Props = $props();
 // so it never collapses to the fallback the way a sticky onerror used to.
 let imageContainer = $state<HTMLElement | null>(null);
 
+// A URL the grid's article-keyed backfill obtains after this card is already
+// rendered arrives through the overlay rather than by mutating `feed`, so it
+// lands whether the feed object is a state proxy, an SSR plain object, or one a
+// `$derived` rebuilt a moment ago. The cell is taken once and held: it outlives
+// the card, so a card that scrolls away and back finds the answer waiting.
+const overlayCell = $derived(ogImageOverlay.cell(feed.articleId));
+
 const image = createProxyImage({
-	url: () => feed.ogImageProxyUrl,
+	url: () => feed.ogImageProxyUrl || overlayCell?.url,
 	container: () => imageContainer,
 	// Feeds whose RSS carried no image resolve when the reader reaches them,
 	// keyed on the feed: most of these have no article row to key on.
@@ -51,6 +59,7 @@ const tags = $derived(
 	<div
 		class="relative aspect-video overflow-hidden bg-[var(--surface-hover)]"
 		bind:this={imageContainer}
+		aria-busy={image.state === "idle" || image.state === "loading"}
 	>
 		{#if image.state === "absent"}
 			<!-- Fallback gradient: resolution came back empty, the origin refused,
@@ -65,7 +74,8 @@ const tags = $derived(
 				data-testid="card-image"
 				src={image.objectUrl}
 				alt=""
-				class="w-full h-full object-cover"
+				decoding="async"
+				class="w-full h-full object-cover reveal"
 			/>
 		{:else}
 			<!-- idle / loading (incl. in-flight retries): image exists, not resolved yet -->
@@ -133,6 +143,25 @@ const tags = $derived(
 </button>
 
 <style>
+	/* The image is the same size before and after it arrives — the box is an
+	   aspect-ratio, and the shimmer sits inside it — so nothing on the card
+	   moves when a late resolution lands. Only the fade runs. */
+	.reveal {
+		animation: reveal 200ms ease-out;
+	}
+
+	@keyframes reveal {
+		from {
+			opacity: 0;
+		}
+	}
+
+	/* Three passes, not `infinite`. A resolution can now outlive several
+	   asks, and an animation that runs for more than five seconds is a WCAG
+	   2.2.2 failure with no pause control; motion also stops helping the
+	   reader judge progress after about three seconds. The card keeps the
+	   flat tint afterwards, which still reads as "not here yet" — and only a
+	   settled `absent` ever reaches the fallback. */
 	.shimmer {
 		background: linear-gradient(
 			90deg,
@@ -141,7 +170,7 @@ const tags = $derived(
 			rgba(0, 0, 0, 0.03) 75%
 		);
 		background-size: 200% 100%;
-		animation: shimmer 1.5s infinite;
+		animation: shimmer 1.5s linear 3 forwards;
 	}
 
 	@keyframes shimmer {
@@ -150,6 +179,16 @@ const tags = $derived(
 		}
 		100% {
 			background-position: -200% 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.shimmer {
+			animation: none;
+			opacity: 0.7;
+		}
+		.reveal {
+			animation: none;
 		}
 	}
 

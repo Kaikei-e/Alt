@@ -1489,12 +1489,15 @@
         "body": {
           "targets": [
             {
+              "attempts": 2,
               "feedId": "c3d4e5f6-3333-4333-8333-333333333333",
               "pageUrl": "https://example.com/posts/on-demand-og"
             },
             {
+              "attempts": 3,
               "feedId": "d4e5f6a7-4444-4444-8444-444444444444",
               "pageUrl": "https://example.com/posts/on-demand-og",
+              "retryAfterSeconds": "20",
               "suppressed": true
             }
           ]
@@ -5588,6 +5591,33 @@
         "body": {
           "feedId": "d4e5f6a7-4444-4444-8444-444444444444",
           "reason": "robots_disallow"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/SaveFeedOgImage"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a SaveFeedOgImage request from alt-backend recording a second transport failure",
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts feed og image refusals"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedId": "c3d4e5f6-3333-4333-8333-333333333333",
+          "reason": "fetch_error",
+          "retryAfterSeconds": "10"
         },
         "headers": {
           "Content-Type": "application/json"

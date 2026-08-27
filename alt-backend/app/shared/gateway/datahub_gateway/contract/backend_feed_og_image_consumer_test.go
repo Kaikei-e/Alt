@@ -40,6 +40,22 @@ const (
 // are absent keys, so the wire form of "go ahead and fetch" is a body carrying
 // only feed_id and page_url. A consumer that treated those absences as unknown
 // would either never fetch or fetch every time.
+//
+// It also pins the two counters that decide *when* the question may be put
+// again, because neither can be reconstructed on the consumer's side:
+//
+//	attempts            — how many attempts this feed has already cost. The
+//	                      consumer multiplies the bar by it, so a feed whose
+//	                      bar has just expired must come back carrying the
+//	                      attempts already spent; reading it as zero would
+//	                      restart the ladder at its first rung on every
+//	                      expiry and the escalation would never take effect.
+//	retryAfterSeconds   — how much is left of a bar that still stands. From
+//	                      the second ask onwards a failing feed is always
+//	                      `suppressed`, so without this number the consumer
+//	                      can only answer its own client "not within this
+//	                      window", and a card held back by a five-second bar
+//	                      is abandoned for the rest of the session.
 func TestGetFeedOgImageTargetsContract(t *testing.T) {
 	mockProvider := newDataHubPact(t, consumerBackend)
 
@@ -63,11 +79,23 @@ func TestGetFeedOgImageTargetsContract(t *testing.T) {
 					{
 						"feedId":  testOgFeedIDFetchable,
 						"pageUrl": testOgPageURL,
+						// Two attempts spent and no bar left: the refusals
+						// expired, so this feed is fetchable again — but the
+						// third attempt's bar must be the third rung, not the
+						// first. retryAfterSeconds is absent, which is the
+						// protojson form of the zero that means "no bar".
+						"attempts": 2,
 					},
 					{
 						"feedId":     testOgFeedIDSuppressed,
 						"pageUrl":    testOgPageURL,
 						"suppressed": true,
+						"attempts":   3,
+						// int64 crosses protojson as a string. Twenty seconds
+						// is the third rung of the fetch_error ladder, and the
+						// only shape of answer the consumer can hand to a
+						// reader's client that keeps the card alive.
+						"retryAfterSeconds": "20",
 					},
 				},
 			},
@@ -88,10 +116,17 @@ func TestGetFeedOgImageTargetsContract(t *testing.T) {
 			assert.False(t, targets[0].Suppressed)
 			assert.True(t, targets[0].NeedsFetch(),
 				"a feed with no image and no standing refusal is the one case that warrants an origin request")
+			assert.Equal(t, 2, targets[0].Attempts,
+				"the attempts already spent must survive the hop, or the next bar restarts at the first rung")
+			assert.Zero(t, targets[0].RetryAfterSeconds,
+				"no bar stands on a feed that is fetchable again")
 
 			assert.True(t, targets[1].Suppressed)
 			assert.False(t, targets[1].NeedsFetch(),
 				"a standing refusal must suppress the fetch, or every scroll past the card re-requests the origin")
+			assert.Equal(t, 3, targets[1].Attempts)
+			assert.Equal(t, int64(20), targets[1].RetryAfterSeconds,
+				"the seconds left on a standing bar are what the reader's client waits on; losing them reads as a permanent refusal")
 
 			return nil
 		})
@@ -164,7 +199,7 @@ func TestSaveFeedOgImageResolvedContract(t *testing.T) {
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewOgImageGateway(newDataHubServiceClient(config))
-			if err := gw.SaveFeedOgImage(context.Background(), testOgFeedIDFetchable, testOgImageURL, ""); err != nil {
+			if err := gw.SaveFeedOgImage(context.Background(), testOgFeedIDFetchable, testOgImageURL, "", 0); err != nil {
 				return fmt.Errorf("SaveFeedOgImage failed: %w", err)
 			}
 			return nil
@@ -203,7 +238,56 @@ func TestSaveFeedOgImageRefusalContract(t *testing.T) {
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			gw := datahub_gateway.NewOgImageGateway(newDataHubServiceClient(config))
-			err := gw.SaveFeedOgImage(context.Background(), testOgFeedIDSuppressed, "", domain.OgImageRefusedByRobots)
+			err := gw.SaveFeedOgImage(context.Background(), testOgFeedIDSuppressed, "", domain.OgImageRefusedByRobots,
+				domain.OgImageRefusedByRobots.RetryAfter(1))
+			if err != nil {
+				return fmt.Errorf("SaveFeedOgImage failed: %w", err)
+			}
+			return nil
+		})
+
+	require.NoError(t, err)
+}
+
+// TestSaveFeedOgImageEscalatingRefusalContract pins the ladder reaching the
+// wire.
+//
+// A transport failure is the one refusal that escalates, and the bar it carries
+// is derived from the attempts already spent — so the number on the request is
+// evidence that the consumer read `attempts` off the target rather than
+// defaulting it. Ten seconds is the second rung (5s × 2^1): the first ask
+// failed, this is the second, and the bar doubles.
+//
+// It is a request-body assertion rather than a response one because this is the
+// half of the round trip the consumer owns. The response half — that the bar
+// comes back as remaining seconds — is pinned in
+// TestGetFeedOgImageTargetsContract.
+func TestSaveFeedOgImageEscalatingRefusalContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerBackend)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub accepts feed og image refusals").
+		UponReceiving("a SaveFeedOgImage request from alt-backend recording a second transport failure").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/SaveFeedOgImage"),
+			Headers: jsonHeaders(),
+			Body: map[string]interface{}{
+				"feedId":            testOgFeedIDFetchable,
+				"reason":            string(domain.OgImageFetchError),
+				"retryAfterSeconds": "10",
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body:    matchers.MapMatcher{},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewOgImageGateway(newDataHubServiceClient(config))
+			err := gw.SaveFeedOgImage(context.Background(), testOgFeedIDFetchable, "",
+				domain.OgImageFetchError, domain.OgImageFetchError.RetryAfter(2))
 			if err != nil {
 				return fmt.Errorf("SaveFeedOgImage failed: %w", err)
 			}

@@ -69,6 +69,20 @@ describe("selectOgImagePrefetchIds", () => {
 		expect(selectOgImagePrefetchIds(feeds, requested)).toEqual(["art-2"]);
 	});
 
+	it("skips an article the overlay already carries a URL for", () => {
+		// The URL arrived after the card rendered, so it lives in the overlay
+		// rather than on the feed. Asking for it again would be a request for a
+		// picture we already have.
+		const feeds = [
+			makeFeed({ id: "1", articleId: "art-1" }),
+			makeFeed({ id: "2", articleId: "art-2" }),
+		];
+		const backfilled = (id: string) => id === "art-1";
+		expect(selectOgImagePrefetchIds(feeds, new Set(), backfilled)).toEqual([
+			"art-2",
+		]);
+	});
+
 	it("does not return duplicate ids within a single call", () => {
 		const feeds = [
 			makeFeed({ id: "1", articleId: "art-dup" }),

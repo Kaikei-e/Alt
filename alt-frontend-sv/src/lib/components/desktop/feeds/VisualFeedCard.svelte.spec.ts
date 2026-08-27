@@ -17,14 +17,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 
 import type { RenderFeed } from "$lib/schema/feed";
+import { MAX_RESOLVE_ATTEMPTS } from "$lib/utils/ogImageRetry";
 import { renderFeedFixture } from "../../../../../tests/fixtures/feeds";
 import VisualFeedCard from "./VisualFeedCard.svelte";
 
-const { loadProxyImageDefault } = vi.hoisted(() => ({
+const { loadProxyImageDefault, resolveOgImage } = vi.hoisted(() => ({
 	loadProxyImageDefault: vi.fn(),
+	resolveOgImage: vi.fn(),
 }));
 
 vi.mock("$lib/utils/loadProxyImage", () => ({ loadProxyImageDefault }));
+
+// Stubbed rather than left to the real shared resolver: without this the card
+// fires a Connect-RPC at the dev server and the outcome of every image test
+// depends on what that happens to answer.
+vi.mock("$lib/utils/ogImageResolver", () => ({
+	ogImageResolver: () => ({ resolve: resolveOgImage }),
+}));
 
 const PROXY_URL = "/api/og-image?u=https%3A%2F%2Falt.ai%2Fog.png";
 
@@ -54,6 +63,8 @@ describe("VisualFeedCard", () => {
 		// Default: no image resolves, so tests that do not care about the image
 		// pipeline land on the fallback instead of hanging in "loading".
 		loadProxyImageDefault.mockResolvedValue({ status: "absent" });
+		resolveOgImage.mockReset();
+		resolveOgImage.mockResolvedValue({ status: "absent" });
 	});
 
 	describe("content", () => {
@@ -344,6 +355,173 @@ describe("VisualFeedCard", () => {
 			// cancelled, or a slow response for the old feed can resolve after the
 			// new one and paint the previous feed's image into the recycled card.
 			await vi.waitFor(() => expect(staleSignal.aborted).toBe(true));
+		});
+	});
+
+	describe("on-demand resolution", () => {
+		it("shows the image a feed had to be resolved for", async () => {
+			const objectUrl = createBlobUrl();
+			resolveOgImage.mockResolvedValue({
+				status: "resolved",
+				url: "/api/og-image?u=resolved",
+			});
+			loadProxyImageDefault.mockResolvedValue({ status: "loaded", objectUrl });
+
+			render(VisualFeedCard, {
+				props: { feed: renderFeedFixture, onSelect: vi.fn() },
+			});
+
+			await expect.element(page.getByTestId("card-image")).toBeInTheDocument();
+			expect(loadProxyImageDefault).toHaveBeenCalledWith(
+				"/api/og-image?u=resolved",
+				expect.any(AbortSignal),
+			);
+		});
+
+		it("asks again when the request never reached the server, and fills in when it lands", async () => {
+			// `unavailable` is our own failure to ask, not the origin's answer.
+			// The server resolves the feed anyway and stores the result, so the
+			// second ask is answered from the store — this is the whole reason a
+			// card that starts blank is allowed to fill itself in.
+			const objectUrl = createBlobUrl();
+			resolveOgImage
+				.mockResolvedValueOnce({ status: "unavailable", retryAfterMs: null })
+				.mockResolvedValue({
+					status: "resolved",
+					url: "/api/og-image?u=late",
+				});
+			loadProxyImageDefault.mockResolvedValue({ status: "loaded", objectUrl });
+
+			render(VisualFeedCard, {
+				props: { feed: renderFeedFixture, onSelect: vi.fn() },
+			});
+
+			await vi.waitFor(() => expect(resolveOgImage).toHaveBeenCalledTimes(2), {
+				timeout: 8000,
+			});
+			await expect
+				.element(page.getByTestId("card-image"), { timeout: 8000 })
+				.toBeInTheDocument();
+		});
+
+		it("holds the shimmer rather than the fallback while a re-ask is pending", async () => {
+			// Collapsing to the fallback here is the regression: it tells the
+			// reader "this article has no picture" when what happened is that we
+			// could not ask.
+			resolveOgImage
+				.mockResolvedValueOnce({ status: "unavailable", retryAfterMs: null })
+				.mockReturnValue(new Promise(() => {}));
+
+			render(VisualFeedCard, {
+				props: { feed: renderFeedFixture, onSelect: vi.fn() },
+			});
+
+			await vi.waitFor(() => expect(resolveOgImage).toHaveBeenCalledTimes(2), {
+				timeout: 8000,
+			});
+			await expect
+				.element(page.getByTestId("image-loading"))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("image-fallback"))
+				.not.toBeInTheDocument();
+		});
+
+		it("waits out a bar the server named, then fills the card in", async () => {
+			// The newest of the four answers: the server reached the origin,
+			// failed, and said how long before the question may be put again.
+			// Folding to the fallback here would tell the reader the article has
+			// no picture over what the server called a five-second wait.
+			const objectUrl = createBlobUrl();
+			let firstAskAt = 0;
+			let gapMs = 0;
+			let asks = 0;
+			resolveOgImage.mockImplementation(async () => {
+				asks += 1;
+				if (asks === 1) {
+					firstAskAt = performance.now();
+					return { status: "unavailable", retryAfterMs: 5000 };
+				}
+				gapMs = performance.now() - firstAskAt;
+				return { status: "resolved", url: "/api/og-image?u=barred" };
+			});
+			loadProxyImageDefault.mockResolvedValue({ status: "loaded", objectUrl });
+
+			render(VisualFeedCard, {
+				props: { feed: renderFeedFixture, onSelect: vi.fn() },
+			});
+
+			await vi.waitFor(() => expect(resolveOgImage).toHaveBeenCalledTimes(2), {
+				timeout: 12000,
+			});
+			// The bar is a floor, not a suggestion. Re-asking inside a gate the
+			// server has just closed spends a slot on a request it has already
+			// said it will refuse.
+			expect(gapMs).toBeGreaterThanOrEqual(4900);
+
+			await expect
+				.element(page.getByTestId("card-image"), { timeout: 8000 })
+				.toBeInTheDocument();
+		});
+
+		it("gives up after a bounded number of asks", async () => {
+			// The bound is the point. An unreachable backend must land the card
+			// on its fallback, not shimmer for the rest of the session.
+			resolveOgImage.mockResolvedValue({
+				status: "unavailable",
+				retryAfterMs: null,
+			});
+
+			render(VisualFeedCard, {
+				props: { feed: renderFeedFixture, onSelect: vi.fn() },
+			});
+
+			await expect
+				.element(page.getByTestId("image-fallback"), { timeout: 12000 })
+				.toBeInTheDocument();
+			expect(resolveOgImage).toHaveBeenCalledTimes(MAX_RESOLVE_ATTEMPTS);
+		});
+
+		it("does not re-ask a feed the server answered about", async () => {
+			resolveOgImage.mockResolvedValue({ status: "absent" });
+
+			render(VisualFeedCard, {
+				props: { feed: renderFeedFixture, onSelect: vi.fn() },
+			});
+
+			await expect
+				.element(page.getByTestId("image-fallback"))
+				.toBeInTheDocument();
+			await settle();
+			expect(resolveOgImage).toHaveBeenCalledTimes(1);
+		});
+
+		it("keeps a resolved image on screen when the feed list backfills a URL", async () => {
+			// The grid's own article-keyed prefetch can hand the card a URL after
+			// it has already resolved and painted one. Restarting the pipeline
+			// there revokes a live object URL and flashes the card back to a
+			// shimmer to re-download bytes it already has.
+			const objectUrl = createBlobUrl();
+			resolveOgImage.mockResolvedValue({
+				status: "resolved",
+				url: "/api/og-image?u=resolved",
+			});
+			loadProxyImageDefault.mockResolvedValue({ status: "loaded", objectUrl });
+
+			const { rerender } = render(VisualFeedCard, {
+				props: { feed: renderFeedFixture, onSelect: vi.fn() },
+			});
+
+			await expect.element(page.getByTestId("card-image")).toBeInTheDocument();
+			expect(loadProxyImageDefault).toHaveBeenCalledTimes(1);
+
+			await rerender({
+				feed: { ...renderFeedFixture, ogImageProxyUrl: PROXY_URL },
+			});
+
+			await settle();
+			await expect.element(page.getByTestId("card-image")).toBeInTheDocument();
+			expect(loadProxyImageDefault).toHaveBeenCalledTimes(1);
 		});
 	});
 
