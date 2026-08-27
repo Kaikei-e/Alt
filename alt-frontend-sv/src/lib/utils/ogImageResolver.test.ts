@@ -1,17 +1,24 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it, vi } from "vitest";
 import { createOgImageResolver } from "./ogImageResolver";
+import { OG_RETRY_CEILING_MS } from "./ogImageRetry";
 
 const flush = () => new Promise((r) => setTimeout(r, 30));
 
+/** One server answer, in the two-list shape `resolveOgImages` returns. */
+const answer = (
+	resolved: Record<string, string> = {},
+	unresolved: Record<string, number> = {},
+) => ({
+	resolved: new Map(Object.entries(resolved)),
+	unresolved: new Map(Object.entries(unresolved)),
+});
+
 describe("createOgImageResolver", () => {
 	it("coalesces feeds revealed together into one request", async () => {
-		const send = vi.fn().mockResolvedValue(
-			new Map([
-				["a", "/proxy/a"],
-				["b", "/proxy/b"],
-			]),
-		);
+		const send = vi
+			.fn()
+			.mockResolvedValue(answer({ a: "/proxy/a", b: "/proxy/b" }));
 		const resolver = createOgImageResolver({ send, flushMs: 5 });
 
 		const [a, b] = await Promise.all([
@@ -26,7 +33,7 @@ describe("createOgImageResolver", () => {
 	});
 
 	it("asks for a feed only once, however often it scrolls past", async () => {
-		const send = vi.fn().mockResolvedValue(new Map([["a", "/proxy/a"]]));
+		const send = vi.fn().mockResolvedValue(answer({ a: "/proxy/a" }));
 		const resolver = createOgImageResolver({ send, flushMs: 5 });
 
 		expect(await resolver.resolve("a")).toEqual({
@@ -38,28 +45,13 @@ describe("createOgImageResolver", () => {
 			status: "resolved",
 			url: "/proxy/a",
 		});
-		await flush();
-
-		expect(send).toHaveBeenCalledTimes(1);
-	});
-
-	it("remembers a feed the server could not resolve and never re-asks", async () => {
-		// An empty map means "asked, and got nothing back" — the server has
-		// already recorded the refusal, so asking again would only cost the
-		// origin another request.
-		const send = vi.fn().mockResolvedValue(new Map());
-		const resolver = createOgImageResolver({ send, flushMs: 5 });
-
-		expect(await resolver.resolve("a")).toEqual({ status: "absent" });
-		await flush();
-		expect(await resolver.resolve("a")).toEqual({ status: "absent" });
 		await flush();
 
 		expect(send).toHaveBeenCalledTimes(1);
 	});
 
 	it("caps a batch so one viewport change cannot contact everything at once", async () => {
-		const send = vi.fn().mockResolvedValue(new Map());
+		const send = vi.fn().mockResolvedValue(answer());
 		const resolver = createOgImageResolver({ send, flushMs: 5, maxBatch: 3 });
 
 		await Promise.all(
@@ -69,6 +61,128 @@ describe("createOgImageResolver", () => {
 		expect(send).toHaveBeenCalledTimes(2);
 		const batches = send.mock.calls.map((call) => (call[0] as string[]).length);
 		expect(batches).toEqual([3, 2]);
+	});
+
+	describe("the four answers the server can give about one feed", () => {
+		it("takes a feed in `images` as resolved and remembers it", async () => {
+			const send = vi.fn().mockResolvedValue(answer({ a: "/proxy/a" }));
+			const resolver = createOgImageResolver({ send, flushMs: 5 });
+
+			expect(await resolver.resolve("a")).toEqual({
+				status: "resolved",
+				url: "/proxy/a",
+			});
+			await flush();
+			expect(await resolver.resolve("a")).toEqual({
+				status: "resolved",
+				url: "/proxy/a",
+			});
+
+			expect(send).toHaveBeenCalledTimes(1);
+		});
+
+		it("takes retry_after == 0 as the origin's settled no, and never re-asks", async () => {
+			// A robots.txt disallow, or a page with no og:image tag. The server
+			// has recorded it for the retention window; asking again buys
+			// nothing and costs the publisher a request.
+			const send = vi.fn().mockResolvedValue(answer({}, { a: 0 }));
+			const resolver = createOgImageResolver({ send, flushMs: 5 });
+
+			expect(await resolver.resolve("a")).toEqual({ status: "absent" });
+			await flush();
+			expect(await resolver.resolve("a")).toEqual({ status: "absent" });
+			await flush();
+
+			expect(send).toHaveBeenCalledTimes(1);
+		});
+
+		it("carries a retry_after inside the ceiling through as unavailable, unremembered", async () => {
+			const send = vi
+				.fn()
+				.mockResolvedValueOnce(answer({}, { a: 5_000 }))
+				.mockResolvedValueOnce(answer({ a: "/proxy/a" }));
+			const resolver = createOgImageResolver({ send, flushMs: 5 });
+
+			expect(await resolver.resolve("a")).toEqual({
+				status: "unavailable",
+				retryAfterMs: 5_000,
+			});
+			await flush();
+
+			// Not remembered — the whole point of the bar is that the question
+			// may be put again once it lifts.
+			expect(await resolver.resolve("a")).toEqual({
+				status: "resolved",
+				url: "/proxy/a",
+			});
+			expect(send).toHaveBeenCalledTimes(2);
+		});
+
+		it("honours a retry_after exactly on the ceiling rather than rounding it away", async () => {
+			const send = vi
+				.fn()
+				.mockResolvedValue(answer({}, { a: OG_RETRY_CEILING_MS }));
+			const resolver = createOgImageResolver({ send, flushMs: 5 });
+
+			expect(await resolver.resolve("a")).toEqual({
+				status: "unavailable",
+				retryAfterMs: OG_RETRY_CEILING_MS,
+			});
+		});
+
+		it("drops a retry_after above the ceiling to absent, and never re-asks", async () => {
+			// A bar longer than a card can be held open for. The tile takes its
+			// fallback now rather than shimmering at a wait it cannot honour.
+			const send = vi
+				.fn()
+				.mockResolvedValue(answer({}, { a: OG_RETRY_CEILING_MS + 1 }));
+			const resolver = createOgImageResolver({ send, flushMs: 5 });
+
+			expect(await resolver.resolve("a")).toEqual({ status: "absent" });
+			await flush();
+			expect(await resolver.resolve("a")).toEqual({ status: "absent" });
+			await flush();
+
+			expect(send).toHaveBeenCalledTimes(1);
+		});
+
+		it("takes a feed in neither list as unavailable, and does not remember it", async () => {
+			// The batch cap trimmed it, no row exists, or its page URL was
+			// unusable. No origin request was spent on it, so re-asking costs
+			// only us.
+			const send = vi
+				.fn()
+				.mockResolvedValueOnce(answer({ b: "/proxy/b" }))
+				.mockResolvedValueOnce(answer({ a: "/proxy/a" }));
+			const resolver = createOgImageResolver({ send, flushMs: 5 });
+
+			const [a] = await Promise.all([
+				resolver.resolve("a"),
+				resolver.resolve("b"),
+			]);
+			expect(a).toEqual({ status: "unavailable", retryAfterMs: null });
+			await flush();
+
+			expect(await resolver.resolve("a")).toEqual({
+				status: "resolved",
+				url: "/proxy/a",
+			});
+			expect(send).toHaveBeenCalledTimes(2);
+		});
+
+		it("prefers a resolution over an unresolved row for the same feed", async () => {
+			// The server should never emit both. If it does, the picture it
+			// managed to produce is the more useful of the two answers.
+			const send = vi
+				.fn()
+				.mockResolvedValue(answer({ a: "/proxy/a" }, { a: 5_000 }));
+			const resolver = createOgImageResolver({ send, flushMs: 5 });
+
+			expect(await resolver.resolve("a")).toEqual({
+				status: "resolved",
+				url: "/proxy/a",
+			});
+		});
 	});
 
 	it("reports a transport failure as unavailable rather than absent", async () => {
@@ -88,7 +202,7 @@ describe("createOgImageResolver", () => {
 		const send = vi
 			.fn()
 			.mockRejectedValueOnce(new Error("network"))
-			.mockResolvedValueOnce(new Map([["a", "/proxy/a"]]));
+			.mockResolvedValueOnce(answer({ a: "/proxy/a" }));
 		const resolver = createOgImageResolver({ send, flushMs: 5 });
 
 		expect((await resolver.resolve("a")).status).toBe("unavailable");

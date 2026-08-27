@@ -427,6 +427,43 @@ describe("VisualFeedCard", () => {
 				.not.toBeInTheDocument();
 		});
 
+		it("waits out a bar the server named, then fills the card in", async () => {
+			// The newest of the four answers: the server reached the origin,
+			// failed, and said how long before the question may be put again.
+			// Folding to the fallback here would tell the reader the article has
+			// no picture over what the server called a five-second wait.
+			const objectUrl = createBlobUrl();
+			let firstAskAt = 0;
+			let gapMs = 0;
+			let asks = 0;
+			resolveOgImage.mockImplementation(async () => {
+				asks += 1;
+				if (asks === 1) {
+					firstAskAt = performance.now();
+					return { status: "unavailable", retryAfterMs: 5000 };
+				}
+				gapMs = performance.now() - firstAskAt;
+				return { status: "resolved", url: "/api/og-image?u=barred" };
+			});
+			loadProxyImageDefault.mockResolvedValue({ status: "loaded", objectUrl });
+
+			render(VisualFeedCard, {
+				props: { feed: renderFeedFixture, onSelect: vi.fn() },
+			});
+
+			await vi.waitFor(() => expect(resolveOgImage).toHaveBeenCalledTimes(2), {
+				timeout: 12000,
+			});
+			// The bar is a floor, not a suggestion. Re-asking inside a gate the
+			// server has just closed spends a slot on a request it has already
+			// said it will refuse.
+			expect(gapMs).toBeGreaterThanOrEqual(4900);
+
+			await expect
+				.element(page.getByTestId("card-image"), { timeout: 8000 })
+				.toBeInTheDocument();
+		});
+
 		it("gives up after a bounded number of asks", async () => {
 			// The bound is the point. An unreachable backend must land the card
 			// on its fallback, not shimmer for the rest of the session.

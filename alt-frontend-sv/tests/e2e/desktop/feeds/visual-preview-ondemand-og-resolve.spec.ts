@@ -121,8 +121,18 @@ test.describe("Visual Preview — on-demand OG image resolution", () => {
 		await page.route(CONNECT_RPC_PATHS.resolveOgImages, async (route) => {
 			resolveCalls += 1;
 			// The origin refused (robots.txt disallow, or a 403/404). The server
-			// records the failure; the response carries no URL for that feed.
-			await fulfillJson(route, { images: [] });
+			// records the failure and reports it as unresolved with a retry bar
+			// of zero — "asked, and settled for this retention window". That is
+			// what makes one ask enough: a feed in neither list would mean the
+			// server never reached it, which licences an immediate re-ask.
+			const body = route.request().postDataJSON() as { feedIds?: string[] };
+			await fulfillJson(route, {
+				images: [],
+				unresolved: (body?.feedIds ?? []).map((feedId) => ({
+					feedId,
+					retryAfterSeconds: "0",
+				})),
+			});
 		});
 
 		await page.route("**/v1/images/proxy/**", (route) =>
@@ -141,6 +151,10 @@ test.describe("Visual Preview — on-demand OG image resolution", () => {
 
 		const callsAfterFirstPass = resolveCalls;
 		expect(callsAfterFirstPass).toBeGreaterThan(0);
+		// One ask per batch, not a ladder. Had the `unresolved` row failed to
+		// register, the feed would read as "the server never reached it" and the
+		// card would spend all three of its asks before folding.
+		expect(callsAfterFirstPass).toBeLessThanOrEqual(2);
 
 		// Scrolling away and back must not re-ask. A dead origin re-scraped on
 		// every scroll is the crawl behaviour this change exists to remove.
