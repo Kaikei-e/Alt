@@ -448,12 +448,47 @@ message ResolveOgImage {
   string og_image_proxy_url = 2;
 }
 
-// ResolveOgImagesResponse carries only the feeds that resolved.
+// UnresolvedOgImage carries one feed the server considered and could not
+// resolve, with the bar it set on asking again.
+message UnresolvedOgImage {
+  // Feed UUID this result belongs to
+  string feed_id = 1;
+  // Seconds before this feed may be asked about again. Zero means not within
+  // this retention window — the settled answer a robots.txt disallow or a page
+  // with no og:image tag deserves.
+  int64 retry_after_seconds = 2;
+}
+
+// ResolveOgImagesResponse separates four outcomes across two parallel lists.
 //
-// A feed whose origin refused is absent rather than present-with-an-empty-URL,
-// so a client cannot read "we asked and were told no" as "we hold an empty
-// URL". The refusal is recorded server-side; asking again for the same feed
-// will not produce another origin fetch.
+// A feed whose origin refused is absent from `images` rather than
+// present-with-an-empty-URL, so a client cannot read "we asked and were told
+// no" as "we hold an empty URL". `unresolved` then says which kind of absence
+// it is, because the server holds four answers and a client that flattens them
+// into one leaves cards blank that it could have filled:
+//
+//   in `images`                       — resolved; the proxy URL is there.
+//   in `unresolved`, retry_after == 0 — the server asked and was refused. A
+//                                       settled answer inside this retention
+//                                       window; asking again buys nothing.
+//   in `unresolved`, retry_after > 0  — the server asked and failed. After that
+//                                       many seconds the question may be put
+//                                       again, and may well succeed.
+//   in neither list                   — the server never reached this feed: the
+//                                       batch cap trimmed it, no row exists,
+//                                       its page URL was unusable. No origin
+//                                       was spent, so it may be asked about
+//                                       again straight away.
+//
+// That fourth outcome is why this is two lists rather than one list with a
+// status enum. Membership already tells "asked and settled" from "asked and
+// failed", and absence from both carries "never asked" with no wire symbol of
+// its own — whereas an enum would oblige the server to emit a row for every
+// feed it never touched, including the ones its own batch cap cut, just to say
+// nothing happened.
 message ResolveOgImagesResponse {
   repeated ResolveOgImage images = 1;
+  // Feeds the server considered and could not resolve. Purely additive: a
+  // client built before this field sees exactly the `images` it always saw.
+  repeated UnresolvedOgImage unresolved = 2;
 }

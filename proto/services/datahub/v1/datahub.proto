@@ -732,6 +732,10 @@ message FeedOgImageTarget {
   // The caller must not fetch: re-asking an origin that has already said no,
   // every time a card scrolls past, is the crawl this design removes.
   bool suppressed = 4;
+  // How many resolution attempts this feed has already cost. The bar on asking
+  // again grows with it, so a feed that keeps failing is asked about ever more
+  // rarely rather than on every scroll past. Reset to 1 by a resolution.
+  int32 attempts = 5;
 }
 
 message GetFeedOgImageTargetsRequest {

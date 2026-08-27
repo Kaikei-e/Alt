@@ -2136,22 +2136,104 @@ func (x *ResolveOgImage) GetOgImageProxyUrl() string {
 	return ""
 }
 
-// ResolveOgImagesResponse carries only the feeds that resolved.
+// UnresolvedOgImage carries one feed the server considered and could not
+// resolve, with the bar it set on asking again.
+type UnresolvedOgImage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Feed UUID this result belongs to
+	FeedId string `protobuf:"bytes,1,opt,name=feed_id,json=feedId,proto3" json:"feed_id,omitempty"`
+	// Seconds before this feed may be asked about again. Zero means not within
+	// this retention window — the settled answer a robots.txt disallow or a page
+	// with no og:image tag deserves.
+	RetryAfterSeconds int64 `protobuf:"varint,2,opt,name=retry_after_seconds,json=retryAfterSeconds,proto3" json:"retry_after_seconds,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *UnresolvedOgImage) Reset() {
+	*x = UnresolvedOgImage{}
+	mi := &file_alt_feeds_v2_feeds_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnresolvedOgImage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnresolvedOgImage) ProtoMessage() {}
+
+func (x *UnresolvedOgImage) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_feeds_v2_feeds_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnresolvedOgImage.ProtoReflect.Descriptor instead.
+func (*UnresolvedOgImage) Descriptor() ([]byte, []int) {
+	return file_alt_feeds_v2_feeds_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *UnresolvedOgImage) GetFeedId() string {
+	if x != nil {
+		return x.FeedId
+	}
+	return ""
+}
+
+func (x *UnresolvedOgImage) GetRetryAfterSeconds() int64 {
+	if x != nil {
+		return x.RetryAfterSeconds
+	}
+	return 0
+}
+
+// ResolveOgImagesResponse separates four outcomes across two parallel lists.
 //
-// A feed whose origin refused is absent rather than present-with-an-empty-URL,
-// so a client cannot read "we asked and were told no" as "we hold an empty
-// URL". The refusal is recorded server-side; asking again for the same feed
-// will not produce another origin fetch.
+// A feed whose origin refused is absent from `images` rather than
+// present-with-an-empty-URL, so a client cannot read "we asked and were told
+// no" as "we hold an empty URL". `unresolved` then says which kind of absence
+// it is, because the server holds four answers and a client that flattens them
+// into one leaves cards blank that it could have filled:
+//
+//	in `images`                       — resolved; the proxy URL is there.
+//	in `unresolved`, retry_after == 0 — the server asked and was refused. A
+//	                                    settled answer inside this retention
+//	                                    window; asking again buys nothing.
+//	in `unresolved`, retry_after > 0  — the server asked and failed. After that
+//	                                    many seconds the question may be put
+//	                                    again, and may well succeed.
+//	in neither list                   — the server never reached this feed: the
+//	                                    batch cap trimmed it, no row exists,
+//	                                    its page URL was unusable. No origin
+//	                                    was spent, so it may be asked about
+//	                                    again straight away.
+//
+// That fourth outcome is why this is two lists rather than one list with a
+// status enum. Membership already tells "asked and settled" from "asked and
+// failed", and absence from both carries "never asked" with no wire symbol of
+// its own — whereas an enum would oblige the server to emit a row for every
+// feed it never touched, including the ones its own batch cap cut, just to say
+// nothing happened.
 type ResolveOgImagesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Images        []*ResolveOgImage      `protobuf:"bytes,1,rep,name=images,proto3" json:"images,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Images []*ResolveOgImage      `protobuf:"bytes,1,rep,name=images,proto3" json:"images,omitempty"`
+	// Feeds the server considered and could not resolve. Purely additive: a
+	// client built before this field sees exactly the `images` it always saw.
+	Unresolved    []*UnresolvedOgImage `protobuf:"bytes,2,rep,name=unresolved,proto3" json:"unresolved,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ResolveOgImagesResponse) Reset() {
 	*x = ResolveOgImagesResponse{}
-	mi := &file_alt_feeds_v2_feeds_proto_msgTypes[36]
+	mi := &file_alt_feeds_v2_feeds_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2163,7 +2245,7 @@ func (x *ResolveOgImagesResponse) String() string {
 func (*ResolveOgImagesResponse) ProtoMessage() {}
 
 func (x *ResolveOgImagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_feeds_v2_feeds_proto_msgTypes[36]
+	mi := &file_alt_feeds_v2_feeds_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2176,12 +2258,19 @@ func (x *ResolveOgImagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveOgImagesResponse.ProtoReflect.Descriptor instead.
 func (*ResolveOgImagesResponse) Descriptor() ([]byte, []int) {
-	return file_alt_feeds_v2_feeds_proto_rawDescGZIP(), []int{36}
+	return file_alt_feeds_v2_feeds_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ResolveOgImagesResponse) GetImages() []*ResolveOgImage {
 	if x != nil {
 		return x.Images
+	}
+	return nil
+}
+
+func (x *ResolveOgImagesResponse) GetUnresolved() []*UnresolvedOgImage {
+	if x != nil {
+		return x.Unresolved
 	}
 	return nil
 }
@@ -2354,9 +2443,15 @@ const file_alt_feeds_v2_feeds_proto_rawDesc = "" +
 	"\bfeed_ids\x18\x01 \x03(\tR\afeedIds\"V\n" +
 	"\x0eResolveOgImage\x12\x17\n" +
 	"\afeed_id\x18\x01 \x01(\tR\x06feedId\x12+\n" +
-	"\x12og_image_proxy_url\x18\x02 \x01(\tR\x0fogImageProxyUrl\"O\n" +
+	"\x12og_image_proxy_url\x18\x02 \x01(\tR\x0fogImageProxyUrl\"\\\n" +
+	"\x11UnresolvedOgImage\x12\x17\n" +
+	"\afeed_id\x18\x01 \x01(\tR\x06feedId\x12.\n" +
+	"\x13retry_after_seconds\x18\x02 \x01(\x03R\x11retryAfterSeconds\"\x90\x01\n" +
 	"\x17ResolveOgImagesResponse\x124\n" +
-	"\x06images\x18\x01 \x03(\v2\x1c.alt.feeds.v2.ResolveOgImageR\x06images2\xc6\v\n" +
+	"\x06images\x18\x01 \x03(\v2\x1c.alt.feeds.v2.ResolveOgImageR\x06images\x12?\n" +
+	"\n" +
+	"unresolved\x18\x02 \x03(\v2\x1f.alt.feeds.v2.UnresolvedOgImageR\n" +
+	"unresolved2\xc6\v\n" +
 	"\vFeedService\x12U\n" +
 	"\fGetFeedStats\x12!.alt.feeds.v2.GetFeedStatsRequest\x1a\".alt.feeds.v2.GetFeedStatsResponse\x12m\n" +
 	"\x14GetDetailedFeedStats\x12).alt.feeds.v2.GetDetailedFeedStatsRequest\x1a*.alt.feeds.v2.GetDetailedFeedStatsResponse\x12[\n" +
@@ -2388,7 +2483,7 @@ func file_alt_feeds_v2_feeds_proto_rawDescGZIP() []byte {
 	return file_alt_feeds_v2_feeds_proto_rawDescData
 }
 
-var file_alt_feeds_v2_feeds_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
+var file_alt_feeds_v2_feeds_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
 var file_alt_feeds_v2_feeds_proto_goTypes = []any{
 	(*GetFeedStatsRequest)(nil),          // 0: alt.feeds.v2.GetFeedStatsRequest
 	(*GetFeedStatsResponse)(nil),         // 1: alt.feeds.v2.GetFeedStatsResponse
@@ -2426,7 +2521,8 @@ var file_alt_feeds_v2_feeds_proto_goTypes = []any{
 	(*GetFeedTagsResponse)(nil),          // 33: alt.feeds.v2.GetFeedTagsResponse
 	(*ResolveOgImagesRequest)(nil),       // 34: alt.feeds.v2.ResolveOgImagesRequest
 	(*ResolveOgImage)(nil),               // 35: alt.feeds.v2.ResolveOgImage
-	(*ResolveOgImagesResponse)(nil),      // 36: alt.feeds.v2.ResolveOgImagesResponse
+	(*UnresolvedOgImage)(nil),            // 36: alt.feeds.v2.UnresolvedOgImage
+	(*ResolveOgImagesResponse)(nil),      // 37: alt.feeds.v2.ResolveOgImagesResponse
 }
 var file_alt_feeds_v2_feeds_proto_depIdxs = []int32{
 	8,  // 0: alt.feeds.v2.StreamFeedStatsResponse.metadata:type_name -> alt.feeds.v2.ResponseMetadata
@@ -2438,43 +2534,44 @@ var file_alt_feeds_v2_feeds_proto_depIdxs = []int32{
 	24, // 6: alt.feeds.v2.ListSubscriptionsResponse.sources:type_name -> alt.feeds.v2.FeedSource
 	32, // 7: alt.feeds.v2.GetFeedTagsResponse.tags:type_name -> alt.feeds.v2.FeedTag
 	35, // 8: alt.feeds.v2.ResolveOgImagesResponse.images:type_name -> alt.feeds.v2.ResolveOgImage
-	0,  // 9: alt.feeds.v2.FeedService.GetFeedStats:input_type -> alt.feeds.v2.GetFeedStatsRequest
-	2,  // 10: alt.feeds.v2.FeedService.GetDetailedFeedStats:input_type -> alt.feeds.v2.GetDetailedFeedStatsRequest
-	4,  // 11: alt.feeds.v2.FeedService.GetUnreadCount:input_type -> alt.feeds.v2.GetUnreadCountRequest
-	6,  // 12: alt.feeds.v2.FeedService.StreamFeedStats:input_type -> alt.feeds.v2.StreamFeedStatsRequest
-	10, // 13: alt.feeds.v2.FeedService.GetUnreadFeeds:input_type -> alt.feeds.v2.GetUnreadFeedsRequest
-	12, // 14: alt.feeds.v2.FeedService.GetAllFeeds:input_type -> alt.feeds.v2.GetAllFeedsRequest
-	14, // 15: alt.feeds.v2.FeedService.GetReadFeeds:input_type -> alt.feeds.v2.GetReadFeedsRequest
-	16, // 16: alt.feeds.v2.FeedService.GetFavoriteFeeds:input_type -> alt.feeds.v2.GetFavoriteFeedsRequest
-	18, // 17: alt.feeds.v2.FeedService.SearchFeeds:input_type -> alt.feeds.v2.SearchFeedsRequest
-	20, // 18: alt.feeds.v2.FeedService.StreamSummarize:input_type -> alt.feeds.v2.StreamSummarizeRequest
-	22, // 19: alt.feeds.v2.FeedService.MarkAsRead:input_type -> alt.feeds.v2.MarkAsReadRequest
-	25, // 20: alt.feeds.v2.FeedService.ListSubscriptions:input_type -> alt.feeds.v2.ListSubscriptionsRequest
-	27, // 21: alt.feeds.v2.FeedService.Subscribe:input_type -> alt.feeds.v2.SubscribeRequest
-	29, // 22: alt.feeds.v2.FeedService.Unsubscribe:input_type -> alt.feeds.v2.UnsubscribeRequest
-	31, // 23: alt.feeds.v2.FeedService.GetFeedTags:input_type -> alt.feeds.v2.GetFeedTagsRequest
-	34, // 24: alt.feeds.v2.FeedService.ResolveOgImages:input_type -> alt.feeds.v2.ResolveOgImagesRequest
-	1,  // 25: alt.feeds.v2.FeedService.GetFeedStats:output_type -> alt.feeds.v2.GetFeedStatsResponse
-	3,  // 26: alt.feeds.v2.FeedService.GetDetailedFeedStats:output_type -> alt.feeds.v2.GetDetailedFeedStatsResponse
-	5,  // 27: alt.feeds.v2.FeedService.GetUnreadCount:output_type -> alt.feeds.v2.GetUnreadCountResponse
-	7,  // 28: alt.feeds.v2.FeedService.StreamFeedStats:output_type -> alt.feeds.v2.StreamFeedStatsResponse
-	11, // 29: alt.feeds.v2.FeedService.GetUnreadFeeds:output_type -> alt.feeds.v2.GetUnreadFeedsResponse
-	13, // 30: alt.feeds.v2.FeedService.GetAllFeeds:output_type -> alt.feeds.v2.GetAllFeedsResponse
-	15, // 31: alt.feeds.v2.FeedService.GetReadFeeds:output_type -> alt.feeds.v2.GetReadFeedsResponse
-	17, // 32: alt.feeds.v2.FeedService.GetFavoriteFeeds:output_type -> alt.feeds.v2.GetFavoriteFeedsResponse
-	19, // 33: alt.feeds.v2.FeedService.SearchFeeds:output_type -> alt.feeds.v2.SearchFeedsResponse
-	21, // 34: alt.feeds.v2.FeedService.StreamSummarize:output_type -> alt.feeds.v2.StreamSummarizeResponse
-	23, // 35: alt.feeds.v2.FeedService.MarkAsRead:output_type -> alt.feeds.v2.MarkAsReadResponse
-	26, // 36: alt.feeds.v2.FeedService.ListSubscriptions:output_type -> alt.feeds.v2.ListSubscriptionsResponse
-	28, // 37: alt.feeds.v2.FeedService.Subscribe:output_type -> alt.feeds.v2.SubscribeResponse
-	30, // 38: alt.feeds.v2.FeedService.Unsubscribe:output_type -> alt.feeds.v2.UnsubscribeResponse
-	33, // 39: alt.feeds.v2.FeedService.GetFeedTags:output_type -> alt.feeds.v2.GetFeedTagsResponse
-	36, // 40: alt.feeds.v2.FeedService.ResolveOgImages:output_type -> alt.feeds.v2.ResolveOgImagesResponse
-	25, // [25:41] is the sub-list for method output_type
-	9,  // [9:25] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	36, // 9: alt.feeds.v2.ResolveOgImagesResponse.unresolved:type_name -> alt.feeds.v2.UnresolvedOgImage
+	0,  // 10: alt.feeds.v2.FeedService.GetFeedStats:input_type -> alt.feeds.v2.GetFeedStatsRequest
+	2,  // 11: alt.feeds.v2.FeedService.GetDetailedFeedStats:input_type -> alt.feeds.v2.GetDetailedFeedStatsRequest
+	4,  // 12: alt.feeds.v2.FeedService.GetUnreadCount:input_type -> alt.feeds.v2.GetUnreadCountRequest
+	6,  // 13: alt.feeds.v2.FeedService.StreamFeedStats:input_type -> alt.feeds.v2.StreamFeedStatsRequest
+	10, // 14: alt.feeds.v2.FeedService.GetUnreadFeeds:input_type -> alt.feeds.v2.GetUnreadFeedsRequest
+	12, // 15: alt.feeds.v2.FeedService.GetAllFeeds:input_type -> alt.feeds.v2.GetAllFeedsRequest
+	14, // 16: alt.feeds.v2.FeedService.GetReadFeeds:input_type -> alt.feeds.v2.GetReadFeedsRequest
+	16, // 17: alt.feeds.v2.FeedService.GetFavoriteFeeds:input_type -> alt.feeds.v2.GetFavoriteFeedsRequest
+	18, // 18: alt.feeds.v2.FeedService.SearchFeeds:input_type -> alt.feeds.v2.SearchFeedsRequest
+	20, // 19: alt.feeds.v2.FeedService.StreamSummarize:input_type -> alt.feeds.v2.StreamSummarizeRequest
+	22, // 20: alt.feeds.v2.FeedService.MarkAsRead:input_type -> alt.feeds.v2.MarkAsReadRequest
+	25, // 21: alt.feeds.v2.FeedService.ListSubscriptions:input_type -> alt.feeds.v2.ListSubscriptionsRequest
+	27, // 22: alt.feeds.v2.FeedService.Subscribe:input_type -> alt.feeds.v2.SubscribeRequest
+	29, // 23: alt.feeds.v2.FeedService.Unsubscribe:input_type -> alt.feeds.v2.UnsubscribeRequest
+	31, // 24: alt.feeds.v2.FeedService.GetFeedTags:input_type -> alt.feeds.v2.GetFeedTagsRequest
+	34, // 25: alt.feeds.v2.FeedService.ResolveOgImages:input_type -> alt.feeds.v2.ResolveOgImagesRequest
+	1,  // 26: alt.feeds.v2.FeedService.GetFeedStats:output_type -> alt.feeds.v2.GetFeedStatsResponse
+	3,  // 27: alt.feeds.v2.FeedService.GetDetailedFeedStats:output_type -> alt.feeds.v2.GetDetailedFeedStatsResponse
+	5,  // 28: alt.feeds.v2.FeedService.GetUnreadCount:output_type -> alt.feeds.v2.GetUnreadCountResponse
+	7,  // 29: alt.feeds.v2.FeedService.StreamFeedStats:output_type -> alt.feeds.v2.StreamFeedStatsResponse
+	11, // 30: alt.feeds.v2.FeedService.GetUnreadFeeds:output_type -> alt.feeds.v2.GetUnreadFeedsResponse
+	13, // 31: alt.feeds.v2.FeedService.GetAllFeeds:output_type -> alt.feeds.v2.GetAllFeedsResponse
+	15, // 32: alt.feeds.v2.FeedService.GetReadFeeds:output_type -> alt.feeds.v2.GetReadFeedsResponse
+	17, // 33: alt.feeds.v2.FeedService.GetFavoriteFeeds:output_type -> alt.feeds.v2.GetFavoriteFeedsResponse
+	19, // 34: alt.feeds.v2.FeedService.SearchFeeds:output_type -> alt.feeds.v2.SearchFeedsResponse
+	21, // 35: alt.feeds.v2.FeedService.StreamSummarize:output_type -> alt.feeds.v2.StreamSummarizeResponse
+	23, // 36: alt.feeds.v2.FeedService.MarkAsRead:output_type -> alt.feeds.v2.MarkAsReadResponse
+	26, // 37: alt.feeds.v2.FeedService.ListSubscriptions:output_type -> alt.feeds.v2.ListSubscriptionsResponse
+	28, // 38: alt.feeds.v2.FeedService.Subscribe:output_type -> alt.feeds.v2.SubscribeResponse
+	30, // 39: alt.feeds.v2.FeedService.Unsubscribe:output_type -> alt.feeds.v2.UnsubscribeResponse
+	33, // 40: alt.feeds.v2.FeedService.GetFeedTags:output_type -> alt.feeds.v2.GetFeedTagsResponse
+	37, // 41: alt.feeds.v2.FeedService.ResolveOgImages:output_type -> alt.feeds.v2.ResolveOgImagesResponse
+	26, // [26:42] is the sub-list for method output_type
+	10, // [10:26] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_alt_feeds_v2_feeds_proto_init() }
@@ -2501,7 +2598,7 @@ func file_alt_feeds_v2_feeds_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_alt_feeds_v2_feeds_proto_rawDesc), len(file_alt_feeds_v2_feeds_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   37,
+			NumMessages:   38,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
