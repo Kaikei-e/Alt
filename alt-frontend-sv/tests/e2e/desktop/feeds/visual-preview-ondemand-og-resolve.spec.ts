@@ -1,4 +1,5 @@
 import {
+	buildResolveOgImagesResponse,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
@@ -29,11 +30,6 @@ const PNG_1x1 = Buffer.from(
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
 	"base64",
 );
-
-/** Build an image-proxy URL whose base64 segment decodes to a real upstream host. */
-function proxyUrl(original: string): string {
-	return `/v1/images/proxy/testsig/${Buffer.from(original).toString("base64")}`;
-}
 
 function feedWithoutOg(id: string, title: string, slug: string) {
 	return {
@@ -83,12 +79,7 @@ test.describe("Visual Preview — on-demand OG image resolution", () => {
 			const body = route.request().postDataJSON() as { feedIds?: string[] };
 			const ids = body?.feedIds ?? [];
 			resolveRequests.push(ids);
-			await fulfillJson(route, {
-				images: ids.map((feedId) => ({
-					feedId,
-					ogImageProxyUrl: proxyUrl(`https://img.example.com/${feedId}.png`),
-				})),
-			});
+			await fulfillJson(route, buildResolveOgImagesResponse({ resolved: ids }));
 		});
 
 		await page.route("**/v1/images/proxy/**", (route) =>
@@ -126,13 +117,10 @@ test.describe("Visual Preview — on-demand OG image resolution", () => {
 			// what makes one ask enough: a feed in neither list would mean the
 			// server never reached it, which licences an immediate re-ask.
 			const body = route.request().postDataJSON() as { feedIds?: string[] };
-			await fulfillJson(route, {
-				images: [],
-				unresolved: (body?.feedIds ?? []).map((feedId) => ({
-					feedId,
-					retryAfterSeconds: "0",
-				})),
-			});
+			await fulfillJson(
+				route,
+				buildResolveOgImagesResponse({ settled: body?.feedIds ?? [] }),
+			);
 		});
 
 		await page.route("**/v1/images/proxy/**", (route) =>
@@ -194,12 +182,10 @@ test.describe("Visual Preview — on-demand OG image resolution", () => {
 		await page.route(CONNECT_RPC_PATHS.resolveOgImages, async (route) => {
 			const body = route.request().postDataJSON() as { feedIds?: string[] };
 			for (const id of body?.feedIds ?? []) requestedIds.add(id);
-			await fulfillJson(route, {
-				images: (body?.feedIds ?? []).map((feedId) => ({
-					feedId,
-					ogImageProxyUrl: proxyUrl(`https://img.example.com/${feedId}.png`),
-				})),
-			});
+			await fulfillJson(
+				route,
+				buildResolveOgImagesResponse({ resolved: body?.feedIds ?? [] }),
+			);
 		});
 		await page.route("**/v1/images/proxy/**", (route) =>
 			route.fulfill({ status: 200, contentType: "image/png", body: PNG_1x1 }),

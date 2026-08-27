@@ -1,4 +1,5 @@
 import {
+	buildResolveOgImagesResponse,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
@@ -30,10 +31,6 @@ const PNG_1x1 = Buffer.from(
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
 	"base64",
 );
-
-function proxyUrl(original: string): string {
-	return `/v1/images/proxy/testsig/${Buffer.from(original).toString("base64")}`;
-}
 
 function feedWithoutOg(id: string, title: string, slug: string) {
 	return {
@@ -124,12 +121,7 @@ test.describe("Visual Preview — a resolution that lands late", () => {
 			}
 			const body = route.request().postDataJSON() as { feedIds?: string[] };
 			const ids = body?.feedIds ?? [];
-			await fulfillJson(route, {
-				images: ids.map((feedId) => ({
-					feedId,
-					ogImageProxyUrl: proxyUrl(`https://img.example.com/${feedId}.png`),
-				})),
-			});
+			await fulfillJson(route, buildResolveOgImagesResponse({ resolved: ids }));
 		});
 
 		await page.route("**/v1/images/proxy/**", (route) =>

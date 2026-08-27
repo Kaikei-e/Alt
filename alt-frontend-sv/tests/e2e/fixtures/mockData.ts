@@ -394,6 +394,102 @@ export const CONNECT_SEARCH_RESPONSE = {
 	hasMore: false,
 };
 
+// =============================================================================
+// ResolveOgImages — Connect JSON, as the server emits it
+// =============================================================================
+
+/**
+ * Which of the four answers the server is giving about each feed.
+ *
+ * `ResolveOgImagesResponse` says which answer it means by *which list a feed is
+ * in*, not by a status field, so these three groups plus the feeds named in
+ * none of them are the whole vocabulary:
+ *
+ *   `resolved`  — a picture came back; the feed lands in `images`.
+ *   `settled`   — asked and refused (robots.txt, no og:image tag, no page worth
+ *                 fetching). Lands in `unresolved` with a bar of zero: settled
+ *                 for this retention window, never to be asked again.
+ *   `failedFor` — asked and failed; may well succeed once the named number of
+ *                 seconds has passed. Lands in `unresolved` with that bar.
+ *   named nowhere — the server never considered the feed at all (its batch cap
+ *                 trimmed it, or no row exists). It is in neither list, and
+ *                 that absence is the signal: nothing was learned, so it may be
+ *                 asked about again straight away.
+ *
+ * The builder deliberately does not fill in a row for feeds it was not told
+ * about. Doing so would erase that fourth answer, which has no wire symbol of
+ * its own — see `src/lib/utils/ogImageResolver.ts`.
+ */
+export interface ResolveOgImagesOutcome {
+	/** Feed ids that resolved to an image. */
+	resolved?: string[];
+	/** Feed ids the origin refused — a bar of zero. */
+	settled?: string[];
+	/** Feed id → seconds before that feed may be asked about again. */
+	failedFor?: Record<string, number>;
+}
+
+/**
+ * A `type` alias rather than an `interface` on purpose: the contract test feeds
+ * this straight to protobuf-es's `fromJson`, whose parameter is `JsonValue` —
+ * an index-signature type. TypeScript grants an implicit index signature to a
+ * type alias but never to an interface, so an interface here would typecheck
+ * everywhere except the one place that proves the fixture is valid.
+ */
+export type ResolveOgImagesResponseJson = {
+	images: { feedId: string; ogImageProxyUrl: string }[];
+	/**
+	 * `retryAfterSeconds` is a *string*, not a number. The proto field is int64,
+	 * and protobuf's JSON mapping puts 64-bit integers on the wire as strings so
+	 * that values past 2^53 survive a JSON parser — protobuf-es then hands the
+	 * client a `bigint`. Writing a numeric literal here would still decode
+	 * (protobuf JSON accepts both forms) but would stop resembling what the Go
+	 * server actually sends, which is the whole job of a mock.
+	 */
+	unresolved: { feedId: string; retryAfterSeconds: string }[];
+};
+
+/** Wrap an upstream URL the way the image proxy signs it. */
+export function ogImageProxyUrl(originalUrl: string): string {
+	// The last segment must genuinely base64-decode: `extractImageHost` reads
+	// the upstream host back out of it to queue image loads per-host, so an
+	// opaque placeholder would quietly bypass the queue instead of exercising it.
+	return `/v1/images/proxy/testsig/${Buffer.from(originalUrl).toString("base64")}`;
+}
+
+/** The upstream image a resolved feed is taken to have. */
+export function ogImageUpstreamUrl(feedId: string): string {
+	return `https://img.example.com/${feedId}.png`;
+}
+
+/**
+ * Build one `ResolveOgImagesResponse` in the Connect JSON form.
+ *
+ * Shared with `src/test/contracts/feed-contract.test.ts`, which decodes the
+ * output against the generated proto schema. That is the point of it living
+ * here rather than inline in each spec: a contract test can only vouch for the
+ * mock the E2E suite actually serves.
+ */
+export function buildResolveOgImagesResponse({
+	resolved = [],
+	settled = [],
+	failedFor = {},
+}: ResolveOgImagesOutcome = {}): ResolveOgImagesResponseJson {
+	return {
+		images: resolved.map((feedId) => ({
+			feedId,
+			ogImageProxyUrl: ogImageProxyUrl(ogImageUpstreamUrl(feedId)),
+		})),
+		unresolved: [
+			...settled.map((feedId) => ({ feedId, retryAfterSeconds: "0" })),
+			...Object.entries(failedFor).map(([feedId, seconds]) => ({
+				feedId,
+				retryAfterSeconds: String(seconds),
+			})),
+		],
+	};
+}
+
 // Connect-RPC service paths
 export const CONNECT_RPC_PATHS = {
 	getAllFeeds: "**/api/v2/alt.feeds.v2.FeedService/GetAllFeeds",
