@@ -75,12 +75,17 @@ func NewUsecase(store FeedOgImageStore, fetcher OgImageFetcher, minter ProxyURLM
 //	resolved                 — an image is held or was just obtained.
 //	unresolved, seconds > 0  — the origin was asked and failed. The bar is real
 //	                           and the client may come back after it.
-//	unresolved, seconds == 0 — the origin was asked and gave a settled answer,
-//	                           or there is no page to ask. Nothing to come back
-//	                           for inside this retention window.
-//	neither list             — no origin was spent: the batch cap trimmed the
-//	                           feed, no row exists for it, or the fetch failed
-//	                           on our side. The client may ask again at once.
+//	unresolved, seconds == 0 — settled inside this retention window. The origin
+//	                           gave a final answer, or there was never a usable
+//	                           page to ask — nothing to come back for either way.
+//	neither list             — this feed was not considered at all: the batch cap
+//	                           trimmed it, or no row came back for it. The client
+//	                           may ask again at once.
+//
+// Every feed this loop looks at ends up in one of the two lists. Absence is
+// reserved for feeds we did not look at, because a feed we did look at and
+// could not resolve would otherwise be asked about again on every page load,
+// forever.
 //
 // A feed that could not be resolved is absent from `resolved` rather than
 // mapped to an empty string, so the caller cannot render "we were refused" as
@@ -140,11 +145,19 @@ func (u *Usecase) Execute(ctx context.Context, feedIDs []string) (map[string]str
 		if fetchErr != nil {
 			// A malformed URL or an SSRF rejection is our problem, not the
 			// origin's answer, so it is not recorded as a refusal — that would
-			// suppress a feed for a fault on our side. For the same reason it
-			// is reported in neither list: both lists say what the origin
-			// answered, and we never managed to ask.
+			// suppress a feed for a fault on our side, and every later reader
+			// would inherit our bug under the origin's name.
+			//
+			// What we write and what we answer are two different questions,
+			// though. No row is written, but this reader is told the matter is
+			// settled: zero, not silence. The page URL will not change inside
+			// this window and neither will our judgement of it, so the next ask
+			// would fail in exactly the same place — and absence from both
+			// lists means "not considered", which would have the client putting
+			// that question again on every page load.
 			slog.WarnContext(ctx, "og-image-resolve: fetch failed",
 				"feed_id", target.FeedID, "error", fetchErr)
+			unresolved[target.FeedID] = 0
 			continue
 		}
 

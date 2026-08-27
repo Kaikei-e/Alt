@@ -2144,7 +2144,9 @@ type UnresolvedOgImage struct {
 	FeedId string `protobuf:"bytes,1,opt,name=feed_id,json=feedId,proto3" json:"feed_id,omitempty"`
 	// Seconds before this feed may be asked about again. Zero means not within
 	// this retention window — the settled answer a robots.txt disallow or a page
-	// with no og:image tag deserves.
+	// with no og:image tag deserves, and equally the one for a feed that never
+	// had a page to ask: no website_url, or one unusable enough that the request
+	// was never made. Settled is about this window, not about who said no.
 	RetryAfterSeconds int64 `protobuf:"varint,2,opt,name=retry_after_seconds,json=retryAfterSeconds,proto3" json:"retry_after_seconds,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -2203,22 +2205,30 @@ func (x *UnresolvedOgImage) GetRetryAfterSeconds() int64 {
 // into one leaves cards blank that it could have filled:
 //
 //	in `images`                       — resolved; the proxy URL is there.
-//	in `unresolved`, retry_after == 0 — the server asked and was refused. A
-//	                                    settled answer inside this retention
-//	                                    window; asking again buys nothing.
+//	in `unresolved`, retry_after == 0 — settled inside this retention window.
+//	                                    Usually the origin refused; it also
+//	                                    covers a feed with no page to ask and
+//	                                    one whose page URL we would not fetch.
+//	                                    Asking again buys nothing either way.
 //	in `unresolved`, retry_after > 0  — the server asked and failed. After that
 //	                                    many seconds the question may be put
 //	                                    again, and may well succeed.
-//	in neither list                   — the server never reached this feed: the
-//	                                    batch cap trimmed it, no row exists,
-//	                                    its page URL was unusable. No origin
-//	                                    was spent, so it may be asked about
-//	                                    again straight away.
+//	in neither list                   — the server did not consider this feed at
+//	                                    all: the batch cap trimmed it, or the
+//	                                    lookup returned no row for it. Nothing
+//	                                    was learned about it, so it may be asked
+//	                                    about again straight away.
+//
+// Every feed the server did consider lands in one of the two lists, whatever
+// went wrong — including faults on our own side, which are not recorded against
+// the feed but are still answered rather than passed over in silence. Absence
+// is reserved for feeds the server did not look at, because a considered feed
+// reported as absent would be re-asked on every page load forever.
 //
 // That fourth outcome is why this is two lists rather than one list with a
-// status enum. Membership already tells "asked and settled" from "asked and
-// failed", and absence from both carries "never asked" with no wire symbol of
-// its own — whereas an enum would oblige the server to emit a row for every
+// status enum. Membership already tells "settled" from "failed, come back
+// later", and absence from both carries "never considered" with no wire symbol
+// of its own — whereas an enum would oblige the server to emit a row for every
 // feed it never touched, including the ones its own batch cap cut, just to say
 // nothing happened.
 type ResolveOgImagesResponse struct {

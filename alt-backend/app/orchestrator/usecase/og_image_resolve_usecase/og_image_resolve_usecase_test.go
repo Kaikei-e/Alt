@@ -215,10 +215,14 @@ func TestExecute_FetchErrorBarEscalatesWithAttempts(t *testing.T) {
 	}
 }
 
-// A malformed URL or an SSRF rejection is our fault, not the origin's answer.
-// It is recorded nowhere and reported in neither list, because both lists are
-// statements about what the origin said and we never got to ask.
-func TestExecute_FetchErrorOnOurSideIsInNeitherList(t *testing.T) {
+// A malformed URL or an SSRF rejection is a feed we considered and could not
+// resolve, so it goes into `unresolved` with a zero — settled for this window.
+// The wire answer and the stored row are separate questions: no refusal is
+// written, because the fault is ours and a row would suppress the feed for
+// every later reader, but this reader is still told not to come back. A page
+// URL we refuse to fetch will be refused identically on the next ask, and
+// answering with silence would have the client putting that question forever.
+func TestExecute_FetchErrorOnOurSideIsUnresolvedAndSettled(t *testing.T) {
 	store := &fakeStore{targets: []domain.FeedOgImageTarget{
 		{FeedID: "f1", PageURL: "http://169.254.169.254/latest/meta-data"},
 	}}
@@ -230,9 +234,10 @@ func TestExecute_FetchErrorOnOurSideIsInNeitherList(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Empty(t, got)
-	assert.Empty(t, unresolved,
-		"suppressing a feed for a fault on our side would hide our own bug behind the origin's name")
-	assert.Empty(t, store.saved)
+	assert.Equal(t, map[string]int64{"f1": 0}, unresolved,
+		"a feed the server considered must not be answered with the silence that means 'never looked'")
+	assert.Empty(t, store.saved,
+		"a fault on our side is not the origin's answer, so it is not recorded as a refusal")
 }
 
 // One refusing feed must not stop the others in the same viewport resolving.

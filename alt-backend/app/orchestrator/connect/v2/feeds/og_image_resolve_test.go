@@ -140,10 +140,15 @@ func TestResolveOgImages_SeparatesTheFourOutcomes(t *testing.T) {
 	require.Contains(t, unresolved, settledFeed)
 	assert.Equal(t, int64(0), unresolved[settledFeed])
 
-	// 4. Never asked: in neither list. A fault on our side is not the origin's
-	//    answer, and a feed with no row was never considered at all.
+	// 3b. Considered and unusable: also in `unresolved` with zero. A page URL
+	//     we refuse to fetch is a fault on our side, but it is settled all the
+	//     same — nothing about it changes inside this window.
+	require.Contains(t, unresolved, ourFaultFeed)
+	assert.Equal(t, int64(0), unresolved[ourFaultFeed])
 	assert.NotContains(t, images, ourFaultFeed)
-	assert.NotContains(t, unresolved, ourFaultFeed)
+
+	// 4. Never considered: in neither list. Only a feed the server did not look
+	//    at reaches the client as silence — here, one with no row at all.
 	assert.NotContains(t, images, neverSeenFeed)
 	assert.NotContains(t, unresolved, neverSeenFeed)
 }
