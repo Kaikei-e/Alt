@@ -72,7 +72,9 @@ func TestFetchOgImage_RobotsDisallowIsHonoured(t *testing.T) {
 	assert.Empty(t, img)
 	assert.Equal(t, domain.OgImageRefusedByRobots, refusal)
 	assert.Zero(t, pageRequests, "a disallowed path must not be fetched at all")
-	assert.Zero(t, refusal.RetryAfter(), "a stated policy is not a transient fault")
+	assert.Zero(t, refusal.RetryAfter(1), "a stated policy is not a transient fault")
+	assert.Zero(t, refusal.RetryAfter(9),
+		"and it stays a policy however many times it is heard — this is the one refusal class the escalating bar leaves alone")
 }
 
 // A path the site allows is fetched even when robots.txt restricts others.
@@ -145,7 +147,8 @@ func TestFetchOgImage_NoTagIsSettled(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, img)
 	assert.Equal(t, domain.OgImageNoTag, refusal)
-	assert.Zero(t, refusal.RetryAfter())
+	assert.Zero(t, refusal.RetryAfter(1))
+	assert.Zero(t, refusal.RetryAfter(9), "a page without the tag does not grow one by being asked again")
 }
 
 // robots.txt is fetched once per host, not once per feed. A grid of twenty

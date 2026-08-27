@@ -288,6 +288,13 @@ func (h *Handler) GetFeedOgImageTargets(ctx context.Context, req *connect.Reques
 			PageUrl:    t.PageURL,
 			OgImageUrl: t.OgImageURL,
 			Suppressed: t.Suppressed,
+			// attempts and retry_after_seconds are what let the caller escalate
+			// and what let it answer a reader's client with a number rather than
+			// "never". Both are held only here, so dropping either from this
+			// mapping is silent: the caller keeps working and simply restarts
+			// the ladder — or gives the card up — on every ask.
+			Attempts:          safeconv.Int32(t.Attempts),
+			RetryAfterSeconds: t.RetryAfterSeconds,
 		})
 	}
 	return connect.NewResponse(&datahubv1.GetFeedOgImageTargetsResponse{Targets: out}), nil

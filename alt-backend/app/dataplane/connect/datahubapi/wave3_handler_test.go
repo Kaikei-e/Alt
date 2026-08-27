@@ -642,3 +642,72 @@ func (f *fakeOgImagePort) PurgeExpiredFeedOgImages(_ context.Context, ttl time.D
 	f.purgeTTL = ttl
 	return f.feedImagesPurged, nil
 }
+
+// The two counters that decide when a feed may be asked about again must
+// survive the mapping into proto.
+//
+// They are held nowhere but this table, and dropping either is silent on the
+// wire: the caller keeps working, and simply restarts the escalation ladder at
+// its first rung on every ask — or, with the remaining seconds lost, tells the
+// reader's client that a five-second bar is a permanent refusal. Neither shows
+// up as an error anywhere.
+func TestGetFeedOgImageTargetsCarriesAttemptsAndRemainingBar(t *testing.T) {
+	h, _ := newWave3Handler(wave3Fakes{ogImage: &fakeOgImagePort{
+		feedTargets: []domain.FeedOgImageTarget{
+			{
+				FeedID:  "11111111-1111-1111-1111-111111111111",
+				PageURL: "https://example.com/a",
+				// Two attempts spent, bar expired: fetchable again, but the
+				// third bar must be the third rung.
+				Attempts: 2,
+			},
+			{
+				FeedID:            "22222222-2222-2222-2222-222222222222",
+				PageURL:           "https://example.com/b",
+				Suppressed:        true,
+				Attempts:          3,
+				RetryAfterSeconds: 20,
+			},
+		},
+	}})
+
+	resp, err := h.GetFeedOgImageTargets(context.Background(),
+		connect.NewRequest(&datahubv1.GetFeedOgImageTargetsRequest{
+			FeedIds: []string{
+				"11111111-1111-1111-1111-111111111111",
+				"22222222-2222-2222-2222-222222222222",
+			},
+		}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.GetTargets(), 2)
+
+	fetchable := resp.Msg.GetTargets()[0]
+	assert.Equal(t, int32(2), fetchable.GetAttempts())
+	assert.False(t, fetchable.GetSuppressed())
+	assert.Zero(t, fetchable.GetRetryAfterSeconds(), "an expired bar is no bar")
+
+	barred := resp.Msg.GetTargets()[1]
+	assert.True(t, barred.GetSuppressed())
+	assert.Equal(t, int32(3), barred.GetAttempts())
+	assert.Equal(t, int64(20), barred.GetRetryAfterSeconds())
+}
+
+// A feed with no stored row reports zero attempts rather than one. The 1-based
+// normalisation belongs to domain.OgImageRefusal.RetryAfter, so that the number
+// on the wire and the number in the attempts column never disagree.
+func TestGetFeedOgImageTargetsReportsNoRowAsZeroAttempts(t *testing.T) {
+	h, _ := newWave3Handler(wave3Fakes{ogImage: &fakeOgImagePort{
+		feedTargets: []domain.FeedOgImageTarget{
+			{FeedID: "33333333-3333-3333-3333-333333333333", PageURL: "https://example.com/c"},
+		},
+	}})
+
+	resp, err := h.GetFeedOgImageTargets(context.Background(),
+		connect.NewRequest(&datahubv1.GetFeedOgImageTargetsRequest{
+			FeedIds: []string{"33333333-3333-3333-3333-333333333333"},
+		}))
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.GetTargets(), 1)
+	assert.Zero(t, resp.Msg.GetTargets()[0].GetAttempts())
+	assert.Zero(t, resp.Msg.GetTargets()[0].GetRetryAfterSeconds())
+}

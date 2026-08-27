@@ -1219,12 +1219,23 @@ func mountWave3Procedures(mux *http.ServeMux) {
 				targets = append(targets, map[string]interface{}{
 					"feedId":  fetchable,
 					"pageUrl": pageURL,
+					// Attempts already spent on a feed whose bar has expired.
+					// The consumer multiplies the next bar by this, so a stub
+					// that answered zero here would verify green against a
+					// consumer that had quietly stopped escalating.
+					"attempts": 2,
 				})
 			case suppressed:
 				targets = append(targets, map[string]interface{}{
 					"feedId":     suppressed,
 					"pageUrl":    pageURL,
 					"suppressed": true,
+					"attempts":   3,
+					// int64 crosses protojson as a string. This is the half of
+					// the answer `suppressed` cannot carry: how much of the bar
+					// is left, and therefore whether the reader's client should
+					// come back in twenty seconds or give the card up.
+					"retryAfterSeconds": "20",
 				})
 			}
 			// A feed id the stub does not know is omitted, which is the wire

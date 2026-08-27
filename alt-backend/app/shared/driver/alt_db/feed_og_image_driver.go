@@ -20,6 +20,17 @@ import (
 // suppressed is computed here rather than returned raw because the rule is a
 // property of the row, not of the caller: a refusal stands until its retry_after
 // passes, and a NULL retry_after means it stands for the rest of the window.
+//
+// retry_after_seconds is projected the same way and for the same reason. The
+// caller has no business comparing a stored instant against a clock that is not
+// this database's, and "how long is left" is the only form of the answer that
+// can travel on to a reader's browser.
+//
+// attempts is returned raw, so a feed with no row arrives as 0 rather than as
+// 1. Normalising is left to domain.OgImageRefusal.RetryAfter, which treats 0
+// and 1 alike: putting the +1 here would mean the number this driver reports
+// and the number the attempts column holds disagreed by one, and every later
+// reader of either would have to know which of the two they were looking at.
 func (r *FeedRepository) FetchFeedOgImageTargets(ctx context.Context, feedIDs []string) ([]domain.FeedOgImageTarget, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
@@ -42,7 +53,12 @@ func (r *FeedRepository) FetchFeedOgImageTargets(ctx context.Context, feedIDs []
 		        foi.state = 'unavailable'
 		        AND (foi.retry_after IS NULL OR foi.retry_after > NOW()),
 		        false
-		    )                                                  AS suppressed
+		    )                                                  AS suppressed,
+		    COALESCE(foi.attempts, 0)                          AS attempts,
+		    COALESCE(
+		        GREATEST(0, EXTRACT(EPOCH FROM (foi.retry_after - NOW())))::bigint,
+		        0
+		    )                                                  AS retry_after_seconds
 		FROM feeds f
 		LEFT JOIN feed_og_images foi ON foi.feed_id = f.id
 		WHERE f.id = ANY($1::uuid[])
@@ -56,10 +72,15 @@ func (r *FeedRepository) FetchFeedOgImageTargets(ctx context.Context, feedIDs []
 
 	targets := make([]domain.FeedOgImageTarget, 0, len(feedIDs))
 	for rows.Next() {
-		var t domain.FeedOgImageTarget
-		if err := rows.Scan(&t.FeedID, &t.PageURL, &t.OgImageURL, &t.Suppressed); err != nil {
+		var (
+			t        domain.FeedOgImageTarget
+			attempts int32
+		)
+		if err := rows.Scan(&t.FeedID, &t.PageURL, &t.OgImageURL, &t.Suppressed,
+			&attempts, &t.RetryAfterSeconds); err != nil {
 			return nil, fmt.Errorf("scan feed og image target: %w", err)
 		}
+		t.Attempts = int(attempts)
 		targets = append(targets, t)
 	}
 	return targets, rows.Err()
@@ -106,7 +127,17 @@ func (r *FeedRepository) SaveFeedOgImage(
 		    og_image_url = EXCLUDED.og_image_url,
 		    reason       = EXCLUDED.reason,
 		    retry_after  = EXCLUDED.retry_after,
-		    attempts     = feed_og_images.attempts + 1,
+		    -- Only a refusal spends patience. A resolution is the proof that
+		    -- whatever was wrong is over, so it puts the counter back to its
+		    -- first rung.
+		    --
+		    -- Counting successes too was the bug this replaces: a feed that had
+		    -- resolved cleanly on every scroll for a week arrived at its first
+		    -- transient 502 with a counter in the dozens and was handed the
+		    -- six-hour ceiling on the spot. The escalation was punishing the
+		    -- well-behaved feeds and sparing the ones that never work.
+		    attempts     = CASE WHEN EXCLUDED.state = 'resolved' THEN 1
+		                        ELSE feed_og_images.attempts + 1 END,
 		    created_at   = clock_timestamp()
 	`
 
