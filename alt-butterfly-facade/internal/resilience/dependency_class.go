@@ -51,6 +51,29 @@ var unreadProjectionEndpoints = map[string]struct{}{
 // merely returns a URL pointing at a third party stays non-critical.
 var externalContentEndpoints = map[string]struct{}{
 	"/alt.articles.v2.ArticleService/FetchArticleContent": {},
+	// ResolveOgImages fetches publisher pages inline, while the RPC is still
+	// open: for each feed that still needs an image, og_image_resolve_usecase
+	// asks the origin for robots.txt and then the page itself, through the
+	// per-host politeness slot, before it can answer. So the status and latency
+	// it returns report a third party's health and our own rate-limit gate —
+	// the two things ADR-000959 took out of alt-backend's failure budget.
+	//
+	// Unclassified, it was charged at the internal budget (threshold 5, open
+	// 30s) rather than the external-content one (20, 5s). Those numbers are
+	// calibrated for a dependency we operate: a handful of slow or unreachable
+	// publishers, or a batch that simply waited too long for its own host
+	// slots, would black out og:image resolution for thirty seconds and count
+	// as an alt-backend outage. That is the same self-inflicted loop
+	// ADR-000959 §4 found behind FetchArticleContent, and the same argument
+	// puts the re-probe at five seconds: the next viewport is usually a
+	// different set of publishers.
+	//
+	// BatchPrefetchImages is the near-miss to keep it apart from: it mints
+	// signed proxy URLs from rows already held and never contacts a publisher
+	// on its response path, so it stays non-critical (ADR-000959 §2 says so in
+	// as many words). "Deals in images from third-party sites" is not the test;
+	// "waits on one before it can reply" is.
+	"/alt.feeds.v2.FeedService/ResolveOgImages": {},
 }
 
 // telemetryEndpoints are fire-and-forget analytics writes: the frontend

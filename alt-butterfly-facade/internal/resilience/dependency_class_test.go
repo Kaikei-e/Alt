@@ -28,7 +28,7 @@ func TestClassForEndpoint_UnreadProjection(t *testing.T) {
 func TestClassForEndpoint_ExternalContent(t *testing.T) {
 	assert.Equal(t, ClassExternalContent, ClassForEndpoint("/alt.articles.v2.ArticleService/FetchArticleContent"))
 	assert.Equal(t, "external_content", ClassExternalContent.String())
-	assert.Equal(t, 1, ExternalContentEndpointCount())
+	assert.Equal(t, 2, ExternalContentEndpointCount())
 }
 
 // TestClassForEndpoint_ArticleSiblingsStayNonCritical guards the boundary of
@@ -89,7 +89,7 @@ func TestUnreadProjectionEndpoints(t *testing.T) {
 	assert.Equal(t, 2, CriticalMutationEndpointCount())
 	assert.Equal(t, 3, UnreadProjectionEndpointCount())
 	assert.Equal(t, 5, CriticalEndpointCount())
-	assert.Equal(t, 1, ExternalContentEndpointCount())
+	assert.Equal(t, 2, ExternalContentEndpointCount())
 }
 
 // TestClassForEndpoint_BatchPrefetchArticleContentIsTelemetry pins the
@@ -114,5 +114,30 @@ func TestClassForEndpoint_BatchPrefetchArticleContentIsTelemetry(t *testing.T) {
 	// publisher and therefore the one the bulkhead is for.
 	assert.Equal(t, ClassExternalContent,
 		ClassForEndpoint("/alt.articles.v2.ArticleService/FetchArticleContent"))
-	assert.Equal(t, 1, ExternalContentEndpointCount())
+	assert.Equal(t, 2, ExternalContentEndpointCount())
+}
+
+// TestClassForEndpoint_ResolveOgImagesIsExternalContent pins the on-demand
+// og:image resolve to the publisher-facing bulkhead.
+//
+// og_image_resolve_usecase.Execute calls OgImageFetcher.FetchOgImage inline
+// while the RPC is still open: for every feed that still needs one it fetches
+// the publisher's robots.txt and then the page itself, through the per-host
+// politeness slot. The status and latency this RPC returns therefore report a
+// third party's health and Alt's own rate-limit gate, exactly the two things
+// ADR-000959 removed from alt-backend's failure budget.
+//
+// It is not BatchPrefetchImages: that one only mints signed proxy URLs from
+// rows it already holds, so nothing leaves the cluster on its response path
+// and it stays non-critical (see the sibling test above).
+func TestClassForEndpoint_ResolveOgImagesIsExternalContent(t *testing.T) {
+	assert.Equal(t, ClassExternalContent,
+		ClassForEndpoint("/alt.feeds.v2.FeedService/ResolveOgImages"))
+
+	// The distinction that keeps this class honest: a URL-minting sibling
+	// with no outbound fetch on the response path does not move with it.
+	assert.Equal(t, ClassNonCritical,
+		ClassForEndpoint("/alt.articles.v2.ArticleService/BatchPrefetchImages"))
+
+	assert.Equal(t, 2, ExternalContentEndpointCount())
 }
