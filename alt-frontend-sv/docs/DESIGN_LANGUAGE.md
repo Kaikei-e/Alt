@@ -358,12 +358,21 @@ Breakpoint: **768px** (`md:`). Detection via `isDesktop()` / `isMobile()` from
 plain `const` snapshots it and the layout stops following the viewport, which is
 how a phone in landscape (851 CSS px) used to get stuck on the desktop layout.
 
+A `{#if isDesktop()}` mounts and destroys, so it is for **navigation chrome**,
+not for a screen that holds state. `AugurChat` is one component at every width —
+the 720px column, the ≥1280px citation rail and the phone's full-bleed shell are
+media queries inside it. It used to be two components swapped on that branch, and
+once the branch became reactive, turning the phone threw away the conversation
+and re-asked the question in `?q=`: one question, three answers billed. When a
+layout really does differ per viewport, express it in CSS and let the component
+instance live.
+
 ### Mobile Layout
 
 ```
-.augur-mobile (flex column, height: 100%)
-  ├── .content-area (flex: 1, overflow-y: auto)
-  └── .input-area (flex-shrink: 0)
+.augur-shell (flex column, height: 100%)
+  ├── .augur-thread (flex: 1, overflow-y: auto)
+  └── .augur-input-area (flex-shrink: 0)
 ```
 
 - Use **flexbox layout** for full-height pages (thread + input)

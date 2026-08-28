@@ -1,13 +1,11 @@
 <script lang="ts">
 import { page } from "$app/stores";
 import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
-import ChatWindow from "$lib/components/mobile/search/ChatWindow.svelte";
 import {
 	type AugurStoredConversation,
 	createClientTransport,
 	getAugurConversation,
 } from "$lib/connect";
-import { isDesktop } from "$lib/stores/viewport.svelte";
 import { formatAugurConversationLabel } from "$lib/utils/augur-entry";
 
 type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
@@ -27,21 +25,6 @@ type PaneMessage = {
 	timestamp: string;
 	citations?: PaneCitation[];
 	relatedCitations?: PaneCitation[];
-};
-
-type MobileCitation = {
-	url: string;
-	title: string;
-	publishedAt: string;
-	kind?: CitationKindName;
-	refId?: string;
-};
-
-type MobileMessage = {
-	role: "user" | "assistant";
-	content: string;
-	citations?: MobileCitation[];
-	relatedCitations?: MobileCitation[];
 };
 
 let conversation = $state<AugurStoredConversation | null>(null);
@@ -66,18 +49,6 @@ function toPaneCitation(
 	};
 }
 
-function toMobileCitation(
-	c: AugurStoredConversation["messages"][number]["citations"][number],
-): MobileCitation {
-	return {
-		url: c.url,
-		title: c.title,
-		publishedAt: c.publishedAt,
-		kind: c.kind,
-		refId: c.refId,
-	};
-}
-
 function toPaneMessages(conv: AugurStoredConversation): PaneMessage[] {
 	return conv.messages.map((m, index) => ({
 		id: `${m.role}-${conv.id}-${index}`,
@@ -86,15 +57,6 @@ function toPaneMessages(conv: AugurStoredConversation): PaneMessage[] {
 		timestamp: m.createdAt ? m.createdAt.toLocaleTimeString() : "",
 		citations: m.citations.map(toPaneCitation),
 		relatedCitations: m.relatedCitations.map(toPaneCitation),
-	}));
-}
-
-function toMobileMessages(conv: AugurStoredConversation): MobileMessage[] {
-	return conv.messages.map((m) => ({
-		role: m.role,
-		content: m.content,
-		citations: m.citations.map(toMobileCitation),
-		relatedCitations: m.relatedCitations.map(toMobileCitation),
 	}));
 }
 
@@ -144,20 +106,18 @@ async function load(id: string) {
 {:else if errorMessage}
 	<p class="status status-error" role="alert">{errorMessage}</p>
 {:else if conversation}
-	{#if isDesktop()}
+	<!--
+		One chat for every width — see the note in ../+page.svelte. Rotating a
+		phone used to swap in a second implementation, which dropped the
+		conversation that had just been loaded from the server and any follow-up
+		still streaming.
+	-->
+	<div class="augur-frame">
 		<AugurChat
 			initialMessages={toPaneMessages(conversation)}
 			initialConversationId={conversation.id}
-			title={conversationLabel}
 		/>
-	{:else}
-		<div class="augur-mobile-shell">
-			<ChatWindow
-				initialMessages={toMobileMessages(conversation)}
-				initialConversationId={conversation.id}
-			/>
-		</div>
-	{/if}
+	</div>
 {/if}
 
 <style>
@@ -175,12 +135,20 @@ async function load(id: string) {
 	color: #b91c1c;
 }
 
-.augur-mobile-shell {
+.augur-frame {
 	position: fixed;
 	top: 0;
 	left: 0;
 	right: 0;
 	bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));
 	overflow: hidden;
+}
+
+/* The same 48rem the `md:` utilities and `isDesktop()` use. */
+@media (min-width: 48rem) {
+	.augur-frame {
+		position: static;
+		overflow: visible;
+	}
 }
 </style>

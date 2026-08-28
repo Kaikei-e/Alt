@@ -1,14 +1,18 @@
 <script lang="ts">
-import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-import { parseAugurUserMessage } from "$lib/utils/augur-entry";
 import augurAvatar from "$lib/assets/augur-chat.webp";
+import { parseAugurUserMessage } from "$lib/utils/augur-entry";
+import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
 import ArticleScopeCard from "./ArticleScopeCard.svelte";
+import { type CitationKindName, citationHref } from "./citation-href";
 
 type Citation = {
 	URL: string;
 	Title: string;
 	PublishedAt?: string;
 	Score?: number;
+	Kind?: CitationKindName;
+	RefID?: string;
 };
 
 type Props = {
@@ -27,6 +31,27 @@ let isUser = $derived(role === "user");
 // retrieval on it. It is addressed to the backend, not to the reader, so the
 // turn is shown as the article it was about plus the question that was asked.
 let asked = $derived(isUser ? parseAugurUserMessage(message) : null);
+
+/**
+ * The click target for a citation in the footer.
+ *
+ * Kind-driven first, exactly as the citation rail resolves it: WEB uses the
+ * url, ARTICLE / SUMMARY build `/articles/<refId>` because their url is empty
+ * by design. Rows written before `kind` existed carry only a url, so those
+ * fall back to it — sanitized, since a citation url is external input and a
+ * `javascript:` one would otherwise be bound straight to `href`. Anything left
+ * unresolved renders as text rather than as a link to nowhere: `href=""` used
+ * to point the reader back at the page they were already on.
+ */
+function sourceHref(c: Citation): string | undefined {
+	return (
+		citationHref({
+			kind: c.Kind ?? "UNSPECIFIED",
+			url: c.URL ?? "",
+			refId: c.RefID ?? "",
+		}) ?? sanitizeHrefUrl(c.URL)
+	);
+}
 </script>
 
 <article class="thread-entry" data-role={role} style="--stagger: {index}">
@@ -53,16 +78,24 @@ let asked = $derived(isUser ? parseAugurUserMessage(message) : null);
 				<h4 class="sources-heading">Sources</h4>
 				<ol class="sources-list">
 					{#each citations as cite, i}
+						{@const href = sourceHref(cite)}
+						{@const external = href?.startsWith("http") ?? false}
 						<li class="source-item">
 							<span class="source-id">[{i + 1}]</span>
-							<a
-								href={cite.URL}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="source-title"
-							>
-								{cite.Title || "Untitled Source"}
-							</a>
+							{#if href}
+								<a
+									{href}
+									target={external ? "_blank" : undefined}
+									rel={external ? "noopener noreferrer" : undefined}
+									class="source-title"
+								>
+									{cite.Title || "Untitled Source"}
+								</a>
+							{:else}
+								<span class="source-title source-title-plain">
+									{cite.Title || "Untitled Source"}
+								</span>
+							{/if}
 						</li>
 					{/each}
 				</ol>
@@ -196,6 +229,11 @@ let asked = $derived(isUser ? parseAugurUserMessage(message) : null);
 		transition: color 0.15s;
 	}
 	.source-title:hover { color: var(--alt-charcoal, #1a1a1a); }
+	/* An unresolvable citation is still evidence worth naming; it just has
+	   nowhere to send the reader, so it does not dress up as a link. */
+	.source-title-plain {
+		color: var(--alt-slate, #666); text-decoration: none;
+	}
 
 	/* Bottom rule separator */
 	.entry-rule {
