@@ -35,25 +35,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Get workspace parent GID
-        if: runner.environment == 'self-hosted'
-        id: get-gid
-        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
-
-      - name: Pre-checkout cleanup
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-        env:
-          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
-        with:
-          entrypoint: /bin/sh
-          # Docker runs as root to delete files and fix permissions for 'runners' group
-          # chmod 2775 = setgid + rwxrwxr-x (group inherits, group writable)
-          # See: https://github.com/actions/runner/issues/434
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
-
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Mask sensitive paths and git information
         run: |
@@ -103,16 +88,6 @@ jobs:
 
           echo "After cleanup:"
           df -h
-
-      - name: Clear corrupted CodeQL toolcache
-        if: runner.environment == 'self-hosted'
-        run: |
-          # Fix for libjli.so error - clear potentially corrupted CodeQL cache
-          # See: https://github.com/github/codeql-action/issues/1082
-          if [ -d "$RUNNER_TOOL_CACHE/CodeQL" ]; then
-            echo "Clearing CodeQL toolcache at $RUNNER_TOOL_CACHE/CodeQL"
-            rm -rf "$RUNNER_TOOL_CACHE/CodeQL"
-          fi
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4.37.8

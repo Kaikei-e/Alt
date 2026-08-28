@@ -42,15 +42,10 @@ on:
         type: string
         default: "test"
         description: "Job type: test, lint, security, typecheck"
-      runner:
-        description: "Runner label (ubuntu-latest or self-hosted)"
-        required: false
-        type: string
-        default: "ubuntu-latest"
 
 jobs:
   python-job:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     defaults:
@@ -61,55 +56,15 @@ jobs:
       UV_NO_CACHE_PRUNE: 1
 
     steps:
-      - name: Get workspace parent GID
-        if: runner.environment == 'self-hosted'
-        id: get-gid
-        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
-
-      - name: Pre-checkout cleanup
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-        env:
-          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
-        with:
-          entrypoint: /bin/sh
-          # Docker runs as root to delete files and fix permissions for 'runners' group
-          # chmod 2775 = setgid + rwxrwxr-x (group inherits, group writable)
-          # See: https://github.com/actions/runner/issues/434
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
-
       - name: Checkout (sparse)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 1
           clean: false
           sparse-checkout: |
             ${{ inputs.sparse-checkout }}
           sparse-checkout-cone-mode: true
-
-      - name: Configure logging (mask)
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::group::Masking Configuration"
-
-          # Mask Runner Identity
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(whoami)"
-
-          # Mask Absolute Paths
-          [ -n "$HOME" ] && echo "::add-mask::$HOME"
-          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
-          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
-
-          # Mask Git PII (now available after checkout)
-          if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
-          fi
-
-          echo "::endgroup::"
 
       - name: Install uv (Rust-based tool)
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
@@ -117,16 +72,20 @@ jobs:
           enable-cache: false
 
       - name: Set up Python with uv
-        run: uv python install ${{ inputs.python-version }}
+        env:
+          PYTHON_VERSION: ${{ inputs.python-version }}
+        run: uv python install "$PYTHON_VERSION"
 
       # ===== キャッシュ戦略 =====
       # 1) ローカル永続キャッシュ（sudo不要でHOME配下に固定）
       # ジョブ固有のキャッシュディレクトリを使用して並行実行時の競合を回避
       - name: Configure local persistent caches (HOME)
         if: ${{ inputs.use-local-persistent-cache }}
+        env:
+          JOB_TYPE: ${{ inputs.job-type }}
         run: |
-          CACHE_BASE="$HOME/.cache/uv-${{ inputs.job-type }}-${{ github.run_id }}"
-          TOOL_BASE="$HOME/.local/share/uv-${{ inputs.job-type }}-${{ github.run_id }}"
+          CACHE_BASE="$HOME/.cache/uv-${JOB_TYPE}-${GITHUB_RUN_ID}"
+          TOOL_BASE="$HOME/.local/share/uv-${JOB_TYPE}-${GITHUB_RUN_ID}"
           mkdir -p "$CACHE_BASE" "$TOOL_BASE"
           echo "UV_CACHE_DIR=$CACHE_BASE" >> "$GITHUB_ENV"
           echo "UV_TOOL_DIR=$TOOL_BASE" >> "$GITHUB_ENV"
@@ -156,10 +115,12 @@ jobs:
 
       - name: Python env (diagnostics)
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: |
           uv python list
-          echo "github.workspace=${{ github.workspace }}"
-          ls -la "${{ github.workspace }}/${{ inputs.working-directory }}" || true
+          echo "github.workspace=$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE/$WORKING_DIRECTORY" || true
 
       # Job-specific actions based on job type
       - name: Run tests
@@ -186,18 +147,3 @@ jobs:
         if: ${{ inputs.job-type == 'typecheck' }}
         working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
         run: uv run pyrefly check
-
-      - name: Cleanup (self-hosted)
-        if: always() && runner.environment == 'self-hosted'
-        working-directory: ${{ github.workspace }}/${{ inputs.working-directory }}
-        run: |
-          rm -rf .venv .pytest_cache .coverage coverage.xml bandit-report.json
-          # Clean job-specific uv cache directory
-          if [ -n "$UV_CACHE_DIR" ] && [ -d "$UV_CACHE_DIR" ]; then
-            echo "Removing job-specific uv cache: $UV_CACHE_DIR"
-            rm -rf "$UV_CACHE_DIR" 2>/dev/null || true
-          fi
-          if [ -n "$UV_TOOL_DIR" ] && [ -d "$UV_TOOL_DIR" ]; then
-            echo "Removing job-specific uv tool directory: $UV_TOOL_DIR"
-            rm -rf "$UV_TOOL_DIR" 2>/dev/null || true
-          fi

@@ -24,36 +24,9 @@ jobs:
       CI: true
       FORCE_COLOR: "1"
     steps:
-      - name: Get workspace parent GID
-        if: runner.environment == 'self-hosted'
-        id: get-gid
-        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
-
-      - name: Pre-checkout cleanup
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-        env:
-          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
-        with:
-          entrypoint: /bin/sh
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-
-      - name: Mask sensitive paths and git information
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(whoami)"
-          [ -n "$HOME" ] && echo "::add-mask::$HOME"
-          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
-          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
-          if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
-          fi
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
@@ -131,36 +104,9 @@ jobs:
       CI: true
       FORCE_COLOR: "1"
     steps:
-      - name: Get workspace parent GID
-        if: runner.environment == 'self-hosted'
-        id: get-gid
-        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
-
-      - name: Pre-checkout cleanup
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-        env:
-          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
-        with:
-          entrypoint: /bin/sh
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-
-      - name: Mask sensitive paths and git information
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(whoami)"
-          [ -n "$HOME" ] && echo "::add-mask::$HOME"
-          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
-          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
-          if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
-          fi
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:

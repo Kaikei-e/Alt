@@ -1,5 +1,8 @@
 name: pki-agent Go Tests
 
+permissions:
+  contents: read
+
 # The mTLS sidecar sits in every east-west path and terminates client
 # certificates, but it had no test gate: only docker-build.yaml touched it.
 # A hardcoded proxy timeout regression shipped to production that way, and a

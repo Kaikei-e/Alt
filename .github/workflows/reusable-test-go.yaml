@@ -30,11 +30,6 @@ on:
         required: false
         type: string
         default: "alt-backend" # 呼び出し側で 'search-indexer' 等に上書き推奨
-      runner:
-        description: "Runner label (ubuntu-latest or self-hosted)"
-        required: false
-        type: string
-        default: "ubuntu-latest"
 
   workflow_dispatch:
 
@@ -44,7 +39,7 @@ permissions:
 
 jobs:
   test-go:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     defaults:
@@ -52,56 +47,16 @@ jobs:
         shell: bash
 
     steps:
-      - name: Get workspace parent GID
-        if: runner.environment == 'self-hosted'
-        id: get-gid
-        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
-
-      - name: Pre-checkout cleanup
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-        env:
-          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
-        with:
-          entrypoint: /bin/sh
-          # Docker runs as root to delete files and fix permissions for 'runners' group
-          # chmod 2775 = setgid + rwxrwxr-x (group inherits, group writable)
-          # See: https://github.com/actions/runner/issues/434
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
-
       - name: Checkout (sparse)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 1
           clean: false
           sparse-checkout: |
             ${{ inputs.sparse-checkout }}
           sparse-checkout-cone-mode: true
         # このアクションは $GITHUB_WORKSPACE (= ${{ github.workspace }}) 配下にチェックアウトする
-
-      - name: Configure logging (mask)
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::group::Masking Configuration"
-
-          # Mask Runner Identity
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(whoami)"
-
-          # Mask Absolute Paths
-          [ -n "$HOME" ] && echo "::add-mask::$HOME"
-          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
-          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
-
-          # Mask Git PII (now available after checkout)
-          if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
-          fi
-
-          echo "::endgroup::"
 
       - name: Set up Go (with built-in cache)
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
@@ -121,12 +76,14 @@ jobs:
           echo "GOMODCACHE=$HOME/go/pkg/mod"   >> "$GITHUB_ENV"
 
       - name: Go env (diagnostics)
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: |
           go env
           echo "GOCACHE=${GOCACHE:-$(go env GOCACHE)}"
           echo "GOMODCACHE=${GOMODCACHE:-$(go env GOMODCACHE)}"
           echo "github.workspace=${{ github.workspace }}"
-          ls -la "${{ github.workspace }}/${{ inputs.working-directory }}" || true
+          ls -la "$GITHUB_WORKSPACE/$WORKING_DIRECTORY" || true
 
       # -race is what makes the repo's race-detection tests mean anything: the
       # detector is off by default, so a test written to catch a race passes
@@ -158,8 +115,3 @@ jobs:
       #     name: ${{ inputs.coverage-flags }}-coverage
       #     token: ${{ secrets.CODECOV_TOKEN }}
       #     verbose: false
-
-      - name: Cleanup (self-hosted)
-        if: always() && runner.environment == 'self-hosted'
-        run: |
-          go clean -testcache

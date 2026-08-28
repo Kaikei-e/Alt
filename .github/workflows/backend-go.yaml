@@ -1,5 +1,8 @@
 name: Backend Go Tests
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [ main, master ]
@@ -94,6 +97,7 @@ jobs:
       - name: Checkout (sparse)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 1
           # migrations-atlas and the db-init fixture are read by the harness
           # at run time, not vendored into it, so both have to be on disk.

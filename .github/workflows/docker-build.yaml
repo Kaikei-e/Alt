@@ -15,7 +15,6 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   changes:
@@ -26,33 +25,13 @@ jobs:
       has_changes: ${{ steps.set-matrix.outputs.has_changes }}
 
     steps:
-      - name: Get workspace parent GID
-        if: runner.environment == 'self-hosted'
-        id: get-gid
-        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
-
-      - name: Pre-checkout cleanup
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-        env:
-          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
-        with:
-          entrypoint: /bin/sh
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          persist-credentials: false
           # Full history so we can diff against the correct base across
           # squash-merges, rebase-merges, and first pushes where HEAD~1
           # would resolve to the wrong commit (or not exist at all).
           fetch-depth: 0
-
-      - name: Configure logging (mask)
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(whoami)"
-          [ -n "$HOME" ] && echo "::add-mask::$HOME"
 
       - name: Detect changed services
         id: set-matrix
@@ -286,6 +265,9 @@ jobs:
     if: needs.changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.changes.outputs.matrix) }}
@@ -295,35 +277,15 @@ jobs:
         id: repo
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
-      - name: Get workspace parent GID
-        if: runner.environment == 'self-hosted'
-        id: get-gid
-        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
-
-      - name: Pre-checkout cleanup
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-        env:
-          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
-        with:
-          entrypoint: /bin/sh
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 1
           clean: false
           sparse-checkout: |
             ${{ matrix.dir }}
             docker
           sparse-checkout-cone-mode: true
-
-      - name: Configure logging (mask)
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(whoami)"
-          [ -n "$HOME" ] && echo "::add-mask::$HOME"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0

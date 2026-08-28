@@ -3,9 +3,9 @@
 #   (1) any workflow defines `pull_request_target:` or `workflow_run:` triggers
 #       (both run with elevated trust and are common exfil / RCE vectors for
 #       OSS repos), or
-#   (2) a workflow has a `pull_request:` trigger AND a job with
-#       `runs-on:` that enlists the `self-hosted` label (fork PRs would land
-#       on privileged infrastructure), or
+#   (2) any job runs on something other than a static GitHub-hosted label —
+#       this public repo registers no self-hosted runner; the pool lives in
+#       the private deploy repo, where fork PRs cannot reach it, or
 #   (3) no automatically-triggered job runs alt-frontend-sv's `client` vitest
 #       project. (3) is not a fork-PR rule; it lives here because it is the
 #       same structural assertion over the same files — "this workflow really
@@ -13,6 +13,12 @@
 #       specs) is opt-in behind VITEST_BROWSER, and for a long time nothing
 #       set it, so 63 spec files were collected zero times while the job
 #       reported green.
+#   (4) a workflow lacks a top-level `permissions:` block,
+#   (5) an `actions/checkout` step keeps `persist-credentials`,
+#   (6) a `run:` body interpolates `github.event.*` / `github.head_ref`, or
+#   (7) a `uses:` reference is not pinned to a commit SHA / image digest.
+#   (4)-(7) are the GitHub Actions hardening guide's baseline, made
+#   structural so a new workflow cannot quietly regress them.
 #
 # Scope boundary: this lint only inspects `.github/workflows/**`. Composite
 # actions under `.github/actions/**` cannot declare their own triggers or

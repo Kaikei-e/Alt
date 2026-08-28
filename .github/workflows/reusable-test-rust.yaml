@@ -18,87 +18,22 @@ on:
       coverage-flags:
         required: false
         type: string
-      runner:
-        description: "Runner label (ubuntu-latest or self-hosted)"
-        required: false
-        type: string
-        default: "ubuntu-latest"
 
 jobs:
   test:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Get workspace parent GID
-        if: runner.environment == 'self-hosted'
-        id: get-gid
-        run: echo "gid=$(stat -c '%g' "$GITHUB_WORKSPACE/..")" >> $GITHUB_OUTPUT
-
-      - name: Pre-checkout cleanup
-        if: runner.environment == 'self-hosted'
-        uses: docker://alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-        env:
-          RUNNERS_GID: ${{ steps.get-gid.outputs.gid }}
-        with:
-          entrypoint: /bin/sh
-          # Docker runs as root to delete files and fix permissions for 'runners' group
-          # chmod 2775 = setgid + rwxrwxr-x (group inherits, group writable)
-          # See: https://github.com/actions/runner/issues/434
-          args: -c "rm -rf /github/workspace/.git /github/workspace/* /github/workspace/.[!.]* 2>/dev/null; chgrp $RUNNERS_GID /github/workspace 2>/dev/null; chmod 2775 /github/workspace"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-
-      - name: Configure logging (mask)
-        if: runner.environment == 'self-hosted'
-        run: |
-          echo "::group::Masking Configuration"
-
-          # Mask Runner Identity
-          echo "::add-mask::$(hostname)"
-          echo "::add-mask::$(whoami)"
-
-          # Mask Absolute Paths
-          [ -n "$HOME" ] && echo "::add-mask::$HOME"
-          [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
-          [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
-
-          # Mask Git PII (now available after checkout)
-          if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
-          fi
-
-          echo "::endgroup::"
+        with:
+          persist-credentials: false
 
       # GitHub-hosted runner: dtolnay/rust-toolchain を使用
-      - name: Install Rust toolchain (GitHub-hosted)
-        if: runner.environment != 'self-hosted'
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable branch head, 2026-07-31
         with:
           toolchain: ${{ inputs.toolchain }}
           components: clippy
-
-      # Self-hosted runner: 既存のスクリプトでインストール
-      - name: Install Rust toolchain (self-hosted)
-        if: runner.environment == 'self-hosted'
-        run: |
-          set -e  # Exit on error
-          # 既存の rustup/cargo をクリーンアップして、バイナリ衝突を避ける
-          rm -rf ~/.rustup || true
-          rm -rf ~/.cargo || true
-          # 公式のRustupを使用（actions-rs は非推奨）
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=${{ inputs.toolchain }} --profile=minimal --no-modify-path
-          # PATH に cargo を追加
-          export PATH="$HOME/.cargo/bin:$PATH"
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          # インストール確認
-          "$HOME/.cargo/bin/rustup" --version
-          "$HOME/.cargo/bin/cargo" --version
-          # デフォルトツールチェーンと clippy を設定
-          "$HOME/.cargo/bin/rustup" default ${{ inputs.toolchain }}
-          "$HOME/.cargo/bin/rustup" component add clippy
 
       - name: Rust version info
         run: |
@@ -107,30 +42,13 @@ jobs:
           cargo clippy --version
 
       # GitHub-hosted runner: Swatinem/rust-cache を使用（推奨）
-      - name: Cache Rust dependencies (GitHub-hosted)
-        if: runner.environment != 'self-hosted'
+      - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
         with:
           workspaces: ${{ inputs.working-directory }}
           shared-key: ${{ inputs.coverage-flags }}
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      # Self-hosted runner: 従来の actions/cache を使用
-      - name: Cache cargo registry and build (self-hosted)
-        if: runner.environment == 'self-hosted'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ${{ inputs.working-directory }}/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles(format('{0}/Cargo.lock', inputs.working-directory)) }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ hashFiles(format('{0}/Cargo.lock', inputs.working-directory)) }}-
-            ${{ runner.os }}-cargo-
-        continue-on-error: true
 
       - name: Ensure target directory exists
         working-directory: ${{ inputs.working-directory }}
@@ -174,9 +92,3 @@ jobs:
           flags: ${{ inputs.coverage-flags }}
           name: ${{ inputs.coverage-flags }}-coverage
           verbose: false
-
-      - name: Post-job cleanup
-        if: always() && runner.environment == 'self-hosted'
-        run: |
-          # ビルドキャッシュのクリーンアップ（サイズ削減）
-          cargo clean || true

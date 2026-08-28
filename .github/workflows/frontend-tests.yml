@@ -1,5 +1,8 @@
 name: Frontend Unit Tests (Deprecated)
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
 

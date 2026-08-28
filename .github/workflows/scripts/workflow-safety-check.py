@@ -9,10 +9,13 @@ code lived inline in a `run:` block.
 Checks:
   1. No workflow in `.github/workflows/*.y{a,}ml` declares the forbidden
      top-level triggers `pull_request_target` or `workflow_run`.
-  2. No workflow with a `pull_request:` trigger enlists a self-hosted
-     runner (string, list, or object `runs-on:` forms). Expression-derived
-     `runs-on:` values on such jobs are also rejected because static
-     analysis can't resolve the label.
+  2. Every job runs on a static GitHub-hosted label (`ubuntu-*`,
+     `windows-*`, `macos-*`). This repo is public and registers no
+     self-hosted runner at all (ADR-000763): the self-hosted pool lives in
+     the private deploy repo. A `self-hosted` label, an unknown label, or
+     an expression-derived `runs-on:` (which static analysis can't
+     resolve) all fail — on every trigger, not just `pull_request`, because
+     a reusable workflow's runner is chosen by its caller.
   3. Some job actually invokes alt-frontend-sv's `client` vitest project.
      (1) and (2) are ADR-000763 fork-PR hardening; (3) is a different
      failure mode with the same shape — a workflow that *looks* like it
@@ -22,6 +25,20 @@ Checks:
      green. Asserting it structurally means deleting the job, dropping
      `--project=client`, or gutting the npm script fails the lint instead
      of quietly re-hiding 63 files.
+  4. Every workflow declares a top-level `permissions:` block, so the
+     GITHUB_TOKEN scope is visible in the file rather than inherited from
+     the repository default.
+  5. Every `actions/checkout` step sets `persist-credentials: false`. No
+     workflow here pushes, so the token has no business surviving in
+     `.git/config` where a dependency's install hook can read it.
+  6. No `run:` body interpolates `github.event.*` or `github.head_ref`
+     through a template expression. Those are attacker-controlled on
+     pull_request events (PR title, branch name, commit message) and expand
+     before the shell sees them — route them through `env:` instead.
+  7. Every `uses:` outside this repo is pinned to a 40-hex commit SHA (or,
+     for `docker://` images, an `@sha256:` digest). Tags move; digests do
+     not. The repository setting `sha_pinning_required` enforces the same
+     at run time; this check surfaces it at PR time.
 """
 from __future__ import annotations
 
@@ -38,6 +55,12 @@ import yaml
 GHA_EXPR_OPEN = "$" + "{{"
 
 FORBIDDEN_TRIGGERS = {"pull_request_target", "workflow_run"}
+
+GITHUB_HOSTED_LABEL_RE = re.compile(r"^(ubuntu|windows|macos)-[a-z0-9.-]+$")
+SHA_PIN_RE = re.compile(r"@[0-9a-f]{40}$")
+DOCKER_DIGEST_RE = re.compile(r"@sha256:[0-9a-f]{64}$")
+UNTRUSTED_CONTEXT_RE = re.compile(r"github\.event\.|github\.head_ref")
+TEMPLATE_EXPR_RE = re.compile(re.escape(GHA_EXPR_OPEN) + r"(.*?)}}", re.S)
 
 # --- Check 3 constants -------------------------------------------------
 # The project name and the gating env var are duplicated from
@@ -90,6 +113,15 @@ def extract_labels(runs_on):
         return labels_list, had_expr
 
     return [], False
+
+
+def is_pinned(uses):
+    """True for local actions, SHA-pinned repos, and digest-pinned images."""
+    if uses.startswith("./"):
+        return True
+    if uses.startswith("docker://"):
+        return bool(DOCKER_DIGEST_RE.search(uses))
+    return bool(SHA_PIN_RE.search(uses))
 
 
 def load_frontend_scripts():
@@ -251,32 +283,99 @@ def main() -> int:
                 )
             bad += 1
 
-        # Rule 2 — self-hosted on pull_request-triggered jobs.
-        if "pull_request" not in trigger_names:
-            continue
+        # Rule 2 — every job on a static GitHub-hosted label. Applies to all
+        # triggers: a reusable workflow has no pull_request trigger of its
+        # own, yet its jobs run in the caller's (possibly PR) context.
         for job_name, job in (doc.get("jobs") or {}).items():
             if not isinstance(job, dict):
                 continue
+            if "uses" in job and "runs-on" not in job:
+                continue  # caller of a reusable workflow; checked there
             labels, had_expr = extract_labels(job.get("runs-on"))
-            if any("self-hosted" in label for label in labels):
+            if had_expr:
                 print(
-                    f"::error file={path}::job {job_name!r} has a pull_request "
-                    f"trigger and runs on self-hosted. Route PR validation "
-                    f"through ubuntu-latest only (ADR-000763 security "
-                    f"hardening).",
+                    f"::error file={path}::job {job_name!r} has an "
+                    f"expression-derived runs-on value. Static analysis "
+                    f"cannot confirm it is GitHub-hosted — pin the runner "
+                    f"literal (ADR-000763: this repo registers no "
+                    f"self-hosted runner).",
                     file=sys.stderr,
                 )
                 bad += 1
-            elif had_expr:
+            elif not labels or not all(
+                GITHUB_HOSTED_LABEL_RE.match(label) for label in labels
+            ):
                 print(
-                    f"::error file={path}::job {job_name!r} has a pull_request "
-                    f"trigger and an expression-derived runs-on value. Static "
-                    f"analysis cannot confirm it is not self-hosted — either "
-                    f"pin the runner literal or split PR and self-hosted into "
-                    f"separate workflows.",
+                    f"::error file={path}::job {job_name!r} runs on "
+                    f"{labels!r}. Only static GitHub-hosted labels are "
+                    f"allowed here; self-hosted runners live in the private "
+                    f"deploy repo (ADR-000763 security hardening).",
                     file=sys.stderr,
                 )
                 bad += 1
+
+        # Rule 4 — GITHUB_TOKEN scope declared in the file.
+        if "permissions" not in doc:
+            print(
+                f"::error file={path}::workflow has no top-level "
+                f"`permissions:` block. Declare it (`contents: read` unless "
+                f"a job needs more) so the token scope does not depend on "
+                f"the repository default.",
+                file=sys.stderr,
+            )
+            bad += 1
+
+        for job_name, job in (doc.get("jobs") or {}).items():
+            if not isinstance(job, dict):
+                continue
+            for step in job.get("steps") or []:
+                if not isinstance(step, dict):
+                    continue
+                uses = step.get("uses")
+                if isinstance(uses, str):
+                    # Rule 5 — checkout must not leave the token behind.
+                    if uses.startswith("actions/checkout@"):
+                        with_ = step.get("with")
+                        persist = (
+                            with_.get("persist-credentials")
+                            if isinstance(with_, dict)
+                            else None
+                        )
+                        if persist is not False:
+                            print(
+                                f"::error file={path}::job {job_name!r} checks "
+                                f"out without `persist-credentials: false`. "
+                                f"Nothing in this repo pushes from CI, so the "
+                                f"GITHUB_TOKEN must not be written into "
+                                f".git/config.",
+                                file=sys.stderr,
+                            )
+                            bad += 1
+                    # Rule 7 — immutable action references.
+                    if not is_pinned(uses):
+                        print(
+                            f"::error file={path}::job {job_name!r} uses "
+                            f"{uses!r}, which is not pinned to a commit SHA "
+                            f"(or @sha256 digest for docker://). Tags and "
+                            f"branches are mutable supply-chain inputs.",
+                            file=sys.stderr,
+                        )
+                        bad += 1
+                # Rule 6 — no untrusted context expanded into a shell body.
+                run = step.get("run")
+                if isinstance(run, str):
+                    for expr in TEMPLATE_EXPR_RE.findall(run):
+                        if UNTRUSTED_CONTEXT_RE.search(expr):
+                            print(
+                                f"::error file={path}::job {job_name!r} "
+                                f"interpolates {expr.strip()!r} into a `run:` "
+                                f"body. github.event.* and github.head_ref are "
+                                f"attacker-controlled on pull_request; pass "
+                                f"them through `env:` and read the variable "
+                                f"in the shell.",
+                                file=sys.stderr,
+                            )
+                            bad += 1
 
     # Rule 3 (assertion pass) — repo-wide, so it runs after every file.
     if frontend_scripts is None:
@@ -306,7 +405,11 @@ def main() -> int:
 
     if bad:
         return 1
-    print("OK: no forbidden triggers and no self-hosted on pull_request.")
+    print(
+        "OK: no forbidden triggers, GitHub-hosted labels only, permissions "
+        "declared, checkouts credential-free, no untrusted context in run "
+        "bodies, every action SHA-pinned."
+    )
     print(
         "OK: client vitest project is run by "
         + ", ".join(sorted(client_project_runners))
