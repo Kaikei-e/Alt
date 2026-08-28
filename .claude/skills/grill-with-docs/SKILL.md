@@ -39,7 +39,9 @@ Alt has no root `CONTEXT.md` and no glossary file — the documented model is th
 | Operational constraints | `docs/runbooks/` |
 
 `docdag resolve <id>` returns the current successor of an ADR, so you challenge the live decision
-rather than a superseded one.
+rather than a superseded one. `docdag context <id>` goes further: it prints that decision, what it
+resolves to, and its neighbourhood over typed edges, each entry quoting the opening of its own
+`Decision` section — one command in place of a fan-out of file reads.
 
 ## During the session
 

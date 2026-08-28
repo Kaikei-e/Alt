@@ -1,5 +1,8 @@
 name: ADR supersedes graph
 
+permissions:
+  contents: read
+
 on:
   push:
     paths:
@@ -23,10 +26,32 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # The append-only check diffs against the merge base, so it needs history.
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: "1.26"
       - name: Install DocDag
-        run: go install github.com/Kaikei-e/DocDag/cmd/docdag@latest
+        run: go install github.com/Kaikei-e/DocDag/cmd/docdag@v0.2.0
+      - name: Fetch base branch
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: git fetch --no-tags origin "$BASE_REF"
       - name: Corpus check
-        run: docdag validate
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        # Annotates the diff inline; GitHub renders at most ten per step.
+        run: docdag validate --format github --immutable-since "origin/$BASE_REF"
+      - name: Full report
+        if: always()
+        # The complete finding list, past the ten-annotation cap. Reporting only:
+        # the gate above is what fails the job, so a finding must not abort the fence.
+        run: |
+          {
+            echo '## docdag validate'
+            echo '```'
+            docdag validate || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -15,7 +15,9 @@
 - ADRへのリンク追加（Related ADRsのwikilink化）は可。Decision 本文の内容改変は不可。
 - **例外（status 投影）**: inbound `supersedes` がある旧 ADR の frontmatter `status` だけは `superseded` に更新してよい（binding の正本は reverse グラフ。`status` はその投影）。
 - ADR参照は必ず `[[000NNN]]` wikilink形式を使う
-- ADRが既存ADRを置き換える場合、新ADR側のfrontmatterに `supersedes:` リストを書く（キー省略可。空の `supersedes: -` stub は禁止）。旧ADR側への逆方向記入は不要（DocDag が算出）。循環・dangling・status ドリフト・空 stub は `docdag validate` で検出する（設定はリポジトリルートの `docdag.yaml`）
+- ADRが既存ADRを置き換える場合、新ADR側のfrontmatterに `supersedes:` リストを書く（キー省略可。空の `supersedes: -` stub は禁止）。旧ADR側への逆方向記入は不要（DocDag が算出）。`docdag validate` が検出するのは、循環・dangling 参照・status ドリフト・空 stub（`empty_edge`: `supersedes:` と書いて中身が無い）・本文や frontmatter の `[[000NNN]]` wikilink が存在しない ADR を指しているケース・append-only 違反（`--immutable-since <rev>`: 確定済み ADR の本文や status 以外の frontmatter を後から書き換えた場合）。設定はリポジトリルートの `docdag.yaml`
+- 後継 ADR を書かずに決定を取り下げる場合は `status: withdrawn`。`superseded` は「置き換えた ADR が存在する」ことの投影なので、誰も置き換えていない文書に付けると `superseded_orphan` 警告が残り続ける
+- ADR グラフを読むのは grep ではなく DocDag。`docdag context <id>` が起点 ADR + 後継 + 近傍を Decision 冒頭つきで返し、`docdag query --binding` / `docdag query <id> --ancestors` が現行契約と波及先を返す。いずれも `--fields id,title,status,path` で必要な列だけ取れる
 - frontmatter は厳密 YAML。バッククォートや `: ` を含む値（特に `affected_services` の項目）はシングルクォートで囲む — `docdag validate` が invalid_frontmatter ERROR で検出する
 - **このリポジトリは public。新規に書く文書に private リポジトリの内部識別子を書かない** — デプロイ側の workflow 名 / job 名 / 変数名 / ゲート条件など。振る舞い（何が起きるか、運用者が何をすべきか）で記述する。ホスト名・ハードウェア構成・本番ドメイン・絶対パス・認証情報も同様に書かない。既存文書の遡及修正はしない（ADR 本文は改変不可であり、git 履歴にも残るため実効性が薄い）
 

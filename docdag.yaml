@@ -1,3 +1,27 @@
 preset: adr
 dir: docs/ADR
 id_width: 6
+
+# ADRs are bare NNNNNN.md, so `docdag new` must not append a title slug.
+filename: "{id}.md"
+
+# Report a cycle that only the union of the acyclic edge types closes,
+# not just one that closes within a single edge type.
+acyclic_union: true
+
+# The reference layer (wikilinks) is unvalidated by default. Alt links ADRs
+# as [[000NNN]], so a link to an ADR that does not exist is a real defect.
+references:
+  dangling: error
+  # Only a whole target that is a six-digit Alt ADR identifier counts as a
+  # reference: 000929, ADR-000929, adr000929. Non-numeric notes ([[knowledge-loop-canonical-contract]]),
+  # other document families ([[PM-2026-037]]) and footnote markers ([[1]])
+  # do not match, so they are never reported.
+  pattern: '^(?i)(?:adr-?)?(\d{6})$'
+  # Frontmatter is scanned as well: `related:` lists carry [[000NNN]] wikilinks.
+  scan: [body, frontmatter]
+
+# A file named like an ADR but carrying no frontmatter is a broken record,
+# not a document to skip silently.
+structural:
+  missing_frontmatter: error

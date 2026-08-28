@@ -32,11 +32,18 @@ ADR は「動いた状態」を固定する記録なので、先に最低限の�
 ### 2.1 番号とテンプレート
 
 ```bash
-ls docs/ADR/ | sort | tail -1     # 最新番号を確認
+docdag new "<ADR タイトル>" --dry-run --format json
+# → {"schema_version":1,"id":"000983","path":"docs/ADR/000983.md","exists":false,"rewrites":[]}
 ```
 
-最新 +1 の 6 桁ゼロ埋め（`000750` → `000751`）をファイル名にする。`docs/ADR/template.md` を Read で
-開き、そのセクション見出しをそのまま使う（勝手に増減しない）。
+`--dry-run` は次の空き番号を計算するだけで何も書かない。返ってきた `id` / `path` をそのまま使う
+（`docdag.yaml` の `filename: "{id}.md"` により、パスは常に `docs/ADR/NNNNNN.md`）。
+ディレクトリを `ls` して数えない — 欠番や採番衝突を踏む。
+
+ファイル本体は `docs/ADR/template.md` を Read で開き、そのセクション見出しをそのまま使って
+Write する（勝手に増減しない）。**`docdag new` に実際にファイルを書かせない**：docdag 内蔵の
+テンプレートは Go template プレースホルダ（`{{ .Title }}`）前提で、Alt の `template.md` とは
+形式が違う。だから `docdag.yaml` に `template:` は設定していない。
 
 ### 2.2 Frontmatter
 
@@ -44,7 +51,7 @@ ls docs/ADR/ | sort | tail -1     # 最新番号を確認
 |---|---|
 | `title` | 動詞始まりの行動指向の一文。ADR 番号は含めない |
 | `date` | `YYYY-MM-DD`（当日） |
-| `status` | 原則 `accepted`。新 ADR 自身を `superseded` にしない（置換される側の status はグラフ投影） |
+| `status` | 原則 `accepted`。新 ADR 自身を `superseded` にしない（置換される側の status はグラフ投影）。**取り下げ（後継 ADR を書かずに撤回）は `withdrawn`** — `superseded` にすると誰も置換していないので `superseded_orphan` 警告が永久に残る |
 | `tags` | §2.4 の許可タグから最大 5 個 |
 | `affected_services` | サービス名と変更概要を 1 行/件。バッククォートや `: ` を含む項目はシングルクォートで囲む（厳密 YAML） |
 | `aliases` | `ADR-NNN` と `ADR-000NNN` の 2 形式を必ず両方入れる（Obsidian のリンク解決用） |
@@ -83,9 +90,22 @@ Alt は OSS として公開されている。本番 IP / 本番ドメイン / �
 
 Write ツールで `docs/ADR/NNNNNN.md` を作る（heredoc や `cat > ...` は使わない）。
 
-`supersedes` を書いた場合は `docdag validate` を実行し、循環・dangling・空 stub・status ドリフトが
-無いことを確認する（非ゼロ終了なら frontmatter を直す）。置き換え対象の旧 ADR の `status` は
-同じ commit で `superseded` に揃える（status 投影の例外）。
+書いたら必ず検証する（`supersedes` を書いたときだけではない）:
+
+```bash
+docdag validate --touching docs/ADR/NNNNNN.md
+```
+
+`--touching` はコーパス全体を検査したうえで、そのファイルと、そこから典型 edge 1 ホップで
+つながる文書に関する findings だけを表示する。終了コードはコーパス全体で判定されるので、
+絞り込んでも壊れたリポジトリが緑になることはない。検出されるのは循環・dangling 参照・
+`empty_edge`（`supersedes:` と書いて中身が空）・status ドリフト・本文の壊れた `[[000NNN]]` リンク。
+非ゼロ終了なら frontmatter を直す。
+
+DocDag プラグインの `PostToolUse` フックが入っていれば、`docs/ADR/` 配下への Write のたびに
+同じチェックが自動で走り、壊したのがその文書だったときだけ報告してくる。手で回すのはその保険。
+
+置き換え対象の旧 ADR の `status` は同じ commit で `superseded` に揃える（status 投影の例外）。
 
 ### 2.7 commit
 
@@ -97,7 +117,7 @@ ADR とコードは同じ commit にまとめ、英語 1 行メッセージで `
 
 - 書いた ADR のパス（`docs/ADR/NNNNNN.md`）とタイトル
 - 緑だったテスト（どのサービスで何を回したか）
-- `docdag validate` の結果（`supersedes` を書いた場合）
+- `docdag validate --touching docs/ADR/NNNNNN.md` の結果
 - 次に目を向けておく指標や運用フォロー（あれば 1 行）
 
 ## §4. デプロイを求められた場合

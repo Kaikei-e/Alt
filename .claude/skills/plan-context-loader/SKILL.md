@@ -44,13 +44,33 @@ vault は `docs/` 配下の通常のファイル群なので、Read / Grep / Glo
 無いものだけ。`superseded` / 置換済み / Loop・IMPL_*（[[000940]]）は historical として扱い、
 現行契約として開かない。Related は must-read にしない（参考のみ）。
 
+グラフに聞けることをディレクトリ走査で代替しない。ADR を 1 件掴んだら、そこから周辺を広げる。
+
 ```bash
-grep -rl "affected_services:.*<service>" docs/ADR/ | sort | tail -10
-grep -rl "tags:.*<tag>" docs/ADR/ | sort | tail -10
-grep -rl "<keyword>" docs/ADR/ | sort | tail -10
+# 起点 ADR とその近傍を、各文書の Decision 冒頭つきで読む（まずこれ）
+docdag context 000929 --depth 2 --budget 1500
+
+# 現行契約の一覧（status: accepted かつ inbound supersedes 無し）
+docdag query --binding --fields id,title,status,path
+
+# この ADR に依存している側 = 変更が波及する先
+docdag query 000929 --ancestors --fields id,title
+
 docdag resolve 000929   # → 000940 （葉 = 現行後継を確認）
-docdag validate         # status / stub / cycle
+docdag validate         # status / stub / cycle / dangling
 ```
+
+キーワードや影響サービスで**入口の ADR を探す**ときだけテキスト検索を使う:
+
+```bash
+grep -l -- "- <service>" docs/ADR/*.md | sort | tail -10   # affected_services はブロックリスト
+grep -rl "<keyword>" docs/ADR/ | sort | tail -10
+```
+
+`grep -rl "affected_services:.*<service>"` は使わない。`affected_services` はほぼ全 ADR で
+ブロックリスト（`affected_services:` の次行から `- ...`）なので、同一行にサービス名が来る
+インライン形式しか拾えず、実際に該当する ADR の 3 割弱を静かに取りこぼす。
+`tags:` も同じ理由で行内 grep が効かないため、タグでの絞り込みは諦めて上のグラフ問い合わせを使う。
 
 各 ADR から拾うのは 3 点だけ — なぜその判断が必要だったか / 何を固定したか / 今回の計画に効く制約。
 
