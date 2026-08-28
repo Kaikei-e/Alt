@@ -34,7 +34,13 @@ const image = createProxyImage({
 	container: () => imageContainer,
 	// Feeds whose RSS carried no image resolve when the reader reaches them,
 	// keyed on the feed: most of these have no article row to key on.
-	resolve: () => ogImageResolver().resolve(feed.id),
+	//
+	// `feedId`, never `id`. `id` is articles.id or a per-response UUID, and
+	// ResolveOgImages matches feeds.id — sending `id` matched nothing and read
+	// back as "no feed has an image". Absent on surfaces built without a
+	// feeds.id (search results come from Meilisearch hits), and the resolver
+	// settles an empty key on `absent` without a request.
+	resolve: () => ogImageResolver().resolve(feed.feedId ?? ""),
 });
 
 // A tile with no URL yet is resolving, not empty — it keeps the shimmer until
@@ -66,10 +72,10 @@ const dateline = $derived(
       <div class="tile-fallback" data-testid="tile-image-fallback">
         <span class="tile-fallback-text">No preview</span>
       </div>
-    {:else if image.state === "loaded" && image.objectUrl}
+    {:else if image.state === "loaded" && image.src}
       <img
         data-testid="tile-image"
-        src={image.objectUrl}
+        src={image.src}
         alt=""
         decoding="async"
         class="tile-image"

@@ -56,8 +56,16 @@ export interface ProxyImageOptions {
 
 export interface ProxyImage {
 	readonly state: ProxyImageState;
-	/** The object URL to render, once `state` is `"loaded"`. */
-	readonly objectUrl: string | null;
+	/**
+	 * The URL to render, once `state` is `"loaded"`.
+	 *
+	 * This is the proxy URL the load actually succeeded on, captured at that
+	 * moment — not a live read of the current URL, which may be one nothing has
+	 * probed yet or one a superseded feed left behind. Rendering it directly is
+	 * what lets a preload hint, `loading`, `fetchpriority` and `decoding` apply
+	 * to the same string the `<img>` ends up requesting.
+	 */
+	readonly src: string | null;
 }
 
 export function createProxyImage(options: ProxyImageOptions): ProxyImage {
@@ -65,7 +73,8 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 	const rootMargin = options.rootMargin ?? "200px";
 
 	let state = $state<ProxyImageState>("idle");
-	let objectUrl = $state<string | null>(null);
+	// The URL a load succeeded on, and the only one the card may render.
+	let src = $state<string | null>(null);
 	let inView = $state(false);
 	// A URL obtained on demand, once the card was actually reached.
 	let resolvedUrl = $state<string | null>(null);
@@ -73,7 +82,6 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 	// Non-reactive bookkeeping: these drive control flow inside the effects and
 	// must not re-trigger them.
 	let trackedUrl: string | null = null;
-	let revokeUrl: string | null = null;
 	let loadStartedForUrl: string | null = null;
 	let abortController: AbortController | null = null;
 	let resolveStarted = false;
@@ -84,11 +92,12 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 	 * The URL actually loaded.
 	 *
 	 * A URL we resolved on demand outranks one the feed list hands us later.
-	 * Both name the same publisher's image, and preferring the newcomer would
-	 * revoke a live object URL to re-download bytes already on screen — the
-	 * card flashing back to a shimmer for nothing. `reset()` clears
-	 * `resolvedUrl`, so a card genuinely handed a different feed still follows
-	 * the feed's own URL.
+	 * Both name the same publisher's image, so preferring the newcomer would
+	 * only swap `src` for a different-but-equivalent URL — and changing an
+	 * `<img>`'s src restarts its load, flashing the card back to a shimmer to
+	 * re-fetch a picture already on screen. `reset()` clears `resolvedUrl`, so
+	 * a card genuinely handed a different feed still follows the feed's own
+	 * URL.
 	 */
 	const effectiveUrl = () => resolvedUrl || options.url() || null;
 
@@ -103,11 +112,7 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 		abortController?.abort();
 		abortController = null;
 		clearRetry();
-		if (revokeUrl) {
-			URL.revokeObjectURL(revokeUrl);
-			revokeUrl = null;
-		}
-		objectUrl = null;
+		src = null;
 		loadStartedForUrl = null;
 		state = "idle";
 		resolvedUrl = null;
@@ -224,9 +229,9 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 			// handed a different feed.
 			if (ac.signal.aborted) return;
 			if (result.status === "loaded") {
-				if (revokeUrl) URL.revokeObjectURL(revokeUrl);
-				revokeUrl = result.objectUrl;
-				objectUrl = result.objectUrl;
+				// The captured `url`, never a fresh `effectiveUrl()`: only the URL
+				// this load actually probed has been shown to answer 200.
+				src = url;
 				state = "loaded";
 			} else {
 				state = "absent";
@@ -238,15 +243,14 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 		destroyed = true;
 		clearRetry();
 		abortController?.abort();
-		if (revokeUrl) URL.revokeObjectURL(revokeUrl);
 	});
 
 	return {
 		get state() {
 			return state;
 		},
-		get objectUrl() {
-			return objectUrl;
+		get src() {
+			return src;
 		},
 	};
 }

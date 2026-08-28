@@ -28,13 +28,6 @@ const ARTICLE_TITLE =
 const SCOPED_MESSAGE = `Regarding the article: ${ARTICLE_TITLE} [articleId: ${ARTICLE_ID}]\n\nQuestion:\n3行でまとめると？`;
 const PROXY_URL = "/api/og-image?u=https%3A%2F%2Falt.ai%2Fog.png";
 
-/** A real blob URL backed by a 1x1 transparent GIF, so the <img> resolves. */
-function createBlobUrl(): string {
-	const gif = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-	const bytes = Uint8Array.from(atob(gif), (char) => char.charCodeAt(0));
-	return URL.createObjectURL(new Blob([bytes], { type: "image/gif" }));
-}
-
 describe("ThreadEntry", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -68,10 +61,7 @@ describe("ThreadEntry", () => {
 
 	it("renders the thumbnail once it resolves", async () => {
 		resolveThumbnail.mockResolvedValue(PROXY_URL);
-		loadProxyImageDefault.mockResolvedValue({
-			status: "loaded",
-			objectUrl: createBlobUrl(),
-		});
+		loadProxyImageDefault.mockResolvedValue({ status: "loaded" });
 
 		render(ThreadEntry, {
 			props: { message: SCOPED_MESSAGE, role: "user" },

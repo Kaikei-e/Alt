@@ -7,22 +7,25 @@
  * immediately. This is what stops a transient failure from pinning the card to
  * the fallback gradient — the bug behind the mark-as-read regression.
  *
- * Loading via fetch() + an object URL (rather than a bare <img src>) is what
- * gives us the status; the response is still served from the proxy's immutable
- * HTTP cache on revisits, so no extra network cost is paid.
+ * Probing with fetch() rather than a bare <img src> is what gives us the
+ * status: an `<img>` reports both a 429 and a 403 as the same silent `onerror`,
+ * so the distinction this loader exists to make is invisible from the element.
+ * The probe yields a verdict and nothing else — the caller renders the proxy
+ * URL itself. Those are not two downloads: the proxy answers
+ * `Cache-Control: public, max-age=604800, immutable` under `Vary:
+ * Accept-Encoding` (`alt-backend/app/orchestrator/rest/image_proxy_handlers.go`),
+ * so the probe's response sits in the browser's HTTP cache under the same key
+ * the `<img>` request uses.
  */
 
 import { imageLoadQueue } from "./imageLoadQueue";
 
-export type ImageLoadResult =
-	| { status: "loaded"; objectUrl: string }
-	| { status: "absent" };
+export type ImageLoadResult = { status: "loaded" } | { status: "absent" };
 
 export interface LoadProxyImageDeps {
 	fetch: typeof fetch;
 	acquire: (proxyUrl: string) => Promise<() => void>;
 	sleep: (ms: number) => Promise<void>;
-	createObjectURL: (blob: Blob) => string;
 	/** Injectable for deterministic jitter in tests. */
 	random?: () => number;
 }
@@ -48,8 +51,14 @@ export async function loadProxyImage(
 		try {
 			const res = await deps.fetch(proxyUrl, { signal });
 			if (res.ok) {
-				const blob = await res.blob();
-				return { status: "loaded", objectUrl: deps.createObjectURL(blob) };
+				// Read the body and drop it. The bytes are not wanted here — only
+				// the status was — but the browser commits a response to its HTTP
+				// cache only once the body has been consumed, and that cache entry
+				// is what makes the <img src={proxyUrl}> the caller renders next a
+				// cache hit instead of a second request to the proxy. Deleting
+				// this line as dead code doubles the network cost per thumbnail.
+				await res.blob();
+				return { status: "loaded" };
 			}
 			// Permanent rejection (403 / 400 / 404 / ...) — no retry.
 			if (!RETRYABLE_STATUS.has(res.status)) return { status: "absent" };
@@ -80,7 +89,6 @@ export function loadProxyImageDefault(
 			fetch: (input, init) => globalThis.fetch(input, init),
 			acquire: (url) => imageLoadQueue.acquire(url),
 			sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-			createObjectURL: (blob) => URL.createObjectURL(blob),
 		},
 		signal,
 	);
