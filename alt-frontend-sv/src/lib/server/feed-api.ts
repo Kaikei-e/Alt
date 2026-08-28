@@ -1,14 +1,14 @@
 import {
+	type ConnectFeedItem,
+	getReadFeeds as getReadFeedsConnect,
+	getUnreadFeeds as getUnreadFeedsConnect,
+} from "$lib/connect/feeds";
+import {
 	createServerTransport,
 	createServerTransportWithToken,
 } from "$lib/connect/transport-server";
-import {
-	getUnreadFeeds as getUnreadFeedsConnect,
-	getReadFeeds as getReadFeedsConnect,
-	type ConnectFeedItem,
-} from "$lib/connect/feeds";
-import { callBackendAPI, callBackendAPIWithBody } from "./backend-rest-client";
 import type { BackendFeedItem } from "$lib/domain/feed/types";
+import { callBackendAPI, callBackendAPIWithBody } from "./backend-rest-client";
 
 export interface DetailedFeedStats {
 	feed_amount: { amount: number };
@@ -39,6 +39,8 @@ function connectFeedToBackendFormat(item: ConnectFeedItem): BackendFeedItem {
 		author: item.author ? { name: item.author } : undefined,
 		// Article ID in the articles table - required for mark-as-read functionality
 		article_id: item.articleId,
+		// feeds.id - the identifier on-demand og:image resolution matches
+		feed_id: item.feedId,
 		// OGP image proxy URL for pre-fetched image display
 		og_image_proxy_url: item.ogImageProxyUrl,
 	};

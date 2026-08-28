@@ -466,7 +466,11 @@ func (x *ResponseMetadata) GetIsHeartbeat() bool {
 // FeedItem represents a single feed/article item
 type FeedItem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unique identifier (typically the link URL)
+	// Keying identity for the client's list rendering, and nothing else.
+	//
+	// articles.id when an article row exists, otherwise a UUID minted for this
+	// response so a Svelte `{#each}` key stays unique. It is NOT feeds.id and
+	// must never be sent to ResolveOgImages — see feed_id below.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Article title
 	Title string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
@@ -489,8 +493,23 @@ type FeedItem struct {
 	OgImageUrl string `protobuf:"bytes,10,opt,name=og_image_url,json=ogImageUrl,proto3" json:"og_image_url,omitempty"`
 	// HMAC-signed proxy URL for the OGP image (pre-warmed cache)
 	OgImageProxyUrl string `protobuf:"bytes,11,opt,name=og_image_proxy_url,json=ogImageProxyUrl,proto3" json:"og_image_proxy_url,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// feeds.id — the row this item was read from, and the only identifier
+	// ResolveOgImages accepts.
+	//
+	// It is carried separately from `id` because the two name different tables:
+	// ResolveOgImages matches `WHERE f.id = ANY($1::uuid[])` over feeds, while
+	// `id` is articles.id or a per-response UUID. Sending `id` there matches zero
+	// rows and returns an empty body, which reads to the client as "no feed has
+	// an image" rather than as a mistake.
+	//
+	// Empty when the surface that produced this item has no feeds.id to give —
+	// SearchFeeds builds its items from Meilisearch hits and has none. Empty, not
+	// a zero UUID: the client skips an empty key without a request, whereas a
+	// zero UUID would clear the `::uuid[]` cast and arrive as an ordinary miss,
+	// which is exactly the silence this field exists to end.
+	FeedId        string `protobuf:"bytes,12,opt,name=feed_id,json=feedId,proto3" json:"feed_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FeedItem) Reset() {
@@ -596,6 +615,13 @@ func (x *FeedItem) GetOgImageUrl() string {
 func (x *FeedItem) GetOgImageProxyUrl() string {
 	if x != nil {
 		return x.OgImageProxyUrl
+	}
+	return ""
+}
+
+func (x *FeedItem) GetFeedId() string {
+	if x != nil {
+		return x.FeedId
 	}
 	return ""
 }
@@ -2313,7 +2339,7 @@ const file_alt_feeds_v2_feeds_proto_rawDesc = "" +
 	"\bmetadata\x18\x04 \x01(\v2\x1e.alt.feeds.v2.ResponseMetadataR\bmetadata\"S\n" +
 	"\x10ResponseMetadata\x12\x1c\n" +
 	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\x12!\n" +
-	"\fis_heartbeat\x18\x02 \x01(\bR\visHeartbeat\"\xd6\x02\n" +
+	"\fis_heartbeat\x18\x02 \x01(\bR\visHeartbeat\"\xef\x02\n" +
 	"\bFeedItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
@@ -2329,7 +2355,8 @@ const file_alt_feeds_v2_feeds_proto_rawDesc = "" +
 	"\fog_image_url\x18\n" +
 	" \x01(\tR\n" +
 	"ogImageUrl\x12+\n" +
-	"\x12og_image_proxy_url\x18\v \x01(\tR\x0fogImageProxyUrlB\r\n" +
+	"\x12og_image_proxy_url\x18\v \x01(\tR\x0fogImageProxyUrl\x12\x17\n" +
+	"\afeed_id\x18\f \x01(\tR\x06feedIdB\r\n" +
 	"\v_article_id\"\xf9\x01\n" +
 	"\x15GetUnreadFeedsRequest\x12\x1b\n" +
 	"\x06cursor\x18\x01 \x01(\tH\x00R\x06cursor\x88\x01\x01\x12\x14\n" +

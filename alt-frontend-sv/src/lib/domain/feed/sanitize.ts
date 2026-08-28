@@ -1,4 +1,3 @@
-import type { BackendFeedItem, SanitizedFeed, RenderFeed } from "./types";
 import {
 	formatPublishedDate,
 	generateExcerptFromDescription,
@@ -6,6 +5,7 @@ import {
 	normalizeUrl,
 } from "$lib/utils/feed";
 import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
+import type { BackendFeedItem, RenderFeed, SanitizedFeed } from "./types";
 
 function sanitizeUrl(url: string): string {
 	return sanitizeHrefUrl(url) ?? "";
@@ -61,6 +61,11 @@ export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {
 	};
 
 	return {
+		// Keying identity only. The link is the last-resort fallback because a
+		// keyed `{#each}` cannot hold two siblings under one key, so "" would
+		// crash the list — but it means `id` is sometimes a URL, and a URL sent
+		// to ResolveOgImages is a `$1::uuid[]` cast error rather than a miss.
+		// That is why `feedId` below exists and why the cards read that instead.
 		id: rawFeed.article_id || rawFeed.link || "",
 		title: sanitized.title,
 		description: sanitized.description,
@@ -69,6 +74,7 @@ export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {
 		created_at: rawFeed.created_at,
 		author: sanitized.author || undefined,
 		articleId: rawFeed.article_id || undefined,
+		feedId: rawFeed.feed_id || undefined,
 	};
 }
 

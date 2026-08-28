@@ -2,8 +2,8 @@
  * FeedService client creation and shared types/helpers
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import { FeedService } from "$lib/gen/alt/feeds/v2/feeds_pb";
 
 /** Type-safe FeedService client */
@@ -13,6 +13,10 @@ type FeedClient = Client<typeof FeedService>;
  * Feed item from Connect-RPC (converted from proto)
  */
 export interface ConnectFeedItem {
+	/**
+	 * List-keying identity: articles.id, or a UUID the server minted for this
+	 * response. NOT a feeds.id — see `feedId` for that.
+	 */
 	id: string;
 	title: string;
 	description: string;
@@ -28,6 +32,16 @@ export interface ConnectFeedItem {
 	ogImageUrl?: string;
 	/** HMAC-signed proxy URL for the OGP image (pre-warmed cache). */
 	ogImageProxyUrl?: string;
+	/**
+	 * feeds.id — the only identifier `ResolveOgImages` matches.
+	 *
+	 * Kept apart from `id` because the two name different tables: the resolver
+	 * queries feeds, while `id` is articles.id or a per-response UUID. Absent on
+	 * surfaces with no feeds.id to give (search results come from Meilisearch
+	 * hits), which is why it is optional and why the resolver must be handed
+	 * `feedId ?? ""` rather than `id`.
+	 */
+	feedId?: string;
 }
 
 /**
@@ -70,9 +84,11 @@ export function convertProtoFeed(proto: {
 	isRead: boolean;
 	ogImageUrl?: string;
 	ogImageProxyUrl?: string;
+	feedId?: string;
 }): ConnectFeedItem {
 	return {
 		id: proto.id,
+		feedId: proto.feedId || undefined,
 		title: proto.title,
 		description: proto.description,
 		link: proto.link,
