@@ -1,19 +1,17 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { onMount } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+import { goto } from "$app/navigation";
 import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
-import { ConnectError, Code } from "@connectrpc/connect";
-import { createClientTransport, getThreeDayRecap } from "$lib/connect";
-import type { RenderFeed } from "$lib/schema/feed";
-import type { RecapSummary } from "$lib/schema/recap";
-
+import RecapSummaryWidget from "$lib/components/desktop/dashboard/RecapSummaryWidget.svelte";
 import StatsBarWidget from "$lib/components/desktop/dashboard/StatsBarWidget.svelte";
 import UnreadFeedsWidget from "$lib/components/desktop/dashboard/UnreadFeedsWidget.svelte";
-import RecapSummaryWidget from "$lib/components/desktop/dashboard/RecapSummaryWidget.svelte";
+import { createClientTransport, getThreeDayRecap } from "$lib/connect";
+import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+import type { RenderFeed } from "$lib/schema/feed";
+import type { RecapSummary } from "$lib/schema/recap";
+import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
 
-const { isDesktop } = useViewport();
 const stats = useFeedStats();
 
 // Feed state
@@ -37,7 +35,7 @@ const dateStr = new Date().toLocaleDateString("en-US", {
 });
 
 onMount(() => {
-	if (!isDesktop) {
+	if (isMobile()) {
 		goto("/home", { replaceState: true });
 		return;
 	}
@@ -82,7 +80,7 @@ onMount(() => {
 	<title>Dashboard - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="brief-page" class:revealed>
 		<!-- Editorial Header -->
 		<header class="brief-header">

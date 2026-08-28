@@ -1,19 +1,15 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
-import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
-import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
-import type { TimeWindow } from "$lib/schema/stats";
-
 // Mobile deps
 import {
 	getDetailedFeedStatsClient,
 	getUnreadCountClient,
 } from "$lib/api/client/feeds";
-import type { DetailedFeedStatsSummary } from "$lib/schema/stats";
-
-const { isDesktop } = useViewport();
+import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
+import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
+import type { DetailedFeedStatsSummary, TimeWindow } from "$lib/schema/stats";
+import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
 
 // Lazy load chart.js (heavy dependency) - only loaded when stats page is visited on desktop
 const TrendChartPromise = import(
@@ -59,7 +55,7 @@ onMount(async () => {
 		revealed = true;
 	});
 
-	if (isDesktop) {
+	if (isDesktop()) {
 		trendStats.fetchData("24h");
 	} else {
 		try {
@@ -85,7 +81,7 @@ onMount(async () => {
 
 // Mobile: synchronize SSE updates with display values
 $effect(() => {
-	if (!isDesktop && stats.isConnected) {
+	if (isMobile() && stats.isConnected) {
 		if (stats.feedAmount > 0) {
 			displayFeedAmount = stats.feedAmount;
 		}
@@ -103,7 +99,7 @@ $effect(() => {
 	<title>Statistics - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="ledger-page" class:revealed>
 		<!-- Editorial Header -->
 		<header class="ledger-header">

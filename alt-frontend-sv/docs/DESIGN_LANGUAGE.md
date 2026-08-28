@@ -352,7 +352,11 @@ src/lib/components/
 └── ui/               # Shared primitives
 ```
 
-Breakpoint: **768px** (`md:`). Detection via `useViewport()` hook.
+Breakpoint: **768px** (`md:`). Detection via `isDesktop()` / `isMobile()` from
+`$lib/stores/viewport.svelte`. Call them where the branch is written —
+`{#if isDesktop()}`, `$derived(isDesktop() ? … : …)`. Assigning the result to a
+plain `const` snapshots it and the layout stops following the viewport, which is
+how a phone in landscape (851 CSS px) used to get stuck on the desktop layout.
 
 ### Mobile Layout
 
@@ -533,7 +537,7 @@ All motion is **editorial** — deliberate, restrained, purposeful. No playful b
 | `src/lib/components/ui/` | Shared primitives (button, card, input, sheet) |
 | `src/lib/components/mobile/` | Mobile components (105+) |
 | `src/lib/components/desktop/` | Desktop components (80+) |
-| `src/lib/stores/viewport.svelte.ts` | `useViewport()` — 768px breakpoint detection |
+| `src/lib/stores/viewport.svelte.ts` | `isDesktop()` / `isMobile()` — 768px breakpoint detection |
 | `src/lib/utils.ts` | `cn()` — clsx + tailwind-merge |
 
 ---

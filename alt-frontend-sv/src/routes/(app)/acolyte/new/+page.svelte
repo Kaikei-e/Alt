@@ -1,12 +1,10 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
 import { onMount } from "svelte";
+import { goto } from "$app/navigation";
+import MobileAcolyteNew from "$lib/components/mobile/acolyte/MobileAcolyteNew.svelte";
 import { createReport, startReportRun } from "$lib/connect/acolyte";
 import { createAndAutostart } from "$lib/connect/acolyteAutostart";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import MobileAcolyteNew from "$lib/components/mobile/acolyte/MobileAcolyteNew.svelte";
-
-const { isDesktop } = useViewport();
+import { isMobile } from "$lib/stores/viewport.svelte";
 
 let title = $state("");
 let reportType = $state("weekly_briefing");
@@ -92,7 +90,7 @@ onMount(() => {
 });
 </script>
 
-{#if !isDesktop}
+{#if isMobile()}
 <MobileAcolyteNew
 	onSubmit={handleMobileSubmit}
 	{error}

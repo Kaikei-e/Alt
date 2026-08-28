@@ -7,7 +7,7 @@ import {
 	createClientTransport,
 	getAugurConversation,
 } from "$lib/connect";
-import { useViewport } from "$lib/stores/viewport.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 import { formatAugurConversationLabel } from "$lib/utils/augur-entry";
 
 type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
@@ -43,8 +43,6 @@ type MobileMessage = {
 	citations?: MobileCitation[];
 	relatedCitations?: MobileCitation[];
 };
-
-const { isDesktop } = useViewport();
 
 let conversation = $state<AugurStoredConversation | null>(null);
 let errorMessage = $state<string>("");
@@ -146,7 +144,7 @@ async function load(id: string) {
 {:else if errorMessage}
 	<p class="status status-error" role="alert">{errorMessage}</p>
 {:else if conversation}
-	{#if isDesktop}
+	{#if isDesktop()}
 		<AugurChat
 			initialMessages={toPaneMessages(conversation)}
 			initialConversationId={conversation.id}

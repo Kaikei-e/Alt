@@ -1,16 +1,12 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { page } from "$app/stores";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import { resolveAugurEntry } from "$lib/utils/augur-entry";
-
 // Desktop components
 import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
-
 // Mobile components
 import ChatWindow from "$lib/components/mobile/search/ChatWindow.svelte";
-
-const { isDesktop } = useViewport();
+import { isDesktop } from "$lib/stores/viewport.svelte";
+import { resolveAugurEntry } from "$lib/utils/augur-entry";
 
 const augurEntry = $derived(
 	resolveAugurEntry({
@@ -21,7 +17,7 @@ const augurEntry = $derived(
 );
 
 onMount(() => {
-	if (isDesktop) return;
+	if (isDesktop()) return;
 
 	document.documentElement.classList.add("augur-page");
 
@@ -35,7 +31,7 @@ onMount(() => {
 	<title>Ask Augur - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<AugurChat
 		initialContext={augurEntry.initialDraft}
 		initialQuestion={augurEntry.initialMessage}

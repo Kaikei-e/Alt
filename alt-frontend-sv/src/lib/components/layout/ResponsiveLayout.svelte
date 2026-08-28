@@ -5,13 +5,11 @@ import { page } from "$app/state";
 import Sidebar from "$lib/components/desktop/layout/Sidebar.svelte";
 import { isImmersiveRoute } from "$lib/components/mobile/bottom-nav";
 import MobileBottomNav from "$lib/components/mobile/MobileBottomNav.svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 import { cn } from "$lib/utils";
 
 let { children, class: className = "" }: { children: Snippet; class?: string } =
 	$props();
-
-const { isDesktop } = useViewport();
 
 const FULL_BLEED_PATHS = ["/feeds/tag-verse"];
 
@@ -32,7 +30,7 @@ afterNavigate(() => {
 	Skip to main content
 </a>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="flex min-h-screen bg-[var(--surface-bg)]">
 		<Sidebar />
 		<main

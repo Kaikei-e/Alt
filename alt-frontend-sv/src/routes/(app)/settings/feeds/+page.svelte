@@ -1,29 +1,27 @@
 <script lang="ts">
+import { ArrowLeft, Home, Plus, RefreshCw, Trash2 } from "@lucide/svelte";
 import { onMount, untrack } from "svelte";
-import { Plus, RefreshCw, Trash2, ArrowLeft, Home } from "@lucide/svelte";
 import * as v from "valibot";
 import { goto } from "$app/navigation";
-import { useViewport } from "$lib/stores/viewport.svelte";
 import {
 	deleteFeedLinkClient,
 	listFeedLinksClient,
-	registerRssFeedClient,
 	listSubscriptionsClient,
+	registerRssFeedClient,
 	subscribeClient,
 	unsubscribeClient,
 } from "$lib/api/client";
-import type { ConnectFeedSource } from "$lib/connect/feeds";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import * as Dialog from "$lib/components/ui/dialog";
-import type { FeedLink } from "$lib/schema/feedLink";
-import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
 import FeedHealthBadge from "$lib/components/feeds/FeedHealthBadge.svelte";
 import HealthSummaryBar from "$lib/components/feeds/HealthSummaryBar.svelte";
 import OpmlSection from "$lib/components/feeds/OpmlSection.svelte";
-
-const { isDesktop } = useViewport();
+import { Button } from "$lib/components/ui/button";
+import * as Dialog from "$lib/components/ui/dialog";
+import { Input } from "$lib/components/ui/input";
+import type { ConnectFeedSource } from "$lib/connect/feeds";
+import type { FeedLink } from "$lib/schema/feedLink";
+import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
 interface PageData {
 	feedLinks: FeedLink[];
@@ -242,7 +240,7 @@ function handleBackToHome() {
 	<title>Settings - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<PageHeader
 		title="Manage Feed Links"
 		description="Add, edit, or remove RSS feed sources"
@@ -476,7 +474,7 @@ function handleBackToHome() {
 	<div class="mt-6">
 		<OpmlSection
 			feedCount={sortedLinks.length}
-			{isDesktop}
+			isDesktop={isDesktop()}
 			onImportComplete={() => loadFeedLinks()}
 		/>
 	</div>
@@ -610,7 +608,7 @@ function handleBackToHome() {
 				<section>
 					<OpmlSection
 						feedCount={sortedLinks.length}
-						{isDesktop}
+						isDesktop={isDesktop()}
 						onImportComplete={() => loadFeedLinks()}
 					/>
 				</section>

@@ -19,7 +19,7 @@ import {
 	type ConnectionRecoveryStore,
 } from "$lib/stores/connection-recovery.svelte";
 import { useToastStore } from "$lib/stores/toast.svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
 interface PageData {
 	initialFeeds?: RenderFeed[];
@@ -27,7 +27,6 @@ interface PageData {
 }
 
 const { data }: { data: PageData } = $props();
-const { isDesktop } = useViewport();
 const toast = useToastStore();
 const connectionRecovery = getContext<ConnectionRecoveryStore | undefined>(
 	CONNECTION_RECOVERY_KEY,
@@ -179,7 +178,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 
 <Toast items={toast.items} onDismiss={toast.remove} />
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="wire-page" class:revealed>
 		<header class="wire-header">
 			<span class="wire-date">{dateStr}</span>

@@ -1,18 +1,15 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { page } from "$app/state";
-import { useViewport } from "$lib/stores/viewport.svelte";
+import { infiniteScroll } from "$lib/actions/infinite-scroll";
 
 import { searchFeedsClient } from "$lib/api/client/feeds";
-import { appendUniqueById } from "$lib/domain/feed/dedupe";
-import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
-import { infiniteScroll } from "$lib/actions/infinite-scroll";
 import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
-
 import SearchFeedsClient from "$lib/components/mobile/search/SearchFeedsClient.svelte";
-
-const { isDesktop } = useViewport();
+import { appendUniqueById } from "$lib/domain/feed/dedupe";
+import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
 const initialQuery = page.url.searchParams.get("q")?.trim() ?? "";
 
@@ -192,7 +189,7 @@ async function handleNext() {
 	<title>Search - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="archive-page" class:revealed data-role="archive-desk-page">
 		<header class="archive-header">
 			<span class="archive-date">{dateStr}</span>

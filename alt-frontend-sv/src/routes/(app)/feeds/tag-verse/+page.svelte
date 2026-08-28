@@ -1,13 +1,11 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { goto } from "$app/navigation";
-import { useViewport } from "$lib/stores/viewport.svelte";
 import TagVerseScreen from "$lib/components/desktop/tag-verse/TagVerseScreen.svelte";
-
-const { isDesktop } = useViewport();
+import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
 
 onMount(() => {
-	if (!isDesktop) {
+	if (isMobile()) {
 		goto("/home", { replaceState: true });
 	}
 });
@@ -17,7 +15,7 @@ onMount(() => {
 	<title>Tag Verse - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<TagVerseScreen />
 {:else}
 	<div

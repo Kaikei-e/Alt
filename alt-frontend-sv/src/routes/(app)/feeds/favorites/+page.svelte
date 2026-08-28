@@ -1,20 +1,14 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-
+import { infiniteScroll } from "$lib/actions/infinite-scroll";
+import { removeFavoriteFeedClient } from "$lib/api/client";
+import { getFavoriteFeedsWithCursorClient } from "$lib/api/client/feeds";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
-
 import ClippingsEntry from "$lib/components/mobile/ClippingsEntry.svelte";
-
-import { getFavoriteFeedsWithCursorClient } from "$lib/api/client/feeds";
-import { removeFavoriteFeedClient } from "$lib/api/client";
-import { infiniteScroll } from "$lib/actions/infinite-scroll";
-
 import type { RenderFeed } from "$lib/schema/feed";
-
-const { isDesktop } = useViewport();
+import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
 
 const dateStr = new Date().toLocaleDateString("en-US", {
 	weekday: "long",
@@ -121,7 +115,7 @@ async function handleRemoveFavorite(feedUrl: string) {
 }
 
 onMount(async () => {
-	if (!isDesktop) {
+	if (isMobile()) {
 		try {
 			await loadMobileFeeds();
 		} finally {
@@ -135,7 +129,7 @@ onMount(async () => {
 	<title>The Clippings File - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="clippings-page" class:revealed data-role="clippings-file-page">
 		<header class="clippings-header">
 			<span class="clippings-date">{dateStr}</span>

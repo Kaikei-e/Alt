@@ -5,12 +5,11 @@ import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import ArticleSearchSection from "$lib/components/search/ArticleSearchSection.svelte";
 import RecapSearchSection from "$lib/components/search/RecapSearchSection.svelte";
-import TagSearchSection from "$lib/components/search/TagSearchSection.svelte";
 import SearchSectionSkeleton from "$lib/components/search/SearchSectionSkeleton.svelte";
+import TagSearchSection from "$lib/components/search/TagSearchSection.svelte";
 import { useGlobalSearch } from "$lib/hooks/useGlobalSearch.svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
-const { isDesktop } = useViewport();
 const gs = useGlobalSearch();
 
 let inputQuery = $state("");
@@ -69,7 +68,7 @@ function clearSearch() {
 <div class="ref-page px-4 md:px-0" class:revealed data-role="reference-desk-page">
 	<header class="ref-header">
 		<span class="ref-date">{dateStr}</span>
-		{#if isDesktop}
+		{#if isDesktop()}
 			<h1 class="ref-title">Reference Desk</h1>
 		{:else}
 			<h1 class="ref-title-mobile">Reference Desk</h1>

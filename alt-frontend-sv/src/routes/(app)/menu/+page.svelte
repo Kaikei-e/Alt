@@ -3,12 +3,10 @@ import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
 import MobileMenuPage from "$lib/components/mobile/MobileMenuPage.svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-
-const { isDesktop } = useViewport();
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
 onMount(() => {
-	if (browser && isDesktop) {
+	if (browser && isDesktop()) {
 		goto("/feeds", { replaceState: true });
 	}
 });
@@ -18,7 +16,7 @@ onMount(() => {
 	<title>Menu - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<!-- Desktop: redirect to feeds (handled in onMount) -->
 	<div></div>
 {:else}

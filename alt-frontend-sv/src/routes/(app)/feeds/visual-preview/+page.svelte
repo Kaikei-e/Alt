@@ -15,7 +15,7 @@ import MobileGalleryTile from "$lib/components/mobile/feeds/gallery/MobileGaller
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
 import { ogImageOverlay } from "$lib/stores/ogImageOverlay.svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 import { selectOgImagePrefetchIds } from "$lib/utils/ogImagePrefetch";
 
 interface PageData {
@@ -24,7 +24,6 @@ interface PageData {
 }
 
 const { data }: { data: PageData } = $props();
-const { isDesktop } = useViewport();
 
 // --- Desktop state ---
 let selectedFeedUrl = $state<string | null>(null);
@@ -191,7 +190,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	<title>Visual Preview - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<!-- Desktop: Visual card grid with modal -->
 	<PageHeader title="Visual Preview" description="Browse feeds with image thumbnails" />
 

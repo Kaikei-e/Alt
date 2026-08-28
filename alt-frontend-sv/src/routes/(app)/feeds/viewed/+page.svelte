@@ -1,16 +1,12 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-
 import { getReadFeedsWithCursorClient } from "$lib/api/client/feeds";
-import type { RenderFeed } from "$lib/schema/feed";
-import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
+import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
-
 import ViewedFeedsClient from "$lib/components/mobile/ViewedFeedsClient.svelte";
-
-const { isDesktop } = useViewport();
+import type { RenderFeed } from "$lib/schema/feed";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
 const dateStr = new Date().toLocaleDateString("en-US", {
 	weekday: "long",
@@ -79,7 +75,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	<title>The Morgue Desk - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="morgue-page" class:revealed data-role="morgue-desk-page">
 		<header class="morgue-header">
 			<span class="morgue-date">{dateStr}</span>

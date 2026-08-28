@@ -1,11 +1,9 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
 import SwipeFeedScreen from "$lib/components/mobile/feeds/swipe/SwipeFeedScreen.svelte";
-import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import type { RenderFeed } from "$lib/schema/feed";
-
-const { isDesktop } = useViewport();
+import { isDesktop } from "$lib/stores/viewport.svelte";
+import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 
 interface ArticleData {
 	firstArticleImageUrl: string | null;
@@ -47,7 +45,7 @@ onMount(() => {
 	{/if}
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="desktop-fallback">
 		<p class="fallback-heading">
 			Visual Preview mode is optimized for mobile

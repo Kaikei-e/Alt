@@ -1,9 +1,7 @@
 <script lang="ts">
-import { useViewport } from "$lib/stores/viewport.svelte";
 import SwipeFeedScreen from "$lib/components/mobile/feeds/swipe/SwipeFeedScreen.svelte";
 import type { RenderFeed } from "$lib/schema/feed";
-
-const { isDesktop } = useViewport();
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
 interface PageData {
 	initialFeeds: RenderFeed[];
@@ -27,7 +25,7 @@ $effect(() => {
 	<title>Swipe - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="desktop-fallback">
 		<p class="fallback-heading">
 			Swipe mode is optimized for mobile
