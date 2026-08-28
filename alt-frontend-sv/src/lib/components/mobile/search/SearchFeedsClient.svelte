@@ -1,25 +1,38 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
-import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
+import type { SearchQuery } from "$lib/schema/search";
 import SearchResults from "./SearchResults.svelte";
 import SearchWindow from "./SearchWindow.svelte";
+import type { MobileSearchSession } from "./search-session";
 
 interface Props {
 	initialQuery?: string;
+	/** The query text, owned by the route so both viewports share one. */
+	query: string;
+	setQuery: (query: string) => void;
+	/** The rest of the search session, owned by the route for the same reason. */
+	session: MobileSearchSession;
 }
-const { initialQuery = "" }: Props = $props();
+const { initialQuery = "", query, setQuery, session }: Props = $props();
 
+/**
+ * True only the first time this search is drawn.
+ *
+ * Read here, before `onMount` flips it, because both things it gates are
+ * arrival behaviour: auto-running a `?q=` search, and scrolling to the top.
+ * This component is remounted by every rotation now that the branch is
+ * reactive, and repeating either would cost a request nobody asked for and the
+ * reader's place in the results.
+ */
 // svelte-ignore state_referenced_locally
-let searchQuery = $state<SearchQuery>({ query: initialQuery });
-let results = $state<SearchFeedItem[]>([]);
-let isLoading = $state(false);
-let searchTime = $state<number | undefined>(undefined);
-let cursor = $state<string | null>(null);
-let hasMore = $state(false);
+const firstVisit = !session.visited;
+
+const searchQuery = $derived<SearchQuery>({ query });
 
 onMount(() => {
-	if (browser && window.scrollTo) {
+	session.visited = true;
+	if (firstVisit && browser && window.scrollTo) {
 		window.scrollTo(0, 0);
 	}
 });
@@ -37,51 +50,51 @@ onMount(() => {
 		<div class="archive-search-container">
 			<SearchWindow
 				{searchQuery}
-				autoSearch={!!initialQuery.trim()}
-				setSearchQuery={(query) => {
-					searchQuery = query;
+				autoSearch={firstVisit && !!initialQuery.trim()}
+				setSearchQuery={(next) => {
+					setQuery(next.query ?? "");
 				}}
 				setFeedResults={(newResults) => {
-					results = newResults;
+					session.results = newResults;
 				}}
 				setCursor={(newCursor) => {
-					cursor = newCursor;
+					session.cursor = newCursor;
 				}}
 				setHasMore={(newHasMore) => {
-					hasMore = newHasMore;
+					session.hasMore = newHasMore;
 				}}
-				{isLoading}
+				isLoading={session.isLoading}
 				setIsLoading={(loading) => {
-					isLoading = loading;
+					session.isLoading = loading;
 				}}
 				setSearchTime={(time) => {
-					searchTime = time;
+					session.searchTime = time;
 				}}
 			/>
 		</div>
 
 		<SearchResults
-			{results}
-			{isLoading}
-			searchQuery={searchQuery.query || ""}
-			{searchTime}
-			{cursor}
-			{hasMore}
+			results={session.results}
+			isLoading={session.isLoading}
+			searchQuery={query}
+			searchTime={session.searchTime}
+			cursor={session.cursor}
+			hasMore={session.hasMore}
 			setResults={(newResults) => {
-				results = newResults;
+				session.results = newResults;
 			}}
 			setCursor={(newCursor) => {
-				cursor = newCursor;
+				session.cursor = newCursor;
 			}}
 			setHasMore={(newHasMore) => {
-				hasMore = newHasMore;
+				session.hasMore = newHasMore;
 			}}
 			setIsLoading={(loading) => {
-				isLoading = loading;
+				session.isLoading = loading;
 			}}
 		/>
 
-		{#if !searchQuery.query && !isLoading && results.length === 0}
+		{#if !query && !session.isLoading && session.results.length === 0}
 			<div class="archive-tip">
 				<p class="archive-tip-text">
 					Try searching for topics like "AI", "technology", or "news"

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { removeFavoriteFeedClient } from "$lib/api/client";
 import { getFavoriteFeedsWithCursorClient } from "$lib/api/client/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
 
@@ -8,6 +9,7 @@ import type { RenderFeed } from "$lib/schema/feed";
 // the network calls.
 vi.mock("$lib/api/client/feeds", { spy: true });
 vi.mock("$lib/api/client", { spy: true });
+vi.mock("$lib/api/client/articles", { spy: true });
 
 import Page from "./+page.svelte";
 
@@ -27,8 +29,8 @@ const clipping: RenderFeed = {
 };
 
 /** The media query listener fires off a browser event, so yield a frame. */
-async function settle() {
-	await new Promise((resolve) => setTimeout(resolve, 80));
+async function settle(ms = 80) {
+	await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 describe("Clippings File page", () => {
@@ -89,5 +91,119 @@ describe("Clippings File page", () => {
 		await expect
 			.element(page.getByText(/Retrieving your clippings/))
 			.not.toBeInTheDocument();
+	});
+});
+
+/**
+ * The clippings file across a rotation.
+ *
+ * The desktop arm of this page rendered a `<FeedGrid>`; the phone arm rendered
+ * a second, hand-rolled copy of the same thing directly in the page —
+ * `mobileFeeds` / `mobileNextCursor` / `mobileHasMore` plus its own
+ * `infiniteScroll`. Flipping the `{#if}` destroyed whichever one was live, so a
+ * rotation re-fetched page one and dropped every page the reader had scrolled
+ * to, and a clipping they had just removed came back.
+ *
+ * Node identity is the only way to tell those apart: both arms render "a list
+ * of clippings" and the markup looks the same either way.
+ */
+function gridRoot(): HTMLElement | null {
+	return document.querySelector<HTMLElement>(".wire-container");
+}
+
+function cardCount(): number {
+	return (
+		gridRoot()?.querySelector('[class*="grid-cols"]')?.children.length ?? 0
+	);
+}
+
+const MANY: RenderFeed[] = Array.from({ length: 4 }, (_, i) => ({
+	...clipping,
+	id: `clip-${i + 1}`,
+	title: `Clipping ${i + 1}`,
+	link: `https://example.com/clip-${i + 1}`,
+	normalizedUrl: `https://example.com/clip-${i + 1}`,
+}));
+
+describe("Clippings File continuity across a rotation", () => {
+	beforeEach(() => {
+		vi.mocked(getFavoriteFeedsWithCursorClient).mockReset();
+		vi.mocked(getFavoriteFeedsWithCursorClient).mockResolvedValue({
+			data: MANY,
+			next_cursor: undefined,
+			has_more: false,
+		} as unknown as Awaited<
+			ReturnType<typeof getFavoriteFeedsWithCursorClient>
+		>);
+		vi.mocked(removeFavoriteFeedClient).mockReset();
+		vi.mocked(removeFavoriteFeedClient).mockResolvedValue(
+			undefined as unknown as Awaited<
+				ReturnType<typeof removeFavoriteFeedClient>
+			>,
+		);
+	});
+
+	it("keeps the same list element across a 851 -> 393 -> 851 round trip", async () => {
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		render(Page);
+		await settle(400);
+
+		const before = gridRoot();
+		expect(before).not.toBeNull();
+		(before as HTMLElement).dataset.identityProbe = "landscape";
+
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		await settle(400);
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		await settle(400);
+
+		expect(gridRoot()).toBe(before);
+		expect(gridRoot()?.dataset.identityProbe).toBe("landscape");
+	});
+
+	it("does not re-fetch the clippings, or lose any, when the phone is rotated", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		await settle(400);
+
+		const fetchesBefore = vi.mocked(getFavoriteFeedsWithCursorClient).mock.calls
+			.length;
+		expect(cardCount()).toBe(MANY.length);
+
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		await settle(400);
+		expect(cardCount()).toBe(MANY.length);
+		expect(vi.mocked(getFavoriteFeedsWithCursorClient).mock.calls.length).toBe(
+			fetchesBefore,
+		);
+
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		await settle(400);
+		expect(cardCount()).toBe(MANY.length);
+		expect(vi.mocked(getFavoriteFeedsWithCursorClient).mock.calls.length).toBe(
+			fetchesBefore,
+		);
+	});
+
+	it("keeps a removed clipping out of the list after a rotation", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		await settle(400);
+		expect(cardCount()).toBe(MANY.length);
+
+		await page
+			.getByRole("button", { name: "Remove from clippings" })
+			.first()
+			.click();
+		await settle(400);
+		expect(cardCount()).toBe(MANY.length - 1);
+
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		await settle(400);
+		expect(cardCount()).toBe(MANY.length - 1);
+
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		await settle(400);
+		expect(cardCount()).toBe(MANY.length - 1);
 	});
 });

@@ -42,8 +42,16 @@ export class DesktopFeedsPage extends BasePage {
 		// Page elements
 		this.pageTitle = page.getByRole("heading", { name: /feeds/i }).first();
 		this.feedGrid = page.locator(".grid");
-		this.loadingSpinner = page.locator(".loading-pulse, .animate-spin").first();
-		this.emptyState = page.getByText("No dispatches on the wire");
+		// `.animate-shimmer-warm` covers the skeleton the wire now shows while it
+		// loads — the same one the phone list always had.
+		this.loadingSpinner = page
+			.locator(".loading-pulse, .animate-spin, .animate-shimmer-warm")
+			.first();
+		// The empty wire is now the labelled region the phone list always had —
+		// a heading, a sentence, and a link to add a first feed — rather than the
+		// single grey line "No dispatches on the wire" the desk grid used to show
+		// with no way forward.
+		this.emptyState = page.getByRole("region", { name: /empty feed state/i });
 		this.errorMessage = page.locator(".error-state");
 
 		// Filters (role-based locators)

@@ -112,18 +112,14 @@ const hasNext = $derived(currentIndex >= 0 && currentIndex < totalCount - 1);
 
 function handlePrevious() {
 	if (!feedGridApi || currentIndex <= 0) return;
-	const feeds = feedGridApi.getVisibleFeeds();
-	if (feeds[currentIndex - 1]) {
-		selectedFeedUrl = feeds[currentIndex - 1]!.normalizedUrl;
-	}
+	const previous = feedGridApi.getVisibleFeeds()[currentIndex - 1];
+	if (previous) selectedFeedUrl = previous.normalizedUrl;
 }
 
 function handleNext() {
 	if (!feedGridApi || currentIndex >= totalCount - 1) return;
-	const feeds = feedGridApi.getVisibleFeeds();
-	if (feeds[currentIndex + 1]) {
-		selectedFeedUrl = feeds[currentIndex + 1]!.normalizedUrl;
-	}
+	const next = feedGridApi.getVisibleFeeds()[currentIndex + 1];
+	if (next) selectedFeedUrl = next.normalizedUrl;
 }
 
 function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
@@ -181,6 +177,19 @@ function handleMarkAsRead(feedUrl: string) {
 	isProcessingMarkAsRead = false;
 }
 
+/**
+ * One class string for both viewports, because the difference between them is
+ * pure presentation and Tailwind's breakpoints express it exactly.
+ *
+ * Previously two: desktop `grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5`,
+ * phone `grid-cols-2 gap-2`. They already agreed on two columns at the narrow
+ * end, so the only real difference was the gap below `md` — which is what the
+ * `md:` prefix is for. Column counts per width are unchanged: 2 below `lg`,
+ * 3 at `lg`, 4 at `xl`.
+ */
+const GALLERY_GRID_CLASS =
+	"grid grid-cols-2 gap-2 md:gap-5 lg:grid-cols-3 xl:grid-cols-4";
+
 function handleFeedGridReady(api: FeedGridApi) {
 	feedGridApi = api;
 }
@@ -190,8 +199,20 @@ function handleFeedGridReady(api: FeedGridApi) {
 	<title>Visual Preview - Alt</title>
 </svelte:head>
 
+<!--
+	The header is the only thing the two viewports genuinely disagree about, so
+	it is the only thing left inside an `{#if}`. `FeedGrid` sits outside it and
+	is built exactly once.
+
+	It used to be built twice — one instance per branch — and the grid is where
+	the reader's session lives: the fetched `feeds`, the `removedUrls` that
+	mark-as-read writes into, and the pagination cursor are all local `$state`
+	inside it. Rotating the phone flipped the branch, destroyed the live grid and
+	mounted a fresh one, which re-fetched page one, dropped everything infinite
+	scroll had added, reset the scroll position with the DOM, and brought back
+	every article the reader had already marked read.
+-->
 {#if isDesktop()}
-	<!-- Desktop: Visual card grid with modal -->
 	<PageHeader title="Visual Preview" description="Browse feeds with image thumbnails" />
 
 	<FeedFilters
@@ -201,19 +222,6 @@ function handleFeedGridReady(api: FeedGridApi) {
 		{feedSources}
 		onFilterChange={handleFilterChange}
 	/>
-
-	<FeedGrid
-		onSelectFeed={handleSelectFeed}
-		unreadOnly={filters.unreadOnly}
-		sortBy={filters.sortBy}
-		excludedFeedLinkIds={filters.excludedFeedLinkIds}
-		onReady={handleFeedGridReady}
-		gridClass="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
-	>
-		{#snippet cardRenderer({ feed, index, isRead, onSelect }: { feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void })}
-			<VisualFeedCard {feed} {isRead} {onSelect} />
-		{/snippet}
-	</FeedGrid>
 {:else}
 	<!--
 		Mobile: a vertically scrolling, two-column thumbnail gallery.
@@ -232,21 +240,33 @@ function handleFeedGridReady(api: FeedGridApi) {
 		<h1 class="gallery-title">Visual Preview</h1>
 		<p class="gallery-subtitle">Browse feeds by their cover</p>
 	</header>
-
-	<FeedGrid
-		onSelectFeed={handleSelectFeed}
-		unreadOnly={filters.unreadOnly}
-		sortBy={filters.sortBy}
-		excludedFeedLinkIds={filters.excludedFeedLinkIds}
-		onReady={handleFeedGridReady}
-		gridClass="grid grid-cols-2 gap-2"
-		gridTestId="gallery-grid"
-	>
-		{#snippet cardRenderer({ feed, isRead, onSelect }: { feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void })}
-			<MobileGalleryTile {feed} {isRead} {onSelect} />
-		{/snippet}
-	</FeedGrid>
 {/if}
+
+<FeedGrid
+	onSelectFeed={handleSelectFeed}
+	unreadOnly={filters.unreadOnly}
+	sortBy={filters.sortBy}
+	excludedFeedLinkIds={filters.excludedFeedLinkIds}
+	onReady={handleFeedGridReady}
+	gridClass={GALLERY_GRID_CLASS}
+	gridTestId="gallery-grid"
+>
+	{#snippet cardRenderer({ feed, isRead, onSelect }: { feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void })}
+		<!--
+			The card is the one branch that stays. Swapping it on rotation costs a
+			re-decode of the tile image and nothing else — cards hold no list
+			state — while the two layouts really are different components: the
+			desktop card carries an excerpt, an author line and a tag row, and the
+			phone tile deliberately carries none of them so the cover keeps its
+			height.
+		-->
+		{#if isDesktop()}
+			<VisualFeedCard {feed} {isRead} {onSelect} />
+		{:else}
+			<MobileGalleryTile {feed} {isRead} {onSelect} />
+		{/if}
+	{/snippet}
+</FeedGrid>
 
 <!--
 	Shared by both layouts. Opening the article in a modal rather than navigating

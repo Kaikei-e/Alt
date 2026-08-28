@@ -7,6 +7,7 @@ import { searchFeedsClient } from "$lib/api/client/feeds";
 import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import SearchFeedsClient from "$lib/components/mobile/search/SearchFeedsClient.svelte";
+import { createMobileSearchSession } from "$lib/components/mobile/search/search-session";
 import { appendUniqueById } from "$lib/domain/feed/dedupe";
 import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 import { isDesktop } from "$lib/stores/viewport.svelte";
@@ -28,6 +29,25 @@ let isLoadingMore = $state(false);
 
 let revealed = $state(false);
 let initialLoadDone = $state(false);
+
+/**
+ * The phone search's session, held here rather than inside
+ * `SearchFeedsClient`.
+ *
+ * That component sits inside `{#if isDesktop()}`, and the branch is now
+ * genuinely reactive: rotating the phone destroys it. When it owned the query,
+ * the results and the offset itself, a rotation wiped all three and left the
+ * reader staring at an empty search box. The query is shared with the desk's
+ * own box for the same reason — one query, two ways of drawing it, so turning
+ * the device never loses what you were looking for.
+ *
+ * The result *lists* are still separate: the desk renders `RenderFeed` cards
+ * through the detail modal and the phone renders `SearchFeedItem` results with
+ * their own inline summary, and those are two pipelines rather than two
+ * layouts. Unifying them is a bigger change than this one and is not what a
+ * rotation regression needs.
+ */
+const mobileSearch = $state(createMobileSearchSession());
 
 const dateStr = $derived(
 	new Date().toLocaleDateString("en-US", {
@@ -289,7 +309,12 @@ async function handleNext() {
 		/>
 	</div>
 {:else}
-	<SearchFeedsClient {initialQuery} />
+	<SearchFeedsClient
+		{initialQuery}
+		query={searchQuery}
+		setQuery={(q: string) => (searchQuery = q)}
+		session={mobileSearch}
+	/>
 {/if}
 
 <style>
