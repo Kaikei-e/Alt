@@ -1,27 +1,27 @@
 <script lang="ts">
 import { onMount, setContext } from "svelte";
 import "./layout.css";
-import favicon from "$lib/assets/favicon.svg";
 import {
 	QueryCache,
 	QueryClient,
 	QueryClientProvider,
 } from "@tanstack/svelte-query";
 import { page, updated } from "$app/state";
-import { createAuthStore, AUTH_STORE_KEY } from "$lib/stores/auth.svelte";
-import {
-	createLoadingStore,
-	LOADING_STORE_KEY,
-} from "$lib/stores/loading.svelte";
-import {
-	createConnectionRecoveryStore,
-	CONNECTION_RECOVERY_KEY,
-} from "$lib/stores/connection-recovery.svelte";
+import favicon from "$lib/assets/favicon.svg";
+import { installBfcacheVersionCheck } from "$lib/bfcache-version-check";
 import {
 	isNetworkFailureError,
 	performGuardedReload,
 } from "$lib/hooks/safari-connection-recovery";
-import { installBfcacheVersionCheck } from "$lib/bfcache-version-check";
+import { AUTH_STORE_KEY, createAuthStore } from "$lib/stores/auth.svelte";
+import {
+	CONNECTION_RECOVERY_KEY,
+	createConnectionRecoveryStore,
+} from "$lib/stores/connection-recovery.svelte";
+import {
+	createLoadingStore,
+	LOADING_STORE_KEY,
+} from "$lib/stores/loading.svelte";
 
 const { children } = $props();
 

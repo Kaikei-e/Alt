@@ -4,18 +4,19 @@
  * Validates Phase 5 admin proto schema conformance for
  * Reproject, SLO, and Audit operations.
  */
-import { describe, it, expect } from "vitest";
-import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
+
+import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { describe, expect, it } from "vitest";
 import {
-	StartReprojectRequestSchema,
-	GetSLOStatusResponseSchema,
-	SLIStatusSchema,
 	AlertSummarySchema,
-	ReprojectRunSchema,
-	ReprojectDiffSummarySchema,
+	GetSLOStatusResponseSchema,
 	ListReprojectRunsResponseSchema,
-	RunProjectionAuditResponseSchema,
 	ProjectionAuditSchema,
+	ReprojectDiffSummarySchema,
+	ReprojectRunSchema,
+	RunProjectionAuditResponseSchema,
+	SLIStatusSchema,
+	StartReprojectRequestSchema,
 } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_admin_pb";
 
 describe("Knowledge Home Admin API Contract - Phase 5", () => {

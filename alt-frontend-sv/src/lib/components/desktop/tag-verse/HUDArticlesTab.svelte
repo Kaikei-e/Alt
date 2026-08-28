@@ -1,11 +1,11 @@
 <script lang="ts">
+import { ExternalLink, Loader2 } from "@lucide/svelte";
 import { onMount } from "svelte";
 import {
 	createClientTransport,
 	fetchArticlesByTag,
 	type TagTrailArticle,
 } from "$lib/connect";
-import { ExternalLink, Loader2 } from "@lucide/svelte";
 
 interface Props {
 	tagName: string;

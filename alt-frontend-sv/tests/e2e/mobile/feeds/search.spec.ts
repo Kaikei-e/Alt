@@ -1,9 +1,9 @@
+import {
+	CONNECT_RPC_PATHS,
+	CONNECT_SEARCH_RESPONSE,
+} from "../../fixtures/mockData";
 import { expect, test } from "../../fixtures/pomFixtures";
 import { fulfillJson } from "../../utils/mockHelpers";
-import {
-	CONNECT_SEARCH_RESPONSE,
-	CONNECT_RPC_PATHS,
-} from "../../fixtures/mockData";
 
 test.describe("mobile feeds routes - search", () => {
 	test("search page shows results for a valid query", async ({

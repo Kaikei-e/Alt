@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MENU_SECTIONS, getVisibleSections } from "./menu-page";
+import { getVisibleSections, MENU_SECTIONS } from "./menu-page";
 
 describe("MENU_SECTIONS (re-export of MOBILE_MENU_SECTIONS)", () => {
 	it("has at least one section", () => {

@@ -2,8 +2,9 @@
  * Headless composable for Evening Pulse data fetching and state management.
  * Shared by both Desktop and Mobile evening-pulse pages.
  */
+
+import { Code, ConnectError } from "@connectrpc/connect";
 import { goto } from "$app/navigation";
-import { ConnectError, Code } from "@connectrpc/connect";
 import { createClientTransport, getEveningPulse } from "$lib/connect";
 import type { EveningPulse, PulseTopic } from "$lib/schema/evening_pulse";
 

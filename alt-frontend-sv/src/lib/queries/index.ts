@@ -2,54 +2,51 @@
  * TanStack Query hooks exports for Connect-RPC clients
  */
 
-// Query keys
-export {
-	feedKeys,
-	articleKeys,
-	rssKeys,
-	recapKeys,
-	pulseKeys,
-	tagTrailKeys,
-} from "./keys";
-
-// Feed queries and mutations
-export {
-	createFeedStatsQuery,
-	createDetailedFeedStatsQuery,
-	createUnreadCountQuery,
-	createUnreadFeedsQuery,
-	createReadFeedsQuery,
-	createFavoriteFeedsQuery,
-	createSearchFeedsQuery,
-	createMarkAsReadMutation,
-	flattenFeedPages,
-	flattenSearchPages,
-} from "./feeds";
-
 // Article queries and mutations
 export {
-	createFetchArticleContentQuery,
 	createArchiveArticleMutation,
 	createArticlesCursorQuery,
+	createFetchArticleContentQuery,
 	flattenArticlePages,
 } from "./articles";
 
-// RSS queries and mutations
+// Feed queries and mutations
 export {
-	createRSSLinksQuery,
-	createRegisterRSSMutation,
-	createDeleteRSSMutation,
-	createRegisterFavoriteMutation,
-} from "./rss";
+	createDetailedFeedStatsQuery,
+	createFavoriteFeedsQuery,
+	createFeedStatsQuery,
+	createMarkAsReadMutation,
+	createReadFeedsQuery,
+	createSearchFeedsQuery,
+	createUnreadCountQuery,
+	createUnreadFeedsQuery,
+	flattenFeedPages,
+	flattenSearchPages,
+} from "./feeds";
+// Query keys
+export {
+	articleKeys,
+	feedKeys,
+	pulseKeys,
+	recapKeys,
+	rssKeys,
+	tagTrailKeys,
+} from "./keys";
+// Evening Pulse queries
+export { createEveningPulseQuery } from "./pulse";
 
 // Recap queries
 export {
-	createThreeDayRecapQuery,
 	createSevenDayRecapQuery,
+	createThreeDayRecapQuery,
 } from "./recap";
-
-// Evening Pulse queries
-export { createEveningPulseQuery } from "./pulse";
+// RSS queries and mutations
+export {
+	createDeleteRSSMutation,
+	createRegisterFavoriteMutation,
+	createRegisterRSSMutation,
+	createRSSLinksQuery,
+} from "./rss";
 
 // Tag Trail queries
 export {

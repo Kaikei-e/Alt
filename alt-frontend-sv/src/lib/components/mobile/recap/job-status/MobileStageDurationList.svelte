@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { StatusTransition, JobStatus } from "$lib/schema/dashboard";
+import type { JobStatus, StatusTransition } from "$lib/schema/dashboard";
 import { getStageLabel } from "$lib/schema/dashboard";
 import { calculateStageDurations } from "$lib/utils/stageMetrics";
 

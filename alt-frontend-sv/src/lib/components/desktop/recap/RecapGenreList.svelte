@@ -1,16 +1,16 @@
 <script lang="ts">
-import type { RecapGenre } from "$lib/schema/recap";
-import { cn } from "$lib/utils";
 import {
-	Sparkles,
+	BookOpen,
 	Briefcase,
 	Clapperboard,
+	Cpu,
 	Globe,
 	Heart,
-	Cpu,
-	BookOpen,
+	Sparkles,
 	TrendingUp,
 } from "@lucide/svelte";
+import type { RecapGenre } from "$lib/schema/recap";
+import { cn } from "$lib/utils";
 
 interface Props {
 	genres: RecapGenre[];

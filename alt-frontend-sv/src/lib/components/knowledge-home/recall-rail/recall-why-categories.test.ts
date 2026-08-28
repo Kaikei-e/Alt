@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { categorizeRecallReasons } from "./recall-why-categories";
 import type { RecallReasonData } from "$lib/connect/knowledge_home";
+import { categorizeRecallReasons } from "./recall-why-categories";
 
 describe("categorizeRecallReasons", () => {
 	it("categorizes opened_before_but_not_revisited under 'Revisit'", () => {

@@ -1,6 +1,6 @@
 // Re-export from domain layer
 export type {
-	RecapGenre,
 	EvidenceLink,
+	RecapGenre,
 	RecapSummary,
 } from "$lib/domain/recap/types";

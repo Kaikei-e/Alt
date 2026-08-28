@@ -1,8 +1,8 @@
 <script lang="ts">
-import type { ActiveJobInfo } from "$lib/schema/dashboard";
-import PipelineProgress from "./PipelineProgress.svelte";
-import GenreProgressList from "./GenreProgressList.svelte";
 import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
+import type { ActiveJobInfo } from "$lib/schema/dashboard";
+import GenreProgressList from "./GenreProgressList.svelte";
+import PipelineProgress from "./PipelineProgress.svelte";
 
 interface Props {
 	job: ActiveJobInfo;

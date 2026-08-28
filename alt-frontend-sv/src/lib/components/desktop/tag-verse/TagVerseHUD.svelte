@@ -1,5 +1,5 @@
 <script lang="ts">
-import { X, FileText, BookOpen } from "@lucide/svelte";
+import { BookOpen, FileText, X } from "@lucide/svelte";
 import HUDArticlesTab from "./HUDArticlesTab.svelte";
 import HUDRecapsTab from "./HUDRecapsTab.svelte";
 

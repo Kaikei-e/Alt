@@ -1,5 +1,6 @@
 <script lang="ts">
-import { RefreshCw, ChevronRight, ExternalLink } from "@lucide/svelte";
+import { ChevronRight, ExternalLink, RefreshCw } from "@lucide/svelte";
+import { onDestroy, untrack } from "svelte";
 import {
 	createClientTransport,
 	fetchArticlesByTag,
@@ -8,7 +9,6 @@ import {
 	type TagTrailArticle,
 	type TagTrailTag,
 } from "$lib/connect";
-import { onDestroy, untrack } from "svelte";
 import type { TagTrailHop } from "$lib/schema/tagTrail";
 
 // Create transport for connect-rpc calls

@@ -1,7 +1,7 @@
 <script lang="ts">
+import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
 import SLISparkline from "../SLISparkline.svelte";
 import MetricSeriesDigest from "./MetricSeriesDigest.svelte";
-import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
 import { computeDelta, type SimpleSeries } from "./util";
 
 type Threshold = {

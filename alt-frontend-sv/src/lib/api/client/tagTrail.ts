@@ -7,12 +7,12 @@
  * are no longer consumed from this file.
  */
 
+import { createClientTransport } from "$lib/connect/transport-client";
 import type {
 	RandomFeedResponse,
 	TagTrailArticle,
 	TagTrailTag,
 } from "$lib/schema/tagTrail";
-import { createClientTransport } from "$lib/connect/transport-client";
 
 /**
  * Get a random subscription feed for Tag Trail.

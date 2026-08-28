@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { createAndAutostart } from "./acolyteAutostart";
+import { describe, expect, it, vi } from "vitest";
 import { AcolyteRpcError } from "./acolyte";
+import { createAndAutostart } from "./acolyteAutostart";
 
 describe("createAndAutostart", () => {
 	const inputs = {

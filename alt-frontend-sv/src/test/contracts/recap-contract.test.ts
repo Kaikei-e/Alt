@@ -3,8 +3,9 @@
  *
  * Validates recap-related proto schema conformance.
  */
-import { describe, it, expect } from "vitest";
-import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
+
+import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { describe, expect, it } from "vitest";
 import { GetSevenDayRecapResponseSchema } from "$lib/gen/alt/recap/v2/recap_pb";
 import {
 	buildConnectRecapResponse,

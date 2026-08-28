@@ -1,16 +1,16 @@
+import {
+	CONNECT_ARTICLE_CONTENT_RESPONSE,
+	CONNECT_FEEDS_EMPTY_RESPONSE,
+	CONNECT_FEEDS_NAVIGATION_RESPONSE,
+	CONNECT_FEEDS_RESPONSE,
+	CONNECT_FEEDS_WITHOUT_ARTICLE_ID,
+	CONNECT_MARK_AS_READ_RESPONSE,
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
 import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopFeedsPage } from "../../pages/desktop/DesktopFeedsPage";
 import { fulfillJson } from "../../utils/mockHelpers";
-import {
-	CONNECT_FEEDS_RESPONSE,
-	CONNECT_FEEDS_EMPTY_RESPONSE,
-	CONNECT_FEEDS_WITHOUT_ARTICLE_ID,
-	CONNECT_FEEDS_NAVIGATION_RESPONSE,
-	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
-	CONNECT_MARK_AS_READ_RESPONSE,
-	CONNECT_RPC_PATHS,
-	CONNECT_ARTICLE_CONTENT_RESPONSE,
-} from "../../fixtures/mockData";
 
 test.describe("Desktop Feeds", () => {
 	let feedsPage: DesktopFeedsPage;

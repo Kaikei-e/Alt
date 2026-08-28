@@ -4,13 +4,14 @@
  * Tests for the swipe feed interface using Page Object Model pattern.
  * This demonstrates best practices for maintainable E2E tests.
  */
-import { expect, test } from "../../fixtures/pomFixtures";
+
 import {
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 	CONNECT_MARK_AS_READ_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { MobileSwipePage } from "../../pages/mobile/MobileSwipePage";
 import { fulfillError, fulfillJson } from "../../utils/mockHelpers";
 

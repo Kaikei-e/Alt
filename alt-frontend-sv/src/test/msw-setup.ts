@@ -24,5 +24,5 @@ export function addHandlers(
 	server.use(...newHandlers);
 }
 
-export { http, HttpResponse } from "msw";
+export { HttpResponse, http } from "msw";
 export { handlers } from "../../tests/e2e/infra/msw-handlers";

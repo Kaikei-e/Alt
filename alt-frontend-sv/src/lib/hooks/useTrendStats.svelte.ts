@@ -1,5 +1,5 @@
 import { getTrendStats } from "$lib/api/client/stats";
-import type { TrendDataResponse, TimeWindow } from "$lib/schema/stats";
+import type { TimeWindow, TrendDataResponse } from "$lib/schema/stats";
 
 /**
  * Hook for fetching and managing trend statistics data.

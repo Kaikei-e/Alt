@@ -1,9 +1,9 @@
 <script lang="ts">
-import type { PulseTopic } from "$lib/schema/evening_pulse";
-import * as Sheet from "$lib/components/ui/sheet";
-import { Button } from "$lib/components/ui/button";
-import { X, ExternalLink, Newspaper, Rss, Tag } from "@lucide/svelte";
+import { ExternalLink, Newspaper, Rss, Tag, X } from "@lucide/svelte";
 import PulseRoleLabel from "$lib/components/pulse/PulseRoleLabel.svelte";
+import { Button } from "$lib/components/ui/button";
+import * as Sheet from "$lib/components/ui/sheet";
+import type { PulseTopic } from "$lib/schema/evening_pulse";
 import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
 
 interface Props {

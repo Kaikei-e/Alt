@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import {
-	renderFeedsFixture,
-	createRenderFeed,
-} from "../../../../../tests/fixtures/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
+import {
+	createRenderFeed,
+	renderFeedsFixture,
+} from "../../../../../tests/fixtures/feeds";
 
 /**
  * These tests verify the pure logic of the FeedGrid API functions.

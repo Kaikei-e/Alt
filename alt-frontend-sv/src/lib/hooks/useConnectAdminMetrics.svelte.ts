@@ -11,17 +11,17 @@
  *    lifecycle imperatively from start/stop, invoked by $effect in the caller.
  */
 
+import {
+	type AdminMonitorClient,
+	createAdminMonitorClient,
+} from "$lib/connect/admin_monitor";
 import { createClientTransport } from "$lib/connect/transport-client";
 import {
-	createAdminMonitorClient,
-	type AdminMonitorClient,
-} from "$lib/connect/admin_monitor";
-import {
+	type CatalogEntry,
+	type MetricResult,
 	RangeWindow,
 	Step,
 	type WatchResponse,
-	type MetricResult,
-	type CatalogEntry,
 } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
 
 export type StreamState =

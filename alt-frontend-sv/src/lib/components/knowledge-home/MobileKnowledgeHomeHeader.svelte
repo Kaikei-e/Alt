@@ -1,8 +1,8 @@
 <script lang="ts">
 import {
-	type ServiceQuality,
 	getQualityDotClass,
 	getQualityLabel,
+	type ServiceQuality,
 } from "./mobile-header";
 
 let {

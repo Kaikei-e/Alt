@@ -5,9 +5,9 @@ import * as Sheet from "$lib/components/ui/sheet";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import { useKeyboardOffset } from "$lib/hooks/useKeyboardOffset.svelte";
 import {
+	collectFeedLinkIdsByDomain,
 	getEffectiveDomain,
 	groupSourcesByDomain,
-	collectFeedLinkIdsByDomain,
 } from "$lib/utils/feed-source-filter";
 
 interface Props {

@@ -7,14 +7,14 @@
 
 import type { Transport } from "@connectrpc/connect";
 import {
-	streamSummarizeWithAbort,
-	type StreamSummarizeChunk,
-	type StreamSummarizeResult,
-} from "./feeds";
-import {
 	createStreamingRenderer,
 	type StreamingRendererOptions,
 } from "$lib/utils/streamingRenderer";
+import {
+	type StreamSummarizeChunk,
+	type StreamSummarizeResult,
+	streamSummarizeWithAbort,
+} from "./feeds";
 
 // =============================================================================
 // Types

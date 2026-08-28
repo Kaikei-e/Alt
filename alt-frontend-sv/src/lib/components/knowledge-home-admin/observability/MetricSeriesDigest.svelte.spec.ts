@@ -1,6 +1,6 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it } from "vitest";
+import { render } from "vitest-browser-svelte";
 
 import MetricSeriesDigest from "./MetricSeriesDigest.svelte";
 import type { SimpleSeries } from "./util";

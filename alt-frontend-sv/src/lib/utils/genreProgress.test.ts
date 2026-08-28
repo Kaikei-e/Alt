@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { filterGenreProgress } from "./genreProgress";
 import type { GenreProgressInfo } from "$lib/schema/dashboard";
+import { filterGenreProgress } from "./genreProgress";
 
 describe("filterGenreProgress", () => {
 	const createGenreInfo = (

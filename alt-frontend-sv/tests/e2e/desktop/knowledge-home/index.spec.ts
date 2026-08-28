@@ -1,20 +1,20 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { DesktopKnowledgeHomePage } from "../../pages/desktop/DesktopKnowledgeHomePage";
-import { fulfillJson } from "../../utils/mockHelpers";
 import {
 	buildGetKnowledgeHomeResponse,
 	buildListLensesResponse,
-	KNOWLEDGE_HOME_ITEM_READY,
-	KNOWLEDGE_HOME_ITEM_PENDING,
-	KNOWLEDGE_HOME_ITEM_SUPERSEDED,
-	RECALL_CANDIDATE_WITH_REASONS,
 	DIGEST_WITH_AVAILABILITY,
 	DIGEST_WITHOUT_AVAILABILITY,
 	FEATURE_FLAGS_RECALL_DISABLED,
-	FEATURE_FLAGS_WITH_SUPERSEDE,
 	FEATURE_FLAGS_WITH_LENS,
 	FEATURE_FLAGS_WITH_STREAM,
+	FEATURE_FLAGS_WITH_SUPERSEDE,
+	KNOWLEDGE_HOME_ITEM_PENDING,
+	KNOWLEDGE_HOME_ITEM_READY,
+	KNOWLEDGE_HOME_ITEM_SUPERSEDED,
+	RECALL_CANDIDATE_WITH_REASONS,
 } from "../../fixtures/factories/knowledgeHomeFactory";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { DesktopKnowledgeHomePage } from "../../pages/desktop/DesktopKnowledgeHomePage";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 // Connect-RPC paths via SvelteKit proxy (/api/v2)
 const KH_GET =

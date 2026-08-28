@@ -4,8 +4,8 @@
 
 import type { Transport } from "@connectrpc/connect";
 import type {
-	GetFeedStatsResponse,
 	GetDetailedFeedStatsResponse,
+	GetFeedStatsResponse,
 	GetUnreadCountResponse,
 } from "$lib/gen/alt/feeds/v2/feeds_pb";
 import { createFeedClient } from "./client";

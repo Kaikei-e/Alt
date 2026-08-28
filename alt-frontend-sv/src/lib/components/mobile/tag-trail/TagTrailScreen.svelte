@@ -1,15 +1,15 @@
 <script lang="ts">
 import { ArrowLeft } from "@lucide/svelte";
+import { onDestroy, untrack } from "svelte";
 import {
 	createClientTransport,
 	fetchArticlesByTag,
 	fetchRandomFeed,
-	streamArticleTags,
 	type RandomFeed,
+	streamArticleTags,
 	type TagTrailArticle,
 	type TagTrailTag,
 } from "$lib/connect";
-import { onDestroy, untrack } from "svelte";
 import type { TagTrailHop } from "$lib/schema/tagTrail";
 import RandomFeedCard from "./RandomFeedCard.svelte";
 import TagArticleList from "./TagArticleList.svelte";

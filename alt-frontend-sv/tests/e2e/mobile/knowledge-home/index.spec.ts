@@ -1,13 +1,13 @@
+import {
+	buildGetKnowledgeHomeResponse,
+	FEATURE_FLAGS_RECALL_DISABLED,
+	KNOWLEDGE_HOME_ITEM_PENDING,
+	KNOWLEDGE_HOME_ITEM_READY,
+	RECALL_CANDIDATE_WITH_REASONS,
+} from "../../fixtures/factories/knowledgeHomeFactory";
 import { expect, test } from "../../fixtures/pomFixtures";
 import { MobileKnowledgeHomePage } from "../../pages/mobile/MobileKnowledgeHomePage";
 import { fulfillJson } from "../../utils/mockHelpers";
-import {
-	buildGetKnowledgeHomeResponse,
-	KNOWLEDGE_HOME_ITEM_READY,
-	KNOWLEDGE_HOME_ITEM_PENDING,
-	RECALL_CANDIDATE_WITH_REASONS,
-	FEATURE_FLAGS_RECALL_DISABLED,
-} from "../../fixtures/factories/knowledgeHomeFactory";
 
 const KH_GET =
 	"**/api/v2/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome";

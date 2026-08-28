@@ -1,8 +1,8 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it, vi } from "vitest";
-import MobileAcolyteReportCard from "./MobileAcolyteReportCard.svelte";
+import { render } from "vitest-browser-svelte";
 import { MOCK_REPORT_SUMMARIES } from "./acolyte-fixtures";
+import MobileAcolyteReportCard from "./MobileAcolyteReportCard.svelte";
 
 describe("MobileAcolyteReportCard", () => {
 	const succeededReport = MOCK_REPORT_SUMMARIES[0]!; // succeeded

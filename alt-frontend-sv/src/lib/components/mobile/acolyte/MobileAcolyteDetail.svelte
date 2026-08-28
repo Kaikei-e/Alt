@@ -1,4 +1,9 @@
 <script lang="ts">
+import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
+import {
+	type RunStatus as BackendRunStatus,
+	deriveRunStatusKind,
+} from "$lib/components/acolyte/runStatusPill";
 import type {
 	AcolyteCitation,
 	AcolyteReport,
@@ -6,13 +11,8 @@ import type {
 	AcolyteVersionSummary,
 } from "$lib/connect/acolyte";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-import MobileAcolyteSectionTabs from "./MobileAcolyteSectionTabs.svelte";
 import MobileAcolyteHistorySheet from "./MobileAcolyteHistorySheet.svelte";
-import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
-import {
-	deriveRunStatusKind,
-	type RunStatus as BackendRunStatus,
-} from "$lib/components/acolyte/runStatusPill";
+import MobileAcolyteSectionTabs from "./MobileAcolyteSectionTabs.svelte";
 
 function parseCitations(citationsJson: string): AcolyteCitation[] {
 	try {

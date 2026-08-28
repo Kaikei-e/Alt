@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import TagCombobox from "./TagCombobox.svelte";
-
 import type { TagSuggestion } from "./TagCombobox.svelte";
+import TagCombobox from "./TagCombobox.svelte";
 
 const suggestions: TagSuggestion[] = [
 	{ name: "AI", count: 42 },

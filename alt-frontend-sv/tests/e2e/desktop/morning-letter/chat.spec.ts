@@ -1,11 +1,11 @@
+import {
+	CONNECT_MORNING_LETTER_SIMPLE_RESPONSE,
+	CONNECT_MORNING_LETTER_STREAM_MESSAGES,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
 import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopMorningLetterPage } from "../../pages/desktop/DesktopMorningLetterPage";
 import { fulfillConnectStream } from "../../utils/mockHelpers";
-import {
-	CONNECT_MORNING_LETTER_STREAM_MESSAGES,
-	CONNECT_MORNING_LETTER_SIMPLE_RESPONSE,
-	CONNECT_RPC_PATHS,
-} from "../../fixtures/mockData";
 
 test.describe("Desktop Morning Letter Chat", () => {
 	let morningLetterPage: DesktopMorningLetterPage;

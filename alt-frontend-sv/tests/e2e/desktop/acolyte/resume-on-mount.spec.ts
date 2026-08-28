@@ -1,6 +1,6 @@
-import { test, expect } from "../../fixtures/pomFixtures";
-import { fulfillJson } from "../../utils/mockHelpers";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopAcolyteReportPage } from "../../pages/desktop/DesktopAcolyteReportPage";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 const REPORT_ID = "rpt-resume-001";
 const RUN_ID = "run-resume-001";

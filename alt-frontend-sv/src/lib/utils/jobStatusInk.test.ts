@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { statusToInk, statusToGlyph, statusToLabel } from "./jobStatusInk";
+import { statusToGlyph, statusToInk, statusToLabel } from "./jobStatusInk";
 
 describe("statusToInk", () => {
 	it("maps completed/morning_completed/succeeded to success ink", () => {

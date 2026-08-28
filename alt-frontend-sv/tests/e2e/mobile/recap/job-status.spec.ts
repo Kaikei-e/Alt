@@ -1,11 +1,11 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
+	JOB_DASHBOARD_PATHS,
+	JOB_PROGRESS_EMPTY,
 	JOB_PROGRESS_RESPONSE,
 	JOB_PROGRESS_WITH_ACTIVE_JOB,
-	JOB_PROGRESS_EMPTY,
-	JOB_DASHBOARD_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillError, fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("Mobile Recap Job Status", () => {
 	test.use({

@@ -1,10 +1,10 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { DesktopRecapPage } from "../../pages/desktop/DesktopRecapPage";
-import { fulfillJson } from "../../utils/mockHelpers";
 import {
 	CONNECT_RECAP_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { DesktopRecapPage } from "../../pages/desktop/DesktopRecapPage";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("System Loader", () => {
 	let recapPage: DesktopRecapPage;

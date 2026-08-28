@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { SubStageProgress } from "$lib/schema/dashboard";
 import {
-	shouldShowSubStageProgress,
 	formatSubStageProgress,
 	inferStageCompletion,
+	shouldShowSubStageProgress,
 } from "./pipelineProgress";
-import type { SubStageProgress } from "$lib/schema/dashboard";
 
 describe("shouldShowSubStageProgress", () => {
 	const createProgress = (

@@ -1,10 +1,10 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
-	CONNECT_RECAP_RESPONSE,
 	CONNECT_RECAP_EMPTY_RESPONSE,
+	CONNECT_RECAP_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillError, fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("Mobile Recap 7-Days", () => {
 	test.beforeEach(async ({ page }) => {

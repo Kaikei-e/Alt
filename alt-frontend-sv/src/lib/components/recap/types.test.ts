@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { fromGlobalRecapHit, fromRecapSearchResult } from "./types";
-import type { GlobalRecapHitData } from "$lib/connect/global_search";
 import type { RecapSearchResultItem } from "$lib/connect";
+import type { GlobalRecapHitData } from "$lib/connect/global_search";
+import { fromGlobalRecapHit, fromRecapSearchResult } from "./types";
 
 describe("fromGlobalRecapHit", () => {
 	const hit: GlobalRecapHitData = {

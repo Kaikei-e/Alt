@@ -9,7 +9,6 @@ import {
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
 import type { RenderFeed } from "$lib/schema/feed";
-import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import {
 	type ArticleContentPhase,
 	CONTENT_PENDING_LABEL,
@@ -19,6 +18,7 @@ import {
 	READ_ORIGINAL_LABEL,
 	TRY_AGAIN_LABEL,
 } from "$lib/utils/articleContentState";
+import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import {
 	articleContentErrorMessage,
 	isTransientError,

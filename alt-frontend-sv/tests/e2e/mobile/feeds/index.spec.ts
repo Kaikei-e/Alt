@@ -1,10 +1,10 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { fulfillJson } from "../../utils/mockHelpers";
 import {
 	CONNECT_FEEDS_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("mobile feeds routes", () => {
 	test("feeds list renders with multiple cards", async ({

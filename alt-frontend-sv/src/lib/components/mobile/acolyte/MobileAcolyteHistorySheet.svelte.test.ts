@@ -1,8 +1,8 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it, vi } from "vitest";
-import MobileAcolyteHistorySheet from "./MobileAcolyteHistorySheet.svelte";
+import { render } from "vitest-browser-svelte";
 import { MOCK_VERSIONS } from "./acolyte-fixtures";
+import MobileAcolyteHistorySheet from "./MobileAcolyteHistorySheet.svelte";
 
 describe("MobileAcolyteHistorySheet", () => {
 	it("renders Editions heading when open", async () => {

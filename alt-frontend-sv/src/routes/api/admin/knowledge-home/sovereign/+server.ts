@@ -1,11 +1,11 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
+import { verifyCsrfToken } from "$lib/api";
 import {
-	fetchSovereignAdminSnapshot,
 	createSovereignSnapshot,
+	fetchSovereignAdminSnapshot,
 	runSovereignRetention,
 } from "$lib/server/sovereign-admin";
 import { getUserRole } from "$lib/server/user-role";
-import { verifyCsrfToken } from "$lib/api";
 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (getUserRole(locals.user) !== "admin") {

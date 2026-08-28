@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { Snippet } from "svelte";
-import Sidebar from "./Sidebar.svelte";
 import { cn } from "$lib/utils";
+import Sidebar from "./Sidebar.svelte";
 
 let { children, class: className = "" }: { children: Snippet; class?: string } =
 	$props();

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { Transport } from "@connectrpc/connect";
+import { describe, expect, it } from "vitest";
 
 import { batchPrefetchArticleContent, fetchArticleContent } from "./articles";
 

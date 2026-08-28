@@ -1,20 +1,20 @@
 import type { Handle, HandleServerError, ServerInit } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { building } from "$app/environment";
-import {
-	isPublicRoute,
-	isApiRoute,
-	isStreamEndpoint,
-} from "$lib/server/route-guard";
-import { verifySovereignAdminAuth } from "$lib/server/sovereign-admin";
+import { classifySafari, extractChunkHash } from "$lib/safari-error-utils";
 import { validateSession } from "$lib/server/auth-middleware";
 import { classifyOryError } from "$lib/server/error-classifier";
+import { resolveResponsiveRedirect } from "$lib/server/redirect-resolver";
 import {
 	buildApiErrorResponse,
 	buildRedirectUrl,
 } from "$lib/server/response-builder";
-import { resolveResponsiveRedirect } from "$lib/server/redirect-resolver";
-import { classifySafari, extractChunkHash } from "$lib/safari-error-utils";
+import {
+	isApiRoute,
+	isPublicRoute,
+	isStreamEndpoint,
+} from "$lib/server/route-guard";
+import { verifySovereignAdminAuth } from "$lib/server/sovereign-admin";
 import {
 	applyApiCacheControl,
 	applyHtmlCacheControl,

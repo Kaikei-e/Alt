@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import type { FeedLink, FeedHealthStatus } from "$lib/schema/feedLink";
+import { describe, expect, it } from "vitest";
+import type { FeedHealthStatus, FeedLink } from "$lib/schema/feedLink";
 import {
 	classifyFeedHealth,
 	getHealthColor,

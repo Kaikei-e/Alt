@@ -1,8 +1,8 @@
-import type { RenderFeed } from "$lib/schema/feed";
 import {
-	getFeedsWithCursorClient,
 	getFeedContentOnTheFlyClient,
+	getFeedsWithCursorClient,
 } from "$lib/api/client";
+import type { RenderFeed } from "$lib/schema/feed";
 
 // Disable SSR for this page - Connect-RPC client requires browser context
 export const ssr = false;

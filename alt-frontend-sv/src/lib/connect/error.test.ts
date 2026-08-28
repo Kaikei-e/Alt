@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { Code, ConnectError } from "@connectrpc/connect";
+import { describe, expect, it } from "vitest";
 
 import { extractConnectCode } from "./error";
 

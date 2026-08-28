@@ -9,11 +9,11 @@
  * browser pulls the fresh HTML + manifest pair.
  */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	buildClientErrorPayload,
 	createChunkReloadScheduler,
 	isChunkLoadError,
-	buildClientErrorPayload,
 } from "./hooks.client";
 
 describe("isChunkLoadError", () => {

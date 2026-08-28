@@ -2,7 +2,7 @@
  * Recap Mock Data
  */
 
-import type { RecapResponse, RecapGenre } from "../types";
+import type { RecapGenre, RecapResponse } from "../types";
 
 // =============================================================================
 // Recap Data

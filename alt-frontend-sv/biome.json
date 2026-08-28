@@ -7,7 +7,7 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["**", "!playwright-report", "!docs"]
+		"includes": ["**", "!playwright-report", "!docs", "!src/lib/gen"]
 	},
 	"formatter": {
 		"enabled": true,

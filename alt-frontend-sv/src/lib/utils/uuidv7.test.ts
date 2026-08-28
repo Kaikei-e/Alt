@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { uuidv7 } from "./uuidv7";
 
 const UUID_RE =

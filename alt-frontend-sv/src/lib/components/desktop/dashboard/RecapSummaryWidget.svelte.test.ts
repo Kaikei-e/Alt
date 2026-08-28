@@ -1,8 +1,8 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it } from "vitest";
-import RecapSummaryWidget from "./RecapSummaryWidget.svelte";
+import { render } from "vitest-browser-svelte";
 import { MOCK_RECAP } from "./dashboard-fixtures";
+import RecapSummaryWidget from "./RecapSummaryWidget.svelte";
 
 describe("RecapSummaryWidget", () => {
 	it("renders THREE-DAY BRIEF heading", async () => {

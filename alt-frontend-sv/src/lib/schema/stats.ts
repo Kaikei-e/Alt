@@ -1,11 +1,11 @@
 // Re-export from domain layer
 export type {
-	FeedAmount,
-	SummarizedFeedAmount,
-	FeedStatsSummary,
 	DetailedFeedStatsSummary,
-	UnreadCountResponse,
+	FeedAmount,
+	FeedStatsSummary,
+	SummarizedFeedAmount,
+	TimeWindow,
 	TrendDataPoint,
 	TrendDataResponse,
-	TimeWindow,
+	UnreadCountResponse,
 } from "$lib/domain/stats/types";

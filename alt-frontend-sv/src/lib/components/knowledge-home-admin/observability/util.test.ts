@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	computeDelta,
+	type SimpleSeries,
 	serviceHealthRows,
 	topSeries,
-	type SimpleSeries,
 } from "./util";
 
 function pts(values: number[]): { time: string; value: number }[] {

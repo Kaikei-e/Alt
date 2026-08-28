@@ -5,22 +5,22 @@
  * Authentication is handled by the transport layer.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
-	RecapService,
 	type GetEveningPulseResponse,
+	Confidence as ProtoConfidence,
 	PulseStatus as ProtoPulseStatus,
 	TopicRole as ProtoTopicRole,
-	Confidence as ProtoConfidence,
+	RecapService,
 } from "$lib/gen/alt/recap/v2/recap_pb";
 import type {
-	EveningPulse,
-	PulseTopic,
-	PulseStatus,
-	TopicRole,
 	Confidence,
+	EveningPulse,
+	PulseStatus,
+	PulseTopic,
 	QuietDayInfo,
+	TopicRole,
 	WeeklyHighlight,
 } from "$lib/schema/evening_pulse";
 

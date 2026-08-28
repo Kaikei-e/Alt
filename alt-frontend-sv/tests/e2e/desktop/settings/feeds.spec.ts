@@ -1,5 +1,3 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { gotoDesktopRoute } from "../../helpers/navigation";
 import {
 	CONNECT_RSS_PATHS,
 	RSS_FEED_DELETE_RESPONSE,
@@ -7,6 +5,8 @@ import {
 	RSS_FEED_LINKS_LIST_RESPONSE,
 	RSS_FEED_REGISTER_RESPONSE,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { gotoDesktopRoute } from "../../helpers/navigation";
 import { fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("desktop settings feeds - manage feed links", () => {

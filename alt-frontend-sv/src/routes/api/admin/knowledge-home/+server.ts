@@ -1,18 +1,18 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
+import { verifyCsrfToken } from "$lib/api";
 import {
+	compareKnowledgeHomeReproject,
+	emitKnowledgeHomeArticleUrlBackfill,
 	fetchKnowledgeHomeAdminSnapshot,
 	pauseKnowledgeHomeBackfill,
 	resumeKnowledgeHomeBackfill,
-	triggerKnowledgeHomeBackfill,
-	emitKnowledgeHomeArticleUrlBackfill,
-	startKnowledgeHomeReproject,
-	compareKnowledgeHomeReproject,
-	swapKnowledgeHomeReproject,
 	rollbackKnowledgeHomeReproject,
 	runKnowledgeHomeAudit,
+	startKnowledgeHomeReproject,
+	swapKnowledgeHomeReproject,
+	triggerKnowledgeHomeBackfill,
 } from "$lib/server/knowledge-home-admin";
 import { getUserRole } from "$lib/server/user-role";
-import { verifyCsrfToken } from "$lib/api";
 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (getUserRole(locals.user) !== "admin") {

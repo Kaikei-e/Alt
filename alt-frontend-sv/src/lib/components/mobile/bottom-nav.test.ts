@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NAV_TABS, getActiveTabIndex, isImmersiveRoute } from "./bottom-nav";
+import { getActiveTabIndex, isImmersiveRoute, NAV_TABS } from "./bottom-nav";
 
 describe("NAV_TABS (re-export)", () => {
 	it("has exactly 5 tabs", () => {

@@ -4,15 +4,15 @@
 
 import type { Transport } from "@connectrpc/connect";
 import type {
-	GetUnreadFeedsResponse,
 	GetAllFeedsResponse,
-	GetReadFeedsResponse,
 	GetFavoriteFeedsResponse,
+	GetReadFeedsResponse,
+	GetUnreadFeedsResponse,
 	SearchFeedsResponse,
 } from "$lib/gen/alt/feeds/v2/feeds_pb";
 import {
-	createFeedClient,
 	convertProtoFeed,
+	createFeedClient,
 	type FeedCursorResponse,
 	type FeedSearchResponse,
 } from "./client";

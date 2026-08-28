@@ -7,8 +7,8 @@
  * IMPORTANT: This module is safe to import in browser code.
  */
 
-import { createConnectTransport } from "@connectrpc/connect-web";
 import type { Transport } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-web";
 import { base } from "$app/paths";
 
 /**

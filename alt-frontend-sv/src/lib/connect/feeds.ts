@@ -3,52 +3,49 @@
  * Actual implementations are in src/lib/connect/feeds/ sub-modules.
  */
 
+// Actions (Mark as Read, Subscriptions)
+export {
+	type ConnectFeedSource,
+	listSubscriptions,
+	type MarkAsReadResult,
+	markAsRead,
+	subscribe,
+	unsubscribe,
+} from "./feeds/actions";
 // Client & shared types
 export {
-	createFeedClient,
-	convertProtoFeed,
-	normalizeUrl,
 	type ConnectFeedItem,
+	convertProtoFeed,
+	createFeedClient,
 	type FeedCursorResponse,
 	type FeedSearchResponse,
+	normalizeUrl,
 } from "./feeds/client";
-
-// Stats
-export {
-	getFeedStats,
-	getDetailedFeedStats,
-	getUnreadCount,
-	type FeedStats,
-	type DetailedFeedStats,
-	type UnreadCount,
-} from "./feeds/stats";
 
 // Listing & Search
 export {
-	getUnreadFeeds,
 	getAllFeeds,
-	getReadFeeds,
 	getFavoriteFeeds,
+	getReadFeeds,
+	getUnreadFeeds,
 	searchFeeds,
 } from "./feeds/listing";
-
+// Stats
+export {
+	type DetailedFeedStats,
+	type FeedStats,
+	getDetailedFeedStats,
+	getFeedStats,
+	getUnreadCount,
+	type UnreadCount,
+} from "./feeds/stats";
 // Streaming
 export {
+	type StreamingFeedStats,
+	type StreamSummarizeChunk,
+	type StreamSummarizeOptions,
+	type StreamSummarizeResult,
 	streamFeedStats,
 	streamSummarize,
 	streamSummarizeWithAbort,
-	type StreamingFeedStats,
-	type StreamSummarizeOptions,
-	type StreamSummarizeChunk,
-	type StreamSummarizeResult,
 } from "./feeds/streaming";
-
-// Actions (Mark as Read, Subscriptions)
-export {
-	markAsRead,
-	listSubscriptions,
-	subscribe,
-	unsubscribe,
-	type MarkAsReadResult,
-	type ConnectFeedSource,
-} from "./feeds/actions";

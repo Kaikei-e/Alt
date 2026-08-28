@@ -7,10 +7,10 @@ import http from "node:http";
 import jwt from "jsonwebtoken";
 import {
 	buildAuthHubSession,
-	DEV_USER_ID,
-	DEV_JWT_SECRET,
-	DEV_JWT_ISSUER,
 	DEV_JWT_AUDIENCE,
+	DEV_JWT_ISSUER,
+	DEV_JWT_SECRET,
+	DEV_USER_ID,
 } from "../data/session";
 
 export const AUTH_HUB_PORT = 4002;

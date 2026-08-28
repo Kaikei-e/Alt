@@ -2,8 +2,8 @@
 import * as Dialog from "$lib/components/ui/dialog";
 import type { ConnectFeedSource } from "$lib/connect";
 import type { LensVersionData } from "$lib/connect/knowledge_home";
-import TagCombobox from "./TagCombobox.svelte";
 import type { TagSuggestion } from "./TagCombobox.svelte";
+import TagCombobox from "./TagCombobox.svelte";
 
 interface Props {
 	open: boolean;

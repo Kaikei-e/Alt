@@ -4,17 +4,17 @@
  * Provides type-safe methods to call RSSService endpoints.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
-	RSSService,
-	type RegisterRSSFeedResponse,
-	type ListRSSFeedLinksResponse,
 	type DeleteRSSFeedLinkResponse,
-	type RegisterFavoriteFeedResponse,
-	type RemoveFavoriteFeedResponse,
-	type RandomSubscriptionResponse,
+	type ListRSSFeedLinksResponse,
 	type RSSFeedLink as ProtoRSSFeedLink,
+	type RandomSubscriptionResponse,
+	type RegisterFavoriteFeedResponse,
+	type RegisterRSSFeedResponse,
+	type RemoveFavoriteFeedResponse,
+	RSSService,
 } from "$lib/gen/alt/rss/v2/rss_pb";
 
 /** Type-safe RSSService client */

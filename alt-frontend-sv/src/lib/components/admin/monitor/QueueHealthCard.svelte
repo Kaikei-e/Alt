@@ -1,6 +1,6 @@
 <script lang="ts">
-import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
 import SLISparkline from "$lib/components/knowledge-home-admin/SLISparkline.svelte";
+import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
 import { formatValue, stateBadge } from "./format";
 
 let {

@@ -1,10 +1,10 @@
-import { test, expect } from "../../fixtures/pomFixtures";
-import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
 	CONNECT_EVENING_PULSE_PATH,
-	CONNECT_EVENING_PULSE_RESPONSE,
 	CONNECT_EVENING_PULSE_QUIET_RESPONSE,
+	CONNECT_EVENING_PULSE_RESPONSE,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillError, fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("Desktop Evening Pulse", () => {
 	test.beforeEach(async ({ page }) => {

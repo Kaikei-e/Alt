@@ -5,11 +5,11 @@
 
 import type { Transport } from "@connectrpc/connect";
 import type {
-	MarkAsReadResponse,
+	FeedSource,
 	ListSubscriptionsResponse,
+	MarkAsReadResponse,
 	SubscribeResponse,
 	UnsubscribeResponse,
-	FeedSource,
 } from "$lib/gen/alt/feeds/v2/feeds_pb";
 import { createFeedClient, normalizeUrl } from "./client";
 

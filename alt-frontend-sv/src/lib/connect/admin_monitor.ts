@@ -5,8 +5,8 @@
  * which forwards to the BFF, which in turn hits alt-backend with a service token.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 
 import { AdminMonitorService } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
 

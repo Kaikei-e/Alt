@@ -8,8 +8,8 @@
  * in browser code. Use transport-client.ts for browser-side code instead.
  */
 
-import { createConnectTransport } from "@connectrpc/connect-web";
 import type { Transport } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-web";
 import { env } from "$env/dynamic/private";
 import { getBackendToken } from "$lib/server/auth";
 

@@ -8,25 +8,25 @@
  */
 
 import {
-	createQuery,
-	createMutation,
 	createInfiniteQuery,
+	createMutation,
+	createQuery,
 	useQueryClient,
 } from "@tanstack/svelte-query";
-import { createClientTransport } from "$lib/connect/transport-client";
 import {
-	getUnreadFeeds,
-	getReadFeeds,
-	getFavoriteFeeds,
-	searchFeeds,
-	getFeedStats,
-	getDetailedFeedStats,
-	getUnreadCount,
-	markAsRead,
 	type ConnectFeedItem,
 	type FeedCursorResponse,
 	type FeedSearchResponse,
+	getDetailedFeedStats,
+	getFavoriteFeeds,
+	getFeedStats,
+	getReadFeeds,
+	getUnreadCount,
+	getUnreadFeeds,
+	markAsRead,
+	searchFeeds,
 } from "$lib/connect/feeds";
+import { createClientTransport } from "$lib/connect/transport-client";
 import { feedKeys } from "./keys";
 
 // =============================================================================

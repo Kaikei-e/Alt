@@ -1,5 +1,5 @@
 <script lang="ts">
-import { FileText, Tag, FileStack } from "@lucide/svelte";
+import { FileStack, FileText, Tag } from "@lucide/svelte";
 import type { RecapGenre } from "$lib/schema/recap";
 import EvidenceArticles from "./EvidenceArticles.svelte";
 

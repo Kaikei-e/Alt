@@ -1,6 +1,6 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
 import { onMount } from "svelte";
+import { goto } from "$app/navigation";
 import ConversationList from "$lib/components/desktop/augur/ConversationList.svelte";
 import { useAugurHistory } from "$lib/hooks/useAugurHistory.svelte";
 

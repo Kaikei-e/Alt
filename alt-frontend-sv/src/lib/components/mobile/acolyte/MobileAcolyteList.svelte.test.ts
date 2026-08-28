@@ -1,8 +1,8 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it } from "vitest";
-import MobileAcolyteList from "./MobileAcolyteList.svelte";
+import { render } from "vitest-browser-svelte";
 import { MOCK_REPORT_SUMMARIES } from "./acolyte-fixtures";
+import MobileAcolyteList from "./MobileAcolyteList.svelte";
 
 describe("MobileAcolyteList", () => {
 	it("renders masthead with title Acolyte", async () => {

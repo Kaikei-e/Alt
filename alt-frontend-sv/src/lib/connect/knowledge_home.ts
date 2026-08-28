@@ -5,16 +5,16 @@
  * Authentication is handled by the transport layer.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
-	KnowledgeHomeService,
 	type GetKnowledgeHomeResponse,
+	KnowledgeHomeService,
 	type KnowledgeHomeItem as ProtoKnowledgeHomeItem,
+	type Lens as ProtoLens,
+	type RecallCandidate as ProtoRecallCandidate,
 	type TodayDigest as ProtoTodayDigest,
 	type WhyReason as ProtoWhyReason,
-	type RecallCandidate as ProtoRecallCandidate,
-	type Lens as ProtoLens,
 } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
 
 /** Type-safe KnowledgeHomeService client */

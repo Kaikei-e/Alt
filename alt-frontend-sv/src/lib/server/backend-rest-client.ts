@@ -1,6 +1,6 @@
 import { env } from "$env/dynamic/private";
-import { getBackendToken } from "./auth";
 import { assertOkResponse, parseJsonBody } from "$lib/api/handle-api-response";
+import { getBackendToken } from "./auth";
 
 // Independent from $lib/connect/transport-server.ts's BACKEND_CONNECT_URL
 // (Connect-RPC endpoint) so the REST facade and the Connect-RPC backend can

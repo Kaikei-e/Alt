@@ -5,16 +5,16 @@
  * Authentication is handled by the transport layer.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
-	RecapService,
 	type GetSevenDayRecapResponse,
 	type GetThreeDayRecapResponse,
-	type SearchRecapsByTagResponse,
 	type RecapSearchResultItem as ProtoRecapSearchResultItem,
+	RecapService,
+	type SearchRecapsByTagResponse,
 } from "$lib/gen/alt/recap/v2/recap_pb";
-import type { RecapSummary, RecapGenre, EvidenceLink } from "$lib/schema/recap";
+import type { EvidenceLink, RecapGenre, RecapSummary } from "$lib/schema/recap";
 
 /** Type-safe RecapService client */
 type RecapClient = Client<typeof RecapService>;

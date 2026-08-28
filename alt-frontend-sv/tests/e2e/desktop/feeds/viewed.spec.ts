@@ -1,11 +1,11 @@
-import { test, expect } from "../../fixtures/pomFixtures";
-import { fulfillJson, fulfillConnectError } from "../../utils/mockHelpers";
-import {
-	CONNECT_RPC_PATHS,
-	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
-	CONNECT_ARTICLE_CONTENT_RESPONSE,
-} from "../../fixtures/mockData";
 import { buildConnectFeedItem } from "../../fixtures/factories";
+import {
+	CONNECT_ARTICLE_CONTENT_RESPONSE,
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillConnectError, fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("Desktop Morgue Desk (Viewed Feeds)", () => {
 	test.beforeEach(async ({ page }) => {

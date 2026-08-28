@@ -1,10 +1,10 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
-import { useConnectAdminMetrics } from "$lib/hooks/useConnectAdminMetrics.svelte";
 import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
+import { useConnectAdminMetrics } from "$lib/hooks/useConnectAdminMetrics.svelte";
+import DegradedBanner from "./DegradedBanner.svelte";
 import MetricRow from "./MetricRow.svelte";
 import ServiceHealthTable from "./ServiceHealthTable.svelte";
-import DegradedBanner from "./DegradedBanner.svelte";
 
 const stream = useConnectAdminMetrics();
 stream.start();

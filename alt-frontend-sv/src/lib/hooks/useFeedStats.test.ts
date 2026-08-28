@@ -4,7 +4,7 @@
  * After H-001, useFeedStats is a thin pass-through to useStreamingFeedStats
  * (Connect-RPC server streaming). The legacy SSE path has been removed.
  */
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useFeedStats } from "./useFeedStats.svelte";
 
 vi.mock("./useStreamingFeedStats.svelte", () => ({

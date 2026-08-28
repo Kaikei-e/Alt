@@ -1,7 +1,7 @@
 import type {
-	StatusTransition,
-	PipelineStage,
 	JobStatus,
+	PipelineStage,
+	StatusTransition,
 } from "$lib/schema/dashboard";
 import { PIPELINE_STAGES } from "$lib/schema/dashboard";
 

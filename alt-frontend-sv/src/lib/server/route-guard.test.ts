@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPublicRoute, isApiRoute, isStreamEndpoint } from "./route-guard";
+import { isApiRoute, isPublicRoute, isStreamEndpoint } from "./route-guard";
 
 describe("route-guard", () => {
 	describe("isPublicRoute", () => {
@@ -40,12 +40,9 @@ describe("route-guard", () => {
 			"/api/admin/knowledge-home/health",
 			"/api/admin/knowledge-home/error",
 			"/api/v1/dashboard/test",
-		])(
-			"should return false for protected route sharing a path segment with a public route: %s",
-			(pathname) => {
-				expect(isPublicRoute(pathname)).toBe(false);
-			},
-		);
+		])("should return false for protected route sharing a path segment with a public route: %s", (pathname) => {
+			expect(isPublicRoute(pathname)).toBe(false);
+		});
 	});
 
 	describe("isApiRoute", () => {

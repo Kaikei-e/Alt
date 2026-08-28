@@ -1,6 +1,6 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
 import { BirdIcon, Search } from "@lucide/svelte";
+import { goto } from "$app/navigation";
 
 let {
 	onAsk,

@@ -4,24 +4,24 @@
  * Automated accessibility testing using axe-playwright.
  * Tests WCAG 2.1 AA compliance for mobile pages.
  */
+
+import {
+	CONNECT_ARTICLE_CONTENT_RESPONSE,
+	CONNECT_EVENING_PULSE_PATH,
+	CONNECT_EVENING_PULSE_RESPONSE,
+	CONNECT_MORNING_LETTER_STREAM_MESSAGES,
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_RPC_PATHS,
+	CONNECT_TAG_TRAIL_FEED_RESPONSE,
+	CONNECT_TAG_TRAIL_PATHS,
+} from "../fixtures/mockData";
 import { expect, test } from "../fixtures/pomFixtures";
-import { gotoMobileRoute } from "../helpers/navigation";
 import {
 	checkAccessibility,
 	getAccessibilityViolations,
 } from "../helpers/a11y";
-import { fulfillJson } from "../utils/mockHelpers";
-import {
-	CONNECT_RPC_PATHS,
-	CONNECT_ARTICLE_CONTENT_RESPONSE,
-	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
-	CONNECT_TAG_TRAIL_PATHS,
-	CONNECT_TAG_TRAIL_FEED_RESPONSE,
-	CONNECT_EVENING_PULSE_PATH,
-	CONNECT_EVENING_PULSE_RESPONSE,
-	CONNECT_MORNING_LETTER_STREAM_MESSAGES,
-} from "../fixtures/mockData";
-import { fulfillConnectStream } from "../utils/mockHelpers";
+import { gotoMobileRoute } from "../helpers/navigation";
+import { fulfillConnectStream, fulfillJson } from "../utils/mockHelpers";
 
 // Test data for mocking
 const MOCK_FEEDS = {
