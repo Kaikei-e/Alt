@@ -2,10 +2,10 @@
  * Connection Recovery Store Tests
  */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	createConnectionRecoveryStore,
 	type ConnectionRecoveryStore,
+	createConnectionRecoveryStore,
 } from "./connection-recovery.svelte";
 
 vi.mock("$lib/hooks/safari-connection-recovery", () => {

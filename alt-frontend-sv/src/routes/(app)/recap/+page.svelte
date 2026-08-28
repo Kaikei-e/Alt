@@ -1,37 +1,34 @@
 <script lang="ts">
+import { Code, ConnectError } from "@connectrpc/connect";
+import { ArrowLeft, BookOpen, Search } from "@lucide/svelte";
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { ConnectError, Code } from "@connectrpc/connect";
-import { useViewport } from "$lib/stores/viewport.svelte";
+// Desktop components
+import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
+import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
+// Mobile components
+import RecapEmptyState from "$lib/components/mobile/recap/RecapEmptyState.svelte";
+import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
+import {
+	fromRecapSearchResult,
+	type RecapModalData,
+	RecapPreviewModal,
+} from "$lib/components/recap";
+import { Button } from "$lib/components/ui/button";
 import {
 	createClientTransport,
 	getSevenDayRecap,
 	getThreeDayRecap,
-	searchRecaps,
 	type RecapSearchResultItem,
+	searchRecaps,
 } from "$lib/connect";
-import {
-	RecapPreviewModal,
-	fromRecapSearchResult,
-	type RecapModalData,
-} from "$lib/components/recap";
-import { getLoadingStore } from "$lib/stores/loading.svelte";
 import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
+import { getLoadingStore } from "$lib/stores/loading.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
-// Desktop components
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
-import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
-
-// Mobile components
-import RecapEmptyState from "$lib/components/mobile/recap/RecapEmptyState.svelte";
-import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
-import { Button } from "$lib/components/ui/button";
-import { Search, ArrowLeft, BookOpen } from "@lucide/svelte";
-
-const { isDesktop } = useViewport();
 const loadingStore = getLoadingStore();
 
 // Window selection: 3 or 7 days, driven by URL query param
@@ -126,7 +123,7 @@ async function fetchRecap(window: RecapWindow) {
 		recapData = null;
 		selectedGenre = null;
 
-		if (isDesktop) {
+		if (isDesktop()) {
 			loadingStore.startLoading();
 		}
 
@@ -137,7 +134,7 @@ async function fetchRecap(window: RecapWindow) {
 				: await getSevenDayRecap(transport);
 
 		// Desktop: auto-select genre from URL param or first genre
-		if (isDesktop && recapData?.genres && recapData.genres.length > 0) {
+		if (isDesktop() && recapData?.genres && recapData.genres.length > 0) {
 			const genreParam = page.url.searchParams.get("genre");
 			if (genreParam) {
 				const matchingGenre = recapData.genres.find(
@@ -165,7 +162,7 @@ async function fetchRecap(window: RecapWindow) {
 		recapData = null;
 	} finally {
 		isLoading = false;
-		if (isDesktop) {
+		if (isDesktop()) {
 			loadingStore.stopLoading();
 		}
 	}
@@ -224,7 +221,7 @@ onMount(() => {
 	<title>{isSearchMode ? `Search: ${searchQuery}` : `${selectedWindow}-Day Recap`} - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	{#if isSearchMode}
 		<!-- Search mode -->
 		<PageHeader title="Recap Search" description="Search across all recap genres">

@@ -2,26 +2,22 @@
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
-import { useViewport } from "$lib/stores/viewport.svelte";
-
 // Desktop components
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import DesktopPulseView from "$lib/components/desktop/pulse/DesktopPulseView.svelte";
-import DesktopPulseSkeleton from "$lib/components/desktop/pulse/DesktopPulseSkeleton.svelte";
-import DesktopPulseQuietDay from "$lib/components/desktop/pulse/DesktopPulseQuietDay.svelte";
-import DesktopPulseError from "$lib/components/desktop/pulse/DesktopPulseError.svelte";
 import DesktopPulseDetailPanel from "$lib/components/desktop/pulse/DesktopPulseDetailPanel.svelte";
-
+import DesktopPulseError from "$lib/components/desktop/pulse/DesktopPulseError.svelte";
+import DesktopPulseQuietDay from "$lib/components/desktop/pulse/DesktopPulseQuietDay.svelte";
+import DesktopPulseSkeleton from "$lib/components/desktop/pulse/DesktopPulseSkeleton.svelte";
+import DesktopPulseView from "$lib/components/desktop/pulse/DesktopPulseView.svelte";
+import MobilePulseError from "$lib/components/mobile/pulse/MobilePulseError.svelte";
+import MobilePulseQuietDay from "$lib/components/mobile/pulse/MobilePulseQuietDay.svelte";
+import MobilePulseSkeleton from "$lib/components/mobile/pulse/MobilePulseSkeleton.svelte";
+import MobilePulseTopicSheet from "$lib/components/mobile/pulse/MobilePulseTopicSheet.svelte";
 // Mobile components
 import MobilePulseView from "$lib/components/mobile/pulse/MobilePulseView.svelte";
-import MobilePulseSkeleton from "$lib/components/mobile/pulse/MobilePulseSkeleton.svelte";
-import MobilePulseQuietDay from "$lib/components/mobile/pulse/MobilePulseQuietDay.svelte";
-import MobilePulseError from "$lib/components/mobile/pulse/MobilePulseError.svelte";
-import MobilePulseTopicSheet from "$lib/components/mobile/pulse/MobilePulseTopicSheet.svelte";
-
 import { usePulse } from "$lib/hooks/usePulse.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
-const { isDesktop } = useViewport();
 const pulse = usePulse();
 
 // Desktop state
@@ -36,7 +32,7 @@ const navigateToRecap = () => {
 
 const handleTopicClick = (clusterId: number) => {
 	if (pulse.selectTopic(clusterId)) {
-		if (isDesktop) {
+		if (isDesktop()) {
 			isPanelOpen = true;
 		} else {
 			isSheetOpen = true;
@@ -84,7 +80,7 @@ onMount(() => {
 	<title>Evening Pulse - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<PageHeader
 		title="Evening Pulse"
 		description="Today's key topics curated for you"

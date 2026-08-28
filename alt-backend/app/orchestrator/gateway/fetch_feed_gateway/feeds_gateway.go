@@ -9,6 +9,7 @@ import (
 	"alt/utils/sanitize"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -211,7 +212,14 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 	for _, feed := range feeds {
 		publishedTime := feed.CreatedAt
 
+		feedID, err := parseFeedID(feed.ID)
+		if err != nil {
+			logger.SafeErrorContext(ctx, "Error reading feed id from cursor page", "error", err)
+			return nil, errors.New("error fetching feeds with cursor")
+		}
+
 		feedItem := &domain.FeedItem{
+			FeedID:          feedID,
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
 			Link:            feed.WebsiteURL,
@@ -263,7 +271,14 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 			)
 		}
 
+		feedID, err := parseFeedID(feed.ID)
+		if err != nil {
+			logger.SafeErrorContext(ctx, "Error reading feed id from unread cursor page", "error", err)
+			return nil, errors.New("error fetching unread feeds with cursor")
+		}
+
 		feedItem := &domain.FeedItem{
+			FeedID:          feedID,
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
 			Link:            feed.WebsiteURL,
@@ -296,7 +311,14 @@ func (g *FetchFeedsGateway) FetchReadFeedsListCursor(ctx context.Context, cursor
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
 		publishedTime := feed.CreatedAt
+		feedID, err := parseFeedID(feed.ID)
+		if err != nil {
+			logger.SafeErrorContext(ctx, "Error reading feed id from read cursor page", "error", err)
+			return nil, errors.New("error fetching read feeds with cursor")
+		}
+
 		feedItem := &domain.FeedItem{
+			FeedID:          feedID,
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
 			Link:            feed.WebsiteURL,
@@ -323,7 +345,14 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
 		publishedTime := feed.CreatedAt
+		feedID, err := parseFeedID(feed.ID)
+		if err != nil {
+			logger.SafeErrorContext(ctx, "Error reading feed id from favorite cursor page", "error", err)
+			return nil, errors.New("error fetching favorite feeds with cursor")
+		}
+
 		feedItem := &domain.FeedItem{
+			FeedID:          feedID,
 			Title:           feed.Title,
 			Description:     sanitize.SanitizeDescription(feed.Description),
 			Link:            feed.WebsiteURL,
@@ -338,6 +367,29 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 	}
 
 	return feedItems, nil
+}
+
+// parseFeedID turns a row's feeds.id column into the UUID a domain.FeedItem
+// carries, so the client can hand it back to ResolveOgImages.
+//
+// This is the hop the on-demand og:image resolution was missing: every cursor
+// query above already selects f.id and every row already carries it, but the
+// four mappers dropped it here, leaving FeedItem.FeedID at uuid.Nil and the
+// client with nothing to send but articles.id — which the resolver's
+// `WHERE f.id = ANY($1::uuid[])` never matches.
+//
+// A bad value fails the page rather than blanking one row's id. feeds.id is a
+// uuid PRIMARY KEY, so an unparseable one does not mean "this feed is slightly
+// off"; it means the column being walked is not the column this code thinks it
+// is, and a silently-empty feed_id is precisely the indistinguishable-from-
+// working failure the field was added to end (CLAUDE.md rule 8).
+// feed_page_cache_gateway makes the same call on the same conversion.
+func parseFeedID(id string) (uuid.UUID, error) {
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("parse feed id %q: %w", id, err)
+	}
+	return parsed, nil
 }
 
 // derefString safely dereferences a *string, returning "" if nil.

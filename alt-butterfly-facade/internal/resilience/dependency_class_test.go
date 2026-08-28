@@ -28,7 +28,7 @@ func TestClassForEndpoint_UnreadProjection(t *testing.T) {
 func TestClassForEndpoint_ExternalContent(t *testing.T) {
 	assert.Equal(t, ClassExternalContent, ClassForEndpoint("/alt.articles.v2.ArticleService/FetchArticleContent"))
 	assert.Equal(t, "external_content", ClassExternalContent.String())
-	assert.Equal(t, 1, ExternalContentEndpointCount())
+	assert.Equal(t, 3, ExternalContentEndpointCount())
 }
 
 // TestClassForEndpoint_ArticleSiblingsStayNonCritical guards the boundary of
@@ -89,7 +89,7 @@ func TestUnreadProjectionEndpoints(t *testing.T) {
 	assert.Equal(t, 2, CriticalMutationEndpointCount())
 	assert.Equal(t, 3, UnreadProjectionEndpointCount())
 	assert.Equal(t, 5, CriticalEndpointCount())
-	assert.Equal(t, 1, ExternalContentEndpointCount())
+	assert.Equal(t, 3, ExternalContentEndpointCount())
 }
 
 // TestClassForEndpoint_BatchPrefetchArticleContentIsTelemetry pins the
@@ -114,5 +114,70 @@ func TestClassForEndpoint_BatchPrefetchArticleContentIsTelemetry(t *testing.T) {
 	// publisher and therefore the one the bulkhead is for.
 	assert.Equal(t, ClassExternalContent,
 		ClassForEndpoint("/alt.articles.v2.ArticleService/FetchArticleContent"))
-	assert.Equal(t, 1, ExternalContentEndpointCount())
+	assert.Equal(t, 3, ExternalContentEndpointCount())
+}
+
+// TestClassForEndpoint_ResolveOgImagesIsExternalContent pins the on-demand
+// og:image resolve to the publisher-facing bulkhead.
+//
+// og_image_resolve_usecase.Execute calls OgImageFetcher.FetchOgImage inline
+// while the RPC is still open: for every feed that still needs one it fetches
+// the publisher's robots.txt and then the page itself, through the per-host
+// politeness slot. The status and latency this RPC returns therefore report a
+// third party's health and Alt's own rate-limit gate, exactly the two things
+// ADR-000959 removed from alt-backend's failure budget.
+//
+// It is not BatchPrefetchImages: that one only mints signed proxy URLs from
+// rows it already holds, so nothing leaves the cluster on its response path
+// and it stays non-critical (see the sibling test above).
+func TestClassForEndpoint_ResolveOgImagesIsExternalContent(t *testing.T) {
+	assert.Equal(t, ClassExternalContent,
+		ClassForEndpoint("/alt.feeds.v2.FeedService/ResolveOgImages"))
+
+	// The distinction that keeps this class honest: a URL-minting sibling
+	// with no outbound fetch on the response path does not move with it.
+	assert.Equal(t, ClassNonCritical,
+		ClassForEndpoint("/alt.articles.v2.ArticleService/BatchPrefetchImages"))
+
+	assert.Equal(t, 3, ExternalContentEndpointCount())
+}
+
+// TestClassForEndpoint_RegisterRSSFeedIsExternalContent pins feed registration
+// to the publisher-facing bulkhead.
+//
+// RegisterFeedsUsecase.Execute opens with validateAndFetchPort.ValidateAndFetch
+// and cannot get past it: before a single row is written it resolves the
+// publisher's host, waits on the shared HostRateLimiter's per-host politeness
+// floor, and downloads and parses the feed — all inline, with the RPC still
+// open. Its own gateway says as much ("This is the external HTTP boundary for
+// feed registration"). So the status and latency this RPC returns report a
+// third party's health and Alt's own rate-limit gate, the two things
+// ADR-000959 took out of alt-backend's failure budget.
+//
+// Frequency is the objection worth answering, because this endpoint is the
+// opposite of ResolveOgImages: one deliberate click, not every scroll. It
+// argues for the move rather than against it — see the note in
+// dependency_class.go on why a consecutive-failure budget punishes the quiet
+// endpoint hardest.
+func TestClassForEndpoint_RegisterRSSFeedIsExternalContent(t *testing.T) {
+	assert.Equal(t, ClassExternalContent,
+		ClassForEndpoint("/alt.rss.v2.RSSService/RegisterRSSFeed"))
+
+	// The near-miss that keeps the test honest, and this time it is a sibling
+	// on the very same service: RegisterFavoriteFeed also takes a feed URL from
+	// the user, and skips the SSRF check precisely because it "only does a DB
+	// lookup by URL, it does not make external requests". Taking a third-party
+	// URL is not the criterion; blocking on one before replying is. The rest of
+	// RSSService reads and writes alt-db.
+	for _, ep := range []string{
+		"/alt.rss.v2.RSSService/RegisterFavoriteFeed",
+		"/alt.rss.v2.RSSService/RemoveFavoriteFeed",
+		"/alt.rss.v2.RSSService/ListRSSFeedLinks",
+		"/alt.rss.v2.RSSService/DeleteRSSFeedLink",
+		"/alt.rss.v2.RSSService/RandomSubscription",
+	} {
+		assert.Equal(t, ClassNonCritical, ClassForEndpoint(ep), ep)
+	}
+
+	assert.Equal(t, 3, ExternalContentEndpointCount())
 }

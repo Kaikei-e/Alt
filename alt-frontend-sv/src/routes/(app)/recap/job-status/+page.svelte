@@ -1,27 +1,24 @@
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import { useJobProgress } from "$lib/hooks/useJobProgress.svelte";
+import { onDestroy, onMount } from "svelte";
 import { triggerRecapJob } from "$lib/api/client/dashboard";
-import { getLoadingStore } from "$lib/stores/loading.svelte";
-import type { TimeWindow, RecentJobSummary } from "$lib/schema/dashboard";
-
-import { PageKicker, LedgerFigure } from "$lib/components/recap/job-status";
 import {
 	ActiveJobCard,
 	JobHistoryTable,
 } from "$lib/components/desktop/recap/job-status";
-
 import {
-	MobileJobStatusHeader,
-	MobileStatsRow,
 	MobileActiveJobPanel,
-	MobileJobHistoryList,
 	MobileControlBar,
 	MobileJobDetailSheet,
+	MobileJobHistoryList,
+	MobileJobStatusHeader,
+	MobileStatsRow,
 } from "$lib/components/mobile/recap/job-status";
+import { LedgerFigure, PageKicker } from "$lib/components/recap/job-status";
+import { useJobProgress } from "$lib/hooks/useJobProgress.svelte";
+import type { RecentJobSummary, TimeWindow } from "$lib/schema/dashboard";
+import { getLoadingStore } from "$lib/stores/loading.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
-const { isDesktop } = useViewport();
 const loadingStore = getLoadingStore();
 
 const timeWindows: { label: string; value: TimeWindow }[] = [
@@ -93,7 +90,7 @@ async function handleTriggerJob() {
 	try {
 		const result = await triggerRecapJob(fetch);
 		justStartedJobId = result.job_id;
-		triggerSuccess = isDesktop
+		triggerSuccess = isDesktop()
 			? `Job ${result.job_id.slice(0, 8)}... started with ${result.genres.length} genres`
 			: `Job ${result.job_id.slice(0, 8)}... started`;
 
@@ -160,7 +157,7 @@ const windowLabel = $derived(jobProgress.currentWindow.toUpperCase());
 	<title>Job Status — Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="page" data-role="job-status-page">
 		<PageKicker
 			kicker={`JOB STATUS · ${windowLabel} WINDOW`}

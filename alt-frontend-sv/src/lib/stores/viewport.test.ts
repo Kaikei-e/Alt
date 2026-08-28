@@ -1,42 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { BREAKPOINT, createViewportState } from "./viewport.svelte";
+import { BREAKPOINT_REM, isDesktop, isMobile } from "./viewport.svelte";
 
 /**
- * Note: MediaQuery from svelte/reactivity requires a browser environment
- * and cannot be unit-tested in Node. We test the exported contract:
- * - useViewport() returns { isDesktop, isMobile } (reactive getters)
- * - BREAKPOINT constant is exported and equals 768
- * - createViewportState() creates an object with correct defaults
+ * Node has no `matchMedia`, so the reactive half of this module is exercised in
+ * the browser project (`viewport.svelte.test.ts`), where the viewport can
+ * actually be rotated. What is worth pinning here is the SSR answer: the server
+ * renders without a window, and it must render the mobile layout rather than
+ * guessing desktop and making every phone hydrate into a swap.
  */
-
-describe("Viewport Store", () => {
-	describe("BREAKPOINT", () => {
-		it("should export BREAKPOINT as 768", () => {
-			expect(BREAKPOINT).toBe(768);
-		});
+describe("viewport (SSR / no window)", () => {
+	it("exports the TailwindCSS `md` breakpoint", () => {
+		expect(BREAKPOINT_REM).toBe(48);
 	});
 
-	describe("createViewportState", () => {
-		it("should return an object with isDesktop and isMobile properties", () => {
-			const state = createViewportState();
+	it("falls back to mobile-first when there is no window to measure", () => {
+		expect(isDesktop()).toBe(false);
+		expect(isMobile()).toBe(true);
+	});
 
-			expect(state).toHaveProperty("isDesktop");
-			expect(state).toHaveProperty("isMobile");
-		});
-
-		it("should default to mobile (isDesktop=false, isMobile=true) for SSR fallback", () => {
-			const state = createViewportState();
-
-			// In Node (non-browser), MediaQuery falls back to false for min-width
-			// so isDesktop should be false and isMobile should be true
-			expect(state.isDesktop).toBe(false);
-			expect(state.isMobile).toBe(true);
-		});
-
-		it("should return complementary values (isDesktop and isMobile are opposite)", () => {
-			const state = createViewportState();
-
-			expect(state.isDesktop).toBe(!state.isMobile);
-		});
+	it("keeps the two sides complementary", () => {
+		expect(isMobile()).toBe(!isDesktop());
 	});
 });

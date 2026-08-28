@@ -5,37 +5,36 @@ import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import AskSheet from "$lib/components/knowledge-home/AskSheet.svelte";
 import DegradedModeBanner from "$lib/components/knowledge-home/DegradedModeBanner.svelte";
+import GlobalSearchEntry from "$lib/components/knowledge-home/GlobalSearchEntry.svelte";
 import KnowledgeStream from "$lib/components/knowledge-home/KnowledgeStream.svelte";
-import Toast from "$lib/components/knowledge-home/Toast.svelte";
 import LensModal from "$lib/components/knowledge-home/lens/LensModal.svelte";
 import LensSelector from "$lib/components/knowledge-home/lens/LensSelector.svelte";
+import type { TagSuggestion } from "$lib/components/knowledge-home/lens/TagCombobox.svelte";
+import MobileKnowledgeHomeHeader from "$lib/components/knowledge-home/MobileKnowledgeHomeHeader.svelte";
+import MobileRecallSection from "$lib/components/knowledge-home/MobileRecallSection.svelte";
 import RecallRail from "$lib/components/knowledge-home/recall-rail/RecallRail.svelte";
 import StreamUpdateBar from "$lib/components/knowledge-home/StreamUpdateBar.svelte";
+import Toast from "$lib/components/knowledge-home/Toast.svelte";
 import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
 import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
-import MobileKnowledgeHomeHeader from "$lib/components/knowledge-home/MobileKnowledgeHomeHeader.svelte";
-import GlobalSearchEntry from "$lib/components/knowledge-home/GlobalSearchEntry.svelte";
-import MobileRecallSection from "$lib/components/knowledge-home/MobileRecallSection.svelte";
 import {
+	type ConnectFeedSource,
 	createClientTransport,
 	listSubscriptions,
-	type ConnectFeedSource,
 } from "$lib/connect";
 import type {
 	KnowledgeHomeItemData,
 	LensVersionData,
 } from "$lib/connect/knowledge_home";
-import type { TagSuggestion } from "$lib/components/knowledge-home/lens/TagCombobox.svelte";
 import { useKnowledgeHome } from "$lib/hooks/useKnowledgeHome.svelte";
 import { useLens } from "$lib/hooks/useLens.svelte";
 import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
 import { useStreamUpdates } from "$lib/hooks/useStreamUpdates.svelte";
 import { useToastStore } from "$lib/stores/toast.svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 import { buildHomeActionMetadata } from "./home-actions";
 import { refreshHomeWithRecallSync } from "./stream-refresh";
 
-const { isDesktop } = useViewport();
 const home = useKnowledgeHome();
 const recall = useRecallRail();
 const lens = useLens();
@@ -318,7 +317,7 @@ onMount(async () => {
 	<title>Knowledge Home - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="reading-desk" class:revealed>
 		<!-- Editorial Header -->
 		<header class="desk-header">

@@ -1,19 +1,17 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { onMount } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+import { goto } from "$app/navigation";
 import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
-import { ConnectError, Code } from "@connectrpc/connect";
-import { createClientTransport, getThreeDayRecap } from "$lib/connect";
-import type { RenderFeed } from "$lib/schema/feed";
-import type { RecapSummary } from "$lib/schema/recap";
-
+import RecapSummaryWidget from "$lib/components/desktop/dashboard/RecapSummaryWidget.svelte";
 import StatsBarWidget from "$lib/components/desktop/dashboard/StatsBarWidget.svelte";
 import UnreadFeedsWidget from "$lib/components/desktop/dashboard/UnreadFeedsWidget.svelte";
-import RecapSummaryWidget from "$lib/components/desktop/dashboard/RecapSummaryWidget.svelte";
+import { createClientTransport, getThreeDayRecap } from "$lib/connect";
+import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+import type { RenderFeed } from "$lib/schema/feed";
+import type { RecapSummary } from "$lib/schema/recap";
+import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
 
-const { isDesktop } = useViewport();
 const stats = useFeedStats();
 
 // Feed state
@@ -36,8 +34,20 @@ const dateStr = new Date().toLocaleDateString("en-US", {
 	day: "numeric",
 });
 
+// Deliberately `onMount` and deliberately not an `$effect`: this is an
+// arrival check, not a viewport binding. The brief is typeset for a wide
+// screen, so a phone-sized *arrival* is handed to Knowledge Home. Turning a
+// phone is not an arrival — a `goto` in an `$effect` would throw away a brief
+// the reader is part-way through on every rotation, and on every drag of a
+// desktop window across 768px.
+//
+// Because `onMount` will not run again, the narrow branch below has to stand
+// on its own. It used to read "Redirecting…" and rely on this redirect to make
+// that true; once the viewport check became reactive, rotating upright flipped
+// to that branch with no redirect behind it and the sentence became a
+// permanent lie with nothing to act on.
 onMount(() => {
-	if (!isDesktop) {
+	if (isMobile()) {
 		goto("/home", { replaceState: true });
 		return;
 	}
@@ -82,7 +92,7 @@ onMount(() => {
 	<title>Dashboard - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="brief-page" class:revealed>
 		<!-- Editorial Header -->
 		<header class="brief-header">
@@ -121,8 +131,13 @@ onMount(() => {
 		</div>
 	</div>
 {:else}
-	<div class="redirect-state">
-		<p class="redirect-text">Redirecting&hellip;</p>
+	<div class="narrow-state">
+		<p class="narrow-title">Editorial Brief</p>
+		<p class="narrow-text">
+			The brief is typeset for a wide screen. Turn the phone back to
+			landscape to read it here.
+		</p>
+		<a class="narrow-link" href="/home">Go to Knowledge Home</a>
 	</div>
 {/if}
 
@@ -182,20 +197,41 @@ onMount(() => {
 		animation-delay: calc(var(--delay) * 100ms);
 	}
 
-	.redirect-state {
+	.narrow-state {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
 		justify-content: center;
+		gap: 0.6rem;
+		padding: 0 1.5rem;
+		text-align: center;
 		min-height: 100vh;
 		min-height: 100dvh;
 		background: var(--surface-bg);
 	}
 
-	.redirect-text {
+	.narrow-title {
+		font-family: var(--font-display);
+		font-size: 1.3rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.narrow-text {
 		font-family: var(--font-body);
 		font-size: 0.85rem;
 		color: var(--alt-ash);
-		font-style: italic;
+		max-width: 24rem;
+		margin: 0;
+	}
+
+	.narrow-link {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-charcoal);
+		text-decoration: underline;
+		text-underline-offset: 0.25em;
 	}
 
 	@keyframes reveal {

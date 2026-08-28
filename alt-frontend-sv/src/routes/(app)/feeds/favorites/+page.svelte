@@ -1,20 +1,14 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-
+import { removeFavoriteFeedClient } from "$lib/api/client";
+import { getFavoriteFeedsWithCursorClient } from "$lib/api/client/feeds";
+import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
-
 import ClippingsEntry from "$lib/components/mobile/ClippingsEntry.svelte";
-
-import { getFavoriteFeedsWithCursorClient } from "$lib/api/client/feeds";
-import { removeFavoriteFeedClient } from "$lib/api/client";
-import { infiniteScroll } from "$lib/actions/infinite-scroll";
-
 import type { RenderFeed } from "$lib/schema/feed";
-
-const { isDesktop } = useViewport();
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
 const dateStr = new Date().toLocaleDateString("en-US", {
 	weekday: "long",
@@ -31,7 +25,6 @@ onMount(() => {
 	});
 });
 
-// --- Desktop state ---
 let selectedFeedUrl = $state<string | null>(null);
 let isModalOpen = $state(false);
 let feedGridApi = $state<FeedGridApi | null>(null);
@@ -55,18 +48,14 @@ const hasNext = $derived(currentIndex >= 0 && currentIndex < totalCount - 1);
 
 function handlePrevious() {
 	if (!feedGridApi || currentIndex <= 0) return;
-	const feeds = feedGridApi.getVisibleFeeds();
-	if (feeds[currentIndex - 1]) {
-		selectedFeedUrl = feeds[currentIndex - 1]!.normalizedUrl;
-	}
+	const previous = feedGridApi.getVisibleFeeds()[currentIndex - 1];
+	if (previous) selectedFeedUrl = previous.normalizedUrl;
 }
 
 function handleNext() {
 	if (!feedGridApi || currentIndex >= totalCount - 1) return;
-	const feeds = feedGridApi.getVisibleFeeds();
-	if (feeds[currentIndex + 1]) {
-		selectedFeedUrl = feeds[currentIndex + 1]!.normalizedUrl;
-	}
+	const next = feedGridApi.getVisibleFeeds()[currentIndex + 1];
+	if (next) selectedFeedUrl = next.normalizedUrl;
 }
 
 function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
@@ -78,163 +67,116 @@ function handleFeedGridReady(api: FeedGridApi) {
 	feedGridApi = api;
 }
 
-// --- Mobile state ---
-let mobileFeeds = $state<RenderFeed[]>([]);
-let mobileIsLoading = $state(true);
-let mobileIsFetchingNext = $state(false);
-let mobileError = $state<Error | null>(null);
-let mobileNextCursor = $state<string | undefined>(undefined);
-let mobileHasMore = $state(true);
-
-async function loadMobileFeeds(cursor?: string) {
-	try {
-		const result = await getFavoriteFeedsWithCursorClient(cursor, 20);
-		if (cursor) {
-			mobileFeeds = [...mobileFeeds, ...(result.data ?? [])];
-		} else {
-			mobileFeeds = result.data ?? [];
-		}
-		mobileNextCursor = result.next_cursor ?? undefined;
-		mobileHasMore = result.has_more ?? false;
-	} catch (err) {
-		mobileError = err as Error;
-	}
-}
-
-async function loadMoreMobile() {
-	if (mobileIsFetchingNext || !mobileHasMore) return;
-	mobileIsFetchingNext = true;
-	try {
-		await loadMobileFeeds(mobileNextCursor);
-	} finally {
-		mobileIsFetchingNext = false;
-	}
-}
-
+/**
+ * Un-starring a clipping.
+ *
+ * The removal now goes through the grid's own `removedUrls` rather than through
+ * a page-local array the phone arm used to keep. That is what makes it survive
+ * a rotation: the page no longer owns a second copy of the list to disagree
+ * with.
+ *
+ * The card is taken off screen first and the server is told afterwards; if the
+ * server refuses, `restoreFeedByUrl` puts it back exactly where it was. The
+ * alternative rollback — re-reading the whole file — would throw away every
+ * page the reader had scrolled to in order to undo one tap.
+ */
 async function handleRemoveFavorite(feedUrl: string) {
+	if (!feedGridApi) return;
+	feedGridApi.removeFeedByUrl(feedUrl);
 	try {
 		await removeFavoriteFeedClient(feedUrl);
-		mobileFeeds = mobileFeeds.filter((f) => f.normalizedUrl !== feedUrl);
 	} catch (err) {
 		console.error("Failed to remove favorite:", err);
+		feedGridApi.restoreFeedByUrl(feedUrl);
 	}
 }
 
-onMount(async () => {
-	if (!isDesktop) {
-		try {
-			await loadMobileFeeds();
-		} finally {
-			mobileIsLoading = false;
-		}
-	}
-});
+/**
+ * A column of clippings on a phone, three across from `md` up.
+ *
+ * Two class strings before this: the grid default (`grid-cols-2
+ * md:grid-cols-3 lg:grid-cols-3 gap-4`, whose two-column narrow half was dead
+ * code — that arm only ever rendered at 768px and up) and the phone list's
+ * `flex flex-col`. A single-column grid with no gap is that flex column, so one
+ * breakpoint holds both, and `lg:grid-cols-3` stays spelled out because "three
+ * across on a wide screen, not four" is a decision someone made on purpose.
+ */
+const CLIPPINGS_LIST_CLASS =
+	"grid grid-cols-1 gap-0 md:grid-cols-3 lg:grid-cols-3 md:gap-4";
 </script>
 
 <svelte:head>
 	<title>The Clippings File - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
-	<div class="clippings-page" class:revealed data-role="clippings-file-page">
-		<header class="clippings-header">
-			<span class="clippings-date">{dateStr}</span>
-			<h1 class="clippings-title">The Clippings File</h1>
-			<p class="clippings-subtitle">Your curated collection</p>
-			<div class="clippings-rule" aria-hidden="true"></div>
-		</header>
+<!--
+	One header, one list.
 
+	The desktop arm rendered a `<FeedGrid>`; the phone arm rendered a second,
+	hand-rolled copy of the same thing directly in this page — `mobileFeeds`,
+	`mobileNextCursor`, `mobileHasMore` and its own `infiniteScroll`. Rotating
+	the phone flipped the `{#if}`, destroyed whichever list was live and built
+	the other from nothing: page one fetched again, every scrolled-to page gone,
+	and a clipping the reader had just removed back on screen.
+
+	Only the card differs now, and for a real reason: the desk card is a click
+	target that opens the detail modal, and the phone entry is a self-contained
+	article carrying its own Details / Remove / Open actions.
+-->
+<div class="clippings-page" class:revealed data-role="clippings-file-page">
+	<header class="clippings-header">
+		<span class="clippings-date">{dateStr}</span>
+		<h1 class="clippings-title">The Clippings File</h1>
+		<p class="clippings-subtitle">Your curated collection</p>
+		<div class="clippings-rule" aria-hidden="true"></div>
+	</header>
+
+	<div class="clippings-body" data-role="clippings-feed-list">
 		<FeedGrid
 			onSelectFeed={handleSelectFeed}
 			onReady={handleFeedGridReady}
 			fetchFn={getFavoriteFeedsWithCursorClient}
+			gridClass={CLIPPINGS_LIST_CLASS}
 			emptyText="No clippings yet"
 			loadingText="Retrieving your clippings"
-		/>
+		>
+			{#snippet cardRenderer({ feed, isRead, onSelect }: { feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void })}
+				{#if isDesktop()}
+					<DesktopFeedCard {feed} {isRead} {onSelect} />
+				{:else}
+					<ClippingsEntry {feed} onRemove={handleRemoveFavorite} />
+				{/if}
+			{/snippet}
 
-		<FeedDetailModal
-			bind:open={isModalOpen}
-			feed={selectedFeed}
-			onOpenChange={(open: boolean) => (isModalOpen = open)}
-			{hasPrevious}
-			{hasNext}
-			onPrevious={handlePrevious}
-			onNext={handleNext}
-			feeds={feedGridApi?.getVisibleFeeds() ?? []}
-			{currentIndex}
-		/>
-	</div>
-{:else}
-	<div
-		class="h-[100dvh] overflow-hidden flex flex-col"
-		style="background: var(--app-bg);"
-		data-role="clippings-file-page"
-	>
-		<header class="mobile-clippings-header">
-			<span class="clippings-date">{dateStr}</span>
-			<h1 class="clippings-title-mobile">The Clippings File</h1>
-			<p class="clippings-subtitle-mobile">Your curated collection</p>
-			<div class="clippings-rule" aria-hidden="true"></div>
-		</header>
-
-		{#if mobileIsLoading}
-			<div class="loading-state">
-				<span class="loading-pulse"></span>
-				<span class="loading-text">Retrieving your clippings&hellip;</span>
-			</div>
-		{:else if mobileError}
-			<div class="error-stripe" role="alert">
-				<p class="error-stripe-title">Error loading clippings</p>
-				<p>{mobileError.message}</p>
-			</div>
-		{:else if mobileFeeds.length === 0}
-			<div class="empty-state">
-				<div class="empty-ornament" aria-hidden="true">&#9670;</div>
-				<h2 class="empty-heading">No Clippings Yet</h2>
-				<p class="empty-body">
-					Star articles from the wire to add them to your clippings file.
-				</p>
-			</div>
-		{:else}
-			<div
-				class="flex-1 min-h-0 overflow-y-auto"
-				style="padding: 0 1.25rem 1.25rem;"
-			>
-				<div class="clippings-list" data-role="clippings-feed-list">
-					{#each mobileFeeds as feed, index (feed.id)}
-						<div class="clipping-item" style="--stagger: {index};">
-							<ClippingsEntry
-								{feed}
-								onRemove={handleRemoveFavorite}
-							/>
-						</div>
-					{/each}
+			<!--
+				The phone arm shipped a labelled empty state that says what starring
+				an article does; the desktop grid had the single line "No clippings
+				yet". Keeping the better of the two at both widths.
+			-->
+			{#snippet emptyContent()}
+				<div class="empty-state" role="region" aria-label="Empty clippings state">
+					<div class="empty-ornament" aria-hidden="true">&#9670;</div>
+					<h2 class="empty-heading">No Clippings Yet</h2>
+					<p class="empty-body">
+						Star articles from the wire to add them to your clippings file.
+					</p>
 				</div>
-
-				<div
-					use:infiniteScroll={{
-						callback: loadMoreMobile,
-						disabled: mobileIsFetchingNext || !mobileHasMore,
-						threshold: 0.1,
-						rootMargin: "0px 0px 200px 0px",
-					}}
-					class="load-more"
-				>
-					{#if mobileIsFetchingNext}
-						<div class="loading-state loading-state--compact">
-							<span class="loading-pulse"></span>
-							<span class="loading-text">Loading more&hellip;</span>
-						</div>
-					{:else if mobileHasMore}
-						<p class="scroll-hint">Scroll for more</p>
-					{:else}
-						<p class="scroll-hint">End of clippings</p>
-					{/if}
-				</div>
-			</div>
-		{/if}
+			{/snippet}
+		</FeedGrid>
 	</div>
-{/if}
+</div>
+
+<FeedDetailModal
+	bind:open={isModalOpen}
+	feed={selectedFeed}
+	onOpenChange={(open: boolean) => (isModalOpen = open)}
+	{hasPrevious}
+	{hasNext}
+	onPrevious={handlePrevious}
+	onNext={handleNext}
+	feeds={feedGridApi?.getVisibleFeeds() ?? []}
+	{currentIndex}
+/>
 
 <style>
 	.clippings-page {
@@ -250,12 +192,33 @@ onMount(async () => {
 		transform: translateY(0);
 	}
 
+	/*
+		The two headers differed only in type size and padding — presentation, so
+		it belongs in a media query rather than in a branch that rebuilds the DOM.
+	*/
 	.clippings-header {
-		padding: 1.5rem 0 0;
+		padding: 1rem 1.25rem 0;
 	}
 
-	.mobile-clippings-header {
-		padding: 1rem 1.25rem 0;
+	.clippings-body {
+		/* The phone list held its clippings to a readable measure and centred
+		   them; the desk grid runs the full column width. */
+		max-width: 42rem;
+		margin: 0 auto;
+		padding: 0 1.25rem 1.25rem;
+		width: 100%;
+	}
+
+	@media (width >= 48rem) {
+		.clippings-header {
+			padding: 1.5rem 0 0;
+		}
+
+		.clippings-body {
+			max-width: none;
+			margin: 0;
+			padding: 0;
+		}
 	}
 
 	.clippings-date {
@@ -267,16 +230,6 @@ onMount(async () => {
 
 	.clippings-title {
 		font-family: var(--font-display);
-		font-size: 1.6rem;
-		font-weight: 800;
-		color: var(--alt-charcoal);
-		letter-spacing: -0.01em;
-		margin: 0.15rem 0 0;
-		line-height: 1.2;
-	}
-
-	.clippings-title-mobile {
-		font-family: var(--font-display);
 		font-size: 1.3rem;
 		font-weight: 700;
 		color: var(--alt-charcoal);
@@ -286,84 +239,30 @@ onMount(async () => {
 
 	.clippings-subtitle {
 		font-family: var(--font-body);
-		font-size: 0.85rem;
-		font-style: italic;
-		color: var(--alt-slate);
-		margin: 0.2rem 0 0;
-	}
-
-	.clippings-subtitle-mobile {
-		font-family: var(--font-body);
 		font-size: 0.8rem;
 		font-style: italic;
 		color: var(--alt-slate);
 		margin: 0.1rem 0 0;
 	}
 
+	@media (width >= 48rem) {
+		.clippings-title {
+			font-size: 1.6rem;
+			font-weight: 800;
+			letter-spacing: -0.01em;
+			margin: 0.15rem 0 0;
+		}
+
+		.clippings-subtitle {
+			font-size: 0.85rem;
+			margin: 0.2rem 0 0;
+		}
+	}
+
 	.clippings-rule {
 		height: 1px;
 		background: var(--surface-border);
 		margin-top: 0.75rem;
-	}
-
-	.clippings-list {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.clipping-item {
-		opacity: 0;
-		animation: entry-in 0.3s ease forwards;
-		animation-delay: calc(var(--stagger) * 40ms);
-	}
-
-	.load-more {
-		padding: 1.5rem 0;
-	}
-
-	.loading-state {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 2rem 0;
-		justify-content: center;
-	}
-
-	.loading-state--compact {
-		padding: 1rem 0;
-	}
-
-	.loading-pulse {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--alt-ash);
-		animation: pulse 1.2s ease-in-out infinite;
-	}
-
-	.loading-text {
-		font-family: var(--font-body);
-		font-size: 0.85rem;
-		font-style: italic;
-		color: var(--alt-ash);
-	}
-
-	.error-stripe {
-		padding: 0.75rem 1rem;
-		margin: 0 1.25rem;
-		border-left: 3px solid var(--alt-terracotta);
-		font-family: var(--font-body);
-		font-size: 0.85rem;
-		color: var(--alt-terracotta);
-	}
-
-	.error-stripe-title {
-		font-weight: 600;
-		margin: 0 0 0.25rem;
-	}
-
-	.error-stripe p {
-		margin: 0;
 	}
 
 	.empty-state {
@@ -399,36 +298,11 @@ onMount(async () => {
 		margin: 0;
 	}
 
-	.scroll-hint {
-		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		color: var(--alt-ash);
-		text-align: center;
-		margin: 0;
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 0.3; }
-		50% { opacity: 1; }
-	}
-
-	@keyframes entry-in {
-		to { opacity: 1; }
-	}
-
 	@media (prefers-reduced-motion: reduce) {
 		.clippings-page {
 			opacity: 1;
 			transform: none;
 			transition: none;
-		}
-		.clipping-item {
-			animation: none;
-			opacity: 1;
-		}
-		.loading-pulse {
-			animation: none;
-			opacity: 1;
 		}
 	}
 </style>

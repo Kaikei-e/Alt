@@ -1,12 +1,10 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { onMount } from "svelte";
-import { listReports, type AcolyteReportSummary } from "$lib/connect/acolyte";
-import { useViewport } from "$lib/stores/viewport.svelte";
 import MobileAcolyteList from "$lib/components/mobile/acolyte/MobileAcolyteList.svelte";
-
-const { isDesktop } = useViewport();
+import { type AcolyteReportSummary, listReports } from "$lib/connect/acolyte";
+import { isMobile } from "$lib/stores/viewport.svelte";
 
 let reports = $state<AcolyteReportSummary[]>([]);
 let loading = $state(true);
@@ -55,7 +53,7 @@ onMount(() => {
 });
 </script>
 
-{#if !isDesktop}
+{#if isMobile()}
 <MobileAcolyteList
 	{reports}
 	{loading}

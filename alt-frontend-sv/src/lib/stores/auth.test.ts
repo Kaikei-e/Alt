@@ -1,6 +1,6 @@
-import { describe, expect, it, beforeEach } from "vitest";
 import type { Identity } from "@ory/client";
-import { createAuthStore, AUTH_STORE_KEY, type AuthStore } from "./auth.svelte";
+import { beforeEach, describe, expect, it } from "vitest";
+import { AUTH_STORE_KEY, type AuthStore, createAuthStore } from "./auth.svelte";
 
 describe("AuthStore", () => {
 	let authStore: AuthStore;

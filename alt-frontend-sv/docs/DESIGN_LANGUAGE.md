@@ -352,14 +352,27 @@ src/lib/components/
 └── ui/               # Shared primitives
 ```
 
-Breakpoint: **768px** (`md:`). Detection via `useViewport()` hook.
+Breakpoint: **768px** (`md:`). Detection via `isDesktop()` / `isMobile()` from
+`$lib/stores/viewport.svelte`. Call them where the branch is written —
+`{#if isDesktop()}`, `$derived(isDesktop() ? … : …)`. Assigning the result to a
+plain `const` snapshots it and the layout stops following the viewport, which is
+how a phone in landscape (851 CSS px) used to get stuck on the desktop layout.
+
+A `{#if isDesktop()}` mounts and destroys, so it is for **navigation chrome**,
+not for a screen that holds state. `AugurChat` is one component at every width —
+the 720px column, the ≥1280px citation rail and the phone's full-bleed shell are
+media queries inside it. It used to be two components swapped on that branch, and
+once the branch became reactive, turning the phone threw away the conversation
+and re-asked the question in `?q=`: one question, three answers billed. When a
+layout really does differ per viewport, express it in CSS and let the component
+instance live.
 
 ### Mobile Layout
 
 ```
-.augur-mobile (flex column, height: 100%)
-  ├── .content-area (flex: 1, overflow-y: auto)
-  └── .input-area (flex-shrink: 0)
+.augur-shell (flex column, height: 100%)
+  ├── .augur-thread (flex: 1, overflow-y: auto)
+  └── .augur-input-area (flex-shrink: 0)
 ```
 
 - Use **flexbox layout** for full-height pages (thread + input)
@@ -533,7 +546,7 @@ All motion is **editorial** — deliberate, restrained, purposeful. No playful b
 | `src/lib/components/ui/` | Shared primitives (button, card, input, sheet) |
 | `src/lib/components/mobile/` | Mobile components (105+) |
 | `src/lib/components/desktop/` | Desktop components (80+) |
-| `src/lib/stores/viewport.svelte.ts` | `useViewport()` — 768px breakpoint detection |
+| `src/lib/stores/viewport.svelte.ts` | `isDesktop()` / `isMobile()` — 768px breakpoint detection |
 | `src/lib/utils.ts` | `cn()` — clsx + tailwind-merge |
 
 ---

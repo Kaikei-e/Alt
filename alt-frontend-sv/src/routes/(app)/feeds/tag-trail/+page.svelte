@@ -1,12 +1,10 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-
 // Desktop components
 import DesktopTagTrailScreen from "$lib/components/desktop/tag-trail/DesktopTagTrailScreen.svelte";
-
 // Mobile components
 import TagTrailScreen from "$lib/components/mobile/tag-trail/TagTrailScreen.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
 interface PageData {
 	initialFeed?: {
@@ -19,7 +17,6 @@ interface PageData {
 }
 
 const { data }: { data: PageData } = $props();
-const { isDesktop } = useViewport();
 
 let revealed = $state(false);
 
@@ -35,7 +32,7 @@ onMount(() => {
 </svelte:head>
 
 <div class="tag-trail-page" class:revealed data-role="tag-trail-page">
-	{#if isDesktop}
+	{#if isDesktop()}
 		<DesktopTagTrailScreen initialFeed={data.initialFeed} />
 	{:else}
 		<div class="flex flex-col h-[100dvh] overflow-hidden" style="background: var(--app-bg);">

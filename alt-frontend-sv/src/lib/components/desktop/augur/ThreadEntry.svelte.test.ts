@@ -28,13 +28,6 @@ const ARTICLE_TITLE =
 const SCOPED_MESSAGE = `Regarding the article: ${ARTICLE_TITLE} [articleId: ${ARTICLE_ID}]\n\nQuestion:\n3行でまとめると？`;
 const PROXY_URL = "/api/og-image?u=https%3A%2F%2Falt.ai%2Fog.png";
 
-/** A real blob URL backed by a 1x1 transparent GIF, so the <img> resolves. */
-function createBlobUrl(): string {
-	const gif = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-	const bytes = Uint8Array.from(atob(gif), (char) => char.charCodeAt(0));
-	return URL.createObjectURL(new Blob([bytes], { type: "image/gif" }));
-}
-
 describe("ThreadEntry", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -68,10 +61,7 @@ describe("ThreadEntry", () => {
 
 	it("renders the thumbnail once it resolves", async () => {
 		resolveThumbnail.mockResolvedValue(PROXY_URL);
-		loadProxyImageDefault.mockResolvedValue({
-			status: "loaded",
-			objectUrl: createBlobUrl(),
-		});
+		loadProxyImageDefault.mockResolvedValue({ status: "loaded" });
 
 		render(ThreadEntry, {
 			props: { message: SCOPED_MESSAGE, role: "user" },
@@ -107,6 +97,59 @@ describe("ThreadEntry", () => {
 			null,
 		);
 		expect(resolveThumbnail).not.toHaveBeenCalled();
+	});
+
+	// The footer is the citation surface below 1280px — the width every phone
+	// reads at — so it is the one that meets an unsanitized url first.
+	it("never binds a javascript: citation url to an href", async () => {
+		render(ThreadEntry, {
+			props: {
+				message: "answer",
+				role: "assistant",
+				citations: [{ URL: "javascript:alert(1)", Title: "Malicious source" }],
+			},
+		});
+
+		await expect
+			.element(page.getByText("Malicious source"))
+			.toBeInTheDocument();
+		expect(document.querySelector('a[href^="javascript:"]')).toBe(null);
+	});
+
+	it("sends an article citation to the article, not to a dead relative url", async () => {
+		render(ThreadEntry, {
+			props: {
+				message: "answer",
+				role: "assistant",
+				citations: [
+					{
+						URL: "",
+						Title: "A stored article",
+						Kind: "ARTICLE" as const,
+						RefID: ARTICLE_ID,
+					},
+				],
+			},
+		});
+
+		const link = page.getByRole("link", { name: "A stored article" });
+		await expect
+			.element(link)
+			.toHaveAttribute("href", `/articles/${ARTICLE_ID}`);
+	});
+
+	it("still links a legacy citation that carries only a url", async () => {
+		render(ThreadEntry, {
+			props: {
+				message: "answer",
+				role: "assistant",
+				citations: [{ URL: "https://example.com/a", Title: "Legacy source" }],
+			},
+		});
+
+		const link = page.getByRole("link", { name: "Legacy source" });
+		await expect.element(link).toHaveAttribute("href", "https://example.com/a");
+		await expect.element(link).toHaveAttribute("target", "_blank");
 	});
 
 	it("renders an assistant turn as prose with its byline", async () => {

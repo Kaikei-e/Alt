@@ -29,6 +29,43 @@ describe("sanitizeFeed id assignment", () => {
 	});
 });
 
+describe("sanitizeFeed feedId — the id ResolveOgImages matches", () => {
+	// `id` and `feedId` name different tables, and the whole point of carrying
+	// both is that a card can never reach for the wrong one. `id` is
+	// articles.id or, failing that, the link URL — and a URL handed to
+	// ResolveOgImages is a `$1::uuid[]` cast error, not a miss, which takes the
+	// RPC to 5xx on an endpoint whose circuit breaker is shared with the rest
+	// of externalContentEndpoints.
+	it("carries feed_id through as feedId, distinct from id", () => {
+		const feed = makeFeed({
+			feed_id: "11111111-1111-4111-8111-111111111111",
+			article_id: "22222222-2222-4222-8222-222222222222",
+		});
+		const result = sanitizeFeed(feed);
+		expect(result.feedId).toBe("11111111-1111-4111-8111-111111111111");
+		expect(result.id).toBe("22222222-2222-4222-8222-222222222222");
+	});
+
+	it("keeps feedId when the feed has no article at all", () => {
+		// The common case for on-demand resolution: no article row, so `id`
+		// degrades to the link URL while feeds.id is still perfectly good.
+		const feed = makeFeed({
+			feed_id: "11111111-1111-4111-8111-111111111111",
+			article_id: undefined,
+		});
+		const result = sanitizeFeed(feed);
+		expect(result.feedId).toBe("11111111-1111-4111-8111-111111111111");
+		expect(result.id).toBe("https://example.com/article");
+	});
+
+	it("leaves feedId undefined rather than falling back to id", () => {
+		// Search results come from Meilisearch hits and carry no feeds.id. The
+		// card must then resolve nothing — never substitute `id`.
+		const feed = makeFeed({ article_id: "abc-123" });
+		expect(sanitizeFeed(feed).feedId).toBeUndefined();
+	});
+});
+
 describe("sanitizeFeed XSS safety — description must NOT be used with {@html}", () => {
 	it("entity-decoded description can contain raw angle brackets", () => {
 		const feed = makeFeed({

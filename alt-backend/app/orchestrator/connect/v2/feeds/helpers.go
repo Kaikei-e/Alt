@@ -18,12 +18,31 @@ func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 	for _, feed := range feeds {
 		// ID for Svelte {#each} keying only (not used in business logic).
 		// Use ArticleID when available; otherwise generate a UUID to guarantee uniqueness.
+		//
+		// This is deliberately NOT feeds.id, and nothing that queries the feeds
+		// table may use it — see FeedId below.
 		id := uuid.New().String()
 		if feed.ArticleID != "" {
 			id = feed.ArticleID
 		}
+
+		// feeds.id, for the client to hand back to ResolveOgImages.
+		//
+		// The zero UUID travels as the empty string rather than as
+		// "00000000-...": empty is the one value the browser's resolver drops
+		// without sending, while a zero UUID is well-formed enough to clear
+		// `$1::uuid[]` and would come back as an ordinary miss — the same
+		// silence as sending the wrong id, which is the failure this field
+		// exists to end. Surfaces with no feeds.id to give (SearchFeeds, built
+		// from Meilisearch hits) therefore send nothing.
+		feedID := ""
+		if feed.FeedID != uuid.Nil {
+			feedID = feed.FeedID.String()
+		}
+
 		item := &feedsv2.FeedItem{
 			Id:              id,
+			FeedId:          feedID,
 			Title:           feed.Title,
 			Description:     feed.Description,
 			Link:            feed.Link, // domain.FeedItem keeps RSS-spec Link

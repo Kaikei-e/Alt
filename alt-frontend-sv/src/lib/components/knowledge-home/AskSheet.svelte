@@ -1,12 +1,12 @@
 <script lang="ts">
-import { tick } from "svelte";
 import { RotateCcw, Shuffle } from "@lucide/svelte";
-import * as Sheet from "$lib/components/ui/sheet";
+import { tick } from "svelte";
 import ArticleScopeCard from "$lib/components/desktop/augur/ArticleScopeCard.svelte";
-import ThreadEntry from "$lib/components/desktop/augur/ThreadEntry.svelte";
 import QuestionInput from "$lib/components/desktop/augur/QuestionInput.svelte";
+import ThreadEntry from "$lib/components/desktop/augur/ThreadEntry.svelte";
+import * as Sheet from "$lib/components/ui/sheet";
 import { useAugurPane } from "$lib/hooks/useAugurPane.svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 import { buildAugurInitialMessage } from "$lib/utils/augur-entry";
 import { pickSuggestions } from "./ask-suggestions";
 
@@ -33,7 +33,6 @@ const {
 	onConversationId,
 }: Props = $props();
 
-const { isDesktop } = useViewport();
 const pane = useAugurPane({
 	onConversationIdChange: (id) => onConversationId?.(id),
 });
@@ -44,7 +43,9 @@ let chatContainer: HTMLDivElement | undefined = $state();
 let shuffleCount = $state(0);
 
 const suggestions = $derived(pickSuggestions(scopeTags, shuffleCount));
-const sheetSide = $derived<"right" | "bottom">(isDesktop ? "right" : "bottom");
+const sheetSide = $derived<"right" | "bottom">(
+	isDesktop() ? "right" : "bottom",
+);
 
 // Reset state when sheet closes
 $effect(() => {
@@ -117,7 +118,7 @@ function handleOpenChange(isOpen: boolean) {
 	<Sheet.Root {open} onOpenChange={handleOpenChange}>
 		<Sheet.Content
 			side={sheetSide}
-			class={isDesktop
+			class={isDesktop()
 				? "flex h-full w-full flex-col sm:max-w-[max(28rem,50vw)]"
 				: "flex h-[85dvh] flex-col"}
 		>

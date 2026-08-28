@@ -32,9 +32,15 @@ const PNG_1x1 = Buffer.from(
 	"base64",
 );
 
-function feedWithoutOg(id: string, title: string, slug: string) {
+function feedWithoutOg(feedId: string, title: string, slug: string) {
 	return {
-		id,
+		// Deliberately NOT the feed id. The server derives `id` from articles.id,
+		// or mints a fresh UUID when there is no article row — it is a render key
+		// and nothing more. ResolveOgImages is keyed on `feedId`, and a fixture
+		// that set the two to the same string would keep passing if the client
+		// regressed to sending `id`, which is exactly the defect that shipped.
+		id: `render-key-${feedId}`,
+		feedId,
 		articleId: "",
 		title,
 		description: "Deep dive into the ecosystem.",

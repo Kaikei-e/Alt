@@ -1,19 +1,15 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
-import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
-import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
-import type { TimeWindow } from "$lib/schema/stats";
-
 // Mobile deps
 import {
 	getDetailedFeedStatsClient,
 	getUnreadCountClient,
 } from "$lib/api/client/feeds";
-import type { DetailedFeedStatsSummary } from "$lib/schema/stats";
-
-const { isDesktop } = useViewport();
+import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
+import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
+import type { DetailedFeedStatsSummary, TimeWindow } from "$lib/schema/stats";
+import { isDesktop, isMobile } from "$lib/stores/viewport.svelte";
 
 // Lazy load chart.js (heavy dependency) - only loaded when stats page is visited on desktop
 const TrendChartPromise = import(
@@ -54,38 +50,61 @@ function formatNumber(num: number): string {
 	return new Intl.NumberFormat().format(num);
 }
 
-onMount(async () => {
+async function loadMobileLedger() {
+	try {
+		const [statsData, unreadData] = await Promise.all([
+			getDetailedFeedStatsClient(),
+			getUnreadCountClient(),
+		]);
+		mobileStats = statsData;
+
+		displayFeedAmount = statsData.feed_amount.amount;
+		displayTotalArticles = statsData.total_articles.amount;
+		displayUnsummarized = statsData.unsummarized_articles.amount;
+
+		unreadCount = unreadData.count;
+	} catch (e) {
+		console.error("Failed to fetch stats", e);
+		mobileError = "Failed to load statistics";
+	} finally {
+		mobileLoading = false;
+	}
+}
+
+onMount(() => {
 	requestAnimationFrame(() => {
 		revealed = true;
 	});
+});
 
-	if (isDesktop) {
+// The two viewports show different figures pulled from different endpoints,
+// and a rotation now swaps between them without remounting the page. Fetching
+// in `onMount` therefore loaded exactly one of the two and left the other
+// stuck on its loading state for good — the charts empty one way, the ledger
+// on "Loading…" the other.
+//
+// Fetching both up front would spend a request nobody reads for every reader
+// who never rotates, so each side is fetched the first time it is actually on
+// screen and then remembered. These flags are plain `let`s on purpose: as
+// `$state` they would be dependencies of the effect below and re-trigger it.
+let trendRequested = false;
+let mobileLedgerRequested = false;
+
+$effect(() => {
+	if (isDesktop()) {
+		if (trendRequested) return;
+		trendRequested = true;
 		trendStats.fetchData("24h");
 	} else {
-		try {
-			const [statsData, unreadData] = await Promise.all([
-				getDetailedFeedStatsClient(),
-				getUnreadCountClient(),
-			]);
-			mobileStats = statsData;
-
-			displayFeedAmount = statsData.feed_amount.amount;
-			displayTotalArticles = statsData.total_articles.amount;
-			displayUnsummarized = statsData.unsummarized_articles.amount;
-
-			unreadCount = unreadData.count;
-		} catch (e) {
-			console.error("Failed to fetch stats", e);
-			mobileError = "Failed to load statistics";
-		} finally {
-			mobileLoading = false;
-		}
+		if (mobileLedgerRequested) return;
+		mobileLedgerRequested = true;
+		void loadMobileLedger();
 	}
 });
 
 // Mobile: synchronize SSE updates with display values
 $effect(() => {
-	if (!isDesktop && stats.isConnected) {
+	if (isMobile() && stats.isConnected) {
 		if (stats.feedAmount > 0) {
 			displayFeedAmount = stats.feedAmount;
 		}
@@ -103,7 +122,7 @@ $effect(() => {
 	<title>Statistics - Alt</title>
 </svelte:head>
 
-{#if isDesktop}
+{#if isDesktop()}
 	<div class="ledger-page" class:revealed>
 		<!-- Editorial Header -->
 		<header class="ledger-header">

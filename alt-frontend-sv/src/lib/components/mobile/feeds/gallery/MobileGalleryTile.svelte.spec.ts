@@ -33,13 +33,6 @@ const feedWithImage: RenderFeed = {
 	ogImageProxyUrl: PROXY_URL,
 };
 
-/** A real blob URL backed by a 1x1 transparent GIF. */
-function createBlobUrl(): string {
-	const gif = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-	const bytes = Uint8Array.from(atob(gif), (char) => char.charCodeAt(0));
-	return URL.createObjectURL(new Blob([bytes], { type: "image/gif" }));
-}
-
 /** Let mount effects, the IntersectionObserver callback and microtasks settle. */
 function settle(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 50));
@@ -165,8 +158,7 @@ describe("MobileGalleryTile", () => {
 		});
 
 		it("renders the image once the proxy load resolves", async () => {
-			const objectUrl = createBlobUrl();
-			loadProxyImageDefault.mockResolvedValue({ status: "loaded", objectUrl });
+			loadProxyImageDefault.mockResolvedValue({ status: "loaded" });
 
 			render(MobileGalleryTile, {
 				props: { feed: feedWithImage, onSelect: vi.fn() },
@@ -174,7 +166,7 @@ describe("MobileGalleryTile", () => {
 
 			const image = page.getByTestId("tile-image");
 			await expect.element(image).toBeInTheDocument();
-			await expect.element(image).toHaveAttribute("src", objectUrl);
+			await expect.element(image).toHaveAttribute("src", PROXY_URL);
 			await expect
 				.element(page.getByTestId("tile-image-fallback"))
 				.not.toBeInTheDocument();
@@ -280,23 +272,6 @@ describe("MobileGalleryTile", () => {
 			unmount();
 
 			expect(signal.aborted).toBe(true);
-		});
-
-		it("revokes the object URL when destroyed", async () => {
-			const objectUrl = createBlobUrl();
-			loadProxyImageDefault.mockResolvedValue({ status: "loaded", objectUrl });
-			const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
-
-			const { unmount } = render(MobileGalleryTile, {
-				props: { feed: feedWithImage, onSelect: vi.fn() },
-			});
-
-			await expect.element(page.getByTestId("tile-image")).toBeInTheDocument();
-
-			unmount();
-
-			expect(revokeSpy).toHaveBeenCalledWith(objectUrl);
-			revokeSpy.mockRestore();
 		});
 	});
 });

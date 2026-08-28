@@ -1,4 +1,14 @@
-import type { CursorResponse } from "$lib/server/feed-api";
+import {
+	type ConnectFeedItem,
+	type ConnectFeedSource,
+	getAllFeeds,
+	getFavoriteFeeds,
+	getReadFeeds,
+	getUnreadFeeds,
+	listSubscriptions,
+	searchFeeds as searchFeedsConnect,
+} from "$lib/connect/feeds";
+import { createClientTransport } from "$lib/connect/transport-client";
 import type { RenderFeed } from "$lib/schema/feed";
 import type { FeedSearchResult, SearchFeedItem } from "$lib/schema/search";
 import type {
@@ -6,17 +16,7 @@ import type {
 	FeedStatsSummary,
 	UnreadCountResponse,
 } from "$lib/schema/stats";
-import { createClientTransport } from "$lib/connect/transport-client";
-import {
-	getUnreadFeeds,
-	getAllFeeds,
-	getReadFeeds,
-	getFavoriteFeeds,
-	searchFeeds as searchFeedsConnect,
-	listSubscriptions,
-	type ConnectFeedItem,
-	type ConnectFeedSource,
-} from "$lib/connect/feeds";
+import type { CursorResponse } from "$lib/server/feed-api";
 import {
 	formatPublishedDate,
 	generateExcerptFromDescription,
@@ -38,6 +38,8 @@ function connectFeedToRenderFeed(item: ConnectFeedItem): RenderFeed {
 		author: item.author || undefined,
 		// Article ID in the articles table - used to determine if mark-as-read is available
 		articleId: item.articleId,
+		// feeds.id - what the cards hand to ogImageResolver().resolve()
+		feedId: item.feedId,
 		isRead: item.isRead,
 		// Generate display values from the already-sanitized data
 		publishedAtFormatted: formatPublishedDate(item.createdAt || item.published),

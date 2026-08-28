@@ -1,31 +1,31 @@
 <script lang="ts">
+import { onDestroy, onMount } from "svelte";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { onDestroy, onMount } from "svelte";
+import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
 import {
+	type RunStatus as BackendRunStatus,
+	deriveRunStatusKind,
+} from "$lib/components/acolyte/runStatusPill";
+import MobileAcolyteDetail from "$lib/components/mobile/acolyte/MobileAcolyteDetail.svelte";
+import {
+	type AcolyteCitation,
+	type AcolyteReport,
+	type AcolyteRun,
+	type AcolyteSection,
+	type AcolyteVersionSummary,
 	deleteReport,
 	getReport,
 	getRunStatus,
 	isAlreadyRunning,
 	isFailedPrecondition,
 	listReportVersions,
-	startReportRun,
 	rerunSection,
-	type AcolyteCitation,
-	type AcolyteReport,
-	type AcolyteRun,
-	type AcolyteSection,
-	type AcolyteVersionSummary,
+	startReportRun,
 } from "$lib/connect/acolyte";
 import { resolveResumeIntent } from "$lib/connect/acolyteAutostartParams";
+import { isMobile } from "$lib/stores/viewport.svelte";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
-import {
-	deriveRunStatusKind,
-	type RunStatus as BackendRunStatus,
-} from "$lib/components/acolyte/runStatusPill";
-import MobileAcolyteDetail from "$lib/components/mobile/acolyte/MobileAcolyteDetail.svelte";
 
 type RunStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
 type TerminalStatus = Extract<RunStatus, "succeeded" | "failed" | "cancelled">;
@@ -62,8 +62,6 @@ function formatScopeLabel(key: string): string {
 		key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 	);
 }
-
-const { isDesktop } = useViewport();
 
 let report = $state<AcolyteReport | null>(null);
 let sections = $state<AcolyteSection[]>([]);
@@ -272,7 +270,7 @@ onMount(async () => {
 onDestroy(stopPolling);
 </script>
 
-{#if !isDesktop}
+{#if isMobile()}
 <MobileAcolyteDetail
 	{report}
 	{sections}

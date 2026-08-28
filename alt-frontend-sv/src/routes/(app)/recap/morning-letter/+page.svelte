@@ -2,25 +2,20 @@
 import { onMount } from "svelte";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import { useMorningLetter } from "$lib/hooks/useMorningLetter.svelte";
+// Desktop
+import DesktopChat from "$lib/components/desktop/morning-letter/MorningLetterChat.svelte";
+// Mobile
+import MobileChat from "$lib/components/mobile/morning-letter/MorningLetterChat.svelte";
+// Shared components
+import MorningLetterDocumentCore from "$lib/components/morning-letter/MorningLetterDocumentCore.svelte";
+import MorningLetterEmpty from "$lib/components/morning-letter/MorningLetterEmpty.svelte";
+import MorningLetterSkeleton from "$lib/components/morning-letter/MorningLetterSkeleton.svelte";
 import {
 	deriveWithinHours,
 	formatLetterDate,
 } from "$lib/components/morning-letter/morning-letter-document";
-
-// Shared components
-import MorningLetterDocumentCore from "$lib/components/morning-letter/MorningLetterDocumentCore.svelte";
-import MorningLetterSkeleton from "$lib/components/morning-letter/MorningLetterSkeleton.svelte";
-import MorningLetterEmpty from "$lib/components/morning-letter/MorningLetterEmpty.svelte";
-
-// Desktop
-import DesktopChat from "$lib/components/desktop/morning-letter/MorningLetterChat.svelte";
-
-// Mobile
-import MobileChat from "$lib/components/mobile/morning-letter/MorningLetterChat.svelte";
-
-const { isDesktop } = useViewport();
+import { useMorningLetter } from "$lib/hooks/useMorningLetter.svelte";
+import { isDesktop } from "$lib/stores/viewport.svelte";
 
 const ml = useMorningLetter(page.data.letter ?? null);
 
@@ -67,7 +62,7 @@ function handlePreviousLetterSelected(targetDate: string) {
 </svelte:head>
 
 <div class="morning-letter-page" class:revealed data-role="morning-letter-page">
-	{#if isDesktop}
+	{#if isDesktop()}
 		<!-- Desktop: Edition header + document/chat layout -->
 		<header class="edition-header">
 			<span class="edition-label">Morning Letter</span>

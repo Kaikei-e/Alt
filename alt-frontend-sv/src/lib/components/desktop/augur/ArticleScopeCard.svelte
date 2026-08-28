@@ -52,10 +52,10 @@ const thumbnail = createProxyImage({
 		bind:this={thumbnailContainer}
 		class="relative h-12 w-16 flex-shrink-0 overflow-hidden rounded bg-[var(--surface-bg)]"
 	>
-		{#if thumbnail.state === "loaded" && thumbnail.objectUrl}
+		{#if thumbnail.state === "loaded" && thumbnail.src}
 			<img
 				data-testid="article-scope-thumbnail"
-				src={thumbnail.objectUrl}
+				src={thumbnail.src}
 				alt=""
 				class="h-full w-full object-cover"
 			/>

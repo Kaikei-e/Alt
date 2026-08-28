@@ -51,6 +51,73 @@ var unreadProjectionEndpoints = map[string]struct{}{
 // merely returns a URL pointing at a third party stays non-critical.
 var externalContentEndpoints = map[string]struct{}{
 	"/alt.articles.v2.ArticleService/FetchArticleContent": {},
+	// ResolveOgImages fetches publisher pages inline, while the RPC is still
+	// open: for each feed that still needs an image, og_image_resolve_usecase
+	// asks the origin for robots.txt and then the page itself, through the
+	// per-host politeness slot, before it can answer. So the status and latency
+	// it returns report a third party's health and our own rate-limit gate —
+	// the two things ADR-000959 took out of alt-backend's failure budget.
+	//
+	// Unclassified, it was charged at the internal budget (threshold 5, open
+	// 30s) rather than the external-content one (20, 5s). Those numbers are
+	// calibrated for a dependency we operate: a handful of slow or unreachable
+	// publishers, or a batch that simply waited too long for its own host
+	// slots, would black out og:image resolution for thirty seconds and count
+	// as an alt-backend outage. That is the same self-inflicted loop
+	// ADR-000959 §4 found behind FetchArticleContent, and the same argument
+	// puts the re-probe at five seconds: the next viewport is usually a
+	// different set of publishers.
+	//
+	// BatchPrefetchImages is the near-miss to keep it apart from: it mints
+	// signed proxy URLs from rows already held and never contacts a publisher
+	// on its response path, so it stays non-critical (ADR-000959 §2 says so in
+	// as many words). "Deals in images from third-party sites" is not the test;
+	// "waits on one before it can reply" is.
+	"/alt.feeds.v2.FeedService/ResolveOgImages": {},
+	// RegisterRSSFeed cannot answer without the publisher either. Step 1 of
+	// RegisterFeedsUsecase.Execute is validateAndFetchPort.ValidateAndFetch and
+	// nothing is written until it returns: it resolves the publisher's host,
+	// waits on the shared HostRateLimiter's per-host politeness floor (CLAUDE.md
+	// rule 2), then downloads and parses the feed — inline, with the RPC still
+	// open. Its gateway names itself "the external HTTP boundary for feed
+	// registration". So this RPC's status and latency report a third party's
+	// health and our own rate-limit gate, the two things ADR-000959 took out of
+	// alt-backend's failure budget.
+	//
+	// It is charged today. The usecase flattens every fetch failure into a bare
+	// errors.New, so HandleUpstreamError finds no Connect code to preserve and
+	// falls through to CodeInternal: a 500 with no X-Alt-Failure-Scope, which
+	// recordOutcome books against alt-backend for a publisher that never
+	// answered.
+	//
+	// Frequency is the objection and it deserves an answer, because this is not
+	// ResolveOgImages: a reader triggers that one on every scroll, while
+	// registration is a single deliberate click, so a budget of 20 looks far too
+	// slack to detect anything here. It is — but detection was never this
+	// budget's job (the transition logs and metrics do that), and the status quo
+	// is not sharper, only crueller. The threshold counts *consecutive*
+	// failures, so a quiet endpoint alone on its own breaker is hypersensitive
+	// rather than sensitive: with almost no successful traffic to reset
+	// consecFailures, one person retrying a dead or unreachable feed five times
+	// reaches 5 unaided and has everyone else's registrations refused for the
+	// next 30 seconds. One publisher being down, booked as our outage and paid
+	// for by unrelated users — the exact thing this class exists to stop.
+	//
+	// The cost, stated plainly: unlike ClassNonCritical, which mints a breaker
+	// per endpoint, this class shares a single externalContentCB, so
+	// registration now sits behind the same breaker as FetchArticleContent and
+	// ResolveOgImages. It improves in both directions anyway. Registration is
+	// far too infrequent to land 20 consecutive failures without one of their
+	// successes resetting the count, so it cannot realistically open the breaker
+	// on the reads; and when the reads do open it, registration is refused for
+	// 5s instead of the 30s it currently inflicts on itself.
+	//
+	// The rest of RSSService stays put — including the sibling that looks
+	// closest, RegisterFavoriteFeed, which takes a feed URL just the same and
+	// skips the SSRF check precisely because it "only does a DB lookup by URL".
+	// The test is unchanged: not "handles a third-party URL", but "waits on one
+	// before it can reply".
+	"/alt.rss.v2.RSSService/RegisterRSSFeed": {},
 }
 
 // telemetryEndpoints are fire-and-forget analytics writes: the frontend
