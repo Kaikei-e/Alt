@@ -81,7 +81,17 @@ async function loadFirstArticle(
 	// Pre-set the LCP image to the feed-level proxy URL. This gives the client
 	// an OGP image to preload even if fetchArticleContent / batchPrefetchImages
 	// time out.
-	let firstArticleImageUrl = firstFeed.ogImageProxyUrl ?? null;
+	//
+	// Every value this variable may take is a signed `/v1/images/proxy/...`
+	// path. It is emitted as `<link rel="preload" as="image">` and seeded into
+	// the client's og-image cache, from where it becomes the first card's
+	// `<img src>` — so a publisher's own URL here is an unproxied cross-origin
+	// request in the reader's browser, outside the rate limiting, SSRF
+	// validation, domain allow-list and re-encoding the image proxy applies.
+	// `|| null`, not `?? null`: an absent og_image_proxy_url arrives from the
+	// wire as "", and an empty string is not a URL — it is "no image", and
+	// saying so as null keeps every branch below on one falsy value.
+	let firstArticleImageUrl = firstFeed.ogImageProxyUrl || null;
 
 	try {
 		const transport = backendToken
@@ -94,10 +104,15 @@ async function loadFirstArticle(
 			abort.signal,
 		);
 
-		// Prefer the proxy URL from the article, then the feed-level proxy URL,
-		// finally the raw og:image. batchPrefetchImages is only consulted when
-		// neither is available — and we run it in parallel with a short timeout
-		// of its own so it never blocks SSR past ARTICLE_FETCH_TIMEOUT_MS.
+		// Feed-level proxy URL first, then the article's own, then
+		// batchPrefetchImages — three sources of the same signed path, tried in
+		// the order of what costs least. `article.ogImageUrl` is deliberately
+		// NOT a fourth: it is the publisher's URL, and it used to be taken
+		// precisely in the common case where the feed row had no
+		// `og_image_proxy_url` and the batch came back empty. When none of the
+		// three yields a signed path, the card shows no preview — which is the
+		// honest answer, and the only one that keeps the reader's browser off a
+		// third-party host.
 		if (!firstArticleImageUrl && article.ogImageProxyUrl) {
 			firstArticleImageUrl = article.ogImageProxyUrl;
 		} else if (!firstArticleImageUrl && article.articleId) {
@@ -109,22 +124,18 @@ async function loadFirstArticle(
 					firstArticleImageUrl = images[0]!.proxyUrl;
 				}
 			} catch {
-				// Fall back to raw og_image_url
+				// No signed URL from this source either; the card goes without.
 			}
 		}
 
-		if (!firstArticleImageUrl) {
-			firstArticleImageUrl = article.ogImageUrl || null;
-		}
-
 		return {
-			firstArticleImageUrl,
+			firstArticleImageUrl: firstArticleImageUrl || null,
 			firstArticleContent: article.content || null,
 			firstArticleId: article.articleId || null,
 		};
 	} catch {
 		return {
-			firstArticleImageUrl,
+			firstArticleImageUrl: firstArticleImageUrl || null,
 			firstArticleContent: null,
 			firstArticleId: null,
 		};

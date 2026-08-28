@@ -25,7 +25,12 @@ interface Props {
 	initialFeeds?: RenderFeed[];
 	initialNextCursor?: string | null;
 	initialArticleContent?: string | null;
-	initialOgImageUrl?: string | null;
+	/**
+	 * The SSR-resolved og:image for the first card, as a signed
+	 * `/v1/images/proxy/...` path. Never a publisher URL — see
+	 * `+page.server.ts`, which drops the raw fallback it used to end with.
+	 */
+	initialOgImageProxyUrl?: string | null;
 	mode?: "default" | "visual-preview";
 }
 
@@ -33,7 +38,7 @@ const {
 	initialFeeds = [],
 	initialNextCursor,
 	initialArticleContent,
-	initialOgImageUrl,
+	initialOgImageProxyUrl,
 	mode = "default",
 }: Props = $props();
 
@@ -154,7 +159,6 @@ onMount(() => {
 							feedUrl,
 							articlePrefetcher.getCachedContent(feedUrl) || "",
 							articleId,
-							null,
 							info.proxyUrl,
 						);
 					}
@@ -170,14 +174,27 @@ onMount(() => {
 	return () => articlePrefetcher.setOnArticleIdCached(null);
 });
 
-// Re-evaluate OGP image when activeFeed changes or cache updates
+// The card's og:image, as a signed proxy path or null.
+//
+// Three sources, all of them proxy-only: the prefetcher's cache (filled from
+// FetchArticleContent's og_image_proxy_url and from BatchPrefetchImages), the
+// feed row's own og_image_proxy_url, and the SSR seed for the first card. A
+// feed that yields none of the three is not the end of it — the card resolves
+// one on demand through ResolveOgImages once the reader reaches it.
+//
+// `ogImageVersion` is read for its dependency alone: getCachedOgImage is a
+// plain Map lookup, so without the counter a URL the prefetcher obtains after
+// this ran would never reach the card. The card's own pipeline reads its `url`
+// getter reactively, so bumping the counter is all the push it needs.
 const currentOgImage = $derived.by(() => {
 	void ogImageVersion;
 	if (!activeFeed) return null;
 	const cached = articlePrefetcher.getCachedOgImage(activeFeed.normalizedUrl);
 	if (cached) return cached;
 	if (activeFeed.ogImageProxyUrl) return activeFeed.ogImageProxyUrl;
-	if (activeIndex === 0 && initialOgImageUrl) return initialOgImageUrl;
+	if (activeIndex === 0 && initialOgImageProxyUrl) {
+		return initialOgImageProxyUrl;
+	}
 	return null;
 });
 
@@ -247,7 +264,12 @@ async function loadMore() {
 									cacheKey,
 									articleRes.content,
 									articleRes.article_id || "",
-									articleRes.og_image_url || null,
+									// The signed path only. `og_image_url` is the
+									// publisher's own URL and used to be seeded
+									// here, from where it reached the card's
+									// <img src> as an unproxied cross-origin
+									// request.
+									articleRes.og_image_proxy_url || null,
 								);
 							}
 						})
@@ -310,7 +332,6 @@ function triggerBatchImagePrefetch(newFeeds: RenderFeed[]) {
 							feed.normalizedUrl,
 							articlePrefetcher.getCachedContent(feed.normalizedUrl) || "",
 							info.articleId,
-							null,
 							info.proxyUrl,
 						);
 						break;
@@ -461,7 +482,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
             feed={activeFeed}
             statusMessage={liveRegionMessage}
             onDismiss={handleDismiss}
-            thumbnailUrl={currentOgImage}
+            thumbnailProxyUrl={currentOgImage}
             {getCachedContent}
             {getCachedArticleId}
             {requestContent}

@@ -32,8 +32,11 @@ onMount(() => {
 		feedUrl,
 		resolvedArticleData.firstArticleContent || "",
 		resolvedArticleData.firstArticleId,
+		// A signed /v1/images/proxy path or null — `+page.server.ts` no longer
+		// hands back the publisher's own URL. This is the string the first
+		// card's <img src> ends up requesting, and the same one the preload
+		// hint below names, so the hint and the request match.
 		resolvedArticleData.firstArticleImageUrl,
-		null,
 	);
 });
 </script>
@@ -62,7 +65,7 @@ onMount(() => {
 		initialFeeds={data.initialFeeds}
 		initialNextCursor={data.nextCursor}
 		initialArticleContent={resolvedArticleData.firstArticleContent}
-		initialOgImageUrl={resolvedArticleData.firstArticleImageUrl}
+		initialOgImageProxyUrl={resolvedArticleData.firstArticleImageUrl}
 		mode="visual-preview"
 	/>
 {/if}

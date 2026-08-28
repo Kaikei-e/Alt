@@ -121,6 +121,15 @@ interface RetryLedgerEntry {
 export class ArticlePrefetcher {
 	private contentCache = new Map<string, string | "loading">();
 	private articleIdCache = new Map<string, string>();
+	/**
+	 * feed URL -> the *signed* og:image proxy path, or null for "nothing to
+	 * render".
+	 *
+	 * Never a publisher's own URL. What this cache holds is read straight into
+	 * an `<img src>` by the swipe surface, and a raw cross-origin URL there is
+	 * an unproxied request that skips the rate limiting, SSRF validation,
+	 * domain allow-list and re-encoding `/v1/images/proxy` exists to apply.
+	 */
 	private ogImageCache = new Map<string, string | null>();
 	// Keyed by cache key, not a flat list: re-arming a timer that is still
 	// wanted restarts its delay, and the driving $effect fires more often than
@@ -617,7 +626,10 @@ export class ArticlePrefetcher {
 				this.onArticleIdCached?.(cacheKey, response.article_id);
 			}
 
-			this.ogImageCache.set(cacheKey, response.og_image_url || null);
+			// The proxy URL alone. `og_image_url` is the publisher's own URL and
+			// is deliberately not a fallback: an article whose image the signer
+			// could not or would not sign has no thumbnail on this surface.
+			this.ogImageCache.set(cacheKey, response.og_image_proxy_url || null);
 			this.onOgImageFetched?.();
 
 			this.evictOldEntries();
@@ -823,7 +835,8 @@ export class ArticlePrefetcher {
 	}
 
 	/**
-	 * Get cached og:image URL for a feed URL
+	 * The signed og:image proxy path for a feed URL, or null when there is
+	 * none. See `ogImageCache`: this is never a publisher URL.
 	 */
 	public getCachedOgImage(feedUrl: string): string | null {
 		return this.ogImageCache.get(feedUrl) ?? null;
@@ -832,13 +845,18 @@ export class ArticlePrefetcher {
 	/**
 	 * Seed cache directly without fetching from API.
 	 * Used by SwipeFeedScreen to cache the first feed's content from loadMore.
+	 *
+	 * `ogImageProxyUrl` is a signed `/v1/images/proxy/...` path or null. There
+	 * used to be a second slot here for the publisher's own URL, taken only
+	 * when no proxy URL was supplied — and every caller that had a raw URL and
+	 * no proxy one duly filled it, which is how an unproxied cross-origin URL
+	 * reached the swipe card's `<img src>`. One slot, and it is the signed one.
 	 */
 	public seedCache(
 		feedUrl: string,
 		content: string,
 		articleId: string,
-		ogImageUrl: string | null,
-		ogImageProxyUrl?: string | null,
+		ogImageProxyUrl: string | null,
 	): void {
 		if (!feedUrl) return;
 
@@ -852,7 +870,7 @@ export class ArticlePrefetcher {
 		if (articleId) {
 			this.articleIdCache.set(feedUrl, articleId);
 		}
-		this.ogImageCache.set(feedUrl, ogImageProxyUrl || ogImageUrl);
+		this.ogImageCache.set(feedUrl, ogImageProxyUrl || null);
 		this.onOgImageFetched?.();
 		this.evictOldEntries();
 	}

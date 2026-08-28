@@ -244,6 +244,37 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
+		// ResolveOgImages — on-demand og:image resolution.
+		//
+		// Answers every feed asked about as "asked, and settled": a retry bar of
+		// zero, which the client remembers and never re-asks. The mock has no
+		// publisher to fetch from, and the alternative — an unhandled path — is
+		// read as "the server never reached this feed", which licences the
+		// client's full re-ask ladder and leaves every card shimmering for
+		// several seconds in specs that are not about images at all. A spec that
+		// IS about images overrides this with its own page.route.
+		if (path === "/alt.feeds.v2.FeedService/ResolveOgImages") {
+			readJsonBody(req).then((body) => {
+				const feedIds = Array.isArray(body.feedIds)
+					? (body.feedIds as string[])
+					: [];
+				res.setHeader("Content-Type", "application/json");
+				res.writeHead(200);
+				res.end(
+					JSON.stringify({
+						images: [],
+						unresolved: feedIds.map((feedId) => ({
+							feedId,
+							// int64 on the wire is a JSON string, as protobuf's
+							// JSON mapping requires.
+							retryAfterSeconds: "0",
+						})),
+					}),
+				);
+			});
+			return;
+		}
+
 		// GetReadFeeds
 		if (path === "/alt.feeds.v2.FeedService/GetReadFeeds") {
 			res.setHeader("Content-Type", "application/json");

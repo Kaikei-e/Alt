@@ -122,8 +122,16 @@ export interface DetailedFeedStats {
 // =============================================================================
 
 export interface ConnectFeed {
+	/** Render key: articles.id, or a UUID minted per response. Not feeds.id. */
 	id: string;
 	articleId: string;
+	/**
+	 * feeds.id — the identifier `ResolveOgImages` matches, and the only one it
+	 * matches. The real backend sends it on every FeedItem; the mock omitting
+	 * it made every SSR-rendered card resolve an empty key, which settles on
+	 * "no image" without a request and hid the whole on-demand path from E2E.
+	 */
+	feedId?: string;
 	title: string;
 	description: string;
 	link: string;
