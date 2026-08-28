@@ -64,3 +64,93 @@ describe("ResponsiveLayout", () => {
 			.toBeInTheDocument();
 	});
 });
+
+// A rotation must swap the *chrome* (sidebar vs. bottom nav) without rebuilding
+// the page underneath it. When each viewport branch owned its own `<main>` with
+// its own `{@render children()}`, flipping the branch destroyed and re-created
+// the whole route component tree — every page, including the ones that never
+// read the viewport. The damage that caused is not visible in the markup, so
+// these assert on node identity: mark the live nodes, rotate, and require the
+// marks to still be there.
+describe("ResponsiveLayout page continuity across a rotation", () => {
+	function probe(el: Element | null, mark: string): HTMLElement {
+		expect(el).not.toBeNull();
+		(el as HTMLElement).dataset.identityProbe = mark;
+		return el as HTMLElement;
+	}
+
+	it("keeps the same <main> element when the phone is rotated into landscape", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		const { container } = render(ResponsiveLayout, {
+			props: { children: body },
+		});
+		const before = probe(container.querySelector("main"), "portrait");
+
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		await settle();
+
+		const after = container.querySelector("main");
+		expect(after).toBe(before);
+		expect((after as HTMLElement).dataset.identityProbe).toBe("portrait");
+	});
+
+	it("keeps the same <main> element when the phone is rotated upright again", async () => {
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		const { container } = render(ResponsiveLayout, {
+			props: { children: body },
+		});
+		const before = probe(container.querySelector("main"), "landscape");
+
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		await settle();
+
+		const after = container.querySelector("main");
+		expect(after).toBe(before);
+		expect((after as HTMLElement).dataset.identityProbe).toBe("landscape");
+	});
+
+	it("keeps the rendered page body mounted across a round trip", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		const { container } = render(ResponsiveLayout, {
+			props: { children: body },
+		});
+		const before = probe(
+			container.querySelector('[data-testid="page-body"]'),
+			"same-tree",
+		);
+
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		await settle();
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		await settle();
+
+		const after = container.querySelector('[data-testid="page-body"]');
+		expect(after).toBe(before);
+		expect((after as HTMLElement).dataset.identityProbe).toBe("same-tree");
+	});
+
+	it("exposes exactly one skip-link target at either width", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		const { container } = render(ResponsiveLayout, {
+			props: { children: body },
+		});
+
+		const assertSingleMain = () => {
+			const mains = container.querySelectorAll("main");
+			expect(mains).toHaveLength(1);
+			const main = mains[0] as HTMLElement;
+			// The skip link hrefs "#main" and focus is moved to this node after
+			// every navigation, so both attributes have to survive the merge.
+			expect(main.id).toBe("main");
+			expect(main.getAttribute("tabindex")).toBe("-1");
+			expect(
+				container.querySelector<HTMLAnchorElement>("a.skip-link")?.hash,
+			).toBe("#main");
+		};
+
+		assertSingleMain();
+		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
+		await settle();
+		assertSingleMain();
+	});
+});

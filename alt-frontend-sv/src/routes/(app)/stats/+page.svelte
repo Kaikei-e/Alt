@@ -50,32 +50,55 @@ function formatNumber(num: number): string {
 	return new Intl.NumberFormat().format(num);
 }
 
-onMount(async () => {
+async function loadMobileLedger() {
+	try {
+		const [statsData, unreadData] = await Promise.all([
+			getDetailedFeedStatsClient(),
+			getUnreadCountClient(),
+		]);
+		mobileStats = statsData;
+
+		displayFeedAmount = statsData.feed_amount.amount;
+		displayTotalArticles = statsData.total_articles.amount;
+		displayUnsummarized = statsData.unsummarized_articles.amount;
+
+		unreadCount = unreadData.count;
+	} catch (e) {
+		console.error("Failed to fetch stats", e);
+		mobileError = "Failed to load statistics";
+	} finally {
+		mobileLoading = false;
+	}
+}
+
+onMount(() => {
 	requestAnimationFrame(() => {
 		revealed = true;
 	});
+});
 
+// The two viewports show different figures pulled from different endpoints,
+// and a rotation now swaps between them without remounting the page. Fetching
+// in `onMount` therefore loaded exactly one of the two and left the other
+// stuck on its loading state for good — the charts empty one way, the ledger
+// on "Loading…" the other.
+//
+// Fetching both up front would spend a request nobody reads for every reader
+// who never rotates, so each side is fetched the first time it is actually on
+// screen and then remembered. These flags are plain `let`s on purpose: as
+// `$state` they would be dependencies of the effect below and re-trigger it.
+let trendRequested = false;
+let mobileLedgerRequested = false;
+
+$effect(() => {
 	if (isDesktop()) {
+		if (trendRequested) return;
+		trendRequested = true;
 		trendStats.fetchData("24h");
 	} else {
-		try {
-			const [statsData, unreadData] = await Promise.all([
-				getDetailedFeedStatsClient(),
-				getUnreadCountClient(),
-			]);
-			mobileStats = statsData;
-
-			displayFeedAmount = statsData.feed_amount.amount;
-			displayTotalArticles = statsData.total_articles.amount;
-			displayUnsummarized = statsData.unsummarized_articles.amount;
-
-			unreadCount = unreadData.count;
-		} catch (e) {
-			console.error("Failed to fetch stats", e);
-			mobileError = "Failed to load statistics";
-		} finally {
-			mobileLoading = false;
-		}
+		if (mobileLedgerRequested) return;
+		mobileLedgerRequested = true;
+		void loadMobileLedger();
 	}
 });
 

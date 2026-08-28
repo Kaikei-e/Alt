@@ -1,5 +1,4 @@
 <script lang="ts">
-import { onMount } from "svelte";
 import { page } from "$app/stores";
 // Desktop components
 import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
@@ -16,7 +15,13 @@ const augurEntry = $derived(
 	}),
 );
 
-onMount(() => {
+// `augur-page` pins `overflow: hidden` on <html> so the phone shell — which is
+// `position: fixed` — does not scroll the document behind itself. That is a
+// property of the viewport, not of the mount, so it has to follow the viewport:
+// `onMount` added it once and only dropped it on unmount, which left the class
+// stuck on after a rotation into landscape (a desktop layout that could not
+// scroll) and never applied it when a desktop session was rotated onto a phone.
+$effect(() => {
 	if (isDesktop()) return;
 
 	document.documentElement.classList.add("augur-page");

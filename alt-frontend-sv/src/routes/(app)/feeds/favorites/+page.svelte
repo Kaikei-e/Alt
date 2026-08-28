@@ -114,14 +114,27 @@ async function handleRemoveFavorite(feedUrl: string) {
 	}
 }
 
-onMount(async () => {
-	if (isMobile()) {
+// The phone list and the desktop grid are two different readers of the same
+// endpoint, and a rotation now swaps between them without remounting the page.
+// Fetching in `onMount` behind an `isMobile()` guard meant a session that
+// started in landscape never fetched the phone list at all — and
+// `mobileIsLoading` starts as `true`, so rotating upright left "Retrieving your
+// clippings…" on screen with nothing on its way.
+//
+// The flag is a plain `let` on purpose: as `$state` it would be a dependency of
+// the effect and re-trigger it.
+let mobileRequested = false;
+
+$effect(() => {
+	if (!isMobile() || mobileRequested) return;
+	mobileRequested = true;
+	void (async () => {
 		try {
 			await loadMobileFeeds();
 		} finally {
 			mobileIsLoading = false;
 		}
-	}
+	})();
 });
 </script>
 
