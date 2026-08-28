@@ -13,7 +13,7 @@ if (!isBrowserTestEnabled) {
 	console.warn(
 		"[vitest] client project DISABLED (VITEST_BROWSER != 'true'): " +
 			"src/**/*.svelte.{test,spec}.{ts,tsx} are not being collected. " +
-			"Use `bun run test:client` / `bun run test:all` to run them.",
+			"Use `bun run test:client` to run them.",
 	);
 }
 

@@ -18,7 +18,6 @@
 		"test": "vitest run",
 		"test:server": "vitest run --project=server",
 		"test:client": "VITEST_BROWSER=true vitest run --project=client",
-		"test:all": "VITEST_BROWSER=true vitest run",
 		"test:watch": "vitest --watch",
 		"test:e2e": "bun run build && npx playwright test --reporter=list",
 		"test:e2e:ui": "npx playwright test --ui",
