@@ -1,7 +1,7 @@
 import { flushSync } from "svelte";
 import { describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
-import { BREAKPOINT, isDesktop, isMobile } from "./viewport.svelte";
+import { BREAKPOINT_REM, isDesktop, isMobile } from "./viewport.svelte";
 
 // A Pixel 5 is 393 CSS px upright and 851 across in landscape; an iPhone 13 is
 // 390 / 844. Both cross the 768px breakpoint just by being rotated, so
@@ -39,7 +39,7 @@ async function observeThroughRotation(read: () => boolean) {
 
 describe("viewport", () => {
 	it("exports the TailwindCSS `md` breakpoint", () => {
-		expect(BREAKPOINT).toBe(768);
+		expect(BREAKPOINT_REM).toBe(48);
 	});
 
 	it("answers for the viewport it is asked in", async () => {

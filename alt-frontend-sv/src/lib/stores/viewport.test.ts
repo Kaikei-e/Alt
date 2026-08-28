@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BREAKPOINT, isDesktop, isMobile } from "./viewport.svelte";
+import { BREAKPOINT_REM, isDesktop, isMobile } from "./viewport.svelte";
 
 /**
  * Node has no `matchMedia`, so the reactive half of this module is exercised in
@@ -10,7 +10,7 @@ import { BREAKPOINT, isDesktop, isMobile } from "./viewport.svelte";
  */
 describe("viewport (SSR / no window)", () => {
 	it("exports the TailwindCSS `md` breakpoint", () => {
-		expect(BREAKPOINT).toBe(768);
+		expect(BREAKPOINT_REM).toBe(48);
 	});
 
 	it("falls back to mobile-first when there is no window to measure", () => {
