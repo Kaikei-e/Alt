@@ -19,9 +19,9 @@
 # approaching expiry surfaces on the run page instead of as a 401 on the day
 # production stops rolling. The probe never fails the job.
 #
-# Third-party actions migrate to commit-SHA pins via Renovate
-# (`pinDigests: true` in renovate.json). Tag pins remain until Renovate
-# opens the first digest-pin PRs.
+# Every action here is pinned to a commit SHA — the repository setting
+# requires it — and Dependabot (.github/dependabot.yml) keeps those pins
+# current.
 
 name: dispatch-deploy
 
