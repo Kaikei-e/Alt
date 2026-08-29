@@ -13,6 +13,12 @@
 # and exits successfully instead of failing — the deploy pipeline isn't
 # production-gating the mainline build, it's an additive notifier.
 #
+# Before dispatching, the PAT is probed against a read-only endpoint on
+# alt-deploy and GitHub's `github-authentication-token-expiration` response
+# header is turned into a countdown (warning at 30 days, error at 7), so an
+# approaching expiry surfaces on the run page instead of as a 401 on the day
+# production stops rolling. The probe never fails the job.
+#
 # Third-party actions migrate to commit-SHA pins via Renovate
 # (`pinDigests: true` in renovate.json). Tag pins remain until Renovate
 # opens the first digest-pin PRs.
@@ -45,6 +51,65 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Probe dispatch PAT expiry
+        # GET on the dispatch target is the cheapest call this PAT is scoped
+        # for, and every authenticated response carries the expiration header
+        # for a token that expires. Warnings only: a stale token must be loud,
+        # but an expiry check must never be the reason a deploy fails to go out.
+        if: steps.check.outputs.ready == 'true'
+        env:
+          PAT: ${{ secrets.ALT_DEPLOY_DISPATCH_PAT }}
+          PROBE_URL: https://api.github.com/repos/Kaikei-e/alt-deploy
+          RUNBOOK: docs/runbooks/runner-setup.md step 4
+        run: |
+          set -euo pipefail
+          headers="$(curl -sS -D - -o /dev/null \
+            -H "Authorization: Bearer $PAT" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$PROBE_URL")" || headers=""
+          headers="$(printf '%s\n' "$headers" | tr -d '\r')"
+          status="$(printf '%s\n' "$headers" \
+            | sed -n 's|^HTTP/[0-9.]* \([0-9]\{3\}\).*|\1|p' | tail -n1)"
+
+          if [[ "$status" == "401" || "$status" == "403" ]]; then
+            echo "::warning::Expiry probe rejected with HTTP ${status}: ALT_DEPLOY_DISPATCH_PAT is expired, revoked, or no longer scoped to Kaikei-e/alt-deploy. Rotate it per ${RUNBOOK}; the dispatch step below prints the authoritative diagnostic."
+            echo "- dispatch PAT expiry: probe rejected (HTTP ${status})" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ "$status" != 2* ]]; then
+            echo "::warning::Expiry probe could not reach the GitHub API (HTTP ${status:-none}); PAT expiry unknown for this run."
+            echo "- dispatch PAT expiry: unknown (probe HTTP ${status:-none})" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          expiry="$(printf '%s\n' "$headers" \
+            | grep -i -m1 '^github-authentication-token-expiration:' \
+            | cut -d: -f2- | sed 's/^[[:space:]]*//')" || expiry=""
+          if [[ -z "$expiry" ]]; then
+            echo "::warning::GitHub returned no github-authentication-token-expiration header, so ALT_DEPLOY_DISPATCH_PAT never expires. Policy caps this token at 90 days — replace it with an expiring one per ${RUNBOOK}."
+            echo "- dispatch PAT expiry: none — non-expiring token, against policy" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! expiry_epoch="$(date -u -d "$expiry" +%s 2>/dev/null)"; then
+            echo "::warning::Could not parse the token expiration header value ${expiry}; check it by hand per ${RUNBOOK}."
+            echo "- dispatch PAT expiry: unparseable (${expiry})" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          now_epoch="$(date -u +%s)"
+          days=$(( (expiry_epoch - now_epoch) / 86400 ))
+          echo "- dispatch PAT (\`ALT_DEPLOY_DISPATCH_PAT\`) expires ${expiry} — ${days} day(s) left" >> "$GITHUB_STEP_SUMMARY"
+          if (( days < 0 )); then
+            echo "::error::ALT_DEPLOY_DISPATCH_PAT expired on ${expiry}. Cross-repo dispatch to alt-deploy stays broken until it is rotated — ${RUNBOOK}."
+          elif (( days < 7 )); then
+            echo "::error::ALT_DEPLOY_DISPATCH_PAT expires ${expiry} (${days} day(s) left). Rotate it now, before production silently stops rolling — ${RUNBOOK}."
+          elif (( days < 30 )); then
+            echo "::warning::ALT_DEPLOY_DISPATCH_PAT expires ${expiry} (${days} days left). Schedule the rotation — ${RUNBOOK}."
+          else
+            echo "::notice::ALT_DEPLOY_DISPATCH_PAT expires ${expiry} (${days} days left)."
           fi
 
       - name: Checkout HEAD (shallow, for diff enumeration)

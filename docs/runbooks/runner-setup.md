@@ -163,7 +163,65 @@ release-deploy の `build` / `pact-publish` / `gate` / `e2e` jobs が走る。�
 
 既存手順は ADR-000763 のコメントに散在。必要なら本 runbook に別 section で集約する (backlog)。
 
-## 4. Runner PATH の永続化
+## 4. dispatch-deploy 用 PAT (`ALT_DEPLOY_DISPATCH_PAT`)
+
+`Kaikei-e/Alt` の `main` が進むと `.github/workflows/dispatch-deploy.yaml` が
+`Kaikei-e/alt-deploy` に `repository_dispatch` を撃つ。その認証に使う fine-grained
+PAT を **`Kaikei-e/Alt` の repo secret `ALT_DEPLOY_DISPATCH_PAT`** に置く。
+
+### スコープ (これ以上でも以下でもない)
+
+| 項目 | 値 |
+|------|-----|
+| Repository access | Only select repositories → **`Kaikei-e/alt-deploy` のみ** |
+| Permissions | **Contents: Read and write** の 1 つだけ (Metadata: Read は fine-grained PAT に自動付与) |
+| Expiration | **90 日以内** (無期限は禁止) |
+
+- `POST /repos/{owner}/{repo}/dispatches` は Contents の **write** を要求する。
+  `Contents: Read` だけだと `403 Resource not accessible by personal access token`
+  で落ちる — `dispatch-deploy.yaml` の 403 診断がこの文言と対処をそのまま出す。
+  Actions 権限では通らない。
+- 対象 repo を絞り忘れると、public repo の secret 1 本でその repo 全部に書けることになる。
+  逆に alt-deploy を選び忘れた token は 404 になり、workflow の 404 診断が
+  「scope されていない or repo 名 typo」と指摘する。
+- 期限は GitHub UI 上 1 年まで選べるが、**Alt では 90 日を上限**とする。public repo の
+  secret は触れる面 (workflow / fork PR 誤設定 / 第三者 action) が広く、漏洩時の
+  blast radius は「気づいて revoke するまでの残存期間」そのものなので、期限自体を
+  封じ込めに使う。
+
+### ローテーション (90 日ごと / 漏洩疑いは即時)
+
+1. GitHub Settings → Developer settings → Fine-grained tokens → Generate new token。
+   上表のスコープ + 90 日で新規発行する (**旧 PAT はまだ revoke しない**)。
+2. secret を上書きする。値は標準入力で渡す (引数に書くと shell history に残る):
+
+   ```bash
+   gh secret set ALT_DEPLOY_DISPATCH_PAT -R Kaikei-e/Alt
+   ```
+
+3. 次の `main` への push で `dispatch-deploy` run を開き、`Probe dispatch PAT expiry`
+   step の `::notice::` と job summary が **新しい期限日**になっていること、
+   `Fire repository_dispatch at alt-deploy` が green であることを確認する。
+4. 確認できてから **旧 PAT を revoke** する。順序を逆にすると、secret 反映前の push が
+   401 で落ちて deploy が止まる。
+
+### 期限切れの検知は workflow 側でやる (カレンダー不要)
+
+`dispatch-deploy.yaml` は dispatch の前に `GET /repos/Kaikei-e/alt-deploy` を叩き、
+レスポンスヘッダ `github-authentication-token-expiration` から残日数を出す:
+
+| 残り | 出力 |
+|------|------|
+| 30 日未満 | `::warning::` (期限日 + 本節へのポインタ) |
+| 7 日未満 / 期限切れ | `::error::`。ただし **job は落とさない** — deploy は出す |
+| それ以外 | `::notice::` に期限日 |
+| ヘッダなし (無期限 token) | `::warning::` — 上記ポリシー違反 |
+
+いずれの場合も期限日が run ページの job summary に出る。warning を見たら上の
+ローテーション手順を回せばよく、別途リマインダを持つ必要はない。probe 自体が
+401/403 のときは warning のみで、実際の失敗診断は後続の dispatch step が出す。
+
+## 5. Runner PATH の永続化
 
 GHA self-hosted runner は `runner` user の `.profile` / `.bashrc` を sourcing しないことがある。`~/.local/bin` を PATH に入れるには以下のいずれか:
 
@@ -183,7 +241,7 @@ sudo systemctl restart actions.runner.*
 
 `.env` 方式のほうが non-sudo で済むため推奨。
 
-## 5. インシデント後の確認
+## 6. インシデント後の確認
 
 2026-04-20 release-deploy run 24658313584 は **alt-prod runner に pip が入っておらず、per-job install が exit 127 で失敗** → deploy abort → production partial-deploy の連鎖を起こした。本 runbook の install 手順が未実施だと同クラスの障害が再発する。
 
