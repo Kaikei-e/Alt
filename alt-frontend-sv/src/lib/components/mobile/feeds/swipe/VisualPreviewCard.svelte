@@ -29,6 +29,8 @@ import {
 	TRY_AGAIN_LABEL,
 } from "$lib/utils/articleContentState";
 import { articleContentErrorMessage } from "$lib/utils/errorClassification";
+import { ogImageResolver } from "$lib/utils/ogImageResolver";
+import { createProxyImage } from "$lib/utils/proxyImage.svelte";
 import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
 
@@ -36,7 +38,16 @@ interface Props {
 	feed: RenderFeed;
 	statusMessage: string | null;
 	onDismiss: (direction: number) => Promise<void> | void;
-	thumbnailUrl: string | null;
+	/**
+	 * The signed `/v1/images/proxy/...` path for this card's og:image, or null.
+	 *
+	 * Never a publisher's own URL. Named for what it must be rather than for
+	 * what it is used as: the raw `og_image_url` from `FetchArticleContent`
+	 * used to arrive here under the old name and go straight into `<img src>`
+	 * as an unproxied cross-origin request. Null is normal — a feed that
+	 * carries no image resolves one on demand through `resolve` below.
+	 */
+	thumbnailProxyUrl: string | null;
 	getCachedContent?: (feedUrl: string) => string | null;
 	getCachedArticleId?: (feedUrl: string) => string | null;
 	/**
@@ -55,7 +66,7 @@ const {
 	feed,
 	statusMessage,
 	onDismiss,
-	thumbnailUrl,
+	thumbnailProxyUrl,
 	getCachedContent,
 	getCachedArticleId,
 	requestContent,
@@ -94,15 +105,35 @@ let isFavoriting = $state(false);
 let isFavorited = $state(false);
 let favoriteError = $state<string | null>(null);
 
-// Thumbnail state
-let imgLoaded = $state(false);
-let imgError = $state(false);
+// Thumbnail: the four-state pipeline the desktop grid and the mobile gallery
+// share — idle -> loading -> loaded | absent.
+//
+// Called unconditionally at initialisation because it registers `$effect`s and
+// an `onDestroy` hook against this component's lifecycle.
+//
+// It replaces a bare `<img>` whose `onerror` latched `imgError = true` for the
+// life of the card. An `<img>` reports a retryable 429 and a permanent 403 as
+// the same silent event, so a single rate-limited response from the shared
+// image proxy pinned the card to "No preview" for the rest of the session.
+// `loadProxyImage` reads the status instead and retries the transient case
+// *inside* the loader, and the pipeline also owns the reset — including the
+// distinction between a genuinely different feed and the same feed's URL being
+// backfilled a moment later, which the `$effect` that used to sit here got
+// wrong in the other direction by clearing state on every arrival.
+let thumbnailArea = $state<HTMLElement | null>(null);
 
-// Reset error/loaded state when thumbnailUrl changes
-$effect(() => {
-	void thumbnailUrl;
-	imgError = false;
-	imgLoaded = false;
+const image = createProxyImage({
+	url: () => thumbnailProxyUrl,
+	container: () => thumbnailArea,
+	// A feed whose RSS carried no og:image resolves one when the reader
+	// actually reaches this card.
+	//
+	// `feedId`, never `id`. `id` is articles.id or a per-response UUID, and
+	// ResolveOgImages matches feeds.id — sending `id` matched nothing and read
+	// back as "no feed has an image". Absent on surfaces built without a
+	// feeds.id, and the resolver settles an empty key on `absent` without a
+	// request.
+	resolve: () => ogImageResolver().resolve(feed.feedId ?? ""),
 });
 
 // Swipe state with Spring
@@ -495,14 +526,6 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 	hasSwiped = false;
 	await x.set(0, { instant: true });
 }
-
-function handleImgLoad() {
-	imgLoaded = true;
-}
-
-function handleImgError() {
-	imgError = true;
-}
 </script>
 
 <div
@@ -515,27 +538,27 @@ function handleImgError() {
 >
   <div class="card-inner">
     <!-- Thumbnail Area -->
-    <div class="thumbnail-area">
-      {#if thumbnailUrl && !imgError}
+    <!-- Three mutually exclusive branches, matching MobileGalleryTile and
+         VisualFeedCard. The shimmer used to be painted *over* a rendered
+         <img>, which meant the element existed (and its src had been
+         requested) before anything knew whether the URL answered. -->
+    <div class="thumbnail-area" bind:this={thumbnailArea}>
+      {#if image.state === "absent"}
+        <div class="thumbnail-fallback" data-testid="thumbnail-fallback">
+          <span class="thumbnail-fallback-text">No preview</span>
+        </div>
+      {:else if image.state === "loaded" && image.src}
         <img
-          src={thumbnailUrl}
+          src={image.src}
           alt=""
           loading={isLcp ? "eager" : "lazy"}
           fetchpriority={isLcp ? "high" : undefined}
           decoding="async"
           data-testid="thumbnail-image"
           class="thumbnail-img"
-          class:thumbnail-img--loaded={imgLoaded}
-          onload={handleImgLoad}
-          onerror={handleImgError}
         />
-        {#if !imgLoaded}
-          <div class="thumbnail-shimmer" data-testid="thumbnail-shimmer"></div>
-        {/if}
       {:else}
-        <div class="thumbnail-fallback" data-testid="thumbnail-fallback">
-          <span class="thumbnail-fallback-text">No preview</span>
-        </div>
+        <div class="thumbnail-shimmer" data-testid="thumbnail-shimmer"></div>
       {/if}
       <div class="thumbnail-overlay"></div>
       <button
@@ -756,25 +779,32 @@ function handleImgError() {
     overflow: hidden;
   }
 
+  /* No `opacity: 0` default any more: the element is mounted only once the
+     load has answered 200, so hiding it until an `onload` that has already
+     happened would leave the card blank. It fades in on mount instead. */
   .thumbnail-img {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-
-  .thumbnail-img--loaded {
-    opacity: 1;
+    animation: thumbnail-reveal 0.3s ease-out;
   }
 
   .thumbnail-shimmer {
     position: absolute;
     inset: 0;
     background: var(--surface-2);
-    animation: shimmer-pulse 1.5s ease-in-out infinite;
+    /* Bounded rather than `infinite`: a resolution can outlive several asks,
+       and an animation running past five seconds with no pause control fails
+       WCAG 2.2.2. The flat tint that remains still reads as "not here yet". */
+    animation: shimmer-pulse 1.5s ease-in-out 3;
+  }
+
+  @keyframes thumbnail-reveal {
+    from {
+      opacity: 0;
+    }
   }
 
   .thumbnail-fallback {
@@ -1170,6 +1200,9 @@ function handleImgError() {
     .thumbnail-shimmer {
       animation: none;
       opacity: 0.7;
+    }
+    .thumbnail-img {
+      animation: none;
     }
   }
 </style>

@@ -1,8 +1,23 @@
 /**
  * VisualPreviewCard Component Tests
  *
- * Tests for the visual preview swipe card with thumbnail images.
- * Uses vitest-browser-svelte for component testing.
+ * The card the mobile swipe surface (`/feeds/swipe/visual-preview`) shows one
+ * at a time. Besides the article-body panel it owns the same four-state image
+ * pipeline the desktop grid and the mobile gallery use — idle -> loading ->
+ * loaded | absent, via `createProxyImage` — and the two properties that
+ * pipeline exists for are pinned below:
+ *
+ *  - **A transient failure is not "absent".** A 429 from the shared image
+ *    proxy is retried *inside* `loadProxyImage`, and the card must hold its
+ *    shimmer while that happens. The card used to render a bare `<img>` with
+ *    an `onerror` that latched `imgError = true` for the life of the card, so
+ *    one rate-limited response pinned it to "No preview" for the rest of the
+ *    session. That is the regression this suite guards.
+ *  - **Only a proxy URL is ever rendered.** What reaches `<img src>` is the
+ *    URL `loadProxyImage` actually probed, which is the HMAC-signed
+ *    `/v1/images/proxy/...` path. A raw publisher URL used to arrive here from
+ *    `FetchArticleContent.og_image_url` and go straight into the DOM as an
+ *    unproxied cross-origin request.
  */
 import { Code, ConnectError } from "@connectrpc/connect";
 import { page } from "@vitest/browser/context";
@@ -12,6 +27,29 @@ import { render } from "vitest-browser-svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client";
 import type { RenderFeed } from "$lib/schema/feed";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
+
+const { loadProxyImageDefault, resolveOgImage } = vi.hoisted(() => ({
+	loadProxyImageDefault: vi.fn(),
+	resolveOgImage: vi.fn(),
+}));
+
+vi.mock("$lib/utils/loadProxyImage", () => ({ loadProxyImageDefault }));
+
+// Stubbed rather than left to the real shared resolver: without this the card
+// fires a Connect-RPC at the dev server and the outcome of every image test
+// depends on what that happens to answer.
+vi.mock("$lib/utils/ogImageResolver", () => ({
+	ogImageResolver: () => ({ resolve: resolveOgImage }),
+}));
+
+/** What the image proxy hands out: an HMAC signature over an encoded URL. */
+const PROXY_URL =
+	"/v1/images/proxy/testsig/aHR0cHM6Ly9jZG4uZXhhbXBsZS5jb20vaGVyby5qcGc";
+
+/** Let mount effects, the IntersectionObserver callback and microtasks settle. */
+function settle(): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, 50));
+}
 
 const connectError = (
 	code: Code,
@@ -24,7 +62,13 @@ const connectError = (
 	);
 
 const mockFeed: RenderFeed = {
+	// `id` is articles.id (or a per-response UUID) and is a render key only;
+	// `feedId` is feeds.id, the one ResolveOgImages matches. They are set to
+	// different strings on purpose — a fixture where they agree would keep
+	// passing if the card regressed to sending `id`, which is the bug that
+	// shipped once already.
 	id: "feed-test-1",
+	feedId: "feeds-row-uuid-1",
 	title: "Test Article Title",
 	description: "This is a test description for the article.",
 	link: "https://example.com/test-article",
@@ -86,11 +130,17 @@ describe("VisualPreviewCard", () => {
 		feed: mockFeed,
 		statusMessage: null,
 		onDismiss: vi.fn(),
-		thumbnailUrl: "https://cdn.example.com/hero.jpg",
+		thumbnailProxyUrl: PROXY_URL,
 	};
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// `clearAllMocks` clears calls but keeps implementations, so these are
+		// re-stated rather than relying on what a previous test left behind.
+		loadProxyImageDefault.mockReset();
+		loadProxyImageDefault.mockResolvedValue({ status: "loaded" });
+		resolveOgImage.mockReset();
+		resolveOgImage.mockResolvedValue({ status: "absent" });
 	});
 
 	describe("rendering", () => {
@@ -175,8 +225,11 @@ describe("VisualPreviewCard", () => {
 		});
 	});
 
-	describe("thumbnail rendering", () => {
-		it("renders thumbnail image when URL is provided", async () => {
+	describe("thumbnail pipeline", () => {
+		it("renders the thumbnail once the proxy load resolves", async () => {
+			// Replaces "renders thumbnail image when URL is provided": having a
+			// URL is no longer what puts an <img> on screen — a load that
+			// answered 200 is.
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
@@ -184,39 +237,169 @@ describe("VisualPreviewCard", () => {
 			await expect
 				.element(page.getByTestId("thumbnail-image"))
 				.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("thumbnail-fallback"))
+				.not.toBeInTheDocument();
 		});
 
-		it("renders fallback gradient when thumbnailUrl is null", async () => {
+		it("renders the fallback when there is no image to be had", async () => {
+			// No URL and nothing to resolve one from: the card settles rather
+			// than shimmering for the rest of the session.
+			resolveOgImage.mockResolvedValue({ status: "absent" });
+
 			render(VisualPreviewCard, {
 				props: {
 					...defaultProps,
-					thumbnailUrl: null,
+					thumbnailProxyUrl: null,
 				},
 			});
 
 			await expect
 				.element(page.getByTestId("thumbnail-fallback"))
 				.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("thumbnail-image"))
+				.not.toBeInTheDocument();
 		});
 
-		it("thumbnail image has correct src", async () => {
+		it("renders exactly the proxy URL the load probed, never a publisher URL", async () => {
+			// Replaces the old assertion that src === "https://cdn.example.com/
+			// hero.jpg". A raw cross-origin URL in <img src> is the defect, not
+			// the contract: what is rendered is the signed /v1/images/proxy path
+			// that `loadProxyImage` verified, and it is the same string, so a
+			// preload hint can match it.
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
 
 			const img = page.getByTestId("thumbnail-image");
-			await expect
-				.element(img)
-				.toHaveAttribute("src", defaultProps.thumbnailUrl);
+			await expect.element(img).toHaveAttribute("src", PROXY_URL);
+
+			const src = (img.element() as HTMLImageElement).getAttribute("src");
+			expect(src).toMatch(/^\/v1\/images\/proxy\//);
+			expect(loadProxyImageDefault).toHaveBeenCalledWith(
+				src,
+				expect.any(AbortSignal),
+			);
 		});
 
-		it("thumbnail image has lazy loading", async () => {
+		it("keeps the shimmer while a transient failure is retried inside the loader", async () => {
+			// Never resolves: models a 429 being retried with backoff inside
+			// `loadProxyImage`. The card used to latch `imgError` on the first
+			// `onerror` and show "No preview" for the rest of the session — an
+			// <img> reports a retryable 429 and a permanent 403 as the same
+			// silent event, so the card could not tell them apart at all.
+			loadProxyImageDefault.mockReturnValue(new Promise<never>(() => {}));
+
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await vi.waitFor(() =>
+				expect(loadProxyImageDefault).toHaveBeenCalledTimes(1),
+			);
+
+			await expect
+				.element(page.getByTestId("thumbnail-shimmer"))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("thumbnail-fallback"))
+				.not.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("thumbnail-image"))
+				.not.toBeInTheDocument();
+		});
+
+		it("settles on the fallback once the loader gives up for good", async () => {
+			loadProxyImageDefault.mockResolvedValue({ status: "absent" });
+
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await vi.waitFor(() =>
+				expect(loadProxyImageDefault).toHaveBeenCalledTimes(1),
+			);
+
+			await expect
+				.element(page.getByTestId("thumbnail-fallback"))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("thumbnail-shimmer"))
+				.not.toBeInTheDocument();
+		});
+
+		it("carries the LCP hints on the first card only", async () => {
+			// Replaces "thumbnail image has lazy loading". Both halves of the
+			// hint matter now that `src` is a real URL the browser can act on:
+			// the first card is the LCP element and must not be lazy.
+			render(VisualPreviewCard, {
+				props: { ...defaultProps, isLcp: true },
+			});
+
+			const img = page.getByTestId("thumbnail-image");
+			await expect.element(img).toHaveAttribute("loading", "eager");
+			await expect.element(img).toHaveAttribute("fetchpriority", "high");
+		});
+
+		it("leaves later cards lazy and unprioritised", async () => {
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
 
 			const img = page.getByTestId("thumbnail-image");
 			await expect.element(img).toHaveAttribute("loading", "lazy");
+			await expect.element(img).not.toHaveAttribute("fetchpriority");
+		});
+	});
+
+	describe("on-demand og:image resolution", () => {
+		it("asks on feeds.id, never on the render key", async () => {
+			// `id` is articles.id or a per-response UUID; ResolveOgImages matches
+			// feeds.id. Sending `id` matched nothing and read back as "no feed
+			// has an image" — a shipped bug.
+			resolveOgImage.mockResolvedValue({ status: "resolved", url: PROXY_URL });
+
+			render(VisualPreviewCard, {
+				props: { ...defaultProps, thumbnailProxyUrl: null },
+			});
+
+			await vi.waitFor(() => expect(resolveOgImage).toHaveBeenCalled());
+			expect(resolveOgImage).toHaveBeenCalledWith("feeds-row-uuid-1");
+			expect(resolveOgImage).not.toHaveBeenCalledWith(mockFeed.id);
+
+			await expect
+				.element(page.getByTestId("thumbnail-image"))
+				.toHaveAttribute("src", PROXY_URL);
+		});
+
+		it("does not resolve when the card already has a proxy URL", async () => {
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await settle();
+			expect(resolveOgImage).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("cleanup", () => {
+		it("aborts an in-flight image load when the card is destroyed", async () => {
+			loadProxyImageDefault.mockReturnValue(new Promise<never>(() => {}));
+
+			const { unmount } = render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await vi.waitFor(() =>
+				expect(loadProxyImageDefault).toHaveBeenCalledTimes(1),
+			);
+			const signal = loadProxyImageDefault.mock.calls[0]?.[1] as AbortSignal;
+			expect(signal.aborted).toBe(false);
+
+			unmount();
+
+			expect(signal.aborted).toBe(true);
 		});
 	});
 

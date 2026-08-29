@@ -121,15 +121,20 @@ describe("ArticlePrefetcher", () => {
 			).toBeNull();
 		});
 
-		it("should return cached og_image_url after prefetch", async () => {
+		it("caches the signed proxy URL after prefetch", async () => {
 			const feedUrl = "https://example.com/article";
-			const expectedOgImage = "https://example.com/og.png";
+			const expectedOgImage =
+				"/v1/images/proxy/testsig/aHR0cHM6Ly9leGFtcGxlLmNvbS9vZy5wbmc";
 
 			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
 				content: "<p>Test content</p>",
 				article_id: "test-id",
-				og_image_url: expectedOgImage,
-				og_image_proxy_url: "",
+				// The publisher's own URL travels alongside it and must be
+				// ignored: this cache feeds an <img src>, and a raw
+				// cross-origin URL there is an unproxied request outside the
+				// HMAC-gated /v1/images/proxy path.
+				og_image_url: "https://example.com/og.png",
+				og_image_proxy_url: expectedOgImage,
 			});
 
 			const mockFeed = {
@@ -150,13 +155,17 @@ describe("ArticlePrefetcher", () => {
 			expect(prefetcher.getCachedOgImage(feedUrl)).toBe(expectedOgImage);
 		});
 
-		it("should cache null when og_image_url is empty", async () => {
+		it("caches null rather than the raw publisher URL when no proxy URL came back", async () => {
+			// The image proxy is switched off, or the article carried no
+			// og:image the signer could take. Either way there is nothing this
+			// surface may render — falling back to `og_image_url` is the defect,
+			// not the graceful degradation.
 			const feedUrl = "https://example.com/article";
 
 			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
 				content: "<p>Test content</p>",
 				article_id: "test-id",
-				og_image_url: "",
+				og_image_url: "https://example.com/og.png",
 				og_image_proxy_url: "",
 			});
 
@@ -175,13 +184,12 @@ describe("ArticlePrefetcher", () => {
 			prefetcher.triggerPrefetch([mockFeed], -1, 1);
 			await vi.advanceTimersByTimeAsync(600);
 
-			// Empty string should be stored as null
 			expect(prefetcher.getCachedOgImage(feedUrl)).toBeNull();
 		});
 	});
 
 	describe("onOgImageFetched callback", () => {
-		it("should invoke callback when og_image_url is cached after prefetch", async () => {
+		it("should invoke callback when the og image is cached after prefetch", async () => {
 			const feedUrl = "https://example.com/article";
 			const callback = vi.fn();
 
@@ -189,7 +197,7 @@ describe("ArticlePrefetcher", () => {
 				content: "<p>Test content</p>",
 				article_id: "test-id",
 				og_image_url: "https://example.com/og.png",
-				og_image_proxy_url: "",
+				og_image_proxy_url: "/v1/images/proxy/testsig/b2c=",
 			});
 
 			const mockFeed = {
@@ -274,20 +282,23 @@ describe("ArticlePrefetcher", () => {
 	});
 
 	describe("seedCache", () => {
+		// The one image slot seedCache has is the signed proxy path — see
+		// ArticlePrefetcher.seedCache for why there is no longer a second one
+		// holding the publisher's own URL.
+		const SEEDED_PROXY_URL = "/v1/images/proxy/testsig/c2VlZGVk";
+
 		it("should store content, articleId, and ogImage retrievable via getters", () => {
 			const feedUrl = "https://example.com/seeded";
 			prefetcher.seedCache(
 				feedUrl,
 				"<p>Seeded</p>",
 				"seed-id-1",
-				"https://example.com/og.png",
+				SEEDED_PROXY_URL,
 			);
 
 			expect(prefetcher.getCachedContent(feedUrl)).toBe("<p>Seeded</p>");
 			expect(prefetcher.getCachedArticleId(feedUrl)).toBe("seed-id-1");
-			expect(prefetcher.getCachedOgImage(feedUrl)).toBe(
-				"https://example.com/og.png",
-			);
+			expect(prefetcher.getCachedOgImage(feedUrl)).toBe(SEEDED_PROXY_URL);
 		});
 
 		it("should invoke onOgImageFetched callback", () => {
@@ -298,7 +309,7 @@ describe("ArticlePrefetcher", () => {
 				"https://example.com/seeded",
 				"<p>Content</p>",
 				"id-1",
-				"https://example.com/og.png",
+				SEEDED_PROXY_URL,
 			);
 
 			expect(callback).toHaveBeenCalledTimes(1);
@@ -328,7 +339,7 @@ describe("ArticlePrefetcher", () => {
 				activeFeedUrl,
 				"<p>Active content</p>",
 				"active-id",
-				"https://example.com/active-og.png",
+				"/v1/images/proxy/testsig/YWN0aXZlLW9n",
 			);
 
 			// Create 6 more feeds to prefetch ahead
@@ -375,7 +386,7 @@ describe("ArticlePrefetcher", () => {
 
 			// The active feed's OGP image must NOT have been evicted
 			expect(prefetcher.getCachedOgImage(activeFeedUrl)).toBe(
-				"https://example.com/active-og.png",
+				"/v1/images/proxy/testsig/YWN0aXZlLW9n",
 			);
 			expect(prefetcher.getCachedContent(activeFeedUrl)).toBe(
 				"<p>Active content</p>",

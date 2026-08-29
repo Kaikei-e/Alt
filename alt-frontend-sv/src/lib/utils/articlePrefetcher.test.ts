@@ -64,7 +64,6 @@ describe("ArticlePrefetcher", () => {
 				"https://example.com/active",
 				"<p>Active</p>",
 				"art-active",
-				null,
 				"https://proxy/active.jpg",
 			);
 
@@ -79,7 +78,6 @@ describe("ArticlePrefetcher", () => {
 					`https://example.com/feed-${i}`,
 					`<p>Feed ${i}</p>`,
 					`art-${i}`,
-					null,
 					`https://proxy/feed-${i}.jpg`,
 				);
 			}
@@ -95,7 +93,6 @@ describe("ArticlePrefetcher", () => {
 				"https://example.com/current",
 				"<p>Current</p>",
 				"art-current",
-				null,
 				"https://proxy/current.jpg",
 			);
 
@@ -104,7 +101,6 @@ describe("ArticlePrefetcher", () => {
 					`https://example.com/next-${i}`,
 					`<p>Next ${i}</p>`,
 					`art-next-${i}`,
-					null,
 					`https://proxy/next-${i}.jpg`,
 				);
 			}
@@ -817,7 +813,7 @@ describe("ArticlePrefetcher", () => {
 
 			// This is exactly what triggerBatchImagePrefetch passes for a feed
 			// whose body has never been fetched.
-			prefetcher.seedCache(url, "", "art-1", null, "https://proxy/1.jpg");
+			prefetcher.seedCache(url, "", "art-1", "https://proxy/1.jpg");
 
 			expect(prefetcher.getCachedContent(url)).toBeNull();
 			// The image metadata is the point of that seed and must survive.
@@ -826,7 +822,7 @@ describe("ArticlePrefetcher", () => {
 
 		it("still prefetches a feed whose image metadata was seeded first", async () => {
 			const url = "https://example.com/image-only";
-			prefetcher.seedCache(url, "", "art-1", null, "https://proxy/1.jpg");
+			prefetcher.seedCache(url, "", "art-1", "https://proxy/1.jpg");
 
 			mockedGetContent.mockResolvedValueOnce({
 				content: "<p>Body</p>",
@@ -849,7 +845,7 @@ describe("ArticlePrefetcher", () => {
 		it("never overwrites a real body with an empty one", () => {
 			const url = "https://example.com/article";
 			prefetcher.seedCache(url, "<p>Real</p>", "art-1", null);
-			prefetcher.seedCache(url, "", "art-1", null, "https://proxy/1.jpg");
+			prefetcher.seedCache(url, "", "art-1", "https://proxy/1.jpg");
 
 			expect(prefetcher.getCachedContent(url)).toBe("<p>Real</p>");
 		});

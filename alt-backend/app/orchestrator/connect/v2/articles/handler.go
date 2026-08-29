@@ -450,9 +450,31 @@ func (h *Handler) FetchArticleContent(
 		Content:    content,
 		ArticleId:  articleID,
 		OgImageUrl: ogImageURL,
+		// Signed here, with the same signer the feeds handler mints with
+		// (see feeds.enrichWithProxyURLs). Without it this RPC's only image
+		// field was the publisher's own URL, so every consumer that wanted a
+		// thumbnail put a third-party host into an <img src> — an unproxied
+		// cross-origin request that skips the rate limiting, SSRF validation,
+		// domain allow-list and re-encoding /v1/images/proxy applies.
+		//
+		// Empty when the image proxy is switched off, which is an explicit
+		// operator decision announced at startup by di/image_module.go's
+		// image_proxy_disabled log, not an unwired dependency: with no secret
+		// there is nothing to sign with. Clients must render no thumbnail
+		// rather than fall back to OgImageUrl.
+		OgImageProxyUrl: h.signedOgImageURL(ogImageURL),
 	}
 
 	return connect.NewResponse(resp), nil
+}
+
+// signedOgImageURL returns the HMAC-gated proxy path for an og:image, or "" if
+// there is no image or no image proxy configured.
+func (h *Handler) signedOgImageURL(ogImageURL string) string {
+	if h.deps.ImageProxy == nil || ogImageURL == "" {
+		return ""
+	}
+	return h.deps.ImageProxy.GenerateProxyURL(ogImageURL)
 }
 
 // ArchiveArticle archives an article for later reading.

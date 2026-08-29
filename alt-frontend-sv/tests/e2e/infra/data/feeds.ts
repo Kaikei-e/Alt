@@ -83,7 +83,13 @@ export const UNREAD_COUNT = { count: 5 };
 
 export const MOCK_CONNECT_FEEDS: ConnectFeed[] = [
 	{
+		// `id` and `feedId` are deliberately different strings. `id` is the
+		// render key (articles.id, or a UUID minted per response); `feedId` is
+		// feeds.id, which is what ResolveOgImages matches. A fixture where the
+		// two agreed would keep passing if a card regressed to sending `id` —
+		// the defect that shipped once already.
 		id: "feed-1",
+		feedId: "feeds-row-1",
 		articleId: "article-1",
 		title: "AI Trends",
 		description: "Deep dive into the ecosystem.",
@@ -94,6 +100,7 @@ export const MOCK_CONNECT_FEEDS: ConnectFeed[] = [
 	},
 	{
 		id: "feed-2",
+		feedId: "feeds-row-2",
 		articleId: "article-2",
 		title: "Svelte 5 Tips",
 		description: "Runes-first patterns for fast interfaces.",
