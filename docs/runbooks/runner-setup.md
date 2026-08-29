@@ -163,6 +163,8 @@ release-deploy の `build` / `pact-publish` / `gate` / `e2e` jobs が走る。�
 
 既存手順は ADR-000763 のコメントに散在。必要なら本 runbook に別 section で集約する (backlog)。
 
+alt-builder pool は **ephemeral runner (just-in-time 登録、1 job ごとに登録を破棄し work tree を wipe)** 構成を採る。provisioning・cut-over・PAT の scope とローテーションは deploy 側 private repo の runner-setup runbook が正本で、public repo には手順を持ち込まない。上記のホスト常駐キャッシュ (libtorch / cargo target / Go / broker 認証ファイル) は job 間 wipe の対象外として維持される。
+
 ## 4. dispatch-deploy 用 PAT (`ALT_DEPLOY_DISPATCH_PAT`)
 
 `Kaikei-e/Alt` の `main` が進むと `.github/workflows/dispatch-deploy.yaml` が
