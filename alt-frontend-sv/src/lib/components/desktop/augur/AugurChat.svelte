@@ -119,9 +119,7 @@ function focusCitation(index: number) {
 	railActiveIndex = index;
 }
 
-// Auto-scroll: throttled, suppressed when the reader scrolls up
-let lastScrollTime = 0;
-const SCROLL_THROTTLE_MS = 500;
+// Auto-scroll, suppressed when the reader scrolls up
 let userScrolledUp = false;
 // pinToBottom writes scrollTop once per revealed frame; without this flag its
 // own scroll event would run the three layout reads below at 60Hz and could
@@ -153,15 +151,6 @@ async function scrollToBottom() {
 		setTimeout(() => {
 			container.scrollTop = container.scrollHeight;
 		}, 100);
-	}
-}
-
-function throttledScrollToBottom() {
-	if (userScrolledUp) return;
-	const now = Date.now();
-	if (now - lastScrollTime > SCROLL_THROTTLE_MS) {
-		lastScrollTime = now;
-		scrollToBottom();
 	}
 }
 
