@@ -18,7 +18,12 @@ import {
 	createClientTransport,
 	streamAugurChat,
 } from "$lib/connect";
+import { prefersReducedMotion } from "$lib/stores/motion.svelte";
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
+import {
+	createTypewriterReveal,
+	type TypewriterReveal,
+} from "$lib/utils/typewriterReveal";
 import CitationRail from "./CitationRail.svelte";
 import ThreadEntry from "./ThreadEntry.svelte";
 
@@ -72,6 +77,9 @@ let statusText = $state("");
 let isProvisional = $state(false);
 let threadContainer = $state<HTMLDivElement | undefined>(undefined);
 let currentAbortController: AbortController | null = null;
+// The paced reveal for the assistant turn in flight. One per turn; stopped on
+// error, fallback, destroy — the cancel the old ChatWindow never did.
+let reveal: TypewriterReveal | null = null;
 let revealed = $state(false);
 
 // A plain `let`, deliberately: the auto-send effect both reads and writes this,
@@ -115,11 +123,27 @@ function focusCitation(index: number) {
 let lastScrollTime = 0;
 const SCROLL_THROTTLE_MS = 500;
 let userScrolledUp = false;
+// pinToBottom writes scrollTop once per revealed frame; without this flag its
+// own scroll event would run the three layout reads below at 60Hz and could
+// be mistaken for the reader scrolling.
+let programmaticScroll = false;
 
 function handleScroll() {
+	if (programmaticScroll) {
+		programmaticScroll = false;
+		return;
+	}
 	if (!threadContainer) return;
 	const { scrollTop, scrollHeight, clientHeight } = threadContainer;
 	userScrolledUp = scrollHeight - scrollTop - clientHeight > 100;
+}
+
+// The synchronous pin for the reveal loop. The async scrollToBottom() below
+// queues a setTimeout per call — fine for discrete events, ruinous per frame.
+function pinToBottom() {
+	if (userScrolledUp || !threadContainer) return;
+	programmaticScroll = true;
+	threadContainer.scrollTop = threadContainer.scrollHeight;
 }
 
 async function scrollToBottom() {
@@ -221,13 +245,26 @@ async function handleSend(messageText: string) {
 	];
 	const currentAssistantMessageIndex = messages.length - 1;
 
-	// Throttling state for delta updates
+	// Accumulated deltas: feeds the onComplete fallback and the history builder.
 	let bufferedContent = "";
-	let lastUpdateTime = 0;
-	const THROTTLE_MS = 50;
 
 	progressStage = "";
 	userScrolledUp = false;
+
+	// One reveal per turn. It is the only writer of the streaming bubble's
+	// text, so the loading pulse (gated on message === "") clears with the
+	// first revealed character, exactly as it did with the throttled writes.
+	reveal?.stop();
+	reveal = createTypewriterReveal({
+		immediate: prefersReducedMotion(),
+		onReveal: (text) => {
+			messages[currentAssistantMessageIndex] = {
+				...messages[currentAssistantMessageIndex]!,
+				message: text,
+			};
+			pinToBottom();
+		},
+	});
 
 	try {
 		const transport = createClientTransport();
@@ -246,21 +283,12 @@ async function handleSend(messageText: string) {
 		currentAbortController = streamAugurChat(
 			transport,
 			{ messages: chatHistory, conversationId },
-			// onDelta: text chunk received
+			// onDelta: text chunk received — the reveal paces it onto the screen
 			(text) => {
 				progressStage = "";
 				bufferedContent += text;
 				isProvisional = true;
-
-				const now = Date.now();
-				if (now - lastUpdateTime > THROTTLE_MS) {
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex]!,
-						message: bufferedContent,
-					};
-					lastUpdateTime = now;
-					throttledScrollToBottom();
-				}
+				reveal?.push(text);
 			},
 			// onThinking: update live status text
 			(text) => {
@@ -275,6 +303,10 @@ async function handleSend(messageText: string) {
 			},
 			// onComplete: streaming finished
 			(result) => {
+				// Hard flush, same value as the message write below: revealed
+				// text and message state must never disagree, and the e2e specs
+				// assert the answer the moment the loading pulse clears.
+				reveal?.finish(result.answer || bufferedContent);
 				// Ensure final content is rendered
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex]!,
@@ -294,6 +326,7 @@ async function handleSend(messageText: string) {
 			},
 			// onFallback: insufficient context
 			(code) => {
+				reveal?.stop();
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex]!,
 					message: formatAugurFallbackMessage(code),
@@ -308,6 +341,7 @@ async function handleSend(messageText: string) {
 			},
 			// onError: error occurred
 			(error) => {
+				reveal?.stop();
 				console.error("Chat error:", error);
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex]!,
@@ -337,6 +371,7 @@ async function handleSend(messageText: string) {
 			},
 		);
 	} catch (error) {
+		reveal?.stop();
 		console.error("Chat error:", error);
 		messages[currentAssistantMessageIndex] = {
 			...messages[currentAssistantMessageIndex]!,
@@ -358,10 +393,14 @@ onMount(() => {
 });
 
 // The stream is billed for as long as it runs, so it does not outlive the
-// component that asked for it.
+// component that asked for it. Neither does the reveal loop: leaving it
+// running past destroy is the exact leak that killed the old ChatWindow
+// typewriter (ADR-000985).
 onDestroy(() => {
 	currentAbortController?.abort();
 	currentAbortController = null;
+	reveal?.stop();
+	reveal = null;
 });
 
 // A draft handed over in the URL (`?context=`) belongs in the box, but only
@@ -408,16 +447,19 @@ $effect(() => {
 					timestamp={msg.timestamp}
 					citations={msg.citations}
 					index={idx}
+					streaming={idx === messages.length - 1 &&
+						msg.role === "assistant" &&
+						isLoading}
 				/>
 				{#if idx === messages.length - 1 && msg.role === "assistant" && isLoading && isProvisional && statusText}
-					<div class="stage-hint">
+					<div class="stage-hint" role="status">
 						{statusText}
 					</div>
 				{/if}
 			{/each}
 
 			{#if isLoading && messages[messages.length - 1]?.message === ""}
-				<div class="augur-loading">
+				<div class="augur-loading" role="status">
 					<div class="loading-pulse"></div>
 					<span class="loading-text">{statusText || stageStatus(progressStage) || "Consulting the evidence…"}</span>
 				</div>
@@ -503,6 +545,9 @@ $effect(() => {
 		padding: calc(0.5rem + env(safe-area-inset-top, 0px)) 1rem 1rem;
 		overscroll-behavior-y: contain;
 		-webkit-overflow-scrolling: touch;
+		/* pinToBottom() owns the pin; Chrome's scroll anchoring fighting the
+		   explicit scrollTop writes makes the reveal judder. */
+		overflow-anchor: none;
 	}
 
 	/* ===== Empty state: the invitation ===== */

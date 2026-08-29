@@ -15,6 +15,7 @@ type StreamCall = {
 		conversationId?: string;
 	};
 	controller: AbortController;
+	onDelta?: (text: string) => void;
 	onComplete?: (result: {
 		answer: string;
 		citations: never[];
@@ -32,7 +33,7 @@ const { streamCalls, streamAugurChat } = vi.hoisted(() => {
 			(
 				_transport: unknown,
 				options: unknown,
-				_onDelta?: unknown,
+				onDelta?: unknown,
 				_onThinking?: unknown,
 				_onMeta?: unknown,
 				onComplete?: unknown,
@@ -45,6 +46,7 @@ const { streamCalls, streamAugurChat } = vi.hoisted(() => {
 				streamCalls.push({
 					options,
 					controller,
+					onDelta,
 					onComplete,
 					onError,
 					onConversationId,
@@ -68,6 +70,13 @@ const DESKTOP = { width: 1280, height: 900 };
 const calls = () => streamCalls as StreamCall[];
 const input = () => page.getByPlaceholder("What would you like to know?");
 const submit = () => page.getByRole("button", { name: /submit/i });
+// parseMarkdown terminates each block with "\n"; trim so the comparison sees
+// only the answer text itself.
+const assistantProse = () =>
+	(
+		document.querySelector('[data-role="assistant"] .entry-prose')
+			?.textContent ?? ""
+	).trim();
 
 async function settle() {
 	await new Promise((resolve) => setTimeout(resolve, 50));
@@ -234,5 +243,92 @@ describe.each([
 		await unmount();
 
 		expect(calls()[0]?.controller.signal.aborted).toBe(true);
+	});
+
+	// ===== Typewriter reveal (ADR-000985 restoration) =====
+
+	it("reveals the answer progressively rather than in one jump", async () => {
+		render(AugurChat);
+
+		await input().fill("Stream please");
+		await submit().click();
+
+		const full = "word ".repeat(40).trim();
+		calls()[0]?.onDelta?.(full);
+
+		// Watch the rendered prose: at least one strictly partial, non-empty
+		// prefix must be observed before the whole answer is on screen.
+		let sawPartial = false;
+		let text = "";
+		for (let i = 0; i < 120; i++) {
+			await new Promise((resolve) => setTimeout(resolve, 25));
+			text = assistantProse();
+			if (
+				text.length > 0 &&
+				text.length < full.length &&
+				full.startsWith(text)
+			) {
+				sawPartial = true;
+			}
+			if (text === full) break;
+		}
+
+		expect(sawPartial).toBe(true);
+		expect(text).toBe(full);
+	});
+
+	// DesktopAugurPage.waitForResponse() considers the turn over as soon as the
+	// loading pulse clears; the full answer must be there at that moment, not
+	// after the crawl would have finished on its own.
+	it("shows the whole answer as soon as the stream completes", async () => {
+		render(AugurChat);
+
+		await input().fill("Complete quickly");
+		await submit().click();
+
+		// Long enough that the paced reveal alone would take seconds.
+		const answer = "final answer text ".repeat(40).trim();
+		calls()[0]?.onDelta?.("provisional draft");
+		calls()[0]?.onComplete?.({
+			answer,
+			citations: [],
+			relatedCitations: [],
+		});
+
+		const deadline = Date.now() + 500;
+		let text = "";
+		while (Date.now() < deadline) {
+			text = assistantProse();
+			if (text === answer) break;
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+
+		expect(text).toBe(answer);
+	});
+
+	// The regression ADR-000985 records: the old ChatWindow's typewriter was
+	// never cancelled on destroy and kept writing after unmount.
+	it("cancels every animation frame it requested when destroyed", async () => {
+		const rafSpy = vi.spyOn(window, "requestAnimationFrame");
+		const cafSpy = vi.spyOn(window, "cancelAnimationFrame");
+		try {
+			const { unmount } = render(AugurChat);
+
+			await input().fill("Doomed question");
+			await submit().click();
+			calls()[0]?.onDelta?.("x".repeat(2000));
+
+			await unmount();
+
+			const requested = rafSpy.mock.results.map((r) => r.value as number);
+			const cancelled = cafSpy.mock.calls.map((c) => c[0]);
+			expect(requested.length).toBeGreaterThan(0);
+			// The reveal keeps exactly one frame outstanding; whichever frame was
+			// requested last must have been handed to cancelAnimationFrame.
+			expect(cancelled).toContain(requested.at(-1));
+		} finally {
+			rafSpy.mockRestore();
+			cafSpy.mockRestore();
+		}
 	});
 });

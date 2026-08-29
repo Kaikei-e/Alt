@@ -7,6 +7,14 @@ vi.mock("$lib/connect", () => ({
 	streamAugurChat: (...args: unknown[]) => mockStreamAugurChat(...args),
 }));
 
+// This project runs in node, which has no requestAnimationFrame: pin the
+// typewriter reveal to its immediate (reduced-motion) mode so deltas land
+// synchronously. The paced path is covered by typewriterReveal.test.ts with an
+// injected scheduler and by the AugurChat client specs in a real browser.
+vi.mock("$lib/stores/motion.svelte", () => ({
+	prefersReducedMotion: () => true,
+}));
+
 import { useAugurPane } from "./useAugurPane.svelte";
 
 describe("useAugurPane", () => {
@@ -250,6 +258,22 @@ describe("useAugurPane", () => {
 			expect(pane.isLoading).toBe(false);
 			expect(mockStreamAugurChat).not.toHaveBeenCalled();
 		});
+
+		// The reveal writes the bubble text; once the pane is aborted its reveal
+		// is stopped, so a straggler delta from the dying stream must not keep
+		// mutating the thread (the post-teardown writes ADR-000985 records).
+		it("ignores a delta that arrives after abort()", () => {
+			const pane = useAugurPane();
+			pane.sendMessage("Hello");
+
+			capturedCallbacks.onDelta?.("live ");
+			expect(pane.messages[1]!.message).toBe("live ");
+
+			pane.abort();
+			capturedCallbacks.onDelta?.("ghost");
+
+			expect(pane.messages[1]!.message).toBe("live ");
+		});
 	});
 
 	describe("streaming callbacks", () => {
@@ -354,6 +378,24 @@ describe("useAugurPane", () => {
 
 			expect(pane.isLoading).toBe(false);
 			expect(pane.messages[1]!.message).toContain("Partial text");
+
+			vi.useRealTimers();
+		});
+
+		it("keeps the recovery notice when a delta straggles in after the timeout", () => {
+			vi.useFakeTimers();
+			const pane = useAugurPane();
+			pane.sendMessage("Hello");
+
+			capturedCallbacks.onDelta?.("Partial text");
+			vi.advanceTimersByTime(180_000);
+			expect(pane.messages[1]!.message).toContain("Partial text");
+
+			// The stream the timeout gave up on is still wired to this pane's
+			// callbacks; its late delta must not resurrect the dead turn.
+			capturedCallbacks.onDelta?.(" that arrived too late");
+
+			expect(pane.messages[1]!.message).not.toContain("too late");
 
 			vi.useRealTimers();
 		});
