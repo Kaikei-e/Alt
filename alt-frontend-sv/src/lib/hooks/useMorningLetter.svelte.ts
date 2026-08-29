@@ -1,17 +1,17 @@
-import { goto } from "$app/navigation";
 import { Code, ConnectError } from "@connectrpc/connect";
+import { goto } from "$app/navigation";
 import {
 	createClientTransport,
 	getLatestLetter,
 	getLetterByDate,
-	getLetterSources,
 	getLetterEnrichment,
+	getLetterSources,
 	regenerateLatestLetter,
 } from "$lib/connect";
 import type {
+	MorningLetterBulletEnrichment,
 	MorningLetterDocument,
 	MorningLetterSourceProto,
-	MorningLetterBulletEnrichment,
 } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
 
 /** Type guard for ConnectError Unauthenticated (handles both real and mocked instances). */

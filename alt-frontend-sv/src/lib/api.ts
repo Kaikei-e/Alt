@@ -16,27 +16,27 @@ export { callBackendAPIWithBody } from "$lib/server/backend-rest-client";
 
 // Feed API
 export {
+	type CursorResponse,
+	type DetailedFeedStats,
+	deleteFeedLink,
+	getFeedLinks,
 	getFeedStats,
-	getTodayUnreadCount,
 	getFeedsWithCursor,
 	getReadFeedsWithCursor,
-	updateFeedReadStatus,
-	getFeedLinks,
+	getTodayUnreadCount,
 	registerRssFeed,
-	deleteFeedLink,
-	type DetailedFeedStats,
 	type UnreadCount,
-	type CursorResponse,
+	updateFeedReadStatus,
 } from "$lib/server/feed-api";
 
 // Tag Trail API
 export {
-	getRandomSubscription,
-	getArticlesByTag,
-	getArticleTags,
-	getFeedTagsById,
-	type RandomFeedResponse,
 	type ArticlesByTagResponse,
 	type ArticleTagsResponse,
 	type FeedTagsResponse,
+	getArticlesByTag,
+	getArticleTags,
+	getFeedTagsById,
+	getRandomSubscription,
+	type RandomFeedResponse,
 } from "$lib/server/tag-trail-api";

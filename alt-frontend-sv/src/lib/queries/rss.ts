@@ -8,20 +8,20 @@
  */
 
 import {
-	createQuery,
 	createMutation,
+	createQuery,
 	useQueryClient,
 } from "@tanstack/svelte-query";
-import { createClientTransport } from "$lib/connect/transport-client";
 import {
-	registerRSSFeed,
-	listRSSFeedLinks,
 	deleteRSSFeedLink,
-	registerFavoriteFeed,
-	type RSSFeedLink,
 	type ListRSSFeedLinksResult,
+	listRSSFeedLinks,
+	type RSSFeedLink,
+	registerFavoriteFeed,
+	registerRSSFeed,
 } from "$lib/connect/rss";
-import { rssKeys, feedKeys } from "./keys";
+import { createClientTransport } from "$lib/connect/transport-client";
+import { feedKeys, rssKeys } from "./keys";
 
 // =============================================================================
 // RSS Feed Links Query

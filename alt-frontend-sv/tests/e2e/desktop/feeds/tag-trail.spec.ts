@@ -1,16 +1,16 @@
-import { test, expect } from "../../fixtures/pomFixtures";
 import {
-	fulfillJson,
+	CONNECT_ARTICLE_CONTENT_RESPONSE,
+	CONNECT_RPC_PATHS,
+	CONNECT_TAG_TRAIL_ARTICLES_RESPONSE,
+	CONNECT_TAG_TRAIL_FEED_RESPONSE,
+	CONNECT_TAG_TRAIL_PATHS,
+} from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import {
 	fulfillConnectError,
 	fulfillConnectStream,
+	fulfillJson,
 } from "../../utils/mockHelpers";
-import {
-	CONNECT_TAG_TRAIL_PATHS,
-	CONNECT_TAG_TRAIL_FEED_RESPONSE,
-	CONNECT_TAG_TRAIL_ARTICLES_RESPONSE,
-	CONNECT_RPC_PATHS,
-	CONNECT_ARTICLE_CONTENT_RESPONSE,
-} from "../../fixtures/mockData";
 
 test.describe("Desktop Tag Trail", () => {
 	test.beforeEach(async ({ page }) => {

@@ -1,10 +1,10 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { fulfillJson } from "../../utils/mockHelpers";
 import {
+	CONNECT_FEEDS_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
-	CONNECT_FEEDS_RESPONSE,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 /**
  * Moving between sections via the sidebar is how a desktop user gets anywhere,

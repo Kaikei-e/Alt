@@ -1,8 +1,8 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it, vi } from "vitest";
-import ArticleSearchSection from "./ArticleSearchSection.svelte";
+import { render } from "vitest-browser-svelte";
 import type { ArticleSectionData } from "$lib/connect/global_search";
+import ArticleSearchSection from "./ArticleSearchSection.svelte";
 
 vi.mock("$app/navigation", () => ({
 	goto: vi.fn(),

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { flushSync } from "svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock modules
 vi.mock("$app/paths", () => ({ base: "" }));
@@ -17,11 +17,11 @@ vi.mock("$lib/gen/alt/knowledge_home/v1/knowledge_home_pb", () => ({
 }));
 
 import { createClient } from "@connectrpc/connect";
-import { useStreamUpdates } from "./useStreamUpdates.svelte.ts";
 import {
 	createReactiveFlag,
 	createReactiveString,
 } from "./test-helpers/effect-root.svelte.ts";
+import { useStreamUpdates } from "./useStreamUpdates.svelte.ts";
 
 type StreamResult = ReturnType<typeof useStreamUpdates>;
 

@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Import after module is loaded — rpc is not exported, so we test through public API
-import { startReportRun, AcolyteRpcError, isAlreadyRunning } from "./acolyte";
+import { AcolyteRpcError, isAlreadyRunning, startReportRun } from "./acolyte";
 
 describe("AcolyteRpcError", () => {
 	it("preserves code and message", () => {

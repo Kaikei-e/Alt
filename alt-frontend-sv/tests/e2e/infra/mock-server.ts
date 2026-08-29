@@ -15,16 +15,16 @@
 
 import type http from "node:http";
 import {
-	createKratosServer,
-	createAuthHubServer,
-	createBackendServer,
-	KRATOS_PORT,
 	AUTH_HUB_PORT,
 	BACKEND_PORT,
+	createAuthHubServer,
+	createBackendServer,
+	createKratosServer,
+	KRATOS_PORT,
 } from "./handlers";
 
 // Re-export port constants for backward compatibility
-export { KRATOS_PORT, AUTH_HUB_PORT, BACKEND_PORT };
+export { AUTH_HUB_PORT, BACKEND_PORT, KRATOS_PORT };
 
 // Server instances
 let kratosServer: http.Server | null = null;

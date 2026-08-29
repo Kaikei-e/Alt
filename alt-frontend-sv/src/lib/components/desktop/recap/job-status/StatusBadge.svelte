@@ -1,6 +1,6 @@
 <script lang="ts">
-import type { JobStatus, GenreStatusType } from "$lib/schema/dashboard";
 import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
+import type { GenreStatusType, JobStatus } from "$lib/schema/dashboard";
 
 interface Props {
 	status: JobStatus | GenreStatusType;

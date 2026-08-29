@@ -1,20 +1,20 @@
 <script lang="ts">
+import GoldenSignalsRow from "$lib/components/admin/monitor/GoldenSignalsRow.svelte";
+import MonitorErrorBanner from "$lib/components/admin/monitor/MonitorErrorBanner.svelte";
+
+import MonitorHeader from "$lib/components/admin/monitor/MonitorHeader.svelte";
+import QueueHealthCard from "$lib/components/admin/monitor/QueueHealthCard.svelte";
+import SaturationGrid from "$lib/components/admin/monitor/SaturationGrid.svelte";
+import ServiceREDTable from "$lib/components/admin/monitor/ServiceREDTable.svelte";
+import SLOBurnPanel from "$lib/components/admin/monitor/SLOBurnPanel.svelte";
 import {
 	RangeWindow,
 	Step,
 } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
 import {
-	useConnectAdminMetrics,
 	type UseConnectAdminMetricsResult,
+	useConnectAdminMetrics,
 } from "$lib/hooks/useConnectAdminMetrics.svelte";
-
-import MonitorHeader from "$lib/components/admin/monitor/MonitorHeader.svelte";
-import MonitorErrorBanner from "$lib/components/admin/monitor/MonitorErrorBanner.svelte";
-import GoldenSignalsRow from "$lib/components/admin/monitor/GoldenSignalsRow.svelte";
-import SLOBurnPanel from "$lib/components/admin/monitor/SLOBurnPanel.svelte";
-import ServiceREDTable from "$lib/components/admin/monitor/ServiceREDTable.svelte";
-import SaturationGrid from "$lib/components/admin/monitor/SaturationGrid.svelte";
-import QueueHealthCard from "$lib/components/admin/monitor/QueueHealthCard.svelte";
 
 const MONITOR_KEYS = [
 	"availability_services",

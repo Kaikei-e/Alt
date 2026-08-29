@@ -1,11 +1,11 @@
 <script lang="ts">
+import { Loader2 } from "@lucide/svelte";
 import { onMount } from "svelte";
 import {
 	createClientTransport,
-	searchRecapsByTag,
 	type RecapSearchResultItem,
+	searchRecapsByTag,
 } from "$lib/connect";
-import { Loader2 } from "@lucide/svelte";
 import RecapDetailModal from "./RecapDetailModal.svelte";
 
 interface Props {

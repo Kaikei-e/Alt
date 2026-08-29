@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the connect module
 vi.mock("@connectrpc/connect", () => ({
@@ -9,15 +9,15 @@ vi.mock("$lib/gen/alt/knowledge_home/v1/knowledge_home_pb", () => ({
 	KnowledgeHomeService: {},
 }));
 
-import { createClient } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
-	getKnowledgeHome,
-	trackHomeItemsSeen,
-	trackHomeAction,
 	createKnowledgeHomeClient,
+	getKnowledgeHome,
 	listLenses,
 	selectLens,
+	trackHomeAction,
+	trackHomeItemsSeen,
 } from "./knowledge_home";
 
 describe("knowledge_home client", () => {

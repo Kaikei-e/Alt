@@ -1,12 +1,12 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { DesktopKnowledgeHomePage } from "../../pages/desktop/DesktopKnowledgeHomePage";
-import { fulfillConnectError, fulfillJson } from "../../utils/mockHelpers";
+import { buildGetKnowledgeHomeResponse } from "../../fixtures/factories/knowledgeHomeFactory";
 import {
 	CONNECT_FEEDS_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
-import { buildGetKnowledgeHomeResponse } from "../../fixtures/factories/knowledgeHomeFactory";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { DesktopKnowledgeHomePage } from "../../pages/desktop/DesktopKnowledgeHomePage";
+import { fulfillConnectError, fulfillJson } from "../../utils/mockHelpers";
 
 /**
  * What the app does when the backend does not cooperate.

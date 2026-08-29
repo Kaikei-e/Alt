@@ -1,7 +1,7 @@
 import { page } from "@vitest/browser/context";
 import { createRawSnippet } from "svelte";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it } from "vitest";
+import { render } from "vitest-browser-svelte";
 
 import Card from "./card.svelte";
 

@@ -1,17 +1,17 @@
 <script lang="ts">
-import { onDestroy } from "svelte";
 import {
+	CategoryScale,
 	Chart,
+	Filler,
+	Legend,
+	LinearScale,
 	LineController,
 	LineElement,
 	PointElement,
-	LinearScale,
-	CategoryScale,
 	Title,
 	Tooltip,
-	Legend,
-	Filler,
 } from "chart.js";
+import { onDestroy } from "svelte";
 import type { TrendDataPoint } from "$lib/schema/stats";
 
 // Register Chart.js components

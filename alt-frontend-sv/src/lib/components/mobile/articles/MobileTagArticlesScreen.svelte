@@ -1,4 +1,5 @@
 <script lang="ts">
+import { ArrowLeft, Loader2, SquareArrowOutUpRight, Tag } from "@lucide/svelte";
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import {
@@ -6,7 +7,6 @@ import {
 	fetchArticlesByTag,
 	type TagTrailArticle,
 } from "$lib/connect";
-import { Loader2, Tag, ArrowLeft, SquareArrowOutUpRight } from "@lucide/svelte";
 
 interface Props {
 	tagName: string;

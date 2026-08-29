@@ -1,4 +1,4 @@
-import { test, expect } from "../fixtures/pomFixtures";
+import { expect, test } from "../fixtures/pomFixtures";
 
 /**
  * Integration E2E: Feed operations against real backend + DB.

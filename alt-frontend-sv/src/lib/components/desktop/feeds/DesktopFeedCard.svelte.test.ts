@@ -1,8 +1,8 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it, vi } from "vitest";
-import DesktopFeedCard from "./DesktopFeedCard.svelte";
+import { render } from "vitest-browser-svelte";
 import { renderFeedFixture } from "../../../../../tests/fixtures/feeds";
+import DesktopFeedCard from "./DesktopFeedCard.svelte";
 
 describe("DesktopFeedCard", () => {
 	it("renders feed title", async () => {

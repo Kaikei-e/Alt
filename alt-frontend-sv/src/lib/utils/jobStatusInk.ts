@@ -1,4 +1,4 @@
-import type { JobStatus, GenreStatusType } from "$lib/schema/dashboard";
+import type { GenreStatusType, JobStatus } from "$lib/schema/dashboard";
 
 export type StatusInk = "success" | "warning" | "error" | "neutral" | "muted";
 export type StatusGlyph = "✓" | "●" | "○" | "✗";

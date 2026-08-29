@@ -1,12 +1,12 @@
+import {
+	AUDIT_RESULT,
+	KNOWLEDGE_HOME_ADMIN_SNAPSHOT,
+	RETENTION_RUN_RESULT,
+	SOVEREIGN_ADMIN_SNAPSHOT,
+} from "../../fixtures/factories/sovereignAdminFactory";
 import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopKnowledgeHomeAdminPage } from "../../pages/desktop/DesktopKnowledgeHomeAdminPage";
 import { fulfillJson } from "../../utils/mockHelpers";
-import {
-	SOVEREIGN_ADMIN_SNAPSHOT,
-	KNOWLEDGE_HOME_ADMIN_SNAPSHOT,
-	AUDIT_RESULT,
-	RETENTION_RUN_RESULT,
-} from "../../fixtures/factories/sovereignAdminFactory";
 
 const ADMIN_API = "**/api/admin/knowledge-home";
 const SOVEREIGN_API = "**/api/admin/knowledge-home/sovereign";

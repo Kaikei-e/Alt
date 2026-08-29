@@ -4,27 +4,28 @@
  * Automated accessibility testing using axe-playwright.
  * Tests WCAG 2.1 AA compliance for desktop pages.
  */
+
+import {
+	CONNECT_ARTICLE_CONTENT_RESPONSE,
+	CONNECT_EVENING_PULSE_PATH,
+	CONNECT_EVENING_PULSE_RESPONSE,
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_RPC_PATHS,
+	CONNECT_TAG_TRAIL_FEED_RESPONSE,
+	CONNECT_TAG_TRAIL_PATHS,
+	CONNECT_TREND_STATS_PATH,
+	CONNECT_TREND_STATS_RESPONSE,
+} from "../fixtures/mockData";
 import { expect, test } from "../fixtures/pomFixtures";
-import { gotoDesktopRoute } from "../helpers/navigation";
 import {
 	checkAccessibility,
 	getAccessibilityViolations,
 } from "../helpers/a11y";
-import { fulfillJson } from "../utils/mockHelpers";
+import { gotoDesktopRoute } from "../helpers/navigation";
 import {
-	CONNECT_RPC_PATHS,
-	CONNECT_ARTICLE_CONTENT_RESPONSE,
-	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
-	CONNECT_TAG_TRAIL_PATHS,
-	CONNECT_TAG_TRAIL_FEED_RESPONSE,
-	CONNECT_EVENING_PULSE_PATH,
-	CONNECT_EVENING_PULSE_RESPONSE,
-	CONNECT_TREND_STATS_PATH,
-	CONNECT_TREND_STATS_RESPONSE,
-} from "../fixtures/mockData";
-import {
-	fulfillConnectStream,
 	createMockEventSourceScript,
+	fulfillConnectStream,
+	fulfillJson,
 } from "../utils/mockHelpers";
 
 // Test data for mocking

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { isRedirect } from "@sveltejs/kit";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$env/dynamic/private", () => ({
 	env: {
@@ -111,9 +111,9 @@ describe("login +page.server load", () => {
 				locals: { session: null },
 				request: makeRequest(),
 			});
-			expect(location.startsWith("http://localhost/ory/self-service/login/browser")).toBe(
-				true,
-			);
+			expect(
+				location.startsWith("http://localhost/ory/self-service/login/browser"),
+			).toBe(true);
 			const params = new URL(location).searchParams;
 			expect(params.get("return_to")).toBe("http://localhost:4173/settings");
 		});

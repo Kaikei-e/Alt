@@ -1,11 +1,11 @@
+import {
+	CONNECT_AUGUR_SIMPLE_RESPONSE,
+	CONNECT_AUGUR_STREAM_MESSAGES,
+	CONNECT_RPC_PATHS,
+} from "../../fixtures/mockData";
 import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopAugurPage } from "../../pages/desktop/DesktopAugurPage";
 import { fulfillConnectStream } from "../../utils/mockHelpers";
-import {
-	CONNECT_AUGUR_STREAM_MESSAGES,
-	CONNECT_AUGUR_SIMPLE_RESPONSE,
-	CONNECT_RPC_PATHS,
-} from "../../fixtures/mockData";
 
 test.describe("Desktop Augur Chat", () => {
 	let augurPage: DesktopAugurPage;

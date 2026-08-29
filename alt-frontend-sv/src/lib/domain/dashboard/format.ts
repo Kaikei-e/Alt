@@ -1,4 +1,4 @@
-import type { PipelineStage, JobStatus, GenreStatusType } from "./types";
+import type { GenreStatusType, JobStatus, PipelineStage } from "./types";
 
 export function getStageLabel(stage: PipelineStage): string {
 	const labels: Record<PipelineStage, string> = {

@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
-import { injectAxe, getViolations, checkA11y } from "axe-playwright";
 import type { Result, RunOptions } from "axe-core";
+import { checkA11y, getViolations, injectAxe } from "axe-playwright";
 
 // Type workaround: axe-playwright depends on an older playwright-core version
 // which causes type incompatibility. Using 'any' cast is the standard workaround.

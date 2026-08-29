@@ -1,6 +1,6 @@
 import type { ServerLoad } from "@sveltejs/kit";
-import { getFeedsWithCursor } from "$lib/server/feed-api";
 import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
+import { getFeedsWithCursor } from "$lib/server/feed-api";
 
 const INITIAL_FEEDS_LIMIT = 20;
 

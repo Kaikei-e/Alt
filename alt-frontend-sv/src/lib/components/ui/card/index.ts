@@ -6,17 +6,17 @@ import Header from "./card-header.svelte";
 import Title from "./card-title.svelte";
 
 export {
-	Root,
-	Header,
-	Title,
-	Description,
 	Content,
+	Content as CardContent,
+	Description,
+	Description as CardDescription,
 	Footer,
+	Footer as CardFooter,
+	Header,
+	Header as CardHeader,
+	Root,
 	//
 	Root as Card,
-	Header as CardHeader,
+	Title,
 	Title as CardTitle,
-	Description as CardDescription,
-	Content as CardContent,
-	Footer as CardFooter,
 };

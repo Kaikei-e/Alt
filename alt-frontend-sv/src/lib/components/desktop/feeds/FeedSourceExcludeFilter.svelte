@@ -2,10 +2,10 @@
 import { Ban, X } from "@lucide/svelte";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import {
+	collectFeedLinkIdsByDomain,
 	extractDomain,
 	getEffectiveDomain,
 	groupSourcesByDomain,
-	collectFeedLinkIdsByDomain,
 } from "$lib/utils/feed-source-filter";
 
 interface Props {

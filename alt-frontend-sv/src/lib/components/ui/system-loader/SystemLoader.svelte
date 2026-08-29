@@ -1,7 +1,7 @@
 <script lang="ts">
 import { Loader2 } from "@lucide/svelte";
-import { cn } from "$lib/utils";
 import altLogo from "$lib/assets/augur1.png";
+import { cn } from "$lib/utils";
 
 interface Props {
 	class?: string;

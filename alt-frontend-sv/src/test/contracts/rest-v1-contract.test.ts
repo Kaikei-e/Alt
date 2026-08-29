@@ -4,24 +4,25 @@
  * Validates that REST v1 mock data in E2E tests conforms to Valibot schemas.
  * These tests catch shape mismatches between mock data and actual API contracts.
  */
-import { describe, it, expect } from "vitest";
+
 import * as v from "valibot";
+import { describe, expect, it } from "vitest";
 import {
-	FeedsResponseV1Schema,
-	StatsResponseSchema,
-	SearchResponseSchema,
-	RecapResponseV1Schema,
 	ArticleContentResponseSchema,
+	FeedsResponseV1Schema,
+	RecapResponseV1Schema,
 	RSSFeedLinksListResponseSchema,
+	SearchResponseSchema,
+	StatsResponseSchema,
 	UnreadCountResponseSchema,
 } from "$lib/schema/api-responses";
 import {
-	FEEDS_RESPONSE,
-	STATS_RESPONSE,
-	SEARCH_RESPONSE,
-	RECAP_RESPONSE,
 	ARTICLE_CONTENT_RESPONSE,
+	FEEDS_RESPONSE,
+	RECAP_RESPONSE,
 	RSS_FEED_LINKS_LIST_RESPONSE,
+	SEARCH_RESPONSE,
+	STATS_RESPONSE,
 	UNREAD_COUNT_RESPONSE,
 } from "../../../tests/e2e/fixtures/mockData";
 

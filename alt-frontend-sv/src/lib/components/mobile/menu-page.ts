@@ -1,6 +1,6 @@
 import {
-	MOBILE_MENU_SECTIONS,
 	getVisibleMobileMenuSections,
+	MOBILE_MENU_SECTIONS,
 	type MobileMenuItem,
 	type MobileMenuSection,
 } from "$lib/config/navigation";

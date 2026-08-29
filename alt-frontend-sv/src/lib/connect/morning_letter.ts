@@ -5,15 +5,15 @@
  * time-bounded RAG-powered chat about recent news.
  */
 
-import { createClient, ConnectError, Code } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import {
-	MorningLetterService,
-	MorningLetterReadService,
-	type StreamChatResponse,
-	type Citation as ProtoCitation,
 	type MorningLetterDocument,
+	MorningLetterReadService,
+	MorningLetterService,
 	type MorningLetterSourceProto,
+	type Citation as ProtoCitation,
+	type StreamChatResponse,
 } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
 
 /** Type-safe MorningLetterService client */

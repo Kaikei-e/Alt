@@ -1,4 +1,4 @@
-import { test, expect } from "../fixtures/pomFixtures";
+import { expect, test } from "../fixtures/pomFixtures";
 import { fulfillJson } from "../utils/mockHelpers";
 
 // Auth tests need to run without pre-authenticated storage

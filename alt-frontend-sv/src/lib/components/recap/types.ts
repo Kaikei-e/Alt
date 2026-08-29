@@ -1,5 +1,5 @@
-import type { GlobalRecapHitData } from "$lib/connect/global_search";
 import type { RecapSearchResultItem } from "$lib/connect";
+import type { GlobalRecapHitData } from "$lib/connect/global_search";
 
 export interface RecapModalData {
 	genre: string;

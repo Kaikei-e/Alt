@@ -6,46 +6,43 @@
  * (third-party request blocking, uncaught-exception detection) reach every
  * test. Each POM is lazily created only when destructured in the test.
  */
-import { test as base } from "./baseTest";
 
 // Auth POMs
 import { LoginPage } from "../pages/auth/LoginPage";
 import { RegisterPage } from "../pages/auth/RegisterPage";
-
+// Component POMs
+import { SidebarComponent } from "../pages/components/SidebarComponent";
+import { DesktopAugurPage } from "../pages/desktop/DesktopAugurPage";
+import { DesktopEveningPulsePage } from "../pages/desktop/DesktopEveningPulsePage";
+import { DesktopFavoritesPage } from "../pages/desktop/DesktopFavoritesPage";
 // Desktop POMs
 import { DesktopFeedsPage } from "../pages/desktop/DesktopFeedsPage";
+import { DesktopJobStatusPage } from "../pages/desktop/DesktopJobStatusPage";
+import { DesktopMorningLetterPage } from "../pages/desktop/DesktopMorningLetterPage";
 import { DesktopRecapPage } from "../pages/desktop/DesktopRecapPage";
 import { DesktopSearchPage } from "../pages/desktop/DesktopSearchPage";
 import { DesktopSettingsPage } from "../pages/desktop/DesktopSettingsPage";
-import { DesktopAugurPage } from "../pages/desktop/DesktopAugurPage";
-import { DesktopMorningLetterPage } from "../pages/desktop/DesktopMorningLetterPage";
-import { DesktopSystemLoaderPage } from "../pages/desktop/DesktopSystemLoaderPage";
-import { DesktopTagTrailPage } from "../pages/desktop/DesktopTagTrailPage";
-import { DesktopFavoritesPage } from "../pages/desktop/DesktopFavoritesPage";
-import { DesktopViewedPage } from "../pages/desktop/DesktopViewedPage";
 import { DesktopStatsPage } from "../pages/desktop/DesktopStatsPage";
-import { DesktopEveningPulsePage } from "../pages/desktop/DesktopEveningPulsePage";
-import { DesktopJobStatusPage } from "../pages/desktop/DesktopJobStatusPage";
+import { DesktopSystemLoaderPage } from "../pages/desktop/DesktopSystemLoaderPage";
 import { DesktopTagArticlesPage } from "../pages/desktop/DesktopTagArticlesPage";
-
+import { DesktopTagTrailPage } from "../pages/desktop/DesktopTagTrailPage";
+import { DesktopViewedPage } from "../pages/desktop/DesktopViewedPage";
+import { Mobile3DayRecapPage } from "../pages/mobile/Mobile3DayRecapPage";
+import { MobileEveningPulsePage } from "../pages/mobile/MobileEveningPulsePage";
+import { MobileFavoritesPage } from "../pages/mobile/MobileFavoritesPage";
 // Mobile POMs
 import { MobileFeedsPage } from "../pages/mobile/MobileFeedsPage";
-import { MobileSwipePage } from "../pages/mobile/MobileSwipePage";
-import { MobileRecapPage } from "../pages/mobile/MobileRecapPage";
-import { MobileStatsPage } from "../pages/mobile/MobileStatsPage";
-import { MobileSearchPage } from "../pages/mobile/MobileSearchPage";
-import { MobileManagePage } from "../pages/mobile/MobileManagePage";
-import { MobileViewedPage } from "../pages/mobile/MobileViewedPage";
-import { MobileTagTrailPage } from "../pages/mobile/MobileTagTrailPage";
-import { MobileMorningLetterPage } from "../pages/mobile/MobileMorningLetterPage";
-import { MobileEveningPulsePage } from "../pages/mobile/MobileEveningPulsePage";
-import { Mobile3DayRecapPage } from "../pages/mobile/Mobile3DayRecapPage";
 import { MobileJobStatusPage } from "../pages/mobile/MobileJobStatusPage";
+import { MobileManagePage } from "../pages/mobile/MobileManagePage";
+import { MobileMorningLetterPage } from "../pages/mobile/MobileMorningLetterPage";
+import { MobileRecapPage } from "../pages/mobile/MobileRecapPage";
+import { MobileSearchPage } from "../pages/mobile/MobileSearchPage";
+import { MobileStatsPage } from "../pages/mobile/MobileStatsPage";
+import { MobileSwipePage } from "../pages/mobile/MobileSwipePage";
 import { MobileTagArticlesPage } from "../pages/mobile/MobileTagArticlesPage";
-import { MobileFavoritesPage } from "../pages/mobile/MobileFavoritesPage";
-
-// Component POMs
-import { SidebarComponent } from "../pages/components/SidebarComponent";
+import { MobileTagTrailPage } from "../pages/mobile/MobileTagTrailPage";
+import { MobileViewedPage } from "../pages/mobile/MobileViewedPage";
+import { test as base } from "./baseTest";
 
 type PomFixtures = {
 	// Auth

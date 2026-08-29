@@ -1,9 +1,9 @@
-import { test, expect } from "../../fixtures/pomFixtures";
-import { fulfillJson } from "../../utils/mockHelpers";
 import {
-	CONNECT_TAG_TRAIL_PATHS,
 	CONNECT_TAG_TRAIL_ARTICLES_RESPONSE,
+	CONNECT_TAG_TRAIL_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("Mobile Tag Articles", () => {
 	test.use({ viewport: { width: 375, height: 812 } });

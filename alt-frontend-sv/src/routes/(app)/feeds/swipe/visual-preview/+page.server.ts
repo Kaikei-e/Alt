@@ -1,14 +1,14 @@
 import type { ServerLoad } from "@sveltejs/kit";
-import { getFeedsWithCursor } from "$lib/server/feed-api";
-import {
-	createServerTransport,
-	createServerTransportWithToken,
-} from "$lib/connect/transport-server";
 import {
 	batchPrefetchImages,
 	fetchArticleContent,
 } from "$lib/connect/articles";
+import {
+	createServerTransport,
+	createServerTransportWithToken,
+} from "$lib/connect/transport-server";
 import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
+import { getFeedsWithCursor } from "$lib/server/feed-api";
 
 // Cap the inline article fetch on SSR. The backend now caps the origin fetch
 // at 8s; we use 6s on top so the user sees the preview shell quickly even when

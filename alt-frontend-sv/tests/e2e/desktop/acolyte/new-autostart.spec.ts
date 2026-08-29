@@ -1,7 +1,7 @@
-import { test, expect } from "../../fixtures/pomFixtures";
-import { fulfillJson } from "../../utils/mockHelpers";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopAcolyteNewPage } from "../../pages/desktop/DesktopAcolyteNewPage";
 import { DesktopAcolyteReportPage } from "../../pages/desktop/DesktopAcolyteReportPage";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 const REPORT_ID = "rpt-autostart-001";
 const RUN_ID = "run-autostart-001";

@@ -1,10 +1,10 @@
 // Re-export from domain layer
 export type {
-	TagTrailTag,
-	TagTrailArticle,
-	TagTrailHop,
-	RandomFeedResponse,
 	ArticlesByTagResponse,
 	ArticleTagsResponse,
 	FeedTagsResponse,
+	RandomFeedResponse,
+	TagTrailArticle,
+	TagTrailHop,
+	TagTrailTag,
 } from "$lib/domain/tag-trail/types";

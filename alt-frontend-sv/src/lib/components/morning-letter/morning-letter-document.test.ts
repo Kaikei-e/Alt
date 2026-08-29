@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-	orderSections,
+	deriveWithinHours,
 	formatLetterDate,
 	getSectionDisplayTitle,
 	getSourcesForSection,
 	isLetterStale,
-	deriveWithinHours,
+	orderSections,
 } from "./morning-letter-document";
 
 describe("orderSections", () => {

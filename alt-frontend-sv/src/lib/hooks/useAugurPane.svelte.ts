@@ -6,9 +6,9 @@
  */
 
 import {
+	type AugurCitation,
 	createClientTransport,
 	streamAugurChat,
-	type AugurCitation,
 } from "$lib/connect";
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
 

@@ -256,6 +256,6 @@ export { parseSSEStream, type SSEEvent } from "./sse-parser";
 export {
 	processAugurStreamingText,
 	processGenericStreamingText,
-	processSummarizeStreamingText,
 	processStreamingText,
+	processSummarizeStreamingText,
 } from "./sse-processors";

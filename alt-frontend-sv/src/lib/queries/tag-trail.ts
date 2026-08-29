@@ -1,11 +1,11 @@
-import { createQuery, createInfiniteQuery } from "@tanstack/svelte-query";
-import { createClientTransport } from "$lib/connect/transport-client";
+import { createInfiniteQuery, createQuery } from "@tanstack/svelte-query";
 import {
 	fetchArticlesByTag,
 	fetchArticleTags,
 	fetchRandomFeed,
 	type TagTrailArticlesResponse,
 } from "$lib/connect/articles";
+import { createClientTransport } from "$lib/connect/transport-client";
 import { tagTrailKeys } from "./keys";
 
 export function createArticlesByTagQuery(

@@ -1,4 +1,5 @@
 <script lang="ts">
+import { AlertCircle, Loader2, MonitorX } from "@lucide/svelte";
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import {
@@ -7,9 +8,8 @@ import {
 	type TagCloudItem,
 } from "$lib/connect";
 import { detectGPUBackend } from "$lib/utils/gpuCapability";
-import TagVerseScene from "./TagVerseScene.svelte";
 import TagVerseHUD from "./TagVerseHUD.svelte";
-import { Loader2, AlertCircle, MonitorX } from "@lucide/svelte";
+import TagVerseScene from "./TagVerseScene.svelte";
 
 let tags = $state<TagCloudItem[]>([]);
 let isLoading = $state(true);

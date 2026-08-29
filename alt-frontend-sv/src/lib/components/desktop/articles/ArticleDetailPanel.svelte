@@ -1,11 +1,19 @@
 <script lang="ts">
-import { onDestroy } from "svelte";
-import type { TagTrailArticle } from "$lib/connect";
 import {
-	getFeedContentOnTheFlyClient,
+	ExternalLink,
+	FileText,
+	Loader2,
+	RefreshCw,
+	Sparkles,
+	X,
+} from "@lucide/svelte";
+import { onDestroy } from "svelte";
+import {
 	type FeedContentOnTheFlyResponse,
+	getFeedContentOnTheFlyClient,
 } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
+import type { TagTrailArticle } from "$lib/connect";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
 import {
 	type ArticleContentPhase,
@@ -17,14 +25,6 @@ import {
 	TRY_AGAIN_LABEL,
 } from "$lib/utils/articleContentState";
 import { articleContentErrorMessage } from "$lib/utils/errorClassification";
-import {
-	X,
-	ExternalLink,
-	FileText,
-	Sparkles,
-	Loader2,
-	RefreshCw,
-} from "@lucide/svelte";
 
 interface Props {
 	article: TagTrailArticle;

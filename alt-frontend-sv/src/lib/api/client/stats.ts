@@ -1,4 +1,4 @@
-import type { TrendDataResponse, TimeWindow } from "$lib/schema/stats";
+import type { TimeWindow, TrendDataResponse } from "$lib/schema/stats";
 import { callClientAPI } from "./core";
 
 /**

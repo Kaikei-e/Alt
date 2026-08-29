@@ -1,11 +1,10 @@
-import { test, expect } from "../fixtures/pomFixtures";
-import { fulfillJson } from "../utils/mockHelpers";
 import {
 	CONNECT_RPC_PATHS,
 	CONNECT_TREND_STATS_PATH,
 	CONNECT_TREND_STATS_RESPONSE,
 } from "../fixtures/mockData";
-import { createMockEventSourceScript } from "../utils/mockHelpers";
+import { expect, test } from "../fixtures/pomFixtures";
+import { createMockEventSourceScript, fulfillJson } from "../utils/mockHelpers";
 
 const MOCK_STATS = {
 	feedAmount: 25,

@@ -1,9 +1,9 @@
 <script lang="ts">
-import type { FeedLink, FeedHealthStatus } from "$lib/schema/feedLink";
+import type { FeedHealthStatus, FeedLink } from "$lib/schema/feedLink";
 import {
-	summarizeHealth,
 	getHealthColor,
 	getHealthLabel,
+	summarizeHealth,
 } from "$lib/utils/feedHealth";
 
 interface Props {

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { NAV_TABS, getActiveTabIndex } from "./bottom-nav";
+import { getActiveTabIndex, NAV_TABS } from "./bottom-nav";
 
 let { pathname }: { pathname: string } = $props();
 

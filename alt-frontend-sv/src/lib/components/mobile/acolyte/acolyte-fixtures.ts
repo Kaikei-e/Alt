@@ -1,6 +1,6 @@
 import type {
-	AcolyteReportSummary,
 	AcolyteReport,
+	AcolyteReportSummary,
 	AcolyteSection,
 	AcolyteVersionSummary,
 } from "$lib/connect/acolyte";

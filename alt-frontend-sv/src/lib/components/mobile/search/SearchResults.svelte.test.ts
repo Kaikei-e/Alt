@@ -1,8 +1,8 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import SearchResults from "./SearchResults.svelte";
+import { render } from "vitest-browser-svelte";
 import { searchResultsFixture } from "../../../../../tests/fixtures/search";
+import SearchResults from "./SearchResults.svelte";
 
 vi.mock("$lib/api/client", () => ({
 	searchFeedsClient: vi.fn(),

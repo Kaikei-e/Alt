@@ -3,14 +3,14 @@
  */
 
 import type {
-	Feed,
-	FeedsResponse,
-	FeedStats,
-	DetailedFeedStats,
+	ConnectArticleContent,
+	ConnectDetailedStats,
 	ConnectFeed,
 	ConnectFeedsResponse,
-	ConnectDetailedStats,
-	ConnectArticleContent,
+	DetailedFeedStats,
+	Feed,
+	FeedStats,
+	FeedsResponse,
 	RssFeedLink,
 } from "../types";
 

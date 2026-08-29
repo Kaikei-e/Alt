@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { MetricResult } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
-import ServiceDrilldown from "./ServiceDrilldown.svelte";
 import { formatValue, stateBadge } from "./format";
+import ServiceDrilldown from "./ServiceDrilldown.svelte";
 
 let {
 	metrics,

@@ -1,9 +1,9 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it, vi } from "vitest";
-import MobileAcolyteDetail from "./MobileAcolyteDetail.svelte";
-import { MOCK_REPORT, MOCK_SECTIONS, MOCK_VERSIONS } from "./acolyte-fixtures";
+import { render } from "vitest-browser-svelte";
 import type { AcolyteSection } from "$lib/connect/acolyte";
+import { MOCK_REPORT, MOCK_SECTIONS, MOCK_VERSIONS } from "./acolyte-fixtures";
+import MobileAcolyteDetail from "./MobileAcolyteDetail.svelte";
 
 describe("MobileAcolyteDetail", () => {
 	const baseProps = {

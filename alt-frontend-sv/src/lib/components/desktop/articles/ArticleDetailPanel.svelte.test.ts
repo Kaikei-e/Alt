@@ -1,7 +1,7 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { page as testPage } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-svelte";
 
 const mockGetFeedContent = vi.fn();
 vi.mock("$lib/api/client/articles", () => ({

@@ -1,9 +1,9 @@
 <script lang="ts">
-import { useThrelte, useTask } from "@threlte/core";
+import { useTask, useThrelte } from "@threlte/core";
 import { onMount } from "svelte";
-import { RenderPipeline } from "three/webgpu";
-import { pass } from "three/tsl";
 import { bloom } from "three/examples/jsm/tsl/display/BloomNode.js";
+import { pass } from "three/tsl";
+import { RenderPipeline } from "three/webgpu";
 
 const { renderer, scene, camera, renderStage, autoRender } = useThrelte();
 

@@ -5,8 +5,8 @@
  * Uses service-token authentication.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import { KnowledgeHomeAdminService } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_admin_pb";
 
 type KnowledgeHomeAdminClient = Client<typeof KnowledgeHomeAdminService>;

@@ -1,6 +1,6 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-svelte";
 
 import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
 import SearchWindow from "./SearchWindow.svelte";

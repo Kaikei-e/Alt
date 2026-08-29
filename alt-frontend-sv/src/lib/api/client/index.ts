@@ -31,11 +31,11 @@ export {
 	getFavoriteFeedsWithCursorClient,
 	getFeedsWithCursorClient,
 	getReadFeedsWithCursorClient,
-	searchFeedsClient,
-	updateFeedReadStatusClient,
 	listSubscriptionsClient,
+	searchFeedsClient,
 	subscribeClient,
 	unsubscribeClient,
+	updateFeedReadStatusClient,
 } from "./feeds";
 // OPML Import/Export
 export { exportOPMLClient, importOPMLClient } from "./opml";

@@ -1,42 +1,42 @@
 <script lang="ts">
 import { onDestroy, onMount } from "svelte";
 import { browser } from "$app/environment";
-import ProjectionStatusPanel from "$lib/components/knowledge-home-admin/ProjectionStatusPanel.svelte";
-import BackfillJobsTable from "$lib/components/knowledge-home-admin/BackfillJobsTable.svelte";
-import FeatureFlagPanel from "$lib/components/knowledge-home-admin/FeatureFlagPanel.svelte";
+import { getClientCSRFToken } from "$lib/api/client/core";
 import AdminTabNavigation from "$lib/components/knowledge-home-admin/AdminTabNavigation.svelte";
-import SLOSummaryPanel from "$lib/components/knowledge-home-admin/SLOSummaryPanel.svelte";
 import AlertStatusPanel from "$lib/components/knowledge-home-admin/AlertStatusPanel.svelte";
-import ReprojectActions from "$lib/components/knowledge-home-admin/ReprojectActions.svelte";
-import ReprojectRunsTable from "$lib/components/knowledge-home-admin/ReprojectRunsTable.svelte";
-import DiffSummaryPanel from "$lib/components/knowledge-home-admin/DiffSummaryPanel.svelte";
-import StorageStatsPanel from "$lib/components/knowledge-home-admin/StorageStatsPanel.svelte";
-import SnapshotListPanel from "$lib/components/knowledge-home-admin/SnapshotListPanel.svelte";
-import RetentionStatusPanel from "$lib/components/knowledge-home-admin/RetentionStatusPanel.svelte";
-import RetentionRunResultPanel from "$lib/components/knowledge-home-admin/RetentionRunResultPanel.svelte";
 import AuditActions from "$lib/components/knowledge-home-admin/AuditActions.svelte";
 import AuditResultPanel from "$lib/components/knowledge-home-admin/AuditResultPanel.svelte";
-import SystemAtAGlancePanel from "$lib/components/knowledge-home-admin/SystemAtAGlancePanel.svelte";
-import ServiceHealthGrid from "$lib/components/knowledge-home-admin/ServiceHealthGrid.svelte";
-import ProjectorPipelinePanel from "$lib/components/knowledge-home-admin/ProjectorPipelinePanel.svelte";
-import StreamHealthPanel from "$lib/components/knowledge-home-admin/StreamHealthPanel.svelte";
-import RecallPipelinePanel from "$lib/components/knowledge-home-admin/RecallPipelinePanel.svelte";
-import SovereignMutationPanel from "$lib/components/knowledge-home-admin/SovereignMutationPanel.svelte";
+import BackfillJobsTable from "$lib/components/knowledge-home-admin/BackfillJobsTable.svelte";
+import DiffSummaryPanel from "$lib/components/knowledge-home-admin/DiffSummaryPanel.svelte";
 import ErrorBudgetBurnRatePanel from "$lib/components/knowledge-home-admin/ErrorBudgetBurnRatePanel.svelte";
+import FeatureFlagPanel from "$lib/components/knowledge-home-admin/FeatureFlagPanel.svelte";
 import InteractionFunnelPanel from "$lib/components/knowledge-home-admin/InteractionFunnelPanel.svelte";
-import ReasonDistributionChart from "$lib/components/knowledge-home-admin/ReasonDistributionChart.svelte";
 import ObservabilityPanel from "$lib/components/knowledge-home-admin/observability/ObservabilityPanel.svelte";
-import {
-	useKnowledgeHomeAdmin,
-	type KnowledgeHomeAdminActionRequest,
-} from "$lib/hooks/useKnowledgeHomeAdmin.svelte";
-import { useSovereignAdmin } from "$lib/hooks/useSovereignAdmin.svelte";
-import { getClientCSRFToken } from "$lib/api/client/core";
+import ProjectionStatusPanel from "$lib/components/knowledge-home-admin/ProjectionStatusPanel.svelte";
+import ProjectorPipelinePanel from "$lib/components/knowledge-home-admin/ProjectorPipelinePanel.svelte";
+import ReasonDistributionChart from "$lib/components/knowledge-home-admin/ReasonDistributionChart.svelte";
+import RecallPipelinePanel from "$lib/components/knowledge-home-admin/RecallPipelinePanel.svelte";
+import ReprojectActions from "$lib/components/knowledge-home-admin/ReprojectActions.svelte";
+import ReprojectRunsTable from "$lib/components/knowledge-home-admin/ReprojectRunsTable.svelte";
+import RetentionRunResultPanel from "$lib/components/knowledge-home-admin/RetentionRunResultPanel.svelte";
+import RetentionStatusPanel from "$lib/components/knowledge-home-admin/RetentionStatusPanel.svelte";
+import ServiceHealthGrid from "$lib/components/knowledge-home-admin/ServiceHealthGrid.svelte";
+import SLOSummaryPanel from "$lib/components/knowledge-home-admin/SLOSummaryPanel.svelte";
+import SnapshotListPanel from "$lib/components/knowledge-home-admin/SnapshotListPanel.svelte";
+import SovereignMutationPanel from "$lib/components/knowledge-home-admin/SovereignMutationPanel.svelte";
+import StorageStatsPanel from "$lib/components/knowledge-home-admin/StorageStatsPanel.svelte";
+import StreamHealthPanel from "$lib/components/knowledge-home-admin/StreamHealthPanel.svelte";
+import SystemAtAGlancePanel from "$lib/components/knowledge-home-admin/SystemAtAGlancePanel.svelte";
 import type {
 	BackfillJobData,
 	ReprojectRunData,
 	SLOStatusData,
 } from "$lib/connect/knowledge_home_admin";
+import {
+	type KnowledgeHomeAdminActionRequest,
+	useKnowledgeHomeAdmin,
+} from "$lib/hooks/useKnowledgeHomeAdmin.svelte";
+import { useSovereignAdmin } from "$lib/hooks/useSovereignAdmin.svelte";
 
 let { data } = $props<{
 	data: {

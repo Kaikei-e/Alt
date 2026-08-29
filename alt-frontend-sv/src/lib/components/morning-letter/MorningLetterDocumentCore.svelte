@@ -1,15 +1,15 @@
 <script lang="ts">
 import { AlertTriangle } from "@lucide/svelte";
 import type {
+	MorningLetterBulletEnrichment,
 	MorningLetterDocument,
 	MorningLetterSourceProto,
-	MorningLetterBulletEnrichment,
 } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
-import { orderSections, isLetterStale } from "./morning-letter-document";
-import MorningLetterSectionCore from "./MorningLetterSectionCore.svelte";
-import ThroughLineHero from "./ThroughLineHero.svelte";
-import SinceYesterdayBand from "./SinceYesterdayBand.svelte";
 import ArticleDeck from "./ArticleDeck.svelte";
+import MorningLetterSectionCore from "./MorningLetterSectionCore.svelte";
+import { isLetterStale, orderSections } from "./morning-letter-document";
+import SinceYesterdayBand from "./SinceYesterdayBand.svelte";
+import ThroughLineHero from "./ThroughLineHero.svelte";
 
 type Props = {
 	letter: MorningLetterDocument;

@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Cookies } from "@sveltejs/kit";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$env/dynamic/private", () => ({
 	env: { AUTH_HUB_INTERNAL_URL: "http://auth-hub:8888" },
 }));
 
-import { getCSRFToken, verifyCsrfToken, issueCsrfCookie } from "./auth";
+import { getCSRFToken, issueCsrfCookie, verifyCsrfToken } from "./auth";
 
 describe("getCSRFToken", () => {
 	beforeEach(() => {

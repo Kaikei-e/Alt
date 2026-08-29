@@ -4,17 +4,17 @@
  * Provides type-safe methods to call AugurService endpoints for RAG-powered chat.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
 	AugurService,
 	CitationKind,
-	type StreamChatResponse,
-	type RetrieveContextResponse,
+	type ChatMessage as ProtoChatMessage,
 	type Citation as ProtoCitation,
 	type ContextItem as ProtoContextItem,
 	type ConversationSummary as ProtoConversationSummary,
-	type ChatMessage as ProtoChatMessage,
+	type RetrieveContextResponse,
+	type StreamChatResponse,
 } from "$lib/gen/alt/augur/v2/augur_pb";
 
 /** Names mirror the proto CitationKind enum so the FE never has to deal

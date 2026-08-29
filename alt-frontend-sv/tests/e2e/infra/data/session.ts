@@ -4,10 +4,10 @@
 
 import { readFileSync } from "node:fs";
 import type {
-	KratosSession,
+	AuthHubSessionResponse,
 	KratosFlow,
 	KratosFlowNode,
-	AuthHubSessionResponse,
+	KratosSession,
 } from "../types";
 
 // =============================================================================

@@ -1,8 +1,8 @@
 <script lang="ts">
-import type { ActiveJobInfo } from "$lib/schema/dashboard";
-import MobilePipelineProgress from "./MobilePipelineProgress.svelte";
-import MobileGenreProgressGrid from "./MobileGenreProgressGrid.svelte";
 import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
+import type { ActiveJobInfo } from "$lib/schema/dashboard";
+import MobileGenreProgressGrid from "./MobileGenreProgressGrid.svelte";
+import MobilePipelineProgress from "./MobilePipelineProgress.svelte";
 
 interface Props {
 	job: ActiveJobInfo | null;

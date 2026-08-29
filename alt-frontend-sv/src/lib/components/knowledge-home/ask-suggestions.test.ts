@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { pickSuggestions, suggestionPool } from "./ask-suggestions";
 
 const allQuestions = Object.values(suggestionPool).flat();

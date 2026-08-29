@@ -42,8 +42,7 @@ export function addHandlers(...newHandlers: Parameters<typeof server.use>) {
 	server.use(...newHandlers);
 }
 
+// Re-export MSW utilities for convenience
+export { HttpResponse, http } from "msw";
 // Re-export handlers for custom composition
 export { handlers } from "./msw-handlers";
-
-// Re-export MSW utilities for convenience
-export { http, HttpResponse } from "msw";

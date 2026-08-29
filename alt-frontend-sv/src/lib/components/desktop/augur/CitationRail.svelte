@@ -1,6 +1,6 @@
 <script lang="ts">
 import { ArrowUpRight } from "@lucide/svelte";
-import { citationHref, type CitationKindName } from "./citation-href";
+import { type CitationKindName, citationHref } from "./citation-href";
 
 export type Citation = {
 	URL: string;

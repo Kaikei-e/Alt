@@ -1,9 +1,9 @@
 <script lang="ts">
 import { getStageLabel, type PipelineStage } from "$lib/schema/dashboard";
 import {
-	type StageDuration,
-	formatDurationWithUnits,
 	calculateBarWidth,
+	formatDurationWithUnits,
+	type StageDuration,
 } from "$lib/utils/stageMetrics";
 
 interface Props {

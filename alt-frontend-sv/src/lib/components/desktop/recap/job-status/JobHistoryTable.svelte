@@ -1,9 +1,9 @@
 <script lang="ts">
-import type { RecentJobSummary, JobStats } from "$lib/schema/dashboard";
-import { formatDuration } from "$lib/schema/dashboard";
 import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
-import JobDetailMetrics from "./JobDetailMetrics.svelte";
+import type { JobStats, RecentJobSummary } from "$lib/schema/dashboard";
+import { formatDuration } from "$lib/schema/dashboard";
 import { calculateStageDurations } from "$lib/utils/stageMetrics";
+import JobDetailMetrics from "./JobDetailMetrics.svelte";
 
 interface Props {
 	jobs: RecentJobSummary[];

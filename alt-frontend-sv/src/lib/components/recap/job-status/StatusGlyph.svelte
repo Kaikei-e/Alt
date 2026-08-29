@@ -1,9 +1,9 @@
 <script lang="ts">
 import {
+	type StatusInput,
 	statusToGlyph,
 	statusToInk,
 	statusToLabel,
-	type StatusInput,
 } from "$lib/utils/jobStatusInk";
 
 interface Props {

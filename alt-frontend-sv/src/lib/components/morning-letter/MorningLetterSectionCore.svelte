@@ -1,15 +1,15 @@
 <script lang="ts">
+import WhySurfacedBadge from "$lib/components/knowledge-home/WhySurfacedBadge.svelte";
+import type { WhyReasonData } from "$lib/connect/knowledge_home";
+import type {
+	MorningLetterSection,
+	MorningLetterSourceProto,
+} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import {
 	getSectionDisplayTitle,
 	getSourcesForSection,
 } from "./morning-letter-document";
-import type {
-	MorningLetterSection,
-	MorningLetterSourceProto,
-} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
-import WhySurfacedBadge from "$lib/components/knowledge-home/WhySurfacedBadge.svelte";
-import type { WhyReasonData } from "$lib/connect/knowledge_home";
 
 type Props = {
 	section: MorningLetterSection;

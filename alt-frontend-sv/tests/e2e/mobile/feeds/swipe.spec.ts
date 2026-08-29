@@ -1,13 +1,13 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { gotoMobileRoute } from "../../helpers/navigation";
-import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
-	CONNECT_RPC_PATHS,
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 	CONNECT_FEEDS_WITHOUT_ARTICLE_ID,
-	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_MARK_AS_READ_RESPONSE,
+	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { gotoMobileRoute } from "../../helpers/navigation";
+import { fulfillError, fulfillJson } from "../../utils/mockHelpers";
 
 // Swipe mode uses Connect-RPC for data fetching (SSR disabled)
 const SWIPE_FEEDS_RESPONSE = {

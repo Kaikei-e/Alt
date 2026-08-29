@@ -1,6 +1,6 @@
+import { execSync } from "node:child_process";
 import adapter from "@sveltejs/adapter-node";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
-import { execSync } from "node:child_process";
 
 // SvelteKit falls back to a full-page navigation whenever the client's app
 // version differs from the server's. The framework default for `version.name`

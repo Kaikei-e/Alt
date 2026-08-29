@@ -1,16 +1,16 @@
 <script lang="ts">
+import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 import {
-	PIPELINE_STAGES,
 	getStageLabel,
+	PIPELINE_STAGES,
 	type PipelineStage,
 	type SubStageProgress,
 } from "$lib/schema/dashboard";
 import {
-	shouldShowSubStageProgress,
 	formatSubStageProgress,
 	inferStageCompletion,
+	shouldShowSubStageProgress,
 } from "$lib/utils/pipelineProgress";
-import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 
 interface Props {
 	currentStage: string | null;

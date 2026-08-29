@@ -1,12 +1,12 @@
 <script lang="ts">
-import { T, useThrelte, useTask } from "@threlte/core";
-import { OrbitControls, interactivity } from "@threlte/extras";
+import { T, useTask, useThrelte } from "@threlte/core";
+import { interactivity, OrbitControls } from "@threlte/extras";
 import { onDestroy } from "svelte";
-import type { TagCloudItem } from "$lib/connect";
-import TagAsteroid from "./TagAsteroid.svelte";
-import StarBackground from "./StarBackground.svelte";
-import PostProcessing from "./PostProcessing.svelte";
 import * as THREE from "three";
+import type { TagCloudItem } from "$lib/connect";
+import PostProcessing from "./PostProcessing.svelte";
+import StarBackground from "./StarBackground.svelte";
+import TagAsteroid from "./TagAsteroid.svelte";
 
 interface Props {
 	tags: TagCloudItem[];

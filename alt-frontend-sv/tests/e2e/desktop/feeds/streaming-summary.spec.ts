@@ -1,12 +1,12 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { DesktopFeedsPage } from "../../pages/desktop/DesktopFeedsPage";
-import { fulfillJson } from "../../utils/mockHelpers";
 import {
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 	CONNECT_FEEDS_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { DesktopFeedsPage } from "../../pages/desktop/DesktopFeedsPage";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("Desktop Feeds - StreamSummarize", () => {
 	test("renders streamed summary chunks before the stream completes", async ({

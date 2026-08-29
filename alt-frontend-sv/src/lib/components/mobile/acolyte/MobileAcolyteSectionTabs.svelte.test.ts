@@ -1,8 +1,8 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { describe, expect, it, vi } from "vitest";
-import MobileAcolyteSectionTabs from "./MobileAcolyteSectionTabs.svelte";
+import { render } from "vitest-browser-svelte";
 import { MOCK_SECTIONS } from "./acolyte-fixtures";
+import MobileAcolyteSectionTabs from "./MobileAcolyteSectionTabs.svelte";
 
 describe("MobileAcolyteSectionTabs", () => {
 	it("renders all section tabs", async () => {

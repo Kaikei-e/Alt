@@ -1,6 +1,6 @@
 <script lang="ts">
-import type { TagTrailArticle } from "$lib/connect";
 import { SquareArrowOutUpRight } from "@lucide/svelte";
+import type { TagTrailArticle } from "$lib/connect";
 
 interface Props {
 	article: TagTrailArticle;

@@ -3,9 +3,9 @@
  * with short-term cache to avoid per-request Kratos round-trips.
  */
 import { createHash } from "node:crypto";
-import { ory } from "$lib/server/ory";
-import { env } from "$env/dynamic/private";
 import type { Identity, Session } from "@ory/client";
+import { env } from "$env/dynamic/private";
+import { ory } from "$lib/server/ory";
 
 const AUTH_HUB_URL = env.AUTH_HUB_INTERNAL_URL || "http://auth-hub:8888";
 const AUTH_HUB_TIMEOUT_MS = 3000;

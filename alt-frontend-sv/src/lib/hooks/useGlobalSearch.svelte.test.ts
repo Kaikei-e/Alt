@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { flushSync } from "svelte";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock modules
 vi.mock("$app/paths", () => ({ base: "" }));

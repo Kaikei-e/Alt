@@ -1,12 +1,12 @@
 import { page } from "@vitest/browser/context";
-import { render } from "vitest-browser-svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import SearchResultItem from "./SearchResultItem.svelte";
+import { render } from "vitest-browser-svelte";
 import {
 	searchResultFixture,
 	searchResultLongUrlFixture,
 	searchResultNoDescFixture,
 } from "../../../../../tests/fixtures/search";
+import SearchResultItem from "./SearchResultItem.svelte";
 
 vi.mock("$lib/api/client", () => ({
 	getArticleSummaryClient: vi.fn(() =>

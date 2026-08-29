@@ -7,9 +7,9 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { goto } from "$app/navigation";
 import { createClientTransport } from "$lib/connect";
 import {
-	searchEverything,
-	type GlobalSearchResult,
 	type GlobalSearchOptions,
+	type GlobalSearchResult,
+	searchEverything,
 } from "$lib/connect/global_search";
 
 export function useGlobalSearch() {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { citationHref, type CitationLinkInput } from "./citation-href";
+import { type CitationLinkInput, citationHref } from "./citation-href";
 
 const summaryRefId = "11111111-1111-4111-8111-111111111111";
 const articleRefId = "22222222-2222-4222-8222-222222222222";

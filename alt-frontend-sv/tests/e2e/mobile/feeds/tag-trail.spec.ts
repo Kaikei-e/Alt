@@ -1,12 +1,12 @@
-import { test, expect } from "../../fixtures/pomFixtures";
-import { fulfillJson, fulfillConnectStream } from "../../utils/mockHelpers";
 import {
-	CONNECT_TAG_TRAIL_PATHS,
-	CONNECT_TAG_TRAIL_FEED_RESPONSE,
-	CONNECT_TAG_TRAIL_ARTICLES_RESPONSE,
-	CONNECT_RPC_PATHS,
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
+	CONNECT_RPC_PATHS,
+	CONNECT_TAG_TRAIL_ARTICLES_RESPONSE,
+	CONNECT_TAG_TRAIL_FEED_RESPONSE,
+	CONNECT_TAG_TRAIL_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillConnectStream, fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("Mobile Tag Trail", () => {
 	test.beforeEach(async ({ page }) => {

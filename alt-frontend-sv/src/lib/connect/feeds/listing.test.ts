@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@connectrpc/connect", () => {
 	return {
@@ -10,15 +10,15 @@ vi.mock("$lib/gen/alt/feeds/v2/feeds_pb", () => ({
 	FeedService: {},
 }));
 
-import { createClient } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
+import { listSubscriptions } from "./actions";
 import {
-	getUnreadFeeds,
-	getReadFeeds,
 	getAllFeeds,
 	getFavoriteFeeds,
+	getReadFeeds,
+	getUnreadFeeds,
 } from "./listing";
-import { listSubscriptions } from "./actions";
 
 const mockedCreateClient = vi.mocked(createClient);
 

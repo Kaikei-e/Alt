@@ -1,5 +1,5 @@
 <script lang="ts">
-import { topSeries, type SimpleSeries } from "./util";
+import { type SimpleSeries, topSeries } from "./util";
 
 let {
 	series = [],

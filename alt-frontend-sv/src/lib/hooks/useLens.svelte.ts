@@ -1,12 +1,12 @@
 /**
  * Hook for Lens (saved viewpoint) state management.
  */
-import { ConnectError, Code } from "@connectrpc/connect";
+import { Code, ConnectError } from "@connectrpc/connect";
 import {
 	createClientTransport,
-	listLenses,
 	createLens,
 	deleteLens,
+	listLenses,
 	selectLens,
 } from "$lib/connect";
 import type { LensData, LensVersionData } from "$lib/connect/knowledge_home";

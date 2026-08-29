@@ -1,7 +1,7 @@
 <script lang="ts">
+import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 import type { GenreProgressInfo } from "$lib/schema/dashboard";
 import { filterGenreProgress } from "$lib/utils/genreProgress";
-import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 
 interface Props {
 	genreProgress: Record<string, GenreProgressInfo>;

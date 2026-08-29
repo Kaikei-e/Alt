@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the connect module — class must be inlined because vi.mock is hoisted
 vi.mock("@connectrpc/connect", () => {
@@ -22,8 +22,8 @@ vi.mock("$lib/gen/alt/morning_letter/v2/morning_letter_pb", () => ({
 	MorningLetterReadService: {},
 }));
 
-import { createClient, ConnectError, Code } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
+import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import {
 	getLatestLetter,
 	getLetterByDate,

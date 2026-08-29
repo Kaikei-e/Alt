@@ -4,12 +4,12 @@
  * Tests for TanStack Query helper functions
  */
 import { describe, expect, it } from "vitest";
-import { flattenFeedPages, flattenSearchPages } from "./feeds";
 import type {
+	ConnectFeedItem,
 	FeedCursorResponse,
 	FeedSearchResponse,
-	ConnectFeedItem,
 } from "$lib/connect/feeds";
+import { flattenFeedPages, flattenSearchPages } from "./feeds";
 
 // Mock feed item
 const createMockFeedItem = (id: string): ConnectFeedItem => ({

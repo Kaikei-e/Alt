@@ -1,11 +1,11 @@
-import { expect, test } from "../../fixtures/pomFixtures";
-import { DesktopRecapPage } from "../../pages/desktop/DesktopRecapPage";
-import { fulfillJson, fulfillConnectError } from "../../utils/mockHelpers";
 import {
-	CONNECT_RECAP_RESPONSE,
 	CONNECT_RECAP_EMPTY_RESPONSE,
+	CONNECT_RECAP_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { DesktopRecapPage } from "../../pages/desktop/DesktopRecapPage";
+import { fulfillConnectError, fulfillJson } from "../../utils/mockHelpers";
 
 test.describe("Desktop Recap", () => {
 	let recapPage: DesktopRecapPage;

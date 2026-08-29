@@ -5,17 +5,17 @@
  * Authentication is handled by the transport layer.
  */
 
-import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import {
 	GlobalSearchService,
-	type SearchEverythingResponse,
 	type ArticleSection as ProtoArticleSection,
-	type RecapSection as ProtoRecapSection,
-	type TagSection as ProtoTagSection,
 	type GlobalArticleHit as ProtoGlobalArticleHit,
 	type GlobalRecapHit as ProtoGlobalRecapHit,
 	type GlobalTagHit as ProtoGlobalTagHit,
+	type RecapSection as ProtoRecapSection,
+	type TagSection as ProtoTagSection,
+	type SearchEverythingResponse,
 } from "$lib/gen/alt/search/v2/global_search_pb";
 
 /** Type-safe GlobalSearchService client */

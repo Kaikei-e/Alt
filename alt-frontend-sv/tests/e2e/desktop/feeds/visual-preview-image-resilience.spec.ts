@@ -1,10 +1,10 @@
-import { expect, test } from "../../fixtures/pomFixtures";
 import {
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 	CONNECT_MARK_AS_READ_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 } from "../../fixtures/mockData";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { DesktopFeedsPage } from "../../pages/desktop/DesktopFeedsPage";
 import { fulfillJson } from "../../utils/mockHelpers";
 
