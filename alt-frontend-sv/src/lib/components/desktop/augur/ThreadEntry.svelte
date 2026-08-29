@@ -1,6 +1,7 @@
 <script lang="ts">
 import augurAvatar from "$lib/assets/augur-chat.webp";
 import { parseAugurUserMessage } from "$lib/utils/augur-entry";
+import { splitSettledBlocks } from "$lib/utils/markdownStream";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import { sanitizeHrefUrl } from "$lib/utils/urlSafety";
 import ArticleScopeCard from "./ArticleScopeCard.svelte";
@@ -21,11 +22,30 @@ type Props = {
 	timestamp?: string;
 	citations?: Citation[];
 	index?: number;
+	/** True while this turn's answer is still being streamed/revealed. */
+	streaming?: boolean;
 };
 
-let { message, role, timestamp, citations, index = 0 }: Props = $props();
+let {
+	message,
+	role,
+	timestamp,
+	citations,
+	index = 0,
+	streaming = false,
+}: Props = $props();
 
 let isUser = $derived(role === "user");
+
+// While streaming, the finished blocks and the block being written render as
+// two adjacent {@html} islands: the settled string keeps its value from frame
+// to frame, so Svelte leaves that DOM alone and only the tail is re-parsed.
+// Once the turn completes the whole message is one island again — with
+// `streaming` false the output is byte-for-byte what it was before the split
+// existed, which is what stored conversations render through.
+let parts = $derived(
+	streaming ? splitSettledBlocks(message) : { settled: message, tail: "" },
+);
 
 // The article id rides inside the message text because rag-orchestrator scopes
 // retrieval on it. It is addressed to the backend, not to the reader, so the
@@ -70,8 +90,8 @@ function sourceHref(c: Citation): string | undefined {
 				<span class="byline-time">{timestamp}</span>
 			{/if}
 		</div>
-		<div class="entry-prose">
-			{@html parseMarkdown(message)}
+		<div class="entry-prose" aria-busy={streaming || undefined}>
+			{@html parseMarkdown(parts.settled)}{#if parts.tail}{@html parseMarkdown(parts.tail)}{/if}
 		</div>
 		{#if citations && citations.length > 0}
 			<footer class="entry-sources">
@@ -191,6 +211,9 @@ function sourceHref(c: Citation): string | undefined {
 	}
 	.entry-prose :global(code) { font-family: var(--font-mono, "IBM Plex Mono", monospace); font-size: 0.85em; }
 	.entry-prose :global(strong) { font-weight: 700; }
+	/* The settled/tail seam must be invisible: the last block of either island
+	   carries no trailing margin of its own. */
+	.entry-prose > :global(:last-child) { margin-bottom: 0; }
 
 	/* Sources / citations — only shown on narrower viewports.
 	   At ≥1280px the AugurChat right-column rail takes over as the canonical

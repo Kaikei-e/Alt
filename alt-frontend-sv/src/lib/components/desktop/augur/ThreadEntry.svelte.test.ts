@@ -10,6 +10,7 @@ import { page } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 
+import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import ThreadEntry from "./ThreadEntry.svelte";
 
 const { loadProxyImageDefault, resolveThumbnail } = vi.hoisted(() => ({
@@ -164,5 +165,74 @@ describe("ThreadEntry", () => {
 		await expect.element(page.getByText("Augur")).toBeInTheDocument();
 		await expect.element(page.getByText("21:57:30")).toBeInTheDocument();
 		await expect.element(page.getByText("Bold")).toBeInTheDocument();
+	});
+
+	// ===== Streaming render path (typewriter restoration, ADR-000985) =====
+
+	it("renders a completed answer as markdown exactly as before", async () => {
+		// Regression guard for stored conversations and the citation e2e specs:
+		// when the turn is not streaming, the prose must be the byte-for-byte
+		// output of one parseMarkdown pass over the whole message.
+		const message =
+			"# Heading\n\nFirst paragraph with **bold** text.\n\n```\nconst a = 1;\n```\n\n- item one\n- item two";
+		render(ThreadEntry, {
+			props: { message, role: "assistant" },
+		});
+
+		const prose = document.querySelector(".entry-prose");
+		expect(prose).not.toBeNull();
+		// Svelte leaves `<!---->` anchor comments for the {@html} island and the
+		// {#if} tail block. Comment nodes render nothing; every element,
+		// attribute and text byte must be exactly one parseMarkdown pass.
+		expect(prose?.innerHTML.replaceAll("<!---->", "")).toBe(
+			parseMarkdown(message),
+		);
+	});
+
+	// THE anti-flicker assertion: a growing tail must not tear down the blocks
+	// that are already finished. `{@html}` rebuilds its whole subtree whenever
+	// its string changes, so the settled prefix has to be its own island.
+	it("does not re-create the settled blocks when the tail grows", async () => {
+		const { rerender } = render(ThreadEntry, {
+			props: {
+				message: "First paragraph, fully settled.\n\nSecond para str",
+				role: "assistant",
+				streaming: true,
+			},
+		});
+
+		const before = document.querySelector(".entry-prose > p");
+		expect(before).not.toBeNull();
+		expect(before?.textContent).toBe("First paragraph, fully settled.");
+
+		await rerender({
+			message: "First paragraph, fully settled.\n\nSecond para streams onward",
+		});
+
+		const after = document.querySelector(".entry-prose > p");
+		expect(Object.is(before, after)).toBe(true);
+		expect(document.querySelector(".entry-prose")?.textContent).toContain(
+			"Second para streams onward",
+		);
+	});
+
+	it("marks the prose aria-busy while streaming and clears it when done", async () => {
+		const { rerender } = render(ThreadEntry, {
+			props: {
+				message: "Still being written",
+				role: "assistant",
+				streaming: true,
+			},
+		});
+
+		expect(
+			document.querySelector(".entry-prose")?.getAttribute("aria-busy"),
+		).toBe("true");
+
+		await rerender({ streaming: false });
+
+		expect(
+			document.querySelector(".entry-prose")?.hasAttribute("aria-busy"),
+		).toBe(false);
 	});
 });
