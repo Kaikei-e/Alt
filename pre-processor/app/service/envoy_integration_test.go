@@ -186,10 +186,10 @@ func TestEnvoyIntegration_HealthCheck(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"models": [{"name": "integration-test-model"}]}`))
 		} else if strings.Contains(r.URL.Path, "/json") {
-			// Mock response for httpbin.org/json endpoint
+			// Mock deep health response for httpbin.org/json endpoint
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"models": [{"name": "integration-test-model"}]}`))
+			_, _ = w.Write([]byte(`{"status": "pass", "service": "news-creator", "checks": [{"name": "ollama", "status": "pass", "critical": true, "latency_ms": 2}]}`))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}

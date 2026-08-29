@@ -18,7 +18,7 @@ import (
 // Test constants
 const (
 	envoyHTTPClientTypeName = "EnvoyHTTPClient"
-	healthEndpointPath      = "/health"
+	healthEndpointPath      = "/health/deep"
 )
 
 func setHealthCheckerTransport(t *testing.T, service HealthCheckerService, handler http.HandlerFunc, delay time.Duration) {
@@ -124,14 +124,17 @@ func TestHealthCheckerFactory_Integration(t *testing.T) {
 	mockNewsCreatorHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Health checker calls healthEndpointPath endpoint
 		if r.URL.Path == healthEndpointPath {
-			// Mock healthy response with models
+			// Mock passing deep health response
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
-				"models": [
-					{"name": "gemma4-e4b-q4km"},
-					{"name": "llama2:7b"}
-				]
+				"status": "pass",
+				"service": "news-creator",
+				"checks": [
+					{"name": "ollama", "status": "pass", "critical": true, "latency_ms": 2}
+				],
+				"latency_ms": 2,
+				"cached": false
 			}`))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
@@ -237,7 +240,7 @@ func TestHealthCheckerFactory_WaitForHealthy(t *testing.T) {
 			if callCount >= 2 { // Become healthy after second call
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"models": [{"name": "test-model"}]}`))
+				_, _ = w.Write([]byte(`{"status": "pass", "service": "news-creator", "checks": [{"name": "ollama", "status": "pass", "critical": true, "latency_ms": 2}]}`))
 			} else {
 				w.WriteHeader(http.StatusServiceUnavailable)
 			}

@@ -54,8 +54,8 @@ func NewHealthCheckerServiceWithFactory(cfg *config.Config, newsCreatorURL strin
 func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error {
 	s.logger.DebugContext(ctx, "checking news creator health", "url", s.newsCreatorURL)
 
-	// IMPROVED: Check if FastAPI service is healthy
-	healthURL, err := url.Parse(s.newsCreatorURL + "/health")
+	// Liveness /health carries no Ollama state; /health/deep owns model reachability.
+	healthURL, err := url.Parse(s.newsCreatorURL + "/health/deep")
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to parse news creator health URL", "error", err)
 		return fmt.Errorf("failed to parse news creator health URL: %w", err)
@@ -75,11 +75,8 @@ func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error
 		return fmt.Errorf("news creator not healthy: status %d", resp.StatusCode)
 	}
 
-	// Check if models are loaded
 	var response struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
+		Status string `json:"status"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
@@ -87,13 +84,12 @@ func (s *healthCheckerService) CheckNewsCreatorHealth(ctx context.Context) error
 		return fmt.Errorf("failed to decode health response: %w", err)
 	}
 
-	// Service is healthy only if models are loaded
-	if len(response.Models) == 0 {
-		s.logger.WarnContext(ctx, "news creator service is up but no models are loaded")
-		return fmt.Errorf("no models loaded in news creator service")
+	if response.Status != "pass" && response.Status != "warn" {
+		s.logger.ErrorContext(ctx, "news creator not healthy", "status", resp.StatusCode, "reported_status", response.Status)
+		return fmt.Errorf("news creator not healthy: status %d, reported status %q", resp.StatusCode, response.Status)
 	}
 
-	s.logger.DebugContext(ctx, "news creator is healthy", "models", len(response.Models))
+	s.logger.DebugContext(ctx, "news creator is healthy", "reported_status", response.Status)
 	return nil
 }
 

@@ -17,6 +17,7 @@ import (
 type stubHTTPClient struct {
 	handler http.HandlerFunc
 	err     error
+	paths   []string
 }
 
 func (s *stubHTTPClient) Get(ctx context.Context, url string) (*http.Response, error) {
@@ -30,9 +31,31 @@ func (s *stubHTTPClient) Get(ctx context.Context, url string) (*http.Response, e
 	if err != nil {
 		return nil, err
 	}
+	s.paths = append(s.paths, req.URL.Path)
 	recorder := httptest.NewRecorder()
 	s.handler(recorder, req)
 	return recorder.Result(), nil
+}
+
+// newsCreatorStub serves the liveness-only /health body news-creator returns and
+// the given deep-check response on /health/deep.
+func newsCreatorStub(deepStatus int, deepBody string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"healthy","service":"news-creator"}`))
+		case "/health/deep":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(deepStatus)
+			if deepBody != "" {
+				_, _ = w.Write([]byte(deepBody))
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
 }
 
 func testLoggerHealth() *slog.Logger {
@@ -57,33 +80,47 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 	tests := map[string]struct {
 		mockResponse func(w http.ResponseWriter, r *http.Request)
 		validateFunc func(t *testing.T, err error)
-		name         string
 		expectError  bool
 	}{
-		"should handle healthy service": {
-			mockResponse: func(w http.ResponseWriter, r *http.Request) {
-				// Health checker calls /health endpoint
-				if r.URL.Path == "/health" {
-					w.WriteHeader(http.StatusOK)
-					// Implementation expects models array
-					_, _ = w.Write([]byte(`{"models":[{"name":"gemma4-e4b-q4km"}]}`))
-				} else {
-					w.WriteHeader(http.StatusNotFound)
-				}
-			},
+		"should be healthy when deep check passes": {
+			mockResponse: newsCreatorStub(http.StatusOK,
+				`{"status":"pass","service":"news-creator","checks":[{"name":"ollama","status":"pass","critical":true,"latency_ms":2}],"latency_ms":2,"cached":false}`),
 			expectError: false,
 		},
-		"should handle unhealthy service": {
-			mockResponse: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusServiceUnavailable)
-			},
+		"should be healthy when deep check warns": {
+			mockResponse: newsCreatorStub(http.StatusOK,
+				`{"status":"warn","service":"news-creator","checks":[{"name":"disk","status":"warn","critical":false,"latency_ms":1}],"latency_ms":1,"cached":false}`),
+			expectError: false,
+		},
+		"should be unhealthy when deep check fails": {
+			mockResponse: newsCreatorStub(http.StatusServiceUnavailable,
+				`{"status":"fail","service":"news-creator","checks":[{"name":"ollama","status":"fail","critical":true,"latency_ms":5}],"latency_ms":5,"cached":false}`),
 			expectError: true,
 			validateFunc: func(t *testing.T, err error) {
 				assert.Contains(t, err.Error(), "news creator not healthy")
 			},
 		},
-		"should handle not found endpoint": {
+		"should be unhealthy when deep status is missing": {
+			mockResponse: newsCreatorStub(http.StatusOK, `{"service":"news-creator","checks":[]}`),
+			expectError:  true,
+			validateFunc: func(t *testing.T, err error) {
+				assert.Contains(t, err.Error(), "news creator not healthy")
+			},
+		},
+		"should be unhealthy when deep status is unknown": {
+			mockResponse: newsCreatorStub(http.StatusOK, `{"status":"degraded","service":"news-creator"}`),
+			expectError:  true,
+			validateFunc: func(t *testing.T, err error) {
+				assert.Contains(t, err.Error(), "news creator not healthy")
+			},
+		},
+		"should be unhealthy when liveness is up but deep endpoint is missing": {
 			mockResponse: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/health" {
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{"status":"healthy","service":"news-creator"}`))
+					return
+				}
 				w.WriteHeader(http.StatusNotFound)
 			},
 			expectError: true,
@@ -93,14 +130,17 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			service := NewHealthCheckerService("http://news-creator.test", testLoggerHealth())
+			stub := &stubHTTPClient{handler: tc.mockResponse}
 			if concrete, ok := service.(*healthCheckerService); ok {
-				concrete.client = &stubHTTPClient{handler: tc.mockResponse}
+				concrete.client = stub
 			}
 
 			err := service.CheckNewsCreatorHealth(context.Background())
+
+			assert.Equal(t, []string{"/health/deep"}, stub.paths, "health checker must probe the deep endpoint")
 
 			if tc.expectError {
 				require.Error(t, err)
@@ -131,9 +171,8 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 	t.Run("should handle canceled context", func(t *testing.T) {
 		service := NewHealthCheckerService("http://news-creator.test", testLoggerHealth())
 		if concrete, ok := service.(*healthCheckerService); ok {
-			concrete.client = &stubHTTPClient{handler: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusServiceUnavailable)
-			}}
+			concrete.client = &stubHTTPClient{handler: newsCreatorStub(http.StatusServiceUnavailable,
+				`{"status":"fail","service":"news-creator","checks":[{"name":"ollama","status":"fail","critical":true,"latency_ms":5}]}`)}
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -147,17 +186,10 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 
 	t.Run("should return when service becomes healthy", func(t *testing.T) {
 		service := NewHealthCheckerService("http://news-creator.test", testLoggerHealth())
+		stub := &stubHTTPClient{handler: newsCreatorStub(http.StatusOK,
+			`{"status":"pass","service":"news-creator","checks":[{"name":"ollama","status":"pass","critical":true,"latency_ms":2}],"latency_ms":2,"cached":false}`)}
 		if concrete, ok := service.(*healthCheckerService); ok {
-			concrete.client = &stubHTTPClient{handler: func(w http.ResponseWriter, r *http.Request) {
-				// Health checker calls /health endpoint
-				if r.URL.Path == "/health" {
-					w.WriteHeader(http.StatusOK)
-					// Implementation expects models array
-					if _, err := w.Write([]byte(`{"models":[{"name":"gemma4-e4b-q4km"}]}`)); err != nil {
-						t.Fatalf("failed to write mock response: %v", err)
-					}
-				}
-			}}
+			concrete.client = stub
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -166,14 +198,14 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 		err := service.WaitForHealthy(ctx)
 
 		require.NoError(t, err)
+		assert.Equal(t, []string{"/health/deep"}, stub.paths)
 	})
 
 	t.Run("should handle timeout waiting for health", func(t *testing.T) {
 		service := NewHealthCheckerService("http://news-creator.test", testLoggerHealth())
 		if concrete, ok := service.(*healthCheckerService); ok {
-			concrete.client = &stubHTTPClient{handler: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusServiceUnavailable)
-			}}
+			concrete.client = &stubHTTPClient{handler: newsCreatorStub(http.StatusServiceUnavailable,
+				`{"status":"fail","service":"news-creator","checks":[{"name":"ollama","status":"fail","critical":true,"latency_ms":5}]}`)}
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
