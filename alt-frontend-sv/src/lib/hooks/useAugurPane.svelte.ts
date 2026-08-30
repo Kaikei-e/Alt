@@ -10,7 +10,12 @@ import {
 	createClientTransport,
 	streamAugurChat,
 } from "$lib/connect";
+import { prefersReducedMotion } from "$lib/stores/motion.svelte";
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
+import {
+	createTypewriterReveal,
+	type TypewriterReveal,
+} from "$lib/utils/typewriterReveal";
 
 type CitationKindName = "UNSPECIFIED" | "WEB" | "ARTICLE" | "SUMMARY";
 
@@ -67,6 +72,11 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 	let statusText = $state("");
 	let isProvisional = $state(false);
 	let currentAbortController: AbortController | null = null;
+	// The paced reveal for the assistant turn in flight — the same shared
+	// engine AugurChat uses (ADR-000985: one place for everyone). It is the
+	// only writer of the streaming bubble's text; stopping it is what makes a
+	// straggler delta after abort/timeout harmless.
+	let reveal: TypewriterReveal | null = null;
 	let streamTimeout: ReturnType<typeof setTimeout> | null = null;
 	// When reset() is invoked mid-stream we defer the cleanup so the Connect
 	// stream can complete and rag-orchestrator can persist the partial turn.
@@ -98,6 +108,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 
 	function finalize() {
 		currentAbortController = null;
+		reveal?.stop();
 		clearTransientState();
 		runPendingReset();
 	}
@@ -107,6 +118,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 			currentAbortController.abort();
 			currentAbortController = null;
 		}
+		reveal?.stop();
 		clearTransientState();
 		runPendingReset();
 	}
@@ -171,9 +183,26 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 
 		let bufferedContent = "";
 
+		// One reveal per turn; it alone writes the streaming bubble's text, so
+		// the loading pulse (gated on message === "") clears with the first
+		// revealed character.
+		reveal?.stop();
+		reveal = createTypewriterReveal({
+			immediate: prefersReducedMotion(),
+			onReveal: (text) => {
+				messages[assistantIndex] = {
+					...messages[assistantIndex]!,
+					message: text,
+				};
+			},
+		});
+
 		// Timeout: auto-recover if onComplete never fires (e.g., protobuf failure)
 		streamTimeout = setTimeout(() => {
 			if (isLoading) {
+				// Stopped before the notice is written: a reveal frame still in
+				// flight must not overwrite the recovery text.
+				reveal?.stop();
 				messages[assistantIndex] = {
 					...messages[assistantIndex]!,
 					message: bufferedContent || "Response timed out. Please try again.",
@@ -187,14 +216,11 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 		currentAbortController = streamAugurChat(
 			transport,
 			{ messages: chatHistory, conversationId },
-			// onDelta — provisional preview text
+			// onDelta — provisional preview text, paced by the reveal
 			(delta) => {
 				bufferedContent += delta;
 				isProvisional = true;
-				messages[assistantIndex] = {
-					...messages[assistantIndex]!,
-					message: bufferedContent,
-				};
+				reveal?.push(delta);
 			},
 			// onThinking — update status text for UI
 			(text) => {
@@ -209,6 +235,9 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 			},
 			// onComplete — authoritative final answer replaces all provisional text
 			(result) => {
+				// Hard flush with the same value the write below uses, so the
+				// revealed text and the message state never disagree.
+				reveal?.finish(result.answer || bufferedContent);
 				messages[assistantIndex] = {
 					...messages[assistantIndex]!,
 					message: result.answer || bufferedContent,
@@ -222,6 +251,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 			},
 			// onFallback — clear provisional, show fallback
 			(code) => {
+				reveal?.stop();
 				isProvisional = false;
 				messages[assistantIndex] = {
 					...messages[assistantIndex]!,
@@ -232,6 +262,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 			},
 			// onError
 			(error) => {
+				reveal?.stop();
 				isProvisional = false;
 				messages[assistantIndex] = {
 					...messages[assistantIndex]!,

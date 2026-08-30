@@ -215,6 +215,9 @@ function handleOpenChange(isOpen: boolean) {
 							timestamp={msg.timestamp}
 							citations={msg.citations}
 							index={idx}
+							streaming={idx === pane.messages.length - 1 &&
+								msg.role === "assistant" &&
+								pane.isLoading}
 						/>
 					{/each}
 
