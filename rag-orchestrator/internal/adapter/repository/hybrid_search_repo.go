@@ -138,8 +138,11 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 		}
 
 		results = append(results, domain.SearchResult{
-			Chunk:           chunk,
+			Chunk: chunk,
+			// The RRF sum, not a similarity: a hit scores about 1/(k+rank) per
+			// arm it appears in, so ~0.016-0.033 for k=60 however relevant it is.
 			Score:           score,
+			ScoreKind:       domain.ScoreKindRRF,
 			ArticleID:       articleID,
 			Title:           title.String,
 			URL:             url.String,
@@ -284,8 +287,11 @@ func (r *hybridSearchRepository) SearchNeighbors(
 		}
 
 		results = append(results, domain.SearchResult{
-			Chunk:           chunk,
+			Chunk: chunk,
+			// The RRF sum, not a similarity: a hit scores about 1/(k+rank) per
+			// arm it appears in, so ~0.016-0.033 for k=60 however relevant it is.
 			Score:           score,
+			ScoreKind:       domain.ScoreKindRRF,
 			ArticleID:       articleID,
 			Title:           title.String,
 			URL:             url.String,

@@ -42,11 +42,14 @@ type StageContext struct {
 
 // ContextItem represents a single retrieved chunk with metadata.
 type ContextItem struct {
-	ChunkText       string
-	URL             string
-	Title           string
-	PublishedAt     string // ISO8601 string
-	Score           float32
+	ChunkText   string
+	URL         string
+	Title       string
+	PublishedAt string // ISO8601 string
+	Score       float32
+	// ScoreKind declares which space Score lives in, so a consumer can tell a
+	// cross-encoder judgement from a rank-derived ordering signal.
+	ScoreKind       domain.ScoreKind
 	RerankScore     float32 // Cross-encoder reranker score (meaningful when RerankApplied)
 	RerankApplied   bool    // true when RerankScore was produced by the cross-encoder
 	DocumentVersion int

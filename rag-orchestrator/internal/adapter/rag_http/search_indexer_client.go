@@ -39,9 +39,14 @@ type dhHit struct {
 	Tags    []string `json:"tags"`
 }
 
+// Search runs an unfiltered article search for the tool/tag-extraction paths.
+//
+// user_id is deliberately absent. search-indexer picks its engine from that
+// parameter: with it, the query becomes a Meilisearch `user_id = "..."` filter
+// over one user's documents. This client used to send the synthetic
+// "rag-orchestrator-system", which owns nothing, so every call returned zero
+// hits and the tag extraction fed by it never produced a tag.
 func (c *SearchIndexerClient) Search(ctx context.Context, query string) ([]domain.SearchHit, error) {
-	systemUserID := "rag-orchestrator-system"
-
 	u, err := url.Parse(fmt.Sprintf("%s/v1/search", c.BaseURL))
 	if err != nil {
 		return nil, fmt.Errorf("invalid base url: %w", err)
@@ -49,7 +54,6 @@ func (c *SearchIndexerClient) Search(ctx context.Context, query string) ([]domai
 
 	q := u.Query()
 	q.Set("q", query)
-	q.Set("user_id", systemUserID)
 	u.RawQuery = q.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -87,6 +91,12 @@ func (c *SearchIndexerClient) Search(ctx context.Context, query string) ([]domai
 // SearchBM25 performs BM25 (keyword) search for hybrid search fusion.
 // Implements domain.BM25Searcher interface.
 // Omits user_id to search all articles (unfiltered) for RAG use.
+//
+// The response exposes no relevance score, so Rank is the only ranking signal
+// these hits carry and Score stays 0 for every one of them. Consumers must not
+// read that 0 as "irrelevant": it is the absence of a measurement, which is why
+// a promoted hit is tagged domain.ScoreKindBM25 and kept out of the calibrated
+// quality thresholds.
 func (c *SearchIndexerClient) SearchBM25(ctx context.Context, query string, limit int) ([]domain.BM25SearchResult, error) {
 	u, err := url.Parse(fmt.Sprintf("%s/v1/search", c.BaseURL))
 	if err != nil {

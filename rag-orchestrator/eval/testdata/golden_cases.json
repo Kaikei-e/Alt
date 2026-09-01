@@ -1,58 +1,1111 @@
 [
   {
-    "id": "iran-oil-crisis-causal",
-    "query": "イランの石油危機はなぜ起きた？",
-    "tags": ["causal", "cjk", "known-failure-2026-04-03"],
+    "id": "recall-miss-vendor-acquisition",
+    "query": "エグザンプル社について直近でわかっていることは？",
+    "category": "recall-miss",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "note": "企業名クエリで無関係記事にドリフトする形。",
+    "tags": [
+      "entity",
+      "cjk",
+      "synthetic"
+    ],
     "expected": {
-      "expected_topic_keywords": ["イラン", "石油", "Iran", "oil"],
+      "expected_topic_keywords": [
+        "エグザンプル",
+        "Example Systems"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "min_expected_recall": 0.4,
+      "should_clarify": false,
+      "min_answer_length": 400,
+      "requires_citations": true,
+      "expected_entities": [
+        "エグザンプル"
+      ]
+    }
+  },
+  {
+    "id": "recall-miss-japanese-proper-noun",
+    "query": "エグザンプル・モビリティ社の自動運転事業を知りたい",
+    "category": "recall-miss",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "note": "日本語固有名詞。dense 検索が落とすと全く別ジャンルの記事を引く。",
+    "tags": [
+      "entity",
+      "cjk",
+      "proper-noun",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "エグザンプル・モビリティ",
+        "自動運転"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000006"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000006"
+      ],
+      "forbidden_article_ids": [
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true,
+      "expected_entities": [
+        "エグザンプル・モビリティ"
+      ]
+    }
+  },
+  {
+    "id": "recall-miss-unembedded-corpus",
+    "query": "エグザンプル・エージェントはどんな製品？",
+    "category": "recall-miss",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "note": "該当記事は存在するが embedding が無い前提。BM25 側で救えるかを見る。",
+    "tags": [
+      "entity",
+      "cjk",
+      "unembedded-corpus",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "エグザンプル・エージェント"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000007",
+        "00000000-0000-4000-8000-000000000008"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000008"
+      ],
+      "min_expected_recall": 0.5,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "recall-miss-short-cjk-query",
+    "query": "分散台帳 実運用",
+    "category": "recall-miss",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "tags": [
+      "cjk",
+      "bm25",
+      "short-query",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "分散台帳",
+        "distributed ledger"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000009",
+        "00000000-0000-4000-8000-00000000000a"
+      ],
+      "min_expected_recall": 0.5,
+      "should_clarify": false,
+      "min_relevant_contexts": 1,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-seabird-population",
+    "query": "アホウドリ類の個体数はどう変化している？",
+    "category": "cross-lingual",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "cross-lingual",
+      "cjk",
+      "nature",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "Albatross",
+        "population"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000000b"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-00000000000b"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-monsoon-flood-briefing",
+    "query": "南アジアのモンスーン洪水の被害状況を教えて",
+    "category": "cross-lingual",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "cross-lingual",
+      "cjk",
+      "news",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "monsoon",
+        "flood"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000000c"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-00000000000c"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-pharmacy-blood-test",
+    "query": "薬局で受けられる血液検査の新しい制度は？",
+    "category": "cross-lingual",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "cross-lingual",
+      "cjk",
+      "health",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "pharmacy",
+        "blood test"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000000d"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-00000000000d"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-wearable-display-launch",
+    "query": "ウェアラブルディスプレイの発売時期はいつ？",
+    "category": "cross-lingual",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "cross-lingual",
+      "cjk",
+      "product",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "wearable",
+        "display"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000000e"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-00000000000e"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-gateway-ssrf-advisory",
+    "query": "API ゲートウェイに見つかった SSRF 脆弱性の内容は？",
+    "category": "cross-lingual",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "cross-lingual",
+      "cjk",
+      "security",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "SSRF",
+        "gateway"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000000f"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-00000000000f"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-referendum-turnout",
+    "query": "国民投票の結果を左右した要因は何だった？",
+    "category": "cross-lingual",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "cross-lingual",
+      "cjk",
+      "politics",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "referendum",
+        "turnout"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000010"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000010"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-orbital-observatory-budget",
+    "query": "予算削減を生き延びた宇宙望遠鏡の話は？",
+    "category": "cross-lingual",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "cross-lingual",
+      "cjk",
+      "science",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "observatory",
+        "budget"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000011"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000011"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-token-auth-hardening",
+    "query": "サーバサイドでトークン認証を安全に実装する方法は？",
+    "category": "cross-lingual",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "cross-lingual",
+      "cjk",
+      "technical",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "token",
+        "authentication"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000012"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000012"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-en-query-japanese-corpus-crypto",
+    "query": "What lattice-based cryptography support landed in the latest runtime release?",
+    "category": "cross-lingual",
+    "language": {
+      "query": "en",
+      "corpus": "ja"
+    },
+    "note": "英語クエリから日本語記事を引く逆方向。片方向だけ強い埋め込みを弾く。",
+    "tags": [
+      "cross-lingual",
+      "reverse",
+      "technical",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "格子暗号",
+        "耐量子"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000013"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000013"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cl-en-query-japanese-corpus-cache-migration",
+    "query": "How did teams migrate their cache layer without losing keys?",
+    "category": "cross-lingual",
+    "language": {
+      "query": "en",
+      "corpus": "ja"
+    },
+    "tags": [
+      "cross-lingual",
+      "reverse",
+      "technical",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "キャッシュ",
+        "移行"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000014"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "article-scoped-court-hearing",
+    "query": "この記事の要点を3点にまとめて",
+    "category": "article-scoped",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "article_scope": {
+      "article_id": "00000000-0000-4000-8000-000000000015",
+      "title": "Court hearing scheduled in the Example Insurance case | Synthetic Wire"
+    },
+    "tags": [
+      "article-scoped",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "court",
+        "hearing"
+      ],
+      "retrieval_scope": "article_only",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000015"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000015"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "article-scoped-emulator-writeup",
+    "query": "この記事で書かれている実装の要点を教えて",
+    "category": "article-scoped",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "article_scope": {
+      "article_id": "00000000-0000-4000-8000-000000000016",
+      "title": "合成 CPU 向け 8bit エミュレータ自作ログ"
+    },
+    "tags": [
+      "article-scoped",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "エミュレータ",
+        "8bit"
+      ],
+      "retrieval_scope": "article_only",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000016"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000016"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "article-scoped-neuroimaging-study",
+    "query": "この記事の主張を順を追って説明して",
+    "category": "article-scoped",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "article_scope": {
+      "article_id": "00000000-0000-4000-8000-000000000017",
+      "title": "Imaging study reports a difference in decision-making networks | Synthetic Science"
+    },
+    "tags": [
+      "article-scoped",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "imaging",
+        "decision-making"
+      ],
+      "retrieval_scope": "article_only",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000017"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000017"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "article-scoped-supply-chain-threats",
+    "query": "この記事が指摘している脅威モデルを整理して",
+    "category": "article-scoped",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "article_scope": {
+      "article_id": "00000000-0000-4000-8000-000000000018",
+      "title": "モデル配布基盤とサプライチェーン脅威の整理"
+    },
+    "tags": [
+      "article-scoped",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "サプライチェーン",
+        "脅威"
+      ],
+      "retrieval_scope": "article_only",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000018"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000018"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "article-scoped-cache-migration-steps",
+    "query": "この記事の移行手順を段階ごとにまとめて",
+    "category": "article-scoped",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "article_scope": {
+      "article_id": "00000000-0000-4000-8000-000000000019",
+      "title": "キャッシュ基盤の無停止移行手順 | Synthetic Engineering Blog"
+    },
+    "tags": [
+      "article-scoped",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "移行",
+        "キャッシュ"
+      ],
+      "retrieval_scope": "article_only",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000019"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000019"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "article-scoped-crawler-cost",
+    "query": "この記事はどんなコスト構造を問題にしている？",
+    "category": "article-scoped",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "article_scope": {
+      "article_id": "00000000-0000-4000-8000-00000000001a",
+      "title": "Budgeting for crawler traffic in a synthetic content fleet - Example Dev"
+    },
+    "tags": [
+      "article-scoped",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "crawler",
+        "cost"
+      ],
+      "retrieval_scope": "article_only",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000001a"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-00000000001a"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "temporal-security-news-recent",
+    "query": "直近のセキュリティ関連ニュースをまとめて",
+    "category": "temporal",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "tags": [
+      "temporal",
+      "freshness",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "脆弱性",
+        "セキュリティ"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000001b",
+        "00000000-0000-4000-8000-00000000001c",
+        "00000000-0000-4000-8000-00000000001d",
+        "00000000-0000-4000-8000-00000000001e"
+      ],
+      "min_expected_recall": 0.25,
+      "should_clarify": false,
+      "expected_intent": "temporal",
+      "min_answer_length": 400,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "temporal-tooling-news-recent",
+    "query": "最近の開発ツールまわりの話題は？",
+    "category": "temporal",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "tags": [
+      "temporal",
+      "freshness",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "開発ツール"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000001f",
+        "00000000-0000-4000-8000-000000000020",
+        "00000000-0000-4000-8000-000000000021"
+      ],
+      "min_expected_recall": 0.34,
+      "should_clarify": false,
+      "expected_intent": "temporal",
+      "min_answer_length": 300,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "temporal-agent-cost-recent",
+    "query": "エージェント運用コストについて最近書かれていることは？",
+    "category": "temporal",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "tags": [
+      "temporal",
+      "freshness",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "コスト",
+        "エージェント"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000022",
+        "00000000-0000-4000-8000-000000000023",
+        "00000000-0000-4000-8000-000000000024"
+      ],
+      "min_expected_recall": 0.34,
+      "should_clarify": false,
+      "min_answer_length": 300,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "temporal-freshness-over-topic-drift",
+    "query": "無料利用枠の話題で最近出ているものは？",
+    "category": "temporal",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "note": "鮮度は合っているが話題がずれた記事を引かないこと。",
+    "tags": [
+      "temporal",
+      "freshness",
+      "topic-drift",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "無料枠",
+        "free tier"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000025",
+        "00000000-0000-4000-8000-000000000026"
+      ],
+      "forbidden_article_ids": [
+        "00000000-0000-4000-8000-000000000027"
+      ],
+      "min_expected_recall": 0.5,
+      "should_clarify": false,
+      "min_answer_length": 300,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "causal-energy-price-spike",
+    "query": "エネルギー価格の高騰はなぜ起きた？",
+    "category": "causal",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "tags": [
+      "causal",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "エネルギー",
+        "価格"
+      ],
       "retrieval_scope": "global",
       "min_relevant_contexts": 2,
-      "irrelevant_titles": ["Asset Tokenization", "LibreFang", "AI Model Pricing"],
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000028",
+        "00000000-0000-4000-8000-000000000029",
+        "00000000-0000-4000-8000-00000000002a"
+      ],
+      "forbidden_article_ids": [
+        "00000000-0000-4000-8000-000000000027"
+      ],
+      "min_expected_recall": 0.34,
       "should_clarify": false,
       "expected_intent": "causal_explanation",
       "expected_answer_format": "causal_analysis",
       "min_answer_length": 800,
       "requires_citations": true,
-      "expected_entities": ["イラン", "石油"]
+      "expected_entities": [
+        "エネルギー"
+      ]
     }
   },
   {
-    "id": "iran-follow-up-developments",
-    "query": "では、それに関連するイランの動向は？",
-    "conversation_history": [
-      {"role": "user", "content": "最近の石油危機の真因は？"},
-      {"role": "assistant", "content": "最近の石油危機は、複数の産油国の減産方針と地政学的緊張の高まりが複合的に作用して発生しました。"}
+    "id": "causal-supply-shortage-root-cause",
+    "query": "部材不足の真因は？",
+    "category": "causal",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "tags": [
+      "causal",
+      "cjk",
+      "synthetic"
     ],
-    "tags": ["follow-up", "cjk", "coreference", "known-failure-2026-03-28"],
     "expected": {
-      "expected_topic_keywords": ["イラン", "Iran"],
+      "expected_topic_keywords": [
+        "部材",
+        "供給"
+      ],
       "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000002b",
+        "00000000-0000-4000-8000-00000000002c"
+      ],
+      "min_expected_recall": 0.5,
       "should_clarify": false,
-      "min_answer_length": 300,
+      "expected_intent": "causal_explanation",
+      "min_answer_length": 600,
       "requires_citations": true,
-      "expected_entities": ["イラン"]
+      "expected_entities": [
+        "供給"
+      ]
     }
   },
   {
-    "id": "ambiguous-more-detail",
-    "query": "もっと詳しく",
-    "conversation_history": [
-      {"role": "user", "content": "最近のAIチップ開発の動向は？"},
-      {"role": "assistant", "content": "NVIDIAのBlackwellアーキテクチャが発表され、推論性能が大幅に向上しました。"}
+    "id": "causal-vpn-port-first-triage",
+    "query": "VPN の脆弱性対応でまずポートを見るのはなぜ？",
+    "category": "causal",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "tags": [
+      "causal",
+      "cjk",
+      "security",
+      "synthetic"
     ],
-    "tags": ["follow-up", "ambiguous", "known-failure-2026-03-28"],
     "expected": {
-      "should_clarify": true
+      "expected_topic_keywords": [
+        "VPN",
+        "ポート"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000002d",
+        "00000000-0000-4000-8000-00000000002e"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-00000000002d"
+      ],
+      "min_expected_recall": 0.5,
+      "should_clarify": false,
+      "expected_intent": "causal_explanation",
+      "min_answer_length": 400,
+      "requires_citations": true
     }
   },
   {
-    "id": "ambiguous-is-that-true",
-    "query": "それって本当？",
-    "conversation_history": [
-      {"role": "user", "content": "EVバッテリーの寿命は延びている？"},
-      {"role": "assistant", "content": "最新の全固体電池技術により、バッテリー寿命は従来比2倍に延びています。"}
+    "id": "comparison-runtime-throughput",
+    "query": "2 つのサーバランタイムの性能差はどのくらい？",
+    "category": "comparison",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "comparison",
+      "cjk",
+      "synthetic"
     ],
-    "tags": ["follow-up", "fact-check", "coreference"],
+    "expected": {
+      "expected_topic_keywords": [
+        "runtime",
+        "throughput"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000002f"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-00000000002f"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "expected_intent": "comparison",
+      "min_answer_length": 300,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "comparison-flagship-phones",
+    "query": "2 機種のフラッグシップ端末はどちらを選ぶべき？",
+    "category": "comparison",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "comparison",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "flagship",
+        "phone"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000030"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000030"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "expected_intent": "comparison",
+      "min_answer_length": 300,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "comparison-subquery-vs-cte",
+    "query": "SQL のサブクエリと共通テーブル式ではどちらが速い？",
+    "category": "comparison",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "comparison",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "subquery",
+        "CTE"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000031"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000031"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "expected_intent": "comparison",
+      "min_answer_length": 300,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "comparison-identity-federation-vs-sso",
+    "query": "ID フェデレーションと SSO は何が違う？",
+    "category": "comparison",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "comparison",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "federation",
+        "SSO"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000032"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000032"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "expected_intent": "comparison",
+      "min_answer_length": 300,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "factcheck-regulation-under-review",
+    "query": "その規制は本当に検討されているの？",
+    "category": "fact-check",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "fact-check",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "regulation",
+        "review"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000033"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000033"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "expected_intent": "fact_check",
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "factcheck-adoption-rate-claim",
+    "query": "導入率が 9 割近いというのは本当？",
+    "category": "fact-check",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "tags": [
+      "fact-check",
+      "cjk",
+      "numbers",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "導入率"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000034"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000034"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "expected_intent": "fact_check",
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "factcheck-follow-up-is-that-true",
+    "query": "それって本当？",
+    "category": "fact-check",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "その電池の寿命は延びている？"
+      },
+      {
+        "role": "assistant",
+        "content": "新しい電解質技術により、寿命は従来比で大きく延びたとされています。"
+      }
+    ],
+    "tags": [
+      "follow-up",
+      "fact-check",
+      "coreference",
+      "synthetic"
+    ],
     "expected": {
       "should_clarify": false,
       "expected_intent": "fact_check",
@@ -61,68 +1114,61 @@
     }
   },
   {
-    "id": "oil-crisis-root-cause",
-    "query": "最近の石油危機の真因は？",
-    "tags": ["causal", "cjk", "known-failure-2026-03-28"],
-    "expected": {
-      "expected_topic_keywords": ["石油", "oil", "crisis"],
-      "retrieval_scope": "global",
-      "should_clarify": false,
-      "expected_intent": "causal_explanation",
-      "min_answer_length": 600,
-      "requires_citations": true,
-      "expected_entities": ["石油"]
-    }
-  },
-  {
-    "id": "simple-temporal-query",
-    "query": "今週のAI関連ニュースは？",
-    "tags": ["temporal", "cjk"],
-    "expected": {
-      "expected_topic_keywords": ["AI"],
-      "retrieval_scope": "global",
-      "should_clarify": false,
-      "expected_intent": "temporal",
-      "min_answer_length": 300,
-      "requires_citations": true
-    }
-  },
-  {
-    "id": "comparison-query",
-    "query": "GPT-4oとClaude 3.5の違いは？",
-    "tags": ["comparison", "cjk"],
-    "expected": {
-      "expected_topic_keywords": ["GPT", "Claude"],
-      "retrieval_scope": "global",
-      "should_clarify": false,
-      "expected_intent": "comparison",
-      "min_answer_length": 500,
-      "requires_citations": true
-    }
-  },
-  {
-    "id": "synthesis-broad-topic",
-    "query": "そもそもニューヨークと芸術のかかわりは？",
-    "tags": ["synthesis", "cjk", "known-failure-2026-04-03"],
-    "expected": {
-      "expected_topic_keywords": ["ニューヨーク", "芸術", "New York", "art"],
-      "retrieval_scope": "global",
-      "should_clarify": false,
-      "expected_intent": "synthesis",
-      "min_answer_length": 800,
-      "requires_citations": true
-    }
-  },
-  {
-    "id": "topic-shift-explicit",
-    "query": "別件だけど、最新の半導体市場の動向は？",
+    "id": "followup-ambiguous-more-detail",
+    "query": "もっと詳しく",
+    "category": "follow-up",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "note": "曖昧なフォローアップは retrieval せず clarification を返す。",
     "conversation_history": [
-      {"role": "user", "content": "EVバッテリーの技術は？"},
-      {"role": "assistant", "content": "全固体電池の実用化が進んでいます。"}
+      {
+        "role": "user",
+        "content": "最近の推論チップ開発の動向は？"
+      },
+      {
+        "role": "assistant",
+        "content": "新アーキテクチャの発表により、推論性能が大きく向上しました。"
+      }
     ],
-    "tags": ["follow-up", "topic-shift"],
+    "tags": [
+      "follow-up",
+      "ambiguous",
+      "synthetic"
+    ],
     "expected": {
-      "expected_topic_keywords": ["半導体", "semiconductor"],
+      "should_clarify": true
+    }
+  },
+  {
+    "id": "followup-topic-shift-explicit",
+    "query": "別件だけど、最新の材料市場の動向は？",
+    "category": "follow-up",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "蓄電池の技術は？"
+      },
+      {
+        "role": "assistant",
+        "content": "固体電解質の実用化が進んでいます。"
+      }
+    ],
+    "tags": [
+      "follow-up",
+      "topic-shift",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "材料",
+        "市場"
+      ],
       "retrieval_scope": "global",
       "should_clarify": false,
       "min_answer_length": 200,
@@ -130,24 +1176,163 @@
     }
   },
   {
-    "id": "cjk-short-query-bm25",
-    "query": "量子コンピュータ 実用化",
-    "tags": ["cjk", "bm25", "short-query"],
+    "id": "followup-different-perspective",
+    "query": "別の観点では？",
+    "category": "follow-up",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "生成モデルの権利問題は？"
+      },
+      {
+        "role": "assistant",
+        "content": "学習データの利用が例外規定に該当するかで議論が続いています。"
+      }
+    ],
+    "tags": [
+      "follow-up",
+      "ambiguous",
+      "synthetic"
+    ],
     "expected": {
-      "expected_topic_keywords": ["量子", "quantum"],
-      "retrieval_scope": "global",
       "should_clarify": false,
-      "min_relevant_contexts": 1,
+      "min_answer_length": 300,
       "requires_citations": true
     }
   },
   {
-    "id": "deep-dive-technical",
-    "query": "Transformerアーキテクチャのattention機構について詳しく",
-    "tags": ["deep-dive", "technical"],
+    "id": "followup-context-reuse-prior-citation",
+    "query": "直前の記事で触れられている設計方針をもう少し具体的に",
+    "category": "follow-up",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "note": "直前ターンで引用済みの記事を再利用できるか。",
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "この設計手法の記事を詳しく解説して"
+      },
+      {
+        "role": "assistant",
+        "content": "その記事は仕様を中心に開発工程を描き直す方法を論じています。"
+      }
+    ],
+    "tags": [
+      "follow-up",
+      "context-reuse",
+      "cjk",
+      "synthetic"
+    ],
     "expected": {
-      "expected_topic_keywords": ["Transformer", "attention"],
+      "expected_topic_keywords": [
+        "設計方針"
+      ],
       "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000035"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000035"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 400,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "synthesis-city-and-art",
+    "query": "そもそも都市と芸術のかかわりは？",
+    "category": "synthesis",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "tags": [
+      "synthesis",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "city",
+        "art"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000036",
+        "00000000-0000-4000-8000-000000000037"
+      ],
+      "min_expected_recall": 0.5,
+      "should_clarify": false,
+      "expected_intent": "synthesis",
+      "min_answer_length": 800,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "synthesis-ai-security-landscape",
+    "query": "AI を使った開発でいま何がセキュリティ上の争点になっている？",
+    "category": "synthesis",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "tags": [
+      "synthesis",
+      "cjk",
+      "security",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "セキュリティ",
+        "脆弱性"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000038",
+        "00000000-0000-4000-8000-000000000039",
+        "00000000-0000-4000-8000-00000000001b",
+        "00000000-0000-4000-8000-00000000001c"
+      ],
+      "min_expected_recall": 0.25,
+      "should_clarify": false,
+      "expected_intent": "synthesis",
+      "min_answer_length": 600,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "deep-dive-attention-mechanism",
+    "query": "系列モデルの注意機構について詳しく",
+    "category": "deep-dive",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "tags": [
+      "deep-dive",
+      "technical",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "注意機構",
+        "attention"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000003a",
+        "00000000-0000-4000-8000-00000000003b"
+      ],
+      "min_expected_recall": 0.5,
       "should_clarify": false,
       "expected_intent": "topic_deep_dive",
       "min_answer_length": 500,
@@ -155,16 +1340,345 @@
     }
   },
   {
-    "id": "follow-up-different-perspective",
-    "query": "別の観点では？",
-    "conversation_history": [
-      {"role": "user", "content": "生成AIの著作権問題は？"},
-      {"role": "assistant", "content": "著作権法の観点からは、学習データの利用がフェアユースに該当するか議論が続いています。"}
+    "id": "deep-dive-local-inference-hardware",
+    "query": "ローカル推論を自宅で回すときのハードウェア選択について詳しく",
+    "category": "deep-dive",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "tags": [
+      "deep-dive",
+      "cjk",
+      "hardware",
+      "synthetic"
     ],
-    "tags": ["follow-up", "ambiguous"],
     "expected": {
+      "expected_topic_keywords": [
+        "ハードウェア",
+        "推論"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000003c",
+        "00000000-0000-4000-8000-00000000003d",
+        "00000000-0000-4000-8000-00000000003e"
+      ],
+      "min_expected_recall": 0.34,
       "should_clarify": false,
-      "min_answer_length": 300,
+      "expected_intent": "topic_deep_dive",
+      "min_answer_length": 500,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "index-hygiene-degenerate-titles",
+    "query": "ノード接続の自動テストを書く方法は？",
+    "category": "index-hygiene",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "note": "title が 1 語しかない空ドキュメント群がテスト系クエリに吸い寄せられる。",
+    "tags": [
+      "index-pollution",
+      "negative",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "自動テスト",
+        "ノード接続"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000046",
+        "00000000-0000-4000-8000-000000000047",
+        "00000000-0000-4000-8000-000000000048"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000046"
+      ],
+      "forbidden_article_ids": [
+        "00000000-0000-4000-8000-00000000003f",
+        "00000000-0000-4000-8000-000000000040",
+        "00000000-0000-4000-8000-000000000041",
+        "00000000-0000-4000-8000-000000000042",
+        "00000000-0000-4000-8000-000000000043",
+        "00000000-0000-4000-8000-000000000044",
+        "00000000-0000-4000-8000-000000000045"
+      ],
+      "min_expected_recall": 0.34,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "index-hygiene-duplicate-flood",
+    "query": "コントラクト監査のやり方について書かれた記事は？",
+    "category": "index-hygiene",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "note": "同題記事が複数本重複している。同一タイトルで上位を埋めないこと。",
+    "tags": [
+      "dedup",
+      "negative",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "audit",
+        "contract"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000004f",
+        "00000000-0000-4000-8000-000000000050",
+        "00000000-0000-4000-8000-000000000051"
+      ],
+      "forbidden_article_ids": [
+        "00000000-0000-4000-8000-000000000049",
+        "00000000-0000-4000-8000-00000000004a",
+        "00000000-0000-4000-8000-00000000004b",
+        "00000000-0000-4000-8000-00000000004c",
+        "00000000-0000-4000-8000-00000000004d",
+        "00000000-0000-4000-8000-00000000004e"
+      ],
+      "min_expected_recall": 0.34,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "index-hygiene-typo-and-spam",
+    "query": "エグザンプルトークンの概要を知りたい",
+    "category": "index-hygiene",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "note": "表記ゆれ・打ち間違いの補正と、プレセール系スパムの排除を同時に見る。",
+    "tags": [
+      "typo",
+      "spam",
+      "negative",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "token",
+        "ledger"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000057",
+        "00000000-0000-4000-8000-000000000058"
+      ],
+      "forbidden_article_ids": [
+        "00000000-0000-4000-8000-000000000052",
+        "00000000-0000-4000-8000-000000000053",
+        "00000000-0000-4000-8000-000000000054",
+        "00000000-0000-4000-8000-000000000055",
+        "00000000-0000-4000-8000-000000000056"
+      ],
+      "min_expected_recall": 0.5,
+      "should_clarify": false,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "no-answer-unreleased-db-version",
+    "query": "架空データベース 21 の新機能について教えて",
+    "category": "no-answer",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "note": "コーパスに存在しないバージョン。捏造引用を弾く。",
+    "tags": [
+      "negative",
+      "no-answer",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "requires_citations": false,
+      "expect_no_answer": true
+    }
+  },
+  {
+    "id": "no-answer-internal-project-term",
+    "query": "社内基盤の設計思想について教えて",
+    "category": "no-answer",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "note": "ニュース記事コーパスに社内用語は存在しない。",
+    "tags": [
+      "negative",
+      "no-answer",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "requires_citations": false,
+      "expect_no_answer": true
+    }
+  },
+  {
+    "id": "no-answer-exoplanet-atmosphere",
+    "query": "架空系外惑星の大気組成の最新観測結果は？",
+    "category": "no-answer",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "note": "1 件も存在しない。天文っぽい記事への吸着を検知する。",
+    "tags": [
+      "negative",
+      "no-answer",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "requires_citations": false,
+      "expect_no_answer": true
+    }
+  },
+  {
+    "id": "no-answer-domestic-sports-schedule",
+    "query": "今年の架空競技大会の日程を教えて",
+    "category": "no-answer",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "note": "存在しない大会。それらしい記事で埋めないこと。",
+    "tags": [
+      "negative",
+      "no-answer",
+      "cjk",
+      "synthetic"
+    ],
+    "expected": {
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "requires_citations": false,
+      "expect_no_answer": true
+    }
+  },
+  {
+    "id": "regression-article-summary-green",
+    "query": "この記事を要約して",
+    "category": "regression",
+    "language": {
+      "query": "ja",
+      "corpus": "en"
+    },
+    "note": "成立しているケース。リグレッション検知用の GREEN コントロール。",
+    "article_scope": {
+      "article_id": "00000000-0000-4000-8000-000000000059",
+      "title": "The artist-figure in Example Studio's later films | Synthetic Review"
+    },
+    "tags": [
+      "article-scoped",
+      "green-control",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "artist",
+        "film"
+      ],
+      "retrieval_scope": "article_only",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-000000000059"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-000000000059"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "regression-article-explainer-green",
+    "query": "この記事を要約して",
+    "category": "regression",
+    "language": {
+      "query": "ja",
+      "corpus": "ja"
+    },
+    "note": "成立しているケース。リグレッション検知用の GREEN コントロール。",
+    "article_scope": {
+      "article_id": "00000000-0000-4000-8000-00000000005a",
+      "title": "分散システムの合意形成をゼロから解説する"
+    },
+    "tags": [
+      "article-scoped",
+      "green-control",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "合意形成",
+        "分散"
+      ],
+      "retrieval_scope": "article_only",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000005a"
+      ],
+      "expected_citation_article_ids": [
+        "00000000-0000-4000-8000-00000000005a"
+      ],
+      "min_expected_recall": 1.0,
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "regression-geopolitical-explainer-green",
+    "query": "2 国間の対立の理由は？",
+    "category": "regression",
+    "language": {
+      "query": "ja",
+      "corpus": "mixed"
+    },
+    "note": "成立しているケース。地政学クエリの retrieval が壊れたら気付けるようにする。",
+    "tags": [
+      "causal",
+      "cjk",
+      "green-control",
+      "synthetic"
+    ],
+    "expected": {
+      "expected_topic_keywords": [
+        "対立",
+        "海峡"
+      ],
+      "retrieval_scope": "global",
+      "relevant_article_ids": [
+        "00000000-0000-4000-8000-00000000005b",
+        "00000000-0000-4000-8000-00000000005c",
+        "00000000-0000-4000-8000-00000000005d"
+      ],
+      "min_expected_recall": 0.34,
+      "should_clarify": false,
+      "min_answer_length": 500,
       "requires_citations": true
     }
   }

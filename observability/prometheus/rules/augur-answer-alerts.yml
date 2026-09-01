@@ -1,0 +1,274 @@
+# Prometheus alerting rules for the Ask Augur answer path (rag-orchestrator).
+#
+# This path had no metrics at all until now. Five postmortems raised the same
+# action item and every one of them stayed open, so each degradation had to be
+# found by reading a conversation and noticing the answer was worse than usual
+# — which is how `related_citations` stayed empty in all 84 stored assistant
+# turns, and how a corpus split across four (chunker, embedder) version pairs
+# went unnoticed.
+#
+# Metric sources, named because a rule written against a series no process
+# emits is indistinguishable from a rule that is simply never true:
+#
+#   rag_orchestrator_augur_stream_ttft_seconds
+#   rag_orchestrator_augur_stream_duration_seconds
+#     rag-orchestrator/internal/infra/metrics/augur.go, recorded per stream by
+#     internal/adapter/connect/augur/stream_telemetry.go
+#   rag_orchestrator_augur_answer_total{path,outcome}
+#   rag_orchestrator_augur_answer_cache_total{result}
+#   rag_orchestrator_augur_rerank_fallback_total
+#   rag_orchestrator_augur_rerank_expected_total
+#   rag_orchestrator_augur_empty_fallback_total{fallback_code}
+#     same file
+#   rag_orchestrator_rag_document_coverage{chunker_version,embedder_version,target}
+#   rag_orchestrator_rag_document_coverage_scrape_timestamp_seconds
+#     rag-orchestrator/internal/infra/metrics/coverage.go, sampled every
+#     RAG_COVERAGE_SAMPLE_INTERVAL_MINUTES (default 15)
+#
+# Thresholds are deliberately conservative. This is a single-machine stack
+# whose reranker runs on CPU and whose generator shares a single constrained GPU: latency
+# that would page in a datacentre is normal here, and an alert that fires
+# during ordinary operation is an alert that gets ignored during a real one.
+#
+# Every rate rule carries an observation gate (`increase(...) >= N`). Ask Augur
+# is a low-traffic surface; without one, a single fallback in an otherwise idle
+# hour reads as a 100% fallback rate.
+
+groups:
+  - name: augur_answer_latency
+    interval: 30s
+    rules:
+      # WARN: time-to-first-token. Retrieval + planning + reranking all run
+      # before the first content frame, so the floor is already seconds; 45s
+      # is where the user has been staring at a spinner long enough to leave.
+      # Measured only on streams that produced content, so a fallback does not
+      # quietly improve this number by never observing it.
+      - alert: AugurTimeToFirstTokenSlow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(rag_orchestrator_augur_stream_ttft_seconds_bucket[30m]))
+          ) > 45
+          and
+          sum(increase(rag_orchestrator_augur_stream_ttft_seconds_count[30m])) >= 5
+        for: 15m
+        labels:
+          severity: warn
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "Ask Augur p95 time-to-first-token above 45s"
+          description: |
+            p95 TTFT over 30m is {{ $value | humanizeDuration }}. The usual
+            causes are the query planner (news-creator) queueing behind another
+            model, the cross-encoder saturating CPU, or the embedder evicting
+            the generator from VRAM.
+            Check: docker compose -f compose/compose.yaml -p alt logs rag-orchestrator | grep -E 'query_planner_output|reranking_completed'
+
+      # WARN: whole-stream latency for answers that actually succeeded.
+      # Splitting on outcome matters — a stream that fails fast would otherwise
+      # pull this down and hide a slowdown in the answers people read.
+      - alert: AugurAnswerStreamSlow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(rag_orchestrator_augur_stream_duration_seconds_bucket{outcome="success"}[30m]))
+          ) > 120
+          and
+          sum(increase(rag_orchestrator_augur_stream_duration_seconds_count{outcome="success"}[30m])) >= 5
+        for: 15m
+        labels:
+          severity: warn
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "Ask Augur p95 successful answer takes over 2 minutes"
+          description: |
+            p95 end-to-end duration for successful answers is
+            {{ $value | humanizeDuration }} over 30m.
+
+  - name: augur_answer_quality
+    interval: 30s
+    rules:
+      # WARN: fallback rate. A fallback is an answer the pipeline declined to
+      # stand behind, and the user sees a degraded response. A third of
+      # requests is well above the steady state and well below the noise floor
+      # of a quiet hour with two bad questions in it.
+      - alert: AugurFallbackRateHigh
+        expr: |
+          (
+            sum(rate(rag_orchestrator_augur_answer_total{outcome="fallback"}[30m]))
+            /
+            sum(rate(rag_orchestrator_augur_answer_total[30m]))
+          ) > 0.33
+          and
+          sum(increase(rag_orchestrator_augur_answer_total[30m])) >= 10
+        for: 15m
+        labels:
+          severity: warn
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "Over a third of Ask Augur answers are falling back"
+          description: |
+            Fallback share over 30m is {{ $value | humanizePercentage }}.
+            Break it down by production path:
+            sum by (path) (increase(rag_orchestrator_augur_answer_total{outcome="fallback"}[30m]))
+            The 2026-04-11 regression had this shape: retrieval scores read
+            against thresholds calibrated for a different score space.
+
+      # PAGE: a fallback rate this high means the surface is effectively down
+      # even though every request returns 200 and the stream completes.
+      - alert: AugurFallbackRateCritical
+        expr: |
+          (
+            sum(rate(rag_orchestrator_augur_answer_total{outcome="fallback"}[30m]))
+            /
+            sum(rate(rag_orchestrator_augur_answer_total[30m]))
+          ) > 0.66
+          and
+          sum(increase(rag_orchestrator_augur_answer_total[30m])) >= 10
+        for: 15m
+        labels:
+          severity: page
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "Two thirds of Ask Augur answers are falling back"
+          description: |
+            Fallback share over 30m is {{ $value | humanizePercentage }}.
+            Nothing errors in this state; the surface answers, badly.
+
+      # WARN: the cross-encoder stopped ranking. Contexts then carry RRF or
+      # BM25 scores, which the quality gates are not calibrated against — the
+      # exact mechanism behind the 58.3% empty-answer rate in April.
+      # The denominator counts only answers where reranking was configured, so
+      # RERANK_ENABLED=false cannot make this fire.
+      - alert: AugurRerankFallbackRateHigh
+        expr: |
+          (
+            sum(rate(rag_orchestrator_augur_rerank_fallback_total[30m]))
+            /
+            sum(rate(rag_orchestrator_augur_rerank_expected_total[30m]))
+          ) > 0.25
+          and
+          sum(increase(rag_orchestrator_augur_rerank_expected_total[30m])) >= 10
+        for: 15m
+        labels:
+          severity: warn
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "Cross-encoder reranking is failing on a quarter of Ask Augur answers"
+          description: |
+            {{ $value | humanizePercentage }} of answers that should have been
+            reranked were served on retrieval scores instead.
+            Check: docker compose -f compose/compose.yaml -p alt logs rerank-server
+            and grep rag-orchestrator for rerank_fallback_original_scores, which
+            carries the specific reason (timeout, unmatched ids, empty response).
+
+      # WARN: degraded turns with no text at all. These are deliberately not
+      # written to augur_messages — a blank assistant bubble is worse than the
+      # gap — so this counter is the only trace they leave.
+      - alert: AugurEmptyFallbacksRising
+        expr: sum(increase(rag_orchestrator_augur_empty_fallback_total[1h])) > 10
+        for: 15m
+        labels:
+          severity: warn
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "Ask Augur produced {{ $value }} answerless fallbacks in an hour"
+          description: |
+            Fallbacks that produced no text are absent from chat history by
+            design, so history alone cannot show this.
+            Break down by cause:
+            sum by (fallback_code) (increase(rag_orchestrator_augur_empty_fallback_total[1h]))
+
+  - name: augur_corpus_health
+    interval: 60s
+    rules:
+      # WARN: corpus rot. Documents indexed by a superseded chunker or embedder
+      # still return from a query, still score, still get cited — they are just
+      # ranked against vectors from a different space, and nothing in the
+      # request path can see it. Only the census can.
+      #
+      # 80% is a deliberately loose floor: a rebuild legitimately takes hours,
+      # and this must not page through a planned re-index. It is here to catch
+      # the state the census first revealed — a corpus where the current pair
+      # held ~2% of documents and nobody knew.
+      - alert: AugurEmbeddingCoverageLow
+        expr: |
+          (
+            sum(rag_orchestrator_rag_document_coverage{target="true"})
+            /
+            sum(rag_orchestrator_rag_document_coverage)
+          ) < 0.8
+          and
+          sum(rag_orchestrator_rag_document_coverage) > 0
+        for: 2h
+        labels:
+          severity: warn
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "Only {{ $value | humanizePercentage }} of the RAG corpus is on the current chunker/embedder pair"
+          description: |
+            Documents on a superseded pair are retrievable but scored in the
+            wrong vector space. See the split:
+            sum by (chunker_version, embedder_version, target) (rag_orchestrator_rag_document_coverage)
+            A rebuild is the remedy (cmd/backfill). If one is already running,
+            this clears on its own as the target share climbs.
+
+      # WARN: chunks with no vector at all. This is a different failure from
+      # the version split above and the document census cannot see it — a
+      # document is stamped with the embedder version it was indexed under
+      # whether or not the embedding was written, so the corpus can look
+      # correctly versioned while vector search reaches almost none of it.
+      #
+      # 50% is set low on purpose. Some lag is normal while indexing catches
+      # up, and the alert is not meant to track that; it is meant to catch the
+      # state where the lexical arm is carrying retrieval alone.
+      - alert: AugurChunkEmbeddingCoverageLow
+        expr: |
+          (
+            sum(rag_orchestrator_rag_chunk_embedding_coverage{state="embedded"})
+            /
+            sum(rag_orchestrator_rag_chunk_embedding_coverage)
+          ) < 0.5
+          and
+          sum(rag_orchestrator_rag_chunk_embedding_coverage) > 0
+        for: 2h
+        labels:
+          severity: warn
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "Only {{ $value | humanizePercentage }} of RAG chunks carry an embedding"
+          description: |
+            Chunks with a NULL embedding are reachable lexically and invisible
+            to vector search, so hybrid retrieval quietly degrades to its BM25
+            arm — and the related-citation neighbor lookup, which is
+            vector-first, returns nothing.
+            Check: docker exec rag-db psql -U rag_user -d rag_db -c "SELECT count(*), count(embedding) FROM rag_chunks;"
+
+      # PAGE: the census itself stopped. A gauge nobody updates keeps reporting
+      # its last value, so a dead sampler looks exactly like a healthy corpus —
+      # the failure mode the coverage alert above exists to avoid.
+      - alert: AugurCoverageSamplerStalled
+        expr: |
+          (time() - rag_orchestrator_rag_document_coverage_scrape_timestamp_seconds > 3600)
+          or absent(rag_orchestrator_rag_document_coverage_scrape_timestamp_seconds)
+        for: 15m
+        labels:
+          severity: page
+          service: rag-orchestrator
+          stack: rag
+        annotations:
+          summary: "RAG corpus census has not sampled for an hour"
+          description: |
+            Default sampling interval is 15m
+            (RAG_COVERAGE_SAMPLE_INTERVAL_MINUTES), so an hour means several
+            missed passes or a dead rag-orchestrator. Until it resumes, every
+            coverage number on the dashboard is stale.
+            Check: docker compose -f compose/compose.yaml -p alt logs rag-orchestrator | grep rag_document_coverage

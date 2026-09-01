@@ -1,0 +1,17 @@
+# Augur generation EVAL CANDIDATE — not a default. gemma4-e4b-12k stays the
+# baseline (AUGUR_KNOWLEDGE_MODEL); this tag only gives an A/B eval profile a
+# third generator to point at. Nothing creates or pulls it at boot.
+#
+# Granite 4.2 3B, Apache-2.0, from the official Ollama library (Q4_K_M, ~2.2GB),
+# so no hand-fetched GGUF is involved. Build it by hand inside
+# news-creator-backend:
+#   ollama create granite4.2-3b-12k -f Modelfile.granite4.2-3b-12k
+#
+# rag-orchestrator's buildOptions matches no branch for this name, so it runs at
+# the temperature=0.2 default rather than a model-recommended setting.
+FROM granite4.2:3b
+
+# Library tags carry their own template and stop tokens, so only the context
+# window is pinned — matched to gemma4-e4b-12k so an A/B run compares
+# generators, not context budgets.
+PARAMETER num_ctx 12288

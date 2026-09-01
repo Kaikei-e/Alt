@@ -19,11 +19,11 @@ func TestDefaultRetrievalConfig(t *testing.T) {
 	// Reranking defaults (Pinecone, ZeroEntropy research)
 	assert.True(t, cfg.Reranking.Enabled, "reranking should be enabled by default")
 	assert.Equal(t, 10, cfg.Reranking.TopK, "reranking topK should be 10")
-	assert.Equal(t, 30*time.Second, cfg.Reranking.Timeout, "reranking timeout should be 30s")
+	assert.Equal(t, 15*time.Second, cfg.Reranking.Timeout, "the client deadline must outlast the rerank server's own 10s budget")
+	assert.Equal(t, 40, cfg.Reranking.MaxCandidates, "the rerank window must be wider than TopK")
 
 	// Hybrid search defaults (EMNLP 2024, Weaviate)
 	assert.True(t, cfg.HybridSearch.Enabled, "hybrid search should be enabled by default")
-	assert.Equal(t, 0.3, cfg.HybridSearch.Alpha, "hybrid alpha should be 0.3 (EMNLP 2024 optimal)")
 	assert.Equal(t, 50, cfg.HybridSearch.BM25Limit, "hybrid BM25Limit should be 50")
 
 	// Language allocation defaults (dynamic score-based selection)
@@ -137,46 +137,17 @@ func TestHybridSearchConfig_Validate(t *testing.T) {
 			wantError: false, // Disabled config should always be valid
 		},
 		{
-			name: "valid edge - alpha=0.0 (pure BM25)",
+			name: "valid - enabled with a positive BM25 limit",
 			config: HybridSearchConfig{
 				Enabled:   true,
-				Alpha:     0.0,
 				BM25Limit: 50,
 			},
 			wantError: false,
-		},
-		{
-			name: "valid edge - alpha=1.0 (pure vector)",
-			config: HybridSearchConfig{
-				Enabled:   true,
-				Alpha:     1.0,
-				BM25Limit: 50,
-			},
-			wantError: false,
-		},
-		{
-			name: "invalid - alpha < 0",
-			config: HybridSearchConfig{
-				Enabled:   true,
-				Alpha:     -0.1,
-				BM25Limit: 50,
-			},
-			wantError: true,
-		},
-		{
-			name: "invalid - alpha > 1",
-			config: HybridSearchConfig{
-				Enabled:   true,
-				Alpha:     1.1,
-				BM25Limit: 50,
-			},
-			wantError: true,
 		},
 		{
 			name: "invalid - zero BM25Limit when enabled",
 			config: HybridSearchConfig{
 				Enabled:   true,
-				Alpha:     0.3,
 				BM25Limit: 0,
 			},
 			wantError: true,
@@ -261,8 +232,7 @@ func TestRetrievalConfig_Validate(t *testing.T) {
 				RRFK:          60.0,
 				HybridSearch: HybridSearchConfig{
 					Enabled:   true,
-					Alpha:     1.5, // Invalid > 1.0
-					BM25Limit: 50,
+					BM25Limit: 0,
 				},
 			},
 			wantError: true,
@@ -284,4 +254,26 @@ func TestRetrievalConfig_Validate(t *testing.T) {
 func TestLanguageAllocationConfig_Default(t *testing.T) {
 	cfg := DefaultLanguageAllocationConfig()
 	assert.True(t, cfg.Enabled, "dynamic language allocation should be enabled by default")
+}
+
+func TestDefaultRerankingConfig_WindowIsWiderThanOutput(t *testing.T) {
+	cfg := DefaultRerankingConfig()
+
+	assert.Equal(t, 10, cfg.TopK, "TopK is how many hits survive the stage")
+	assert.Equal(t, 40, cfg.MaxCandidates, "MaxCandidates is how many are scored")
+	assert.Greater(t, cfg.MaxCandidates, cfg.TopK,
+		"a rerank window no wider than its output cannot promote anything")
+}
+
+func TestRerankingConfig_Validate_RejectsWindowNarrowerThanOutput(t *testing.T) {
+	cfg := RerankingConfig{Enabled: true, TopK: 20, MaxCandidates: 10, Timeout: time.Second}
+
+	assert.Error(t, cfg.Validate(),
+		"a window narrower than TopK silently drops hits the reranker already scored")
+}
+
+func TestApplyRetrievalConfigDefaults_FillsRerankMaxCandidates(t *testing.T) {
+	cfg := applyRetrievalConfigDefaults(RetrievalConfig{})
+
+	assert.Equal(t, 40, cfg.Reranking.MaxCandidates)
 }

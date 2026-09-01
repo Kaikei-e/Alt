@@ -25,15 +25,31 @@ type RetrieveContextOutput struct {
 	SupplementaryInfo []string // Additional context from tools (recaps, tag clouds, etc.)
 	ToolsUsed         []string // Names of tools executed during retrieval
 	BM25HitCount      int      // Number of BM25 keyword search results (0 = lexical retrieval failed)
+	// AgenticDegraded is true when a tool-calling strategy fell back to plain
+	// retrieval because the tool chat itself failed. The answer still gets
+	// produced, so nothing downstream errors — which is exactly why the flag
+	// has to travel with the result instead of only being logged.
+	AgenticDegraded bool
+	// PreRerankOrder is the fused ranking before the cross-encoder ran, in
+	// "chunk:<uuid>" / "article:<id>" form. Carried so an offline evaluator can
+	// score the rerank stage's contribution over the RPC surface.
+	PreRerankOrder []string
+	// RerankApplied reports whether the cross-encoder actually ranked this
+	// result set, as opposed to the stage falling back to retrieval scores.
+	RerankApplied bool
 }
 
 // ContextItem represents a single retrieved chunk with metadata.
 type ContextItem struct {
-	ChunkText       string
-	URL             string
-	Title           string
-	PublishedAt     string // ISO8601 string
-	Score           float32
+	ChunkText   string
+	URL         string
+	Title       string
+	PublishedAt string // ISO8601 string
+	Score       float32
+	// ScoreKind declares which space Score lives in. Only a cross-encoder
+	// score may be compared against the calibrated quality thresholds; a
+	// vector, BM25 or RRF score is a ranking signal and nothing more.
+	ScoreKind       domain.ScoreKind
 	RerankScore     float32 // Cross-encoder reranker score (meaningful when RerankApplied)
 	RerankApplied   bool    // true when RerankScore was produced by the cross-encoder
 	DocumentVersion int
@@ -138,6 +154,7 @@ func NewRetrieveContextUsecase(
 			QuotaExpanded:                    u.config.QuotaExpanded,
 			RerankEnabled:                    u.config.Reranking.Enabled,
 			RerankTopK:                       u.config.Reranking.TopK,
+			RerankMaxCandidates:              u.config.Reranking.MaxCandidates,
 			RerankTimeout:                    u.config.Reranking.Timeout,
 			HybridSearchEnabled:              u.config.HybridSearch.Enabled,
 			BM25Limit:                        u.config.HybridSearch.BM25Limit,
@@ -164,6 +181,8 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		Contexts:        convertContextItems(out.Contexts),
 		ExpandedQueries: out.ExpandedQueries,
 		BM25HitCount:    out.BM25HitCount,
+		PreRerankOrder:  out.PreRerankOrder,
+		RerankApplied:   out.RerankApplied,
 	}, nil
 }
 
@@ -178,6 +197,7 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 			Title:           item.Title,
 			PublishedAt:     item.PublishedAt,
 			Score:           item.Score,
+			ScoreKind:       item.ScoreKind,
 			DocumentVersion: item.DocumentVersion,
 			ChunkID:         item.ChunkID,
 			ArticleID:       item.ArticleID,
@@ -197,6 +217,7 @@ func convertContextItems(items []retrieval.ContextItem) []ContextItem {
 			Title:           item.Title,
 			PublishedAt:     item.PublishedAt,
 			Score:           item.Score,
+			ScoreKind:       item.ScoreKind,
 			RerankScore:     item.RerankScore,
 			RerankApplied:   item.RerankApplied,
 			DocumentVersion: item.DocumentVersion,

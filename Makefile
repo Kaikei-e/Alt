@@ -398,6 +398,25 @@ rust-clean:
 	@cd recap-worker/recap-worker && cargo clean 2>/dev/null && echo "    cleaned." || echo "    skipped (no target/)."
 	@echo "Rust cleanup complete."
 
+# Augur offline eval — replays the golden cases through a RUNNING
+# rag-orchestrator over Connect-RPC, so bring the stack up first. The eval
+# client speaks plaintext, so the Connect listener must have been started with
+# RAG_ORCHESTRATOR_PEER_IDENTITY_MODE=disabled.
+# EVAL_AUGUR_ADDR must match the chosen profile's augur_addr in
+# rag-orchestrator/eval/testdata/profiles.json.
+EVAL_PROFILE ?= baseline
+EVAL_AUGUR_ADDR ?= http://localhost:9011
+EVAL_ARGS ?=
+
+eval-rag:
+	@curl -fs --max-time 5 -o /dev/null $(EVAL_AUGUR_ADDR)/connect/health 2>/dev/null || \
+	  { echo "FAIL: no plaintext rag-orchestrator Connect listener at $(EVAL_AUGUR_ADDR)."; \
+	    echo "  Start it with: docker compose -f compose/compose.yaml -p alt up -d rag-orchestrator"; \
+	    echo "  and RAG_ORCHESTRATOR_PEER_IDENTITY_MODE=disabled so the eval client can reach it."; \
+	    exit 1; }
+	@echo "Running Augur eval (profile=$(EVAL_PROFILE), addr=$(EVAL_AUGUR_ADDR))..."
+	@cd rag-orchestrator && go run ./cmd/eval -profile $(EVAL_PROFILE) -addr $(EVAL_AUGUR_ADDR) $(EVAL_ARGS)
+
 # Fail if any compose interpolation variable is unset — an unset ${VAR}
 # renders as an empty string and only warns. Same gate scripts/deploy.sh runs
 # first; run it by hand after editing .env or compose/.
@@ -425,4 +444,4 @@ install-c2quay:
 	  rm -rf "$$tmp"
 	@c2quay version
 
-.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean check-compose-variables install-c2quay
+.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean eval-rag check-compose-variables install-c2quay

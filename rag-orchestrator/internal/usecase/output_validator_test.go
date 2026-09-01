@@ -445,7 +445,7 @@ func TestAssessAnswerQuality_ArticleScopedJapaneseAnswer_ShouldNotFlagLowCoverag
 	answer := "2026年以降、サプライチェーン攻撃はソフトウェア組織を標的とする攻撃の最有力手段となることが予想されます。" +
 		"特にCI/CDパイプラインは依然として脆弱であり、攻撃の侵入経路が多く存在します。" +
 		"SolarWinds攻撃やLog4Shell、XZ Utilsのバックドアといった過去の事例は、サプライチェーン攻撃の脅威を明確に示しています。"
-	query := "Regarding the article: Supply Chain Security for Developers: Protecting Your CI/CD Pipeline in 2026 - DEV Community [articleId: 7a68810e-c4bc-43ff-8ab8-b42eca504531]\n\nQuestion:\n今後の業界への影響は？"
+	query := "Regarding the article: Pipeline Hygiene for Builders: Hardening Continuous Delivery in 2026 - Example Dev [articleId: 00000000-0000-4000-8000-0000000000e1]\n\nQuestion:\n今後の業界への影響は？"
 
 	flags := usecase.AssessAnswerQuality(
 		answer,
@@ -461,9 +461,9 @@ func TestAssessAnswerQuality_ArticleScopedJapaneseAnswer_ShouldNotFlagLowCoverag
 func TestAssessAnswerQuality_ArticleScopedJapaneseQuery_ShouldCheckUserQuestionOnly(t *testing.T) {
 	// Japanese article title + Japanese question + Japanese answer.
 	// Keywords should come from user question, not article metadata.
-	answer := "この記事の主張に対して、性弱説という概念は個人の責任を軽視する可能性があります。" +
-		"単に仕組みを疑うだけでなく、個人の能力開発も重要です。"
-	query := "Regarding the article: 何度注意しても部下が同じミスを繰り返す原因　根性論に頼らない「性弱説的マネジメント」による指導方法 | ログミーBusiness [articleId: a320697f-ecd9-4adb-8efd-bd20dcd6d20c]\n\nQuestion:\n反論はある？"
+	answer := "この記事の主張に対して、手順設計を先に直すという方針は個人の責任を軽視する余地があります。" +
+		"単に手順を疑うだけでなく、個人の能力開発も重要です。"
+	query := "Regarding the article: 合成工場における作業手順の設計指針 | Example Business [articleId: 00000000-0000-4000-8000-0000000000e2]\n\nQuestion:\n反論はある？"
 
 	flags := usecase.AssessAnswerQuality(
 		answer,

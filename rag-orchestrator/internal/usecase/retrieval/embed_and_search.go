@@ -4,12 +4,19 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"rag-orchestrator/internal/domain"
 
 	"golang.org/x/sync/errgroup"
 )
+
+// BM25MaxConcurrency bounds how many lexical queries hit search-indexer at
+// once. Query expansion yields up to nine queries per retrieval, and a single
+// user question must not open nine simultaneous connections to a service that
+// is also serving the rest of the platform.
+const BM25MaxConcurrency = 4
 
 // EmbedAndSearch runs BM25 search, original vector search, and expanded embedding in parallel (Stage 2).
 //
@@ -80,22 +87,45 @@ func EmbedAndSearch(
 			// Build deduplicated query list: original + expanded (for cross-language BM25)
 			queries := bm25Queries(sc.Query, sc.AdditionalQueries)
 
+			// One HTTP round-trip per query, run together rather than in
+			// sequence: a nine-query expansion used to serialise nine
+			// search-indexer calls into the critical path.
+			perQuery := make([][]domain.BM25SearchResult, len(queries))
+			var failed atomic.Int32
+
+			qg, qctx := errgroup.WithContext(gctx)
+			qg.SetLimit(min(BM25MaxConcurrency, len(queries)))
+			for i, q := range queries {
+				idx, query := i, q
+				qg.Go(func() error {
+					results, err := bm25Searcher.SearchBM25(qctx, query, bm25Limit)
+					if err != nil {
+						logger.Warn("hybrid_bm25_search_failed",
+							slog.String("retrieval_id", sc.RetrievalID),
+							slog.String("query_preview", queryLogPreview(query)),
+							slog.String("error", err.Error()))
+						failed.Add(1)
+						return nil // non-fatal per query
+					}
+					perQuery[idx] = results
+					return nil
+				})
+			}
+			// A per-query lexical failure is non-fatal and already logged in
+			// place, so no goroutine returns an error: Wait is a join here.
+			_ = qg.Wait()
+
+			// Merge in query order, first occurrence wins — the same result
+			// attribution the sequential loop produced.
 			var allResults []domain.BM25SearchResult
 			seen := make(map[string]struct{})
-			for _, q := range queries {
-				results, err := bm25Searcher.SearchBM25(gctx, q, bm25Limit)
-				if err != nil {
-					logger.Warn("hybrid_bm25_search_failed",
-						slog.String("retrieval_id", sc.RetrievalID),
-						slog.String("query_preview", queryLogPreview(q)),
-						slog.String("error", err.Error()))
-					continue // non-fatal per query
-				}
+			for _, results := range perQuery {
 				for _, r := range results {
-					if _, exists := seen[r.ArticleID]; !exists {
-						seen[r.ArticleID] = struct{}{}
-						allResults = append(allResults, r)
+					if _, exists := seen[r.ArticleID]; exists {
+						continue
 					}
+					seen[r.ArticleID] = struct{}{}
+					allResults = append(allResults, r)
 				}
 			}
 			sc.BM25Results = allResults
@@ -104,6 +134,7 @@ func EmbedAndSearch(
 			logger.Info("hybrid_bm25_search_completed",
 				slog.String("retrieval_id", sc.RetrievalID),
 				slog.Int("bm25_queries", len(queries)),
+				slog.Int("bm25_failed_queries", int(failed.Load())),
 				slog.Int("bm25_hits", len(allResults)),
 				slog.Int64("duration_ms", bm25Duration.Milliseconds()))
 			return nil

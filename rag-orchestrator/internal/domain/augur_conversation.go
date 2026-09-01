@@ -24,6 +24,10 @@ type AugurConversation struct {
 // semantically and lexically near the direct citations at write time. It is
 // written on the same INSERT as Citations and never backfilled afterwards;
 // a future recomputation must yield a new turn instead of mutating this row.
+// Fallback, when set, marks the turn as an answer the pipeline was not willing
+// to stand behind. It rides in the citations JSONB (see the repository) rather
+// than a dedicated column, because augur_messages already carries two JSONB
+// columns and a marker is not worth a migration.
 type AugurMessage struct {
 	ID               uuid.UUID
 	ConversationID   uuid.UUID
@@ -31,7 +35,19 @@ type AugurMessage struct {
 	Content          string
 	Citations        []AugurCitation
 	RelatedCitations []AugurCitation
+	Fallback         *AugurFallback
 	CreatedAt        time.Time
+}
+
+// AugurFallback records why an answer was degraded. Keeping these turns in
+// history is what stops every quality figure from being computed over the
+// subset of answers that happened to succeed.
+type AugurFallback struct {
+	// Code is the usecase-level FallbackCategory ("retrieval_empty",
+	// "short_under_grounded", …); stable enough to group by.
+	Code string `json:"code"`
+	// Reason is the human-readable explanation attached to the turn.
+	Reason string `json:"reason,omitempty"`
 }
 
 // CitationKind discriminates how AugurCitation.URL / RefID should be used
@@ -90,7 +106,8 @@ type AugurConversationRepository interface {
 	GetConversation(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*AugurConversation, error)
 
 	// AppendMessage inserts a single message. Caller is responsible for setting
-	// ID and CreatedAt. Citations is serialized to JSONB.
+	// ID and CreatedAt. Citations is serialized to JSONB; a non-nil Fallback
+	// switches that column to its envelope form.
 	AppendMessage(ctx context.Context, msg *AugurMessage) error
 
 	// ListMessages returns every message in a conversation, ordered by created_at.

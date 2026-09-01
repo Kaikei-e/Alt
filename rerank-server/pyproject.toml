@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "MLX-based rerank server for cross-encoder reranking"
 requires-python = ">=3.14"
 dependencies = [
-    "sentence-transformers>=5.2.3",
+    # 6.x is unreachable: it requires transformers>=5.0.0, which the onnx
+    # group's optimum-onnx 0.1.0 caps at <4.58.0.
+    "sentence-transformers>=5.7.0,<6.0.0",
     "fastapi>=0.133.0",
     "uvicorn>=0.41.0",
     "torch>=2.0.0",
@@ -14,6 +16,9 @@ dependencies = [
 dev = [
     "pyrefly>=0.42.0",
     "pytest>=8.0.0",
+    # starlette's TestClient imports httpx2; without it the whole suite fails
+    # to collect.
+    "httpx2>=2.12.0",
 ]
 # CPU int8 ONNX backend, used only by the Docker container (RERANK_BACKEND=onnx).
 # Not needed on the Mac deploy target, which stays on requirements.txt + torch/MPS.

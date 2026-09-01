@@ -1,11 +1,11 @@
-# Mac/MPS deploy path only (RERANK_BACKEND=torch) — see README "Installation".
+# torch backend only (RERANK_BACKEND=torch) — see README "Installation".
 #
 # The Docker/ONNX path does NOT use this file: it installs from
 # pyproject.toml + uv.lock (`uv sync --frozen --group onnx`). That path is
 # hard-capped at transformers<4.58.0 by optimum-onnx 0.1.0 (its latest
 # release), so it cannot take the transformers 5.x fixes yet. This manifest
 # never installs optimum-onnx, so it can — and therefore must — take them.
-sentence-transformers>=5.2.3
+sentence-transformers>=5.7.0,<6.0.0
 fastapi>=0.133.0
 uvicorn>=0.41.0
 

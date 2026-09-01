@@ -96,10 +96,51 @@ type RagChunkRepository interface {
 	SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int) ([]SearchResult, error)
 }
 
+// ScoreKind names the space a Score value lives in.
+//
+// A float32 relevance score is meaningless without it: a cosine similarity of
+// 0.9 and a BM25 score of 0.9 and an RRF score of 0.9 describe three unrelated
+// degrees of relevance, and the retrieval pipeline produces all three depending
+// on which arms were available. Comparing one against thresholds calibrated for
+// another is what turned an embedder outage into a 58.3% empty-answer rate
+// (docs/review/augur-fallback-rate-regression-analysis-2026-04-11.md): promoted
+// BM25 scores were read as cross-encoder scores and failed a 0.25 gate that had
+// nothing to do with them.
+type ScoreKind string
+
+const (
+	// ScoreKindUnknown marks a score that did not come from the retrieval
+	// pipeline — a hand-built context, or a fixed placeholder such as the
+	// uniform 1.0 an article-scoped read assigns. It is never comparable to a
+	// calibrated threshold.
+	ScoreKindUnknown ScoreKind = ""
+	// ScoreKindVector is cosine similarity (1 - distance) from pgvector.
+	ScoreKindVector ScoreKind = "vector"
+	// ScoreKindBM25 is a lexical relevance score from the search index. Its
+	// range depends on corpus statistics and it may be absent entirely (the
+	// search-indexer response carries none today, leaving every hit at 0).
+	ScoreKindBM25 ScoreKind = "bm25"
+	// ScoreKindRRF is a Reciprocal Rank Fusion score, sum of 1/(k+rank). For
+	// the standard k=60 it sits around 0.016-0.033 however relevant the hit.
+	ScoreKindRRF ScoreKind = "rrf"
+	// ScoreKindRerank is a cross-encoder relevance score. This is the only
+	// space the quality thresholds are calibrated against.
+	ScoreKindRerank ScoreKind = "rerank"
+)
+
+// Calibrated reports whether a score in this space may be compared against the
+// retrieval quality thresholds. Only the cross-encoder produces such scores;
+// everything else is a ranking signal, useful for ordering and useless as an
+// absolute judgement of relevance.
+func (k ScoreKind) Calibrated() bool { return k == ScoreKindRerank }
+
 // SearchResult represents a chunk found via vector search, including its similarity score.
 type SearchResult struct {
-	Chunk           RagChunk
-	Score           float32
+	Chunk RagChunk
+	Score float32
+	// ScoreKind declares which space Score lives in. Every producer of a
+	// SearchResult must set it; an unset kind means the score cannot be gated.
+	ScoreKind       ScoreKind
 	ArticleID       string
 	Title           string
 	URL             string

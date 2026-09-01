@@ -150,7 +150,7 @@ func TestIndexArticle_Upsert_Idempotency(t *testing.T) {
 		DocumentID:     docID,
 		SourceHash:     sourceHash, // Same hash
 		Title:          title,
-		ChunkerVersion: string(domain.ChunkerVersionV9), // Same chunker version
+		ChunkerVersion: string(chunker.Version()), // Same chunker version
 	}, nil)
 
 	// Execute
@@ -212,13 +212,13 @@ func TestIndexArticle_Upsert_NewArticle(t *testing.T) {
 }
 
 func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
-	// When SourceHash/Title/URL match but ChunkerVersion is old (v8),
-	// the article must be re-indexed with the new chunker (v9).
+	// When SourceHash/Title/URL match but ChunkerVersion is an older
+	// generation, the article must be re-indexed with the current chunker.
 	mockDocRepo := new(MockRagDocumentRepository)
 	mockChunkRepo := new(MockRagChunkRepository)
 	mockTxManager := new(MockTransactionManager)
 	hasher := domain.NewSourceHashPolicy()
-	chunker := domain.NewChunker() // Returns V9
+	chunker := domain.NewChunker()
 
 	uc := usecase.NewIndexArticleUsecase(
 		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
@@ -239,14 +239,14 @@ func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
 		CurrentVersionID: &verID,
 	}, nil)
 
-	// Latest version has same hash but OLD chunker version (v8)
+	// Latest version has same hash but an older chunker version
 	mockDocRepo.On("GetLatestVersion", ctx, docID).Return(&domain.RagDocumentVersion{
 		ID:             verID,
 		DocumentID:     docID,
 		VersionNumber:  1,
 		SourceHash:     sourceHash, // Same content hash
 		Title:          title,
-		ChunkerVersion: string(domain.ChunkerVersionV8), // OLD version
+		ChunkerVersion: string(domain.ChunkerVersionV9), // OLD version
 	}, nil)
 
 	// Because chunker version differs, re-indexing should happen:
@@ -254,7 +254,7 @@ func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
 		{Ordinal: 0, Content: "Body text for reindex.", ID: uuid.New()},
 	}, nil)
 	mockDocRepo.On("CreateVersion", ctx, mock.MatchedBy(func(v *domain.RagDocumentVersion) bool {
-		return v.VersionNumber == 2 && v.ChunkerVersion == string(domain.ChunkerVersionV9)
+		return v.VersionNumber == 2 && v.ChunkerVersion == string(chunker.Version())
 	})).Return(nil)
 	mockChunkRepo.On("BulkInsertChunks", ctx, mock.Anything).Return(nil)
 	mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil)
@@ -426,7 +426,7 @@ func TestIndexArticle_Upsert_EncodeHappensBeforeTransactionBegins(t *testing.T) 
 // swap: content, url, title and chunker are all unchanged, only the embedder
 // behind the URL is a different model. The stored vectors belong to a vector
 // space that no longer exists, so the article must be re-embedded — the
-// embedding-side analogue of the v8->v9 chunker re-index trigger. Without it a
+// embedding-side analogue of the chunker re-index trigger. Without it a
 // model swap leaves every row stranded on its old (or cleared) embedding and
 // silently drops out of vector search.
 func TestIndexArticle_Upsert_EmbedderVersionChangeForcesReindex(t *testing.T) {
@@ -474,7 +474,7 @@ func TestIndexArticle_Upsert_EmbedderVersionChangeForcesReindex(t *testing.T) {
 				VersionNumber:   1,
 				SourceHash:      hasher.Compute(title, body),
 				Title:           title,
-				ChunkerVersion:  string(domain.ChunkerVersionV9),
+				ChunkerVersion:  string(chunker.Version()),
 				EmbedderVersion: tc.storedVersion,
 			}, nil)
 
@@ -638,7 +638,7 @@ func TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx(t *testing.T) {
 		VersionNumber:  1,
 		SourceHash:     "stale-hash",
 		Title:          title,
-		ChunkerVersion: string(domain.ChunkerVersionV9),
+		ChunkerVersion: string(chunker.Version()),
 	}, nil).Once()
 
 	// Re-check (2nd call, inside the tx): a concurrent writer already
@@ -650,7 +650,7 @@ func TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx(t *testing.T) {
 		SourceHash:     sourceHash,
 		Title:          title,
 		URL:            "",
-		ChunkerVersion: string(domain.ChunkerVersionV9),
+		ChunkerVersion: string(chunker.Version()),
 	}, nil)
 
 	err := uc.Upsert(ctx, articleID, title, "", body)

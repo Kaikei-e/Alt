@@ -17,7 +17,6 @@ const (
 	hyperBoostPort          = 11434 // Internal Ollama port
 	hyperBoostHostPort      = 11437 // Host port for health checks
 	hyperBoostImage         = "ollama/ollama:latest"
-	hyperBoostModel         = "bge-m3"
 	hyperBoostNetwork       = "alt_alt-network" // Same network as orchestrator
 )
 
@@ -29,11 +28,16 @@ type HyperBoost struct {
 	logger      *slog.Logger
 }
 
-// NewHyperBoost creates a new HyperBoost instance.
-func NewHyperBoost(logger *slog.Logger) (*HyperBoost, error) {
+// NewHyperBoost creates a new HyperBoost instance. The model is supplied by
+// the caller: the container this starts is only useful if it serves the same
+// model the index is being built for.
+func NewHyperBoost(logger *slog.Logger, model string) (*HyperBoost, error) {
+	if strings.TrimSpace(model) == "" {
+		return nil, fmt.Errorf("hyper-boost: embedding model is required")
+	}
 	return &HyperBoost{
 		port:   hyperBoostPort,
-		model:  hyperBoostModel,
+		model:  model,
 		logger: logger,
 	}, nil
 }

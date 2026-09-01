@@ -9,12 +9,15 @@ import (
 // Research basis:
 // - Pinecone: +15-30% NDCG@10 improvement
 // - ZeroEntropy: -35% LLM hallucinations
-// - Recommended: Rerank 50 candidates to top 10
 type RerankingConfig struct {
 	// Enabled controls whether reranking is applied.
 	Enabled bool
 	// TopK is the number of results to return after reranking.
 	TopK int
+	// MaxCandidates is the number of results sent to the cross-encoder. It
+	// must exceed TopK, or the stage can only reorder hits retrieval already
+	// ranked highest and can never promote one from below the cut.
+	MaxCandidates int
 	// Timeout is the maximum duration for reranking requests.
 	Timeout time.Duration
 }
@@ -22,9 +25,12 @@ type RerankingConfig struct {
 // DefaultRerankingConfig returns research-backed defaults.
 func DefaultRerankingConfig() RerankingConfig {
 	return RerankingConfig{
-		Enabled: true, // Default enabled per user preference
-		TopK:    10,   // Rerank 50 -> 10
-		Timeout: 30 * time.Second,
+		Enabled:       true, // Default enabled per user preference
+		TopK:          10,
+		MaxCandidates: 40,
+		// Above the rerank server's own 10s budget, so the client never gives
+		// up on a request the server would still have answered.
+		Timeout: 15 * time.Second,
 	}
 }
 
@@ -33,6 +39,12 @@ func (c RerankingConfig) Validate() error {
 	if c.Enabled {
 		if c.TopK <= 0 {
 			return fmt.Errorf("reranking topK must be positive, got %d", c.TopK)
+		}
+		if c.MaxCandidates <= 0 {
+			return fmt.Errorf("reranking maxCandidates must be positive, got %d", c.MaxCandidates)
+		}
+		if c.MaxCandidates < c.TopK {
+			return fmt.Errorf("reranking maxCandidates (%d) must be at least topK (%d), or hits the cross-encoder scored are dropped before they can be returned", c.MaxCandidates, c.TopK)
 		}
 		if c.Timeout <= 0 {
 			return fmt.Errorf("reranking timeout must be positive, got %v", c.Timeout)
@@ -43,15 +55,14 @@ func (c RerankingConfig) Validate() error {
 
 // HybridSearchConfig holds settings for BM25+vector hybrid search.
 // Research basis:
-// - EMNLP 2024: Alpha=0.3 optimal
 // - Weaviate/LlamaIndex: RRF fusion with k=60 is best starting point
 // - IBM Research: 3-way hybrid (BM25+dense+sparse) +48% improvement
+//
+// Fusion is rank-based (RRF, constant RRFK), not weighted: there is no arm
+// weight to configure.
 type HybridSearchConfig struct {
 	// Enabled controls whether hybrid search is applied.
 	Enabled bool
-	// Alpha controls the weight between BM25 (0.0) and vector (1.0) search.
-	// Research recommends 0.3 (slightly BM25-heavy).
-	Alpha float64
 	// BM25Limit is the number of BM25 results to fetch for fusion.
 	BM25Limit int
 }
@@ -60,20 +71,14 @@ type HybridSearchConfig struct {
 func DefaultHybridSearchConfig() HybridSearchConfig {
 	return HybridSearchConfig{
 		Enabled:   true, // Default enabled per user preference
-		Alpha:     0.3,  // EMNLP 2024 optimal
 		BM25Limit: 50,   // Match vector search limit
 	}
 }
 
 // Validate checks if the hybrid search configuration is valid.
 func (c HybridSearchConfig) Validate() error {
-	if c.Enabled {
-		if c.Alpha < 0.0 || c.Alpha > 1.0 {
-			return fmt.Errorf("hybrid alpha must be in [0.0, 1.0], got %f", c.Alpha)
-		}
-		if c.BM25Limit <= 0 {
-			return fmt.Errorf("hybrid BM25Limit must be positive, got %d", c.BM25Limit)
-		}
+	if c.Enabled && c.BM25Limit <= 0 {
+		return fmt.Errorf("hybrid BM25Limit must be positive, got %d", c.BM25Limit)
 	}
 	return nil
 }
@@ -161,6 +166,9 @@ func applyRetrievalConfigDefaults(cfg RetrievalConfig) RetrievalConfig {
 	}
 	if cfg.Reranking.TopK == 0 {
 		cfg.Reranking.TopK = def.Reranking.TopK
+	}
+	if cfg.Reranking.MaxCandidates == 0 {
+		cfg.Reranking.MaxCandidates = def.Reranking.MaxCandidates
 	}
 	if cfg.Reranking.Timeout == 0 {
 		cfg.Reranking.Timeout = def.Reranking.Timeout

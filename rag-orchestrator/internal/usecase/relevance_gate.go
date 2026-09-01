@@ -21,19 +21,26 @@ func NewRelevanceGate(goodThreshold, marginalThreshold float32) *RelevanceGate {
 // Evaluate checks the top-1 reranker score against calibrated thresholds.
 //
 // The thresholds only mean anything on the cross-encoder's scale, so the gate
-// judges a score exclusively when the reranker actually produced one. Without
-// it, ContextItem.Score holds an RRF score instead — around 0.016–0.033 for
-// k=60 regardless of how relevant the hit is — and reading that as a
-// cross-encoder score condemns every retrieval, which the caller turns into a
-// hard stop that leaves the question unanswered. An unjudgeable retrieval is
-// reported Marginal: no evidence the context is good, and none that it is bad.
+// reads the context's declared score space and judges nothing else. Every
+// degrade mode has a defined answer:
+//
+//   - reranked (ScoreKindRerank): judged against the thresholds.
+//   - rerank skipped or failed: Score is an RRF value, around 0.016-0.033 for
+//     k=60 however relevant the hit. Reading that as a cross-encoder score
+//     condemns every retrieval, and the caller turns Insufficient into a hard
+//     stop that leaves the question unanswered.
+//   - BM25-only (embedder down): Score is a lexical score of unbounded range,
+//     or 0 when the index exposes none. It cannot fail or pass a [0,1] test.
+//
+// In all three uncalibrated cases the verdict is Marginal: no evidence the
+// context is good, and none that it is bad.
 func (g *RelevanceGate) Evaluate(contexts []ContextItem) QualityVerdict {
 	if len(contexts) == 0 {
 		return QualityInsufficient
 	}
 
 	top := contexts[0]
-	if !top.RerankApplied {
+	if !top.ScoreKind.Calibrated() {
 		return QualityMarginal
 	}
 

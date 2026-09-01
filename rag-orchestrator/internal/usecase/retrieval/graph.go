@@ -24,6 +24,15 @@ type GraphOutput struct {
 	Contexts        []ContextItem
 	ExpandedQueries []string
 	BM25HitCount    int
+	// PreRerankOrder is the fused ranking as it stood before the cross-encoder
+	// ran, in hitIdentity form ("chunk:<uuid>" or "article:<id>"). Scoring the
+	// rerank stage means comparing two orderings, and the post-rerank one is
+	// all the caller can otherwise see.
+	PreRerankOrder []string
+	// RerankApplied distinguishes "the cross-encoder ranked this" from "the
+	// stage fell back to retrieval scores". Without it a rerank outage looks
+	// identical to a healthy run from outside the graph.
+	RerankApplied bool
 }
 
 // GraphConfig holds the retrieval parameters needed by the graph.
@@ -35,6 +44,7 @@ type GraphConfig struct {
 	QuotaExpanded                    int
 	RerankEnabled                    bool
 	RerankTopK                       int
+	RerankMaxCandidates              int
 	RerankTimeout                    time.Duration
 	HybridSearchEnabled              bool
 	BM25Limit                        int
@@ -134,16 +144,21 @@ func (g *RetrievalGraph) Execute(ctx context.Context, input GraphInput) (*GraphO
 		return nil, fmt.Errorf("stage2 embed_and_search: %w", err)
 	}
 
-	// Stage 3: Parallel vector search for expanded queries + RRF fusion
-	if err := FuseResults(ctx, sc, g.chunkRepo, g.logger); err != nil {
+	// Stage 3: Parallel search for expanded queries + RRF fusion
+	if err := FuseResults(ctx, sc, g.chunkRepo, g.hybridSearcher, g.config.HybridSearchEnabled, g.logger); err != nil {
 		return nil, fmt.Errorf("stage3 fuse_results: %w", err)
 	}
 
+	// Snapshot the fused order before stage 4 mutates it in place. This is the
+	// only moment the pre-rerank ranking exists.
+	preRerankOrder := fusedOrder(sc)
+
 	// Stage 4: Cross-encoder reranking
 	Rerank(ctx, sc, g.reranker, RerankConfig{
-		Enabled: g.config.RerankEnabled,
-		TopK:    g.config.RerankTopK,
-		Timeout: g.config.RerankTimeout,
+		Enabled:       g.config.RerankEnabled,
+		TopK:          g.config.RerankTopK,
+		MaxCandidates: g.config.RerankMaxCandidates,
+		Timeout:       g.config.RerankTimeout,
 	}, g.logger)
 
 	// Stage 5: Language allocation + quota selection
@@ -166,5 +181,32 @@ func (g *RetrievalGraph) Execute(ctx context.Context, input GraphInput) (*GraphO
 		Contexts:        allocatedCtxs,
 		ExpandedQueries: expandedQueries,
 		BM25HitCount:    len(sc.BM25Results),
+		PreRerankOrder:  preRerankOrder,
+		RerankApplied:   sc.RerankApplied,
 	}, nil
+}
+
+// fusedOrder flattens the post-fusion hits into a single deduplicated ranking,
+// original-query hits first, using the same identity the rerank stage keys on
+// so the two orderings can be compared position by position.
+func fusedOrder(sc *StageContext) []string {
+	seen := make(map[string]struct{}, len(sc.HitsOriginal)+len(sc.HitsExpanded))
+	order := make([]string, 0, len(sc.HitsOriginal)+len(sc.HitsExpanded))
+	add := func(id string) {
+		if id == "" {
+			return
+		}
+		if _, dup := seen[id]; dup {
+			return
+		}
+		seen[id] = struct{}{}
+		order = append(order, id)
+	}
+	for _, hit := range sc.HitsOriginal {
+		add(hitIdentity(hit.Chunk.ID, hit.ArticleID))
+	}
+	for _, item := range sc.HitsExpanded {
+		add(hitIdentity(item.ChunkID, item.ArticleID))
+	}
+	return order
 }

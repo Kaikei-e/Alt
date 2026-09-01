@@ -39,6 +39,9 @@ WORKDIR /home/ollama-user
 # Copy Modelfiles for model creation
 COPY --chown=ollama-user:ollama-user Modelfile.gemma4-e4b-q4km Modelfile.gemma4-e4b-8k Modelfile.gemma4-e4b-12k /home/ollama-user/
 
+# Eval candidates only — the entrypoint never creates these; a human runs ollama create.
+COPY --chown=ollama-user:ollama-user Modelfile.qwen3.5-4b-12k Modelfile.sarashina2.2-3b-8k Modelfile.granite4.2-3b-12k /home/ollama-user/
+
 # Environment configuration
 ENV OLLAMA_HOST=0.0.0.0:11435
 ENV OLLAMA_ORIGINS=http://localhost,http://127.0.0.1

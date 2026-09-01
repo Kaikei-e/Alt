@@ -48,6 +48,10 @@ type answerWithRAGUsecase struct {
 	// per assistant turn. Optional: nil leaves RelatedCitations empty, which
 	// the FE renders as the "Related" section being hidden.
 	neighborSearcher domain.HybridSearcher
+	// neighborEncoder embeds the synthetic neighbor query. Without it the
+	// neighbor SQL runs its lexical arm alone, and a plainto_tsquery built
+	// from concatenated Japanese titles is a conjunction that matches nothing.
+	neighborEncoder domain.VectorEncoder
 	// neighborLimit caps how many related citations the FE may render. Default
 	// 3 matches the rail's compact pencil-margin design.
 	neighborLimit int
@@ -113,6 +117,7 @@ func NewAnswerWithRAGUsecase(
 		generalStrategy:   generalStrat,
 		templateRegistry:  tmplRegistry,
 		neighborSearcher:  cfg.neighborSearcher,
+		neighborEncoder:   cfg.neighborEncoder,
 		neighborLimit:     neighborLimit,
 	}
 }
@@ -134,6 +139,7 @@ type answerUsecaseConfig struct {
 	queryPlanner      domain.QueryPlannerPort
 	relevanceGate     *RelevanceGate
 	neighborSearcher  domain.HybridSearcher
+	neighborEncoder   domain.VectorEncoder
 	neighborLimit     int
 }
 
@@ -218,6 +224,15 @@ func WithNeighborSearcher(s domain.HybridSearcher) AnswerUsecaseOption {
 	}
 }
 
+// WithNeighborEncoder wires the embedder used to vectorize the synthetic
+// neighbor query. Without it SearchNeighbors runs lexical-only, which on a
+// Japanese corpus returns nothing — see buildRelatedCitations.
+func WithNeighborEncoder(e domain.VectorEncoder) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.neighborEncoder = e
+	}
+}
+
 // WithNeighborLimit overrides the default number of related citations
 // returned per assistant turn. Default is 3.
 func WithNeighborLimit(limit int) AnswerUsecaseOption {
@@ -251,7 +266,9 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("cache_key", cacheKey),
 			slog.String("query_preview", queryLogPreview(input.Query)),
 			slog.Int("query_len", len(input.Query)))
-		return cloneAnswerOutput(val), nil
+		cached := cloneAnswerOutput(val)
+		cached.Debug.CacheHit = true
+		return cached, nil
 	}
 
 	// 2. Prepare Context (Retrieval)
@@ -375,6 +392,11 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		RetrievalPolicy:       finalPromptData.retrievalPolicy,
 		GeneralRetrievalGated: finalPromptData.generalGated,
 		BM25HitCount:          finalPromptData.bm25HitCount,
+		ContextScoreKinds:     contextScoreKinds(finalPromptData.contexts),
+		PreRerankOrder:        finalPromptData.preRerankOrder,
+		RerankApplied:         finalPromptData.rerankApplied,
+		LowConfidence:         finalPromptData.lowConfidence,
+		AgenticDegraded:       finalPromptData.agenticDegraded,
 	}
 	if finalPromptData.plannerOutput != nil {
 		debug.PlannerOperation = string(finalPromptData.plannerOutput.Operation)
@@ -832,18 +854,28 @@ func (u *answerWithRAGUsecase) prepareClarification(promptData *promptBuildResul
 // never backfilled — see the "Related" UX section of the plan and the
 // append-only invariant on augur_messages.
 //
-// Skipped (returns nil) when:
-//   - the searcher is not wired (test setups / opt-out deployments)
-//   - direct citations is empty (no seed to anchor neighbors to)
-//   - none of the direct citations carry a parseable ArticleID
-//   - the searcher errs (logged but does NOT bubble up; an empty Related
-//     section is a UX degradation, not a request failure)
+// The query vector is the load-bearing input. SearchNeighbors compiles its
+// pgvector arm into the SQL only when it is non-empty; without it the whole
+// lookup collapses onto a single plainto_tsquery over the concatenated cited
+// titles, and plainto_tsquery is a conjunction — on Japanese titles, which the
+// default parser keeps as whole-run tokens, that conjunction matches no chunk
+// and the search returns zero rows with no error to report.
+//
+// Every path that comes back empty says so in the log. An empty Related
+// section is a UX degradation rather than a request failure, so nothing here
+// bubbles up, which is exactly why it must not also be silent.
 func (u *answerWithRAGUsecase) buildRelatedCitations(
 	ctx context.Context,
 	direct []Citation,
 	originalQuery string,
 ) []Citation {
-	if u.neighborSearcher == nil || len(direct) == 0 {
+	if u.neighborSearcher == nil {
+		u.logger.Warn("related_citation_searcher_unwired",
+			slog.String("reason", "neighbor searcher missing from the answer usecase"),
+			slog.Int("direct_citations", len(direct)))
+		return nil
+	}
+	if len(direct) == 0 {
 		return nil
 	}
 
@@ -862,17 +894,22 @@ func (u *answerWithRAGUsecase) buildRelatedCitations(
 		}
 	}
 	if len(seeds) == 0 {
+		u.logger.Warn("related_citation_empty",
+			slog.String("reason", "no direct citation carried a parseable article id"),
+			slog.Int("direct_citations", len(direct)))
 		return nil
 	}
 
-	// Synthetic query: cited titles drive the RRF lexical arm. Fall back to
-	// the original user query when titles are empty so we still surface
-	// something coherent.
+	// Synthetic query: cited titles drive both arms. Fall back to the original
+	// user query when titles are empty so we still surface something coherent.
 	queryText := strings.TrimSpace(strings.Join(titleParts, " "))
 	if queryText == "" {
 		queryText = strings.TrimSpace(originalQuery)
 	}
 	if queryText == "" {
+		u.logger.Warn("related_citation_empty",
+			slog.String("reason", "neither cited titles nor the user query produced a neighbor query"),
+			slog.Int("seed_count", len(seeds)))
 		return nil
 	}
 
@@ -881,14 +918,23 @@ func (u *answerWithRAGUsecase) buildRelatedCitations(
 		limit = 3
 	}
 
-	hits, err := u.neighborSearcher.SearchNeighbors(ctx, nil, queryText, seeds, limit)
+	queryVector := u.encodeNeighborQuery(ctx, queryText)
+
+	hits, err := u.neighborSearcher.SearchNeighbors(ctx, queryVector, queryText, seeds, limit)
 	if err != nil {
 		u.logger.Warn("related_citation_lookup_failed",
 			slog.String("error", err.Error()),
-			slog.Int("seed_count", len(seeds)))
+			slog.Int("seed_count", len(seeds)),
+			slog.Bool("vector_arm", len(queryVector) > 0))
 		return nil
 	}
 	if len(hits) == 0 {
+		u.logger.Warn("related_citation_empty",
+			slog.String("reason", "neighbor search returned no rows"),
+			slog.Int("seed_count", len(seeds)),
+			slog.Int("limit", limit),
+			slog.Bool("vector_arm", len(queryVector) > 0),
+			slog.String("query_preview", queryLogPreview(queryText)))
 		return nil
 	}
 
@@ -906,6 +952,32 @@ func (u *answerWithRAGUsecase) buildRelatedCitations(
 		})
 	}
 	return related
+}
+
+// encodeNeighborQuery embeds the synthetic neighbor query. A nil return means
+// the pgvector arm is dropped and the lookup degrades to lexical-only, so both
+// the missing-encoder and the failed-encode case are logged: on a Japanese
+// corpus that degradation is the difference between neighbors and none.
+func (u *answerWithRAGUsecase) encodeNeighborQuery(ctx context.Context, queryText string) []float32 {
+	if u.neighborEncoder == nil {
+		u.logger.Warn("related_citation_encoder_unwired",
+			slog.String("degraded_mode", "lexical_only"))
+		return nil
+	}
+	vectors, err := u.neighborEncoder.Encode(ctx, []string{queryText})
+	if err != nil {
+		u.logger.Warn("related_citation_embedding_failed",
+			slog.String("error", err.Error()),
+			slog.String("degraded_mode", "lexical_only"))
+		return nil
+	}
+	if len(vectors) == 0 || len(vectors[0]) == 0 {
+		u.logger.Warn("related_citation_embedding_failed",
+			slog.String("error", "embedder returned no vector"),
+			slog.String("degraded_mode", "lexical_only"))
+		return nil
+	}
+	return vectors[0]
 }
 
 func (u *answerWithRAGUsecase) buildCitations(contexts []ContextItem, raw []LLMCitation) []Citation {
@@ -978,6 +1050,39 @@ type promptBuildResult struct {
 	parsedIntent     QueryIntent           // Resolved intent for state derivation
 	bm25HitCount     int
 	lowConfidence    bool // Insufficient quality but generating with disclaimer
+	agenticDegraded  bool // Tool-calling loop failed; plain retrieval only
+	rerankApplied    bool // Cross-encoder actually ranked the selected contexts
+	preRerankOrder   []string
+}
+
+// recordRetrievalTelemetry copies the observability-only fields off a retrieval
+// result. They never change the answer, so they are collected in one place
+// rather than threaded through every branch that produces contexts.
+func (r *promptBuildResult) recordRetrievalTelemetry(out *RetrieveContextOutput) {
+	if out == nil {
+		return
+	}
+	r.bm25HitCount = out.BM25HitCount
+	r.agenticDegraded = r.agenticDegraded || out.AgenticDegraded
+	r.rerankApplied = out.RerankApplied
+	r.preRerankOrder = out.PreRerankOrder
+}
+
+// contextScoreKinds lists the declared score space of each selected context in
+// order, so a debug consumer can tell a calibrated score from a ranking signal.
+func contextScoreKinds(contexts []ContextItem) []string {
+	if len(contexts) == 0 {
+		return nil
+	}
+	kinds := make([]string, len(contexts))
+	for i, c := range contexts {
+		if c.ScoreKind == domain.ScoreKindUnknown {
+			kinds[i] = "unknown"
+			continue
+		}
+		kinds[i] = string(c.ScoreKind)
+	}
+	return kinds
 }
 
 func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWithRAGInput) (*promptBuildResult, error) {
@@ -1097,6 +1202,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		// unconditional retrieved.Contexts dereference below panics.
 		return result, errors.New("no context returned")
 	}
+	result.recordRetrievalTelemetry(retrieved)
 
 	// Quality gate: assess retrieval quality with intent-aware strictness
 	if u.qualityAssessor != nil && retrieved != nil && len(retrieved.Contexts) > 0 {
@@ -1269,6 +1375,49 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	result.messages = messages
 	return result, nil
+}
+
+// retrieveArticleScopedFallback mirrors the legacy two-stage recovery for an
+// article that is not in the RAG index: first a general search constrained to
+// the article, then an unconstrained one. Without it the planner path turns a
+// missing index entry into a fallback answer, which reads to the user as "I
+// know nothing about the article you are looking at".
+func (u *answerWithRAGUsecase) retrieveArticleScopedFallback(
+	ctx context.Context,
+	retrieveInput RetrieveContextInput,
+	intent QueryIntent,
+	result *promptBuildResult,
+) (*RetrieveContextOutput, error) {
+	u.logger.Info("article_scoped_fallback_stage1",
+		slog.String("article_id", intent.ArticleID),
+		slog.String("reason", ErrArticleNotIndexed.Error()))
+
+	constrained := retrieveInput
+	constrained.CandidateArticleIDs = []string{intent.ArticleID}
+	retrieved, err := u.generalStrategy.Retrieve(ctx, constrained, intent)
+	result.strategyUsed = "article_constrained_fallback"
+	if err == nil && retrieved != nil && len(retrieved.Contexts) > 0 {
+		return retrieved, nil
+	}
+
+	u.logger.Warn("unrestricted_fallback",
+		slog.String("article_id", intent.ArticleID),
+		slog.String("reason", "article_constrained_returned_empty"))
+	unrestricted := retrieveInput
+	unrestricted.CandidateArticleIDs = nil
+	retrieved, err = u.generalStrategy.Retrieve(ctx, unrestricted, intent)
+	result.strategyUsed = "unrestricted_general_fallback"
+	return retrieved, err
+}
+
+// appendUnique adds id to ids when it is not already present.
+func appendUnique(ids []string, id string) []string {
+	for _, existing := range ids {
+		if existing == id {
+			return ids
+		}
+	}
+	return append(ids, id)
 }
 
 // retrieveWithPolicy executes retrieval based on planner output policy.
@@ -1512,6 +1661,27 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	}
 	result.plannerOutput = plannerOut
 
+	// Article scope is a structural fact of the request envelope, not something
+	// the planner gets a vote on: domain.QueryPlan.Intent has no article_scoped
+	// member, so taking the intent straight off the plan guarantees
+	// selectStrategy never returns the article-scoped strategy, and the article
+	// the user is reading is dropped from retrieval while retrieval_policy
+	// still reports "article_only".
+	if parsedIntent.IntentType == IntentArticleScoped {
+		u.logger.Info("article_scope_pinned",
+			slog.String("article_id", parsedIntent.ArticleID),
+			slog.String("planner_intent", qPlan.Intent),
+			slog.String("planner_policy", qPlan.RetrievalPolicy))
+		result.intentType = IntentArticleScoped
+		plannerIntent.IntentType = IntentArticleScoped
+		if plannerOut.RetrievalPolicy != domain.PolicyArticleOnly {
+			// Any other policy would gate the article out. Augmenting with
+			// global retrieval is the widest scope that still keeps it.
+			plannerOut.RetrievalPolicy = domain.PolicyArticlePlusGlobal
+		}
+		result.retrievalPolicy = string(plannerOut.RetrievalPolicy)
+	}
+
 	// Clarification: short-circuit before retrieval
 	if qPlan.ShouldClarify {
 		result.contexts = nil
@@ -1532,15 +1702,25 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	if len(input.CandidateArticleIDs) > 0 {
 		retrieveInput.CandidateArticleIDs = input.CandidateArticleIDs
 	}
+	// A strategy that ignores intent.ArticleID (every non-article-scoped one)
+	// still has to see the article as a candidate, or the scope exists only in
+	// the debug label.
+	if parsedIntent.IntentType == IntentArticleScoped && parsedIntent.ArticleID != "" {
+		retrieveInput.CandidateArticleIDs = appendUnique(retrieveInput.CandidateArticleIDs, parsedIntent.ArticleID)
+	}
 
 	// Retrieve with the planner's policy
 	retrieved, err := u.retrieveWithPolicy(ctx, strategy, retrieveInput, plannerIntent, plannerOut, input, result)
+	if err != nil && parsedIntent.IntentType == IntentArticleScoped && errors.Is(err, ErrArticleNotIndexed) {
+		retrieved, err = u.retrieveArticleScopedFallback(ctx, retrieveInput, plannerIntent, result)
+	}
 	if err != nil {
 		return result, fmt.Errorf("failed to retrieve context: %w", err)
 	}
 	if retrieved == nil {
 		return result, ErrNoContextRetrieved
 	}
+	result.recordRetrievalTelemetry(retrieved)
 
 	// Quality gate: prefer RelevanceGate (cross-encoder score based),
 	// fall back to legacy heuristic assessor.
@@ -1745,6 +1925,12 @@ func cloneAnswerOutput(src *AnswerWithRAGOutput) *AnswerWithRAGOutput {
 	}
 	if src.Debug.AgentSteps != nil {
 		dst.Debug.AgentSteps = append([]AgentStep(nil), src.Debug.AgentSteps...)
+	}
+	if src.Debug.ContextScoreKinds != nil {
+		dst.Debug.ContextScoreKinds = append([]string(nil), src.Debug.ContextScoreKinds...)
+	}
+	if src.Debug.PreRerankOrder != nil {
+		dst.Debug.PreRerankOrder = append([]string(nil), src.Debug.PreRerankOrder...)
 	}
 	return &dst
 }

@@ -63,6 +63,7 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 			Title:           res.Title,
 			PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
 			Score:           res.Score,
+			ScoreKind:       res.ScoreKind,
 			DocumentVersion: res.DocumentVersion,
 			ChunkID:         res.Chunk.ID,
 			ArticleID:       res.ArticleID,
@@ -84,7 +85,10 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 		seen[key] = true
 	}
 
-	sort.Slice(allCandidates, func(i, j int) bool {
+	// Stable: a BM25-only degraded result set carries no score at all (the
+	// search-indexer response exposes none), and an unstable sort over equal
+	// scores discards the index's ranking.
+	sort.SliceStable(allCandidates, func(i, j int) bool {
 		return allCandidates[i].Score > allCandidates[j].Score
 	})
 
@@ -112,6 +116,7 @@ func allocateLegacy(hitsOriginal []domain.SearchResult, hitsExpanded []ContextIt
 				Title:           res.Title,
 				PublishedAt:     res.Chunk.CreatedAt.Format(time.RFC3339),
 				Score:           res.Score,
+				ScoreKind:       res.ScoreKind,
 				DocumentVersion: res.DocumentVersion,
 				ChunkID:         res.Chunk.ID,
 				ArticleID:       res.ArticleID,

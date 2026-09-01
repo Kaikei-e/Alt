@@ -59,6 +59,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		if val, ok := u.cache.Get(cacheKey); ok {
 			u.logger.InfoContext(ctx, "streaming cached answer", slog.String("key", cacheKey))
 			cloned := cloneAnswerOutput(val)
+			cloned.Debug.CacheHit = true
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind: StreamEventKindMeta,
 				Payload: StreamMeta{
@@ -170,6 +171,12 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			ToolsUsed:             promptData.toolsUsed,
 			RetrievalPolicy:       promptData.retrievalPolicy,
 			GeneralRetrievalGated: promptData.generalGated,
+			BM25HitCount:          promptData.bm25HitCount,
+			ContextScoreKinds:     contextScoreKinds(promptData.contexts),
+			PreRerankOrder:        promptData.preRerankOrder,
+			RerankApplied:         promptData.rerankApplied,
+			LowConfidence:         promptData.lowConfidence,
+			AgenticDegraded:       promptData.agenticDegraded,
 		}
 		if promptData.plannerOutput != nil {
 			debug.PlannerOperation = string(promptData.plannerOutput.Operation)
@@ -468,6 +475,12 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				ToolsUsed:             promptData.toolsUsed,
 				RetrievalPolicy:       promptData.retrievalPolicy,
 				GeneralRetrievalGated: promptData.generalGated,
+				BM25HitCount:          promptData.bm25HitCount,
+				ContextScoreKinds:     contextScoreKinds(promptData.contexts),
+				PreRerankOrder:        promptData.preRerankOrder,
+				RerankApplied:         promptData.rerankApplied,
+				LowConfidence:         promptData.lowConfidence,
+				AgenticDegraded:       promptData.agenticDegraded,
 			},
 		}
 

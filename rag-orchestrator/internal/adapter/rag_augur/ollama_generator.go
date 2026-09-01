@@ -45,8 +45,12 @@ var generationFormat = map[string]interface{}{
 }
 
 type chatMessage struct {
-	Role       string            `json:"role"`
-	Content    string            `json:"content,omitempty"`
+	Role string `json:"role"`
+	// Content is serialized even when empty: news-creator's chat schema makes
+	// it required on every message, and an assistant turn that carries only
+	// tool_calls has no text. Omitting it returns 422 and silently drops the
+	// request out of the agentic path.
+	Content    string            `json:"content"`
 	Name       string            `json:"name,omitempty"`
 	ToolCallID string            `json:"tool_call_id,omitempty"`
 	ToolCalls  []domain.ToolCall `json:"tool_calls,omitempty"`

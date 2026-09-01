@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -17,24 +18,48 @@ import (
 // assert that buildRelatedCitations passes the right arguments through to
 // HybridSearcher.SearchNeighbors.
 type fakeNeighborSearcher struct {
-	lastSeeds []string
-	lastQuery string
-	hits      []domain.SearchResult
-	err       error
+	lastSeeds  []string
+	lastQuery  string
+	lastVector []float32
+	hits       []domain.SearchResult
+	err        error
 }
 
 func (f *fakeNeighborSearcher) HybridSearch(_ context.Context, _ []float32, _ string, _ int) ([]domain.SearchResult, error) {
 	return nil, nil
 }
 
-func (f *fakeNeighborSearcher) SearchNeighbors(_ context.Context, _ []float32, queryText string, seeds []string, _ int) ([]domain.SearchResult, error) {
+func (f *fakeNeighborSearcher) SearchNeighbors(_ context.Context, vector []float32, queryText string, seeds []string, _ int) ([]domain.SearchResult, error) {
 	f.lastSeeds = append([]string(nil), seeds...)
 	f.lastQuery = queryText
+	f.lastVector = append([]float32(nil), vector...)
 	if f.err != nil {
 		return nil, f.err
 	}
 	return f.hits, nil
 }
+
+// fakeNeighborEncoder stands in for the embedder that turns the synthetic
+// neighbor query into the vector the pgvector arm needs.
+type fakeNeighborEncoder struct {
+	vector []float32
+	err    error
+	calls  int
+}
+
+func (f *fakeNeighborEncoder) Encode(_ context.Context, texts []string) ([][]float32, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	out := make([][]float32, len(texts))
+	for i := range texts {
+		out[i] = f.vector
+	}
+	return out, nil
+}
+
+func (f *fakeNeighborEncoder) Version() string { return "fake/1024" }
 
 func newTestUsecaseWithNeighbor(searcher domain.HybridSearcher) *answerWithRAGUsecase {
 	return &answerWithRAGUsecase{
@@ -112,6 +137,83 @@ func TestBuildRelatedCitations_SearcherError_ReturnsNil(t *testing.T) {
 
 	related := u.buildRelatedCitations(context.Background(), direct, "user query")
 	assert.Nil(t, related)
+}
+
+// The neighbor SQL drops its pgvector arm entirely when the query vector is
+// empty, leaving a plainto_tsquery conjunction of every cited title as the only
+// arm. On Japanese titles that conjunction matches nothing, which is how
+// related_citations stayed empty in every stored assistant turn without a
+// single error being logged. Encoding the synthetic query is what makes the
+// semantic arm run at all.
+func TestBuildRelatedCitations_EncodesQueryVectorForSemanticArm(t *testing.T) {
+	fake := &fakeNeighborSearcher{
+		hits: []domain.SearchResult{{ArticleID: uuid.New().String(), Title: "Neighbor"}},
+	}
+	encoder := &fakeNeighborEncoder{vector: []float32{0.1, 0.2, 0.3}}
+	u := newTestUsecaseWithNeighbor(fake)
+	u.neighborEncoder = encoder
+
+	direct := []Citation{{ArticleID: uuid.New().String(), Title: "Direct A"}}
+
+	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	require.Len(t, related, 1)
+	assert.Equal(t, 1, encoder.calls, "the synthetic neighbor query must be embedded once")
+	assert.Equal(t, []float32{0.1, 0.2, 0.3}, fake.lastVector,
+		"SearchNeighbors must receive the query vector so the pgvector arm is compiled into the SQL")
+}
+
+// A failed embedding is a real degradation (lexical-only neighbors), not a
+// normal state: it must be loud rather than an implicit nil vector.
+func TestBuildRelatedCitations_EmbeddingFailure_LogsAndDegrades(t *testing.T) {
+	var buf bytes.Buffer
+	fake := &fakeNeighborSearcher{
+		hits: []domain.SearchResult{{ArticleID: uuid.New().String(), Title: "Neighbor"}},
+	}
+	u := newTestUsecaseWithNeighbor(fake)
+	u.neighborEncoder = &fakeNeighborEncoder{err: errors.New("embedder down")}
+	u.logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	direct := []Citation{{ArticleID: uuid.New().String(), Title: "Direct A"}}
+
+	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	require.Len(t, related, 1, "lexical arm still runs when the encoder is down")
+	assert.Empty(t, fake.lastVector)
+	assert.Contains(t, buf.String(), "related_citation_embedding_failed")
+	assert.Contains(t, buf.String(), "lexical_only")
+}
+
+// Zero neighbors is the silent-failure shape this defect actually took: the
+// query succeeded, returned no rows, and the code returned nil without a word.
+// It must name why it came back empty.
+func TestBuildRelatedCitations_ZeroHits_LogsReason(t *testing.T) {
+	var buf bytes.Buffer
+	fake := &fakeNeighborSearcher{hits: nil}
+	u := newTestUsecaseWithNeighbor(fake)
+	u.logger = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	direct := []Citation{{ArticleID: uuid.New().String(), Title: "Direct A"}}
+
+	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	assert.Nil(t, related)
+
+	logged := buf.String()
+	assert.Contains(t, logged, "related_citation_empty")
+	assert.Contains(t, logged, "seed_count")
+	assert.Contains(t, logged, "vector_arm")
+}
+
+// An unwired searcher in production means the DI edge ADR-000928 mandated is
+// gone. It must not look like "no neighbors found".
+func TestBuildRelatedCitations_NoSearcher_LogsUnwired(t *testing.T) {
+	var buf bytes.Buffer
+	u := &answerWithRAGUsecase{
+		neighborLimit: 3,
+		logger:        slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+
+	direct := []Citation{{ArticleID: uuid.New().String(), Title: "Direct"}}
+	assert.Nil(t, u.buildRelatedCitations(context.Background(), direct, "user query"))
+	assert.Contains(t, buf.String(), "related_citation_searcher_unwired")
 }
 
 // When the searcher is not wired at all (e.g. tests, opt-out deployments),

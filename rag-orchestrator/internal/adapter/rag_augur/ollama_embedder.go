@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"rag-orchestrator/internal/domain"
@@ -112,12 +113,73 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	if err := e.rejectDegenerate(respBody.Embeddings, len(texts), start); err != nil {
+		return nil, err
+	}
+
 	e.logger.Info("ollama_embed_completed",
 		slog.Int("embedding_count", len(respBody.Embeddings)),
 		slog.Duration("elapsed", time.Since(start)),
 	)
 
 	return respBody.Embeddings, nil
+}
+
+// ErrDegenerateEmbedding marks a response that was structurally valid but
+// carries no information. Callers must treat it as a hard failure: an
+// indexing job that persists such a vector cannot be detected afterwards.
+var ErrDegenerateEmbedding = errors.New("degenerate embedding")
+
+// rejectDegenerate refuses all-zero, non-finite and empty vectors.
+//
+// Ollama has an open defect (ollama/ollama#17878) where /api/embed under
+// sustained load answers 200 with correctly shaped, entirely zero vectors and
+// ordinary usage stats. Cosine distance to a zero vector is undefined and
+// pgvector scores it 0 against everything, so a document embedded during such
+// a window is silently unretrievable for the life of its version — and no
+// later query, log line or metric can tell it apart from a document nobody
+// asked for. There is no safe degraded mode here: the batch has to fail so the
+// job fails with it.
+func (e *OllamaEmbedder) rejectDegenerate(vectors [][]float32, batchSize int, start time.Time) error {
+	for i, vec := range vectors {
+		reason := degenerateReason(vec)
+		if reason == "" {
+			continue
+		}
+		e.logger.Error("ollama_embed_degenerate_vector",
+			slog.String("reason", reason),
+			slog.Int("index", i),
+			slog.Int("batch_size", batchSize),
+			slog.Int("returned_count", len(vectors)),
+			slog.Int("dimension", len(vec)),
+			slog.String("model", e.Model),
+			slog.String("url", e.BaseURL),
+			slog.Duration("elapsed", time.Since(start)),
+		)
+		return fmt.Errorf("%w: vector %d of %d is %s", ErrDegenerateEmbedding, i, len(vectors), reason)
+	}
+	return nil
+}
+
+// degenerateReason names why a vector is unusable, or "" when it is fine.
+func degenerateReason(vec []float32) string {
+	if len(vec) == 0 {
+		return "empty"
+	}
+	allZero := true
+	for _, c := range vec {
+		f := float64(c)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return "non_finite"
+		}
+		if c != 0 {
+			allZero = false
+		}
+	}
+	if allZero {
+		return "all_zero"
+	}
+	return ""
 }
 
 func (e *OllamaEmbedder) Version() string {

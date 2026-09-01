@@ -61,7 +61,8 @@ func (s *AgenticSynthesisStrategy) Retrieve(ctx context.Context, input RetrieveC
 		return baseOutput, nil
 	}
 
-	agentSupplementary, agentTools := s.runAgentLoop(ctx, input.Query, baseOutput, toolDefs)
+	agentSupplementary, agentTools, degraded := s.runAgentLoop(ctx, input.Query, baseOutput, toolDefs)
+	baseOutput.AgenticDegraded = degraded
 	if len(agentSupplementary) == 0 && len(agentTools) == 0 {
 		return baseOutput, nil
 	}
@@ -106,7 +107,7 @@ func (s *AgenticSynthesisStrategy) runAgentLoop(
 	query string,
 	baseOutput *RetrieveContextOutput,
 	toolDefs []domain.ToolDefinition,
-) ([]string, []string) {
+) (supplementaryOut []string, toolsOut []string, degraded bool) {
 	messages := s.buildAgentMessages(query, baseOutput, toolDefs)
 	var supplementary []string
 	var toolsUsed []string
@@ -115,10 +116,21 @@ func (s *AgenticSynthesisStrategy) runAgentLoop(
 	for step := 0; step < s.maxToolCalls; step++ {
 		resp, err := s.toolCaller.ChatWithTools(ctx, messages, toolDefs, LLMTokensToolChat)
 		if err != nil {
-			s.log("agentic_tool_chat_failed", slog.String("error", err.Error()))
+			// Losing the tool loop degrades synthesis to plain retrieval with no
+			// visible symptom in the answer, so this is an error, not a note.
+			s.logError("agentic_degraded_tool_chat_failed",
+				slog.String("error", err.Error()),
+				slog.Int("step", step),
+				slog.Int("tool_count", len(toolDefs)),
+				slog.String("degraded_mode", "non_agentic_retrieval_only"))
+			degraded = true
 			break
 		}
 		if resp == nil {
+			s.logError("agentic_degraded_tool_chat_empty_response",
+				slog.Int("step", step),
+				slog.String("degraded_mode", "non_agentic_retrieval_only"))
+			degraded = true
 			break
 		}
 
@@ -178,7 +190,7 @@ func (s *AgenticSynthesisStrategy) runAgentLoop(
 		}
 	}
 
-	return supplementary, toolsUsed
+	return supplementary, toolsUsed, degraded
 }
 
 func (s *AgenticSynthesisStrategy) buildAgentMessages(
@@ -269,4 +281,15 @@ func (s *AgenticSynthesisStrategy) log(msg string, attrs ...slog.Attr) {
 		args[i] = a
 	}
 	s.logger.Info(msg, args...)
+}
+
+func (s *AgenticSynthesisStrategy) logError(msg string, attrs ...slog.Attr) {
+	if s.logger == nil {
+		return
+	}
+	args := make([]any, len(attrs))
+	for i, a := range attrs {
+		args[i] = a
+	}
+	s.logger.Error(msg, args...)
 }
