@@ -117,7 +117,7 @@ type Profiles []Profile
 
 // LoadProfiles reads and validates the profile file.
 func LoadProfiles(path string) (Profiles, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- operator-supplied CLI path for a local eval tool
 	if err != nil {
 		return nil, fmt.Errorf("read profiles: %w", err)
 	}

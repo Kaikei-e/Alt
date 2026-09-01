@@ -62,7 +62,7 @@ func TestComputeDiff_SerializesToJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "diff.json")
 	require.NoError(t, SaveDiff(diff, path))
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is under t.TempDir()
 	require.NoError(t, err)
 
 	var round ReportDiff
