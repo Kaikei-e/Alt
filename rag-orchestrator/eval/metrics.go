@@ -7,9 +7,17 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	// defaultRecallK is the retrieval depth every recall floor is judged at.
+	defaultRecallK = 20
+	// recallEpsilon absorbs float division noise so a case asking for 1/3
+	// recall is not failed by 0.33333332.
+	recallEpsilon = 1e-9
+)
+
 // VerifyCase checks a single EvalResult against its GoldenCase expectations.
 func VerifyCase(gc GoldenCase, result EvalResult) CaseVerdict {
-	v := CaseVerdict{CaseID: gc.ID, Passed: true}
+	v := CaseVerdict{CaseID: gc.ID, Category: gc.Category, Passed: true}
 
 	// Clarification check
 	if gc.Expected.ShouldClarify {
@@ -21,6 +29,40 @@ func VerifyCase(gc GoldenCase, result EvalResult) CaseVerdict {
 	}
 	if !gc.Expected.ShouldClarify && result.ClarificationAsked {
 		v.fail("unexpected clarification was asked")
+	}
+
+	// Forbidden articles: spam, near-duplicates and index pollution must not be
+	// retrieved, and must certainly not be cited.
+	if len(gc.Expected.ForbiddenArticleIDs) > 0 {
+		if hits := ForbiddenHits(result.RetrievedArticleIDs, gc.Expected.ForbiddenArticleIDs); len(hits) > 0 {
+			v.fail("forbidden articles in retrieval: " + strings.Join(hits, ", "))
+		}
+		if hits := ForbiddenHits(result.CitedArticleIDs, gc.Expected.ForbiddenArticleIDs); len(hits) > 0 {
+			v.fail("forbidden articles cited: " + strings.Join(hits, ", "))
+		}
+	}
+
+	// Expected no-answer: the corpus has nothing, so silence beats invention.
+	if gc.Expected.ExpectNoAnswer {
+		if result.CitationCount > 0 {
+			v.failf("expected no citations for an unanswerable query, got %d", result.CitationCount)
+		}
+		return v
+	}
+
+	// Retrieval recall floor over the verified article set.
+	if gc.Expected.MinExpectedRecall > 0 && len(gc.Expected.RelevantArticleIDs) > 0 {
+		recall := RecallAtKByID(gc.Expected.RelevantArticleIDs, result.RetrievedArticleIDs, defaultRecallK)
+		if recall+recallEpsilon < gc.Expected.MinExpectedRecall {
+			v.failf("recall@%d: got %.2f, want >= %.2f", defaultRecallK, recall, gc.Expected.MinExpectedRecall)
+		}
+	}
+
+	// Articles the answer is required to cite.
+	for _, id := range gc.Expected.ExpectedCitationArticleIDs {
+		if !containsID(result.CitedArticleIDs, id) {
+			v.failf("expected citation of article %s not found", id)
+		}
 	}
 
 	// Irrelevant titles check
@@ -132,6 +174,81 @@ func RecallAtK(relevantTitles []string, retrievedTitles []string, k int) float64
 		}
 	}
 	return float64(found) / float64(len(relevantTitles))
+}
+
+// RecallAtKByID computes recall@K over article ids. Unlike RecallAtK it matches
+// ids exactly: a golden case names the articles a correct retrieval must reach,
+// so a substring rule would turn a near-miss into a pass.
+func RecallAtKByID(relevantIDs []string, retrievedIDs []string, k int) float64 {
+	if len(relevantIDs) == 0 {
+		return 0.0
+	}
+	topK := truncate(retrievedIDs, k)
+	retrieved := toSet(topK)
+	found := 0
+	for _, id := range uniqueIDs(relevantIDs) {
+		if retrieved[id] {
+			found++
+		}
+	}
+	return float64(found) / float64(len(uniqueIDs(relevantIDs)))
+}
+
+// ReciprocalRankByID returns 1/rank of the first relevant article, 0 when none
+// of them was retrieved. Averaged over cases this is MRR.
+func ReciprocalRankByID(relevantIDs []string, retrievedIDs []string) float64 {
+	if len(relevantIDs) == 0 || len(retrievedIDs) == 0 {
+		return 0.0
+	}
+	relevant := toSet(relevantIDs)
+	for i, id := range retrievedIDs {
+		if relevant[id] {
+			return 1.0 / float64(i+1)
+		}
+	}
+	return 0.0
+}
+
+// RerankGain is the nDCG@K the reranker added on top of the order it was given.
+// A negative value means the cross-encoder demoted articles the fusion stage had
+// already ranked correctly.
+func RerankGain(grades map[string]int, preRerankIDs, postRerankIDs []string, k int) float64 {
+	return NDCGAtK(grades, postRerankIDs, k) - NDCGAtK(grades, preRerankIDs, k)
+}
+
+// ForbiddenHits returns the forbidden ids that appear in the given list, in the
+// order the list presents them.
+func ForbiddenHits(ids []string, forbiddenIDs []string) []string {
+	if len(ids) == 0 || len(forbiddenIDs) == 0 {
+		return nil
+	}
+	forbidden := toSet(forbiddenIDs)
+	var hits []string
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if forbidden[id] && !seen[id] {
+			hits = append(hits, id)
+			seen[id] = true
+		}
+	}
+	return hits
+}
+
+// CitationRecallByID reports the fraction of must-cite articles the answer
+// actually cited.
+func CitationRecallByID(expectedIDs []string, citedIDs []string) float64 {
+	expected := uniqueIDs(expectedIDs)
+	if len(expected) == 0 {
+		return 0.0
+	}
+	cited := toSet(citedIDs)
+	found := 0
+	for _, id := range expected {
+		if cited[id] {
+			found++
+		}
+	}
+	return float64(found) / float64(len(expected))
 }
 
 // NDCGAtK computes nDCG@K (Normalized Discounted Cumulative Gain).
@@ -246,4 +363,32 @@ func toSet(items []string) map[string]bool {
 		s[item] = true
 	}
 	return s
+}
+
+func containsID(ids []string, want string) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
+func uniqueIDs(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func truncate(ids []string, k int) []string {
+	if k >= 0 && k < len(ids) {
+		return ids[:k]
+	}
+	return ids
 }

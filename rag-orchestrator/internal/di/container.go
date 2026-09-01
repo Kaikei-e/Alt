@@ -20,6 +20,7 @@ import (
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/infra/config"
 	"rag-orchestrator/internal/infra/httpclient"
+	"rag-orchestrator/internal/infra/metrics"
 	"rag-orchestrator/internal/usecase"
 	"rag-orchestrator/internal/worker"
 )
@@ -55,6 +56,11 @@ type ApplicationComponents struct {
 	LetterFetcher   domain.MorningLetterFetcher
 	EmbeddingModel  string
 	EmbedderTimeout int
+
+	// CoverageSampler periodically publishes the corpus census
+	// (rag_document_coverage) so a chunker/embedder version drift is visible
+	// before it silently rots retrieval. main starts and stops it.
+	CoverageSampler *metrics.CoverageSampler
 
 	// EventEmitter publishes augur.conversation_linked.v1 into
 	// knowledge-sovereign so Knowledge Loop's Surface Planner v2 resolver
@@ -127,13 +133,13 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		QuotaExpanded: cfg.RAG.QuotaExpanded,
 		RRFK:          cfg.RAG.RRFK,
 		Reranking: usecase.RerankingConfig{
-			Enabled: cfg.Rerank.Enabled,
-			TopK:    cfg.Rerank.TopK,
-			Timeout: time.Duration(cfg.Rerank.Timeout) * time.Second,
+			Enabled:       cfg.Rerank.Enabled,
+			TopK:          cfg.Rerank.TopK,
+			MaxCandidates: cfg.Rerank.MaxCandidates,
+			Timeout:       time.Duration(cfg.Rerank.Timeout) * time.Second,
 		},
 		HybridSearch: usecase.HybridSearchConfig{
 			Enabled:   cfg.Hybrid.Enabled,
-			Alpha:     cfg.Hybrid.Alpha,
 			BM25Limit: cfg.Hybrid.BM25Limit,
 		},
 		LanguageAllocation: usecase.LanguageAllocationConfig{
@@ -154,7 +160,14 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		opts = append(opts, usecase.WithReranker(rerankerClient))
 		log.Info("reranker_enabled",
 			slog.String("url", cfg.Rerank.URL),
-			slog.String("model", cfg.Rerank.Model))
+			slog.String("model", cfg.Rerank.Model),
+			slog.Int("top_k", cfg.Rerank.TopK),
+			slog.Int("max_candidates", cfg.Rerank.MaxCandidates),
+			slog.Int("timeout_seconds", cfg.Rerank.Timeout))
+	} else {
+		log.Info("reranker_disabled",
+			slog.String("reason", "RERANK_ENABLED=false"),
+			slog.String("degraded_mode", "rerank_skipped"))
 	}
 	// Neighbor searcher for Ask Augur's inline-projected related citations.
 	// Always instantiated against pgvector + tsvector RRF independent of the
@@ -174,7 +187,6 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 			opts = append(opts, usecase.WithBM25Searcher(searchClient))
 			log.Info("hybrid_search_enabled",
 				slog.String("bm25_source", "meilisearch"),
-				slog.Float64("alpha", cfg.Hybrid.Alpha),
 				slog.Int("bm25_limit", cfg.Hybrid.BM25Limit))
 		}
 	}
@@ -296,9 +308,18 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 
 	// Ask Augur related-citation inline projection (ADR-000927). Wired
 	// unconditionally so the done-event INSERT carries the neighbor snapshot
-	// regardless of which bm25_source primary retrieval uses.
-	answerOpts = append(answerOpts, usecase.WithNeighborSearcher(neighborSearcher))
-	log.Info("neighbor_searcher_enabled")
+	// regardless of which bm25_source primary retrieval uses. The encoder is
+	// part of that wiring, not an extra: without a query vector the neighbor
+	// SQL drops its pgvector arm and the lexical arm alone returns nothing on
+	// a Japanese corpus.
+	answerOpts = append(answerOpts,
+		usecase.WithNeighborSearcher(neighborSearcher),
+		usecase.WithNeighborEncoder(embedder),
+	)
+	log.Info("neighbor_searcher_enabled",
+		slog.String("bm25_source", cfg.Hybrid.BM25Source),
+		slog.String("vector_arm", "pgvector"),
+		slog.String("embedder_model", cfg.Embedder.Model))
 
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase, promptBuilder, generator, usecase.NewOutputValidator(cfg.RAG.MinAnswerLength),
@@ -343,6 +364,21 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		return usecase.NewIndexArticleUsecase(docRepo, chunkRepo, txManager, hasher, chunker, encoder)
 	}
 
+	// Answer-path metrics need one deployment fact a single request cannot
+	// show: whether reranking was supposed to happen at all.
+	metrics.ConfigureAugur(cfg.Rerank.Enabled, log)
+
+	// Corpus census. The target pair is read from the live chunker and
+	// embedder rather than a constant, so changing EMBEDDING_MODEL moves the
+	// target on its own instead of leaving the gauge lying.
+	coverageSampler := metrics.NewCoverageSampler(
+		pool,
+		time.Duration(cfg.RAG.CoverageSampleIntervalMinutes)*time.Minute,
+		string(chunker.Version()),
+		embedder.Version(),
+		log,
+	)
+
 	// Worker
 	jobWorker := worker.NewJobWorker(jobRepo, indexUsecase, log)
 
@@ -379,6 +415,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		MorningLetterUsecase: morningLetterUsecase,
 		ConversationUsecase:  conversationUsecase,
 		EventEmitter:         eventEmitter,
+		CoverageSampler:      coverageSampler,
 		Worker:               jobWorker,
 		EmbedderFactory:      embedderFactory,
 		IndexUsecaseFactory:  indexUsecaseFactory,

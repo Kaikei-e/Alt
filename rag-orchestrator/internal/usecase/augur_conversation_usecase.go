@@ -25,6 +25,20 @@ type AugurConversationUsecase interface {
 	AppendUserTurn(ctx context.Context, conversationID uuid.UUID, content string) error
 	AppendAssistantTurn(ctx context.Context, conversationID uuid.UUID, content string, citations []domain.AugurCitation, relatedCitations []domain.AugurCitation) error
 
+	// AppendFallbackAssistantTurn persists an answer the pipeline degraded on,
+	// tagged with the fallback code and reason. These turns used to be dropped
+	// entirely, which meant history — and every metric derived from it — only
+	// ever saw the answers that went well.
+	AppendFallbackAssistantTurn(
+		ctx context.Context,
+		conversationID uuid.UUID,
+		content string,
+		citations []domain.AugurCitation,
+		relatedCitations []domain.AugurCitation,
+		fallbackCode string,
+		fallbackReason string,
+	) error
+
 	// CreateSessionFromLoopEntry provisions a new conversation seeded with a
 	// Knowledge Loop entry's Why context. The caller (alt-frontend-sv BFF via
 	// alt-backend) is trusted to have resolved the entry through sovereign;
@@ -161,7 +175,7 @@ func renderLoopSeed(whyText string, refs []domain.AugurCitation) string {
 }
 
 func (u *augurConversationUsecase) AppendUserTurn(ctx context.Context, conversationID uuid.UUID, content string) error {
-	return u.appendTurn(ctx, conversationID, "user", content, nil, nil)
+	return u.appendTurn(ctx, conversationID, "user", content, nil, nil, nil)
 }
 
 func (u *augurConversationUsecase) AppendAssistantTurn(
@@ -171,7 +185,23 @@ func (u *augurConversationUsecase) AppendAssistantTurn(
 	citations []domain.AugurCitation,
 	relatedCitations []domain.AugurCitation,
 ) error {
-	return u.appendTurn(ctx, conversationID, "assistant", content, citations, relatedCitations)
+	return u.appendTurn(ctx, conversationID, "assistant", content, citations, relatedCitations, nil)
+}
+
+func (u *augurConversationUsecase) AppendFallbackAssistantTurn(
+	ctx context.Context,
+	conversationID uuid.UUID,
+	content string,
+	citations []domain.AugurCitation,
+	relatedCitations []domain.AugurCitation,
+	fallbackCode string,
+	fallbackReason string,
+) error {
+	marker := &domain.AugurFallback{Code: fallbackCode, Reason: fallbackReason}
+	if marker.Code == "" {
+		marker.Code = "unspecified"
+	}
+	return u.appendTurn(ctx, conversationID, "assistant", content, citations, relatedCitations, marker)
 }
 
 func (u *augurConversationUsecase) appendTurn(
@@ -181,6 +211,7 @@ func (u *augurConversationUsecase) appendTurn(
 	content string,
 	citations []domain.AugurCitation,
 	relatedCitations []domain.AugurCitation,
+	fallback *domain.AugurFallback,
 ) error {
 	if conversationID == uuid.Nil {
 		return errors.New("augur usecase: conversationID required")
@@ -195,6 +226,7 @@ func (u *augurConversationUsecase) appendTurn(
 		Content:          content,
 		Citations:        citations,
 		RelatedCitations: relatedCitations,
+		Fallback:         fallback,
 		CreatedAt:        u.clock().UTC(),
 	}
 	if err := u.repo.AppendMessage(ctx, msg); err != nil {

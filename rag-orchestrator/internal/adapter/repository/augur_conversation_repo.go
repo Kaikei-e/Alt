@@ -65,11 +65,7 @@ func (r *augurConversationRepository) AppendMessage(ctx context.Context, msg *do
 	if msg == nil {
 		return errors.New("augur repo: nil message")
 	}
-	citations := msg.Citations
-	if citations == nil {
-		citations = []domain.AugurCitation{}
-	}
-	citationsPayload, err := json.Marshal(citations)
+	citationsPayload, err := marshalCitationsColumn(msg.Citations, msg.Fallback)
 	if err != nil {
 		return fmt.Errorf("marshal citations: %w", err)
 	}
@@ -98,6 +94,49 @@ func (r *augurConversationRepository) AppendMessage(ctx context.Context, msg *do
 	return nil
 }
 
+// citationsEnvelope is the object form of augur_messages.citations, used only
+// for turns that carry a fallback marker.
+//
+// The column stays a bare JSON array for every normal turn, so the ~84 rows
+// written before this existed — and any SQL that reads them as an array — keep
+// working untouched. A degraded turn switches to this object, which makes it
+// selectable (`jsonb_typeof(citations) = 'object'`) without a migration.
+type citationsEnvelope struct {
+	Items    []domain.AugurCitation `json:"items"`
+	Fallback *domain.AugurFallback  `json:"fallback,omitempty"`
+}
+
+func marshalCitationsColumn(citations []domain.AugurCitation, fallback *domain.AugurFallback) ([]byte, error) {
+	if citations == nil {
+		citations = []domain.AugurCitation{}
+	}
+	if fallback == nil {
+		return json.Marshal(citations)
+	}
+	return json.Marshal(citationsEnvelope{Items: citations, Fallback: fallback})
+}
+
+func unmarshalCitationsColumn(raw []byte) ([]domain.AugurCitation, *domain.AugurFallback, error) {
+	for _, b := range raw {
+		switch b {
+		case ' ', '\t', '\n', '\r':
+			continue
+		case '{':
+			var env citationsEnvelope
+			if err := json.Unmarshal(raw, &env); err != nil {
+				return nil, nil, fmt.Errorf("unmarshal citations envelope: %w", err)
+			}
+			return env.Items, env.Fallback, nil
+		}
+		break
+	}
+	var citations []domain.AugurCitation
+	if err := json.Unmarshal(raw, &citations); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal citations: %w", err)
+	}
+	return citations, nil, nil
+}
+
 func (r *augurConversationRepository) ListMessages(ctx context.Context, conversationID uuid.UUID) ([]domain.AugurMessage, error) {
 	const q = `
 		SELECT id, conversation_id, role, content, citations, related_citations, created_at
@@ -119,9 +158,12 @@ func (r *augurConversationRepository) ListMessages(ctx context.Context, conversa
 			return nil, fmt.Errorf("scan augur_message: %w", err)
 		}
 		if len(citationsRaw) > 0 {
-			if err := json.Unmarshal(citationsRaw, &m.Citations); err != nil {
-				return nil, fmt.Errorf("unmarshal citations: %w", err)
+			citations, fallback, err := unmarshalCitationsColumn(citationsRaw)
+			if err != nil {
+				return nil, err
 			}
+			m.Citations = citations
+			m.Fallback = fallback
 		}
 		if len(relatedRaw) > 0 {
 			if err := json.Unmarshal(relatedRaw, &m.RelatedCitations); err != nil {

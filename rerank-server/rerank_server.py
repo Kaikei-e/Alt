@@ -1,12 +1,13 @@
-"""Rerank server for M-series Mac (torch/MPS) and Docker (ONNX CPU int8).
+"""Cross-encoder rerank server (torch/MPS for local dev, ONNX CPU int8 in Docker).
 
 Provides a REST API compatible with the rag-orchestrator's rerank client.
 The backend is selected via RERANK_BACKEND:
   - "torch" (default): MPS/CUDA/CPU via sentence-transformers CrossEncoder.
-    Used for the Mac deployment (see deploy.sh).
   - "onnx": CPU-only, dynamic int8-quantized (avx2) ONNX Runtime. Used by the
     Docker container; the quantized model is exported once into a mounted
     volume on first boot if it isn't already there.
+
+The served model is chosen with RERANK_MODEL (see SUPPORTED_MODELS).
 
 Usage:
     uvicorn rerank_server:app --host 0.0.0.0 --port 8080
@@ -21,12 +22,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
 
 # Limit MPS memory cache to reduce memory pressure on shared Apple Silicon GPU memory
 os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
@@ -49,23 +50,102 @@ else:
 
 DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
 
-# Backend selection: "torch" preserves the existing Mac/MPS deployment;
-# "onnx" is the CPU int8 path used by the Docker container.
+# Rerankers whose ONNX export path was checked against the pinned toolchain
+# (optimum-onnx 0.1.0 / transformers 4.57.6). The XLM-RoBERTa pair needs no
+# change at all; ModernBERT works because optimum-onnx registers
+# ModernBertOnnxConfig for text-classification with MIN_TRANSFORMERS_VERSION
+# 4.48.0, which the pinned 4.57.6 satisfies.
+#
+# RERANK_MODEL is not restricted to this table -- an unlisted model only loses
+# the startup assurance, and the startup log says so.
+SUPPORTED_MODELS: dict[str, str] = {
+    "BAAI/bge-reranker-v2-m3": "XLM-RoBERTa, Apache-2.0, JQaRA 0.673",
+    "hotchpotch/japanese-bge-reranker-v2-m3-v1": "XLM-RoBERTa, MIT, JQaRA 0.6918",
+    "hotchpotch/japanese-reranker-base-v2": "ModernBERT, MIT, JQaRA 0.7845",
+    "hotchpotch/japanese-reranker-xsmall-v2": "ModernBERT, MIT, JQaRA 0.7845, fastest",
+    # Highest JQaRA of the four. Publishes no onnx/ folder, so first boot always
+    # runs the local export; the community conversions on the Hub have
+    # single-digit download counts and are not the supported route.
+    "cl-nagoya/ruri-v3-reranker-310m": "ModernBERT, Apache-2.0, JQaRA 0.8688, 8192 ctx",
+}
+
+# The character class keeps a repo id from escaping RERANK_MODEL_CACHE_ROOT
+# when the cache dir is derived from it below.
+_HF_REPO_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _resolve_model() -> str:
+    """Read RERANK_MODEL, rejecting anything that is not a plain HF repo id."""
+    model = os.environ.get("RERANK_MODEL", DEFAULT_MODEL).strip()
+    if not _HF_REPO_ID_PATTERN.match(model):
+        raise ValueError(
+            f"RERANK_MODEL={model!r} is not a Hugging Face repo id of the form 'org/name'"
+        )
+    return model
+
+
+def _resolve_model_dir(model: str) -> str:
+    """Where the exported/quantized ONNX copy of `model` lives.
+
+    Derived from the model name by default so that flipping RERANK_MODEL cannot
+    silently serve the previous model's cached export out of the same volume.
+    """
+    explicit = os.environ.get("RERANK_MODEL_DIR")
+    if explicit:
+        return explicit
+    cache_root = os.environ.get("RERANK_MODEL_CACHE_ROOT", "/models")
+    return str(Path(cache_root, f"{model.split('/')[-1]}-onnx"))
+
+
+# Backend selection: "torch" preserves the MPS/CUDA path used for local
+# experiments; "onnx" is the CPU int8 path used by the Docker container.
 RERANK_BACKEND = os.environ.get("RERANK_BACKEND", "torch")
-RERANK_MODEL_DIR = os.environ.get("RERANK_MODEL_DIR", "/models/bge-reranker-v2-m3-onnx")
+RERANK_MODEL = _resolve_model()
+RERANK_MODEL_DIR = _resolve_model_dir(RERANK_MODEL)
 RERANK_BATCH_SIZE = int(os.environ.get("RERANK_BATCH_SIZE", "16"))
 RERANK_MAX_LENGTH = int(os.environ.get("RERANK_MAX_LENGTH", "512"))
+
+# Pairs handed to a single predict() call. Defaults to one batch, which is what
+# makes the deadline check in _predict_sync fire between batches instead of only
+# once per request.
+RERANK_CHUNK_SIZE = int(os.environ.get("RERANK_CHUNK_SIZE", str(RERANK_BATCH_SIZE)))
 
 # Dynamic int8 quantization tuned for CPUs without AVX-512 (see
 # sentence_transformers.backend.export_dynamic_quantized_onnx_model), saved
 # by sentence-transformers under "<RERANK_MODEL_DIR>/onnx/<this file name>".
 ONNX_QUANTIZED_FILE_NAME = "model_quint8_avx2.onnx"
 
-# Bound batch size and per-candidate length so an unbounded request can't
-# blow up tokenization/inference memory on the shared Apple Silicon GPU.
-MAX_CANDIDATES = int(os.environ.get("RERANK_MAX_CANDIDATES", "200"))
+# Total server-side budget for one /v1/rerank call, covering the wait for the
+# inference lock as well as inference itself. Keep it BELOW rag-orchestrator's
+# RERANK_TIMEOUT (compose/rag.yaml: 12s) so the server gives up first and the
+# client sees a 504 instead of a dead connection -- otherwise the server keeps
+# burning CPU on a result nobody will read.
+SERVER_TIMEOUT_SECONDS = float(os.environ.get("RERANK_SERVER_TIMEOUT", "10"))
+
+# Per-candidate inference cost, used to derive the early-reject bound below.
+# ADR-000951 measured two very different rates on this same int8 CPU path:
+#   ~52ms/candidate   Ask Augur production traffic (10 candidates ~520ms)
+#   ~250ms/candidate  synthetic ~500-token passages, which saturate
+#                     RERANK_MAX_LENGTH (15 candidates, p95 3.8s)
+# The bound uses the long-passage rate, because MAX_CANDIDATE_LENGTH lets any
+# request be the long-passage case. ADR-000951 also records 30 long passages at
+# 14-17s, i.e. cost grows faster than linearly once past one batch; the
+# per-chunk deadline check in _predict_sync is what catches that tail, not this
+# static bound.
+CANDIDATE_BUDGET_MS = float(os.environ.get("RERANK_CANDIDATE_BUDGET_MS", "250"))
+
+
+def _default_max_candidates() -> int:
+    """Largest candidate list that fits the server budget at the long-passage rate."""
+    return max(1, int(SERVER_TIMEOUT_SECONDS * 1000 / CANDIDATE_BUDGET_MS))
+
+
+# Bound the candidate list and per-candidate length so an oversized request is
+# rejected up front rather than timing out halfway through. Derived rather than
+# hard-coded so that raising RERANK_SERVER_TIMEOUT cannot silently leave the two
+# knobs contradicting each other.
+MAX_CANDIDATES = int(os.environ.get("RERANK_MAX_CANDIDATES", str(_default_max_candidates())))
 MAX_CANDIDATE_LENGTH = int(os.environ.get("RERANK_MAX_CANDIDATE_LENGTH", "4000"))
-INFERENCE_TIMEOUT_SECONDS = float(os.environ.get("RERANK_INFERENCE_TIMEOUT_SECONDS", "30"))
 MAX_TOP_K = MAX_CANDIDATES
 
 # CrossEncoder is not safe for concurrent inference on a single instance, and
@@ -86,12 +166,42 @@ _inference_semaphore = asyncio.Semaphore(1)
 _inference_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rerank-inference")
 
 
-def _predict_sync(model: CrossEncoder, pairs: list[tuple[str, str]]) -> Any:
-    """Run blocking CrossEncoder inference. Called via _inference_executor."""
+class InferenceDeadlineExceeded(RuntimeError):
+    """The request's deadline passed before the remaining chunks could be scored."""
+
+
+def _predict_sync(
+    model: CrossEncoder, pairs: list[tuple[str, str]], deadline: float
+) -> list[float]:
+    """Score `pairs` in chunks, abandoning the work once `deadline` has passed.
+
+    Chunking buys two things over one big predict() call: the deadline is
+    re-checked between chunks, so an abandoned request stops burning CPU
+    instead of running to completion in an orphaned thread; and pairs are
+    ordered longest-first across the whole request, so padding waste stays
+    inside a chunk rather than being spread over every batch.
+
+    `deadline` is a time.monotonic() timestamp.
+    """
+    order = sorted(range(len(pairs)), key=lambda i: len(pairs[i][1]), reverse=True)
+    scores = [0.0] * len(pairs)
+
     with torch.inference_mode():
-        if RERANK_BACKEND == "onnx":
-            return model.predict(pairs, batch_size=RERANK_BATCH_SIZE)
-        return model.predict(pairs)
+        for start in range(0, len(order), RERANK_CHUNK_SIZE):
+            if time.monotonic() >= deadline:
+                raise InferenceDeadlineExceeded(
+                    f"deadline passed after {start}/{len(order)} candidates"
+                )
+            indices = order[start : start + RERANK_CHUNK_SIZE]
+            chunk = [pairs[i] for i in indices]
+            if RERANK_BACKEND == "onnx":
+                chunk_scores = model.predict(chunk, batch_size=RERANK_BATCH_SIZE)
+            else:
+                chunk_scores = model.predict(chunk)
+            for i, score in zip(indices, chunk_scores, strict=True):
+                scores[i] = float(score)
+
+    return scores
 
 
 class RerankRequest(BaseModel):
@@ -100,12 +210,10 @@ class RerankRequest(BaseModel):
     model_config = ConfigDict(strict=True, frozen=True)
 
     query: str = Field(..., description="The query to rank candidates against")
-    candidates: list[str] = Field(
-        ...,
-        max_length=MAX_CANDIDATES,
-        description="List of candidate texts to rank",
+    candidates: list[str] = Field(..., description="List of candidate texts to rank")
+    model: str | None = Field(
+        None, description="Model name; must match the server's RERANK_MODEL when given"
     )
-    model: str = Field(DEFAULT_MODEL, description="Model name (must match loaded model)")
     top_k: int | None = Field(
         None,
         ge=1,
@@ -115,7 +223,13 @@ class RerankRequest(BaseModel):
 
     @field_validator("candidates")
     @classmethod
-    def _validate_candidate_lengths(cls, candidates: list[str]) -> list[str]:
+    def _validate_candidates(cls, candidates: list[str]) -> list[str]:
+        if len(candidates) > MAX_CANDIDATES:
+            raise ValueError(
+                f"too many candidates: {len(candidates)} exceeds "
+                f"RERANK_MAX_CANDIDATES={MAX_CANDIDATES}; a larger list cannot be "
+                f"scored within RERANK_SERVER_TIMEOUT={SERVER_TIMEOUT_SECONDS}s"
+            )
         for candidate in candidates:
             if len(candidate) > MAX_CANDIDATE_LENGTH:
                 raise ValueError(
@@ -125,10 +239,11 @@ class RerankRequest(BaseModel):
 
     @field_validator("model")
     @classmethod
-    def _validate_model(cls, model: str) -> str:
-        if model != DEFAULT_MODEL:
+    def _validate_model(cls, model: str | None) -> str | None:
+        if model is not None and model != RERANK_MODEL:
             raise ValueError(
-                f"unsupported model {model!r}; only {DEFAULT_MODEL!r} is available"
+                f"unsupported model {model!r}; this server serves {RERANK_MODEL!r} "
+                f"(set via RERANK_MODEL)"
             )
         return model
 
@@ -174,9 +289,16 @@ class RootResponse(BaseModel):
 
 
 def _load_torch_model() -> CrossEncoder:
-    """Load the FP16 torch CrossEncoder (MPS/CUDA/CPU)."""
+    """Load the FP16 torch CrossEncoder (MPS/CUDA/CPU).
+
+    Local-experiment path only. The fp16 logits here are the configuration that
+    sentence-transformers 6.0.0 upcasts to float32 before the sigmoid, because
+    saturating fp16 collapses close scores onto 1.0 and flattens the ranking.
+    That fix is out of reach while optimum-onnx caps transformers below 4.58, so
+    prefer the onnx backend for anything ranking-sensitive.
+    """
     model = CrossEncoder(
-        DEFAULT_MODEL,
+        RERANK_MODEL,
         device=DEVICE,
         model_kwargs={"dtype": "float16"},
     )
@@ -194,17 +316,25 @@ def _export_quantized_onnx_model(model_dir: str) -> None:
     """
     from sentence_transformers.backend import export_dynamic_quantized_onnx_model
 
-    logger.info("Exporting quantized ONNX model to %s (one-time; downloads the base model)", model_dir)
-    export_model = CrossEncoder(DEFAULT_MODEL, backend="onnx")
+    logger.info(
+        "Exporting quantized ONNX model %s to %s (one-time; downloads the base model)",
+        RERANK_MODEL,
+        model_dir,
+    )
+    export_model = CrossEncoder(RERANK_MODEL, backend="onnx")
     export_model.save_pretrained(model_dir)
     export_dynamic_quantized_onnx_model(export_model, "avx2", model_dir)
     logger.info("Quantized ONNX export complete")
 
 
 def _load_onnx_model() -> CrossEncoder:
-    """Load the CPU int8 ONNX CrossEncoder, exporting/quantizing it first if needed."""
+    """Load the CPU int8 ONNX CrossEncoder, exporting/quantizing it first if needed.
+
+    No dtype is passed: dynamic quantization stores int8 *weights* but keeps
+    activations and output logits in fp32, so the sigmoid sees fp32 here.
+    """
     quantized_path = Path(RERANK_MODEL_DIR, "onnx", ONNX_QUANTIZED_FILE_NAME)
-    if not quantized_path.exists():
+    if not quantized_path.is_file():
         _export_quantized_onnx_model(RERANK_MODEL_DIR)
     return CrossEncoder(
         RERANK_MODEL_DIR,
@@ -223,15 +353,27 @@ async def _load_model(app: FastAPI) -> None:
     immediately, instead of the port staying closed for as long as a slow
     first-boot ONNX export takes.
     """
-    logger.info("Loading model %s on device: %s (backend=%s)", DEFAULT_MODEL, DEVICE, RERANK_BACKEND)
+    logger.info(
+        "rerank_model_selected model=%s known_good=%s notes=%s backend=%s device=%s dir=%s",
+        RERANK_MODEL,
+        RERANK_MODEL in SUPPORTED_MODELS,
+        SUPPORTED_MODELS.get(RERANK_MODEL, "unverified export path"),
+        RERANK_BACKEND,
+        DEVICE,
+        RERANK_MODEL_DIR,
+    )
     loader = _load_onnx_model if RERANK_BACKEND == "onnx" else _load_torch_model
     try:
         model = await asyncio.to_thread(loader)
-    except Exception:
-        logger.exception("Model load failed (backend=%s); /health will stay 503", RERANK_BACKEND)
+    except (OSError, ValueError, RuntimeError, ImportError):
+        logger.exception(
+            "rerank_model_load_failed model=%s backend=%s (health stays 503)",
+            RERANK_MODEL,
+            RERANK_BACKEND,
+        )
         return
     app.state.model = model
-    logger.info("Model loaded successfully (backend=%s)", RERANK_BACKEND)
+    logger.info("rerank_model_loaded model=%s backend=%s", RERANK_MODEL, RERANK_BACKEND)
 
 
 @asynccontextmanager
@@ -252,6 +394,10 @@ app = FastAPI(
 )
 
 
+def _chunk_count(candidate_count: int) -> int:
+    return -(-candidate_count // RERANK_CHUNK_SIZE)
+
+
 @app.post("/v1/rerank", response_model=RerankResponse)
 async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
     """Rerank candidates based on query relevance.
@@ -263,39 +409,61 @@ async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     if not req.candidates:
-        return RerankResponse(results=[], model=DEFAULT_MODEL, processing_time_ms=0.0)
+        return RerankResponse(results=[], model=RERANK_MODEL, processing_time_ms=0.0)
 
     start = time.perf_counter()
+    deadline = time.monotonic() + SERVER_TIMEOUT_SECONDS
 
-    # Create query-candidate pairs for cross-encoder
     pairs = [(req.query, candidate) for candidate in req.candidates]
 
-    # Offload the blocking inference call to a worker thread so the event loop
-    # (and endpoints like /health) stay responsive, and serialize access since
-    # CrossEncoder is not thread-safe for concurrent predict() calls. A bound
-    # is required so a hung/oversized inference can't stall requests forever.
+    # The timeout wraps the lock acquisition too: a request queued behind a
+    # long inference has already spent part of the client's budget, and
+    # starting a fresh full-length inference at that point produces a result
+    # the client has stopped waiting for.
     try:
-        async with _inference_semaphore:
-            async with asyncio.timeout(INFERENCE_TIMEOUT_SECONDS):
+        async with asyncio.timeout(SERVER_TIMEOUT_SECONDS):
+            async with _inference_semaphore:
                 loop = asyncio.get_running_loop()
                 scores = await loop.run_in_executor(
-                    _inference_executor, _predict_sync, model, pairs
+                    _inference_executor, _predict_sync, model, pairs, deadline
                 )
-    except TimeoutError as exc:
+    except (TimeoutError, InferenceDeadlineExceeded) as exc:
+        logger.warning(
+            "rerank_timeout model=%s candidates=%d chunks=%d batch_size=%d "
+            "elapsed_ms=%.1f budget_ms=%.1f",
+            RERANK_MODEL,
+            len(req.candidates),
+            _chunk_count(len(req.candidates)),
+            RERANK_BATCH_SIZE,
+            (time.perf_counter() - start) * 1000,
+            SERVER_TIMEOUT_SECONDS * 1000,
+        )
         raise HTTPException(status_code=504, detail="Rerank inference timed out") from exc
 
-    # Sort by score descending, keeping track of original indices
-    indexed_scores = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-
-    # Apply top_k limit if specified
-    if req.top_k is not None and req.top_k > 0:
-        indexed_scores = indexed_scores[: req.top_k]
-
-    results = [RerankResult(index=idx, score=float(score)) for idx, score in indexed_scores]
-
+    results = _rank(scores, req.top_k)
     elapsed_ms = (time.perf_counter() - start) * 1000
 
-    return RerankResponse(results=results, model=DEFAULT_MODEL, processing_time_ms=elapsed_ms)
+    logger.info(
+        "rerank_completed model=%s candidates=%d returned=%d chunks=%d batch_size=%d "
+        "elapsed_ms=%.1f budget_ms=%.1f",
+        RERANK_MODEL,
+        len(req.candidates),
+        len(results),
+        _chunk_count(len(req.candidates)),
+        RERANK_BATCH_SIZE,
+        elapsed_ms,
+        SERVER_TIMEOUT_SECONDS * 1000,
+    )
+
+    return RerankResponse(results=results, model=RERANK_MODEL, processing_time_ms=elapsed_ms)
+
+
+def _rank(scores: Sequence[float], top_k: int | None) -> list[RerankResult]:
+    """Sort scores descending, keeping original indices, then apply top_k."""
+    indexed_scores = sorted(enumerate(scores), key=lambda pair: pair[1], reverse=True)
+    if top_k is not None and top_k > 0:
+        indexed_scores = indexed_scores[:top_k]
+    return [RerankResult(index=idx, score=float(score)) for idx, score in indexed_scores]
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -311,7 +479,7 @@ async def health(request: Request, response: Response) -> HealthResponse:
     return HealthResponse(
         status="ok" if model_loaded else "loading",
         device=DEVICE,
-        model=DEFAULT_MODEL,
+        model=RERANK_MODEL,
     )
 
 
@@ -322,7 +490,7 @@ async def root() -> RootResponse:
         service="rerank-server",
         version="1.0.0",
         device=DEVICE,
-        model=DEFAULT_MODEL,
+        model=RERANK_MODEL,
     )
 
 

@@ -2,6 +2,7 @@ package eval
 
 import (
 	"context"
+	"sort"
 	"unicode/utf8"
 
 	"rag-orchestrator/internal/domain"
@@ -58,13 +59,19 @@ func (a *PipelineAdapter) RunCase(ctx context.Context, gc GoldenCase) EvalResult
 	result.CitationCount = len(output.Citations)
 	result.QualityFlags = output.Debug.QualityFlags
 
-	for _, ctx := range output.Contexts {
-		result.RetrievedTitles = append(result.RetrievedTitles, ctx.Title)
-		result.RetrievedScores = append(result.RetrievedScores, ctx.Score)
+	for _, item := range output.Contexts {
+		result.RetrievedTitles = append(result.RetrievedTitles, item.Title)
+		result.RetrievedScores = append(result.RetrievedScores, item.Score)
+		result.RetrievedArticleIDs = append(result.RetrievedArticleIDs, item.ArticleID)
+		if item.RerankApplied {
+			result.RerankApplied = true
+		}
 	}
+	result.PreRerankArticleIDs = fusionOrderArticleIDs(output.Contexts)
 
 	for _, cite := range output.Citations {
 		result.CitedTitles = append(result.CitedTitles, cite.Title)
+		result.CitedArticleIDs = append(result.CitedArticleIDs, cite.ArticleID)
 	}
 
 	result.ExpandedQueries = output.Debug.ExpandedQueries
@@ -75,6 +82,25 @@ func (a *PipelineAdapter) RunCase(ctx context.Context, gc GoldenCase) EvalResult
 	result.BM25HitCount = output.Debug.BM25HitCount
 
 	return result
+}
+
+// fusionOrderArticleIDs reconstructs the order the reranker was handed, by
+// sorting the surviving contexts on their hybrid fusion score. The pipeline
+// does not report the candidates the reranker dropped, so the rerank delta is
+// measured over the surviving set only — it shows reordering quality, not
+// recall the reranker discarded.
+func fusionOrderArticleIDs(contexts []usecase.ContextItem) []string {
+	ordered := make([]usecase.ContextItem, len(contexts))
+	copy(ordered, contexts)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Score > ordered[j].Score
+	})
+
+	ids := make([]string, 0, len(ordered))
+	for _, item := range ordered {
+		ids = append(ids, item.ArticleID)
+	}
+	return ids
 }
 
 // RunAll executes all golden cases and returns results keyed by case ID.

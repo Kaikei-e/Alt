@@ -212,6 +212,18 @@ func (m *MockAugurConversationUsecase) AppendAssistantTurn(ctx context.Context, 
 	return m.Called(ctx, conversationID, content, citations, relatedCitations).Error(0)
 }
 
+func (m *MockAugurConversationUsecase) AppendFallbackAssistantTurn(
+	ctx context.Context,
+	conversationID uuid.UUID,
+	content string,
+	citations []domain.AugurCitation,
+	relatedCitations []domain.AugurCitation,
+	fallbackCode string,
+	fallbackReason string,
+) error {
+	return m.Called(ctx, conversationID, content, citations, relatedCitations, fallbackCode, fallbackReason).Error(0)
+}
+
 func (m *MockAugurConversationUsecase) ListConversations(ctx context.Context, userID uuid.UUID, limit int, afterActivity *time.Time, afterID *uuid.UUID) ([]domain.AugurConversationSummary, error) {
 	args := m.Called(ctx, userID, limit, afterActivity, afterID)
 	if args.Get(0) == nil {

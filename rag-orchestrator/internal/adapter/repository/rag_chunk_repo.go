@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"rag-orchestrator/internal/domain"
-	"sort"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -134,124 +133,93 @@ func (r *ragChunkRepository) InsertEvents(ctx context.Context, events []domain.R
 	return nil
 }
 
+// Overfetch bounds for the vector candidate pool. The pool only has to absorb
+// rows dropped by the current-version filter, which is a rare state for a chunk,
+// so a small multiple is enough.
+//
+// The size is also matched to what the index can actually produce: the cluster
+// sets hnsw.ef_search=100 (docker/postgres/postgresql-rag.conf), so the previous
+// 3x/500 pool asked for rows the scan was never going to return. Sizing is a
+// server setting, not a per-query one — no session-level SET belongs here.
+const (
+	searchOverfetchMultiplier = 2
+	searchOverfetchCap        = 200
+)
+
 // Search performs a vector search across all chunks (Augur use case).
-// Uses Two-Stage Search for HNSW index efficiency.
+//
+// One round-trip: the HNSW-friendly candidate scan and the metadata enrichment
+// are a single CTE query. Splitting them cost two round-trips per query, and
+// Stage 3 fans this out over the expanded queries — up to eighteen round-trips
+// for one question.
 func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, limit int) ([]domain.SearchResult, error) {
-	// Two-Stage Search for HNSW Index Efficiency
+	candidateLimit := limit * searchOverfetchMultiplier
+	if candidateLimit > searchOverfetchCap {
+		candidateLimit = searchOverfetchCap
+	}
+
+	// The candidates CTE keeps its own ORDER BY ... LIMIT on the bare distance
+	// expression, which is what lets pgvector use the HNSW index; the joins that
+	// would otherwise defeat it happen outside, over the small candidate set.
+	// The outer ORDER BY is not redundant: the cluster runs
+	// hnsw.iterative_scan='relaxed_order', so the CTE may hand back candidates
+	// slightly out of distance order.
 	//
-	// Stage 1: Pure vector search on rag_chunks (uses HNSW index efficiently)
-	// Stage 2: Enrich with metadata via JOIN (filters to current version only)
-	//
-	// This approach ensures HNSW index is used in Stage 1, then filters/enriches
-	// in Stage 2 with a smaller candidate set.
-
-	// Fetch more candidates in Stage 1 to account for filtering in Stage 2
-	// (some chunks may belong to non-current versions)
-	candidateMultiplier := 3
-	stage1Limit := limit * candidateMultiplier
-	if stage1Limit > 500 {
-		stage1Limit = 500 // Cap to prevent excessive memory usage
-	}
-
-	// Stage 1: Pure vector search (HNSW optimized)
-	stage1Query := `
-		SELECT c.id, (c.embedding <=> $1) as distance
-		FROM rag_chunks c
-		ORDER BY distance ASC
-		LIMIT $2
-	`
-	stage1Rows, err := r.getExecutor(ctx).Query(ctx, stage1Query, pgvector.NewVector(queryVector), stage1Limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search chunks (stage 1): %w", err)
-	}
-
-	// Collect chunk IDs and distances from Stage 1
-	type chunkCandidate struct {
-		id       uuid.UUID
-		distance float32
-	}
-	candidates := make([]chunkCandidate, 0, stage1Limit)
-	chunkIDs := make([]uuid.UUID, 0, stage1Limit)
-
-	for stage1Rows.Next() {
-		var id uuid.UUID
-		var distance float32
-		if err := stage1Rows.Scan(&id, &distance); err != nil {
-			stage1Rows.Close()
-			return nil, fmt.Errorf("failed to scan stage 1 result: %w", err)
-		}
-		candidates = append(candidates, chunkCandidate{id: id, distance: distance})
-		chunkIDs = append(chunkIDs, id)
-	}
-	stage1Rows.Close()
-	if err := stage1Rows.Err(); err != nil {
-		return nil, fmt.Errorf("stage 1 rows error: %w", err)
-	}
-
-	if len(candidates) == 0 {
-		return []domain.SearchResult{}, nil
-	}
-
-	// Build distance lookup map
-	distanceMap := make(map[uuid.UUID]float32, len(candidates))
-	for _, c := range candidates {
-		distanceMap[c.id] = c.distance
-	}
-
-	// Stage 2: Enrich with metadata, filter by current version only.
-	// c.embedding is intentionally excluded — see SearchWithinArticles for
-	// why scanning it into domain.RagChunk.Embedding is unsafe, and note
-	// no caller of Search() ever reads SearchResult.Chunk.Embedding.
-	stage2Query := `
+	// c.embedding is selected only inside the distance projection, never as its
+	// own column: scanning it into the non-nullable domain.RagChunk.Embedding
+	// panics on a NULL embedding, and no caller reads it.
+	query := `
+		WITH candidates AS (
+			SELECT c.id, (c.embedding <=> $1) AS distance
+			FROM rag_chunks c
+			ORDER BY c.embedding <=> $1
+			LIMIT $2
+		)
 		SELECT
 			c.id, c.version_id, c.ordinal, c.content, c.created_at,
 			d.article_id,
 			v.version_number,
 			v.title,
-			v.url
-		FROM rag_chunks c
+			v.url,
+			cand.distance
+		FROM candidates cand
+		JOIN rag_chunks c ON c.id = cand.id
 		JOIN rag_document_versions v ON c.version_id = v.id
 		JOIN rag_documents d ON v.document_id = d.id
-		WHERE c.id = ANY($1)
-		  AND d.current_version_id = v.id
+		WHERE d.current_version_id = v.id
+		ORDER BY cand.distance ASC
+		LIMIT $3
 	`
 
-	stage2Rows, err := r.getExecutor(ctx).Query(ctx, stage2Query, chunkIDs)
+	rows, err := r.getExecutor(ctx).Query(ctx, query, pgvector.NewVector(queryVector), candidateLimit, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to enrich chunks (stage 2): %w", err)
+		return nil, fmt.Errorf("failed to search chunks: %w", err)
 	}
-	defer stage2Rows.Close()
+	defer rows.Close()
 
 	var results []domain.SearchResult
-	for stage2Rows.Next() {
+	for rows.Next() {
 		var c domain.RagChunk
 		var articleID string
 		var versionNumber int
 		var title, url sql.NullString
-		if err := stage2Rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.CreatedAt, &articleID, &versionNumber, &title, &url); err != nil {
-			return nil, fmt.Errorf("failed to scan stage 2 result: %w", err)
+		var distance float32
+		if err := rows.Scan(&c.ID, &c.VersionID, &c.Ordinal, &c.Content, &c.CreatedAt, &articleID, &versionNumber, &title, &url, &distance); err != nil {
+			return nil, fmt.Errorf("failed to scan search result: %w", err)
 		}
 
-		distance := distanceMap[c.ID]
 		results = append(results, domain.SearchResult{
 			Chunk:           c,
 			Score:           1.0 - distance,
+			ScoreKind:       domain.ScoreKindVector,
 			ArticleID:       articleID,
 			Title:           title.String,
 			URL:             url.String,
 			DocumentVersion: versionNumber,
 		})
 	}
-	if err := stage2Rows.Err(); err != nil {
-		return nil, fmt.Errorf("stage 2 rows error: %w", err)
-	}
-
-	// Sort by distance (score descending) and limit
-	// Results from Stage 2 are not ordered, so we need to sort
-	sortByDistance(results)
-
-	if len(results) > limit {
-		results = results[:limit]
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
 	}
 
 	return results, nil
@@ -314,6 +282,7 @@ func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVect
 		results = append(results, domain.SearchResult{
 			Chunk:           c,
 			Score:           1.0 - distance,
+			ScoreKind:       domain.ScoreKindVector,
 			ArticleID:       articleID,
 			Title:           title.String,
 			URL:             url.String,
@@ -325,11 +294,4 @@ func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVect
 	}
 
 	return results, nil
-}
-
-// sortByDistance sorts search results by score in descending order (higher score = more similar)
-func sortByDistance(results []domain.SearchResult) {
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
 }

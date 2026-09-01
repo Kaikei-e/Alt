@@ -17,6 +17,12 @@ const (
 	defaultRAGQuotaOriginal = 5    // Within 5-10 optimal range
 	defaultRAGQuotaExpanded = 5    // Within 5-10 optimal range
 	defaultRAGRRFK          = 60.0 // Standard RRF constant
+
+	// defaultCoverageSampleIntervalMinutes paces the corpus census gauge.
+	// Corpus drift moves on the scale of a re-index, not a request, so a
+	// quarter hour is far finer than the signal needs while keeping the
+	// grouped COUNT off rag-db's hot path.
+	defaultCoverageSampleIntervalMinutes = 15
 )
 
 // Application-specific defaults for temporal boost.
@@ -34,17 +40,42 @@ const (
 const (
 	defaultRerankEnabled = true                      // Enabled by default per user preference
 	defaultRerankModel   = "BAAI/bge-reranker-v2-m3" // BAAI multilingual model
-	defaultRerankTopK    = 10                        // Rerank 50 -> 10
-	defaultRerankTimeout = 10                        // Seconds (M4 reranker: 2-5s typical for 10 chunks)
+	defaultRerankTopK    = 10                        // Hits kept after reranking
+
+	// defaultRerankMaxCandidates is how many hits are sent to the
+	// cross-encoder. It is deliberately larger than TopK: capping the input at
+	// TopK meant a hit ranked 11th by retrieval could never be promoted, which
+	// is the whole point of the stage.
+	//
+	// The value mirrors what the server derives from its own budget
+	// (RERANK_SERVER_TIMEOUT / 250ms per candidate = 40), so an oversize batch
+	// is rejected up front instead of running into the deadline mid-inference.
+	//
+	// Latency trade-off, measured on the CPU reranker: ~15 candidates run at
+	// p95 3.8s, 30 candidates at 14-17s — well past a 10s budget, which is why
+	// the server also checks the deadline at chunk boundaries and returns what
+	// it has. A deployment on slower hardware, or one that wants a snappier
+	// answer, should lower RERANK_MAX_CANDIDATES rather than raise
+	// RERANK_TIMEOUT. Whatever the value, it must stay at or above
+	// RERANK_TOP_K, or hits the cross-encoder scored are dropped before they
+	// can be returned.
+	defaultRerankMaxCandidates = 40
+
+	// rerankServerTimeoutSeconds is the rerank server's own total budget
+	// (RERANK_SERVER_TIMEOUT), semaphore wait included. The client's timeout
+	// has to sit above it: with the client giving up first, a
+	// slow-but-successful rerank turns into a fallback to retrieval order that
+	// neither side can explain. The margin covers network and marshalling, not
+	// inference — the server enforces its own deadline.
+	rerankServerTimeoutSeconds = 10
+	defaultRerankTimeout       = rerankServerTimeoutSeconds + 5 // Seconds
 )
 
 // Hybrid search defaults (research-backed).
 // Sources:
-// - EMNLP 2024: Alpha=0.3 optimal
 // - Weaviate/LlamaIndex: RRF fusion with k=60
 const (
 	defaultHybridSearchEnabled = true // Enabled by default per user preference
-	defaultHybridAlpha         = 0.3  // EMNLP 2024 optimal (slightly BM25-heavy)
 	defaultHybridBM25Limit     = 50   // Match vector search limit
 )
 
@@ -143,6 +174,11 @@ type RAGConfig struct {
 	PromptVersion                    string
 	DynamicLanguageAllocationEnabled bool
 	MinAnswerLength                  int
+	// CoverageSampleIntervalMinutes paces the corpus census gauge. It reads
+	// rag-db, so it is a knob rather than a constant; the default is slow
+	// enough that a single grouped COUNT every quarter hour is noise against
+	// the indexing load.
+	CoverageSampleIntervalMinutes int
 }
 
 // QualityGateConfig holds retrieval quality gate settings.
@@ -158,14 +194,16 @@ type RerankConfig struct {
 	Enabled bool
 	URL     string
 	Model   string
-	TopK    int
-	Timeout int // Seconds
+	// TopK is how many hits survive the stage; MaxCandidates is how many are
+	// scored. See defaultRerankMaxCandidates for the latency trade-off.
+	TopK          int
+	MaxCandidates int
+	Timeout       int // Seconds
 }
 
 // HybridConfig holds hybrid search (BM25+vector) settings.
 type HybridConfig struct {
 	Enabled    bool
-	Alpha      float64
 	BM25Limit  int
 	BM25Source string // "meilisearch" (default) or "postgres" (in-DB tsvector hybrid)
 }
@@ -375,6 +413,7 @@ func Load() *Config {
 			PromptVersion:                    getEnv("RAG_PROMPT_VERSION", "alpha-v1"),
 			DynamicLanguageAllocationEnabled: getEnvBool("RAG_DYNAMIC_LANGUAGE_ALLOCATION", defaultDynamicLanguageAllocationEnabled),
 			MinAnswerLength:                  getEnvInt("RAG_MIN_ANSWER_LENGTH", defaultRAGMinAnswerLength),
+			CoverageSampleIntervalMinutes:    getEnvInt("RAG_COVERAGE_SAMPLE_INTERVAL_MINUTES", defaultCoverageSampleIntervalMinutes),
 		},
 		QualityGate: QualityGateConfig{
 			Enabled:           getEnvBool("RAG_QUALITY_GATE_ENABLED", true),
@@ -383,15 +422,15 @@ func Load() *Config {
 			MinContexts:       getEnvInt("RAG_QUALITY_MIN_CONTEXTS", 3),
 		},
 		Rerank: RerankConfig{
-			Enabled: getEnvBool("RERANK_ENABLED", defaultRerankEnabled),
-			URL:     getEnv("RERANK_URL", "http://news-creator:11434"),
-			Model:   getEnv("RERANK_MODEL", defaultRerankModel),
-			TopK:    getEnvInt("RERANK_TOP_K", defaultRerankTopK),
-			Timeout: getEnvInt("RERANK_TIMEOUT", defaultRerankTimeout),
+			Enabled:       getEnvBool("RERANK_ENABLED", defaultRerankEnabled),
+			URL:           getEnv("RERANK_URL", "http://news-creator:11434"),
+			Model:         getEnv("RERANK_MODEL", defaultRerankModel),
+			TopK:          getEnvInt("RERANK_TOP_K", defaultRerankTopK),
+			MaxCandidates: getEnvInt("RERANK_MAX_CANDIDATES", defaultRerankMaxCandidates),
+			Timeout:       getEnvInt("RERANK_TIMEOUT", defaultRerankTimeout),
 		},
 		Hybrid: HybridConfig{
 			Enabled:    getEnvBool("HYBRID_SEARCH_ENABLED", defaultHybridSearchEnabled),
-			Alpha:      getEnvFloat64("HYBRID_ALPHA", defaultHybridAlpha),
 			BM25Limit:  getEnvInt("HYBRID_BM25_LIMIT", defaultHybridBM25Limit),
 			BM25Source: getEnv("HYBRID_BM25_SOURCE", "meilisearch"),
 		},

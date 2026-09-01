@@ -217,7 +217,7 @@ services:
 
   # knowledge-sovereign suite — Postgres + Atlas migrator + sovereign service
   knowledge-sovereign-db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     container_name: alt-staging-knowledge-sovereign-db
     profiles: [knowledge-sovereign]
     # Plain env — staging password is a committed test fixture with no
@@ -783,7 +783,7 @@ services:
   # slice; the run-lifecycle scenarios stay tolerant of either
   # in-memory or DB-backed checkpointing.
   acolyte-db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     container_name: alt-staging-acolyte-db
     profiles: [acolyte-orchestrator]
     environment:
@@ -858,7 +858,7 @@ services:
 
   # alt-backend suite — Postgres + Atlas migrator + deps stub + alt-backend
   alt-backend-db:
-    image: postgres:17-alpine
+    image: postgres:17.11-alpine
     container_name: alt-staging-alt-backend-db
     profiles: [alt-backend, alt-harvester, alt-data-hub]
     # Plain env — staging password is a committed test fixture with no
@@ -1297,7 +1297,7 @@ services:
   # Kratos owns entirely. No PgBouncer in the staging slice (one fewer
   # cold-start surface without changing what we're testing).
   auth-hub-db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     container_name: alt-staging-auth-hub-db
     profiles: [auth-hub]
     environment:

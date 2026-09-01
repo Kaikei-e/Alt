@@ -17,6 +17,7 @@ import (
 
 	"rag-orchestrator/internal/adapter/sovereign_client"
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/infra/metrics"
 	"rag-orchestrator/internal/usecase"
 
 	"connectrpc.com/connect"
@@ -261,7 +262,19 @@ func (h *Handler) StreamChat(
 		assistantBuffer    strings.Builder
 		lastCitations      []domain.AugurCitation
 		authoritativeSaved bool
+		// clientStreamClosed marks that a terminal frame (fallback, error,
+		// clarification) has already been delivered. The loop keeps draining
+		// after it so the terminal Done event — the only carrier of the final
+		// answer and its fallback reason — still reaches persistence, but
+		// nothing further is written to the wire.
+		clientStreamClosed bool
 	)
+
+	// One stream telemetry record, finalized by the deferred close below so
+	// every exit path (success, fallback, abort, transport error) lands in the
+	// histograms rather than only the happy one.
+	tel := newStreamTelemetry()
+	defer tel.finish()
 
 	defer func() {
 		if authoritativeSaved {
@@ -286,6 +299,7 @@ loop:
 		select {
 		case <-ctx.Done():
 			h.logger.Info("stream chat cancelled by client")
+			tel.outcome = metrics.OutcomeCancelled
 			return nil
 		case event, ok := <-events:
 			if !ok {
@@ -294,12 +308,16 @@ loop:
 
 			if event.Kind == usecase.StreamEventKindDelta {
 				if delta, ok := event.Payload.(string); ok {
+					if delta != "" {
+						tel.markFirstContent()
+					}
 					assistantBuffer.WriteString(sanitizeUTF8(delta))
 				}
 			}
+			tel.observeEvent(event)
 
 			protoEvent, shouldContinue, donePayload := h.convertStreamEvent(event)
-			if protoEvent != nil {
+			if protoEvent != nil && !clientStreamClosed {
 				// Echo the persisted id on every meta event the usecase emits.
 				if meta := protoEvent.GetMeta(); meta != nil {
 					meta.ConversationId = conv.ID.String()
@@ -309,41 +327,100 @@ loop:
 				}
 				if err := stream.Send(protoEvent); err != nil {
 					h.logger.Error("failed to send event", slog.String("error", err.Error()))
+					tel.outcome = metrics.OutcomeError
 					return connect.NewError(connect.CodeInternal, err)
 				}
 			}
 
 			// Persist the assistant turn whenever the terminal Done event carries
-			// non-empty content. This works for clean success, for partial-success
-			// fallback (deltas streamed before the strategy gave up), and is
-			// correctly skipped for hard failures (Answer == "") and clarification
-			// (no assistant answer to keep).
-			if donePayload != nil && strings.TrimSpace(donePayload.Answer) != "" {
-				flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
-				citations := citationsFromProto(donePayload.Citations)
-				related := citationsFromProto(donePayload.RelatedCitations)
-				if err := h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, donePayload.Answer, citations, related); err != nil {
-					h.logger.Error("failed to persist assistant turn", slog.String("error", err.Error()))
-				}
-				// Only the turn that mints a brand-new conversation can
-				// "link" it — a continuing conversation was already linked
-				// (or deliberately never was) on its first turn, and
-				// dedupe_key would just make repeat emits a no-op anyway.
-				if requestedConvID == uuid.Nil {
-					h.emitConversationLinked(flushCtx, tenantID, hasTenantID, userID, conv, citations)
-				}
-				flushCancel()
-				authoritativeSaved = true
+			// non-empty content — degraded answers included. A fallback is the
+			// answer the user actually read; dropping it left history holding
+			// only the successes and every figure computed from it flattered.
+			if donePayload != nil {
+				output, _ := event.Payload.(*usecase.AnswerWithRAGOutput)
+				h.persistAssistantTurn(conv, requestedConvID, userID, tenantID, hasTenantID, donePayload, output, &authoritativeSaved)
 			}
 
 			if !shouldContinue {
-				break loop
+				if event.Kind == usecase.StreamEventKindDone {
+					break loop
+				}
+				// Terminal for the client, but the Done event is still on its
+				// way; keep reading so persistence sees it.
+				clientStreamClosed = true
 			}
 		}
 	}
 
 	h.logger.Info("augur stream chat completed")
 	return nil
+}
+
+// persistAssistantTurn writes the terminal answer, degraded or not.
+//
+// A fallback turn is tagged with its category and reason so history and any
+// quality figure derived from it can tell the two apart; previously the read
+// loop broke on the fallback frame and the turn was never written at all.
+//
+// An empty answer is the one case that stays unwritten: there is no text to
+// show, and a blank assistant bubble in history is worse than its absence. It
+// is logged at error and counted instead, so "vanished" still means "visible".
+func (h *Handler) persistAssistantTurn(
+	conv *domain.AugurConversation,
+	requestedConvID uuid.UUID,
+	userID uuid.UUID,
+	tenantID uuid.UUID,
+	hasTenantID bool,
+	done *augurv2.DonePayload,
+	output *usecase.AnswerWithRAGOutput,
+	authoritativeSaved *bool,
+) {
+	isFallback := output != nil && output.Fallback
+	fallbackCode, fallbackReason := "", ""
+	if isFallback {
+		fallbackCode = string(output.FallbackCategory)
+		fallbackReason = output.Reason
+	}
+
+	if strings.TrimSpace(done.Answer) == "" {
+		if isFallback {
+			h.logger.Error("assistant_turn_not_persisted",
+				slog.String("conversation_id", conv.ID.String()),
+				slog.String("reason", "fallback produced no answer text"),
+				slog.String("fallback_code", fallbackCode),
+				slog.String("fallback_reason", fallbackReason))
+			metrics.IncEmptyFallback(fallbackCode)
+		}
+		return
+	}
+
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer flushCancel()
+
+	citations := citationsFromProto(done.Citations)
+	related := citationsFromProto(done.RelatedCitations)
+
+	var err error
+	if isFallback {
+		err = h.conversationUsecase.AppendFallbackAssistantTurn(
+			flushCtx, conv.ID, done.Answer, citations, related, fallbackCode, fallbackReason)
+	} else {
+		err = h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, done.Answer, citations, related)
+	}
+	if err != nil {
+		h.logger.Error("failed to persist assistant turn",
+			slog.String("error", err.Error()),
+			slog.Bool("fallback", isFallback))
+		return
+	}
+
+	// Only the turn that mints a brand-new conversation can "link" it — a
+	// continuing conversation was already linked (or deliberately never was)
+	// on its first turn, and dedupe_key would just make repeat emits a no-op.
+	if requestedConvID == uuid.Nil {
+		h.emitConversationLinked(flushCtx, tenantID, hasTenantID, userID, conv, citations)
+	}
+	*authoritativeSaved = true
 }
 
 // emitConversationLinked publishes augur.conversation_linked.v1 the moment a

@@ -83,7 +83,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     RERANK_BACKEND=onnx \
-    RERANK_MODEL_DIR=/models/bge-reranker-v2-m3-onnx \
+    RERANK_MODEL_CACHE_ROOT=/models \
     OMP_NUM_THREADS=16
 
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv

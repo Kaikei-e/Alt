@@ -10,37 +10,36 @@ import (
 )
 
 func TestLoadGoldenCases_ValidFile(t *testing.T) {
-	cases, err := LoadGoldenCases("testdata/golden_cases.json")
+	cases, err := LoadGoldenCases(syntheticGoldenPath)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(cases), 10)
 
-	// Verify known failure case is present
 	var found bool
 	for _, c := range cases {
-		if c.ID == "iran-oil-crisis-causal" {
+		if c.ID == "recall-miss-vendor-acquisition" {
 			found = true
-			assert.Equal(t, "イランの石油危機はなぜ起きた？", c.Query)
-			assert.Equal(t, "causal_explanation", c.Expected.ExpectedIntent)
-			assert.Equal(t, 800, c.Expected.MinAnswerLength)
+			assert.Equal(t, CategoryRecallMiss, c.Category)
 			assert.True(t, c.Expected.RequiresCitations)
+			assert.NotEmpty(t, c.Expected.RelevantArticleIDs)
 			break
 		}
 	}
-	assert.True(t, found, "iran-oil-crisis-causal case not found")
+	assert.True(t, found, "recall-miss-vendor-acquisition case not found")
 }
 
 func TestLoadGoldenCases_ConversationHistory(t *testing.T) {
-	cases, err := LoadGoldenCases("testdata/golden_cases.json")
+	cases, err := LoadGoldenCases(syntheticGoldenPath)
 	require.NoError(t, err)
 
 	for _, c := range cases {
-		if c.ID == "iran-follow-up-developments" {
+		if c.ID == "followup-ambiguous-more-detail" {
 			assert.Len(t, c.ConversationHistory, 2)
 			assert.Equal(t, "user", c.ConversationHistory[0].Role)
+			assert.True(t, c.Expected.ShouldClarify)
 			return
 		}
 	}
-	t.Fatal("iran-follow-up-developments case not found")
+	t.Fatal("followup-ambiguous-more-detail case not found")
 }
 
 func TestLoadGoldenCases_FileNotFound(t *testing.T) {
@@ -49,66 +48,59 @@ func TestLoadGoldenCases_FileNotFound(t *testing.T) {
 }
 
 func TestRunOfflineEval_BaselineKnownFailures(t *testing.T) {
-	cases, err := LoadGoldenCases("testdata/golden_cases.json")
+	cases, err := LoadGoldenCases(syntheticGoldenPath)
 	require.NoError(t, err)
 
-	// Simulate baseline results where known failures reproduce
+	// A baseline run where retrieval drifts off-topic and no citation is emitted.
 	results := map[string]EvalResult{
-		"iran-oil-crisis-causal": {
-			CaseID:           "iran-oil-crisis-causal",
-			RetrievedTitles:  []string{"Asset Tokenization", "LibreFang"},
-			BM25HitCount:     0,
-			IntentClassified: "causal_explanation",
-			Answer:           "イランの石油危機は発生しました。",
-			AnswerLength:     14,
-			CitationCount:    0,
-			IsFallback:       false,
+		"recall-miss-vendor-acquisition": {
+			CaseID:              "recall-miss-vendor-acquisition",
+			RetrievedTitles:     []string{"Unrelated A", "Unrelated B"},
+			RetrievedArticleIDs: []string{"00000000-0000-4000-8000-0000000000ff"},
+			BM25HitCount:        0,
+			Answer:              "短い回答。",
+			AnswerLength:        6,
+			CitationCount:       0,
 		},
-		"iran-follow-up-developments": {
-			CaseID:           "iran-follow-up-developments",
-			RetrievedTitles:  []string{"Vague article"},
-			IntentClassified: "general",
-			Answer:           "不明です。",
-			AnswerLength:     5,
-			CitationCount:    0,
-			IsFallback:       false,
+		"followup-ambiguous-more-detail": {
+			CaseID:             "followup-ambiguous-more-detail",
+			Answer:             "曖昧なまま回答してしまった。",
+			AnswerLength:       14,
+			ClarificationAsked: false,
 		},
 	}
 
 	report := RunOfflineEval(cases, results)
 
-	// Known failures should fail
 	for _, v := range report.Verdicts {
-		if v.CaseID == "iran-oil-crisis-causal" {
-			assert.False(t, v.Passed, "iran-oil-crisis should fail in baseline")
+		switch v.CaseID {
+		case "recall-miss-vendor-acquisition":
+			assert.False(t, v.Passed, "drifted retrieval should fail")
 			assert.NotEmpty(t, v.Failures)
-		}
-		if v.CaseID == "iran-follow-up-developments" {
-			assert.False(t, v.Passed, "iran-follow-up should fail in baseline")
+		case "followup-ambiguous-more-detail":
+			assert.False(t, v.Passed, "missing clarification should fail")
 		}
 	}
 
-	// Report should have non-zero fail count
 	assert.Greater(t, report.FailCount, 0)
-
-	// BM25 zero rate should reflect the 0-hit case
 	assert.Greater(t, report.Metrics.BM25ZeroRate, 0.0)
 }
 
 func TestRunOfflineEval_MissingResults(t *testing.T) {
 	cases := []GoldenCase{
-		{ID: "test-1", Query: "test query", Expected: ExpectedBehavior{ShouldClarify: false}},
+		{ID: "test-1", Query: "test query", Category: CategoryRegression, Expected: ExpectedBehavior{ShouldClarify: false}},
 	}
 	results := map[string]EvalResult{} // Empty results
 
 	report := RunOfflineEval(cases, results)
 	assert.Equal(t, 1, report.FailCount)
 	assert.Equal(t, "no result found for case", report.Verdicts[0].Failures[0])
+	assert.Equal(t, 1, report.Categories[CategoryRegression].CaseCount)
 }
 
 func TestSaveReport_WritesValidJSON(t *testing.T) {
 	report := EvalReport{
-		Timestamp: "2026-04-06T00:00:00Z",
+		Timestamp: "2026-09-01T00:00:00Z",
 		CaseCount: 1,
 		PassCount: 0,
 		FailCount: 1,

@@ -95,7 +95,9 @@ services:
     build:
       context: ../rag-orchestrator
       dockerfile: Dockerfile
-    mem_limit: 128m
+    # Retrieval keeps up to 500 candidate chunks plus their 1024-dim query
+    # vectors alive per in-flight query; 128m left nothing for Go's GC headroom.
+    mem_limit: 512m
     environment:
       - ENV=production
       - PORT=9010
@@ -121,6 +123,13 @@ services:
       # Local ONNX int8 reranker (rerank-local service); the remote
       # rerank-external route is retired.
       - RERANK_URL=http://rerank-local:8080
+      # Must match rerank-local's RERANK_MODEL below; the server 422s a mismatch.
+      - RERANK_MODEL=${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+      # Explicit; the server derives the same bound from RERANK_SERVER_TIMEOUT/250ms.
+      - RERANK_MAX_CANDIDATES=40
+      # 10 candidates measured at ~520ms on rerank-local, so ~40 lands near 2s.
+      # Kept just above the server's own 10s budget below, so a slow rerank
+      # surfaces as its 504 instead of a client-side deadline.
       - RERANK_TIMEOUT=12
       - RAG_DEFAULT_MAX_TOKENS=${RAG_DEFAULT_MAX_TOKENS:-3072}
       - MORNING_LETTER_MAX_TOKENS=${MORNING_LETTER_MAX_TOKENS:-4096}
@@ -209,7 +218,6 @@ services:
     extra_hosts:
       - "embedder-external:${EMBEDDER_EXTERNAL_HOST:-127.0.0.1}"
       - "augur-external:${AUGUR_EXTERNAL_HOST:-127.0.0.1}"
-      - "rerank-external:${RERANK_EXTERNAL_HOST:-127.0.0.1}"
     logging:
       driver: "json-file"
       options:
@@ -298,8 +306,8 @@ services:
         max-file: "3"
 
   # Local CPU reranker (ONNX int8 dynamic quantization, avx2). Replaces the
-  # remote Mac reranker for local deployments — rag-orchestrator still points
-  # RERANK_URL at rerank-external (see above) until that cutover happens.
+  # remote Mac reranker for local deployments — rag-orchestrator's RERANK_URL
+  # points here and the rerank-external route is retired.
   # Optional dependency of rag-orchestrator (skip-degrade contract), so it is
   # intentionally not wired via depends_on. First boot downloads
   # BAAI/bge-reranker-v2-m3 (~2.3GB) and quantizes it into the mounted
@@ -315,6 +323,13 @@ services:
           # fp32 checkpoint); steady-state serving needs ~2G.
           memory: 6G
           cpus: '16.0'
+    environment:
+      # Server-side budget for one /v1/rerank call, pinned below
+      # rag-orchestrator's RERANK_TIMEOUT=12 so the server gives up first; both
+      # halves of that contract stay visible in this file.
+      - RERANK_SERVER_TIMEOUT=10
+      # Requests carry the model name and are rejected unless it matches this.
+      - RERANK_MODEL=${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
     volumes:
       - rerank_local_models:/models
     ports:

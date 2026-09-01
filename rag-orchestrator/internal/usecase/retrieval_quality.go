@@ -1,6 +1,10 @@
 package usecase
 
-import "strings"
+import (
+	"strings"
+
+	"rag-orchestrator/internal/domain"
+)
 
 // QualityVerdict classifies the quality of retrieved context.
 type QualityVerdict string
@@ -38,6 +42,9 @@ func NewRetrievalQualityAssessor(goodThreshold, marginalThreshold float32, minCo
 func (a *RetrievalQualityAssessor) Assess(contexts []ContextItem) QualityVerdict {
 	if len(contexts) < a.minContexts {
 		return QualityInsufficient
+	}
+	if verdict, ok := uncalibratedVerdict(contexts[0]); ok {
+		return verdict
 	}
 
 	topN := 3
@@ -80,6 +87,25 @@ func (a *RetrievalQualityAssessor) Assess(contexts []ContextItem) QualityVerdict
 	return verdict
 }
 
+// uncalibratedVerdict answers for a retrieval whose scores do not live in the
+// space the thresholds were calibrated in — the reranker was skipped, or the
+// embedder was down and the pipeline degraded to lexical hits. Averaging a raw
+// BM25 score against a 0.5 "good" threshold calls a keyword-only retrieval
+// excellent; averaging an RRF score (~0.02 for k=60) against a 0.25 marginal
+// threshold calls every retrieval a failure, which is the shape of the
+// 2026-04-11 fallback-rate regression. Neither is a judgement, so the assessor
+// declines to make one and reports Marginal.
+//
+// A context that declares no space at all did not come from the retrieval
+// graph — the article-scoped path assigns a uniform placeholder score, and the
+// caller already chose the article. Those keep the score-averaging path.
+func uncalibratedVerdict(top ContextItem) (QualityVerdict, bool) {
+	if top.ScoreKind == domain.ScoreKindUnknown || top.ScoreKind.Calibrated() {
+		return "", false
+	}
+	return QualityMarginal, true
+}
+
 // intentThresholds returns the effective quality thresholds for a given intent type.
 // Cross-encoders (bge-reranker-v2-m3) inherently score lower on causal/abstract queries
 // because they're trained primarily on factual QA pairs (CRAG, ICLR 2024).
@@ -102,6 +128,9 @@ func (a *RetrievalQualityAssessor) intentThresholds(intentType IntentType) (good
 func (a *RetrievalQualityAssessor) AssessWithIntent(contexts []ContextItem, intentType IntentType, query string) QualityVerdict {
 	if len(contexts) < a.minContexts {
 		return QualityInsufficient
+	}
+	if verdict, ok := uncalibratedVerdict(contexts[0]); ok {
+		return verdict
 	}
 
 	// Apply intent-aware thresholds

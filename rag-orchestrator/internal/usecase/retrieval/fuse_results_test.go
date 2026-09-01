@@ -78,7 +78,7 @@ func TestFuseResults_SingleQuery_NoExpansion(t *testing.T) {
 		RRFK:                 60.0,
 	}
 
-	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
+	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
 	require.NoError(t, err)
 
 	assert.Len(t, sc.HitsOriginal, 1)
@@ -122,7 +122,7 @@ func TestFuseResults_WithExpandedQueries(t *testing.T) {
 		},
 	}, nil)
 
-	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
+	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
 	require.NoError(t, err)
 
 	assert.Len(t, sc.HitsOriginal, 1)
@@ -155,7 +155,7 @@ func TestFuseResults_WithBM25Fusion(t *testing.T) {
 		RRFK:                 60.0,
 	}
 
-	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
+	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
 	require.NoError(t, err)
 
 	// After BM25 fusion, original results should have fused scores: the
@@ -185,7 +185,7 @@ func TestFuseResults_SearchError(t *testing.T) {
 
 	mockRepo.On("Search", mock.Anything, mock.Anything, 50).Return(nil, assert.AnError)
 
-	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
+	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to search chunks")
 }
@@ -215,7 +215,7 @@ func TestFuseResults_NilEmbedding_BM25OnlyDegraded(t *testing.T) {
 		RRFK:        60.0,
 	}
 
-	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
+	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
 	require.NoError(t, err, "FuseResults should handle nil OriginalEmbedding gracefully")
 
 	assert.GreaterOrEqual(t, len(sc.HitsOriginal), 1, "BM25 results should be promoted to HitsOriginal in degraded mode")
@@ -236,7 +236,7 @@ func TestFuseResults_NilEmbedding_NoBM25_EmptyResult(t *testing.T) {
 		RRFK:              60.0,
 	}
 
-	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
+	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
 	require.NoError(t, err, "FuseResults should handle nil embedding + no BM25 gracefully")
 
 	assert.Empty(t, sc.HitsOriginal)
@@ -274,7 +274,7 @@ func TestFuseResults_DeduplicatesExpandedHits(t *testing.T) {
 	}
 	mockRepo.On("Search", mock.Anything, mock.Anything, 50).Return(sharedResult, nil)
 
-	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
+	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
 	require.NoError(t, err)
 
 	// Should be deduplicated to 1 entry with boosted RRF score

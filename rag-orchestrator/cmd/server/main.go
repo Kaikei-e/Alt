@@ -127,6 +127,11 @@ func main() {
 		app.Worker.Stop()
 	}()
 
+	// 6.1 Start the corpus census sampler. Its gauge is the only signal that
+	// shows a chunker/embedder version drift before it degrades retrieval.
+	app.CoverageSampler.Start(ctx)
+	defer app.CoverageSampler.Stop()
+
 	// 7. Initialize Echo
 	e := echo.New()
 	e.Use(middleware.RequestLogger())

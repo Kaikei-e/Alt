@@ -76,12 +76,17 @@ func (s *articleScopedStrategy) Retrieve(ctx context.Context, input RetrieveCont
 	contexts := make([]ContextItem, len(chunks))
 	for i, chunk := range chunks {
 		contexts[i] = ContextItem{
-			ChunkID:         chunk.ID,
-			ChunkText:       chunk.Content,
-			URL:             version.URL,
-			Title:           version.Title,
-			PublishedAt:     version.CreatedAt.UTC().Format(time.RFC3339),
+			ChunkID:     chunk.ID,
+			ChunkText:   chunk.Content,
+			URL:         version.URL,
+			Title:       version.Title,
+			PublishedAt: version.CreatedAt.UTC().Format(time.RFC3339),
+			// A uniform placeholder, not a measurement: the caller already
+			// chose this article, so nothing ranked these chunks. ScoreKind
+			// says so rather than letting 1.0 pass for a relevance score.
 			Score:           1.0,
+			ScoreKind:       domain.ScoreKindUnknown,
+			ArticleID:       intent.ArticleID,
 			DocumentVersion: version.VersionNumber,
 		}
 	}
@@ -90,11 +95,19 @@ func (s *articleScopedStrategy) Retrieve(ctx context.Context, input RetrieveCont
 	// First turn (no history) keeps original ordinal order with uniform score.
 	if len(input.ConversationHistory) > 0 && intent.UserQuestion != "" {
 		rerankQuery := s.translateQueryForBM25(ctx, intent.UserQuestion, input.ConversationHistory)
-		bm25RerankContexts(contexts, rerankQuery)
+		scored := bm25RerankContexts(contexts, rerankQuery)
+		if scored {
+			// Now these really are lexical scores, so they must not be read as
+			// cross-encoder ones by the calibrated gates.
+			for i := range contexts {
+				contexts[i].ScoreKind = domain.ScoreKindBM25
+			}
+		}
 		s.logger.Info("article_scoped_reranked",
 			slog.String("article_id", intent.ArticleID),
 			slog.String("query_preview", queryLogPreview(intent.UserQuestion)),
 			slog.String("rerank_query", rerankQuery),
+			slog.Bool("bm25_scored", scored),
 			slog.Int("chunks", len(contexts)))
 	}
 
@@ -156,10 +169,14 @@ func isPrimarilyEnglish(text string) bool {
 // This is a lightweight in-memory BM25 implementation that avoids external
 // service calls (no embedder latency). Suitable for reranking within a single
 // article's chunks (typically < 100 chunks).
-func bm25RerankContexts(contexts []ContextItem, query string) {
+//
+// Returns whether the scores it left behind are real BM25 values. False means
+// the chunks kept their uniform placeholder — no term matched, or the query
+// tokenized to nothing — and the caller must not relabel their score space.
+func bm25RerankContexts(contexts []ContextItem, query string) bool {
 	terms := tokenize(query)
 	if len(terms) == 0 {
-		return
+		return false
 	}
 
 	n := len(contexts)
@@ -217,7 +234,7 @@ func bm25RerankContexts(contexts []ContextItem, query string) {
 		for i := range contexts {
 			contexts[i].Score = 1.0
 		}
-		return
+		return false
 	}
 
 	sort.Slice(contexts, func(i, j int) bool {
@@ -228,6 +245,7 @@ func bm25RerankContexts(contexts []ContextItem, query string) {
 	for i := range contexts {
 		contexts[i].Score /= maxScore
 	}
+	return true
 }
 
 // tokenize splits text into lowercase terms for BM25 scoring.

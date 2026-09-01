@@ -430,3 +430,42 @@ func TestLoad_LLMBackend_DefaultAndFromEnv(t *testing.T) {
 	cfg = Load()
 	assert.Equal(t, "eino", cfg.LLMBackend)
 }
+
+// TestLoad_RerankWindow_Defaults pins the two numbers apart: TopK shapes the
+// output of the rerank stage, MaxCandidates shapes its input. Reusing TopK for
+// both made reranking unable to promote anything it had not already ranked.
+func TestLoad_RerankWindow_Defaults(t *testing.T) {
+	for _, key := range []string{"RERANK_TOP_K", "RERANK_MAX_CANDIDATES", "RERANK_TIMEOUT"} {
+		_ = os.Unsetenv(key)
+	}
+
+	cfg := Load()
+
+	assert.Equal(t, 10, cfg.Rerank.TopK)
+	assert.Equal(t, 40, cfg.Rerank.MaxCandidates)
+}
+
+// TestLoad_RerankTimeout_OutlastsTheServer: the rerank server enforces its own
+// total budget (RERANK_SERVER_TIMEOUT, 10s including semaphore wait). A client
+// that gives up first turns a slow-but-successful rerank into a silent fallback
+// to retrieval order, and the reason never reaches either log.
+func TestLoad_RerankTimeout_OutlastsTheServer(t *testing.T) {
+	_ = os.Unsetenv("RERANK_TIMEOUT")
+
+	cfg := Load()
+
+	assert.Greater(t, cfg.Rerank.Timeout, rerankServerTimeoutSeconds,
+		"the client deadline must outlast the server's own")
+}
+
+func TestLoad_RerankWindow_FromEnv(t *testing.T) {
+	t.Setenv("RERANK_TOP_K", "8")
+	t.Setenv("RERANK_MAX_CANDIDATES", "15")
+	t.Setenv("RERANK_TIMEOUT", "20")
+
+	cfg := Load()
+
+	assert.Equal(t, 8, cfg.Rerank.TopK)
+	assert.Equal(t, 15, cfg.Rerank.MaxCandidates)
+	assert.Equal(t, 20, cfg.Rerank.Timeout)
+}

@@ -1,0 +1,87 @@
+[
+  {
+    "name": "baseline",
+    "description": "Current production stack: bge-m3 embeddings at 1024d with the bge cross-encoder on top of RRF hybrid fusion.",
+    "augur_addr": "http://localhost:9011",
+    "embedder": {
+      "endpoint": "http://localhost:11435",
+      "model": "bge-m3",
+      "dimensions": 1024
+    },
+    "rerank": {
+      "enabled": true,
+      "endpoint": "http://localhost:11435",
+      "model": "bge-reranker-v2-m3",
+      "top_k": 10
+    },
+    "retrieval": {
+      "vector_limit": 50,
+      "bm25_limit": 50,
+      "hybrid_alpha": 0.3,
+      "rrf_k": 60
+    }
+  },
+  {
+    "name": "baseline-no-rerank",
+    "description": "Baseline embeddings with the cross-encoder switched off, to price the reranker on its own.",
+    "augur_addr": "http://localhost:9011",
+    "embedder": {
+      "endpoint": "http://localhost:11435",
+      "model": "bge-m3",
+      "dimensions": 1024
+    },
+    "rerank": {
+      "enabled": false
+    },
+    "retrieval": {
+      "vector_limit": 50,
+      "bm25_limit": 50,
+      "hybrid_alpha": 0.3,
+      "rrf_k": 60
+    }
+  },
+  {
+    "name": "candidate-multilingual",
+    "description": "Candidate embedder for the ja/en mixed corpus; cross-lingual recall on the same golden set decides whether it replaces bge-m3.",
+    "augur_addr": "http://localhost:9012",
+    "embedder": {
+      "endpoint": "http://localhost:11436",
+      "model": "qwen3-embedding-0.6b",
+      "dimensions": 1024
+    },
+    "rerank": {
+      "enabled": true,
+      "endpoint": "http://localhost:11435",
+      "model": "bge-reranker-v2-m3",
+      "top_k": 10
+    },
+    "retrieval": {
+      "vector_limit": 50,
+      "bm25_limit": 50,
+      "hybrid_alpha": 0.3,
+      "rrf_k": 60
+    }
+  },
+  {
+    "name": "candidate-bm25-heavy",
+    "description": "Baseline embedder with fusion tilted toward lexical retrieval, for the Japanese proper-noun cases dense search keeps missing.",
+    "augur_addr": "http://localhost:9011",
+    "embedder": {
+      "endpoint": "http://localhost:11435",
+      "model": "bge-m3",
+      "dimensions": 1024
+    },
+    "rerank": {
+      "enabled": true,
+      "endpoint": "http://localhost:11435",
+      "model": "bge-reranker-v2-m3",
+      "top_k": 10
+    },
+    "retrieval": {
+      "vector_limit": 50,
+      "bm25_limit": 100,
+      "hybrid_alpha": 0.15,
+      "rrf_k": 60
+    }
+  }
+]

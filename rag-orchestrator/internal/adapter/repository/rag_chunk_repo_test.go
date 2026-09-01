@@ -85,49 +85,24 @@ func (f *fakeTxQueryOnly) Query(_ context.Context, _ string, _ ...interface{}) (
 	return f.rows, nil
 }
 
-// multiCallTx is a pgx.Tx double that returns a different pgx.Rows on each
-// successive Query call, in call order. Search() issues its Stage 1 and
-// Stage 2 queries as two sequential Query calls on the same executor, so
-// call order (not SQL text) is what distinguishes them here.
-type multiCallTx struct {
+// recordingTx is a pgx.Tx double that counts Query calls and keeps the args of
+// each, so a test can assert both how many round-trips a repository method
+// costs and what candidate pool it asked the database for.
+type recordingTx struct {
 	pgx.Tx
 	calls int
-	rows  []pgx.Rows
+	args  [][]interface{}
+	rows  pgx.Rows
 }
 
-func (f *multiCallTx) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
-	r := f.rows[f.calls]
+func (f *recordingTx) Query(_ context.Context, _ string, args ...interface{}) (pgx.Rows, error) {
 	f.calls++
-	return r, nil
+	f.args = append(f.args, args)
+	return f.rows, nil
 }
 
-// stage1Row is a single-row pgx.Rows fake for Search()'s Stage 1 query
-// (SELECT c.id, distance ... ORDER BY distance ASC).
-type stage1Row struct {
-	pgx.Rows
-	id     uuid.UUID
-	served bool
-}
-
-func (r *stage1Row) Next() bool {
-	if r.served {
-		return false
-	}
-	r.served = true
-	return true
-}
-
-func (r *stage1Row) Scan(dest ...any) error {
-	*dest[0].(*uuid.UUID) = r.id
-	*dest[1].(*float32) = 0.1
-	return nil
-}
-
-func (r *stage1Row) Close()     {}
-func (r *stage1Row) Err() error { return nil }
-
-// enrichedChunkRow is a single-row pgx.Rows fake for Search()'s Stage 2
-// query and for SearchWithinArticles()'s query. Unlike nullEmbeddingRow
+// enrichedChunkRow is a single-row pgx.Rows fake for Search()'s and
+// SearchWithinArticles()'s query. Unlike nullEmbeddingRow
 // (which relies on a fixed, known dest order), it assigns destinations by
 // Go type with an occurrence counter per type, so it tolerates both the
 // fixed column list (no embedding) and the pre-fix column list (embedding
@@ -224,21 +199,18 @@ func TestGetChunksByVersionID_NullEmbedding_DoesNotPanic(t *testing.T) {
 
 // TestSearch_NullEmbedding_DoesNotPanic is the RED case for the first
 // defect the reviewer confirmed in rag-null-embedding-panic: Search()'s
-// Stage 2 query scanned c.embedding into the same non-nullable
+// enrichment query scanned c.embedding into the same non-nullable
 // domain.RagChunk.Embedding as GetChunksByVersionID did, and Search() runs
 // inside an errgroup goroutine (embed_and_search.go's default branch), so
 // the panic crashes the process rather than surfacing as a recovered 500.
-// Neither Stage 1 nor Stage 2 filters on "embedding IS NOT NULL", so a
-// NULL-embedding chunk reaches Scan.
+// The query does not filter on "embedding IS NOT NULL", so a NULL-embedding
+// chunk reaches Scan.
 func TestSearch_NullEmbedding_DoesNotPanic(t *testing.T) {
 	repo := NewRagChunkRepository(nil)
 
 	chunkID := uuid.New()
 	versionID := uuid.New()
-	tx := &multiCallTx{rows: []pgx.Rows{
-		&stage1Row{id: chunkID},
-		&enrichedChunkRow{id: chunkID, versionID: versionID},
-	}}
+	tx := &recordingTx{rows: &enrichedChunkRow{id: chunkID, versionID: versionID}}
 	ctx := InjectTx(context.Background(), tx)
 
 	var results []domain.SearchResult
@@ -251,10 +223,85 @@ func TestSearch_NullEmbedding_DoesNotPanic(t *testing.T) {
 	require.Len(t, results, 1)
 	assert.Equal(t, "chunk content", results[0].Chunk.Content)
 	assert.Equal(t, "article-1", results[0].ArticleID)
-	// Score must be derived from the Stage 1 distance (1.0 - 0.1), not a
-	// zero-value fallback: losing the distanceMap lookup flattens every
-	// result to Score 1.0 and destroys ranking without failing any scan.
+	// Score must be derived from the scanned distance (1.0 - 0.1), not a
+	// zero-value fallback: losing it flattens every result to Score 1.0 and
+	// destroys ranking without failing any scan.
 	assert.InDelta(t, 0.9, results[0].Score, 1e-6)
+}
+
+// TestSearch_IsOneRoundTrip pins the cost of a retrieval. Search used to run a
+// candidate query and an enrichment query back to back, and Stage 3 fans it out
+// over up to nine expanded queries — eighteen round-trips for one question.
+func TestSearch_IsOneRoundTrip(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+
+	chunkID := uuid.New()
+	tx := &recordingTx{rows: &enrichedChunkRow{id: chunkID, versionID: uuid.New()}}
+	ctx := InjectTx(context.Background(), tx)
+
+	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 50)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, tx.calls, "one vector search must cost one database round-trip")
+}
+
+// TestSearch_OverfetchIsRightSized: the candidate pool only has to absorb rows
+// dropped for belonging to a superseded document version, which is a rare state,
+// not a third of the corpus. The old 3x/500 pool made every HNSW scan read far
+// more than the query could use.
+func TestSearch_OverfetchIsRightSized(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+
+	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}}
+	ctx := InjectTx(context.Background(), tx)
+
+	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 50)
+	require.NoError(t, err)
+
+	require.Len(t, tx.args, 1)
+	args := tx.args[0]
+	require.Len(t, args, 3, "query vector, candidate pool size, final limit")
+	assert.Equal(t, searchOverfetchMultiplier*50, args[1])
+	assert.Equal(t, 50, args[2])
+}
+
+// TestSearch_OverfetchIsCapped keeps a large SearchLimit from asking pgvector
+// for an unbounded candidate pool.
+func TestSearch_OverfetchIsCapped(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+
+	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}}
+	ctx := InjectTx(context.Background(), tx)
+
+	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 5000)
+	require.NoError(t, err)
+
+	assert.Equal(t, searchOverfetchCap, tx.args[0][1])
+}
+
+// TestSearch_TagsScoresAsVector: a cosine similarity is not a cross-encoder
+// score, and the quality gate can only know that if the result says so.
+func TestSearch_TagsScoresAsVector(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+
+	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}}
+	ctx := InjectTx(context.Background(), tx)
+
+	results, err := repo.Search(ctx, []float32{0.1, 0.2}, 5)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, domain.ScoreKindVector, results[0].ScoreKind)
+}
+
+func TestSearchWithinArticles_TagsScoresAsVector(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+
+	ctx := InjectTx(context.Background(), &fakeTxQueryOnly{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}})
+
+	results, err := repo.SearchWithinArticles(ctx, []float32{0.1, 0.2}, []string{"article-1"}, 5)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, domain.ScoreKindVector, results[0].ScoreKind)
 }
 
 // TestSearchWithinArticles_NullEmbedding_DoesNotPanic is the RED case for
@@ -288,41 +335,15 @@ func TestSearchWithinArticles_NullEmbedding_DoesNotPanic(t *testing.T) {
 	assert.InDelta(t, 0.9, results[0].Score, 1e-6)
 }
 
-// multiStage1Rows is a multi-row pgx.Rows fake for Search()'s Stage 1
-// query: one (id, distance) pair per row, served in slice order.
-type multiStage1Rows struct {
+// multiEnrichedRows is a multi-row pgx.Rows fake for the single enrichment
+// query: one (chunk, distance) pair per row, served in slice order. The real
+// query carries its own ORDER BY on the candidate distance, so the order the
+// rows arrive in is the order the caller must keep.
+type multiEnrichedRows struct {
 	pgx.Rows
 	ids       []uuid.UUID
 	distances []float32
 	i         int
-}
-
-func (r *multiStage1Rows) Next() bool {
-	if r.i >= len(r.ids) {
-		return false
-	}
-	r.i++
-	return true
-}
-
-func (r *multiStage1Rows) Scan(dest ...any) error {
-	*dest[0].(*uuid.UUID) = r.ids[r.i-1]
-	*dest[1].(*float32) = r.distances[r.i-1]
-	return nil
-}
-
-func (r *multiStage1Rows) Close()     {}
-func (r *multiStage1Rows) Err() error { return nil }
-
-// multiEnrichedRows is a multi-row pgx.Rows fake for Search()'s Stage 2
-// query. Rows are served in the given id order — deliberately NOT the
-// Stage 1 distance order, because a real Stage 2 query has no ORDER BY and
-// Postgres returns join results in whatever order it likes; the usecase
-// contract is that Search() itself re-sorts by score.
-type multiEnrichedRows struct {
-	pgx.Rows
-	ids []uuid.UUID
-	i   int
 }
 
 func (r *multiEnrichedRows) Next() bool {
@@ -352,6 +373,8 @@ func (r *multiEnrichedRows) Scan(dest ...any) error {
 			*v = sql.NullString{String: "value", Valid: true}
 		case *time.Time:
 			*v = fixedCreatedAt
+		case *float32:
+			*v = r.distances[r.i-1]
 		}
 	}
 	return nil
@@ -397,32 +420,28 @@ func TestGetChunksByVersionID_ScanErrorPropagates(t *testing.T) {
 	assert.Nil(t, chunks)
 }
 
-// TestSearch_OrdersByScoreAndTruncatesToLimit pins the observable ranking
-// contract of the two-stage search: each result's Score is 1.0 minus its
-// own Stage 1 distance (per-chunk, via the distance map), results are
-// returned best-first even though Stage 2 rows arrive unordered, and the
-// result set is cut to the requested limit only after sorting.
-func TestSearch_OrdersByScoreAndTruncatesToLimit(t *testing.T) {
+// TestSearch_ScoresEachRowFromItsOwnDistance pins the observable ranking
+// contract: every result's Score is 1.0 minus that row's own distance, and the
+// database's ordering (ORDER BY on the candidate distance, LIMIT on the final
+// count) is carried through untouched. Flattening the per-row distance to a
+// zero value destroys ranking without failing any scan.
+func TestSearch_ScoresEachRowFromItsOwnDistance(t *testing.T) {
 	repo := NewRagChunkRepository(nil)
 
 	idA, idB, idC := uuid.New(), uuid.New(), uuid.New()
-	tx := &multiCallTx{rows: []pgx.Rows{
-		&multiStage1Rows{
-			ids:       []uuid.UUID{idA, idB, idC},
-			distances: []float32{0.1, 0.3, 0.2},
-		},
-		// Stage 2 serves the rows in a different order than Stage 1 ranked
-		// them, so the final ordering can only come from Search()'s own sort.
-		&multiEnrichedRows{ids: []uuid.UUID{idB, idA, idC}},
+	tx := &recordingTx{rows: &multiEnrichedRows{
+		ids:       []uuid.UUID{idA, idC, idB},
+		distances: []float32{0.1, 0.2, 0.3},
 	}}
 	ctx := InjectTx(context.Background(), tx)
 
-	results, err := repo.Search(ctx, []float32{0.1, 0.2}, 2)
+	results, err := repo.Search(ctx, []float32{0.1, 0.2}, 3)
 
 	require.NoError(t, err)
-	require.Len(t, results, 2, "results must be truncated to the requested limit after sorting")
-	assert.Equal(t, idA, results[0].Chunk.ID, "best-scoring chunk (distance 0.1) must rank first")
-	assert.Equal(t, idC, results[1].Chunk.ID, "second-best chunk (distance 0.2) must rank second")
+	require.Len(t, results, 3)
+	assert.Equal(t, idA, results[0].Chunk.ID)
+	assert.Equal(t, idC, results[1].Chunk.ID)
 	assert.InDelta(t, 0.9, results[0].Score, 1e-6)
 	assert.InDelta(t, 0.8, results[1].Score, 1e-6)
+	assert.InDelta(t, 0.7, results[2].Score, 1e-6)
 }

@@ -89,6 +89,25 @@ type AnswerDebug struct {
 	PlannerConfidence     float64     // Planner confidence in the chosen operation
 	NeedsClarification    bool        // true when planner determined clarification is needed
 	BM25HitCount          int         // Number of BM25 keyword search results
+	// ContextScoreKinds is the declared score space of each selected context,
+	// in the same order as Contexts. A relevance number is unreadable without
+	// it: "rrf" 0.03 and "rerank" 0.03 mean opposite things.
+	ContextScoreKinds []string
+	// PreRerankOrder is the fused ranking before the cross-encoder ran, in
+	// "chunk:<uuid>" / "article:<id>" form, so an offline evaluator can score
+	// the rerank stage's delta from the RPC response alone.
+	PreRerankOrder []string
+	// RerankApplied is false when the cross-encoder was configured but did not
+	// rank this result set.
+	RerankApplied bool
+	// LowConfidence marks an answer generated with an insufficiency disclaimer
+	// rather than gated into a fallback.
+	LowConfidence bool
+	// AgenticDegraded marks an answer whose tool-calling loop failed and fell
+	// back to plain retrieval.
+	AgenticDegraded bool
+	// CacheHit marks an answer replayed from the in-process answer cache.
+	CacheHit bool
 }
 
 // AnswerWithRAGUsecase defines the contract for generating grounded answers.

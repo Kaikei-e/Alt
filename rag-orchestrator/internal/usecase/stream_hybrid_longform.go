@@ -308,6 +308,12 @@ waitHybridChatStream:
 			ToolsUsed:             promptData.toolsUsed,
 			RetrievalPolicy:       promptData.retrievalPolicy,
 			GeneralRetrievalGated: promptData.generalGated,
+			BM25HitCount:          promptData.bm25HitCount,
+			ContextScoreKinds:     contextScoreKinds(promptData.contexts),
+			PreRerankOrder:        promptData.preRerankOrder,
+			RerankApplied:         promptData.rerankApplied,
+			LowConfidence:         promptData.lowConfidence,
+			AgenticDegraded:       promptData.agenticDegraded,
 		},
 	}
 	if promptData.plannerOutput != nil {

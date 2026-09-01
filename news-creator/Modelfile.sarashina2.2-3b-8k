@@ -1,0 +1,26 @@
+# Augur generation EVAL CANDIDATE — not a default. Japanese-first comparison
+# point for gemma4-e4b-12k; nothing creates or pulls it at boot.
+#
+# sbintuitions/sarashina2.2-3b-instruct-v0.1, MIT. There is no official GGUF —
+# this references the community conversion mmnga/sarashina2.2-3b-instruct-v0.1-gguf,
+# which is a third-party requantization and carries no upstream guarantee.
+# Fetch and create by hand:
+#   mkdir -p /tmp/gguf && curl -fSL -o /tmp/gguf/sarashina2.2-3b-instruct-v0.1-Q4_K_M.gguf \
+#     https://huggingface.co/mmnga/sarashina2.2-3b-instruct-v0.1-gguf/resolve/main/sarashina2.2-3b-instruct-v0.1-Q4_K_M.gguf
+#   ollama create sarashina2.2-3b-8k -f Modelfile.sarashina2.2-3b-8k
+#
+# rag-orchestrator's buildOptions matches no branch for this name, so it runs at
+# the temperature=0.2 default rather than a model-recommended setting.
+FROM /tmp/gguf/sarashina2.2-3b-instruct-v0.1-Q4_K_M.gguf
+
+# Transcribed from the upstream tokenizer_config.json chat_template: turns are
+# `<|role|>content</s>` with no separator, and the roles are named exactly as
+# Ollama names them.
+TEMPLATE """{{- range .Messages }}<|{{ .Role }}|>{{ .Content }}</s>
+{{- end }}<|assistant|>"""
+
+PARAMETER stop "</s>"
+# 8192, not the 12288 the other AUGUR tags use: max_position_embeddings is 8192
+# upstream, so a wider window would extrapolate past what the model was trained
+# on. RAG_MAX_PROMPT_TOKENS=6000 still fits.
+PARAMETER num_ctx 8192

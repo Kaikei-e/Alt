@@ -3,7 +3,10 @@ package usecase
 import (
 	"testing"
 
+	"rag-orchestrator/internal/domain"
+
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestAssess_AllHighScores_ReturnsGood(t *testing.T) {
@@ -277,8 +280,8 @@ func TestAssessWithIntent_Causal_QueryContextMismatch_IsInsufficientWhenMarginal
 	// With marginal base verdict + mismatch → Insufficient
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
 	contexts := []ContextItem{
-		{ChunkID: uuid.New(), Score: 0.4, RerankScore: 0.4, Title: "Asset Tokenization Future", ChunkText: "Blockchain enables fractional ownership of real estate assets."},
-		{ChunkID: uuid.New(), Score: 0.3, RerankScore: 0.3, Title: "LibreFang Open Source", ChunkText: "A new open-source alternative to commercial fang-based tools."},
+		{ChunkID: uuid.New(), Score: 0.4, RerankScore: 0.4, Title: "Orchard Gardening Quarterly", ChunkText: "Blockchain enables fractional ownership of real estate assets."},
+		{ChunkID: uuid.New(), Score: 0.3, RerankScore: 0.3, Title: "Example Protocol Overview", ChunkText: "A new open alternative to the commercial tooling in this niche."},
 		{ChunkID: uuid.New(), Score: 0.25, RerankScore: 0.25, Title: "AI Model Pricing Guide", ChunkText: "Comparing costs of GPT-4, Claude, and Gemini for enterprise use."},
 	}
 	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation, "イランの石油危機はなぜ起きた？")
@@ -378,8 +381,8 @@ func TestHasQueryContextMismatch_CJKAndEnglish(t *testing.T) {
 			name:  "CJK query no match in title or chunk",
 			query: "イランの石油危機",
 			contexts: []ContextItem{
-				{Title: "Asset Tokenization", ChunkText: "Blockchain enables fractional ownership."},
-				{Title: "LibreFang Project", ChunkText: "A new open-source tool."},
+				{Title: "Orchard Gardening Weekly", ChunkText: "Blockchain enables fractional ownership."},
+				{Title: "Example Protocol Project", ChunkText: "A new open-source tool."},
 			},
 			expected: true,
 		},
@@ -424,4 +427,55 @@ func TestHasQueryContextMismatch_CJKAndEnglish(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestAssess_RawBM25Scores_AreNotAveragedAgainstCalibratedThresholds is the
+// documented bug, upside down. With the embedder down the pipeline promotes
+// BM25 hits, whose scores are unbounded and may be absent entirely; averaging
+// them against a 0.5 "good" threshold declares a keyword-only retrieval
+// excellent on the strength of a number that means nothing here.
+func TestAssess_RawBM25Scores_AreNotAveragedAgainstCalibratedThresholds(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 12.5, ScoreKind: domain.ScoreKindBM25, Title: "Iran Oil"},
+		{ChunkID: uuid.New(), Score: 9.2, ScoreKind: domain.ScoreKindBM25, Title: "Iran Supply"},
+		{ChunkID: uuid.New(), Score: 8.1, ScoreKind: domain.ScoreKindBM25, Title: "Iran Crisis"},
+	}
+	assert.Equal(t, QualityMarginal, assessor.Assess(contexts))
+}
+
+// TestAssessWithIntent_RRFScores_AreNotJudgedInsufficient is the same defect in
+// the direction that actually shipped: an RRF score sits near 0.02 for k=60
+// however relevant the hit, so every retrieval fell under the marginal
+// threshold and the caller turned that into an empty answer.
+func TestAssessWithIntent_RRFScores_AreNotJudgedInsufficient(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.033, ScoreKind: domain.ScoreKindRRF, Title: "Iran Oil", ChunkText: "Iran oil crisis"},
+		{ChunkID: uuid.New(), Score: 0.022, ScoreKind: domain.ScoreKindRRF, Title: "Iran Supply", ChunkText: "Iran supply"},
+		{ChunkID: uuid.New(), Score: 0.016, ScoreKind: domain.ScoreKindRRF, Title: "Iran Crisis", ChunkText: "Iran crisis"},
+	}
+	assert.Equal(t, QualityMarginal, assessor.AssessWithIntent(contexts, IntentCausalExplanation, "Iran"))
+}
+
+// TestAssess_UncalibratedScores_StillRespectMinContexts: declining to judge the
+// score is not the same as waiving the "there has to be something to read"
+// check.
+func TestAssess_UncalibratedScores_StillRespectMinContexts(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 12.5, ScoreKind: domain.ScoreKindBM25},
+	}
+	assert.Equal(t, QualityInsufficient, assessor.Assess(contexts))
+}
+
+// TestAssess_RerankScoreKind_IsStillJudged keeps the calibrated path intact.
+func TestAssess_RerankScoreKind_IsStillJudged(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.05, ScoreKind: domain.ScoreKindRerank, RerankScore: 0.05, RerankApplied: true, Title: "Orchard Gardening Weekly"},
+		{ChunkID: uuid.New(), Score: 0.03, ScoreKind: domain.ScoreKindRerank, RerankScore: 0.03, RerankApplied: true, Title: "Orchard Gardening Weekly"},
+		{ChunkID: uuid.New(), Score: 0.02, ScoreKind: domain.ScoreKindRerank, RerankScore: 0.02, RerankApplied: true, Title: "Orchard Gardening Weekly"},
+	}
+	assert.Equal(t, QualityInsufficient, assessor.Assess(contexts))
 }

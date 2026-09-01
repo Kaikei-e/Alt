@@ -8,6 +8,21 @@ import (
 	"time"
 )
 
+// GoldenCasesPathEnv names the environment variable that points the runner at
+// a golden case file. This repository is public, so the committed file holds
+// only synthetic cases; a run against the real corpus points this variable at a
+// locally generated, untracked file.
+const GoldenCasesPathEnv = "EVAL_GOLDEN_CASES_PATH"
+
+// ResolveGoldenCasesPath returns the golden case file to load: the path in
+// GoldenCasesPathEnv when set, otherwise the given default.
+func ResolveGoldenCasesPath(defaultPath string) string {
+	if p := strings.TrimSpace(os.Getenv(GoldenCasesPathEnv)); p != "" {
+		return p
+	}
+	return defaultPath
+}
+
 // LoadGoldenCases reads golden cases from a JSON file.
 func LoadGoldenCases(path string) ([]GoldenCase, error) {
 	data, err := os.ReadFile(path)
@@ -16,7 +31,10 @@ func LoadGoldenCases(path string) ([]GoldenCase, error) {
 	}
 	var cases []GoldenCase
 	if err := json.Unmarshal(data, &cases); err != nil {
-		return nil, fmt.Errorf("parse golden cases: %w", err)
+		return nil, fmt.Errorf("parse golden cases %s: %w", path, err)
+	}
+	if len(cases) == 0 {
+		return nil, fmt.Errorf("parse golden cases %s: file declares no cases", path)
 	}
 	return cases, nil
 }
@@ -45,22 +63,27 @@ func RunOfflineEval(cases []GoldenCase, results map[string]EvalResult) EvalRepor
 		faithfulnessCount int
 		citCorrectCount   int
 
-		// Phase 0 additions
 		structureAdherent int
 		structureTotal    int
 		totalPromptTokens float64
 		promptTokenCount  int
+
+		stages = newStageAccumulator()
 	)
+
+	report.Categories = make(map[string]CategorySummary, len(KnownCategories))
 
 	for _, gc := range cases {
 		result, ok := results[gc.ID]
 		if !ok {
 			report.Verdicts = append(report.Verdicts, CaseVerdict{
 				CaseID:   gc.ID,
+				Category: gc.Category,
 				Passed:   false,
 				Failures: []string{"no result found for case"},
 			})
 			report.FailCount++
+			report.Categories[gc.Category] = addCategoryCase(report.Categories[gc.Category], false)
 			continue
 		}
 
@@ -71,6 +94,9 @@ func RunOfflineEval(cases []GoldenCase, results map[string]EvalResult) EvalRepor
 		} else {
 			report.FailCount++
 		}
+		report.Categories[gc.Category] = addCategoryCase(report.Categories[gc.Category], verdict.Passed)
+
+		stages.observe(gc, result)
 
 		// Aggregate metrics
 		if len(gc.Expected.ExpectedTopicKeywords) > 0 {
@@ -176,7 +202,18 @@ func RunOfflineEval(cases []GoldenCase, results map[string]EvalResult) EvalRepor
 		report.Metrics.MeanPromptTokens = totalPromptTokens / float64(promptTokenCount)
 	}
 
+	report.Stages = stages.finalize()
+	report.Metrics.MeanNDCGAt10 = report.Stages.Retrieval.MeanNDCGAt10
+
 	return report
+}
+
+func addCategoryCase(s CategorySummary, passed bool) CategorySummary {
+	s.CaseCount++
+	if passed {
+		s.PassCount++
+	}
+	return s
 }
 
 // SaveReport writes the eval report as JSON.
@@ -185,5 +222,10 @@ func SaveReport(report EvalReport, path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal report: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	// A report over the real corpus carries article titles and generated
+	// answers, so it is written owner-only.
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write report %s: %w", path, err)
+	}
+	return nil
 }

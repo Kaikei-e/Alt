@@ -1,0 +1,210 @@
+# promtool unit tests for the Ask Augur answer-path alerts.
+#
+#   ./scripts/observability-validate.sh
+#   # or:
+#   promtool test rules observability/prometheus/tests/augur-answer-alerts_test.yml
+#
+# Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
+# test file parsed as a rule group is a fatal config error, not a skip.
+#
+# What these pin, in the order the alerts are worth trusting:
+#   - the fallback rate fires on a sustained degradation
+#   - the observation gate keeps a quiet hour with two bad answers silent,
+#     which is the failure mode that gets a low-traffic alert muted forever
+#   - the rerank denominator counts only answers reranking was configured for,
+#     so RERANK_ENABLED=false cannot make the rate alert fire
+#   - corpus coverage fires on the real production split (~4% on target) and
+#     stays quiet on a healthy corpus
+#   - a dead census sampler pages, because a gauge nobody updates keeps
+#     reporting a healthy-looking last value
+
+rule_files:
+  - ../rules/augur-answer-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Half of all answers falling back, sustained.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_augur_answer_total{path="normal",outcome="fallback"}'
+        values: '0+1x60'
+      - series: 'rag_orchestrator_augur_answer_total{path="normal",outcome="success"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: AugurFallbackRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              service: rag-orchestrator
+              stack: rag
+            exp_annotations:
+              summary: "Over a third of Ask Augur answers are falling back"
+              description: |
+                Fallback share over 30m is 50%.
+                Break it down by production path:
+                sum by (path) (increase(rag_orchestrator_augur_answer_total{outcome="fallback"}[30m]))
+                The 2026-04-11 regression had this shape: retrieval scores read
+                against thresholds calibrated for a different score space.
+      # 50% is above the warn threshold but below the page one.
+      - eval_time: 50m
+        alertname: AugurFallbackRateCritical
+        exp_alerts: []
+
+  # Three fallbacks in half an hour on an otherwise idle surface. The ratio is
+  # 100%; the observation gate is the only thing standing between that and a
+  # permanently firing alert.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_augur_answer_total{path="normal",outcome="fallback"}'
+        values: '0+1x3 3+0x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: AugurFallbackRateHigh
+        exp_alerts: []
+
+  # Reranking configured and failing on half the answers.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_augur_rerank_expected_total'
+        values: '0+2x60'
+      - series: 'rag_orchestrator_augur_rerank_fallback_total'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: AugurRerankFallbackRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              service: rag-orchestrator
+              stack: rag
+            exp_annotations:
+              summary: "Cross-encoder reranking is failing on a quarter of Ask Augur answers"
+              description: |
+                50% of answers that should have been
+                reranked were served on retrieval scores instead.
+                Check: docker compose -f compose/compose.yaml -p alt logs rerank-server
+                and grep rag-orchestrator for rerank_fallback_original_scores, which
+                carries the specific reason (timeout, unmatched ids, empty response).
+
+  # RERANK_ENABLED=false: the emitter increments neither counter, so the rate
+  # has no denominator and the alert must stay silent rather than read 0/0 as
+  # a total failure.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_augur_answer_total{path="normal",outcome="success"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: AugurRerankFallbackRateHigh
+        exp_alerts: []
+
+  # The corpus state the census first revealed: ~1.1k documents on the current
+  # (chunker, embedder) pair against ~28k on a superseded one.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_rag_document_coverage{chunker_version="v10",embedder_version="bge-m3/1024",target="true"}'
+        values: '1105+0x200'
+      - series: 'rag_orchestrator_rag_document_coverage{chunker_version="v9",embedder_version="embeddinggemma",target="false"}'
+        values: '27927+0x200'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: AugurEmbeddingCoverageLow
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              service: rag-orchestrator
+              stack: rag
+            exp_annotations:
+              summary: "Only 3.806% of the RAG corpus is on the current chunker/embedder pair"
+              description: |
+                Documents on a superseded pair are retrievable but scored in the
+                wrong vector space. See the split:
+                sum by (chunker_version, embedder_version, target) (rag_orchestrator_rag_document_coverage)
+                A rebuild is the remedy (cmd/backfill). If one is already running,
+                this clears on its own as the target share climbs.
+
+  # A corpus that finished its rebuild must not keep alerting.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_rag_document_coverage{chunker_version="v10",embedder_version="bge-m3/1024",target="true"}'
+        values: '29000+0x200'
+      - series: 'rag_orchestrator_rag_document_coverage{chunker_version="v9",embedder_version="embeddinggemma",target="false"}'
+        values: '32+0x200'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: AugurEmbeddingCoverageLow
+        exp_alerts: []
+
+  # The production state that made this alert necessary: 29k of 2.18M chunks
+  # carry a vector, so hybrid retrieval is running on its lexical arm alone.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_rag_chunk_embedding_coverage{state="embedded"}'
+        values: '29022+0x200'
+      - series: 'rag_orchestrator_rag_chunk_embedding_coverage{state="missing"}'
+        values: '2148853+0x200'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: AugurChunkEmbeddingCoverageLow
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              service: rag-orchestrator
+              stack: rag
+            exp_annotations:
+              summary: "Only 1.333% of RAG chunks carry an embedding"
+              description: |
+                Chunks with a NULL embedding are reachable lexically and invisible
+                to vector search, so hybrid retrieval quietly degrades to its BM25
+                arm — and the related-citation neighbor lookup, which is
+                vector-first, returns nothing.
+                Check: docker exec rag-db psql -U rag_user -d rag_db -c "SELECT count(*), count(embedding) FROM rag_chunks;"
+
+  # A fully embedded corpus stays quiet.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_rag_chunk_embedding_coverage{state="embedded"}'
+        values: '2177875+0x200'
+      - series: 'rag_orchestrator_rag_chunk_embedding_coverage{state="missing"}'
+        values: '0+0x200'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: AugurChunkEmbeddingCoverageLow
+        exp_alerts: []
+
+  # No census series at all — the sampler never started, or the service is
+  # gone. absent() is what makes this visible; a bare comparison over an empty
+  # vector is silent for exactly the outage the rule exists to catch.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_augur_answer_total{path="normal",outcome="success"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AugurCoverageSamplerStalled
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              service: rag-orchestrator
+              stack: rag
+            exp_annotations:
+              summary: "RAG corpus census has not sampled for an hour"
+              description: |
+                Default sampling interval is 15m
+                (RAG_COVERAGE_SAMPLE_INTERVAL_MINUTES), so an hour means several
+                missed passes or a dead rag-orchestrator. Until it resumes, every
+                coverage number on the dashboard is stale.
+                Check: docker compose -f compose/compose.yaml -p alt logs rag-orchestrator | grep rag_document_coverage
+
+  # A sampler keeping up: the timestamp trails evaluation time by well under
+  # the hour the rule allows.
+  - interval: 1m
+    input_series:
+      - series: 'rag_orchestrator_rag_document_coverage_scrape_timestamp_seconds'
+        values: '0+60x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: AugurCoverageSamplerStalled
+        exp_alerts: []
