@@ -2,7 +2,7 @@
 
 services:
   knowledge-sovereign-db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     restart: unless-stopped
     mem_limit: 512m
     environment:

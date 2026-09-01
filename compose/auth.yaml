@@ -16,7 +16,7 @@ x-pki-cert-volume-chown: &pki-cert-volume-chown
 
 services:
   kratos-db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     restart: always
     mem_limit: 128m
     command: >

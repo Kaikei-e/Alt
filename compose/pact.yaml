@@ -19,7 +19,7 @@ include:
 
 services:
   pact-db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     # One-shot DB for the Broker; keep footprint small vs app DBs.
     mem_limit: 256m
     environment:

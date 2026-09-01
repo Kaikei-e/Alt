@@ -6,7 +6,7 @@ include:
 
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17.11-alpine
     container_name: alt-db
     restart: always
     mem_limit: 768m
@@ -189,7 +189,7 @@ services:
 
   # Pre-processor dedicated database (ADR-000246)
   pre-processor-db:
-    image: postgres:17-alpine
+    image: postgres:17.11-alpine
     container_name: pre-processor-db
     mem_limit: 192m
     ports:
