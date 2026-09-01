@@ -32,8 +32,9 @@ func newSearchIndexerPact(t *testing.T) *consumer.V3HTTPMockProvider {
 }
 
 // TestSearchIndexerSearchContract pins the `Search()` request/response:
-// - GET /v1/search
-// - q, user_id query params
+//   - GET /v1/search
+//   - q query param only; no user_id, so search-indexer serves the unfiltered
+//     internal RAG route instead of scoping hits to a per-user filter
 func TestSearchIndexerSearchContract(t *testing.T) {
 	mockProvider := newSearchIndexerPact(t)
 
@@ -45,8 +46,7 @@ func TestSearchIndexerSearchContract(t *testing.T) {
 			Method: "GET",
 			Path:   matchers.String("/v1/search"),
 			Query: matchers.MapMatcher{
-				"q":       matchers.Like("LLM"),
-				"user_id": matchers.String("rag-orchestrator-system"),
+				"q": matchers.Like("LLM"),
 			},
 		}).
 		WithCompleteResponse(consumer.Response{

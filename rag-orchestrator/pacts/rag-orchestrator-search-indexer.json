@@ -28,9 +28,6 @@
         "query": {
           "q": [
             "LLM"
-          ],
-          "user_id": [
-            "rag-orchestrator-system"
           ]
         }
       },
