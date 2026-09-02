@@ -124,7 +124,7 @@ services:
       # rerank-external route is retired.
       - RERANK_URL=http://rerank-local:8080
       # Must match rerank-local's RERANK_MODEL below; the server 422s a mismatch.
-      - RERANK_MODEL=${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+      - RERANK_MODEL=${RERANK_MODEL:-cl-nagoya/ruri-v3-reranker-310m}
       # Explicit; the server derives the same bound from RERANK_SERVER_TIMEOUT/250ms.
       - RERANK_MAX_CANDIDATES=40
       # 10 candidates measured at ~520ms on rerank-local, so ~40 lands near 2s.
@@ -329,7 +329,7 @@ services:
       # halves of that contract stay visible in this file.
       - RERANK_SERVER_TIMEOUT=10
       # Requests carry the model name and are rejected unless it matches this.
-      - RERANK_MODEL=${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+      - RERANK_MODEL=${RERANK_MODEL:-cl-nagoya/ruri-v3-reranker-310m}
     volumes:
       - rerank_local_models:/models
     ports:

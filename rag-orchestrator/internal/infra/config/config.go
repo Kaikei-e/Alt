@@ -38,9 +38,9 @@ const (
 // - Pinecone: +15-30% NDCG@10 improvement with cross-encoder
 // - ZeroEntropy: -35% LLM hallucinations
 const (
-	defaultRerankEnabled = true                      // Enabled by default per user preference
-	defaultRerankModel   = "BAAI/bge-reranker-v2-m3" // BAAI multilingual model
-	defaultRerankTopK    = 10                        // Hits kept after reranking
+	defaultRerankEnabled = true                              // Enabled by default per user preference
+	defaultRerankModel   = "cl-nagoya/ruri-v3-reranker-310m" // ModernBERT-ja, adopted after the 2026-09 A/B eval
+	defaultRerankTopK    = 10                                // Hits kept after reranking
 
 	// defaultRerankMaxCandidates is how many hits are sent to the
 	// cross-encoder. It is deliberately larger than TopK: capping the input at

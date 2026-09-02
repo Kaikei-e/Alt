@@ -48,7 +48,7 @@ elif torch.cuda.is_available():
 else:
     DEVICE = "cpu"
 
-DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
+DEFAULT_MODEL = "cl-nagoya/ruri-v3-reranker-310m"
 
 # Rerankers whose ONNX export path was checked against the pinned toolchain
 # (optimum-onnx 0.1.0 / transformers 4.57.6). The XLM-RoBERTa pair needs no

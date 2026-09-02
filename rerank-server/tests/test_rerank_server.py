@@ -129,14 +129,14 @@ def test_ruri_model_is_accepted_end_to_end(
     assert resp.json()["model"] == RURI_MODEL
 
 
-def test_resolve_model_dir_keeps_the_existing_default_cache_path(
+def test_resolve_model_dir_derives_the_default_cache_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The bge export already sits in this volume path; changing it re-downloads 2.3GB."""
+    """First boot after the ruri adoption exports into its own directory."""
     monkeypatch.delenv("RERANK_MODEL_DIR", raising=False)
     monkeypatch.delenv("RERANK_MODEL_CACHE_ROOT", raising=False)
 
-    assert rerank_server._resolve_model_dir(DEFAULT_MODEL) == "/models/bge-reranker-v2-m3-onnx"
+    assert rerank_server._resolve_model_dir(DEFAULT_MODEL) == "/models/ruri-v3-reranker-310m-onnx"
 
 
 def test_resolve_model_dir_differs_per_model(monkeypatch: pytest.MonkeyPatch) -> None:
