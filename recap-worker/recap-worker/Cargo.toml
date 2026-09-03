@@ -102,10 +102,9 @@ smallvec = "1.15"
 regex = "1.12"
 aho-corasick = "1.1"
 fst = "0.4"
-# default-features (remote + default-tls) pull cached-path → reqwest 0.11 →
-# h2 0.3.27 (RUSTSEC-2026-0258) and native-tls. Runtime load is
-# SentenceEmbeddingsBuilder::local only; keep those features off.
-rust-bert = { version = "0.23.0", default-features = false }
+candle-core = "0.11"
+candle-nn = "0.11"
+candle-transformers = "0.11"
 console = "0.16"
 ndarray = { version = "0.17", features = ["serde", "rayon"] }
 petgraph = "0.8"
