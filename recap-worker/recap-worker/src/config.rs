@@ -783,14 +783,14 @@ impl Config {
         self.batch_summary_chunk_size
     }
 
-    /// Whether the rust-bert sentence-embedding service is a hard startup requirement.
+    /// Whether the sentence-embedding service is a hard startup requirement.
     ///
     /// Returns `true` when `RECAP_WORKER_EMBEDDING_REQUIRED=true`. Under that
     /// policy, `EmbeddingService::new()` failing during `ComponentRegistry::build`
     /// must abort startup (fail-closed, mirrors the joblib validator pattern in
     /// ADR-000825) rather than silently degrading to keyword-only filtering.
-    /// Default is `false` for dev/test stacks that have not populated the
-    /// `/opt/rustbert-cache` directory.
+    /// Default is `false` for dev/test stacks whose image does not bake the
+    /// model directory.
     #[must_use]
     pub fn embedding_required(&self) -> bool {
         self.embedding_required.is_enabled()

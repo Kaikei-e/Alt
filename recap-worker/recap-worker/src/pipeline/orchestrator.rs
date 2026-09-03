@@ -191,12 +191,13 @@ impl PipelineOrchestrator {
         if let Err(ref e) = embedding_init {
             // Log once up-front so operators see the init failure even when the
             // Optional policy would swallow it into Ok(None). This path was the
-            // silent-failure source documented in PM-2026-038: empty rust-bert
-            // cache → keyword-only fallback → 30-genre taxonomy collapsed to 2
-            // buckets, but the only breadcrumb was a single WARN on startup.
+            // silent-failure source documented in PM-2026-038: an unusable
+            // model directory → keyword-only fallback → 30-genre taxonomy
+            // collapsed to 2 buckets, with a single WARN as the only breadcrumb.
             let hint = if config.embedding_required() {
                 "RECAP_WORKER_EMBEDDING_REQUIRED=true — refusing to start. \
-                 Populate /opt/rustbert-cache via `recap-worker warmup` per \
+                 The image must bake the model directory; validate it with \
+                 `recap-worker warmup` per \
                  docs/runbooks/3days-recap-artefact-recovery.md."
             } else {
                 "RECAP_WORKER_EMBEDDING_REQUIRED=false — falling back to \
@@ -216,8 +217,8 @@ impl PipelineOrchestrator {
                 .context(
                     "embedding service init failed while \
                      RECAP_WORKER_EMBEDDING_REQUIRED=true (see \
-                     docs/runbooks/3days-recap-artefact-recovery.md to populate \
-                     /opt/rustbert-cache)",
+                     docs/runbooks/3days-recap-artefact-recovery.md for the \
+                     baked model directory)",
                 )?
                 .map(|s| {
                     tracing::info!("Embedding service initialized successfully (AllMiniLmL12V2)");

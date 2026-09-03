@@ -29,11 +29,10 @@ pub mod util;
 
 /// Verify the baked `AllMiniLmL12V2` sentence-embedding model loads.
 ///
-/// The model directory ships inside the image and is read with
-/// `SentenceEmbeddingsBuilder::local`, so nothing is downloaded and no network
-/// is touched. This subcommand exists to fail a bad image at build or deploy
-/// time rather than at the first recap job: it names any missing file and
-/// exercises the real `tch` load path.
+/// The model directory ships inside the image and is read straight from disk,
+/// so nothing is downloaded and no network is touched. This subcommand exists
+/// to fail a bad image at build or deploy time rather than at the first recap
+/// job: it names any missing file and exercises the real candle load path.
 pub async fn warmup_embedding_cache() -> anyhow::Result<()> {
     tokio::task::spawn_blocking(pipeline::embedding::EmbeddingService::new)
         .await
