@@ -361,23 +361,12 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        EmbeddingAvailability, EmbeddingService, REQUIRED_MODEL_FILES, cosine_similarity,
-        masked_mean_pool_l2, missing_model_files, require_or_degrade,
+        EmbeddingAvailability, EmbeddingService, REQUIRED_MODEL_FILES, ReferenceFixture,
+        cosine_similarity, masked_mean_pool_l2, missing_model_files, reference_fixture,
+        require_or_degrade, verify_against_reference,
     };
     use candle_core::{Device, Tensor};
     use std::path::{Path, PathBuf};
-
-    #[derive(serde::Deserialize)]
-    struct ReferenceItem {
-        text: String,
-        embedding: Vec<f32>,
-    }
-
-    #[derive(serde::Deserialize)]
-    struct ReferenceFixture {
-        dimension: usize,
-        items: Vec<ReferenceItem>,
-    }
 
     fn populate(dir: &Path, files: &[&str]) {
         for rel in files {
@@ -529,6 +518,81 @@ mod tests {
         assert!(vectors.is_empty(), "got: {vectors:?}");
     }
 
+    #[test]
+    fn reference_fixture_parses_the_checked_in_json() {
+        let fixture: ReferenceFixture = reference_fixture().expect("checked-in fixture must parse");
+
+        assert_eq!(fixture.dimension, 384);
+        assert_eq!(fixture.items.len(), 8);
+        for (i, item) in fixture.items.iter().enumerate() {
+            assert_eq!(item.embedding.len(), 384, "item {i}");
+            let norm = l2_norm(&item.embedding);
+            assert!((norm - 1.0).abs() < 1e-3, "item {i} norm {norm}");
+        }
+    }
+
+    #[test]
+    fn verify_against_reference_accepts_the_reference_itself() {
+        let fixture = reference_fixture().unwrap();
+        let rows: Vec<Vec<f32>> = fixture.items.iter().map(|i| i.embedding.clone()).collect();
+
+        verify_against_reference(&rows, &fixture)
+            .expect("the reference must verify against itself");
+    }
+
+    #[test]
+    fn verify_against_reference_rejects_a_row_count_mismatch() {
+        let fixture = reference_fixture().unwrap();
+        let rows: Vec<Vec<f32>> = fixture
+            .items
+            .iter()
+            .skip(1)
+            .map(|i| i.embedding.clone())
+            .collect();
+
+        let err = verify_against_reference(&rows, &fixture).expect_err("row count must be checked");
+        let message = format!("{err:#}");
+
+        assert!(
+            message.contains(&fixture.items.len().to_string()),
+            "got: {message}"
+        );
+    }
+
+    #[test]
+    fn verify_against_reference_rejects_a_dimension_mismatch() {
+        let fixture = reference_fixture().unwrap();
+        let mut rows: Vec<Vec<f32>> = fixture.items.iter().map(|i| i.embedding.clone()).collect();
+        rows[2].truncate(128);
+
+        let err = verify_against_reference(&rows, &fixture).expect_err("dimension must be checked");
+        let message = format!("{err:#}");
+
+        assert!(
+            message.contains('2'),
+            "message must name the item index, got: {message}"
+        );
+        assert!(message.contains("128"), "got: {message}");
+    }
+
+    #[test]
+    fn verify_against_reference_rejects_a_drifted_row() {
+        let fixture = reference_fixture().unwrap();
+        let mut rows: Vec<Vec<f32>> = fixture.items.iter().map(|i| i.embedding.clone()).collect();
+        for value in &mut rows[3] {
+            *value = -*value;
+        }
+
+        let err = verify_against_reference(&rows, &fixture).expect_err("drift must be rejected");
+        let message = format!("{err:#}");
+
+        assert!(
+            message.contains('3'),
+            "message must name the item index, got: {message}"
+        );
+        assert!(message.contains("cosine"), "got: {message}");
+    }
+
     /// Numerical parity with the sentence-transformers reference vectors, plus
     /// the batched-vs-single check that catches padding leaking through pooling.
     /// Skips when the baked model directory or the fixture is absent so
@@ -538,40 +602,18 @@ mod tests {
         let Some(dir) = model_dir_from_env() else {
             return;
         };
-        let fixture_path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/data/all_minilm_l12_v2_reference.json"
-        );
-        let Ok(raw) = std::fs::read_to_string(fixture_path) else {
-            eprintln!("skipping: parity fixture {fixture_path} is absent");
-            return;
-        };
-        let fixture: ReferenceFixture =
-            serde_json::from_str(&raw).expect("parity fixture must parse");
-        assert_eq!(fixture.dimension, 384);
-        assert!(!fixture.items.is_empty(), "fixture must carry items");
+        let fixture = reference_fixture().expect("parity fixture must parse");
 
         let svc = EmbeddingService::from_dir(&dir).expect("local all-MiniLM must load");
         let rt = tokio::runtime::Runtime::new().unwrap();
         let texts: Vec<String> = fixture.items.iter().map(|i| i.text.clone()).collect();
 
         let batched = rt.block_on(svc.encode(&texts)).expect("batched encode");
-        assert_eq!(batched.len(), fixture.items.len());
+        verify_against_reference(&batched, &fixture).expect("batched encode must match reference");
 
-        for (item, actual) in fixture.items.iter().zip(&batched) {
-            assert_eq!(actual.len(), 384, "text: {}", item.text);
+        for actual in &batched {
             let norm = l2_norm(actual);
-            assert!(
-                (norm - 1.0).abs() < 1e-3,
-                "norm {norm} for text: {}",
-                item.text
-            );
-            let similarity = cosine_similarity(actual, &item.embedding);
-            assert!(
-                similarity >= 0.999,
-                "cosine {similarity} below parity floor for text: {}",
-                item.text
-            );
+            assert!((norm - 1.0).abs() < 1e-3, "norm {norm} must be unit");
         }
 
         for (i, text) in texts.iter().enumerate() {

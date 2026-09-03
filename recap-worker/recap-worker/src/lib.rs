@@ -39,3 +39,33 @@ pub async fn warmup_embedding_cache() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("warmup task join failed: {e:?}"))?
         .map(|_| ())
 }
+
+#[cfg(test)]
+mod tests {
+    /// `warmup_embedding_cache` verifies the encoder against the checked-in
+    /// reference fixture, so the image smoke test is a numeric parity gate and
+    /// not just a "the weights load" check.
+    #[test]
+    fn warmup_verifies_the_reference_fixture_when_model_dir_present() {
+        let raw = match std::env::var("RECAP_WORKER_EMBEDDING_MODEL_DIR") {
+            Ok(v) if !v.is_empty() => v,
+            _ => {
+                eprintln!(
+                    "skipping: set RECAP_WORKER_EMBEDDING_MODEL_DIR to a complete \
+                     all-MiniLM-L12-v2 directory"
+                );
+                return;
+            }
+        };
+        let missing = crate::pipeline::embedding::missing_model_files(std::path::Path::new(&raw));
+        if !missing.is_empty() {
+            eprintln!("skipping: incomplete model dir {raw}, missing {missing:?}");
+            return;
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        rt.block_on(super::warmup_embedding_cache())
+            .expect("warmup must load the model and verify it against the fixture");
+    }
+}
