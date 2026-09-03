@@ -822,6 +822,11 @@
       "requires_citations": true,
       "expected_entities": [
         "エネルギー"
+      ],
+      "expected_structure": [
+        "直接的要因",
+        "構造的背景",
+        "不確実性"
       ]
     }
   },
@@ -855,6 +860,11 @@
       "requires_citations": true,
       "expected_entities": [
         "供給"
+      ],
+      "expected_structure": [
+        "直接的要因",
+        "構造的背景",
+        "不確実性"
       ]
     }
   },
@@ -889,7 +899,12 @@
       "should_clarify": false,
       "expected_intent": "causal_explanation",
       "min_answer_length": 400,
-      "requires_citations": true
+      "requires_citations": true,
+      "expected_structure": [
+        "直接的要因",
+        "構造的背景",
+        "不確実性"
+      ]
     }
   },
   {

@@ -110,6 +110,14 @@ func preamble() string {
 		"ソース引用[番号]を必ず付与すること。\n\n"
 }
 
+// lengthFloor anchors answer length; without it small models mirror the
+// few-shot skeleton and stop after the first heading.
+func lengthFloor(runes int) string {
+	return fmt.Sprintf("回答は%d文字以上（目安%d〜%d文字）で、具体的な出来事・日付・数値を引用付きで含めること。\n", runes, runes, runes+400) +
+		"各構成要素は複数の文で記述し、見出しや箇条書き1行だけで終わらせないこと。\n" +
+		"コンテキストが質問の一部にしか答えていない場合は、答えられる部分を詳しく述べ、不足している点を明記すること。\n\n"
+}
+
 // outputFormatBrief returns a brief output format instruction.
 // The full JSON schema is enforced by Ollama's generationFormat, not the prompt.
 func outputFormatBrief() string {

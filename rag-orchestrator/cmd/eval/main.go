@@ -141,6 +141,7 @@ func run(opts options, logger *slog.Logger) error {
 			"case_id", gc.ID,
 			"category", gc.Category,
 			"fallback", result.IsFallback,
+			"fallback_reason", result.FallbackReason,
 			"answer_runes", result.AnswerLength,
 			"citations", result.CitationCount)
 	}

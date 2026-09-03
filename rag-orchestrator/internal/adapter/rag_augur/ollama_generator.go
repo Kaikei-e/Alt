@@ -152,7 +152,10 @@ func (g *OllamaGenerator) buildOptions(maxTokens int) map[string]interface{} {
 		opts["repeat_penalty"] = 1.15
 	case strings.Contains(modelLower, "gemma"):
 		// Gemma: sampling/context params delegated to news-creator proxy baseline.
-		// Only num_predict is set here to avoid model reload from parameter mismatch.
+		// The proxy's repeat_penalty 1.15 (tuned for summaries) penalizes every
+		// repeated heading/particle token but never EOS, so structured Japanese
+		// answers stop after the first section; Gemma 4 ships without a penalty.
+		opts["repeat_penalty"] = 1.0
 	case strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama"):
 		// Swallow/Llama 3.1: 詳細な回答生成向け設定
 		// Swallow公式推奨: temperature=0.6 for detailed responses

@@ -429,6 +429,10 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 	return output, nil
 }
 
+// A cited causal answer under this length is a heading skeleton (observed
+// in production at ~360 runes), not an analysis; regenerate once.
+const causalRetryMinRunes = 500
+
 type answerAcceptanceProfile struct {
 	name                string
 	maxRetries          int
@@ -615,20 +619,22 @@ func (u *answerWithRAGUsecase) retryValidatedAnswer(
 			return currentPromptData, currentAnswer, currentFlags, retryCount, u.answerAccepted(profile, currentAnswer, currentFlags), nil
 		}
 
+		// A retry that cannot be produced must not cost the user the answer
+		// that already passed validation; keep it, as when retries run out.
 		retryInput := u.buildCorrectiveRetryInput(input, promptData, profile, retryCount+1)
 		retryPromptData, err := u.buildPrompt(ctx, retryInput)
 		if err != nil {
-			return currentPromptData, parsedAnswer, qualityFlags, retryCount, false, fmt.Errorf("build corrective retry prompt: %w", err)
+			return u.keepAnswerAfterRetryFailure(currentPromptData, currentAnswer, currentFlags, profile, requestID, retryCount, "build corrective retry prompt", err)
 		}
 
 		retryResp, err := u.llmClient.Chat(ctx, retryPromptData.messages, retryPromptData.maxTokens)
 		if err != nil {
-			return currentPromptData, parsedAnswer, qualityFlags, retryCount, false, fmt.Errorf("corrective retry generation failed: %w", err)
+			return u.keepAnswerAfterRetryFailure(currentPromptData, currentAnswer, currentFlags, profile, requestID, retryCount, "corrective retry generation", err)
 		}
 
 		retryParsed, err := u.validator.Validate(retryResp.Text, retryPromptData.contexts)
 		if err != nil {
-			return currentPromptData, parsedAnswer, qualityFlags, retryCount, false, fmt.Errorf("corrective retry validation failed: %w", err)
+			return u.keepAnswerAfterRetryFailure(currentPromptData, currentAnswer, currentFlags, profile, requestID, retryCount, "corrective retry validation", err)
 		}
 
 		retryFlags := AssessAnswerQuality(
@@ -654,6 +660,24 @@ func (u *answerWithRAGUsecase) retryValidatedAnswer(
 	}
 }
 
+func (u *answerWithRAGUsecase) keepAnswerAfterRetryFailure(
+	promptData *promptBuildResult,
+	answer *LLMAnswer,
+	qualityFlags []string,
+	profile answerAcceptanceProfile,
+	requestID string,
+	retryCount int,
+	stage string,
+	err error,
+) (*promptBuildResult, *LLMAnswer, []string, int, bool, error) {
+	u.logger.Warn("corrective_retry_unavailable_keeping_answer",
+		slog.String("request_id", requestID),
+		slog.String("profile", profile.name),
+		slog.String("stage", stage),
+		slog.String("error", err.Error()))
+	return promptData, answer, qualityFlags, retryCount, u.answerAccepted(profile, answer, qualityFlags), nil
+}
+
 func (u *answerWithRAGUsecase) shouldRetryGeneratedAnswer(
 	query string,
 	parsedAnswer *LLMAnswer,
@@ -673,7 +697,7 @@ func (u *answerWithRAGUsecase) shouldRetryGeneratedAnswer(
 		len(parsedAnswer.Citations) == 0 {
 		return true
 	}
-	if promptData.intentType == IntentCausalExplanation && answerLen < 160 {
+	if promptData.intentType == IntentCausalExplanation && answerLen < causalRetryMinRunes {
 		return true
 	}
 	if profile.strictLongForm && answerLen < profile.acceptMinRunes {

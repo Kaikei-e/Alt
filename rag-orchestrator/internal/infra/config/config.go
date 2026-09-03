@@ -405,7 +405,7 @@ func Load() *Config {
 			QuotaOriginal:                    getEnvInt("RAG_QUOTA_ORIGINAL", defaultRAGQuotaOriginal),
 			QuotaExpanded:                    getEnvInt("RAG_QUOTA_EXPANDED", defaultRAGQuotaExpanded),
 			RRFK:                             getEnvFloat64("RAG_RRF_K", defaultRAGRRFK),
-			MaxChunks:                        getEnvInt("RAG_DEFAULT_MAX_CHUNKS", 7),
+			MaxChunks:                        getEnvInt("RAG_DEFAULT_MAX_CHUNKS", defaultRerankTopK),
 			MaxTokens:                        getEnvInt("RAG_DEFAULT_MAX_TOKENS", 3072),
 			MorningLetterMaxTokens:           getEnvInt("MORNING_LETTER_MAX_TOKENS", 4096),
 			MaxPromptTokens:                  getEnvInt("RAG_MAX_PROMPT_TOKENS", 6000),
