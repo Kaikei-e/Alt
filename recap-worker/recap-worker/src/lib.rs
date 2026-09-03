@@ -27,17 +27,24 @@ pub(crate) mod store;
 pub mod tls;
 pub mod util;
 
-/// Verify the baked `AllMiniLmL12V2` sentence-embedding model loads.
+/// Verify the baked `AllMiniLmL12V2` sentence-embedding model loads and still
+/// reproduces the checked-in reference vectors.
 ///
 /// The model directory ships inside the image and is read straight from disk,
 /// so nothing is downloaded and no network is touched. This subcommand exists
 /// to fail a bad image at build or deploy time rather than at the first recap
-/// job: it names any missing file and exercises the real candle load path.
+/// job: it names any missing file, and it fails just as loudly when the
+/// encoder still loads but its vectors have drifted from the reference.
 pub async fn warmup_embedding_cache() -> anyhow::Result<()> {
-    tokio::task::spawn_blocking(pipeline::embedding::EmbeddingService::new)
+    let service = tokio::task::spawn_blocking(pipeline::embedding::EmbeddingService::new)
         .await
-        .map_err(|e| anyhow::anyhow!("warmup task join failed: {e:?}"))?
-        .map(|_| ())
+        .map_err(|e| anyhow::anyhow!("warmup task join failed: {e:?}"))??;
+
+    let fixture = pipeline::embedding::reference_fixture()?;
+    let texts: Vec<String> = fixture.items.iter().map(|i| i.text.clone()).collect();
+    let embeddings = service.encode(&texts).await?;
+
+    pipeline::embedding::verify_against_reference(&embeddings, &fixture)
 }
 
 #[cfg(test)]

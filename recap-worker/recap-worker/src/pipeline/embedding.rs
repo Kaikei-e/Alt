@@ -358,6 +358,77 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot_product / (norm_a * norm_b)
 }
 
+/// The sentence-transformers reference vectors, baked into the binary so
+/// `warmup` can verify a built image with no filesystem or network access.
+pub(crate) const REFERENCE_FIXTURE_JSON: &str =
+    include_str!("../../tests/data/all_minilm_l12_v2_reference.json");
+
+/// Float32 differences between CPU BLAS paths stay above 0.9999; a wrong mask,
+/// pooling or truncation drops the cosine far below this floor.
+pub(crate) const MIN_REFERENCE_COSINE: f32 = 0.999;
+
+#[derive(serde::Deserialize)]
+pub(crate) struct ReferenceItem {
+    pub(crate) text: String,
+    pub(crate) embedding: Vec<f32>,
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct ReferenceFixture {
+    pub(crate) dimension: usize,
+    pub(crate) items: Vec<ReferenceItem>,
+}
+
+pub(crate) fn reference_fixture() -> Result<ReferenceFixture> {
+    serde_json::from_str(REFERENCE_FIXTURE_JSON)
+        .context("failed to parse the all-MiniLM-L12-v2 reference fixture")
+}
+
+/// Truncate on a char boundary so an error message never panics on multi-byte text.
+fn preview(text: &str) -> String {
+    text.char_indices()
+        .nth(40)
+        .map_or_else(|| text.to_string(), |(end, _)| format!("{}…", &text[..end]))
+}
+
+/// Check freshly computed `embeddings` against the checked-in reference vectors.
+///
+/// The batch must line up with the fixture row for row, keep the fixture's
+/// dimension, and stay within [`MIN_REFERENCE_COSINE`] of each reference vector.
+pub(crate) fn verify_against_reference(
+    embeddings: &[Vec<f32>],
+    fixture: &ReferenceFixture,
+) -> Result<()> {
+    if embeddings.len() != fixture.items.len() {
+        anyhow::bail!(
+            "reference fixture has {} items but the encoder returned {} embeddings",
+            fixture.items.len(),
+            embeddings.len()
+        );
+    }
+
+    for (index, (item, actual)) in fixture.items.iter().zip(embeddings).enumerate() {
+        if actual.len() != fixture.dimension {
+            anyhow::bail!(
+                "item {index} ({}) has dimension {} but the fixture expects {}",
+                preview(&item.text),
+                actual.len(),
+                fixture.dimension
+            );
+        }
+
+        let similarity = cosine_similarity(actual, &item.embedding);
+        if similarity < MIN_REFERENCE_COSINE {
+            anyhow::bail!(
+                "item {index} ({}) drifted from the reference: cosine {similarity} is below {MIN_REFERENCE_COSINE}",
+                preview(&item.text)
+            );
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

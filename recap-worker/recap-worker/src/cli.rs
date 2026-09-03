@@ -19,11 +19,11 @@ pub(crate) async fn try_warmup(args: &[String]) -> Option<i32> {
     if args.get(1).map(String::as_str) != Some("warmup") {
         return None;
     }
-    // warmup subcommand: prove the baked AllMiniLmL12V2 directory loads so the
-    // runtime container can boot in a network-isolated stack.
+    // warmup subcommand: prove the baked AllMiniLmL12V2 directory loads and
+    // reproduces the reference embeddings, in a network-isolated stack.
     Some(match recap_worker::warmup_embedding_cache().await {
         Ok(()) => {
-            eprintln!("warmup: embedding model loaded from the image");
+            eprintln!("warmup: embedding model loaded and verified against the reference fixture");
             0
         }
         Err(e) => {
