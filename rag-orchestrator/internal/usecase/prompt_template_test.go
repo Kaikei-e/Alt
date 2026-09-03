@@ -1,8 +1,10 @@
 package usecase
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"rag-orchestrator/internal/domain"
 
@@ -397,4 +399,56 @@ func TestEstimateTokens_StaysCloseForEnglish(t *testing.T) {
 
 	assert.GreaterOrEqual(t, estimate, actualTokens*4/5)
 	assert.LessOrEqual(t, estimate, actualTokens*3/2)
+}
+
+// --- Answer length anchoring ---
+
+func TestTemplateRegistry_LongFormTemplates_HaveLengthFloor(t *testing.T) {
+	reg := NewTemplateRegistry()
+	cases := []struct {
+		intent IntentType
+		floor  string
+	}{
+		{IntentCausalExplanation, "800文字以上"},
+		{IntentGeneral, "600文字以上"},
+		{IntentComparison, "600文字以上"},
+		{IntentTemporal, "600文字以上"},
+	}
+	for _, tc := range cases {
+		msgs, err := reg.Build(PromptInput{
+			Query:         "q",
+			PromptVersion: "alpha-v2",
+			IntentType:    tc.intent,
+			Contexts:      []PromptContext{{ChunkID: "1", Title: "T", ChunkText: "c"}},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, msgs[0].Content, tc.floor, "intent %s", tc.intent)
+	}
+}
+
+func TestTemplateRegistry_FewShotAnswers_AreNotSkeletons(t *testing.T) {
+	// A few-shot whose sections are "..." anchors the model to one line per
+	// heading; the example must be a real-sized answer.
+	reg := NewTemplateRegistry()
+	for _, intent := range []IntentType{IntentCausalExplanation, IntentGeneral, IntentComparison, IntentTemporal} {
+		msgs, err := reg.Build(PromptInput{
+			Query:         "q",
+			PromptVersion: "alpha-v2",
+			IntentType:    intent,
+			Contexts:      []PromptContext{{ChunkID: "1", Title: "T", ChunkText: "c"}},
+		})
+		require.NoError(t, err)
+		system := msgs[0].Content
+
+		start := strings.Index(system, "<answer>")
+		end := strings.Index(system, "</answer>")
+		require.True(t, start >= 0 && end > start, "intent %s: few-shot answer missing", intent)
+		var example struct {
+			Answer string `json:"answer"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(system[start+len("<answer>"):end]), &example), "intent %s", intent)
+
+		assert.NotContains(t, example.Answer, "...", "intent %s", intent)
+		assert.GreaterOrEqual(t, utf8.RuneCountInString(example.Answer), 200, "intent %s", intent)
+	}
 }

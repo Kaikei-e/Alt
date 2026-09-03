@@ -469,3 +469,13 @@ func TestLoad_RerankWindow_FromEnv(t *testing.T) {
 	assert.Equal(t, 15, cfg.Rerank.MaxCandidates)
 	assert.Equal(t, 20, cfg.Rerank.Timeout)
 }
+
+func TestLoad_DefaultMaxChunksMatchesRerankTopK(t *testing.T) {
+	unsetEnv(t, "RAG_DEFAULT_MAX_CHUNKS")
+	unsetEnv(t, "RERANK_TOP_K")
+
+	cfg := Load()
+
+	assert.Equal(t, cfg.Rerank.TopK, cfg.RAG.MaxChunks,
+		"every hit the reranker keeps must reach the prompt; a smaller MaxChunks silently drops the tail")
+}

@@ -130,3 +130,16 @@ func TestOllamaGeneratorGenerate_StreamAggregatesContent(t *testing.T) {
 		t.Fatalf("unexpected response text: %q", resp.Text)
 	}
 }
+
+func TestBuildOptions_GemmaModel_DisablesRepeatPenalty(t *testing.T) {
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-12k", 100, testLogger)
+	opts := gen.buildOptions(2048)
+
+	// The proxy baseline's 1.15 is tuned for summaries; on structured Japanese
+	// answers it penalizes every repeated heading/particle token while EOS
+	// stays unpenalized, so generation ends after the first section.
+	if opts["repeat_penalty"] != 1.0 {
+		t.Fatalf("expected repeat_penalty 1.0 for Gemma, got %v", opts["repeat_penalty"])
+	}
+}

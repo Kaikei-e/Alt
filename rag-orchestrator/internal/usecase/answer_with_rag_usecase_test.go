@@ -2,6 +2,7 @@ package usecase_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -2128,4 +2129,138 @@ func TestExecute_CacheKey_DiffersByUserID(t *testing.T) {
 
 	mockRetrieve.AssertNumberOfCalls(t, "Execute", 2)
 	mockLLM.AssertNumberOfCalls(t, "Chat", 2)
+}
+
+func TestExecute_CausalSkeletonAnswer_TriggersCorrectiveRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	mockQP := new(mockQueryPlannerPort)
+	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
+		ResolvedQuery:   "エネルギー価格の高騰の原因",
+		SearchQueries:   []string{"エネルギー価格 高騰 原因", "energy price spike causes"},
+		Intent:          "causal_explanation",
+		RetrievalPolicy: "global_only",
+		AnswerFormat:    "causal_analysis",
+	}, nil)
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(800),
+		10, 512, 6000, "alpha-v2", "ja", testLogger,
+		usecase.WithQueryPlanner(mockQP),
+	)
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.9, DocumentVersion: 1},
+		},
+		ExpandedQueries: []string{"エネルギー価格 高騰 原因", "energy price spike causes"},
+	}, nil).Once()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: secondChunkID, ChunkText: "Retry context", Title: "Retry", Score: 0.95, DocumentVersion: 1},
+		},
+		ExpandedQueries: []string{"エネルギー価格 高騰 原因", "energy price spike causes"},
+	}, nil).Once()
+
+	// One heading, a handful of bullets, then EOS: grounded, cited, ~360 runes.
+	skeleton := "**直接的要因**\\n" + strings.Repeat("* 軍事作戦の開始と関連施設への攻撃が対立の具体的な現れである[1]。\\n", 10)
+	skeletonResponse := `{"answer":"` + skeleton + `","citations":[{"chunk_id":"1","reason":"trigger"}],"fallback":false,"reason":""}`
+	full := "**直接的要因**\\n" + strings.Repeat("軍事作戦の開始が直接の引き金となった[1]。", 8) +
+		"\\n\\n**構造的背景**\\n" + strings.Repeat("長年の制裁と核開発をめぐる不信が対立を固定化してきた[1]。", 8) +
+		"\\n\\n**不確実性**\\n" + strings.Repeat("停戦協議の見通しについては見解が分かれている[1]。", 5)
+	fullResponse := `{"answer":"` + full + `","citations":[{"chunk_id":"1","reason":"trigger"},{"chunk_id":"1","reason":"background"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: skeletonResponse, Done: true}, nil).Once()
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: fullResponse, Done: true}, nil).Once()
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "エネルギー価格の高騰はなぜ起きた？"})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Contains(t, output.Answer, "構造的背景")
+	assert.Equal(t, 1, output.Debug.RetryCount)
+	mockLLM.AssertNumberOfCalls(t, "Chat", 2)
+}
+
+func TestExecute_CausalAnswerAboveRetryFloor_DoesNotRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	mockQP := new(mockQueryPlannerPort)
+	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
+		ResolvedQuery:   "エネルギー価格の高騰の原因",
+		SearchQueries:   []string{"エネルギー価格 高騰 原因", "energy price spike causes"},
+		Intent:          "causal_explanation",
+		RetrievalPolicy: "global_only",
+		AnswerFormat:    "causal_analysis",
+	}, nil)
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(800),
+		10, 512, 6000, "alpha-v2", "ja", testLogger,
+		usecase.WithQueryPlanner(mockQP),
+	)
+
+	chunkID := uuid.New()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.9, DocumentVersion: 1},
+		},
+		ExpandedQueries: []string{"エネルギー価格 高騰 原因", "energy price spike causes"},
+	}, nil).Once()
+
+	// Below the 800-rune ShortAnswer threshold but a real three-part answer (~600 runes).
+	answer := "**直接的要因**\\n" + strings.Repeat("軍事作戦の開始が直接の引き金となった[1]。", 8) +
+		"\\n\\n**構造的背景**\\n" + strings.Repeat("長年の制裁と核開発をめぐる不信が対立を固定化してきた[1]。", 8) +
+		"\\n\\n**不確実性**\\n" + strings.Repeat("停戦協議の見通しについては見解が分かれている[1]。", 5)
+	response := `{"answer":"` + answer + `","citations":[{"chunk_id":"1","reason":"grounded"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: response, Done: true}, nil).Once()
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "エネルギー価格の高騰はなぜ起きた？"})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Equal(t, 0, output.Debug.RetryCount)
+	mockLLM.AssertNumberOfCalls(t, "Chat", 1)
+}
+
+func TestExecute_CorrectiveRetryPromptBuildFails_KeepsOriginalAnswer(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(20),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+	)
+
+	chunkID := uuid.New()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+	// The corrective re-retrieval is rejected (e.g. relevance gate); the
+	// original validated answer must survive instead of becoming a fallback.
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).
+		Return((*usecase.RetrieveContextOutput)(nil), errors.New("retrieval quality insufficient: context relevance too low")).Once()
+
+	original := `{"answer":"供給制約と輸送遅延が重なりました","citations":[{"chunk_id":"1","reason":"grounded"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: original, Done: true}, nil).Once()
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	require.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Contains(t, output.Answer, "供給制約")
+	mockLLM.AssertNumberOfCalls(t, "Chat", 1)
 }
