@@ -455,8 +455,8 @@ jobs:
           print('smoke OK', torch.__version__, sentence_transformers.__version__)
           "
           elif [ "$SERVICE" = "recap-worker" ]; then
-            # Rust binary: Python インタプリタは同梱しないので ldd で動的リンク解決を確認。
-            # libtorch_cpu / libc10 / libgomp が必須 (libtorch prune で欠落していないこと)。
+            # Rust binary: no Python interpreter to import from, so check the
+            # dynamic linkage with ldd, then load the baked embedding model.
             docker run $RUN_OPTS --entrypoint=/bin/sh "$IMAGE_TAG" -c '
               set -e
               LDD_OUT=$(ldd /usr/local/bin/recap-worker)
@@ -465,11 +465,19 @@ jobs:
                 echo "::error::recap-worker has unresolved shared libraries"
                 exit 1
               fi
-              echo "$LDD_OUT" | grep -q libtorch_cpu.so || { echo "::error::libtorch_cpu.so missing"; exit 1; }
-              echo "$LDD_OUT" | grep -q libc10.so       || { echo "::error::libc10.so missing"; exit 1; }
-              echo "$LDD_OUT" | grep -q libgomp         || { echo "::error::libgomp missing"; exit 1; }
-              echo "smoke OK recap-worker"
+              # Embedding runs on candle, which is pure Rust. A libtorch or
+              # libc10 dependency means the native backend crept back in.
+              if echo "$LDD_OUT" | grep -Eq "libtorch|libc10"; then
+                echo "::error::recap-worker links libtorch/libc10 again"
+                exit 1
+              fi
+              echo "smoke OK recap-worker (ldd)"
             '
+            # warmup loads the baked embedding model and exits 0/1. main.rs
+            # dispatches it before any config, DB or telemetry init, so it
+            # needs no env vars and no network.
+            docker run $RUN_OPTS "$IMAGE_TAG" warmup
+            echo "smoke OK recap-worker (warmup)"
           else
             docker run $RUN_OPTS "$IMAGE_TAG" python -c "
           import sys, importlib

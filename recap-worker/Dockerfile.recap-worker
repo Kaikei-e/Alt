@@ -5,33 +5,6 @@ FROM rust:1.94-bookworm@sha256:6ae102bdbf528294bc79ad6e1fae682f6f7c2a6e6621506ba
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 
-# PyTorch C++ ライブラリをインストール (rust-bert 用)。
-# ダウンロードは sha256 で整合性検証する (A08:2025 Software & Data Integrity
-# Failures / CWE-494)。値は 2026-04-22 時点の
-# libtorch-cxx11-abi-shared-with-deps-2.4.0+cpu.zip (size=189478225) の
-# 公式ミラー配信物から計算済み。libtorch バージョンを上げるときは
-# この値と zip ファイル名を同時に更新する。
-ARG LIBTORCH_URL=https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.4.0%2Bcpu.zip
-ARG LIBTORCH_SHA256=9d16cc0da41e057f20c0be5f26d7418f969e857631cfcb86550ccdecfee8de60
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends \
-  wget \
-  unzip \
-  libgomp1 \
-  && \
-  mkdir -p /usr/local/lib && \
-  cd /tmp && \
-  wget -q -O libtorch.zip "$LIBTORCH_URL" && \
-  echo "$LIBTORCH_SHA256  libtorch.zip" | sha256sum -c - && \
-  unzip -q libtorch.zip && \
-  cp -r libtorch/lib/* /usr/local/lib/ && \
-  if [ -d libtorch/lib ]; then \
-  find libtorch/lib -name "libgomp*" -exec cp -a {} /usr/local/lib/ \; || true; \
-  fi && \
-  rm -rf libtorch libtorch.zip && \
-  ldconfig && \
-  rm -rf /var/lib/apt/lists/*
-
 # Stage 2: Recipe generation
 FROM chef AS planner
 COPY ./recap-worker/ .
@@ -55,82 +28,71 @@ RUN --mount=type=cache,id=recap-worker-registry,target=/usr/local/cargo/registry
 
 # Stage 5: sentence-transformers model directory
 #
-# Read at runtime through SentenceEmbeddingsBuilder::local, so the image has to
-# carry every file the loader opens. `::remote` is deliberately not used: it
-# resolves each file through cached-path, which records no expiry and therefore
-# revalidates against huggingface.co on every start — with a client built with
-# no read timeout. One HEAD that connected and then went silent wedged startup
-# for 16 hours before the listener was ever bound.
+# candle reads exactly these three files at startup, flat in one directory:
+# config.json, tokenizer.json and model.safetensors. They are baked into the
+# image so the runtime never talks to huggingface.co — the worker starts on an
+# egress-less network and a hanging model fetch would wedge startup before the
+# listener is bound.
 #
-# 1_Pooling/config.json lives in a subdirectory: copy the directory, never a
-# flat glob, or rust-bert panics inside Config::from_file with no named cause.
+# The revision is pinned to a commit, never `main`, and every file is verified
+# with sha256 (A08:2025 Software & Data Integrity Failures / CWE-494). Digests
+# were observed on 2026-09-04; update them together with ST_REVISION.
+# model.safetensors is LFS-backed and a non-LFS fetch yields a ~130-byte
+# pointer file — the checksum catches that too.
 FROM debian:bookworm-slim AS model
-ARG ST_REPO=https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve/main
-ARG MODEL_DIR=/opt/rustbert-models/all-MiniLM-L12-v2
+ARG ST_REPO=https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2/resolve
+ARG ST_REVISION=a50ef00143b4d5391434df20ae11632588ac25be
+ARG MODEL_DIR=/opt/models/all-MiniLM-L12-v2
+ARG CONFIG_SHA256=bc451f333af67312ba0de5018ef1c9ba663cb18549443e568f0bd35262dc1c48
+ARG TOKENIZER_SHA256=be50c3628f2bf5bb5e3a7f17b1f74611b2561a3a27eeab05e5aa30f411572037
+ARG WEIGHTS_SHA256=d2d541e5f101695ae495eacd867a8d025ecfe8f9674fb23aa6cf93cdb60a5542
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
-RUN mkdir -p ${MODEL_DIR}/1_Pooling && \
-    for f in modules.json config.json tokenizer_config.json \
-             sentence_bert_config.json vocab.txt rust_model.ot; do \
-      curl -fsSL --retry 5 --retry-delay 5 --max-time 900 \
-        -o ${MODEL_DIR}/$f ${ST_REPO}/$f; \
-    done && \
+RUN mkdir -p ${MODEL_DIR} && \
     curl -fsSL --retry 5 --retry-delay 5 --max-time 300 \
-      -o ${MODEL_DIR}/1_Pooling/config.json ${ST_REPO}/1_Pooling/config.json && \
-    # rust_model.ot is LFS-backed; a clone without LFS yields a ~130-byte
-    # pointer file that fails later as an opaque tch load error.
-    test "$(stat -c%s ${MODEL_DIR}/rust_model.ot)" -gt 100000000
+      -o ${MODEL_DIR}/config.json "${ST_REPO}/${ST_REVISION}/config.json" && \
+    curl -fsSL --retry 5 --retry-delay 5 --max-time 300 \
+      -o ${MODEL_DIR}/tokenizer.json "${ST_REPO}/${ST_REVISION}/tokenizer.json" && \
+    curl -fsSL --retry 5 --retry-delay 5 --max-time 900 \
+      -o ${MODEL_DIR}/model.safetensors "${ST_REPO}/${ST_REVISION}/model.safetensors" && \
+    printf '%s  %s\n' \
+      "${CONFIG_SHA256}" "${MODEL_DIR}/config.json" \
+      "${TOKENIZER_SHA256}" "${MODEL_DIR}/tokenizer.json" \
+      "${WEIGHTS_SHA256}" "${MODEL_DIR}/model.safetensors" \
+      > /tmp/model.sha256 && \
+    sha256sum -c /tmp/model.sha256 && \
+    rm /tmp/model.sha256
 
-# ランタイムイメージ (debian-slim + 非rootユーザー)
-# PyTorch ライブラリ依存のため distroless 使用不可
+# Runtime image. debian-slim is kept because the CI smoke checks in
+# docker-build.yaml run `ldd` through /bin/sh; distroless would need them
+# rewritten.
 FROM debian:bookworm-slim
 
-# 必要最小限の依存関係
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
   libssl3 \
   ca-certificates \
-  libgomp1 \
   && \
   rm -rf /var/lib/apt/lists/*
 
-# 非rootユーザー作成。
-# - uid/gid は 999 で明示固定する。host 側で bind-mount する
-#   /opt/rustbert-cache の所有者を合わせる必要があり、暗黙に決まる
-#   システム UID だと CI で chown 対象が読めない。
-# - -m で home directory を実体化しないと、rust-bert が $HOME/.cache/.rustbert
-#   にフォールバックした際に PermissionDenied で panic する。
+# Non-root user.
+# - uid/gid are pinned to 999 because the host bind-mounts /opt/rustbert-cache
+#   into this container and its owner has to match; an implicitly assigned
+#   system UID leaves CI with nothing it can chown to.
+# - -m materialises the home directory: without it hf-hub falls back to
+#   $HOME/.cache/huggingface and panics with PermissionDenied.
 RUN groupadd -r -g 999 recap && useradd -r -u 999 -m -d /home/recap -g recap recap
 
-# rust-bert / HuggingFace のキャッシュ配置を /opt/rustbert-cache に寄せる。
-# このパスを compose から bind-mount することで、warmup 済みのモデル資源を
-# 複数コンテナ・複数再起動にまたがって再利用する。Dockerfile 単体ビルド
-# (bind-mount 無し) でも initial download が書けるよう、empty dir を作成して
-# recap ユーザー所有にしておく。bind-mount 時はこの空ディレクトリが上書きされる。
-ENV RUSTBERT_CACHE=/opt/rustbert-cache
+# hf-hub cache for the token counter. src/clients/token_counter.rs pulls the
+# gated google/gemma-3-4b-it tokenizer through hf-hub, which caches under
+# $HF_HOME. compose bind-mounts the host's /opt/rustbert-cache here (the path
+# name is historical; production hosts already have it) so the download is
+# shared across containers and restarts. The mount is rw because hf-hub
+# rewrites lock and meta files even on a cache hit. An empty dir is created and
+# chown'd so a plain `docker build` + `docker run` (no bind-mount) still works.
 ENV HF_HOME=/opt/rustbert-cache/huggingface
 RUN mkdir -p /opt/rustbert-cache/huggingface && chown -R recap:recap /opt/rustbert-cache
-
-# PyTorch ライブラリをコピー。
-# NOTE: libtorch は runtime に dlopen で ops 登録する副作用があり、ldd に現れない
-# .so (libbackend_with_compiler / libnnapi_backend / libshm 等) への依存が存在する。
-# 先の "lib<family>*" prefix パターン群では
-# libbackend_with_compiler.so / libnnapi_backend.so / libshm.so が取り込まれず
-# dlopen 失敗 → ops 未登録 → SIGSEGV (exit 139) を招いた。
-# ビルダー段の /usr/local/lib は libtorch 展開物しか存在しないため、
-# ディレクトリ単位で COPY してランタイムも同一レイアウトにする。
-# Python 用 libtorch_python.so (~400MiB) も含まれるが rust-bert は使わない。
-# image-size budget (2900 MiB, ADR-000824) 内に収まる。
-COPY --from=builder /usr/local/lib/ /usr/local/lib/
-RUN ldconfig
-
-# tch-rs README 記載の runtime invariant。libtorch の .so 群は runtime
-# dlopen で ops 登録する際にこの変数を参照する。ldconfig は
-# /etc/ld.so.conf.d/libc.conf が /usr/local/lib を含むこと前提の解決に
-# なり順序依存が残るため、明示的に export して dlopen 解決を安定化させる
-# (直近 release-deploy で container が exit 139 / SIGSEGV していた)。
-ENV LD_LIBRARY_PATH=/usr/local/lib
 
 COPY --from=builder /app/recap-worker /usr/local/bin/
 
@@ -138,11 +100,10 @@ COPY --from=builder /app/recap-worker /usr/local/bin/
 RUN mkdir -p /app/data && chown recap:recap /app/data
 COPY --from=builder --chown=recap:recap /app/tests/data/golden_classification.json /app/data/
 
-# sentence-transformers weights, read at startup with
-# SentenceEmbeddingsBuilder::local. Directory-scoped COPY: 1_Pooling/config.json
-# is nested, and a flat glob that drops it fails as a bare panic inside
-# Config::from_file rather than a named error.
-COPY --from=model --chown=recap:recap /opt/rustbert-models/ /opt/rustbert-models/
+# sentence-transformers weights, loaded from disk at startup. `recap-worker
+# warmup` loads exactly this directory and exits non-zero if anything is
+# missing, which is what the CI smoke check runs.
+COPY --from=model --chown=recap:recap /opt/models/ /opt/models/
 
 USER recap
 

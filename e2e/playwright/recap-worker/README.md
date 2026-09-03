@@ -40,8 +40,9 @@ request is the only one that tells the two containers apart.
 # The images must exist first, or you are testing the previous build.
 python3 e2e/playwright/_lib/build-images.py recap-worker
 
-# recap-worker also needs the rust-bert cache warmed on the HOST: compose
-# bind-mounts /opt/rustbert-cache read-only and alt-staging has no egress.
+# The embedding model is baked into the image; warmup loads it and exits
+# non-zero if it is unusable. /opt/rustbert-cache is the hf-hub tokenizer
+# cache compose bind-mounts, owned by the image's pinned uid 999.
 sudo mkdir -p /opt/rustbert-cache && sudo chown -R 999:999 /opt/rustbert-cache
 docker run --rm -v /opt/rustbert-cache:/opt/rustbert-cache \
   ghcr.io/kaikei-e/alt-recap-worker:ci warmup

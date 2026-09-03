@@ -38,10 +38,10 @@
 #
 #   python3 e2e/playwright/_lib/build-images.py recap-worker
 #
-# recap-worker additionally needs the rust-bert model cache warmed on the
-# *host* before the stack starts — compose bind-mounts /opt/rustbert-cache
-# read-only and the staging network has no egress, so the container cannot
-# reach HuggingFace from inside:
+# The embedding model is baked into the recap-worker image; `warmup` loads it
+# and exits non-zero if it is unusable, so run it once to fail fast before the
+# stack comes up. /opt/rustbert-cache is the hf-hub tokenizer cache compose
+# bind-mounts — it just has to exist and be owned by the image's pinned uid 999:
 #
 #   sudo mkdir -p /opt/rustbert-cache && sudo chown -R 999:999 /opt/rustbert-cache
 #   docker run --rm -v /opt/rustbert-cache:/opt/rustbert-cache \

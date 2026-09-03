@@ -4,7 +4,7 @@
 # container start with no checksum verification (A08:2025 Software & Data
 # Integrity Failures / CWE-494). This bakes the download into the image
 # build instead, verified with sha256sum -c (same pattern as
-# recap-worker/Dockerfile.recap-worker's libtorch fetch).
+# recap-worker/Dockerfile.recap-worker's model fetch).
 FROM restic/restic:0.17.3
 
 ARG SUPERCRONIC_VERSION=v0.2.33

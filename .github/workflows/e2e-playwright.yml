@@ -145,13 +145,13 @@ jobs:
         # point of it being a script rather than a workflow step.
         run: python3 e2e/playwright/_lib/build-images.py "${{ matrix.suite }}"
 
-      - name: Warm the rust-bert model cache
-        # recap-worker only. The staging stack runs on an `internal: true`
-        # network, so rust-bert cannot reach HuggingFace from inside it.
-        # Populate /opt/rustbert-cache on the runner host first; compose mounts
-        # the same path read-only. recap's uid/gid are pinned to 999 in the
-        # image, so the host directory must be chown'd to 999:999 for the
-        # warmup container to write to it.
+      - name: Validate the baked embedding model
+        # recap-worker only. The embedding model ships inside the image and
+        # `warmup` loads it and exits 0/1, so this fails the run before the
+        # staging stack comes up if the model layer is broken.
+        # /opt/rustbert-cache is the hf-hub tokenizer cache the compose file
+        # bind-mounts; it only has to exist and be owned by recap's pinned
+        # uid/gid 999 on the runner host.
         if: matrix.suite == 'recap-worker'
         run: |
           sudo mkdir -p /opt/rustbert-cache

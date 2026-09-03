@@ -142,14 +142,11 @@ services:
       - TAG_LABEL_GRAPH_WINDOW=${TAG_LABEL_GRAPH_WINDOW}
       - TAG_LABEL_GRAPH_TTL_SECONDS=${TAG_LABEL_GRAPH_TTL_SECONDS}
       - HUGGING_FACE_TOKEN_PATH=/run/secrets/hugging_face_token
-      # RUSTBERT_CACHE / HF_HOME は Dockerfile ENV で /opt/rustbert-cache に
-      # 固定済。ホストの /opt/rustbert-cache を read-only bind-mount することで、
-      # 再起動時の HF 再ダウンロード (約 130 MB) を回避し、staging と同じ
-      # パス規約を使う。初回 populate は runner 側で warmup subcommand 実行。
-      # Fail-closed: /opt/rustbert-cache が空だと embedding 初期化が失敗する。
-      # true にすると起動時 exit 1 で refuse し subgenre-splitter 欠落による
-      # 2-ジャンル崩壊 (PM-2026-038) を防ぐ。populate 経路が確立しない dev
-      # stack では false に落として keyword-only fallback を許可する。
+      # Fail-closed embedding: true makes the worker exit 1 at startup when the
+      # embedding model cannot be loaded, instead of silently degrading to the
+      # keyword-only path and collapsing every genre into two
+      # (subgenre-splitter missing, PM-2026-038). Dev stacks that do not care
+      # can set it to false.
       - RECAP_WORKER_EMBEDDING_REQUIRED=${RECAP_WORKER_EMBEDDING_REQUIRED:-true}
       # Clustering timeout: relax stuck detection from 600s to 1200s for large genres
       - RECAP_CLUSTERING_STUCK_THRESHOLD_SECS=${RECAP_CLUSTERING_STUCK_THRESHOLD_SECS:-1200}
@@ -185,13 +182,12 @@ services:
     volumes:
       - recap_worker_certs:/certs
       - pki_trust_bundle:/trust:ro
-      # Host-side populate (altctldeploy recap populate-cache) で焼いた
-      # rust-bert キャッシュを共有。bind を :rw にしているのは rust-bert の
-      # cached-path crate と hf-hub crate が cache hit 時にも lockfile /
-      # meta を更新し token 存在確認で書き込みを試みるため (:ro 下では
-      # "Read-only file system (os error 30)" で Embedding 初期化が失敗)。
-      # populate 済前提の前提崩れに対する防御は ADR-000827 の
-      # RECAP_WORKER_EMBEDDING_REQUIRED=true によるアプリ層 fail-closed に寄せる。
+      # hf-hub cache for the token counter's gemma tokenizer ($HF_HOME points
+      # inside this path). Sharing it across restarts avoids re-downloading the
+      # tokenizer. The mount is :rw because hf-hub rewrites lock and meta files
+      # even on a cache hit — under :ro it fails with "Read-only file system
+      # (os error 30)". The embedding model is not here: it is baked into the
+      # image. The path name is historical; production hosts already have it.
       - /opt/rustbert-cache:/opt/rustbert-cache:rw
     pre_start:
       - <<: *pki-cert-volume-chown

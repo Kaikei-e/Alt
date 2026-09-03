@@ -692,27 +692,6 @@ services:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-worker:${RECAP_WORKER_IMAGE_TAG:-main}
     container_name: alt-staging-recap-worker
     profiles: [recap-worker]
-    # Staging-only startup diagnostic. The runtime container has been
-    # SIGSEGV'ing (exit 139) during recap-worker init in e2e; the Dockerfile
-    # already COPYs the full libtorch layout, so the remaining hypotheses are
-    # dlopen resolution order and LD_LIBRARY_PATH. Print ldd, ldconfig, and
-    # env before exec so the next CI run surfaces the real failing site,
-    # then hand control to the normal entrypoint. Revert once the root
-    # cause is fixed.
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        set -x
-        echo "--- ldd /usr/local/bin/recap-worker ---"
-        ldd /usr/local/bin/recap-worker || true
-        echo "--- ldconfig -p | grep -i torch ---"
-        ldconfig -p | grep -i torch || true
-        echo "--- ls /usr/local/lib/libtorch* (first 20) ---"
-        ls /usr/local/lib/ | head -40 || true
-        echo "--- env ---"
-        env | sort
-        echo "--- exec recap-worker ---"
-        exec /usr/local/bin/recap-worker
     depends_on:
       recap-db:
         condition: service_healthy
@@ -748,18 +727,20 @@ services:
       # (fail-closed by default) startup check to infer "disabled" from a
       # missing file.
       - TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK=true
-      # RUSTBERT_CACHE / HF_HOME は Dockerfile ENV で /opt/rustbert-cache に
-      # 固定済。ここでは上書きせず、read-only bind mount されたキャッシュを
-      # 参照する。前回の compose 指定 (HF_HOME=/tmp/huggingface) は image 内で
-      # mkdir されず PermissionDenied を招いていたため除去。
+      # HF_HOME stays at the Dockerfile default under /opt/rustbert-cache. Do
+      # not override it here: an earlier HF_HOME=/tmp/huggingface pointed at a
+      # directory the image never creates and hf-hub failed with
+      # PermissionDenied.
       - RECAP_GENRES=ai
       - RECAP_WORKER_HTTP_BIND=0.0.0.0:9005
       - PORT=9005
       - LOG_LEVEL=info
     volumes:
-      # warmup subcommand で populate 済みのホスト側キャッシュを
-      # read-only で共有する。internal: true ネットワーク下で
-      # rust-bert の model DL 試行を完全にスキップするため必須。
+      # hf-hub cache dir the token counter would use ($HF_HOME lives inside
+      # it). :ro is enough here because this suite runs the token counter on
+      # its dummy fallback and never downloads a tokenizer. The embedding
+      # model is baked into the image, so nothing has to be populated on the
+      # host for alt-staging (internal: true, no egress) to work.
       - /opt/rustbert-cache:/opt/rustbert-cache:ro
     ports:
       - "19005:9005"
