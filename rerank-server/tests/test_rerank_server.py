@@ -8,6 +8,7 @@ to a lightweight fake before each test that needs a "loaded" model.
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 import time
 from pathlib import Path
@@ -594,6 +595,7 @@ def test_load_onnx_model_skips_export_when_quantized_file_present(
     onnx_dir.mkdir()
     (onnx_dir / rerank_server.ONNX_QUANTIZED_FILE_NAME).touch()
     monkeypatch.setattr(rerank_server, "RERANK_MODEL_DIR", str(tmp_path))
+    monkeypatch.setattr(rerank_server, "_purge_stray_ort_temp_dirs", lambda: None)
 
     export_mock = MagicMock()
     monkeypatch.setattr(rerank_server, "_export_quantized_onnx_model", export_mock)
@@ -613,6 +615,7 @@ def test_load_onnx_model_exports_when_quantized_file_missing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(rerank_server, "RERANK_MODEL_DIR", str(tmp_path))
+    monkeypatch.setattr(rerank_server, "_purge_stray_ort_temp_dirs", lambda: None)
 
     export_mock = MagicMock()
     monkeypatch.setattr(rerank_server, "_export_quantized_onnx_model", export_mock)
@@ -631,6 +634,7 @@ def test_load_onnx_model_exports_when_quantized_path_is_a_directory(
     """A directory of that name must not read as a usable export."""
     (tmp_path / "onnx" / rerank_server.ONNX_QUANTIZED_FILE_NAME).mkdir(parents=True)
     monkeypatch.setattr(rerank_server, "RERANK_MODEL_DIR", str(tmp_path))
+    monkeypatch.setattr(rerank_server, "_purge_stray_ort_temp_dirs", lambda: None)
 
     export_mock = MagicMock()
     monkeypatch.setattr(rerank_server, "_export_quantized_onnx_model", export_mock)
@@ -639,6 +643,72 @@ def test_load_onnx_model_exports_when_quantized_path_is_a_directory(
     rerank_server._load_onnx_model()
 
     export_mock.assert_called_once_with(str(tmp_path))
+
+
+def test_reset_export_tmp_wipes_previous_scratch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(rerank_server, "RERANK_MODEL_DIR", str(tmp_path))
+    leftover = tmp_path / ".export-tmp" / "ort.quant.old"
+    leftover.mkdir(parents=True)
+    (leftover / "blob").write_bytes(b"x")
+
+    root = rerank_server._reset_export_tmp()
+
+    assert root == tmp_path / ".export-tmp"
+    assert root.is_dir()
+    assert list(root.iterdir()) == []
+
+
+def test_purge_stray_ort_temp_dirs_only_removes_ort_quant(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(rerank_server.tempfile, "gettempdir", lambda: str(tmp_path))
+    stray = tmp_path / "ort.quant.leftover"
+    stray.mkdir()
+    (stray / "blob").write_bytes(b"x")
+    keep = tmp_path / "unrelated"
+    keep.mkdir()
+
+    rerank_server._purge_stray_ort_temp_dirs()
+
+    assert not stray.exists()
+    assert keep.is_dir()
+
+
+def test_load_onnx_model_purges_export_scratch_even_when_file_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    onnx_dir = tmp_path / "onnx"
+    onnx_dir.mkdir()
+    (onnx_dir / rerank_server.ONNX_QUANTIZED_FILE_NAME).touch()
+    leftover = tmp_path / ".export-tmp" / "ort.quant.old"
+    leftover.mkdir(parents=True)
+    proc_tmp = tmp_path / "proc-tmp"
+    proc_tmp.mkdir()
+    monkeypatch.setattr(rerank_server, "RERANK_MODEL_DIR", str(tmp_path))
+    monkeypatch.setattr(rerank_server.tempfile, "gettempdir", lambda: str(proc_tmp))
+    monkeypatch.setattr(rerank_server, "_export_quantized_onnx_model", MagicMock())
+    monkeypatch.setattr(rerank_server, "CrossEncoder", MagicMock())
+
+    rerank_server._load_onnx_model()
+
+    assert not leftover.exists()
+    assert (tmp_path / ".export-tmp").is_dir()
+
+
+def test_onnx_export_tmpdir_sets_and_restores(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(rerank_server, "RERANK_MODEL_DIR", str(tmp_path))
+    monkeypatch.delenv("TMPDIR", raising=False)
+
+    with rerank_server._onnx_export_tmpdir():
+        assert os.environ["TMPDIR"] == str(tmp_path / ".export-tmp")
+        (Path(os.environ["TMPDIR"]) / "ort.quant.live").mkdir()
+
+    assert "TMPDIR" not in os.environ
+    assert list((tmp_path / ".export-tmp").iterdir()) == []
 
 
 def test_load_model_sets_app_state_on_success(monkeypatch: pytest.MonkeyPatch) -> None:

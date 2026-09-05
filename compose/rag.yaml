@@ -310,7 +310,7 @@ services:
   # points here and the rerank-external route is retired.
   # Optional dependency of rag-orchestrator (skip-degrade contract), so it is
   # intentionally not wired via depends_on. First boot downloads
-  # BAAI/bge-reranker-v2-m3 (~2.3GB) and quantizes it into the mounted
+  # cl-nagoya/ruri-v3-reranker-310m and quantizes it into the mounted
   # volume; subsequent restarts load the cached quantized model.
   rerank-local:
     build:
@@ -332,6 +332,12 @@ services:
       - RERANK_MODEL=${RERANK_MODEL:-cl-nagoya/ruri-v3-reranker-310m}
     volumes:
       - rerank_local_models:/models
+    # Overlay2 filled with ~221GiB of leftover `ort.quant.*` trees when first-boot
+    # export was SIGKILL'd and `restart: unless-stopped` reused the same layer.
+    # Temps now live under /models/.export-tmp (wiped each load); tmpfs stops any
+    # remaining /tmp writes from landing in overlay2.
+    tmpfs:
+      - /tmp:size=512m,mode=1777
     ports:
       - "127.0.0.1:8082:8080"
     networks:

@@ -23,10 +23,12 @@ import asyncio
 import logging
 import os
 import re
+import shutil
+import tempfile
 import time
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 # Limit MPS memory cache to reduce memory pressure on shared Apple Silicon GPU memory
@@ -308,6 +310,51 @@ def _load_torch_model() -> CrossEncoder:
     return model
 
 
+def _export_tmp_root() -> Path:
+    """Scratch dir for ONNX Runtime's `ort.quant.*` trees during first-boot export."""
+    return Path(RERANK_MODEL_DIR) / ".export-tmp"
+
+
+def _reset_export_tmp() -> Path:
+    """Delete and recreate the export scratch so a killed first-boot cannot accumulate.
+
+    `export_dynamic_quantized_onnx_model` writes ~1.2GiB into tempfile.gettempdir().
+    SIGKILL skips TemporaryDirectory cleanup; Docker `restart: unless-stopped` keeps
+    the same writable layer, so each retry left another copy under /tmp (observed:
+    ~180 trees / 221GiB in overlay2). Keep scratch on the /models volume and wipe
+    it before every export and after success or a catchable failure.
+    """
+    root = _export_tmp_root()
+    if root.exists():
+        shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _purge_stray_ort_temp_dirs() -> None:
+    """Remove leftover `ort.quant.*` dirs from the process temp dir (pre-fix overlay)."""
+    tmp = Path(tempfile.gettempdir())
+    for path in tmp.glob("ort.quant.*"):
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+
+
+@contextmanager
+def _onnx_export_tmpdir() -> Iterator[None]:
+    """Point TMPDIR at the wiped volume scratch for the duration of one export."""
+    root = _reset_export_tmp()
+    previous = os.environ.get("TMPDIR")
+    os.environ["TMPDIR"] = str(root)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TMPDIR", None)
+        else:
+            os.environ["TMPDIR"] = previous
+        _reset_export_tmp()
+
+
 def _export_quantized_onnx_model(model_dir: str) -> None:
     """One-time export: fp32 CrossEncoder -> ONNX -> dynamic int8 (avx2).
 
@@ -321,9 +368,10 @@ def _export_quantized_onnx_model(model_dir: str) -> None:
         RERANK_MODEL,
         model_dir,
     )
-    export_model = CrossEncoder(RERANK_MODEL, backend="onnx")
-    export_model.save_pretrained(model_dir)
-    export_dynamic_quantized_onnx_model(export_model, "avx2", model_dir)
+    with _onnx_export_tmpdir():
+        export_model = CrossEncoder(RERANK_MODEL, backend="onnx")
+        export_model.save_pretrained(model_dir)
+        export_dynamic_quantized_onnx_model(export_model, "avx2", model_dir)
     logger.info("Quantized ONNX export complete")
 
 
@@ -333,6 +381,8 @@ def _load_onnx_model() -> CrossEncoder:
     No dtype is passed: dynamic quantization stores int8 *weights* but keeps
     activations and output logits in fp32, so the sigmoid sees fp32 here.
     """
+    _purge_stray_ort_temp_dirs()
+    _reset_export_tmp()
     quantized_path = Path(RERANK_MODEL_DIR, "onnx", ONNX_QUANTIZED_FILE_NAME)
     if not quantized_path.is_file():
         _export_quantized_onnx_model(RERANK_MODEL_DIR)
