@@ -59,6 +59,7 @@ func TestScheduler_StartStop(t *testing.T) {
 	cfg := Config{
 		FetchInterval:   time.Hour,
 		RefreshInterval: time.Hour,
+		SyncMode:        SyncEnabled,
 	}
 
 	s.Start(cfg)
@@ -91,7 +92,7 @@ func TestScheduler_Stop_WaitsForTriggeredFetch(t *testing.T) {
 	logger := slog.Default()
 	s := NewScheduler(repo, nil, nil, logger)
 
-	s.Start(Config{FetchInterval: time.Hour, RefreshInterval: time.Hour})
+	s.Start(Config{FetchInterval: time.Hour, RefreshInterval: time.Hour, SyncMode: SyncEnabled})
 
 	if err := s.TriggerFetchNow(); err != nil {
 		t.Fatalf("TriggerFetchNow failed: %v", err)
@@ -118,6 +119,7 @@ func TestScheduler_RestartAfterStop(t *testing.T) {
 	cfg := Config{
 		FetchInterval:   time.Hour,
 		RefreshInterval: time.Hour,
+		SyncMode:        SyncEnabled,
 	}
 
 	s.Start(cfg)
