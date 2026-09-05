@@ -1,6 +1,6 @@
 # alt-perf
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `alt-perf/`
 
@@ -135,7 +135,7 @@ deno task perf -- load -r /api/health
 
 ## K6 Integration
 
-API-level load testing using Grafana K6, running as a Docker Compose service. K6 scripts target `alt-backend` directly on port 9000 (bypassing Nginx), using `X-Alt-Shared-Secret` fallback authentication.
+API-level load testing using Grafana K6, running as a Docker Compose service. The five whitelist scenarios below (smoke/load/stress/soak/spike) target `alt-backend` directly on port 9000 (bypassing the edge reverse proxy), authenticating with a short-lived JWT in the `X-Alt-Backend-Token` header (`k6/helpers/auth.js`, signed with `K6_BACKEND_TOKEN_SECRET`). Three additional scenario files exist outside this whitelist with different targets and auth — see "Other K6 Scenarios" below.
 
 ### Running K6 Scenarios
 
@@ -183,17 +183,17 @@ Weighted random endpoint selection per iteration:
 ### Ethical Constraints (Multi-layer Defense)
 
 - **Layer 1**: Whitelist-only endpoints in `k6/helpers/endpoints.js` -- endpoints that call external APIs are excluded
-- **Layer 2**: 10-second cooldown (`sleep(10)`) between every iteration
+- **Layer 2**: 10-second cooldown (`sleep(10)`) between every iteration -- applies only to the five whitelist scenarios (smoke/load/stress/soak/spike); the three scenarios outside the whitelist (see "Other K6 Scenarios" below) use sub-second/randomized think time instead
 - **Layer 3**: Code review required for adding new endpoints
 
-**Excluded endpoints** (external API calls): `/v1/summarize`, `/v1/articles/*/summarize`, `/v1/images/fetch`, `/v1/augur/*`, `/v1/rss-feed-link/register`, `/v1/articles/*/archive`, `/v1/recap/7days`.
+**Excluded endpoints** (external API calls): `/v1/summarize`, `/v1/articles/*/summarize`, `/v1/images/fetch`, `/v1/augur/*`, `/v1/rss-feed-link/register`, `/v1/articles/*/archive`. `/v1/recap/7days` is also listed as excluded in `endpoints.js`, but the comment there notes it has since moved to Connect-RPC.
 
 ### K6 Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `K6_BASE_URL` | `http://alt-backend:9000` | Backend base URL |
-| `K6_AUTH_SECRET` | - | Shared secret for `X-Alt-Shared-Secret` header |
+| `K6_BACKEND_TOKEN_SECRET` | - | JWT signing secret for `X-Alt-Backend-Token` (populated from the `backend_token_secret` Docker secret by `docker-entrypoint.sh`) |
 | `K6_TEST_USER_ID` | - | Test user UUID |
 | `K6_TEST_TENANT_ID` | - | Test tenant UUID |
 | `K6_TEST_USER_EMAIL` | - | Test user email |
@@ -203,6 +203,18 @@ Weighted random endpoint selection per iteration:
 - `feeds_response_time`, `search_response_time`, `dashboard_response_time`, `articles_response_time` (Trend)
 - `auth_errors`, `server_errors` (Counter)
 - `successful_checks` (Rate)
+
+### Other K6 Scenarios
+
+Three scenario files exist under `k6/scenarios/` outside the smoke/load/stress/soak/spike whitelist above, each with its own target and auth and none covered by the Ethical Constraints/threshold tables above:
+
+| Scenario | Target | Auth | Notes |
+|----------|--------|------|-------|
+| `feed-read-3000vu.js` | `alt-backend:9101` (Connect-RPC v2, JSON body) | JWT via `X-Alt-Backend-Token` (`helpers/jwt.js` + `K6_BACKEND_TOKEN_SECRET`) | `ramping-vus` to 3000 VU over 30 min; run via `alt-perf/scripts/run-feed-read-load-test.sh` |
+| `sv-connect-composite-10m.js` | SvelteKit SV proxy path (`K6_APP_BASE_URL`, defaults to a hardcoded `http://nginx/sv/api/v2`) | Kratos session cookie (`helpers/kratos-auth.js`) | `ramping-arrival-rate` open model, 10-minute timeline; external calls constrained to the in-repo mock RSS server |
+| `feed-registration.js` | Backend via a hardcoded `http://nginx` base | Kratos session cookie (`helpers/kratos-auth.js`) | Run with `compose/load-test.yaml` + `compose/perf.yaml` overlaid; registers feeds per VU with randomized pacing |
+
+`feed-registration.js` and `sv-connect-composite-10m.js` still hardcode the `nginx` hostname the edge proxy no longer uses (it is `plecto-proxy` today), so as written they do not resolve against the current stack. `sv-connect-composite-10m.js` can be redirected via `K6_APP_BASE_URL`; `feed-registration.js` has no env override for its base URL and needs a code change.
 
 ## Device Profiles
 
@@ -249,6 +261,17 @@ PERF_BASE_URL=http://localhost       # Base URL for browser tests
 PERF_TEST_EMAIL=test@example.com     # Kratos login email
 PERF_TEST_PASSWORD=password          # Kratos login password
 ```
+
+### OpenTelemetry Export (opt-in)
+
+alt-perf itself can ship its own CLI logs/spans to an OTLP endpoint (`src/utils/otel.ts`), independent of the K6/scan measurement targets above:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OTEL_ENABLED` | `false` | Opt-in: export alt-perf's own logs/spans via OTLP |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP HTTP endpoint. Point it at `http://rask-log-aggregator:4318` to land in `rask_logs.otel_logs`/`otel_traces` |
+
+Both variables are already allowlisted in every `deno task perf*` permission string (`deno.json`).
 
 ### YAML Configuration Files (`config/`)
 
@@ -332,7 +355,7 @@ Lessons from Alt's load-testing campaigns (the 3000VU series and later) that gov
 | Flaky metrics | Increase `--runs` (3+ enables outlier discarding), increase `--warmup` |
 | Browser memory leaks | Browser auto-restarts every 20 pages; reduce route count if needed |
 | K6 endpoint safety | Never add external-API-calling endpoints to `k6/helpers/endpoints.js` |
-| K6 auth issues | Verify `K6_AUTH_SECRET` matches `ALT_SHARED_SECRET` in backend |
+| K6 auth issues | Verify `K6_BACKEND_TOKEN_SECRET` matches alt-backend's `BACKEND_TOKEN_SECRET` |
 
 ## References
 

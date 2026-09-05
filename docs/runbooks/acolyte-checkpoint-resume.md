@@ -26,13 +26,15 @@ Acolyte パイプラインは LangGraph の Postgres checkpointer を使い、su
 LangGraph は **super-step 境界**で checkpoint を保存する。Acolyte では QuoteSelector / FactNormalizer だけは self-loop 化されているため、1 node = 1 article / 1 quote 相当の粒度で保存される。
 
 ```
-planner → [checkpoint] → gatherer → [checkpoint] → curator → [checkpoint] →
-hydrator → [checkpoint] → compressor → [checkpoint] →
+reset_failure_state → [checkpoint] → planner → [checkpoint] → gatherer → [checkpoint] → curator → [checkpoint] →
+hydrator → [checkpoint] → hydration_guard → [checkpoint] → compressor → [checkpoint] →
 quote_selector(item 1) → [checkpoint] → quote_selector(item 2) → [checkpoint] → ... →
 fact_normalizer(quote 1) → [checkpoint] → fact_normalizer(quote 2) → [checkpoint] → ... →
 section_planner → [checkpoint] →
-writer → [checkpoint] → critic → [checkpoint] → finalizer → [checkpoint] → END
+writer → [checkpoint] → critic → [checkpoint] → (revise: back to writer / accept: finalize_guard) → finalizer → [checkpoint] → END
 ```
+
+`reset_failure_state` はエントリポイントの直前ノードで、失敗した checkpoint が復元する error / failure_code チャンネルをクリアする。これが無いと `resume_run.py` での再実行が「前回失敗の続き」として即座に中断される。`hydration_guard` / `finalize_guard` は fail-closed のガード node（詳細は `acolyte-orchestrator/acolyte/usecase/graph/report_graph.py` のモジュール docstring）。
 
 ### thread_id
 
@@ -52,7 +54,7 @@ docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator --tail=1
 
 # run の状態を確認（DB 直接クエリ）
 docker exec -it acolyte-db psql -U acolyte_user -d acolyte -c \
-  "SELECT run_id, report_id, status, created_at FROM runs WHERE run_id = '<run_id>';"
+  "SELECT run_id, report_id, run_status, started_at FROM report_runs WHERE run_id = '<run_id>';"
 ```
 
 ### 2. DB の健全性確認
@@ -68,10 +70,18 @@ docker exec -it acolyte-db psql -U acolyte_user -d acolyte -c \
 
 ### 3. resume 実行
 
+`scripts/` は acolyte-orchestrator の Docker イメージに COPY されていない
+（`Dockerfile` は `main.py` と `acolyte/` のみをコピーする）ため、`resume_run.py`
+はコンテナの中には存在しない。ホスト側の `acolyte-orchestrator/` から `uv run` で
+実行し、コンテナと同じ接続先を環境変数で渡す:
+
 ```bash
-# コンテナ内から resume script を実行
-docker exec -it acolyte-orchestrator \
-  python scripts/resume_run.py --run-id <run_id>
+cd acolyte-orchestrator
+export ACOLYTE_DB_DSN="postgresql://acolyte_user:$(cat ../secrets/acolyte_db_password.txt)@localhost:5439/acolyte"
+export NEWS_CREATOR_URL="http://localhost:11434"
+export SEARCH_INDEXER_URL="http://localhost:9300"
+export CHECKPOINT_ENABLED=true
+uv run python scripts/resume_run.py --run-id <run_id>
 ```
 
 ### 4. 結果の確認
@@ -102,6 +112,10 @@ QuoteSelector / FactNormalizer は checkpointer 有効時に incremental self-lo
 
 影響のある node:
 - **WriterNode** — 全 section x paragraph のループ
+
+### resume 先が gatherer より後だと content store が空
+
+`resume_run.py` は新しいプロセスとして起動するため、article 本文をキャッシュする in-memory content store（`MemoryContentStore`）は空の状態から始まる。checkpoint が gatherer より後（hydrator 以降）まで進んでいた場合、`hydration_guard` が 0/N hydrate を検出して `CONTENT_STORE_MISS_FAILURE_CODE` で即 END に落ちる（silent fallback ではなく fail-closed）。この場合は resume ではなく新規 run（gatherer からやり直す）で対処する。`resume_run.py` はこの警告を起動時ログに出す。
 
 ### resume は replay
 

@@ -12,7 +12,23 @@ tags:
 
 Runbook for rebuilding Knowledge Home projections using the `altctl home reproject` command. Use this when projections need rebuilding due to schema changes, data corruption, or projection version upgrades.
 
-Related: [[000421]], [[000429]], [[knowledge-home-phase0-canonical-contract]], [[knowledge-home-projection-recovery]]
+Related: [[000421]], [[000429]], [[knowledge-home-projection-recovery]]
+
+> **`altctl home reproject start` currently fails immediately, for every
+> `--mode`.** `alt-backend/app/orchestrator/usecase/knowledge_reproject_usecase`
+> requires an executor to be wired (`WithExecutor`) before `StartReproject`
+> will do anything; ADR-000421 assigned that job to a scheduler in this
+> service, and ADR-000944 deleted the job while moving the projectors to
+> `knowledge-sovereign` without naming a replacement
+> (`alt-backend/app/di/knowledge_module.go`: "the capability has been absent
+> since 2026-07-15"). The call returns `no reproject executor is wired: a
+> run would stay pending forever` (`ErrNoReprojectExecutor`) before it even
+> validates `--mode`. `altctl home backfill trigger` is in the same state
+> (`ErrNoBackfillExecutor`, same file). Until an executor is rebuilt and
+> wired, use [[knowledge-home-projection-recovery]]'s admin rebuild endpoint
+> (preferred) or its direct-SQL fallback procedure for any rebuild that this
+> runbook would otherwise cover. The procedure below is preserved for when
+> the executor is rewired.
 
 ## When to Reproject
 
@@ -35,6 +51,18 @@ Related: [[000421]], [[000429]], [[knowledge-home-phase0-canonical-contract]], [
 
 - Never rebuild directly into the active projection in production.
 - Always run `dry_run` first, then `compare`, then `swap`.
+- `altctl`'s client-side flag validator and alt-backend's server-side domain
+  validator do not agree on the set of legal modes. `altctl` (`altctl/cmd/home_reproject.go`)
+  accepts only `dry_run`, `shadow`, or `live` and rejects anything else before
+  the request is even sent; alt-backend's domain
+  (`alt-backend/app/domain/knowledge_reproject.go`) accepts only `dry_run`,
+  `user_subset`, `time_range`, or `full` and rejects anything else with
+  `invalid reproject mode %q`. The two sets intersect only at `dry_run` --
+  and `SwapReproject` explicitly refuses to swap a `dry_run` run ("dry_run
+  mode does not project events; use mode=full|user_subset|time_range"). In
+  practice this means no non-dry_run reproject can currently be completed
+  through `altctl`, independently of the missing-executor problem described
+  above.
 - Do not swap if the diff contains unexplained removals, malformed `why_json`, or large `summary_state` regressions.
 - Keep rollback-ready state until the post-swap monitoring window completes.
 - Use `item_key`, `article_id`, and `projection_version` as the primary correlation keys during investigation.
@@ -43,7 +71,11 @@ Related: [[000421]], [[000429]], [[knowledge-home-phase0-canonical-contract]], [
 
 ### Step 1: Dry Run
 
-Run a dry-run reproject to validate the new projection without affecting production:
+Run a dry-run reproject to validate the request without affecting production.
+`dry_run` is the only mode `altctl` and alt-backend both currently accept
+(see Safety Constraints above) -- it does not populate anything `compare`
+or `swap` can act on, so it is a validation step, not the start of the
+runbook's later stages:
 
 ```bash
 altctl home reproject start \
@@ -54,7 +86,7 @@ altctl home reproject start \
 
 - `--from=1`: current projection version.
 - `--to=2`: target projection version.
-- `--mode=dry_run`: writes to a shadow table, not the live projection.
+- `--mode=dry_run`: validates the request; projects no events and writes nothing.
 
 This returns a `run-id` (UUID). Save it for subsequent steps.
 
@@ -105,13 +137,13 @@ This performs:
 After the swap, monitor the Knowledge Home SLO dashboard for 30 minutes:
 
 - `alt_home_empty_responses_total` rate should not spike.
-- `alt_home_malformed_why_total` rate should remain near zero.
-- `alt_home_projector_lag_seconds` should stabilize below 60.
+- `alt_home_malformed_why_total` rate should remain near zero. **Not currently a live signal** -- the counter is declared but nothing in alt-backend increments it, so it always reads zero regardless of what happened.
+- `alt_home_projector_lag_seconds` should stabilize below 60. **Not currently a live signal** -- `RecordProjectorLag` has no call site either, so this series is absent from `/metrics`. Check freshness instead via `altctl home slo` (`GetSLOStatus`, backed by `knowledge_projection_checkpoints`).
 - `alt_home_degraded_responses_total` should not increase.
 - `alt_home_request_duration_seconds` should remain within the normal p95 band for `knowledge_home_get_latency`.
 - `alt_home_stream_connections_total` should not show an abnormal reconnect surge if stream clients are active.
 
-Canonical metric mapping is defined in [[knowledge-home-phase0-canonical-contract]].
+Canonical alert definitions live in `observability/prometheus/rules/knowledge-home-slo-alerts.yml`.
 
 ### Step 6: Rollback (if needed)
 
@@ -130,15 +162,17 @@ After rollback, verify all SLI metrics return to normal.
 
 ## Database Verification
 
-At any point, inspect the projection state directly:
+At any point, inspect the projection state directly. These tables live in
+`knowledge-sovereign-db` (database `knowledge_sovereign`, user `sovereign`),
+not `alt-db` -- see [[knowledge-home-projection-recovery]]'s Model section:
 
 ```bash
-docker exec alt-db sh -lc \
-  "psql -U alt_db_user -d alt -P pager=off -c \
-  \"SELECT projector_name, last_event_seq, updated_at, projection_version
+docker exec alt-knowledge-sovereign-db-1 \
+  psql -U sovereign -d knowledge_sovereign -P pager=off -c \
+  "SELECT projector_name, last_event_seq, updated_at
    FROM knowledge_projection_checkpoints;
    SELECT count(*) AS home_items FROM knowledge_home_items;
-   SELECT count(*) AS events FROM knowledge_events;\""
+   SELECT count(*) AS events FROM knowledge_events;"
 ```
 
 ## Troubleshooting

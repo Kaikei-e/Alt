@@ -73,14 +73,17 @@ LIMIT 20;
 ### 2. Check Checkpoint State
 
 ```bash
+# LangGraph's checkpoints table has no created_at column; checkpoint_id is a
+# monotonically increasing (time-sortable) LangGraph-generated ID, so it
+# doubles as the ordering key.
 docker exec -it acolyte-db psql -U acolyte_user -d acolyte -c "
 SELECT 
   thread_id,
-  checkpoint_id,
-  created_at
+  checkpoint_ns,
+  checkpoint_id
 FROM checkpoints
 WHERE thread_id LIKE 'acolyte-run:%'
-ORDER BY created_at DESC
+ORDER BY checkpoint_id DESC
 LIMIT 10;
 "
 ```
@@ -109,10 +112,16 @@ docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator --tail=2
      "SELECT COUNT(*) FROM checkpoints WHERE thread_id = 'acolyte-run:$RUN_ID';"
    ```
 
-3. **Execute resume:**
+3. **Execute resume.** `scripts/` is not part of the acolyte-orchestrator
+   image (the Dockerfile COPYs only `main.py` and `acolyte/`) -- run this on
+   the host from `acolyte-orchestrator/`:
    ```bash
-   docker exec -it acolyte-orchestrator \
-     python scripts/resume_run.py --run-id $RUN_ID
+   cd acolyte-orchestrator
+   export ACOLYTE_DB_DSN="postgresql://acolyte_user:$(cat ../secrets/acolyte_db_password.txt)@localhost:5439/acolyte"
+   export NEWS_CREATOR_URL="http://localhost:11434"
+   export SEARCH_INDEXER_URL="http://localhost:9300"
+   export CHECKPOINT_ENABLED=true
+   uv run python scripts/resume_run.py --run-id $RUN_ID
    ```
 
 4. **Monitor progress:**
@@ -155,9 +164,14 @@ docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator --tail=2
    ```
 
 4. **Start a fresh run:**
+
+   acolyte-orchestrator is served by uvicorn (HTTP/1.1 only); `grpcurl`
+   requires HTTP/2 and cannot be used here. Use the Connect-over-HTTP form:
+
    ```bash
-   grpcurl -plaintext -d '{"report_id":"<report-id>"}' \
-     localhost:8090 alt.acolyte.v1.AcolyteService/StartReportRun
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/StartReportRun \
+     -H "Content-Type: application/json" \
+     -d '{"report_id":"<report-id>"}'
    ```
 
 ### Procedure C: Bulk Cleanup of Orphaned Runs
@@ -253,7 +267,8 @@ After recovery:
 
 3. **New runs complete successfully:**
    ```bash
-   # Test with a new report
-   grpcurl -plaintext -d '{"title":"Recovery Test"}' \
-     localhost:8090 alt.acolyte.v1.AcolyteService/CreateReport
+   # Test with a new report (Connect-over-HTTP -- see Procedure B step 4)
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/CreateReport \
+     -H "Content-Type: application/json" \
+     -d '{"title":"Recovery Test"}'
    ```

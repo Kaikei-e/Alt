@@ -14,6 +14,20 @@ Runbook for investigating malformed "why recommended" explanations in Knowledge 
 
 Related: [[000418]]
 
+> **`alt_home_malformed_why_total` is not currently wired.** Its OTel
+> counter (`alt-backend/app/utils/otel/knowledge_home_metrics.go`) and the
+> `MetricsSnapshot.RecordMalformedWhy()` method backing the admin API
+> (`alt-backend/app/utils/otel/metrics_snapshot.go`) both exist, but neither
+> has a call site anywhere in the current codebase — nothing increments
+> either one, so `KnowledgeHomeMalformedWhyHigh` cannot fire today. Treat
+> "why" quality issues reported by users as a correctness bug to
+> investigate via the queries below, not as something the alert will catch.
+>
+> `knowledge_events` and `knowledge_home_items` also live exclusively in
+> `knowledge-sovereign-db` (database `knowledge_sovereign`, user
+> `sovereign`) — see [[knowledge-home-projection-recovery]]'s Model section.
+> Commands below target `alt-knowledge-sovereign-db-1`, not `alt-db`.
+
 ## Alerts
 
 | Alert | Severity | Condition |
@@ -31,24 +45,26 @@ Related: [[000418]]
 
 ### 1. Check recent projector changes
 
+The Knowledge Home projector runs inside `knowledge-sovereign`, not
+`alt-backend`:
+
 ```bash
 # Recent commits touching projector code
-cd alt-backend
-git log --oneline -10 -- app/*/knowledge_home*
+git log --oneline -10 -- knowledge-sovereign/app/usecase/knowledge_home_projector
 ```
 
-If a recent change modified how `why` fields are projected, that is the likely cause.
+If a recent change modified how `why_json` is built, that is the likely cause.
 
 ### 2. Inspect event payloads
 
 ```bash
-docker exec alt-db sh -lc \
-  "psql -U alt_db_user -d alt -P pager=off -c \
-  \"SELECT event_id, event_type, payload->>'why' AS why_field, created_at
+docker exec alt-knowledge-sovereign-db-1 \
+  psql -U sovereign -d knowledge_sovereign -P pager=off -c \
+  "SELECT event_id, event_type, payload->>'why' AS why_field, occurred_at
    FROM knowledge_events
    WHERE payload->>'why' IS NOT NULL
-   ORDER BY created_at DESC
-   LIMIT 20;\""
+   ORDER BY occurred_at DESC
+   LIMIT 20;"
 ```
 
 Look for:
@@ -59,14 +75,18 @@ Look for:
 
 ### 3. Check malformed items in projection
 
+`knowledge_home_items.why_json` is a JSONB array (default `'[]'`), and the
+table has no `id` column (its primary key is `(user_id, item_key,
+projection_version)`):
+
 ```bash
-docker exec alt-db sh -lc \
-  "psql -U alt_db_user -d alt -P pager=off -c \
-  \"SELECT id, user_id, why, updated_at
+docker exec alt-knowledge-sovereign-db-1 \
+  psql -U sovereign -d knowledge_sovereign -P pager=off -c \
+  "SELECT user_id, item_key, projection_version, why_json, updated_at
    FROM knowledge_home_items
-   WHERE why IS NULL OR why = '' OR length(why) < 5
+   WHERE why_json IS NULL OR why_json = '[]'::jsonb
    ORDER BY updated_at DESC
-   LIMIT 20;\""
+   LIMIT 20;"
 ```
 
 ### 4. Check for upstream data quality issues
@@ -88,16 +108,12 @@ docker compose -f compose/compose.yaml -p alt logs news-creator --since=30m 2>&1
 1. Identify the bad commit from investigation step 1.
 2. Fix the projector logic and deploy:
    ```bash
-   docker compose -f compose/compose.yaml -p alt up --build -d alt-backend
+   docker compose -f compose/compose.yaml -p alt up --build -d knowledge-sovereign
    ```
-3. Reproject the affected time range:
-   ```bash
-   altctl home reproject start \
-     --mode=dry_run \
-     --from=<current_version> \
-     --to=<new_version>
-   ```
-4. Follow [[knowledge-home-reproject-operations]] for the full swap procedure.
+3. Reproject the affected time range. `altctl home reproject start`
+   currently fails immediately for every `--mode` (no executor wired since
+   ADR-000944, see [[knowledge-home-reproject-operations]]); use
+   [[knowledge-home-projection-recovery]]'s admin rebuild endpoint (preferred) or its direct-SQL fallback instead.
 
 ### Upstream data quality
 
@@ -107,14 +123,15 @@ docker compose -f compose/compose.yaml -p alt logs news-creator --since=30m 2>&1
 
 ### Encoding issue
 
-1. Check if the issue is UTF-8 encoding in the JSONB column:
+1. Check if the issue is UTF-8 encoding in the `why_json` payload (cast to
+   text for the length comparison; `why_json` is JSONB, not TEXT):
    ```bash
-   docker exec alt-db sh -lc \
-     "psql -U alt_db_user -d alt -c \
-     \"SELECT id, octet_length(why), char_length(why)
+   docker exec alt-knowledge-sovereign-db-1 \
+     psql -U sovereign -d knowledge_sovereign -c \
+     "SELECT user_id, item_key, octet_length(why_json::text), char_length(why_json::text)
       FROM knowledge_home_items
-      WHERE octet_length(why) != char_length(why)
-      LIMIT 10;\""
+      WHERE octet_length(why_json::text) != char_length(why_json::text)
+      LIMIT 10;"
    ```
 2. If there are encoding mismatches, the source events likely contain non-UTF8 data. Fix the producer and reproject.
 

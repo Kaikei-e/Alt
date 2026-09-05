@@ -2,7 +2,7 @@
 
 ## Overview
 
-Scheduler for RSS ingestion via Inoreader API. **Go**, K8s CronJob/Deployment.
+Scheduler for RSS ingestion via Inoreader API. **Go**, runs as a long-lived Docker Compose service (`docker compose -f compose/workers.yaml up -d pre-processor-sidecar`) with an internal ticker-based scheduler — not a Kubernetes CronJob.
 
 > Details: `docs/services/pre-processor-sidecar.md`
 
@@ -13,7 +13,7 @@ Scheduler for RSS ingestion via Inoreader API. **Go**, K8s CronJob/Deployment.
 go test ./...
 
 # Run
-go run main.go
+go run ./cmd
 ```
 
 ## TDD Workflow

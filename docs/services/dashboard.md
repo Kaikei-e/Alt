@@ -1,9 +1,9 @@
 # Dashboard
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `dashboard/`
-**Python:** 3.12+
+**Python:** 3.14+
 **Type:** Streamlit web application with SSE real-time monitoring
 
 ## Purpose
@@ -18,27 +18,28 @@ The service runs two processes inside a single container:
 
 ```
 dashboard/
-├── pyproject.toml                  # Project config (Python >=3.12)
+├── pyproject.toml                  # Project config (Python >=3.14)
 ├── uv.lock
-├── Dockerfile                      # Multi-stage build (python:3.12-slim)
+├── Dockerfile                      # Multi-stage build (python:3.14-slim)
 ├── entrypoint.sh                   # Starts SSE server + Streamlit
 ├── app.py                          # Streamlit application entry point
 ├── sse_server.py                   # Standalone SSE HTTP server (ThreadingHTTPServer)
 ├── system_monitor.py               # Host metrics collection (free, ps, nvidia-smi, psutil)
 ├── utils.py                        # DB connection, time windows, data fetching helpers
-└── tabs/
-    ├── __init__.py
-    ├── overview.py                 # Recent activity summary
-    ├── classification.py           # Genre classification metrics (accuracy, F1, per-genre)
-    ├── clustering.py               # Clustering quality (DBCV, silhouette, noise ratio)
-    ├── summarization.py            # Summarization quality (faithfulness, coverage, MMR)
-    ├── system_monitor_tab.py       # Real-time system monitor (SSE-powered HTML component)
-    ├── system_monitor_sse_client.py  # JS code loader for SSE client
-    ├── log_analysis.py             # Error log analysis from log_errors table
-    ├── admin_jobs.py               # Admin/graph/learning job status
-    ├── recap_jobs.py               # Recap job status tracking
-    └── static/
-        └── sse_client.js           # Browser-side SSE client with reconnection logic
+├── tabs/
+│   ├── __init__.py
+│   ├── overview.py                 # Recent activity summary
+│   ├── classification.py           # Genre classification metrics (accuracy, F1, per-genre)
+│   ├── clustering.py               # Clustering quality (DBCV, silhouette, noise ratio)
+│   ├── summarization.py            # Summarization quality (faithfulness, coverage, MMR)
+│   ├── system_monitor_tab.py       # Real-time system monitor (SSE-powered HTML component)
+│   ├── system_monitor_sse_client.py  # JS code loader for SSE client
+│   ├── log_analysis.py             # Error log analysis from log_errors table
+│   ├── admin_jobs.py               # Admin/graph/learning job status
+│   ├── recap_jobs.py               # Recap job status tracking
+│   └── static/
+│       └── sse_client.js           # Browser-side SSE client with reconnection logic
+└── tests/                          # pytest suite (conftest.py, test_recap_jobs.py, test_sse_client_escaping.py, test_sse_server.py, test_system_monitor.py, test_utils.py)
 ```
 
 ## Architecture & Flow
@@ -122,7 +123,7 @@ The browser client uses the `EventSource` API with:
 - Health check before connection attempt
 - CORS support for cross-origin iframe scenarios (Streamlit `components.html`)
 - Configurable SSE endpoint via query parameters (`sse_host`, `sse_port`, `sse_protocol`, `sse_path`)
-- Default path: `/sse/dashboard/stream` (via Nginx proxy) or `/stream` (direct)
+- Default path: `/sse/dashboard/stream` (via plecto-proxy, the edge reverse proxy) or `/stream` (direct)
 
 ## Configuration & Environment Variables
 
@@ -164,8 +165,8 @@ The browser client uses the `EventSource` API with:
 
 ### Build
 
-Multi-stage build using `python:3.12-slim`:
-- **Builder stage**: Installs `uv` (0.5.14), syncs dependencies with `--frozen --no-dev`
+Multi-stage build using `python:3.14-slim`:
+- **Builder stage**: Installs `uv` (0.11.0), syncs dependencies with `--frozen --no-dev`
 - **Runtime stage**: Copies `.venv` from builder, installs `curl` and `procps` for health checks and system monitoring
 - Runs as non-root user `dashboard`
 
@@ -204,10 +205,10 @@ This is required for `nvidia-smi` to function inside the container for GPU monit
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `streamlit` | 1.54.0 | Dashboard UI framework |
-| `pandas` | 2.2.3 | Data manipulation and display |
-| `sqlalchemy` | 2.0.46 | Database connection and queries |
-| `psycopg2-binary` | 2.9.11 | PostgreSQL driver |
+| `streamlit` | 1.59.0 | Dashboard UI framework |
+| `pandas` | 3.0.3 | Data manipulation and display |
+| `sqlalchemy` | 2.0.51 | Database connection and queries |
+| `psycopg2-binary` | 2.9.12 | PostgreSQL driver |
 | `psutil` | >=5.9.0 | CPU metrics collection (fallback to `/proc/stat` if unavailable) |
 
 ### Infrastructure
@@ -220,6 +221,9 @@ This is required for `nvidia-smi` to function inside the container for GPU monit
 ```bash
 # Local development (requires recap-db running on localhost:5435)
 cd dashboard && streamlit run app.py
+
+# Unit tests (pytest)
+cd dashboard && uv run pytest
 
 # Docker startup
 docker compose -f compose/compose.yaml -p alt up -d dashboard
@@ -256,8 +260,8 @@ curl http://localhost:8502/health            # SSE server (host port 8502 -> con
 
 - Dashboard figures misled the first diagnosis of a zombie recap job → treat the DB state tables (`recap_jobs`, `recap_job_status_history.reason`, `recap_failed_tasks`) as primary evidence and the dashboard as a pointer; the root cause of a 4-day outage was written verbatim in `recap_job_status_history.reason`. → PM-2026-024 PM-2026-031
 - Quality collapse invisible on every tab → quality-degradation incidents complete "successfully" and never reach `recap_failed_tasks`, and the G-Eval quality metrics feed was itself dead during one incident. A stale metrics feed looks identical to a healthy quiet one — monitor the monitor. → PM-2026-038
-- Log Analysis by message equality misleads → identical error strings do not imply the same root cause: `classification returned 0 results` matched four different root causes in four consecutive incidents. Aggregate `log_errors` with discriminating fields, not message text. → PM-2026-033 PM-2026-035 PM-2026-036 PM-2026-037, [[crystallized-knowledge]] §14
-- SSE stream dead behind the proxy → SSE requires a dedicated nginx location (`proxy_buffering off`, `proxy_request_buffering off`, `X-Accel-Buffering: no`); streaming locations hardcode service names, so routing `/sse/dashboard/stream` through a new path requires an nginx update. → [[000555]] [[000929]]
+- Log Analysis by message equality misleads → identical error strings do not imply the same root cause: `classification returned 0 results` matched four different root causes in four consecutive incidents. Aggregate `log_errors` with discriminating fields, not message text. → PM-2026-033 PM-2026-035 PM-2026-036 PM-2026-037, [[runbooks/crystallized-knowledge]] §14
+- SSE stream dead behind the proxy → the SSE route is defined in `plecto/manifest.toml` (`path_prefix = "/sse/dashboard/"`, upstream `dashboard`), not nginx; adding a new streaming path requires adding a route to the manifest (the nginx-era `proxy_buffering off` / `X-Accel-Buffering: no` equivalent is Plecto's own responsibility). → [[000555]] [[000929]]
 - Nothing on the dashboard noticed 148GB of logs → log volume and disk usage are first-class health metrics; a retry storm nearly took down the shared host before manual `df` caught it. → PM-2026-042
 
 ## Observability

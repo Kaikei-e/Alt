@@ -12,7 +12,7 @@ The CORS configuration included a wildcard (`"*"`) in the `AllowOrigins` array, 
 ### **Vulnerability Details**:
 ```go
 // VULNERABLE CODE
-AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://curionoah.com", "*"},
+AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://<production-origin>", "*"},
 ```
 
 ### **Security Impact**:
@@ -23,7 +23,7 @@ AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://
 ### **Fix Applied**:
 ```go
 // FIXED CODE
-AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://curionoah.com"},
+AllowOrigins: []string{"http://localhost:3000", "http://localhost:80", "https://<production-origin>"},
 ```
 
 ### **Test Coverage**:

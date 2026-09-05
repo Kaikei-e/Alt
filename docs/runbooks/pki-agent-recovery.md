@@ -325,7 +325,7 @@ docker run --rm --network alt_alt-network \
   -v "$vol":/certs \
   -v alt_pki_trust_bundle:/trust:ro \
   -v "$PWD/secrets/step_ca_root_password.txt:/run/secrets/step_ca_root_password:ro" \
-  smallstep/step-ca:0.27.5 sh -c '
+  smallstep/step-ca:0.30.2 sh -c '
     TOKEN=$(step ca token "$SUBJECT" --san "$SUBJECT" --san localhost \
       --ca-url https://step-ca:9000 --root /trust/ca-bundle.pem \
       --provisioner bootstrap \

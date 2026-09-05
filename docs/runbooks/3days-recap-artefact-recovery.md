@@ -127,6 +127,8 @@ ls -la /var/lib/alt-recap-subworker-data/ | grep -E 'genre_classifier|tfidf_vect
 
 classifier は `_ja` / `_en` 両方あるのが想定。片方だけでも起動はするが classification の片言語が static に空返しになる。
 
+recap-subworker にはこれと同じ fail-closed 契約 (`create_host_path: false` の directory-scoped bind, 欠落で container create を refuse) のもう 1 本の host artefact パスがある: Learning Machine の student/teacher モデル (`RECAP_SUBWORKER_ARTIFACTS_HOST_PATH:-/var/lib/alt-recap-subworker-artifacts`、5.4 GB、`/app/recap_subworker/learning_machine/artifacts` にマウント)。本 runbook が扱う `genre_classifier*` 系の joblib artefact とは別物なので、`classification returned 0 results` 以外の起動失敗 (learning machine 側のエラー) ではこちらの欠落も疑う。
+
 ## デプロイ実行
 
 両ブロッカー解消後、alt-deploy の最新 workflow run を再実行する (または新規 dispatch)。

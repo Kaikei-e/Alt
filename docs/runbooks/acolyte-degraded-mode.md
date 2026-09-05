@@ -77,8 +77,12 @@ curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/HealthCheck \
 # Check acolyte-db
 docker exec -it acolyte-db pg_isready -U acolyte_user
 
-# Check news-creator (proxy) / news-creator-backend (Ollama)
-curl -s http://news-creator:11434/api/tags
+# Check news-creator (proxy) / news-creator-backend (Ollama). news-creator
+# is published to the host at 127.0.0.1:11434; it exposes no Ollama-style
+# /api/tags route (only /health, /health/deep, and its own summarize/
+# generate/chat routes) -- /api/tags exists only on the Ollama runner
+# itself, published separately at 127.0.0.1:11435.
+curl -s http://localhost:11434/health
 
 # Check search-indexer
 curl -s http://localhost:7700/health
@@ -126,10 +130,16 @@ docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator --tail=1
 
 3. **Wait for model load** (Gemma4 E4B takes ~30s to load)
 
-4. **Resume failed runs:**
+4. **Resume failed runs.** `scripts/` is not part of the acolyte-orchestrator
+   image (the Dockerfile COPYs only `main.py` and `acolyte/`) -- run this on
+   the host from `acolyte-orchestrator/` instead:
    ```bash
-   docker exec -it acolyte-orchestrator \
-     python scripts/resume_run.py --run-id <run_id>
+   cd acolyte-orchestrator
+   export ACOLYTE_DB_DSN="postgresql://acolyte_user:$(cat ../secrets/acolyte_db_password.txt)@localhost:5439/acolyte"
+   export NEWS_CREATOR_URL="http://localhost:11434"
+   export SEARCH_INDEXER_URL="http://localhost:9300"
+   export CHECKPOINT_ENABLED=true
+   uv run python scripts/resume_run.py --run-id <run_id>
    ```
 
 ### Database Recovery
@@ -205,18 +215,27 @@ After recovery, verify:
    ```
 
 2. **New run completes:**
+
+   acolyte-orchestrator is served by uvicorn (HTTP/1.1 only); `grpcurl`
+   requires HTTP/2 and cannot reach it at all, regardless of `.proto`
+   descriptors. Use the Connect-over-HTTP form instead (same pattern as the
+   health check above):
+
    ```bash
    # Create test report
-   grpcurl -plaintext -d '{"title":"Recovery Test","report_type":"weekly_briefing"}' \
-     localhost:8090 alt.acolyte.v1.AcolyteService/CreateReport
-   
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/CreateReport \
+     -H "Content-Type: application/json" \
+     -d '{"title":"Recovery Test","report_type":"weekly_briefing"}'
+
    # Start run
-   grpcurl -plaintext -d '{"report_id":"<uuid>"}' \
-     localhost:8090 alt.acolyte.v1.AcolyteService/StartReportRun
-   
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/StartReportRun \
+     -H "Content-Type: application/json" \
+     -d '{"report_id":"<uuid>"}'
+
    # Check status
-   grpcurl -plaintext -d '{"run_id":"<uuid>"}' \
-     localhost:8090 alt.acolyte.v1.AcolyteService/GetRunStatus
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/GetRunStatus \
+     -H "Content-Type: application/json" \
+     -d '{"run_id":"<uuid>"}'
    ```
 
 3. **No stuck runs:**

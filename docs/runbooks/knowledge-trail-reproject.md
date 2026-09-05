@@ -56,7 +56,19 @@ TRUNCATE と checkpoint UPDATE は必ず同一トランザクションで行う�
 
 1. Trail projector の tick を止める必要はない (in-process ticker は checkpoint
    基準で再開する) が、swap は 1 トランザクションで閉じること。
-2. Inside a single transaction:
+2. **Preferred**: knowledge-sovereign の admin rebuild endpoint がこの
+   TRUNCATE + checkpoint reset を 1 トランザクションで行う
+   (`knowledge-sovereign/app/handler/projection_rebuild.go`)。target
+   `knowledge-trail` は上記 3 テーブルと `knowledge-trail-projector`
+   checkpoint に対応する:
+   ```bash
+   export SOVEREIGN_ADMIN_TOKEN="$(cat secrets/sovereign_admin_token.txt)"
+   curl -s -X POST http://127.0.0.1:9511/admin/projections/rebuild \
+     -H "Authorization: Bearer $SOVEREIGN_ADMIN_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"target":"knowledge-trail"}'
+   ```
+   Fallback (endpoint が使えない場合のみ)、inside a single transaction:
    ```sql
    BEGIN;
    TRUNCATE knowledge_trail_footprints;

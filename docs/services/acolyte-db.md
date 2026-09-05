@@ -1,15 +1,16 @@
 # Acolyte DB
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `acolyte-migration-atlas/`
-**Port:** 5438
+**Port:** 5439 (host, bound to `127.0.0.1`) → 5432 (container)
 
 ## Role
 
 - **Versioned Report Storage**: Mutable current state + immutable version snapshots
 - **Change Tracking**: Field-level change items per version
 - **Job Queue**: Row-level locking with `FOR UPDATE SKIP LOCKED`
+- **Notification Outbox**: Transactional outbox for report-ready push notifications, relayed to `alt-data-hub` by `acolyte-orchestrator`
 
 ## Architecture Overview
 
@@ -23,6 +24,20 @@ erDiagram
     report_versions ||--o{ report_change_items : "tracks changes"
     report_sections ||--o{ report_section_versions : "has versions"
     report_runs ||--o{ report_jobs : "has jobs"
+
+    notification_outbox {
+        uuid id PK
+        text dedupe_key UK
+        uuid user_id
+        text kind
+        jsonb payload
+        timestamptz occurred_at
+        text state
+        int attempts
+        timestamptz next_attempt_at
+        text locked_by
+        timestamptz forwarded_at
+    }
 
     reports {
         uuid report_id PK
@@ -221,6 +236,26 @@ Job queue with row-level locking.
 | `available_at` | TIMESTAMPTZ | Available time (for delayed retry) |
 | `created_at` | TIMESTAMPTZ | Creation timestamp |
 
+### notification_outbox
+
+Transactional outbox for report-ready push notifications. Lives in `acolyte-db` (not `alt-db`) so the outbox row commits in the same local transaction as the `report_jobs` state change it announces; a relay in `acolyte-orchestrator` forwards rows to `alt-data-hub` over mTLS.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID PK | Row identifier |
+| `dedupe_key` | TEXT UNIQUE | Derived from the business fact (e.g. `report:<job_id>`); a retry at any layer reproduces the same key |
+| `user_id` | UUID | Notification recipient |
+| `kind` | TEXT | Notification type |
+| `payload` | JSONB | Notification body |
+| `occurred_at` | TIMESTAMPTZ | Business time supplied by the producer (not defaulted) |
+| `created_at` | TIMESTAMPTZ | Row insert time |
+| `state` | TEXT | `pending`/`forwarding`/`forwarded`/`dead` |
+| `attempts` | INT | Relay attempt count |
+| `next_attempt_at` | TIMESTAMPTZ | Doubles as the claim lease; also the retry backoff clock |
+| `locked_by` | TEXT | Relay instance holding the claim |
+| `last_error` | TEXT | Last forwarding error |
+| `forwarded_at` | TIMESTAMPTZ | Forward timestamp |
+
 ## Indexes
 
 ```sql
@@ -238,6 +273,10 @@ CREATE INDEX idx_report_jobs_claimable ON report_jobs(available_at)
 
 -- Brief topic search
 CREATE INDEX idx_report_briefs_topic ON report_briefs(topic);
+
+-- Notification outbox claim (partial: non-terminal states only)
+CREATE INDEX notification_outbox_claim_idx ON notification_outbox(next_attempt_at, id)
+    WHERE state IN ('pending', 'forwarding');
 ```
 
 ## Design Principles
@@ -285,11 +324,14 @@ acolyte-migration-atlas/
 │   ├── atlas.hcl                           # Atlas configuration
 │   ├── atlas.sum                           # Migration checksum
 │   ├── 20260409000000_create_acolyte_tables.sql
-│   └── 20260410000000_create_report_briefs.sql
+│   ├── 20260410000000_create_report_briefs.sql
+│   ├── 20260413000000_cascade_delete_reports.sql
+│   └── 20260808000100_create_notification_outbox.sql
 └── docker/
     ├── Dockerfile                          # Atlas migrator image
     └── scripts/
-        └── migrate.sh                      # Migration entrypoint
+        ├── migrate.sh                      # Migration entrypoint
+        └── hash.sh
 ```
 
 ### Running Migrations
@@ -299,7 +341,7 @@ acolyte-migration-atlas/
 docker compose -f compose/acolyte.yaml up acolyte-db-migrator
 
 # Manual
-atlas migrate apply --url "postgresql://user:pass@host:5438/acolyte_db?sslmode=disable"
+atlas migrate apply --url "postgresql://acolyte_user:pass@localhost:5439/acolyte?sslmode=disable"
 ```
 
 ## Compose Integration
@@ -307,39 +349,48 @@ atlas migrate apply --url "postgresql://user:pass@host:5438/acolyte_db?sslmode=d
 ```yaml
 services:
   acolyte-db:
-    image: postgres:18
+    image: postgres:18.6-alpine
     environment:
-      POSTGRES_DB: acolyte_db
-      POSTGRES_USER: acolyte_user
+      POSTGRES_DB: ${ACOLYTE_DB_NAME:-acolyte}
+      POSTGRES_USER: ${ACOLYTE_DB_USER:-acolyte_user}
       POSTGRES_PASSWORD_FILE: /run/secrets/acolyte_db_password
     ports:
-      - "5438:5432"
+      - "127.0.0.1:5439:5432"
     volumes:
-      - acolyte_db_data:/var/lib/postgresql/data
+      - acolyte_db_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U acolyte_user -d acolyte_db"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${ACOLYTE_DB_USER:-acolyte_user} -d ${ACOLYTE_DB_NAME:-acolyte}"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   acolyte-db-migrator:
     build:
       context: ./acolyte-migration-atlas
+      dockerfile: docker/Dockerfile
+    command: ["apply"]
     depends_on:
       acolyte-db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://acolyte_user:${ACOLYTE_DB_PASSWORD}@acolyte-db:5432/acolyte_db
+      - ACOLYTE_DB_HOST=acolyte-db
+      - ACOLYTE_DB_PORT=5432
+      - ACOLYTE_DB_USER=${ACOLYTE_DB_USER:-acolyte_user}
+      - ACOLYTE_DB_NAME=${ACOLYTE_DB_NAME:-acolyte}
+      - ACOLYTE_DB_PASSWORD_FILE=/run/secrets/acolyte_db_password
+    # Invoked by name (e.g. `make acolyte-migrate`) whenever migrations/
+    # gains a file — it is not started as part of a per-service
+    # `up -d --no-deps acolyte-orchestrator` roll.
 ```
 
 ## Health Check
 
 ```bash
 # PostgreSQL readiness
-pg_isready -h localhost -p 5438 -U acolyte_user -d acolyte_db
+pg_isready -h localhost -p 5439 -U acolyte_user -d acolyte
 
 # Connection test
-psql -h localhost -p 5438 -U acolyte_user -d acolyte_db -c "SELECT 1"
+psql -h localhost -p 5439 -U acolyte_user -d acolyte -c "SELECT 1"
 ```
 
 ## Related Services

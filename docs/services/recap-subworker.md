@@ -1,6 +1,6 @@
 # Recap Subworker
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `recap-subworker/`
 
@@ -13,7 +13,7 @@ Recap Subworker is a specialized ML/ETL microservice responsible for heavy text 
 
 It runs as a **FastAPI** application on Uvicorn (single-process mode to avoid CUDA fork issues), optimized for high-concurrency CPU-bound operations. Gunicorn is available but disabled by default.
 
-**Python Version**: 3.12+
+**Python Version**: 3.14+
 
 ## Architecture
 
@@ -156,8 +156,8 @@ flowchart LR
     style Result fill:#d4edda
 ```
 
-### Classification Inference Flow (Joblib - Legacy)
-Traditional ML pipeline using embeddings and TF-IDF.
+### Classification Inference Flow (Joblib - Default)
+Traditional ML pipeline using embeddings and TF-IDF. This is the current default `classification_backend` (see Key Configuration below).
 
 ```mermaid
 flowchart LR
@@ -204,6 +204,8 @@ flowchart TB
 
 ## Key Configuration (Environment Variables)
 
+Roughly half of these also accept a shorter alias without the `RECAP_SUBWORKER_` prefix (e.g. `RECAP_CLASSIFICATION_BACKEND` for `RECAP_SUBWORKER_CLASSIFICATION_BACKEND`, `RECAP_HDBSCAN_MIN_SAMPLES` for `RECAP_SUBWORKER_HDBSCAN_MIN_SAMPLES`) via `AliasChoices` in `infra/config.py`; the prefixed form is the canonical one documented below.
+
 ### Core Settings
 
 | Variable | Default | Description |
@@ -220,7 +222,7 @@ flowchart TB
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `RECAP_SUBWORKER_CLASSIFICATION_BACKEND` | `learning_machine` | Backend: `joblib` or `learning_machine`. |
+| `RECAP_SUBWORKER_CLASSIFICATION_BACKEND` | `joblib` | Backend: `joblib` or `learning_machine`. Defaulted back to `joblib` after `learning_machine`'s student-model artefacts were found undistributed in production (PM-2026-035); `learning_machine` now fail-closes at startup if its artefact directories are missing. |
 | `RECAP_SUBWORKER_CLASSIFICATION_DEVICE` | (inherits device) | Device for classification inference. |
 | `RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES` | `6` | Classification worker processes. |
 | `RECAP_SUBWORKER_LEARNING_MACHINE_STUDENT_JA_DIR` | `.../artifacts/student/v0_ja` | Japanese student model path. |

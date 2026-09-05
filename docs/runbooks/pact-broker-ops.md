@@ -69,25 +69,35 @@ Settings → Branches → Branch protection rules → main → Require status ch
 文字列変更は status check 名を変えるため、リネーム直後の最初の merge で gate
 が効かない窓が空く。
 
-## 3. can-i-deploy gate (deploy.yaml)
+## 3. can-i-deploy gate
 
-`release-gate.yaml` は `.github/workflows/deploy.yaml` の `needs: release-gate`
-で必ず deploy の前段に入る。失敗時は deploy job 自体が skip される。
+`.github/workflows/release-gate.yaml` と `.github/workflows/deploy.yaml` はこの
+repo に存在しない (退役済み)。can-i-deploy は現在 [[deploy]] が使う
+`c2quay deploy` が内部で担う (`c2quay.yml` の `environments.production.services`
+に登録された 14 pacticipant ぶん)。public repo 側に残る deploy 関連の
+workflow は push-on-main で private `alt-deploy` へ `repository_dispatch`
+するだけの `.github/workflows/dispatch-deploy.yaml` のみ。
 
-動作確認:
+can-i-deploy を単体で手動確認したいときは `pact-broker-cli` を直接叩ける:
 
 ```bash
 # Broker に今の main を publish した直後
+export PACT_BROKER_USERNAME=pact
 export PACT_BROKER_PASSWORD=$(cat secrets/pact_broker_basic_auth_password.txt)
 pact-broker-cli can-i-deploy \
   --pacticipant search-indexer \
   --version $(git rev-parse --short HEAD) \
   --to-environment production \
-  --broker-base-url http://localhost:9292 \
-  --broker-username pact \
-  --broker-password "$PACT_BROKER_PASSWORD"
+  --broker-base-url http://localhost:9292
 ```
 
+> 認証は **環境変数で渡す** (`PACT_BROKER_USERNAME` / `PACT_BROKER_PASSWORD`)。
+> `--broker-username` / `--broker-password` を `can-i-deploy` や
+> `record-deployment` に付けると、値が正しくても 401 になる (この CLI の
+> deployment 系 subcommand は flag 認証をサポートしない — `scripts/deploy.sh`
+> と `scripts/pact-check.sh` がどちらも export だけで済ませているのはこの
+> ため)。flag 形式が通るのは `publish` subcommand だけ。
+>
 > CLI は Rust 版 `pact-broker-cli` (ADR-000740 の Ruby gem 時代から更新済)。
 > 未導入なら `curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-broker-cli/main/install.sh | sh` で入れる。
 
@@ -141,6 +151,23 @@ Broker UI の "Pacticipants" → provider → Tab "Contract requiring verificati
 に listed されている pact は verify 未実施。これを 0 に保つ。
 
 自動化: `scripts/pact-broker-check-orphans.sh` (TODO、D7 完了時に配線)
+
+## 6.5. Manual verification の publish (自動 provider verify が無い pact 向け)
+
+自動化された provider verify を持たない pact (bridging registry に載る組み
+合わせ) は、証跡ベースの manual verification record を Broker に post する
+専用の leg で扱う: `scripts/pact-check.sh --publish-manual-verifications`。
+これは bridging evidence を出す verification だけを実行したあと、
+**`playbooks/publish-manual-verifications.yml` という Ansible playbook**
+(`ansible-playbook -i localhost, -c local`) に委譲して Broker への実際の
+post を行う — bridge registry・evidence gate・Broker への反復 POST・
+credential 取り扱いはすべてこの playbook 側にある。したがって
+`ansible-playbook` は、このリーグを走らせるどのホストにとっても
+事実上の前提ツールになる ([[runner-setup]] の alt-builder ツール表を参照)。
+`--dry-run` を付けると Broker に触れずに評価だけ表示する
+(`-e bridge_dry_run=true` で `ansible-playbook --check` を回す)。
+`--skip-manual-bridge` は、別の専用 leg が同じ playbook を既に走らせている
+ことが分かっている呼び出し元向けに、この bridging block だけを飛ばす。
 
 ## 7. Broker webhook (consumer 変更 → provider CI 自動実行)
 
@@ -392,6 +419,56 @@ pact-broker-cli create-or-update-verification \
 
 - `scripts/pact-invalidate.sh` wrapper を作り、`PACT_ALLOW_FORCE_SUCCESS=true` + Linear URL 正規表現を CLI 側で強制（default refused）
 - `record-deployment` model に全面移行（[[000740]] の superseding）して tags-based 判定箇所を削除すれば、stale failure が can-i-deploy の判断対象から自然に落ちる
+
+## 9.5. `record-deployment` の instance 識別子忘れによる恒久 block
+
+### 症状
+
+`can-i-deploy` が、とうに置き換わったはずの古い version 名を挙げて落ち続ける。
+section 9 の stale-verification パターンと違い、対象 pact の再 verify を通し
+ても直らない — verification 自体には何も問題が無い。
+
+### 原因
+
+複数インスタンスを区別するための `--application-instance` (Broker の古い
+ドキュメント/issue では `--target` と呼ばれていた同じフィールド) を指定せず
+`record-deployment` を実行すると、Broker はそのデプロイを instance 未指定の
+まま `currently deployed` として記録する。以後 **別の `--application-instance`
+を指定した** `record-deployment` は instance が異なるため supersede しない。
+結果として最初の (instance 未指定の) デプロイ記録が `currently deployed` の
+まま永久に残り、それ以降の全ての `can-i-deploy` がとうに存在しない旧
+version と比較され続ける。
+
+c2quay がこのスタックの `record-deployment` を内部で実行しているが、
+`c2quay.yml` にも本 repo のどのスクリプトにも `--application-instance` の
+指定は見当たらない — c2quay がデフォルトでどう扱っているかは c2quay 自身の
+ソース (この repo にはベンダリングされていない) を確認するまで未検証。この
+症状が出たらまずここを疑う。`pact-broker-cli` に deployment 一覧を返す
+サブコマンドは無いので、詰まっている version の特定は `can-i-deploy` の
+エラーメッセージ自体 (旧 version 名を名指しする) と Broker の web UI
+(pacticipant → Environments タブ) で行う。
+
+### 復旧
+
+1. `can-i-deploy` の失敗メッセージが名指しする古い version を確認する
+   (Broker web UI の pacticipant → Environments タブでも同じ行が見える)。
+
+2. その version の deployment を undeploy する (最初の record-deployment が
+   `--application-instance` を指定していなかった場合、undeploy 側も指定しない
+   ことで同じ行にマッチさせる):
+
+   ```bash
+   export PACT_BROKER_USERNAME=pact
+   export PACT_BROKER_PASSWORD=$(cat secrets/pact_broker_basic_auth_password.txt)
+   pact-broker-cli record-undeployment \
+     --pacticipant <P> \
+     --environment production \
+     --broker-base-url http://localhost:9292
+   ```
+
+3. `can-i-deploy` を再実行して matrix が新しい version を見ているか確認する。
+4. 恒久策として、以後の `record-deployment` / `record-undeployment` には
+   常に同じ `--application-instance` を明示して渡す（未指定のままにしない）。
 
 ## 参考
 

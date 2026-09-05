@@ -1,13 +1,13 @@
 # Pre-processor Sidecar
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `pre-processor-sidecar/app`
 
 ## Purpose
 - Orchestrates Inoreader ingestion for the pre-processor by pairing a scheduler loop with a resilient OAuth2 token system (`cmd/main.go`, `service/simple_token_service.go`).
-- Bridges Kubernetes Secrets (or alternative token repositories) with `auth-token-manager` so Inoreader calls stay within quota while rotating tokens safely (`service/token_management_service.go`, `repository`).
-- Provides HTTP hooks (`/admin/oauth2/*`, `/admin/trigger/*`, `/admin/health`) for observability, manual fetch/sync runs, and token status without restarting the CronJob (`handler/admin_api_handler.go`, `handler/health_handler.go`, `cmd/main.go`).
+- Bridges a token repository (file-backed in the shipped Compose config; the code also supports a Kubernetes Secret) with `auth-token-manager` so Inoreader calls stay within quota while rotating tokens safely (`service/token_management_service.go`, `repository`).
+- Provides HTTP hooks (`/admin/oauth2/*`, `/admin/trigger/*`, `/admin/health`) for observability, manual fetch/sync runs, and token status without restarting the process (`handler/admin_api_handler.go`, `handler/health_handler.go`, `cmd/main.go`).
 
 ## Execution Modes & CLI
 - `--health-check`: runs `performHealthCheckWithOutput` (config validation, DB connectivity, auth-token-manager and OAuth2 reachability), prints the result as JSON, and exits non-zero unless the overall status is `healthy` (`cmd/health_check.go`).
@@ -56,7 +56,7 @@ flowchart TB
 
     subgraph Services["Core Services"]
         direction LR
-        SchedulerNode["service/scheduler<br/>16m fetch / 24h refresh"]
+        SchedulerNode["service/scheduler<br/>16m fetch / 24h refresh<br/>(when INOREADER_SYNC=enabled)"]
         ArticleFetchService["ArticleFetchService"]
         SubscriptionSyncService["SubscriptionSyncService"]
         SubscriptionRotator["SubscriptionRotator<br/>(constructed, not driven)"]
@@ -99,6 +99,7 @@ flowchart TB
 ```
 
 ## Configuration & Secrets
+- `INOREADER_SYNC` (`enabled` / `disabled`) gates the scheduler outright: `scheduler.ParseSyncMode` treats an unset variable as `enabled` (the historical default), but `compose/workers.yaml` sets `INOREADER_SYNC=${INOREADER_SYNC:-disabled}` — so **as shipped, Inoreader sync is off**. With `disabled`, `Scheduler.Start` logs `inoreader_sync_disabled` and returns before either ticker is created, and `/admin/trigger/article-fetch` / `/subscription-sync` both return `ErrSyncDisabled` instead of running (`service/scheduler/scheduler.go`, `cmd/main.go`). All cadence and quota figures below describe the service only when `INOREADER_SYNC=enabled`.
 - `config.LoadConfig()` layers service metadata, DB, Inoreader endpoints, proxy settings, rate limits, OAuth2 details, HTTP client tuning, retry/circuit breaker parameters, monitoring flags, and rotation/content guards (`config/config.go`).
 - Token storage respects `TOKEN_STORAGE_TYPE` (defaults to `kubernetes_secret`) plus overrides for `TOKEN_STORAGE_PATH`. Kubernetes mode also uses `OAUTH2_TOKEN_SECRET_NAME`.
 - `ENABLE_SECRET_WATCH` causes `SimpleTokenService` to watch both the Kubernetes secret and configured token repository so tokens are reloaded without API calls when `auth-token-manager` rotates them.
@@ -106,7 +107,7 @@ flowchart TB
 - Proxy/environment overrides (`HTTPS_PROXY`, `NO_PROXY`) and client-sensitive env vars (`INOREADER_CLIENT_ID`, `INOREADER_CLIENT_SECRET`, optional `INOREADER_REFRESH_TOKEN`, `PRE_PROCESSOR_SIDECAR_DB_PASSWORD`) are loaded either directly from secrets or from files (`getSecretOrEnv` helper).
 
 ## Scheduler & Rotation
-- `service/scheduler` is the only scheduling authority. `cmd/main.go` builds it with `scheduler.NewScheduler(syncStateRepo, subscriptionSyncService, articleFetchService, logger)` and starts it with `scheduler.DefaultConfig()`: a 16‑minute article-fetch ticker (~90 of the 100 daily Zone1 requests) and a 24‑hour subscription-refresh ticker.
+- `service/scheduler` is the only scheduling authority. `cmd/main.go` builds it with `scheduler.NewScheduler(syncStateRepo, subscriptionSyncService, articleFetchService, logger)` and starts it with `scheduler.DefaultConfig()`: a 16‑minute article-fetch ticker (~90 of the 100 daily Zone1 requests) and a 24‑hour subscription-refresh ticker — provided `INOREADER_SYNC=enabled` (see Configuration & Secrets; compose ships with it `disabled`).
 - Each fetch tick takes the `SyncState` with the oldest `last_sync` (`SyncStateRepository.GetOldestOne`), calls `ArticleFetchService.FetchArticles(ctx, streamID, 100)`, and persists the continuation token. Each refresh tick calls `SubscriptionSyncService.SyncSubscriptionsNew`.
 - The `/admin/trigger/*` endpoints call `TriggerFetchNow` / `TriggerRefreshNow` on that same scheduler. Manual and ticker-driven runs share `fetchRunMu` / `refreshRunMu`, so they can never overlap and double-spend the daily quota; a trigger that arrives during a run returns HTTP 409 and a skipped tick logs a warning.
 - `ArticleFetchService` delegates UUID resolution to `usecase.ArticleUUIDResolutionUseCase`, filters to Tier1, and writes via `ArticleRepository.CreateBatch`. If any article on a page fails to persist, the continuation token is held so the page is refetched, while `last_sync` still advances so the scheduler does not pin itself to one stream. Permanently unresolvable articles are dropped, logged individually, and counted in `DroppedUnresolvable`.
@@ -115,7 +116,7 @@ flowchart TB
 
 ## Rate Limiting
 There is no rate-limit manager component. Three mechanisms bound Inoreader usage:
-1. **Scheduler cadence** — the 16‑minute fetch ticker plus the 24‑hour refresh ticker is what actually keeps the service inside the 100 requests/day Zone1 budget, and the fetch/refresh mutexes stop admin triggers from adding concurrent calls.
+1. **Scheduler cadence** — when `INOREADER_SYNC=enabled`, the 16‑minute fetch ticker plus the 24‑hour refresh ticker is what actually keeps the service inside the 100 requests/day Zone1 budget, and the fetch/refresh mutexes stop admin triggers from adding concurrent calls. With the compose default (`disabled`), neither ticker runs and there is nothing to bound.
 2. **`InoreaderService.CheckAPIRateLimit`** — refuses a call once `Zone1Usage` reaches `Zone1Limit` minus a 10-request safety buffer, checked before every subscription-list and stream-contents fetch.
 3. **`utils.CircuitBreaker`** — 3 consecutive failures open the breaker, 60 s later it moves to HALF_OPEN, 2 successes close it. Wraps `FetchSubscriptions` and `FetchStreamContents`.
 
@@ -131,7 +132,7 @@ The Admin API has its own, unrelated limiter: `security.MemoryRateLimiter` at 5 
 
 ## Admin API & Security Controls
 - The Admin API runs on `:8080` with `/admin/oauth2/refresh-token`, `/admin/oauth2/token-status`, `/admin/health`, `/admin/trigger/article-fetch`, and `/admin/trigger/subscription-sync` handlers (`handler/admin_api_handler.go`, `handler/health_handler.go`, `cmd/main.go`). The trigger endpoints are wrapped in `RequireAdmin`, so they share the authenticator, rate limiter, and HTTPS enforcement of the rest of the surface.
-- Access requires Kubernetes service account tokens validated by `security.KubernetesAuthenticator` (checks JWT claims, CA-based signing, and known admin subjects/namespaces) and rate limiting via `security.MemoryRateLimiter`.
+- Access requires Kubernetes service account tokens validated by `security.KubernetesAuthenticator` (checks JWT claims, CA-based signing, and known admin subjects/namespaces) and rate limiting via `security.MemoryRateLimiter`. This is a vestigial path from an earlier Kubernetes deployment: `KubernetesAuthenticator` reads its CA certificate from `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt` by default, `compose/workers.yaml` mounts no such file and sets none of the `SERVICE_ACCOUNT_*_PATH` overrides, so `initialize()` fails at startup in the shipped Compose deployment and every Admin API request is rejected as unauthenticated — the trigger endpoints are effectively unreachable unless that path is wired up separately.
 - Inputs, especially refresh tokens, pass through `security.OWASPInputValidator`, which enforces regex patterns, controls SQL/XSS/path traversal threats, strips control characters, and escapes HTML entities before token updates are accepted.
 - `SimpleAdminAPIMetricsCollector` logs request durations, rate limit hits, and auth failures so the admin surface is observable without a full metrics stack.
 
@@ -161,7 +162,7 @@ The Admin API has its own, unrelated limiter: `security.MemoryRateLimiter` at 5 
 
 ## Known failure patterns
 
-Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
 - Inoreader ingestion silently stopped for 65 hours → a non-atomic write during disk exhaustion truncated `oauth2_token.env` to 0 bytes; auth-token-manager returned 404 and the circuit breaker flapped OPEN↔HALF_OPEN forever. Token persistence must be tmpfile + rename + fsync → PM-2026-043.
 - Health check reported `token_manager_available: true` throughout that outage → "process is up" and "responses are correct" are separate responsibilities; opaque string errors block both tests and alerts — use typed sentinels (`ErrTokenUnavailable`) and expose functional health (`/admin/health` with `ingestion_silent`) → PM-2026-043.
@@ -170,4 +171,4 @@ Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
 
 ## LLM Notes
 - Mention `SimpleTokenService`, `TokenManagementService`, and `TokenRotationManager` when summarizing token logic; include env names `ENABLE_SECRET_WATCH`, `OAUTH2_TOKEN_SECRET_NAME`, `MAX_DAILY_ROTATIONS`, `ROTATION_INTERVAL_MINUTES`, `BATCH_SIZE`, `INOREADER_CLIENT_ID`, `INOREADER_CLIENT_SECRET`, `INOREADER_REFRESH_TOKEN`, `HTTPS_PROXY`, and `NO_PROXY` so prompts resolve to the right switches.
-- Point at `service/scheduler` as the single scheduling authority: both the ticker loops and the `/admin/trigger/*` endpoints run through it, and its 16‑minute cadence owns the steady ~90-request/day budget. `SubscriptionRotator` exists but nothing drives it, so do not describe rotation as an active path.
+- Point at `service/scheduler` as the single scheduling authority: both the ticker loops and the `/admin/trigger/*` endpoints run through it, and its 16‑minute cadence owns the steady ~90-request/day budget — only when `INOREADER_SYNC=enabled`; the shipped compose default is `disabled`, which stops the tickers and makes `/admin/trigger/*` return `ErrSyncDisabled`. `SubscriptionRotator` exists but nothing drives it, so do not describe rotation as an active path.

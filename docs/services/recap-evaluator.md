@@ -1,6 +1,6 @@
 # Recap Evaluator
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `recap-evaluator`
 
@@ -105,7 +105,7 @@ All endpoints use `/api/v1` prefix (evaluation, metrics). Health check is at roo
 
 Ollama の `/api/generate` エンドポイントを使用して LLM ベースの要約品質評価を実行する。
 
-- **モデル**: `gemma3-4b-8k` (デフォルト、`OLLAMA_MODEL` で変更可能)
+- **モデル**: `gemma4-e4b-12k` (デフォルト、`OLLAMA_MODEL` で変更可能)
 - **プロンプト**: 日本語プロンプトで4次元を1-5点で評価。JSON 構造化出力を要求
 - **パラメータ**: `temperature: 0.1`, `num_predict: 256`, `stream: false`
 - **並行制御**: `asyncio.Semaphore` でリクエスト並行数を制限 (デフォルト5、`OLLAMA_CONCURRENCY`)
@@ -173,7 +173,7 @@ NLI モデル `tasksource/ModernBERT-base-nli` を使用。要約文を文単位
 | `DB_POOL_MIN_SIZE` | 5 | DB プール最小サイズ |
 | `DB_POOL_MAX_SIZE` | 20 | DB プール最大サイズ |
 | `OLLAMA_URL` | http://localhost:11434 | Ollama API URL |
-| `OLLAMA_MODEL` | gemma3-4b-8k | G-Eval 用モデル |
+| `OLLAMA_MODEL` | gemma4-e4b-12k | G-Eval 用モデル |
 | `OLLAMA_TIMEOUT` | 120 | Ollama タイムアウト (秒, 10-600) |
 | `OLLAMA_CONCURRENCY` | 5 | Ollama 並行リクエスト数 (1-20) |
 | `RECAP_WORKER_URL` | http://localhost:8081 | recap-worker API URL |
@@ -264,7 +264,7 @@ curl http://localhost:8085/health
 - Triage of low scores misled by logs → start from DB state tables (`recap_job_status_history.reason`, `recap_failed_tasks` aggregation), which held the full root cause of a 4-day recap outage while logs were noise → PM-2026-031.
 
 ## Dependencies
-- **Python**: >=3.13
+- **Python**: >=3.14,<3.15
 - **Web Framework**: FastAPI 0.115+, uvicorn
 - **Database**: asyncpg
 - **HTTP**: httpx
@@ -277,7 +277,7 @@ curl http://localhost:8085/health
 
 ### Runtime Dependencies
 - recap-db: 評価対象データ取得
-- Ollama: G-Eval LLM 評価 (gemma3-4b-8k)
+- Ollama: G-Eval LLM 評価 (gemma4-e4b-12k)
 - recap-worker: ジャンル評価結果取得
 - HuggingFace Models (自動ダウンロード): BERTScore用 `cl-tohoku/bert-base-japanese-v3`, Faithfulness用 `tasksource/ModernBERT-base-nli`
 
@@ -287,7 +287,7 @@ curl http://localhost:8085/health
 ## LLM Notes
 - FastAPI + structlog による Python サービス
 - 要約品質評価は4手法の多次元評価: G-Eval (Ollama), ROUGE, BERTScore, Faithfulness (NLI)
-- G-Eval は Ollama `/api/generate` エンドポイント経由で gemma3-4b-8k を使用
+- G-Eval は Ollama `/api/generate` エンドポイント経由で gemma4-e4b-12k を使用
 - G-Eval プロンプトは日本語、JSON 構造化出力を要求 (temperature 0.1)
 - G-Eval は async + semaphore 並行制御、ROUGE/BERTScore/Faithfulness は ThreadPoolExecutor で並列実行
 - スケジュール評価は APScheduler の CronTrigger で設定

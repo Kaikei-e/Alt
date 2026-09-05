@@ -30,10 +30,28 @@ The Alt platform uses a 3-2-1 backup strategy:
 
 | Priority | Data | RPO | RTO |
 |----------|------|-----|-----|
-| CRITICAL | alt-db, kratos-db, recap-db, rag-db | 1 hour | 4 hours |
+| CRITICAL | alt-db, kratos-db, recap-db, rag-db, pact-db | 1 hour | 4 hours |
 | HIGH | Meilisearch, ClickHouse | 6 hours | 8 hours |
 | MEDIUM | Redis Streams, OAuth tokens | 24 hours | 4 hours |
 | LOW | Prometheus, Grafana, Ollama models | N/A | Regenerable |
+
+**Known gap**: `scripts/backup/backup-all.sh`'s PostgreSQL dump list (the
+`databases=()` array) covers only the five databases above. `acolyte-db`,
+`knowledge-sovereign-db`, and `pre-processor-db` are production databases
+(see `compose/acolyte.yaml`, `compose/sovereign.yaml`, `compose/base.yaml`)
+with **no backup coverage of any kind** — neither `pg_dump` (their names are
+absent from `databases=()`) nor a Restic volume snapshot, because their
+volumes (`acolyte_db_data`, `knowledge-sovereign-db-data`,
+`pre_processor_db_data`) are not mounted into the `restic-backup` container
+(`compose/backup.yaml`'s `volumes:` block only lists 11 volumes, none of
+these three). Closing this gap requires extending three places together:
+`databases=()` in `backup-all.sh`, the `restic-backup` container's volume
+mounts in `compose/backup.yaml`, and the `volumes=()` array in
+`backup-all.sh` that drives the Restic-side check. A second, smaller gap of
+the same shape: `pact_db_data` **is** mounted into `restic-backup`
+(`compose/backup.yaml`) but is missing from `backup-all.sh`'s `volumes=()`
+array, so its Restic-side backup status is never checked even though the
+volume is present.
 
 ---
 

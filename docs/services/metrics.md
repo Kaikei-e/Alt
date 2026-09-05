@@ -1,9 +1,9 @@
 # metrics
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `metrics/`
-**Python:** 3.13+
+**Python:** 3.14+
 **Type:** CLI tool (not an HTTP service)
 
 ## Purpose
@@ -14,7 +14,7 @@ Alt system health analyzer. This is a CLI tool (not an HTTP service) that analyz
 
 ```
 metrics/
-├── pyproject.toml          # Project config (Python >=3.13)
+├── pyproject.toml          # Project config (Python >=3.14)
 ├── uv.lock
 ├── CLAUDE.md
 ├── src/
@@ -134,7 +134,7 @@ Log Gap:
 
 ## Known failure patterns
 
-Patterns from postmortems that shape what this analyzer must surface; see [[crystallized-knowledge]] §14 for the detection-gap metapattern.
+Patterns from postmortems that shape what this analyzer must surface; see [[runbooks/crystallized-knowledge]] §14 for the detection-gap metapattern.
 
 - **Almost every incident was detected by user report, not alerting**: ERROR/WARN evidence existed in ClickHouse for 20+ of the first 23 PMs but nothing watched it, and unimplemented "Detect" action items caused repeat incidents (PM-2026-008 → 016 → 020) → analysis output is only useful if it is actually run and reviewed.
 - **Bimodal latency is invisible at p50**: cache-expiry fan-out spikes (634ms MarkAsRead) hid for weeks → always report p95/p99, never mean/p50 alone → PM-2026-019.

@@ -1,5 +1,7 @@
 # 7-Day Recap Pipeline Architecture Report
 
+> **Historical.** The 7-day recap product window was retired in 2026-04. The daily automated run at 02:00 JST now generates the **3-day** recap (`RECAP_3DAYS_WINDOW_DAYS`), not the 7-day one described below — see [[wiki/services/recap-worker]] / `docs/services/recap-worker.md`. A 7-day run can still be produced manually via `POST /v1/generate/recaps/7days` and read back via `GET /v1/recaps/7days`, but nothing schedules one automatically any more, and `recap_jobs.window_days` carries no default. Most of the stage-by-stage mechanics below (fetch → preprocess → dedup → genre → select → dispatch → cluster → summarize → persist) are shared, window-size-agnostic code paths still in production for the 3-day pipeline; only the "7 days" framing, article-volume figures, and "fully automated" claim are specific to the retired product surface.
+
 This document outlines the technical details, architecture, and operational guide for the "7-Day Recap" generation pipeline in the Alt system.
 
 ## 1. Overview
@@ -9,7 +11,7 @@ The **7-Day Recap Pipeline** is a distributed system that collects and analyzes 
 ### Key Objectives
 -   **Information Condensation**: Extract "major movements" valuable to users from thousands of articles.
 -   **Multi-perspective**: Present topics based on semantic connections (clusters) rather than just access count rankings.
--   **Automation**: Fully automated execution every day at a scheduled time (04:00 JST).
+-   **Automation**: Was fully automated at a daily scheduled time (02:00 JST) until the 7-day window was retired in 2026-04; that same 02:00 JST cadence now runs the 3-day recap instead (see historical note above).
 
 ### High-Level Architecture
 
@@ -160,8 +162,8 @@ Key Environment Variables for `recap-worker`:
 | :--- | :--- | :--- |
 | `RECAP_WINDOW_DAYS` | `7` | Lookback period for fetching articles. |
 | `RECAP_GENRES` | (List) | Comma-separated list of target genres. **Only these genres are processed.** |
-| `RECAP_MIN_DOCUMENTS_PER_GENRE` | `10` | Minimum articles required to trigger summarization for a genre. |
-| `RECAP_GENRE_REFINE_ENABLED` | `true` | Enable the Graph Label Propagation stage. |
+| `RECAP_MIN_DOCUMENTS_PER_GENRE` | `3` | Minimum articles required to trigger summarization for a genre. |
+| `RECAP_GENRE_REFINE_ENABLED` | `false` | Enable the Graph Label Propagation stage. |
 
 ### Monitoring & Metrics
 Recommended metrics to watch in `recap-db`:
@@ -176,7 +178,7 @@ Recommended metrics to watch in `recap-db`:
 ### Troubleshooting
 
 -   **Q: Why are some genres missing from the recap?**
-    -   A: Likely due to `RECAP_MIN_DOCUMENTS_PER_GENRE`. If a genre has fewer than 10 articles after deduplication and outlier filtering, it is skipped.
+    -   A: Likely due to `RECAP_MIN_DOCUMENTS_PER_GENRE`. If a genre has fewer than `RECAP_MIN_DOCUMENTS_PER_GENRE` (default 3) articles after deduplication and outlier filtering, it is skipped.
 -   **Q: Why is the summary so short?**
     -   A: If the cluster is small (few sentences), the LLM has less context to work with. Check `recap_cluster_evidence` for the specific genre.
 -   **Q: How to add a new genre?**

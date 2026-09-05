@@ -1,6 +1,6 @@
 # Rask Log Aggregator
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `rask-log-aggregator/app`
 
@@ -13,18 +13,30 @@ _Last reviewed: July 7, 2026_
 
 ## Architecture & Flow
 
+Clean Architecture (Handler → Port → Adapter) にレイヤ分割済み:
+
 | Component | Responsibility |
 | --- | --- |
-| `main.rs` | アプリケーションエントリポイント、デュアルサーバー起動 |
-| `config.rs` | 環境変数設定、Docker Secrets 対応 |
-| `domain/otel_log.rs` | OTelLog, OTelTrace, SpanEvent, SpanLink ドメインモデル |
-| `log_exporter/mod.rs` | LogExporter trait 定義 |
-| `log_exporter/otel_exporter.rs` | OTelExporter trait 定義 |
-| `log_exporter/clickhouse_exporter.rs` | ClickHouse エクスポーター実装 |
-| `log_exporter/json_file_exporter.rs` | JSON ファイルエクスポーター (テスト/デバッグ用) |
-| `log_exporter/disk_cleaner.rs` | ディスククリーナー |
+| `main.rs` | エントリポイント (`healthcheck` サブコマンド分岐 + `app::run()` 呼び出し) |
+| `app/mod.rs` | 起動シーケンス (config → `AppState` → router → serve → graceful shutdown で flush 待ち) |
+| `app/router.rs` | Main router (`/v1/health`, `/v1/aggregate`) と OTLP router (`/v1/logs`, `/v1/traces`) の構築。gzip decompression + body limit 付与 |
+| `app/server.rs` | 両サーバーの bind・graceful shutdown (SIGTERM/SIGINT) |
+| `app/state.rs` | `AppState` (ClickHouse `Client` 生成、`BatchWriter` spawn、両 exporter の Arc 共有) |
+| `config.rs` | 環境変数設定、Docker Secrets (`_FILE`) 対応 |
+| `handler/aggregate.rs` | `POST /v1/aggregate` ハンドラー |
+| `handler/health.rs` | `GET /v1/health` ハンドラー |
+| `domain/enriched_log.rs` | `EnrichedLogEntry` (legacy NDJSON) ドメインモデル |
+| `domain/otel.rs` | OTelLog, OTelTrace, SpanEvent, SpanLink, SpanKind, StatusCode ドメインモデル |
+| `port/log_exporter.rs` | `LogExporter` trait 定義 (Port 層) |
+| `port/otel_exporter.rs` | `OTelExporter` trait 定義 (Port 層) |
+| `adapter/clickhouse/batch_writer.rs` | `BatchWriter` (両 trait を実装、チャネル経由でバッチを蓄積し定期 flush) |
+| `adapter/clickhouse/row.rs` / `otel_row.rs` | ClickHouse `Row` 構造体、ドメインモデルからの変換 |
+| `adapter/clickhouse/convert.rs` | 文字列 → `FixedString` バイト列などの変換ヘルパー |
+| `adapter/json_file/disk_cleaner.rs` | `DiskCleaner` (ディレクトリ容量クォータ管理) — 現状どこからも呼ばれていない未配線コード |
 | `otlp/receiver.rs` | OTLP HTTP ハンドラー (logs, traces) |
 | `otlp/converter.rs` | OTLP protobuf → ドメインモデル変換 |
+
+`log_exporter/` モジュールは旧レイアウトの型を `port::{LogExporter, OTelExporter}` と `adapter::clickhouse` / `adapter::json_file` から re-export するだけの後方互換シムとして残っている。
 
 ```mermaid
 flowchart LR
@@ -54,11 +66,14 @@ flowchart LR
 | 4318 | HTTP | `POST /v1/logs` | OTLP HTTP ログ (protobuf) |
 | 4318 | HTTP | `POST /v1/traces` | OTLP HTTP トレース (protobuf) |
 
+両サーバーとも `Content-Encoding: gzip` の透過的なデコンプレッション (`RequestDecompressionLayer`) と最大 20 MB のボディ上限 (`DefaultBodyLimit`) を持つ。forwarder は `ENABLE_COMPRESSION=true` の場合に gzip 圧縮した NDJSON / OTLP protobuf を送ってくるため必須。
+
 ### /v1/aggregate Handler
 - raw request body を読み込み
 - 各行を `EnrichedLogEntry` にパース
 - パースエラーはログ出力してスキップ (リクエスト全体は失敗しない)
 - バッチを `LogExporter` に送信
+- 200 OK は `export_batch` が `Ok` を返した後にのみ返す (`Ok` を返す前に 200 を返さない)。ただし `BatchWriter` は channel send 成功時点で `Ok` を返し、実際の ClickHouse flush は数秒後の別ループで行われるため、200 は「ClickHouse に書き込み済み」の確認ではなく「エクスポート層が受理した」確認。エクスポート失敗時は forwarder が再送できるよう 500 を返す
 
 ### /v1/logs, /v1/traces Handlers
 - `application/x-protobuf` 形式で受信
@@ -181,13 +196,27 @@ pub trait OTelExporter: Send + Sync {
 ```
 
 現在の実装:
-- `ClickHouseExporter`: 両方の trait を実装
+- `BatchWriter` (`adapter/clickhouse/batch_writer.rs`): 両方の trait を実装。チャネルで受けたバッチを 5 秒間隔 (`FLUSH_INTERVAL_SECS`) の flush ループで ClickHouse に書き込む
 
 ## ClickHouse Schema
 
+Schema は Atlas ではなく `clickhouse/migrations/*.sql` の生 SQL ファイル群で管理する。各ファイルは `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` 等で冪等に書かれており、`clickhouse` コンテナ起動時に毎回全ファイルを順番に再実行する (`clickhouse/entrypoint-wrapper.sh`)。デプロイ時はコンテナ再作成を経由しない `clickhouse-migrator` ワンショットサービスが同じスクリプトを `apply` モードで実行する。全テーブルで `ttl_only_drop_parts=1`。`sli_metrics` を除く全テーブルの TTL は 1 日 (2026-01 の retention 見直しで 2〜14 日から短縮)。
+
+`rask_logs` DB には以下の 7 テーブルが存在する:
+
+| テーブル | 用途 | TTL |
+|---|---|---|
+| `logs` | rask-log-forwarder からの legacy NDJSON ログ | 1 日 |
+| `http_logs` | `logs` から MV (`http_logs_mv`) で抽出した HTTP アクセスログ | 1 日 |
+| `otel_logs` | OTLP 経由の構造化ログ (OTel Log Data Model 準拠) | 1 日 |
+| `otel_traces` | OTLP 経由の distributed trace (OTel Span Data Model 準拠) | 1 日 |
+| `otel_http_requests` | `otel_logs` から MV (`otel_http_requests_mv`) で抽出した HTTP リクエスト分析用テーブル | 1 日 |
+| `otel_error_logs` | `otel_logs` から MV (`otel_error_logs_mv`, `SeverityNumber >= 17`) で抽出したエラーログ | 1 日 |
+| `sli_metrics` | `otel_logs` から MV (`sli_error_rate_mv`, `sli_log_throughput_mv`) で 1 分粒度集計した SLI (error_rate, log_throughput) | 90 日 |
+
 ### logs テーブル (legacy)
 
-rask-log-forwarder からの NDJSON ログを保存。TTL 2日。
+rask-log-forwarder からの NDJSON ログを保存。`entrypoint-wrapper.sh` が起動のたびに、`PARTITION BY (service_group, service_name)` のままの `logs` テーブルを検出すると一度だけ `toDate(timestamp)` へ再作成する (非時間軸 PARTITION + `ttl_only_drop_parts=1` では TTL が効かなかったため、[[000934]])。
 
 ```sql
 CREATE TABLE logs (
@@ -200,18 +229,21 @@ CREATE TABLE logs (
     container_id String,
     service_name LowCardinality(String),
     service_group LowCardinality(String),
-    TraceId FixedString(32),      -- trace correlation
-    SpanId FixedString(16),       -- span correlation
+    TraceId FixedString(32) DEFAULT '',      -- trace correlation
+    SpanId FixedString(16) DEFAULT '',       -- span correlation
     fields Map(String, String)
 ) ENGINE = MergeTree()
-PARTITION BY (service_group, service_name)
+PARTITION BY toDate(timestamp)
 ORDER BY (timestamp)
-TTL timestamp + INTERVAL 2 DAY DELETE;
+TTL timestamp + INTERVAL 1 DAY DELETE
+SETTINGS ttl_only_drop_parts = 1;
 ```
+
+HTTP 固有フィールド (`method`/`path`/`status_code`/`response_size`/`ip_address`/`user_agent`) は別カラムではなく `http_method` 等のプレフィックス付きキーとして `fields` Map に畳み込まれる (`adapter/clickhouse/row.rs`)。`http_logs_mv` はこの `fields` map から `service_name='nginx'` (プレフィックス付きキー) と `service_name='plecto-proxy'` (素のキー) の 2 パターンを個別に拾って `http_logs` に書く。
 
 ### otel_logs テーブル
 
-OpenTelemetry Log Data Model 準拠。TTL 7日。
+OpenTelemetry Log Data Model 準拠。business context 用の materialized column (`alt.*` 属性由来) と bloom filter index 付き。
 
 ```sql
 CREATE TABLE otel_logs (
@@ -231,16 +263,27 @@ CREATE TABLE otel_logs (
     ScopeAttributes Map(LowCardinality(String), String),
     LogAttributes Map(LowCardinality(String), String),
     -- Materialized columns for search optimization
-    ServiceName LowCardinality(String) MATERIALIZED ResourceAttributes['service.name']
+    ServiceName LowCardinality(String) MATERIALIZED ResourceAttributes['service.name'],
+    ServiceVersion LowCardinality(String) MATERIALIZED ResourceAttributes['service.version'],
+    DeploymentEnvironment LowCardinality(String) MATERIALIZED ResourceAttributes['deployment.environment'],
+    -- Business context (alt.* 属性由来、2026-01 追加)
+    FeedId String MATERIALIZED LogAttributes['alt.feed.id'],
+    ArticleId String MATERIALIZED LogAttributes['alt.article.id'],
+    JobId String MATERIALIZED LogAttributes['alt.job.id'],
+    ProcessingStage LowCardinality(String) MATERIALIZED LogAttributes['alt.processing.stage'],
+    AIPipeline LowCardinality(String) MATERIALIZED LogAttributes['alt.ai.pipeline'],
+    RequestId String MATERIALIZED LogAttributes['alt.request.id']
+    -- + bloom_filter index on TraceId/SpanId/FeedId/ArticleId/JobId/RequestId, tokenbf_v1 on Body
 ) ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
 ORDER BY (ServiceName, SeverityNumber, Timestamp)
-TTL Timestamp + INTERVAL 7 DAY DELETE;
+TTL Timestamp + INTERVAL 1 DAY DELETE
+SETTINGS ttl_only_drop_parts = 1;
 ```
 
 ### otel_traces テーブル
 
-OpenTelemetry Span Data Model 準拠。Grafana ClickHouse datasource 互換の nested arrays を含む。TTL 7日。
+OpenTelemetry Span Data Model 準拠。Grafana ClickHouse datasource 互換の nested arrays を含む。
 
 ```sql
 CREATE TABLE otel_traces (
@@ -270,8 +313,17 @@ CREATE TABLE otel_traces (
 ) ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
 ORDER BY (ServiceName, Timestamp, TraceId)
-TTL Timestamp + INTERVAL 7 DAY DELETE;
+TTL Timestamp + INTERVAL 1 DAY DELETE
+SETTINGS ttl_only_drop_parts = 1;
 ```
+
+### otel_http_requests / otel_error_logs / sli_metrics
+
+`otel_logs` からの派生テーブルで、rask-log-aggregator が直接書き込むことはない (ClickHouse 側の Materialized View が `otel_logs` への INSERT をトリガーに populate する):
+
+- `otel_http_requests` — `LogAttributes['http.method']` が空でない行から `HttpMethod`/`HttpRoute`/`HttpStatusCode`/`ResponseSize`/`RequestDuration`/`UserId`/`ClientIp`/`UserAgent` を抽出。TTL 1日
+- `otel_error_logs` — `SeverityNumber >= 17` (ERROR 以上) の行から `ExceptionType`/`ExceptionMessage`/`Stacktrace` を抽出。TTL 1日
+- `sli_metrics` — `(Timestamp, ServiceName, Metric, Value, Tags)` の汎用スキーマ。`error_rate` と `log_throughput` を 1 分粒度で集計。TTL 90日 (SLO トレンド分析用に長期保持)
 
 ## Testing & Tooling
 
@@ -293,37 +345,45 @@ cargo build --release
 - `tests/` ディレクトリでインテグレーションテスト
 - Docker で ClickHouse を起動、またはモックエクスポーターで検証
 
+**ClickHouse Retention Regression Tests** (`clickhouse/tests/`):
+- `retention_policy_test.sh` — 全テーブルの TTL (1 日、`sli_metrics` のみ 90 日) を `system.tables` から検証。読み取り専用、RED→GREEN ガードおよび CI 用 ([[000934]])
+- `http_logs_mv_shape_test.sh` — `http_logs_mv` が期待通りの列構成を維持しているかを検証
+
 ## Operational Runbook
+
+`compose/logging.yaml` の `rask-log-aggregator` サービスは `ports:` を持たないため、9600/4318 は `alt-network` 内からのみ到達可能。ホストから直接 `curl localhost:9600` しても Connection refused になる — `alt-network` に参加したコンテナから叩くこと。
 
 1. ClickHouse 環境変数を設定して起動:
    ```bash
-   docker compose -f compose/logging.yaml up rask-log-aggregator -d
+   docker compose -f compose/compose.yaml -p alt up -d rask-log-aggregator
    ```
 
-2. ヘルスチェック:
+2. ヘルスチェック (コンテナ内から):
    ```bash
-   curl http://localhost:9600/v1/health
+   docker compose -f compose/compose.yaml -p alt exec rask-log-aggregator /rask-log-aggregator healthcheck
    ```
 
-3. Legacy ログ投入テスト:
+3. Legacy ログ投入テスト (`rask-log-aggregator` は distroless イメージで shell/curl を持たないため、`alt-network` 上の使い捨てコンテナから叩く):
    ```bash
    printf '{"message":"test","level":"info","service_type":"test","log_type":"app","timestamp":"2026-01-22T00:00:00Z","stream":"stdout","container_id":"abc123","service_name":"test-svc"}\n' | \
-     curl -X POST --data-binary @- http://localhost:9600/v1/aggregate
+     docker run --rm -i --network alt_alt-network curlimages/curl:8.11.1 \
+       -X POST --data-binary @- http://rask-log-aggregator:9600/v1/aggregate
    ```
 
-4. OTLP HTTP ログ投入テスト (protobuf バイナリが必要):
+4. OTLP HTTP ログ投入テスト (protobuf バイナリが必要。同じく `alt-network` 上の使い捨てコンテナから):
    ```bash
    # Go/Python の OTel SDK を使用してテスト
    # 直接 curl でテストする場合は protobuf エンコードが必要
-   curl -X POST \
+   docker run --rm -v "$(pwd):/data" --network alt_alt-network curlimages/curl:8.11.1 \
+     -X POST \
      -H "Content-Type: application/x-protobuf" \
-     --data-binary @otlp_logs.pb \
-     http://localhost:4318/v1/logs
+     --data-binary @/data/otlp_logs.pb \
+     http://rask-log-aggregator:4318/v1/logs
    ```
 
 5. ClickHouse でデータ確認:
    ```bash
-   docker compose exec clickhouse clickhouse-client
+   docker compose -f compose/compose.yaml -p alt exec clickhouse clickhouse-client
 
    -- Legacy logs
    SELECT * FROM rask_logs.logs LIMIT 10;
@@ -362,6 +422,6 @@ Distilled from the ADR / postmortem corpus (see `docs/runbooks/crystallized-know
 - Axum ベースの非同期デュアル HTTP サーバー
 - `EnrichedLogEntry` 拡張時は ClickHouse カラムマッピングも更新必須
 - OTLP HTTP エンドポイントは OpenTelemetry エコシステムとの統合用
-- 15+ の rask-log-forwarder インスタンスからログを集約
-- gRPC エンドポイントは未実装 (HTTP のみ)
+- 16 の rask-log-forwarder インスタンスからログを集約 (`compose/logging.yaml`)
+- gRPC エンドポイントは未実装 (HTTP のみ)。`compose/logging.yaml` は `OTLP_GRPC_PORT: 4317` を環境変数として渡すが `config.rs` はこれを読まない (未配線・無効)
 - Docker Secrets 対応: `_FILE` サフィックスで秘密情報をファイルから読み込み

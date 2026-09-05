@@ -67,7 +67,8 @@ Connect-RPC (AcolyteConnectService) → Usecase → Port ← Gateway → Driver
 
 ```bash
 cd proto && buf generate --template buf.gen.acolyte.yaml            # AcolyteService (server)
-PATH=/home/koko/go/bin:$PATH \
+# Freshly-installed protoc-gen-go must precede any older one on PATH
+PATH="$(go env GOPATH)/bin:$PATH" \
   buf generate --template buf.gen.datahub-acolyte.yaml              # DataHubService (client)
 ```
 

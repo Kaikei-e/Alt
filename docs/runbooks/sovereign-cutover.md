@@ -1,6 +1,7 @@
 ---
 title: Knowledge Sovereign Cutover Runbook
 date: 2026-04-11
+status: archived
 tags:
   - runbook
   - knowledge-sovereign
@@ -8,6 +9,15 @@ tags:
 ---
 
 # Knowledge Sovereign Cutover Runbook
+
+> **Historical.** The alt-db → knowledge-sovereign-db active-writer cutover
+> this runbook describes has already run to completion. `altctl sovereign
+> cutover-readiness` / `freeze` / `unfreeze` and the `knowledge-sovereign/cmd/migrate`
+> binary this doc calls out do not exist in the current codebase (verified
+> 2026-09-05) — either they were exploratory tooling superseded by a
+> different cutover mechanism, or they were removed post-cutover. Treat the
+> steps below as a record of the decision, not a live runbook; do not expect
+> these exact commands to run today.
 
 ## 参照
 

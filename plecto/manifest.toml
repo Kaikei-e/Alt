@@ -91,7 +91,7 @@ set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", refe
 
 # 3. Kratos. nginx's own CORS preflight handling is dropped here deliberately: Kratos's
 # own kratos.yml already declares cors: enabled: true with the identical origin list
-# (localhost / curionoah.com) and allow_credentials: true — nginx's handling was
+# (localhost / the production origin) and allow_credentials: true — nginx's handling was
 # redundant, not load-bearing.
 [[route]]
 upstream = "kratos"

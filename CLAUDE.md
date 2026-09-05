@@ -6,11 +6,13 @@ Monorepo with 20+ microservices (Go, Python, Rust, TypeScript, Deno). Docker Com
 
 Each service has its own `CLAUDE.md` with service-specific guidance. See `docs/services/MICROSERVICES.md` for the full reference.
 
-**alt-backend / alt-harvester / alt-data-hub は 1 ディレクトリ 3 バイナリ** — `alt-backend/app`
-という単一 Go モジュール (`module alt`) から `cmd/backend`（ユーザ向け API）/ `cmd/harvester`
-（7 定期ジョブ）/ `cmd/datahub`（alt-db の唯一のオーナー、mTLS 専用）の 3 本を切り出し、
-同じ `alt-backend/Dockerfile.backend` を `--build-arg BINARY=backend|harvester|datahub` で
-3 イメージにビルドする。3 つとも `cd alt-backend/app && go test ./...` で一括してテストする。
+**alt-backend / alt-harvester / alt-notifier / alt-data-hub は 1 ディレクトリ 4 バイナリ** —
+`alt-backend/app` という単一 Go モジュール (`module alt`) から `cmd/backend`（ユーザ向け API）/
+`cmd/harvester`（7 定期ジョブ）/ `cmd/notifier`（Web Push 配信、API listener なし）/
+`cmd/datahub`（alt-db の唯一のオーナー、mTLS 専用）の 4 本を切り出し、同じ
+`alt-backend/Dockerfile.backend` を `--build-arg BINARY=backend|harvester|notifier|datahub` で
+4 イメージにビルドする。4 つとも `cd alt-backend/app && go test ./...` で一括してテストする。
+`cmd/fix_article_titles` は `go build ./cmd/...` に含まれるが常駐コンテナではない一発実行スクリプト。
 根拠と責務分担は `docs/ADR/000954.md`。
 
 **Wiki entry**: `docs/wiki/HOME.md` — crystallized navigation layer over ADR / runbook / plan. Read this first to get the current map of the system.

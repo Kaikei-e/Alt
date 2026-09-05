@@ -25,7 +25,8 @@ Related: [[000418]]
 - `KnowledgeHomeStreamDisconnectSurge` alert fires.
 - Users lose real-time Knowledge Home updates; items only refresh on page reload.
 - Client-side logs show repeated SSE/WebSocket reconnection attempts.
-- `alt_home_stream_reconnects_total` counter is climbing rapidly.
+  (`alt_home_stream_reconnects_total` is declared but never incremented
+  server-side, so this shows up only in browser logs, not `/metrics`.)
 - After 3 consecutive failures, clients fall back to unary polling.
 
 ## Investigation
@@ -34,39 +35,53 @@ Related: [[000418]]
 
 ```bash
 # Memory and CPU via cAdvisor or docker stats
-docker stats alt-backend --no-stream
+docker stats alt-alt-backend-1 --no-stream
 
 # Check for OOM kills
-docker inspect alt-backend --format='{{.State.OOMKilled}}'
+docker inspect alt-alt-backend-1 --format='{{.State.OOMKilled}}'
 
-# Goroutine count (if pprof is enabled). -f so a 404 (pprof off) is loud, not empty.
-curl -fsS http://localhost:9000/debug/pprof/goroutine?debug=1 | head -5
+# Goroutine count. pprof (internal/profiling) listens on its own :6060, not
+# the REST port :9000 -- and only when PPROF_ENABLED=true (unset by default
+# in compose, so off unless a .env override enables it). :6060 is not
+# published to the host either, so this needs a debug container on
+# alt_alt-network rather than a host-side curl:
+docker run --rm --network alt_alt-network busybox:1.37 \
+  wget -qO- http://alt-backend:6060/debug/pprof/goroutine?debug=1 | head -5
 ```
 
 High goroutine count (> 10,000) or memory above 80% of limit indicates a leak.
 
-### 2. Check PgBouncer connections
+### 2. Check alt-backend's own database access
+
+`cmd/backend` holds no direct Postgres connection at all (enforced by
+`di/import_boundary_test.go`) -- it reads through `alt-data-hub`'s
+Connect-RPC surface, and Knowledge Home data specifically comes from
+`knowledge-sovereign`, which dials `knowledge-sovereign-db` directly with no
+pooler in front of it. PgBouncer only fronts `alt-db`/Kratos and is not on
+this path, so PgBouncer pool exhaustion cannot itself explain a Knowledge
+Home stream disconnect. If alt-data-hub's own DB access is suspect:
 
 ```bash
-docker exec alt-pgbouncer sh -lc "psql -p 6432 -U alt_db_user pgbouncer -c 'SHOW POOLS;'"
-docker exec alt-pgbouncer sh -lc "psql -p 6432 -U alt_db_user pgbouncer -c 'SHOW CLIENTS;'"
+docker compose -f compose/compose.yaml -p alt exec pgbouncer sh -lc "psql -p 6432 -U alt_db_user pgbouncer -c 'SHOW POOLS;'"
+docker compose -f compose/compose.yaml -p alt exec pgbouncer sh -lc "psql -p 6432 -U alt_db_user pgbouncer -c 'SHOW CLIENTS;'"
 ```
-
-Look for:
-- `cl_waiting` > 0 -- clients are waiting for connections.
-- `sv_active` at limit -- all server connections in use.
 
 ### 3. Check LISTEN/NOTIFY health
 
-Knowledge Home streaming relies on PostgreSQL LISTEN/NOTIFY. Verify the notification channel is working:
+The stream is fed by a Connect-RPC call (`WatchProjectorEvents`) from
+alt-backend to `knowledge-sovereign`, which holds a `LISTEN knowledge_projector`
+connection on `knowledge-sovereign-db` (not `alt-db`, and not a channel
+literally named `knowledge_home_updates`):
 
 ```bash
-docker exec alt-db sh -lc \
-  "psql -U alt_db_user -d alt -c \
-  \"SELECT * FROM pg_listening_channels();\""
+docker exec alt-knowledge-sovereign-db-1 \
+  psql -U sovereign -d knowledge_sovereign -c \
+  "SELECT * FROM pg_listening_channels();"
 ```
 
-If `knowledge_home_updates` is not listed, the listener has disconnected.
+If `knowledge_projector` is not listed, `knowledge-sovereign`'s listener has
+disconnected -- check its logs for the `WatchProjectorEvents` stream and for
+reconnection to `knowledge-sovereign-db`.
 
 ### 4. Check network and edge proxy
 
@@ -121,34 +136,38 @@ Common reasons:
 
 ### Memory leak in alt-backend
 
-1. Confirm with `docker stats alt-backend` showing climbing memory.
+1. Confirm with `docker stats alt-alt-backend-1` showing climbing memory.
 2. Restart alt-backend:
    ```bash
    docker compose -f compose/compose.yaml -p alt restart alt-backend
    ```
-3. Monitor goroutine count after restart. If it climbs again, file a bug with pprof output:
+3. Monitor goroutine count after restart. If it climbs again, file a bug with pprof output (see the :6060 / PPROF_ENABLED caveat in Investigation step 1):
    ```bash
-   curl -fsS -o /tmp/heap.prof http://localhost:9000/debug/pprof/heap
+   docker run --rm --network alt_alt-network -v /tmp:/out busybox:1.37 \
+     wget -qO /out/heap.prof http://alt-backend:6060/debug/pprof/heap
    go tool pprof -top /tmp/heap.prof
    ```
 
-### PgBouncer connection exhaustion
+### knowledge-sovereign-db connection exhaustion
 
-1. Check if long-running LISTEN connections are consuming the pool.
-2. LISTEN/NOTIFY requires session-level pooling. Verify the alt-backend LISTEN connection uses a dedicated (non-pooled) connection.
-3. If PgBouncer is exhausted for query connections:
+`knowledge-sovereign` holds its own direct (unpooled) connection to
+`knowledge-sovereign-db` for the `WatchProjectorEvents` LISTEN -- there is no
+PgBouncer on this path, so "PgBouncer exhaustion" is not a cause of Knowledge
+Home stream disconnects.
+
+1. Check `knowledge-sovereign-db`'s own connection count and `max_connections` (Investigation step 2's `pg_stat_activity` query).
+2. If `knowledge-sovereign-db` itself is unresponsive:
    ```bash
-   docker compose -f compose/compose.yaml -p alt restart alt-pgbouncer
+   docker compose -f compose/compose.yaml -p alt restart knowledge-sovereign-db
    ```
-4. Consider increasing `max_client_conn` or `default_pool_size` in PgBouncer config if the pattern recurs.
 
 ### LISTEN/NOTIFY channel disconnected
 
-1. The listener auto-reconnects, but if it is stuck:
+1. `knowledge-sovereign`'s listener auto-reconnects, but if it is stuck:
    ```bash
-   docker compose -f compose/compose.yaml -p alt restart alt-backend
+   docker compose -f compose/compose.yaml -p alt restart knowledge-sovereign
    ```
-2. After restart, verify the channel is re-registered (see investigation step 3).
+2. After restart, verify the channel is re-registered (see investigation step 3), then confirm alt-backend's `WatchProjectorEvents` stream client has reconnected (alt-backend logs).
 
 ### Edge proxy terminating long-lived streams
 
@@ -169,4 +188,4 @@ After resolution:
 - `alt_home_stream_disconnects_total` rate (excluding `client_close`) drops below 20% of connections.
 - `alt_home_stream_connections_total` rate stabilizes.
 - Users confirm real-time updates are working without page reload.
-- `docker stats alt-backend` shows stable memory usage.
+- `docker stats alt-alt-backend-1` shows stable memory usage.

@@ -1,13 +1,14 @@
 # News Creator
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `news-creator/app`
+**Port:** 11434 (plaintext FastAPI proxy, loopback-published) / 9443 (inbound mTLS, `INBOUND_MTLS=true`) / news-creator-backend `:11435` (Ollama runtime, NVIDIA GPU). The actual Ollama runtime is a separate container, `news-creator-backend` — `news-creator` never runs inference itself.
 
 ## Role
 - FastAPI service (Python 3.14+) that synthesizes article summaries and recap blurbs via an Ollama LLM while preserving Clean Architecture boundaries.
 - Keeps handlers thin and testable; orchestrates summarization, recap summary generation, query expansion, and cross-encoder re-ranking.
-- Addresses the `ollama` Compose profile, wired into the recap-worker pipeline and callable by ad-hoc clients via authenticated service tokens.
+- Defined in `compose/ai.yaml` (wired via Compose `include:`, not a Compose profile), wired into the recap-worker pipeline and callable by pre-processor, acolyte-orchestrator, rag-orchestrator and recap-evaluator over the plaintext `:11434`, and by recap-worker over the mTLS `:9443` (`NEWS_CREATOR_BASE_URL=https://news-creator:9443`). `MTLS_ALLOWED_PEERS` lists recap-worker/acolyte-orchestrator/rag-orchestrator/recap-evaluator and does not include pre-processor.
 - **Key Capabilities**:
   - Automatic handling of large inputs via **Map-Reduce** hierarchical summarization with recursive reduce
   - **Model Bucket Routing** (8K/60K) for VRAM optimization
@@ -19,12 +20,12 @@ _Last reviewed: July 7, 2026_
 ## Architecture & Flow
 | Layer | Components |
 | --- | --- |
-| Handler | `create_summarize_router`, `create_generate_router`, `create_recap_summary_router`, `create_expand_query_router`, `create_rerank_router`, `create_health_router` (FastAPI routers with Pydantic schemas). |
-| Usecase | `SummarizeUsecase`, `RecapSummaryUsecase`, `ExpandQueryUsecase`, `RerankUsecase` (business logic, orchestrates prompts + metadata). |
+| Handler | `create_summarize_router`, `create_generate_router`, `create_recap_summary_router`, `create_expand_query_router`, `create_rerank_router`, `create_plan_query_router`, `create_chat_router`, `create_morning_letter_router`, `create_health_router` (FastAPI routers with Pydantic schemas). |
+| Usecase | `SummarizeUsecase`, `RecapSummaryUsecase`, `ExpandQueryUsecase`, `RerankUsecase`, `PlanQueryUsecase`, `MorningLetterUsecase` (business logic, orchestrates prompts + metadata). The chat proxy calls `OllamaGateway.chat_generate()` directly, with no dedicated usecase layer. |
 | Port | `LLMProviderPort`, `AuthPort`, `UserPreferencesPort`, `CachePort` (ABCs for external dependencies). |
 | Gateway | `OllamaGateway` adapts ports to `driver` calls. Includes `ModelRouter` (selects 8K/60K model), `OOMDetector` (handles VRAM errors), and `HybridPrioritySemaphore` (RT/BE scheduling with aging and preemption). Also provides `hold_slot()` context manager and `generate_raw()` for semaphore-aware retry loops. |
 | Driver | `OllamaDriver` (aiohttp client for non-streaming), `OllamaStreamDriver` (streaming support), handles retries, precision timeouts, metadata. |
-| Config | `NewsCreatorConfig` (env-driven values for service secret, LLM endpoint, prompt params, thresholds). |
+| Config | `NewsCreatorConfig` (env-driven values for LLM endpoint, model routing, prompt params, thresholds). |
 
 ```mermaid
 flowchart TD
@@ -59,11 +60,14 @@ flowchart TD
 ## Key Features
 
 ### 1. Model Bucket Routing & Optimization
-To balance performance and VRAM usage on consumer GPUs (e.g., RTX 4060 Ti 16GB), the service uses a **2-Bucket System**:
-- **Standard (8K Context)**: Used for normal summaries and small inputs. Default model (`gemma3-4b-8k`) with 24h keep-alive. 8K context with `OLLAMA_NUM_PARALLEL=2` fits in 8GB VRAM (~7.1 GB usage).
-- **Large (60K Context)**: Used for massive recap tasks. Loaded on-demand with 15m keep-alive to free up resources quickly. Disabled by default (`MODEL_60K_ENABLED=false`).
+The code supports a **2-Bucket System** to balance performance and VRAM usage (`MODEL_ROUTING_ENABLED`, default `true`):
+- **Standard (8K Context)**: Used for normal summaries and small inputs. Default model (`MODEL_8K_NAME`, code default `gemma4-e4b-q4km`) with 24h keep-alive.
+- **Large (60K Context)**: Used for massive recap tasks. Default model `MODEL_60K_NAME` (`gemma4-e4b-60k`), loaded on-demand with 15m keep-alive. Disabled by default (`MODEL_60K_ENABLED=false`).
+- **RAG query model**: A separate `MODEL_RAG_QUERY_NAME` (default `gemma4-e4b-12k`) is used for query expansion and query planning, independent of the summarization buckets.
 - **Auto-Routing**: `ModelRouter` analyzes input token count + options to select the most efficient model automatically.
 - **2x Rule**: Model switching only occurs when the bucket size difference is 2x or more, preventing frequent model swaps.
+- **Currently deployed default is single-model, routing off**: `compose/ai.yaml` sets `MODEL_ROUTING_ENABLED=false` and pins `LLM_MODEL=gemma4-e4b-12k` — the same model and `LLM_NUM_CTX=12288` that acolyte-orchestrator and the Ask Augur proxy use, so the one shared Ollama runner never reloads weights when alternating between callers (see the "Single shared model + COLD_START" failure pattern below).
+- `LLM_NUM_GPU` (default `99`) is always sent explicitly in the Ollama `options`; Ollama only forwards `--n-gpu-layers` when `num_gpu` is present in the request, and without it llama.cpp auto-splits layers across CPU/GPU — gemma4 aborts at load in that configuration.
 
 ### 2. Map-Reduce Hierarchical Summarization
 For extremely large inputs (multiple article clusters) that exceed the context window:
@@ -94,7 +98,7 @@ The `HybridPrioritySemaphore` replaces the original `PrioritySemaphore` with a r
 For improved vector search coverage in rag-orchestrator:
 - **Endpoint**: `POST /api/v1/expand-query`
 - **Function**: Generates diverse query variations in Japanese and English from a user query.
-- **Model**: Uses lightweight `gemma3-4b-12k` model for fast expansion.
+- **Model**: Uses `MODEL_RAG_QUERY_NAME` (default `gemma4-e4b-12k`); the same model backs query planning for Ask Augur.
 - **Parameters**: Configurable Japanese/English variation counts.
 
 ### 6. Cross-Encoder Re-ranking (RAG Support)
@@ -123,6 +127,14 @@ A multi-layer backpressure mechanism that prevents unbounded queue growth and pr
 - `summarize_queue_worker.go` checks for `ErrServiceOverloaded` and immediately aborts the current batch, skipping remaining jobs.
 - `job_handler.go` configures exponential backoff via `orchestrator.JobRunner`: initial interval 15s, max backoff 5min, triggered on `ErrServiceOverloaded`.
 - Normal polling interval (10s) is restored on the next successful `ProcessQueue`.
+
+### 8. Distributed BE Dispatch (opt-in, disabled by default)
+`DistributingGateway` decorates `OllamaGateway`. When `DISTRIBUTED_BE_ENABLED=true`:
+- BE (batch, `priority=low`) `hold_slot()` requests are intercepted and dispatched to a healthy remote Ollama instance from `DISTRIBUTED_BE_REMOTES`, **bypassing the local `HybridPrioritySemaphore` entirely**.
+- RT (`priority=high`) requests always stay on the local instance — `chat_generate()` and `generate()` are never distributed.
+- `RemoteHealthChecker` polls remotes on `DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS` (default 30s); an unhealthy remote is skipped for `DISTRIBUTED_BE_COOLDOWN_SECONDS` (default 60s).
+- Remote model defaults to `DISTRIBUTED_BE_REMOTE_MODEL` (`gemma4-e4b-q4km`); `DISTRIBUTED_BE_MODEL_OVERRIDES` allows a per-remote override.
+- When disabled, or when every remote is unhealthy, behavior is identical to using `OllamaGateway` directly (all requests stay local).
 
 ## Handlers & Contracts
 
@@ -158,48 +170,89 @@ A multi-layer backpressure mechanism that prevents unbounded queue growth and pr
   - Request: `RerankRequest` (`query`, `candidates`, `model`, `top_k`)
   - Response: `RerankResponse` (`results` with index/score, `model`, `processing_time_ms`)
 
+### Query Planning
+- `POST /api/v1/plan-query`
+  - Request: `PlanQueryRequest` (`query`, `conversation_history`, `article_id`)
+  - Response: `PlanQueryResponse` (`plan`, `original_query`, `model`, `processing_time_ms`)
+  - Caller: rag-orchestrator's `QueryPlannerClient` (Ask Augur). Classifies intent and produces a structured `QueryPlan` via `/api/chat` with thinking enabled (HIGH priority by default), falling back to a heuristic plan on LLM failure.
+
+### Chat Proxy
+- `POST /api/chat`
+  - Proxies Ollama's `/api/chat` through `HybridPrioritySemaphore`. Used by Ask Augur answer generation (rag-orchestrator's `OllamaGenerator`) and by rag-orchestrator's morning-letter feature — both call this proxy instead of Ollama directly so batch summarization jobs cannot monopolize the GPU (PM-2026-006).
+  - Defaults to HIGH priority for non-streaming calls (`chat_generate`); streaming calls are always high priority.
+
 ### Queue Status
 - `GET /queue/status`
   - Response: `{ rt_queue, be_queue, total_slots, available_slots, accepting, max_queue_depth, acquired_slots }`
   - Purpose: Backpressure monitoring. The `accepting` field indicates whether the service will accept new requests (based on queue depth vs. `MAX_QUEUE_DEPTH`). Used by upstream callers (e.g., pre-processor) to implement client-side throttling.
 
 ### Health
-- `GET /health`: Checks `OllamaGateway` readiness and lists available Ollama models.
+- `GET /health`: Cheap liveness only, no upstream I/O — always returns `{"status": "healthy", ...}`. Used by the compose healthcheck.
+- `GET /health/deep`: Dependency reachability — probes `OllamaGateway.list_models()`. Compose probes must not hit this path.
+
+### Morning Letter
+- `POST /v1/morning-letter/generate`
+  - Request: `MorningLetterRequest` / Response: `MorningLetterResponse` (`MorningLetterUsecase`).
+  - Document-first morning briefing generation, independent of the summarize/recap paths above.
 
 ## Configuration & Environment
 
 ### Core
+Inbound auth is mTLS peer identity, not a shared secret — there is no `SERVICE_SECRET` in this
+service's config. `INBOUND_MTLS=true` binds an additional in-process mTLS listener on `:9443`
+(`INBOUND_MTLS_PORT`); `:11434` stays plaintext and is always bound (published loopback-only in
+`compose/ai.yaml`). The caller identity on the mTLS listener is the verified client certificate CN,
+checked against `MTLS_ALLOWED_PEERS` (default
+`recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator`). The allowlist is captured but
+not enforced: `PeerIdentityMiddleware` is constructed with `strict=False` hardcoded (`main.py:239`)
+and news-creator has no env var to flip it, unlike acolyte-orchestrator's `PEER_IDENTITY_STRICT`.
+`PEER_IDENTITY_TRUSTED=off` is a separate switch that governs only whether a sidecar-injected
+`X-Alt-Peer-Identity` header is honoured.
+
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SERVICE_SECRET` | (required) | Authentication secret |
 | `LLM_SERVICE_URL` | `http://localhost:11435` | Ollama API endpoint |
-| `LLM_MODEL` | `gemma3:4b-it-qat` | Default model name |
+| `LLM_MODEL` | `gemma4-e4b-q4km` | Default model name (compose overrides to `gemma4-e4b-12k`) |
 | `LLM_TIMEOUT_SECONDS` | `300` | Request timeout (5 min) |
+| `LLM_NUM_GPU` | `99` | GPU offload layers sent explicitly in every request; without it gemma4 aborts at load |
 
 ### Concurrency
 | Variable | Default | Description |
 | --- | --- | --- |
-| `OLLAMA_NUM_PARALLEL` | `2` (set in `entrypoint-backend.sh`) | Ollama parallel request slots; also used as fallback for request concurrency |
+| `OLLAMA_NUM_PARALLEL` | `1` (set in `entrypoint-backend.sh`, matched in `compose/ai.yaml`) | Ollama parallel request slots; also used as fallback for request concurrency |
 | `OLLAMA_REQUEST_CONCURRENCY` | (fallback to `OLLAMA_NUM_PARALLEL`, then 1) | Max concurrent LLM requests (overrides `OLLAMA_NUM_PARALLEL` if set) |
 
 ### Model Routing
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MODEL_ROUTING_ENABLED` | `true` | Enable automatic model selection |
-| `MODEL_8K_NAME` | `gemma3-4b-8k` | 8K context model |
-| `MODEL_60K_NAME` | `gemma3-4b-60k` | 60K context model |
+| `MODEL_ROUTING_ENABLED` | `true` | Enable automatic model selection (compose overrides to `false` — see 2-Bucket note above) |
+| `MODEL_BASE_NAME` | `gemma4-e4b-q4km` | Base/default model when routing picks neither bucket |
+| `MODEL_8K_NAME` | `gemma4-e4b-q4km` | 8K context model |
+| `MODEL_60K_NAME` | `gemma4-e4b-60k` | 60K context model |
+| `MODEL_RAG_QUERY_NAME` | `gemma4-e4b-12k` | Model for query expansion + query planning (independent of the buckets above) |
 | `MODEL_60K_ENABLED` | `false` | Enable 60K model (otherwise 8K-only mode) |
 | `LLM_KEEP_ALIVE_8K` | `24h` | Keep-alive for 8K model |
 | `LLM_KEEP_ALIVE_60K` | `15m` | Keep-alive for 60K model |
 | `WARMUP_ENABLED` | `true` | Preload model on startup |
 
+### Distributed BE Dispatch
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DISTRIBUTED_BE_ENABLED` | `false` | Dispatch BE (`priority=low`) requests to a remote Ollama instance, bypassing the local semaphore; RT always stays local |
+| `DISTRIBUTED_BE_REMOTES` | (empty) | Remote Ollama URLs to dispatch to |
+| `DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS` | `30` | Remote health-poll interval |
+| `DISTRIBUTED_BE_TIMEOUT_SECONDS` | `300` | Per-request timeout on a remote |
+| `DISTRIBUTED_BE_COOLDOWN_SECONDS` | `60` | Skip an unhealthy remote for this long |
+| `DISTRIBUTED_BE_REMOTE_MODEL` | `gemma4-e4b-q4km` | Model requested on the remote |
+| `DISTRIBUTED_BE_MODEL_OVERRIDES` | (empty) | Per-remote model override map |
+
 ### Generation Parameters
 | Variable | Default | Description |
 | --- | --- | --- |
 | `LLM_NUM_CTX` | `8192` | Default context window |
-| `LLM_NUM_BATCH` | `1024` | Batch size (RTX 4060 optimized) |
+| `LLM_NUM_BATCH` | `1024` | Batch size (tuned for the deployed consumer GPU; see the private hardware note) |
 | `LLM_NUM_PREDICT` | `1200` | Max tokens to generate |
-| `LLM_TEMPERATURE` | `0.7` | Generation temperature (Gemma3 CJK optimized) |
+| `LLM_TEMPERATURE` | `0.7` | Generation temperature (CJK optimized) |
 | `LLM_REPEAT_PENALTY` | `1.15` | Repetition penalty |
 | `SUMMARY_NUM_PREDICT` | `1000` | Summary-specific max tokens |
 
@@ -255,32 +308,32 @@ A multi-layer backpressure mechanism that prevents unbounded queue growth and pr
 
 ## Dependencies
 ```toml
-fastapi>=0.100.0
+fastapi>=0.135.0
 uvicorn>=0.20.0
-aiohttp>=3.9.0
-pydantic>=2.0.0
+aiohttp>=3.14.3
+pydantic>=2.12.5
 jinja2>=3.1.0
 json-repair>=0.27.0
-bleach>=6.0.0
+nh3>=0.3.6  # HTML sanitizer (replaces bleach) for Zero-Trust Cleaning
 sentence-transformers>=3.0.0  # Cross-encoder for re-ranking
 opentelemetry-sdk>=1.29.0
 opentelemetry-instrumentation-fastapi>=0.50b0
 ```
 
 ## Operational Notes
-1. **Startup**: `docker compose --profile ollama up news-creator`.
+1. **Startup**: `docker compose -f compose/compose.yaml -p alt up -d news-creator news-creator-backend`.
 2. **Warmup**: Service attempts to ping the 8K model on boot to load weights into VRAM.
 3. **Monitoring**: Watch logs for:
    - `ABNORMAL PROMPT SIZE` warnings (>100K chars)
    - `Slow LLM generation` alerts (<30 tokens/sec)
    - `COLD_START detected` warnings (load_duration > 0.1s)
 4. **VRAM Management**: The service aggressively manages `keep_alive` to ensure the 60K model unloads after use, preventing OOMs during subsequent standard tasks.
-5. **Testing**: `tests/` contains unit tests for handlers, usecases, and gateways. Use `SERVICE_SECRET=test-secret uv run pytest`.
+5. **Testing**: `tests/` contains unit tests for handlers, usecases, and gateways. Run with `uv run pytest`.
 6. **Re-ranking**: First rerank request may be slow due to lazy model loading (~2-5s). Subsequent requests are fast (~150ms for 50 candidates).
 
 ## Known failure patterns
 
-Distilled from postmortems and ADRs; see [[crystallized-knowledge]] §8 (LLM / GPU / Ollama) for the full pattern class.
+Distilled from postmortems and ADRs; see [[runbooks/crystallized-knowledge]] §8 (LLM / GPU / Ollama) for the full pattern class.
 
 - **HybridPrioritySemaphore slot leaks (4 independent paths)**: RT requests block while the GPU sits idle, or `SLOT INVARIANT VIOLATION` logs appear → preempted slots migrated pools without ownership tracking, `call_soon_threadsafe` raced future cancellation, and slots "in transit" to a cancelled waiter were never reclaimed → PM-2026-012/013/014/015, [[000601]] [[000606]] [[000610]] [[000612]]. Track `home_pool`/`slot_id` explicitly; CancelledError handlers must reclaim transferred slots.
 - **Semaphore bypass is forbidden**: chat success rate 0% (300s timeouts) while batch summaries completed → rag-orchestrator called the inference server directly, so batch jobs monopolized the Ollama FIFO → every shared-GPU client must go through the `/api/chat` proxy at HIGH priority → PM-2026-006.
