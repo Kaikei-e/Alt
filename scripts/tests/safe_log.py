@@ -22,8 +22,11 @@ def check(name: str, condition: bool, detail: str = "") -> None:
     global PASS, FAIL
     del detail
     if condition:
+        # codeql[py/clear-text-logging-sensitive-data] -- name is a literal assertion label; the
+        # only "secret"-shaped values reaching it are Docker secret ids and mount paths, never bytes
         print(f"  PASS  {name}")
         PASS += 1
         return
+    # codeql[py/clear-text-logging-sensitive-data] -- see the PASS branch
     print(f"  FAIL  {name}")
     FAIL += 1
