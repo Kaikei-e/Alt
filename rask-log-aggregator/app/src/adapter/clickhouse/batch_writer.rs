@@ -786,8 +786,8 @@ mod tests {
     where
         F: Fn(&[i32]) -> Result<(), AggregatorError>,
     {
-        async fn write(&self, rows: &[i32]) -> Result<(), AggregatorError> {
-            (self.write_fn)(rows)
+        fn write(&self, rows: &[i32]) -> impl Future<Output = Result<(), AggregatorError>> {
+            std::future::ready((self.write_fn)(rows))
         }
     }
 
@@ -1010,17 +1010,17 @@ mod tests {
 
     struct FailingLogSink;
     impl FlushSink<LogRow> for FailingLogSink {
-        async fn write(&self, _rows: &[LogRow]) -> Result<(), AggregatorError> {
-            Err(AggregatorError::Export(
+        fn write(&self, _rows: &[LogRow]) -> impl Future<Output = Result<(), AggregatorError>> {
+            std::future::ready(Err(AggregatorError::Export(
                 "clickhouse unreachable".to_string(),
-            ))
+            )))
         }
     }
 
     struct AcceptingLogSink;
     impl FlushSink<LogRow> for AcceptingLogSink {
-        async fn write(&self, _rows: &[LogRow]) -> Result<(), AggregatorError> {
-            Ok(())
+        fn write(&self, _rows: &[LogRow]) -> impl Future<Output = Result<(), AggregatorError>> {
+            std::future::ready(Ok(()))
         }
     }
 
