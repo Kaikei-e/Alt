@@ -19,8 +19,9 @@ dependencies = [
     # Japanese Text Processing (self-contained)
     "fugashi[unidic-lite]>=1.5.1", # includes unidic-lite, no external MecAB needed
     # Language Processing (minimal)
-    # >=3.10.0: CVE-2026-54293 path traversal in nltk.data.load()
-    "nltk>=3.10.0",
+    # >=3.10.3: CVE-2026-79675 Stanford JVM argument injection, on top of the
+    # 3.10.x path-traversal and DoS batch.
+    "nltk>=3.10.3",
     "langdetect>=1.0.9",
     # Database
     "psycopg2-binary>=2.9.0",
