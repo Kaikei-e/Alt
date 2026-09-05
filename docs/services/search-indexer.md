@@ -295,7 +295,7 @@ curl "http://localhost:9300/v1/search?q=test&user_id=tenant-1"
 
 ## Known failure patterns
 
-Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
 - Container vanished and stayed down for 33 hours, Reference Desk silently degraded → no `restart: always` and no `depends_on` from alt-backend; graceful degradation shielded users but sent no operator signal. DNS `no such host` means "container absent" — a different category from `connection refused`. Degradation occurrence itself must be an observable metric → PM-2026-023, [[000703]].
 - Consumers received 401 and produced empty output after `X-Service-Token` enforcement → the provider strengthened requirements without enumerating consumers; consumers without a Pact are not protected by CDC. Provider-adds-requirement changes need consumer enumeration + Pact CDC RED first (Critical Rule 7) → PM-2026-025 / PM-2026-026, [[000735]].

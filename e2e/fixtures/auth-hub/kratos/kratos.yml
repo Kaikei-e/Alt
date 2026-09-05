@@ -1,8 +1,8 @@
 version: v1.3.0
 
 # Staging Kratos config for the auth-hub Hurl E2E slice. Forked from
-# /home/koko/Documents/dev/Alt/kratos/kratos.yml so the prod file can
-# keep hardcoding curionoah.com URLs + .curionoah.com cookie domain
+# the repository's kratos/kratos.yml so the prod file can keep hardcoding
+# the production origin URLs + its cookie domain
 # without breaking container-local flows in staging.
 #
 # Scope: loaded only under compose profile [auth-hub] on the

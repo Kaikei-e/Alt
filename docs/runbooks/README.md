@@ -9,7 +9,7 @@ tags:
 
 # Runbooks 索引
 
-`docs/runbooks/` 全 35 本の構造化索引。**症状から入るなら下の対応表、横断知識なら [[crystallized-knowledge]]** へ。
+`docs/runbooks/` 全 35 本の構造化索引。**症状から入るなら下の対応表、横断知識なら [[runbooks/crystallized-knowledge]]** へ。
 
 各ランブックは 3 つの型に分類する:
 - **incident** — 症状起点のインシデント対応 (アラート / ユーザー報告 → 調査 → 復旧)
@@ -47,7 +47,7 @@ tags:
 ## カテゴリ別索引
 
 ### 0. 横断知識
-- [[crystallized-knowledge]] — **ADR 940 本 / PM 46 本の結晶化知識** (障害パターン百科 / 診断の定石 / Critical Rules 出典 / ADR 時代区分マップ)
+- [[runbooks/crystallized-knowledge]] — **ADR 940 本 / PM 46 本の結晶化知識** (障害パターン百科 / 診断の定石 / Critical Rules 出典 / ADR 時代区分マップ)
 
 ### 1. デプロイ & CI/CD (5)
 | ランブック | 型 | 一言 |
@@ -133,7 +133,7 @@ tags:
 ## 執筆規約
 
 - frontmatter 必須 (`title` / `date` / `tags`)、ADR 参照は `[[000NNN]]`、PM 参照は `PM-2026-NNN`
-- 1 本 1 症状ドメイン。横断知識は [[crystallized-knowledge]] へ、手順はここへ (wiki には手順を書かない)
+- 1 本 1 症状ドメイン。横断知識は [[runbooks/crystallized-knowledge]] へ、手順はここへ (wiki には手順を書かない)
 - 冒頭に TL;DR (最短復旧コマンド列)、次にトリガー条件、その後に調査ツリー
 - 時限性 (cutover / deprecation watch) は完了時に `status: archived` を frontmatter に追記
 - 新規作成・アーカイブ時は本索引を更新する

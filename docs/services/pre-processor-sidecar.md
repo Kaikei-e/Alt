@@ -162,7 +162,7 @@ The Admin API has its own, unrelated limiter: `security.MemoryRateLimiter` at 5 
 
 ## Known failure patterns
 
-Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
 - Inoreader ingestion silently stopped for 65 hours → a non-atomic write during disk exhaustion truncated `oauth2_token.env` to 0 bytes; auth-token-manager returned 404 and the circuit breaker flapped OPEN↔HALF_OPEN forever. Token persistence must be tmpfile + rename + fsync → PM-2026-043.
 - Health check reported `token_manager_available: true` throughout that outage → "process is up" and "responses are correct" are separate responsibilities; opaque string errors block both tests and alerts — use typed sentinels (`ErrTokenUnavailable`) and expose functional health (`/admin/health` with `ingestion_silent`) → PM-2026-043.

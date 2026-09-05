@@ -229,7 +229,7 @@ altctl completion [bash|zsh|fish|powershell]  # Generate shell completions
 
 ## Known failure patterns
 
-Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
 - Every `altctl home` admin operation failed → one-character header drift (`Service-Token` vs `X-Service-Token`); service-to-service auth must standardize on a single pattern → [[000618]] [[000622]]. `X-Service-Token` itself was later dropped entirely for this API: `internal/adminclient` now sends no auth header at all, relying on alt-backend's admin listener being internal/127.0.0.1-bound instead ([[000743]] removed the header; [[000954]] upholds that decision and adds the loopback-only listener as the replacement control).
 - A service silently absent from the running stack → compose file include omissions are silent (sovereign.yaml sat unincluded with profiles) → [[000578]]. The stack registry no longer hardcodes a service list to drift from compose files at all — it derives services from `compose/*.yaml` at registry construction time (`internal/stack/registry_sync_test.go`'s `TestRealRepo_NoOrphanComposeFiles`); a compose file with services and no matching `.altctl.yaml` entry auto-registers with a printed notice instead of silently vanishing.

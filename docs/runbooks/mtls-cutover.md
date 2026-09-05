@@ -78,7 +78,7 @@ VERIFY_CLIENT=on) 完了時点を起点にする。
 
 7. 1 時間の観察窓 — 以下を 5 分毎にチェック:
    - `docker compose ps` — 全サービス healthy
-   - `curl https://curionoah.com/api/v2/health` — user path が 302 or 200
+   - 公開 user path の `/api/v2/health` — 302 or 200
    - Acolyte: UI で report 生成 → 全 section に本文があることを確認 (PM-2026-025 の回帰 smoke)
    - Broker: `curl -u pact:... http://localhost:9292/matrix` に全 pacticipant が居る
    - alt-backend container logs: `"peer":"<cn>"` が出現する (peer-identity が伝播している)

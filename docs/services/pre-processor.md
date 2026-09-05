@@ -379,7 +379,7 @@ Short articles trigger a Japanese placeholder summary inside `ArticleSummarizerS
 
 ## Known failure patterns
 
-Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
 - Infinite re-enqueue loop: 63 unsummarizable articles generated 1,349 jobs → skip paths (content too short/long) wrote no placeholder "proof of processing" to `article_summaries`, so the enqueue guard never fired; permanently-unprocessable items must be marked non-retryable and completed immediately → PM-2026-002, [[000551]].
 - Retry storm + false `dead_letter` while summaries actually exist → shared HTTP client's 20s `ResponseHeaderTimeout` was shorter than Map-Reduce summarization latency: disconnect → resend → duplicate in-flight runs; separate slowloris guards from long-RPC timeouts, add an in-flight enqueue guard, and recheck the source of truth before confirming `dead_letter` → PM-2026-027.

@@ -253,7 +253,7 @@ Overall health: breaching > at_risk > healthy. Multi-window multi-burn-rate aler
 
 ## Known failure patterns
 
-Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
 - Streams cut at a fixed interval (~30s/100s) or never show output → Go `http.Server.WriteTimeout` (and any unary `http.Client` timeout) kills the entire stream; streaming servers need `WriteTimeout: 0`, first-byte-immediately heartbeats covering all phases, and context-deadline lifetime management → PM-2026-004, [[000478]] [[000553]], checklist: [[connect-rpc-streaming-checklist]].
 - 326 items missing / 1,947 stale for 4 days after a reproject → `SwapReproject` did not reset the projector checkpoint; checkpoints must be bound to the projection version, and version activation + checkpoint reset are inseparable → PM-2026-010, [[000598]].

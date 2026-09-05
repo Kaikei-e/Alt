@@ -83,7 +83,7 @@ _Last reviewed: September 5, 2026_
 - Inoreader ingestion silently dead for 65h → disk-full non-atomic write truncated `oauth2_token.env` to 0 bytes; downstream consumers got 404s and their circuit breaker oscillated OPEN↔HALF_OPEN forever while health kept reporting `token_manager_available: true`. Persist the token file via tmpfile + rename + fsync. → PM-2026-043
 - Health check green during total functional outage → "the process is up" and "the token is usable" are separate responsibilities; validate file content and freshness, not existence. Consumers now expose a typed sentinel (`ErrTokenUnavailable`) and an `/admin/health` `ingestion_silent` signal. → PM-2026-043
 - Alerts and tests cannot branch on failures → opaque string errors from the token path are indistinguishable; use typed sentinel errors so retry/alert policy can discriminate. → PM-2026-043
-- Root trigger was host disk exhaustion from a retry storm (148GB of logs) in an unrelated service → low-frequency supplementary paths like token refresh need automatic observability the most; unused features rot. → PM-2026-042, [[crystallized-knowledge]] §14
+- Root trigger was host disk exhaustion from a retry storm (148GB of logs) in an unrelated service → low-frequency supplementary paths like token refresh need automatic observability the most; unused features rot. → PM-2026-042, [[runbooks/crystallized-knowledge]] §14
 
 ## Testing & tooling
 - `deno test` runs `tests/unit/**` (gateway, handler, usecase, infra) plus `tests/security/logger_security_test.ts`, which stubs console APIs to verify that sanitized logs never leak tokens or secrets.

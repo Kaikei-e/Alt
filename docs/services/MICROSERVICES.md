@@ -6,7 +6,7 @@ _Last reviewed: September 5, 2026_
 
 Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームです。Docker Compose がオーケストレーションの source of truth です。AI / Recap / RAG / Acolyte / Sovereign / logging / observability / PKI / Pact はすべて本番 `include:` チェーン（`compose/compose.yaml`）に入っている。profiled-only は `alt-perf` / `k6`（profile `perf`）と `docker-socket-proxy` / `restic-backup`（profile `backup`）の **4** 本で、include チェーンの中で `profiles:` を宣言しているのはこの 4 本だけ。本番 include チェーンは **77 declared / 63 long-running**（ephemeral 10 + profiled 4）。accidental OSU cap は **16**（`*-logs` のみ）。会計の正本は [[ops-surface-budget]] / [[000979]]。
 
-> **インシデント対応・障害パターンの入口**: 症状起点の調査は [[runbooks/README|runbooks 索引]] (症状 → runbook 対応表)、横断的な障害パターン知識は [[crystallized-knowledge]] (ADR 940 本 / PM 46 本の結晶化) から入る。
+> **インシデント対応・障害パターンの入口**: 症状起点の調査は [[runbooks/README|runbooks 索引]] (症状 → runbook 対応表)、横断的な障害パターン知識は [[runbooks/crystallized-knowledge]] (ADR 940 本 / PM 46 本の結晶化) から入る。
 
 ## Service Categories
 

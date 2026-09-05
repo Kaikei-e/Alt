@@ -134,7 +134,7 @@ Log Gap:
 
 ## Known failure patterns
 
-Patterns from postmortems that shape what this analyzer must surface; see [[crystallized-knowledge]] §14 for the detection-gap metapattern.
+Patterns from postmortems that shape what this analyzer must surface; see [[runbooks/crystallized-knowledge]] §14 for the detection-gap metapattern.
 
 - **Almost every incident was detected by user report, not alerting**: ERROR/WARN evidence existed in ClickHouse for 20+ of the first 23 PMs but nothing watched it, and unimplemented "Detect" action items caused repeat incidents (PM-2026-008 → 016 → 020) → analysis output is only useful if it is actually run and reviewed.
 - **Bimodal latency is invisible at p50**: cache-expiry fan-out spikes (634ms MarkAsRead) hid for weeks → always report p95/p99, never mean/p50 alone → PM-2026-019.

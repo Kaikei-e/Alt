@@ -236,7 +236,7 @@ curl http://localhost:9500/health
 
 ## Known failure patterns
 
-Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
 - Crashed-consumer messages lost forever, DLQ conditions never fire → consumers that XACK on buffer-in (before the side effect is durable) or lack an XAUTOCLAIM reclaim loop silently drop work; ACK only after durable write, and every XREADGROUP consumer must run a reclaim loop (Critical Rule 10) → [[000083]] [[000089]], PM-2026-027 (false dead_letter).
 - Redis connection pool exhausted → a request-reply RPC (blocking reply wait 60s × parallel callers) drained the pool of 10 while the consumer was down; size the pool as "parallelism × hold time", and bound reply waits → [[000319]].

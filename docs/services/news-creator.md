@@ -333,7 +333,7 @@ opentelemetry-instrumentation-fastapi>=0.50b0
 
 ## Known failure patterns
 
-Distilled from postmortems and ADRs; see [[crystallized-knowledge]] §8 (LLM / GPU / Ollama) for the full pattern class.
+Distilled from postmortems and ADRs; see [[runbooks/crystallized-knowledge]] §8 (LLM / GPU / Ollama) for the full pattern class.
 
 - **HybridPrioritySemaphore slot leaks (4 independent paths)**: RT requests block while the GPU sits idle, or `SLOT INVARIANT VIOLATION` logs appear → preempted slots migrated pools without ownership tracking, `call_soon_threadsafe` raced future cancellation, and slots "in transit" to a cancelled waiter were never reclaimed → PM-2026-012/013/014/015, [[000601]] [[000606]] [[000610]] [[000612]]. Track `home_pool`/`slot_id` explicitly; CancelledError handlers must reclaim transferred slots.
 - **Semaphore bypass is forbidden**: chat success rate 0% (300s timeouts) while batch summaries completed → rag-orchestrator called the inference server directly, so batch jobs monopolized the Ollama FIFO → every shared-GPU client must go through the `/api/chat` proxy at HIGH priority → PM-2026-006.

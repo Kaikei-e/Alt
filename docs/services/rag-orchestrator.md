@@ -527,7 +527,7 @@ The Connect-RPC server runs on a separate port (default 9011) and supports HTTP/
 
 ## Known failure patterns
 
-Distilled from postmortems and ADRs; see [[crystallized-knowledge]] §1/§8 for the broader classes.
+Distilled from postmortems and ADRs; see [[runbooks/crystallized-knowledge]] §1/§8 for the broader classes.
 
 - **401 cascade from provider auth hardening**: retrieval returned 0 chunks while handlers kept answering 200 and the LLM generated low-quality output → search-indexer started requiring service auth but this consumer was never updated; the 401 was swallowed as a WARN → PM-2026-026 (one day after the identical PM-2026-025 in Acolyte). A consumer without a Pact is not protected by CDC. rag-orchestrator now carries Pact consumer contracts for six providers (alt-data-hub, knowledge-sovereign, news-creator chat, news-creator plan-query, recap-worker, search-indexer) in `internal/adapter/contract/`, closing that specific gap.
 - **Model migration without rebuild → immediate EOF**: Ask Augur completely down for 67 min → the Gemma4 migration renamed the model but rag-orchestrator was not rebuilt and kept sending the stale name → immediate EOF is the "model not found" signal; rebuild every container that references the model name via env → PM-2026-016.

@@ -12,7 +12,7 @@ tags:
 
 ADR-000001〜000940 (940 本) と PM-2026-001〜046 (46 本) を全件解析し、**今後も効き続ける運用知識**を障害パターン別に結晶化したもの。
 
-> **位置づけ**: source of truth は各 ADR / PM。本書は「症状 → パターン → 即応 → 予防」の横断層であり、[[wiki/HOME]] (今の判断の地図) と個別ランブック (手順書) の中間に立つ。個別手順は [[README|runbooks 索引]] から辿る。
+> **位置づけ**: source of truth は各 ADR / PM。本書は「症状 → パターン → 即応 → 予防」の横断層であり、[[wiki/HOME]] (今の判断の地図) と個別ランブック (手順書) の中間に立つ。個別手順は [[runbooks/README|runbooks 索引]] から辿る。
 
 ## 使い方
 
@@ -333,4 +333,4 @@ CLAUDE.md Critical Rules / wiki 不変条件がどの障害から結晶化した
 - `docs/ADR/000001.md`〜`000940.md` (940 本、2026-07-07 時点全件)
 - `docs/postmortems/PM-2026-001`〜`046` (46 本)
 - [[wiki/HOME]] — 結晶化ナビゲーション層 (今の判断)
-- [[README|runbooks 索引]] — 個別手順書への入口
+- [[runbooks/README|runbooks 索引]] — 個別手順書への入口

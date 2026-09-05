@@ -250,7 +250,7 @@ go build -o alt-butterfly-facade .
 
 ## Known failure patterns
 
-Cross-cutting incident patterns are catalogued in [[crystallized-knowledge]].
+Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
 - Streaming stalled even after nginx/heartbeat fixes (nginx was the edge at the time; it is now Plecto, [[wiki/services/nginx]]) → BFF `io.ReadAll` buffered whole responses ("the final boss"); streaming RPCs must bypass cache, dedup, and circuit breaker, detected by `application/connect+` content-type prefix match → PM-2026-004, [[000295]] [[000554]].
 - Downstream JSON parse errors on proxied responses → forwarding the client's `Accept-Encoding` disables Go transport auto-decompression, so gzip bytes flow raw to the backend/frontend; never forward that header from a proxy → [[000084]].

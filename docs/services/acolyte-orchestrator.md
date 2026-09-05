@@ -414,7 +414,7 @@ cd proto && buf generate --template buf.gen.acolyte.yaml
 
 ## Known failure patterns
 
-Cross-cutting incident knowledge lives in [[crystallized-knowledge]]; symptom-first entry points are in the [[README|runbooks index]].
+Cross-cutting incident knowledge lives in [[runbooks/crystallized-knowledge]]; symptom-first entry points are in the [[runbooks/README|runbooks index]].
 
 - **Empty report sections while every layer returns HTTP 200** → search-indexer started requiring `X-Service-Token` and the gateway swallowed the 401 as a warning, so reports were generated from zero evidence for 24h → PM-2026-025. Auth-boundary changes must ship consumer-side token injection in the same deploy; treat 401 as fail-fast, never as a silent degrade.
 - **Resume after crash re-runs a long node from its start** → the LangGraph checkpointer persists only at super-step (node) boundaries; resume is a replay from the node head, never mid-loop. Split multi-item loops into per-item self-loop super-steps, use `durability="sync"`, and keep node side effects idempotent → [[000673]], [[000679]], [[000690]], [[acolyte-checkpoint-resume]].
