@@ -504,14 +504,19 @@ func runScheduleMode(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		adminServerWG.Wait()
 	}()
 
-	// Start the dual schedule processing
-	logger.Info("Starting dual schedule processing",
-		"subscription_sync_interval", "12h",
-		"article_fetch_interval", "30m",
-		"admin_api_address", ":8080")
+	// Start the dual schedule processing. The scheduler logs the intervals it
+	// actually runs with, so they are not repeated here.
+	logger.Info("Starting dual schedule processing", "admin_api_address", ":8080")
+
+	syncMode, err := scheduler.ParseSyncMode(os.Getenv("INOREADER_SYNC"))
+	if err != nil {
+		logger.Error("Invalid Inoreader sync configuration", "error", err)
+		os.Exit(1)
+	}
 
 	// Use Default Config (16m fetch, 24h refresh)
 	schedulerConfig := scheduler.DefaultConfig()
+	schedulerConfig.SyncMode = syncMode
 	inoreaderScheduler.Start(schedulerConfig)
 
 	// Register shutdown hook for scheduler

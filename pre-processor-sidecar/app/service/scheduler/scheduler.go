@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -10,6 +11,34 @@ import (
 	"pre-processor-sidecar/repository"
 	"pre-processor-sidecar/service"
 )
+
+// SyncMode says whether this process is allowed to talk to Inoreader at all.
+type SyncMode string
+
+const (
+	SyncEnabled  SyncMode = "enabled"
+	SyncDisabled SyncMode = "disabled"
+)
+
+// ErrSyncDisabled is returned by the manual triggers while Inoreader sync is
+// switched off, so an operator hitting the Admin API gets a clear refusal
+// instead of a silent no-op.
+var ErrSyncDisabled = errors.New("inoreader sync is disabled by configuration")
+
+// ParseSyncMode maps the INOREADER_SYNC environment value onto a SyncMode. An
+// unset variable keeps the historical behaviour (enabled); switching sync off
+// has to be spelled out, so a missing variable can never be mistaken for a
+// deliberate shutdown. Anything else is an error rather than a guess.
+func ParseSyncMode(raw string) (SyncMode, error) {
+	switch SyncMode(raw) {
+	case "", SyncEnabled:
+		return SyncEnabled, nil
+	case SyncDisabled:
+		return SyncDisabled, nil
+	default:
+		return "", fmt.Errorf("INOREADER_SYNC must be %q or %q, got %q", SyncEnabled, SyncDisabled, raw)
+	}
+}
 
 // Scheduler manages the scheduling of Inoreader API requests
 type Scheduler struct {
@@ -36,12 +65,20 @@ type Scheduler struct {
 	// could double-consume the 100 req/day Inoreader quota concurrently.
 	fetchRunMu   sync.Mutex
 	refreshRunMu sync.Mutex
+
+	// syncMode is captured in Start and read by the manual triggers, so a
+	// disabled deployment refuses out-of-band runs too.
+	syncMode SyncMode
 }
 
 // Config holds scheduler configuration
 type Config struct {
 	FetchInterval   time.Duration
 	RefreshInterval time.Duration
+
+	// SyncMode gates every Inoreader call: both ticker loops and the Admin
+	// API's manual triggers. It has no usable zero value on purpose.
+	SyncMode SyncMode
 }
 
 // DefaultConfig returns the default configuration for the scheduler
@@ -51,6 +88,7 @@ func DefaultConfig() Config {
 	return Config{
 		FetchInterval:   16 * time.Minute,
 		RefreshInterval: 24 * time.Hour,
+		SyncMode:        SyncEnabled,
 	}
 }
 
@@ -79,7 +117,21 @@ func (s *Scheduler) Start(cfg Config) {
 		return
 	}
 
-	s.logger.Info("Starting Inoreader Scheduler",
+	switch cfg.SyncMode {
+	case SyncEnabled, SyncDisabled:
+	default:
+		panic(fmt.Sprintf("scheduler: SyncMode is %q; the caller must pass %q or %q so an unwired config cannot pass for a deliberate shutdown", cfg.SyncMode, SyncEnabled, SyncDisabled))
+	}
+
+	s.syncMode = cfg.SyncMode
+	if cfg.SyncMode == SyncDisabled {
+		s.logger.Warn("inoreader_sync_disabled",
+			"detail", "no article fetch or subscription refresh will run and the Admin API triggers will refuse",
+			"how_to_enable", "set INOREADER_SYNC=enabled")
+		return
+	}
+
+	s.logger.Info("inoreader_sync_enabled",
 		"fetch_interval", cfg.FetchInterval,
 		"refresh_interval", cfg.RefreshInterval)
 
@@ -161,6 +213,9 @@ func (s *Scheduler) runRefresh() {
 // double-consume the Inoreader daily quota. Runs asynchronously, matching
 // the fire-and-forget semantics HTTP callers expect.
 func (s *Scheduler) TriggerFetchNow() error {
+	if s.disabled() {
+		return ErrSyncDisabled
+	}
 	if !s.fetchRunMu.TryLock() {
 		return fmt.Errorf("article fetch already in progress")
 	}
@@ -177,6 +232,9 @@ func (s *Scheduler) TriggerFetchNow() error {
 // Admin API's manual trigger endpoint), mutually exclusive with the
 // ticker-driven refresh via refreshRunMu.
 func (s *Scheduler) TriggerRefreshNow() error {
+	if s.disabled() {
+		return ErrSyncDisabled
+	}
 	if !s.refreshRunMu.TryLock() {
 		return fmt.Errorf("subscription refresh already in progress")
 	}
@@ -187,6 +245,12 @@ func (s *Scheduler) TriggerRefreshNow() error {
 		s.refreshSubscriptions()
 	}()
 	return nil
+}
+
+func (s *Scheduler) disabled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.syncMode == SyncDisabled
 }
 
 func (s *Scheduler) refreshSubscriptions() {

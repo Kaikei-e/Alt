@@ -46,6 +46,9 @@ services:
       - PRE_PROCESSOR_SIDECAR_DB_PASSWORD_FILE=/run/secrets/pp_db_password
       - INOREADER_CLIENT_ID_FILE=/run/secrets/inoreader_client_id
       - INOREADER_CLIENT_SECRET_FILE=/run/secrets/inoreader_client_secret
+      # Stops the 16m article fetch and the 24h subscription refresh, and makes
+      # the Admin API triggers refuse. Set back to "enabled" to resume.
+      - INOREADER_SYNC=${INOREADER_SYNC:-disabled}
       - LOG_LEVEL=info
       - SERVICE_NAME=pre-processor-sidecar
       - TOKEN_STORAGE_TYPE=file
