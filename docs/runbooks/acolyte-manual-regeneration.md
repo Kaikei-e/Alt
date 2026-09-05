@@ -23,37 +23,47 @@ This runbook covers procedures for manually regenerating reports or sections whe
 - Evidence sources have been updated significantly
 - Model or prompt changes require re-generation
 
-### Section Regeneration (Future)
+### Section Regeneration
 
 - Single section has quality issues
 - Specific section needs updated citations
 - User requested revision of one section
 
-**Note:** `RerunSection` RPC is currently unimplemented (P2). Use full regeneration.
+`RerunSection` is implemented (`acolyte/usecase/rerun_section_uc.py`): it
+regenerates one section synchronously using the report's existing brief and
+outline snapshot, and bumps the report version. It refuses
+(`FAILED_PRECONDITION`) while a full generation run is active on the same
+report. See Procedure E below.
 
 ## Procedures
+
+acolyte-orchestrator is served by uvicorn (HTTP/1.1 only); `grpcurl`
+requires HTTP/2 and cannot reach it at all. Every call below uses the
+Connect-over-HTTP form instead: `curl` against
+`http://localhost:8090/alt.acolyte.v1.AcolyteService/<Method>` with a JSON
+body and `Content-Type: application/json`.
 
 ### Procedure A: Full Report Regeneration
 
 1. **Identify the report:**
    ```bash
    # List recent reports
-   grpcurl -plaintext -d '{"limit": 10}' \
-     localhost:8090 alt.acolyte.v1.AcolyteService/ListReports
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/ListReports \
+     -H "Content-Type: application/json" -d '{"limit": 10}'
    
    export REPORT_ID="<report-uuid>"
    ```
 
 2. **Check current version:**
    ```bash
-   grpcurl -plaintext -d "{\"report_id\":\"$REPORT_ID\"}" \
-     localhost:8090 alt.acolyte.v1.AcolyteService/GetReport
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/GetReport \
+     -H "Content-Type: application/json" -d "{\"report_id\":\"$REPORT_ID\"}"
    ```
 
 3. **Start regeneration run:**
    ```bash
-   grpcurl -plaintext -d "{\"report_id\":\"$REPORT_ID\"}" \
-     localhost:8090 alt.acolyte.v1.AcolyteService/StartReportRun
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/StartReportRun \
+     -H "Content-Type: application/json" -d "{\"report_id\":\"$REPORT_ID\"}"
    
    export RUN_ID="<returned-run-id>"
    ```
@@ -61,8 +71,8 @@ This runbook covers procedures for manually regenerating reports or sections whe
 4. **Monitor progress:**
    ```bash
    # Check run status
-   grpcurl -plaintext -d "{\"run_id\":\"$RUN_ID\"}" \
-     localhost:8090 alt.acolyte.v1.AcolyteService/GetRunStatus
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/GetRunStatus \
+     -H "Content-Type: application/json" -d "{\"run_id\":\"$RUN_ID\"}"
    
    # Watch logs
    docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator -f | grep $RUN_ID
@@ -71,12 +81,12 @@ This runbook covers procedures for manually regenerating reports or sections whe
 5. **Verify new version:**
    ```bash
    # Check version incremented
-   grpcurl -plaintext -d "{\"report_id\":\"$REPORT_ID\"}" \
-     localhost:8090 alt.acolyte.v1.AcolyteService/GetReport
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/GetReport \
+     -H "Content-Type: application/json" -d "{\"report_id\":\"$REPORT_ID\"}"
    
    # View version history
-   grpcurl -plaintext -d "{\"report_id\":\"$REPORT_ID\",\"limit\":5}" \
-     localhost:8090 alt.acolyte.v1.AcolyteService/ListReportVersions
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/ListReportVersions \
+     -H "Content-Type: application/json" -d "{\"report_id\":\"$REPORT_ID\",\"limit\":5}"
    ```
 
 ### Procedure B: Regenerate with Modified Scope
@@ -94,20 +104,21 @@ If the original scope was incorrect:
    "
    ```
 
-2. **Update report brief** (if briefs table exists):
+2. **Update report brief:**
    ```bash
+   # entities is TEXT[], not JSONB -- use Postgres array literal syntax.
    docker exec -it acolyte-db psql -U acolyte_user -d acolyte -c "
    UPDATE report_briefs 
    SET topic = 'New Topic',
-       entities = '{\"key\": \"value\"}'
+       entities = '{\"Entity A\",\"Entity B\"}'
    WHERE report_id = '<report-id>';
    "
    ```
 
 3. **Start regeneration:**
    ```bash
-   grpcurl -plaintext -d "{\"report_id\":\"$REPORT_ID\"}" \
-     localhost:8090 alt.acolyte.v1.AcolyteService/StartReportRun
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/StartReportRun \
+     -H "Content-Type: application/json" -d "{\"report_id\":\"$REPORT_ID\"}"
    ```
 
 ### Procedure C: Force Regeneration After Failed Run
@@ -120,7 +131,7 @@ If the previous run failed and left the report in an inconsistent state:
    SELECT run_id, failure_code, failure_message, finished_at
    FROM report_runs
    WHERE report_id = '<report-id>'
-   ORDER BY created_at DESC
+   ORDER BY started_at DESC
    LIMIT 5;
    "
    ```
@@ -138,8 +149,8 @@ If the previous run failed and left the report in an inconsistent state:
 
 3. **Start fresh run:**
    ```bash
-   grpcurl -plaintext -d "{\"report_id\":\"$REPORT_ID\"}" \
-     localhost:8090 alt.acolyte.v1.AcolyteService/StartReportRun
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/StartReportRun \
+     -H "Content-Type: application/json" -d "{\"report_id\":\"$REPORT_ID\"}"
    ```
 
 ### Procedure D: Batch Regeneration
@@ -162,8 +173,8 @@ For regenerating multiple reports:
    # scripts/batch_regen.sh
    for REPORT_ID in $(cat /tmp/report_ids.txt); do
      echo "Regenerating $REPORT_ID"
-     grpcurl -plaintext -d "{\"report_id\":\"$REPORT_ID\"}" \
-       localhost:8090 alt.acolyte.v1.AcolyteService/StartReportRun
+     curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/StartReportRun \
+       -H "Content-Type: application/json" -d "{\"report_id\":\"$REPORT_ID\"}"
      
      # Wait between runs to avoid overwhelming LLM
      sleep 60
@@ -175,9 +186,30 @@ For regenerating multiple reports:
    docker exec -it acolyte-db psql -U acolyte_user -d acolyte -c "
    SELECT run_status, COUNT(*) 
    FROM report_runs 
-   WHERE created_at > NOW() - INTERVAL '1 hour'
+   WHERE started_at > NOW() - INTERVAL '1 hour'
    GROUP BY run_status;
    "
+   ```
+
+### Procedure E: Regenerate a Single Section
+
+For a targeted fix instead of a full report regeneration:
+
+1. **Rerun the section:**
+   ```bash
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/RerunSection \
+     -H "Content-Type: application/json" \
+     -d "{\"report_id\":\"$REPORT_ID\",\"section_key\":\"<section-key>\"}"
+   ```
+   `section_key` must match an existing `report_sections.section_key` for
+   the report; the response's `run_id` field is currently always empty
+   (the rerun runs synchronously, not as a tracked background run).
+
+2. **Verify the version bumped:**
+   ```bash
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/GetReport \
+     -H "Content-Type: application/json" \
+     -d "{\"report_id\":\"$REPORT_ID\"}"
    ```
 
 ## Quality Checks
@@ -187,8 +219,8 @@ After regeneration, verify quality:
 ### Check Section Count
 
 ```bash
-grpcurl -plaintext -d "{\"report_id\":\"$REPORT_ID\"}" \
-  localhost:8090 alt.acolyte.v1.AcolyteService/GetReport | jq '.sections | length'
+curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/GetReport \
+  -H "Content-Type: application/json" -d "{\"report_id\":\"$REPORT_ID\"}" | jq '.sections | length'
 ```
 
 ### Check Section Lengths
@@ -236,14 +268,15 @@ WHERE sv.report_id = '<report-id>'
 
 Check finalizer logs:
 ```bash
-docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator | grep -A5 "FinalizerNode"
+docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator | grep -A5 "Finalizer"
 ```
 
 ### Generation Takes Too Long
 
-Check which node is slow:
+Check which node is slow. Each node logs its own `"<Name> completed"` line on exit (there is no matching start line, so use timestamps between consecutive lines to estimate duration):
 ```bash
-docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator | grep -E "(Starting|Completed) node"
+docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator | \
+  grep -E "(Planner|Gatherer|Curator|Hydrator|Compressor|QuoteSelector|FactNormalizer|Section planner|Writer|Critic|Finalizer|Extractor) completed"
 ```
 
 Typical timings:
@@ -258,13 +291,14 @@ Typical timings:
 
 1. Check evidence was retrieved:
    ```bash
-   # In logs, look for Gatherer output
-   docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator | grep "evidence retrieved"
+   # In logs, look for Gatherer output (evidence_count field)
+   docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator | grep "Gatherer completed"
    ```
 
 2. Check curator filtered appropriately:
    ```bash
-   docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator | grep "curated articles"
+   # sections_curated / total_curated fields
+   docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator | grep "Curator completed"
    ```
 
 3. If evidence is missing, check search-indexer:

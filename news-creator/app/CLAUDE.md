@@ -10,13 +10,13 @@ LLM-powered summarization service. **Python 3.14+**, **FastAPI**, **Ollama**.
 
 ```bash
 # Test (TDD first)
-SERVICE_SECRET=test-secret uv run pytest
+uv run pytest
 
 # Coverage
-SERVICE_SECRET=test-secret uv run pytest --cov=news_creator
+uv run pytest --cov=news_creator
 
-# Run
-uv run python main.py
+# Run (production entrypoint; listens on :11434 — main.py's own __main__ block binds :8001 and is not what the container runs)
+uv run python -m news_creator
 ```
 
 ## TDD Workflow

@@ -5,16 +5,17 @@
 **Go 1.26+**, **Echo** + **Connect-RPC**, Clean Architecture.
 
 このディレクトリは**単一 Go モジュール** (`module alt`) だが、そこから
-**3 つの独立したコンテナ**をビルドする（ADR-000954）。
+**4 つの独立したコンテナ**をビルドする（3 分割は ADR-000954、`alt-notifier` は後日追加の4本目）。
 
 | バイナリ | compose service | 責務 | リスナー |
 |---|---|---|---|
 | `cmd/backend` | `alt-backend` | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102`（admin Connect 2 サービス、loopback）/ ops `:9110` |
-| `cmd/harvester` | `alt-harvester` | `orchestrator/job/` の 7 定期ジョブ | ops `:9110` のみ |
+| `cmd/harvester` | `alt-harvester` | `orchestrator/job/` の定期ジョブ（`orchestrator/job/registry.go` 参照） | ops `:9110` のみ |
+| `cmd/notifier` | `alt-notifier` | Web Push 配信ディスパッチャ（`push_deliveries` をドレインして送信） | ops `:9110` のみ |
 | `cmd/datahub` | `alt-data-hub` | **alt-db の唯一のオーナー**。`services.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。publish ゼロ |
 
 `cmd/fix_article_titles` は one-shot の運用スクリプト。root `main.go` は無い。
-共通の起動処理は `internal/bootstrap` にあり 3 バイナリで共有する。
+共通の起動処理は `internal/bootstrap` にあり 4 バイナリで共有する。
 
 **内部 API は alt-data-hub にある。** `cmd/backend` / `cmd/harvester` は DB DSN も
 pgx も持たず、データは全て `services.datahub.v1.DataHubService`（Connect-RPC / mTLS）
@@ -29,7 +30,7 @@ REST は削除済みで、再追加してはいけない。
 ## Commands
 
 ```bash
-# Test (TDD first) — 3 バイナリ分をまとめて回す
+# Test (TDD first) — 4 バイナリ分をまとめて回す
 go test ./...
 
 # Coverage
@@ -38,11 +39,11 @@ go test -race -cover ./...
 # Mocks
 make generate-mocks
 
-# Build all three
+# Build all four
 go build ./cmd/...
 
 # Run one
-go run ./cmd/backend      # or ./cmd/harvester, ./cmd/datahub
+go run ./cmd/backend      # or ./cmd/harvester, ./cmd/notifier, ./cmd/datahub
 ```
 
 ## TDD Workflow

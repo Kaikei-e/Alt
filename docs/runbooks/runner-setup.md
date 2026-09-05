@@ -15,7 +15,7 @@ alt-deploy の `release-deploy.yaml` が使う 2 つの self-hosted runner (`alt
 
 | Runner label | 必要ツール | 導入タイミング |
 |--------------|------------|----------------|
-| `alt-builder` | Go, Rust, Python 3, Docker, libpact_ffi, pact-broker-cli | runner 登録時 |
+| `alt-builder` | Go, Rust, Python 3, Docker, libpact_ffi, pact-broker-cli, ansible-playbook | runner 登録時 |
 | `alt-prod` | Docker, **Ansible (ansible-core + community.docker)** | runner 登録時 |
 
 **deploy 経路で外部 fetch を発生させない** 方針。deploy-time install はすべて pre-installed を前提に check-only に倒す (A03 supply chain 最小化)。
@@ -24,7 +24,9 @@ alt-deploy の `release-deploy.yaml` が使う 2 つの self-hosted runner (`alt
 
 ### Why Ansible
 
-ADR-000811 により `release-deploy.yaml` の `deploy` job は `community.docker.docker_compose_v2` module 経由で per-service roll + reconcile を宣言的に実行する。runner には **ansible-core と community.docker collection** が pre-install されている必要がある。
+`release-deploy.yaml` の `deploy` job は `community.docker.docker_compose_v2` module 経由で per-service roll + reconcile を宣言的に実行する、とされる。runner には **ansible-core と community.docker collection** が pre-install されている必要がある。
+
+この節が挙げていた根拠 ADR 番号 (旧 000811) は誤参照だった — 000811 は無関係な決定 (recap-subworker の classification_backend) を指す。Ansible 宣言的ロール化そのものは [[000849]] が確立した規約で裏付けが取れる: `playbooks/run-e2e-suite.yml` / `playbooks/apply-migrations.yml` / `playbooks/roll-services.yml` で「GHA = matrix orchestration / Ansible = idempotent task body」の規約を alt-deploy が既に運用しており、`roll-services.yml` がまさに本節の per-service roll に当たる。[[000871]] も同じ deploy job が「上位 ansible task」の配下にあると記述しており独立して裏付ける。本 repo 自身も `playbooks/publish-manual-verifications.yml` / `playbooks/_publish-bridge.yml` という Ansible playbook を持ち、`scripts/pact-check.sh` の manual-verification bridge から呼ぶ。
 
 ### Install / upgrade / verify は playbook 経由で宣言的に
 
@@ -160,6 +162,10 @@ release-deploy の `build` / `pact-publish` / `gate` / `e2e` jobs が走る。�
 - `libpact_ffi.so` (`/usr/local/lib/libpact_ffi.so` or `~/.pact/lib/`)
 - `pact-broker-cli` (Rust 版、`pact-broker-cli>=0.6.3`)
 - `$HOME/alt-secrets/pact_broker_basic_auth_password.txt` (broker 認証)
+- `ansible-playbook` — `scripts/pact-check.sh` の manual-verification bridge
+  (`playbooks/publish-manual-verifications.yml`) が呼ぶため、Broker への
+  manual verification publish を伴う leg では事実上必須 ([[000849]] も
+  alt-builder が run-e2e-suite 経由で既に Ansible 必須と記す)
 
 既存手順は ADR-000763 のコメントに散在。必要なら本 runbook に別 section で集約する (backlog)。
 
@@ -255,6 +261,7 @@ sudo systemctl restart actions.runner.*
 - [[000763]] 2-machine split pull-deploy
 - [[000809]] compose healthcheck invariant
 - [[000810]] pact-check.sh manual/consumer 分離
-- [[000811]] (予定) release-deploy を Ansible 宣言的ロール化
+- [[000849]] alt-deploy の GHA=orchestration / Ansible=task body 規約 (旧 000811 は誤参照だった)
+- [[000871]] Atlas migrator hang — 同じ deploy job が「上位 ansible task」配下にあることの独立した裏付け
 - [pipx 公式](https://pipx.pypa.io/) — PEP 668 と pipx の位置づけ
 - [community.docker CHANGELOG](https://github.com/ansible-collections/community.docker/blob/main/CHANGELOG.rst) — 更新時に確認

@@ -21,8 +21,10 @@ uv run pyrefly check .
 # Lint
 uv run ruff check && uv run ruff format
 
-# Run
-uv run python main.py
+# Run (the real container entrypoint per Dockerfile.tag-generator; main.py is
+# a separate standalone consumer/batch script that the running container does
+# NOT execute — see [[000319]] for the incident this distinction caused)
+uv run python auth_service.py
 ```
 
 ## TDD Workflow
@@ -30,7 +32,7 @@ uv run python main.py
 **IMPORTANT**: Write failing tests BEFORE implementation.
 
 - **Unit**: Test tag extraction with known inputs
-- **Integration**: Full pipeline with database
+- **Integration**: Full pipeline against a mocked/sanitized alt-data-hub client, not a real database — direct DB access was removed (ADR-000397)
 - **ML Quality**: Bias detection, robustness testing
 
 ## Critical Rules

@@ -1,15 +1,21 @@
 # Feed Validator Service
 
-F# 10 で実装する RSS/Atom/JSON Feed 検証・正規化サービス。
+F# 10 **学習プロジェクト**（`README.md` / `ROADMAP.md` 参照）。将来的に RSS/Atom/JSON Feed
+検証・正規化サービスとして実装することを目標にした設計仕様であり、以下の Domain/Usecase/
+Gateway/Handler・API・NuGet 依存・alt-backend 統合は **すべて ROADMAP.md の Phase 1〜8 の
+到達目標（未実装）**。
 
-## 概要
+## 実装状況 (2026-09-05 時点)
 
-| 項目 | 値 |
-|------|-----|
-| 言語 | F# 10 (.NET 10) |
-| フレームワーク | Giraffe (ASP.NET Core) |
-| ポート | 9700 |
-| 役割 | フィード検証・正規化 |
+- 実際に存在するコードは `FeedValidator/Program.fs` の `printfn "Hello from F#"` のみ（ROADMAP Phase 1）
+- `FeedValidator.fsproj` に `Compile Include="Program.fs"` 以外のファイルは無く、Giraffe / FSharp.Data など
+  NuGet パッケージへの参照もまだ無い
+- `src/Domain/`, `src/Usecase/`, `src/Gateway/`, `src/Handler/`, `FeedValidator.Tests/` ディレクトリは未作成
+- `Dockerfile` は存在せず、`compose/*.yaml` のどこにも `feed-validator` サービス定義は無い（起動できない）
+- alt-backend 側には `port/feed_validator_port.go` / `gateway/feed_validator_gateway.go` は存在しない。
+  alt-backend の feed 登録バリデーションは無関係の `alt-backend/app/validation/feed_validator.go`
+  （SSRF 対策など入力形状チェックのみを行う、この F# サービスとは繋がっていない Go コード）が担う
+- 以下のセクションはこのサービスが実装された **場合の** 仕様・設計であり、現状のコードを説明するものではない
 
 ---
 
@@ -382,19 +388,23 @@ match feedFormat with
 
 ## 統合（alt-backend）
 
-### Port インターフェース
+**注意**: 以下は統合する場合の設計案であり、alt-backend 側にこのファイル・型は存在しない。
+現状 alt-backend の feed 登録時バリデーションは `alt-backend/app/validation/feed_validator.go`
+(`FeedRegistrationValidator`) が行っており、この F# サービスへの依存は無い。
+
+### Port インターフェース (案、未実装)
 
 ```go
-// alt-backend/app/port/feed_validator_port.go
+// 想定パス: alt-backend/app/port/feed_validator_port.go (未作成)
 type FeedValidatorPort interface {
     ValidateFeed(ctx context.Context, content string) (*ValidationResult, error)
 }
 ```
 
-### Gateway 実装
+### Gateway 実装 (案、未実装)
 
 ```go
-// alt-backend/app/gateway/feed_validator_gateway.go
+// 想定パス: alt-backend/app/gateway/feed_validator_gateway.go (未作成)
 type FeedValidatorGateway struct {
     baseURL string
     client  *http.Client
@@ -406,10 +416,10 @@ func (g *FeedValidatorGateway) ValidateFeed(ctx context.Context, content string)
 }
 ```
 
-### 使用箇所
+### 使用想定箇所 (未実装)
 
-- `alt-backend/app/usecase/rss_usecase.go` - フィード登録時の検証
-- 既存の検証ロジックと並行運用可能（feature flag）
+- feed 登録時の検証パス（alt-backend の実際のレイヤ構成は現行の Clean Architecture 実装を確認すること — `usecase/rss_usecase.go` という単一ファイルは現状存在しない）
+- 既存の検証ロジックと並行運用可能（feature flag）という前提もこのサービスが実装されてからの話
 
 ---
 

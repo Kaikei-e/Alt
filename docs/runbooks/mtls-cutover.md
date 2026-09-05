@@ -53,7 +53,11 @@ VERIFY_CLIENT=on) 完了時点を起点にする。
 2. cutover 30 分前に `#ops-alerts` に事前告知
 3. `docker compose -f compose/compose.yaml -p alt ps` で全サービス healthy を確認
 4. Phase C PR を merge (SERVICE_SECRET / SERVICE_TOKEN / ServiceAuthMiddleware の物理削除)
-5. deploy.yaml 経由で deploy — `release-gate` が can-i-deploy を通せば deploy 進行
+5. `main` へ merge すると `.github/workflows/dispatch-deploy.yaml` が private
+   `alt-deploy` へ dispatch し、その `gate` job が can-i-deploy を通せば
+   deploy が進む ([[deploy]])。ローカル/手動での cutover なら
+   `./scripts/deploy.sh production` を使う — c2quay が `c2quay.yml` に登録
+   された 14 pacticipant ぶんの can-i-deploy gate を担う
 6. 全サービスを rolling rebuild:
 
    ```bash

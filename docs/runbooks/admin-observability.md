@@ -8,7 +8,7 @@ affected_services:
   - prometheus
   - plecto-proxy
 owner: platform
-last_updated: 2026-07-31
+last_updated: 2026-09-05
 ---
 
 # Admin Observability UI — Runbook
@@ -42,7 +42,7 @@ All defaults live in `alt-backend/app/config/config.go` → `AdminMonitorConfig`
 | `ADMIN_MONITOR_RATE_LIMIT_BURST` | `10` | Token bucket burst. |
 | `ADMIN_MONITOR_STREAM_INTERVAL` | `5s` | Watch push interval. |
 
-`observability.yaml` additionally constrains Prometheus itself:
+`compose/observability.yaml` additionally constrains Prometheus itself:
 
 ```
 --query.timeout=5s
@@ -124,11 +124,14 @@ FE sent a `window`/`step` not in the allowlist. Accepted values:
 Expected. Both BFF and alt-backend enforce `role == "admin"`. Grant the
 role via Kratos traits before testing.
 
-### `auth-hub` / `rask-log-aggregator` show "Not instrumented"
+### `rask-log-aggregator` shows "Not instrumented"
 
-These services do not yet expose `/metrics`. Add blackbox-exporter probes
-or native instrumentation in a follow-up; in the meantime the UI shows
-the bare "Not instrumented" badge instead of false-positive "down".
+This service does not yet expose `/metrics` and has no scrape job. Add
+blackbox-exporter probes or native instrumentation in a follow-up; in the
+meantime the UI shows the bare "Not instrumented" badge instead of a
+false-positive "down". `auth-hub` and `pre-processor` are scraped today but
+still render "Not instrumented" because the FE component's default list was
+not updated when their jobs were added — see the Allowlist section above.
 
 ## Adding a new metric
 
@@ -144,8 +147,8 @@ the bare "Not instrumented" badge instead of false-positive "down".
 
 | key | PromQL | unit |
 |---|---|---|
-| `availability_services` | `min by (job) (up{job=~"prometheus\|plecto-proxy\|cadvisor\|mq-hub\|recap-worker\|recap-subworker\|news-creator\|alt-backend\|pki-agent\|knowledge-sovereign\|rag-orchestrator"})` | bool |
-| `http_latency_p95` | `histogram_quantile(0.95, sum by (job,le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
+| `availability_services` | `min by (job) (up{job=~"prometheus\|alertmanager\|plecto-proxy\|cadvisor\|mq-hub\|pre-processor\|recap-worker\|recap-subworker\|news-creator\|alt-backend\|alt-harvester\|alt-notifier\|alt-data-hub\|alt-butterfly-facade-ops\|auth-hub\|search-indexer\|rag-orchestrator-ops\|pre-processor-ops\|tag-generator\|recap-worker-ops\|acolyte-orchestrator\|recap-subworker-ops\|news-creator-ops\|knowledge-sovereign\|rag-orchestrator\|alt-butterfly-facade"})` | bool |
+| `http_latency_p95` | `histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
 | `http_rps` | `sum by (job) (rate(http_requests_total[1m]))` | req/s |
 | `http_error_ratio` | `sum by (job) (rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum by (job) (rate(http_requests_total[5m])), 1e-9)` | ratio |
 | `cpu_saturation` | `sum by (name) (rate(container_cpu_usage_seconds_total{name=~".+"}[2m]))` | cores |
@@ -156,8 +159,8 @@ the bare "Not instrumented" badge instead of false-positive "down".
 | `recap_worker_rss` | `recap_worker_rss_bytes` | bytes |
 | `recap_request_p95` | `histogram_quantile(0.95, sum by (le) (rate(recap_request_process_seconds_bucket[5m])))` | seconds |
 | `recap_subworker_admin_success` | `sum by (status) (rate(recap_subworker_admin_job_status_total[5m]))` | jobs/s |
-| `http_latency_p50` | `histogram_quantile(0.50, sum by (job,le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
-| `http_latency_p99` | `histogram_quantile(0.99, sum by (job,le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
+| `http_latency_p50` | `histogram_quantile(0.50, sum by (job, le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
+| `http_latency_p99` | `histogram_quantile(0.99, sum by (job, le) (rate(http_request_duration_seconds_bucket[5m])))` | seconds |
 | `prometheus_scrape_lag` | `time() - max by (job) (timestamp(up))` | seconds |
 | `availability_burn_1h` | `(sum(rate(http_requests_total{status=~"5.."}[1h])) / clamp_min(sum(rate(http_requests_total[1h])), 1e-9)) / 0.001` | ratio |
 | `availability_burn_6h` | `(sum(rate(http_requests_total{status=~"5.."}[6h])) / clamp_min(sum(rate(http_requests_total[6h])), 1e-9)) / 0.001` | ratio |
@@ -176,18 +179,30 @@ sparse-checks-out `observability/` and triggers on `observability/prometheus/**`
 so a prometheus.yml-only PR still runs it.
 
 Job names are not service names. `plecto-proxy` replaced the old `nginx` +
-nginx-exporter pair, and all eight `pki-agent` sidecars share a single job,
-distinguished only by a `subject` label. `min by (job)` collapses such a job to
-its worst target, so one dead sidecar reads "down" instead of being overwritten
-by a healthy sibling; to find *which* sidecar, query `up{job="pki-agent"}` in
-Prometheus directly and read `subject`.
-`TestAllowlist_AvailabilityAggregatesMultiTargetJobs` requires the aggregation
-for as long as any job has more than one target.
+nginx-exporter pair. pki-agent sidecars are gone — workload PKI is in-process
+now ([[pki-agent-recovery]]) and no job in `prometheus.yml` scrapes a
+`pki-agent*` target. A single service can still split across two job names:
+`news-creator`/`news-creator-ops`, `recap-worker`/`recap-worker-ops`,
+`recap-subworker`/`recap-subworker-ops`, `pre-processor`/`pre-processor-ops`,
+`rag-orchestrator`/`rag-orchestrator-ops` and
+`alt-butterfly-facade`/`alt-butterfly-facade-ops` each expose an app port and
+a `:9110` ops port under separate jobs, and the alt-backend Go module's four
+binaries (`alt-backend`, `alt-harvester`, `alt-notifier`, `alt-data-hub`) are
+four jobs rather than one — bundling any of these would let `min by (job)`
+collapse distinct processes into a single row and hide which one died. No
+scrape job in the current config has more than one target, so `min by (job)`
+is presently a no-op; it stays in the PromQL as a guard for the day a job
+regains multiple targets, and `TestAllowlist_AvailabilityAggregatesMultiTargetJobs`
+enforces its presence unconditionally.
 
-Services that do not yet expose `/metrics` (`pre-processor`, `auth-hub`,
-`rask-log-aggregator`) have no scrape job and so never appear in the series.
-`ServiceHealthTable` lists them explicitly with a "Not instrumented" badge
-rather than as a false-positive "down". Every other row is derived from the
+`rask-log-aggregator` does not expose `/metrics` and has no scrape job, so it
+never appears in the series; `ServiceHealthTable` lists it explicitly with a
+"Not instrumented" badge rather than as a false-positive "down". `auth-hub`
+and `pre-processor` do have scrape jobs now (`observability/prometheus/prometheus.yml`),
+but `ServiceHealthTable.svelte`'s default `notInstrumented` prop was not
+updated when those jobs were added, so their row still shows "Not
+instrumented" instead of a live status — treat that badge as stale rather than
+as evidence the service is unscraped. Every other row is derived from the
 returned series rather than from a job list held in the component, so a newly
 scraped job shows up in the tile without a frontend change.
 
@@ -246,9 +261,10 @@ never the sole channel (WCAG 1.4.1). Sparkline threshold lines are dashed.
 
 With cache 10s and stream interval 5s, the gateway issues at most one
 upstream query per metric per 10s regardless of concurrent admin
-viewers (singleflight). For the default 8-metric set:
+viewers (singleflight). For the default 12-metric set (`DEFAULT_KEYS` in
+`useConnectAdminMetrics.svelte.ts`):
 
-- ≈0.8 rps to Prometheus per metric, ≈6.4 rps aggregate, steady-state.
+- ≈0.8 rps to Prometheus per metric, ≈9.6 rps aggregate, steady-state.
 - `--query.max-samples=1000000` bounds a single query's memory.
 
 Exceed at your peril.
@@ -268,6 +284,5 @@ ADMIN_MONITOR_ENABLED=true \
 
 ## Related
 
-- Plan: `/home/koko/.claude/plans/floofy-bubbling-papert.md`
 - Proto: `proto/alt/admin_monitor/v1/admin_monitor.proto`
 - Allowlist: `alt-backend/app/orchestrator/gateway/admin_metrics_gateway/allowlist.go`

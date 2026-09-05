@@ -1,27 +1,31 @@
 # alt-backend
 
-**Go 1.26+**, **Echo** + **Connect-RPC**, Clean Architecture. 1 ディレクトリ 3 バイナリ。
+**Go 1.26+**, **Echo** + **Connect-RPC**, Clean Architecture. 1 ディレクトリ 4 バイナリ。
 
 > Details: `docs/services/alt-backend.md` / 分割の根拠: `docs/ADR/000954.md`
 
-## 3 バイナリ構成 (ADR-000954)
+## 4 バイナリ構成 (ADR-000954 の 3 分割 + alt-notifier)
 
 このディレクトリは**単一 Go モジュール** (`alt-backend/app`, `module alt`) だが、
-そこから **3 つの独立したコンテナ**をビルドする。同じ `Dockerfile.backend` を
+そこから **4 つの独立したコンテナ**をビルドする。同じ `Dockerfile.backend` を
 `--build-arg BINARY=<name>` で切り替え、`./cmd/<BINARY>` をビルドする
 （`BINARY` 未指定はビルド失敗。「どれかにフォールバック」はしない）。
 
 | compose service | エントリポイント | 責務 | リスナー |
 |---|---|---|---|
 | `alt-backend` | `cmd/backend` | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102` / ops `:9110` |
-| `alt-harvester` | `cmd/harvester` | `orchestrator/job/` の 7 定期ジョブ | ops `:9110` のみ（業務リスナーなし） |
+| `alt-harvester` | `cmd/harvester` | `orchestrator/job/` の定期ジョブ（`orchestrator/job/registry.go` 参照） | ops `:9110` のみ（業務リスナーなし） |
+| `alt-notifier` | `cmd/notifier` | Web Push 配信専用ディスパッチャ（`push_deliveries` をドレインして各デバイスへ送信）。ADR-000954 の3分割そのものではなく後日追加された4本目 | ops `:9110` のみ（業務リスナーなし） |
 | `alt-data-hub` | `cmd/datahub` | **alt-db の唯一のオーナー**。`services.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。**publish ゼロ** |
 
 - `cmd/fix_article_titles` は one-shot の運用スクリプトで、常駐サービスではない。
 - 共通の起動処理（config ロード / logger / OTel / シグナル / supervisor / ops リスナー）は
-  `internal/bootstrap` にあり、3 バイナリで共有する。root `main.go` は存在しない。
-- `:9110` は 3 バイナリ共通の ops リスナー（`bootstrap.NewOpsHandler`）で、`/health` と
-  `/metrics` だけを出す。Prometheus の scrape job も 3 本ある。
+  `internal/bootstrap` にあり、4 バイナリで共有する。root `main.go` は存在しない。
+- `:9110` は 4 バイナリ共通の ops リスナー（`bootstrap.NewOpsHandler`）。`/health` と `/metrics` は
+  全バイナリ共通だが、`/health/deep`（`bootstrap.WithDeepHealth`）は `cmd/backend` にしか無い
+  （alt-data-hub 自身の `/health/deep` は mTLS `:9443` 側で、`:9110` には出ない。harvester /
+  notifier は `/health/deep` を持たない）。Prometheus の scrape job は 4 本ある
+  (`observability/prometheus/prometheus.yml`)。
 
 ### 内部 API は alt-data-hub にある
 
@@ -51,7 +55,7 @@ RPC に写す（ポートミラー型）のは棄却済み — `Begin` と `Comm
 ```bash
 cd alt-backend/app
 
-# Test (TDD first) — 3 バイナリ分をまとめて回す
+# Test (TDD first) — 4 バイナリ分をまとめて回す
 go test ./...
 
 # Coverage
@@ -60,11 +64,11 @@ go test -race -cover ./...
 # Mocks
 make generate-mocks
 
-# Build all three
+# Build all four
 go build ./cmd/...
 
 # Run one
-go run ./cmd/backend      # or ./cmd/harvester, ./cmd/datahub
+go run ./cmd/backend      # or ./cmd/harvester, ./cmd/notifier, ./cmd/datahub
 
 # Container build (BINARY は必須)
 docker build --build-arg BINARY=backend -f alt-backend/Dockerfile.backend -t alt-backend:dev alt-backend
@@ -108,9 +112,9 @@ ADR-000945 以降、`app/` 直下ではなく **3 つの package ファミリ**�
 
 | package | 主な行き先バイナリ | 中身 |
 |---|---|---|
-| `app/orchestrator/` | `alt-backend`（`job/` だけ `alt-harvester`） | `rest/` `connect/` `usecase/` `port/` `gateway/` `driver/` `job/` |
+| `app/orchestrator/` | `alt-backend`（`job/` は `alt-harvester` と `alt-notifier` が使う） | `rest/` `connect/` `usecase/` `port/` `gateway/` `driver/` `job/` |
 | `app/dataplane/` | `alt-data-hub` | `connect/datahubapi` `usecase/` `port/` `gateway/` `driver/` |
-| `app/shared/` | 3 バイナリ全部 | `driver/{alt_db,datahub_client,mqhub_connect,sovereign_client}` `gateway/` `port/` `usecase/` |
+| `app/shared/` | 4 バイナリ全部 | `driver/{alt_db,datahub_client,mqhub_connect,sovereign_client}` `gateway/` `port/` `usecase/` |
 
 `app/domain/` `app/config/` `app/middleware/` `app/validation/` `app/utils/` `app/tlsutil/`
 `app/adapter/` `app/connect/` `app/gen/` `app/internal/` などは 3 ファミリの外にあり、
@@ -217,6 +221,7 @@ Core business entities. **Can import:** Nothing (pure Go)
 |---|---|---|
 | `di/container_backend.go` | `NewBackendComponents` → `ApplicationComponents`（型は `di/container.go`） | `cmd/backend` |
 | `di/container_harvester.go` | `NewHarvesterComponents` → `HarvesterComponents` | `cmd/harvester` |
+| `di/container_notifier.go` | `NewNotifierComponents` → `NotifierComponents` | `cmd/notifier` |
 | `di/datahub/container.go` | data plane の composition root | `cmd/datahub` |
 
 配線の向きは常に `Driver -> Gateway (implements Port) -> Usecase -> Handler`。

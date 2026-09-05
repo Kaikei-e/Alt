@@ -12,15 +12,17 @@ go test ./...
 # Build
 go build ./...
 
-# Run locally
-DATABASE_URL=postgres://alt:password@localhost:5434/knowledge_sovereign go run main.go
+# Run locally (host port and user per compose/sovereign.yaml)
+DATABASE_URL=postgres://sovereign:password@localhost:5438/knowledge_sovereign go run main.go
 ```
 
 ## Clean Architecture
 
 ```
-Handler (handler/) -> Usecase -> Port (interfaces) -> Gateway -> Driver (driver/sovereign_db/)
+Handler (handler/) -> Usecase (usecase/) -> Driver (driver/sovereign_db/)
 ```
+
+There is no separate `port/`/`gateway/` layer in this service — both `handler/` and `usecase/*` packages import `driver/sovereign_db` directly. ("Port" in comments elsewhere refers to alt-backend's `knowledge_sovereign_port`, the consumer-side interface for calling this service, not a layer inside it.)
 
 ## Critical Rules
 

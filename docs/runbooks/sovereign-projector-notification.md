@@ -10,6 +10,21 @@ tags:
 
 # Sovereign Projector Notification — Troubleshooting & Design Record
 
+> **Design record, not the live path.** `sovereign_client.Client.ConnectProjectorWatch`
+> and the `WatchProjectorEvents` RPC this doc describes still exist in code
+> (`alt-backend/app/shared/driver/sovereign_client/watch_client.go`,
+> `knowledge-sovereign/app/handler/rpc_watch.go`) but have no caller anywhere
+> in the codebase today (verified 2026-09-05) — the backend-side streaming
+> bridge is unused. The knowledge_home and knowledge_trail projectors now run
+> **in-process inside knowledge-sovereign** against its own DB, driven by a
+> plain `time.NewTicker(cfg.ProjectorTickInterval)` loop
+> (`knowledge-sovereign/app/main.go`, `usecase/knowledge_home_projector/projector.go`,
+> `usecase/knowledge_trail_projector/projector.go`) — no cross-service
+> notification is involved. The design pitfalls below (HTTP client timeout on
+> long-lived streams, heartbeat-vs-poll-interval mismatch) remain valid general
+> Connect-RPC streaming knowledge; the Diagnostic Commands / Recovery sections
+> at the bottom have been updated to match the current in-process path.
+
 ## Background
 
 When Knowledge Sovereign is extracted as an independent service with its own database (database-per-service pattern), the knowledge projector in the backend service can no longer use PostgreSQL `LISTEN/NOTIFY` directly on the events table. The events table exists only in the sovereign database, and direct cross-service database connections violate the service boundary.
@@ -118,33 +133,29 @@ If this trigger is missing, the streaming RPC will only send heartbeats and neve
 
 **Detection**: Check for `"processing knowledge events"` log entries. If absent for several minutes while events exist in the sovereign database, the projector is stalled.
 
-## Diagnostic Commands
+## Diagnostic Commands (current in-process ticker path)
 
 ```bash
-# Check if projector listener is connected
-docker logs <backend-container> | grep "sovereign projector listener"
+# Batch failures log by projector name — absence of these for several
+# minutes while events are queued is the stall signal (no error, just silence)
+docker logs alt-knowledge-sovereign-1 | grep "knowledge_home_projector batch failed"
+docker logs alt-knowledge-sovereign-1 | grep "knowledge_trail_projector batch failed"
 
-# Check if projector is processing events
-docker logs <backend-container> | grep "processing knowledge events"
+# Wiring confirmation at startup (Rule 8: loud enabled/disabled log)
+docker logs alt-knowledge-sovereign-1 | grep -E "home.projector.wiring|trail.branch_producer.wiring"
 
-# Check sovereign streaming connections
-docker logs <sovereign-container> | grep "WatchProjectorEvents"
-
-# Verify NOTIFY trigger exists in sovereign DB
-docker exec <sovereign-db-container> psql -U <user> -d <db> -c \
-  "SELECT tgname FROM pg_trigger WHERE tgname = 'trg_knowledge_events_notify';"
-
-# Manually test NOTIFY
-docker exec <sovereign-db-container> psql -U <user> -d <db> -c \
-  "NOTIFY knowledge_projector, 'test';"
-# Then check backend logs for projector activity.
+# Projection freshness / lag straight from sovereign's own read API
+# (/health/deep is admin-token gated — a bare request 401s when ADMIN_AUTH
+# is on; see [[health-deep-contract]])
+curl -fsS -H "Authorization: Bearer $(cat secrets/sovereign_admin_token.txt)" \
+  http://127.0.0.1:9511/health/deep | jq '.checks'
 ```
 
 ## Recovery
 
-If the projector is stalled:
+If a projector is stalled:
 
-1. **Restart the backend service** — the streaming listener reconnects automatically.
-2. If the listener fails to connect, check sovereign health: `curl http://<sovereign>:9500/health`.
-3. If sovereign is healthy but streaming fails, check firewall/network between services.
-4. As a fallback, the projector runner automatically falls back to polling if the listener factory returns an error.
+1. **Restart knowledge-sovereign** — `docker compose -f compose/compose.yaml -p alt restart knowledge-sovereign`; the ticker loops start fresh on process boot.
+2. Check `knowledge-sovereign` health: `curl http://127.0.0.1:9511/health` (ops `:9501`, published as host `9511`).
+3. If the process is healthy but `RunBatch` keeps failing, the error log names the underlying cause (DB error, malformed event payload, projection-gap abandonment) — chase that, not connectivity.
+4. There is no separate polling fallback to fall back to: the ticker loop *is* the only path today.

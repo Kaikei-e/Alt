@@ -12,7 +12,7 @@ tags:
 
 Runbook for resolving proto contract breakage detected by the CI workflow.
 
-Related: [[000422]], [[000429]], [[knowledge-home-phase0-canonical-contract]]
+Related: [[000422]], [[000429]]
 
 ## Symptoms
 
@@ -115,7 +115,7 @@ Even when `buf breaking` passes, treat the change as unsafe if it breaks the Pha
 
 When one of these occurs:
 
-1. Update [[knowledge-home-phase0-canonical-contract]] first.
+1. Update the Knowledge Home semantic contract documentation first.
 2. Update backend handler / frontend connect conversion in the same change.
 3. Extend contract tests before merging.
 

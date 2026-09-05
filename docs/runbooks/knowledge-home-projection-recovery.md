@@ -5,7 +5,7 @@ tags:
   - runbook
   - knowledge-home
   - projection
-updated: 2026-07-31
+updated: 2026-09-05
 ---
 
 # Knowledge Home Projection Recovery
@@ -116,6 +116,46 @@ Read it as:
 ## Recovery Procedure
 
 0. **First rule out a poison-pill event (previous section).** If one is wedging the checkpoint, the reset below replays straight back into it and the read model stalls at the same `seq` again — clearing state does not help until the fold that rejects the event is fixed.
+
+### Preferred: admin rebuild endpoint
+
+`knowledge-sovereign` ships an admin endpoint that does exactly what Steps
+1–3 below do by hand, but in one transaction and with a table allowlist
+that refuses to touch `knowledge_events` / `knowledge_event_dedupes` /
+`knowledge_user_events`. It is published at `127.0.0.1:9511` (the metrics
+port, `:9501` in-container) and gated by the same admin bearer token as the
+other `/admin/*` routes.
+
+Preview which tables a rebuild would empty and which checkpoint it would reset:
+
+```bash
+export SOVEREIGN_ADMIN_TOKEN="$(cat secrets/sovereign_admin_token.txt)"
+curl -s -H "Authorization: Bearer $SOVEREIGN_ADMIN_TOKEN" \
+  http://127.0.0.1:9511/admin/projections/rebuild/targets
+```
+
+Then run the rebuild for the Knowledge Home target:
+
+```bash
+curl -s -X POST http://127.0.0.1:9511/admin/projections/rebuild \
+  -H "Authorization: Bearer $SOVEREIGN_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"target":"knowledge-home"}'
+```
+
+The response is `{"target", "tables", "tables_truncated", "projector_name", "checkpoint_before"}`.
+This empties `knowledge_home_items`, `today_digest_view`, and
+`recall_candidate_view` and resets the `knowledge-home-projector` checkpoint
+to 0 in the same transaction, so there is no gap for the always-running
+projector to advance through unfolded (the failure mode PM-2026-010
+documented for the old two-statement version of this reset). `knowledge-sovereign`
+does not need to be stopped first — the in-process projector re-folds the
+event log from the next tick.
+
+### Fallback: manual reset
+
+Use this only if the admin endpoint is unavailable.
+
 1. Stop or scale down `knowledge-sovereign` so the projector is not mutating state during cleanup.
 2. Keep `knowledge_events` untouched.
 3. Reset only the disposable projection state.
@@ -134,7 +174,7 @@ docker exec alt-knowledge-sovereign-db-1 \
 
 4. Start `knowledge-sovereign` again.
 5. Let the projector replay from `knowledge_events`.
-6. If historical synthetic events are missing, trigger a fresh Knowledge Home backfill after the projector is healthy.
+6. If historical synthetic events are missing, trigger a fresh Knowledge Home backfill after the projector is healthy. `altctl home backfill trigger` currently fails immediately (`ErrNoBackfillExecutor`: no executor has been wired since ADR-000944 removed the job that used to drain it) -- see [[knowledge-home-reproject-operations]].
 
 ## Verify Recovery
 

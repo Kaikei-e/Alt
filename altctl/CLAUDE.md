@@ -16,6 +16,9 @@ go test ./...
 make build && make install-local
 
 # Usage
+altctl init            # First-run bootstrap: prereqs, .env/secrets, Atlas checksums
+altctl seed dev        # Load dev seed data (db/seeds/dev-comprehensive.sql)
+altctl seed e2e        # Load E2E seed data (db/seeds/e2e-integration.sql)
 altctl up              # Start default stacks, wait until every service is Ready
 altctl up ai           # Start specific stack (deps auto-resolved), wait for Ready
 altctl up ai --detach  # Fire-and-forget: start and return, skip the Ready-wait
@@ -23,6 +26,7 @@ altctl down            # Stop all
 altctl restart recap   # Restart specific stack, wait until every service is Ready
 altctl rebuild alt-backend        # Rebuild image + force-recreate one service, wait for Ready
 altctl rebuild core --no-cache    # Rebuild every service in a stack, no Docker build cache
+altctl doctor          # Read-only diagnosis: state, root cause, next steps (see below)
 altctl status          # View status
 altctl exec db -- psql -U postgres  # Execute in container
 altctl logs recap      # Tail all recap stack logs
@@ -47,7 +51,7 @@ altctl home backfill status --job-id=<id>   # Check backfill status
 altctl migrate snapshot                           # Quick DB-only hot backup
 altctl migrate backup --force                     # Essential profile (default, no metrics)
 altctl migrate backup --profile db --force        # DB-only backup
-altctl migrate backup --profile all --force       # Full backup (all 14 volumes)
+altctl migrate backup --profile all --force       # Full backup (all 15 volumes)
 altctl migrate backup --exclude clickhouse_data   # Exclude specific volumes
 altctl migrate restore --from ./backups/xxx --force
 altctl migrate restore --from ./backups/xxx --profile db --force
@@ -230,7 +234,7 @@ Run `altctl list --services` for the live, derived service lists per stack.
 
 | Subcommand | Target | Client |
 |------------|--------|--------|
-| health, slo, reproject, audit, backfill | alt-backend :9102 (internal listener, 127.0.0.1-bound) | adminclient (Connect-RPC JSON) |
+| health, slo, flags, reproject, audit, backfill | alt-backend :9102 (internal listener, 127.0.0.1-bound) | adminclient (Connect-RPC JSON) |
 | snapshot, retention, storage | knowledge-sovereign :9511 | sovereignclient (REST) |
 
 ## TDD Workflow

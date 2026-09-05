@@ -1,6 +1,6 @@
 # Recap Worker
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `recap-worker` (Crate: `recap-worker/recap-worker`)
 
@@ -13,17 +13,17 @@ It delegates **heavy ML tasks** (embedding generation, coarse classification, cl
 1.  **7-Day Recap Pipeline:** Deep-dive pipeline. The automated batch was retired ([[000184]]); trigger manually via `/v1/generate/recaps/7days` only.
 2.  **3-Day Recap Pipeline:** Daily quick-catch batch process with smaller article window, faster processing, and reduced prompt sizes. The batch daemon uses `RECAP_3DAYS_WINDOW_DAYS` for window configuration.
 3.  **Evening Pulse Pipeline:** Daily digest delivering up to 3 high-quality news topics as an "entrance" to 7 Days Recap, helping users understand the day's news in 60 seconds. Controlled by `PULSE_ENABLED`, `PULSE_ROLLOUT_PERCENT`, and `PULSE_VERSION` feature flags.
-4.  **Morning Update Pipeline:** A lighter pipeline for daily article deduplication and grouping (Daemon currently **disabled** in `main.rs`, but logic exists).
+4.  **Morning Update Pipeline (Morning Letter):** Runs every ~30 minutes, gated by `MORNING_DAEMON_ENABLED`. Enabled in the Compose deployment (`compose/recap.yaml` supplies `MORNING_DAEMON_ENABLED=true`); the binary's own default when the variable is unset is **off**, logged at startup as `morning daemon disabled`. Fetches recent articles, hash-dedups and groups them, folds in the latest 3-day recap context, and asks `news-creator` to compose an editorial "Morning Letter" (overnight groups + recap highlights + a one-sentence through-line). Persisted to `morning_letters` / `morning_letter_sources` / `morning_article_groups` and served via `/v1/morning/letters/*`.
 
 ## Service Snapshot
 
 | Layer | Responsibilities |
 | --- | --- |
-| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/health/live`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days`, `/v1/generate/recaps/3days` <br>- **Fetch**: `/v1/recaps/7days`, `/v1/recaps/3days`, `/v1/morning/updates` <br>- **Pulse**: `/v1/pulse/latest` (Evening Pulse digest) <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs, recap_jobs, job-progress, job-stats) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
+| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/health/live`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days`, `/v1/generate/recaps/3days` <br>- **Fetch**: `/v1/recaps/7days`, `/v1/recaps/3days`, `/v1/recaps/search`, `/v1/recaps/genres/indexable`, `/v1/morning/updates` <br>- **Morning Letter**: `/v1/morning/letters/*` (latest, regenerate, by date, sources) <br>- **Pulse**: `/v1/pulse/latest` (Evening Pulse digest) <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs, recap_jobs, job-progress, job-stats) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
 | **Pipeline Core** | `src/pipeline/`: Modular stages for Fetch, Preprocess, Dedup, Genre, Select, Evidence, Dispatch, Persist. |
 | **Clients** | `src/clients/`: Strongly-typed HTTP clients for: <br>- **`recap-subworker`**: Coarse classification (`/v1/classify/coarse`), clustering (`/v1/runs`), graph refresh. <br>- **`news-creator`**: LLM summarization (`/v1/summary/generate`, `/v1/summary/generate/batch`). <br>- **`alt-backend`**: Article fetching. <br>- **`tag-generator`**: Optional tag enrichment. |
 | **Classification** | **Remote Coarse**: Calls `recap-subworker` (`/v1/classify/coarse`) for initial genre assignment. <br>**Local Refine**: Optional Graph Label Propagation stage (`src/pipeline/genre_refine/`) using cached graph data. |
-| **Store** | `src/store/`: SQLx DAO managing `recap_jobs`, `recap_cluster_evidence`, `recap_genre_learning_results`, `pulse_generations`, and `tag_label_graph` (cached from DB). |
+| **Store** | `src/store/`: SQLx DAO managing `recap_jobs`, `recap_sections` / `recap_outputs`, `recap_cluster_evidence`, `recap_genre_learning_results`, `pulse_generations`, `notification_outbox`, and `tag_label_graph` (cached from DB). |
 
 ## API Endpoints
 
@@ -45,7 +45,17 @@ It delegates **heavy ML tasks** (embedding generation, coarse classification, cl
 | --- | --- | --- |
 | `/v1/recaps/7days` | GET | Retrieve latest 7-day recap |
 | `/v1/recaps/3days` | GET | Retrieve latest 3-day recap |
+| `/v1/recaps/search` | GET | Search recaps |
+| `/v1/recaps/genres/indexable` | GET | List genres eligible for indexing |
 | `/v1/morning/updates` | GET | Retrieve morning updates |
+
+### Morning Letter
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v1/morning/letters/latest` | GET | Retrieve the latest Morning Letter |
+| `/v1/morning/letters/regenerate` | POST | Regenerate the Morning Letter |
+| `/v1/morning/letters/{target_date}` | GET | Retrieve the Morning Letter for a given date |
+| `/v1/morning/letters/{letter_id}/sources` | GET | Retrieve source articles cited by a Morning Letter |
 
 ### Pulse
 | Endpoint | Method | Description |
@@ -88,6 +98,9 @@ ComponentRegistry
   +-- news_creator_client: Arc<NewsCreatorClient>
   +-- subworker_client: Arc<SubworkerClient>
   +-- recap_dao: Arc<dyn RecapDao>
+  +-- recap_pool: sqlx::PgPool
+  +-- notification_relay: Option<Arc<NotificationRelay>>  # None only when explicitly disabled
+  +-- pki: Option<crate::pki::Handle>                      # None when PKI_ENROLLMENT=disabled
 ```
 
 `AppState` wraps `Arc<ComponentRegistry>` and is passed as Axum `State` to all route handlers. The `build_router()` function wires `AppState` into the Axum `Router`.
@@ -309,7 +322,7 @@ Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides
 *   `RECAP_GENRE_REFINE_ENABLED`: Enable/disable local graph refinement (default: false).
 *   `RECAP_GENRE_REFINE_REQUIRE_TAGS`: Require tag data for refinement (default: true).
 *   `RECAP_GENRE_REFINE_ROLLOUT_PERCENT`: Gradual rollout control for refinement (default: 100).
-*   `MIN_DOCUMENTS_PER_GENRE`: Minimum articles required to generate a recap for a genre.
+*   `RECAP_MIN_DOCUMENTS_PER_GENRE`: Minimum articles required to generate a recap for a genre (default: 3).
 
 #### LLM Configuration
 *   `LLM_SUMMARY_TIMEOUT_SECS`: Timeout for LLM summarization requests (default: 600).
@@ -323,6 +336,9 @@ Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides
 
 #### Job Management
 *   `RECAP_JOB_RETENTION_DAYS`: Number of days to retain job data (default: 14).
+
+#### Notification Outbox Relay
+*   `RECAP_NOTIFICATION_RELAY_ENABLED`: Enables the relay that forwards `notification_outbox` rows to `alt-data-hub` over mTLS (default: enabled — the relay runs unless this is explicitly set to a false-like value; an unparseable value fails startup rather than silently defaulting). When off, startup logs `notification_outbox_relay_disabled` and the outbox accumulates unforwarded rows. Exposes `notification_outbox_oldest_pending_age_seconds` and `notification_outbox_last_tick_timestamp_seconds` Prometheus gauges to distinguish a disabled relay from a wedged one.
 
 #### Classification Evaluation
 *   `RECAP_CLASSIFICATION_EVAL_ENABLED`: Enable classification evaluation (default: true).
@@ -409,11 +425,14 @@ curl http://localhost:9005/health/ready
 *   **Key Tables**:
     *   `recap_jobs`: Job status and metadata.
     *   `recap_job_articles`: Raw article backup.
-    *   `recap_outputs` / `recap_genres`: Final recap content.
+    *   `recap_outputs` / `recap_sections`: Final recap content and the per-genre LLM response-id pointer.
     *   `recap_cluster_evidence`: Articles used for each cluster.
     *   `recap_worker_config`: Dynamic configuration store.
     *   `recap_stage_state`: Pipeline stage state for resume support.
+    *   `classification_job_queue`: Persistent classification chunk queue with retry/reclaim, backing `ClassificationJobQueue`.
     *   `pulse_generations`: Evening Pulse generation results (job_id, target_date, version, status, result payload).
+    *   `morning_letters` / `morning_letter_sources` / `morning_article_groups`: Morning Letter generations, their cited sources, and overnight article dedup groups.
+    *   `notification_outbox`: Transactional outbox for push notifications, relayed to `alt-data-hub` (see Configuration below).
 
 ## Known failure patterns
 
@@ -434,12 +453,13 @@ Key dependencies (Rust Edition 2024):
 | Crate | Version | Purpose |
 |-------|---------|---------|
 | `axum` | 0.8 | HTTP control plane |
-| `rust-bert` | 0.23.0 | Transformer models |
-| `lingua` | 1.7 | Language detection (English/Japanese) |
+| `rust-bert` | 0.23.0 | Sentence embeddings (`SentenceEmbeddingsBuilder::local` only, all-MiniLM-L12-v2 weights baked into the image; `::remote` is deliberately unused) |
+| `lingua` | 1.8 | Language detection (English/Japanese) |
 | `lindera` | 0.21 | Japanese tokenization |
-| `ndarray` | 0.16 | Numerical arrays |
-| `petgraph` | 0.6 | Graph data structures |
+| `ndarray` | 0.17 | Numerical arrays |
+| `petgraph` | 0.8 | Graph data structures |
 | `sprs` | 0.11 | Sparse matrices |
-| `sqlx` | 0.8 | Async PostgreSQL access |
-| `reqwest` | 0.12 | HTTP client (JSON, gzip, HTTP/2, rustls) |
-| `tokenizers` | 0.20 | Tokenizer for token counting |
+| `sqlx` | 0.9 | Async PostgreSQL access |
+| `reqwest` | 0.13 | HTTP client (JSON, gzip, HTTP/2, rustls) |
+| `tokenizers` | 0.23 | Tokenizer for token counting |
+| `tikv-jemallocator` | 0.7 | Global allocator (mandatory — avoids glibc malloc fragmentation around libtorch, PM-2026-001) |

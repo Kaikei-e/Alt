@@ -2,13 +2,26 @@
 
 ## Overview
 
-Identity-Aware Proxy bridging Nginx `auth_request` with Ory Kratos. **Go 1.26+**.
+Translates an Ory Kratos session cookie into Alt's internal backend JWT
+(`X-Alt-Backend-Token`). Also enrolls its own east-west mTLS leaf in-process
+(one of the 14 [[000978]] parents). **Go 1.26+**.
 
 > Details: `docs/services/auth-hub.md`
 
+The `/validate` endpoint was originally built for nginx `auth_request`, but
+when the edge proxy moved to PlectoProxy (`plecto-proxy`,
+`plecto/manifest.toml`), `/auth-validate` was deliberately not ported (see
+the manifest's own comment on that route). `nginx/conf.d/default.conf`
+survives in the repo only as an unloaded prototype config — no compose
+service reads it. The live path today is alt-frontend-sv calling `/session`
+directly and forwarding the returned JWT; alt-backend / alt-butterfly-facade
+verify it in-process against `backend_token_secret`.
+
 ## Architecture
 
-Clean Architecture with domain-driven layers:
+Clean Architecture with domain-driven layers. `cmd/auth-hub` is the only
+entry point (the old flat `main.go` + `handler/`/`cache/`/`client/`/`token/`
+packages were deleted as an unused, unauthenticated second entrypoint):
 
 ```
 cmd/auth-hub/main.go           # Entry point + DI wiring (errgroup graceful shutdown)
@@ -19,11 +32,11 @@ internal/
   adapter/gateway/              # Kratos client (domain.SessionValidator, IdentityProvider)
   infrastructure/cache/         # Session cache (domain.SessionCache)
   infrastructure/token/         # JWT + CSRF generators (domain.TokenIssuer, CSRFTokenGenerator)
+  pki/                          # In-process east-west mTLS leaf enrollment/renewal (pki.Start)
+tlsutil/                        # TLS config for the optional mTLS listener (:9443, MTLS_LISTEN=true)
 middleware/                     # Security headers, rate limiting, internal auth, OTel
 config/                         # Configuration loading + validation
 ```
-
-Legacy flat handlers in `handler/` are preserved for backward compatibility.
 
 ## Commands
 
@@ -32,11 +45,8 @@ Legacy flat handlers in `handler/` are preserved for backward compatibility.
 go test ./...
 go test ./... -race             # With race detector
 
-# Run (new architecture)
+# Run
 go run ./cmd/auth-hub
-
-# Run (legacy)
-go run main.go
 
 # Build
 go build -o auth-hub ./cmd/auth-hub

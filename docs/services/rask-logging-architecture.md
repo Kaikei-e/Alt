@@ -1,6 +1,6 @@
 # Rask Logging Architecture
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 ## Overview
 
@@ -17,14 +17,14 @@ _Last reviewed: July 7, 2026_
 |  | Docker Container |         |   OTel SDK-enabled   |                  |
 |  | (Microservices)  |         |   Services           |                  |
 |  | - alt-backend    |         | (Go/Python)          |                  |
-|  | - nginx          |         |                      |                  |
+|  | - plecto-proxy   |         |                      |                  |
 |  | - etc.           |         +----------+-----------+                  |
 |  +--------+---------+                    |                              |
 |           |                              |                              |
 |           v                              |                              |
 |  +------------------+                    |                              |
 |  | rask-log-forwarder|                   |                              |
-|  | (15 instances)    |                   |                              |
+|  | (16 instances)    |                   |                              |
 |  | ---------------- |                    |                              |
 |  | - Docker API     |                    |                              |
 |  | - SIMD JSON      |                    |                              |
@@ -34,9 +34,9 @@ _Last reviewed: July 7, 2026_
 |  +--------+---------+                    |                              |
 |           |                              |                              |
 |           | POST /v1/aggregate           | POST /v1/logs               |
-|           | (NDJSON)                     | POST /v1/traces             |
+|           | (NDJSON, default)             | POST /v1/traces             |
 |           | :9600                        | (protobuf)                  |
-|           |                              | :4318                       |
+|           | [opt-in: OTLP :4318]          | :4318                       |
 |           v                              v                              |
 |  +------------------------------------------------------+              |
 |  |               rask-log-aggregator                     |              |
@@ -48,14 +48,18 @@ _Last reviewed: July 7, 2026_
 |  +-------------------------+-----------------------------+              |
 |                             |                                           |
 |                             v                                           |
-|                    +-----------------+                                  |
-|                    |   ClickHouse    |                                  |
-|                    | --------------- |                                  |
-|                    | - logs (legacy) |                                  |
-|                    | - otel_logs     |                                  |
-|                    | - otel_traces   |                                  |
-|                    +-----------------+                                  |
-+---------------------------------------------------------------------------+
+|                    +--------------------------+                         |
+|                    |   ClickHouse             |                         |
+|                    | ------------------------ |                         |
+|                    | - logs (legacy)          |                         |
+|                    | - http_logs (MV)         |                         |
+|                    | - otel_logs              |                         |
+|                    | - otel_traces            |                         |
+|                    | - otel_http_requests (MV)|                         |
+|                    | - otel_error_logs (MV)   |                         |
+|                    | - sli_metrics (MV)       |                         |
+|                    +--------------------------+                         |
++-------------------------------------------------------------------------+
 ```
 
 ## Role Comparison
@@ -63,11 +67,11 @@ _Last reviewed: July 7, 2026_
 | Aspect | rask-log-forwarder | rask-log-aggregator |
 |--------|-------------------|---------------------|
 | **Role** | Log collection/forwarding (sidecar) | Log aggregation/persistence (central server) |
-| **Deployment** | One instance per service (15 total) | Singleton (1 instance) |
+| **Deployment** | One instance per service (16 total) | Singleton (1 instance) |
 | **Data Source** | Docker API (bollard) | HTTP endpoints |
 | **Data Destination** | rask-log-aggregator | ClickHouse |
-| **Protocol** | HTTP POST (NDJSON) | OTLP HTTP (protobuf) + legacy NDJSON |
-| **OTel Compliance** | Not supported | OTLP HTTP compliant (logs/traces) |
+| **Protocol** | HTTP POST (NDJSON by default) | OTLP HTTP (protobuf) + legacy NDJSON |
+| **OTel Compliance** | Opt-in (`PROTOCOL=otlp`, `otlp` Cargo feature) sends OTLP HTTP logs instead of NDJSON; default is NDJSON | OTLP HTTP compliant (logs/traces) |
 
 ## Detailed Analysis
 
@@ -80,18 +84,20 @@ _Last reviewed: July 7, 2026_
 2. SIMD JSON parser (`simd-json`) for >4 GB/s throughput
 3. Zero-allocation parser for memory efficiency
 4. Lock-free buffer + backpressure control
-5. Disk fallback (`sled`) during aggregator outages
+5. Disk fallback (per-batch file, `bincode` + optional gzip) during aggregator outages
 6. Exponential backoff retry
+7. Per-service parser registry (nginx/go/python_structlog/rust_tracing/postgres/meilisearch) for explicit log-format mapping
 
 **OTel Relationship**:
-- Not OTel compliant
-- Sends proprietary NDJSON format to aggregator
-- No OTel dependencies in Cargo.toml
+- NDJSON to `/v1/aggregate` is still the default and what every `compose/logging.yaml` instance uses today
+- `PROTOCOL=otlp` (opt-in) switches the sender to OTLP HTTP protobuf against `/v1/logs`; the `otlp` Cargo feature (`opentelemetry-proto`, `prost`, `prost-types`, `hex`) is compiled into the production Docker image
+- A `grpc` Cargo feature exists but is not enabled in the production build; there is no gRPC transmission path
 
 **Key Files**:
 - `rask-log-forwarder/app/src/collector/docker.rs` - Docker log collection
 - `rask-log-forwarder/app/src/parser/simd.rs` - SIMD parser
-- `rask-log-forwarder/app/src/sender/http.rs` - HTTP transmission
+- `rask-log-forwarder/app/src/sender/transmission.rs` / `sender/client.rs` - HTTP transmission
+- `rask-log-forwarder/app/src/sender/otlp.rs` - OTLP protobuf serialization (`otlp` feature)
 - `rask-log-forwarder/app/src/reliability/disk.rs` - Disk fallback
 
 ### rask-log-aggregator (Central Server)
@@ -109,22 +115,22 @@ _Last reviewed: July 7, 2026_
    - Domain models compliant with OpenTelemetry Log/Span Data Model
 
 3. **Exporter Abstraction**:
-   - `LogExporter` trait - for legacy logs
-   - `OTelExporter` trait - for OTel logs/traces
-   - `ClickHouseExporter` - implements both traits
+   - `LogExporter` trait (`port/log_exporter.rs`) - for legacy logs
+   - `OTelExporter` trait (`port/otel_exporter.rs`) - for OTel logs/traces
+   - `BatchWriter` (`adapter/clickhouse/batch_writer.rs`) - implements both traits, buffers on a channel and flushes to ClickHouse every 5s
 
 **OTel Dependencies** (Cargo.toml):
 ```toml
-opentelemetry-proto = { version = "0.31", features = ["gen-tonic", "logs", "trace"] }
+opentelemetry-proto = { version = "0.32", features = ["gen-tonic", "logs", "trace"] }
 prost = "0.14"
-tonic = { version = "0.13", features = ["transport"] }
+tonic = { version = "0.14", features = ["transport"] }
 ```
 
 **Key Files**:
 - `rask-log-aggregator/app/src/otlp/receiver.rs` - OTLP HTTP handlers
 - `rask-log-aggregator/app/src/otlp/converter.rs` - protobuf to domain model conversion
-- `rask-log-aggregator/app/src/domain/otel_log.rs` - OTel domain models
-- `rask-log-aggregator/app/src/log_exporter/clickhouse_exporter.rs` - ClickHouse output
+- `rask-log-aggregator/app/src/domain/otel.rs` - OTel domain models
+- `rask-log-aggregator/app/src/adapter/clickhouse/batch_writer.rs` - ClickHouse output
 
 ## Data Flow
 
@@ -136,7 +142,7 @@ Docker Container -> rask-log-forwarder -> POST /v1/aggregate -> aggregator -> Cl
 
 - Format: NDJSON (newline-delimited JSON)
 - Port: 9600
-- TTL: 2 days
+- TTL: 1 day (`http_logs`, extracted from `logs` via materialized view for nginx/plecto-proxy access-log rows, also TTL 1 day)
 
 ### Path 2: OTel SDK-enabled Services (direct OTLP)
 
@@ -146,7 +152,7 @@ Go/Python Service (OTel SDK) -> POST /v1/logs or /v1/traces -> aggregator -> Cli
 
 - Format: protobuf (application/x-protobuf)
 - Port: 4318
-- TTL: 7 days
+- TTL: 1 day (`otel_logs`/`otel_traces`, plus derived `otel_http_requests`/`otel_error_logs` materialized views also at 1 day; `sli_metrics`, aggregated from `otel_logs`, keeps a 90-day window for SLO trend analysis)
 
 ## Rationale for Separation
 
@@ -158,9 +164,9 @@ Go/Python Service (OTel SDK) -> POST /v1/logs or /v1/traces -> aggregator -> Cli
 
 ## Current Limitations
 
-1. **Forwarder is not OTel-compliant**: Forwarder only supports NDJSON, no OTLP format transmission
-2. **gRPC not implemented**: Aggregator's OTLP is HTTP only, gRPC (4317) is not implemented
-3. **Tracing from forwarder**: Forwarder can attach trace_id/span_id to logs but does not generate spans
+1. **Forwarder OTLP is opt-in and unused by default**: every instance in `compose/logging.yaml` runs with the default `PROTOCOL=ndjson`; switching an instance to OTLP requires an explicit `PROTOCOL=otlp` / `OTLP_ENDPOINT` override
+2. **gRPC not implemented**: Aggregator's OTLP is HTTP only. `compose/logging.yaml` passes `OTLP_GRPC_PORT=4317` to the aggregator container, but `config.rs` never reads that variable and no gRPC listener is bound — 4317 is not an actual endpoint
+3. **Tracing from forwarder**: Forwarder can attach trace_id/span_id to log entries (stored in the `logs` table's `TraceId`/`SpanId` columns) but does not generate spans
 
 ## Performance Comparison
 
@@ -175,7 +181,7 @@ Go/Python Service (OTel SDK) -> POST /v1/logs or /v1/traces -> aggregator -> Cli
 | **Buffer capacity** | 100,000 entries | Default |
 | **HTTP compression** | gzip (optional) | `ENABLE_COMPRESSION=true` |
 | **Retry** | Exponential backoff | Max 5 attempts, base 500ms |
-| **Disk fallback** | `sled` DB | On aggregator failure |
+| **Disk fallback** | Per-batch file (`bincode` + optional gzip) | On aggregator failure |
 
 **Optimization Technologies**:
 - `simd-json`: AVX2/NEON instructions for JSON parsing acceleration
@@ -209,7 +215,7 @@ Go/Python Service (OTel SDK) -> POST /v1/logs or /v1/traces -> aggregator -> Cli
 | **Reliability** | High (disk fallback) | SDK-dependent |
 | **Instrumentation cost** | Zero (Docker API monitoring) | Code changes required |
 | **Structured data** | Limited (parse-dependent) | Complete (schema-defined) |
-| **Trace correlation** | None | Full (trace_id/span_id) |
+| **Trace correlation** | Partial (forwarder can attach trace_id/span_id to a log entry, no span generation) | Full (trace_id/span_id + span/event/link graph) |
 
 ### Benchmark Results (forwarder)
 
@@ -239,7 +245,7 @@ high_throughput_target/1M_messages_sustained - 1M messages sustained throughput
 
 ## Conclusion
 
-- **rask-log-forwarder**: High-performance sidecar specialized for Docker container log collection. Not OTel compliant.
+- **rask-log-forwarder**: High-performance sidecar specialized for Docker container log collection. NDJSON by default; OTLP HTTP is supported as an opt-in `PROTOCOL=otlp` mode but unused by any instance in `compose/logging.yaml` today.
 - **rask-log-aggregator**: OTel-compliant central log aggregation server. Supports both OTLP HTTP and legacy NDJSON.
 
 Both services handle different layers - "collection/forwarding" and "aggregation/persistence" - and operate complementarily.

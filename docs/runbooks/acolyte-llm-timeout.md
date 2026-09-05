@@ -74,10 +74,14 @@ Common timeout nodes:
 ### 2. Check LLM Service Health
 
 ```bash
-# Check the HybridPrioritySemaphore proxy is responding
-curl -s http://news-creator:11434/api/tags | jq '.models[].name'
+# Check the HybridPrioritySemaphore proxy is responding. news-creator is
+# published to the host at 127.0.0.1:11434 -- the bare "news-creator"
+# hostname only resolves inside the alt-network. It has no Ollama-style
+# /api/tags route (only /health, /health/deep, and its own routes).
+curl -s http://localhost:11434/health
 
-# Check the model is loaded on the Ollama backend
+# Check which models are loaded/created on the Ollama backend itself
+curl -s http://127.0.0.1:11435/api/tags | jq '.models[].name'
 curl -s http://127.0.0.1:11435/api/ps | jq '.models[].name'
 
 # Check queue depth (if available)
@@ -106,11 +110,14 @@ eval_count=6000 response_len=28  # Almost all tokens used on thinking
 ### 4. Check Network Connectivity
 
 ```bash
-# From acolyte-orchestrator container
-docker exec -it acolyte-orchestrator curl -s http://news-creator:11434/api/tags
+# From acolyte-orchestrator container. news-creator has no /api/tags route
+# (see the note in step 2) -- use /health for a reachability check.
+docker exec -it acolyte-orchestrator curl -s http://news-creator:11434/health
 
-# Check DNS resolution
-docker exec -it acolyte-orchestrator nslookup news-creator
+# Check DNS resolution. The image only installs curl (Dockerfile apt-get
+# layer) -- nslookup/dig are not present, but getent is (glibc, always
+# available on python:3.14-slim).
+docker exec -it acolyte-orchestrator getent hosts news-creator
 ```
 
 ## Resolution Procedures
@@ -136,10 +143,16 @@ For JSON truncation or thinking token exhaustion:
    docker compose -f compose/compose.yaml -p alt up --build -d acolyte-orchestrator
    ```
 
-4. **Resume the failed run:**
+4. **Resume the failed run.** `scripts/` is not part of the
+   acolyte-orchestrator image -- run this on the host from
+   `acolyte-orchestrator/`:
    ```bash
-   docker exec -it acolyte-orchestrator \
-     python scripts/resume_run.py --run-id <run_id>
+   cd acolyte-orchestrator
+   export ACOLYTE_DB_DSN="postgresql://acolyte_user:$(cat ../secrets/acolyte_db_password.txt)@localhost:5439/acolyte"
+   export NEWS_CREATOR_URL="http://localhost:11434"
+   export SEARCH_INDEXER_URL="http://localhost:9300"
+   export CHECKPOINT_ENABLED=true
+   uv run python scripts/resume_run.py --run-id <run_id>
    ```
 
 ### Procedure B: Increase HTTP Timeout
@@ -179,20 +192,38 @@ If Ollama is unresponsive or overloaded:
    curl -s http://127.0.0.1:11435/api/generate -d '{"model":"gemma4-e4b-12k","prompt":"Hello","stream":false}' | jq '.response'
    ```
 
-4. **Resume failed runs:**
+4. **Resume failed runs** (host-side, `scripts/` is not in the image -- see Procedure A step 4 for the full env setup):
    ```bash
-   docker exec -it acolyte-orchestrator \
-     python scripts/resume_run.py --run-id <run_id>
+   cd acolyte-orchestrator
+   uv run python scripts/resume_run.py --run-id <run_id>
    ```
 
 ### Procedure D: Use Fallback Model
 
-If primary model is consistently failing:
+**Caution:** every service on this host shares one Ollama runner
+(`news-creator-backend`) on a single GPU. `ACOLYTE_MODEL` must name a model
+already created on that runner (see `news-creator/entrypoint-backend.sh`,
+e.g. `gemma4-e4b-12k` / `gemma4-e4b-8k`) -- `gemma4:9b-it-q4_K_M` used in an
+earlier version of this runbook is not one of them. Even switching between
+two valid tags means Ollama is asked to serve a model other than the one
+`news-creator`'s own `LLM_MODEL` defaults to, which risks the shared-runner
+COLD_START/eviction thrashing this repository's postmortems warn about
+(every other service alternating onto the same GPU pays a 100s+ TTFT). Treat
+this procedure as a last resort and coordinate with whoever owns
+`news-creator`/`compose/ai.yaml` before changing it.
 
-1. **Update environment:**
+1. **Update environment.** `gemma4-e4b-8k`'s Modelfile fixes `num_ctx` at
+   8192 (`news-creator/entrypoint-backend.sh`), so `LLM_NUM_CTX` must drop
+   to match -- leaving it at the shared default of 12288
+   (`compose/acolyte.yaml`) is exactly the num_ctx alternation the caution
+   above warns about, and it now also diverges from news-creator's own
+   `LLM_NUM_CTX=12288` (`compose/ai.yaml`, [[000579]]), which is the other side
+   of that alternation:
    ```bash
-   # In .env or compose file
-   ACOLYTE_MODEL=gemma4:9b-it-q4_K_M  # Smaller model
+   # .env -- ACOLYTE_MODEL must already exist on news-creator-backend, and
+   # LLM_NUM_CTX must match its fixed num_ctx.
+   ACOLYTE_MODEL=gemma4-e4b-8k
+   LLM_NUM_CTX=8192
    ```
 
 2. **Restart orchestrator:**
@@ -200,7 +231,8 @@ If primary model is consistently failing:
    docker compose -f compose/compose.yaml -p alt restart acolyte-orchestrator
    ```
 
-3. **Note:** Smaller models may produce lower quality output
+3. **Note:** A narrower-context model may produce lower quality output, and
+   the first request after the switch pays the reload cost described above.
 
 ## Prevention
 
@@ -246,14 +278,19 @@ After recovery:
    # Should complete in <5s for simple prompt
    ```
 
-2. **Run completes without timeout:**
+2. **Run completes without timeout** (host-side resume, see Procedure A step 4 for the env setup):
    ```bash
-   docker exec -it acolyte-orchestrator \
-     python scripts/resume_run.py --run-id <run_id>
-   
-   # Or start fresh run
-   grpcurl -plaintext -d '{"report_id":"<uuid>"}' \
-     localhost:8090 alt.acolyte.v1.AcolyteService/StartReportRun
+   cd acolyte-orchestrator
+   uv run python scripts/resume_run.py --run-id <run_id>
+   ```
+
+   Or start a fresh run. acolyte-orchestrator is served by uvicorn
+   (HTTP/1.1 only), so `grpcurl` (which requires HTTP/2) cannot reach it --
+   use the Connect-over-HTTP form instead:
+   ```bash
+   curl -s http://localhost:8090/alt.acolyte.v1.AcolyteService/StartReportRun \
+     -H "Content-Type: application/json" \
+     -d '{"report_id":"<uuid>"}'
    ```
 
 3. **JSON output is complete:**

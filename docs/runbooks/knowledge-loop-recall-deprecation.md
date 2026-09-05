@@ -1,7 +1,7 @@
 ---
 title: Knowledge Home Recall Deprecation Watch
 date: 2026-05-25
-status: accepted
+status: superseded
 tags:
   - runbook
   - knowledge-home
@@ -12,6 +12,20 @@ aliases:
 ---
 
 # Knowledge Home Recall Deprecation Watch
+
+> **Historical — the cutover this runbook describes is complete.** The
+> `rpc GetRecallRail` / `TrackRecallAction` / `StreamRecallRailUpdates`
+> declarations are gone from `proto/alt/knowledge_home/v1/knowledge_home.proto`
+> (only their message types remain, for wire compat), `alt-backend` no
+> longer has a handler implementing those three standalone RPCs
+> (`home_recall.go` referenced below no longer exists), and the
+> `legacy.recall_rail.deprecated` log line is gone with them — PR 13 has
+> landed. This is not a removal of the recall rail feature: `recall_rail_usecase`
+> is still wired and executing today, folded into `GetKnowledgeHome` and its
+> stream update path (`orchestrator/connect/v2/knowledge_home/home_query.go`)
+> rather than served as its own RPCs. The watch procedure and Grafana query
+> below are kept for the historical record of how the cutover was
+> monitored, not as a live runbook.
 
 ADR: [[000913]]
 Canonical contract: [[knowledge-loop-canonical-contract]] §6.4 (Review bucket

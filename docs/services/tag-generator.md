@@ -1,6 +1,6 @@
 # Tag Generator
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `tag-generator/app`
 
@@ -31,12 +31,11 @@ flowchart TD
         Inserter[TagInserter]
         CursorMgr[CursorManager]
         HealthMon[HealthMonitor]
-        ArticleProc[ArticleProcessor]
     end
 
     subgraph APIs
-        API["/api/v1/generate-tags"]
-        ExtractAPI["/api/v1/extract-tags"]
+        API["/api/v1/generate-tags\n(:9400, :9443)"]
+        ExtractAPI["/api/v1/extract-tags\n(:9400, :9443)"]
     end
 
     subgraph Observability
@@ -44,7 +43,7 @@ flowchart TD
         LogConfig[logging_config.py]
     end
 
-    AltBackend["alt-backend\n(Internal API)"]
+    DataHub["alt-data-hub\n(DataHubService, mTLS :9443)"]
     Recap[recap-worker]
     Search[search-indexer]
 
@@ -53,13 +52,12 @@ flowchart TD
     Scheduler --> BatchProc
     BatchProc --> CursorMgr
     BatchProc --> Fetcher
-    Fetcher --> AltBackend
-    Extractor --> Cascade --> Inserter --> AltBackend
+    Fetcher --> DataHub
+    Extractor --> Cascade --> Inserter --> DataHub
     Fetcher --> Extractor
     BatchProc --> HealthMon
-    ArticleProc --> Extractor
-    ArticleProc --> Inserter
-    API --> ArticleProc
+    API --> Extractor
+    API --> Inserter
     ExtractAPI --> Extractor
     OTel --> LogConfig
 ```
@@ -68,29 +66,43 @@ flowchart TD
 
 ```
 tag-generator/app/
-├── main.py                     # FastAPI エントリポイント
+├── main.py                     # スタンドアロンの consumer/batch ランナー (FastAPI なし) — Dockerfile.tag-generator の CMD はこれではなく auth_service.py を起動する
 ├── pyproject.toml              # 依存関係・ツール設定
 ├── conftest.py                 # pytest 共通フィクスチャ
 ├── auth_service.py             # FastAPI アプリ + 認証ヘルパ
 ├── tag_generator/
 │   ├── __init__.py
-│   ├── config.py               # TagGeneratorConfig
+│   ├── config.py               # infra/config.py からの再エクスポート (後方互換)
+│   ├── otel.py                 # infra/otel.py からの再エクスポート (後方互換)
+│   ├── logging_config.py       # infra/logging_config.py からの再エクスポート (後方互換)
 │   ├── service.py              # TagGeneratorService (メインサービス)
 │   ├── scheduler.py            # ProcessingScheduler
 │   ├── batch_processor.py      # BatchProcessor (Hybrid処理)
-│   ├── article_processor.py    # ArticleProcessor
 │   ├── cursor_manager.py       # CursorManager
 │   ├── health_monitor.py       # HealthMonitor
 │   ├── cascade.py              # CascadeController
-│   ├── database.py             # DatabaseManager
+│   ├── ports.py                 # ArticleFetcherPort / TagInserterPort
+│   ├── exceptions.py            # ドメイン例外
+│   ├── domain/
+│   │   ├── errors.py            # ドメイン例外型
+│   │   └── models.py            # ドメインモデル
+│   ├── handler/
+│   │   └── event_payload.py     # Redis Streams イベントペイロードのパース
 │   ├── driver/
-│   │   ├── connect_client_factory.py   # Connect-RPC クライアントファクトリ
+│   │   ├── connect_client_factory.py   # Connect-RPC クライアントファクトリ (alt-data-hub 宛)
 │   │   ├── connect_article_fetcher.py  # ArticleFetcher (API モード)
 │   │   └── connect_tag_inserter.py     # TagInserter (API モード)
+│   ├── gen/proto/services/datahub/v1/  # buf 生成の Connect-RPC スタブ
+│   ├── infra/
+│   │   ├── config.py            # TagGeneratorConfig (pydantic-settings, env_prefix=TAG_)
+│   │   ├── mtls_client.py        # 送信 mTLS クライアント構築
+│   │   ├── inbound_tls.py        # 受信 in-process mTLS リスナー (:9443)
+│   │   ├── peer_identity.py      # PeerIdentityMiddleware
+│   │   ├── otel.py               # OpenTelemetry Provider
+│   │   ├── logging_config.py     # ADR 98 準拠ロギング
+│   │   └── pki/                  # step-ca 自動 enrollment + ops listener (manager/native_issuer/certfile/state/ops/metrics/config/start/filesafe)
 │   ├── stream_consumer.py      # StreamConsumer (Redis Streams)
-│   ├── stream_event_handler.py # TagGeneratorEventHandler
-│   ├── otel.py                 # OpenTelemetry Provider
-│   └── logging_config.py       # ADR 98 準拠ロギング
+│   └── stream_event_handler.py # TagGeneratorEventHandler
 ├── tag_extractor/
 │   ├── extract.py              # TagExtractor
 │   ├── model_manager.py        # ModelManager (Singleton)
@@ -121,15 +133,30 @@ tag-generator/app/
         └── test_sanitized_tag_extraction.py
 ```
 
-## Data Access Mode (ADR-000241 / ADR-000397)
+## Data Access Mode (ADR-000241 / ADR-000397 / ADR-000954)
 
-tag-generator は alt-backend Connect-RPC (API モード) のみを使う。Legacy の
+tag-generator は Connect-RPC (API モード) のみを使う。Legacy の
 PostgreSQL 直接アクセスは [[ADR-000397]] で撤去され、さらに本サービスに
 残っていた `/api/v1/tags/batch` + `tag_fetcher.py` + `db_pool.py` も
-[[ADR-000241]] の北極星（alt-backend を唯一のデータオーナー）に揃える形で
-撤去された。現在タグ参照は alt-backend `BatchGetTagsByArticleIDs` が担う。
+[[ADR-000241]] の北極星に揃える形で撤去された。
 
-API モードでは httpx を使い、Proto コード生成なしで Connect protocol を直接呼び出す。
+**ADR-000954 でデータオーナーが alt-backend から alt-data-hub に移設**された
+(D7)。`tag_generator/driver/connect_client_factory.py` が呼ぶのは
+`services.datahub.v1.DataHubService` — 環境変数名は `BACKEND_API_URL` /
+`BACKEND_API_MTLS_URL` のまま残っているが、実際に待ち受けるのは alt-data-hub。
+現在タグ参照は alt-data-hub `BatchGetTagsByArticleIDs` が担う。
+
+サービス間通信は mTLS が前提 (`MTLS_ENFORCE` は compose で `true` がデフォルト)。
+クライアントは `connect-python` + `protobuf` で生成した型付きスタブ
+(`tag_generator/gen/proto/services/datahub/v1/`) を使い、実際の HTTP/TLS
+トランスポートは `pyqwest`（mTLS 証明書のホットリロード対応、`_ReloadingBackendClient`）。
+`httpx` は依存関係には残っているが、Connect-RPC 呼び出し経路には使われていない。
+
+インバウンド側も mTLS 化されている（Wave 4）: `PORT` (デフォルト `9400`) の
+平文リスナーに加えて、`INBOUND_TLS_ENABLED=true` のとき同じ FastAPI アプリを
+`INBOUND_TLS_PORT` (デフォルト `9443`) で in-process mTLS リスナーとしても
+起動する (`tag_generator/infra/inbound_tls.py`)。compose は `9400` を
+`127.0.0.1` のみに bind しており、外部から到達できるのは `9443` 側だけ。
 
 ## Redis Streams Integration
 
@@ -152,21 +179,29 @@ API モードでは httpx を使い、Proto コード生成なしで Connect pro
 
 | Port | Endpoint | Description |
 |------|----------|-------------|
-| 9400 | `/health` | ヘルスチェック |
-| 9400 | `/api/v1/generate-tags` | 認証付きタグ生成 (ユーザー向け) |
-| 9400 | `/api/v1/extract-tags` | サービス間テキスト抽出 (mTLS peer identity) |
+| 9400 (`127.0.0.1` only), 9443 (in-process mTLS, `INBOUND_TLS_ENABLED=true`) | `/health` | ヘルスチェック |
+| 9400, 9443 | `/api/v1/generate-tags` | 認証付きタグ生成 (ユーザー向け、`@require_auth`) |
+| 9400, 9443 | `/api/v1/extract-tags` | サービス間テキスト抽出。認証は事実上未強制（下記参照）— 到達性のみで守られている |
 
 ### /api/v1/generate-tags
-- 認証: `verify_service_token`
+- 認証: `@require_auth(tag_service.auth_client)` — エンドユーザー向けの alt-auth トークン検証（ユーザー起点のタグ生成）
 - ログ: `article_id`, sanitized tags, cascade verdicts
 
 ### /api/v1/extract-tags
-- 認証: TLS peer identity (mTLS)
+- 認証: `verify_service_token` を呼ぶが、これは **no-op**（何も検証しない）。`PeerIdentityMiddleware`
+  も `strict=False` で登録されており（`auth_service.py`）、strict でないときは 401/403 を一切返さない
+  ——  peer CN を `request.state.peer_identity` に記録して通すだけで、`MTLS_ALLOWED_PEERS` の
+  allowlist は現状 **何も強制していない**。sidecar 由来のヘッダー (`X-Alt-Peer-Identity`) も
+  compose が `PEER_IDENTITY_TRUSTED=off` にしているため信用されない。実際に効いている制御は
+  (a) `9443` (in-process mTLS リスナー) の `ssl.CERT_REQUIRED` — CA 署名済みのクライアント証明書を
+  要求するが、`MTLS_ALLOWED_PEERS` allowlist 自体は検証しない — と (b) 平文ポート `9400` が
+  `127.0.0.1` にしか bind されていないというネットワーク到達性の 2 点のみ
 - リクエスト: `{"title": str, "content": str}`
 - レスポンス: `{success, tags[], confidence, inference_ms, language}`
 
 タグのバッチ参照 (旧 `/api/v1/tags/batch`) は [[ADR-000241]] / [[ADR-000397]]
-の方針により alt-backend `BatchGetTagsByArticleIDs` に移設された。recap-worker
+の方針によりバックエンドの `BatchGetTagsByArticleIDs` に移設され、ADR-000954 で
+その提供元が alt-backend から alt-data-hub に変わった。recap-worker
 など下流サービスはそちらを経由する。
 
 ## Pipeline
@@ -209,20 +244,26 @@ else:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | 9400 | サービスポート |
-| `BACKEND_API_URL` | - | alt-backend Internal API URL (設定時は API モード) |
-| `SERVICE_TOKEN_FILE` | - | サービス認証トークンファイル |
-| `SERVICE_SECRET_FILE` | - | サービス認証シークレット |
+| `PORT` | 9400 | 平文サービスポート (compose では `127.0.0.1` のみに bind) |
+| `INBOUND_TLS_ENABLED`, `INBOUND_TLS_PORT` | `false`, 9443 | in-process mTLS リスナー。Wave 4 での東西 mTLS 化 |
+| `BACKEND_API_URL` / `BACKEND_API_MTLS_URL` | - | 実際の宛先は alt-data-hub の Connect-RPC (ADR-000954)。名前は歴史的経緯で `BACKEND_API_URL` のまま |
+| `MTLS_ENFORCE`, `MTLS_CERT_FILE`, `MTLS_KEY_FILE`, `MTLS_CA_FILE` | compose では `MTLS_ENFORCE=true` | 送信側 mTLS。alt-data-hub の data plane に平文フォールバックはない |
+| `PKI_ENROLLMENT`, `CERT_SUBJECT`, `CERT_SANS`, `CERT_PATH`, `KEY_PATH`, `STEP_CA_URL`, `STEP_CA_ROOT_FILE`, `STEP_CA_PROVISIONER`, `STEP_CA_PROVISIONER_PASSWORD_FILE`, `RENEW_AT_FRACTION`, `OPS_LISTEN` | compose: `PKI_ENROLLMENT=enabled`, `OPS_LISTEN=:9110`。未設定時は disabled | `tag_generator/infra/pki` の in-process step-ca enrollment（9 モジュール: manager / native_issuer / certfile / state / ops / metrics / config / start / filesafe）。`:9443` の leaf 証明書を発行・更新し、`OPS_LISTEN` で `/health` + `/metrics` を提供。enrollment 失敗は起動時に fatal（`auth_service.py` lifespan で例外が握りつぶされない） |
 
-> **削除された変数** (ADR-000241 Phase 4 で廃止): `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_TAG_GENERATOR_USER`, `DB_TAG_GENERATOR_PASSWORD_FILE`
+> **削除された変数** (ADR-000241 で廃止): `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_TAG_GENERATOR_USER`, `DB_TAG_GENERATOR_PASSWORD_FILE`。旧 `SERVICE_TOKEN_FILE` / `SERVICE_SECRET_FILE` もコード上どこからも参照されておらず、実質的に廃止済み
 
 ### Processing Settings
 
+`TagGeneratorConfig` (pydantic-settings, `env_prefix="TAG_"`) 経由。プレフィックスなしの
+`PROCESSING_INTERVAL` 等では読み込まれない。
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PROCESSING_INTERVAL` | 300 | 処理間隔 (秒) - アイドル時 |
-| `BATCH_LIMIT` | 75 | バッチ制限 |
-| `MEMORY_CLEANUP_INTERVAL` | 25 | GC 実行間隔 (記事数) |
+| `TAG_PROCESSING_INTERVAL` | 300 | 処理間隔 (秒) - アイドル時 |
+| `TAG_ACTIVE_PROCESSING_INTERVAL` | 180 | 処理間隔 (秒) - 未処理記事が残っている時 |
+| `TAG_ERROR_RETRY_INTERVAL` | 60 | エラー後のリトライ間隔 (秒) |
+| `TAG_BATCH_LIMIT` | 75 | バッチ制限 |
+| `TAG_MEMORY_CLEANUP_INTERVAL` | 25 | GC 実行間隔 (記事数) |
 
 ### ML Model Settings
 
@@ -307,55 +348,82 @@ Cost-Sensitive Cascade / EERO-style gating heuristic による判定:
 
 ### Core Dependencies
 ```toml
-requires-python = ">=3.13"
+requires-python = ">=3.14,<3.15"
 
 dependencies = [
-    "fugashi[unidic-lite]>=1.5.1",  # Japanese text processing
-    "nltk>=3.9.1",
+    "fugashi[unidic-lite]>=1.5.1",   # Japanese text processing
+    "nltk>=3.10.3",
     "langdetect>=1.0.9",
     "psycopg2-binary>=2.9.0",
+    "psycopg[binary]>=3.2.0",
+    "psycopg-pool>=3.2.0",
     "structlog>=25.4.0",
     "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
     "nh3>=0.2.18",                   # HTML sanitizer
+    "readability-lxml>=0.8.4.1",     # HTML readability extraction
+    "lxml>=5.3.0",
+    "connect-python>=0.9.0",         # typed Connect-RPC client (alt-data-hub)
+    "protobuf>=6.33.5,<7.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
-    "httpx>=0.27.0",                 # Connect protocol client (ADR-000241)
-    "aiohttp>=3.9.0",
+    "aiohttp>=3.14.3",
     "redis>=5.0.0",                  # Redis Streams consumer
-    "PyJWT>=2.8.0",
-    "python-multipart>=0.0.6",
+    "PyJWT>=2.12.0",
+    "python-multipart>=0.0.27",
     "opentelemetry-sdk>=1.29.0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
     "opentelemetry-instrumentation-logging>=0.50b0",
+    "cryptography>=50.0.0,<51",
+    "jwcrypto>=1.5.8,<2",
+    "prometheus-client>=0.26.0,<1",
+    "httpx>=0.28.1,<0.29",           # not on the Connect-RPC path today
 ]
 ```
+
+pyqwest (the mTLS-capable HTTP transport `connect_client_factory.py` actually uses) is
+pulled in transitively by `connect-python` and is not listed directly in `pyproject.toml`.
 
 ### Dev Dependencies
 ```toml
 dev = [
-    "pytest>=8.4.1",
+    "pytest>=9.0.3",
     "pytest-cov>=6.0.0",
     "pytest-mock>=3.14.1",
     "pytest-timeout>=2.4.0",
     "ruff>=0.12.1",
     "bandit>=1.8.0",
-    "pyrefly>=0.42.0",              # Type checking (replaces mypy)
+    "pytest-asyncio>=0.24.0",
+    "hypothesis>=6.100.0",           # property-based testing
+    "pyrefly>=0.42.0",               # Type checking (replaces mypy)
     "types-psycopg2>=2.9.21.20250516",
+    "psutil>=5.9.0",
+    "pact-python>=3.2.1",            # contract testing
 ]
 ```
 
-### ML Dependencies (Optional)
+### ML Dependencies (dependency-groups, not extras)
+
+The base install is deliberately "ultra-minimal" (per `pyproject.toml`'s own
+description) — heavy ML packages are excluded from `dependencies` and installed
+separately via `uv sync --group ml` in the Dockerfile (torch resolves against the
+CPU-only wheel index):
+
 ```toml
 ml = [
-    "sentence-transformers>=3.3.0",
-    "keybert>=0.8.5",
-    "transformers>=4.40.0",
     "torch>=2.1.0",
+    "sentence-transformers>=5.0.0",
+    "keybert>=0.8.5",
+    "transformers>=5.8.1",
     "scikit-learn>=1.5.2",
     "numpy>=1.26.0",
     "onnxruntime>=1.21.0",
+    "unidic",
 ]
 ```
+
+A second `ml-extended` group adds GiNZA for improved Japanese NLP (`ginza`,
+`ja-ginza`, `spacy`) on top of the same ML stack; nothing installs it by default.
 
 ## Testing & Tooling
 
@@ -442,7 +510,6 @@ uv run bandit -r . -x tests
 ## LLM Notes
 
 - 編集対象明示: `ArticleFetcher`, `TagExtractor`, `TagInserter`, `TagGeneratorService`, `BatchProcessor`
-- `TAG_ONNX_MODEL_PATH` or `SERVICE_SECRET` の env 設定時は `_get_database_dsn()` を再利用
 - メモリ最適化: `TAG_USE_FP16=true` → `ModelManager._load_models()` の動作変更
 - Singleton パターンでモデル共有 (`ModelManager`)
 - Model config フロー: `TagExtractionConfig` → `ModelConfig` → `ModelManager.get_models()`

@@ -1,6 +1,6 @@
 # alt-db (Main PostgreSQL Database)
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 PostgreSQL 17 database serving as the central data store for RSS feeds, articles, user status, and related data.
 
@@ -21,7 +21,7 @@ PostgreSQL 17 database serving as the central data store for RSS feeds, articles
 | migrate | `DB_USER` | Atlas migration の one-shot 実行 |
 
 > **Note ([[000954]]):** [[000241]] の「唯一のデータオーナー」は、alt-backend という
-> 名前のプロセスから **alt-data-hub** へ移った。alt-backend / alt-harvester を含む
+> 名前のプロセスから **alt-data-hub** へ移った。alt-backend / alt-harvester / alt-notifier を含む
 > 全 consumer は `services.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ
 > alt-db に触れる。DB DSN を持つ env アンカー (`x-alt-db-env` in `compose/core.yaml`) の
 > consumer は alt-data-hub 1 つだけで、alt-backend / alt-harvester のイメージには
@@ -46,13 +46,13 @@ erDiagram
     articles ||--o{ user_reading_status : "tracks"
     articles ||--o{ article_tags : "tagged"
     feed_tags ||--o{ article_tags : "applies"
-    inoreader_subscriptions ||--o{ inoreader_articles : "contains"
     feed_links ||--|| feed_link_availability : "monitors"
 
     feeds {
         uuid id PK
         text title
-        text link
+        text website_url
+        text og_image_url
         timestamp pub_date
     }
 
@@ -112,40 +112,14 @@ erDiagram
         boolean is_active
         int consecutive_failures
     }
-
-    inoreader_subscriptions {
-        uuid id PK
-        text inoreader_id UK
-        text feed_url
-        text title
-    }
-
-    inoreader_articles {
-        uuid id PK
-        uuid subscription_id FK
-        text article_url
-        boolean processed
-    }
 ```
+
+> Inoreader sync tables (`inoreader_subscriptions`, `inoreader_articles`, `sync_state`, `api_usage_tracking`) were dropped from alt-db by `20260317000000_drop_pre_processor_legacy_tables.sql` — they live exclusively in `pre-processor-db` now ([[000246]]). No process reads or writes them from alt-db.
 
 ### Standalone Tables (no FK relationships)
 
 ```mermaid
 erDiagram
-    sync_state {
-        uuid id PK
-        text stream_id UK
-        text continuation_token
-        timestamptz last_sync
-    }
-
-    api_usage_tracking {
-        uuid id PK
-        date date UK
-        int zone1_requests
-        int zone2_requests
-    }
-
     scraping_domains {
         uuid id PK
         text domain UK
@@ -176,130 +150,25 @@ erDiagram
     }
 ```
 
-### Knowledge Home Tables (Event Sourcing + CQRS)
+### Knowledge Home / Trail tables have moved out
 
-```mermaid
-erDiagram
-    knowledge_events ||--o{ knowledge_home_items : "projects"
-    knowledge_events ||--o{ knowledge_user_events : "tracks"
-    knowledge_home_items ||--o{ knowledge_projection_checkpoints : "checkpointed"
-
-    knowledge_events {
-        bigserial seq PK
-        uuid user_id
-        text event_type
-        text aggregate_type
-        text aggregate_id
-        jsonb payload
-        timestamptz occurred_at
-        text dedupe_key UK
-    }
-
-    knowledge_home_items {
-        uuid user_id PK
-        text item_key PK
-        int projection_version PK
-        text item_type
-        uuid article_id
-        uuid recap_id
-        text title
-        timestamptz published_at
-        text summary_excerpt
-        text[] tags
-        jsonb why
-        real score
-        jsonb supersede_info
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    knowledge_user_events {
-        bigserial id PK
-        uuid user_id
-        text item_key
-        text action_type
-        text session_id
-        jsonb metadata
-        timestamptz created_at
-    }
-
-    knowledge_projection_checkpoints {
-        text projection_name PK
-        int projection_version PK
-        bigint last_event_seq
-        timestamptz updated_at
-    }
-
-    knowledge_backfill_jobs {
-        uuid job_id PK
-        int projection_version
-        text status
-        uuid cursor_user_id
-        date cursor_date
-        uuid cursor_article_id
-        bigint total_events
-        bigint processed_events
-        timestamptz created_at
-        timestamptz started_at
-        timestamptz completed_at
-    }
-
-    knowledge_projection_versions {
-        int version PK
-        text status
-        timestamptz activated_at
-        timestamptz created_at
-    }
-
-    knowledge_lenses {
-        uuid lens_id PK
-        uuid user_id
-        text name
-        text description
-        jsonb current_version
-        timestamptz archived_at
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    knowledge_reproject_runs {
-        uuid reproject_run_id PK
-        text projection_name
-        int from_version
-        int to_version
-        text initiated_by
-        text mode
-        text status
-        timestamptz range_start
-        timestamptz range_end
-        jsonb checkpoint_payload
-        jsonb stats_json
-        jsonb diff_summary_json
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    knowledge_projection_audits {
-        uuid audit_id PK
-        int projection_version
-        int sample_size
-        int mismatches
-        jsonb details
-        timestamptz created_at
-    }
-```
+alt-db held the Knowledge Home event-sourcing/CQRS tables (`knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_lens_versions`, `knowledge_current_lens`, `knowledge_reproject_runs`, `knowledge_projection_audits`), the recall tables (`recall_signals`, `recall_candidate_view`), `today_digest_view`, and (briefly) the Knowledge Trail tables (`knowledge_trail_footprints`, `knowledge_trail_branches`). All of them were `DROP TABLE`'d from alt-db — `20260323100000_drop_sovereign_tables.sql` and `20260611000002_drop_misplaced_trail_tables.sql` — and now live exclusively in `knowledge-sovereign-db`, owned by the separate [[wiki/services/knowledge-sovereign]] service. No process reads or writes these tables in alt-db any more; alt-backend's Connect-RPC `KnowledgeHomeService`/`KnowledgeTrailService` reach them through `SovereignClient`, not through alt-data-hub.
 
 ## Table Categories
 
 | Category | Tables | Description |
 |----------|--------|-------------|
-| Core | `feeds`, `feed_links`, `articles`, `article_summaries` | RSS feed and article base data |
+| Core | `feeds`, `feed_links`, `articles`, `article_summaries`, `article_heads` | RSS feed and article base data (`article_heads` caches `<head>`/OGP metadata for Visual Preview) |
 | Tags | `feed_tags`, `article_tags` | Tag system (M:N relationship) |
-| User Status | `read_status`, `user_reading_status`, `favorite_feeds` | User reading state tracking |
-| Inoreader | `inoreader_subscriptions`, `inoreader_articles`, `sync_state`, `api_usage_tracking` | Inoreader API sync |
+| User Status | `read_status`, `user_reading_status`, `favorite_feeds`, `user_feed_subscriptions` | User reading state and subscription tracking |
 | Domain | `scraping_domains`, `declined_domains` | Domain management and scraping policy |
-| Knowledge Home | `knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_reproject_runs`, `knowledge_projection_audits` | Event sourcing + CQRS for Knowledge Home |
-| Jobs | `summarize_job_queue`, `outbox_events`, `feed_link_availability` | Async job queues |
+| Jobs | `summarize_job_queue`, `outbox_events` (now with a lease column), `feed_link_availability` | Async job queues |
+| Images | `feed_og_images`, `image_proxy_cache` | OG-image / image-proxy caching for the Visual Preview and image-proxy pipelines |
+| Versioned artifacts | `summary_versions`, `tag_set_versions` | Append-first versioned summaries/tag-sets (immutable data model) |
+| Push | `push_subscriptions`, `push_deliveries` | Web Push device registrations and `cmd/notifier`'s delivery queue. `push_deliveries` has more than one enqueuer: alt-harvester's `today-entrance-notifier` job, knowledge-sovereign (`recall_echo_ready` / `trail_branch_proposed` notifications — [[000970]] [[000973]] [[000974]] [[000977]]), and acolyte-orchestrator (relaying its own `notification_outbox` — see [[wiki/services/acolyte-db]]), all through `services.datahub.v1.DataHubService` |
+| Acolyte reports (unused) | `reports`, `report_versions`, `report_change_items`, `report_jobs`, `report_runs`, `report_sections`, `report_section_versions` | Created by `20260409000000_create_acolyte_tables.sql` and never dropped, but dead: Acolyte's live report storage is `acolyte-db` (its own Atlas directory, `acolyte-migration-atlas/` — see [[wiki/services/acolyte-db]]), and no alt-data-hub capability reads or writes this alt-db copy |
+
+Inoreader sync tables and every Knowledge Home / Trail / Recall table have been removed from alt-db entirely — see the notes above and in the ER diagrams.
 
 ## Table Details
 
@@ -313,7 +182,8 @@ Primary RSS feed metadata table.
 | id | UUID | PK, DEFAULT gen_random_uuid() | Primary key |
 | title | TEXT | NOT NULL | Feed title |
 | description | TEXT | NOT NULL | Feed description |
-| link | TEXT | NOT NULL | Feed URL |
+| website_url | TEXT | NOT NULL, UNIQUE | Website URL of the feed channel (RSS `<channel><link>`); renamed from `link` 2026-04-28 |
+| og_image_url | TEXT | | OGP image URL scraped from the feed's website (added 2026-03-01) |
 | pub_date | TIMESTAMP | NOT NULL | Publication date |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | Record creation time |
 | updated_at | TIMESTAMP | NOT NULL, DEFAULT NOW() | Last update time |
@@ -419,61 +289,7 @@ User's favorite/starred feeds.
 | user_id | UUID | | User reference |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Favorite time |
 
-### Inoreader Sync Tables
-
-#### inoreader_subscriptions
-Feed subscriptions synchronized from Inoreader.
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | UUID | PK, DEFAULT gen_random_uuid() | Primary key |
-| inoreader_id | TEXT | UNIQUE, NOT NULL | Inoreader feed ID |
-| feed_url | TEXT | NOT NULL | RSS feed URL |
-| title | TEXT | | Feed title |
-| category | TEXT | | Feed category/folder |
-| synced_at | TIMESTAMPTZ | DEFAULT NOW() | Last sync time |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | Record creation |
-
-#### inoreader_articles
-Articles fetched from Inoreader stream.
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | UUID | PK, DEFAULT gen_random_uuid() | Primary key |
-| inoreader_id | TEXT | UNIQUE, NOT NULL | Inoreader article ID |
-| subscription_id | UUID | FK → inoreader_subscriptions(id) ON DELETE CASCADE | Source subscription |
-| article_url | TEXT | NOT NULL | Article URL |
-| title | TEXT | | Article title |
-| author | TEXT | | Article author |
-| content | TEXT | | Full article content |
-| content_length | INTEGER | DEFAULT 0 | Content character count |
-| content_type | VARCHAR(50) | DEFAULT 'html' | Content type (html/text) |
-| published_at | TIMESTAMPTZ | | Original publication time |
-| fetched_at | TIMESTAMPTZ | DEFAULT NOW() | Fetch time |
-| processed | BOOLEAN | DEFAULT FALSE | Processing status |
-
-#### sync_state
-Pagination state for Inoreader stream sync.
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | UUID | PK, DEFAULT gen_random_uuid() | Primary key |
-| stream_id | TEXT | UNIQUE, NOT NULL | Stream identifier |
-| continuation_token | TEXT | | Pagination token |
-| last_sync | TIMESTAMPTZ | DEFAULT NOW() | Last sync timestamp |
-| created_at | TIMESTAMPTZ | DEFAULT NOW() | Record creation |
-
-#### api_usage_tracking
-Daily Inoreader API usage monitoring.
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | UUID | PK, DEFAULT gen_random_uuid() | Primary key |
-| date | DATE | UNIQUE, DEFAULT CURRENT_DATE | Tracking date |
-| zone1_requests | INTEGER | DEFAULT 0 | Zone 1 API calls (read) |
-| zone2_requests | INTEGER | DEFAULT 0 | Zone 2 API calls (write) |
-| last_reset | TIMESTAMPTZ | DEFAULT NOW() | Counter reset time |
-| rate_limit_headers | JSONB | DEFAULT '{}' | Rate limit response headers |
+> Inoreader sync tables (`inoreader_subscriptions`, `inoreader_articles`, `sync_state`, `api_usage_tracking`) no longer exist in alt-db — see the note above under "Main Tables".
 
 ### Domain Management Tables
 
@@ -537,10 +353,11 @@ Event outbox for reliable event publishing.
 | id | UUID | PK, DEFAULT gen_random_uuid() | Primary key |
 | event_type | TEXT | NOT NULL | Event type name |
 | payload | JSONB | NOT NULL | Event payload |
-| status | TEXT | NOT NULL, DEFAULT 'PENDING' | Event status |
+| status | TEXT | NOT NULL, DEFAULT 'PENDING' | Event status (PENDING/PROCESSING/PROCESSED/FAILED) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Creation time |
 | processed_at | TIMESTAMPTZ | | Processing time |
 | error_message | TEXT | | Error details |
+| next_attempt_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Claim lease (added 2026-08-14): a `PROCESSING` row past this instant is claimable again, so a crashed harvester recovers its batch with no separate reclaim sweeper |
 
 #### feed_link_availability
 Feed URL health monitoring.
@@ -567,7 +384,6 @@ Feed URL health monitoring.
 | articles | user_reading_status | 1:N | CASCADE |
 | articles | article_tags | 1:N | CASCADE |
 | feed_tags | article_tags | 1:N | CASCADE |
-| inoreader_subscriptions | inoreader_articles | 1:N | CASCADE |
 | feed_links | feed_link_availability | 1:1 | CASCADE |
 
 ### Many-to-Many Relationships
@@ -586,7 +402,9 @@ Key performance indexes (see individual migration files for complete list):
 - `idx_feed_tags_feed_id` - Tags lookup by feed
 - `idx_article_tags_feed_tag_id` - Tag usage lookup
 - `idx_read_status_user_feed_read` - User read status queries
-- `idx_inoreader_articles_processed` - Unprocessed article queue
+- `idx_outbox_events_claim` - Partial index over `outbox_events(created_at) WHERE status IN ('PENDING','PROCESSING')`, the outbox claim query
+
+The `feeds`-table indexes that used to be named `idx_feeds_link*` / `unique_feeds_link` were renamed to `idx_feeds_website_url*` / `unique_feeds_website_url` alongside the `link` → `website_url` column rename.
 
 ## Known failure patterns
 

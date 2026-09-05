@@ -1,9 +1,9 @@
 # metrics
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `metrics/`
-**Python:** 3.13+
+**Python:** 3.14+
 **Type:** CLI tool (not an HTTP service)
 
 ## Purpose
@@ -14,7 +14,7 @@ Alt system health analyzer. This is a CLI tool (not an HTTP service) that analyz
 
 ```
 metrics/
-├── pyproject.toml          # Project config (Python >=3.13)
+├── pyproject.toml          # Project config (Python >=3.14)
 ├── uv.lock
 ├── CLAUDE.md
 ├── src/

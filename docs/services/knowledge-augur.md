@@ -1,34 +1,36 @@
 # Knowledge Augur
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `knowledge-augur/`
 **Port:** 11435 (external) → 11434 (internal Ollama)
 
 ## Role
 
-- **RAG LLM Service**: An Ollama-based LLM service providing text generation capabilities for the RAG (Retrieval Augmented Generation) pipeline.
-- **Answer Generation**: Generates grounded answers with citations based on retrieved context chunks from rag-orchestrator.
-- **Query Expansion**: Assists in expanding user queries for improved retrieval accuracy.
+`knowledge-augur` is a standalone Ollama container built for AMD GPU (Vulkan) hardware. It runs under its own `compose.augur.yaml` at the repo root, which is **not** part of the production `include:` chain in `compose/compose.yaml` (`docs/services/MICROSERVICES.md` lists it as an "optional overlay"). It is **not** the default RAG generation backend: `rag-orchestrator`'s `AUGUR_EXTERNAL` defaults to `http://news-creator-backend:11435` in code and in `.env.template`, but compose/rag.yaml's fallback (`http://news-creator:11434`, which wins because `.env` intentionally omits `AUGUR_EXTERNAL`) routes it through news-creator's FastAPI priority-queue proxy, which itself fronts news-creator-backend's Ollama on :11435 (see `docs/services/rag-orchestrator.md`). Either way, news-creator is where generation actually runs in the current topology ([[000951]], [[000943]] — the ADR-000943 hardware map records the equivalent remote-Mac Augur route as a "dormant hook"). This file documents `knowledge-augur` as it exists in the repo (image, Modelfiles, entrypoint) for whoever needs to stand it up as an alternate generation host; it does not describe the service `rag-orchestrator` talks to by default.
+
+- **RAG LLM Service**: An Ollama-based LLM service that can provide text generation for the RAG pipeline when `AUGUR_EXTERNAL` is pointed at it.
+- **Answer Generation**: Would generate grounded answers with citations based on retrieved context chunks from rag-orchestrator, if wired as the active backend.
+- **Query Expansion**: Same, for query expansion.
 
 ## Architecture Overview
 
 ```mermaid
 flowchart LR
-    subgraph RAG Pipeline
-        RagOrch[rag-orchestrator]
+    subgraph "RAG Pipeline (default path)"
+        RagOrch[rag-orchestrator] -->|AUGUR_EXTERNAL default| NewsCreator[news-creator Ollama<br/>gemma4-e4b-12k]
     end
 
-    subgraph knowledge-augur
+    subgraph "knowledge-augur (standalone, not in the default include chain)"
         Ollama[Ollama Server<br/>Port 11434]
-        Model[qwen3-8b-rag<br/>Custom Model]
+        Model[gemma3-4b-rag<br/>default preload model]
     end
 
     subgraph Hardware
         GPU[AMD GPU<br/>Vulkan Backend]
     end
 
-    RagOrch -->|POST /api/chat| Ollama
+    RagOrch -.->|"AUGUR_EXTERNAL override"| Ollama
     Ollama --> Model
     Model --> GPU
 ```
@@ -37,23 +39,29 @@ flowchart LR
 
 ### Default Model
 
-- **Model**: `qwen3:8b` (pulled from Ollama registry)
-- **Custom Variant**: `qwen3-8b-rag` (RAG-optimized, created via Modelfile)
+- **Preload model**: `gemma3-4b-rag` (from `gemma3:4b-it-qat`; `entrypoint.sh` preloads `${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-rag}`)
+- Base models pulled on startup: `gpt-oss:20b`, `qwen3:8b`, `gemma3:4b-it-qat`
+- Custom models created from Modelfiles: `gpt-oss20b-cpu`, `gpt-oss20b-igpu`, `qwen3-8b-rag`, `gemma3-4b-rag`
 
-### Modelfile Parameters (`Modelfile.qwen3-8b-rag`)
+### Modelfile Parameters (`Modelfile.gemma3-4b-rag`)
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | `num_ctx` | 8192 | Context window size (tokens) |
-| `num_predict` | 512 | Maximum tokens to generate |
-| `temperature` | 0.2 | Low temperature for deterministic outputs |
-| `top_p` | 0.9 | Nucleus sampling parameter |
+| `num_predict` | 2048 | Maximum tokens to generate |
 | `num_batch` | 512 | Batch size for prompt evaluation |
-| `stop` | `<\|im_end\|>`, `<\|endoftext\|>` | qwen3-specific stop tokens |
+| `temperature` | 0.7 | Gemma 3-recommended sampling |
+| `top_p` | 0.85 | Nucleus sampling parameter |
+| `top_k` | 40 | Top-k sampling parameter |
+| `repeat_penalty` | 1.15 | Repetition penalty |
+| `stop` | `<end_of_turn>` | Gemma 3 stop token |
 
-### Legacy Models (Available for Rollback)
+The comment in the Modelfile notes it targets response speed on an M4 Mac Mini deployment specifically, not the AMD Vulkan container this file otherwise documents.
 
-- `gpt-oss20b-igpu`: Previous default, iGPU-optimized
+### Other Models (available, not preloaded by default)
+
+- `qwen3-8b-rag` (from `qwen3:8b`; see `Modelfile.qwen3-8b-rag` for its own parameters) — the previous default preload model
+- `gpt-oss20b-igpu`: iGPU-optimized
 - `gpt-oss20b-cpu`: CPU-only variant
 
 ### Environment Variables (Dockerfile)
@@ -61,7 +69,7 @@ flowchart LR
 | Variable | Value | Description |
 |----------|-------|-------------|
 | `OLLAMA_HOST` | `0.0.0.0:11434` | Listen on all interfaces |
-| `OLLAMA_ORIGINS` | `*` | Allow all CORS origins |
+| `OLLAMA_ORIGINS` | `http://localhost,http://127.0.0.1,http://knowledge-augur,http://news-creator,http://news-creator-backend,http://rag-orchestrator` | Explicit CORS allowlist |
 | `OLLAMA_KEEP_ALIVE` | `-1` | Keep model loaded indefinitely |
 | `OLLAMA_MAX_LOADED_MODELS` | `1` | Single model in memory |
 | `OLLAMA_NUM_PARALLEL` | `1` | Single parallel request |
@@ -69,22 +77,26 @@ flowchart LR
 | `OLLAMA_FLASH_ATTENTION` | `1` | Enable flash attention optimization |
 | `OLLAMA_KV_CACHE_TYPE` | `q8_0` | Quantized KV cache for memory efficiency |
 
+Base image is pinned to `ollama/ollama:0.32.14` (the volume-init container uses the same pinned tag) — an earlier `:latest` tag caused weeks of silent CPU fallback (see "Known failure patterns").
+
 ## Directory Structure
 
 ```
 knowledge-augur/
-├── Dockerfile                  # Multi-stage build with Ollama base
-├── Modelfile.qwen3-8b-rag     # RAG-optimized qwen3 configuration (default)
-├── Modelfile.gpt-oss20b-igpu   # iGPU-optimized gpt-oss configuration (legacy)
-├── Modelfile.gpt-oss20b-cpu    # CPU model configuration (legacy)
-└── entrypoint.sh               # Startup script with GPU setup
+├── Dockerfile                   # Ollama base image + Modelfiles + entrypoint
+├── Modelfile.gemma3-4b-rag      # Gemma 3 4B QAT configuration (default preload)
+├── Modelfile.qwen3-8b-rag       # qwen3 configuration (previous default)
+├── Modelfile.gpt-oss20b-igpu    # iGPU-optimized gpt-oss configuration
+├── Modelfile.gpt-oss20b-cpu     # CPU-only gpt-oss configuration
+├── scripts/
+└── entrypoint.sh                # Startup script with GPU setup
 ```
 
 ## Compose Integration
 
 ### Separate Compose File (`compose.augur.yaml`)
 
-knowledge-augur runs in a dedicated Compose file for GPU resource isolation:
+knowledge-augur runs in its own Compose file at the repo root, for GPU resource isolation and because it is a standalone overlay rather than a service in the production `include:` chain (`compose/compose.yaml` does not reference `compose.augur.yaml`):
 
 ```yaml
 services:
@@ -104,6 +116,8 @@ services:
     depends_on:
       knowledge-augur-volume-init:
         condition: service_completed_successfully
+    networks:
+      - augur-network
 ```
 
 ### Volume Initialization
@@ -112,7 +126,8 @@ A separate init container ensures proper permissions:
 
 ```yaml
 knowledge-augur-volume-init:
-  image: ollama/ollama:latest
+  image: ollama/ollama:0.32.14
+  entrypoint: ["/bin/sh", "-c"]
   command: ["mkdir -p /home/ollama-user/.ollama && chown -R 2000:2000 /home/ollama-user/.ollama"]
   user: "0:0"
   volumes:
@@ -134,29 +149,24 @@ knowledge-augur-volume-init:
 3. Drop privileges from root to `ollama-user` using `gosu`
 4. Start Ollama server in background
 5. Wait for server readiness (up to 60 seconds)
-6. Pull base models (`gpt-oss:20b`, `qwen3:8b`) if not present
-7. Create custom models from Modelfiles (`qwen3-8b-rag`, `gpt-oss20b-igpu`, `gpt-oss20b-cpu`)
-8. Preload configured model (default: `qwen3-8b-rag`, configurable via `AUGUR_KNOWLEDGE_MODEL`)
+6. Pull base models (`gpt-oss:20b`, `qwen3:8b`, `gemma3:4b-it-qat`) if not present
+7. Create custom models from Modelfiles (`gpt-oss20b-cpu`, `gpt-oss20b-igpu`, `qwen3-8b-rag`, `gemma3-4b-rag`)
+8. Preload configured model (default: `gemma3-4b-rag`, configurable via `AUGUR_KNOWLEDGE_MODEL`)
 
 ## API Integration
 
 ### rag-orchestrator Client
 
-The `OllamaGenerator` in rag-orchestrator consumes knowledge-augur:
+rag-orchestrator's `OllamaGenerator` talks to whatever `AUGUR_EXTERNAL` names — by default that is news-creator's FastAPI priority-queue proxy on :11434 (fronting news-creator-backend's Ollama on :11435), not knowledge-augur. Pointing it at knowledge-augur means overriding the environment:
 
-```go
-// Configuration
-KnowledgeAugurURL:   getEnv("AUGUR_EXTERNAL", "http://augur-external:11435")
-KnowledgeAugurModel: getEnv("AUGUR_KNOWLEDGE_MODEL", "qwen3-8b-rag")
-
-// Initialization
-generator := rag_augur.NewOllamaGenerator(
-    cfg.KnowledgeAugurURL,
-    cfg.KnowledgeAugurModel,
-    cfg.OllamaTimeout,
-    log,
-)
+```bash
+# rag-orchestrator env override — code default is news-creator-backend:11435,
+# compose/rag.yaml's fallback (in effect today) is news-creator:11434
+AUGUR_EXTERNAL=http://augur-external:11435
+AUGUR_KNOWLEDGE_MODEL=gemma3-4b-rag   # or qwen3-8b-rag, gpt-oss20b-igpu, gpt-oss20b-cpu
 ```
+
+`config.go`'s actual defaults (`AugurConfig.URL`/`.Model`) are `http://news-creator-backend:11435` / `gemma4-e4b-12k` — though compose/rag.yaml's `AUGUR_EXTERNAL` fallback of `http://news-creator:11434` wins in the deployed stack, since `.env` does not set `AUGUR_EXTERNAL`. See `docs/services/rag-orchestrator.md`.
 
 ### Supported Methods
 
@@ -196,13 +206,13 @@ The generator dynamically sets the "think" parameter based on model type and tas
 
 ## Environment Variables
 
-Configure via `.env` or `.env.template`:
+These are rag-orchestrator-side variables (`.env`/`.env.template`) that only matter for knowledge-augur when `AUGUR_EXTERNAL` is deliberately pointed at it — the shipped `.env.template` default routes them at news-creator instead (see "Role" above and `docs/services/rag-orchestrator.md`):
 
-| Variable | Default | Description |
+| Variable | Default in `.env.template` | Description |
 |----------|---------|-------------|
-| `AUGUR_EXTERNAL` | `http://augur-external:11435` | URL for rag-orchestrator to reach knowledge-augur |
-| `AUGUR_EXTERNAL_HOST` | `0.0.0.0` | Host binding for extra_hosts resolution |
-| `AUGUR_KNOWLEDGE_MODEL` | `qwen3-8b-rag` | Model name to use for generation |
+| `AUGUR_EXTERNAL` | `http://news-creator-backend:11435` | URL for rag-orchestrator to reach its LLM generation backend; set to `http://augur-external:11435` to reach knowledge-augur instead |
+| `AUGUR_EXTERNAL_HOST` | `0.0.0.0` | Host binding for `extra_hosts` resolution when routing to a non-default (e.g. remote) backend |
+| `AUGUR_KNOWLEDGE_MODEL` | `gemma4-e4b-12k` | Model name to use for generation; set to `gemma3-4b-rag` (or another knowledge-augur model) when routed here |
 | `OLLAMA_TIMEOUT` | `300` | Request timeout in seconds |
 
 ## Health Check
@@ -225,9 +235,9 @@ curl http://localhost:11435/api/tags
 # List loaded models
 curl http://localhost:11435/api/tags | jq '.models[].name'
 
-# Test generation
+# Test generation (gemma3-4b-rag is the default preload; qwen3-8b-rag also works)
 curl http://localhost:11435/api/chat \
-  -d '{"model":"qwen3-8b-rag","messages":[{"role":"user","content":"Hello"}],"think":false}'
+  -d '{"model":"gemma3-4b-rag","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 ## Logging
@@ -244,9 +254,9 @@ logging:
 
 | Service | Relationship |
 |---------|-------------|
-| `rag-orchestrator` | Primary consumer; sends prompts and receives generated answers |
-| `knowledge-embedder` | Sibling service for vector embedding generation |
-| `rag-db` | Stores chunks that provide context for generation |
+| `rag-orchestrator` | Would send prompts and receive generated answers if `AUGUR_EXTERNAL` were pointed here; by default it talks to `news-creator` instead |
+| `knowledge-embedder` | Sibling service (same `compose.augur.yaml`) for vector embedding generation on the same standalone overlay — distinct from `knowledge-embedder-local` in `compose/rag.yaml`, which is what rag-orchestrator's embedder actually points at by default ([[000951]]) |
+| `rag-db` | Would store chunks that provide context for generation, same as with any Augur-compatible LLM backend |
 
 ## Troubleshooting
 
@@ -286,17 +296,18 @@ docker compose -f compose.augur.yaml up --build knowledge-augur -d
 
 To update Modelfile parameters:
 
-1. Edit `knowledge-augur/Modelfile.qwen3-8b-rag`
+1. Edit the relevant `knowledge-augur/Modelfile.*` (default preload: `Modelfile.gemma3-4b-rag`)
 2. Rebuild the container: `docker compose -f compose.augur.yaml up --build knowledge-augur -d`
 3. The entrypoint will recreate the custom model on startup
 
-### Rollback to Previous Model
+### Routing rag-orchestrator to knowledge-augur
 
-To rollback to the previous gpt-oss model:
+`knowledge-augur` is not on rag-orchestrator's default generation path (see "Role" above). `compose.augur.yaml` runs `knowledge-augur` on a standalone `augur-network`, with no attachment to `alt-network` where rag-orchestrator runs — a compose service name will not resolve from rag-orchestrator in this configuration. Reaching it requires a published-port/host address (rag-orchestrator's `extra_hosts` entry keyed on `AUGUR_EXTERNAL_HOST`, see `compose/rag.yaml`), or adding an external-network attachment to both stacks. To point rag-orchestrator at it instead of news-creator:
 
 ```bash
-# Set environment variable
-export AUGUR_KNOWLEDGE_MODEL=gpt-oss20b-igpu
+# rag-orchestrator env
+export AUGUR_EXTERNAL=http://augur-external:11435   # host/published-port address; the compose service name will not resolve, see above
+export AUGUR_KNOWLEDGE_MODEL=gemma3-4b-rag           # or qwen3-8b-rag, gpt-oss20b-igpu, gpt-oss20b-cpu
 
 # Restart rag-orchestrator
 docker compose -f compose/compose.yaml -p alt up -d rag-orchestrator

@@ -1,9 +1,9 @@
 # Acolyte Orchestrator
 
-_Last reviewed: July 7, 2026_
+_Last reviewed: September 5, 2026_
 
 **Location:** `acolyte-orchestrator/`
-**Port:** 8090 (Connect-RPC + REST)
+**Port:** 8090 (plaintext REST `/health` + Connect-RPC mount, bound to `127.0.0.1` only) — inbound mTLS on `:9443` is the externally-reachable listener; the client's verified certificate CN is the caller identity (`alt-butterfly-facade`), never a header
 
 ## Role
 
@@ -38,7 +38,7 @@ flowchart TB
     subgraph External
         NewsCreator[news-creator<br/>:11434]
         SearchIndexer[search-indexer<br/>:9300]
-        AcolyteDB[(acolyte-db<br/>:5438)]
+        AcolyteDB[(acolyte-db<br/>:5439)]
     end
 
     BFF -->|Connect-RPC| Connect
@@ -83,13 +83,17 @@ acolyte-orchestrator/
 │   │   ├── evidence_provider.py    # EvidenceProviderPort
 │   │   ├── job_queue.py            # JobQueuePort
 │   │   ├── content_store.py        # ContentStorePort
+│   │   ├── hyde_generator.py       # HyDEGeneratorPort
+│   │   ├── notification_outbox.py  # NotificationOutboxPort
 │   │   └── report_evaluator.py     # ReportEvaluatorPort
 │   ├── gateway/
 │   │   ├── postgres_report_gw.py   # PostgreSQL report repository
 │   │   ├── postgres_job_gw.py      # PostgreSQL job queue (FOR UPDATE SKIP LOCKED)
-│   │   ├── ollama_gw.py            # Ollama LLM client
-│   │   ├── vllm_gw.py              # vLLM client (alternative)
-│   │   ├── news_creator_gw.py      # news-creator gateway
+│   │   ├── postgres_notification_outbox_gw.py # notification_outbox writer (report completion)
+│   │   ├── datahub_notification_gw.py # relay client: DataHubService/EnqueueNotification (mTLS)
+│   │   ├── ollama_gw.py            # LLM client for the local news-creator proxy
+│   │   ├── vllm_gw.py              # vLLM client (LLM_PROVIDER=vllm, remote)
+│   │   ├── news_creator_hyde_gw.py # HyDE passage generation via news-creator
 │   │   ├── search_indexer_gw.py    # search-indexer gateway
 │   │   ├── checkpoint_factory.py   # LangGraph checkpoint factory
 │   │   ├── memory_report_gw.py     # In-memory report repo (testing)
@@ -103,6 +107,8 @@ acolyte-orchestrator/
 │   │   ├── list_reports_uc.py
 │   │   ├── start_run_uc.py
 │   │   ├── rerun_section_uc.py
+│   │   ├── reconcile_orphaned_runs_uc.py # fails unfinished runs at boot (no auto-resume)
+│   │   ├── relay_notifications_uc.py     # notification_outbox -> DataHubService relay loop
 │   │   ├── graph/
 │   │   │   ├── report_graph.py     # LangGraph pipeline builder
 │   │   │   ├── state.py            # ReportGenerationState
@@ -128,8 +134,13 @@ acolyte-orchestrator/
 │   ├── gen/proto/                  # Generated protobuf + Connect-RPC stubs
 │   │   └── alt/acolyte/v1/
 │   ├── infra/
-│   │   └── logging.py              # structlog configuration
+│   │   ├── logging.py              # structlog configuration
+│   │   ├── inbound_tls.py          # Wave 4 in-process mTLS listener (:9443)
+│   │   ├── mtls_client.py          # outbound mTLS SSLContext for httpx callers
+│   │   ├── peer_identity.py        # peer-CN auth middleware + allowlist
+│   │   └── pki/                    # step-ca enrollment/renewal
 │   └── driver/
+│       └── datahub_client.py       # DataHubService Connect-RPC client factory
 └── tests/
     ├── unit/                       # Per-node unit tests
     ├── e2e/                        # Service boot + Connect-RPC round-trip
@@ -164,19 +175,51 @@ acolyte-orchestrator/
 | `NEWS_CREATOR_URL` | `http://news-creator:11434` | Ollama LLM endpoint |
 | `SEARCH_INDEXER_URL` | `http://search-indexer:9300` | search-indexer endpoint |
 
-#### Auth
+#### Auth (mTLS peer identity)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVICE_SECRET` | - | Service token for internal auth |
-| `SERVICE_TOKEN_FILE` | - | Secret file path |
+There is no shared service-secret token. Inbound identity comes from the verified
+client certificate on the mTLS listener; `PEER_IDENTITY_STRICT=false` during rollout
+means a missing/unknown peer CN is not yet rejected. The code default and the
+deployed (`compose/acolyte.yaml`) value differ for several of these — both are
+listed below so this table works as a reference for either.
+
+| Variable | Code default | `compose/acolyte.yaml` | Description |
+|----------|---------|---------|-------------|
+| `PEER_IDENTITY_STRICT` | `false` | `false` | Reject requests with a missing/unknown peer CN |
+| `MTLS_ALLOWED_PEERS` | (empty — any alt-CA-signed cert accepted) | `alt-butterfly-facade` | Allowed inbound peer CNs |
+| `PEER_IDENTITY_TRUSTED` | `off` | `off` | Governs only whether a loopback sidecar-injected `X-Alt-Peer-Identity` header is honoured as a fallback when there is no verified TLS peer |
+| `INBOUND_TLS_ENABLED` | `false` | `true` | Bind the in-process mTLS listener (`INBOUND_TLS_HOST:INBOUND_TLS_PORT`, default `0.0.0.0:9443`) |
+| `MTLS_ENFORCE` | `false` | `true` | Present a client certificate on outbound calls (required for the notification relay) |
+| `MTLS_CERT_FILE` / `MTLS_KEY_FILE` / `MTLS_CA_FILE` | - | `/certs/svc-cert.pem` / `/certs/svc-key.pem` / `/trust/ca-bundle.pem` | Outbound client cert material |
 
 #### LLM Provider
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `ollama` | Provider selection (`ollama` or `vllm`) |
+| `LLM_PROVIDER` | `ollama` | `ollama` routes through the local news-creator proxy; `vllm` routes to a remote vLLM server (serves Qwen3.5-27B via an OpenAI-compatible API) |
 | `VLLM_API_KEY` | - | vLLM API key (if using vllm) |
+
+#### HyDE (cross-lingual query expansion)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HYDE_ENABLED` | `true` | Gatherer asks the LLM for a short target-language passage per topic and injects it as an extra query variant |
+| `HYDE_TIMEOUT_S` | `8.0` | Timeout for the HyDE generation call (compose overrides to 30s — Gemma4 Q4 generation typically takes 10-20s) |
+| `HYDE_MAX_CHARS` | `600` | Max characters of the generated passage |
+| `HYDE_NUM_PREDICT` | `400` | Max tokens for the HyDE generation call |
+
+#### Notification Outbox Relay
+
+One switch drives both halves: `complete_run` writes a `notification_outbox` row
+(acolyte-db) inside the completion transaction, and a relay task forwards it to
+`DataHubService/EnqueueNotification` over mTLS. Fail-fast when half-configured —
+see `acolyte-orchestrator/CLAUDE.md`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NOTIFICATIONS_ENABLED` | `false` | Enable the outbox producer + relay |
+| `NOTIFICATION_USER_ID` | - | Recipient UUID; required when enabled (acolyte-db has no owner column) |
+| `DATAHUB_URL` | - | `alt-data-hub` mTLS endpoint (e.g. `https://alt-data-hub:9443`); required when enabled |
 
 #### LLM Defaults
 
@@ -248,6 +291,7 @@ acolyte-orchestrator/
 | `GetRunStatus` | Get run status and jobs |
 | `StreamRunProgress` | Stream run progress events (server-streaming) |
 | `RerunSection` | Regenerate a specific section |
+| `DeleteReport` | Delete a report (rejected with `FAILED_PRECONDITION` while a run is active) |
 | `HealthCheck` | Health check |
 
 ## LangGraph Pipeline
@@ -271,10 +315,22 @@ The report generation pipeline consists of 11 nodes:
 ### Pipeline Checkpointing
 
 When `CHECKPOINT_ENABLED=true`:
-- Uses PostgreSQL-backed LangGraph checkpointer
-- Enables resume from any node after crash
-- `durability="sync"` ensures persistence before next step
+- Uses a PostgreSQL-backed LangGraph checkpointer (`AsyncPostgresSaver`), thread-keyed by `acolyte-run:{run_id}`
+- `durability="sync"` ensures every super-step is persisted before the graph proceeds
 - Critical for long-running pipelines (70+ minutes)
+
+**Resume is manual, not automatic.** On startup, `ReconcileOrphanedRunsUsecase` fails
+every run still `pending`/`running` from a crashed or restarted process
+(`failure_code=orphaned_after_restart`) — there is no poller and no
+checkpoint-driven auto-resume, because whether a crashed run's in-flight side
+effects (news-creator calls already issued, evidence already gathered) are safe
+to replay is a per-pipeline judgment call, not a safe default to guess at boot.
+An operator resumes a specific run with `scripts/resume_run.py --run-id <uuid>`,
+which reuses the deterministic thread_id so the checkpointer picks up from the
+last successful super-step. Resume always replays the current node from its
+start (checkpoints are saved only at node boundaries), and a resumed process's
+in-memory content-store cache starts empty, so a checkpoint that resumed past
+the gatherer will hydrate 0/N articles and abort at the hydration guard.
 
 ## Health Check
 
@@ -284,7 +340,7 @@ healthcheck:
   interval: 30s
   timeout: 5s
   retries: 3
-  start_period: 30s
+  start_period: 15s
 ```
 
 ### Manual Verification
@@ -301,10 +357,11 @@ grpcurl -plaintext localhost:8090 alt.acolyte.v1.AcolyteService/HealthCheck
 
 | Service | Relationship |
 |---------|-------------|
-| `acolyte-db` | PostgreSQL storage for reports and versions |
-| `news-creator` | LLM inference plane (Ollama) |
+| `acolyte-db` | PostgreSQL storage for reports, versions, and the notification outbox |
+| `news-creator` | Default LLM inference plane (local Ollama proxy); `LLM_PROVIDER=vllm` routes to a remote vLLM server instead |
 | `search-indexer` | Evidence retrieval (hybrid search) |
-| `alt-butterfly-facade` | BFF routing to Acolyte API |
+| `alt-butterfly-facade` | BFF routing to Acolyte API (only allowed mTLS peer by default) |
+| `alt-data-hub` | Notification relay target (`EnqueueNotification`, mTLS) when `NOTIFICATIONS_ENABLED=true` |
 
 ## Development
 
@@ -350,7 +407,7 @@ cd proto && buf generate --template buf.gen.acolyte.yaml
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
 | Pipeline stuck | Checkpoint corruption | Clear checkpoints, restart run |
-| LLM timeout | Model overloaded | Increase `OLLAMA_TIMEOUT`, check news-creator capacity |
+| LLM timeout | Model overloaded | Read timeout is a fixed 600s in the outbound HTTP client (not env-configurable); check news-creator queue depth/capacity |
 | Empty sections | No evidence found | Check search-indexer connectivity, verify article indexing |
 | Revision loop exhausted | Quality threshold unmet | Review critic feedback, adjust prompts |
 | Connection refused | Service not ready | Wait for health check; verify port 8090 exposed |
@@ -361,6 +418,6 @@ Cross-cutting incident knowledge lives in [[crystallized-knowledge]]; symptom-fi
 
 - **Empty report sections while every layer returns HTTP 200** → search-indexer started requiring `X-Service-Token` and the gateway swallowed the 401 as a warning, so reports were generated from zero evidence for 24h → PM-2026-025. Auth-boundary changes must ship consumer-side token injection in the same deploy; treat 401 as fail-fast, never as a silent degrade.
 - **Resume after crash re-runs a long node from its start** → the LangGraph checkpointer persists only at super-step (node) boundaries; resume is a replay from the node head, never mid-loop. Split multi-item loops into per-item self-loop super-steps, use `durability="sync"`, and keep node side effects idempotent → [[000673]], [[000679]], [[000690]], [[acolyte-checkpoint-resume]].
-- **Crashed run turns zombie or is resumed by the wrong pipeline** → in-flight job rows from a dead process are orphans by definition; boot-time sweep must seal them as `failed` (keeping at most one resume candidate inside an age window), and resume queries must filter on the `trigger_source` discriminator → [[000708]], [[000709]], PM-2026-024, [[acolyte-pipeline-recovery]].
+- **Crashed run turns zombie or is resumed by the wrong pipeline** → in-flight job rows from a dead process are orphans by definition. The current fix (superseding the `trigger_source`-discriminator/age-window design from [[000708]], [[000709]]) is simpler: `ReconcileOrphanedRunsUsecase` unconditionally fails every `pending`/`running` run at boot (`orphaned_after_restart`) and there is no automatic resume at all — an operator resumes a specific run explicitly via `scripts/resume_run.py --run-id <uuid>` → PM-2026-024, [[acolyte-pipeline-recovery]].
 - **Truncated or invalid JSON from structured LLM calls** → three known Gemma4/Ollama bugs: thinking tokens consume `num_predict`, `think=false` + `format` ignores the format, and `/api/generate` ignores `think`. Design around them with a deterministic main path (LLM as secondary), micro-generation, and tiny schemas → [[000665]], [[000671]], [[000675]], [[acolyte-llm-timeout]].
 - **mTLS handshake failures although certs on disk are fresh** → inbound TLS now terminates in the parent; a leftover nginx / pki-agent sidecar is a dual writer or a stale historical fact (PM-2026-029). Recreate **`acolyte-orchestrator`**, then verify the **served** cert on the parent (`INBOUND_MTLS` / `:9443`), not only the files on disk → [[pki-agent-recovery]] / [[000978]].

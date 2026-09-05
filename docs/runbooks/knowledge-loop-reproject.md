@@ -14,6 +14,17 @@ aliases:
 
 # Knowledge Loop Reproject Runbook
 
+> **Historical — every table this runbook operates on has been dropped.**
+> `knowledge-sovereign/migrations/00028_drop_knowledge_loop_projections.sql`
+> DROPped `knowledge_loop_entries`, `knowledge_loop_session_state`,
+> `knowledge_loop_surfaces`, `knowledge_loop_evidence`,
+> `knowledge_loop_transition_dedupes`, `knowledge_loop_macro_state`, and the
+> `dangling_supersede_refs` / `knowledge_loop_entries_public` views (the
+> underlying `knowledge_events` log is untouched and still holds every
+> `knowledge_loop.*` event ever appended). Every SQL command below will fail
+> with "relation ... does not exist". Use [[knowledge-trail-reproject]] for
+> the current read model.
+
 ADR: [[000831]]  
 Canonical contract: [[knowledge-loop-canonical-contract]]
 
