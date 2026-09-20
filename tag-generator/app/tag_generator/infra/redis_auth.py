@@ -39,9 +39,7 @@ def resolve_redis_password() -> str | None:
 
     file_path = os.environ.get("REDIS_PASSWORD_FILE")
     if file_path is None:
-        raise RuntimeError(
-            "redis authentication requires REDIS_PASSWORD_FILE or REDIS_AUTH=disabled"
-        )
+        raise RuntimeError("redis authentication requires REDIS_PASSWORD_FILE or REDIS_AUTH=disabled")
 
     trimmed_path = file_path.strip()
     if not trimmed_path:
