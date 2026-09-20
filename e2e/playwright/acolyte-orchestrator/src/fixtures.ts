@@ -4,6 +4,7 @@ import { callUnary } from "../../_shared/connect.js";
 import { eventuallyValue } from "../../_shared/eventual.js";
 import { expectJsonStatus } from "../../_shared/http.js";
 import { workerToken } from "../../_shared/ids.js";
+import { BACKEND_TOKEN_HEADER, TEST_USER_ID, mintBackendToken } from "./auth.js";
 import { env } from "./env.js";
 import {
 	createReportResponseSchema,
@@ -147,8 +148,10 @@ export async function waitForTerminalRun(
 type WorkerFixtures = {
 	/** Unique to (dispatch, worker). Embedded in every title this worker creates. */
 	workerTag: string;
-	/** Connect-RPC client for :8090, JSON codec. */
+	/** Connect-RPC client for :8090, JSON codec, authenticated with X-Alt-Backend-Token. */
 	acolyte: APIRequestContext;
+	/** Connect-RPC client for :8090 without backend token — for auth negative tests. */
+	acolyteAnon: APIRequestContext;
 	/** Same listener, no Connect headers — for `GET /health` and route negatives. */
 	rest: APIRequestContext;
 	/** A report this worker drove to a terminal run, for the read-only run assertions. */
@@ -173,6 +176,22 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 					// call: whether connect-python *requires* it is not something
 					// this suite is asserting, and silently dropping it would
 					// change the protocol under test rather than testing it.
+					"Connect-Protocol-Version": "1",
+					[BACKEND_TOKEN_HEADER]: mintBackendToken({ userId: TEST_USER_ID }),
+				},
+			});
+			await use(context);
+			await context.dispose();
+		},
+		{ scope: "worker" },
+	],
+
+	acolyteAnon: [
+		async ({ playwright }, use) => {
+			const context = await playwright.request.newContext({
+				baseURL: env.baseURL,
+				extraHTTPHeaders: {
+					"Content-Type": "application/json",
 					"Connect-Protocol-Version": "1",
 				},
 			});
@@ -228,3 +247,4 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
 });
 
 export { expect } from "@playwright/test";
+export { BACKEND_TOKEN_HEADER, TEST_USER_ID, mintBackendToken } from "./auth.js";

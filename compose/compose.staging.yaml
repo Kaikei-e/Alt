@@ -867,6 +867,12 @@ services:
       - LOG_LEVEL=info
       - MTLS_ENFORCE=false
       - PEER_IDENTITY_TRUSTED=off
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_ISSUER=auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+      - BACKEND_TOKEN_VERIFICATION=enabled
+    secrets:
+      - backend_token_secret
     ports:
       - "18090:8090"
     networks:
@@ -1487,6 +1493,8 @@ secrets:
     file: ../e2e/fixtures/staging-secrets/meili_master_key.txt
   alt_backend_token_secret:
     file: ../e2e/fixtures/staging-secrets/alt_backend_token_secret.txt
+  backend_token_secret:
+    file: ../e2e/fixtures/staging-secrets/backend_token_secret.txt
   auth_hub_csrf_secret:
     file: ../e2e/fixtures/staging-secrets/auth_hub_csrf_secret.txt
   # Mounted as /run/secrets/kratos_cookie_secret so the reused
