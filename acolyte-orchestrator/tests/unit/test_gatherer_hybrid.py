@@ -5,7 +5,9 @@ TDD: Tests for multi-query variant retrieval and fusion integration.
 
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import AsyncMock
+from uuid import UUID
 
 import httpx
 import pytest
@@ -13,6 +15,7 @@ import pytest
 from acolyte.domain.fusion import RRFFusion, ScoredHit
 from acolyte.port.evidence_provider import ArticleHit
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
+from tests.conftest import TEST_USER_ID
 
 
 def _article_hit(article_id: str, title: str = "", score: float = 0.0) -> ArticleHit:
@@ -34,6 +37,7 @@ async def test_multi_query_calls_variants() -> None:
     evidence.search_articles = AsyncMock(return_value=[_article_hit("a1", score=0.8)])
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI market", "entities": ["OpenAI"]},
         "outline": [
             {
@@ -68,7 +72,13 @@ async def test_fusion_applied_to_variant_results() -> None:
     # Different calls return different articles
     call_count = 0
 
-    async def mock_search(query: str, *, limit: int = 20) -> list[ArticleHit]:
+    async def mock_search(
+        query: str,
+        *,
+        user_id: UUID,
+        limit: int = 20,
+        published_after: datetime | None = None,
+    ) -> list[ArticleHit]:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -78,6 +88,7 @@ async def test_fusion_applied_to_variant_results() -> None:
     evidence.search_articles = AsyncMock(side_effect=mock_search)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI market", "entities": ["OpenAI"]},
         "outline": [
             {
@@ -110,7 +121,13 @@ async def test_variant_failure_degrades_to_primary() -> None:
 
     call_count = 0
 
-    async def mock_search(query: str, *, limit: int = 20) -> list[ArticleHit]:
+    async def mock_search(
+        query: str,
+        *,
+        user_id: UUID,
+        limit: int = 20,
+        published_after: datetime | None = None,
+    ) -> list[ArticleHit]:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -120,6 +137,7 @@ async def test_variant_failure_degrades_to_primary() -> None:
     evidence.search_articles = AsyncMock(side_effect=mock_search)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI market", "entities": ["OpenAI"]},
         "outline": [
             {
@@ -151,6 +169,7 @@ async def test_legacy_path_unchanged() -> None:
     evidence.search_articles = AsyncMock(return_value=[_article_hit("a1", score=0.5)])
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI market"},
         "outline": [
             {
@@ -190,6 +209,7 @@ async def test_fusion_strategy_injectable() -> None:
     node = GathererNode(evidence, fusion=mock_fusion)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI market", "entities": ["OpenAI"]},
         "outline": [
             {

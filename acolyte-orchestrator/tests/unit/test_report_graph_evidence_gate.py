@@ -33,6 +33,7 @@ from acolyte.usecase.graph.report_graph import (
     _route_finalize_guard,
     build_report_graph,
 )
+from tests.conftest import TEST_USER_ID
 
 if TYPE_CHECKING:
     from acolyte.domain.brief import ReportBrief
@@ -184,6 +185,7 @@ class AllSearchesFailEvidence:
         self,
         query: str,
         *,
+        user_id: UUID,
         limit: int = 20,
         published_after: datetime | None = None,
         published_before: datetime | None = None,
@@ -207,6 +209,7 @@ class ZeroHitEvidence:
         self,
         query: str,
         *,
+        user_id: UUID,
         limit: int = 20,
         published_after: datetime | None = None,
         published_before: datetime | None = None,
@@ -230,7 +233,7 @@ class FakeReportRepo:
         self.section_versions: list[SectionVersion] = []
         self.bump_version_calls = 0
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         rid = uuid4()
         report = Report(
             report_id=rid,
@@ -239,6 +242,7 @@ class FakeReportRepo:
             current_version=0,
             latest_successful_run_id=None,
             created_at=datetime.now(UTC),
+            user_id=TEST_USER_ID,
         )
         self.reports[rid] = report
         self.sections[rid] = []
@@ -274,6 +278,7 @@ class FakeReportRepo:
             current_version=new_v,
             latest_successful_run_id=report.latest_successful_run_id,
             created_at=report.created_at,
+            user_id=TEST_USER_ID,
         )
         return new_v
 
@@ -293,7 +298,7 @@ class FakeReportRepo:
         )
         return new_v
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         return list(self.reports.values()), None
 
     async def get_report_version(self, report_id: UUID, version_no: int) -> ReportVersion | None:
@@ -323,7 +328,7 @@ async def test_full_pipeline_skips_finalizer_when_all_searches_fail() -> None:
     llm = FakeLLM()
     evidence = AllSearchesFailEvidence()
     repo = FakeReportRepo()
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     graph = build_report_graph(llm, evidence, repo)
     result = await graph.ainvoke(
@@ -332,6 +337,7 @@ async def test_full_pipeline_skips_finalizer_when_all_searches_fail() -> None:
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -349,7 +355,7 @@ async def test_full_pipeline_skips_finalizer_when_curated_evidence_empty() -> No
     llm = FakeLLM()
     evidence = ZeroHitEvidence()
     repo = FakeReportRepo()
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     graph = build_report_graph(llm, evidence, repo)
     result = await graph.ainvoke(
@@ -358,6 +364,7 @@ async def test_full_pipeline_skips_finalizer_when_curated_evidence_empty() -> No
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -375,6 +382,7 @@ class ArticlesFoundButUnhydratableEvidence:
         self,
         query: str,
         *,
+        user_id: UUID,
         limit: int = 20,
         published_after: datetime | None = None,
         published_before: datetime | None = None,
@@ -406,7 +414,7 @@ async def test_full_pipeline_skips_finalizer_when_content_store_pipeline_is_holl
     llm = FakeLLM()
     evidence = ArticlesFoundButUnhydratableEvidence()
     repo = FakeReportRepo()
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     graph = build_report_graph(llm, evidence, repo, content_store=MemoryContentStore())
     result = await graph.ainvoke(
@@ -415,6 +423,7 @@ async def test_full_pipeline_skips_finalizer_when_content_store_pipeline_is_holl
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -434,7 +443,7 @@ async def test_full_pipeline_finalizes_when_content_store_pipeline_hydrates_succ
     llm = FakeLLM()
     evidence = ArticlesFoundButUnhydratableEvidence()
     repo = FakeReportRepo()
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     content_store = MemoryContentStore()
     await content_store.store("art-1", "Article One has a full body with plenty of relevant sentences to cite.")
@@ -446,6 +455,7 @@ async def test_full_pipeline_finalizes_when_content_store_pipeline_hydrates_succ
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 

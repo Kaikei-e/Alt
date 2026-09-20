@@ -18,6 +18,7 @@ import pytest
 
 from acolyte.domain.run import ReportJob, ReportRun
 from acolyte.handler.connect_service import AcolyteConnectService
+from tests.conftest import TEST_USER_ID
 
 
 class FakeJobQueue:
@@ -70,7 +71,7 @@ async def test_run_pipeline_marks_running_before_invoking_graph() -> None:
     service = AcolyteConnectService(settings, MagicMock(), job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
     run_id = str(uuid4())
 
-    await service._run_pipeline("report-1", run_id, {"topic": "AI"})
+    await service._run_pipeline("report-1", run_id, {"topic": "AI"}, user_id=TEST_USER_ID)
 
     assert len(jobs.mark_running_calls) == 1
     call_run_id, planner, writer, critic = jobs.mark_running_calls[0]
@@ -88,7 +89,7 @@ async def test_run_pipeline_skips_mark_running_when_job_queue_is_none() -> None:
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 1})
     service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
-    await service._run_pipeline("report-1", str(uuid4()), {"topic": "AI"})
+    await service._run_pipeline("report-1", str(uuid4()), {"topic": "AI"}, user_id=TEST_USER_ID)
 
     graph.ainvoke.assert_awaited_once()
 
@@ -102,7 +103,7 @@ async def test_run_pipeline_propagates_failure_code_from_graph_result() -> None:
     jobs = FakeJobQueue()
     service = AcolyteConnectService(settings, MagicMock(), job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
 
-    await service._run_pipeline("report-1", str(uuid4()), {"topic": "AI"})
+    await service._run_pipeline("report-1", str(uuid4()), {"topic": "AI"}, user_id=TEST_USER_ID)
 
     assert len(jobs.fail_run_calls) == 1
     _run_id, failure_code, failure_message = jobs.fail_run_calls[0]
@@ -119,7 +120,7 @@ async def test_run_pipeline_falls_back_to_generic_failure_code_when_absent() -> 
     jobs = FakeJobQueue()
     service = AcolyteConnectService(settings, MagicMock(), job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
 
-    await service._run_pipeline("report-1", str(uuid4()), {"topic": "AI"})
+    await service._run_pipeline("report-1", str(uuid4()), {"topic": "AI"}, user_id=TEST_USER_ID)
 
     assert jobs.fail_run_calls[0][1] == "pipeline_error"
 
@@ -141,7 +142,7 @@ async def test_run_pipeline_resumes_aborted_checkpoint_without_final_version() -
     service = AcolyteConnectService(settings, MagicMock(), job_queue=jobs, graph=graph)  # type: ignore[bad-argument-type]
     run_id = str(uuid4())
 
-    await service._run_pipeline("report-1", run_id, {"topic": "AI"})
+    await service._run_pipeline("report-1", run_id, {"topic": "AI"}, user_id=TEST_USER_ID)
 
     # Must re-invoke the graph rather than short-circuit as "already completed".
     graph.ainvoke.assert_awaited_once()

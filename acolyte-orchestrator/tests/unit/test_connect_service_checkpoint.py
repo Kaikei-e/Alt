@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 
 from acolyte.handler.connect_service import AcolyteConnectService
+
+_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 
 @pytest.mark.asyncio
@@ -19,7 +22,7 @@ async def test_run_pipeline_passes_namespaced_thread_id() -> None:
     graph.aget_state = AsyncMock()
     service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
-    await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
+    await service._run_pipeline("report-1", "run-1", {"topic": "AI"}, user_id=_USER_ID)
 
     graph.aget_state.assert_not_awaited()
     graph.ainvoke.assert_awaited_once_with(
@@ -28,6 +31,7 @@ async def test_run_pipeline_passes_namespaced_thread_id() -> None:
             "run_id": "run-1",
             "brief": {"topic": "AI"},
             "revision_count": 0,
+            "user_id": _USER_ID,
         },
         config={"configurable": {"thread_id": "acolyte-run:run-1"}},
         durability=None,
@@ -44,7 +48,7 @@ async def test_run_pipeline_resumes_from_pending_checkpoint() -> None:
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 2})
     service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
-    await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
+    await service._run_pipeline("report-1", "run-1", {"topic": "AI"}, user_id=_USER_ID)
 
     graph.aget_state.assert_awaited_once_with({"configurable": {"thread_id": "acolyte-run:run-1"}})
     graph.ainvoke.assert_awaited_once_with(
@@ -64,7 +68,7 @@ async def test_run_pipeline_skips_completed_checkpoint() -> None:
     graph.ainvoke = AsyncMock()
     service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
-    await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
+    await service._run_pipeline("report-1", "run-1", {"topic": "AI"}, user_id=_USER_ID)
 
     graph.aget_state.assert_awaited_once_with({"configurable": {"thread_id": "acolyte-run:run-1"}})
     graph.ainvoke.assert_not_called()
@@ -80,7 +84,7 @@ async def test_run_pipeline_uses_sync_durability_when_checkpoint_enabled() -> No
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 1})
     service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
-    await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
+    await service._run_pipeline("report-1", "run-1", {"topic": "AI"}, user_id=_USER_ID)
 
     call_kwargs = graph.ainvoke.call_args
     assert call_kwargs.kwargs.get("durability") == "sync" or (
@@ -103,7 +107,7 @@ async def test_run_pipeline_completed_checkpoint_requires_final_version() -> Non
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 2})
     service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
-    await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
+    await service._run_pipeline("report-1", "run-1", {"topic": "AI"}, user_id=_USER_ID)
 
     # Should NOT short-circuit — should invoke the graph since final_version_no is missing
     graph.ainvoke.assert_awaited_once()

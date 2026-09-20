@@ -14,6 +14,7 @@ from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersi
 from acolyte.port.evidence_provider import ArticleHit, ArticleMetadata, RecapHit
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.report_graph import build_report_graph
+from tests.conftest import TEST_USER_ID
 
 
 class FakeLLM:
@@ -48,6 +49,7 @@ class FakeEvidence:
         self,
         query: str,
         *,
+        user_id: UUID,
         limit: int = 20,
         published_after: datetime | None = None,
         published_before: datetime | None = None,
@@ -71,7 +73,7 @@ class FakeReportRepo:
         self.sections: dict[UUID, list[ReportSection]] = {}
         self.last_scope_snapshot: dict | None = None
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         rid = uuid4()
         report = Report(
             report_id=rid,
@@ -80,6 +82,7 @@ class FakeReportRepo:
             current_version=0,
             latest_successful_run_id=None,
             created_at=datetime.now(UTC),
+            user_id=TEST_USER_ID,
         )
         self.reports[rid] = report
         self.sections[rid] = []
@@ -115,6 +118,7 @@ class FakeReportRepo:
             current_version=new_v,
             latest_successful_run_id=report.latest_successful_run_id,
             created_at=report.created_at,
+            user_id=TEST_USER_ID,
         )
         return new_v
 
@@ -145,7 +149,7 @@ class FakeReportRepo:
                 break
         return expected_version + 1
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         return list(self.reports.values()), None
 
     async def get_report_version(self, report_id: UUID, version_no: int) -> ReportVersion | None:
@@ -175,7 +179,7 @@ class FakeReportRepo:
 async def test_pipeline_with_valid_brief_succeeds() -> None:
     """Pipeline should complete when brief has valid topic."""
     repo = FakeReportRepo()
-    report = await repo.create_report("AI Report", "weekly_briefing")
+    report = await repo.create_report("AI Report", "weekly_briefing", user_id=TEST_USER_ID)
     brief = ReportBrief.from_scope({"topic": "AI semiconductor supply chain"}, "weekly_briefing")
     await repo.create_brief(report.report_id, brief)
 
@@ -186,6 +190,7 @@ async def test_pipeline_with_valid_brief_succeeds() -> None:
             "run_id": str(uuid4()),
             "brief": brief.to_dict(),
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -197,7 +202,7 @@ async def test_pipeline_with_valid_brief_succeeds() -> None:
 async def test_pipeline_scope_snapshot_preserved() -> None:
     """Finalizer should persist brief as scope_snapshot in report_versions."""
     repo = FakeReportRepo()
-    report = await repo.create_report("AI Report", "weekly_briefing")
+    report = await repo.create_report("AI Report", "weekly_briefing", user_id=TEST_USER_ID)
     brief = ReportBrief.from_scope({"topic": "AI semiconductor"}, "weekly_briefing")
     await repo.create_brief(report.report_id, brief)
 
@@ -208,6 +213,7 @@ async def test_pipeline_scope_snapshot_preserved() -> None:
             "run_id": str(uuid4()),
             "brief": brief.to_dict(),
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 

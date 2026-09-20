@@ -154,7 +154,62 @@ class Settings(BaseSettings):
     mtls_key_file: str = ""
     mtls_ca_file: str = ""
 
+    # Backend token verification for user identity (X-Alt-Backend-Token).
+    # Startup fails loudly when BACKEND_TOKEN_VERIFICATION is enabled and
+    # BACKEND_TOKEN_SECRET_FILE is missing/unreadable.
+    backend_token_secret_file: str = "/run/secrets/backend_token_secret"  # noqa: S105 — filesystem path to secret file
+    backend_token_issuer: str = "auth-hub"  # noqa: S105 — JWT issuer claim, not a secret
+    backend_token_audience: str = "alt-backend"  # noqa: S105 — JWT audience claim, not a secret
+    backend_token_verification: str = "enabled"  # noqa: S105 — verification mode flag, not a secret
+    user_identity_dev_user_id: str = ""
+
     model_config = {"env_prefix": "", "case_sensitive": False}
+
+    def resolve_backend_token_secret(self) -> bytes | None:
+        """Resolve the JWT signing secret for backend token verification.
+
+        Returns None only when backend_token_verification is explicitly
+        'disabled'. Otherwise requires a valid, readable, non-empty secret file.
+        """
+        if self.backend_token_verification.strip().lower() == "disabled":
+            return None
+
+        if not self.backend_token_secret_file:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                "BACKEND_TOKEN_SECRET_FILE is not configured: "
+                "user identity verification requires a secret file unless BACKEND_TOKEN_VERIFICATION=disabled"
+            )
+
+        secret_path = Path(self.backend_token_secret_file)
+        if not secret_path.is_file():
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                f"BACKEND_TOKEN_SECRET_FILE is missing or unreadable: {self.backend_token_secret_file}"
+            )
+
+        secret = secret_path.read_bytes().strip()
+        if not secret:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                f"BACKEND_TOKEN_SECRET_FILE is empty: {self.backend_token_secret_file}"
+            )
+
+        return secret
+
+    def resolve_dev_user_id(self) -> UUID:
+        """Resolve the dev user identity UUID when backend token verification is disabled.
+
+        Required when BACKEND_TOKEN_VERIFICATION=disabled; raises RuntimeError if unset or invalid.
+        """
+        raw = self.user_identity_dev_user_id.strip()
+        if not raw:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                "USER_IDENTITY_DEV_USER_ID must be set when BACKEND_TOKEN_VERIFICATION=disabled"
+            )
+        try:
+            return UUID(raw)
+        except ValueError as exc:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                f"USER_IDENTITY_DEV_USER_ID is not a valid UUID: {raw}"
+            ) from exc
 
     def resolve_notification_relay_config(self) -> NotificationRelayConfig | None:
         """Validate the relay configuration, or explain exactly what is missing.

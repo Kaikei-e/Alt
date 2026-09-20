@@ -8,11 +8,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
+from uuid import UUID
 
 import pytest
 
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
 from acolyte.usecase.graph.state import ReportGenerationState
+from tests.conftest import TEST_USER_ID
 
 
 @dataclass
@@ -31,6 +33,7 @@ class _RecordingEvidence:
         self,
         query: str,
         *,
+        user_id: UUID,
         limit: int = 10,
         published_after: datetime | None = None,
         published_before: datetime | None = None,
@@ -38,6 +41,7 @@ class _RecordingEvidence:
         self.calls.append(
             {
                 "query": query,
+                "user_id": user_id,
                 "limit": limit,
                 "published_after": published_after,
                 "published_before": published_before,
@@ -68,6 +72,7 @@ async def test_gatherer_forwards_weekly_window_as_published_after() -> None:
     state = cast(
         ReportGenerationState,
         {
+            "user_id": TEST_USER_ID,
             "brief": {
                 "topic": "イラン情勢 2026",
                 "time_range": "P7D",
@@ -97,6 +102,7 @@ async def test_gatherer_omits_date_window_when_time_range_absent() -> None:
     state = cast(
         ReportGenerationState,
         {
+            "user_id": TEST_USER_ID,
             "brief": {"topic": "AI semiconductor", "report_type": "market_analysis"},
             "outline": _outline_with_facets(),
         },

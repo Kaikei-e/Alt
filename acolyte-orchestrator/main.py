@@ -36,6 +36,7 @@ from acolyte.infra.inbound_tls import resolve_inbound_tls_bind, start_inbound_tl
 from acolyte.infra.logging import configure_logging
 from acolyte.infra.peer_identity import PeerIdentityMiddleware, allowed_peers_from_env
 from acolyte.infra.pki import start_enrollment
+from acolyte.infra.user_identity import UserIdentityInterceptor
 from acolyte.usecase.graph.report_graph import build_report_graph
 from acolyte.usecase.reconcile_orphaned_runs_uc import ReconcileOrphanedRunsUsecase
 from acolyte.usecase.relay_notifications_uc import RelayNotificationsUsecase
@@ -98,6 +99,31 @@ _job_queue = PostgresJobGateway(
     _pool,
     notification_user_id=None if _relay_config is None else _relay_config.user_id,
 )
+
+# User identity verification (X-Alt-Backend-Token).
+# Fails fast at startup if BACKEND_TOKEN_SECRET_FILE is missing/unreadable.
+_backend_token_secret = settings.resolve_backend_token_secret()
+_user_identity_interceptor: UserIdentityInterceptor
+if _backend_token_secret is None:
+    _dev_user_id = settings.resolve_dev_user_id()
+    _user_identity_interceptor = UserIdentityInterceptor(dev_user_id=_dev_user_id)
+    logger.warning(
+        "user_identity_disabled",
+        dev_user_id=str(_dev_user_id),
+        reason="BACKEND_TOKEN_VERIFICATION is disabled — using dev user identity",
+    )
+else:
+    _user_identity_interceptor = UserIdentityInterceptor(
+        secret=_backend_token_secret,
+        issuer=settings.backend_token_issuer,
+        audience=settings.backend_token_audience,
+    )
+    logger.info(
+        "user_identity_enabled",
+        issuer=settings.backend_token_issuer,
+        audience=settings.backend_token_audience,
+        secret_file=settings.backend_token_secret_file,
+    )
 
 
 # HTTP client for Ollama and search-indexer (600s timeout for 26B model with 8192 num_predict).
@@ -347,7 +373,7 @@ def create_app() -> Starlette:  # noqa: PLR0915 — composition root wires pool,
             await _pool.close()
             logger.info("Shutting down acolyte-orchestrator")
 
-    asgi_app = AcolyteServiceASGIApplication(connect_service)
+    asgi_app = AcolyteServiceASGIApplication(connect_service, interceptors=[_user_identity_interceptor])
 
     # PeerIdentityMiddleware sits on both listeners so handlers can
     # capture the peer CN. Wave 4 in-process mTLS injects the verified

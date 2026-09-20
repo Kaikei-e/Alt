@@ -135,7 +135,8 @@ async def test_resume_after_upstream_recovery_clears_the_previous_attempts_error
     evidence = RecoveringEvidence()
     repo = MemoryReportGateway()
     jobs = MemoryJobGateway()
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    user_id = uuid4()
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=user_id)
     run = await jobs.create_run(report.report_id, 1)
     graph = build_report_graph(llm, evidence, repo, checkpointer=MemorySaver())
     service = _service(graph, repo, jobs)
@@ -169,7 +170,8 @@ async def test_resume_with_empty_content_store_fails_with_content_store_miss() -
     llm = FakeLLM()
     repo = MemoryReportGateway()
     jobs = MemoryJobGateway()
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    user_id = uuid4()
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=user_id)
     run = await jobs.create_run(report.report_id, 1)
     graph = build_report_graph(
         llm,
@@ -196,11 +198,18 @@ async def test_content_store_miss_aborts_before_the_writer_runs() -> None:
     """Fail at the hydration boundary, not 70 minutes of LLM calls later."""
     llm = FakeLLM()
     repo = MemoryReportGateway()
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    user_id = uuid4()
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=user_id)
 
     graph = build_report_graph(llm, ArticleOnlyEvidence(), repo, content_store=MemoryContentStore())
     result = await graph.ainvoke(
-        {"report_id": str(report.report_id), "run_id": str(uuid4()), "brief": {"topic": _TOPIC}, "revision_count": 0}
+        {
+            "report_id": str(report.report_id),
+            "run_id": str(uuid4()),
+            "brief": {"topic": _TOPIC},
+            "revision_count": 0,
+            "user_id": user_id,
+        }
     )
 
     assert result.get("curated")  # the curator did select the article
@@ -213,11 +222,18 @@ async def test_recap_only_run_is_not_a_content_store_miss() -> None:
     """Zero articles requested means zero hydrated is correct, not a miss."""
     llm = FakeLLM()
     repo = MemoryReportGateway()
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    user_id = uuid4()
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=user_id)
 
     graph = build_report_graph(llm, RecapOnlyEvidence(), repo, content_store=MemoryContentStore())
     result = await graph.ainvoke(
-        {"report_id": str(report.report_id), "run_id": str(uuid4()), "brief": {"topic": _TOPIC}, "revision_count": 0}
+        {
+            "report_id": str(report.report_id),
+            "run_id": str(uuid4()),
+            "brief": {"topic": _TOPIC},
+            "revision_count": 0,
+            "user_id": user_id,
+        }
     )
 
     assert result.get("failure_code") != "content_store_miss"
@@ -250,7 +266,8 @@ async def test_resume_pipeline_accepts_a_brief_dict_from_the_repository() -> Non
     evidence = ArticleOnlyEvidence()
     repo = MemoryReportGateway()
     jobs = MemoryJobGateway()
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    user_id = uuid4()
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=user_id)
     await repo.create_brief(report.report_id, ReportBrief(topic=_TOPIC, report_type="weekly_briefing"))
     run = await jobs.create_run(report.report_id, 1)
 

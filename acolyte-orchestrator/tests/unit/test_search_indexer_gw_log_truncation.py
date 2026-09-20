@@ -11,6 +11,7 @@ from structlog.testing import capture_logs
 from acolyte.config.settings import Settings
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
+from tests.conftest import TEST_USER_ID
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ async def test_search_articles_log_truncates_long_query(
     async with httpx.AsyncClient(transport=mock_transport) as client:
         gw = SearchIndexerGateway(client, settings, content_store)
         with capture_logs() as logs:
-            await gw.search_articles(long_query, limit=1)
+            await gw.search_articles(long_query, limit=1, user_id=TEST_USER_ID)
 
     search_events = [e for e in logs if e.get("event") == "search_articles"]
     assert search_events, "gateway must log a search_articles event"
@@ -60,7 +61,7 @@ async def test_search_articles_log_keeps_short_query_intact(
     async with httpx.AsyncClient(transport=mock_transport) as client:
         gw = SearchIndexerGateway(client, settings, content_store)
         with capture_logs() as logs:
-            await gw.search_articles(short_query, limit=1)
+            await gw.search_articles(short_query, limit=1, user_id=TEST_USER_ID)
 
     search_events = [e for e in logs if e.get("event") == "search_articles"]
     assert search_events

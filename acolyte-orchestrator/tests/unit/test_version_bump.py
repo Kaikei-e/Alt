@@ -16,12 +16,13 @@ import pytest
 from acolyte.domain.exceptions import StaleVersionError
 from acolyte.domain.report import ChangeItem
 from acolyte.gateway.memory_report_gw import MemoryReportGateway
+from tests.conftest import TEST_USER_ID
 
 
 @pytest.mark.asyncio
 async def test_bump_version_increments_correctly() -> None:
     repo = MemoryReportGateway()
-    report = await repo.create_report("Test", "weekly_briefing")
+    report = await repo.create_report("Test", "weekly_briefing", user_id=TEST_USER_ID)
 
     new_v = await repo.bump_version(
         report.report_id,
@@ -43,7 +44,7 @@ async def test_bump_version_increments_correctly() -> None:
 @pytest.mark.asyncio
 async def test_bump_version_records_change_items() -> None:
     repo = MemoryReportGateway()
-    report = await repo.create_report("Test", "weekly_briefing")
+    report = await repo.create_report("Test", "weekly_briefing", user_id=TEST_USER_ID)
 
     items = [
         ChangeItem(field_name="scope", change_kind="added"),
@@ -62,7 +63,7 @@ async def test_bump_version_records_change_items() -> None:
 @pytest.mark.asyncio
 async def test_stale_version_raises_error() -> None:
     repo = MemoryReportGateway()
-    report = await repo.create_report("Test", "weekly_briefing")
+    report = await repo.create_report("Test", "weekly_briefing", user_id=TEST_USER_ID)
 
     # First bump succeeds
     await repo.bump_version(report.report_id, 0, "v1", [])
@@ -93,7 +94,7 @@ async def test_bump_version_unknown_report_raises_stale_version_error() -> None:
 @pytest.mark.asyncio
 async def test_sequential_bumps() -> None:
     repo = MemoryReportGateway()
-    report = await repo.create_report("Test", "weekly_briefing")
+    report = await repo.create_report("Test", "weekly_briefing", user_id=TEST_USER_ID)
 
     v1 = await repo.bump_version(report.report_id, 0, "v1", [ChangeItem(field_name="scope", change_kind="added")])
     v2 = await repo.bump_version(report.report_id, v1, "v2", [ChangeItem(field_name="outline", change_kind="updated")])

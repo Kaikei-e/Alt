@@ -23,6 +23,7 @@ from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersi
 from acolyte.domain.run import ReportJob, ReportRun
 from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
 from acolyte.handler.connect_service import AcolyteConnectService
+from tests.conftest import TEST_USER_ID, make_request_ctx
 
 if TYPE_CHECKING:
     from acolyte.domain.brief import ReportBrief
@@ -36,7 +37,7 @@ class _FakeRepo:
         return self.reports.get(report_id)
 
     # Unused stubs for the rest of ReportRepositoryPort.
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         raise NotImplementedError
 
     async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
@@ -45,7 +46,7 @@ class _FakeRepo:
     async def get_brief(self, report_id: UUID) -> ReportBrief | None:
         raise NotImplementedError
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         raise NotImplementedError
 
     async def bump_version(
@@ -151,6 +152,7 @@ def _report(report_id: UUID) -> Report:
         current_version=0,
         latest_successful_run_id=None,
         created_at=datetime.now(UTC),
+        user_id=TEST_USER_ID,
     )
 
 
@@ -163,7 +165,7 @@ async def test_start_report_run_maps_report_not_found_to_not_found() -> None:
     with pytest.raises(ConnectError) as exc_info:
         await service.start_report_run(
             acolyte_pb2.StartReportRunRequest(report_id=str(uuid4())),
-            ctx=None,  # type: ignore[bad-argument-type]
+            ctx=make_request_ctx("StartReportRun"),
         )
 
     assert exc_info.value.code == Code.NOT_FOUND
@@ -189,7 +191,7 @@ async def test_start_report_run_maps_breaker_rejection_to_failed_precondition() 
     with pytest.raises(ConnectError) as exc_info:
         await service.start_report_run(
             acolyte_pb2.StartReportRunRequest(report_id=str(report_id)),
-            ctx=None,  # type: ignore[bad-argument-type]
+            ctx=make_request_ctx("StartReportRun"),
         )
 
     assert exc_info.value.code == Code.FAILED_PRECONDITION
@@ -216,7 +218,7 @@ async def test_start_report_run_maps_active_run_conflict_to_failed_precondition(
     with pytest.raises(ConnectError) as exc_info:
         await service.start_report_run(
             acolyte_pb2.StartReportRunRequest(report_id=str(report_id)),
-            ctx=None,  # type: ignore[bad-argument-type]
+            ctx=make_request_ctx("StartReportRun"),
         )
 
     assert exc_info.value.code == Code.FAILED_PRECONDITION
@@ -232,7 +234,7 @@ async def test_start_report_run_succeeds_when_no_prior_failure() -> None:
     service = AcolyteConnectService(MagicMock(), repo, job_queue=jobs)
     response = await service.start_report_run(
         acolyte_pb2.StartReportRunRequest(report_id=str(report_id)),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=make_request_ctx("StartReportRun"),
     )
 
     assert response.run_id

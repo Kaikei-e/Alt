@@ -87,7 +87,7 @@ class InMemoryReportRepo:
         self.saved_citations[section_key] = citations
         return expected_version + 1
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         return self.report
 
 

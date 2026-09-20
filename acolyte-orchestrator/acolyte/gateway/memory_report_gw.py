@@ -22,7 +22,7 @@ class MemoryReportGateway:
         self._section_versions: dict[tuple[UUID, str, int], SectionVersion] = {}
         self._change_seq = 0
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         report = Report(
             report_id=uuid4(),
             title=title,
@@ -30,6 +30,7 @@ class MemoryReportGateway:
             current_version=0,
             latest_successful_run_id=None,
             created_at=datetime.now(UTC),
+            user_id=user_id,
         )
         self._reports[report.report_id] = report
         self._versions[report.report_id] = []
@@ -45,8 +46,9 @@ class MemoryReportGateway:
     async def get_report(self, report_id: UUID) -> Report | None:
         return self._reports.get(report_id)
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
-        all_reports = sorted(self._reports.values(), key=lambda r: r.created_at, reverse=True)
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
+        reports = [r for r in self._reports.values() if r.user_id == user_id]
+        all_reports = sorted(reports, key=lambda r: r.created_at, reverse=True)
         return all_reports[:limit], None
 
     async def bump_version(  # noqa: PLR0913 — implements ReportRepositoryPort's bump_version() signature
@@ -75,6 +77,7 @@ class MemoryReportGateway:
             current_version=new_version,
             latest_successful_run_id=report.latest_successful_run_id,
             created_at=report.created_at,
+            user_id=report.user_id,
         )
         self._versions[report_id].append(
             ReportVersion(

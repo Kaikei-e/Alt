@@ -37,12 +37,13 @@ class PostgresReportGateway:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         async with self._pool.connection() as conn:
             row = await conn.execute(
-                "INSERT INTO reports (title, report_type) VALUES (%s, %s) "
-                "RETURNING report_id, title, report_type, current_version, latest_successful_run_id, created_at",
-                [title, report_type],
+                "INSERT INTO reports (title, report_type, user_id) VALUES (%s, %s, %s) "
+                "RETURNING report_id, title, report_type, current_version, "
+                "latest_successful_run_id, created_at, user_id",
+                [title, report_type, user_id],
             )
             r = await row.fetchone()
             assert r is not None
@@ -53,6 +54,7 @@ class PostgresReportGateway:
                 current_version=r[3],
                 latest_successful_run_id=r[4],
                 created_at=r[5],
+                user_id=r[6],
             )
 
     async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
@@ -94,7 +96,7 @@ class PostgresReportGateway:
     async def get_report(self, report_id: UUID) -> Report | None:
         async with self._pool.connection() as conn:
             row = await conn.execute(
-                "SELECT report_id, title, report_type, current_version, latest_successful_run_id, created_at "
+                "SELECT report_id, title, report_type, current_version, latest_successful_run_id, created_at, user_id "
                 "FROM reports WHERE report_id = %s",
                 [report_id],
             )
@@ -108,21 +110,24 @@ class PostgresReportGateway:
                 current_version=r[3],
                 latest_successful_run_id=r[4],
                 created_at=r[5],
+                user_id=r[6],
             )
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         async with self._pool.connection() as conn:
             if cursor:
                 row = await conn.execute(
-                    "SELECT report_id, title, report_type, current_version, latest_successful_run_id, created_at "
-                    "FROM reports WHERE created_at < %s ORDER BY created_at DESC LIMIT %s",
-                    [cursor, limit + 1],
+                    "SELECT report_id, title, report_type, current_version, "
+                    "latest_successful_run_id, created_at, user_id "
+                    "FROM reports WHERE user_id = %s AND created_at < %s ORDER BY created_at DESC LIMIT %s",
+                    [user_id, cursor, limit + 1],
                 )
             else:
                 row = await conn.execute(
-                    "SELECT report_id, title, report_type, current_version, latest_successful_run_id, created_at "
-                    "FROM reports ORDER BY created_at DESC LIMIT %s",
-                    [limit + 1],
+                    "SELECT report_id, title, report_type, current_version, "
+                    "latest_successful_run_id, created_at, user_id "
+                    "FROM reports WHERE user_id = %s ORDER BY created_at DESC LIMIT %s",
+                    [user_id, limit + 1],
                 )
             rows = await row.fetchall()
 
@@ -134,6 +139,7 @@ class PostgresReportGateway:
                 current_version=r[3],
                 latest_successful_run_id=r[4],
                 created_at=r[5],
+                user_id=r[6],
             )
             for r in rows[:limit]
         ]

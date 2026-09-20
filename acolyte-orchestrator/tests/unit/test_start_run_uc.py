@@ -24,6 +24,7 @@ import pytest
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.domain.run import ReportJob, ReportRun
 from acolyte.usecase.start_run_uc import StartRunRejectedError, StartRunUsecase
+from tests.conftest import TEST_USER_ID
 
 if TYPE_CHECKING:
     from acolyte.domain.brief import ReportBrief
@@ -38,7 +39,7 @@ class _FakeReportRepo:
     async def get_report(self, report_id: UUID) -> Report | None:
         return self.reports.get(report_id)
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         raise NotImplementedError
 
     async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
@@ -47,7 +48,7 @@ class _FakeReportRepo:
     async def get_brief(self, report_id: UUID) -> ReportBrief | None:
         raise NotImplementedError
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         raise NotImplementedError
 
     async def bump_version(  # noqa: PLR0913 — mirrors ReportRepositoryPort's signature
@@ -159,6 +160,7 @@ def _report(report_id: UUID, current_version: int = 0) -> Report:
         current_version=current_version,
         latest_successful_run_id=None,
         created_at=datetime.now(UTC),
+        user_id=TEST_USER_ID,
     )
 
 
@@ -181,7 +183,7 @@ async def test_execute_raises_when_report_not_found() -> None:
     uc = StartRunUsecase(repo, jobs)
 
     with pytest.raises(ValueError, match="not found") as exc_info:
-        await uc.execute(uuid4())
+        await uc.execute(uuid4(), user_id=TEST_USER_ID)
 
     # Plain ValueError, not the breaker-specific subclass — connect_service
     # must be able to tell "report not found" (Code.NOT_FOUND) apart from
@@ -198,7 +200,7 @@ async def test_execute_creates_run_when_no_prior_run_exists() -> None:
     jobs.latest_run = None
     uc = StartRunUsecase(repo, jobs)
 
-    run = await uc.execute(report_id)
+    run = await uc.execute(report_id, user_id=TEST_USER_ID)
 
     assert run.report_id == report_id
     assert jobs.created == [(report_id, 3)]
@@ -215,7 +217,7 @@ async def test_execute_rejects_run_within_cooldown_after_pipeline_error() -> Non
     uc = StartRunUsecase(repo, jobs)
 
     with pytest.raises(StartRunRejectedError, match="cooldown"):
-        await uc.execute(report_id, now=now)
+        await uc.execute(report_id, user_id=TEST_USER_ID, now=now)
 
     assert jobs.created == []
 
@@ -232,7 +234,7 @@ async def test_execute_rejects_run_within_cooldown_after_no_evidence_failure() -
     uc = StartRunUsecase(repo, jobs)
 
     with pytest.raises(StartRunRejectedError, match="cooldown"):
-        await uc.execute(report_id, now=now)
+        await uc.execute(report_id, user_id=TEST_USER_ID, now=now)
 
 
 @pytest.mark.asyncio
@@ -247,7 +249,7 @@ async def test_execute_rejects_run_within_cooldown_after_no_content_failure() ->
     uc = StartRunUsecase(repo, jobs)
 
     with pytest.raises(StartRunRejectedError, match="cooldown"):
-        await uc.execute(report_id, now=now)
+        await uc.execute(report_id, user_id=TEST_USER_ID, now=now)
 
     assert jobs.created == []
 
@@ -262,7 +264,7 @@ async def test_execute_allows_run_after_cooldown_elapses() -> None:
     jobs.latest_run = _failed_run(failure_code="pipeline_error", finished_at=now - timedelta(minutes=11))
     uc = StartRunUsecase(repo, jobs)
 
-    run = await uc.execute(report_id, now=now)
+    run = await uc.execute(report_id, user_id=TEST_USER_ID, now=now)
 
     assert run.report_id == report_id
     assert jobs.created == [(report_id, 2)]
@@ -278,7 +280,7 @@ async def test_execute_allows_run_when_latest_failure_code_is_not_circuit_breake
     jobs.latest_run = _failed_run(failure_code="pipeline_crashed", finished_at=now - timedelta(minutes=1))
     uc = StartRunUsecase(repo, jobs)
 
-    run = await uc.execute(report_id, now=now)
+    run = await uc.execute(report_id, user_id=TEST_USER_ID, now=now)
 
     assert run.report_id == report_id
 
@@ -300,7 +302,7 @@ async def test_execute_allows_run_when_latest_run_succeeded() -> None:
     )
     uc = StartRunUsecase(repo, jobs)
 
-    run = await uc.execute(report_id, now=now)
+    run = await uc.execute(report_id, user_id=TEST_USER_ID, now=now)
 
     assert run.report_id == report_id
 
@@ -324,7 +326,7 @@ async def test_execute_rejects_when_active_run_already_pending() -> None:
     uc = StartRunUsecase(repo, jobs)
 
     with pytest.raises(StartRunRejectedError, match="already"):
-        await uc.execute(report_id)
+        await uc.execute(report_id, user_id=TEST_USER_ID)
 
     assert jobs.created == []
 
@@ -344,7 +346,7 @@ async def test_execute_rejects_when_active_run_already_running() -> None:
     uc = StartRunUsecase(repo, jobs)
 
     with pytest.raises(StartRunRejectedError, match="already"):
-        await uc.execute(report_id)
+        await uc.execute(report_id, user_id=TEST_USER_ID)
 
     assert jobs.created == []
 
@@ -359,6 +361,6 @@ async def test_execute_respects_injected_failure_cooldown() -> None:
     jobs.latest_run = _failed_run(failure_code="pipeline_error", finished_at=now - timedelta(minutes=3))
     uc = StartRunUsecase(repo, jobs, failure_cooldown=timedelta(minutes=1))
 
-    run = await uc.execute(report_id, now=now)
+    run = await uc.execute(report_id, user_id=TEST_USER_ID, now=now)
 
     assert run.report_id == report_id

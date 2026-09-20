@@ -19,6 +19,7 @@ from acolyte.usecase.graph.nodes.planner_node import PlannerNode
 from acolyte.usecase.graph.nodes.quote_selector_node import QuoteSelectorNode
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.report_graph import build_report_graph
+from tests.conftest import TEST_USER_ID
 
 # --- Fakes ---
 
@@ -188,6 +189,7 @@ class FakeEvidence:
         self,
         query: str,
         *,
+        user_id: UUID,
         limit: int = 20,
         published_after: datetime | None = None,
         published_before: datetime | None = None,
@@ -220,7 +222,7 @@ class FakeReportRepo:
     async def get_brief(self, report_id: UUID) -> ReportBrief | None:
         return self.briefs.get(report_id)
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         rid = uuid4()
         report = Report(
             report_id=rid,
@@ -229,6 +231,7 @@ class FakeReportRepo:
             current_version=0,
             latest_successful_run_id=None,
             created_at=datetime.now(UTC),
+            user_id=TEST_USER_ID,
         )
         self.reports[rid] = report
         self.sections[rid] = []
@@ -257,6 +260,7 @@ class FakeReportRepo:
             current_version=new_v,
             latest_successful_run_id=report.latest_successful_run_id,
             created_at=report.created_at,
+            user_id=TEST_USER_ID,
         )
         return new_v
 
@@ -289,7 +293,7 @@ class FakeReportRepo:
         )
         return new_v
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         return list(self.reports.values()), None
 
     async def get_report_version(self, report_id: UUID, version_no: int) -> ReportVersion | None:
@@ -370,7 +374,7 @@ async def test_full_pipeline_produces_version() -> None:
     evidence = FakeEvidence()
     repo = FakeReportRepo()
 
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     graph = build_report_graph(llm, evidence, repo)
 
@@ -380,6 +384,7 @@ async def test_full_pipeline_produces_version() -> None:
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -399,7 +404,7 @@ async def test_full_pipeline_with_content_store_hydrates_evidence() -> None:
     # Pre-populate content store (simulating search_indexer storing content)
     await content_store.store("art-1", "Full article body about AI trends.")
 
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     graph = build_report_graph(llm, evidence, repo, content_store=content_store)
 
@@ -409,6 +414,7 @@ async def test_full_pipeline_with_content_store_hydrates_evidence() -> None:
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -430,7 +436,7 @@ async def test_full_pipeline_with_content_store_produces_citations() -> None:
 
     await content_store.store("art-1", "Full article body about AI trends.")
 
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     graph = build_report_graph(llm, evidence, repo, content_store=content_store)
 
@@ -440,6 +446,7 @@ async def test_full_pipeline_with_content_store_produces_citations() -> None:
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -468,7 +475,7 @@ async def test_full_pipeline_without_content_store_still_works() -> None:
     evidence = FakeEvidence()
     repo = FakeReportRepo()
 
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     graph = build_report_graph(llm, evidence, repo)
 
@@ -478,6 +485,7 @@ async def test_full_pipeline_without_content_store_still_works() -> None:
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -495,7 +503,7 @@ async def test_full_pipeline_conclusion_uses_analysis_claims() -> None:
 
     await content_store.store("art-1", "Full article body about AI trends.")
 
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     graph = build_report_graph(llm, evidence, repo, content_store=content_store)
 
@@ -505,6 +513,7 @@ async def test_full_pipeline_conclusion_uses_analysis_claims() -> None:
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -530,7 +539,7 @@ async def test_full_pipeline_es_uses_accepted_claims() -> None:
 
     await content_store.store("art-1", "Full article body about AI trends.")
 
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
 
     graph = build_report_graph(llm, evidence, repo, content_store=content_store)
 
@@ -540,6 +549,7 @@ async def test_full_pipeline_es_uses_accepted_claims() -> None:
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 
@@ -607,7 +617,7 @@ async def test_full_pipeline_compresses_evidence_before_extraction() -> None:
     long_body = "Important AI trend: spending hit $100B in 2026. " * 50  # ~2450 chars
     await content_store.store("art-1", long_body)
 
-    report = await repo.create_report("Test Report", "weekly_briefing")
+    report = await repo.create_report("Test Report", "weekly_briefing", user_id=TEST_USER_ID)
     graph = build_report_graph(llm, evidence, repo, content_store=content_store)
 
     result = await graph.ainvoke(
@@ -616,6 +626,7 @@ async def test_full_pipeline_compresses_evidence_before_extraction() -> None:
             "run_id": str(uuid4()),
             "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
+            "user_id": TEST_USER_ID,
         }
     )
 

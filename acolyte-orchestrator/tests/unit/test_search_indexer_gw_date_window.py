@@ -13,6 +13,7 @@ import pytest
 from acolyte.config.settings import Settings
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
+from tests.conftest import TEST_USER_ID
 
 
 @pytest.fixture
@@ -38,7 +39,9 @@ async def test_search_articles_passes_date_window(settings: Settings, content_st
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         gw = SearchIndexerGateway(client, settings, content_store)
-        await gw.search_articles("イラン情勢", limit=5, published_after=after, published_before=before)
+        await gw.search_articles(
+            "イラン情勢", limit=5, published_after=after, published_before=before, user_id=TEST_USER_ID
+        )
 
     assert captured.get("published_after") == "2026-04-12T00:00:00+00:00"
     assert captured.get("published_before") == "2026-04-20T00:00:00+00:00"
@@ -56,7 +59,7 @@ async def test_search_articles_omits_date_params_when_not_set(
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         gw = SearchIndexerGateway(client, settings, content_store)
-        await gw.search_articles("イラン情勢", limit=5)
+        await gw.search_articles("イラン情勢", limit=5, user_id=TEST_USER_ID)
 
     assert "published_after" not in captured
     assert "published_before" not in captured

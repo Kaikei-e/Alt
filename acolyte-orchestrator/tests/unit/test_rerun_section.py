@@ -11,6 +11,7 @@ from acolyte.domain.brief import ReportBrief
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.port.llm_provider import LLMMode, LLMResponse
 from acolyte.usecase.rerun_section_uc import RerunSectionUsecase
+from tests.conftest import TEST_USER_ID
 
 
 class FakeLLM:
@@ -35,7 +36,7 @@ class FakeRepo:
         self.bumped_sections: list[tuple[UUID, str, int, str]] = []
         self.bumped_versions: list[tuple[UUID, int, str]] = []
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         rid = uuid4()
         report = Report(
             report_id=rid,
@@ -44,6 +45,7 @@ class FakeRepo:
             current_version=0,
             latest_successful_run_id=None,
             created_at=datetime.now(UTC),
+            user_id=TEST_USER_ID,
         )
         self.reports[rid] = report
         return report
@@ -96,10 +98,11 @@ class FakeRepo:
             current_version=new_v,
             latest_successful_run_id=report.latest_successful_run_id,
             created_at=report.created_at,
+            user_id=TEST_USER_ID,
         )
         return new_v
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         return list(self.reports.values()), None
 
     async def list_report_versions(
@@ -139,6 +142,7 @@ def _make_repo_with_report() -> tuple[FakeRepo, UUID]:
         current_version=1,
         latest_successful_run_id=None,
         created_at=datetime.now(UTC),
+        user_id=TEST_USER_ID,
     )
     repo.briefs[rid] = ReportBrief(topic="AI semiconductor", report_type="weekly_briefing")
     repo.sections[rid] = [
@@ -167,7 +171,7 @@ async def test_rerun_section_generates_new_body() -> None:
     llm = FakeLLM("New summary content.")
     uc = RerunSectionUsecase(repo, llm)
 
-    await uc.execute(rid, "summary")
+    await uc.execute(rid, "summary", user_id=TEST_USER_ID)
 
     assert llm.call_count == 1
     assert len(repo.bumped_sections) == 1
@@ -181,7 +185,7 @@ async def test_rerun_section_bumps_report_version() -> None:
     llm = FakeLLM()
     uc = RerunSectionUsecase(repo, llm)
 
-    new_v = await uc.execute(rid, "summary")
+    new_v = await uc.execute(rid, "summary", user_id=TEST_USER_ID)
 
     assert new_v == 2
     assert len(repo.bumped_versions) == 1
@@ -199,7 +203,7 @@ async def test_rerun_section_pins_think_false_for_cjk_safety() -> None:
     llm = FakeLLM()
     uc = RerunSectionUsecase(repo, llm)
 
-    await uc.execute(rid, "summary")
+    await uc.execute(rid, "summary", user_id=TEST_USER_ID)
 
     assert llm.last_kwargs.get("think") is False
 
@@ -216,7 +220,7 @@ async def test_rerun_section_uses_longform_mode() -> None:
     llm = FakeLLM()
     uc = RerunSectionUsecase(repo, llm)
 
-    await uc.execute(rid, "summary")
+    await uc.execute(rid, "summary", user_id=TEST_USER_ID)
 
     assert llm.last_kwargs.get("mode") is LLMMode.LONGFORM
 
@@ -227,7 +231,7 @@ async def test_rerun_section_not_found_raises() -> None:
     uc = RerunSectionUsecase(repo, FakeLLM())
 
     with pytest.raises(ValueError, match="Section"):
-        await uc.execute(rid, "nonexistent")
+        await uc.execute(rid, "nonexistent", user_id=TEST_USER_ID)
 
 
 @pytest.mark.asyncio
@@ -236,4 +240,4 @@ async def test_rerun_section_report_not_found_raises() -> None:
     uc = RerunSectionUsecase(repo, FakeLLM())
 
     with pytest.raises(ValueError, match="Report"):
-        await uc.execute(uuid4(), "summary")
+        await uc.execute(uuid4(), "summary", user_id=TEST_USER_ID)

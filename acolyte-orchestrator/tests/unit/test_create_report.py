@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -23,7 +23,7 @@ class FakeReportRepo:
     async def get_brief(self, report_id: object) -> ReportBrief | None:
         return self.briefs.get(report_id)
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         report = Report(
             report_id=uuid4(),
             title=title,
@@ -31,6 +31,7 @@ class FakeReportRepo:
             current_version=0,
             latest_successful_run_id=None,
             created_at=datetime.now(UTC),
+            user_id=user_id,
         )
         self.reports.append(report)
         return report
@@ -40,8 +41,8 @@ class FakeReportRepo:
     async def get_report(self, report_id: object) -> Report | None:
         return None
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
-        return self.reports, None
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
+        return [r for r in self.reports if r.user_id == user_id], None
 
     async def bump_version(
         self,
@@ -89,12 +90,14 @@ class FakeReportRepo:
 async def test_create_report_returns_new_report() -> None:
     repo = FakeReportRepo()
     uc = CreateReportUsecase(repo)
+    user_id = uuid4()
 
-    report = await uc.execute("Weekly AI Briefing", "weekly_briefing")
+    report = await uc.execute("Weekly AI Briefing", "weekly_briefing", user_id=user_id)
 
     assert report.title == "Weekly AI Briefing"
     assert report.report_type == "weekly_briefing"
     assert report.current_version == 0
+    assert report.user_id == user_id
     assert len(repo.reports) == 1
 
 
@@ -102,9 +105,12 @@ async def test_create_report_returns_new_report() -> None:
 async def test_create_multiple_reports() -> None:
     repo = FakeReportRepo()
     uc = CreateReportUsecase(repo)
+    user_id = uuid4()
 
-    r1 = await uc.execute("Report 1", "weekly_briefing")
-    r2 = await uc.execute("Report 2", "market_analysis")
+    r1 = await uc.execute("Report 1", "weekly_briefing", user_id=user_id)
+    r2 = await uc.execute("Report 2", "market_analysis", user_id=user_id)
 
     assert r1.report_id != r2.report_id
+    assert r1.user_id == user_id
+    assert r2.user_id == user_id
     assert len(repo.reports) == 2

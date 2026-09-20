@@ -14,6 +14,7 @@ from connectrpc.errors import ConnectError
 import acolyte.gen  # noqa: F401 — must precede generated imports
 from acolyte.domain.brief import ReportBrief
 from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
+from acolyte.infra.user_identity import current_user_id, get_acting_user_id
 from acolyte.usecase.create_report_uc import CreateReportUsecase
 from acolyte.usecase.get_report_uc import GetReportUsecase
 from acolyte.usecase.list_reports_uc import ListReportsUsecase
@@ -74,7 +75,10 @@ class AcolyteConnectService:
     async def create_report(
         self, request: acolyte_pb2.CreateReportRequest, ctx: RequestContext
     ) -> acolyte_pb2.CreateReportResponse:
-        report = await CreateReportUsecase(self._repo).execute(request.title, request.report_type)
+        user_id = get_acting_user_id(ctx)
+        if user_id is None:
+            raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
+        report = await CreateReportUsecase(self._repo).execute(request.title, request.report_type, user_id=user_id)
         scope = dict(request.scope) if request.scope else {}
         if scope.get("topic"):
             brief = ReportBrief.from_scope(scope, request.report_type)
@@ -84,7 +88,14 @@ class AcolyteConnectService:
     async def get_report(
         self, request: acolyte_pb2.GetReportRequest, ctx: RequestContext
     ) -> acolyte_pb2.GetReportResponse:
-        report, sections = await GetReportUsecase(self._repo).execute(UUID(request.report_id))
+        user_id = get_acting_user_id(ctx)
+        if user_id is None:
+            raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
+        try:
+            rid = UUID(request.report_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid report_id: {e}") from e
+        report, sections = await GetReportUsecase(self._repo).execute(rid, user_id=user_id)
         if report is None:
             raise ConnectError(Code.NOT_FOUND, f"Report {request.report_id} not found")
 
@@ -141,9 +152,12 @@ class AcolyteConnectService:
     async def list_reports(
         self, request: acolyte_pb2.ListReportsRequest, ctx: RequestContext
     ) -> acolyte_pb2.ListReportsResponse:
+        user_id = get_acting_user_id(ctx)
+        if user_id is None:
+            raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
         cursor = request.cursor if request.cursor else None
         limit = request.limit if request.limit > 0 else 20
-        reports, next_cursor = await ListReportsUsecase(self._repo).execute(cursor, limit)
+        reports, next_cursor = await ListReportsUsecase(self._repo).execute(cursor, limit, user_id=user_id)
 
         summaries = []
         for r in reports:
@@ -177,7 +191,16 @@ class AcolyteConnectService:
     async def list_report_versions(
         self, request: acolyte_pb2.ListReportVersionsRequest, ctx: RequestContext
     ) -> acolyte_pb2.ListReportVersionsResponse:
-        report_id = UUID(request.report_id)
+        user_id = get_acting_user_id(ctx)
+        if user_id is None:
+            raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
+        try:
+            report_id = UUID(request.report_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid report_id: {e}") from e
+        report = await self._repo.get_report(report_id)
+        if report is None or report.user_id != user_id:
+            raise ConnectError(Code.NOT_FOUND, f"Report {request.report_id} not found")
         cursor = request.cursor if request.cursor else None
         limit = request.limit if request.limit > 0 else 20
         versions, next_cursor = await self._repo.list_report_versions(report_id, cursor, limit)
@@ -219,9 +242,15 @@ class AcolyteConnectService:
         if self._jobs is None:
             raise ConnectError(Code.UNIMPLEMENTED, "Job queue not configured")
 
-        report_id = UUID(request.report_id)
+        user_id = get_acting_user_id(ctx)
+        if user_id is None:
+            raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
         try:
-            run = await StartRunUsecase(self._repo, self._jobs).execute(report_id)
+            report_id = UUID(request.report_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid report_id: {e}") from e
+        try:
+            run = await StartRunUsecase(self._repo, self._jobs).execute(report_id, user_id=user_id)
         except StartRunRejectedError as e:
             # Circuit-breaker cooldown, not a missing report — distinct code
             # so a client/retry-loop can tell them apart.
@@ -235,7 +264,12 @@ class AcolyteConnectService:
             brief = await self._repo.get_brief(report.report_id)
             brief_dict = brief.to_dict() if brief else {"topic": report.title}
             task = asyncio.create_task(
-                self._run_pipeline(str(report.report_id), str(run.run_id), brief_dict),
+                self._run_pipeline(
+                    str(report.report_id),
+                    str(run.run_id),
+                    brief_dict,
+                    user_id=user_id,
+                ),
                 name=f"acolyte-run-{run.run_id}",
             )
             self._background_tasks.add(task)
@@ -246,17 +280,44 @@ class AcolyteConnectService:
     async def resume_pipeline(self, report_id: str, run_id: str, brief_dict: dict[str, Any]) -> None:
         """Public entry point for operator tooling (e.g. scripts/resume_run.py)
         to resume a checkpointed run outside of start_report_run's background task.
-        """
-        await self._run_pipeline(report_id, run_id, brief_dict)
 
-    async def _run_pipeline(self, report_id: str, run_id: str, brief_dict: dict[str, Any]) -> None:
+        The acting user is derived from the report row: operator tooling has no
+        request context to carry an identity, and a run must never execute
+        against an owner the report does not name.
+        """
+        try:
+            rid = UUID(report_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid report_id: {e}") from e
+
+        report = await self._repo.get_report(rid)
+        if report is None:
+            raise ConnectError(Code.NOT_FOUND, f"Report {report_id} not found")
+        if report.user_id is None:
+            raise ConnectError(
+                Code.FAILED_PRECONDITION,
+                f"Report {report_id} has no owner: run the owner backfill for this report before resuming",
+            )
+
+        await self._run_pipeline(report_id, run_id, brief_dict, user_id=report.user_id)
+
+    async def _run_pipeline(self, report_id: str, run_id: str, brief_dict: dict[str, Any], user_id: UUID) -> None:
         """Execute LangGraph pipeline in background, bounded by max_concurrent_runs."""
         async with self._run_semaphore:
-            await self._run_pipeline_locked(report_id, run_id, brief_dict)
+            await self._run_pipeline_locked(report_id, run_id, brief_dict, user_id=user_id)
 
-    async def _run_pipeline_locked(self, report_id: str, run_id: str, brief_dict: dict[str, Any]) -> None:  # noqa: PLR0912, PLR0915 — run-lifecycle state machine (checkpoint resume/DLQ/status transitions), splitting would obscure the single narrative
+    async def _run_pipeline_locked(  # noqa: PLR0912, PLR0915 — run-lifecycle state machine
+        self,
+        report_id: str,
+        run_id: str,
+        brief_dict: dict[str, Any],
+        user_id: UUID,
+    ) -> None:
         if self._graph is None:
-            raise RuntimeError("Pipeline graph not configured")  # noqa: TRY003 — internal wiring invariant, not a domain error to catch
+            msg = "Pipeline graph not configured"
+            raise RuntimeError(msg)
+
+        current_user_id.set(user_id)
 
         if self._jobs is not None:
             # Single default_model for all three roles — the pipeline is
@@ -271,6 +332,7 @@ class AcolyteConnectService:
             "run_id": run_id,
             "brief": brief_dict,
             "revision_count": 0,
+            "user_id": user_id,
         }
 
         logger.info(
@@ -364,8 +426,18 @@ class AcolyteConnectService:
     ) -> acolyte_pb2.GetRunStatusResponse:
         if self._jobs is None:
             raise ConnectError(Code.UNIMPLEMENTED, "Job queue not configured")
-        run = await self._jobs.get_run(UUID(request.run_id))
+        user_id = get_acting_user_id(ctx)
+        if user_id is None:
+            raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
+        try:
+            run_id = UUID(request.run_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid run_id: {e}") from e
+        run = await self._jobs.get_run(run_id)
         if run is None:
+            raise ConnectError(Code.NOT_FOUND, f"Run {request.run_id} not found")
+        report = await self._repo.get_report(run.report_id)
+        if report is None or report.user_id != user_id:
             raise ConnectError(Code.NOT_FOUND, f"Run {request.run_id} not found")
         return acolyte_pb2.GetRunStatusResponse(
             run=acolyte_pb2.ReportRun(
@@ -376,10 +448,26 @@ class AcolyteConnectService:
             ),
         )
 
-    def stream_run_progress(
+    async def stream_run_progress(
         self, request: acolyte_pb2.StreamRunProgressRequest, ctx: RequestContext
     ) -> AsyncIterator[acolyte_pb2.StreamRunProgressResponse]:
+        if self._jobs is None:
+            raise ConnectError(Code.UNIMPLEMENTED, "Job queue not configured")
+        user_id = get_acting_user_id(ctx)
+        if user_id is None:
+            raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
+        try:
+            run_id = UUID(request.run_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid run_id: {e}") from e
+        run = await self._jobs.get_run(run_id)
+        if run is None:
+            raise ConnectError(Code.NOT_FOUND, f"Run {request.run_id} not found")
+        report = await self._repo.get_report(run.report_id)
+        if report is None or report.user_id != user_id:
+            raise ConnectError(Code.NOT_FOUND, f"Run {request.run_id} not found")
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+        yield  # compiler hint for AsyncIterator generator return type
 
     async def rerun_section(
         self, request: acolyte_pb2.RerunSectionRequest, ctx: RequestContext
@@ -389,9 +477,17 @@ class AcolyteConnectService:
         if not request.section_key:
             raise ConnectError(Code.INVALID_ARGUMENT, "section_key is required")
 
+        user_id = get_acting_user_id(ctx)
+        if user_id is None:
+            raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
+        try:
+            rid = UUID(request.report_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid report_id: {e}") from e
+
         uc = RerunSectionUsecase(self._repo, self._llm)
         try:
-            await uc.execute(UUID(request.report_id), request.section_key)
+            await uc.execute(rid, request.section_key, user_id=user_id)
         except ValueError as e:
             raise ConnectError(Code.NOT_FOUND, str(e)) from e
         except ConnectError:
@@ -424,13 +520,16 @@ class AcolyteConnectService:
     async def delete_report(
         self, request: acolyte_pb2.DeleteReportRequest, ctx: RequestContext
     ) -> acolyte_pb2.DeleteReportResponse:
+        user_id = get_acting_user_id(ctx)
+        if user_id is None:
+            raise ConnectError(Code.UNAUTHENTICATED, "acting user is required")
         try:
             rid = UUID(request.report_id)
         except ValueError as e:
             raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid report_id: {e}") from e
 
         report = await self._repo.get_report(rid)
-        if report is None:
+        if report is None or report.user_id != user_id:
             raise ConnectError(Code.NOT_FOUND, f"Report {rid} not found")
 
         if await self._repo.has_active_run(rid):

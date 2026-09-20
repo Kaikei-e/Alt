@@ -14,9 +14,11 @@ class GetReportUsecase:
     def __init__(self, report_repo: ReportRepositoryPort) -> None:
         self._report_repo = report_repo
 
-    async def execute(self, report_id: UUID) -> tuple[Report | None, list[ReportSection]]:
+    async def execute(self, report_id: UUID, user_id: UUID) -> tuple[Report | None, list[ReportSection]]:
         report = await self._report_repo.get_report(report_id)
         if report is None:
+            return None, []
+        if report.user_id is None or report.user_id != user_id:
             return None, []
         sections = await self._report_repo.get_sections(report_id)
         return report, sections

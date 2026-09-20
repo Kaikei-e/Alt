@@ -2,8 +2,8 @@
 
 Uses GET /v1/search?q={query}&limit={limit} — the search-indexer's own REST endpoint.
 
-Response schema: {query: str, hits: [{id, title, content, tags, score}]}
-Note: search-indexer does NOT return url or published_at.
+Response schema: {query: str, hits: [{id, title, content, tags, score, published_at}]}
+Note: search-indexer does NOT return url.
 score is Meilisearch _rankingScore (0.0-1.0).
 
 Content from search results is stored in ContentStore (not in ArticleHit)
@@ -13,6 +13,7 @@ to follow the 'Fetch metadata first, body only for top-N' rule.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import structlog
 
@@ -57,6 +58,7 @@ class SearchIndexerGateway:
         self,
         query: str,
         *,
+        user_id: UUID,
         limit: int = 20,
         published_after: datetime | None = None,
         published_before: datetime | None = None,
@@ -65,12 +67,16 @@ class SearchIndexerGateway:
 
         Stores content in ContentStore; returns metadata-only ArticleHit.
         Authentication is established at the TLS transport layer (mTLS).
-
-        When ``published_after`` or ``published_before`` is supplied, the
-        corresponding ISO 8601 timestamp is forwarded so search-indexer can
-        exclude articles outside the window.
         """
-        params: dict[str, str | int] = {"q": query, "limit": limit}
+        if not isinstance(user_id, UUID):
+            msg = "user_id must be a UUID for article search"
+            raise TypeError(msg)
+
+        params: dict[str, str | int] = {
+            "q": query,
+            "limit": limit,
+            "user_id": str(user_id),
+        }
         if published_after is not None:
             params["published_after"] = published_after.isoformat()
         if published_before is not None:
@@ -101,6 +107,7 @@ class SearchIndexerGateway:
                     tags=hit.get("tags"),
                     score=float(hit.get("score", 0.0)),
                     language=str(hit.get("language") or "und"),
+                    published_at=hit.get("published_at"),
                 )
             )
 

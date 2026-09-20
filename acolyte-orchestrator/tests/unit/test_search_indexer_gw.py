@@ -1,10 +1,9 @@
 """Unit tests for search-indexer gateway.
 
 Tests are aligned with search-indexer actual REST API:
-  GET /v1/search → {query, hits: [{id, title, content, tags, score}]}
+  GET /v1/search → {query, hits: [{id, title, content, tags, score, published_at}]}
 
 score is Meilisearch _rankingScore (0.0-1.0).
-No url or published_at in response.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ import acolyte.gateway.search_indexer_gw as gw_mod
 from acolyte.config.settings import Settings
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
+from tests.conftest import TEST_USER_ID
 
 
 @pytest.fixture
@@ -44,6 +44,7 @@ def mock_transport() -> httpx.MockTransport:
                             "title": "Test Article about AI",
                             "content": "Full article body text about artificial intelligence and market trends.",
                             "tags": ["AI", "technology"],
+                            "published_at": "2026-09-01T00:00:00Z",
                         },
                         {
                             "id": "art-2",
@@ -66,12 +67,14 @@ async def test_search_articles_returns_metadata_only(
     """ArticleHit should contain metadata fields only — no content."""
     async with httpx.AsyncClient(transport=mock_transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
-        hits = await gw.search_articles("AI trends", limit=10)
+        hits = await gw.search_articles("AI trends", limit=10, user_id=TEST_USER_ID)
 
     assert len(hits) == 2
     assert hits[0].article_id == "art-1"
     assert hits[0].title == "Test Article about AI"
     assert hits[0].tags == ["AI", "technology"]
+    assert hits[0].published_at == "2026-09-01T00:00:00Z"
+    assert hits[1].published_at is None
     # score defaults to 0.0 since search-indexer doesn't return _rankingScore
     assert hits[0].score == 0.0
 
@@ -83,7 +86,7 @@ async def test_search_articles_stores_content_in_content_store(
     """Content from search response should be stored in ContentStore, not in ArticleHit."""
     async with httpx.AsyncClient(transport=mock_transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
-        await gw.search_articles("AI trends", limit=10)
+        await gw.search_articles("AI trends", limit=10, user_id=TEST_USER_ID)
 
     body = await content_store.fetch("art-1")
     assert body == "Full article body text about artificial intelligence and market trends."
@@ -99,7 +102,7 @@ async def test_search_articles_empty_response(settings: Settings, content_store:
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
-        hits = await gw.search_articles("xyz", limit=10)
+        hits = await gw.search_articles("xyz", limit=10, user_id=TEST_USER_ID)
 
     assert hits == []
 
@@ -123,7 +126,7 @@ async def test_search_articles_extracts_score(settings: Settings, content_store:
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
-        hits = await gw.search_articles("AI", limit=10)
+        hits = await gw.search_articles("AI", limit=10, user_id=TEST_USER_ID)
 
     assert hits[0].score == 0.85
     assert hits[1].score == 0.42
@@ -145,7 +148,7 @@ async def test_search_articles_score_default_zero(settings: Settings, content_st
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
-        hits = await gw.search_articles("AI", limit=10)
+        hits = await gw.search_articles("AI", limit=10, user_id=TEST_USER_ID)
 
     assert hits[0].score == 0.0
 
@@ -169,7 +172,7 @@ async def test_search_articles_extracts_language(settings: Settings, content_sto
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
-        hits = await gw.search_articles("AI", limit=10)
+        hits = await gw.search_articles("AI", limit=10, user_id=TEST_USER_ID)
 
     assert hits[0].language == "ja"
     assert hits[1].language == "en"
@@ -188,7 +191,7 @@ async def test_search_articles_language_default_und(settings: Settings, content_
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
-        hits = await gw.search_articles("AI", limit=10)
+        hits = await gw.search_articles("AI", limit=10, user_id=TEST_USER_ID)
 
     assert hits[0].language == "und"
 

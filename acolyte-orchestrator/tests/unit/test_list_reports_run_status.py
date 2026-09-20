@@ -17,14 +17,18 @@ from acolyte.domain.report import Report
 from acolyte.domain.run import ReportJob, ReportRun
 from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
 from acolyte.handler.connect_service import AcolyteConnectService
+from tests.conftest import make_request_ctx
+
+_DEFAULT_USER_ID = uuid4()
 
 
 class _FakeRepo:
     def __init__(self, reports: list[Report]) -> None:
         self._reports = reports
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
-        return self._reports[:limit], None
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
+        matched = [r for r in self._reports if r.user_id == user_id]
+        return matched[:limit], None
 
 
 class _FakeJobQueue:
@@ -68,7 +72,7 @@ class _FakeJobQueue:
         return None
 
 
-def _report(rid: UUID, title: str) -> Report:
+def _report(rid: UUID, title: str, user_id: UUID = _DEFAULT_USER_ID) -> Report:
     return Report(
         report_id=rid,
         title=title,
@@ -76,6 +80,7 @@ def _report(rid: UUID, title: str) -> Report:
         current_version=1,
         latest_successful_run_id=None,
         created_at=datetime.now(UTC),
+        user_id=user_id,
     )
 
 
@@ -87,7 +92,8 @@ async def test_list_reports_returns_actual_run_status_for_failed_run() -> None:
     jobs = _FakeJobQueue({rid: run})
 
     service = AcolyteConnectService(object(), repo, job_queue=jobs)  # type: ignore[bad-argument-type]
-    response = await service.list_reports(acolyte_pb2.ListReportsRequest(limit=10), ctx=None)  # type: ignore[bad-argument-type]
+    req = acolyte_pb2.ListReportsRequest(limit=10)
+    response = await service.list_reports(req, ctx=make_request_ctx("ListReports", _DEFAULT_USER_ID))
 
     assert jobs.calls == [rid]
     assert len(response.reports) == 1
@@ -101,7 +107,8 @@ async def test_list_reports_returns_empty_status_when_no_run_exists() -> None:
     jobs = _FakeJobQueue({})
 
     service = AcolyteConnectService(object(), repo, job_queue=jobs)  # type: ignore[bad-argument-type]
-    response = await service.list_reports(acolyte_pb2.ListReportsRequest(limit=10), ctx=None)  # type: ignore[bad-argument-type]
+    req = acolyte_pb2.ListReportsRequest(limit=10)
+    response = await service.list_reports(req, ctx=make_request_ctx("ListReports", _DEFAULT_USER_ID))
 
     assert response.reports[0].latest_run_status == ""
 
@@ -113,6 +120,7 @@ async def test_list_reports_returns_empty_status_when_job_queue_not_wired() -> N
     repo = _FakeRepo([_report(rid, "No queue wired")])
 
     service = AcolyteConnectService(object(), repo, job_queue=None)  # type: ignore[bad-argument-type]
-    response = await service.list_reports(acolyte_pb2.ListReportsRequest(limit=10), ctx=None)  # type: ignore[bad-argument-type]
+    req = acolyte_pb2.ListReportsRequest(limit=10)
+    response = await service.list_reports(req, ctx=make_request_ctx("ListReports", _DEFAULT_USER_ID))
 
     assert response.reports[0].latest_run_status == ""

@@ -4,6 +4,131 @@
   },
   "interactions": [
     {
+      "description": "an article search request bounded by a 7-day window",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "search-indexer has articles with published_at metadata indexed"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/v1/search",
+        "query": {
+          "limit": [
+            "20"
+          ],
+          "published_after": [
+            "2026-04-12T00:00:00Z"
+          ],
+          "published_before": [
+            "2026-04-20T00:00:00Z"
+          ],
+          "q": [
+            "Iran tensions 2026"
+          ],
+          "user_id": [
+            "00000000-0000-0000-0000-000000000001"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "hits": [
+              {
+                "content": "Recent events have intensified the standoff...",
+                "id": "article-010",
+                "language": "en",
+                "published_at": "2026-04-18T09:00:00Z",
+                "score": 0.91,
+                "tags": [
+                  "iran",
+                  "geopolitics"
+                ],
+                "title": "Iran strait tensions escalate"
+              }
+            ],
+            "query": "Iran tensions 2026"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "an article search request for evidence gathering",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "search-indexer has indexed articles"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/v1/search",
+        "query": {
+          "limit": [
+            "20"
+          ],
+          "q": [
+            "AI market trends 2026"
+          ],
+          "user_id": [
+            "00000000-0000-0000-0000-000000000001"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "hits": [
+              {
+                "content": "The artificial intelligence market continues to expand...",
+                "id": "article-001",
+                "language": "en",
+                "score": 0.85,
+                "tags": [
+                  "AI",
+                  "market",
+                  "2026"
+                ],
+                "title": "AI Market Overview 2026"
+              },
+              {
+                "content": "人工知能市場は拡大を続けている...",
+                "id": "article-002",
+                "language": "ja",
+                "score": 0.78,
+                "tags": [
+                  "AI",
+                  "市場"
+                ],
+                "title": "AI市場 2026年展望"
+              }
+            ],
+            "query": "AI market trends 2026"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
       "description": "an article search request with no matches",
       "pending": false,
       "providerStates": [
@@ -20,6 +145,9 @@
           ],
           "q": [
             "nonexistent topic xyz"
+          ],
+          "user_id": [
+            "00000000-0000-0000-0000-000000000001"
           ]
         }
       },

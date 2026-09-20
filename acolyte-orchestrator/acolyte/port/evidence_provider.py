@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from uuid import UUID
 
 
 @dataclass(frozen=True)
@@ -14,8 +15,7 @@ class ArticleHit:
     """Metadata-only search hit. Content is stored in ContentStore separately.
 
     Fields match search-indexer REST GET /v1/search response:
-    id, title, content, tags, language. url, published_at, _rankingScore
-    are NOT returned by search-indexer.
+    id, title, content, tags, score, language, published_at.
 
     ``language`` is a BCP-47 short code (``ja``, ``en``) or ``und`` when the
     upstream does not yet populate it.
@@ -26,6 +26,7 @@ class ArticleHit:
     tags: list[str] | None = None
     score: float = 0.0
     language: str = "und"
+    published_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class EvidenceProviderPort(Protocol):
         self,
         query: str,
         *,
+        user_id: UUID,
         limit: int = 20,
         published_after: datetime | None = None,
         published_before: datetime | None = None,
