@@ -49,7 +49,7 @@ func NewDirectIndexerMulti(
 // IndexArticle indexes a single article, distributing across replicas.
 func (d *DirectIndexer) IndexArticle(ctx context.Context, a Article) error {
 	idx := d.next.Add(1) % uint64(len(d.indexers))
-	return d.indexers[idx].Upsert(ctx, a.ID, a.Title, a.URL, a.Body)
+	return d.indexers[idx].Upsert(ctx, a.ID, a.UserID, a.Title, a.URL, a.Body)
 }
 
 // IndexBatch indexes a batch of articles concurrently.

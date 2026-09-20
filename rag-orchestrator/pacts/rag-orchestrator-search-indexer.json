@@ -20,6 +20,14 @@
                   "match": "type"
                 }
               ]
+            },
+            "user_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
             }
           }
         },
@@ -28,6 +36,9 @@
         "query": {
           "q": [
             "LLM"
+          ],
+          "user_id": [
+            "00000000-0000-0000-0000-000000000001"
           ]
         }
       },
@@ -130,118 +141,8 @@
                   "match": "type"
                 }
               ]
-            }
-          }
-        },
-        "method": "GET",
-        "path": "/v1/search",
-        "query": {
-          "limit": [
-            "10"
-          ],
-          "q": [
-            "multi agent systems"
-          ]
-        }
-      },
-      "response": {
-        "body": {
-          "hits": [
-            {
-              "content": "Body...",
-              "id": "article-42",
-              "tags": [
-                "agents"
-              ],
-              "title": "Multi-Agent Systems"
-            }
-          ],
-          "query": "multi agent systems"
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.hits": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
             },
-            "$.hits[*].content": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.hits[*].id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.hits[*].tags": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.hits[*].title": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.query": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "an authenticated /v1/search request from rag-orchestrator",
-      "providerStates": [
-        {
-          "name": "a service token is configured and search has indexed articles"
-        }
-      ],
-      "request": {
-        "headers": {
-          "X-Service-Token": "test-service-token"
-        },
-        "matchingRules": {
-          "header": {
-            "X-Service-Token": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          },
-          "query": {
-            "q": {
+            "user_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -254,137 +155,14 @@
         "method": "GET",
         "path": "/v1/search",
         "query": {
+          "limit": [
+            "10"
+          ],
           "q": [
-            "LLM"
+            "multi agent systems"
           ],
           "user_id": [
-            "rag-orchestrator-system"
-          ]
-        }
-      },
-      "response": {
-        "body": {
-          "hits": [
-            {
-              "content": "Some content",
-              "id": "article-1",
-              "tags": [
-                "ai"
-              ],
-              "title": "An LLM primer"
-            }
-          ],
-          "query": "LLM"
-        },
-        "headers": {
-          "Content-Type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.hits": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.hits[*].content": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.hits[*].id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.hits[*].tags": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.hits[*].title": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.query": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "an authenticated BM25 /v1/search request from rag-orchestrator",
-      "providerStates": [
-        {
-          "name": "a service token is configured and search has indexed articles"
-        }
-      ],
-      "request": {
-        "headers": {
-          "X-Service-Token": "test-service-token"
-        },
-        "matchingRules": {
-          "header": {
-            "X-Service-Token": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          },
-          "query": {
-            "limit": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "q": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "method": "GET",
-        "path": "/v1/search",
-        "query": {
-          "limit": [
-            "10"
-          ],
-          "q": [
-            "multi agent systems"
+            "00000000-0000-0000-0000-000000000001"
           ]
         }
       },

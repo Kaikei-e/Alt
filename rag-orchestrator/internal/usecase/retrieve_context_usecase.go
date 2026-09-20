@@ -2,7 +2,9 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strings"
 
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase/retrieval"
@@ -10,9 +12,18 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	// ErrEmptyUserID is returned when RetrieveContextInput.UserID is empty.
+	// Scoped retrieval requires an acting user to prevent cross-user data leakage.
+	ErrEmptyUserID = errors.New("retrieveContextUsecase: user_id is required")
+	// ErrInvalidUserID is returned when RetrieveContextInput.UserID is not a valid UUID.
+	ErrInvalidUserID = errors.New("retrieveContextUsecase: user_id must be a valid UUID")
+)
+
 // RetrieveContextInput defines the input parameters for RetrieveContext.
 type RetrieveContextInput struct {
 	Query               string
+	UserID              string // Required acting user ID (UUID)
 	CandidateArticleIDs []string
 	ConversationHistory []domain.Message // Recent turns for query rewriting
 	SearchQueries       []string         // Pre-filtered queries from query planner (bypass expand-query)
@@ -167,11 +178,20 @@ func NewRetrieveContextUsecase(
 }
 
 func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveContextInput) (*RetrieveContextOutput, error) {
+	trimmedUserID := strings.TrimSpace(input.UserID)
+	if trimmedUserID == "" {
+		return nil, ErrEmptyUserID
+	}
+	if _, err := uuid.Parse(trimmedUserID); err != nil {
+		return nil, ErrInvalidUserID
+	}
+
 	out, err := u.graph.Execute(ctx, retrieval.GraphInput{
 		Query:               input.Query,
 		CandidateArticleIDs: input.CandidateArticleIDs,
 		ConversationHistory: input.ConversationHistory,
 		SearchQueries:       input.SearchQueries,
+		UserID:              trimmedUserID,
 	})
 	if err != nil {
 		return nil, err

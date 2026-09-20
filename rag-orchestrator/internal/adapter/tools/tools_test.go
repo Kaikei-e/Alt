@@ -17,7 +17,7 @@ type mockSearchClient struct {
 	err  error
 }
 
-func (m *mockSearchClient) Search(_ context.Context, _ string) ([]domain.SearchHit, error) {
+func (m *mockSearchClient) Search(_ context.Context, _, _ string) ([]domain.SearchHit, error) {
 	return m.hits, m.err
 }
 
@@ -35,7 +35,7 @@ func TestTagSearchTool_Execute_Success(t *testing.T) {
 	}
 	tool := tools.NewTagSearchTool(client)
 
-	result, err := tool.Execute(context.Background(), map[string]string{"query": "Rust"})
+	result, err := tool.Execute(context.Background(), map[string]string{"query": "Rust", "user_id": "00000000-0000-0000-0000-000000000001"})
 	assert.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Contains(t, result.Data, "Rust")
@@ -45,7 +45,7 @@ func TestTagSearchTool_Execute_Empty(t *testing.T) {
 	client := &mockSearchClient{hits: nil}
 	tool := tools.NewTagSearchTool(client)
 
-	result, err := tool.Execute(context.Background(), map[string]string{"query": "nonexistent"})
+	result, err := tool.Execute(context.Background(), map[string]string{"query": "nonexistent", "user_id": "00000000-0000-0000-0000-000000000001"})
 	assert.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Equal(t, "no results", result.Data)
@@ -66,7 +66,7 @@ func TestDateRangeFilterTool_Execute(t *testing.T) {
 	}
 	tool := tools.NewDateRangeFilterTool(client)
 
-	result, err := tool.Execute(context.Background(), map[string]string{"query": "最近のAIニュース"})
+	result, err := tool.Execute(context.Background(), map[string]string{"query": "最近のAIニュース", "user_id": "00000000-0000-0000-0000-000000000001"})
 	assert.NoError(t, err)
 	assert.True(t, result.Success)
 }

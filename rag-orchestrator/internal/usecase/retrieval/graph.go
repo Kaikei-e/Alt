@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"rag-orchestrator/internal/domain"
@@ -17,6 +18,7 @@ type GraphInput struct {
 	CandidateArticleIDs []string
 	ConversationHistory []domain.Message
 	SearchQueries       []string // Pre-filtered queries from query planner (bypass expand-query)
+	UserID              string   // Required acting user ID (UUID)
 }
 
 // GraphOutput defines the output of RetrievalGraph.Execute.
@@ -106,11 +108,19 @@ func (g *RetrievalGraph) Execute(ctx context.Context, input GraphInput) (*GraphO
 	if input.Query == "" {
 		return nil, fmt.Errorf("query is empty")
 	}
+	if strings.TrimSpace(input.UserID) == "" {
+		return nil, fmt.Errorf("retrieval: user_id is required")
+	}
+	userUUID, err := uuid.Parse(strings.TrimSpace(input.UserID))
+	if err != nil {
+		return nil, fmt.Errorf("retrieval: invalid user_id: %w", err)
+	}
 
 	retrievalStart := time.Now()
 	retrievalID := uuid.NewString()
 	g.logger.Info("retrieval_graph_started",
 		slog.String("retrieval_id", retrievalID),
+		slog.String("user_id", input.UserID),
 		slog.String("query_preview", queryLogPreview(input.Query)),
 		slog.Int("candidate_articles", len(input.CandidateArticleIDs)))
 
@@ -118,6 +128,8 @@ func (g *RetrievalGraph) Execute(ctx context.Context, input GraphInput) (*GraphO
 	sc := &StageContext{
 		RetrievalID:         retrievalID,
 		Query:               input.Query,
+		UserID:              strings.TrimSpace(input.UserID),
+		UserUUID:            userUUID,
 		CandidateArticleIDs: input.CandidateArticleIDs,
 		ConversationHistory: input.ConversationHistory,
 		PlannerQueries:      input.SearchQueries,

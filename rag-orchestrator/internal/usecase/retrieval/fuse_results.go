@@ -77,11 +77,11 @@ func FuseResults(
 			var err error
 			switch {
 			case useHybridSearcher:
-				results, err = hybridSearcher.HybridSearch(gctx, qv, queryText, sc.SearchLimit)
+				results, err = hybridSearcher.HybridSearch(gctx, qv, queryText, sc.SearchLimit, sc.UserUUID)
 			case hasCandidateArticles:
-				results, err = chunkRepo.SearchWithinArticles(gctx, qv, sc.CandidateArticleIDs, sc.SearchLimit)
+				results, err = chunkRepo.SearchWithinArticles(gctx, qv, sc.CandidateArticleIDs, sc.SearchLimit, sc.UserUUID)
 			default:
-				results, err = chunkRepo.Search(gctx, qv, sc.SearchLimit)
+				results, err = chunkRepo.Search(gctx, qv, sc.SearchLimit, sc.UserUUID)
 			}
 			if err != nil {
 				return err

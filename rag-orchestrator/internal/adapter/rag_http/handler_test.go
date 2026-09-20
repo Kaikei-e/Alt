@@ -111,7 +111,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 
 	handler := rag_http.NewHandler(retrieve, answerUC, nil, nil, nil, testLogger)
 
-	body := bytes.NewBufferString(`{"query":"TPU"}`)
+	body := bytes.NewBufferString(`{"query":"TPU","user_id":"` + uuid.NewString() + `"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -164,7 +164,7 @@ func TestHandler_AnswerWithRAGStream(t *testing.T) {
 
 	handler := rag_http.NewHandler(nil, &stubStreamUsecase{events: events}, nil, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 
-	body := bytes.NewBufferString(`{"query":"streaming"}`)
+	body := bytes.NewBufferString(`{"query":"streaming","user_id":"` + uuid.NewString() + `"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer/stream", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -185,16 +185,19 @@ type dummyIndexUsecase struct {
 	capturedURL       string
 	capturedTitle     string
 	capturedArticleID string
+	capturedUserID    string
 	capturedCtx       context.Context
 	called            bool
 	returnError       error
+	backfillError     error
 }
 
-func (d *dummyIndexUsecase) Upsert(ctx context.Context, articleID, title, url, body string) error {
+func (d *dummyIndexUsecase) Upsert(ctx context.Context, articleID, userID, title, url, body string) error {
 	d.called = true
 	d.capturedURL = url
 	d.capturedTitle = title
 	d.capturedArticleID = articleID
+	d.capturedUserID = userID
 	d.capturedCtx = ctx
 	return d.returnError
 }
@@ -202,6 +205,15 @@ func (d *dummyIndexUsecase) Upsert(ctx context.Context, articleID, title, url, b
 func (d *dummyIndexUsecase) Delete(ctx context.Context, articleID string) error {
 	return nil
 }
+
+func (d *dummyIndexUsecase) BackfillOwners(ctx context.Context, items []usecase.OwnerBackfillItem) (usecase.OwnerBackfillResult, error) {
+	if d.backfillError != nil {
+		return usecase.OwnerBackfillResult{}, d.backfillError
+	}
+	return usecase.OwnerBackfillResult{Updated: int64(len(items))}, nil
+}
+
+const testUserID = "a0000000-0000-0000-0000-000000000001"
 
 func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
 	e := echo.New()
@@ -214,7 +226,7 @@ func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
 		Title:     "Test Article Title",
 		Url:       "https://example.com/test-article",
 		Body:      "This is test article content for verification.",
-		UserId:    "user-456",
+		UserId:    testUserID,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -251,7 +263,7 @@ func TestUpsertIndex_RejectsBlankArticleID(t *testing.T) {
 		Title:     "Test Article",
 		Url:       "https://example.com/article",
 		Body:      "Content",
-		UserId:    "user-456",
+		UserId:    testUserID,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -281,7 +293,7 @@ func TestUpsertIndex_RejectsWhitespaceOnlyArticleID(t *testing.T) {
 		Title:     "Test Article",
 		Url:       "https://example.com/article",
 		Body:      "Content",
-		UserId:    "user-456",
+		UserId:    testUserID,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -311,7 +323,7 @@ func TestUpsertIndex_ReturnsErrorWhenUsecaseFails(t *testing.T) {
 		Title:     "Test Article",
 		Url:       "https://example.com/article",
 		Body:      "Content",
-		UserId:    "user-456",
+		UserId:    testUserID,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -338,7 +350,7 @@ func TestUpsertIndex_ContextHasServerSideTimeout(t *testing.T) {
 		Title:     "Timeout Test",
 		Url:       "https://example.com/timeout",
 		Body:      "body",
-		UserId:    "user-1",
+		UserId:    testUserID,
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
 
@@ -397,7 +409,7 @@ func upsertReqWithEmbedderOverride(t *testing.T, embedderURL string) (echo.Conte
 		Title:     "Test Article",
 		Url:       "https://example.com/test-article",
 		Body:      "content",
-		UserId:    "user-456",
+		UserId:    testUserID,
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	assert.NoError(t, err)
@@ -491,4 +503,165 @@ func TestUpsertIndex_IgnoresEmbedderOverride_WhenFeatureNotWired(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "https://example.com/test-article", dummy.capturedURL)
+}
+
+func TestUpsertIndex_RejectsBlankUserID(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	reqBody := openapi.UpsertIndexRequest{
+		ArticleId: "test-article-123",
+		Title:     "Test Article",
+		Url:       "https://example.com/article",
+		Body:      "Content",
+		UserId:    "",
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.UpsertIndex(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestUpsertIndex_Returns409OnOwnerConflict(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{
+		returnError: usecase.ErrOwnerConflict,
+	}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	reqBody := openapi.UpsertIndexRequest{
+		ArticleId: "test-article-123",
+		Title:     "Test Article",
+		Url:       "https://example.com/article",
+		Body:      "Content",
+		UserId:    testUserID,
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.UpsertIndex(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusConflict, rec.Code)
+	assert.Contains(t, rec.Body.String(), "document owned by another user")
+	assert.NotContains(t, rec.Body.String(), "indexArticleUsecase:")
+}
+
+func TestBackfillDocumentOwners(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	reqBody := openapi.OwnerBackfillRequest{
+		Items: []openapi.OwnerBackfillItem{
+			{ArticleId: "art-1", UserId: testUserID},
+			{ArticleId: "art-2", UserId: testUserID},
+		},
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/v1/documents/owners", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.BackfillDocumentOwners(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp openapi.OwnerBackfillResponse
+	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, int64(2), resp.Updated)
+}
+
+func TestBackfillDocumentOwners_Returns400OnValidationError(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{
+		backfillError: usecase.ErrInvalidUserID,
+	}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	reqBody := openapi.OwnerBackfillRequest{
+		Items: []openapi.OwnerBackfillItem{
+			{ArticleId: "art-1", UserId: "not-a-uuid"},
+		},
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/v1/documents/owners", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.BackfillDocumentOwners(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestBackfillDocumentOwners_Returns500OnInternalError(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{
+		backfillError: errors.New("db connection down"),
+	}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	reqBody := openapi.OwnerBackfillRequest{
+		Items: []openapi.OwnerBackfillItem{
+			{ArticleId: "art-1", UserId: testUserID},
+		},
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/v1/documents/owners", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.BackfillDocumentOwners(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestRetrieveContext_RequiresUserID(t *testing.T) {
+	e := echo.New()
+	handler := rag_http.NewHandler(&dummyRetrieveUsecase{}, nil, nil, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	// Missing user_id
+	body := bytes.NewBufferString(`{"query":"test"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/retrieve", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.RetrieveContext(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	// Valid user_id in JSON
+	body = bytes.NewBufferString(`{"query":"test","user_id":"` + testUserID + `"}`)
+	req = httptest.NewRequest(http.MethodPost, "/v1/rag/retrieve", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+
+	err = handler.RetrieveContext(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// Valid user_id via header
+	body = bytes.NewBufferString(`{"query":"test"}`)
+	req = httptest.NewRequest(http.MethodPost, "/v1/rag/retrieve", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Alt-User-Id", testUserID)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+
+	err = handler.RetrieveContext(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
 }

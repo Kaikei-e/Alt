@@ -106,6 +106,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if cfg.APIAuth.Enabled {
+		log.Info("rag_api_auth_enabled", "surfaces", ":9010 echo REST")
+	} else {
+		log.Warn("rag_api_auth_disabled",
+			"reason", "RAG_API_AUTH=disabled (explicit opt-out); :9010 listener is unauthenticated — exposure is limited only by network policy",
+		)
+	}
+
 	// 4. Initialize DB
 	dbPool, err := infra.NewPostgresDB(ctx, cfg.DB.DSN(), infra.PoolConfig{
 		MaxConns: cfg.DB.MaxConns,
@@ -136,6 +144,8 @@ func main() {
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
+	apiAuthMW := peermw.NewAPIAuthMiddleware(cfg.APIAuth.Token, cfg.APIAuth.Enabled, log)
+	e.Use(apiAuthMW.EchoMiddleware())
 
 	// 8. Initialize Handlers
 	handler := rag_http.NewHandler(

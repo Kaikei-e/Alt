@@ -33,6 +33,7 @@ func sourceArticle(id string) Article {
 		Title:     "title " + id,
 		Body:      "body of " + id,
 		URL:       "https://example.test/" + id,
+		UserID:    "00000000-0000-0000-0000-000000000001",
 		CreatedAt: time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC),
 	}
 }
@@ -71,6 +72,7 @@ func TestEnqueuer_QueuesEveryStaleArticleWithAFullPayload(t *testing.T) {
 	assert.Equal(t, rebuildJobType, job.JobType)
 	assert.Equal(t, "new", job.Status)
 	assert.Equal(t, "a", job.Payload["article_id"])
+	assert.Equal(t, "00000000-0000-0000-0000-000000000001", job.Payload["user_id"])
 	assert.Equal(t, "title a", job.Payload["title"])
 	assert.Equal(t, "body of a", job.Payload["body"])
 	assert.Equal(t, "https://example.test/a", job.Payload["url"])

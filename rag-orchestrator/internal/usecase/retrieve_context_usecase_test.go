@@ -63,8 +63,11 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
 
 	ctx := context.Background()
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 	input := usecase.RetrieveContextInput{
-		Query: "search query",
+		Query:  "search query",
+		UserID: testUserID,
 	}
 
 	// Expectations
@@ -96,7 +99,7 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 
 	// 3. Search (parallel, but mock any call)
 	// Since CandidateArticleIDs is empty, Search() is called (Augur use case)
-	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk: domain.RagChunk{
 				ID:      uuid.New(),
@@ -243,8 +246,11 @@ func TestRetrieveContext_ExpandedEmbeddingFailure_NonFatal(t *testing.T) {
 	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
 
 	ctx := context.Background()
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 	input := usecase.RetrieveContextInput{
-		Query: "test query",
+		Query:  "test query",
+		UserID: testUserID,
 	}
 
 	// Query expansion succeeds
@@ -265,7 +271,7 @@ func TestRetrieveContext_ExpandedEmbeddingFailure_NonFatal(t *testing.T) {
 	})).Return(nil, fmt.Errorf("embedder timeout: context deadline exceeded"))
 
 	// Vector search for original query succeeds
-	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk: domain.RagChunk{
 				ID:      uuid.New(),
@@ -301,8 +307,10 @@ func TestRetrieveContext_OriginalEmbeddingFailure_DegradesToBM25(t *testing.T) {
 	)
 
 	ctx := context.Background()
+	testUserID := uuid.New().String()
 	input := usecase.RetrieveContextInput{
-		Query: "test query",
+		Query:  "test query",
+		UserID: testUserID,
 	}
 
 	// Query expansion succeeds
@@ -317,7 +325,7 @@ func TestRetrieveContext_OriginalEmbeddingFailure_DegradesToBM25(t *testing.T) {
 	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("connection refused"))
 
 	// BM25 search succeeds — should be the fallback path (any query, since expanded queries also searched)
-	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything).Return([]domain.BM25SearchResult{
+	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything, testUserID).Return([]domain.BM25SearchResult{
 		{
 			ArticleID: "art-1",
 			Content:   "BM25 found content about test query",
@@ -351,7 +359,8 @@ func TestRetrieveContext_EmbedderDown_NoBM25_ReturnsEmpty(t *testing.T) {
 
 	ctx := context.Background()
 	input := usecase.RetrieveContextInput{
-		Query: "test query",
+		Query:  "test query",
+		UserID: uuid.New().String(),
 	}
 
 	mockQueryExpander.On("ExpandQuery", mock.Anything, "test query", 1, 3).Return(nil, fmt.Errorf("embedder down"))
@@ -373,8 +382,8 @@ type MockBM25Searcher struct {
 	mock.Mock
 }
 
-func (m *MockBM25Searcher) SearchBM25(ctx context.Context, query string, limit int) ([]domain.BM25SearchResult, error) {
-	args := m.Called(ctx, query, limit)
+func (m *MockBM25Searcher) SearchBM25(ctx context.Context, query string, limit int, userID string) ([]domain.BM25SearchResult, error) {
+	args := m.Called(ctx, query, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -397,8 +406,11 @@ func TestRetrieveContext_BM25AndExpandedBothFail_StillSucceeds(t *testing.T) {
 	)
 
 	ctx := context.Background()
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 	input := usecase.RetrieveContextInput{
-		Query: "test query",
+		Query:  "test query",
+		UserID: testUserID,
 	}
 
 	// Query expansion succeeds
@@ -418,10 +430,10 @@ func TestRetrieveContext_BM25AndExpandedBothFail_StillSucceeds(t *testing.T) {
 	})).Return(nil, fmt.Errorf("embedder unavailable"))
 
 	// BM25 search FAILS (any query — expanded queries also searched now)
-	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("meilisearch down"))
+	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything, testUserID).Return(nil, fmt.Errorf("meilisearch down"))
 
 	// Original vector search succeeds
-	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk: domain.RagChunk{
 				ID:      uuid.New(),
@@ -459,8 +471,11 @@ func TestRetrieveContext_SearchQueries_BypassExpansion(t *testing.T) {
 	)
 
 	ctx := context.Background()
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 	input := usecase.RetrieveContextInput{
-		Query: "ヴァンス副大統領の直近の動きは？",
+		Query:  "ヴァンス副大統領の直近の動きは？",
+		UserID: testUserID,
 		SearchQueries: []string{
 			"ヴァンス副大統領 最新動向",
 			"JD Vance vice president recent activities",
@@ -473,7 +488,7 @@ func TestRetrieveContext_SearchQueries_BypassExpansion(t *testing.T) {
 
 	queryVec := []float32{0.1, 0.2, 0.3}
 	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec, queryVec, queryVec}, nil)
-	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:           domain.RagChunk{ID: uuid.New(), Content: "Vance article content"},
 			Score:           0.90,
@@ -481,7 +496,7 @@ func TestRetrieveContext_SearchQueries_BypassExpansion(t *testing.T) {
 			DocumentVersion: 1,
 		},
 	}, nil)
-	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything).Return([]domain.BM25SearchResult{
+	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything, testUserID).Return([]domain.BM25SearchResult{
 		{ArticleID: "art-vance", Content: "Vance content", Title: "JD Vance", Rank: 1, Score: 0.7},
 	}, nil)
 
@@ -503,16 +518,16 @@ type MockHybridSearcher struct {
 	mock.Mock
 }
 
-func (m *MockHybridSearcher) HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, queryText, limit)
+func (m *MockHybridSearcher) HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, queryText, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]domain.SearchResult), args.Error(1)
 }
 
-func (m *MockHybridSearcher) SearchNeighbors(ctx context.Context, queryVector []float32, queryText string, seedArticleIDs []string, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, queryText, seedArticleIDs, limit)
+func (m *MockHybridSearcher) SearchNeighbors(ctx context.Context, queryVector []float32, queryText string, seedArticleIDs []string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, queryText, seedArticleIDs, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -544,8 +559,11 @@ func TestRetrieveContext_WithHybridSearcher_UsesInDBHybridSearch(t *testing.T) {
 	)
 
 	ctx := context.Background()
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 	input := usecase.RetrieveContextInput{
-		Query: "search query",
+		Query:  "search query",
+		UserID: testUserID,
 	}
 
 	mockQueryExpander.On("ExpandQuery", mock.Anything, "search query", 1, 3).Return([]string{}, nil)
@@ -554,7 +572,7 @@ func TestRetrieveContext_WithHybridSearcher_UsesInDBHybridSearch(t *testing.T) {
 	queryVec := []float32{0.1, 0.2, 0.3}
 	mockEncoder.On("Encode", mock.Anything, []string{"search query"}).Return([][]float32{queryVec}, nil)
 
-	mockHybrid.On("HybridSearch", mock.Anything, queryVec, "search query", 50).Return([]domain.SearchResult{
+	mockHybrid.On("HybridSearch", mock.Anything, queryVec, "search query", 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:     domain.RagChunk{ID: uuid.New(), Content: "Fused hybrid result"},
 			Score:     0.5,
@@ -569,8 +587,24 @@ func TestRetrieveContext_WithHybridSearcher_UsesInDBHybridSearch(t *testing.T) {
 	assert.Len(t, output.Contexts, 1)
 	assert.Equal(t, "Fused hybrid result", output.Contexts[0].ChunkText)
 
-	mockHybrid.AssertCalled(t, "HybridSearch", mock.Anything, queryVec, "search query", 50)
-	mockChunkRepo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything)
+	mockHybrid.AssertCalled(t, "HybridSearch", mock.Anything, queryVec, "search query", 50, testUUID)
+	mockChunkRepo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestRetrieveContext_EmptyUserID_ReturnsError(t *testing.T) {
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockEncoder := new(MockVectorEncoder)
+	mockLLM := new(mockLLMClient)
+	mockQueryExpander := new(MockQueryExpander)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
+
+	_, err := uc.Execute(context.Background(), usecase.RetrieveContextInput{
+		Query: "search query",
+	})
+	assert.ErrorIs(t, err, usecase.ErrEmptyUserID)
 }
 
 // Test helper types

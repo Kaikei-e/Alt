@@ -9,6 +9,7 @@ import (
 
 	"rag-orchestrator/internal/domain"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 )
@@ -55,7 +56,10 @@ func NewHybridSearchRepository(pool *pgxpool.Pool, rrfK int) domain.HybridSearch
 // 2. text_matches: tsvector full-text search with ts_rank_cd
 // 3. RRF fusion: 1/(rank + k) summed across both search methods
 // 4. Metadata enrichment via JOIN
-func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int) ([]domain.SearchResult, error) {
+func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("hybridSearchRepository.HybridSearch: user_id is required")
+	}
 	if limit <= 0 {
 		limit = 20
 	}
@@ -104,6 +108,7 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 		JOIN rag_document_versions v ON c.version_id = v.id
 		JOIN rag_documents d ON v.document_id = d.id
 		WHERE d.current_version_id = v.id
+		  AND d.user_id = $5
 		ORDER BY r.score DESC
 	`, tsConfig, tsConfig, r.rrfK)
 
@@ -112,6 +117,7 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 		queryText,
 		candidateLimit,
 		limit,
+		userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("hybrid search failed: %w", err)
@@ -128,7 +134,11 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 
 		if err := rows.Scan(
 			&score,
-			&chunk.ID, &chunk.VersionID, &chunk.Ordinal, &chunk.Content, &chunk.CreatedAt,
+			&chunk.ID,
+			&chunk.VersionID,
+			&chunk.Ordinal,
+			&chunk.Content,
+			&chunk.CreatedAt,
 			&articleID,
 			&versionNumber,
 			&title,
@@ -158,8 +168,7 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 
 // SearchNeighbors finds articles near a seed set using the same RRF (vector +
 // full-text) pipeline as HybridSearch, but excludes documents whose article_id
-// is in seedArticleIDs. Returns at most limit results; an empty seed set is
-// equivalent to plain HybridSearch.
+// is in seedArticleIDs, scoped to rag_documents.user_id = userID.
 //
 // Implementation notes:
 //   - Filtering is applied at the metadata enrichment stage (after the RRF
@@ -175,7 +184,11 @@ func (r *hybridSearchRepository) SearchNeighbors(
 	queryText string,
 	seedArticleIDs []string,
 	limit int,
+	userID uuid.UUID,
 ) ([]domain.SearchResult, error) {
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("hybridSearchRepository.SearchNeighbors: user_id is required")
+	}
 	if limit <= 0 {
 		limit = 5
 	}
@@ -209,6 +222,9 @@ func (r *hybridSearchRepository) SearchNeighbors(
 			),`
 		args = append(args, pgvector.NewVector(queryVector))
 	}
+
+	userArgIdx := len(args) + 1
+	args = append(args, userID)
 
 	combinedSource := `SELECT id, rank FROM text_matches`
 	if vectorArm != "" {
@@ -248,8 +264,9 @@ func (r *hybridSearchRepository) SearchNeighbors(
 		JOIN rag_document_versions v ON c.version_id = v.id
 		JOIN rag_documents d ON v.document_id = d.id
 		WHERE d.current_version_id = v.id
+		  AND d.user_id = $%d
 		ORDER BY r.score DESC
-	`, vectorArm, tsConfig, tsConfig, r.rrfK, combinedSource)
+	`, vectorArm, tsConfig, tsConfig, r.rrfK, combinedSource, userArgIdx)
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {

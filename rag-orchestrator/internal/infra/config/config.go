@@ -341,25 +341,64 @@ func loadPeerIdentity() PeerIdentityConfig {
 	}
 }
 
+// APIAuthConfig holds caller authentication configuration for the :9010 listener.
+type APIAuthConfig struct {
+	Token   string
+	Enabled bool
+}
+
+const minAPITokenLen = 24
+
+func loadAPIAuth() APIAuthConfig {
+	authEnv := strings.TrimSpace(os.Getenv("RAG_API_AUTH"))
+	if strings.EqualFold(authEnv, "disabled") {
+		return APIAuthConfig{Token: "", Enabled: false}
+	}
+
+	if path := strings.TrimSpace(os.Getenv("RAG_API_TOKEN_FILE")); path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			panic(fmt.Sprintf("config: read RAG_API_TOKEN_FILE %s: %v", path, err))
+		}
+		token := strings.TrimSpace(string(data))
+		if len(token) < minAPITokenLen {
+			panic(fmt.Sprintf("config: token from RAG_API_TOKEN_FILE must be at least %d characters, got %d", minAPITokenLen, len(token)))
+		}
+		return APIAuthConfig{Token: token, Enabled: true}
+	}
+
+	if token := strings.TrimSpace(os.Getenv("RAG_API_TOKEN")); token != "" {
+		if len(token) < minAPITokenLen {
+			panic(fmt.Sprintf("config: RAG_API_TOKEN must be at least %d characters, got %d", minAPITokenLen, len(token)))
+		}
+		return APIAuthConfig{Token: token, Enabled: true}
+	}
+
+	panic("config: RAG_API_TOKEN_FILE or RAG_API_TOKEN is required; set RAG_API_AUTH=disabled to run the :9010 listener without authentication")
+}
+
 // Config is the top-level configuration, organized by concern.
 type Config struct {
-	Env            string
-	LLMBackend     string
-	Server         ServerConfig
-	DB             DBConfig
-	Embedder       EmbedderConfig
-	Augur          AugurConfig
-	Search         SearchConfig
-	QueryExpansion QueryExpansionConfig
-	RAG            RAGConfig
-	QualityGate    QualityGateConfig
-	Rerank         RerankConfig
-	Hybrid         HybridConfig
-	Temporal       TemporalConfig
-	Backend        BackendConfig
-	DataHub        DataHubConfig
-	Cache          CacheConfig
-	PeerIdentity   PeerIdentityConfig
+	Env                     string
+	LLMBackend              string
+	Server                  ServerConfig
+	DB                      DBConfig
+	Embedder                EmbedderConfig
+	Augur                   AugurConfig
+	Search                  SearchConfig
+	QueryExpansion          QueryExpansionConfig
+	RAG                     RAGConfig
+	QualityGate             QualityGateConfig
+	Rerank                  RerankConfig
+	Hybrid                  HybridConfig
+	Temporal                TemporalConfig
+	Backend                 BackendConfig
+	DataHub                 DataHubConfig
+	Cache                   CacheConfig
+	PeerIdentity            PeerIdentityConfig
+	APIAuth                 APIAuthConfig
+	SovereignEventTokenFile string
+	SovereignEventAuth      string
 }
 
 func Load() *Config {
@@ -451,7 +490,10 @@ func Load() *Config {
 			Size: getEnvInt("RAG_CACHE_SIZE", defaultCacheSize),
 			TTL:  getEnvInt("RAG_CACHE_TTL_MINUTES", defaultCacheTTL),
 		},
-		PeerIdentity: loadPeerIdentity(),
+		PeerIdentity:            loadPeerIdentity(),
+		APIAuth:                 loadAPIAuth(),
+		SovereignEventTokenFile: getEnv("SOVEREIGN_EVENT_TOKEN_FILE", ""),
+		SovereignEventAuth:      getEnv("SOVEREIGN_EVENT_AUTH", ""),
 	}
 }
 

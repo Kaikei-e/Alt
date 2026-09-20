@@ -7,8 +7,11 @@
 // every RPC, so r.TLS.PeerCertificates is a CA-verified peer by the time the
 // CN allowlist runs. Require() must only ever be attached to such a TLS
 // listener — on a plaintext listener r.TLS is always nil and every request
-// would be rejected. With PEER_IDENTITY_MODE=disabled (explicit opt-out) the
-// listener stays plaintext h2c, this middleware is not applied, and the
+// would be rejected. The plaintext :9010 listener is gated by
+// APIAuthMiddleware (bearer token required via RAG_API_TOKEN_FILE), so
+// X-Alt-User-Id on :9010 is only trusted behind an authenticated caller.
+// On the :9011 Connect listener, with PEER_IDENTITY_MODE=disabled (explicit opt-out)
+// the listener stays plaintext h2c, this middleware is not applied, and the
 // X-Alt-User-Id trust in augur/handler.go relies on network policy alone
 // (see .claude/rules/security-boundaries.md).
 package middleware

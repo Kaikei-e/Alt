@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -12,6 +13,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	if err := os.Setenv("PEER_IDENTITY_MODE", "disabled"); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("RAG_API_AUTH", "disabled"); err != nil {
 		panic(err)
 	}
 	// Load() fail-fasts without these (ADR-000954 D7): alt-data-hub is the
@@ -478,4 +482,104 @@ func TestLoad_DefaultMaxChunksMatchesRerankTopK(t *testing.T) {
 
 	assert.Equal(t, cfg.Rerank.TopK, cfg.RAG.MaxChunks,
 		"every hit the reranker keeps must reach the prompt; a smaller MaxChunks silently drops the tail")
+}
+
+func TestLoad_SovereignEventAuth(t *testing.T) {
+	t.Run("defaults to empty", func(t *testing.T) {
+		unsetEnv(t, "SOVEREIGN_EVENT_TOKEN_FILE")
+		unsetEnv(t, "SOVEREIGN_EVENT_AUTH")
+
+		cfg := Load()
+		assert.Empty(t, cfg.SovereignEventTokenFile)
+		assert.Empty(t, cfg.SovereignEventAuth)
+	})
+
+	t.Run("loads from env", func(t *testing.T) {
+		t.Setenv("SOVEREIGN_EVENT_TOKEN_FILE", "/run/secrets/sovereign_event_token")
+		t.Setenv("SOVEREIGN_EVENT_AUTH", "disabled")
+
+		cfg := Load()
+		assert.Equal(t, "/run/secrets/sovereign_event_token", cfg.SovereignEventTokenFile)
+		assert.Equal(t, "disabled", cfg.SovereignEventAuth)
+	})
+}
+
+func TestLoad_APIAuth_UnsetPanics(t *testing.T) {
+	unsetEnv(t, "RAG_API_AUTH")
+	unsetEnv(t, "RAG_API_TOKEN_FILE")
+	unsetEnv(t, "RAG_API_TOKEN")
+
+	assert.Panics(t, func() { Load() },
+		"missing RAG_API_TOKEN_FILE and RAG_API_TOKEN without RAG_API_AUTH=disabled must fail startup")
+}
+
+func TestLoad_APIAuth_Disabled(t *testing.T) {
+	t.Setenv("RAG_API_AUTH", "disabled")
+	unsetEnv(t, "RAG_API_TOKEN_FILE")
+	unsetEnv(t, "RAG_API_TOKEN")
+
+	cfg := Load()
+	assert.False(t, cfg.APIAuth.Enabled)
+	assert.Empty(t, cfg.APIAuth.Token)
+}
+
+func TestLoad_APIAuth_TokenEnv(t *testing.T) {
+	unsetEnv(t, "RAG_API_AUTH")
+	unsetEnv(t, "RAG_API_TOKEN_FILE")
+	token := "this-is-a-valid-token-with-at-least-24-characters"
+	t.Setenv("RAG_API_TOKEN", token)
+
+	cfg := Load()
+	assert.True(t, cfg.APIAuth.Enabled)
+	assert.Equal(t, token, cfg.APIAuth.Token)
+}
+
+func TestLoad_APIAuth_TokenEnvTooShortPanics(t *testing.T) {
+	unsetEnv(t, "RAG_API_AUTH")
+	unsetEnv(t, "RAG_API_TOKEN_FILE")
+	t.Setenv("RAG_API_TOKEN", "too-short")
+
+	assert.Panics(t, func() { Load() },
+		"RAG_API_TOKEN shorter than 24 characters must panic")
+}
+
+func TestLoad_APIAuth_TokenFile(t *testing.T) {
+	unsetEnv(t, "RAG_API_AUTH")
+	unsetEnv(t, "RAG_API_TOKEN")
+	token := "this-is-a-valid-token-from-file-at-least-24-chars"
+	tmpFile, err := os.CreateTemp(t.TempDir(), "rag_token_*")
+	require.NoError(t, err)
+	_, err = tmpFile.WriteString(token + "\n")
+	require.NoError(t, err)
+	_ = tmpFile.Close()
+
+	t.Setenv("RAG_API_TOKEN_FILE", tmpFile.Name())
+
+	cfg := Load()
+	assert.True(t, cfg.APIAuth.Enabled)
+	assert.Equal(t, token, cfg.APIAuth.Token)
+}
+
+func TestLoad_APIAuth_TokenFileMissingPanics(t *testing.T) {
+	unsetEnv(t, "RAG_API_AUTH")
+	unsetEnv(t, "RAG_API_TOKEN")
+	t.Setenv("RAG_API_TOKEN_FILE", "/non/existent/path/rag_api_token.txt")
+
+	assert.Panics(t, func() { Load() },
+		"unreadable RAG_API_TOKEN_FILE must panic")
+}
+
+func TestLoad_APIAuth_TokenFileTooShortPanics(t *testing.T) {
+	unsetEnv(t, "RAG_API_AUTH")
+	unsetEnv(t, "RAG_API_TOKEN")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "rag_token_*")
+	require.NoError(t, err)
+	_, err = tmpFile.WriteString("short\n")
+	require.NoError(t, err)
+	_ = tmpFile.Close()
+
+	t.Setenv("RAG_API_TOKEN_FILE", tmpFile.Name())
+
+	assert.Panics(t, func() { Load() },
+		"RAG_API_TOKEN_FILE with token shorter than 24 chars must panic")
 }

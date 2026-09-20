@@ -221,7 +221,7 @@ test.describe("embedder override is an allowlist, not a hint", () => {
 			// makes this probe fast in a slice whose embedder is unreachable.
 			const response = await rest.post("/internal/rag/index/upsert", {
 				headers: { "X-Embedder-URL": "http://attacker.invalid:11434" },
-				data: { article_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
+				data: { article_id: uuid(), user_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
 			});
 			const body = await expectJsonStatus(response, 400, restErrorSchema);
 			expect(body.error).toBe("X-Embedder-URL origin not allowed");
@@ -241,7 +241,7 @@ test.describe("embedder override is an allowlist, not a hint", () => {
 			// fails this one.
 			const response = await rest.post("/internal/rag/index/upsert", {
 				headers: { "X-Embedder-URL": "http://backfill-hyperboost.evil.com:11434" },
-				data: { article_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
+				data: { article_id: uuid(), user_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
 			});
 			const body = await expectJsonStatus(response, 400, restErrorSchema);
 			expect(body.error).toBe("X-Embedder-URL origin not allowed");
@@ -259,7 +259,7 @@ test.describe("embedder override is an allowlist, not a hint", () => {
 			// test in this describe pass for the wrong reason.
 			const response = await rest.post("/internal/rag/index/upsert", {
 				headers: { "X-Embedder-URL": "file:///etc/passwd" },
-				data: { article_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
+				data: { article_id: uuid(), user_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
 			});
 			const body = await expectJsonStatus(response, 400, restErrorSchema);
 			expect(body.error).toBe("X-Embedder-URL origin not allowed");

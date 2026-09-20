@@ -90,7 +90,7 @@ type stubIndexer struct {
 	onUpsertDone func(articleID string)
 }
 
-func (s *stubIndexer) Upsert(ctx context.Context, articleID, title, url, body string) error {
+func (s *stubIndexer) Upsert(ctx context.Context, articleID, userID, title, url, body string) error {
 	cur := s.inFlight.Add(1)
 	for {
 		max := s.maxInFlight.Load()
@@ -119,6 +119,10 @@ func (s *stubIndexer) Upsert(ctx context.Context, articleID, title, url, body st
 }
 
 func (s *stubIndexer) Delete(context.Context, string) error { return nil }
+
+func (s *stubIndexer) BackfillOwners(ctx context.Context, items []usecase.OwnerBackfillItem) (usecase.OwnerBackfillResult, error) {
+	return usecase.OwnerBackfillResult{}, nil
+}
 
 func (s *stubIndexer) callCount() int {
 	s.mu.Lock()
@@ -181,6 +185,7 @@ func rebuildJob(articleID string) *domain.RagJob {
 		JobType: rebuildJobType,
 		Payload: map[string]interface{}{
 			"article_id": articleID,
+			"user_id":    "00000000-0000-0000-0000-000000000001",
 			"title":      "title " + articleID,
 			"url":        "https://example.test/" + articleID,
 			"body":       "body of " + articleID,
@@ -376,6 +381,42 @@ func TestRebuildEngine_RejectsJobWithoutArticleID(t *testing.T) {
 
 	assert.Equal(t, int64(1), stats.Failed)
 	assert.Equal(t, "failed", queue.statusOf(job.ID))
+}
+
+func TestRebuildEngine_RejectsJobWithoutUserID(t *testing.T) {
+	job := rebuildJob("x")
+	delete(job.Payload, "user_id")
+	queue := newStubJobQueue(job)
+
+	cfg := testRebuildConfig(testTarget())
+	cfg.Workers = 1
+	engine, err := NewRebuildEngine(queue, []usecase.IndexArticleUsecase{&stubIndexer{}}, newStubVersionState(), cfg, rebuildTestLogger())
+	require.NoError(t, err)
+
+	stats, err := engine.Run(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1), stats.Failed)
+	assert.Equal(t, "failed", queue.statusOf(job.ID))
+	assert.Contains(t, queue.errorOf(job.ID), "user_id")
+}
+
+func TestRebuildEngine_RejectsJobWithEmptyUserID(t *testing.T) {
+	job := rebuildJob("x")
+	job.Payload["user_id"] = "   "
+	queue := newStubJobQueue(job)
+
+	cfg := testRebuildConfig(testTarget())
+	cfg.Workers = 1
+	engine, err := NewRebuildEngine(queue, []usecase.IndexArticleUsecase{&stubIndexer{}}, newStubVersionState(), cfg, rebuildTestLogger())
+	require.NoError(t, err)
+
+	stats, err := engine.Run(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1), stats.Failed)
+	assert.Equal(t, "failed", queue.statusOf(job.ID))
+	assert.Contains(t, queue.errorOf(job.ID), "user_id")
 }
 
 func TestRebuildEngine_AbortsAfterConsecutiveFailures(t *testing.T) {

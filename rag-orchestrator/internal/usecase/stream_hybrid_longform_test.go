@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+const testHybridUserID = "11111111-1111-4111-8111-111111111111"
+
 // setupHybridLongFormTest builds the fixtures needed to drive the hybrid
 // streaming path (streamHybridLongForm), which Stream() routes to whenever
 // deriveAcceptanceProfile resolves strictLongForm=true (detail/synthesis
@@ -24,12 +26,16 @@ func setupHybridLongFormTest(t *testing.T) (*mockRetrieveContextUsecase, *mockLL
 	t.Helper()
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
-	builder := usecase.NewXMLPromptBuilder()
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
 	uc := usecase.NewAnswerWithRAGUsecase(
-		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
-		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		mockRetrieve,
+		usecase.NewXMLPromptBuilder(),
+		mockLLM,
+		usecase.NewOutputValidator(0),
+		10, 512, 6000,
+		"alpha-v1", "ja",
+		testLogger,
 		usecase.WithHeartbeatInterval(10*time.Millisecond),
 	)
 
@@ -56,7 +62,7 @@ func TestStreamHybridLongForm_LLMStreamSetupError_EmitsFallback(t *testing.T) {
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, nil, assert.AnError)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery, UserID: testHybridUserID}))
 
 	fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
 	assert.NotNil(t, fallbackEvt, "ChatStream setup failure should produce a fallback event")
@@ -79,7 +85,7 @@ func TestStreamHybridLongForm_NoData_EmitsFallback(t *testing.T) {
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
 		Return((<-chan domain.LLMStreamChunk)(chunkCh), (<-chan error)(errCh), nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery, UserID: testHybridUserID}))
 
 	fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
 	if assert.NotNil(t, fallbackEvt, "a stream with no response data should fall back") {
@@ -101,7 +107,7 @@ func TestStreamHybridLongForm_LLMStreamError_EmitsFallback(t *testing.T) {
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
 		Return((<-chan domain.LLMStreamChunk)(chunkCh), (<-chan error)(errCh), nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery, UserID: testHybridUserID}))
 
 	fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
 	assert.NotNil(t, fallbackEvt, "an errored LLM stream should fall back")
@@ -126,7 +132,7 @@ func TestStreamHybridLongForm_AcceptedAnswer_EmitsDeltasAndDone(t *testing.T) {
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
 		Return((<-chan domain.LLMStreamChunk)(chunkCh), (<-chan error)(errCh), nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: detailedQuery, UserID: testHybridUserID}))
 
 	deltas := findEvents(events, usecase.StreamEventKindDelta)
 	assert.NotEmpty(t, deltas, "hybrid path should emit provisional paragraph-flushed deltas")
@@ -152,7 +158,7 @@ func TestStreamHybridLongForm_ContextCancellation_DoesNotHang(t *testing.T) {
 		Return((<-chan domain.LLMStreamChunk)(chunkCh), (<-chan error)(errCh), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	eventCh := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: detailedQuery})
+	eventCh := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: detailedQuery, UserID: testHybridUserID})
 
 	// Drain the initial pre-retrieval events before cancelling.
 	<-eventCh

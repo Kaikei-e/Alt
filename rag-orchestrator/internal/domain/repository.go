@@ -12,6 +12,7 @@ import (
 type RagDocument struct {
 	ID               uuid.UUID
 	ArticleID        string
+	UserID           *uuid.UUID // Nullable for legacy unowned rows; scoped for multi-tenant
 	CurrentVersionID *uuid.UUID // Can be nil if no version exists yet
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
@@ -63,6 +64,13 @@ type RagDocumentRepository interface {
 	// UpdateCurrentVersion updates the current_version_id of a document.
 	UpdateCurrentVersion(ctx context.Context, docID uuid.UUID, versionID uuid.UUID) error
 
+	// SetDocumentOwner sets the user_id of an existing document.
+	SetDocumentOwner(ctx context.Context, docID uuid.UUID, userID uuid.UUID) error
+
+	// BackfillOwnerIfNull sets user_id for an article only if user_id is currently NULL.
+	// Returns updated=true if updated, alreadySet=true if already owned, or error.
+	BackfillOwnerIfNull(ctx context.Context, articleID string, userID uuid.UUID) (updated bool, alreadySet bool, err error)
+
 	// GetLatestVersion retrieves the latest version info for a document.
 	// Returns nil, nil if no version exists.
 	GetLatestVersion(ctx context.Context, docID uuid.UUID) (*RagDocumentVersion, error)
@@ -86,14 +94,14 @@ type RagChunkRepository interface {
 	// InsertEvents inserts multiple chunk events.
 	InsertEvents(ctx context.Context, events []RagChunkEvent) error
 
-	// Search performs a vector search across all chunks (Augur use case).
-	// Uses Two-Stage Search for HNSW index efficiency.
-	Search(ctx context.Context, queryVector []float32, limit int) ([]SearchResult, error)
+	// Search performs a vector search across chunks belonging to userID (Augur use case).
+	// Uses Two-Stage Search for HNSW index efficiency, filtered to rag_documents.user_id = userID.
+	Search(ctx context.Context, queryVector []float32, limit int, userID uuid.UUID) ([]SearchResult, error)
 
-	// SearchWithinArticles performs a vector search within specific articles (Morning Letter use case).
-	// Uses pre-filtering by article IDs before vector search.
+	// SearchWithinArticles performs a vector search within specific articles for userID.
+	// Uses pre-filtering by article IDs and rag_documents.user_id = userID before vector search.
 	// articleIDs must not be empty.
-	SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int) ([]SearchResult, error)
+	SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int, userID uuid.UUID) ([]SearchResult, error)
 }
 
 // ScoreKind names the space a Score value lives in.
@@ -150,16 +158,14 @@ type SearchResult struct {
 // HybridSearcher performs in-database hybrid search (dense vector + sparse tsvector)
 // with Reciprocal Rank Fusion (RRF). Replaces application-level BM25 + vector fusion.
 type HybridSearcher interface {
-	// HybridSearch performs a combined vector + full-text search with RRF fusion.
-	HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int) ([]SearchResult, error)
+	// HybridSearch performs a combined vector + full-text search with RRF fusion,
+	// scoped to rag_documents.user_id = userID.
+	HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int, userID uuid.UUID) ([]SearchResult, error)
 
 	// SearchNeighbors finds articles semantically and lexically near a seed set
 	// using the same hybrid (vector + full-text) RRF pipeline as HybridSearch,
-	// but excludes articles whose ArticleID appears in seedArticleIDs. Used to
-	// build the inline-projected "related" snapshot for Ask Augur citations.
-	// queryVector may be empty; in that case the fallback is text-only matching
-	// over queryText.
-	SearchNeighbors(ctx context.Context, queryVector []float32, queryText string, seedArticleIDs []string, limit int) ([]SearchResult, error)
+	// scoped to rag_documents.user_id = userID, excluding articles in seedArticleIDs.
+	SearchNeighbors(ctx context.Context, queryVector []float32, queryText string, seedArticleIDs []string, limit int, userID uuid.UUID) ([]SearchResult, error)
 }
 
 // TransactionManager defines the interface for handling database transactions.

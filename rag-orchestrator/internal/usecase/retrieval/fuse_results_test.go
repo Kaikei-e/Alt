@@ -39,16 +39,16 @@ func (m *MockRagChunkRepository) InsertEvents(ctx context.Context, events []doma
 	return args.Error(0)
 }
 
-func (m *MockRagChunkRepository) Search(ctx context.Context, queryVector []float32, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, limit)
+func (m *MockRagChunkRepository) Search(ctx context.Context, queryVector []float32, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]domain.SearchResult), args.Error(1)
 }
 
-func (m *MockRagChunkRepository) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, articleIDs, limit)
+func (m *MockRagChunkRepository) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, articleIDs, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -60,6 +60,7 @@ func TestFuseResults_SingleQuery_NoExpansion(t *testing.T) {
 	mockRepo := new(MockRagChunkRepository)
 
 	chunkID := uuid.New()
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-fuse-1",
 		Query:             "test query",
@@ -76,6 +77,8 @@ func TestFuseResults_SingleQuery_NoExpansion(t *testing.T) {
 		AdditionalQueries:    nil,
 		SearchLimit:          50,
 		RRFK:                 60.0,
+		UserID:               testUUID.String(),
+		UserUUID:             testUUID,
 	}
 
 	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
@@ -92,6 +95,7 @@ func TestFuseResults_WithExpandedQueries(t *testing.T) {
 
 	originalChunkID := uuid.New()
 	expandedChunkID := uuid.New()
+	testUUID := uuid.New()
 
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-fuse-2",
@@ -109,10 +113,12 @@ func TestFuseResults_WithExpandedQueries(t *testing.T) {
 		AdditionalQueries:    []string{"expanded query 1"},
 		SearchLimit:          50,
 		RRFK:                 60.0,
+		UserID:               testUUID.String(),
+		UserUUID:             testUUID,
 	}
 
 	// Mock expanded query vector search
-	mockRepo.On("Search", mock.Anything, []float32{0.3, 0.4}, 50).Return([]domain.SearchResult{
+	mockRepo.On("Search", mock.Anything, []float32{0.3, 0.4}, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:           domain.RagChunk{ID: expandedChunkID, Content: "expanded result", CreatedAt: time.Now()},
 			Score:           0.85,
@@ -135,6 +141,7 @@ func TestFuseResults_WithBM25Fusion(t *testing.T) {
 	mockRepo := new(MockRagChunkRepository)
 
 	chunkID := uuid.New()
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-fuse-3",
 		Query:             "test query",
@@ -153,6 +160,8 @@ func TestFuseResults_WithBM25Fusion(t *testing.T) {
 		AdditionalEmbeddings: nil,
 		SearchLimit:          50,
 		RRFK:                 60.0,
+		UserID:               testUUID.String(),
+		UserUUID:             testUUID,
 	}
 
 	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
@@ -172,6 +181,7 @@ func TestFuseResults_SearchError(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	mockRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:          "test-fuse-4",
 		Query:                "test query",
@@ -181,9 +191,11 @@ func TestFuseResults_SearchError(t *testing.T) {
 		AdditionalQueries:    []string{"expanded"},
 		SearchLimit:          50,
 		RRFK:                 60.0,
+		UserID:               testUUID.String(),
+		UserUUID:             testUUID,
 	}
 
-	mockRepo.On("Search", mock.Anything, mock.Anything, 50).Return(nil, assert.AnError)
+	mockRepo.On("Search", mock.Anything, mock.Anything, 50, testUUID).Return(nil, assert.AnError)
 
 	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
 	assert.Error(t, err)
@@ -195,6 +207,7 @@ func TestFuseResults_NilEmbedding_BM25OnlyDegraded(t *testing.T) {
 	mockRepo := new(MockRagChunkRepository)
 
 	bm25ChunkID := uuid.New()
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-degraded",
 		Query:             "test query",
@@ -213,6 +226,8 @@ func TestFuseResults_NilEmbedding_BM25OnlyDegraded(t *testing.T) {
 		},
 		SearchLimit: 50,
 		RRFK:        60.0,
+		UserID:      testUUID.String(),
+		UserUUID:    testUUID,
 	}
 
 	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
@@ -226,6 +241,7 @@ func TestFuseResults_NilEmbedding_NoBM25_EmptyResult(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	mockRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-degraded-empty",
 		Query:             "test query",
@@ -234,6 +250,8 @@ func TestFuseResults_NilEmbedding_NoBM25_EmptyResult(t *testing.T) {
 		BM25Results:       nil,
 		SearchLimit:       50,
 		RRFK:              60.0,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
 	}
 
 	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
@@ -248,6 +266,7 @@ func TestFuseResults_DeduplicatesExpandedHits(t *testing.T) {
 	mockRepo := new(MockRagChunkRepository)
 
 	sharedChunkID := uuid.New()
+	testUUID := uuid.New()
 
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-fuse-5",
@@ -261,6 +280,8 @@ func TestFuseResults_DeduplicatesExpandedHits(t *testing.T) {
 		AdditionalQueries: []string{"expanded 1", "expanded 2"},
 		SearchLimit:       50,
 		RRFK:              60.0,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
 	}
 
 	// Both expanded queries return the same chunk
@@ -272,7 +293,7 @@ func TestFuseResults_DeduplicatesExpandedHits(t *testing.T) {
 			ArticleID: "art-1",
 		},
 	}
-	mockRepo.On("Search", mock.Anything, mock.Anything, 50).Return(sharedResult, nil)
+	mockRepo.On("Search", mock.Anything, mock.Anything, 50, testUUID).Return(sharedResult, nil)
 
 	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
 	require.NoError(t, err)

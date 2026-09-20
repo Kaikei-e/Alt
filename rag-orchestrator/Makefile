@@ -5,8 +5,8 @@ generate:
 	@mkdir -p internal/adapter/rag_http/openapi
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -package openapi -generate types,server,spec spec/openapi.yaml > internal/adapter/rag_http/openapi/server.gen.go
 	@echo "Generating Client code for alt-backend..."
-	@mkdir -p ../alt-backend/app/gateway/rag_gateway
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -package rag_gateway -generate types,client spec/openapi.yaml > ../alt-backend/app/gateway/rag_gateway/client.gen.go
+	@mkdir -p ../alt-backend/app/orchestrator/gateway/rag_gateway
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -package rag_gateway -generate types,client spec/openapi.yaml > ../alt-backend/app/orchestrator/gateway/rag_gateway/client.gen.go
 	@echo "Done."
 
 test:

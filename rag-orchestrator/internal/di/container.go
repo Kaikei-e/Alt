@@ -394,9 +394,30 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		if sovereignURL == "" {
 			panic("RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=true but RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL is empty")
 		}
+		tokenFile := cfg.SovereignEventTokenFile
+		if tokenFile == "" {
+			tokenFile = os.Getenv("SOVEREIGN_EVENT_TOKEN_FILE")
+		}
+		authMode := cfg.SovereignEventAuth
+		if authMode == "" {
+			authMode = os.Getenv("SOVEREIGN_EVENT_AUTH")
+		}
+		token, err := sovereign_client.LoadSovereignEventToken(tokenFile, authMode)
+		if err != nil {
+			panic("knowledge-sovereign caller authentication failed: " + err.Error())
+		}
+		var opts []sovereign_client.Option
+		if token != "" {
+			opts = append(opts, sovereign_client.WithToken(token))
+			log.Info("knowledge-sovereign caller authentication enabled", "binary", "rag-orchestrator")
+		} else {
+			log.Warn("knowledge-sovereign caller authentication disabled", "binary", "rag-orchestrator",
+				"reason", "SOVEREIGN_EVENT_AUTH=disabled")
+		}
 		eventEmitter = sovereign_client.NewAppendEventClient(
 			sovereignURL,
 			httpclient.NewPooledClient(10*time.Second),
+			opts...,
 		)
 		log.Info("knowledge-sovereign event emitter enabled",
 			"url", sovereignURL)

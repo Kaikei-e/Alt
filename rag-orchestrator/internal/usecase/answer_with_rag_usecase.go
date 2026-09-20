@@ -246,6 +246,13 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 	if strings.TrimSpace(input.Query) == "" {
 		return nil, fmt.Errorf("query is required")
 	}
+	if strings.TrimSpace(input.UserID) == "" {
+		return nil, ErrEmptyUserID
+	}
+	if _, err := uuid.Parse(strings.TrimSpace(input.UserID)); err != nil {
+		return nil, ErrInvalidUserID
+	}
+	ctx = domain.WithUserID(ctx, input.UserID)
 
 	executionStart := time.Now()
 	requestID := uuid.NewString()
@@ -404,7 +411,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		debug.NeedsClarification = finalPromptData.plannerOutput.NeedsClarification
 	}
 
-	relatedCitations := u.buildRelatedCitations(ctx, finalCitations, input.Query)
+	relatedCitations := u.buildRelatedCitations(ctx, finalCitations, input.Query, input.UserID)
 	output := &AnswerWithRAGOutput{
 		Answer:           strings.TrimSpace(parsedAnswer.Answer),
 		Citations:        finalCitations,
@@ -892,6 +899,7 @@ func (u *answerWithRAGUsecase) buildRelatedCitations(
 	ctx context.Context,
 	direct []Citation,
 	originalQuery string,
+	userID string,
 ) []Citation {
 	if u.neighborSearcher == nil {
 		u.logger.Warn("related_citation_searcher_unwired",
@@ -900,6 +908,16 @@ func (u *answerWithRAGUsecase) buildRelatedCitations(
 		return nil
 	}
 	if len(direct) == 0 {
+		return nil
+	}
+	if strings.TrimSpace(userID) == "" {
+		userID = domain.UserIDFromContext(ctx)
+	}
+	userUUID, err := uuid.Parse(strings.TrimSpace(userID))
+	if err != nil {
+		u.logger.Warn("related_citation_empty",
+			slog.String("reason", "empty or invalid user_id for neighbor search"),
+			slog.Int("direct_citations", len(direct)))
 		return nil
 	}
 
@@ -944,7 +962,7 @@ func (u *answerWithRAGUsecase) buildRelatedCitations(
 
 	queryVector := u.encodeNeighborQuery(ctx, queryText)
 
-	hits, err := u.neighborSearcher.SearchNeighbors(ctx, queryVector, queryText, seeds, limit)
+	hits, err := u.neighborSearcher.SearchNeighbors(ctx, queryVector, queryText, seeds, limit, userUUID)
 	if err != nil {
 		u.logger.Warn("related_citation_lookup_failed",
 			slog.String("error", err.Error()),
@@ -1165,6 +1183,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	// Use intent.UserQuestion for retrieval (metadata stripped)
 	retrieveInput := RetrieveContextInput{
 		Query:               intent.UserQuestion,
+		UserID:              input.UserID,
 		ConversationHistory: input.ConversationHistory,
 	}
 	if len(input.CandidateArticleIDs) > 0 {
@@ -1461,6 +1480,7 @@ func (u *answerWithRAGUsecase) retrieveWithPolicy(
 
 	generalInput := RetrieveContextInput{
 		Query:               intent.UserQuestion,
+		UserID:              input.UserID,
 		ConversationHistory: input.ConversationHistory,
 	}
 
@@ -1545,6 +1565,7 @@ func (u *answerWithRAGUsecase) applyLegacySubIntentPolicy(
 					slog.String("verdict", string(verdict)))
 				generalInput := RetrieveContextInput{
 					Query:               intent.UserQuestion,
+					UserID:              input.UserID,
 					ConversationHistory: input.ConversationHistory,
 				}
 				generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
@@ -1566,6 +1587,7 @@ func (u *answerWithRAGUsecase) applyLegacySubIntentPolicy(
 			slog.String("query_preview", queryLogPreview(intent.UserQuestion)))
 		generalInput := RetrieveContextInput{
 			Query:               intent.UserQuestion,
+			UserID:              input.UserID,
 			ConversationHistory: input.ConversationHistory,
 		}
 		generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
@@ -1720,6 +1742,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	// to bypass the expand-query LLM call (which often over-filters).
 	retrieveInput := RetrieveContextInput{
 		Query:               qPlan.ResolvedQuery,
+		UserID:              input.UserID,
 		ConversationHistory: input.ConversationHistory,
 		SearchQueries:       result.expandedQueries,
 	}

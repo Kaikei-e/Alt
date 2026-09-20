@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"rag-orchestrator/internal/domain"
+
+	"github.com/google/uuid"
 )
 
 // doneSendTimeout bounds how long the deferred terminal Done event waits for
@@ -53,6 +55,23 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			finalOutput.Reason = "query is required"
 			return
 		}
+		if strings.TrimSpace(input.UserID) == "" {
+			u.sendStreamEvent(ctx, events, StreamEvent{
+				Kind:    StreamEventKindError,
+				Payload: "user_id is required",
+			})
+			finalOutput.Reason = "user_id is required"
+			return
+		}
+		if _, err := uuid.Parse(strings.TrimSpace(input.UserID)); err != nil {
+			u.sendStreamEvent(ctx, events, StreamEvent{
+				Kind:    StreamEventKindError,
+				Payload: "invalid user_id",
+			})
+			finalOutput.Reason = "invalid user_id"
+			return
+		}
+		ctx = domain.WithUserID(ctx, input.UserID)
 
 		// 1. Check Cache (Simulated Stream)
 		cacheKey := u.generateCacheKey(input)
@@ -454,7 +473,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 
 		// Build Final Output (Hydration)
 		finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)
-		relatedCitations := u.buildRelatedCitations(ctx, finalCitations, input.Query)
+		relatedCitations := u.buildRelatedCitations(ctx, finalCitations, input.Query, input.UserID)
 
 		output := &AnswerWithRAGOutput{
 			Answer:           finalAnswerText,

@@ -75,7 +75,7 @@ func TestDoneInvariant_BuildPromptFailure(t *testing.T) {
 		Return(nil, errors.New("retriever exploded"))
 
 	uc := newDoneInvariantUsecase(mockRetrieve, mockLLM)
-	events := drainStream(t, uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test"}))
+	events := drainStream(t, uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test", UserID: "11111111-1111-4111-8111-111111111111"}))
 
 	count, payload := countDone(events)
 	assert.Equal(t, 1, count, "exactly one Done must be emitted on buildPrompt failure")

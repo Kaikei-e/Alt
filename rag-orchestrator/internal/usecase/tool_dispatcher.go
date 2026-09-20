@@ -111,8 +111,12 @@ func (d *ToolDispatcher) executeTools(ctx context.Context, toolNames []string, q
 			continue
 		}
 
+		args := defaultToolArgs(name, query)
+		if uid := domain.UserIDFromContext(ctx); uid != "" {
+			args["user_id"] = uid
+		}
 		toolCtx, cancel := context.WithTimeout(ctx, toolTimeout)
-		result, err := tool.Execute(toolCtx, defaultToolArgs(name, query))
+		result, err := tool.Execute(toolCtx, args)
 		cancel()
 
 		if err != nil {
@@ -259,7 +263,24 @@ func (d *ToolDispatcher) executeStep(ctx context.Context, step domain.ToolStep) 
 	toolCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	result, err := tool.Execute(toolCtx, step.Params)
+	params := step.Params
+	if uid := domain.UserIDFromContext(ctx); uid != "" {
+		if params == nil {
+			params = make(map[string]string)
+		} else {
+			// copy map to avoid mutating step
+			cp := make(map[string]string, len(params)+1)
+			for k, v := range params {
+				cp[k] = v
+			}
+			params = cp
+		}
+		if _, ok := params["user_id"]; !ok {
+			params["user_id"] = uid
+		}
+	}
+
+	result, err := tool.Execute(toolCtx, params)
 	if err != nil {
 		d.logger.Warn("plan_tool_execution_failed",
 			slog.String("tool", step.ToolName),

@@ -16,9 +16,22 @@ import (
 
 type IndexArticleUsecase interface {
 	// Upsert indexes an article. It is idempotent.
-	Upsert(ctx context.Context, articleID, title, url, body string) error
+	Upsert(ctx context.Context, articleID, userID, title, url, body string) error
 	// Delete removes an article (soft delete logic).
 	Delete(ctx context.Context, articleID string) error
+	// BackfillOwners batch updates document user_id where currently NULL.
+	BackfillOwners(ctx context.Context, items []OwnerBackfillItem) (OwnerBackfillResult, error)
+}
+
+type OwnerBackfillItem struct {
+	ArticleID string `json:"article_id"`
+	UserID    string `json:"user_id"`
+}
+
+type OwnerBackfillResult struct {
+	Updated    int64 `json:"updated"`
+	AlreadySet int64 `json:"already_set"`
+	NotFound   int64 `json:"not_found"`
 }
 
 type indexArticleUsecase struct {
@@ -56,7 +69,11 @@ func NewIndexArticleUsecase(
 // handler, because JobWorker.processBackfillArticle and
 // DirectIndexer.IndexArticle also call Upsert directly, bypassing any
 // handler-level check.
-var ErrBlankArticleID = errors.New("indexArticleUsecase: article_id is required")
+var (
+	ErrBlankArticleID = errors.New("indexArticleUsecase: article_id is required")
+	ErrBlankUserID    = errors.New("indexArticleUsecase: user_id is required")
+	ErrOwnerConflict  = errors.New("indexArticleUsecase: document owned by another user")
+)
 
 // Upsert indexes an article: (1) a read-only pre-check skips the work
 // entirely when the article hasn't changed, (2) chunking, (3) embedding —
@@ -66,9 +83,17 @@ var ErrBlankArticleID = errors.New("indexArticleUsecase: article_id is required"
 // document/version/chunks/events atomically. Holding a transaction open
 // across the embedder network call previously caused idle-in-transaction
 // timeouts (SQLSTATE 25P03) on rag-db for the largest articles.
-func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url, body string) error {
+func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, userID, title, url, body string) error {
 	if strings.TrimSpace(articleID) == "" {
 		return ErrBlankArticleID
+	}
+
+	if strings.TrimSpace(userID) == "" {
+		return ErrBlankUserID
+	}
+	parsedUserID, err := uuid.Parse(strings.TrimSpace(userID))
+	if err != nil {
+		return ErrInvalidUserID
 	}
 
 	sourceHash := u.hasher.Compute(title, body)
@@ -84,11 +109,19 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 	// below, since state can change between this read and the transaction
 	// start (e.g. a concurrent upsert of the same article committing
 	// first).
-	_, latestVer, err := u.loadCurrent(ctx, articleID)
+	doc, latestVer, err := u.loadCurrent(ctx, articleID)
 	if err != nil {
 		return err
 	}
+	if doc != nil && doc.UserID != nil && *doc.UserID != parsedUserID {
+		return ErrOwnerConflict
+	}
 	if isUpToDate(latestVer, sourceHash, url, title, chunkerVersion, embedderVersion) {
+		if doc != nil && doc.UserID == nil {
+			if err := u.docRepo.SetDocumentOwner(ctx, doc.ID, parsedUserID); err != nil {
+				return fmt.Errorf("failed to set document owner: %w", err)
+			}
+		}
 		return nil
 	}
 
@@ -158,6 +191,20 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 		if err != nil {
 			return err
 		}
+
+		if doc != nil {
+			if doc.UserID != nil {
+				if *doc.UserID != parsedUserID {
+					return ErrOwnerConflict
+				}
+			} else {
+				if err := u.docRepo.SetDocumentOwner(ctx, doc.ID, parsedUserID); err != nil {
+					return fmt.Errorf("failed to set document owner: %w", err)
+				}
+				doc.UserID = &parsedUserID
+			}
+		}
+
 		if isUpToDate(latestVer, sourceHash, url, title, chunkerVersion, embedderVersion) {
 			return nil
 		}
@@ -167,6 +214,7 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 			doc = &domain.RagDocument{
 				ID:        uuid.New(),
 				ArticleID: articleID,
+				UserID:    &parsedUserID,
 				CreatedAt: now,
 				UpdatedAt: now,
 			}
@@ -395,4 +443,35 @@ func chunkIDPtr(id uuid.UUID) *uuid.UUID {
 func computeHash(content string) string {
 	hashBytes := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(hashBytes[:])
+}
+
+// BackfillOwners sets user_id for a batch of articles if user_id is currently NULL.
+// Idempotent operation: returning updated, already_set, and not_found counts.
+func (u *indexArticleUsecase) BackfillOwners(ctx context.Context, items []OwnerBackfillItem) (OwnerBackfillResult, error) {
+	var result OwnerBackfillResult
+	for _, item := range items {
+		if strings.TrimSpace(item.ArticleID) == "" {
+			return result, fmt.Errorf("%w: missing article_id in backfill item", ErrBlankArticleID)
+		}
+		if strings.TrimSpace(item.UserID) == "" {
+			return result, fmt.Errorf("%w: missing user_id in backfill item", ErrBlankUserID)
+		}
+		parsedUserID, err := uuid.Parse(strings.TrimSpace(item.UserID))
+		if err != nil {
+			return result, fmt.Errorf("%w: invalid user_id %q for article %s: %v", ErrInvalidUserID, item.UserID, item.ArticleID, err)
+		}
+
+		updated, alreadySet, err := u.docRepo.BackfillOwnerIfNull(ctx, item.ArticleID, parsedUserID)
+		if err != nil {
+			return result, fmt.Errorf("failed to backfill owner for article %s: %w", item.ArticleID, err)
+		}
+		if updated {
+			result.Updated++
+		} else if alreadySet {
+			result.AlreadySet++
+		} else {
+			result.NotFound++
+		}
+	}
+	return result, nil
 }

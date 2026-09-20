@@ -19,7 +19,10 @@ import (
 
 // fixedCreatedAt stands in for a real created_at column value in the fake
 // rows below. It carries no meaning beyond "some parseable time.Time".
-var fixedCreatedAt = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+var (
+	fixedCreatedAt      = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	chunkRepoTestUserID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+)
 
 // nullEmbeddingRow is a single-row pgx.Rows fake that reproduces exactly
 // what real pgx does when a SQL NULL is decoded into a non-nullable
@@ -90,13 +93,15 @@ func (f *fakeTxQueryOnly) Query(_ context.Context, _ string, _ ...interface{}) (
 // costs and what candidate pool it asked the database for.
 type recordingTx struct {
 	pgx.Tx
-	calls int
-	args  [][]interface{}
-	rows  pgx.Rows
+	calls   int
+	queries []string
+	args    [][]interface{}
+	rows    pgx.Rows
 }
 
-func (f *recordingTx) Query(_ context.Context, _ string, args ...interface{}) (pgx.Rows, error) {
+func (f *recordingTx) Query(_ context.Context, query string, args ...interface{}) (pgx.Rows, error) {
 	f.calls++
+	f.queries = append(f.queries, query)
 	f.args = append(f.args, args)
 	return f.rows, nil
 }
@@ -216,7 +221,7 @@ func TestSearch_NullEmbedding_DoesNotPanic(t *testing.T) {
 	var results []domain.SearchResult
 	var err error
 	require.NotPanics(t, func() {
-		results, err = repo.Search(ctx, []float32{0.1, 0.2}, 5)
+		results, err = repo.Search(ctx, []float32{0.1, 0.2}, 5, chunkRepoTestUserID)
 	}, "Search must not panic when a chunk's embedding is SQL NULL")
 
 	require.NoError(t, err)
@@ -239,7 +244,7 @@ func TestSearch_IsOneRoundTrip(t *testing.T) {
 	tx := &recordingTx{rows: &enrichedChunkRow{id: chunkID, versionID: uuid.New()}}
 	ctx := InjectTx(context.Background(), tx)
 
-	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 50)
+	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 50, chunkRepoTestUserID)
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, tx.calls, "one vector search must cost one database round-trip")
@@ -255,14 +260,42 @@ func TestSearch_OverfetchIsRightSized(t *testing.T) {
 	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}}
 	ctx := InjectTx(context.Background(), tx)
 
-	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 50)
+	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 25, chunkRepoTestUserID)
 	require.NoError(t, err)
 
 	require.Len(t, tx.args, 1)
 	args := tx.args[0]
-	require.Len(t, args, 3, "query vector, candidate pool size, final limit")
-	assert.Equal(t, searchOverfetchMultiplier*50, args[1])
-	assert.Equal(t, 50, args[2])
+	require.Len(t, args, 4, "query vector, candidate pool size, final limit, user_id")
+	assert.Equal(t, searchOverfetchMultiplier*25, args[1])
+	assert.Equal(t, 25, args[2])
+	assert.Equal(t, chunkRepoTestUserID, args[3])
+}
+
+// TestSearch_BareCTECandidatePoolAndUserFilter verifies that the search query
+// uses a bare candidates CTE for pgvector HNSW index utilization with 4x overfetch,
+// and filters by user_id in the outer query before applying the final limit.
+func TestSearch_BareCTECandidatePoolAndUserFilter(t *testing.T) {
+	repo := NewRagChunkRepository(nil)
+
+	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}}
+	ctx := InjectTx(context.Background(), tx)
+
+	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 20, chunkRepoTestUserID)
+	require.NoError(t, err)
+
+	require.Len(t, tx.queries, 1)
+	q := tx.queries[0]
+	assert.Contains(t, q, "WITH candidates AS")
+	assert.Contains(t, q, "SELECT c.id, (c.embedding <=> $1) AS distance")
+	assert.Contains(t, q, "FROM rag_chunks c")
+	assert.Contains(t, q, "LIMIT $2")
+	assert.Contains(t, q, "d.user_id = $4")
+	assert.Contains(t, q, "LIMIT $3")
+
+	require.Len(t, tx.args, 1)
+	assert.Equal(t, 80, tx.args[0][1], "candidateLimit = limit * 4")
+	assert.Equal(t, 20, tx.args[0][2], "limit")
+	assert.Equal(t, chunkRepoTestUserID, tx.args[0][3], "userID")
 }
 
 // TestSearch_OverfetchIsCapped keeps a large SearchLimit from asking pgvector
@@ -273,7 +306,7 @@ func TestSearch_OverfetchIsCapped(t *testing.T) {
 	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}}
 	ctx := InjectTx(context.Background(), tx)
 
-	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 5000)
+	_, err := repo.Search(ctx, []float32{0.1, 0.2}, 5000, chunkRepoTestUserID)
 	require.NoError(t, err)
 
 	assert.Equal(t, searchOverfetchCap, tx.args[0][1])
@@ -287,7 +320,7 @@ func TestSearch_TagsScoresAsVector(t *testing.T) {
 	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}}
 	ctx := InjectTx(context.Background(), tx)
 
-	results, err := repo.Search(ctx, []float32{0.1, 0.2}, 5)
+	results, err := repo.Search(ctx, []float32{0.1, 0.2}, 5, chunkRepoTestUserID)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, domain.ScoreKindVector, results[0].ScoreKind)
@@ -298,7 +331,7 @@ func TestSearchWithinArticles_TagsScoresAsVector(t *testing.T) {
 
 	ctx := InjectTx(context.Background(), &fakeTxQueryOnly{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}})
 
-	results, err := repo.SearchWithinArticles(ctx, []float32{0.1, 0.2}, []string{"article-1"}, 5)
+	results, err := repo.SearchWithinArticles(ctx, []float32{0.1, 0.2}, []string{"article-1"}, 5, chunkRepoTestUserID)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, domain.ScoreKindVector, results[0].ScoreKind)
@@ -322,7 +355,7 @@ func TestSearchWithinArticles_NullEmbedding_DoesNotPanic(t *testing.T) {
 	var results []domain.SearchResult
 	var err error
 	require.NotPanics(t, func() {
-		results, err = repo.SearchWithinArticles(ctx, []float32{0.1, 0.2}, []string{"article-1"}, 5)
+		results, err = repo.SearchWithinArticles(ctx, []float32{0.1, 0.2}, []string{"article-1"}, 5, chunkRepoTestUserID)
 	}, "SearchWithinArticles must not panic when a chunk's embedding is SQL NULL")
 
 	require.NoError(t, err)
@@ -435,7 +468,7 @@ func TestSearch_ScoresEachRowFromItsOwnDistance(t *testing.T) {
 	}}
 	ctx := InjectTx(context.Background(), tx)
 
-	results, err := repo.Search(ctx, []float32{0.1, 0.2}, 3)
+	results, err := repo.Search(ctx, []float32{0.1, 0.2}, 3, chunkRepoTestUserID)
 
 	require.NoError(t, err)
 	require.Len(t, results, 3)

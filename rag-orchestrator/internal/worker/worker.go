@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -152,9 +153,13 @@ func (w *JobWorker) processBackfillArticle(ctx context.Context, job *domain.RagJ
 	if !ok {
 		url = "" // Default if missing
 	}
+	userID, ok := payload["user_id"].(string)
+	if !ok || strings.TrimSpace(userID) == "" {
+		return fmt.Errorf("missing or invalid user_id")
+	}
 
 	// Throttling could be implemented here (e.g., token bucket or simple sleep)
 	// For now, let's keep it simple as relying on the poll interval acts as a basic rate limiter (1 job/sec/worker)
 
-	return w.indexUsecase.Upsert(ctx, articleID, title, url, body)
+	return w.indexUsecase.Upsert(ctx, articleID, userID, title, url, body)
 }

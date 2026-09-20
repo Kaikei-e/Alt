@@ -27,9 +27,17 @@ func (t *DateRangeFilterTool) Execute(ctx context.Context, params map[string]str
 		return &domain.ToolResult{Success: false, Error: "query is required"}, nil
 	}
 
+	userID := params["user_id"]
+	if userID == "" {
+		userID = domain.UserIDFromContext(ctx)
+	}
+	if userID == "" {
+		return &domain.ToolResult{Success: false, Error: "user_id is required"}, fmt.Errorf("user_id is required")
+	}
+
 	// Use search client with the temporal query — the search engine
 	// handles recency ranking internally via Meilisearch
-	hits, err := t.client.Search(ctx, query)
+	hits, err := t.client.Search(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("date range filter failed: %w", err)
 	}

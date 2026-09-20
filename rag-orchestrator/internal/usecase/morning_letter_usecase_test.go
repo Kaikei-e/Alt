@@ -63,6 +63,7 @@ func TestMorningLetterUsecase_Execute_Success(t *testing.T) {
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
 		Query:       "What are the important news?",
+		UserID:      uuid.NewString(),
 		WithinHours: 24,
 		TopicLimit:  5,
 		Locale:      "ja",
@@ -161,7 +162,8 @@ func TestMorningLetterUsecase_Execute_NoArticles(t *testing.T) {
 
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
-		Query: "What are the important news?",
+		Query:  "What are the important news?",
+		UserID: uuid.NewString(),
 	}
 
 	// Mock GetRecentArticles returning empty (limit=0 means no limit)
@@ -195,7 +197,8 @@ func TestMorningLetterUsecase_Execute_ArticleClientError(t *testing.T) {
 
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
-		Query: "What are the important news?",
+		Query:  "What are the important news?",
+		UserID: uuid.NewString(),
 	}
 
 	// Mock GetRecentArticles returning error (limit=0 means no limit)
@@ -227,6 +230,7 @@ func TestMorningLetterUsecase_Execute_DefaultValues(t *testing.T) {
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
 		Query:       "test",
+		UserID:      uuid.NewString(),
 		WithinHours: 0,  // Should default to 24
 		TopicLimit:  0,  // Should default to 5
 		Locale:      "", // Should default to "ja"
@@ -263,6 +267,7 @@ func TestMorningLetterUsecase_Execute_MaxLimits(t *testing.T) {
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
 		Query:       "test",
+		UserID:      uuid.NewString(),
 		WithinHours: 500, // Should be capped to 168
 		TopicLimit:  100, // Should be capped to 20
 	}
@@ -299,6 +304,7 @@ func TestMorningLetterUsecase_Execute_MaxTokensPassedToLLM(t *testing.T) {
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
 		Query:       "What are the important news?",
+		UserID:      uuid.NewString(),
 		WithinHours: 24,
 		TopicLimit:  5,
 		Locale:      "ja",
@@ -372,6 +378,7 @@ func TestMorningLetterUsecase_Execute_ContextTokenLimiting(t *testing.T) {
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
 		Query:       "What are the important news?",
+		UserID:      uuid.NewString(),
 		WithinHours: 24,
 		TopicLimit:  5,
 		Locale:      "ja",
@@ -446,6 +453,7 @@ func TestMorningLetterUsecase_MaxTokensDefaultsWhenZero(t *testing.T) {
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
 		Query:       "test",
+		UserID:      uuid.NewString(),
 		WithinHours: 24,
 		Locale:      "ja",
 	}
@@ -507,6 +515,7 @@ func TestMorningLetterUsecase_Execute_EnrichesArticleRefsFromPositionalIndices(t
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
 		Query:       "What are the important news?",
+		UserID:      uuid.NewString(),
 		WithinHours: 24,
 		TopicLimit:  5,
 		Locale:      "ja",
@@ -584,4 +593,33 @@ func TestMorningLetterUsecase_Execute_EnrichesArticleRefsFromPositionalIndices(t
 	assert.Equal(t, "https://example.com/1", refs[0].URL)
 	assert.Equal(t, articleID2, refs[1].ID)
 	assert.Equal(t, "Second Article", refs[1].Title)
+}
+
+func TestMorningLetterUsecase_Execute_UserScoping(t *testing.T) {
+	mockArticleClient := new(MockArticleClient)
+	mockRetrieveUC := new(mockRetrieveContextUsecase)
+	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
+	mockLLM := new(mockLLMClient)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewMorningLetterUsecase(
+		mockArticleClient,
+		mockRetrieveUC,
+		mockPromptBuilder,
+		mockLLM,
+		4096,
+		6000,
+		usecase.DefaultTemporalBoostConfig(),
+		testLogger,
+	)
+
+	ctx := context.Background()
+
+	// Empty UserID
+	_, err := uc.Execute(ctx, usecase.MorningLetterInput{Query: "test", UserID: ""})
+	assert.ErrorIs(t, err, usecase.ErrEmptyUserID)
+
+	// Invalid UserID
+	_, err = uc.Execute(ctx, usecase.MorningLetterInput{Query: "test", UserID: "not-a-uuid"})
+	assert.ErrorIs(t, err, usecase.ErrInvalidUserID)
 }

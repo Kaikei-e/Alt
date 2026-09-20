@@ -19,6 +19,11 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(io.Discard, nil))
 }
 
+var (
+	testOwnerUUID  = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	testOwnerIDStr = testOwnerUUID.String()
+)
+
 func TestArticleScopedStrategy_Success(t *testing.T) {
 	docRepo := new(MockRagDocumentRepository)
 	chunkRepo := new(MockRagChunkRepository)
@@ -33,6 +38,7 @@ func TestArticleScopedStrategy_Success(t *testing.T) {
 	docRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
 		ID:               uuid.New(),
 		ArticleID:        articleID,
+		UserID:           &testOwnerUUID,
 		CurrentVersionID: &versionID,
 	}, nil)
 
@@ -54,7 +60,7 @@ func TestArticleScopedStrategy_Success(t *testing.T) {
 		ArticleID:  articleID,
 	}
 
-	output, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test"}, intent)
+	output, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, intent)
 	assert.NoError(t, err)
 	assert.Len(t, output.Contexts, 2)
 	assert.Equal(t, float32(1.0), output.Contexts[0].Score)
@@ -77,7 +83,7 @@ func TestArticleScopedStrategy_ArticleNotFound(t *testing.T) {
 		IntentType: usecase.IntentArticleScoped,
 		ArticleID:  "missing",
 	}
-	_, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test"}, intent)
+	_, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, intent)
 	assert.ErrorIs(t, err, usecase.ErrArticleNotIndexed)
 }
 
@@ -90,6 +96,7 @@ func TestArticleScopedStrategy_NoCurrentVersion(t *testing.T) {
 	docRepo.On("GetByArticleID", ctx, "no-ver").Return(&domain.RagDocument{
 		ID:               uuid.New(),
 		ArticleID:        "no-ver",
+		UserID:           &testOwnerUUID,
 		CurrentVersionID: nil,
 	}, nil)
 
@@ -97,7 +104,7 @@ func TestArticleScopedStrategy_NoCurrentVersion(t *testing.T) {
 		IntentType: usecase.IntentArticleScoped,
 		ArticleID:  "no-ver",
 	}
-	_, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test"}, intent)
+	_, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, intent)
 	assert.ErrorIs(t, err, usecase.ErrArticleNotIndexed)
 }
 
@@ -114,6 +121,7 @@ func TestArticleScopedStrategy_VersionMismatch(t *testing.T) {
 	docRepo.On("GetByArticleID", ctx, "art-1").Return(&domain.RagDocument{
 		ID:               uuid.New(),
 		ArticleID:        "art-1",
+		UserID:           &testOwnerUUID,
 		CurrentVersionID: &currentVersionID,
 	}, nil)
 
@@ -131,7 +139,7 @@ func TestArticleScopedStrategy_VersionMismatch(t *testing.T) {
 	}, nil)
 
 	intent := usecase.QueryIntent{IntentType: usecase.IntentArticleScoped, ArticleID: "art-1"}
-	output, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test"}, intent)
+	output, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, intent)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, output.Contexts[0].DocumentVersion)
 	assert.Equal(t, "Current Title", output.Contexts[0].Title)
@@ -151,6 +159,7 @@ func TestArticleScopedStrategy_NoChunks(t *testing.T) {
 	docRepo.On("GetByArticleID", ctx, "empty").Return(&domain.RagDocument{
 		ID:               uuid.New(),
 		ArticleID:        "empty",
+		UserID:           &testOwnerUUID,
 		CurrentVersionID: &versionID,
 	}, nil)
 	docRepo.On("GetVersionByID", ctx, versionID).Return(&domain.RagDocumentVersion{
@@ -159,7 +168,7 @@ func TestArticleScopedStrategy_NoChunks(t *testing.T) {
 	chunkRepo.On("GetChunksByVersionID", ctx, versionID).Return([]domain.RagChunk{}, nil)
 
 	intent := usecase.QueryIntent{IntentType: usecase.IntentArticleScoped, ArticleID: "empty"}
-	_, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test"}, intent)
+	_, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, intent)
 	assert.ErrorIs(t, err, usecase.ErrArticleNotIndexed)
 }
 
@@ -173,7 +182,7 @@ func TestArticleScopedStrategy_FollowUpReranksChunksByRelevance(t *testing.T) {
 	versionID := uuid.New()
 
 	docRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
-		ID: uuid.New(), ArticleID: articleID, CurrentVersionID: &versionID,
+		ID: uuid.New(), ArticleID: articleID, UserID: &testOwnerUUID, CurrentVersionID: &versionID,
 	}, nil)
 	docRepo.On("GetVersionByID", ctx, versionID).Return(&domain.RagDocumentVersion{
 		ID: versionID, VersionNumber: 1, Title: "Test Article",
@@ -195,7 +204,8 @@ func TestArticleScopedStrategy_FollowUpReranksChunksByRelevance(t *testing.T) {
 
 	// Follow-up about security — chunks about security should rank higher
 	input := usecase.RetrieveContextInput{
-		Query: "What are the security implications?",
+		Query:  "What are the security implications?",
+		UserID: testOwnerIDStr,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "What is this article about?"},
 			{Role: "assistant", Content: "This article covers a new protocol..."},
@@ -239,7 +249,7 @@ func TestArticleScopedStrategy_FollowUpCrossLanguageTranslates(t *testing.T) {
 	versionID := uuid.New()
 
 	docRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
-		ID: uuid.New(), ArticleID: articleID, CurrentVersionID: &versionID,
+		ID: uuid.New(), ArticleID: articleID, UserID: &testOwnerUUID, CurrentVersionID: &versionID,
 	}, nil)
 	docRepo.On("GetVersionByID", ctx, versionID).Return(&domain.RagDocumentVersion{
 		ID: versionID, VersionNumber: 1, Title: "English Article",
@@ -262,7 +272,8 @@ func TestArticleScopedStrategy_FollowUpCrossLanguageTranslates(t *testing.T) {
 		UserQuestion: "この危機の原因はなに？",
 	}
 	input := usecase.RetrieveContextInput{
-		Query: "この危機の原因はなに？",
+		Query:  "この危機の原因はなに？",
+		UserID: testOwnerIDStr,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "What is this about?"},
 			{Role: "assistant", Content: "This is about the fuel crisis."},
@@ -294,7 +305,7 @@ func TestArticleScopedStrategy_FollowUpNoExpanderFallsBack(t *testing.T) {
 	versionID := uuid.New()
 
 	docRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
-		ID: uuid.New(), ArticleID: articleID, CurrentVersionID: &versionID,
+		ID: uuid.New(), ArticleID: articleID, UserID: &testOwnerUUID, CurrentVersionID: &versionID,
 	}, nil)
 	docRepo.On("GetVersionByID", ctx, versionID).Return(&domain.RagDocumentVersion{
 		ID: versionID, VersionNumber: 1, Title: "English Article",
@@ -311,7 +322,8 @@ func TestArticleScopedStrategy_FollowUpNoExpanderFallsBack(t *testing.T) {
 		UserQuestion: "日本語クエリ",
 	}
 	input := usecase.RetrieveContextInput{
-		Query: "日本語クエリ",
+		Query:  "日本語クエリ",
+		UserID: testOwnerIDStr,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "What?"},
 			{Role: "assistant", Content: "Answer"},
@@ -337,7 +349,7 @@ func TestArticleScopedStrategy_FirstTurnKeepsOriginalOrder(t *testing.T) {
 	versionID := uuid.New()
 
 	docRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
-		ID: uuid.New(), ArticleID: articleID, CurrentVersionID: &versionID,
+		ID: uuid.New(), ArticleID: articleID, UserID: &testOwnerUUID, CurrentVersionID: &versionID,
 	}, nil)
 	docRepo.On("GetVersionByID", ctx, versionID).Return(&domain.RagDocumentVersion{
 		ID: versionID, VersionNumber: 1, Title: "Test",
@@ -353,6 +365,7 @@ func TestArticleScopedStrategy_FirstTurnKeepsOriginalOrder(t *testing.T) {
 	// First turn: no conversation history → original ordinal order, score 1.0
 	input := usecase.RetrieveContextInput{
 		Query:               "What is this about?",
+		UserID:              testOwnerIDStr,
 		ConversationHistory: nil,
 	}
 	output, err := strategy.Retrieve(ctx, input, intent)
@@ -371,7 +384,7 @@ func TestArticleScopedStrategy_ChunkOrdering(t *testing.T) {
 	versionID := uuid.New()
 
 	docRepo.On("GetByArticleID", ctx, "ordered").Return(&domain.RagDocument{
-		ID: uuid.New(), ArticleID: "ordered", CurrentVersionID: &versionID,
+		ID: uuid.New(), ArticleID: "ordered", UserID: &testOwnerUUID, CurrentVersionID: &versionID,
 	}, nil)
 	docRepo.On("GetVersionByID", ctx, versionID).Return(&domain.RagDocumentVersion{
 		ID: versionID, VersionNumber: 1, Title: "Ordered", CreatedAt: time.Now(),
@@ -385,10 +398,48 @@ func TestArticleScopedStrategy_ChunkOrdering(t *testing.T) {
 	}, nil)
 
 	intent := usecase.QueryIntent{IntentType: usecase.IntentArticleScoped, ArticleID: "ordered"}
-	output, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test"}, intent)
+	output, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, intent)
 	assert.NoError(t, err)
 	assert.Len(t, output.Contexts, 3)
 	assert.Equal(t, "Chunk 0", output.Contexts[0].ChunkText)
 	assert.Equal(t, "Chunk 1", output.Contexts[1].ChunkText)
 	assert.Equal(t, "Chunk 2", output.Contexts[2].ChunkText)
+}
+
+func TestArticleScopedStrategy_UserScoping(t *testing.T) {
+	docRepo := new(MockRagDocumentRepository)
+	chunkRepo := new(MockRagChunkRepository)
+	strategy := usecase.NewArticleScopedStrategy(docRepo, chunkRepo, testLogger())
+	ctx := context.Background()
+	intent := usecase.QueryIntent{IntentType: usecase.IntentArticleScoped, ArticleID: "art-1"}
+
+	// Empty UserID
+	_, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: ""}, intent)
+	assert.ErrorIs(t, err, usecase.ErrEmptyUserID)
+
+	// Invalid UserID
+	_, err = strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: "not-a-uuid"}, intent)
+	assert.ErrorIs(t, err, usecase.ErrInvalidUserID)
+
+	// Unowned document (doc.UserID is nil)
+	versionID := uuid.New()
+	docRepo.On("GetByArticleID", ctx, "art-unowned").Return(&domain.RagDocument{
+		ID:               uuid.New(),
+		ArticleID:        "art-unowned",
+		UserID:           nil,
+		CurrentVersionID: &versionID,
+	}, nil)
+	_, err = strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, usecase.QueryIntent{IntentType: usecase.IntentArticleScoped, ArticleID: "art-unowned"})
+	assert.ErrorIs(t, err, usecase.ErrArticleNotIndexed)
+
+	// Wrong owner
+	otherUser := uuid.New()
+	docRepo.On("GetByArticleID", ctx, "art-other").Return(&domain.RagDocument{
+		ID:               uuid.New(),
+		ArticleID:        "art-other",
+		UserID:           &otherUser,
+		CurrentVersionID: &versionID,
+	}, nil)
+	_, err = strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, usecase.QueryIntent{IntentType: usecase.IntentArticleScoped, ArticleID: "art-other"})
+	assert.ErrorIs(t, err, usecase.ErrArticleNotIndexed)
 }

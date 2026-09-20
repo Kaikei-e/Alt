@@ -163,6 +163,7 @@ func newRebuildJob(a Article) *domain.RagJob {
 		JobType: rebuildJobType,
 		Payload: map[string]interface{}{
 			"article_id": a.ID,
+			"user_id":    a.UserID,
 			"title":      a.Title,
 			"url":        a.URL,
 			"body":       a.Body,

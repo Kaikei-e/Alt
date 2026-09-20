@@ -11,6 +11,8 @@ import (
 	"unicode"
 
 	"rag-orchestrator/internal/domain"
+
+	"github.com/google/uuid"
 )
 
 type articleScopedStrategy struct {
@@ -44,11 +46,22 @@ func NewArticleScopedStrategy(
 func (s *articleScopedStrategy) Name() string { return "article_scoped" }
 
 func (s *articleScopedStrategy) Retrieve(ctx context.Context, input RetrieveContextInput, intent QueryIntent) (*RetrieveContextOutput, error) {
+	if strings.TrimSpace(input.UserID) == "" {
+		return nil, ErrEmptyUserID
+	}
+	userUUID, err := uuid.Parse(strings.TrimSpace(input.UserID))
+	if err != nil {
+		return nil, ErrInvalidUserID
+	}
+
 	doc, err := s.docRepo.GetByArticleID(ctx, intent.ArticleID)
 	if err != nil {
 		return nil, fmt.Errorf("get document by article ID %s: %w", intent.ArticleID, err)
 	}
 	if doc == nil || doc.CurrentVersionID == nil {
+		return nil, ErrArticleNotIndexed
+	}
+	if doc.UserID == nil || *doc.UserID != userUUID {
 		return nil, ErrArticleNotIndexed
 	}
 
