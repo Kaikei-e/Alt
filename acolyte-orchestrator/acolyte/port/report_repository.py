@@ -64,6 +64,10 @@ class ReportRepositoryPort(Protocol):
 
     async def delete_report(self, report_id: UUID) -> None: ...
 
+
+class ReportOwnerBackfillPort(Protocol):
+    """Narrow port for backfilling unowned legacy reports."""
+
     async def backfill_owners(
         self,
         *,

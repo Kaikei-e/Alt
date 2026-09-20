@@ -25,6 +25,7 @@ from acolyte.config.settings import Settings
 from acolyte.domain.report import Report
 from acolyte.gateway.memory_report_gw import MemoryReportGateway
 from acolyte.gateway.postgres_report_gw import PostgresReportGateway
+from acolyte.port.report_repository import ReportOwnerBackfillPort
 from acolyte.usecase.backfill_report_owners_uc import (
     BackfillReportOwnersUsecase,
     UnmappedLegacyReportsError,
@@ -324,3 +325,22 @@ async def test_postgres_gateway_backfill_transaction_lock_and_atomicity() -> Non
     assert mock_conn.execute.call_count == 1
     mock_tx.__aenter__.assert_awaited_once()
     mock_tx.__aexit__.assert_awaited_once_with(None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_report_owner_backfill_port_segregation() -> None:
+    """Contract: BackfillReportOwnersUsecase depends only on ReportOwnerBackfillPort."""
+
+    class _MinimalBackfillRepo:
+        async def backfill_owners(
+            self,
+            *,
+            single_owner_id: UUID | None = None,
+            mapping: dict[UUID, UUID] | None = None,
+        ) -> int:
+            return 42
+
+    repo: ReportOwnerBackfillPort = _MinimalBackfillRepo()
+    uc = BackfillReportOwnersUsecase(repo)
+    result = await uc.execute(single_owner_id=uuid4())
+    assert result == 42

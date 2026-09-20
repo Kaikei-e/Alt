@@ -8,7 +8,7 @@ from uuid import UUID
 from acolyte.domain.exceptions import UnmappedLegacyReportsError
 
 if TYPE_CHECKING:
-    from acolyte.port.report_repository import ReportRepositoryPort
+    from acolyte.port.report_repository import ReportOwnerBackfillPort
 
 __all__ = ["BackfillReportOwnersUsecase", "UnmappedLegacyReportsError"]
 
@@ -20,7 +20,7 @@ class BackfillReportOwnersUsecase:
     preventing legacy data from being silently hidden by per-user ownership queries.
     """
 
-    def __init__(self, report_repo: ReportRepositoryPort) -> None:
+    def __init__(self, report_repo: ReportOwnerBackfillPort) -> None:
         self._report_repo = report_repo
 
     async def execute(
