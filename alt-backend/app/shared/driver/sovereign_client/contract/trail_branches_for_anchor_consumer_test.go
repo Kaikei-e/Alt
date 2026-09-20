@@ -37,11 +37,9 @@ func TestGetTrailBranchesForAnchorReturnsAnchoredBranches(t *testing.T) {
 		Given("a user has an open branch anchored on the just-read item").
 		UponReceiving("a GetTrailBranchesForAnchor request").
 		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/GetTrailBranchesForAnchor"),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/GetTrailBranchesForAnchor"),
+			Headers: sovereignHeaders(),
 			Body: matchers.MapMatcher{
 				"userId":        matchers.Like(userID),
 				"anchorItemKey": matchers.Like(anchorItemKey),

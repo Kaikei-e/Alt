@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"strings"
@@ -53,14 +54,18 @@ const defaultOperatorListenAddr = "127.0.0.1:9102"
 // LoadOperatorListenAddr returns the bind address for the backend's operator
 // listener (KnowledgeHomeAdminService, AdminMonitorService).
 //
-// Neither service authenticates its caller, so the bind address is the access
-// control — which is why the default is loopback and why widening it has to be
-// typed out. The widening is not hypothetical: compose publishes
-// `127.0.0.1:9102:9102` so altctl works from the host, and docker-proxy
-// connects to the container over its eth0 address. A bind pinned to 127.0.0.1
-// *inside* the netns is unreachable from there, so refusing an explicit
-// OPERATOR_LISTEN_ADDR=":9102" would not harden anything — it would only take
-// the operator workflow offline while leaving the published port in place.
+// The bind address used to be the entire access control, since neither
+// service authenticated its caller. It no longer is — LoadOperatorAuth gates
+// every RPC on this listener with a bearer token — but the bind stays the
+// network-reachability floor underneath that gate (defense in depth: a
+// leaked token still cannot be used from outside the container network), so
+// widening it still has to be typed out. The widening is not hypothetical:
+// compose publishes `127.0.0.1:9102:9102` so altctl works from the host, and
+// docker-proxy connects to the container over its eth0 address. A bind
+// pinned to 127.0.0.1 *inside* the netns is unreachable from there, so
+// refusing an explicit OPERATOR_LISTEN_ADDR=":9102" would not harden
+// anything — it would only take the operator workflow offline while leaving
+// the published port in place.
 //
 // What replaces the refusal is a startup line: cmd/backend logs the bind and
 // ListenAddrReach(addr), so "this admin port answers the container network" is
@@ -76,6 +81,58 @@ func LoadOperatorListenAddr() (string, error) {
 		return "", err
 	}
 	return addr, nil
+}
+
+// operatorAuthEnv, operatorTokenFileEnv and operatorTokenEnv name the bearer
+// token cmd/backend's operator listener requires on every RPC, mirroring the
+// ADMIN_AUTH / ADMIN_TOKEN_FILE / ADMIN_TOKEN shape knowledge-sovereign uses
+// for its own admin surface.
+const (
+	operatorAuthEnv      = "OPERATOR_AUTH"
+	operatorTokenFileEnv = "OPERATOR_TOKEN_FILE"
+	operatorTokenEnv     = "OPERATOR_TOKEN"
+	operatorAuthDisabled = "disabled"
+	minOperatorTokenLen  = 24
+)
+
+// LoadOperatorAuth resolves the bearer token cmd/backend's operator listener
+// interceptor compares every Authorization header against.
+//
+// Absence is a startup failure (CLAUDE.md rule 9): the admin RPCs mounted
+// here (KnowledgeHomeAdminService, AdminMonitorService) mutate durable state
+// and are reachable from any container on alt-network once the loopback bind
+// is widened for altctl/the BFF, so an unset token must never be silently
+// read as "run open". The only way to run without the gate is
+// OPERATOR_AUTH=disabled, spelled out by an operator — cmd/backend logs
+// operator_auth_enabled/operator_auth_disabled at startup either way
+// (rule 8).
+func LoadOperatorAuth() (token string, enabled bool, err error) {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv(operatorAuthEnv)), operatorAuthDisabled) {
+		return "", false, nil
+	}
+
+	if path := strings.TrimSpace(os.Getenv(operatorTokenFileEnv)); path != "" {
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return "", false, fmt.Errorf("read %s: %w", operatorTokenFileEnv, readErr)
+		}
+		token := strings.TrimSpace(string(data))
+		if len(token) < minOperatorTokenLen {
+			return "", false, fmt.Errorf("operator token from %s must be at least %d characters", operatorTokenFileEnv, minOperatorTokenLen)
+		}
+		return token, true, nil
+	}
+
+	if token := strings.TrimSpace(os.Getenv(operatorTokenEnv)); token != "" {
+		if len(token) < minOperatorTokenLen {
+			return "", false, fmt.Errorf("%s must be at least %d characters", operatorTokenEnv, minOperatorTokenLen)
+		}
+		return token, true, nil
+	}
+
+	return "", false, fmt.Errorf(
+		"%s or %s is required; set %s=%s to run the operator listener without authentication",
+		operatorTokenFileEnv, operatorTokenEnv, operatorAuthEnv, operatorAuthDisabled)
 }
 
 // opsListenEnv names the listener every alt-backend binary opens.
@@ -268,7 +325,18 @@ func ValidateBackendConfig(cfg *Config) error {
 		{"PRE_PROCESSOR_CONNECT_URL", cfg.PreProcessor.ConnectURL},
 		{"VAPID_PUBLIC_KEY", cfg.WebPush.PublicKey},
 	}
-	return requireAll("backend", required)
+	if err := requireAll("backend", required); err != nil {
+		return err
+	}
+	if err := ValidateRAGAuthConfig(&cfg.Rag, cfg.AppEnv); err != nil {
+		return fmt.Errorf("backend config: %w", err)
+	}
+	if cfg.Rag.APIToken != "" {
+		slog.Info("rag_api_auth_enabled", "binary", "backend")
+	} else {
+		slog.Warn("rag_api_auth_disabled", "binary", "backend", "reason", "RAG_API_AUTH=disabled (explicit opt-out)")
+	}
+	return nil
 }
 
 // ValidateHarvesterConfig checks the upstreams the scheduled jobs call.
@@ -318,7 +386,18 @@ func ValidateHarvesterConfig(cfg *Config) error {
 		{"SOVEREIGN_URL", cfg.Sovereign.URL},
 		{"RAG_ORCHESTRATOR_URL", cfg.Rag.OrchestratorURL},
 	}
-	return requireAll("harvester", required)
+	if err := requireAll("harvester", required); err != nil {
+		return err
+	}
+	if err := ValidateRAGAuthConfig(&cfg.Rag, cfg.AppEnv); err != nil {
+		return fmt.Errorf("harvester config: %w", err)
+	}
+	if cfg.Rag.APIToken != "" {
+		slog.Info("rag_api_auth_enabled", "binary", "harvester")
+	} else {
+		slog.Warn("rag_api_auth_disabled", "binary", "harvester", "reason", "RAG_API_AUTH=disabled (explicit opt-out)")
+	}
+	return nil
 }
 
 // ValidateDataHubConfig checks the upstreams DataHubService calls.

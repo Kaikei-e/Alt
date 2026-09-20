@@ -39,7 +39,56 @@ const healthProbeTimeout = 5 * time.Second
 type Client struct {
 	client  sovereignv1connect.KnowledgeSovereignServiceClient
 	baseURL string
+	token   string
 	enabled bool
+}
+
+// Option configures Client.
+type Option func(*clientOptions)
+
+type clientOptions struct {
+	token string
+}
+
+// WithEventToken supplies the Bearer token for authenticating to
+// knowledge-sovereign's event listener.
+func WithEventToken(token string) Option {
+	return func(o *clientOptions) {
+		o.token = token
+	}
+}
+
+type clientAuthInterceptor struct {
+	token string
+}
+
+func (i *clientAuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		if i.token != "" {
+			req.Header().Set("Authorization", "Bearer "+i.token)
+		}
+		return next(ctx, req)
+	}
+}
+
+func (i *clientAuthInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		if i.token != "" {
+			conn.RequestHeader().Set("Authorization", "Bearer "+i.token)
+		}
+		return conn
+	}
+}
+
+func (i *clientAuthInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
+}
+
+// NewClientAuthInterceptor creates a Connect client interceptor that sets
+// the Authorization: Bearer <token> header on outgoing RPCs.
+func NewClientAuthInterceptor(token string) connect.Interceptor {
+	return &clientAuthInterceptor{token: token}
 }
 
 // NewClient creates a new Knowledge Sovereign Connect-RPC client. When
@@ -51,9 +100,14 @@ type Client struct {
 // from the wire (both look like content-type mismatches to connect-go).
 // The bounded backoff and circuit breaker on the projector retry loop is
 // what actually contains the runtime failure mode (PM-2026-042 P-1).
-func NewClient(baseURL string, enabled bool) *Client {
+func NewClient(baseURL string, enabled bool, opts ...Option) *Client {
 	if !enabled {
 		return &Client{enabled: false}
+	}
+
+	var co clientOptions
+	for _, opt := range opts {
+		opt(&co)
 	}
 
 	httpClient := &http.Client{
@@ -64,13 +118,21 @@ func NewClient(baseURL string, enabled bool) *Client {
 		},
 		Timeout: 30 * time.Second,
 	}
+
+	var clientOpts []connect.ClientOption
+	if co.token != "" {
+		clientOpts = append(clientOpts, connect.WithInterceptors(NewClientAuthInterceptor(co.token)))
+	}
+
 	client := sovereignv1connect.NewKnowledgeSovereignServiceClient(
 		httpClient,
 		baseURL,
+		clientOpts...,
 	)
 	c := &Client{
 		client:  client,
 		baseURL: baseURL,
+		token:   co.token,
 		enabled: true,
 	}
 

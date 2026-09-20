@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -231,6 +232,14 @@ func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegrat
 				logger.Logger.ErrorContext(ctx, "Failed to unmarshal outbox event payload", "event_id", event.ID, "error", err)
 				markProcessed(ctx, repo, event.ID, domain.OutboxFailed, err.Error())
 				outboxFailedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "unmarshal_error")))
+				continue
+			}
+
+			if strings.TrimSpace(upsertInput.UserID) == "" {
+				logger.Logger.ErrorContext(ctx, "ARTICLE_UPSERT outbox event missing owner user_id",
+					"event_id", event.ID, "article_id", upsertInput.ArticleID)
+				markProcessed(ctx, repo, event.ID, domain.OutboxFailed, "missing owner user_id")
+				outboxFailedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "missing_user_id")))
 				continue
 			}
 

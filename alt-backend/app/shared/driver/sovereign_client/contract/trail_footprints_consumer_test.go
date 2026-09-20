@@ -32,11 +32,9 @@ func TestGetTrailFootprintsReturnsSpine(t *testing.T) {
 		Given("a user with at least one footprint exists").
 		UponReceiving("a GetTrailFootprints request for the user").
 		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"),
+			Headers: sovereignHeaders(),
 			Body: matchers.MapMatcher{
 				"userId": matchers.Like(userID),
 				"limit":  matchers.Like(20),
@@ -139,11 +137,9 @@ func TestGetTrailFootprintsNarrowedToMatchingItems(t *testing.T) {
 		Given("a user with footprints across two articles, one matching the search filter").
 		UponReceiving("a GetTrailFootprints request narrowed to matching items").
 		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/GetTrailFootprints"),
+			Headers: sovereignHeaders(),
 			Body: matchers.MapMatcher{
 				"userId":         matchers.Like(userID),
 				"limit":          matchers.Like(500),

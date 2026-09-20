@@ -6,8 +6,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
@@ -20,7 +18,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
-	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
 )
 
 // TestAppendKnowledgeEvent_SummaryVersionCreatedCarriesSummaryText pins the
@@ -77,11 +74,9 @@ func TestAppendKnowledgeEvent_SummaryVersionCreatedCarriesSummaryText(t *testing
 		Given("sovereign accepts SummaryVersionCreated events carrying the summary text and quality score").
 		UponReceiving("an AppendKnowledgeEvent request for SummaryVersionCreated with summary_text and quality_score").
 		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
+			Headers: sovereignHeaders(),
 			Body: matchers.MapMatcher{
 				"event": matchers.Like(map[string]any{
 					"eventId":       eventID,
@@ -115,11 +110,7 @@ func TestAppendKnowledgeEvent_SummaryVersionCreatedCarriesSummaryText(t *testing
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			client := sovereignv1connect.NewKnowledgeSovereignServiceClient(
-				http.DefaultClient,
-				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
-				connect.WithProtoJSON(),
-			)
+			client := newSovereignClient(config)
 			_, err := client.AppendKnowledgeEvent(context.Background(), connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
 				Event: &sovereignv1.KnowledgeEvent{
 					EventId:       eventID,

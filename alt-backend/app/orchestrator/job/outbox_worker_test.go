@@ -134,7 +134,7 @@ func TestEmitArticleCreatedEvent(t *testing.T) {
 // so "how many times was it called" is the cost this worker is spending.
 type successRagIntegration struct{ upserts int }
 
-func (s *successRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string) ([]rag_integration_port.RagContext, error) {
+func (s *successRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string, _ string) ([]rag_integration_port.RagContext, error) {
 	return nil, nil
 }
 
@@ -268,7 +268,7 @@ type blockingRagIntegration struct {
 	started chan struct{}
 }
 
-func (b *blockingRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string) ([]rag_integration_port.RagContext, error) {
+func (b *blockingRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string, _ string) ([]rag_integration_port.RagContext, error) {
 	return nil, nil
 }
 
@@ -290,7 +290,7 @@ type alwaysFailRagIntegration struct {
 	err error
 }
 
-func (a *alwaysFailRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string) ([]rag_integration_port.RagContext, error) {
+func (a *alwaysFailRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string, _ string) ([]rag_integration_port.RagContext, error) {
 	return nil, nil
 }
 
@@ -732,4 +732,42 @@ func TestProcessOutboxEvents_EnqueuedPayloadReachesUpsertIntact(t *testing.T) {
 	assert.Equal(t, "Test Article", sent.Title)
 	assert.Equal(t, "article body", sent.Body)
 	assert.Equal(t, "PROCESSED", repo.statusOf(eventID))
+}
+
+func TestProcessOutboxEvents_MissingUserID_FailsLoudly(t *testing.T) {
+	logger.InitLogger()
+
+	eventID := uuid.New().String()
+	articleID := uuid.New().String()
+
+	// Payload with missing user_id
+	payload, err := json.Marshal(map[string]any{
+		"article_id": articleID,
+		"url":        "https://example.com/article",
+		"title":      "Test Article Without Owner",
+		"body":       "article body",
+		"user_id":    "",
+	})
+	require.NoError(t, err)
+
+	repo := &mockOutboxRepo{events: []domain.OutboxEvent{{
+		ID:        eventID,
+		EventType: "ARTICLE_UPSERT",
+		Payload:   payload,
+		Status:    domain.OutboxProcessing,
+	}}}
+
+	called := false
+	client := &fakeRagClient{
+		upsertIndex: func(_ context.Context, _ rag_gateway.UpsertIndexJSONRequestBody, _ ...rag_gateway.RequestEditorFn) (*rag_gateway.UpsertIndexResponse, error) {
+			called = true
+			return &rag_gateway.UpsertIndexResponse{HTTPResponse: &http.Response{StatusCode: http.StatusOK}}, nil
+		},
+	}
+
+	require.NoError(t, processOutboxEvents(context.Background(), repo,
+		augur_adapter.NewAugurAdapter(client), &stubKnowledgeEventPort{}, newOutboxRetryTracker()))
+
+	assert.False(t, called, "RAG upsert must never be called for an unowned article")
+	assert.Equal(t, "FAILED", repo.statusOf(eventID), "outbox row missing owner must be marked FAILED immediately")
 }

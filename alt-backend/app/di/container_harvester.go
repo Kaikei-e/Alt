@@ -137,7 +137,7 @@ func NewHarvesterComponents(cfg *config.Config) *HarvesterComponents {
 	// coordinator is what makes the two processes see one another's requests;
 	// with HOST_RATE_LIMITER_REDIS_URL unset it is the pre-split, per-process
 	// guarantee and says so at startup (ADR-000954 review, weakness 5).
-	rateLimiterCoordinator := NewHostRateLimiterCoordinator("alt-harvester", cfg.RateLimit.CoordinationRedisURL)
+	rateLimiterCoordinator := NewHostRateLimiterCoordinator("alt-harvester", cfg.RateLimit.CoordinationRedisURL, cfg.RateLimit.CoordinationRedisPassword)
 	rateLimitInterval := cfg.RateLimit.ExternalAPIInterval
 	hostRateLimiter := rateLimiterCoordinator.Limiter(
 		rate_limiter.NamespaceExternalAPI, rateLimitInterval, cfg.RateLimit.ExternalAPIBurst)
@@ -167,18 +167,22 @@ func NewHarvesterComponents(cfg *config.Config) *HarvesterComponents {
 	// outbox-worker targets: rag-orchestrator (REST only — the harvester never
 	// speaks Connect-RPC, so it needs no mTLS leaf certificate) and
 	// knowledge-sovereign.
-	ragClient, err := rag_gateway.NewClientWithResponses(cfg.Rag.OrchestratorURL)
+	ragOpts := make([]rag_gateway.ClientOption, 0, 1)
+	if cfg.Rag.APIToken != "" {
+		ragOpts = append(ragOpts, rag_gateway.WithBearerToken(cfg.Rag.APIToken))
+	}
+	ragClient, err := rag_gateway.NewClientWithResponses(cfg.Rag.OrchestratorURL, ragOpts...)
 	if err != nil {
 		panic("harvester: failed to create RAG client: " + err.Error())
 	}
 	ragAdapter := augur_adapter.NewAugurAdapter(ragClient)
 
-	sovereignEnabled := LogSovereignWiringState("alt-harvester", cfg.Sovereign.URL, cfg.AppEnv)
+	sovereignEnabled := LogSovereignWiringState("alt-harvester", cfg.Sovereign.URL, cfg.AppEnv, cfg.Sovereign.EventToken != "")
 	if !sovereignEnabled {
 		panic("SOVEREIGN_URL is required for alt-harvester in every environment — " +
 			"the outbox worker would mark rows PROCESSED while their knowledge events are dropped")
 	}
-	sovereignCli := sovereign_client.NewClient(cfg.Sovereign.URL, sovereignEnabled)
+	sovereignCli := sovereign_client.NewClient(cfg.Sovereign.URL, sovereignEnabled, sovereign_client.WithEventToken(cfg.Sovereign.EventToken))
 
 	return &HarvesterComponents{
 		Config:                 cfg,
@@ -255,10 +259,16 @@ func newHarvesterImageProxyUsecase(
 // they are otherwise indistinguishable in the log stream. Exported for
 // di/datahub, which became a package of its own when the database left the
 // other two binaries (ADR-000954 Wave 3 batch 6).
-func LogSovereignWiringState(binary, sovereignURL, appEnv string) bool {
+func LogSovereignWiringState(binary, sovereignURL, appEnv string, eventAuthEnabled bool) bool {
 	enabled := sovereignURL != ""
 	if enabled {
 		slog.Info("sovereign_enabled", "binary", binary, "base_url", sovereignURL)
+		if eventAuthEnabled {
+			slog.Info("sovereign_event_auth_enabled", "binary", binary)
+		} else {
+			slog.Warn("sovereign_event_auth_disabled", "binary", binary,
+				"reason", "SOVEREIGN_EVENT_AUTH=disabled; requests to knowledge-sovereign will not include Bearer token")
+		}
 		return true
 	}
 	slog.Warn("sovereign_disabled", "binary", binary,

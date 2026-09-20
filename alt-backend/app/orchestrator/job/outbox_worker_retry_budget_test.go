@@ -22,7 +22,7 @@ type recoveringRagIntegration struct {
 	upserts  int
 }
 
-func (r *recoveringRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string) ([]rag_integration_port.RagContext, error) {
+func (r *recoveringRagIntegration) RetrieveContext(_ context.Context, _ string, _ []string, _ string) ([]rag_integration_port.RagContext, error) {
 	return nil, nil
 }
 

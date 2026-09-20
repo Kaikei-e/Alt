@@ -14,68 +14,6 @@ import (
 	"alt/orchestrator/driver/models"
 )
 
-func TestBuildSearchURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		baseURL  string
-		path     string
-		query    string
-		expected string
-		wantErr  bool
-	}{
-		{
-			name:     "valid URL with simple query",
-			baseURL:  "http://localhost:9300",
-			path:     "/v1/search",
-			query:    "test",
-			expected: "http://localhost:9300/v1/search?q=test",
-			wantErr:  false,
-		},
-		{
-			name:     "URL encodes special characters",
-			baseURL:  "http://localhost:9300",
-			path:     "/v1/search",
-			query:    "hello world",
-			expected: "http://localhost:9300/v1/search?q=hello+world",
-			wantErr:  false,
-		},
-		{
-			name:     "handles Japanese characters",
-			baseURL:  "http://localhost:9300",
-			path:     "/v1/search",
-			query:    "テスト",
-			expected: "http://localhost:9300/v1/search?q=%E3%83%86%E3%82%B9%E3%83%88",
-			wantErr:  false,
-		},
-		{
-			name:    "invalid base URL",
-			baseURL: "://invalid",
-			path:    "/v1/search",
-			query:   "test",
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := BuildSearchURL(tt.baseURL, tt.path, tt.query)
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("BuildSearchURL() expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Errorf("BuildSearchURL() unexpected error: %v", err)
-				return
-			}
-			if result != tt.expected {
-				t.Errorf("BuildSearchURL() = %v, want %v", result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestBuildSearchURLWithUserID(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -152,9 +90,9 @@ func TestSearchArticles_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	target, err := BuildSearchURL(server.URL, "/v1/search", "test")
+	target, err := BuildSearchURLWithUserID(server.URL, "/v1/search", "test", "user-123")
 	if err != nil {
-		t.Fatalf("BuildSearchURL() unexpected error: %v", err)
+		t.Fatalf("BuildSearchURLWithUserID() unexpected error: %v", err)
 	}
 
 	hits, err := doSearchRequest(context.Background(), target)

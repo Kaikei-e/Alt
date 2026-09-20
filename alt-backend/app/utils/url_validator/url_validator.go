@@ -2,33 +2,15 @@ package url_validator
 
 import (
 	"alt/utils/security"
-	"fmt"
-	"net"
+	"errors"
 	"net/url"
 )
 
-// IsAllowedURL checks if the URL is allowed (not private IP, valid scheme).
+// IsAllowedURL checks if the URL is allowed (scheme http/https, no userinfo, port absent or 80/443, not private/special host).
+// It delegates directly to the security.URLSecurityValidator used during registration to ensure identical policy enforcement.
 func IsAllowedURL(u *url.URL) error {
-	// Allow http and https
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("scheme not allowed: %s", u.Scheme)
+	if u == nil {
+		return errors.New("nil URL")
 	}
-
-	if security.IsFeedHostAllowed(u.Hostname()) {
-		return nil
-	}
-
-	// Resolve IP
-	ips, err := net.LookupIP(u.Hostname())
-	if err != nil {
-		return fmt.Errorf("could not resolve hostname: %w", err)
-	}
-
-	for _, ip := range ips {
-		if security.IsPrivateIPAddress(ip) {
-			return fmt.Errorf("private IP not allowed: %s", ip.String())
-		}
-	}
-
-	return nil
+	return security.NewURLSecurityValidator().ValidateParsedRSSURL(u)
 }

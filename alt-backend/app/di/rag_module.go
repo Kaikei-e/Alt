@@ -63,7 +63,11 @@ func newRAGModule(infra *InfraModule, feed *FeedModule) *RAGModule {
 	cfg := infra.Config
 
 	// RAG Integration (REST client)
-	ragClient, err := rag_gateway.NewClientWithResponses(cfg.Rag.OrchestratorURL)
+	ragOpts := make([]rag_gateway.ClientOption, 0, 1)
+	if cfg.Rag.APIToken != "" {
+		ragOpts = append(ragOpts, rag_gateway.WithBearerToken(cfg.Rag.APIToken))
+	}
+	ragClient, err := rag_gateway.NewClientWithResponses(cfg.Rag.OrchestratorURL, ragOpts...)
 	if err != nil {
 		panic("Failed to create RAG client: " + err.Error())
 	}

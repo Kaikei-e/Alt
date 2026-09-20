@@ -143,6 +143,46 @@ func (mr *MockRagClientInterfaceMockRecorder) AnswerWithRAGWithResponse(ctx, bod
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnswerWithRAGWithResponse", reflect.TypeOf((*MockRagClientInterface)(nil).AnswerWithRAGWithResponse), varargs...)
 }
 
+// BackfillDocumentOwnersWithBodyWithResponse mocks base method.
+func (m *MockRagClientInterface) BackfillDocumentOwnersWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...rag_gateway.RequestEditorFn) (*rag_gateway.BackfillDocumentOwnersResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, contentType, body}
+	for _, a := range reqEditors {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "BackfillDocumentOwnersWithBodyWithResponse", varargs...)
+	ret0, _ := ret[0].(*rag_gateway.BackfillDocumentOwnersResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BackfillDocumentOwnersWithBodyWithResponse indicates an expected call of BackfillDocumentOwnersWithBodyWithResponse.
+func (mr *MockRagClientInterfaceMockRecorder) BackfillDocumentOwnersWithBodyWithResponse(ctx, contentType, body any, reqEditors ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, contentType, body}, reqEditors...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BackfillDocumentOwnersWithBodyWithResponse", reflect.TypeOf((*MockRagClientInterface)(nil).BackfillDocumentOwnersWithBodyWithResponse), varargs...)
+}
+
+// BackfillDocumentOwnersWithResponse mocks base method.
+func (m *MockRagClientInterface) BackfillDocumentOwnersWithResponse(ctx context.Context, body rag_gateway.BackfillDocumentOwnersJSONRequestBody, reqEditors ...rag_gateway.RequestEditorFn) (*rag_gateway.BackfillDocumentOwnersResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, body}
+	for _, a := range reqEditors {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "BackfillDocumentOwnersWithResponse", varargs...)
+	ret0, _ := ret[0].(*rag_gateway.BackfillDocumentOwnersResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BackfillDocumentOwnersWithResponse indicates an expected call of BackfillDocumentOwnersWithResponse.
+func (mr *MockRagClientInterfaceMockRecorder) BackfillDocumentOwnersWithResponse(ctx, body any, reqEditors ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, body}, reqEditors...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BackfillDocumentOwnersWithResponse", reflect.TypeOf((*MockRagClientInterface)(nil).BackfillDocumentOwnersWithResponse), varargs...)
+}
+
 // DeleteIndexWithBodyWithResponse mocks base method.
 func (m *MockRagClientInterface) DeleteIndexWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...rag_gateway.RequestEditorFn) (*rag_gateway.DeleteIndexResponse, error) {
 	m.ctrl.T.Helper()

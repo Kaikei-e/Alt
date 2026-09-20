@@ -3,11 +3,16 @@ package rest
 import (
 	"alt/config"
 	"alt/di"
+	"alt/domain"
+	"alt/orchestrator/port/rag_integration_port"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/stretchr/testify/require"
@@ -60,4 +65,62 @@ func TestRegisterAugurRoutes_RequiresAuth(t *testing.T) {
 				tt.method, tt.target, rec.Code, rec.Body.String())
 		})
 	}
+}
+
+type stubRetrieveContextUsecase struct {
+	capturedQuery  string
+	capturedUserID string
+	contexts       []rag_integration_port.RagContext
+	err            error
+}
+
+func (s *stubRetrieveContextUsecase) Execute(ctx context.Context, query string, userID string) ([]rag_integration_port.RagContext, error) {
+	s.capturedQuery = query
+	s.capturedUserID = userID
+	return s.contexts, s.err
+}
+
+func TestAugurHandler_RetrieveContext_Unauthenticated_Returns401(t *testing.T) {
+	stubUC := &stubRetrieveContextUsecase{}
+	h := NewAugurHandler(stubUC, nil)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/rag/context?q=test", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.RetrieveContext(c)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Empty(t, stubUC.capturedUserID, "usecase must not be called when unauthenticated")
+}
+
+func TestAugurHandler_RetrieveContext_Authenticated_ForwardsUserID(t *testing.T) {
+	userID := uuid.New()
+	stubUC := &stubRetrieveContextUsecase{
+		contexts: []rag_integration_port.RagContext{
+			{Title: "Article 1", Score: 0.9},
+		},
+	}
+	h := NewAugurHandler(stubUC, nil)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/rag/context?q=test", nil)
+	userCtx := domain.SetUserContext(req.Context(), &domain.UserContext{
+		UserID:    userID,
+		TenantID:  uuid.New(),
+		Email:     "user@example.com",
+		Role:      domain.UserRoleUser,
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	req = req.WithContext(userCtx)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.RetrieveContext(c)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "test", stubUC.capturedQuery)
+	require.Equal(t, userID.String(), stubUC.capturedUserID,
+		"authenticated user_id must be forwarded to RetrieveContext usecase")
 }

@@ -92,3 +92,33 @@ func TestImportGateway_MergesProviderCountsWithLocalRejections(t *testing.T) {
 func TestNewImportGateway_RefusesNilStore(t *testing.T) {
 	assert.Panics(t, func() { NewImportGateway(nil) })
 }
+
+func TestImportGateway_RejectsDisallowedURLsAndContinues(t *testing.T) {
+	logger.InitLogger()
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
+
+	store := &bulkStoreStub{}
+	gateway := NewImportGateway(store)
+
+	urls := []string{
+		"http://10.0.0.1/feed.xml",              // private IP
+		"http://user:pass@example.com/feed.xml", // userinfo
+		"http://untrusted.test:8080/feed.xml",   // disallowed port
+		"https://example.com/valid.xml",         // valid
+	}
+
+	result, err := gateway.RegisterFeedLinkBulk(context.Background(), urls)
+	require.NoError(t, err)
+
+	assert.Equal(t, 4, result.Total)
+	assert.Equal(t, 1, result.Imported)
+	assert.Equal(t, 0, result.Skipped, "policy rejections are failed not skipped")
+	assert.Equal(t, 3, result.Failed, "3 disallowed entries should fail with FailedURLs populated")
+	assert.ElementsMatch(t, []string{
+		"http://10.0.0.1/feed.xml",
+		"http://user:pass@example.com/feed.xml",
+		"http://untrusted.test:8080/feed.xml",
+	}, result.FailedURLs)
+	require.Len(t, store.gotURLs, 1, "only valid URL must reach the store")
+	assert.Equal(t, "https://example.com/valid.xml", store.gotURLs[0])
+}

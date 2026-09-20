@@ -17,6 +17,7 @@
           "userId": "22222222-2222-2222-2222-222222222222"
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -42,6 +43,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -183,6 +195,7 @@
           "userId": "22222222-2222-2222-2222-222222222222"
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -200,6 +213,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -415,6 +439,7 @@
           "userId": "22222222-2222-2222-2222-222222222222"
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -441,6 +466,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -566,6 +602,7 @@
           }
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -575,6 +612,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -629,6 +677,7 @@
           }
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -638,6 +687,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -692,6 +752,7 @@
           }
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -701,6 +762,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -755,6 +827,7 @@
           }
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -764,6 +837,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -818,6 +902,7 @@
           }
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -827,6 +912,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -881,6 +977,7 @@
           }
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -890,6 +987,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -944,6 +1052,7 @@
           }
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -953,6 +1062,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -998,6 +1118,7 @@
           "payload": "eyJsZW5zX2lkIjoibGVucy0xIn0="
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -1023,6 +1144,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -1068,6 +1200,7 @@
           "payload": "eyJ1c2VyX2lkIjoidXNlci0xIn0="
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -1093,6 +1226,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -1138,6 +1282,7 @@
           "payload": "eyJ1c2VyX2lkIjoidXNlci0xIn0="
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -1163,6 +1308,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
@@ -1209,6 +1365,7 @@
           "payload": "eyJ1c2VyX2lkIjoidXNlci0xIn0="
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -1234,6 +1391,17 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }

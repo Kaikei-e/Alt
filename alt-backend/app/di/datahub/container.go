@@ -188,12 +188,12 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	eventPublisher := event_publisher_gateway.NewEventPublisherGateway(mqhubClient, slog.Default())
 
 	// Knowledge event sink.
-	sovereignEnabled := di.LogSovereignWiringState("alt-data-hub", cfg.Sovereign.URL, cfg.AppEnv)
+	sovereignEnabled := di.LogSovereignWiringState("alt-data-hub", cfg.Sovereign.URL, cfg.AppEnv, cfg.Sovereign.EventToken != "")
 	if !sovereignEnabled {
 		panic("SOVEREIGN_URL is required for alt-data-hub in every environment — " +
 			"versioned summary/tag-set artifacts would be written with no knowledge event appended")
 	}
-	sovereignCli := sovereign_client.NewClient(cfg.Sovereign.URL, sovereignEnabled)
+	sovereignCli := sovereign_client.NewClient(cfg.Sovereign.URL, sovereignEnabled, sovereign_client.WithEventToken(cfg.Sovereign.EventToken))
 
 	// One gateway instance satisfies every required and optional port of
 	// datahubapi.NewHandler.

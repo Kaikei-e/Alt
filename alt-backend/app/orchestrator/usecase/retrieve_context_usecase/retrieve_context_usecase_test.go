@@ -36,8 +36,8 @@ type MockRagIntegrationPort struct {
 	mock.Mock
 }
 
-func (m *MockRagIntegrationPort) RetrieveContext(ctx context.Context, query string, candidateIDs []string) ([]rag_integration_port.RagContext, error) {
-	args := m.Called(ctx, query, candidateIDs)
+func (m *MockRagIntegrationPort) RetrieveContext(ctx context.Context, query string, candidateIDs []string, userID string) ([]rag_integration_port.RagContext, error) {
+	args := m.Called(ctx, query, candidateIDs, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -64,6 +64,7 @@ func TestRetrieveContextUsecase_Execute(t *testing.T) {
 
 	ctx := context.Background()
 	query := "test query"
+	userID := "user-123"
 
 	// Mock Meilisearch response
 	mockSearch.On("SearchFeedsWithPagination", ctx, query, 0, 50).Return([]domain.SearchArticleHit{
@@ -75,10 +76,10 @@ func TestRetrieveContextUsecase_Execute(t *testing.T) {
 	expectedContexts := []rag_integration_port.RagContext{
 		{ChunkText: "text1", Score: 0.9},
 	}
-	mockRag.On("RetrieveContext", ctx, query, []string{"article-1", "article-2"}).Return(expectedContexts, nil)
+	mockRag.On("RetrieveContext", ctx, query, []string{"article-1", "article-2"}, userID).Return(expectedContexts, nil)
 
 	// Execute
-	contexts, err := usecase.Execute(ctx, query)
+	contexts, err := usecase.Execute(ctx, query, userID)
 
 	// Verify
 	assert.NoError(t, err)
@@ -87,4 +88,30 @@ func TestRetrieveContextUsecase_Execute(t *testing.T) {
 
 	mockSearch.AssertExpectations(t)
 	mockRag.AssertExpectations(t)
+}
+
+func TestRetrieveContextUsecase_Execute_RejectsBlankUserID(t *testing.T) {
+	mockSearch := new(MockSearchFeedPort)
+	mockRag := new(MockRagIntegrationPort)
+	usecase := NewRetrieveContextUsecase(mockSearch, mockRag)
+
+	ctx := context.Background()
+	query := "test query"
+
+	testCases := []struct {
+		name   string
+		userID string
+	}{
+		{name: "empty user_id", userID: ""},
+		{name: "whitespace user_id", userID: "   \t\n"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			contexts, err := usecase.Execute(ctx, query, tc.userID)
+			assert.Error(t, err)
+			assert.Nil(t, contexts)
+			assert.ErrorIs(t, err, rag_integration_port.ErrMissingUserID)
+		})
+	}
 }

@@ -52,14 +52,15 @@ func New(client redis.UniversalClient) *Store {
 	return &Store{client: client}
 }
 
-// NewFromURL builds a Store from a redis:// URL.
+// NewFromURL builds a Store from a redis:// URL and an authentication
+// password ("" when the target has no requirepass).
 //
 // An empty URL is an error rather than a Store that quietly does nothing:
 // "coordination is off" is a decision the composition root makes explicitly
 // (HOST_RATE_LIMITER_REDIS_URL unset -> rate_limiter.ModeLocal, logged at
 // startup), and it must never be something this constructor infers
 // (CLAUDE.md rules 8 and 9).
-func NewFromURL(rawURL string) (*Store, error) {
+func NewFromURL(rawURL, password string) (*Store, error) {
 	if rawURL == "" {
 		return nil, fmt.Errorf("redis slot store: empty URL; the caller must decide between distributed and local mode, not this constructor")
 	}
@@ -67,6 +68,10 @@ func NewFromURL(rawURL string) (*Store, error) {
 	opt, err := redis.ParseURL(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("redis slot store: parse url: %w", err)
+	}
+
+	if password != "" {
+		opt.Password = password
 	}
 
 	opt.DialTimeout = dialTimeout

@@ -25,11 +25,32 @@ const (
 	ProxyStrategySidecar ProxyStrategy = "SIDECAR"
 )
 
+// IPResolver resolves hostnames to IP addresses.
+type IPResolver interface {
+	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
+}
+
+// IPResolverFunc adapts a function to the IPResolver interface.
+type IPResolverFunc func(ctx context.Context, host string) ([]net.IPAddr, error)
+
+func (f IPResolverFunc) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	return f(ctx, host)
+}
+
+// ErrDestinationNotAllowed is returned when a destination is blocked for SSRF protection.
+// It is intentionally generic to avoid leaking internal IP addresses or topology.
+var (
+	ErrDestinationNotAllowed = errors.New("destination not allowed")
+	ErrLookupFailed          = errors.New("host lookup failed")
+	ErrConnectionFailed      = errors.New("connection failed")
+)
+
 // HTTPClientFactory creates HTTP clients with unified proxy strategy
 type HTTPClientFactory struct {
 	proxyStrategy   ProxyStrategy
 	envoyBaseURL    string
 	sidecarProxyURL string
+	resolver        IPResolver
 }
 
 // NewHTTPClientFactory creates a new HTTP client factory with environment-based configuration
@@ -58,7 +79,14 @@ func NewHTTPClientFactory() *HTTPClientFactory {
 		proxyStrategy:   strategy,
 		envoyBaseURL:    envoyBaseURL,
 		sidecarProxyURL: sidecarProxyURL,
+		resolver:        net.DefaultResolver,
 	}
+}
+
+// WithResolver configures a custom IPResolver on the factory.
+func (f *HTTPClientFactory) WithResolver(resolver IPResolver) *HTTPClientFactory {
+	f.resolver = resolver
+	return f
 }
 
 // CreateHTTPClient creates an HTTP client with proxy-aware configuration
@@ -223,7 +251,11 @@ func (f *HTTPClientFactory) createSecureDirectClient() *http.Client {
 		TLSHandshakeTimeout: 10 * time.Second,
 		IdleConnTimeout:     90 * time.Second,
 	}
-	return SecureHTTPClientWithConfig(cfg)
+	resolver := f.resolver
+	if resolver == nil {
+		resolver = net.DefaultResolver
+	}
+	return SecureHTTPClientWithConfigAndResolver(cfg, resolver)
 }
 
 // SecureHTTPClient creates an HTTP client with SSRF protection (deprecated - use factory)
@@ -234,6 +266,14 @@ func SecureHTTPClient() *http.Client {
 
 // SecureHTTPClientWithConfig creates an HTTP client with SSRF protection using provided configuration
 func SecureHTTPClientWithConfig(cfg *config.HTTPConfig) *http.Client {
+	return SecureHTTPClientWithConfigAndResolver(cfg, net.DefaultResolver)
+}
+
+// SecureHTTPClientWithConfigAndResolver creates an HTTP client with SSRF protection and an injectable resolver.
+func SecureHTTPClientWithConfigAndResolver(cfg *config.HTTPConfig, resolver IPResolver) *http.Client {
+	if resolver == nil {
+		resolver = net.DefaultResolver
+	}
 	dialer := &net.Dialer{
 		Timeout: cfg.DialTimeout,
 	}
@@ -242,15 +282,95 @@ func SecureHTTPClientWithConfig(cfg *config.HTTPConfig) *http.Client {
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {
-				return nil, err
+				return nil, ErrDestinationNotAllowed
 			}
 
-			// Validate the target before making the connection
-			if err := validateTarget(host, port); err != nil {
-				return nil, err
+			// Block common internal ports
+			if isBlockedPort(port) {
+				return nil, ErrDestinationNotAllowed
 			}
 
-			return dialer.DialContext(ctx, network, addr)
+			// Resolve host once inside DialContext using the configured resolver.
+			// An IP literal resolves to itself.
+			var addrs []net.IPAddr
+			if ip := net.ParseIP(host); ip != nil {
+				addrs = []net.IPAddr{{IP: ip}}
+			} else {
+				var err error
+				addrs, err = resolver.LookupIPAddr(ctx, host)
+				if err != nil {
+					return nil, fmt.Errorf("%w for %s: %v", ErrLookupFailed, host, err)
+				}
+				if len(addrs) == 0 {
+					return nil, fmt.Errorf("%w for %s: no addresses found", ErrLookupFailed, host)
+				}
+			}
+
+			// Validate EVERY returned IP.
+			// Reject if any is private/special unless the host is on FEED_ALLOWED_HOSTS.
+			isAllowedHost := security.IsFeedHostAllowed(host)
+			if !isAllowedHost {
+				// Block known internal domains, metadata names, and literal private IPs before resolution
+				if isPrivateDomainOrLiteral(host) {
+					return nil, ErrDestinationNotAllowed
+				}
+
+				for _, a := range addrs {
+					if security.IsPrivateIPAddress(a.IP) || isMetadataIP(a.IP) {
+						return nil, ErrDestinationNotAllowed
+					}
+				}
+			}
+
+			// Determine overall deadline for dialing across all candidates.
+			var overallDeadline time.Time
+			if dl, ok := ctx.Deadline(); ok {
+				overallDeadline = dl
+			} else if cfg.DialTimeout > 0 {
+				overallDeadline = time.Now().Add(cfg.DialTimeout)
+			}
+
+			// Pin connection to validated IPs in order, respecting context and splitting deadline
+			var dialErr error
+			for i, a := range addrs {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+
+				remAddrs := len(addrs) - i
+				stepCtx := ctx
+				var cancel context.CancelFunc
+
+				if !overallDeadline.IsZero() {
+					timeRemaining := time.Until(overallDeadline)
+					if timeRemaining <= 0 {
+						return nil, context.DeadlineExceeded
+					}
+					stepTimeout := timeRemaining / time.Duration(remAddrs)
+					if cfg.DialTimeout > 0 && stepTimeout > cfg.DialTimeout {
+						stepTimeout = cfg.DialTimeout
+					}
+					stepCtx, cancel = context.WithTimeout(ctx, stepTimeout)
+				} else if cfg.DialTimeout > 0 {
+					stepCtx, cancel = context.WithTimeout(ctx, cfg.DialTimeout)
+				}
+
+				pinned := net.JoinHostPort(a.IP.String(), port)
+				conn, err := dialer.DialContext(stepCtx, network, pinned)
+				if cancel != nil {
+					cancel()
+				}
+				if err == nil {
+					return conn, nil
+				}
+				slog.DebugContext(ctx, "dial attempt failed", "host", host, "ip", a.IP.String(), "error", err)
+				dialErr = err
+			}
+
+			if dialErr != nil {
+				return nil, fmt.Errorf("%w: failed to connect to host %s", ErrConnectionFailed, host)
+			}
+			return nil, ErrDestinationNotAllowed
 		},
 		TLSHandshakeTimeout: cfg.TLSHandshakeTimeout,
 		IdleConnTimeout:     cfg.IdleConnTimeout,
@@ -264,15 +384,13 @@ func SecureHTTPClientWithConfig(cfg *config.HTTPConfig) *http.Client {
 	}
 }
 
-// validateTarget validates the target host and port for SSRF protection
-func validateTarget(host, port string) error {
-	// Block common internal ports
+// isBlockedPort checks if a port is on the blocked list
+func isBlockedPort(port string) bool {
 	blockedPorts := map[string]bool{
-		"22": true, // SSH
-		"23": true, // Telnet
-		"25": true, // SMTP
-		"53": true, // DNS
-		// "80":    true, // HTTP (allowed for robots.txt and general scraping)
+		"22":    true, // SSH
+		"23":    true, // Telnet
+		"25":    true, // SMTP
+		"53":    true, // DNS
 		"110":   true, // POP3
 		"143":   true, // IMAP
 		"993":   true, // IMAPS
@@ -283,67 +401,43 @@ func validateTarget(host, port string) error {
 		"6379":  true, // Redis
 		"11211": true, // Memcached
 	}
-
-	if blockedPorts[port] {
-		return errors.New("access to this port is not allowed")
-	}
-
-	if security.IsFeedHostAllowed(host) {
-		return nil
-	}
-
-	// Check if the host resolves to a private IP
-	if isPrivateHost(host) {
-		return errors.New("access to private networks not allowed")
-	}
-
-	return nil
+	return blockedPorts[port]
 }
 
-// isPrivateHost checks if a hostname resolves to private IP addresses.
-// This function provides additional internal domain blocking on top of security.IsPrivateHost.
-func isPrivateHost(hostname string) bool {
-	// Block localhost variations (string check for faster path)
+// isMetadataIP checks if an IP is a known cloud metadata endpoint
+func isMetadataIP(ip net.IP) bool {
+	metadataIPs := []string{
+		"169.254.169.254", // AWS/Azure/GCP
+		"100.100.100.200", // Alibaba Cloud
+		"192.0.0.192",     // Oracle Cloud
+	}
+	ipStr := ip.String()
+	for _, m := range metadataIPs {
+		if ipStr == m {
+			return true
+		}
+	}
+	return false
+}
+
+// isPrivateDomainOrLiteral checks fast-path internal domain suffixes and literal IP ranges
+func isPrivateDomainOrLiteral(hostname string) bool {
 	hostnameLC := strings.ToLower(hostname)
 	if hostnameLC == "localhost" || strings.HasPrefix(hostnameLC, "127.") {
 		return true
 	}
-
-	// Block metadata endpoints
-	if hostnameLC == "169.254.169.254" || hostnameLC == "metadata.google.internal" {
+	if hostnameLC == "169.254.169.254" || hostnameLC == "metadata.google.internal" ||
+		hostnameLC == "100.100.100.200" || hostnameLC == "192.0.0.192" {
 		return true
 	}
-
-	// Block common internal domains
-	internalDomains := []string{".local", ".internal", ".corp", ".lan"}
+	internalDomains := []string{".local", ".internal", ".corp", ".lan", ".localhost"}
 	for _, domain := range internalDomains {
 		if strings.HasSuffix(hostnameLC, domain) {
 			return true
 		}
 	}
-
-	// Delegate to security.IsPrivateHost for IP validation and DNS resolution checks
-	return security.IsPrivateHost(hostname)
-}
-
-// ValidateURL validates a URL for SSRF protection
-func ValidateURL(u *url.URL) error {
-	// Allow both HTTP and HTTPS
-	if u.Scheme != "https" && u.Scheme != "http" {
-		return errors.New("only HTTP and HTTPS schemes allowed")
+	if ip := net.ParseIP(hostname); ip != nil {
+		return security.IsPrivateIPAddress(ip)
 	}
-
-	host := u.Hostname()
-	port := u.Port()
-
-	// Reuse target validation logic which checks private hosts and blocked ports
-	if err := validateTarget(host, port); err != nil {
-		return err
-	}
-
-	if u.Hostname() == "" {
-		return errors.New("URL must contain a host")
-	}
-
-	return nil
+	return false
 }

@@ -86,8 +86,8 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 
 	// Knowledge Sovereign: all knowledge data access via Connect-RPC
 	sovereignURL := cfg.Sovereign.URL
-	sovereignEnabled := LogSovereignWiringState("alt-backend", sovereignURL, cfg.AppEnv)
-	sovereignCli := sovereign_client.NewClient(sovereignURL, sovereignEnabled)
+	sovereignEnabled := LogSovereignWiringState("alt-backend", sovereignURL, cfg.AppEnv, cfg.Sovereign.EventToken != "")
+	sovereignCli := sovereign_client.NewClient(sovereignURL, sovereignEnabled, sovereign_client.WithEventToken(cfg.Sovereign.EventToken))
 
 	// Knowledge Home gateways.
 	//

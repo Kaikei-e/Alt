@@ -777,6 +777,59 @@ func TestIsPrivateIPAddress(t *testing.T) {
 
 		// IPv6 public
 		{"2001:4860:4860::8888 is public", "2001:4860:4860::8888", false},
+
+		// Unspecified addresses
+		{"0.0.0.0 is unspecified/current network", "0.0.0.0", true},
+		{"0.0.0.1 is in 0.0.0.0/8 range", "0.0.0.1", true},
+		{":: is IPv6 unspecified", "::", true},
+
+		// CGNAT (100.64.0.0/10)
+		{"100.64.0.1 is CGNAT", "100.64.0.1", true},
+		{"100.100.100.200 is CGNAT (Alibaba metadata)", "100.100.100.200", true},
+		{"100.127.255.255 is CGNAT", "100.127.255.255", true},
+		{"100.63.255.255 is not CGNAT", "100.63.255.255", false},
+		{"100.128.0.1 is not CGNAT", "100.128.0.1", false},
+
+		// Multicast
+		{"224.0.0.1 is IPv4 multicast", "224.0.0.1", true},
+		{"239.255.255.250 is IPv4 multicast", "239.255.255.250", true},
+		{"ff02::1 is IPv6 multicast", "ff02::1", true},
+		{"ff05::2 is IPv6 multicast", "ff05::2", true},
+
+		// Broadcast and Reserved (240.0.0.0/4)
+		{"255.255.255.255 is broadcast", "255.255.255.255", true},
+		{"240.0.0.1 is reserved", "240.0.0.1", true},
+
+		// IPv4-mapped IPv6 forms
+		{"::ffff:127.0.0.1 is IPv4-mapped loopback", "::ffff:127.0.0.1", true},
+		{"::ffff:10.0.0.1 is IPv4-mapped private", "::ffff:10.0.0.1", true},
+		{"::ffff:172.16.0.1 is IPv4-mapped private", "::ffff:172.16.0.1", true},
+		{"::ffff:192.168.1.1 is IPv4-mapped private", "::ffff:192.168.1.1", true},
+		{"::ffff:169.254.169.254 is IPv4-mapped link-local", "::ffff:169.254.169.254", true},
+		{"::ffff:0.0.0.0 is IPv4-mapped unspecified", "::ffff:0.0.0.0", true},
+		{"::ffff:100.64.0.1 is IPv4-mapped CGNAT", "::ffff:100.64.0.1", true},
+		{"::ffff:224.0.0.1 is IPv4-mapped multicast", "::ffff:224.0.0.1", true},
+		{"::ffff:8.8.8.8 is IPv4-mapped public", "::ffff:8.8.8.8", false},
+
+		// IPv4-compatible IPv6 (RFC 4291)
+		{"::a00:1 is IPv4-compatible 10.0.0.1", "::a00:1", true},
+		{"::7f00:1 is IPv4-compatible 127.0.0.1", "::7f00:1", true},
+
+		// NAT64 well-known prefix (64:ff9b::/96)
+		{"64:ff9b::1 is NAT64", "64:ff9b::1", true},
+		{"64:ff9b::a00:1 is NAT64", "64:ff9b::a00:1", true},
+
+		// 6to4 prefix (2002::/16)
+		{"2002::1 is 6to4", "2002::1", true},
+		{"2002:a00:1:: is 6to4", "2002:a00:1::", true},
+
+		// Site-local IPv6 (fec0::/10)
+		{"fec0::1 is site-local", "fec0::1", true},
+		{"feff::1 is site-local", "feff::1", true},
+
+		// Discard prefix (100::/64, RFC 6666)
+		{"0100::1 is discard-only prefix", "0100::1", true},
+		{"0100:1::1 is not in discard-only 100::/64", "0100:1::1", false},
 	}
 
 	for _, tt := range tests {

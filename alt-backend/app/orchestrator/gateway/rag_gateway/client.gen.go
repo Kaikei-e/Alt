@@ -44,6 +44,9 @@ type AnswerDebug struct {
 	// StrategyUsed Retrieval strategy used (general, article_scoped, article_constrained_fallback, unrestricted_general_fallback)
 	StrategyUsed *string `json:"strategy_used,omitempty"`
 
+	// SubIntentType Analytical sub-intent for article-scoped queries (critique, opinion, implication)
+	SubIntentType *string `json:"sub_intent_type,omitempty"`
+
 	// ToolsUsed Names of tools executed during this request
 	ToolsUsed *[]string `json:"tools_used,omitempty"`
 }
@@ -89,11 +92,32 @@ type DeleteIndexRequest struct {
 	UserId    string `json:"user_id"`
 }
 
+// OwnerBackfillItem defines model for OwnerBackfillItem.
+type OwnerBackfillItem struct {
+	ArticleId string `json:"article_id"`
+	UserId    string `json:"user_id"`
+}
+
+// OwnerBackfillRequest defines model for OwnerBackfillRequest.
+type OwnerBackfillRequest struct {
+	Items []OwnerBackfillItem `json:"items"`
+}
+
+// OwnerBackfillResponse defines model for OwnerBackfillResponse.
+type OwnerBackfillResponse struct {
+	AlreadySet int64 `json:"already_set"`
+	NotFound   int64 `json:"not_found"`
+	Updated    int64 `json:"updated"`
+}
+
 // RetrieveRequest defines model for RetrieveRequest.
 type RetrieveRequest struct {
 	// CandidateArticleIds Optional list of article IDs to restrict search to
 	CandidateArticleIds *[]string `json:"candidate_article_ids,omitempty"`
 	Query               string    `json:"query"`
+
+	// UserId User ID owning the documents to retrieve
+	UserId string `json:"user_id"`
 }
 
 // RetrieveResponse defines model for RetrieveResponse.
@@ -122,6 +146,9 @@ type DeleteIndexJSONRequestBody = DeleteIndexRequest
 
 // UpsertIndexJSONRequestBody defines body for UpsertIndex for application/json ContentType.
 type UpsertIndexJSONRequestBody = UpsertIndexRequest
+
+// BackfillDocumentOwnersJSONRequestBody defines body for BackfillDocumentOwners for application/json ContentType.
+type BackfillDocumentOwnersJSONRequestBody = OwnerBackfillRequest
 
 // AnswerWithRAGJSONRequestBody defines body for AnswerWithRAG for application/json ContentType.
 type AnswerWithRAGJSONRequestBody = AnswerRequest
@@ -215,6 +242,11 @@ type ClientInterface interface {
 
 	UpsertIndex(ctx context.Context, body UpsertIndexJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// BackfillDocumentOwnersWithBody request with any body
+	BackfillDocumentOwnersWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	BackfillDocumentOwners(ctx context.Context, body BackfillDocumentOwnersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AnswerWithRAGWithBody request with any body
 	AnswerWithRAGWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -269,6 +301,30 @@ func (c *Client) UpsertIndexWithBody(ctx context.Context, contentType string, bo
 
 func (c *Client) UpsertIndex(ctx context.Context, body UpsertIndexJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpsertIndexRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BackfillDocumentOwnersWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBackfillDocumentOwnersRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BackfillDocumentOwners(ctx context.Context, body BackfillDocumentOwnersJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBackfillDocumentOwnersRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -412,6 +468,46 @@ func NewUpsertIndexRequestWithBody(server string, contentType string, body io.Re
 	}
 
 	operationPath := fmt.Sprintf("/internal/rag/index/upsert")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewBackfillDocumentOwnersRequest calls the generic BackfillDocumentOwners builder with application/json body
+func NewBackfillDocumentOwnersRequest(server string, body BackfillDocumentOwnersJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBackfillDocumentOwnersRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBackfillDocumentOwnersRequestWithBody generates requests for BackfillDocumentOwners with any type of body
+func NewBackfillDocumentOwnersRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/documents/owners")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -604,6 +700,11 @@ type ClientWithResponsesInterface interface {
 
 	UpsertIndexWithResponse(ctx context.Context, body UpsertIndexJSONRequestBody, reqEditors ...RequestEditorFn) (*UpsertIndexResponse, error)
 
+	// BackfillDocumentOwnersWithBodyWithResponse request with any body
+	BackfillDocumentOwnersWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BackfillDocumentOwnersResponse, error)
+
+	BackfillDocumentOwnersWithResponse(ctx context.Context, body BackfillDocumentOwnersJSONRequestBody, reqEditors ...RequestEditorFn) (*BackfillDocumentOwnersResponse, error)
+
 	// AnswerWithRAGWithBodyWithResponse request with any body
 	AnswerWithRAGWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AnswerWithRAGResponse, error)
 
@@ -656,6 +757,28 @@ func (r UpsertIndexResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r UpsertIndexResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type BackfillDocumentOwnersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OwnerBackfillResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r BackfillDocumentOwnersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BackfillDocumentOwnersResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -761,6 +884,23 @@ func (c *ClientWithResponses) UpsertIndexWithResponse(ctx context.Context, body 
 	return ParseUpsertIndexResponse(rsp)
 }
 
+// BackfillDocumentOwnersWithBodyWithResponse request with arbitrary body returning *BackfillDocumentOwnersResponse
+func (c *ClientWithResponses) BackfillDocumentOwnersWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BackfillDocumentOwnersResponse, error) {
+	rsp, err := c.BackfillDocumentOwnersWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBackfillDocumentOwnersResponse(rsp)
+}
+
+func (c *ClientWithResponses) BackfillDocumentOwnersWithResponse(ctx context.Context, body BackfillDocumentOwnersJSONRequestBody, reqEditors ...RequestEditorFn) (*BackfillDocumentOwnersResponse, error) {
+	rsp, err := c.BackfillDocumentOwners(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBackfillDocumentOwnersResponse(rsp)
+}
+
 // AnswerWithRAGWithBodyWithResponse request with arbitrary body returning *AnswerWithRAGResponse
 func (c *ClientWithResponses) AnswerWithRAGWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AnswerWithRAGResponse, error) {
 	rsp, err := c.AnswerWithRAGWithBody(ctx, contentType, body, reqEditors...)
@@ -839,6 +979,32 @@ func ParseUpsertIndexResponse(rsp *http.Response) (*UpsertIndexResponse, error) 
 	response := &UpsertIndexResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseBackfillDocumentOwnersResponse parses an HTTP response from a BackfillDocumentOwnersWithResponse call
+func ParseBackfillDocumentOwnersResponse(rsp *http.Response) (*BackfillDocumentOwnersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BackfillDocumentOwnersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OwnerBackfillResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	}
 
 	return response, nil

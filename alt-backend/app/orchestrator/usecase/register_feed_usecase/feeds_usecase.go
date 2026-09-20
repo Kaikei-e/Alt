@@ -7,6 +7,7 @@ import (
 	"alt/orchestrator/port/subscription_port"
 	"alt/orchestrator/port/validate_fetch_rss_port"
 	"alt/utils/logger"
+	"alt/utils/security"
 	"context"
 	"errors"
 
@@ -44,6 +45,7 @@ type RegisterFeedsUsecase struct {
 	subscriptionPort     subscription_port.SubscriptionPort
 	availabilityPort     feed_link_availability_port.FeedLinkAvailabilityPort
 	feedPageInvalidator  FeedPageInvalidator
+	urlValidator         *security.URLSecurityValidator
 }
 
 func NewRegisterFeedsUsecase(
@@ -56,6 +58,7 @@ func NewRegisterFeedsUsecase(
 		validateAndFetchPort: validateAndFetchPort,
 		registerFeedLinkPort: registerFeedLinkPort,
 		registerFeedsGateway: registerFeedsGateway,
+		urlValidator:         security.NewURLSecurityValidator(),
 	}
 	if opts != nil {
 		uc.feedLinkIDResolver = opts.FeedLinkIDResolver
@@ -73,6 +76,22 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 		logger.Logger.ErrorContext(ctx, "Failed to validate and fetch RSS feed", "error", err)
 		return errors.New("failed to register RSS feed link")
 	}
+
+	// Validate rel="self" URL before persisting. If validation fails, fall back to
+	// the original registered link and log a warning rather than failing the entire fetch.
+	targetFeedLink := parsedFeed.FeedLink
+	if targetFeedLink == "" {
+		targetFeedLink = link
+	} else if targetFeedLink != link {
+		if valErr := r.urlValidator.ValidateRSSURL(targetFeedLink); valErr != nil {
+			logger.Logger.WarnContext(ctx, "Feed rel=self link failed validation, keeping original registered URL",
+				"self_link", targetFeedLink,
+				"original_link", link,
+				"error", valErr.Error())
+			targetFeedLink = link
+		}
+	}
+	parsedFeed.FeedLink = targetFeedLink
 
 	// 2. Register feed_link in DB (DB-only operation)
 	err = r.registerFeedLinkPort.RegisterFeedLink(ctx, parsedFeed.FeedLink)

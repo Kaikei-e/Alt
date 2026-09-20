@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +20,7 @@ func baseConfig() *Config {
 		},
 		SearchIndexer: SearchIndexerConfig{ConnectURL: "http://search-indexer:9301"},
 		PreProcessor:  PreProcessorConfig{URL: "http://pre-processor:9200", ConnectURL: "http://pre-processor:9202"},
-		Rag:           RAGConfig{OrchestratorURL: "http://rag-orchestrator:9010", OrchestratorConnectURL: "http://rag-orchestrator:9011"},
+		Rag:           RAGConfig{OrchestratorURL: "http://rag-orchestrator:9010", OrchestratorConnectURL: "http://rag-orchestrator:9011", APIToken: "test-rag-api-token-minimum-24-characters"},
 		MQHub:         MQHubConfig{Enabled: true, ConnectURL: "http://mq-hub:9500"},
 		AuthHub:       AuthHubConfig{URL: "http://auth-hub:8888"},
 		// Two distinct secrets, as every environment must supply: the /internal
@@ -105,6 +107,125 @@ func TestLoadOperatorListenAddr(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("LoadOperatorListenAddr() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// operatorAuthEnvKeys are reset before every case so a value leaked from a
+// neighbouring test cannot decide a fail-fast assertion.
+var operatorAuthEnvKeys = []string{"OPERATOR_AUTH", "OPERATOR_TOKEN_FILE", "OPERATOR_TOKEN"}
+
+func applyOperatorAuthEnv(t *testing.T, envVars map[string]string) {
+	t.Helper()
+	for _, key := range operatorAuthEnvKeys {
+		t.Setenv(key, "")
+	}
+	for key, value := range envVars {
+		t.Setenv(key, value)
+	}
+}
+
+func writeOperatorTokenFile(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "operator_token")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write operator token file: %v", err)
+	}
+	return path
+}
+
+func TestLoadOperatorAuth(t *testing.T) {
+	goodTokenFile := writeOperatorTokenFile(t, "a-valid-operator-token-that-is-long-enough\n")
+	shortTokenFile := writeOperatorTokenFile(t, "too-short")
+	emptyTokenFile := writeOperatorTokenFile(t, "")
+	missingTokenFile := filepath.Join(t.TempDir(), "never-mounted")
+
+	tests := []struct {
+		name        string
+		envVars     map[string]string
+		wantErr     bool
+		errContains string
+		wantToken   string
+		wantEnabled bool
+	}{
+		{
+			name:    "unset fails fast rather than falling open",
+			envVars: map[string]string{},
+			wantErr: true,
+		},
+		{
+			name:        "OPERATOR_AUTH=disabled runs without a token",
+			envVars:     map[string]string{"OPERATOR_AUTH": "disabled"},
+			wantToken:   "",
+			wantEnabled: false,
+		},
+		{
+			name:        "OPERATOR_AUTH=disabled is case-insensitive",
+			envVars:     map[string]string{"OPERATOR_AUTH": "Disabled"},
+			wantToken:   "",
+			wantEnabled: false,
+		},
+		{
+			name:        "OPERATOR_TOKEN_FILE resolves the token",
+			envVars:     map[string]string{"OPERATOR_TOKEN_FILE": goodTokenFile},
+			wantToken:   "a-valid-operator-token-that-is-long-enough",
+			wantEnabled: true,
+		},
+		{
+			name:        "OPERATOR_TOKEN resolves the token",
+			envVars:     map[string]string{"OPERATOR_TOKEN": "an-env-supplied-operator-token-value"},
+			wantToken:   "an-env-supplied-operator-token-value",
+			wantEnabled: true,
+		},
+		{
+			name:        "short OPERATOR_TOKEN_FILE token fails fast",
+			envVars:     map[string]string{"OPERATOR_TOKEN_FILE": shortTokenFile},
+			wantErr:     true,
+			errContains: "at least",
+		},
+		{
+			name:        "empty OPERATOR_TOKEN_FILE token fails fast",
+			envVars:     map[string]string{"OPERATOR_TOKEN_FILE": emptyTokenFile},
+			wantErr:     true,
+			errContains: "at least",
+		},
+		{
+			name:        "unreadable OPERATOR_TOKEN_FILE fails fast",
+			envVars:     map[string]string{"OPERATOR_TOKEN_FILE": missingTokenFile},
+			wantErr:     true,
+			errContains: "OPERATOR_TOKEN_FILE",
+		},
+		{
+			name:        "short OPERATOR_TOKEN env fails fast",
+			envVars:     map[string]string{"OPERATOR_TOKEN": "too-short"},
+			wantErr:     true,
+			errContains: "at least",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			applyOperatorAuthEnv(t, tt.envVars)
+
+			token, enabled, err := LoadOperatorAuth()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("LoadOperatorAuth() expected error, got none")
+				}
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("LoadOperatorAuth() error = %v, want to contain %q", err, tt.errContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadOperatorAuth() unexpected error: %v", err)
+			}
+			if token != tt.wantToken {
+				t.Errorf("LoadOperatorAuth() token = %q, want %q", token, tt.wantToken)
+			}
+			if enabled != tt.wantEnabled {
+				t.Errorf("LoadOperatorAuth() enabled = %v, want %v", enabled, tt.wantEnabled)
 			}
 		})
 	}
@@ -279,12 +400,24 @@ func TestValidateBinaryConfig(t *testing.T) {
 		// disabled notification surface.
 		{name: "backend needs the vapid public key", validate: ValidateBackendConfig,
 			mutate: func(c *Config) { c.WebPush.PublicKey = "" }, wantErr: "VAPID_PUBLIC_KEY"},
+		{name: "backend needs rag auth token", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.Rag.APIToken = "" }, wantErr: "RAG_API_TOKEN_FILE"},
+		{name: "backend accepts disabled rag auth in dev", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: ""},
+		{name: "backend refuses disabled rag auth in prod", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.AppEnv = "production"; c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: "RAG_API_AUTH=disabled is not permitted in production"},
 
 		{name: "harvester accepts a complete config", validate: ValidateHarvesterConfig, mutate: func(*Config) {}},
 		{name: "harvester needs sovereign in every environment", validate: ValidateHarvesterConfig,
 			mutate: func(c *Config) { c.Sovereign.URL = "" }, wantErr: "SOVEREIGN_URL"},
 		{name: "harvester needs the rag orchestrator", validate: ValidateHarvesterConfig,
 			mutate: func(c *Config) { c.Rag.OrchestratorURL = "" }, wantErr: "RAG_ORCHESTRATOR_URL"},
+		{name: "harvester needs rag auth token", validate: ValidateHarvesterConfig,
+			mutate: func(c *Config) { c.Rag.APIToken = "" }, wantErr: "RAG_API_TOKEN_FILE"},
+		{name: "harvester accepts disabled rag auth in dev", validate: ValidateHarvesterConfig,
+			mutate: func(c *Config) { c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: ""},
+		{name: "harvester refuses disabled rag auth in prod", validate: ValidateHarvesterConfig,
+			mutate: func(c *Config) { c.AppEnv = "production"; c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: "RAG_API_AUTH=disabled is not permitted in production"},
 
 		{name: "datahub accepts a complete config", validate: ValidateDataHubConfig, mutate: func(*Config) {}},
 		{name: "datahub needs auth-hub", validate: ValidateDataHubConfig,

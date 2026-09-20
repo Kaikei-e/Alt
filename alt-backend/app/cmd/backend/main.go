@@ -69,6 +69,16 @@ func main() {
 		log.ErrorContext(ctx, "operator listener config invalid", "error", err)
 		os.Exit(1)
 	}
+	operatorToken, operatorAuthEnabled, err := config.LoadOperatorAuth()
+	if err != nil {
+		log.ErrorContext(ctx, "operator listener auth config invalid", "error", err)
+		os.Exit(1)
+	}
+	if operatorAuthEnabled {
+		log.InfoContext(ctx, "operator_auth_enabled")
+	} else {
+		log.WarnContext(ctx, "operator_auth_disabled: OPERATOR_AUTH=disabled was set explicitly; the operator listener accepts unauthenticated admin RPCs")
+	}
 	opsAddr, err := config.LoadOpsListenAddr()
 	if err != nil {
 		log.ErrorContext(ctx, "ops listener config invalid", "error", err)
@@ -98,21 +108,27 @@ func main() {
 	)
 
 	// ---- Listener 3: operator ----
-	// KnowledgeHomeAdminService and AdminMonitorService authenticate nobody, so
-	// the bind address is the entire access control. It defaults to loopback
-	// and compose widens it to ":9102" to match the 127.0.0.1:9102:9102
-	// publish that altctl uses — docker-proxy dials the container's eth0, which
-	// a loopback bind inside the netns does not answer. Because the value can
-	// be widened, the process states what it actually bound and how far that
-	// reaches (rule 8); the compose publish is what keeps it off other hosts.
+	// KnowledgeHomeAdminService and AdminMonitorService require a bearer token
+	// (operator_auth_enabled/disabled above) on top of the bind address. It
+	// defaults to loopback and compose widens it to ":9102" to match the
+	// 127.0.0.1:9102:9102 publish that altctl uses — docker-proxy dials the
+	// container's eth0, which a loopback bind inside the netns does not
+	// answer. Because the value can be widened, the process states what it
+	// actually bound and how far that reaches (rule 8); the compose publish is
+	// what keeps it off other hosts, and the token is what keeps a caller on
+	// that network from using it.
+	operatorAuthState := "bearer_token"
+	if !operatorAuthEnabled {
+		operatorAuthState = "disabled"
+	}
 	log.InfoContext(ctx, "operator_listener.wiring",
 		"addr", operatorAddr,
 		"reach", string(config.ListenAddrReach(operatorAddr)),
 		"surfaces", "KnowledgeHomeAdminService,AdminMonitorService",
-		"auth", "none",
+		"auth", operatorAuthState,
 		"admin_monitor_enabled", container.AdminMonitor != nil && container.AdminMonitor.Enabled,
 	)
-	operatorSrv := bootstrap.NewServiceServer(operatorAddr, newOperatorHandler(container, cfg, log), cfg)
+	operatorSrv := bootstrap.NewServiceServer(operatorAddr, newOperatorHandler(container, cfg, log, operatorToken, operatorAuthEnabled), cfg)
 
 	// ---- Listener 4: ops (/health + /metrics + /health/deep) ----
 	dhCfg, err := config.LoadDataHubClientConfig()
@@ -212,6 +228,6 @@ func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEn
 // scrapes the ops listener on :9110 (the same port for all three binaries),
 // and keeping a duplicate here meant the admin port had a route whose presence
 // nothing tested and whose absence nothing would notice.
-func newOperatorHandler(container *di.ApplicationComponents, cfg *config.Config, log *slog.Logger) http.Handler {
-	return connectv2.CreateOperatorConnectServer(container, cfg, log)
+func newOperatorHandler(container *di.ApplicationComponents, cfg *config.Config, log *slog.Logger, operatorToken string, operatorAuthEnabled bool) http.Handler {
+	return connectv2.CreateOperatorConnectServer(container, cfg, log, operatorToken, operatorAuthEnabled)
 }
