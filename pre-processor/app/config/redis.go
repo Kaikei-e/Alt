@@ -33,7 +33,7 @@ func ResolveRedisPassword(logger *slog.Logger) (string, error) {
 		return "", fmt.Errorf("REDIS_PASSWORD_FILE is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly")
 	}
 
-	content, err := os.ReadFile(trimmedPath)
+	content, err := os.ReadFile(trimmedPath) // #nosec G304 -- trimmedPath is trusted operator config from REDIS_PASSWORD_FILE, not request-controlled
 	if err != nil {
 		logger.Error("redis_password_file_read_failed", "file", trimmedPath, "error", err)
 		return "", fmt.Errorf("read REDIS_PASSWORD_FILE %s: %w", trimmedPath, err)
