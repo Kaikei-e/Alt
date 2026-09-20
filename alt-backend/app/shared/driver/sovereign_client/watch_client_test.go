@@ -53,7 +53,9 @@ func TestConnectProjectorWatch_SendsAuthorizationHeader(t *testing.T) {
 
 	listener, err := client.ConnectProjectorWatch(ctx, "today_digest_view")
 	require.NoError(t, err)
-	defer listener.Close(context.Background())
+	defer func() {
+		assert.NoError(t, listener.Close(context.Background()))
+	}()
 
 	err = listener.WaitForNotification(ctx)
 	require.NoError(t, err)

@@ -221,7 +221,9 @@ func TestHTTPClientFactory_EnvoyProxyRequestTransformation(t *testing.T) {
 	assert.NotNil(t, resp, "Expected response to be non-nil")
 
 	if resp != nil {
-		defer resp.Body.Close()
+		defer func() {
+			assert.NoError(t, resp.Body.Close())
+		}()
 		assert.Equal(t, http.StatusOK, resp.StatusCode, "Expected successful response")
 
 		body, err := io.ReadAll(resp.Body)
@@ -272,7 +274,9 @@ func TestSecureHTTPClient_PinnedDial_PreventsDNSRebinding(t *testing.T) {
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		assert.NoError(t, resp.Body.Close())
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -324,7 +328,9 @@ func TestSecureHTTPClient_AllowlistedHostBypass(t *testing.T) {
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		assert.NoError(t, resp.Body.Close())
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -407,18 +413,16 @@ func TestSecureHTTPClient_TLSSNIPreserved(t *testing.T) {
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		assert.NoError(t, resp.Body.Close())
+	}()
 
 	assert.Equal(t, secureHost, receivedSNI, "TLS SNI must be preserved as the original hostname")
 }
 
 func TestHTTPClientFactory_SidecarProxyRequestTransformation(t *testing.T) {
-	os.Setenv("PROXY_STRATEGY", "SIDECAR")
-	os.Setenv("SIDECAR_PROXY_BASE_URL", "http://sidecar.test:8085")
-	defer func() {
-		os.Unsetenv("PROXY_STRATEGY")
-		os.Unsetenv("SIDECAR_PROXY_BASE_URL")
-	}()
+	t.Setenv("PROXY_STRATEGY", "SIDECAR")
+	t.Setenv("SIDECAR_PROXY_BASE_URL", "http://sidecar.test:8085")
 
 	factory := NewHTTPClientFactory()
 	client := factory.CreateHTTPClient()
@@ -443,7 +447,9 @@ func TestHTTPClientFactory_SidecarProxyRequestTransformation(t *testing.T) {
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		assert.NoError(t, resp.Body.Close())
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -536,6 +542,8 @@ func TestSecureHTTPClient_PartialDeadline_TriesNextAddressOnFirstUnreachable(t *
 
 	resp, err := client.Do(req)
 	require.NoError(t, err, "request should succeed via second address within budget")
-	defer resp.Body.Close()
+	defer func() {
+		assert.NoError(t, resp.Body.Close())
+	}()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
