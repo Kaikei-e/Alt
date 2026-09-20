@@ -3,15 +3,6 @@ package main
 import (
 	"context"
 	"crypto/subtle"
-	"knowledge-sovereign/config"
-	"knowledge-sovereign/driver/sovereign_db"
-	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
-	"knowledge-sovereign/handler"
-	"knowledge-sovereign/usecase/knowledge_home_projector"
-	"knowledge-sovereign/usecase/knowledge_trail_projector"
-	"knowledge-sovereign/usecase/partition_maintainer"
-	"knowledge-sovereign/usecase/projection_health"
-	"knowledge-sovereign/usecase/trail_planner"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,8 +12,19 @@ import (
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"knowledge-sovereign/config"
+	"knowledge-sovereign/driver/sovereign_db"
+	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
+	"knowledge-sovereign/handler"
+	"knowledge-sovereign/usecase/knowledge_home_projector"
+	"knowledge-sovereign/usecase/knowledge_trail_projector"
+	"knowledge-sovereign/usecase/partition_maintainer"
+	"knowledge-sovereign/usecase/projection_health"
+	"knowledge-sovereign/usecase/trail_planner"
 )
 
 func main() {
@@ -107,7 +109,16 @@ func main() {
 	mainMux := http.NewServeMux()
 	mainMux.HandleFunc("/health", handler.HealthHandler)
 
-	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(sovereignHandler)
+	if cfg.EventAuthEnabled {
+		slog.Info("event_auth_enabled")
+	} else {
+		slog.Warn("event_auth_disabled: EVENT_AUTH=disabled was set explicitly; event listener accepts unauthenticated RPCs")
+	}
+
+	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(
+		sovereignHandler,
+		connect.WithInterceptors(handler.NewEventAuthInterceptor(cfg.EventToken, cfg.EventAuthEnabled)),
+	)
 	mainMux.Handle(path, rpcHandler)
 
 	// WriteTimeout is intentionally unset: WatchProjectorEvents is a

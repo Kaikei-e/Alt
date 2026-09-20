@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
@@ -236,7 +237,11 @@ func startProviderServer(t *testing.T, repo *fakeRepo) int {
 
 	mux := http.NewServeMux()
 
-	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(handler.NewSovereignHandler(repo))
+	const providerEventToken = "test-sovereign-event-token"
+	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(
+		handler.NewSovereignHandler(repo),
+		connect.WithInterceptors(handler.NewEventAuthInterceptor(providerEventToken, true)),
+	)
 	mux.Handle(path, rpcHandler)
 
 	handler.NewSnapshotHandler(repo, t.TempDir(), fixtureBuildRef, fixtureSchemaVer).RegisterRoutes(mux)

@@ -25,6 +25,16 @@ type Config struct {
 	// open" are never indistinguishable (Rule 8).
 	AdminAuthEnabled bool
 
+	// EventToken is required as a Bearer token on the :9500 Connect-RPC listener
+	// (services.sovereign.v1). It is only empty when EventAuthEnabled is false,
+	// which requires EVENT_AUTH=disabled to be set explicitly: an unset token
+	// is a startup failure, not an open door (Rule 9).
+	EventToken string
+	// EventAuthEnabled reports whether the Bearer gate is active on :9500. main.go
+	// logs it loudly at startup so "forgot to set it" and "intentionally
+	// open" are never indistinguishable (Rule 8).
+	EventAuthEnabled bool
+
 	// Snapshot / retention filesystem paths and build identity.
 	SnapshotDir   string
 	ArchiveDir    string
@@ -77,12 +87,19 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	eventToken, eventAuthEnabled, err := loadEventAuth()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		DatabaseURL:                  dbURL,
 		ListenAddr:                   listenAddr,
 		MetricsAddr:                  metricsAddr,
 		AdminToken:                   adminToken,
 		AdminAuthEnabled:             adminAuthEnabled,
+		EventToken:                   eventToken,
+		EventAuthEnabled:             eventAuthEnabled,
 		SnapshotDir:                  snapshotDir,
 		ArchiveDir:                   archiveDir,
 		BuildRef:                     buildRef,
@@ -102,10 +119,18 @@ func Load() (*Config, error) {
 // surface exports partitions and writes snapshots to a host bind mount.
 const minAdminTokenLen = 24
 
+// minEventTokenLen enforces the same entropy requirement on the event-log
+// listener, which accepts durable state mutations.
+const minEventTokenLen = 24
+
 // loadAdminAuth resolves the admin Bearer token from ADMIN_TOKEN_FILE (docker
 // secret) or ADMIN_TOKEN. Absence is a startup failure: the only way to run
 // without the gate is ADMIN_AUTH=disabled, spelled out by an operator.
 func loadAdminAuth() (string, bool, error) {
+	if os.Getenv("ADMIN_AUTH") == "disabled" {
+		return "", false, nil
+	}
+
 	if path := os.Getenv("ADMIN_TOKEN_FILE"); path != "" {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -125,12 +150,39 @@ func loadAdminAuth() (string, bool, error) {
 		return token, true, nil
 	}
 
-	if os.Getenv("ADMIN_AUTH") == "disabled" {
+	return "", false, fmt.Errorf(
+		"ADMIN_TOKEN or ADMIN_TOKEN_FILE is required; set ADMIN_AUTH=disabled to run the /admin/* endpoints without authentication")
+}
+
+// loadEventAuth resolves the event-log Bearer token from EVENT_TOKEN_FILE
+// (docker secret) or EVENT_TOKEN. Absence is a startup failure: the only way to run
+// without the gate is EVENT_AUTH=disabled, spelled out by an operator.
+func loadEventAuth() (string, bool, error) {
+	if os.Getenv("EVENT_AUTH") == "disabled" {
 		return "", false, nil
 	}
 
+	if path := os.Getenv("EVENT_TOKEN_FILE"); path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", false, fmt.Errorf("read EVENT_TOKEN_FILE: %w", err)
+		}
+		token := strings.TrimSpace(string(data))
+		if len(token) < minEventTokenLen {
+			return "", false, fmt.Errorf("event token from EVENT_TOKEN_FILE must be at least %d characters", minEventTokenLen)
+		}
+		return token, true, nil
+	}
+
+	if token := strings.TrimSpace(os.Getenv("EVENT_TOKEN")); token != "" {
+		if len(token) < minEventTokenLen {
+			return "", false, fmt.Errorf("EVENT_TOKEN must be at least %d characters", minEventTokenLen)
+		}
+		return token, true, nil
+	}
+
 	return "", false, fmt.Errorf(
-		"ADMIN_TOKEN or ADMIN_TOKEN_FILE is required; set ADMIN_AUTH=disabled to run the /admin/* endpoints without authentication")
+		"EVENT_TOKEN or EVENT_TOKEN_FILE is required; set EVENT_AUTH=disabled to run the event-log RPC listener without authentication")
 }
 
 // parseDurationEnv reads a duration from env, falling back to the supplied
