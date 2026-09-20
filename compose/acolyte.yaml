@@ -141,6 +141,15 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      # --- legacy report owner backfill / startup gate ----------------------
+      # If unowned reports (user_id IS NULL) exist, startup fails fast unless
+      # an explicit owner UUID or mapping file is configured. Fresh DBs pass cleanly.
+      - ACOLYTE_LEGACY_REPORT_OWNER_ID=${ACOLYTE_LEGACY_REPORT_OWNER_ID:-}
+      # Host paths are not accessible inside containers; mount the host JSON file
+      # (e.g. override volume `- ./mapping.json:/etc/acolyte/legacy_mapping.json:ro`)
+      # and set ACOLYTE_LEGACY_REPORT_MAPPING_FILE to the in-container path.
+      - ACOLYTE_LEGACY_REPORT_MAPPING_FILE=${ACOLYTE_LEGACY_REPORT_MAPPING_FILE:-}
+
       # --- notification outbox relay ---------------------------------------
       # reports now carries a user_id column; NOTIFICATION_USER_ID serves as
       # fallback recipient when deriving user from run is not available.
@@ -150,6 +159,7 @@ services:
       - NOTIFICATIONS_ENABLED=${ACOLYTE_NOTIFICATIONS_ENABLED:-false}
       - NOTIFICATION_USER_ID=${ALT_NOTIFICATION_USER_ID:-}
       - DATAHUB_URL=https://alt-data-hub:9443
+
       # Wave 4: inbound TLS is in-process. Identity comes from the verified
       # client cert on :9443; never from a caller-supplied header.
       - INBOUND_TLS_ENABLED=true

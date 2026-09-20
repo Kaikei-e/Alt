@@ -6,8 +6,10 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from acolyte.domain.brief import ReportBrief
-from acolyte.domain.exceptions import StaleVersionError
+from acolyte.domain.exceptions import StaleVersionError, UnmappedLegacyReportsError
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
+
+_MAX_DIAGNOSTIC_REPORT_IDS = 5
 
 
 class MemoryReportGateway:
@@ -158,3 +160,58 @@ class MemoryReportGateway:
         self._sections.pop(report_id, None)
         self._change_items = {key: v for key, v in self._change_items.items() if key[0] != report_id}
         self._section_versions = {key: v for key, v in self._section_versions.items() if key[0] != report_id}
+
+    async def backfill_owners(
+        self,
+        *,
+        single_owner_id: UUID | None = None,
+        mapping: dict[UUID, UUID] | None = None,
+    ) -> int:
+        unowned_ids = [rid for rid, r in self._reports.items() if r.user_id is None]
+        if not unowned_ids:
+            return 0
+
+        if single_owner_id is not None:
+            for rid in unowned_ids:
+                old = self._reports[rid]
+                self._reports[rid] = Report(
+                    report_id=old.report_id,
+                    title=old.title,
+                    report_type=old.report_type,
+                    current_version=old.current_version,
+                    latest_successful_run_id=old.latest_successful_run_id,
+                    created_at=old.created_at,
+                    user_id=single_owner_id,
+                )
+            return len(unowned_ids)
+
+        if mapping is not None:
+            missing = [rid for rid in unowned_ids if rid not in mapping]
+            if missing:
+                msg = (
+                    f"Cannot backfill: {len(missing)} legacy reports have no owner in mapping: "
+                    f"{[str(m) for m in missing]}. Aborting with no partial updates."
+                )
+                raise UnmappedLegacyReportsError(msg)
+
+            for rid in unowned_ids:
+                old = self._reports[rid]
+                self._reports[rid] = Report(
+                    report_id=old.report_id,
+                    title=old.title,
+                    report_type=old.report_type,
+                    current_version=old.current_version,
+                    latest_successful_run_id=old.latest_successful_run_id,
+                    created_at=old.created_at,
+                    user_id=mapping[rid],
+                )
+            return len(unowned_ids)
+
+        msg = (
+            f"Startup gate rejected: found {len(unowned_ids)} unowned legacy reports "
+            f"({[str(r) for r in unowned_ids[:_MAX_DIAGNOSTIC_REPORT_IDS]]}"
+            f"{'...' if len(unowned_ids) > _MAX_DIAGNOSTIC_REPORT_IDS else ''}) "
+            "with user_id=NULL. Configure ACOLYTE_LEGACY_REPORT_OWNER_ID or "
+            "ACOLYTE_LEGACY_REPORT_MAPPING_FILE to migrate them safely."
+        )
+        raise UnmappedLegacyReportsError(msg)

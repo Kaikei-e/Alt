@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -163,6 +164,24 @@ class Settings(BaseSettings):
     backend_token_verification: str = "enabled"  # noqa: S105 — verification mode flag, not a secret
     user_identity_dev_user_id: str = ""
 
+    # Legacy report owner backfill & startup gate
+    legacy_report_owner_id: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "ACOLYTE_LEGACY_REPORT_OWNER_ID",
+            "acolyte_legacy_report_owner_id",
+            "legacy_report_owner_id",
+        ),
+    )
+    legacy_report_mapping_file: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "ACOLYTE_LEGACY_REPORT_MAPPING_FILE",
+            "acolyte_legacy_report_mapping_file",
+            "legacy_report_mapping_file",
+        ),
+    )
+
     model_config = {"env_prefix": "", "case_sensitive": False}
 
     def resolve_backend_token_secret(self) -> bytes | None:
@@ -210,6 +229,55 @@ class Settings(BaseSettings):
             raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
                 f"USER_IDENTITY_DEV_USER_ID is not a valid UUID: {raw}"
             ) from exc
+
+    def resolve_legacy_report_owner_id(self) -> UUID | None:
+        """Resolve legacy report owner UUID when single-owner backfill is configured."""
+        raw = self.legacy_report_owner_id.strip()
+        if not raw:
+            return None
+        try:
+            return UUID(raw)
+        except ValueError as exc:
+            raise RuntimeError(  # noqa: TRY003 — fail-fast startup config error, single call site
+                f"ACOLYTE_LEGACY_REPORT_OWNER_ID is not a valid UUID: {raw!r}"
+            ) from exc
+
+    def resolve_legacy_report_mapping(self) -> dict[UUID, UUID] | None:
+        """Resolve per-report mapping from JSON file when multi-tenant backfill is configured."""
+        raw_path = self.legacy_report_mapping_file.strip()
+        if not raw_path:
+            return None
+        path = Path(raw_path)
+        if not path.is_file():
+            raise RuntimeError(  # noqa: TRY003 — fail-fast startup config error, single call site
+                f"ACOLYTE_LEGACY_REPORT_MAPPING_FILE is missing or unreadable: {raw_path!r}"
+            )
+        try:
+            raw_data = json.loads(path.read_text())
+        except Exception as exc:
+            raise RuntimeError(  # noqa: TRY003 — fail-fast startup config error, single call site
+                f"ACOLYTE_LEGACY_REPORT_MAPPING_FILE contains invalid JSON: {exc}"
+            ) from exc
+        if not isinstance(raw_data, dict):
+            raise TypeError(  # noqa: TRY003 — non-dict mapping is a type error
+                "ACOLYTE_LEGACY_REPORT_MAPPING_FILE must contain a JSON object mapping report_id to user_id"
+            )
+        mapping: dict[UUID, UUID] = {}
+        for k, v in raw_data.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                raise TypeError(  # noqa: TRY003 — non-string key or value in mapping
+                    f"ACOLYTE_LEGACY_REPORT_MAPPING_FILE keys and values must be string UUIDs, got key {k!r} "
+                    f"({type(k).__name__}) and value {v!r} ({type(v).__name__})"
+                )
+            try:
+                k_uuid = UUID(k)
+                v_uuid = UUID(v)
+            except ValueError as exc:
+                raise ValueError(  # noqa: TRY003 — malformed UUID string
+                    f"ACOLYTE_LEGACY_REPORT_MAPPING_FILE keys and values must be valid UUIDs: {exc}"
+                ) from exc
+            mapping[k_uuid] = v_uuid
+        return mapping
 
     def resolve_notification_relay_config(self) -> NotificationRelayConfig | None:
         """Validate the relay configuration, or explain exactly what is missing.

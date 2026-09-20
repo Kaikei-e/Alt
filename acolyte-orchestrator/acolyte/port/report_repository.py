@@ -63,3 +63,10 @@ class ReportRepositoryPort(Protocol):
     async def has_active_run(self, report_id: UUID) -> bool: ...
 
     async def delete_report(self, report_id: UUID) -> None: ...
+
+    async def backfill_owners(
+        self,
+        *,
+        single_owner_id: UUID | None = None,
+        mapping: dict[UUID, UUID] | None = None,
+    ) -> int: ...

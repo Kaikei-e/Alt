@@ -15,3 +15,7 @@ class StaleVersionError(Exception):
         self.report_id = report_id
         self.expected_version = expected_version
         super().__init__(f"Stale version: report {report_id} expected v{expected_version}")
+
+
+class UnmappedLegacyReportsError(RuntimeError):
+    """Raised when legacy reports exist with user_id=NULL and cannot be safely backfilled."""

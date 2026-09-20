@@ -221,6 +221,19 @@ see `acolyte-orchestrator/CLAUDE.md`.
 | `NOTIFICATION_USER_ID` | - | Recipient UUID; required when enabled (acolyte-db has no owner column) |
 | `DATAHUB_URL` | - | `alt-data-hub` mTLS endpoint (e.g. `https://alt-data-hub:9443`); required when enabled |
 
+#### Legacy Report Ownership Backfill & Startup Gate
+
+When upgrading from the pre-ownership schema, legacy reports carry `user_id = NULL`.
+The automated startup gate runs before the API serves: if unowned reports exist and neither
+variable is configured (or if a mapping is incomplete), startup fails fast with
+`UnmappedLegacyReportsError`. Fresh/empty databases pass cleanly without configuration.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ACOLYTE_LEGACY_REPORT_OWNER_ID` | - | Single-tenant owner UUID; assigns all unowned legacy reports to this owner |
+| `ACOLYTE_LEGACY_REPORT_MAPPING_FILE` | - | In-container path to JSON file mapping `{"<report_id>": "<user_id>"}` for multi-tenant migration (mount host JSON file into container, e.g. `- ./mapping.json:/etc/acolyte/legacy_mapping.json:ro`) |
+
+
 #### LLM Defaults
 
 | Variable | Default | Description |
