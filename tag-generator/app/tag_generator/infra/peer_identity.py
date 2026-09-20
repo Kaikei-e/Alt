@@ -33,6 +33,10 @@ if TYPE_CHECKING:
 
 PEER_IDENTITY_HEADER = "x-alt-peer-identity"
 
+# Exact application probes are exempt from the CN allowlist; TLS client-
+# certificate validation still applies.
+_TLS_ALLOWLIST_EXEMPT_PATHS = frozenset({"/health", "/metrics"})
+
 logger = structlog.get_logger(__name__)
 
 
@@ -40,6 +44,15 @@ def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
     """Parse MTLS_ALLOWED_PEERS=csv into a list. Empty CSV → empty list."""
     raw = os.getenv(env_var, "")
     return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def strict_from_env(env_var: str = "PEER_IDENTITY_STRICT") -> bool:
+    """Plaintext-side strict switch. Unset/false keeps today's default.
+
+    Only gates the header-based plaintext path — TLS-origin allowlist
+    enforcement runs unconditionally regardless of this flag.
+    """
+    return os.getenv(env_var, "false").strip().lower() in {"true", "1", "on", "yes"}
 
 
 def arrived_via_sidecar(request: Request) -> bool:
@@ -62,6 +75,16 @@ def arrived_via_sidecar(request: Request) -> bool:
         return False
 
 
+def is_tls_request(request: Request) -> bool:
+    """Report whether the request arrived via the in-process TLS listener.
+
+    Authoritative TLS transport is presence of the 'tls' extension in ASGI scope,
+    injected by inbound_tls.py:271-279.
+    """
+    extensions = request.scope.get("extensions")
+    return isinstance(extensions, dict) and "tls" in extensions
+
+
 def tls_authenticated_cn(request: Request) -> str:
     """CN injected by the in-process mTLS listener after client-cert verify."""
     extensions = request.scope.get("extensions") or {}
@@ -72,12 +95,14 @@ def tls_authenticated_cn(request: Request) -> str:
 def resolve_authenticated_peer(request: Request) -> str:
     """Return the verified peer CN, or empty when identity is unauthenticated.
 
-    TLS-authenticated CN always wins. The inbound header is used only for the
-    Pattern B sidecar dual-run (trusted env + loopback transport).
+    When TLS extension is present (in-process mTLS on :9443), identity comes
+    strictly from the client certificate (even if empty). It must NEVER fall back
+    to the inbound header.
+    The inbound header is honoured only for the legacy Pattern B sidecar dual-run
+    on plaintext (trusted env + loopback transport).
     """
-    tls_cn = tls_authenticated_cn(request)
-    if tls_cn:
-        return tls_cn
+    if is_tls_request(request):
+        return tls_authenticated_cn(request)
     header = request.headers.get(PEER_IDENTITY_HEADER, "").strip()
     mtls_on = os.getenv("PEER_IDENTITY_TRUSTED", "off") == "on"
     if mtls_on and arrived_via_sidecar(request):
@@ -104,15 +129,37 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        peer = resolve_authenticated_peer(request)
-
-        if self._strict:
-            if not peer:
-                logger.warning("peer_identity.missing", path=request.url.path)
-                return PlainTextResponse("unauthenticated peer", status_code=401)
-            if self._allowed and peer not in self._allowed:
-                logger.warning("peer_identity.forbidden", peer=peer, path=request.url.path)
-                return PlainTextResponse("peer not allowlisted", status_code=403)
+        if is_tls_request(request):
+            peer = tls_authenticated_cn(request)
+            is_probe = request.url.path in _TLS_ALLOWLIST_EXEMPT_PATHS
+            if not is_probe:
+                if not peer:
+                    logger.warning(
+                        "peer_identity.forbidden",
+                        reason="peer_cn_missing",
+                        path=request.url.path,
+                    )
+                    return PlainTextResponse("peer not allowlisted", status_code=403)
+                if self._allowed and peer not in self._allowed:
+                    logger.warning(
+                        "peer_identity.forbidden",
+                        peer=peer,
+                        path=request.url.path,
+                    )
+                    return PlainTextResponse("peer not allowlisted", status_code=403)
+        else:
+            peer = resolve_authenticated_peer(request)
+            if self._strict:
+                if not peer:
+                    logger.warning("peer_identity.missing", path=request.url.path)
+                    return PlainTextResponse("unauthenticated peer", status_code=401)
+                if self._allowed and peer not in self._allowed:
+                    logger.warning(
+                        "peer_identity.forbidden",
+                        peer=peer,
+                        path=request.url.path,
+                    )
+                    return PlainTextResponse("peer not allowlisted", status_code=403)
 
         request.state.peer_identity = peer or None
 
