@@ -39,6 +39,8 @@ type Config struct {
 	RequestTimeout     time.Duration
 	StreamingTimeout   time.Duration
 	AcolyteConnectURL  string
+	// BackendOperatorToken is the bearer token sent to alt-backend's internal listener (:9102)
+	BackendOperatorToken string
 
 	// BFF Feature Configuration
 	BFFConfig handler.BFFConfig
@@ -272,6 +274,10 @@ func NewServerWithTransports(
 	// BackendInternalURL rather than the browser-facing Connect port.
 	{
 		adminBackendClient := backendClient
+		// The operator bearer belongs to the internal listener only: without
+		// BackendInternalURL the admin proxies fall back to the browser-facing
+		// client, which must never carry the operator credential.
+		adminOperatorToken := ""
 		if cfg.BackendInternalURL != "" {
 			adminBackendClient = client.NewBackendClientWithTransport(
 				cfg.BackendInternalURL,
@@ -279,13 +285,14 @@ func NewServerWithTransports(
 				cfg.StreamingTimeout,
 				connectTransport,
 			)
+			adminOperatorToken = cfg.BackendOperatorToken
 		}
 		adminProxy := handler.NewAdminProxyHandler(
 			adminBackendClient,
 			cfg.Secret,
 			cfg.Issuer,
 			cfg.Audience,
-			"",
+			adminOperatorToken,
 			logger,
 			cfg.RequestTimeout,
 		)
@@ -299,7 +306,7 @@ func NewServerWithTransports(
 			cfg.Secret,
 			cfg.Issuer,
 			cfg.Audience,
-			"",
+			adminOperatorToken,
 			logger,
 		)
 		mux.Handle("/alt.admin_monitor.v1.AdminMonitorService/", adminMonitorProxy)
@@ -345,7 +352,8 @@ func NewServerWithTransports(
 			cfg.StreamingTimeout,
 			cfg.StreamingTimeout,
 		)
-		// Auth to acolyte is established at the TLS transport layer (mTLS).
+		// Acolyte is reached over plaintext :8090 with MTLS_ENFORCE off; identity is
+		// the forwarded signed X-Alt-Backend-Token verified by acolyte.
 		mux.Handle("/alt.acolyte.v1.AcolyteService/", acolyteProxy)
 	}
 

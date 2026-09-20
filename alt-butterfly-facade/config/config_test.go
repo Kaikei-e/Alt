@@ -117,6 +117,127 @@ func TestConfig_LoadBackendTokenSecret_NoSecret(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestConfig_LoadOperatorToken_RequiredWhenInternalURLSet(t *testing.T) {
+	os.Clearenv()
+	defer os.Clearenv()
+
+	cfg := NewConfig() // BackendInternalConnectURL defaults to http://alt-backend:9102
+	token, enabled, err := cfg.LoadOperatorToken()
+
+	assert.Error(t, err)
+	assert.Empty(t, token)
+	assert.False(t, enabled)
+}
+
+func TestConfig_LoadOperatorToken_FromFile(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "backend_operator_token")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+
+	_, err = tmpFile.WriteString("a-valid-operator-token-0123\n")
+	require.NoError(t, err)
+	tmpFile.Close()
+
+	os.Clearenv()
+	os.Setenv("BACKEND_OPERATOR_TOKEN_FILE", tmpFile.Name())
+	defer os.Clearenv()
+
+	cfg := NewConfig()
+	token, enabled, err := cfg.LoadOperatorToken()
+
+	require.NoError(t, err)
+	assert.Equal(t, "a-valid-operator-token-0123", token)
+	assert.True(t, enabled)
+}
+
+func TestConfig_LoadOperatorToken_FromEnv(t *testing.T) {
+	os.Clearenv()
+	os.Setenv("BACKEND_OPERATOR_TOKEN", "an-env-supplied-operator-token")
+	defer os.Clearenv()
+
+	cfg := NewConfig()
+	token, enabled, err := cfg.LoadOperatorToken()
+
+	require.NoError(t, err)
+	assert.Equal(t, "an-env-supplied-operator-token", token)
+	assert.True(t, enabled)
+}
+
+func TestConfig_LoadOperatorToken_FileNotFound(t *testing.T) {
+	os.Clearenv()
+	os.Setenv("BACKEND_OPERATOR_TOKEN_FILE", "/nonexistent/path")
+	defer os.Clearenv()
+
+	cfg := NewConfig()
+	_, _, err := cfg.LoadOperatorToken()
+
+	assert.Error(t, err)
+}
+
+func TestConfig_LoadOperatorToken_EmptyFile(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "backend_operator_token_empty")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	os.Clearenv()
+	os.Setenv("BACKEND_OPERATOR_TOKEN_FILE", tmpFile.Name())
+	defer os.Clearenv()
+
+	cfg := NewConfig()
+	_, _, err = cfg.LoadOperatorToken()
+
+	assert.Error(t, err)
+}
+
+func TestConfig_LoadOperatorToken_DisabledExplicitly(t *testing.T) {
+	os.Clearenv()
+	os.Setenv("BACKEND_OPERATOR_AUTH", "disabled")
+	defer os.Clearenv()
+
+	cfg := NewConfig()
+	token, enabled, err := cfg.LoadOperatorToken()
+
+	require.NoError(t, err)
+	assert.Empty(t, token)
+	assert.False(t, enabled)
+}
+
+// TestConfig_LoadOperatorToken_DisabledViaGenericOperatorAuth guards the
+// getEnv("BACKEND_OPERATOR_AUTH", getEnv("OPERATOR_AUTH", "")) fallback in
+// NewConfig — the dev/staging compose overlays disable the whole operator
+// auth story with a single OPERATOR_AUTH=disabled shared across the alt-backend
+// and BFF services in the same file, and BACKEND_OPERATOR_AUTH is not required
+// on top of it.
+func TestConfig_LoadOperatorToken_DisabledViaGenericOperatorAuth(t *testing.T) {
+	os.Clearenv()
+	os.Setenv("OPERATOR_AUTH", "disabled")
+	defer os.Clearenv()
+
+	cfg := NewConfig()
+	token, enabled, err := cfg.LoadOperatorToken()
+
+	require.NoError(t, err)
+	assert.Empty(t, token)
+	assert.False(t, enabled)
+}
+
+func TestConfig_LoadOperatorToken_NotRequiredWhenInternalURLEmpty(t *testing.T) {
+	os.Clearenv()
+	defer os.Clearenv()
+
+	cfg := NewConfig()
+	// getEnv falls back to the non-empty default for an unset variable, so
+	// the only way to exercise "no internal listener configured" is to pin
+	// the field directly rather than through the environment.
+	cfg.BackendInternalConnectURL = ""
+	token, enabled, err := cfg.LoadOperatorToken()
+
+	require.NoError(t, err)
+	assert.Empty(t, token)
+	assert.False(t, enabled)
+}
+
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name    string

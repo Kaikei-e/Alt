@@ -195,45 +195,21 @@
       "request": {
         "body": {},
         "headers": {
-          "Content-Type": "application/json"
-        },
-        "method": "POST",
-        "path": "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview"
-      },
-      "response": {
-        "body": {
-          "totalEvents": 100
-        },
-        "headers": {
+          "Authorization": "Bearer test-operator-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
-          "body": {
-            "$": {
+          "header": {
+            "Authorization": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "type"
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }
           }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "a GetOverview admin Connect-RPC request with service token",
-      "providerStates": [
-        {
-          "name": "knowledge home admin service is available"
-        }
-      ],
-      "request": {
-        "body": {},
-        "headers": {
-          "Content-Type": "application/json",
-          "X-Service-Token": "service-secret"
         },
         "method": "POST",
         "path": "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview"

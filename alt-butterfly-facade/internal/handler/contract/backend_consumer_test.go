@@ -136,12 +136,9 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
 			Path:   matchers.String("/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview"),
-			// No X-Alt-Backend-Token here, unlike the user-token routes:
-			// admin RPCs go through BackendClient.ForwardServiceRequest,
-			// which strips the caller's token and relies on the mTLS
-			// transport for service-to-service auth.
 			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
+				"Content-Type":  matchers.String("application/json"),
+				"Authorization": matchers.Regex("Bearer test-operator-token", `^Bearer .+$`),
 			},
 			Body: matchers.MapMatcher{},
 		}).
@@ -157,12 +154,14 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
 			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
 			cfg := server.Config{
-				BackendURL:       backendURL,
-				Secret:           []byte("test-secret"),
-				Issuer:           "auth-hub",
-				Audience:         "alt-backend",
-				RequestTimeout:   30 * time.Second,
-				StreamingTimeout: 5 * time.Minute,
+				BackendURL:           backendURL,
+				BackendInternalURL:   backendURL,
+				BackendOperatorToken: "test-operator-token",
+				Secret:               []byte("test-secret"),
+				Issuer:               "auth-hub",
+				Audience:             "alt-backend",
+				RequestTimeout:       30 * time.Second,
+				StreamingTimeout:     5 * time.Minute,
 			}
 			handler := server.NewServerWithTransport(cfg, nil, http.DefaultTransport)
 

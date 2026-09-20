@@ -66,7 +66,8 @@ func TestAdminMonitorProxy_RequiresAuth(t *testing.T) {
 func TestAdminMonitorProxy_ForwardsUnary(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", r.URL.Path)
-		assert.Empty(t, r.Header.Get("X-Service-Token"), "auth is transport-layer now")
+		assert.Empty(t, r.Header.Get("X-Service-Token"), "X-Service-Token was never a real header; the operator token travels as Authorization: Bearer")
+		assert.Equal(t, "Bearer service-secret", r.Header.Get("Authorization"), "the operator token passed to NewAdminMonitorProxyHandler must reach alt-backend's :9102 listener")
 		assert.Empty(t, r.Header.Get("X-Alt-Backend-Token"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -88,7 +89,8 @@ func TestAdminMonitorProxy_ForwardsUnary(t *testing.T) {
 func TestAdminMonitorProxy_StreamingFlushesChunks(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alt.admin_monitor.v1.AdminMonitorService/Watch", r.URL.Path)
-		assert.Empty(t, r.Header.Get("X-Service-Token"), "auth is transport-layer now")
+		assert.Empty(t, r.Header.Get("X-Service-Token"), "X-Service-Token was never a real header; the operator token travels as Authorization: Bearer")
+		assert.Equal(t, "Bearer service-secret", r.Header.Get("Authorization"), "the operator token must reach alt-backend on the streaming path too")
 		w.Header().Set("Content-Type", "application/connect+json")
 		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)

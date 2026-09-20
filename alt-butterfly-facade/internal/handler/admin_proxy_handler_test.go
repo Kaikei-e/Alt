@@ -54,7 +54,8 @@ func TestAdminProxyHandler_ServeHTTP_RequiresAdminRole(t *testing.T) {
 func TestAdminProxyHandler_ServeHTTP_AdminForwardedWithoutServiceToken(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth", r.URL.Path)
-		assert.Empty(t, r.Header.Get("X-Service-Token"), "auth is transport-layer now")
+		assert.Empty(t, r.Header.Get("X-Service-Token"), "X-Service-Token was never a real header; the operator token travels as Authorization: Bearer")
+		assert.Equal(t, "Bearer service-secret", r.Header.Get("Authorization"), "the operator token passed to NewAdminProxyHandler must reach alt-backend's :9102 listener")
 		assert.Empty(t, r.Header.Get("X-Alt-Backend-Token"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
