@@ -84,6 +84,13 @@ units:
   docker-socket-proxy:
     class: ephemeral
     kind: ephemeral
+  docker-socket-proxy-ro:
+    class: platform
+    kind: platform
+    # Read-only Docker API proxy that replaced the raw docker.sock mounts on the
+    # 16 log forwarders and cAdvisor; long-running by design (security boundary).
+    exception: X-SECURITY-BOUNDARY
+    sunset: "2026-12-31"
   grafana:
     class: platform
     kind: platform

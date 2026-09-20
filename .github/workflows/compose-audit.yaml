@@ -45,6 +45,7 @@ on:
       - 'scripts/ops-surface-inventory.yaml'
       - 'scripts/compose-feature-gate.report.json'
       - 'scripts/tests/test-compose-netns-cascade-audit.py'
+      - 'scripts/tests/test-compose-port-audit.py'
       - 'scripts/tests/test-compose-file-bind-audit.py'
       - 'scripts/tests/test-compose-init-edge-audit.py'
       - 'scripts/tests/test-compose-pre-start-audit.py'
@@ -93,6 +94,7 @@ on:
       - 'scripts/ops-surface-inventory.yaml'
       - 'scripts/compose-feature-gate.report.json'
       - 'scripts/tests/test-compose-netns-cascade-audit.py'
+      - 'scripts/tests/test-compose-port-audit.py'
       - 'scripts/tests/test-compose-file-bind-audit.py'
       - 'scripts/tests/test-compose-init-edge-audit.py'
       - 'scripts/tests/test-compose-pre-start-audit.py'
@@ -149,8 +151,8 @@ jobs:
           # compose/*.yaml uses ${MEILISEARCH_HOST}, ${GHCR_OWNER}, etc.
           # A minimal dummy .env satisfies the interpolation without
           # reading prod secrets (the runner has none anyway).
-          # logging.yaml requires DOCKER_GROUP_ID (fail-fast, no host-magic
-          # default) — any numeric GID is fine for `compose config` audit.
+          # DOCKER_GROUP_ID was historically required by logging.yaml before the
+          # socket proxy migration; kept here as placeholder for environment compatibility.
           {
             echo 'DOCKER_GROUP_ID=0'
           } > .env
@@ -212,6 +214,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Pin the port audit logic
+        run: python3 scripts/tests/test-compose-port-audit.py
+
       - name: Install the Compose build production renders with
         run: ./scripts/ci-install-compose.sh
 
@@ -223,7 +228,7 @@ jobs:
         run: echo 'DOCKER_GROUP_ID=0' > .env
 
       - name: Assert every published port is loopback-bound
-        run: python3 scripts/compose-port-audit.py
+        run: python3 scripts/compose-port-audit.py --overlays
 
   netns-cascade-invariant:
     # Wave 4 retired `network_mode: service:X` for pki-agent. This job
@@ -318,9 +323,8 @@ jobs:
           # so the template must be staged at compose/.env as well — a
           # top-level `--env-file` does not reach the includes. Root .env is
           # separately required because services carry `env_file: ../.env`.
-          # DOCKER_GROUP_ID is the one `${VAR:?}` variable and is derived from
-          # the host (scripts/get-docker-gid.sh), so it is intentionally not
-          # in the template; any numeric GID renders.
+          # DOCKER_GROUP_ID was historically derived from the host
+          # (scripts/get-docker-gid.sh); staged here for environment compatibility.
           { cat .env.template; echo; echo 'DOCKER_GROUP_ID=0'; } > .env
           cp .env compose/.env
 
