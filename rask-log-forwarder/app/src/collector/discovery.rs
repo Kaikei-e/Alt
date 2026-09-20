@@ -1,8 +1,11 @@
-use bollard::Docker;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
+
+use bollard::Docker;
 use thiserror::Error;
+
+use super::docker::{DockerConnectError, DockerEndpointError, connect_docker};
 
 #[derive(Error, Debug, Clone)]
 pub enum DiscoveryError {
@@ -14,11 +17,22 @@ pub enum DiscoveryError {
     DockerError(Arc<bollard::errors::Error>),
     #[error("Invalid hostname format: {0}")]
     InvalidHostname(String),
+    #[error("Docker endpoint configuration error: {0}")]
+    EndpointError(#[from] DockerEndpointError),
 }
 
 impl From<bollard::errors::Error> for DiscoveryError {
     fn from(error: bollard::errors::Error) -> Self {
         Self::DockerError(Arc::new(error))
+    }
+}
+
+impl From<DockerConnectError> for DiscoveryError {
+    fn from(err: DockerConnectError) -> Self {
+        match err {
+            DockerConnectError::Endpoint(e) => Self::EndpointError(e),
+            DockerConnectError::Bollard(e) => Self::DockerError(Arc::new(e)),
+        }
     }
 }
 
@@ -93,7 +107,7 @@ pub struct ServiceDiscovery {
 
 impl ServiceDiscovery {
     pub async fn new() -> Result<Self, DiscoveryError> {
-        let docker = Docker::connect_with_unix_defaults()?;
+        let docker = connect_docker()?;
         Ok(Self { docker })
     }
 }

@@ -1,5 +1,6 @@
 mod test_container_discovery;
 mod test_docker_client;
+mod test_docker_endpoint;
 mod test_integration;
 mod test_log_streaming;
 mod test_reconnect;

@@ -5,9 +5,11 @@
 //! restarted): `start_docker_api_streaming` returned `Ok(())` on stream EOF,
 //! and nothing above it ever reconnected. A single container restart was
 //! enough to kill log collection for that service for good.
-use rask_log_forwarder::collector::{CollectorConfig, LogCollector};
 use std::process::{Command, Stdio};
 use std::time::Duration;
+
+use rask_log_forwarder::collector::{CollectorConfig, LogCollector};
+use serial_test::serial;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -32,8 +34,13 @@ fn cleanup() {
 }
 
 #[tokio::test]
+#[serial]
 async fn collector_reconnects_after_container_restart() {
     cleanup();
+
+    unsafe {
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
 
     let started = docker_ok(&[
         "run",
@@ -47,6 +54,9 @@ async fn collector_reconnects_after_container_restart() {
     ]);
 
     if !started {
+        unsafe {
+            std::env::remove_var("DOCKER_HOST");
+        }
         println!("Docker not available, skipping collector reconnect integration test");
         return;
     }
@@ -64,6 +74,9 @@ async fn collector_reconnects_after_container_restart() {
     let collector = match LogCollector::new(config).await {
         Ok(c) => c,
         Err(e) => {
+            unsafe {
+                std::env::remove_var("DOCKER_HOST");
+            }
             println!("LogCollector::new failed ({e}), skipping (Docker may be unavailable)");
             cleanup();
             return;
@@ -116,6 +129,10 @@ async fn collector_reconnects_after_container_restart() {
     cancel_token.cancel();
     let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
     cleanup();
+
+    unsafe {
+        std::env::remove_var("DOCKER_HOST");
+    }
 
     assert!(
         windows_with_data >= 2,
