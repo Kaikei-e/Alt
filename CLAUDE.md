@@ -45,6 +45,15 @@ curl http://localhost:9250/health       # BFF
 curl http://localhost:7700/health       # Meilisearch
 ```
 
+## Antigravity MCP delegation
+
+Use `antigravity_run` for a separate, bounded investigation or plan. Default to
+`mode: "plan"` and `autonomy: "safe"`; request `accept-edits` only when the
+task explicitly calls for changes. Continue a thread only with the exact
+`conversation_id` returned by the prior call, and keep the same workspace.
+The bridge permits one Antigravity call at a time. Do not ask a delegated turn
+to recursively delegate work or launch this MCP server.
+
 ## Critical Rules
 
 1. **IMPORTANT: TDD First** — Write the failing test BEFORE writing implementation code. RED → GREEN → REFACTOR.
