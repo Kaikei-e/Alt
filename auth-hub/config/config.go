@@ -29,7 +29,7 @@ type Config struct {
 func Load() (*Config, error) {
 	config := &Config{
 		KratosURL:            getEnv("KRATOS_URL", "http://kratos:4433"),
-		KratosAdminURL:       getEnv("KRATOS_ADMIN_URL", "http://kratos:4434"),
+		KratosAdminURL:       getEnv("KRATOS_ADMIN_URL", "http://kratos-admin:4434"),
 		Port:                 getEnv("PORT", "8888"),
 		CacheTTL:             5 * time.Minute, // Default 5 minutes
 		CSRFSecret:           getEnv("CSRF_SECRET", ""),

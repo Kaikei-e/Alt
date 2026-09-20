@@ -123,6 +123,39 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+func TestLoad_KratosAdminURL_Default(t *testing.T) {
+	os.Unsetenv("KRATOS_ADMIN_URL")
+	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	defer func() {
+		os.Unsetenv("CSRF_SECRET")
+		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("INTERNAL_AUTH_SECRET")
+	}()
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, "http://kratos-admin:4434", cfg.KratosAdminURL)
+}
+
+func TestLoad_KratosAdminURL_EnvOverride(t *testing.T) {
+	os.Setenv("KRATOS_ADMIN_URL", "http://custom-kratos-admin:4434")
+	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	defer func() {
+		os.Unsetenv("KRATOS_ADMIN_URL")
+		os.Unsetenv("CSRF_SECRET")
+		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("INTERNAL_AUTH_SECRET")
+	}()
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, "http://custom-kratos-admin:4434", cfg.KratosAdminURL)
+}
+
 func TestLoad_ValidateRateLimit_Default(t *testing.T) {
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")

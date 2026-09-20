@@ -99,7 +99,7 @@ GPU を持つのは後者だけ。deployed default は `LLM_MODEL=gemma4-e4b-12k
 ### Auth Services
 | Service | Language | Host Port(s) | Compose File | Health Endpoint |
 |---------|----------|--------------|--------------|-----------------|
-| kratos | - (Ory Kratos v1.3.0) | 4433 | auth.yaml | `/admin/health/ready` (:4434, publish なし) |
+| kratos | - (Ory Kratos v1.3.0) | 4433 | auth.yaml | `/health/ready` (:4433; admin :4434 は internal kratos-admin 経由 auth-hub からのみ到達可能) |
 | auth-hub | Go 1.26.6 (Echo) | なし | auth.yaml | `/auth-hub healthcheck` |
 | auth-token-manager | Deno 2.x | 9201 | workers.yaml | `deno run` ベースの healthcheck |
 
@@ -634,7 +634,7 @@ docker compose -f compose/compose.yaml -p alt exec alt-harvester /app-entry heal
 docker compose -f compose/compose.yaml -p alt exec alt-notifier /app-entry healthcheck
 docker compose -f compose/compose.yaml -p alt exec alt-data-hub /app-entry healthcheck
 docker compose -f compose/compose.yaml -p alt exec kratos \
-  wget --spider -q http://127.0.0.1:4434/admin/health/ready
+  wget --spider -q http://127.0.0.1:4433/health/ready
 ```
 
 ---
