@@ -40,6 +40,7 @@ def _stub_lifespan_io(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main_module._http_client, "aclose", AsyncMock())
     monkeypatch.setattr(main_module._job_queue, "list_running_runs", AsyncMock(return_value=[]))
     monkeypatch.setattr(main_module._job_queue, "get_run", AsyncMock(side_effect=_running_run))
+    monkeypatch.setattr(main_module._report_repo, "backfill_owners", AsyncMock(return_value=0))
 
 
 @pytest.mark.asyncio

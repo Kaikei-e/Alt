@@ -21,6 +21,17 @@ if ! command -v redis-cli >/dev/null 2>&1; then
   exit 1
 fi
 
+# redis-streams requires auth in every environment this script targets
+# (compose/mq.yaml, compose.staging.yaml); an unauthenticated XGROUP CREATE
+# would just fail NOAUTH instead of provisioning anything.
+if [[ -n "${REDIS_PASSWORD_FILE:-}" ]]; then
+  if ! REDISCLI_AUTH="$(cat "${REDIS_PASSWORD_FILE}")"; then
+    echo "REDIS_PASSWORD_FILE is set but unreadable: ${REDIS_PASSWORD_FILE}" >&2
+    exit 1
+  fi
+  export REDISCLI_AUTH
+fi
+
 # Parse redis://host:port (simple form used in compose).
 HOST_PORT="${REDIS_URL#redis://}"
 HOST_PORT="${HOST_PORT%%/*}"

@@ -1,7 +1,10 @@
-import { expectStatus, expectStatusIn } from "../../_shared/http.js";
+import { callUnary } from "../../_shared/connect.js";
+import { expectJsonStatus, expectStatus, expectStatusIn } from "../../_shared/http.js";
+import { testToken } from "../../_shared/ids.js";
 import { ZERO_UUID } from "../src/env.js";
-import { P, expect, test } from "../src/fixtures.js";
+import { P, createReport, expect, test } from "../src/fixtures.js";
 import { PROCEDURE_PROBES, assertProcedureRegistered } from "../src/procedures.js";
+import { listReportVersionsResponseSchema } from "../src/schemas.js";
 
 /**
  * Connect-RPC service registration — new coverage.
@@ -26,6 +29,17 @@ test.describe("every AcolyteService procedure is registered", () => {
 			await assertProcedureRegistered(acolyte, probe);
 		});
 	}
+
+	test("ListReportVersions on an owned report answers 200 with versions schema @contract", async ({
+		acolyte,
+	}, testInfo) => {
+		const reportId = await createReport(acolyte, {
+			title: testToken(testInfo.workerIndex, "probe-list-versions"),
+			reportType: "probe",
+		});
+		const response = await callUnary(acolyte, P.listReportVersions, { reportId, limit: 1 });
+		await expectJsonStatus(response, 200, listReportVersionsResponseSchema);
+	});
 });
 
 test.describe("paths that are not procedures", () => {

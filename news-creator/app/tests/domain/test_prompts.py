@@ -5,6 +5,10 @@ import time
 
 import pytest
 
+from news_creator.domain.prompt_boundary import (
+    DEFAULT_DELIMITER_TAG,
+    DELIMITER_INSTRUCTION,
+)
 from news_creator.domain.prompts import (
     SUMMARY_PROMPT_TEMPLATE,
     CHUNK_SUMMARY_PROMPT_TEMPLATE,
@@ -12,6 +16,16 @@ from news_creator.domain.prompts import (
     PromptTemplate,
     neutralize_control_tokens,
 )
+
+
+def _boundary_block(body: str) -> str:
+    """The exact block the boundary helper is expected to produce."""
+    return (
+        f"{DELIMITER_INSTRUCTION}\n"
+        f"<{DEFAULT_DELIMITER_TAG}>\n"
+        f"{body}\n"
+        f"</{DEFAULT_DELIMITER_TAG}>"
+    )
 
 
 def test_summary_prompt_template_includes_content_placeholder():
@@ -293,12 +307,22 @@ def test_format_map_neutralizes_like_format(forged_turn_article):
 
 
 def test_format_map_is_byte_identical_for_benign_content(benign_article):
-    """Golden: format_map must not alter benign articles either."""
-    values = {"content": benign_article, "current_date": "2026年7月31日"}
+    """Golden: benign articles reach the prompt verbatim inside the boundary.
 
-    assert SUMMARY_PROMPT_TEMPLATE.format_map(dict(values)) == str.format(
-        SUMMARY_PROMPT_TEMPLATE, **values
+    ``str.format`` is the unguarded formatting the builders used before the
+    boundary, so the expected bytes are pinned without going through the guard.
+    """
+    expected = str.format(
+        SUMMARY_PROMPT_TEMPLATE,
+        content=_boundary_block(benign_article.strip()),
+        current_date="2026年7月31日",
     )
+
+    formatted = SUMMARY_PROMPT_TEMPLATE.format_map(
+        {"content": benign_article, "current_date": "2026年7月31日"}
+    )
+
+    assert formatted == expected
 
 
 def test_positional_format_is_rejected():

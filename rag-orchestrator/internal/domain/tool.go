@@ -34,3 +34,20 @@ type ToolStep struct {
 	Params    map[string]string `json:"params"`
 	DependsOn []int             `json:"depends_on,omitempty"` // indices of prerequisite steps
 }
+
+type toolContextKey string
+
+const userIDKey toolContextKey = "tool_user_id"
+
+// WithUserID binds an acting userID to the context for tool execution.
+func WithUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, userIDKey, userID)
+}
+
+// UserIDFromContext extracts an acting userID from context if set.
+func UserIDFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(userIDKey).(string); ok {
+		return v
+	}
+	return ""
+}

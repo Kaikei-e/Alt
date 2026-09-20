@@ -14,7 +14,7 @@
 //! Knowledge Loop Completion Phase 1 §2 (ADR-000853 follow-up).
 
 use chrono::{DateTime, Utc};
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 use super::snapshot_id::deterministic_snapshot_id;
@@ -113,13 +113,24 @@ pub(crate) async fn publish_topic_snapshots(
                 outcome.succeeded += 1;
             }
             Err(err) => {
-                warn!(
-                    user_id = %user_id,
-                    cluster_id = cluster.cluster_id,
-                    snapshot_id = %snapshot_id,
-                    error = ?err,
-                    "recap.topic_snapshotted.v1 emit failed (non-fatal)"
-                );
+                let err_str = format!("{err:#}");
+                if err_str.contains("status 401") || err_str.contains("status 403") {
+                    error!(
+                        user_id = %user_id,
+                        cluster_id = cluster.cluster_id,
+                        snapshot_id = %snapshot_id,
+                        error = ?err,
+                        "recap.topic_snapshotted.v1 emit unauthenticated/forbidden; verify sovereign event token"
+                    );
+                } else {
+                    warn!(
+                        user_id = %user_id,
+                        cluster_id = cluster.cluster_id,
+                        snapshot_id = %snapshot_id,
+                        error = ?err,
+                        "recap.topic_snapshotted.v1 emit failed (non-fatal)"
+                    );
+                }
                 outcome.failed += 1;
             }
         }

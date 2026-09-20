@@ -123,21 +123,7 @@ func (m *mockSearchEngineForIndexing) DeleteDocuments(ctx context.Context, ids [
 	return nil
 }
 
-func (m *mockSearchEngineForIndexing) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.indexedDocs, nil
-}
-
-func (m *mockSearchEngineForIndexing) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.indexedDocs, nil
-}
-
-func (m *mockSearchEngineForIndexing) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
+func (m *mockSearchEngineForIndexing) SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

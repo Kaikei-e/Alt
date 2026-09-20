@@ -1,6 +1,8 @@
-use rask_log_forwarder::collector::DockerCollector;
 use std::process::{Command, Stdio};
 use std::time::Duration;
+
+use rask_log_forwarder::collector::DockerCollector;
+use serial_test::serial;
 use tokio::time::sleep;
 
 #[allow(dead_code)]
@@ -100,7 +102,12 @@ async fn cleanup_test_container(container_id: String) {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_find_nginx_containers_with_label() {
+    unsafe {
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
+
     // Test container discovery with graceful handling of Docker unavailability
     let collector_result = DockerCollector::new().await;
 
@@ -141,10 +148,19 @@ async fn test_find_nginx_containers_with_label() {
             println!("Docker not available: {e}");
         }
     }
+
+    unsafe {
+        std::env::remove_var("DOCKER_HOST");
+    }
 }
 
 #[tokio::test]
+#[serial]
 async fn test_filter_containers_without_label() {
+    unsafe {
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
+
     // Test filtering containers without required labels
     let collector_result = DockerCollector::new().await;
 
@@ -179,5 +195,9 @@ async fn test_filter_containers_without_label() {
         Err(e) => {
             println!("Docker not available: {e}");
         }
+    }
+
+    unsafe {
+        std::env::remove_var("DOCKER_HOST");
     }
 }

@@ -354,6 +354,7 @@ need_tool() {
 STEPS_CONSUMER=(
   "Go: alt-backend consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./orchestrator/driver/preprocessor_connect/contract/ -v"
   "Go: alt-backend sovereign consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./shared/driver/sovereign_client/contract/ -v"
+  "Go: alt-backend rag consumer|go|alt-backend/app|CGO_ENABLED=1 go test -tags=contract ./orchestrator/gateway/rag_gateway/contract/ -v"
   # One package, two labels, same command: alt-backend and alt-harvester are two
   # binaries of one Go module and their interactions are interleaved across the
   # files, so there is no honest way to run half of it. The labels exist because
@@ -400,6 +401,7 @@ STEPS_PROVIDER=(
   "Go: mq-hub provider (search-indexer message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v"
   "Go: mq-hub provider (tag-generator message pact)|go|mq-hub/app|CGO_ENABLED=1 go test -tags=contract -run TestVerifyTagGeneratorMqHubMessagePact ./driver/contract/ -v"
   "Go: knowledge-sovereign provider|go|knowledge-sovereign/app|CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v"
+  "Go: rag-orchestrator provider|go|rag-orchestrator|CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendRagProviderContracts ./internal/adapter/contract/ -v"
   "Rust: recap-worker provider|cargo|recap-worker/recap-worker|cargo test --test provider_verification -- --ignored|evidence"
 )
 

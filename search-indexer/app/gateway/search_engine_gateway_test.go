@@ -19,6 +19,15 @@ type mockSearchDriver struct {
 	synonymsErr       error
 	pruneErr          error
 	gotPruneOlderThan time.Duration
+
+	// Recorded by SearchByUserIDWithDateFilter so tests can catch a
+	// regression that silently drops the date window instead of forwarding
+	// it to the driver.
+	dateFilterCalls     int
+	gotDateFilterQuery  string
+	gotDateFilterUserID string
+	gotPublishedAfter   *time.Time
+	gotPublishedBefore  *time.Time
 }
 
 func (m *mockSearchDriver) IndexDocuments(ctx context.Context, docs []driver.SearchDocumentDriver) error {
@@ -48,13 +57,6 @@ func (m *mockSearchDriver) DeleteDocuments(ctx context.Context, ids []string) er
 	return nil
 }
 
-func (m *mockSearchDriver) Search(ctx context.Context, query string, limit int) ([]driver.SearchDocumentDriver, error) {
-	if m.searchErr != nil {
-		return nil, m.searchErr
-	}
-	return m.searchResults, nil
-}
-
 func (m *mockSearchDriver) EnsureIndex(ctx context.Context) error {
 	if m.ensureErr != nil {
 		return m.ensureErr
@@ -62,14 +64,12 @@ func (m *mockSearchDriver) EnsureIndex(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockSearchDriver) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]driver.SearchDocumentDriver, error) {
-	if m.searchErr != nil {
-		return nil, m.searchErr
-	}
-	return m.searchResults, nil
-}
-
-func (m *mockSearchDriver) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]driver.SearchDocumentDriver, error) {
+func (m *mockSearchDriver) SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]driver.SearchDocumentDriver, error) {
+	m.dateFilterCalls++
+	m.gotDateFilterQuery = query
+	m.gotDateFilterUserID = userID
+	m.gotPublishedAfter = publishedAfter
+	m.gotPublishedBefore = publishedBefore
 	if m.searchErr != nil {
 		return nil, m.searchErr
 	}
@@ -180,7 +180,9 @@ func TestSearchEngineGateway_IndexDocuments(t *testing.T) {
 	}
 }
 
-func TestSearchEngineGateway_Search(t *testing.T) {
+func TestSearchEngineGateway_SearchByUserIDWithDateFilter(t *testing.T) {
+	after := time.Unix(1700000000, 0)
+	before := time.Unix(1700003600, 0)
 
 	driverDoc := driver.SearchDocumentDriver{
 		ID:      "1",
@@ -192,6 +194,9 @@ func TestSearchEngineGateway_Search(t *testing.T) {
 	tests := []struct {
 		name          string
 		query         string
+		userID        string
+		after         *time.Time
+		before        *time.Time
 		limit         int
 		mockResults   []driver.SearchDocumentDriver
 		mockErr       error
@@ -202,6 +207,9 @@ func TestSearchEngineGateway_Search(t *testing.T) {
 		{
 			name:        "successful search with driver to domain conversion",
 			query:       "test",
+			userID:      "u1",
+			after:       &after,
+			before:      &before,
 			limit:       10,
 			mockResults: []driver.SearchDocumentDriver{driverDoc},
 			mockErr:     nil,
@@ -217,17 +225,29 @@ func TestSearchEngineGateway_Search(t *testing.T) {
 			},
 		},
 		{
-			name:        "driver search error",
+			name:        "empty userID returns error",
 			query:       "test",
+			userID:      "",
 			limit:       10,
 			mockResults: nil,
-			mockErr:     &driver.DriverError{Op: "Search", Err: errors.New("search failed")},
+			mockErr:     nil,
+			wantErr:     true,
+			wantCount:   0,
+		},
+		{
+			name:        "driver search error",
+			query:       "test",
+			userID:      "u1",
+			limit:       10,
+			mockResults: nil,
+			mockErr:     &driver.DriverError{Op: "SearchByUserIDWithDateFilter", Err: errors.New("search failed")},
 			wantErr:     true,
 			wantCount:   0,
 		},
 		{
 			name:        "empty results",
 			query:       "nonexistent",
+			userID:      "u1",
 			limit:       10,
 			mockResults: []driver.SearchDocumentDriver{},
 			mockErr:     nil,
@@ -245,22 +265,22 @@ func TestSearchEngineGateway_Search(t *testing.T) {
 
 			gateway := NewSearchEngineGateway(driver)
 
-			results, err := gateway.Search(context.Background(), tt.query, tt.limit)
+			results, err := gateway.SearchByUserIDWithDateFilter(context.Background(), tt.query, tt.userID, tt.after, tt.before, tt.limit)
 
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("Search() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("SearchByUserIDWithDateFilter() error = %v, wantErr %v", err, tt.wantErr)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Errorf("Search() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("SearchByUserIDWithDateFilter() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if len(results) != tt.wantCount {
-				t.Errorf("Search() got %d results, want %d", len(results), tt.wantCount)
+				t.Errorf("SearchByUserIDWithDateFilter() got %d results, want %d", len(results), tt.wantCount)
 				return
 			}
 
@@ -273,99 +293,36 @@ func TestSearchEngineGateway_Search(t *testing.T) {
 	}
 }
 
-func TestSearchEngineGateway_SearchWithFilters(t *testing.T) {
-	driverDoc := driver.SearchDocumentDriver{
-		ID:      "1",
-		Title:   "Test Title",
-		Content: "Test Content",
-		Tags:    []string{"tag1", "tag2"},
+// TestSearchEngineGateway_SearchByUserIDWithDateFilter_ForwardsBoundsToDriver
+// guards against a regression that silently drops the date window: it
+// asserts the driver actually received the publishedAfter/publishedBefore
+// bounds the gateway was called with, not just that a result came back.
+func TestSearchEngineGateway_SearchByUserIDWithDateFilter_ForwardsBoundsToDriver(t *testing.T) {
+	after := time.Unix(1700000000, 0)
+	before := time.Unix(1700003600, 0)
+
+	mockDriver := &mockSearchDriver{
+		searchResults: []driver.SearchDocumentDriver{{ID: "1"}},
+	}
+	gw := NewSearchEngineGateway(mockDriver)
+
+	_, err := gw.SearchByUserIDWithDateFilter(context.Background(), "test", "u1", &after, &before, 10)
+	if err != nil {
+		t.Fatalf("SearchByUserIDWithDateFilter() unexpected error: %v", err)
 	}
 
-	tests := []struct {
-		name          string
-		query         string
-		filters       []string
-		limit         int
-		mockResults   []driver.SearchDocumentDriver
-		mockErr       error
-		wantErr       bool
-		wantCount     int
-		validateFirst func(domain.SearchDocument) bool
-	}{
-		{
-			name:        "successful search with filters",
-			query:       "test",
-			filters:     []string{"tag1", "tag2"},
-			limit:       10,
-			mockResults: []driver.SearchDocumentDriver{driverDoc},
-			mockErr:     nil,
-			wantErr:     false,
-			wantCount:   1,
-			validateFirst: func(doc domain.SearchDocument) bool {
-				return doc.ID == "1" &&
-					doc.Title == "Test Title" &&
-					doc.Content == "Test Content" &&
-					len(doc.Tags) == 2 &&
-					doc.Tags[0] == "tag1" &&
-					doc.Tags[1] == "tag2"
-			},
-		},
-		{
-			name:        "driver search error",
-			query:       "test",
-			filters:     []string{"tag1"},
-			limit:       10,
-			mockResults: nil,
-			mockErr:     &driver.DriverError{Op: "SearchWithFilters", Err: errors.New("search failed")},
-			wantErr:     true,
-			wantCount:   0,
-		},
-		{
-			name:        "empty results",
-			query:       "nonexistent",
-			filters:     []string{"tag1"},
-			limit:       10,
-			mockResults: []driver.SearchDocumentDriver{},
-			mockErr:     nil,
-			wantErr:     false,
-			wantCount:   0,
-		},
+	if mockDriver.dateFilterCalls != 1 {
+		t.Errorf("dateFilterCalls = %d, want 1", mockDriver.dateFilterCalls)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			driver := &mockSearchDriver{
-				searchResults: tt.mockResults,
-				searchErr:     tt.mockErr,
-			}
-
-			gateway := NewSearchEngineGateway(driver)
-
-			results, err := gateway.SearchWithFilters(context.Background(), tt.query, tt.filters, tt.limit)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("SearchWithFilters() error = %v, wantErr %v", err, tt.wantErr)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("SearchWithFilters() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if len(results) != tt.wantCount {
-				t.Errorf("SearchWithFilters() got %d results, want %d", len(results), tt.wantCount)
-				return
-			}
-
-			if tt.validateFirst != nil && len(results) > 0 {
-				if !tt.validateFirst(results[0]) {
-					t.Errorf("First result validation failed")
-				}
-			}
-		})
+	if mockDriver.gotDateFilterQuery != "test" || mockDriver.gotDateFilterUserID != "u1" {
+		t.Errorf("driver received query=%q userID=%q, want query=%q userID=%q",
+			mockDriver.gotDateFilterQuery, mockDriver.gotDateFilterUserID, "test", "u1")
+	}
+	if mockDriver.gotPublishedAfter == nil || !mockDriver.gotPublishedAfter.Equal(after) {
+		t.Errorf("driver received publishedAfter = %v, want %v", mockDriver.gotPublishedAfter, after)
+	}
+	if mockDriver.gotPublishedBefore == nil || !mockDriver.gotPublishedBefore.Equal(before) {
+		t.Errorf("driver received publishedBefore = %v, want %v", mockDriver.gotPublishedBefore, before)
 	}
 }
 
@@ -446,5 +403,35 @@ func TestSearchEngineGateway_PruneTaskHistory(t *testing.T) {
 				t.Errorf("driver received olderThan = %v, want 72h", mockDriver.gotPruneOlderThan)
 			}
 		})
+	}
+}
+
+func TestSearchEngineGateway_SearchByUserID_RejectsEmptyUserID(t *testing.T) {
+	mockDriver := &mockSearchDriver{}
+	gw := NewSearchEngineGateway(mockDriver)
+
+	_, err := gw.SearchByUserID(context.Background(), "query", "", 10)
+	if err == nil {
+		t.Error("SearchByUserID with empty userID should return error")
+	}
+
+	_, err = gw.SearchByUserID(context.Background(), "query", "   ", 10)
+	if err == nil {
+		t.Error("SearchByUserID with whitespace userID should return error")
+	}
+}
+
+func TestSearchEngineGateway_SearchByUserIDWithPagination_RejectsEmptyUserID(t *testing.T) {
+	mockDriver := &mockSearchDriver{}
+	gw := NewSearchEngineGateway(mockDriver)
+
+	_, _, err := gw.SearchByUserIDWithPagination(context.Background(), "query", "", 0, 10)
+	if err == nil {
+		t.Error("SearchByUserIDWithPagination with empty userID should return error")
+	}
+
+	_, _, err = gw.SearchByUserIDWithPagination(context.Background(), "query", "   ", 0, 10)
+	if err == nil {
+		t.Error("SearchByUserIDWithPagination with whitespace userID should return error")
 	}
 }

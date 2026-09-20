@@ -2,53 +2,29 @@
   "consumer": {
     "name": "recap-worker"
   },
+  "provider": {
+    "name": "alt-data-hub"
+  },
   "interactions": [
     {
       "description": "an EnqueueNotification request from the recap-worker outbox relay",
-      "providerStates": [
-        {
-          "name": "alt-data-hub accepts notification enqueues"
-        }
-      ],
       "request": {
-        "body": {
-          "dedupeKey": "recap:7d2a1c34-0a5f-4e51-9b1f-1a2b3c4d5e6f",
-          "expiresAt": "2026-08-02T09:30:00.000000Z",
-          "kind": "recap_ready",
-          "occurredAt": "2026-08-01T09:30:00.000000Z",
-          "payload": "eyJraW5kIjoicmVjYXBfcmVhZHkiLCJ1cmwiOiIvcmVjYXAifQ==",
-          "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
-        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/EnqueueNotification",
         "headers": {
           "content-type": "application/json"
         },
+        "body": {
+          "expiresAt": "2026-08-02T09:30:00.000000Z",
+          "dedupeKey": "recap:7d2a1c34-0a5f-4e51-9b1f-1a2b3c4d5e6f",
+          "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+          "kind": "recap_ready",
+          "payload": "eyJraW5kIjoicmVjYXBfcmVhZHkiLCJ1cmwiOiIvcmVjYXAifQ==",
+          "occurredAt": "2026-08-01T09:30:00.000000Z"
+        },
         "matchingRules": {
           "body": {
-            "$.dedupeKey": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.expiresAt": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.kind": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.occurredAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -64,30 +40,7 @@
                 }
               ]
             },
-            "$.userId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "method": "POST",
-        "path": "/services.datahub.v1.DataHubService/EnqueueNotification"
-      },
-      "response": {
-        "body": {
-          "deliveryCount": 2,
-          "supersededCount": 0
-        },
-        "headers": {
-          "content-type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
-            "$.deliveryCount": {
+            "$.occurredAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -95,7 +48,23 @@
                 }
               ]
             },
-            "$.supersededCount": {
+            "$.dedupeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.kind": {
               "combine": "AND",
               "matchers": [
                 {
@@ -104,9 +73,43 @@
               ]
             }
           }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
         },
-        "status": 200
-      }
+        "body": {
+          "supersededCount": 0,
+          "deliveryCount": 2
+        },
+        "matchingRules": {
+          "body": {
+            "$.supersededCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.deliveryCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "alt-data-hub accepts notification enqueues"
+        }
+      ]
     }
   ],
   "metadata": {
@@ -118,8 +121,5 @@
     "pactSpecification": {
       "version": "3.0.0"
     }
-  },
-  "provider": {
-    "name": "alt-data-hub"
   }
 }

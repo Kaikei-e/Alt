@@ -25,15 +25,24 @@ x-pki-cert-volume-chown-appuser: &pki-cert-volume-chown-appuser
 services:
   # Redis cache for news-creator recap summaries
   redis-cache:
-    image: redis:8.0.2-alpine
+    image: redis:8.4.5-alpine
     container_name: redis-cache
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # See the matching comment on redis-streams in compose/mq.yaml: the
+    # custom shell entrypoint bypasses docker-entrypoint.sh's chown+gosu drop,
+    # so this must state the user explicitly.
+    user: redis
+    entrypoint:
+      - /bin/sh
+      - -c
+      - exec redis-server --requirepass "$$(cat /run/secrets/redis_password)" --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis-cache-data:/data
     networks:
       - alt-network
+    secrets:
+      - redis_password
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -110,6 +119,19 @@ services:
       # supports it (CUDA compute >= 6.0, which this host's GPU satisfies) and lets
       # llama.cpp decide per model; setting it to 1 only replaces that check
       # with a forced "on".
+      # llama-server's prompt/slot cache (distinct from -c/num_ctx and the GPU
+      # KV cache: it serialises evicted slot state to HOST RAM so a later
+      # request sharing a prefix can restore it) defaults to llama.cpp's
+      # --cache-ram of 8192 MiB with no independent cap, which is exactly this
+      # container's mem_limit — under sustained multi-prompt traffic it grows
+      # until the kernel OOM-kills llama-server. Ollama exposes no
+      # OLLAMA_*-level knob for this and passes no --cache-ram flag, but it
+      # does pass its own environment through to the llama-server child
+      # process, and llama.cpp's argument parser honours LLAMA_ARG_CACHE_RAM
+      # when no CLI flag is given. See ggml-org/llama.cpp tools/server/README.md
+      # and ollama/ollama#18264 (same failure mode: fully GPU-offloaded model,
+      # unbounded host-RAM prompt cache, fixed via this exact env var).
+      - LLAMA_ARG_CACHE_RAM=${LLAMA_ARG_CACHE_RAM:-2048}
     volumes:
       - news_creator_models:/home/ollama-user/.ollama
     restart: unless-stopped
@@ -177,6 +199,7 @@ services:
       # Cache settings
       - CACHE_ENABLED=${CACHE_ENABLED:-true}
       - CACHE_REDIS_URL=redis://redis-cache:6379/0
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       - CACHE_TTL_SECONDS=${CACHE_TTL_SECONDS:-86400}
       # Hybrid RT/BE scheduling for TTFT optimization
       # RT slot reserved for streaming requests, BE slot for batch processing
@@ -203,6 +226,9 @@ services:
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_ALLOWED_PEERS=${NEWS_CREATOR_MTLS_ALLOWED_PEERS:-recap-worker,acolyte-orchestrator,rag-orchestrator,recap-evaluator}
+      # Plaintext-side switch only; the :9443 allowlist above is enforced
+      # unconditionally regardless of this flag.
+      - PEER_IDENTITY_STRICT=${NEWS_CREATOR_PEER_IDENTITY_STRICT:-false}
       - PEER_IDENTITY_TRUSTED=off
       - PKI_ENROLLMENT=enabled
       - CERT_SUBJECT=news-creator
@@ -225,6 +251,7 @@ services:
       - alt-network
     secrets:
       - pki-agent-news-creator-jwk
+      - redis_password
     volumes:
       - news_creator_certs:/certs
       - pki_trust_bundle:/trust:ro
@@ -275,8 +302,8 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      - MTLS_CLIENT_AUTH=${PRE_PROCESSOR_MTLS_CLIENT_AUTH:-}
-      - MTLS_ALLOWED_PEERS=${PRE_PROCESSOR_MTLS_ALLOWED_PEERS:-}
+      - MTLS_CLIENT_AUTH=${PRE_PROCESSOR_MTLS_CLIENT_AUTH:-require_and_verify}
+      - MTLS_ALLOWED_PEERS=${PRE_PROCESSOR_MTLS_ALLOWED_PEERS:-alt-backend}
       - PKI_ENROLLMENT=enabled
       - CERT_SUBJECT=pre-processor
       - CERT_SANS=pre-processor,localhost
@@ -315,6 +342,7 @@ services:
       - LOG_LEVEL=info
       - SERVICE_NAME=pre-processor
       - REDIS_STREAMS_URL=redis://redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=pre-processor-group
       - CONSUMER_NAME=pre-processor-1
@@ -324,6 +352,7 @@ services:
     secrets:
       - pp_db_password
       - pki-agent-pre-processor-jwk
+      - redis_password
     restart: always
     ports:
       # East-west surfaces. Loopback bind so the only cross-host entrance is

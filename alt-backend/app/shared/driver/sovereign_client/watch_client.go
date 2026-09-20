@@ -41,9 +41,14 @@ func (c *Client) ConnectProjectorWatch(ctx context.Context, projectorName string
 		},
 		// No Timeout — streaming connections are long-lived.
 	}
+	var streamOpts []connect.ClientOption
+	if c.token != "" {
+		streamOpts = append(streamOpts, connect.WithInterceptors(NewClientAuthInterceptor(c.token)))
+	}
 	streamClient := sovereignv1connect.NewKnowledgeSovereignServiceClient(
 		streamHTTPClient,
 		c.baseURL,
+		streamOpts...,
 	)
 
 	streamCtx, cancel := context.WithCancel(ctx)

@@ -379,3 +379,49 @@ class TestGemma4TokenCleanup:
         assert "内部推論" not in cleaned
         assert "実際の出力" in cleaned
         assert "続きの出力" in cleaned
+
+
+class TestStreamingOutputGuardIsWired:
+    """Streamed tokens reach the reader without passing _clean_summary_text."""
+
+    @staticmethod
+    def _streaming_provider(chunks: list[str]) -> Mock:
+        async def _stream():
+            for index, chunk in enumerate(chunks):
+                yield LLMGenerateResponse(
+                    response=chunk,
+                    model="test-model",
+                    done=index == len(chunks) - 1,
+                )
+
+        llm_provider = Mock()
+        llm_provider.generate = AsyncMock(return_value=_stream())
+        return llm_provider
+
+    @pytest.mark.asyncio
+    async def test_dangerous_link_split_across_chunks_never_reaches_the_client(self):
+        usecase = SummarizeUsecase(
+            config=_make_config(),
+            llm_provider=self._streaming_provider(
+                ["詳細は [ここ](java", "script:alert(1)) を参照。"]
+            ),
+        )
+
+        emitted = [
+            token async for token in usecase.generate_summary_stream("art-1", "A" * 200)
+        ]
+
+        assert "".join(emitted) == "詳細は ここ を参照。"
+
+    @pytest.mark.asyncio
+    async def test_benign_tokens_stream_through_unchanged(self):
+        chunks = ["東京都は2026年4月1日、", "新システムの導入を発表した。"]
+        usecase = SummarizeUsecase(
+            config=_make_config(), llm_provider=self._streaming_provider(chunks)
+        )
+
+        emitted = [
+            token async for token in usecase.generate_summary_stream("art-1", "A" * 200)
+        ]
+
+        assert emitted == chunks

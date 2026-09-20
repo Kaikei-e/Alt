@@ -28,6 +28,30 @@ secrets:
     file: ../secrets/sovereign_db_password.txt
   sovereign_admin_token:
     file: ../secrets/sovereign_admin_token.txt
+  sovereign_event_token:
+    file: ../secrets/sovereign_event_token.txt
+  # Bearer token alt-backend's operator listener (:9102, KnowledgeHomeAdminService
+  # / AdminMonitorService) requires on every RPC. alt-butterfly-facade and altctl
+  # are the only intended callers; see config.LoadOperatorAuth in alt-backend/app.
+  backend_operator_token:
+    file: ../secrets/backend_operator_token.txt
+  # Bearer token guarding recap-worker's /admin/jobs/retry and
+  # /admin/genre-learning, and recap-subworker's /admin/* + /v1/runs.
+  # Shared across both services: recap-subworker has no caller other than
+  # recap-worker, so a second secret would only double the rotation
+  # surface without adding isolation. Trade-off: recap-subworker also
+  # mounts this same file to authenticate its own outbound call to
+  # recap-worker's /admin/genre-learning (LearningClient reuses
+  # load_admin_auth_config()), so it is simultaneously the token
+  # recap-worker's admin guard verifies, the token recap-worker's
+  # SubworkerClient presents to recap-subworker, and the token
+  # recap-subworker presents back to recap-worker — a compromised
+  # recap-subworker can replay it against recap-worker's other protected
+  # route, /admin/jobs/retry, too. If that cross-service isolation is ever
+  # needed, split into two secrets (one recap-worker issues/verifies, one
+  # recap-subworker issues/verifies) as a follow-up; not done now.
+  recap_admin_token:
+    file: ../secrets/recap_admin_token.txt
   rag_db_password:
     file: ../secrets/rag_db_password.txt
   kratos_db_password:
@@ -129,6 +153,10 @@ secrets:
     file: ../secrets/pushover_user_key.txt
   pushover_token:
     file: ../secrets/pushover_token.txt
+  redis_password:
+    file: ../secrets/redis_password.txt
+  rag_api_token:
+    file: ../secrets/rag_api_token.txt
 
 # In-repo static files. Compose `configs:` refuse a missing source at
 # `up` (unlike short-syntax file binds, which become empty directories —

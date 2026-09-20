@@ -36,9 +36,9 @@ class RerunSectionUsecase:
         self._repo = repo
         self._llm = llm
 
-    async def execute(self, report_id: UUID, section_key: str) -> int:
+    async def execute(self, report_id: UUID, section_key: str, user_id: UUID) -> int:
         """Rerun a single section. Returns new report version number."""
-        report, target = await self._load_locked_rows(report_id, section_key)
+        report, target = await self._load_locked_rows(report_id, section_key, user_id=user_id)
 
         # A pipeline run rewrites every section and bumps the report version
         # on finalize, so a rerun started underneath it contends for the same
@@ -85,7 +85,7 @@ class RerunSectionUsecase:
         # section lock always match, turning a sibling rerun of the same
         # section into last-writer-wins — our body, built from the older
         # section's evidence, would silently replace theirs.
-        report, _ = await self._load_locked_rows(report_id, section_key)
+        report, _ = await self._load_locked_rows(report_id, section_key, user_id=user_id)
 
         # Report version first. The port exposes no cross-call transaction,
         # so one of the two writes can always be left dangling; a rerun
@@ -122,10 +122,10 @@ class RerunSectionUsecase:
         )
         return new_report_v
 
-    async def _load_locked_rows(self, report_id: UUID, section_key: str) -> tuple[Report, ReportSection]:
+    async def _load_locked_rows(self, report_id: UUID, section_key: str, user_id: UUID) -> tuple[Report, ReportSection]:
         """Read the two rows whose current_version guards the version bumps."""
         report = await self._repo.get_report(report_id)
-        if report is None:
+        if report is None or report.user_id != user_id:
             msg = f"Report {report_id} not found"
             raise ValueError(msg)
 

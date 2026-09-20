@@ -440,13 +440,13 @@ check(
     osu_class.get("accidental") == 16 and PROD_INV["accidental_osu_baseline"] == 16,
 )
 check(
-    "production long-running OSU cap is 63",
-    len(prod_classified["long_running"]) == 63
+    "production long-running OSU stays at the frozen cap 63 plus one excepted unit",
+    len(prod_classified["long_running"]) == 64
     and PROD_INV["long_running_osu_baseline"] == 63,
 )
 check(
-    "final PKI cutover reduced declared total to 77",
-    len(prod_services) == 77 and prod_baseline["counts"]["declared_total"] == 77,
+    "declared total is 78 (77 after the PKI cutover plus the read-only socket proxy)",
+    len(prod_services) == 78 and prod_baseline["counts"]["declared_total"] == 78,
 )
 check(
     "Wave 1b reduced ephemeral oneshots to 10",
@@ -455,16 +455,16 @@ check(
 )
 prod_inv = audit.inventory(prod_services)
 check(
-    "production default render count is declared_total - profiled (73)",
-    prod_inv["counts"].get("compose_config_default_profiles") == 73
+    "production default render count is declared_total - profiled (74)",
+    prod_inv["counts"].get("compose_config_default_profiles") == 74
     and prod_inv["counts"]["declared_total"]
     - len(prod_inv["profiled"])
-    == 73,
+    == 74,
 )
 check(
-    "production full render count is declared_total (77)",
-    prod_inv["counts"].get("compose_config_full_profiles") == 77
-    and prod_inv["counts"]["declared_total"] == 77,
+    "production full render count is declared_total (78)",
+    prod_inv["counts"].get("compose_config_full_profiles") == 78
+    and prod_inv["counts"]["declared_total"] == 78,
 )
 check(
     "baseline discrepancy default/full match the computed render counts (not a stale 87)",
@@ -580,17 +580,17 @@ ok_payload, ok_found = audit.prepare_baseline_write(
     budget_found=[],
 )
 check(
-    "--write-baseline preserves the 22-edge allowlist and writes computed 73/77",
+    "--write-baseline preserves the 22-edge allowlist and writes computed 74/78",
     ok_found == []
     and ok_payload is not None
     and ok_payload["init_edges_allowlist"]
     == prod_baseline["init_edges_allowlist"]
     and (ok_payload.get("discrepancy") or {}).get("compose_config_default_profiles")
-    == 73
+    == 74
     and (ok_payload.get("discrepancy") or {}).get("compose_config_full_profiles")
-    == 77
+    == 78
     and (ok_payload.get("counts") or {}).get("compose_config_default_profiles")
-    == 73,
+    == 74,
 )
 
 print(f"\n{PASS} passed, {FAIL} failed")

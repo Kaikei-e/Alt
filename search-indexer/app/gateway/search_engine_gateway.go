@@ -2,19 +2,19 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"search-indexer/domain"
 	"search-indexer/driver"
+	"strings"
 	"time"
 )
 
 type SearchDriver interface {
 	IndexDocuments(ctx context.Context, docs []driver.SearchDocumentDriver) error
 	DeleteDocuments(ctx context.Context, ids []string) error
-	Search(ctx context.Context, query string, limit int) ([]driver.SearchDocumentDriver, error)
-	SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]driver.SearchDocumentDriver, error)
-	SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]driver.SearchDocumentDriver, error)
 	SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]driver.SearchDocumentDriver, error)
 	SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]driver.SearchDocumentDriver, int64, error)
+	SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]driver.SearchDocumentDriver, error)
 	EnsureIndex(ctx context.Context) error
 	RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error
 	PruneTaskHistory(ctx context.Context, olderThan time.Duration) error
@@ -75,42 +75,10 @@ func (g *SearchEngineGateway) DeleteDocuments(ctx context.Context, ids []string)
 	return nil
 }
 
-func (g *SearchEngineGateway) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
-	driverResults, err := g.driver.Search(ctx, query, limit)
-	if err != nil {
-		return nil, &domain.SearchEngineError{
-			Op:  "Search",
-			Err: err,
-		}
-	}
-
-	return g.convertDocs(driverResults), nil
-}
-
-func (g *SearchEngineGateway) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
-	driverResults, err := g.driver.SearchWithDateFilter(ctx, query, publishedAfter, publishedBefore, limit)
-	if err != nil {
-		return nil, &domain.SearchEngineError{
-			Op:  "SearchWithDateFilter",
-			Err: err,
-		}
-	}
-	return g.convertDocs(driverResults), nil
-}
-
-func (g *SearchEngineGateway) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
-	driverResults, err := g.driver.SearchWithFilters(ctx, query, filters, limit)
-	if err != nil {
-		return nil, &domain.SearchEngineError{
-			Op:  "SearchWithFilters",
-			Err: err,
-		}
-	}
-
-	return g.convertDocs(driverResults), nil
-}
-
 func (g *SearchEngineGateway) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, &domain.SearchEngineError{Op: "SearchByUserID", Err: errors.New("user_id is required")}
+	}
 	driverResults, err := g.driver.SearchByUserID(ctx, query, userID, limit)
 	if err != nil {
 		return nil, &domain.SearchEngineError{Op: "SearchByUserID", Err: err}
@@ -119,11 +87,28 @@ func (g *SearchEngineGateway) SearchByUserID(ctx context.Context, query string, 
 }
 
 func (g *SearchEngineGateway) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]domain.SearchDocument, int64, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, 0, &domain.SearchEngineError{Op: "SearchByUserIDWithPagination", Err: errors.New("user_id is required")}
+	}
 	driverResults, total, err := g.driver.SearchByUserIDWithPagination(ctx, query, userID, offset, limit)
 	if err != nil {
 		return nil, 0, &domain.SearchEngineError{Op: "SearchByUserIDWithPagination", Err: err}
 	}
 	return g.convertDocs(driverResults), total, nil
+}
+
+func (g *SearchEngineGateway) SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, &domain.SearchEngineError{Op: "SearchByUserIDWithDateFilter", Err: errors.New("user_id is required")}
+	}
+	driverResults, err := g.driver.SearchByUserIDWithDateFilter(ctx, query, userID, publishedAfter, publishedBefore, limit)
+	if err != nil {
+		return nil, &domain.SearchEngineError{
+			Op:  "SearchByUserIDWithDateFilter",
+			Err: err,
+		}
+	}
+	return g.convertDocs(driverResults), nil
 }
 
 func (g *SearchEngineGateway) convertDocs(driverResults []driver.SearchDocumentDriver) []domain.SearchDocument {

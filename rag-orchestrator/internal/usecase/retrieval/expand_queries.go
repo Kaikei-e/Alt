@@ -85,7 +85,7 @@ func ExpandQueries(
 			return nil
 		}
 		tagSearchStart := time.Now()
-		hits, err := searchClient.Search(gctx, sc.Query)
+		hits, err := searchClient.Search(gctx, sc.Query, sc.UserID)
 		tagSearchDuration := time.Since(tagSearchStart)
 
 		if err != nil {

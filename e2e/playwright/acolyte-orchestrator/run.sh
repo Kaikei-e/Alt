@@ -53,6 +53,7 @@ suite_endpoint OLLAMA_STUB_URL      "http://news-creator-ollama-stub:11435"
 # changing one rotates both. A path, not a value: it must never land in
 # `docker inspect` output or a CI environment dump.
 suite_endpoint MEILI_MASTER_KEY_FILE "$ROOT/e2e/fixtures/staging-secrets/meili_master_key.txt"
+suite_endpoint BACKEND_TOKEN_SECRET_FILE "$ROOT/e2e/fixtures/staging-secrets/backend_token_secret.txt"
 # The canonical search-indexer corpus. The `AI infrastructure trends` documents
 # in it are what the gatherer node retrieves for the run-lifecycle scenarios;
 # without them the pipeline still completes but with empty evidence, which is a

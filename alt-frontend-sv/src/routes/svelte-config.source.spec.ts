@@ -54,4 +54,26 @@ describe("svelte.config.js — preload warning regression gate", () => {
 		// reason has to be documented in this comment first.
 		expect(configSource).not.toMatch(/preloadStrategy\s*:/);
 	});
+
+	it("declares hardened CSP directives for defense-in-depth", () => {
+		expect(configSource).toMatch(/mode\s*:\s*["']auto["']/);
+		expect(configSource).toMatch(/"default-src"\s*:\s*\[\s*["']self["']\s*\]/);
+		expect(configSource).toMatch(/"script-src"\s*:\s*\[\s*["']self["']\s*\]/);
+		expect(configSource).toMatch(
+			/"style-src"\s*:\s*\[[^\]]*"self"[^\]]*"unsafe-inline"[^\]]*\]/,
+		);
+		expect(configSource).toMatch(
+			/"font-src"\s*:\s*\[[^\]]*"self"[^\]]*"https:\/\/fonts\.gstatic\.com"[^\]]*\]/,
+		);
+		expect(configSource).toMatch(
+			/"img-src"\s*:\s*\[[^\]]*"self"[^\]]*"data:"[^\]]*"https:"[^\]]*\]/,
+		);
+		expect(configSource).toMatch(/"connect-src"\s*:\s*\[\s*["']self["']\s*\]/);
+		expect(configSource).toMatch(/"object-src"\s*:\s*\[\s*["']none["']\s*\]/);
+		expect(configSource).toMatch(/"base-uri"\s*:\s*\[\s*["']self["']\s*\]/);
+		expect(configSource).toMatch(
+			/"frame-ancestors"\s*:\s*\[\s*["']self["']\s*\]/,
+		);
+		expect(configSource).toMatch(/"form-action"\s*:\s*\[\s*["']self["']\s*\]/);
+	});
 });

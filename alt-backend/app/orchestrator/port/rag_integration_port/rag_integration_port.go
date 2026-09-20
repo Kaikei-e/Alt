@@ -18,6 +18,10 @@ import (
 // succeeding on the next attempt with the same payload.
 var ErrRagUpsertTransient = errors.New("rag integration: transient upsert failure")
 
+// ErrMissingUserID indicates an article upsert was attempted without an owner.
+// An article without an owner must never be sent to the RAG index unowned.
+var ErrMissingUserID = errors.New("rag integration: missing owner user_id")
+
 type RagContext struct {
 	ChunkText       string
 	URL             string
@@ -46,7 +50,7 @@ type UpsertArticleInput struct {
 }
 
 type RagIntegrationPort interface {
-	RetrieveContext(ctx context.Context, query string, candidateIDs []string) ([]RagContext, error)
+	RetrieveContext(ctx context.Context, query string, candidateIDs []string, userID string) ([]RagContext, error)
 	UpsertArticle(ctx context.Context, input UpsertArticleInput) error
 	Answer(ctx context.Context, input AnswerInput) (<-chan string, error)
 }

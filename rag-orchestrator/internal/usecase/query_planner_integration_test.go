@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testPlannerUserID = "11111111-1111-4111-8111-111111111111"
+
 // mockQueryPlannerPort implements domain.QueryPlannerPort for testing.
 type mockQueryPlannerPort struct {
 	mock.Mock
@@ -96,7 +98,8 @@ func TestExecute_WithQueryPlanner_UsesResolvedQuery(t *testing.T) {
 	)
 
 	output, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
-		Query: "世界的な物流混乱はなぜ起きた？",
+		Query:  "世界的な物流混乱はなぜ起きた？",
+		UserID: testPlannerUserID,
 	})
 
 	assert.NoError(t, err)
@@ -167,7 +170,8 @@ func TestExecute_WithQueryPlanner_PropagatesPlannedIntentToStrategy(t *testing.T
 	)
 
 	output, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
-		Query: "世界的な物流混乱はなぜ起きた？",
+		Query:  "世界的な物流混乱はなぜ起きた？",
+		UserID: testPlannerUserID,
 	})
 
 	assert.NoError(t, err)
@@ -207,7 +211,8 @@ func TestExecute_WithQueryPlanner_ClarificationSkipsRetrieval(t *testing.T) {
 
 	// Use Stream to test clarification path
 	ch := uc.Stream(context.Background(), usecase.AnswerWithRAGInput{
-		Query: "もっと詳しく",
+		Query:  "もっと詳しく",
+		UserID: testPlannerUserID,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "AIの動向は？"},
 			{Role: "assistant", Content: "LLMが進化しています。"},
@@ -268,7 +273,8 @@ func TestExecute_WithQueryPlanner_ClarificationSkipsRetrieval_NonStreaming(t *te
 	)
 
 	output, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
-		Query: "もっと詳しく",
+		Query:  "もっと詳しく",
+		UserID: testPlannerUserID,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "AIの動向は？"},
 			{Role: "assistant", Content: "LLMが進化しています。"},
@@ -316,7 +322,8 @@ func TestExecute_WithQueryPlanner_NilRetrievalReturnsFallbackInsteadOfPanic(t *t
 	)
 
 	output, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
-		Query: "物流危機の背景を詳しく教えて",
+		Query:  "物流危機の背景を詳しく教えて",
+		UserID: testPlannerUserID,
 	})
 
 	assert.NoError(t, err)

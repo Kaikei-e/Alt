@@ -24,6 +24,7 @@ type RedisDriver struct {
 type RedisDriverOptions struct {
 	PoolSize     int
 	StreamMaxLen int64
+	Password     string
 }
 
 // NewRedisDriver creates a new Redis driver.
@@ -37,8 +38,13 @@ func NewRedisDriverWithOptions(addr string, opts *RedisDriverOptions) (*RedisDri
 		Addr: addr,
 	}
 
-	if opts != nil && opts.PoolSize > 0 {
-		redisOpts.PoolSize = opts.PoolSize
+	if opts != nil {
+		if opts.PoolSize > 0 {
+			redisOpts.PoolSize = opts.PoolSize
+		}
+		if opts.Password != "" {
+			redisOpts.Password = opts.Password
+		}
 	}
 
 	client := redis.NewClient(redisOpts)
@@ -63,8 +69,13 @@ func NewRedisDriverWithURLAndOptions(url string, driverOpts *RedisDriverOptions)
 		return nil, fmt.Errorf("parse redis url: %w", err)
 	}
 
-	if driverOpts != nil && driverOpts.PoolSize > 0 {
-		opts.PoolSize = driverOpts.PoolSize
+	if driverOpts != nil {
+		if driverOpts.PoolSize > 0 {
+			opts.PoolSize = driverOpts.PoolSize
+		}
+		if driverOpts.Password != "" {
+			opts.Password = driverOpts.Password
+		}
 	}
 
 	client := redis.NewClient(opts)

@@ -27,6 +27,7 @@
           }
         },
         "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
           "Content-Type": "application/json"
         },
         "matchingRules": {
@@ -45,6 +46,17 @@
                 {
                   "match": "regex",
                   "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
                 }
               ]
             }

@@ -309,10 +309,17 @@ describe("parseMarkdown", () => {
 			expect(result).toContain(">Example</a>");
 		});
 
-		it("link opens in new tab with rel=noopener", () => {
+		it("link opens in new tab with rel=noopener noreferrer nofollow ugc and external-link class", () => {
 			const result = parseMarkdown("[Link](https://example.com)");
 			expect(result).toContain('target="_blank"');
-			expect(result).toContain('rel="noopener noreferrer"');
+			expect(result).toContain('rel="noopener noreferrer nofollow ugc"');
+			expect(result).toContain('class="external-link"');
+		});
+
+		it("allows mailto: scheme links", () => {
+			const result = parseMarkdown("[Contact](mailto:info@example.com)");
+			expect(result).toContain('<a href="mailto:info@example.com"');
+			expect(result).toContain('rel="noopener noreferrer nofollow ugc"');
 		});
 
 		it("handles multiple links in one line", () => {

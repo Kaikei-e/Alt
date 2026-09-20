@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { request } from "@playwright/test";
 import { connectListening, httpBody, httpOk, waitForReady } from "../../_shared/readiness.js";
+import { SECONDARY_USER_ID, TEST_USER_ID } from "../src/auth.js";
 import { env, seedEnv } from "../src/env.js";
 
 /**
@@ -73,7 +74,7 @@ export default async function globalSetup(): Promise<void> {
 				run: async (api) => {
 					const url = `${seed.searchIndexerURL}/v1/search?q=${encodeURIComponent(
 						SEED_PROBE_QUERY,
-					)}&limit=5`;
+					)}&limit=5&user_id=${TEST_USER_ID}`;
 					const response = await api.get(url, { timeout: 10_000 });
 					if (!response.ok()) {
 						throw new Error(`status ${response.status()}`);
@@ -139,7 +140,18 @@ type Seed = ReturnType<typeof seedEnv>;
  * partially-populated index on a slow daemon and a full one on a fast daemon.
  */
 async function seedMeilisearch(seed: Seed): Promise<void> {
-	const documents: unknown = JSON.parse(readFileSync(seed.meiliSeedDocs, "utf8"));
+	const rawDocuments: unknown = JSON.parse(readFileSync(seed.meiliSeedDocs, "utf8"));
+	const documents = Array.isArray(rawDocuments)
+		? rawDocuments.map((doc) => {
+				if (isRecord(doc)) {
+					const owner = doc["user_id"];
+					const mappedUserId =
+						owner === "alice" || owner === TEST_USER_ID ? TEST_USER_ID : SECONDARY_USER_ID;
+					return { ...doc, user_id: mappedUserId };
+				}
+				return doc;
+			})
+		: rawDocuments;
 	const api = await request.newContext({
 		extraHTTPHeaders: {
 			// The key is read from a file and only ever placed in this header —

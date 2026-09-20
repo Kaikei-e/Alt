@@ -46,10 +46,17 @@ class StartRunUsecase:
         self._job_queue = job_queue
         self._failure_cooldown = failure_cooldown
 
-    async def execute(self, report_id: UUID, *, now: datetime | None = None) -> ReportRun:
+    async def execute(
+        self,
+        report_id: UUID,
+        *,
+        user_id: UUID,
+        now: datetime | None = None,
+    ) -> ReportRun:
         report = await self._report_repo.get_report(report_id)
-        if report is None:
-            raise ValueError(f"Report {report_id} not found")  # noqa: TRY003 — caught generically as ValueError at the connect_service Handler boundary
+        if report is None or report.user_id != user_id:
+            msg = f"Report {report_id} not found"
+            raise ValueError(msg)
 
         # The circuit breaker below only inspects the *most recent* run's
         # failure status — a pending/running run wouldn't trip it (its
@@ -62,16 +69,16 @@ class StartRunUsecase:
         # backlog.
         active_run = await self._job_queue.get_active_run_for_report(report_id)
         if active_run is not None:
-            raise StartRunRejectedError(  # noqa: TRY003 — caught explicitly as StartRunRejectedError at the connect_service Handler boundary
-                f"Report {report_id} run rejected: run {active_run.run_id} is already {active_run.run_status}"
-            )
+            msg = f"Report {report_id} run rejected: run {active_run.run_id} is already {active_run.run_status}"
+            raise StartRunRejectedError(msg)
 
         latest_run = await self._job_queue.get_latest_run_for_report(report_id)
         if latest_run is not None and self._tripped_by(latest_run, now or datetime.now(UTC)):
-            raise StartRunRejectedError(  # noqa: TRY003 — caught explicitly as StartRunRejectedError at the connect_service Handler boundary
+            msg = (
                 f"Report {report_id} run rejected: most recent run {latest_run.run_id} failed "
                 f"({latest_run.failure_code}) within the circuit-breaker cooldown"
             )
+            raise StartRunRejectedError(msg)
 
         return await self._job_queue.create_run(report_id, report.current_version + 1)
 

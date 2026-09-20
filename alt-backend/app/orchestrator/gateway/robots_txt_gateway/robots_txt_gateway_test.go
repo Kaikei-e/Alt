@@ -2,9 +2,12 @@ package robots_txt_gateway
 
 import (
 	"alt/orchestrator/port/robots_txt_port"
+	"alt/utils"
 	"alt/utils/security"
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -130,4 +133,33 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+func TestRobotsTxtGateway_ReusesFactoryTransportAndGuardedDialer(t *testing.T) {
+	testHost := "rebinding.example.com"
+
+	fakeResolver := utils.IPResolverFunc(func(ctx context.Context, host string) ([]net.IPAddr, error) {
+		if host == testHost {
+			// Resolve to a private IP so dial-time validation triggers
+			return []net.IPAddr{{IP: net.ParseIP("10.0.0.1")}}, nil
+		}
+		return nil, errors.New("unknown host")
+	})
+
+	factoryClient := utils.NewHTTPClientFactory().WithResolver(fakeResolver).CreateHTTPClient()
+	gateway := NewRobotsTxtGateway(factoryClient)
+
+	// 1. Verify gateway reuses factoryClient's transport and does not use http.DefaultTransport
+	require.NotNil(t, gateway.httpClient.Transport)
+	assert.NotEqual(t, http.DefaultTransport, gateway.httpClient.Transport)
+	assert.Equal(t, factoryClient.Transport, gateway.httpClient.Transport)
+
+	// 2. Verify that gateway's httpClient dials through the guarded dialer and blocks rebinding
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+testHost+"/robots.txt", nil)
+	require.NoError(t, err)
+
+	_, err = gateway.httpClient.Do(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "destination not allowed", "must be blocked by factory's guarded dialer")
+	assert.NotContains(t, err.Error(), "10.0.0.1", "must not leak private IP")
 }

@@ -14,6 +14,8 @@
  * - Horizontal Rules (---, ***, ___)
  * - Paragraphs
  */
+import DOMPurify from "isomorphic-dompurify";
+
 export function parseMarkdown(text: string): string {
 	if (!text) return "";
 
@@ -213,7 +215,30 @@ export function parseMarkdown(text: string): string {
 		html += "</code></pre>\n";
 	}
 
-	return html;
+	return DOMPurify.sanitize(html, {
+		ALLOWED_TAGS: [
+			"h1",
+			"h2",
+			"h3",
+			"p",
+			"ul",
+			"ol",
+			"li",
+			"blockquote",
+			"pre",
+			"code",
+			"hr",
+			"strong",
+			"em",
+			"a",
+			"br",
+		],
+		ALLOWED_ATTR: ["href", "title", "class", "target", "rel"],
+		ADD_ATTR: ["target", "rel", "class"],
+		ALLOW_DATA_ATTR: false,
+		ALLOWED_URI_REGEXP:
+			/^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+	});
 }
 
 function parseInline(text: string): string {
@@ -228,10 +253,15 @@ function parseInline(text: string): string {
 		/`([^`]+)`/g,
 		'<code class="bg-muted px-1 rounded font-mono text-sm">$1</code>',
 	);
-	// Links — only allow http/https URLs to block javascript:/data: XSS vectors
+	// Links — only allow http/https and mailto URLs to block javascript:/data: XSS vectors
+	// Links get rel="noopener noreferrer nofollow ugc", target="_blank", and class="external-link" on external URLs
 	text = text.replace(
-		/\[([^\]]+)\]\((https?:\/\/[^)]*)\)/g,
-		'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+		/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^)]*)\)/g,
+		(_match, label, url) => {
+			const isExternal = /^https?:\/\//i.test(url);
+			const extClass = isExternal ? ' class="external-link"' : "";
+			return `<a href="${url}" target="_blank" rel="noopener noreferrer nofollow ugc"${extClass}>${label}</a>`;
+		},
 	);
 	return text;
 }

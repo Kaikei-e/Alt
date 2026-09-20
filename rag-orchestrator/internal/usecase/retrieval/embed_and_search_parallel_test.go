@@ -9,6 +9,7 @@ import (
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase/retrieval"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -38,7 +39,7 @@ func newInstrumentedBM25Searcher() *instrumentedBM25Searcher {
 	}
 }
 
-func (s *instrumentedBM25Searcher) SearchBM25(ctx context.Context, query string, _ int) ([]domain.BM25SearchResult, error) {
+func (s *instrumentedBM25Searcher) SearchBM25(ctx context.Context, query string, _ int, _ string) ([]domain.BM25SearchResult, error) {
 	s.mu.Lock()
 	s.queries = append(s.queries, query)
 	s.inFlight++
@@ -88,11 +89,14 @@ func TestEmbedAndSearch_BM25QueriesRunConcurrently(t *testing.T) {
 	searcher := newInstrumentedBM25Searcher()
 	searcher.barrierAt = 3
 
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:     "bm25-parallel",
 		Query:           "original",
 		ExpandedQueries: []string{"expanded one", "expanded two"},
 		SearchLimit:     50,
+		UserID:          testUUID.String(),
+		UserUUID:        testUUID,
 	}
 
 	encoder := new(MockVectorEncoder)
@@ -113,11 +117,14 @@ func TestEmbedAndSearch_BM25ConcurrencyIsBounded(t *testing.T) {
 	searcher.hold = 30 * time.Millisecond
 
 	expanded := []string{"q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"}
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:     "bm25-bounded",
 		Query:           "original",
 		ExpandedQueries: expanded,
 		SearchLimit:     50,
+		UserID:          testUUID.String(),
+		UserUUID:        testUUID,
 	}
 
 	encoder := new(MockVectorEncoder)
@@ -154,11 +161,14 @@ func TestEmbedAndSearch_BM25ParallelPreservesQueryAttribution(t *testing.T) {
 		},
 	}
 
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:     "bm25-attribution",
 		Query:           "original",
 		ExpandedQueries: []string{"second", "third"},
 		SearchLimit:     50,
+		UserID:          testUUID.String(),
+		UserUUID:        testUUID,
 	}
 
 	encoder := new(MockVectorEncoder)
@@ -181,16 +191,19 @@ func TestEmbedAndSearch_BM25ParallelSkippedUnderCandidateScope(t *testing.T) {
 	searcher := newInstrumentedBM25Searcher()
 
 	queryVec := []float32{0.1, 0.2, 0.3}
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:         "bm25-scoped",
 		Query:               "original",
 		OriginalEmbedding:   queryVec,
 		CandidateArticleIDs: []string{"art-1"},
 		SearchLimit:         50,
+		UserID:              testUUID.String(),
+		UserUUID:            testUUID,
 	}
 
 	repo := new(MockRagChunkRepository)
-	repo.On("SearchWithinArticles", mock.Anything, queryVec, sc.CandidateArticleIDs, 50).
+	repo.On("SearchWithinArticles", mock.Anything, queryVec, sc.CandidateArticleIDs, 50, testUUID).
 		Return([]domain.SearchResult{{Chunk: domain.RagChunk{Content: "scoped"}, ArticleID: "art-1", Score: 0.7, ScoreKind: domain.ScoreKindVector}}, nil)
 
 	err := retrieval.EmbedAndSearch(context.Background(), sc, new(MockVectorEncoder), searcher, nil,

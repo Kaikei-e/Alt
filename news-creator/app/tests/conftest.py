@@ -7,13 +7,27 @@ TDD Best Practices:
 - Use FastAPI's dependency_overrides for integration tests
 """
 
-import pytest
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock
+
+import pytest
 from fastapi.testclient import TestClient
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.port.llm_provider_port import LLMProviderPort
+
+
+@pytest.fixture
+def dummy_redis_password_file(tmp_path, monkeypatch) -> Path:
+    """Provide a valid temporary REDIS_PASSWORD_FILE for tests that instantiate
+    NewsCreatorConfig without exercising Redis authentication itself.
+    """
+    pw_file = tmp_path / "dummy_redis_password.txt"
+    pw_file.write_text("test-redis-password\n")
+    monkeypatch.setenv("REDIS_PASSWORD_FILE", str(pw_file))
+    monkeypatch.delenv("REDIS_AUTH", raising=False)
+    return pw_file
 
 
 @pytest.fixture

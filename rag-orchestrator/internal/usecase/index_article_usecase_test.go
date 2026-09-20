@@ -59,6 +59,16 @@ func (m *MockRagDocumentRepository) CreateVersion(ctx context.Context, version *
 	return args.Error(0)
 }
 
+func (m *MockRagDocumentRepository) SetDocumentOwner(ctx context.Context, docID uuid.UUID, userID uuid.UUID) error {
+	args := m.Called(ctx, docID, userID)
+	return args.Error(0)
+}
+
+func (m *MockRagDocumentRepository) BackfillOwnerIfNull(ctx context.Context, articleID string, userID uuid.UUID) (bool, bool, error) {
+	args := m.Called(ctx, articleID, userID)
+	return args.Bool(0), args.Bool(1), args.Error(2)
+}
+
 type MockRagChunkRepository struct {
 	mock.Mock
 }
@@ -81,16 +91,16 @@ func (m *MockRagChunkRepository) InsertEvents(ctx context.Context, events []doma
 	return args.Error(0)
 }
 
-func (m *MockRagChunkRepository) Search(ctx context.Context, queryVector []float32, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, limit)
+func (m *MockRagChunkRepository) Search(ctx context.Context, queryVector []float32, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]domain.SearchResult), args.Error(1)
 }
 
-func (m *MockRagChunkRepository) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, articleIDs, limit)
+func (m *MockRagChunkRepository) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, articleIDs, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -133,6 +143,8 @@ func TestIndexArticle_Upsert_Idempotency(t *testing.T) {
 	articleID := "article-123"
 	title := "Test Title"
 	body := "Test Body"
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 
 	sourceHash := hasher.Compute(title, body)
 	docID := uuid.New()
@@ -142,6 +154,7 @@ func TestIndexArticle_Upsert_Idempotency(t *testing.T) {
 	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
 		ID:               docID,
 		ArticleID:        articleID,
+		UserID:           &testUUID,
 		CurrentVersionID: &verID,
 	}, nil)
 
@@ -154,7 +167,7 @@ func TestIndexArticle_Upsert_Idempotency(t *testing.T) {
 	}, nil)
 
 	// Execute
-	err := uc.Upsert(ctx, articleID, title, "", body)
+	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 
 	// Assert
 	assert.NoError(t, err)
@@ -177,13 +190,15 @@ func TestIndexArticle_Upsert_NewArticle(t *testing.T) {
 	articleID := "new-article"
 	title := "New Title"
 	body := "Paragraph 1.\n\nParagraph 2."
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 
 	// Expectations
 	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(nil, nil) // Not found
 
 	// Create Document
 	mockDocRepo.On("CreateDocument", ctx, mock.MatchedBy(func(d *domain.RagDocument) bool {
-		return d.ArticleID == articleID
+		return d.ArticleID == articleID && d.UserID != nil && *d.UserID == testUUID
 	})).Return(nil)
 
 	// Create Version
@@ -205,7 +220,7 @@ func TestIndexArticle_Upsert_NewArticle(t *testing.T) {
 	// Update Current Version
 	mockDocRepo.On("UpdateCurrentVersion", ctx, mock.Anything, mock.Anything).Return(nil)
 
-	err := uc.Upsert(ctx, articleID, title, "", body)
+	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 	assert.NoError(t, err)
 	mockDocRepo.AssertExpectations(t)
 	mockChunkRepo.AssertExpectations(t)
@@ -228,6 +243,8 @@ func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
 	articleID := "reindex-article"
 	title := "Reindex Title"
 	body := "Body text for reindex."
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 
 	sourceHash := hasher.Compute(title, body)
 	docID := uuid.New()
@@ -236,6 +253,7 @@ func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
 	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
 		ID:               docID,
 		ArticleID:        articleID,
+		UserID:           &testUUID,
 		CurrentVersionID: &verID,
 	}, nil)
 
@@ -260,7 +278,7 @@ func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
 	mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil)
 	mockDocRepo.On("UpdateCurrentVersion", ctx, docID, mock.Anything).Return(nil)
 
-	err := uc.Upsert(ctx, articleID, title, "", body)
+	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 	assert.NoError(t, err)
 
 	// Verify that CreateVersion was called (i.e., not skipped by idempotency)
@@ -286,9 +304,13 @@ func TestIndexArticle_Upsert_HTMLBodyProducesCleanChunks(t *testing.T) {
 	body := `<div><p>記事の本文テキストです。十分な長さを持つ文章で、HTMLタグが除去されていることを確認します。</p>` +
 		`<script>alert('xss')</script>` +
 		`<p>2番目の段落の本文です。こちらも十分な長さを持っています。チャンク分割の確認用テキストです。</p></div>`
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 
 	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(nil, nil)
-	mockDocRepo.On("CreateDocument", ctx, mock.Anything).Return(nil)
+	mockDocRepo.On("CreateDocument", ctx, mock.MatchedBy(func(d *domain.RagDocument) bool {
+		return d.ArticleID == articleID && d.UserID != nil && *d.UserID == testUUID
+	})).Return(nil)
 	mockDocRepo.On("CreateVersion", ctx, mock.Anything).Return(nil)
 
 	// Capture the chunks to verify they are HTML-free
@@ -300,7 +322,7 @@ func TestIndexArticle_Upsert_HTMLBodyProducesCleanChunks(t *testing.T) {
 	mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil)
 	mockDocRepo.On("UpdateCurrentVersion", ctx, mock.Anything, mock.Anything).Return(nil)
 
-	err := uc.Upsert(ctx, articleID, title, "", body)
+	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 	assert.NoError(t, err)
 
 	// All chunks must be HTML-free
@@ -331,6 +353,8 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 	// New body: different content -> triggers update
 	// Note: Chunker v8 merges short paragraphs (< 80 chars)
 	body := "Start.\n\nMiddle.\n\nEnd."
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 
 	docID := uuid.New()
 	verID := uuid.New()
@@ -340,6 +364,7 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
 		ID:               docID,
 		ArticleID:        articleID,
+		UserID:           &testUUID,
 		CurrentVersionID: &verID,
 	}, nil)
 
@@ -375,7 +400,7 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 	// 7. Update Current Version
 	mockDocRepo.On("UpdateCurrentVersion", ctx, docID, mock.Anything).Return(nil)
 
-	err := uc.Upsert(ctx, articleID, title, "", body)
+	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 	assert.NoError(t, err)
 	mockDocRepo.AssertExpectations(t)
 	mockChunkRepo.AssertExpectations(t)
@@ -403,9 +428,13 @@ func TestIndexArticle_Upsert_EncodeHappensBeforeTransactionBegins(t *testing.T) 
 	articleID := "encode-order-article"
 	title := "Encode Order Title"
 	body := "Paragraph 1.\n\nParagraph 2."
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 
 	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(nil, nil)
-	mockDocRepo.On("CreateDocument", ctx, mock.Anything).Return(nil)
+	mockDocRepo.On("CreateDocument", ctx, mock.MatchedBy(func(d *domain.RagDocument) bool {
+		return d.ArticleID == articleID && d.UserID != nil && *d.UserID == testUUID
+	})).Return(nil)
 	mockDocRepo.On("CreateVersion", ctx, mock.Anything).Return(nil)
 	mockChunkRepo.On("BulkInsertChunks", ctx, mock.Anything).Return(nil)
 	mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil)
@@ -415,7 +444,7 @@ func TestIndexArticle_Upsert_EncodeHappensBeforeTransactionBegins(t *testing.T) 
 		order = append(order, "encode")
 	}).Return([][]float32{embeddingOfWidth(domain.EmbeddingDimension)}, nil)
 
-	err := uc.Upsert(ctx, articleID, title, "", body)
+	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{"encode", "tx_begin"}, order,
@@ -461,10 +490,13 @@ func TestIndexArticle_Upsert_EmbedderVersionChangeForcesReindex(t *testing.T) {
 			body := "Body content long enough to survive the chunker's minimum length rule."
 			docID := uuid.New()
 			verID := uuid.New()
+			testUserID := uuid.New().String()
+			testUUID := uuid.MustParse(testUserID)
 
 			mockDocRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
 				ID:               docID,
 				ArticleID:        articleID,
+				UserID:           &testUUID,
 				CurrentVersionID: &verID,
 			}, nil)
 			// Everything except the embedder version already matches.
@@ -486,7 +518,7 @@ func TestIndexArticle_Upsert_EmbedderVersionChangeForcesReindex(t *testing.T) {
 			mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil).Maybe()
 			mockDocRepo.On("UpdateCurrentVersion", ctx, docID, mock.Anything).Return(nil).Maybe()
 
-			err := uc.Upsert(ctx, articleID, title, "", body)
+			err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 			assert.NoError(t, err)
 
 			if tc.wantReindex {
@@ -537,12 +569,13 @@ func TestIndexArticle_Upsert_RejectsWrongEmbeddingWidth(t *testing.T) {
 	articleID := "wrong-width-article"
 	title := "Wrong Width Title"
 	body := "Paragraph 1.\n\nParagraph 2."
+	testUserID := uuid.New().String()
 
 	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(nil, nil)
 	// A 768-wide vector is what the previous embeddinggemma deployment returned.
 	mockEncoder.On("Encode", ctx, mock.Anything).Return([][]float32{embeddingOfWidth(768)}, nil)
 
-	err := uc.Upsert(ctx, articleID, title, "", body)
+	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "embedding dimension mismatch")
@@ -574,11 +607,12 @@ func TestIndexArticle_Upsert_EncodeErrorAttemptsNoWrites(t *testing.T) {
 	articleID := "encode-error-article"
 	title := "Encode Error Title"
 	body := "Paragraph 1.\n\nParagraph 2."
+	testUserID := uuid.New().String()
 
 	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(nil, nil)
 	mockEncoder.On("Encode", ctx, mock.Anything).Return(nil, errors.New("embedder unreachable"))
 
-	err := uc.Upsert(ctx, articleID, title, "", body)
+	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to encode chunks")
@@ -599,12 +633,6 @@ func TestIndexArticle_Upsert_EncodeErrorAttemptsNoWrites(t *testing.T) {
 // re-check inside the tx must catch this and turn the write into a no-op,
 // so idempotency holds under concurrent upserts even though the outer
 // pre-check went stale.
-//
-// The existing MockTransactionManager runs fn synchronously in the calling
-// goroutine (there is no real DB to race against), so a true concurrent
-// integration test isn't reachable from this mock infra. Sequential mock
-// returns (.Once()) are used instead to make the second, in-tx read
-// observe the state a concurrent committer would have left behind.
 func TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx(t *testing.T) {
 	mockDocRepo := new(MockRagDocumentRepository)
 	mockChunkRepo := new(MockRagChunkRepository)
@@ -624,10 +652,13 @@ func TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx(t *testing.T) {
 
 	docID := uuid.New()
 	verID := uuid.New()
+	testUserID := uuid.New().String()
+	testUUID := uuid.MustParse(testUserID)
 
 	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
 		ID:               docID,
 		ArticleID:        articleID,
+		UserID:           &testUUID,
 		CurrentVersionID: &verID,
 	}, nil)
 
@@ -653,7 +684,7 @@ func TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx(t *testing.T) {
 		ChunkerVersion: string(chunker.Version()),
 	}, nil)
 
-	err := uc.Upsert(ctx, articleID, title, "", body)
+	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 	assert.NoError(t, err)
 
 	mockDocRepo.AssertNotCalled(t, "CreateDocument", mock.Anything, mock.Anything)
@@ -666,13 +697,7 @@ func TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx(t *testing.T) {
 
 // TestIndexArticle_Upsert_RejectsBlankArticleID is the RED case for
 // rag-null-embedding-panic's second defect: the HTTP handler's blank
-// article_id guard only protects the HTTP entry point. JobWorker's
-// processBackfillArticle and DirectIndexer's IndexArticle both call
-// IndexArticleUsecase.Upsert directly, bypassing it. rag_documents.article_id
-// is text NOT NULL UNIQUE, so an empty string is a value the DB accepts —
-// and every blank caller collapses onto that one row. The invariant must
-// therefore live in Upsert itself, the one choke point all three entry
-// points share, not only at the HTTP boundary.
+// article_id guard only protects the HTTP entry point.
 func TestIndexArticle_Upsert_RejectsBlankArticleID(t *testing.T) {
 	for _, articleID := range []string{"", "   ", "\t\n"} {
 		t.Run(fmt.Sprintf("articleID=%q", articleID), func(t *testing.T) {
@@ -686,7 +711,7 @@ func TestIndexArticle_Upsert_RejectsBlankArticleID(t *testing.T) {
 				mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
 			)
 
-			err := uc.Upsert(context.Background(), articleID, "Title", "https://example.com", "Body")
+			err := uc.Upsert(context.Background(), articleID, uuid.New().String(), "Title", "https://example.com", "Body")
 
 			assert.ErrorIs(t, err, usecase.ErrBlankArticleID)
 			mockDocRepo.AssertNotCalled(t, "GetByArticleID", mock.Anything, mock.Anything)
@@ -694,4 +719,160 @@ func TestIndexArticle_Upsert_RejectsBlankArticleID(t *testing.T) {
 			mockChunkRepo.AssertNotCalled(t, "BulkInsertChunks", mock.Anything, mock.Anything)
 		})
 	}
+}
+
+func TestIndexArticle_Upsert_EmptyUserID_ReturnsError(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockTxManager := new(MockTransactionManager)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+	)
+
+	// Blank user_id must fail immediately without loading document
+	err := uc.Upsert(context.Background(), "art-1", "", "Title", "https://example.com", "Body")
+	assert.ErrorIs(t, err, usecase.ErrBlankUserID)
+
+	// Whitespace user_id must also fail
+	err = uc.Upsert(context.Background(), "art-1", "   ", "Title", "https://example.com", "Body")
+	assert.ErrorIs(t, err, usecase.ErrBlankUserID)
+}
+
+func TestIndexArticle_Upsert_BlankUserID_WhenDocumentExistsWithNullOwner_ReturnsError(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockTxManager := new(MockTransactionManager)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+	)
+
+	// Even if a legacy document exists in the database with null user_id,
+	// an upsert with blank user_id must be rejected with ErrBlankUserID
+	err := uc.Upsert(context.Background(), "art-legacy", "", "Title", "https://example.com", "Body")
+	assert.ErrorIs(t, err, usecase.ErrBlankUserID)
+	mockDocRepo.AssertNotCalled(t, "GetByArticleID", mock.Anything, mock.Anything)
+}
+
+func TestIndexArticle_Upsert_InvalidUserID_ReturnsError(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockTxManager := new(MockTransactionManager)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+	)
+
+	err := uc.Upsert(context.Background(), "art-1", "not-a-uuid", "Title", "https://example.com", "Body")
+	assert.ErrorIs(t, err, usecase.ErrInvalidUserID)
+}
+
+func TestIndexArticle_Upsert_OwnerConflict_ReturnsError(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockTxManager := new(MockTransactionManager)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+	)
+
+	existingOwner := uuid.New()
+	callerUser := uuid.New().String()
+	docID := uuid.New()
+	verID := uuid.New()
+
+	mockDocRepo.On("GetByArticleID", mock.Anything, "art-1").Return(&domain.RagDocument{
+		ID:               docID,
+		ArticleID:        "art-1",
+		UserID:           &existingOwner,
+		CurrentVersionID: &verID,
+	}, nil)
+	mockDocRepo.On("GetLatestVersion", mock.Anything, docID).Return(&domain.RagDocumentVersion{
+		ID: verID,
+	}, nil)
+
+	err := uc.Upsert(context.Background(), "art-1", callerUser, "Title", "https://example.com", "Body")
+	assert.ErrorIs(t, err, usecase.ErrOwnerConflict)
+}
+
+func TestIndexArticle_Upsert_UnownedDocument_ClaimsOwner(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockTxManager := new(MockTransactionManager)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+	)
+
+	callerUUID := uuid.New()
+	callerUser := callerUUID.String()
+	docID := uuid.New()
+	verID := uuid.New()
+	sourceHash := hasher.Compute("Title", "Body")
+
+	// Doc has nil UserID
+	mockDocRepo.On("GetByArticleID", mock.Anything, "art-1").Return(&domain.RagDocument{
+		ID:               docID,
+		ArticleID:        "art-1",
+		UserID:           nil,
+		CurrentVersionID: &verID,
+	}, nil)
+
+	mockDocRepo.On("SetDocumentOwner", mock.Anything, docID, callerUUID).Return(nil)
+
+	mockDocRepo.On("GetLatestVersion", mock.Anything, docID).Return(&domain.RagDocumentVersion{
+		ID:             verID,
+		DocumentID:     docID,
+		SourceHash:     sourceHash,
+		Title:          "Title",
+		URL:            "https://example.com",
+		ChunkerVersion: string(chunker.Version()),
+	}, nil)
+
+	err := uc.Upsert(context.Background(), "art-1", callerUser, "Title", "https://example.com", "Body")
+	assert.NoError(t, err)
+	mockDocRepo.AssertCalled(t, "SetDocumentOwner", mock.Anything, docID, callerUUID)
+}
+
+func TestIndexArticle_BackfillOwners_Batch(t *testing.T) {
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockTxManager := new(MockTransactionManager)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+	)
+
+	u1 := uuid.New()
+	u2 := uuid.New()
+	u3 := uuid.New()
+
+	mockDocRepo.On("BackfillOwnerIfNull", mock.Anything, "art-1", u1).Return(true, false, nil)
+	mockDocRepo.On("BackfillOwnerIfNull", mock.Anything, "art-2", u2).Return(false, true, nil)
+	mockDocRepo.On("BackfillOwnerIfNull", mock.Anything, "art-3", u3).Return(false, false, nil)
+
+	items := []usecase.OwnerBackfillItem{
+		{ArticleID: "art-1", UserID: u1.String()},
+		{ArticleID: "art-2", UserID: u2.String()},
+		{ArticleID: "art-3", UserID: u3.String()},
+	}
+
+	res, err := uc.BackfillOwners(context.Background(), items)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), res.Updated)
+	assert.Equal(t, int64(1), res.AlreadySet)
+	assert.Equal(t, int64(1), res.NotFound)
 }

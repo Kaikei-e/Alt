@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testScopeUserID = "11111111-1111-4111-8111-111111111111"
+
 // articleScopedQuery reproduces the envelope alt-frontend-sv's AskSheet sends
 // for a question asked from an article page.
 func articleScopedQuery(articleID, title, question string) string {
@@ -77,7 +79,8 @@ func TestBuildPrompt_ArticleScopedSurvivesPlannerIntent(t *testing.T) {
 	)
 
 	out, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
-		Query: articleScopedQuery(articleID, "Supply chain report", "この記事の要点は何ですか"),
+		Query:  articleScopedQuery(articleID, "Supply chain report", "この記事の要点は何ですか"),
+		UserID: testScopeUserID,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, out)
@@ -139,7 +142,8 @@ func TestBuildPrompt_ArticleScopedPassesCandidateArticleID(t *testing.T) {
 	)
 
 	_, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
-		Query: articleScopedQuery(articleID, "Supply chain report", "この記事の背景"),
+		Query:  articleScopedQuery(articleID, "Supply chain report", "この記事の背景"),
+		UserID: testScopeUserID,
 	})
 	require.NoError(t, err)
 
@@ -193,7 +197,8 @@ func TestBuildPrompt_ArticleScopedNotIndexed_FallsBackToConstrainedGeneral(t *te
 	)
 
 	out, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{
-		Query: articleScopedQuery(articleID, "Supply chain report", "この記事の要点"),
+		Query:  articleScopedQuery(articleID, "Supply chain report", "この記事の要点"),
+		UserID: testScopeUserID,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, out)

@@ -21,8 +21,7 @@ impl SubworkerClient {
 
         tracing::info!("triggering tag_label_graph rebuild");
         let response = self
-            .client
-            .post(url)
+            .authorize(self.client.post(url))
             .send()
             .await
             .context("subworker build-graph request failed")?;
@@ -63,8 +62,7 @@ impl SubworkerClient {
 
         tracing::info!("triggering genre learning");
         let response = self
-            .client
-            .post(url)
+            .authorize(self.client.post(url))
             .send()
             .await
             .context("subworker learning request failed")?;
@@ -119,8 +117,7 @@ impl SubworkerClient {
 
         tracing::info!(endpoint = %url, "starting admin job");
         let response = self
-            .client
-            .post(url.clone())
+            .authorize(self.client.post(url.clone()))
             .send()
             .await
             .with_context(|| format!("admin job POST request failed for {}", endpoint))?;
@@ -177,8 +174,7 @@ impl SubworkerClient {
             }
 
             let response = self
-                .client
-                .get(url.clone())
+                .authorize(self.client.get(url.clone()))
                 .timeout(Duration::from_secs(POLL_REQUEST_TIMEOUT_SECS))
                 .send()
                 .await

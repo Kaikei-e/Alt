@@ -24,10 +24,10 @@ const warmupProbeQuery = "warmup-probe-aaa"
 // warmup needs. It exists to keep the warmup unit test independent of the
 // full port.SearchEngine interface (most methods are irrelevant here).
 type warmupSearcher interface {
-	Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error)
+	SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error)
 }
 
-// warmupSearchEngine issues a single probe Search so Meilisearch's hybrid
+// warmupSearchEngine issues a single probe SearchByUserID so Meilisearch's hybrid
 // pipeline pulls the embedding model into Ollama's resident set. Without
 // this, the first user-facing search after process start pays the embedder
 // cold-start tax (~1.1s in production observations).
@@ -39,7 +39,7 @@ func warmupSearchEngine(ctx context.Context, eng warmupSearcher) {
 	defer cancel()
 
 	start := time.Now()
-	if _, err := eng.Search(wctx, warmupProbeQuery, 1); err != nil {
+	if _, err := eng.SearchByUserID(wctx, warmupProbeQuery, "system:warmup", 1); err != nil {
 		logger.Logger.WarnContext(ctx, "search engine warmup probe failed",
 			"err", err,
 			"elapsed_ms", time.Since(start).Milliseconds(),

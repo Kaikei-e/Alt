@@ -12,7 +12,7 @@ type SearchHit struct {
 
 // SearchClient defines the interface for searching external indices (e.g. Meilisearch).
 type SearchClient interface {
-	Search(ctx context.Context, query string) ([]SearchHit, error)
+	Search(ctx context.Context, query string, userID string) ([]SearchHit, error)
 }
 
 // BM25SearchResult represents a BM25 (keyword) search result with ranking info.
@@ -43,5 +43,5 @@ type BM25SearchResult struct {
 type BM25Searcher interface {
 	// SearchBM25 performs keyword search and returns ranked results.
 	// Results are sorted by BM25 relevance score (highest first).
-	SearchBM25(ctx context.Context, query string, limit int) ([]BM25SearchResult, error)
+	SearchBM25(ctx context.Context, query string, limit int, userID string) ([]BM25SearchResult, error)
 }

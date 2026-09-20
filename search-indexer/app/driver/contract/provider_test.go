@@ -2,15 +2,16 @@
 
 // Provider verification for search-indexer.
 //
-// Replays the Pact files published by search-indexer's consumers against a
-// stub HTTP server that mirrors the real endpoints. Authentication is
-// established at the TLS transport layer (mTLS peer-identity allowlist);
-// the stub does not gate on X-Service-Token because the pact replay does
-// not present a TLS peer.
+// Replays the Pact files published by search-indexer's consumers against the
+// real rest.Handler and the real connectv2.CreateConnectServer mux, backed by
+// fake port.SearchEngine / port.RecapSearchEngine implementations so no
+// Meilisearch instance is required. Authentication is established at the TLS
+// transport layer (mTLS peer-identity allowlist); the replay does not gate on
+// X-Service-Token because it does not present a TLS peer.
 package contract
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -23,6 +24,14 @@ import (
 	"github.com/pact-foundation/pact-go/v2/models"
 	"github.com/pact-foundation/pact-go/v2/provider"
 	"github.com/stretchr/testify/require"
+
+	"search-indexer/config"
+	connectv2 "search-indexer/connect/v2"
+	"search-indexer/domain"
+	"search-indexer/logger"
+	"search-indexer/port"
+	"search-indexer/rest"
+	"search-indexer/usecase"
 )
 
 // emptyResultState is toggled by the "search-indexer has no matching articles"
@@ -35,112 +44,141 @@ const (
 	providerPactDirRoot       = "../../../../pacts"
 )
 
-// searchHit mirrors the schema asserted by consumer pacts.
-type searchHit struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Tags    []string `json:"tags"`
+// fakeContractSearchEngine backs both the REST and Connect-RPC endpoints.
+// SearchByUserID returns fixture documents keyed by the exact query text the
+// acolyte-orchestrator pact asserts byte-for-byte (no "type" matchers on
+// those two interactions); every other query falls back to the generic
+// "An LLM primer" fixture the rag-orchestrator/alt-backend pacts only
+// type-match.
+type fakeContractSearchEngine struct{}
+
+func (f *fakeContractSearchEngine) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
+	return nil
+}
+func (f *fakeContractSearchEngine) DeleteDocuments(ctx context.Context, ids []string) error {
+	return nil
+}
+func (f *fakeContractSearchEngine) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
+	if emptyResultState.Load() {
+		return []domain.SearchDocument{}, nil
+	}
+	switch query {
+	case "Iran tensions 2026":
+		return []domain.SearchDocument{
+			{
+				ID:          "article-010",
+				Title:       "Iran strait tensions escalate",
+				Content:     "Recent events have intensified the standoff...",
+				Tags:        []string{"iran", "geopolitics"},
+				Language:    "en",
+				Score:       0.91,
+				PublishedAt: time.Date(2026, 4, 18, 9, 0, 0, 0, time.UTC),
+			},
+		}, nil
+	case "AI market trends 2026":
+		return []domain.SearchDocument{
+			{
+				ID:       "article-001",
+				Title:    "AI Market Overview 2026",
+				Content:  "The artificial intelligence market continues to expand...",
+				Tags:     []string{"AI", "market", "2026"},
+				Language: "en",
+				Score:    0.85,
+			},
+			{
+				ID:       "article-002",
+				Title:    "AI市場 2026年展望",
+				Content:  "人工知能市場は拡大を続けている...",
+				Tags:     []string{"AI", "市場"},
+				Language: "ja",
+				Score:    0.78,
+			},
+		}, nil
+	}
+	return []domain.SearchDocument{
+		{
+			ID:      "article-1",
+			Title:   "An LLM primer",
+			Content: "Some content",
+			Tags:    []string{"ai"},
+		},
+	}, nil
+}
+func (f *fakeContractSearchEngine) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]domain.SearchDocument, int64, error) {
+	docs, err := f.SearchByUserID(ctx, query, userID, int(limit))
+	return docs, int64(len(docs)), err
+}
+func (f *fakeContractSearchEngine) SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
+	return f.SearchByUserID(ctx, query, userID, limit)
+}
+func (f *fakeContractSearchEngine) EnsureIndex(ctx context.Context) error {
+	return nil
+}
+func (f *fakeContractSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
+	return nil
+}
+func (f *fakeContractSearchEngine) PruneTaskHistory(ctx context.Context, olderThan time.Duration) error {
+	return nil
 }
 
-type searchArticlesResponse struct {
-	Query string      `json:"query"`
-	Hits  []searchHit `json:"hits"`
+var _ port.SearchEngine = (*fakeContractSearchEngine)(nil)
+
+// fakeContractRecapSearchEngine backs the SearchRecaps Connect-RPC endpoint.
+// The alt-backend pact only type-matches the recap fields, so one canned
+// fixture covers both the by-tag and by-query request shapes.
+type fakeContractRecapSearchEngine struct{}
+
+func (f *fakeContractRecapSearchEngine) EnsureRecapIndex(ctx context.Context) error {
+	return nil
+}
+func (f *fakeContractRecapSearchEngine) IndexRecapDocuments(ctx context.Context, docs []domain.RecapDocument) error {
+	return nil
+}
+func (f *fakeContractRecapSearchEngine) SearchRecaps(ctx context.Context, query string, limit int) ([]domain.RecapDocument, int64, error) {
+	docs := []domain.RecapDocument{
+		{
+			ID:         "job-1__technology",
+			JobID:      "job-1",
+			ExecutedAt: "2026-04-10T00:00:00Z",
+			WindowDays: 7,
+			Genre:      "technology",
+			Summary:    "weekly recap",
+			TopTerms:   []string{"ai"},
+			Tags:       []string{"technology"},
+			Bullets:    []string{"bullet"},
+		},
+	}
+	return docs, int64(len(docs)), nil
 }
 
-type connectSearchArticlesResponse struct {
-	Hits               []searchHit `json:"hits"`
-	EstimatedTotalHits int         `json:"estimatedTotalHits"`
-}
+var _ port.RecapSearchEngine = (*fakeContractRecapSearchEngine)(nil)
 
-type recapHit struct {
-	JobID      string   `json:"jobId"`
-	ExecutedAt string   `json:"executedAt"`
-	WindowDays int      `json:"windowDays"`
-	Genre      string   `json:"genre"`
-	Summary    string   `json:"summary"`
-	TopTerms   []string `json:"topTerms"`
-	Tags       []string `json:"tags"`
-	Bullets    []string `json:"bullets"`
-}
-
-type connectSearchRecapsResponse struct {
-	Hits               []recapHit `json:"hits"`
-	EstimatedTotalHits int        `json:"estimatedTotalHits"`
-}
-
-// startProviderStub starts a minimal HTTP server that mirrors the endpoints
-// exercised by the pacts. Authentication is handled at the transport layer
-// (mTLS client cert) in production; the stub deliberately accepts any caller
-// because the pact replay does not present a TLS peer.
+// startProviderStub starts an HTTP server that mounts the real rest.Handler
+// and the real connectv2.CreateConnectServer mux, both backed by fakes, so
+// pact replay exercises the actual routing, validation (e.g. the Connect
+// handler's "user_id is required" guard) and response mapping instead of a
+// hand-written double.
 func startProviderStub(t *testing.T) int {
 	t.Helper()
+	logger.Init()
+
+	// REST /v1/search uses the real rest.Handler with a fake search engine
+	// returning canned hits. emptyResultState toggles empty-hits responses for
+	// the acolyte "no matching articles" provider state.
+	searchByUserUsecase := usecase.NewSearchByUserUsecase(&fakeContractSearchEngine{})
+	restHandler := rest.NewHandler(searchByUserUsecase)
+
+	// Connect-RPC mounts the real server (SearchArticles + SearchRecaps +
+	// /health) so the pact replay reaches connectv2.CreateConnectServer
+	// end-to-end, including its request validation, instead of a stub that
+	// only mirrors the response shape.
+	searchRecapsUsecase := usecase.NewSearchRecapsUsecase(&fakeContractRecapSearchEngine{})
+	rlCfg := config.RateLimitConfig{RequestsPerSecond: 1000, Burst: 1000}
+	connectServer := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase, rlCfg)
 
 	mux := http.NewServeMux()
-
-	// REST /v1/search for rag-orchestrator and acolyte-orchestrator pacts.
-	// emptyResultState toggles empty-hits responses for the acolyte
-	// "no matching articles" provider state.
-	restSearch := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query().Get("q")
-		w.Header().Set("Content-Type", "application/json")
-
-		resp := searchArticlesResponse{Query: q}
-		if emptyResultState.Load() {
-			resp.Hits = []searchHit{}
-		} else {
-			resp.Hits = []searchHit{
-				{
-					ID:      "article-1",
-					Title:   "An LLM primer",
-					Content: "Some content",
-					Tags:    []string{"ai"},
-				},
-			}
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-	mux.Handle("/v1/search", restSearch)
-
-	// Connect-RPC POST /services.search.v2.SearchService/SearchArticles
-	connectSearchArticles := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := connectSearchArticlesResponse{
-			Hits: []searchHit{
-				{
-					ID:      "article-1",
-					Title:   "An LLM primer",
-					Content: "body",
-					Tags:    []string{"ai"},
-				},
-			},
-			EstimatedTotalHits: 1,
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-	mux.Handle("/services.search.v2.SearchService/SearchArticles", connectSearchArticles)
-
-	// Connect-RPC POST /services.search.v2.SearchService/SearchRecaps
-	connectSearchRecaps := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := connectSearchRecapsResponse{
-			Hits: []recapHit{
-				{
-					JobID:      "job-1",
-					ExecutedAt: "2026-04-10T00:00:00Z",
-					WindowDays: 7,
-					Genre:      "technology",
-					Summary:    "weekly recap",
-					TopTerms:   []string{"ai"},
-					Tags:       []string{"technology"},
-					Bullets:    []string{"bullet"},
-				},
-			},
-			EstimatedTotalHits: 1,
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-	mux.Handle("/services.search.v2.SearchService/SearchRecaps", connectSearchRecaps)
+	mux.HandleFunc("/v1/search", restHandler.SearchArticles)
+	mux.Handle("/", connectServer)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -154,9 +192,7 @@ func startProviderStub(t *testing.T) int {
 func findProviderPacts(t *testing.T) []string {
 	t.Helper()
 	// All three search-indexer consumers are now verified: rag-orchestrator,
-	// alt-backend, and acolyte-orchestrator. acolyte's consumer test was
-	// updated in to pin X-Service-Token (PM-2026-025 remediation),
-	// so the replay now satisfies the real ServiceAuthMiddleware.
+	// alt-backend, and acolyte-orchestrator.
 	candidates := []string{
 		filepath.Join(providerPactDirRAG, "rag-orchestrator-search-indexer.json"),
 		filepath.Join(providerPactDirAltBackend, "alt-backend-search-indexer.json"),
@@ -262,4 +298,26 @@ func TestVerifySearchIndexerProviderContracts(t *testing.T) {
 	verifier := provider.NewVerifier()
 	err := verifier.VerifyProvider(t, verifyRequest)
 	require.NoError(t, err)
+}
+
+func TestProviderStub_RejectsInvalidRequests(t *testing.T) {
+	port := startProviderStub(t)
+
+	// Missing user_id rejected
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/search?q=LLM", port))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	// Malformed date filter rejected
+	resp2, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/search?q=LLM&user_id=u1&published_after=invalid-date", port))
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp2.StatusCode)
+
+	// Inverted date filter rejected
+	resp3, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/search?q=LLM&user_id=u1&published_after=2026-04-20T00:00:00Z&published_before=2026-04-10T00:00:00Z", port))
+	require.NoError(t, err)
+	defer resp3.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp3.StatusCode)
 }

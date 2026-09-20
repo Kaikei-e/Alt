@@ -70,13 +70,7 @@ func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.Sea
 }
 
 func (m *mockSearchEngine) DeleteDocuments(ctx context.Context, ids []string) error { return m.err }
-func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
-	return nil, m.err
-}
-func (m *mockSearchEngine) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
-	return nil, m.err
-}
-func (m *mockSearchEngine) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
+func (m *mockSearchEngine) SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
 	return nil, m.err
 }
 func (m *mockSearchEngine) EnsureIndex(ctx context.Context) error { return m.err }

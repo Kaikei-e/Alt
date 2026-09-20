@@ -2,6 +2,7 @@ package morning_letter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -14,7 +15,23 @@ import (
 	"rag-orchestrator/internal/usecase"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 )
+
+const userIDHeader = "X-Alt-User-Id"
+
+// extractUserID reads the authenticated caller from the X-Alt-User-Id header.
+func extractUserID(headers interface{ Get(string) string }) (uuid.UUID, error) {
+	raw := strings.TrimSpace(headers.Get(userIDHeader))
+	if raw == "" {
+		return uuid.Nil, errors.New("missing " + userIDHeader + " header")
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid %s header: %w", userIDHeader, err)
+	}
+	return id, nil
+}
 
 // sanitizeUTF8 removes invalid UTF-8 sequences from a string.
 func sanitizeUTF8(s string) string {
@@ -54,6 +71,12 @@ func (h *Handler) StreamChat(
 	req *connect.Request[morningletterv2.StreamChatRequest],
 	stream *connect.ServerStream[morningletterv2.StreamChatResponse],
 ) error {
+	userID, err := extractUserID(req.Header())
+	if err != nil {
+		h.logger.Warn("morning letter stream chat rejected", slog.String("error", err.Error()))
+		return connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
 	// Extract last user message as query
 	var query string
 	for i := len(req.Msg.Messages) - 1; i >= 0; i-- {
@@ -153,6 +176,7 @@ func (h *Handler) StreamChat(
 		CandidateArticleIDs: articleIDs,
 		Locale:              "ja", // Default to Japanese for morning letter
 		LetterContext:       letterContext,
+		UserID:              userID.String(),
 	}
 
 	events := h.answerUsecase.Stream(ctx, input)

@@ -60,8 +60,8 @@ func (m *mockLLMClient) Version() string { return "mock-v1" }
 
 type mockSearchClient struct{ mock.Mock }
 
-func (m *mockSearchClient) Search(ctx context.Context, query string) ([]domain.SearchHit, error) {
-	args := m.Called(ctx, query)
+func (m *mockSearchClient) Search(ctx context.Context, query string, userID string) ([]domain.SearchHit, error) {
+	args := m.Called(ctx, query, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -94,16 +94,16 @@ func (m *mockChunkRepo) InsertEvents(ctx context.Context, events []domain.RagChu
 	return nil
 }
 
-func (m *mockChunkRepo) Search(ctx context.Context, queryVector []float32, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, limit)
+func (m *mockChunkRepo) Search(ctx context.Context, queryVector []float32, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]domain.SearchResult), args.Error(1)
 }
 
-func (m *mockChunkRepo) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, articleIDs, limit)
+func (m *mockChunkRepo) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, articleIDs, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -124,8 +124,8 @@ func (m *mockReranker) ModelName() string { return "mock-reranker" }
 
 type mockBM25Searcher struct{ mock.Mock }
 
-func (m *mockBM25Searcher) SearchBM25(ctx context.Context, query string, limit int) ([]domain.BM25SearchResult, error) {
-	args := m.Called(ctx, query, limit)
+func (m *mockBM25Searcher) SearchBM25(ctx context.Context, query string, limit int, userID string) ([]domain.BM25SearchResult, error) {
+	args := m.Called(ctx, query, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -154,19 +154,20 @@ func TestRetrievalGraph_Execute_FullPipeline(t *testing.T) {
 	encoder := new(mockVectorEncoder)
 	chunkRepo := new(mockChunkRepo)
 
+	testUUID := uuid.New()
 	queryVec := []float32{0.1, 0.2, 0.3}
 	chunkID := uuid.New()
 
 	// Stage 1: ExpandQueries
 	expander.On("ExpandQuery", mock.Anything, "test query", 1, 3).Return([]string{"expanded 1"}, nil)
-	search.On("Search", mock.Anything, "test query").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "test query", testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, []string{"test query"}).Return([][]float32{queryVec}, nil)
 
 	// Stage 2: EmbedAndSearch
 	encoder.On("Encode", mock.Anything, mock.MatchedBy(func(texts []string) bool {
 		return len(texts) > 0 && texts[0] != "test query"
 	})).Return([][]float32{queryVec}, nil)
-	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	chunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:           domain.RagChunk{ID: chunkID, Content: "chunk content", CreatedAt: time.Now()},
 			Score:           0.90,
@@ -197,7 +198,8 @@ func TestRetrievalGraph_Execute_FullPipeline(t *testing.T) {
 
 	// Act
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
-		Query: "test query",
+		Query:  "test query",
+		UserID: testUUID.String(),
 	})
 
 	// Assert
@@ -219,12 +221,32 @@ func TestRetrievalGraph_Execute_EmptyQuery_ReturnsError(t *testing.T) {
 	})
 
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
-		Query: "",
+		Query:  "",
+		UserID: uuid.New().String(),
 	})
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "query is empty")
+}
+
+func TestRetrievalGraph_Execute_EmptyUserID_ReturnsError(t *testing.T) {
+	g := retrieval.NewRetrievalGraph(retrieval.GraphDeps{
+		QueryExpander: new(mockQueryExpander),
+		LLMClient:     new(mockLLMClient),
+		SearchClient:  new(mockSearchClient),
+		Encoder:       new(mockVectorEncoder),
+		ChunkRepo:     new(mockChunkRepo),
+		Logger:        discardLogger(),
+	})
+
+	result, err := g.Execute(context.Background(), retrieval.GraphInput{
+		Query: "test query",
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "user_id is required")
 }
 
 func TestRetrievalGraph_Execute_Stage1EmbedderDown_DegradesToEmpty(t *testing.T) {
@@ -233,9 +255,10 @@ func TestRetrievalGraph_Execute_Stage1EmbedderDown_DegradesToEmpty(t *testing.T)
 	encoder := new(mockVectorEncoder)
 	expander := new(mockQueryExpander)
 	search := new(mockSearchClient)
+	testUUID := uuid.New()
 
 	expander.On("ExpandQuery", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
-	search.On("Search", mock.Anything, mock.Anything).Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, mock.Anything, testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, mock.Anything).Return(nil, errors.New("encoder unavailable"))
 
 	g := retrieval.NewRetrievalGraph(retrieval.GraphDeps{
@@ -248,7 +271,8 @@ func TestRetrievalGraph_Execute_Stage1EmbedderDown_DegradesToEmpty(t *testing.T)
 	})
 
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
-		Query: "test query",
+		Query:  "test query",
+		UserID: testUUID.String(),
 	})
 
 	assert.NoError(t, err, "embedder failure should degrade gracefully, not error")
@@ -264,14 +288,15 @@ func TestRetrievalGraph_Execute_WithReranker(t *testing.T) {
 	encoder := new(mockVectorEncoder)
 	chunkRepo := new(mockChunkRepo)
 	reranker := new(mockReranker)
+	testUUID := uuid.New()
 
 	queryVec := []float32{0.1, 0.2, 0.3}
 	chunkID := uuid.New()
 
 	expander.On("ExpandQuery", mock.Anything, "rerank query", 1, 3).Return([]string{}, nil)
-	search.On("Search", mock.Anything, "rerank query").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "rerank query", testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
-	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	chunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:           domain.RagChunk{ID: chunkID, Content: "reranked chunk", CreatedAt: time.Now()},
 			Score:           0.80,
@@ -307,7 +332,8 @@ func TestRetrievalGraph_Execute_WithReranker(t *testing.T) {
 	})
 
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
-		Query: "rerank query",
+		Query:  "rerank query",
+		UserID: testUUID.String(),
 	})
 
 	assert.NoError(t, err)
@@ -323,14 +349,15 @@ func TestRetrievalGraph_Execute_WithBM25(t *testing.T) {
 	encoder := new(mockVectorEncoder)
 	chunkRepo := new(mockChunkRepo)
 	bm25 := new(mockBM25Searcher)
+	testUUID := uuid.New()
 
 	queryVec := []float32{0.1, 0.2, 0.3}
 	chunkID := uuid.New()
 
 	expander.On("ExpandQuery", mock.Anything, "hybrid query", 1, 3).Return([]string{}, nil)
-	search.On("Search", mock.Anything, "hybrid query").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "hybrid query", testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
-	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	chunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:           domain.RagChunk{ID: chunkID, Content: "hybrid chunk", CreatedAt: time.Now()},
 			Score:           0.85,
@@ -340,7 +367,7 @@ func TestRetrievalGraph_Execute_WithBM25(t *testing.T) {
 			DocumentVersion: 1,
 		},
 	}, nil)
-	bm25.On("SearchBM25", mock.Anything, "hybrid query", 50).Return([]domain.BM25SearchResult{
+	bm25.On("SearchBM25", mock.Anything, "hybrid query", 50, testUUID.String()).Return([]domain.BM25SearchResult{
 		{ArticleID: "art-3", Content: "hybrid chunk", Title: "Hybrid Article", Rank: 1, Score: 0.70},
 	}, nil)
 
@@ -365,14 +392,15 @@ func TestRetrievalGraph_Execute_WithBM25(t *testing.T) {
 	})
 
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
-		Query: "hybrid query",
+		Query:  "hybrid query",
+		UserID: testUUID.String(),
 	})
 
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotEmpty(t, result.Contexts)
 	assert.Greater(t, result.BM25HitCount, 0)
-	bm25.AssertCalled(t, "SearchBM25", mock.Anything, "hybrid query", 50)
+	bm25.AssertCalled(t, "SearchBM25", mock.Anything, "hybrid query", 50, testUUID.String())
 }
 
 func TestRetrievalGraph_Execute_WithConversationHistory(t *testing.T) {
@@ -381,6 +409,7 @@ func TestRetrievalGraph_Execute_WithConversationHistory(t *testing.T) {
 	search := new(mockSearchClient)
 	encoder := new(mockVectorEncoder)
 	chunkRepo := new(mockChunkRepo)
+	testUUID := uuid.New()
 
 	queryVec := []float32{0.1, 0.2, 0.3}
 
@@ -390,12 +419,12 @@ func TestRetrievalGraph_Execute_WithConversationHistory(t *testing.T) {
 	}
 
 	expander.On("ExpandQueryWithHistory", mock.Anything, "tell me more", history, 1, 3).Return([]string{"AI details"}, nil)
-	search.On("Search", mock.Anything, "tell me more").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "tell me more", testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, []string{"tell me more"}).Return([][]float32{queryVec}, nil)
 	encoder.On("Encode", mock.Anything, mock.MatchedBy(func(texts []string) bool {
 		return len(texts) > 0 && texts[0] != "tell me more"
 	})).Return([][]float32{queryVec}, nil)
-	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	chunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:           domain.RagChunk{ID: uuid.New(), Content: "AI expanded content", CreatedAt: time.Now()},
 			Score:           0.88,
@@ -425,6 +454,7 @@ func TestRetrievalGraph_Execute_WithConversationHistory(t *testing.T) {
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
 		Query:               "tell me more",
 		ConversationHistory: history,
+		UserID:              testUUID.String(),
 	})
 
 	assert.NoError(t, err)
@@ -440,6 +470,7 @@ func TestRetrievalGraph_Execute_PlannerQueries_SkipsExpanderCall(t *testing.T) {
 	encoder := new(mockVectorEncoder)
 	chunkRepo := new(mockChunkRepo)
 	bm25 := new(mockBM25Searcher)
+	testUUID := uuid.New()
 
 	queryVec := []float32{0.1, 0.2, 0.3}
 	chunkID := uuid.New()
@@ -451,12 +482,12 @@ func TestRetrievalGraph_Execute_PlannerQueries_SkipsExpanderCall(t *testing.T) {
 	}
 
 	// expander should NOT be called (no ExpandQuery/ExpandQueryWithHistory mocks)
-	search.On("Search", mock.Anything, "ヴァンス副大統領の直近の動きは？").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "ヴァンス副大統領の直近の動きは？", testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, []string{"ヴァンス副大統領の直近の動きは？"}).Return([][]float32{queryVec}, nil)
 	encoder.On("Encode", mock.Anything, mock.MatchedBy(func(texts []string) bool {
 		return len(texts) > 0 && texts[0] != "ヴァンス副大統領の直近の動きは？"
 	})).Return([][]float32{queryVec, queryVec, queryVec}, nil)
-	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	chunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:           domain.RagChunk{ID: chunkID, Content: "Vance article content", CreatedAt: time.Now()},
 			Score:           0.90,
@@ -466,7 +497,7 @@ func TestRetrievalGraph_Execute_PlannerQueries_SkipsExpanderCall(t *testing.T) {
 			DocumentVersion: 1,
 		},
 	}, nil)
-	bm25.On("SearchBM25", mock.Anything, mock.Anything, 50).Return([]domain.BM25SearchResult{
+	bm25.On("SearchBM25", mock.Anything, mock.Anything, 50, testUUID.String()).Return([]domain.BM25SearchResult{
 		{ArticleID: "art-vance", Content: "Vance article content", Title: "JD Vance News", Rank: 1, Score: 0.70},
 	}, nil)
 
@@ -493,6 +524,7 @@ func TestRetrievalGraph_Execute_PlannerQueries_SkipsExpanderCall(t *testing.T) {
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
 		Query:         "ヴァンス副大統領の直近の動きは？",
 		SearchQueries: plannerQueries,
+		UserID:        testUUID.String(),
 	})
 
 	assert.NoError(t, err)
@@ -512,13 +544,14 @@ func TestRetrievalGraph_Execute_EmptyPlannerQueries_CallsExpander(t *testing.T) 
 	search := new(mockSearchClient)
 	encoder := new(mockVectorEncoder)
 	chunkRepo := new(mockChunkRepo)
+	testUUID := uuid.New()
 
 	queryVec := []float32{0.1, 0.2, 0.3}
 
 	expander.On("ExpandQuery", mock.Anything, "fallback query", 1, 3).Return([]string{"expanded fallback"}, nil)
-	search.On("Search", mock.Anything, "fallback query").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "fallback query", testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
-	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{}, nil)
+	chunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{}, nil)
 
 	g := retrieval.NewRetrievalGraph(retrieval.GraphDeps{
 		QueryExpander: expander,
@@ -537,8 +570,8 @@ func TestRetrievalGraph_Execute_EmptyPlannerQueries_CallsExpander(t *testing.T) 
 	})
 
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
-		Query: "fallback query",
-		// SearchQueries is nil — should fall back to expander
+		Query:  "fallback query",
+		UserID: testUUID.String(),
 	})
 
 	assert.NoError(t, err)
@@ -556,14 +589,15 @@ func TestRetrievalGraph_Execute_ExpandQueryAllFiltered_FallsBackToOriginalQuery(
 	search := new(mockSearchClient)
 	encoder := new(mockVectorEncoder)
 	chunkRepo := new(mockChunkRepo)
+	testUUID := uuid.New()
 
 	queryVec := []float32{0.1, 0.2, 0.3}
 
 	expander.On("ExpandQuery", mock.Anything, "supply chain disruption causes", 1, 3).
 		Return([]string{"Japanese queries and English queries must be translated to each other."}, nil)
-	search.On("Search", mock.Anything, "supply chain disruption causes").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "supply chain disruption causes", testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
-	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{}, nil)
+	chunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{}, nil)
 
 	g := retrieval.NewRetrievalGraph(retrieval.GraphDeps{
 		QueryExpander: expander,
@@ -582,7 +616,8 @@ func TestRetrievalGraph_Execute_ExpandQueryAllFiltered_FallsBackToOriginalQuery(
 	})
 
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
-		Query: "supply chain disruption causes",
+		Query:  "supply chain disruption causes",
+		UserID: testUUID.String(),
 	})
 
 	assert.NoError(t, err)
@@ -597,14 +632,15 @@ func TestRetrievalGraph_Execute_WithCandidateArticleIDs(t *testing.T) {
 	search := new(mockSearchClient)
 	encoder := new(mockVectorEncoder)
 	chunkRepo := new(mockChunkRepo)
+	testUUID := uuid.New()
 
 	queryVec := []float32{0.1, 0.2, 0.3}
 	articleIDs := []string{"art-10", "art-11"}
 
 	expander.On("ExpandQuery", mock.Anything, "scoped query", 1, 3).Return([]string{}, nil)
-	search.On("Search", mock.Anything, "scoped query").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "scoped query", testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
-	chunkRepo.On("SearchWithinArticles", mock.Anything, queryVec, articleIDs, 50).Return([]domain.SearchResult{
+	chunkRepo.On("SearchWithinArticles", mock.Anything, queryVec, articleIDs, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:           domain.RagChunk{ID: uuid.New(), Content: "scoped content", CreatedAt: time.Now()},
 			Score:           0.92,
@@ -634,10 +670,11 @@ func TestRetrievalGraph_Execute_WithCandidateArticleIDs(t *testing.T) {
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
 		Query:               "scoped query",
 		CandidateArticleIDs: articleIDs,
+		UserID:              testUUID.String(),
 	})
 
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotEmpty(t, result.Contexts)
-	chunkRepo.AssertCalled(t, "SearchWithinArticles", mock.Anything, queryVec, articleIDs, 50)
+	chunkRepo.AssertCalled(t, "SearchWithinArticles", mock.Anything, queryVec, articleIDs, 50, testUUID)
 }

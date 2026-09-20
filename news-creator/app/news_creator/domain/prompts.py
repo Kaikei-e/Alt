@@ -110,7 +110,10 @@ class _NeutralizedMapping:
 
 
 def _neutralize_untrusted(values: _FormatMapping) -> _FormatMapping:
-    """Return `values` with control tokens stripped from untrusted placeholders."""
+    """Return `values` with untrusted placeholders sanitized and delimited."""
+    # Imported here because prompt_boundary builds on this module's scan.
+    from news_creator.domain.prompt_boundary import wrap_untrusted_content_with_report
+
     neutralized: dict[str, str] = {}
     for placeholder in UNTRUSTED_PLACEHOLDERS:
         try:
@@ -119,18 +122,27 @@ def _neutralize_untrusted(values: _FormatMapping) -> _FormatMapping:
             continue
         if not isinstance(value, str):
             continue
-        cleaned, removed = neutralize_control_tokens(value)
-        if not removed:
-            continue
-        logger.warning(
-            "Removed control token sequences from untrusted prompt input",
-            extra={
-                "placeholder": placeholder,
-                "tokens_removed": removed,
-                "original_length": len(value),
-            },
-        )
-        neutralized[placeholder] = cleaned
+        report = wrap_untrusted_content_with_report(value)
+        if report.control_tokens_removed:
+            logger.warning(
+                "Removed control token sequences from untrusted prompt input",
+                extra={
+                    "placeholder": placeholder,
+                    "tokens_removed": report.control_tokens_removed,
+                    "original_length": len(value),
+                },
+            )
+        if report.hidden_characters_removed or report.delimiters_removed:
+            logger.warning(
+                "Removed hidden characters or forged delimiters from untrusted prompt input",
+                extra={
+                    "placeholder": placeholder,
+                    "hidden_characters_removed": report.hidden_characters_removed,
+                    "delimiters_removed": report.delimiters_removed,
+                    "original_length": len(value),
+                },
+            )
+        neutralized[placeholder] = report.text
     if not neutralized:
         return values
     return _NeutralizedMapping(values, neutralized)

@@ -77,6 +77,17 @@ class _DummyRemoteDriver:
         self.timeout_seconds = timeout_seconds
 
 
+@pytest.fixture(autouse=True)
+def _setup_main_wiring_env(tmp_path, monkeypatch):
+    """Isolate telemetry and ensure Redis authentication fail-fast contract is satisfied."""
+    secret_file = tmp_path / "redis_secret.txt"
+    secret_file.write_text("test-wiring-redis-password")
+    monkeypatch.setenv("REDIS_PASSWORD_FILE", str(secret_file))
+    monkeypatch.setenv("OTEL_ENABLED", "false")
+    # Pre-import main while environment is valid so top-level container is created safely
+    import main  # noqa: F401
+
+
 class _DummyRemoteHealthChecker:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -94,6 +105,7 @@ class _DummyConfig(SimpleNamespace):
             distributed_be_model_overrides={"http://remote-a:11434": "gemma4-e4b-q4km"},
             cache_enabled=False,
             cache_redis_url="redis://localhost:6379/0",
+            cache_redis_password=None,
             cache_ttl_seconds=3600,
         )
 
@@ -101,12 +113,17 @@ class _DummyConfig(SimpleNamespace):
 class _DummyCacheConfig(SimpleNamespace):
     """Minimal config for cache-wiring tests (no distributed BE noise)."""
 
-    def __init__(self, cache_enabled: bool):
+    def __init__(
+        self,
+        cache_enabled: bool,
+        cache_redis_password: str | None = "test-wiring-redis-password",
+    ):
         super().__init__(
             distributed_be_enabled=False,
             distributed_be_remotes=[],
             cache_enabled=cache_enabled,
             cache_redis_url="redis://cache-test:6379/0",
+            cache_redis_password=cache_redis_password,
             cache_ttl_seconds=3600,
         )
 
@@ -289,3 +306,53 @@ async def test_lifespan_starts_and_cancels_event_loop_lag_probe(monkeypatch):
     assert probe_cancelled.is_set(), (
         "lifespan must cancel the lag probe task on shutdown, not leave it dangling"
     )
+
+
+def test_dependency_container_fails_fast_when_redis_auth_unconfigured(monkeypatch):
+    """DependencyContainer startup must fail fast if Redis auth is unconfigured."""
+    import main as main_module
+
+    monkeypatch.delenv("REDIS_PASSWORD_FILE", raising=False)
+    monkeypatch.delenv("REDIS_AUTH", raising=False)
+
+    with pytest.raises(RuntimeError, match="redis authentication requires"):
+        main_module.DependencyContainer()
+
+
+def test_dependency_container_wires_resolved_redis_password(monkeypatch, tmp_path):
+    """DependencyContainer must pass resolved Redis password to CachePort when CACHE_ENABLED=true."""
+    import main as main_module
+    from news_creator.gateway.redis_cache_gateway import RedisCacheGateway
+
+    secret_file = tmp_path / "secret.txt"
+    secret_file.write_text("custom-auth-password")
+    monkeypatch.setenv("REDIS_PASSWORD_FILE", str(secret_file))
+    monkeypatch.setenv("CACHE_ENABLED", "true")
+    monkeypatch.delenv("REDIS_AUTH", raising=False)
+
+    monkeypatch.setattr(main_module, "OllamaGateway", _DummyGateway)
+    monkeypatch.setattr(main_module, "ModelWarmupService", _DummyWarmupService)
+
+    container = main_module.DependencyContainer()
+
+    assert container.config.cache_redis_password == "custom-auth-password"
+    assert isinstance(container.cache_gateway, RedisCacheGateway)
+    assert container.cache_gateway.config.cache_redis_password == "custom-auth-password"
+
+
+def test_dependency_container_accepts_explicit_redis_auth_disabled(monkeypatch):
+    """DependencyContainer allows startup with None password when REDIS_AUTH=disabled."""
+    import main as main_module
+    from news_creator.gateway.redis_cache_gateway import NullCacheGateway
+
+    monkeypatch.delenv("REDIS_PASSWORD_FILE", raising=False)
+    monkeypatch.setenv("REDIS_AUTH", "disabled")
+    monkeypatch.setenv("CACHE_ENABLED", "false")
+
+    monkeypatch.setattr(main_module, "OllamaGateway", _DummyGateway)
+    monkeypatch.setattr(main_module, "ModelWarmupService", _DummyWarmupService)
+
+    container = main_module.DependencyContainer()
+
+    assert container.config.cache_redis_password is None
+    assert isinstance(container.cache_gateway, NullCacheGateway)

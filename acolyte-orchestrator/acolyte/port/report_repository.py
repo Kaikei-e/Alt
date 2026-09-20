@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class ReportRepositoryPort(Protocol):
-    async def create_report(self, title: str, report_type: str) -> Report: ...
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report: ...
 
     async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None: ...
 
@@ -20,7 +20,7 @@ class ReportRepositoryPort(Protocol):
 
     async def get_report(self, report_id: UUID) -> Report | None: ...
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]: ...
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]: ...
 
     async def bump_version(  # noqa: PLR0913 — keyword-only snapshot fields, each independently optional
         self,
@@ -63,3 +63,14 @@ class ReportRepositoryPort(Protocol):
     async def has_active_run(self, report_id: UUID) -> bool: ...
 
     async def delete_report(self, report_id: UUID) -> None: ...
+
+
+class ReportOwnerBackfillPort(Protocol):
+    """Narrow port for backfilling unowned legacy reports."""
+
+    async def backfill_owners(
+        self,
+        *,
+        single_owner_id: UUID | None = None,
+        mapping: dict[UUID, UUID] | None = None,
+    ) -> int: ...

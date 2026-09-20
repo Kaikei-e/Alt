@@ -52,7 +52,7 @@
       },
       "response": {
         "body": {
-          "estimatedTotalHits": 1,
+          "estimatedTotalHits": "1",
           "hits": [
             {
               "content": "body",
@@ -164,7 +164,7 @@
       },
       "response": {
         "body": {
-          "estimatedTotalHits": 1,
+          "estimatedTotalHits": "1",
           "hits": [
             {
               "bullets": [

@@ -1,133 +1,9 @@
 package driver
 
 import (
-	"strings"
 	"testing"
+	"time"
 )
-
-func TestMeilisearchDriver_SearchWithFilters(t *testing.T) {
-	// Mock test - since we can't easily test against real Meilisearch in unit tests
-	// This test verifies the method exists and handles basic scenarios
-
-	// For now, we'll test the buildSecureFilter method directly
-	driver := &MeilisearchDriver{}
-
-	tests := []struct {
-		name     string
-		filters  []string
-		expected string
-	}{
-		{
-			name:     "empty filters",
-			filters:  []string{},
-			expected: "",
-		},
-		{
-			name:     "single filter",
-			filters:  []string{"technology"},
-			expected: "tags = \"technology\"",
-		},
-		{
-			name:     "multiple filters",
-			filters:  []string{"technology", "programming"},
-			expected: "tags = \"technology\" AND tags = \"programming\"",
-		},
-		{
-			name:     "filters with quotes",
-			filters:  []string{"tech\"malicious"},
-			expected: "tags = \"tech\\\"malicious\"",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := driver.buildSecureFilter(tt.filters)
-			if result != tt.expected {
-				t.Errorf("buildSecureFilter(%v) = %q, want %q", tt.filters, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestMeilisearchDriver_SearchWithFilters_SecurityValidation(t *testing.T) {
-	driver := &MeilisearchDriver{}
-
-	securityTests := []struct {
-		name         string
-		maliciousTag string
-		description  string
-	}{
-		{
-			name:         "SQL injection attempt",
-			maliciousTag: "'; DROP TABLE articles; --",
-			description:  "Should escape SQL injection attempts",
-		},
-		{
-			name:         "Meilisearch filter bypass",
-			maliciousTag: "tag\" OR \"admin",
-			description:  "Should escape Meilisearch filter injection",
-		},
-		{
-			name:         "Complex injection",
-			maliciousTag: "tag\" OR (tags = \"admin\" AND secret = \"true\")",
-			description:  "Should escape complex injection attempts",
-		},
-	}
-
-	for _, tt := range securityTests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Test that malicious input is properly escaped
-			result := driver.buildSecureFilter([]string{tt.maliciousTag})
-
-			// Verify the result is properly escaped and wrapped in quotes
-			if result != "" && !containsQuotedValue(result) {
-				t.Errorf("buildSecureFilter should properly quote and escape malicious input: %s", tt.description)
-			}
-
-			// Verify no injection characters remain unescaped
-			if result != "" && containsUnescapedQuotes(result) {
-				t.Errorf("buildSecureFilter should escape all quotes in malicious input: %s", tt.description)
-			}
-		})
-	}
-}
-
-// Helper function to check if the result contains properly quoted values
-func containsQuotedValue(filter string) bool {
-	// A properly formatted filter should look like: tags = "..."
-	return strings.HasPrefix(filter, "tags = \"") && strings.HasSuffix(filter, "\"")
-}
-
-// Helper function to check for unescaped quotes inside the filter value
-func containsUnescapedQuotes(filter string) bool {
-	if !containsQuotedValue(filter) {
-		// If not properly quoted, it's considered insecure for this test's purpose.
-		return true
-	}
-
-	// Extract value from inside `tags = "..."`
-	value := filter[len("tags = \"") : len(filter)-1]
-
-	// Look for quotes that are not escaped with backslashes.
-	// A quote is escaped if it is preceded by an odd number of backslashes.
-	for i := 0; i < len(value); i++ {
-		if value[i] == '"' {
-			// This is a quote. Check if it's escaped.
-			backslashes := 0
-			for j := i - 1; j >= 0; j-- {
-				if value[j] == '\\' {
-					backslashes++
-				} else {
-					break
-				}
-			}
-			if backslashes%2 == 0 {
-				return true // Unescaped quote (preceded by an even number of backslashes)
-			}
-		}
-	}
-	return false
-}
 
 func TestContainsCJK_Japanese(t *testing.T) {
 	tests := []struct {
@@ -154,12 +30,167 @@ func TestContainsCJK_Japanese(t *testing.T) {
 	}
 }
 
-func BenchmarkMeilisearchDriver_BuildSecureFilter(b *testing.B) {
-	driver := &MeilisearchDriver{}
-	filters := []string{"technology", "programming", "web-development", "data-science", "machine-learning"}
+func TestBuildUserFilter(t *testing.T) {
+	tests := []struct {
+		name     string
+		userID   string
+		expected string
+	}{
+		{
+			name:     "valid userID",
+			userID:   "user-123",
+			expected: `user_id = "user-123"`,
+		},
+		{
+			name:     "escaping quotes and backslashes",
+			userID:   `user"1\2`,
+			expected: `user_id = "user\"1\\2"`,
+		},
+	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		driver.buildSecureFilter(filters)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := BuildUserFilter(tt.userID)
+			if result != tt.expected {
+				t.Errorf("BuildUserFilter(%q) = %q, want %q", tt.userID, result, tt.expected)
+			}
+		})
+	}
+
+	t.Run("empty userID panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("BuildUserFilter with empty string should panic")
+			}
+		}()
+		_ = BuildUserFilter("")
+	})
+
+	t.Run("whitespace userID panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("BuildUserFilter with whitespace string should panic")
+			}
+		}()
+		_ = BuildUserFilter("   ")
+	})
+}
+
+func TestMeilisearchDriver_SearchByUserID_RejectsEmptyUserID(t *testing.T) {
+	driver := &MeilisearchDriver{}
+
+	_, err := driver.SearchByUserID(t.Context(), "query", "", 10)
+	if err == nil {
+		t.Error("SearchByUserID with empty userID should return error")
+	}
+
+	_, err = driver.SearchByUserID(t.Context(), "query", "   ", 10)
+	if err == nil {
+		t.Error("SearchByUserID with whitespace userID should return error")
+	}
+}
+
+func TestMeilisearchDriver_SearchByUserIDWithPagination_RejectsEmptyUserID(t *testing.T) {
+	driver := &MeilisearchDriver{}
+
+	_, _, err := driver.SearchByUserIDWithPagination(t.Context(), "query", "", 0, 10)
+	if err == nil {
+		t.Error("SearchByUserIDWithPagination with empty userID should return error")
+	}
+
+	_, _, err = driver.SearchByUserIDWithPagination(t.Context(), "query", "   ", 0, 10)
+	if err == nil {
+		t.Error("SearchByUserIDWithPagination with whitespace userID should return error")
+	}
+}
+
+func TestBuildUserDateFilter(t *testing.T) {
+	after := time.Unix(1700000000, 0)
+	before := time.Unix(1700003600, 0)
+
+	tests := []struct {
+		name     string
+		userID   string
+		after    *time.Time
+		before   *time.Time
+		expected string
+	}{
+		{
+			name:     "both bounds present",
+			userID:   "u1",
+			after:    &after,
+			before:   &before,
+			expected: `user_id = "u1" AND published_at >= 1700000000 AND published_at <= 1700003600`,
+		},
+		{
+			name:     "only published_after",
+			userID:   "u1",
+			after:    &after,
+			before:   nil,
+			expected: `user_id = "u1" AND published_at >= 1700000000`,
+		},
+		{
+			name:     "only published_before",
+			userID:   "u1",
+			after:    nil,
+			before:   &before,
+			expected: `user_id = "u1" AND published_at <= 1700003600`,
+		},
+		{
+			name:     "neither bound present",
+			userID:   "u1",
+			after:    nil,
+			before:   nil,
+			expected: `user_id = "u1"`,
+		},
+		{
+			name:     "escapes user ID with quotes",
+			userID:   `user"1`,
+			after:    &after,
+			before:   &before,
+			expected: `user_id = "user\"1" AND published_at >= 1700000000 AND published_at <= 1700003600`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := BuildUserDateFilter(tt.userID, tt.after, tt.before)
+			if got != tt.expected {
+				t.Errorf("BuildUserDateFilter() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+
+	t.Run("empty userID panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("BuildUserDateFilter with empty userID should panic")
+			}
+		}()
+		_ = BuildUserDateFilter("", &after, &before)
+	})
+
+	t.Run("whitespace userID panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("BuildUserDateFilter with whitespace userID should panic")
+			}
+		}()
+		_ = BuildUserDateFilter("   ", &after, &before)
+	})
+}
+
+func TestMeilisearchDriver_SearchByUserIDWithDateFilter_RejectsEmptyUserID(t *testing.T) {
+	driver := &MeilisearchDriver{}
+	after := time.Unix(1700000000, 0)
+
+	_, err := driver.SearchByUserIDWithDateFilter(t.Context(), "query", "", &after, nil, 10)
+	if err == nil {
+		t.Error("SearchByUserIDWithDateFilter with empty userID should return error")
+	}
+
+	_, err = driver.SearchByUserIDWithDateFilter(t.Context(), "query", "   ", &after, nil, 10)
+	if err == nil {
+		t.Error("SearchByUserIDWithDateFilter with whitespace userID should return error")
 	}
 }

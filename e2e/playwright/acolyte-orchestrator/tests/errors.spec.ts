@@ -128,24 +128,16 @@ test.describe("malformed arguments", () => {
 		);
 	});
 
-	test("RerunSection with a non-UUID id is reported as not_found @contract", async ({
+	test("RerunSection with a non-UUID id is reported as invalid_argument @contract", async ({
 		acolyte,
 	}) => {
-		// New coverage, and this asserts an *inconsistency* rather than endorsing
-		// it. `uc.execute(UUID(request.report_id), ...)` at connect_service.py:394
-		// evaluates the `UUID(...)` conversion inside the `try:` whose only
-		// handler is `except ValueError -> Code.NOT_FOUND`, so a malformed id
-		// takes the same exit as a missing report — where DeleteReport, three
-		// handlers down, calls the same thing invalid_argument.
-		//
-		// Pinning it is the point. Either the behaviour is intentional and this
-		// documents it, or it gets fixed and this test is what forces the fix to
-		// be a deliberate, reviewed change rather than a silent one.
+		// connect_service.py:484-486 validates UUID(request.report_id) and raises
+		// INVALID_ARGUMENT on malformed input, consistent with DeleteReport and GetRunStatus.
 		await expectUnaryError(
 			acolyte,
 			P.rerunSection,
 			{ reportId: "not-a-uuid", sectionKey: "overview" },
-			ConnectCode.notFound,
+			ConnectCode.invalidArgument,
 		);
 	});
 

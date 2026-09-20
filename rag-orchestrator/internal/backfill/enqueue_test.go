@@ -33,6 +33,7 @@ func sourceArticle(id string) Article {
 		Title:     "title " + id,
 		Body:      "body of " + id,
 		URL:       "https://example.test/" + id,
+		UserID:    "00000000-0000-0000-0000-000000000001",
 		CreatedAt: time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC),
 	}
 }
@@ -71,6 +72,7 @@ func TestEnqueuer_QueuesEveryStaleArticleWithAFullPayload(t *testing.T) {
 	assert.Equal(t, rebuildJobType, job.JobType)
 	assert.Equal(t, "new", job.Status)
 	assert.Equal(t, "a", job.Payload["article_id"])
+	assert.Equal(t, "00000000-0000-0000-0000-000000000001", job.Payload["user_id"])
 	assert.Equal(t, "title a", job.Payload["title"])
 	assert.Equal(t, "body of a", job.Payload["body"])
 	assert.Equal(t, "https://example.test/a", job.Payload["url"])
@@ -167,4 +169,28 @@ func TestEnqueuer_SurfacesStateReaderErrors(t *testing.T) {
 
 	_, err = enq.Run(context.Background())
 	assert.ErrorContains(t, err, "rag-db unreachable")
+}
+
+func TestEnqueuer_SkipsMissingOwnerSafely(t *testing.T) {
+	noOwner := sourceArticle("no-owner")
+	noOwner.UserID = ""
+	invalidOwner := sourceArticle("invalid-owner")
+	invalidOwner.UserID = "not-a-uuid"
+	nilOwner := sourceArticle("nil-owner")
+	nilOwner.UserID = "00000000-0000-0000-0000-000000000000"
+	valid := sourceArticle("valid")
+
+	source := &stubArticleSource{articles: []Article{noOwner, invalidOwner, nilOwner, valid}}
+	queue := newStubJobQueue()
+
+	enq, err := NewEnqueuer(source, newStubVersionState(), queue, testEnqueueConfig(testTarget()), rebuildTestLogger())
+	require.NoError(t, err)
+
+	stats, err := enq.Run(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1), stats.Enqueued)
+	require.Len(t, queue.enqueued, 1)
+	assert.Equal(t, "valid", queue.enqueued[0].Payload["article_id"])
+	assert.Equal(t, valid.UserID, queue.enqueued[0].Payload["user_id"])
 }

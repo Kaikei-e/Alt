@@ -9,6 +9,10 @@ import aiohttp
 
 from news_creator.domain.models import LLMGenerateResponse, SummaryMetadata
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.output_guard import (
+    StreamingOutputGuard,
+    sanitize_output_markdown,
+)
 from news_creator.domain.prompts import (
     SUMMARY_PROMPT_TEMPLATE,
     CHUNK_SUMMARY_PROMPT_TEMPLATE,
@@ -855,6 +859,9 @@ class SummarizeUsecase:
 
             # Control tokens may be split across chunks — buffer at boundaries.
             token_filter = ControlTokenFilter()
+            # Links have to clear the output guard before the client renders
+            # them, and a link is only judgeable once its URL is complete.
+            output_guard = StreamingOutputGuard()
 
             has_data = False
             received_done = False
@@ -866,7 +873,7 @@ class SummarizeUsecase:
                         received_done = True
                     token = chunk.response
                     if token:
-                        filtered = token_filter.push(token)
+                        filtered = output_guard.push(token_filter.push(token))
                         if filtered:
                             has_data = True
                             tokens_yielded += 1
@@ -888,8 +895,11 @@ class SummarizeUsecase:
                                 )
                             yield filtered
 
-                # Flush any buffered prefix that never completed a control token
-                remaining = token_filter.flush()
+                # Flush any buffered prefix that never completed a control
+                # token or a markdown link
+                remaining = (
+                    output_guard.push(token_filter.flush()) + output_guard.flush()
+                )
                 if remaining:
                     has_data = True
                     tokens_yielded += 1
@@ -1105,7 +1115,7 @@ class SummarizeUsecase:
                 },
             )
 
-        return result
+        return sanitize_output_markdown(result)
 
     @staticmethod
     def _nanoseconds_to_milliseconds(value: int | None) -> float | None:

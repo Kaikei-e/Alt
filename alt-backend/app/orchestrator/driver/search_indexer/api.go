@@ -32,16 +32,6 @@ const (
 	searchIndexerPort = "9300"
 )
 
-// SearchArticles searches articles via the search-indexer REST API.
-func SearchArticles(ctx context.Context, query string) ([]models.SearchArticlesHit, error) {
-	baseURL := fmt.Sprintf("http://%s:%s", searchIndexerHost, searchIndexerPort)
-	targetEndpoint, err := BuildSearchURL(baseURL, "/v1/search", query)
-	if err != nil {
-		return nil, err
-	}
-	return doSearchRequest(ctx, targetEndpoint)
-}
-
 // SearchArticlesWithUserID searches articles with user_id parameter.
 func SearchArticlesWithUserID(ctx context.Context, query string, userID string) ([]models.SearchArticlesHit, error) {
 	baseURL := fmt.Sprintf("http://%s:%s", searchIndexerHost, searchIndexerPort)
@@ -52,8 +42,7 @@ func SearchArticlesWithUserID(ctx context.Context, query string, userID string) 
 	return doSearchRequest(ctx, targetEndpoint)
 }
 
-// doSearchRequest issues the shared GET/parse/decode flow used by SearchArticles and
-// SearchArticlesWithUserID (the only difference between them is the query string).
+// doSearchRequest issues the shared GET/parse/decode flow used by SearchArticlesWithUserID.
 func doSearchRequest(ctx context.Context, targetEndpoint string) ([]models.SearchArticlesHit, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetEndpoint, nil)
 	if err != nil {
@@ -112,21 +101,6 @@ func doSearchRequest(ctx context.Context, targetEndpoint string) ([]models.Searc
 	}
 
 	return results, nil
-}
-
-func BuildSearchURL(baseURL, path, query string) (string, error) {
-	u, err := url.Parse(baseURL)
-	if err != nil {
-		return "", fmt.Errorf("invalid base URL: %w", err)
-	}
-
-	u.Path = path
-
-	vals := url.Values{}
-	vals.Add("q", query)
-	u.RawQuery = vals.Encode()
-
-	return u.String(), nil
 }
 
 func BuildSearchURLWithUserID(baseURL, path, query, userID string) (string, error) {

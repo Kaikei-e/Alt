@@ -68,7 +68,7 @@ func TestSearchIndexerSearchArticlesContract(t *testing.T) {
 					"content": matchers.Like("body"),
 					"tags":    matchers.EachLike("ai", 1),
 				}, 1),
-				"estimatedTotalHits": matchers.Like(1),
+				"estimatedTotalHits": matchers.Like("1"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
@@ -121,7 +121,7 @@ func TestSearchIndexerSearchRecapsByTagContract(t *testing.T) {
 					"tags":       matchers.EachLike("technology", 1),
 					"bullets":    matchers.EachLike("bullet", 1),
 				}, 1),
-				"estimatedTotalHits": matchers.Like(1),
+				"estimatedTotalHits": matchers.Like("1"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {

@@ -18,11 +18,13 @@ const (
 )
 
 // AdminClient is an HTTP client for the Knowledge Home admin API.
-// Authentication is expected at the network/gateway layer (not via a
-// service-token header on this client). Default BaseURL is plain HTTP.
+// OperatorToken is sent as a Bearer token on every request; alt-backend's
+// :9102 listener requires it unless that instance runs OPERATOR_AUTH=disabled.
+// Default BaseURL is plain HTTP.
 type AdminClient struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	BaseURL       string
+	OperatorToken string
+	HTTPClient    *http.Client
 }
 
 // APIError represents a non-2xx response from the admin API.
@@ -39,10 +41,13 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("admin API error (HTTP %d)", e.StatusCode)
 }
 
-// NewClient creates a new AdminClient with sensible defaults.
-func NewClient(baseURL string) *AdminClient {
+// NewClient creates a new AdminClient with sensible defaults. operatorToken
+// is sent as a Bearer token on every request; pass "" if the target
+// alt-backend instance runs OPERATOR_AUTH=disabled.
+func NewClient(baseURL, operatorToken string) *AdminClient {
 	return &AdminClient{
-		BaseURL: baseURL,
+		BaseURL:       baseURL,
+		OperatorToken: operatorToken,
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -65,6 +70,9 @@ func (c *AdminClient) Call(ctx context.Context, method string, reqBody, respBody
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if c.OperatorToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.OperatorToken)
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

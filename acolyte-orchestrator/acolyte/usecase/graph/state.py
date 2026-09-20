@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+# Runtime import, not TYPE_CHECKING: LangGraph resolves the annotations of this
+# TypedDict when a StateGraph is built, so a deferred name fails at graph build.
+from uuid import UUID
+
 
 class SectionCitationDict(TypedDict, total=False):
     """Citation linking a claim/paragraph to its evidence source (see SectionCitation)."""
@@ -64,6 +68,7 @@ class ReportGenerationState(TypedDict, total=False):
 
     report_id: str
     run_id: str
+    user_id: UUID
     brief: dict  # ReportBrief.to_dict() — typed input specification
     scope: dict  # deprecated, kept for backward compat during migration
     outline: list[dict]

@@ -33,13 +33,7 @@ func (stubSearchEngine) IndexDocuments(context.Context, []domain.SearchDocument)
 	return nil
 }
 func (stubSearchEngine) DeleteDocuments(context.Context, []string) error { return nil }
-func (stubSearchEngine) Search(context.Context, string, int) ([]domain.SearchDocument, error) {
-	return nil, nil
-}
-func (stubSearchEngine) SearchWithFilters(context.Context, string, []string, int) ([]domain.SearchDocument, error) {
-	return nil, nil
-}
-func (stubSearchEngine) SearchWithDateFilter(context.Context, string, *time.Time, *time.Time, int) ([]domain.SearchDocument, error) {
+func (stubSearchEngine) SearchByUserIDWithDateFilter(context.Context, string, string, *time.Time, *time.Time, int) ([]domain.SearchDocument, error) {
 	return nil, nil
 }
 func (stubSearchEngine) EnsureIndex(context.Context) error { return nil }

@@ -6,6 +6,7 @@ import {
 	notImplementedSchema,
 	restErrorSchema,
 } from "../src/schemas.js";
+import { users } from "../src/seed.js";
 
 /**
  * The Echo REST surface — entirely new coverage.
@@ -143,7 +144,9 @@ test.describe("backfill enqueue", () => {
 
 	test("rejects a missing title", { tag: "@contract" }, async ({ rest }) => {
 		const body = await expectJsonStatus(
-			await rest.post("/internal/rag/backfill", { data: { article_id: uuid(), body: "b" } }),
+			await rest.post("/internal/rag/backfill", {
+				data: { article_id: uuid(), user_id: users.history, body: "b" },
+			}),
 			400,
 			restErrorSchema,
 		);
@@ -156,10 +159,62 @@ test.describe("backfill enqueue", () => {
 
 	test("rejects a missing body", { tag: "@contract" }, async ({ rest }) => {
 		const response = await rest.post("/internal/rag/backfill", {
-			data: { article_id: uuid(), title: "t" },
+			data: { article_id: uuid(), user_id: users.history, title: "t" },
 		});
 		const body = await expectJsonStatus(response, 400, restErrorSchema);
 		expect(body.error).toBe("missing body");
+	});
+
+	test("rejects a missing user_id when header is also absent", { tag: "@contract" }, async ({ rest }) => {
+		const body = await expectJsonStatus(
+			await rest.post("/internal/rag/backfill", {
+				data: { article_id: uuid(), title: "t", body: "b" },
+			}),
+			400,
+			restErrorSchema,
+		);
+		expect(body.error).toBe("missing user_id");
+	});
+
+	test("rejects a user_id that is not a UUID", { tag: "@contract" }, async ({ rest }) => {
+		const body = await expectJsonStatus(
+			await rest.post("/internal/rag/backfill", {
+				data: { article_id: uuid(), user_id: "not-a-uuid", title: "t", body: "b" },
+			}),
+			400,
+			restErrorSchema,
+		);
+		expect(body.error).toBe("invalid user_id");
+	});
+
+	test("rejects a nil UUID user_id", { tag: "@contract" }, async ({ rest }) => {
+		const body = await expectJsonStatus(
+			await rest.post("/internal/rag/backfill", {
+				data: {
+					article_id: uuid(),
+					user_id: "00000000-0000-0000-0000-000000000000",
+					title: "t",
+					body: "b",
+				},
+			}),
+			400,
+			restErrorSchema,
+		);
+		expect(body.error).toBe("invalid user_id");
+	});
+
+	test("accepts owner from X-Alt-User-Id header when absent from JSON", { tag: "@contract" }, async ({ rest }) => {
+		const response = await rest.post("/internal/rag/backfill", {
+			headers: { "X-Alt-User-Id": users.history },
+			data: {
+				article_id: uuid(),
+				title: "t",
+				body: "b",
+				url: "https://example.invalid/rag-e2e-backfill",
+			},
+		});
+		const body = await expectJsonStatus(response, 202, backfillAcceptedSchema);
+		expect(body.status).toBe("queued");
 	});
 
 	test(
@@ -185,6 +240,7 @@ test.describe("backfill enqueue", () => {
 			const response = await rest.post("/internal/rag/backfill", {
 				data: {
 					article_id: uuid(),
+					user_id: users.history,
 					title: `rag-e2e-${testToken(testInfo.workerIndex, testInfo.title)}`,
 					body: `Enqueued by the rag-orchestrator Playwright suite (${workerTag}).`,
 					url: "https://example.invalid/rag-e2e-backfill",
@@ -221,7 +277,7 @@ test.describe("embedder override is an allowlist, not a hint", () => {
 			// makes this probe fast in a slice whose embedder is unreachable.
 			const response = await rest.post("/internal/rag/index/upsert", {
 				headers: { "X-Embedder-URL": "http://attacker.invalid:11434" },
-				data: { article_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
+				data: { article_id: uuid(), user_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
 			});
 			const body = await expectJsonStatus(response, 400, restErrorSchema);
 			expect(body.error).toBe("X-Embedder-URL origin not allowed");
@@ -241,7 +297,7 @@ test.describe("embedder override is an allowlist, not a hint", () => {
 			// fails this one.
 			const response = await rest.post("/internal/rag/index/upsert", {
 				headers: { "X-Embedder-URL": "http://backfill-hyperboost.evil.com:11434" },
-				data: { article_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
+				data: { article_id: uuid(), user_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
 			});
 			const body = await expectJsonStatus(response, 400, restErrorSchema);
 			expect(body.error).toBe("X-Embedder-URL origin not allowed");
@@ -259,7 +315,7 @@ test.describe("embedder override is an allowlist, not a hint", () => {
 			// test in this describe pass for the wrong reason.
 			const response = await rest.post("/internal/rag/index/upsert", {
 				headers: { "X-Embedder-URL": "file:///etc/passwd" },
-				data: { article_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
+				data: { article_id: uuid(), user_id: uuid(), title: "t", body: "b", url: "https://example.invalid/a" },
 			});
 			const body = await expectJsonStatus(response, 400, restErrorSchema);
 			expect(body.error).toBe("X-Embedder-URL origin not allowed");

@@ -281,15 +281,17 @@ impl PipelineOrchestrator {
         // pair. A client that cannot be built at that point is a broken
         // deployment, so it panics instead of degrading to a producer that
         // reports success while never emitting.
-        let sovereign_client: Option<Arc<KnowledgeSovereignClient>> = config
-            .knowledge_sovereign_url()
-            .map(|url| match KnowledgeSovereignClient::new(url) {
-                Ok(client) => Arc::new(client),
-                Err(err) => panic!(
-                    "RECAP_KNOWLEDGE_EMIT=true but the knowledge-sovereign \
-                         client cannot be built from RECAP_KNOWLEDGE_SOVEREIGN_URL \
-                         ({err:#}); refusing to run with emission silently disabled"
-                ),
+        let sovereign_client: Option<Arc<KnowledgeSovereignClient>> =
+            config.knowledge_sovereign_url().map(|url| {
+                let token = config.knowledge_sovereign_token().map(ToString::to_string);
+                match KnowledgeSovereignClient::new(url, token) {
+                    Ok(client) => Arc::new(client),
+                    Err(err) => panic!(
+                        "RECAP_KNOWLEDGE_EMIT=true but the knowledge-sovereign \
+                             client cannot be built from RECAP_KNOWLEDGE_SOVEREIGN_URL \
+                             ({err:#}); refusing to run with emission silently disabled"
+                    ),
+                }
             });
         PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
@@ -621,6 +623,7 @@ mod new_tests {
             ("SUBWORKER_BASE_URL", Some("https://recap-subworker:9443")),
             ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
             ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+            ("RECAP_ADMIN_AUTH", Some("disabled")),
             ("MTLS_ENFORCE", Some("true")),
             ("MTLS_CERT_FILE", None),
             ("MTLS_KEY_FILE", None),

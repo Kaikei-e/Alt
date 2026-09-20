@@ -98,7 +98,7 @@ func EmbedAndSearch(
 			for i, q := range queries {
 				idx, query := i, q
 				qg.Go(func() error {
-					results, err := bm25Searcher.SearchBM25(qctx, query, bm25Limit)
+					results, err := bm25Searcher.SearchBM25(qctx, query, bm25Limit, sc.UserID)
 					if err != nil {
 						logger.Warn("hybrid_bm25_search_failed",
 							slog.String("retrieval_id", sc.RetrievalID),
@@ -149,7 +149,7 @@ func EmbedAndSearch(
 			switch {
 			case useHybridSearcher:
 				hybridStart := time.Now()
-				results, err = hybridSearcher.HybridSearch(gctx, sc.OriginalEmbedding, sc.Query, sc.SearchLimit)
+				results, err = hybridSearcher.HybridSearch(gctx, sc.OriginalEmbedding, sc.Query, sc.SearchLimit, sc.UserUUID)
 				if err == nil {
 					logger.Info("hybrid_db_search_completed",
 						slog.String("retrieval_id", sc.RetrievalID),
@@ -157,9 +157,9 @@ func EmbedAndSearch(
 						slog.Int64("duration_ms", time.Since(hybridStart).Milliseconds()))
 				}
 			case hasCandidateArticles:
-				results, err = chunkRepo.SearchWithinArticles(gctx, sc.OriginalEmbedding, sc.CandidateArticleIDs, sc.SearchLimit)
+				results, err = chunkRepo.SearchWithinArticles(gctx, sc.OriginalEmbedding, sc.CandidateArticleIDs, sc.SearchLimit, sc.UserUUID)
 			default:
-				results, err = chunkRepo.Search(gctx, sc.OriginalEmbedding, sc.SearchLimit)
+				results, err = chunkRepo.Search(gctx, sc.OriginalEmbedding, sc.SearchLimit, sc.UserUUID)
 			}
 			if err != nil {
 				return fmt.Errorf("failed to search original query: %w", err)

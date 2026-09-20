@@ -16,27 +16,37 @@ Run with:
     cd acolyte-orchestrator && uv run pytest tests/contract/ -v --no-cov
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
+import pytest
 from pact import Pact
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "pacts"
 
 
-def _new_pact() -> Pact:
-    return Pact("acolyte-orchestrator", "search-indexer")
-
-
-def test_search_articles() -> None:
-    """GET /v1/search returns hits with id/title/content/tags/score/language."""
-    pact = _new_pact()
+@pytest.fixture(scope="module")
+def pact_server() -> Iterator[str]:
+    """Module-scoped Pact mock server accumulating all search-indexer interactions."""
+    pact = Pact("acolyte-orchestrator", "search-indexer")
     (
         pact.upon_receiving("an article search request for evidence gathering")
         .given("search-indexer has indexed articles")
         .with_request("GET", "/v1/search")
-        .with_query_parameters({"q": "AI market trends 2026", "limit": "20"})
+        .with_query_parameters(
+            {
+                "q": "AI market trends 2026",
+                "limit": "20",
+                "user_id": "00000000-0000-0000-0000-000000000001",
+            }
+        )
         .will_respond_with(200)
         .with_body(
             json.dumps(
@@ -65,34 +75,6 @@ def test_search_articles() -> None:
             "application/json",
         )
     )
-
-    with pact.serve() as srv:
-        resp = httpx.get(
-            f"{srv.url}/v1/search",
-            params={"q": "AI market trends 2026", "limit": "20"},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "hits" in data
-        assert len(data["hits"]) >= 2
-        languages = {hit["language"] for hit in data["hits"]}
-        assert "en" in languages and "ja" in languages
-        for hit in data["hits"]:
-            assert "id" in hit
-            assert "title" in hit
-            assert "content" in hit
-            assert "tags" in hit
-            assert "score" in hit
-            assert "language" in hit
-            assert isinstance(hit["score"], (int, float))
-
-    pact.write_file(str(PACT_DIR), overwrite=True)
-
-
-def test_search_articles_with_date_window() -> None:
-    """GET /v1/search honours published_after / published_before so weekly_briefing
-    callers cannot surface stale articles from outside the window."""
-    pact = _new_pact()
     (
         pact.upon_receiving("an article search request bounded by a 7-day window")
         .given("search-indexer has articles with published_at metadata indexed")
@@ -103,6 +85,7 @@ def test_search_articles_with_date_window() -> None:
                 "limit": "20",
                 "published_after": "2026-04-12T00:00:00Z",
                 "published_before": "2026-04-20T00:00:00Z",
+                "user_id": "00000000-0000-0000-0000-000000000001",
             }
         )
         .will_respond_with(200)
@@ -126,34 +109,17 @@ def test_search_articles_with_date_window() -> None:
             "application/json",
         )
     )
-
-    with pact.serve() as srv:
-        resp = httpx.get(
-            f"{srv.url}/v1/search",
-            params={
-                "q": "Iran tensions 2026",
-                "limit": "20",
-                "published_after": "2026-04-12T00:00:00Z",
-                "published_before": "2026-04-20T00:00:00Z",
-            },
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["hits"], "date-bounded search must still return matches inside the window"
-        for hit in data["hits"]:
-            assert "published_at" in hit, "hits must expose published_at when date filter is applied"
-
-    pact.write_file(str(PACT_DIR), overwrite=True)
-
-
-def test_search_articles_empty_results() -> None:
-    """GET /v1/search returns empty hits array when no matches."""
-    pact = _new_pact()
     (
         pact.upon_receiving("an article search request with no matches")
         .given("search-indexer has no matching articles")
         .with_request("GET", "/v1/search")
-        .with_query_parameters({"q": "nonexistent topic xyz", "limit": "20"})
+        .with_query_parameters(
+            {
+                "q": "nonexistent topic xyz",
+                "limit": "20",
+                "user_id": "00000000-0000-0000-0000-000000000001",
+            }
+        )
         .will_respond_with(200)
         .with_body(
             json.dumps(
@@ -167,12 +133,67 @@ def test_search_articles_empty_results() -> None:
     )
 
     with pact.serve() as srv:
-        resp = httpx.get(
-            f"{srv.url}/v1/search",
-            params={"q": "nonexistent topic xyz", "limit": "20"},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["hits"] == []
+        yield str(srv.url)
 
     pact.write_file(str(PACT_DIR), overwrite=True)
+
+
+def test_search_articles(pact_server: str) -> None:
+    """GET /v1/search returns hits with id/title/content/tags/score/language."""
+    resp = httpx.get(
+        f"{pact_server}/v1/search",
+        params={
+            "q": "AI market trends 2026",
+            "limit": "20",
+            "user_id": "00000000-0000-0000-0000-000000000001",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "hits" in data
+    assert len(data["hits"]) >= 2
+    languages = {hit["language"] for hit in data["hits"]}
+    assert "en" in languages and "ja" in languages
+    for hit in data["hits"]:
+        assert "id" in hit
+        assert "title" in hit
+        assert "content" in hit
+        assert "tags" in hit
+        assert "score" in hit
+        assert "language" in hit
+        assert isinstance(hit["score"], (int, float))
+
+
+def test_search_articles_with_date_window(pact_server: str) -> None:
+    """GET /v1/search honours published_after / published_before so weekly_briefing
+    callers cannot surface stale articles from outside the window."""
+    resp = httpx.get(
+        f"{pact_server}/v1/search",
+        params={
+            "q": "Iran tensions 2026",
+            "limit": "20",
+            "published_after": "2026-04-12T00:00:00Z",
+            "published_before": "2026-04-20T00:00:00Z",
+            "user_id": "00000000-0000-0000-0000-000000000001",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["hits"], "date-bounded search must still return matches inside the window"
+    for hit in data["hits"]:
+        assert "published_at" in hit, "hits must expose published_at when date filter is applied"
+
+
+def test_search_articles_empty_results(pact_server: str) -> None:
+    """GET /v1/search returns empty hits array when no matches."""
+    resp = httpx.get(
+        f"{pact_server}/v1/search",
+        params={
+            "q": "nonexistent topic xyz",
+            "limit": "20",
+            "user_id": "00000000-0000-0000-0000-000000000001",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["hits"] == []

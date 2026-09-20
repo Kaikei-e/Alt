@@ -13,6 +13,7 @@ from structlog.testing import capture_logs
 from acolyte.config.settings import Settings
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
+from tests.conftest import TEST_USER_ID
 
 
 @pytest.fixture
@@ -44,7 +45,7 @@ async def test_search_articles_warns_on_empty_content(settings: Settings, conten
     async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
         with capture_logs() as logs:
-            hits = await gw.search_articles("AI", limit=10)
+            hits = await gw.search_articles("AI", limit=10, user_id=TEST_USER_ID)
 
     assert len(hits) == 1
     assert await content_store.fetch("a1") is None
@@ -78,7 +79,7 @@ async def test_search_articles_warns_once_per_empty_hit(settings: Settings, cont
     async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
         with capture_logs() as logs:
-            await gw.search_articles("AI", limit=10)
+            await gw.search_articles("AI", limit=10, user_id=TEST_USER_ID)
 
     warn_events = [
         e for e in logs if e.get("log_level") == "warning" and e.get("event") == "search_articles_empty_content"
@@ -107,7 +108,7 @@ async def test_search_articles_no_warning_when_content_present(
     async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
         with capture_logs() as logs:
-            await gw.search_articles("AI", limit=10)
+            await gw.search_articles("AI", limit=10, user_id=TEST_USER_ID)
 
     warn_events = [
         e for e in logs if e.get("log_level") == "warning" and e.get("event") == "search_articles_empty_content"

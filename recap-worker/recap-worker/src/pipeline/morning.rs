@@ -773,6 +773,7 @@ mod tests {
             ("SUBWORKER_BASE_URL", Some("https://recap-subworker:9443")),
             ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
             ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+            ("RECAP_ADMIN_AUTH", Some("disabled")),
             ("MTLS_ENFORCE", Some("true")),
             ("MTLS_CERT_FILE", None),
             ("MTLS_KEY_FILE", None),

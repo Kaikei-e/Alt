@@ -133,37 +133,33 @@ func (r *ragChunkRepository) InsertEvents(ctx context.Context, events []domain.R
 	return nil
 }
 
-// Overfetch bounds for the vector candidate pool. The pool only has to absorb
-// rows dropped by the current-version filter, which is a rare state for a chunk,
-// so a small multiple is enough.
-//
-// The size is also matched to what the index can actually produce: the cluster
-// sets hnsw.ef_search=100 (docker/postgres/postgresql-rag.conf), so the previous
-// 3x/500 pool asked for rows the scan was never going to return. Sizing is a
-// server setting, not a per-query one — no session-level SET belongs here.
+// Overfetch bounds for the vector candidate pool. Candidates are scoped to
+// the requested user_id and current document version inside the CTE, so the
+// candidate pool contains only current versions belonging to the user before
+// the outer query applies the final LIMIT $3.
 const (
-	searchOverfetchMultiplier = 2
+	searchOverfetchMultiplier = 4
 	searchOverfetchCap        = 200
 )
 
-// Search performs a vector search across all chunks (Augur use case).
+// Search performs a vector search across chunks belonging to userID (Augur use case).
 //
-// One round-trip: the HNSW-friendly candidate scan and the metadata enrichment
-// are a single CTE query. Splitting them cost two round-trips per query, and
-// Stage 3 fans this out over the expanded queries — up to eighteen round-trips
-// for one question.
-func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, limit int) ([]domain.SearchResult, error) {
+// One round-trip: the candidate scan and the metadata enrichment are a single CTE query,
+// filtered by rag_documents.user_id = userID (NULL-owner rows are invisible) within the
+// candidate CTE before LIMIT $2 is applied to guarantee user recall.
+func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("ragChunkRepository.Search: user_id is required")
+	}
+
 	candidateLimit := limit * searchOverfetchMultiplier
 	if candidateLimit > searchOverfetchCap {
 		candidateLimit = searchOverfetchCap
 	}
 
-	// The candidates CTE keeps its own ORDER BY ... LIMIT on the bare distance
-	// expression, which is what lets pgvector use the HNSW index; the joins that
-	// would otherwise defeat it happen outside, over the small candidate set.
-	// The outer ORDER BY is not redundant: the cluster runs
-	// hnsw.iterative_scan='relaxed_order', so the CTE may hand back candidates
-	// slightly out of distance order.
+	// The candidates CTE filters by current document version and user_id before
+	// applying candidateLimit ($2), ensuring other users' chunks cannot crowd out
+	// this user's results.
 	//
 	// c.embedding is selected only inside the distance projection, never as its
 	// own column: scanning it into the non-nullable domain.RagChunk.Embedding
@@ -172,6 +168,10 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		WITH candidates AS (
 			SELECT c.id, (c.embedding <=> $1) AS distance
 			FROM rag_chunks c
+			JOIN rag_document_versions v ON c.version_id = v.id
+			JOIN rag_documents d ON v.document_id = d.id
+			WHERE d.current_version_id = v.id
+			  AND d.user_id = $4
 			ORDER BY c.embedding <=> $1
 			LIMIT $2
 		)
@@ -187,11 +187,12 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		JOIN rag_document_versions v ON c.version_id = v.id
 		JOIN rag_documents d ON v.document_id = d.id
 		WHERE d.current_version_id = v.id
+		  AND d.user_id = $4
 		ORDER BY cand.distance ASC
 		LIMIT $3
 	`
 
-	rows, err := r.getExecutor(ctx).Query(ctx, query, pgvector.NewVector(queryVector), candidateLimit, limit)
+	rows, err := r.getExecutor(ctx).Query(ctx, query, pgvector.NewVector(queryVector), candidateLimit, limit, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search chunks: %w", err)
 	}
@@ -225,26 +226,26 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 	return results, nil
 }
 
-// SearchWithinArticles performs a vector search within specific articles (Morning Letter use case).
-// Uses pre-filtering by article IDs before vector search.
+// SearchWithinArticles performs a vector search within specific articles for userID (Morning Letter use case).
+// Uses pre-filtering by article IDs and user_id before vector search.
 // This is less efficient than Search() but necessary when filtering to a small subset of articles.
-func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int) ([]domain.SearchResult, error) {
+//
+// c.embedding is selected only inside the "(c.embedding <=> $1) as distance"
+// projection, never as its own column: scanning it into the non-nullable
+// domain.RagChunk.Embedding (pgvector.Vector) would panic on any row whose
+// embedding is NULL, exactly like the bug fixed in GetChunksByVersionID.
+// This query has no "embedding IS NOT NULL" filter — a NULL embedding
+// still produces a NULL distance and sorts last, it does not exclude the
+// row — so a NULL-embedding chunk for a requested article reaches Scan.
+// No caller reads SearchResult.Chunk.Embedding, so the column is dropped.
+func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVector []float32, articleIDs []string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("ragChunkRepository.SearchWithinArticles: user_id is required")
+	}
 	if len(articleIDs) == 0 {
 		return []domain.SearchResult{}, nil
 	}
 
-	// Single-pass query with pre-filtering by article IDs
-	// Note: HNSW index cannot be used efficiently with this approach,
-	// but since we're filtering to a small subset of articles, performance is acceptable.
-	//
-	// c.embedding is selected only inside the "(c.embedding <=> $1) as distance"
-	// projection, never as its own column: scanning it into the non-nullable
-	// domain.RagChunk.Embedding (pgvector.Vector) would panic on any row whose
-	// embedding is NULL, exactly like the bug fixed in GetChunksByVersionID.
-	// This query has no "embedding IS NOT NULL" filter — a NULL embedding
-	// still produces a NULL distance and sorts last, it does not exclude the
-	// row — so a NULL-embedding chunk for a requested article reaches Scan.
-	// No caller reads SearchResult.Chunk.Embedding, so the column is dropped.
 	query := `
 		SELECT
 			c.id, c.version_id, c.ordinal, c.content, c.created_at,
@@ -258,11 +259,12 @@ func (r *ragChunkRepository) SearchWithinArticles(ctx context.Context, queryVect
 		JOIN rag_documents d ON v.document_id = d.id
 		WHERE d.article_id = ANY($2)
 		  AND d.current_version_id = v.id
+		  AND d.user_id = $4
 		ORDER BY distance ASC
 		LIMIT $3
 	`
 
-	rows, err := r.getExecutor(ctx).Query(ctx, query, pgvector.NewVector(queryVector), articleIDs, limit)
+	rows, err := r.getExecutor(ctx).Query(ctx, query, pgvector.NewVector(queryVector), articleIDs, limit, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search within articles: %w", err)
 	}

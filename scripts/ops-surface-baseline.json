@@ -2,12 +2,12 @@
   "schema_version": 1,
   "generated_from": "compose/compose.yaml include chain",
   "counts": {
-      "declared_total": 77,
-      "long_running": 63,
-      "ephemeral": 10,
-      "profiled": 4,
-      "compose_config_default_profiles": 73,
-      "compose_config_full_profiles": 77
+    "declared_total": 78,
+    "long_running": 64,
+    "ephemeral": 10,
+    "profiled": 4,
+    "compose_config_default_profiles": 74,
+    "compose_config_full_profiles": 78
   },
   "long_running": [
     "acolyte-db",
@@ -30,6 +30,7 @@
     "dashboard",
     "dashboard-logs",
     "db",
+    "docker-socket-proxy-ro",
     "grafana",
     "knowledge-embedder-local",
     "knowledge-sovereign",
@@ -92,13 +93,13 @@
     "k6",
     "restic-backup"
   ],
-  "measured_at": "2026-08-19",
+  "measured_at": "2026-09-20",
   "discrepancy": {
     "false_94": "compose/backup.yaml top-level networks.backup-docker-proxy is a network, not a service. A grep of indented `name:` keys counts it and reports 94. Unique keys under services: across the include chain are the declared total.",
-    "compose_config_default_profiles": 73,
-    "compose_config_full_profiles": 77,
+    "compose_config_default_profiles": 74,
+    "compose_config_full_profiles": 78,
     "compose_config_note": "docker compose -f compose/compose.yaml config without --profile omits the 4 profiled services (backup + perf).",
-    "yaml_declared": 77,
+    "yaml_declared": 78,
     "profiled_excluded_from_default_up": [
       "alt-perf",
       "docker-socket-proxy",

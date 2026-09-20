@@ -1,6 +1,19 @@
+from urllib.parse import quote
+
 import streamlit as st
 import streamlit.components.v1 as components
+from sse_server import load_auth_token
+
 from .system_monitor_sse_client import generate_sse_client_js
+
+
+def _resolve_sse_token() -> str | None:
+    """Resolve the SSE auth token from query params or sse_server configuration."""
+    token = st.query_params.get("token") or st.query_params.get("sse_token")
+    if token:
+        return token
+
+    return load_auth_token(fail_fast=False)
 
 
 def render_system_monitor(window_seconds: int | None = None) -> None:
@@ -12,15 +25,23 @@ def render_system_monitor(window_seconds: int | None = None) -> None:
     del window_seconds  # API parity only; SSE is live.
     st.header("System Monitor (Real-time)")
 
-    # Get SSE connection parameters
-    # This works around the iframe limitation in Streamlit components.html
-    # Default to port 80 (Nginx) and path /sse/dashboard/stream
-    # st.query_params.get(key, default) already returns the default when the
-    # query param is absent, so no exception handling is needed here.
+    token = _resolve_sse_token()
+    if token is None:
+        st.error(
+            "SSE authentication token is not configured. "
+            "Provide ?token= in URL, configure SSE_AUTH_TOKEN_FILE, or set SSE_AUTH=disabled."
+        )
+        return
+
+    # Direct loopback connection to dashboard SSE port (8502); edge route removed.
     sse_host = st.query_params.get("sse_host", "localhost")
-    sse_port = st.query_params.get("sse_port", "80")
+    sse_port = st.query_params.get("sse_port", "8502")
     sse_protocol = st.query_params.get("sse_protocol", "http")
-    sse_path = st.query_params.get("sse_path", "/sse/dashboard/stream")
+    sse_path = st.query_params.get("sse_path", "/stream")
+
+    if token and "token=" not in sse_path:
+        delimiter = "&" if "?" in sse_path else "?"
+        sse_path = f"{sse_path}{delimiter}token={quote(token)}"
 
     # Generate SSE client JavaScript code
     sse_client_js = generate_sse_client_js(

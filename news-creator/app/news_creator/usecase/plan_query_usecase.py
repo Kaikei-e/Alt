@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.prompt_boundary import sanitize_untrusted_content
 from news_creator.domain.models import (
     PlanQueryRequest,
     PlanQueryResponse,
@@ -156,15 +157,16 @@ class PlanQueryUsecase:
         if request.conversation_history:
             lines = []
             for msg in request.conversation_history[-6:]:
-                content = (
-                    msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
-                )
+                # History quotes earlier answers, which quote article bodies.
+                content = sanitize_untrusted_content(msg.content)
+                content = content[:300] + "..." if len(content) > 300 else content
                 lines.append(f"{msg.role}: {content}")
             context_section += "Conversation:\n" + "\n".join(lines) + "\n\n"
 
         if request.article_id and request.article_title:
+            article_title = sanitize_untrusted_content(request.article_title)
             context_section += (
-                f"Article scope: {request.article_title} [id: {request.article_id}]\n\n"
+                f"Article scope: {article_title} [id: {request.article_id}]\n\n"
             )
 
         current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")

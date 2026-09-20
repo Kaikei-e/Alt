@@ -3,6 +3,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -35,6 +36,12 @@ type Config struct {
 	StreamingTimeout time.Duration
 	// AcolyteConnectURL is the URL of the Acolyte orchestrator (e.g., http://acolyte-orchestrator:8090)
 	AcolyteConnectURL string
+	// BackendOperatorTokenFile is the path to the operator token file for alt-backend :9102
+	BackendOperatorTokenFile string
+	// BackendOperatorToken is the operator token (alternative to file)
+	BackendOperatorToken string
+	// BackendOperatorAuth explicitly disables operator auth when set to "disabled"
+	BackendOperatorAuth string
 
 	// BFF Feature Flags
 	// EnableCache enables response caching
@@ -86,6 +93,9 @@ func NewConfig() *Config {
 		RequestTimeout:            getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
 		StreamingTimeout:          getDurationEnv("BFF_STREAMING_TIMEOUT", 40*time.Minute),
 		AcolyteConnectURL:         getEnv("ACOLYTE_CONNECT_URL", ""),
+		BackendOperatorTokenFile:  getEnv("BACKEND_OPERATOR_TOKEN_FILE", ""),
+		BackendOperatorToken:      getEnv("BACKEND_OPERATOR_TOKEN", ""),
+		BackendOperatorAuth:       getEnv("BACKEND_OPERATOR_AUTH", getEnv("OPERATOR_AUTH", "")),
 
 		// BFF Feature Flags (all enabled by default)
 		EnableCache:              true,
@@ -147,10 +157,44 @@ func (c *Config) LoadBackendTokenSecret() ([]byte, error) {
 	return nil, errors.New("backend token secret not configured: set BACKEND_TOKEN_SECRET_FILE or BACKEND_TOKEN_SECRET")
 }
 
-// LoadServiceSecret is a no-op stub. Authentication is established at the
-// TLS transport layer (mTLS); kept temporarily so existing callers compile.
-func (c *Config) LoadServiceSecret() (string, error) {
-	return "", nil
+// minOperatorTokenLen matches alt-backend's minimum so a truncated secret fails
+// here at startup instead of as a runtime 401 on every admin RPC.
+const minOperatorTokenLen = 24
+
+// LoadOperatorToken loads the operator bearer token used for admin RPCs to alt-backend.
+// When BackendInternalConnectURL is set, a token is required unless BackendOperatorAuth is "disabled".
+func (c *Config) LoadOperatorToken() (string, bool, error) {
+	if strings.EqualFold(strings.TrimSpace(c.BackendOperatorAuth), "disabled") {
+		return "", false, nil
+	}
+
+	if c.BackendOperatorTokenFile != "" {
+		data, err := os.ReadFile(c.BackendOperatorTokenFile)
+		if err != nil {
+			return "", false, fmt.Errorf("read BACKEND_OPERATOR_TOKEN_FILE %s: %w", c.BackendOperatorTokenFile, err)
+		}
+		token := strings.TrimSpace(string(data))
+		if token == "" {
+			return "", false, fmt.Errorf("BACKEND_OPERATOR_TOKEN_FILE=%s resolved to an empty token", c.BackendOperatorTokenFile)
+		}
+		if len(token) < minOperatorTokenLen {
+			return "", false, fmt.Errorf("BACKEND_OPERATOR_TOKEN_FILE=%s token is shorter than %d characters", c.BackendOperatorTokenFile, minOperatorTokenLen)
+		}
+		return token, true, nil
+	}
+
+	if token := strings.TrimSpace(c.BackendOperatorToken); token != "" {
+		if len(token) < minOperatorTokenLen {
+			return "", false, fmt.Errorf("BACKEND_OPERATOR_TOKEN is shorter than %d characters", minOperatorTokenLen)
+		}
+		return token, true, nil
+	}
+
+	if c.BackendInternalConnectURL != "" {
+		return "", false, errors.New("BACKEND_OPERATOR_TOKEN_FILE or BACKEND_OPERATOR_TOKEN is required when BACKEND_INTERNAL_CONNECT_URL is set; set BACKEND_OPERATOR_AUTH=disabled to run without operator authentication")
+	}
+
+	return "", false, nil
 }
 
 // Validate validates the configuration.

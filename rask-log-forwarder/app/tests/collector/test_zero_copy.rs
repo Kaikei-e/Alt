@@ -1,7 +1,9 @@
-use bytes::Bytes;
-use rask_log_forwarder::collector::DockerCollector;
 use std::process::{Command, Stdio};
 use std::time::Duration;
+
+use bytes::Bytes;
+use rask_log_forwarder::collector::DockerCollector;
+use serial_test::serial;
 use tokio::time::sleep;
 
 #[allow(dead_code)]
@@ -58,7 +60,12 @@ async fn cleanup_test_container(container_id: String) -> Result<(), Box<dyn std:
 }
 
 #[tokio::test]
+#[serial]
 async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::error::Error>> {
+    unsafe {
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
+
     // Test zero-copy functionality with graceful Docker handling
     let collector_result = DockerCollector::new().await;
 
@@ -121,7 +128,13 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
                         tokio::time::sleep(Duration::from_millis(100)).await;
                     }
 
-                    cleanup_test_container(test_container).await?;
+                    let cleanup_res = cleanup_test_container(test_container).await;
+
+                    unsafe {
+                        std::env::remove_var("DOCKER_HOST");
+                    }
+
+                    cleanup_res?;
 
                     assert!(
                         found_logs,
@@ -142,11 +155,20 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
         }
     }
 
+    unsafe {
+        std::env::remove_var("DOCKER_HOST");
+    }
+
     Ok(())
 }
 
 #[tokio::test]
+#[serial]
 async fn test_zero_copy_performance() -> Result<(), Box<dyn std::error::Error>> {
+    unsafe {
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
+
     // Simplified performance test that validates the throughput architecture
     let collector_result = DockerCollector::new().await;
 
@@ -196,6 +218,10 @@ async fn test_zero_copy_performance() -> Result<(), Box<dyn std::error::Error>> 
         Err(e) => {
             println!("Docker not available: {e}");
         }
+    }
+
+    unsafe {
+        std::env::remove_var("DOCKER_HOST");
     }
 
     Ok(())

@@ -288,7 +288,7 @@ waitHybridChatStream:
 
 	// Build final output
 	finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)
-	relatedCitations := u.buildRelatedCitations(ctx, finalCitations, input.Query)
+	relatedCitations := u.buildRelatedCitations(ctx, finalCitations, input.Query, input.UserID)
 	output := &AnswerWithRAGOutput{
 		Answer:           finalAnswerText,
 		Citations:        finalCitations,

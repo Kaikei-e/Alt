@@ -56,11 +56,18 @@ func runHealthcheck() int {
 // CreateConsumerGroup / scripts/provision-consumer-group.sh), not ad hoc
 // inside Consumer.Start (DECREE §8).
 func runProvisionConsumerGroup() int {
-	cfg := consumer.ConfigFromEnv()
+	cfg, err := consumer.ConfigFromEnv()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "provision-consumer-group: load consumer config: %v\n", err)
+		return 1
+	}
 	opts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "provision-consumer-group: parse redis url: %v\n", err)
 		return 1
+	}
+	if cfg.RedisPassword != "" {
+		opts.Password = cfg.RedisPassword
 	}
 	client := redis.NewClient(opts)
 	defer client.Close()

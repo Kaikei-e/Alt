@@ -12,7 +12,7 @@ import (
 )
 
 func TestHTTPServer_DeepHealthFailsWhenMeilisearchDown(t *testing.T) {
-	srv := newHTTPServer(nil, nil, appOtel.Config{}, config.RateLimitConfig{RequestsPerSecond: 100, Burst: 100},
+	srv := newHTTPServer(nil, appOtel.Config{}, config.RateLimitConfig{RequestsPerSecond: 100, Burst: 100},
 		func(context.Context) error { return context.DeadlineExceeded })
 
 	rec := httptest.NewRecorder()
@@ -36,7 +36,7 @@ func TestHTTPServer_DeepHealthFailsWhenMeilisearchDown(t *testing.T) {
 }
 
 func TestHTTPServer_DeepHealthPassesWhenMeilisearchUp(t *testing.T) {
-	srv := newHTTPServer(nil, nil, appOtel.Config{}, config.RateLimitConfig{RequestsPerSecond: 100, Burst: 100},
+	srv := newHTTPServer(nil, appOtel.Config{}, config.RateLimitConfig{RequestsPerSecond: 100, Burst: 100},
 		func(context.Context) error { return nil })
 
 	rec := httptest.NewRecorder()
@@ -47,7 +47,7 @@ func TestHTTPServer_DeepHealthPassesWhenMeilisearchUp(t *testing.T) {
 }
 
 func TestHTTPServer_DeepHealthNeverReturns429(t *testing.T) {
-	srv := newHTTPServer(nil, nil, appOtel.Config{}, config.RateLimitConfig{RequestsPerSecond: 1, Burst: 1},
+	srv := newHTTPServer(nil, appOtel.Config{}, config.RateLimitConfig{RequestsPerSecond: 1, Burst: 1},
 		func(context.Context) error { return nil })
 
 	for i := 0; i < 5; i++ {

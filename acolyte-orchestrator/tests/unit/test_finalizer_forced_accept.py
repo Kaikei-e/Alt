@@ -34,7 +34,7 @@ class FakeRepo:
         ]
         self.last_change_reason: str | None = None
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         return self.report
 
     async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
@@ -46,7 +46,7 @@ class FakeRepo:
     async def get_report(self, report_id: UUID) -> Report | None:
         return self.report
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         return [], None
 
     async def bump_version(

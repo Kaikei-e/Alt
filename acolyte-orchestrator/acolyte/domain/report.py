@@ -15,6 +15,7 @@ class Report:
     current_version: int
     latest_successful_run_id: UUID | None
     created_at: datetime
+    user_id: UUID | None = None
 
 
 @dataclass(frozen=True)

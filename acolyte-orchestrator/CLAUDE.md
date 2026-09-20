@@ -80,7 +80,7 @@ over mTLS. One switch, fail-fast when half-configured:
 
 ```
 NOTIFICATIONS_ENABLED=true
-NOTIFICATION_USER_ID=<kratos identity uuid>   # acolyte-db has no owner column
+NOTIFICATION_USER_ID=<kratos identity uuid>   # fallback recipient; reports table now has user_id
 DATAHUB_URL=https://alt-data-hub:9443
 MTLS_ENFORCE=true                             # alt-data-hub always verifies the client cert
 ```

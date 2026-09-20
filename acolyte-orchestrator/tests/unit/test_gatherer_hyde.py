@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import pytest
 
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode, _detect_topic_language
+from tests.conftest import TEST_USER_ID
 
 # ---- helpers ------------------------------------------------------------
 
@@ -25,7 +28,15 @@ class _FakeEvidenceProvider:
     def __init__(self) -> None:
         self.search_calls: list[str] = []
 
-    async def search_articles(self, query: str, limit: int = 10) -> list[_Article]:
+    async def search_articles(
+        self,
+        query: str,
+        *,
+        user_id: UUID,
+        limit: int = 10,
+        published_after: datetime | None = None,
+    ) -> list[_Article]:
+        _ = (user_id, published_after)
         self.search_calls.append(query)
         return [_Article(article_id=f"a-{len(self.search_calls)}", title=f"hit for {query[:20]}", tags=[], score=1.0)]
 
@@ -82,6 +93,7 @@ async def test_gatherer_requests_hyde_en_for_japanese_topic() -> None:
     hyde = _FakeHyDE()
     node = GathererNode(evidence, hyde_generator=hyde)  # type: ignore[arg-type]
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "イラン情勢 分析レポート 2026"},
         "outline": _minimal_outline(),
     }
@@ -96,6 +108,7 @@ async def test_gatherer_requests_hyde_ja_for_english_topic() -> None:
     hyde = _FakeHyDE(doc="日本語のHyDEパッセージです。" * 5)
     node = GathererNode(evidence, hyde_generator=hyde)  # type: ignore[arg-type]
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "GPU shortage impact on AI training"},
         "outline": _minimal_outline(),
     }
@@ -109,6 +122,7 @@ async def test_gatherer_skips_hyde_when_generator_absent() -> None:
     evidence = _FakeEvidenceProvider()
     node = GathererNode(evidence)  # type: ignore[arg-type]  # no hyde_generator
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "イラン情勢 2026"},
         "outline": _minimal_outline(),
     }
@@ -126,6 +140,7 @@ async def test_gatherer_adds_hyde_variant_to_search_calls() -> None:
     hyde = _FakeHyDE(doc=hyde_doc)
     node = GathererNode(evidence, hyde_generator=hyde)  # type: ignore[arg-type]
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "イラン情勢 2026"},
         "outline": _minimal_outline(),
     }
@@ -140,6 +155,7 @@ async def test_gatherer_continues_when_hyde_returns_none() -> None:
     hyde = _FakeHyDE(doc=None)
     node = GathererNode(evidence, hyde_generator=hyde)  # type: ignore[arg-type]
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "イラン情勢 2026"},
         "outline": _minimal_outline(),
     }
@@ -155,6 +171,7 @@ async def test_gatherer_does_not_request_hyde_for_und_topic() -> None:
     hyde = _FakeHyDE()
     node = GathererNode(evidence, hyde_generator=hyde)  # type: ignore[arg-type]
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "a b"},  # detector returns "und"
         "outline": _minimal_outline(),
     }

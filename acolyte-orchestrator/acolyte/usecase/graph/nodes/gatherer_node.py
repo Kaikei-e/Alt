@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import httpx
 import structlog
@@ -101,6 +102,33 @@ def _detect_topic_language(topic: str) -> str:
     return "und"
 
 
+def _build_query_pairs(
+    outline: list[dict],
+    topic: str,
+    hyde_variant: tuple[str, str] | None,
+) -> list[tuple[str, str]]:
+    """Expand the legacy ``search_queries`` outline into (section_key, query) pairs."""
+    query_pairs: list[tuple[str, str]] = []
+    for section in outline:
+        section_key = section.get("key", "")
+        queries = section.get("search_queries", [])
+        if queries:
+            query_pairs.extend((section_key, q) for q in queries)
+        else:
+            query_pairs.append((section_key, topic))
+
+    if not query_pairs:
+        query_pairs = [("_global", topic)]
+
+    # Append the cross-lingual HyDE passage once under a synthetic
+    # section key so the legacy path matches _search_by_facets' recall.
+    if hyde_variant is not None:
+        hyde_doc, _ = hyde_variant
+        query_pairs.append(("_hyde", hyde_doc))
+
+    return query_pairs
+
+
 class GathererNode:
     def __init__(
         self,
@@ -130,16 +158,21 @@ class GathererNode:
         hyde_variant = await self._resolve_hyde_variant(topic)
 
         published_after = _published_after_from_brief(brief)
+        user_id = state.get("user_id")
+        if not isinstance(user_id, UUID):
+            return {"evidence": [], "error": "user_id UUID is required in pipeline state"}
 
         # Detect faceted vs legacy path
         has_facets = any(section.get("query_facets") for section in outline)
 
         if has_facets:
             evidence_map, weak_facets, search_failed = await self._search_by_facets(
-                outline, topic, brief, hyde_variant, published_after
+                outline, topic, brief, hyde_variant, published_after, user_id=user_id
             )
         else:
-            evidence_map, search_failed = await self._search_by_queries(outline, topic, hyde_variant, published_after)
+            evidence_map, search_failed = await self._search_by_queries(
+                outline, topic, hyde_variant, published_after, user_id=user_id
+            )
             weak_facets = []
 
         # Also search recaps with the main topic
@@ -174,13 +207,12 @@ class GathererNode:
         *,
         limit: int,
         published_after: datetime | None,
+        user_id: UUID,
     ) -> list[ArticleHit]:
-        """Call EvidenceProviderPort.search_articles, forwarding the date
-        bound only when set so older providers without the keyword argument
-        continue to work."""
-        if published_after is not None:
-            return await self._evidence.search_articles(query, limit=limit, published_after=published_after)
-        return await self._evidence.search_articles(query, limit=limit)
+        """Call EvidenceProviderPort.search_articles with user_id and date bounds."""
+        return await self._evidence.search_articles(
+            query, limit=limit, published_after=published_after, user_id=user_id
+        )
 
     async def _resolve_hyde_variant(self, topic: str) -> tuple[str, str] | None:
         """Resolve a cross-lingual HyDE passage once per call.
@@ -215,13 +247,14 @@ class GathererNode:
             return None
         return (hyde_doc, f"hyde_{target_lang}")
 
-    async def _search_by_facets(
+    async def _search_by_facets(  # noqa: PLR0913 — one retrieval pass: outline, topic context, query expansion and scope travel together
         self,
         outline: list[dict],
         topic: str,
         brief: dict,
         hyde_variant: tuple[str, str] | None,
         published_after: datetime | None,
+        user_id: UUID,
     ) -> tuple[dict[str, dict], list[dict], bool]:
         """Search using structured QueryFacet objects from outline with multi-query RRF fusion."""
         evidence_map: dict[str, dict] = {}
@@ -251,7 +284,7 @@ class GathererNode:
                     attempted += 1
                     try:
                         articles = await self._search_articles_bounded(
-                            effective_query, limit=10, published_after=published_after
+                            effective_query, limit=10, published_after=published_after, user_id=user_id
                         )
                         scored = [
                             ScoredHit(
@@ -266,6 +299,16 @@ class GathererNode:
                         ]
                         ranked_lists.append(scored)
                         total_hits += len(articles)
+                    except httpx.HTTPStatusError as exc:
+                        failed += 1
+                        logger.exception(
+                            "gatherer_variant_search_rejected",
+                            query=effective_query,
+                            source=source_label,
+                            status_code=exc.response.status_code,
+                            response=exc.response.text,
+                            error=str(exc),
+                        )
                     except httpx.HTTPError as exc:
                         failed += 1
                         logger.warning(
@@ -314,36 +357,29 @@ class GathererNode:
         topic: str,
         hyde_variant: tuple[str, str] | None,
         published_after: datetime | None,
+        user_id: UUID,
     ) -> tuple[dict[str, dict], bool]:
         """Legacy search using plain search_queries strings."""
         evidence_map: dict[str, dict] = {}
         attempted = 0
         failed = 0
 
-        # Build list of (section_key, query) pairs
-        query_pairs: list[tuple[str, str]] = []
-        for section in outline:
-            section_key = section.get("key", "")
-            queries = section.get("search_queries", [])
-            if queries:
-                for q in queries:
-                    query_pairs.append((section_key, q))
-            else:
-                query_pairs.append((section_key, topic))
-
-        if not query_pairs:
-            query_pairs = [("_global", topic)]
-
-        # Append the cross-lingual HyDE passage once under a synthetic
-        # section key so the legacy path matches _search_by_facets' recall.
-        if hyde_variant is not None:
-            hyde_doc, _ = hyde_variant
-            query_pairs.append(("_hyde", hyde_doc))
-
-        for section_key, query in query_pairs:
+        for section_key, query in _build_query_pairs(outline, topic, hyde_variant):
             attempted += 1
             try:
-                articles = await self._search_articles_bounded(query, limit=5, published_after=published_after)
+                articles = await self._search_articles_bounded(
+                    query, limit=5, published_after=published_after, user_id=user_id
+                )
+            except httpx.HTTPStatusError as exc:
+                failed += 1
+                logger.exception(
+                    "gatherer_article_search_rejected",
+                    query=query,
+                    status_code=exc.response.status_code,
+                    response=exc.response.text,
+                    error=str(exc),
+                )
+                articles = []
             except httpx.HTTPError as exc:
                 failed += 1
                 logger.warning("Gatherer: article search failed", query=query, error=str(exc))

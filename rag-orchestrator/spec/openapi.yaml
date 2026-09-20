@@ -25,6 +25,33 @@ paths:
           description: Successfully accepted/queued
         "400":
           description: Invalid request payload
+        "409":
+          description: Document owned by another user or duplicate key conflict
+        "500":
+          description: Internal server error
+
+  /v1/documents/owners:
+    post:
+      summary: Backfill document owners
+      description: |
+        Sets user_id for a batch of articles if user_id is currently NULL.
+        Idempotent operation.
+      operationId: BackfillDocumentOwners
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnerBackfillRequest"
+      responses:
+        "200":
+          description: Successfully processed backfill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerBackfillResponse"
+        "400":
+          description: Invalid request payload
         "500":
           description: Internal server error
 
@@ -65,6 +92,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RetrieveResponse"
+        "400":
+          description: Invalid request payload
         "500":
           description: Internal server error
 
@@ -160,9 +189,13 @@ components:
       type: object
       required:
         - query
+        - user_id
       properties:
         query:
           type: string
+        user_id:
+          type: string
+          description: "User ID owning the documents to retrieve"
         candidate_article_ids:
           type: array
           items:
@@ -292,3 +325,41 @@ components:
           items:
             type: string
           description: "Answer quality check failures (low_keyword_coverage, low_citation_density, etc.)"
+
+    OwnerBackfillRequest:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OwnerBackfillItem"
+
+    OwnerBackfillItem:
+      type: object
+      required:
+        - article_id
+        - user_id
+      properties:
+        article_id:
+          type: string
+        user_id:
+          type: string
+
+    OwnerBackfillResponse:
+      type: object
+      required:
+        - updated
+        - already_set
+        - not_found
+      properties:
+        updated:
+          type: integer
+          format: int64
+        already_set:
+          type: integer
+          format: int64
+        not_found:
+          type: integer
+          format: int64

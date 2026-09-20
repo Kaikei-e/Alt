@@ -5,10 +5,11 @@ import (
 	"alt/orchestrator/port/rag_integration_port"
 	"context"
 	"fmt"
+	"strings"
 )
 
 type RetrieveContextUsecase interface {
-	Execute(ctx context.Context, query string) ([]rag_integration_port.RagContext, error)
+	Execute(ctx context.Context, query string, userID string) ([]rag_integration_port.RagContext, error)
 }
 
 type retrieveContextUsecase struct {
@@ -26,7 +27,11 @@ func NewRetrieveContextUsecase(
 	}
 }
 
-func (u *retrieveContextUsecase) Execute(ctx context.Context, query string) ([]rag_integration_port.RagContext, error) {
+func (u *retrieveContextUsecase) Execute(ctx context.Context, query string, userID string) ([]rag_integration_port.RagContext, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, fmt.Errorf("%w: retrieve context requires user_id", rag_integration_port.ErrMissingUserID)
+	}
+
 	// 1. Get candidate articles from Meilisearch
 	// We want enough candidates to ensure good overlap with vector search
 	const candidateLimit = 50
@@ -41,7 +46,7 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, query string) ([]r
 	}
 
 	// 2. Call RAG Retrieve Context
-	contexts, err := u.ragIntegrationPort.RetrieveContext(ctx, query, candidateIDs)
+	contexts, err := u.ragIntegrationPort.RetrieveContext(ctx, query, candidateIDs, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve context from rag: %w", err)
 	}

@@ -27,6 +27,7 @@ func TestFuseResults_ExpandedQueriesAlsoUseTheHybridSearcher(t *testing.T) {
 	origVec := []float32{0.1, 0.2}
 	expVec := []float32{0.3, 0.4}
 
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:       "hybrid-symmetry",
 		Query:             "エグザンプル社の合成炉の動き",
@@ -38,17 +39,19 @@ func TestFuseResults_ExpandedQueriesAlsoUseTheHybridSearcher(t *testing.T) {
 		AdditionalQueries:    []string{"Example Systems synthetic reactor activity"},
 		SearchLimit:          50,
 		RRFK:                 60.0,
+		UserID:               testUUID.String(),
+		UserUUID:             testUUID,
 	}
 
-	hybrid.On("HybridSearch", mock.Anything, expVec, "Example Systems synthetic reactor activity", 50).
+	hybrid.On("HybridSearch", mock.Anything, expVec, "Example Systems synthetic reactor activity", 50, testUUID).
 		Return([]domain.SearchResult{
 			{Chunk: domain.RagChunk{ID: uuid.New(), Content: "expanded", CreatedAt: time.Now()}, Score: 0.03, ScoreKind: domain.ScoreKindRRF, ArticleID: "art-2", Title: "EN Article"},
 		}, nil)
 
 	require.NoError(t, retrieval.FuseResults(context.Background(), sc, repo, hybrid, true, discardLogger()))
 
-	hybrid.AssertCalled(t, "HybridSearch", mock.Anything, expVec, "Example Systems synthetic reactor activity", 50)
-	repo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything)
+	hybrid.AssertCalled(t, "HybridSearch", mock.Anything, expVec, "Example Systems synthetic reactor activity", 50, testUUID)
+	repo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	require.Len(t, sc.HitsExpanded, 1)
 	assert.Equal(t, "EN Article", sc.HitsExpanded[0].Title)
 	assert.Equal(t, domain.ScoreKindRRF, sc.HitsExpanded[0].ScoreKind)
@@ -65,6 +68,7 @@ func TestFuseResults_ExpandedQueriesFallBackToVectorUnderCandidateScope(t *testi
 	expVec := []float32{0.3, 0.4}
 	articleIDs := []string{"art-in-window"}
 
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:          "hybrid-symmetry-scoped",
 		Query:                "today's news",
@@ -74,16 +78,18 @@ func TestFuseResults_ExpandedQueriesFallBackToVectorUnderCandidateScope(t *testi
 		AdditionalQueries:    []string{"expanded"},
 		SearchLimit:          50,
 		RRFK:                 60.0,
+		UserID:               testUUID.String(),
+		UserUUID:             testUUID,
 	}
 
-	repo.On("SearchWithinArticles", mock.Anything, expVec, articleIDs, 50).
+	repo.On("SearchWithinArticles", mock.Anything, expVec, articleIDs, 50, testUUID).
 		Return([]domain.SearchResult{
 			{Chunk: domain.RagChunk{ID: uuid.New(), Content: "scoped", CreatedAt: time.Now()}, Score: 0.8, ScoreKind: domain.ScoreKindVector, ArticleID: "art-in-window"},
 		}, nil)
 
 	require.NoError(t, retrieval.FuseResults(context.Background(), sc, repo, hybrid, true, discardLogger()))
 
-	hybrid.AssertNotCalled(t, "HybridSearch", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	hybrid.AssertNotCalled(t, "HybridSearch", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	require.Len(t, sc.HitsExpanded, 1)
 }
 
@@ -95,6 +101,7 @@ func TestFuseResults_ExpandedQueriesUseVectorWhenHybridDisabled(t *testing.T) {
 	hybrid := new(MockHybridSearcher)
 
 	expVec := []float32{0.3, 0.4}
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:          "hybrid-symmetry-off",
 		Query:                "query",
@@ -103,14 +110,16 @@ func TestFuseResults_ExpandedQueriesUseVectorWhenHybridDisabled(t *testing.T) {
 		AdditionalQueries:    []string{"expanded"},
 		SearchLimit:          50,
 		RRFK:                 60.0,
+		UserID:               testUUID.String(),
+		UserUUID:             testUUID,
 	}
 
-	repo.On("Search", mock.Anything, expVec, 50).Return([]domain.SearchResult{
+	repo.On("Search", mock.Anything, expVec, 50, testUUID).Return([]domain.SearchResult{
 		{Chunk: domain.RagChunk{ID: uuid.New(), Content: "vector", CreatedAt: time.Now()}, Score: 0.8, ScoreKind: domain.ScoreKindVector, ArticleID: "art-1"},
 	}, nil)
 
 	require.NoError(t, retrieval.FuseResults(context.Background(), sc, repo, hybrid, false, discardLogger()))
 
-	hybrid.AssertNotCalled(t, "HybridSearch", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-	repo.AssertCalled(t, "Search", mock.Anything, expVec, 50)
+	hybrid.AssertNotCalled(t, "HybridSearch", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	repo.AssertCalled(t, "Search", mock.Anything, expVec, 50, testUUID)
 }

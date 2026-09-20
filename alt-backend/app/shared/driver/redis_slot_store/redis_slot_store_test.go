@@ -105,7 +105,7 @@ func TestNewFromURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store, err := NewFromURL(tt.rawURL)
+			store, err := NewFromURL(tt.rawURL, "")
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Nil(t, store)
@@ -116,4 +116,17 @@ func TestNewFromURL(t *testing.T) {
 			t.Cleanup(func() { _ = store.Close() })
 		})
 	}
+}
+
+func TestNewFromURL_Password(t *testing.T) {
+	t.Run("sets password on client options", func(t *testing.T) {
+		store, err := NewFromURL("redis://localhost:6379/3", "my-secret-pass")
+		require.NoError(t, err)
+		require.NotNil(t, store)
+		t.Cleanup(func() { _ = store.Close() })
+
+		client, ok := store.client.(*redis.Client)
+		require.True(t, ok)
+		assert.Equal(t, "my-secret-pass", client.Options().Password)
+	})
 }

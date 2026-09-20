@@ -119,7 +119,8 @@ impl ComponentRegistry {
                     config.min_documents_per_genre(),
                 )?
             }
-            .with_coarse_classify_timeout(config.subworker_coarse_classify_timeout()),
+            .with_coarse_classify_timeout(config.subworker_coarse_classify_timeout())
+            .with_admin_token(config.admin_auth_token().map(str::to_string)),
         );
         let recap_pool = PgPoolOptions::new()
             .max_connections(config.recap_db_max_connections())
@@ -364,6 +365,7 @@ mod tests {
                 ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
                 ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
                     Some("/tmp/test-token-which-does-not-exist"),

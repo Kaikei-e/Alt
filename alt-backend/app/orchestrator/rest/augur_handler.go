@@ -3,6 +3,7 @@ package rest
 import (
 	"alt/config"
 	"alt/di"
+	"alt/domain"
 	middleware_custom "alt/middleware"
 	"alt/orchestrator/port/rag_integration_port"
 	"alt/orchestrator/usecase/answer_chat_usecase"
@@ -30,12 +31,17 @@ func NewAugurHandler(
 }
 
 func (h *AugurHandler) RetrieveContext(c echo.Context) error {
+	user, err := domain.GetUserFromContext(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
 	query := c.QueryParam("q")
 	if query == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "query parameter 'q' is required"})
 	}
 
-	contexts, err := h.retrieveContextUsecase.Execute(c.Request().Context(), query)
+	contexts, err := h.retrieveContextUsecase.Execute(c.Request().Context(), query, user.UserID.String())
 	if err != nil {
 		return HandleError(c, err, "RetrieveContext")
 	}

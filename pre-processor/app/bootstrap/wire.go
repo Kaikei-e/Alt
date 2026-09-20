@@ -326,8 +326,14 @@ func getEnvIntOrDefault(key string, defaultValue int64) int64 {
 // is unset/false, NewConsumer/Start succeed as a deliberate no-op and log
 // "consumer disabled, not starting" — that is the explicit, loud opt-out path.
 func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepository, articleRepo repository.ArticleRepository, summaryRepo repository.SummaryRepository, log *slog.Logger) (*consumer.Consumer, error) {
+	redisPassword, err := config.ResolveRedisPassword(log)
+	if err != nil {
+		return nil, fmt.Errorf("resolve redis password: %w", err)
+	}
+
 	consumerCfg := consumer.Config{
 		RedisURL:      getEnvOrDefault("REDIS_STREAMS_URL", "redis://redis-streams:6379"),
+		RedisPassword: redisPassword,
 		GroupName:     getEnvOrDefault("CONSUMER_GROUP", "pre-processor-group"),
 		ConsumerName:  getEnvOrDefault("CONSUMER_NAME", "pre-processor-1"),
 		StreamKey:     "alt:events:articles",

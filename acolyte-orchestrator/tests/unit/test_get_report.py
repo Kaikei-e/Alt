@@ -14,6 +14,7 @@ from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersi
 from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
 from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.usecase.get_report_uc import GetReportUsecase
+from tests.conftest import TEST_USER_ID, make_request_ctx
 
 
 class FakeReportRepo:
@@ -23,7 +24,7 @@ class FakeReportRepo:
         self.sections: dict[UUID, list[ReportSection]] = {}
         self.section_versions: dict[tuple[UUID, str, int], SectionVersion] = {}
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         rid = uuid4()
         report = Report(
             report_id=rid,
@@ -32,6 +33,7 @@ class FakeReportRepo:
             current_version=0,
             latest_successful_run_id=None,
             created_at=datetime.now(UTC),
+            user_id=user_id,
         )
         self.reports[rid] = report
         return report
@@ -48,7 +50,7 @@ class FakeReportRepo:
     async def get_sections(self, report_id: UUID) -> list[ReportSection]:
         return self.sections.get(report_id, [])
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         return list(self.reports.values()), None
 
     async def bump_version(
@@ -101,6 +103,7 @@ async def test_get_existing_report() -> None:
         current_version=2,
         latest_successful_run_id=None,
         created_at=datetime.now(UTC),
+        user_id=TEST_USER_ID,
     )
     repo.reports[rid] = report
     repo.sections[rid] = [
@@ -109,7 +112,7 @@ async def test_get_existing_report() -> None:
     ]
 
     uc = GetReportUsecase(repo)
-    result_report, result_sections = await uc.execute(rid)
+    result_report, result_sections = await uc.execute(rid, user_id=TEST_USER_ID)
 
     assert result_report is not None
     assert result_report.title == "Test Report"
@@ -121,7 +124,7 @@ async def test_get_nonexistent_report() -> None:
     repo = FakeReportRepo()
     uc = GetReportUsecase(repo)
 
-    result_report, result_sections = await uc.execute(uuid4())
+    result_report, result_sections = await uc.execute(uuid4(), user_id=TEST_USER_ID)
 
     assert result_report is None
     assert result_sections == []
@@ -139,6 +142,7 @@ async def test_handler_returns_stored_citations() -> None:
         current_version=1,
         latest_successful_run_id=None,
         created_at=datetime.now(UTC),
+        user_id=TEST_USER_ID,
     )
     repo.reports[rid] = report
     repo.sections[rid] = [
@@ -159,7 +163,7 @@ async def test_handler_returns_stored_citations() -> None:
     fake_settings = MagicMock()
     service = AcolyteConnectService(fake_settings, repo)
     request = acolyte_pb2.GetReportRequest(report_id=str(rid))
-    response = await service.get_report(request, ctx=None)  # type: ignore[bad-argument-type]
+    response = await service.get_report(request, ctx=make_request_ctx("GetReport"))
 
     # Citations should be the actual stored data, not "[]"
     sec = response.sections[0]
@@ -181,6 +185,7 @@ async def test_handler_returns_brief_scope() -> None:
         current_version=1,
         latest_successful_run_id=None,
         created_at=datetime.now(UTC),
+        user_id=TEST_USER_ID,
     )
     repo.reports[rid] = report
     repo.briefs[rid] = ReportBrief(
@@ -195,7 +200,7 @@ async def test_handler_returns_brief_scope() -> None:
     fake_settings = MagicMock()
     service = AcolyteConnectService(fake_settings, repo)
     request = acolyte_pb2.GetReportRequest(report_id=str(rid))
-    response = await service.get_report(request, ctx=None)  # type: ignore[bad-argument-type]
+    response = await service.get_report(request, ctx=make_request_ctx("GetReport"))
 
     scope = dict(response.report.scope)
     assert scope["topic"] == "LLM safety 2026"
@@ -217,11 +222,12 @@ async def test_handler_returns_empty_scope_when_no_brief() -> None:
         current_version=0,
         latest_successful_run_id=None,
         created_at=datetime.now(UTC),
+        user_id=TEST_USER_ID,
     )
 
     fake_settings = MagicMock()
     service = AcolyteConnectService(fake_settings, repo)
     request = acolyte_pb2.GetReportRequest(report_id=str(rid))
-    response = await service.get_report(request, ctx=None)  # type: ignore[bad-argument-type]
+    response = await service.get_report(request, ctx=make_request_ctx("GetReport"))
 
     assert dict(response.report.scope) == {}

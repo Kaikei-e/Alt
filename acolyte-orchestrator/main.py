@@ -36,6 +36,8 @@ from acolyte.infra.inbound_tls import resolve_inbound_tls_bind, start_inbound_tl
 from acolyte.infra.logging import configure_logging
 from acolyte.infra.peer_identity import PeerIdentityMiddleware, allowed_peers_from_env
 from acolyte.infra.pki import start_enrollment
+from acolyte.infra.user_identity import UserIdentityInterceptor
+from acolyte.usecase.backfill_report_owners_uc import BackfillReportOwnersUsecase
 from acolyte.usecase.graph.report_graph import build_report_graph
 from acolyte.usecase.reconcile_orphaned_runs_uc import ReconcileOrphanedRunsUsecase
 from acolyte.usecase.relay_notifications_uc import RelayNotificationsUsecase
@@ -98,6 +100,31 @@ _job_queue = PostgresJobGateway(
     _pool,
     notification_user_id=None if _relay_config is None else _relay_config.user_id,
 )
+
+# User identity verification (X-Alt-Backend-Token).
+# Fails fast at startup if BACKEND_TOKEN_SECRET_FILE is missing/unreadable.
+_backend_token_secret = settings.resolve_backend_token_secret()
+_user_identity_interceptor: UserIdentityInterceptor
+if _backend_token_secret is None:
+    _dev_user_id = settings.resolve_dev_user_id()
+    _user_identity_interceptor = UserIdentityInterceptor(dev_user_id=_dev_user_id)
+    logger.warning(
+        "user_identity_disabled",
+        dev_user_id=str(_dev_user_id),
+        reason="BACKEND_TOKEN_VERIFICATION is disabled — using dev user identity",
+    )
+else:
+    _user_identity_interceptor = UserIdentityInterceptor(
+        secret=_backend_token_secret,
+        issuer=settings.backend_token_issuer,
+        audience=settings.backend_token_audience,
+    )
+    logger.info(
+        "user_identity_enabled",
+        issuer=settings.backend_token_issuer,
+        audience=settings.backend_token_audience,
+        secret_file=settings.backend_token_secret_file,
+    )
 
 
 # HTTP client for Ollama and search-indexer (600s timeout for 26B model with 8192 num_predict).
@@ -267,6 +294,24 @@ async def _drain_report_pipelines(service: AcolyteConnectService) -> None:
         await _fail_interrupted_run(task)
 
 
+async def _run_startup_backfill_gate(
+    report_repo: PostgresReportGateway,
+    app_settings: Settings,
+) -> None:
+    """Execute automated legacy report backfill and startup gate."""
+    legacy_owner_id = app_settings.resolve_legacy_report_owner_id()
+    legacy_mapping = app_settings.resolve_legacy_report_mapping()
+    if legacy_owner_id is not None and legacy_mapping is not None:
+        msg = "Cannot configure both ACOLYTE_LEGACY_REPORT_OWNER_ID and ACOLYTE_LEGACY_REPORT_MAPPING_FILE"
+        raise RuntimeError(msg)
+    backfilled = await BackfillReportOwnersUsecase(report_repo).execute(
+        single_owner_id=legacy_owner_id,
+        mapping=legacy_mapping,
+    )
+    if backfilled > 0:
+        logger.info("Backfilled legacy report owners", count=backfilled)
+
+
 def create_app() -> Starlette:  # noqa: PLR0915 — composition root wires pool, relay, TLS, graph
     """Create Starlette ASGI application instance."""
     initial_graph = None if settings.checkpoint_enabled else _compile_graph()
@@ -286,6 +331,8 @@ def create_app() -> Starlette:  # noqa: PLR0915 — composition root wires pool,
         reconciled = await ReconcileOrphanedRunsUsecase(_job_queue).execute()
         if reconciled:
             logger.warning("Reconciled orphaned runs left by a prior process", count=reconciled)
+        await _run_startup_backfill_gate(_report_repo, settings)
+
         cert_watch_task: asyncio.Task[None] | None = None
         if _mtls_reloader is not None:
             cert_watch_task = asyncio.create_task(
@@ -347,7 +394,7 @@ def create_app() -> Starlette:  # noqa: PLR0915 — composition root wires pool,
             await _pool.close()
             logger.info("Shutting down acolyte-orchestrator")
 
-    asgi_app = AcolyteServiceASGIApplication(connect_service)
+    asgi_app = AcolyteServiceASGIApplication(connect_service, interceptors=[_user_identity_interceptor])
 
     # PeerIdentityMiddleware sits on both listeners so handlers can
     # capture the peer CN. Wave 4 in-process mTLS injects the verified

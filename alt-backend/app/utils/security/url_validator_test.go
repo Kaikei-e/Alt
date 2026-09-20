@@ -54,6 +54,30 @@ func TestURLSecurityValidator_ValidateRSSURL(t *testing.T) {
 			errMsg:  "private network access denied",
 		},
 		{
+			name:    "0.0.0.0 should fail",
+			url:     "http://0.0.0.0/feed",
+			wantErr: true,
+			errMsg:  "private network access denied",
+		},
+		{
+			name:    "CGNAT 100.64.0.1 should fail",
+			url:     "http://100.64.0.1/feed",
+			wantErr: true,
+			errMsg:  "private network access denied",
+		},
+		{
+			name:    ":: unspecified IPv6 should fail",
+			url:     "http://[::]/feed",
+			wantErr: true,
+			errMsg:  "private network access denied",
+		},
+		{
+			name:    "multicast 224.0.0.1 should fail",
+			url:     "http://224.0.0.1/feed",
+			wantErr: true,
+			errMsg:  "private network access denied",
+		},
+		{
 			name:    "non-HTTP scheme should fail",
 			url:     "ftp://example.com/feed",
 			wantErr: true,
@@ -109,8 +133,7 @@ func TestURLSecurityValidator_ValidateRSSURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validator.ValidateRSSURL(tt.url)
 			if tt.wantErr {
-				assert.Error(t, err, "Expected error for URL: %s", tt.url)
-				if tt.errMsg != "" {
+				if assert.Error(t, err, "Expected error for URL: %s", tt.url) && tt.errMsg != "" {
 					assert.Contains(t, err.Error(), tt.errMsg, "Error message should contain: %s", tt.errMsg)
 				}
 			} else {

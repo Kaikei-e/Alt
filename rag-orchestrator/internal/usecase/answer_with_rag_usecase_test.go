@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const defaultTestUserID = "11111111-1111-4111-8111-111111111111"
+
 type mockRetrieveContextUsecase struct {
 	mock.Mock
 }
@@ -171,7 +173,7 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 			msgs[1].Role == "user"
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, "Hello world [chunk_1]", output.Answer)
@@ -212,7 +214,7 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 			contains(msgs[0].Content, "リサーチアナリスト")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.True(t, output.Fallback)
 	assert.Equal(t, "insufficient evidence", output.Reason)
@@ -273,7 +275,7 @@ func TestStream_SendsThinkingEventFirst(t *testing.T) {
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
 
 	// Execute Stream
-	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query", UserID: defaultTestUserID})
 
 	// Collect all events
 	var events []usecase.StreamEvent
@@ -349,7 +351,7 @@ func TestStream_HeartbeatDuringSlowBuildPrompt(t *testing.T) {
 		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
 
 	// Execute Stream
-	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query", UserID: defaultTestUserID})
 
 	// Collect all events
 	var events []usecase.StreamEvent
@@ -425,7 +427,7 @@ func TestStream_NoHeartbeatWhenBuildPromptFast(t *testing.T) {
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
 		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
 
-	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query", UserID: defaultTestUserID})
 
 	var events []usecase.StreamEvent
 	for event := range eventChan {
@@ -491,7 +493,7 @@ func TestStream_HeartbeatDuringChatStreamSetup(t *testing.T) {
 		}).
 		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
 
-	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query", UserID: defaultTestUserID})
 
 	var events []usecase.StreamEvent
 	for event := range eventChan {
@@ -566,7 +568,7 @@ func TestStream_HeartbeatDuringLLMStreaming(t *testing.T) {
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
 		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
 
-	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query", UserID: defaultTestUserID})
 
 	var events []usecase.StreamEvent
 	for event := range eventChan {
@@ -715,7 +717,7 @@ func TestExecute_ArticleScopedQuery_UsesNormalizedQuery(t *testing.T) {
 	// Use article-scoped query format — but no article_scoped strategy registered,
 	// so it falls through to generalStrategy
 	rawQuery := "Regarding the article: OpenAI GPT-5 [articleId: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee]\n\nQuestion:\nWhat are the key improvements?"
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: rawQuery})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: rawQuery, UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	// Strategy should be "general" since no article_scoped strategy was registered
@@ -741,7 +743,7 @@ func TestExecute_DebugIncludesStrategy(t *testing.T) {
 	llmResponse := `{"answer":"Answer text","citations":[{"chunk_id":"1","reason":"r"}],"fallback":false,"reason":""}`
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "general question"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "general question", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.Equal(t, "general", output.Debug.StrategyUsed)
 }
@@ -771,7 +773,7 @@ func TestStream_DebugIncludesStrategy(t *testing.T) {
 	close(errChan)
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
 
-	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query", UserID: defaultTestUserID})
 
 	var metaEvent *usecase.StreamMeta
 	for event := range events {
@@ -843,7 +845,8 @@ func TestExecute_ArticleScopedFollowUp_InheritsScopeFromHistory(t *testing.T) {
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
-		Query: "What is the impact?",
+		Query:  "What is the impact?",
+		UserID: defaultTestUserID,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "Regarding the article: OpenAI GPT-5 [articleId: 11111111-1111-1111-1111-111111111111]\n\nQuestion:\nWhat changed?"},
 			{Role: "assistant", Content: "It improved several areas."},
@@ -909,7 +912,8 @@ func TestExecute_ArticleScopedFollowUp_FromHistory_ClassifiesCritiqueAndPreserve
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
-		Query: "反論はある？",
+		Query:  "反論はある？",
+		UserID: defaultTestUserID,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "Regarding the article: Test Article [articleId: 22222222-2222-2222-2222-222222222222]\n\nQuestion:\n要点は？"},
 			{Role: "assistant", Content: "記事の要点は..."},
@@ -960,7 +964,8 @@ func TestExecute_ArticleScopedFollowUp_ReRetrievesFromGlobalIndex(t *testing.T) 
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
-		Query: "Why did this crisis happen?",
+		Query:  "Why did this crisis happen?",
+		UserID: defaultTestUserID,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "Regarding the article: Fuel Crisis [articleId: 33333333-3333-3333-3333-333333333333]\n\nQuestion:\nSummary?"},
 			{Role: "assistant", Content: "The article discusses a fuel crisis in Australia."},
@@ -995,7 +1000,7 @@ func TestExecute_FallbackDebugPreservesStrategyUsed(t *testing.T) {
 
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(nil, assert.AnError)
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "general question"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "general question", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.True(t, output.Fallback)
 	assert.Equal(t, "general", output.Debug.StrategyUsed)
@@ -1035,7 +1040,8 @@ func TestExecute_ArticleScopedMaxChunksMarksPromptAsTruncated(t *testing.T) {
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
-		Query: "Regarding the article: Large Article [articleId: 11111111-1111-1111-1111-111111111111]\n\nQuestion:\nSummarize it.",
+		Query:  "Regarding the article: Large Article [articleId: 11111111-1111-1111-1111-111111111111]\n\nQuestion:\nSummarize it.",
+		UserID: defaultTestUserID,
 	})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
@@ -1067,7 +1073,8 @@ func TestExecute_LegacyPath_NilRetrievalReturnsFallbackInsteadOfPanic(t *testing
 
 	require.NotPanics(t, func() {
 		output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
-			Query: "なぜ物流危機が起きたのですか？",
+			Query:  "なぜ物流危機が起きたのですか？",
+			UserID: defaultTestUserID,
 		})
 
 		assert.NoError(t, err)
@@ -1153,7 +1160,7 @@ func TestQualityGate_GoodQuality_NoRetry(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, "good", output.Debug.RetrievalQuality)
@@ -1190,7 +1197,7 @@ func TestQualityGate_InsufficientQuality_GeneratesWithLowConfidence(t *testing.T
 			contains(msgs[0].Content, "情報の信頼性")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback, "should NOT fallback - should generate with low confidence")
 	assert.Equal(t, "Limited answer based on available context", output.Answer)
@@ -1237,7 +1244,7 @@ func TestQualityGate_MarginalQuality_TriggersRetry(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, 1, output.Debug.RetryCount)
@@ -1278,7 +1285,7 @@ func TestExecute_ShortAnswer_TriggersCorrectiveRetry(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: longResponse, Done: true}, nil).Once()
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
@@ -1327,7 +1334,7 @@ func TestStream_ShortAnswer_TriggersCorrectiveRetry(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: longResponse, Done: true}, nil).Once()
 
-	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
 
 	var gotAnswer string
 	var doneSeen bool
@@ -1377,7 +1384,7 @@ func TestExecute_ShortAnswer_RetryStillShortButGroundedReturnsAnswer(t *testing.
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: stillShortButGrounded, Done: true}, nil).Once()
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
@@ -1426,7 +1433,7 @@ func TestStream_ShortAnswer_RetryStillShortButGroundedReturnsAnswer(t *testing.T
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: stillShortButGrounded, Done: true}, nil).Once()
 
-	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
 
 	var gotAnswer string
 	var fallbackSeen bool
@@ -1466,7 +1473,7 @@ func TestExecute_CausalShortGroundedAnswer_DoesNotRetry(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: groundedButShort, Done: true}, nil).Once()
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
@@ -1505,7 +1512,7 @@ func TestStream_CausalShortGroundedAnswer_DoesNotRetry(t *testing.T) {
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
 		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil).Once()
 
-	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
 
 	var gotAnswer string
 	for event := range events {
@@ -1551,7 +1558,7 @@ func TestExecute_DetailedCausalShortGroundedAnswer_TriggersRetry(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: longerRetry, Done: true}, nil).Once()
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？詳しく教えて。"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？詳しく教えて。", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "構造要因")
@@ -1603,7 +1610,7 @@ func TestStream_DetailedCausalShortGroundedAnswer_TriggersRetry(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: longerRetry, Done: true}, nil).Once()
 
-	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？詳しく教えて。"})
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？詳しく教えて。", UserID: defaultTestUserID})
 
 	var gotAnswer string
 	for event := range events {
@@ -1649,7 +1656,7 @@ func TestStream_DetailedQuery_EmitsRefiningBeforeRetryStarts(t *testing.T) {
 		usecase.WithHeartbeatInterval(10*time.Millisecond),
 	)
 
-	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "物流混乱の背景を詳しく教えて"})
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "物流混乱の背景を詳しく教えて", UserID: defaultTestUserID})
 
 	sawRefining := false
 	retryStarted := false
@@ -1735,7 +1742,7 @@ func TestExecute_CorrectiveRetryContextDisclaimer_KeepsOriginalAnswer(t *testing
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: retryContextDisclaimer, Done: true}, nil).Once()
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
@@ -1775,7 +1782,7 @@ func TestExecute_ShortAnswer_RetryStillShortAndUngroundedFallsBack(t *testing.T)
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: stillShortAndUngrounded, Done: true}, nil).Once()
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "What caused the global logistics disruption?"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "What caused the global logistics disruption?", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.True(t, output.Fallback)
 	assert.Equal(t, usecase.FallbackShortUnderGrounded, output.FallbackCategory)
@@ -1976,7 +1983,8 @@ func TestExecute_ArticleScopedFollowUp_DetailSubIntent_SkipsGeneralReRetrieval(t
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	_, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
-		Query: "技術的な詳細をもっと教えて",
+		Query:  "技術的な詳細をもっと教えて",
+		UserID: defaultTestUserID,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "Regarding the article: 暗記のコツ [articleId: 44444444-4444-4444-4444-444444444444]\n\nQuestion:\n概要を教えて"},
 			{Role: "assistant", Content: "記事は暗記のコツについてです。"},
@@ -2025,7 +2033,8 @@ func TestExecute_ArticleScopedFollowUp_NoneSubIntent_KeepsGeneralReRetrieval(t *
 
 	_, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
 		// This query matches SubIntentNone — no keywords for detail/related/evidence/etc.
-		Query: "もっと教えて",
+		Query:  "もっと教えて",
+		UserID: defaultTestUserID,
 		ConversationHistory: []domain.Message{
 			{Role: "user", Content: "Regarding the article: Test [articleId: 55555555-5555-5555-5555-555555555555]\n\nQuestion:\n概要を教えて"},
 			{Role: "assistant", Content: "テスト記事です。"},
@@ -2088,9 +2097,9 @@ func TestExecute_CacheKey_DiffersByConversationHistory(t *testing.T) {
 		Done: true,
 	}, nil)
 
-	out1, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "tell me more", ConversationHistory: historyA})
+	out1, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "tell me more", ConversationHistory: historyA, UserID: defaultTestUserID})
 	require.NoError(t, err)
-	out2, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "tell me more", ConversationHistory: historyB})
+	out2, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "tell me more", ConversationHistory: historyB, UserID: defaultTestUserID})
 	require.NoError(t, err)
 
 	assert.Contains(t, out1.Answer, "Topic A")
@@ -2119,12 +2128,15 @@ func TestExecute_CacheKey_DiffersByUserID(t *testing.T) {
 	llmResponse := `{"answer":"Personalized answer","citations":[{"chunk_id":"` + chunkID.String() + `","reason":"r"}],"fallback":false,"reason":""}`
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
-	_, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "same question", UserID: "user-1"})
+	user1 := uuid.NewString()
+	user2 := uuid.NewString()
+
+	_, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "same question", UserID: user1})
 	require.NoError(t, err)
 
 	// Second user, same query, no history — must not be a cache hit, so
 	// retrieve/LLM mocks must fire again rather than replaying user-1's cached answer.
-	_, err = uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "same question", UserID: "user-2"})
+	_, err = uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "same question", UserID: user2})
 	require.NoError(t, err, "different UserID must not collide with user-1's cache entry")
 
 	mockRetrieve.AssertNumberOfCalls(t, "Execute", 2)
@@ -2179,7 +2191,7 @@ func TestExecute_CausalSkeletonAnswer_TriggersCorrectiveRetry(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: fullResponse, Done: true}, nil).Once()
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "エネルギー価格の高騰はなぜ起きた？"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "エネルギー価格の高騰はなぜ起きた？", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "構造的背景")
@@ -2224,7 +2236,7 @@ func TestExecute_CausalAnswerAboveRetryFloor_DoesNotRetry(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: response, Done: true}, nil).Once()
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "エネルギー価格の高騰はなぜ起きた？"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "エネルギー価格の高騰はなぜ起きた？", UserID: defaultTestUserID})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, 0, output.Debug.RetryCount)
@@ -2258,9 +2270,51 @@ func TestExecute_CorrectiveRetryPromptBuildFails_KeepsOriginalAnswer(t *testing.
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
 		Return(&domain.LLMResponse{Text: original, Done: true}, nil).Once()
 
-	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
 	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
 	mockLLM.AssertNumberOfCalls(t, "Chat", 1)
+}
+
+func TestAnswerWithRAG_EmptyUserID_ReturnsError(t *testing.T) {
+	uc := usecase.NewAnswerWithRAGUsecase(nil, nil, nil, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	_, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: ""})
+	assert.ErrorIs(t, err, usecase.ErrEmptyUserID)
+
+	eventCh := uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: ""})
+	var events []usecase.StreamEvent
+	for ev := range eventCh {
+		events = append(events, ev)
+	}
+	assert.True(t, len(events) > 0)
+	var foundErr bool
+	for _, ev := range events {
+		if ev.Kind == usecase.StreamEventKindError {
+			assert.Equal(t, "user_id is required", ev.Payload)
+			foundErr = true
+		}
+	}
+	assert.True(t, foundErr)
+}
+
+func TestAnswerWithRAG_InvalidUserID_ReturnsError(t *testing.T) {
+	uc := usecase.NewAnswerWithRAGUsecase(nil, nil, nil, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	_, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: "invalid-uuid"})
+	assert.ErrorIs(t, err, usecase.ErrInvalidUserID)
+
+	eventCh := uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: "invalid-uuid"})
+	var events []usecase.StreamEvent
+	for ev := range eventCh {
+		events = append(events, ev)
+	}
+	assert.True(t, len(events) > 0)
+	var foundErr bool
+	for _, ev := range events {
+		if ev.Kind == usecase.StreamEventKindError {
+			assert.Equal(t, "invalid user_id", ev.Payload)
+			foundErr = true
+		}
+	}
+	assert.True(t, foundErr)
 }

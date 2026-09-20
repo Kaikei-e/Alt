@@ -154,7 +154,7 @@ func (h *Handler) RetrieveContext(
 	req *connect.Request[augurv2.RetrieveContextRequest],
 ) (*connect.Response[augurv2.RetrieveContextResponse], error) {
 	// Authentication check (handled by interceptor, but double-check)
-	_, err := domain.GetUserFromContext(ctx)
+	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "authentication failed", "error", err)
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
@@ -168,7 +168,7 @@ func (h *Handler) RetrieveContext(
 	h.logger.InfoContext(ctx, "retrieving context", "query", query)
 
 	// Call usecase
-	contexts, err := h.retrieveContextUsecase.Execute(ctx, query)
+	contexts, err := h.retrieveContextUsecase.Execute(ctx, query, user.UserID.String())
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RetrieveContext")
 	}

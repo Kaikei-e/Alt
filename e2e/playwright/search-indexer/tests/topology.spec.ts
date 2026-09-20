@@ -42,7 +42,7 @@ test.describe("the plaintext listeners answer only their own routes", () => {
 		// down, which is the classic way a negative-assertion file reports green
 		// on a completely broken deployment.
 		await expectStatus(await rest.get("/health"), 200);
-		await expectStatus(await rest.get("/v1/search?q=rust&limit=1"), 200);
+		await expectStatus(await rest.get(`/v1/search?q=rust&user_id=${SharedCorpus.aliceUser}&limit=1`), 200);
 		await expectStatus(await bare.get(`${env.connectURL}/health`), 200);
 	});
 
@@ -159,12 +159,21 @@ test.describe("access-control posture on the plaintext ports", () => {
 		// that stopped reaching Meilisearch returns forever, fails here.
 		const body = await expectJsonStatus(
 			await bare.get(
-				`${env.baseURL}/v1/search?q=${SharedCorpus.rustQuery}&limit=1`,
+				`${env.baseURL}/v1/search?q=${SharedCorpus.rustQuery}&user_id=${SharedCorpus.aliceUser}&limit=1`,
 			),
 			200,
 			nonEmptySearchResponseSchema,
 		);
 		expect(body.hits).toHaveLength(1);
+	});
+
+	test("searching without user_id is rejected with 400", { tag: "@authz" }, async ({
+		bare,
+	}) => {
+		const response = await bare.get(
+			`${env.baseURL}/v1/search?q=${SharedCorpus.rustQuery}&limit=1`,
+		);
+		await expectStatus(response, 400);
 	});
 
 	test("a spoofed peer-identity header changes nothing", { tag: "@authz" }, async ({

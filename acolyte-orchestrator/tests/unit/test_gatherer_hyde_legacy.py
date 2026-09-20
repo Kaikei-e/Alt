@@ -5,13 +5,16 @@ cross-lingual recall (ADR-000695 parity for Acolyte)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, cast
+from uuid import UUID
 
 import pytest
 from structlog.testing import capture_logs
 
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
 from acolyte.usecase.graph.state import ReportGenerationState
+from tests.conftest import TEST_USER_ID
 
 
 @dataclass
@@ -27,7 +30,15 @@ class _FakeEvidenceProvider:
     def __init__(self) -> None:
         self.search_calls: list[str] = []
 
-    async def search_articles(self, query: str, limit: int = 10) -> list[_Article]:
+    async def search_articles(
+        self,
+        query: str,
+        *,
+        user_id: UUID,
+        limit: int = 10,
+        published_after: datetime | None = None,
+    ) -> list[_Article]:
+        _ = (user_id, published_after)
         self.search_calls.append(query)
         return [
             _Article(
@@ -73,6 +84,7 @@ async def test_gatherer_applies_hyde_on_legacy_path() -> None:
     state = cast(
         ReportGenerationState,
         {
+            "user_id": TEST_USER_ID,
             "brief": {"topic": "イラン情勢 分析 2026"},
             "outline": _outline_without_facets(),
         },
@@ -94,6 +106,7 @@ async def test_gatherer_logs_warning_when_hyde_not_wired() -> None:
     state = cast(
         ReportGenerationState,
         {
+            "user_id": TEST_USER_ID,
             "brief": {"topic": "イラン情勢 分析 2026"},
             "outline": [
                 {
@@ -124,6 +137,7 @@ async def test_gatherer_logs_hyde_warning_once_per_call() -> None:
     state = cast(
         ReportGenerationState,
         {
+            "user_id": TEST_USER_ID,
             "brief": {"topic": "イラン情勢 2026"},
             "outline": [
                 {

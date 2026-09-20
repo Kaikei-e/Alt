@@ -3,6 +3,8 @@ import hmac
 import json
 import logging
 import os
+import re
+import sys
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -27,9 +29,56 @@ PORT = int(os.getenv("SSE_PORT", 8000))
 # HTTP clients ignore CORS entirely, so it must never be relied on as auth.
 ALLOWED_ORIGIN = os.getenv("SSE_ALLOWED_ORIGIN", f"http://localhost:{PORT}")
 
-# Empty by default (loopback/dev mode, unauthenticated). Set SSE_AUTH_TOKEN to
-# require `?token=` (or `Authorization: Bearer <token>`) on /stream and /health.
+# Module-level token holder, populated at startup by load_auth_token()
 AUTH_TOKEN = os.getenv("SSE_AUTH_TOKEN", "")
+
+
+def load_auth_token(*, fail_fast: bool = True) -> str | None:
+    """Resolve SSE auth token from secret file, environment, or explicit disable.
+
+    Requires SSE_AUTH_TOKEN_FILE (Docker secret path) or SSE_AUTH=disabled.
+    Returns:
+        - empty string "" if SSE_AUTH=disabled
+        - the loaded token string if successfully resolved
+        - None if unresolved and fail_fast is False
+    Fails startup with non-zero exit if unresolved and fail_fast is True.
+    """
+    if os.getenv("SSE_AUTH") == "disabled":
+        logger.warning(
+            "sse_auth_disabled: SSE_AUTH=disabled was set explicitly; "
+            "/stream is unauthenticated"
+        )
+        return ""
+
+    token_file = os.getenv("SSE_AUTH_TOKEN_FILE")
+    if token_file:
+        try:
+            with open(token_file, "r", encoding="utf-8") as f:
+                token = f.read().strip()
+            if not token:
+                logger.error("SSE_AUTH_TOKEN_FILE (%s) is empty", token_file)
+                if fail_fast:
+                    sys.exit(1)
+                return None
+            logger.info("sse_auth_enabled: loaded token from %s", token_file)
+            return token
+        except OSError as e:
+            logger.error("SSE_AUTH_TOKEN_FILE (%s) could not be read: %s", token_file, e)
+            if fail_fast:
+                sys.exit(1)
+            return None
+
+    direct_token = os.getenv("SSE_AUTH_TOKEN", "").strip()
+    if direct_token:
+        logger.info("sse_auth_enabled: loaded token from SSE_AUTH_TOKEN")
+        return direct_token
+
+    logger.error(
+        "SSE_AUTH_TOKEN_FILE is required; set SSE_AUTH=disabled to run SSE server without authentication"
+    )
+    if fail_fast:
+        sys.exit(1)
+    return None
 
 
 def extract_token_param(query: str) -> str | None:
@@ -71,12 +120,15 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
 
 class SSEHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
-        """Override to use our logger instead of stderr"""
-        logger.info("%s - %s", self.address_string(), format % args)
+        """Override to use our logger instead of stderr, stripping query params to prevent token leakage."""
+        msg = format % args
+        sanitized_msg = re.sub(r"\?[^\s\"']*", "", msg)
+        logger.info("%s - %s", self.address_string(), sanitized_msg)
 
     def do_OPTIONS(self) -> None:
         """Handle CORS preflight requests"""
-        logger.info("Received OPTIONS request for path: %s", self.path)
+        path = urlparse(self.path).path
+        logger.info("Received OPTIONS request for path: %s", path)
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
@@ -91,18 +143,18 @@ class SSEHandler(BaseHTTPRequestHandler):
         return is_authorized(AUTH_TOKEN, token_param, auth_header)
 
     def do_GET(self) -> None:
+        path = urlparse(self.path).path
         logger.info(
             "Received GET request for path: %s from %s",
-            self.path,
+            path,
             self.client_address,
         )
 
-        path = urlparse(self.path).path
-
-        if path in ("/stream", "/health") and not self._authorized():
+        # /stream requires token authorization; /health and readiness paths are exempt
+        if path == "/stream" and not self._authorized():
             logger.warning(
                 "401 unauthorized request for path: %s from %s",
-                self.path,
+                path,
                 self.client_address,
             )
             self.send_response(401)
@@ -117,7 +169,10 @@ class SSEHandler(BaseHTTPRequestHandler):
         if path == "/stream":
             try:
                 logger.info("SSE connection attempt from %s", self.client_address)
-                logger.debug("Request headers: %s", dict(self.headers))
+                logger.debug(
+                    "Request headers: %s",
+                    {k: v for k, v in self.headers.items() if k.lower() != "authorization"},
+                )
 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
@@ -208,7 +263,7 @@ class SSEHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                 except OSError:
                     pass
-        elif path == "/health":
+        elif path in ("/health", "/healthz", "/readyz"):
             # Health check endpoint
             logger.debug("Health check request from %s", self.client_address)
             try:
@@ -243,12 +298,13 @@ class SSEHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps(health_status).encode("utf-8"))
         else:
-            logger.warning("404 for path: %s from %s", self.path, self.client_address)
+            logger.warning("404 for path: %s from %s", path, self.client_address)
             self.send_response(404)
             self.end_headers()
 
 
 def start_server() -> None:
+    global AUTH_TOKEN
     try:
         logger.info("SSE Server initialization starting...")
         logger.info("SSE Server will bind to 0.0.0.0:%s", PORT)
@@ -256,15 +312,8 @@ def start_server() -> None:
             "SSE Server environment: SSE_PORT=%s",
             os.getenv("SSE_PORT", "not set (using default 8000)"),
         )
-        if AUTH_TOKEN:
-            logger.info(
-                "sse_auth_enabled: /stream and /health require a matching token"
-            )
-        else:
-            logger.warning(
-                "sse_auth_disabled: no SSE_AUTH_TOKEN configured, "
-                "/stream and /health are unauthenticated"
-            )
+        loaded = load_auth_token(fail_fast=True)
+        AUTH_TOKEN = loaded if loaded is not None else ""
 
         server = ThreadingHTTPServer(("0.0.0.0", PORT), SSEHandler)
         logger.info("SSE Server HTTP server created successfully")
@@ -272,6 +321,8 @@ def start_server() -> None:
         logger.info("SSE Server is ready to accept connections")
         logger.info("SSE Server endpoints: /stream (SSE), /health (health check)")
         server.serve_forever()
+    except SystemExit:
+        raise
     except OSError as e:
         logger.error("Failed to start SSE server on port %s: %s", PORT, e)
         logger.error(

@@ -68,6 +68,7 @@ func TestBuildMetricsCollector_RefusesUnwiredRelayMetrics(t *testing.T) {
 // silent failure.
 func TestBuildRedisConsumer_DisabledIsNotAnError(t *testing.T) {
 	t.Setenv("CONSUMER_ENABLED", "false")
+	t.Setenv("REDIS_AUTH", "disabled")
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	c, err := buildRedisConsumer(context.Background(), nil, nil, nil, log)
@@ -86,6 +87,7 @@ func TestBuildRedisConsumer_DisabledIsNotAnError(t *testing.T) {
 // It must now surface the error so BuildDependencies can fail startup.
 func TestBuildRedisConsumer_ConstructionFailurePropagatesError(t *testing.T) {
 	t.Setenv("CONSUMER_ENABLED", "true")
+	t.Setenv("REDIS_AUTH", "disabled")
 	t.Setenv("REDIS_STREAMS_URL", "not-a-valid-redis-url")
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -104,6 +106,7 @@ func TestBuildRedisConsumer_ConstructionFailurePropagatesError(t *testing.T) {
 // caller kept running with a half-initialized consumer.
 func TestBuildRedisConsumer_StartFailurePropagatesError(t *testing.T) {
 	t.Setenv("CONSUMER_ENABLED", "true")
+	t.Setenv("REDIS_AUTH", "disabled")
 	// Valid URL syntax but nothing listens here — Start()'s ensureConsumerGroup
 	// call must fail against an unreachable broker.
 	t.Setenv("REDIS_STREAMS_URL", "redis://127.0.0.1:1")

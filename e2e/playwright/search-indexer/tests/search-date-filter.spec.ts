@@ -20,10 +20,8 @@ import { nonEmptySearchResponseSchema, searchResponseSchema } from "../src/schem
  * assertion possible: "three of five" is a claim a broken filter cannot
  * accidentally satisfy the way "at least one" can.
  *
- * Note the path only exists **without** `user_id`. The handler rejects the
- * combination outright rather than ignoring the bounds, which is asserted
- * below — silently dropping a filter a caller asked for is how a
- * tenant-scoped query quietly returns a decade of history.
+ * Date filtering on GET /v1/search requires mandatory user_id and executes
+ * through SearchByUserUsecase.ExecuteWithDateFilter.
  */
 
 function searchPath(params: Record<string, string>): string {
@@ -46,7 +44,11 @@ test.describe("date-windowed search", () => {
 		// still return "some" documents and only this comparison notices which.
 		const body = await expectJsonStatus(
 			await rest.get(
-				searchPath({ q: corpus.nonce, published_after: publishedAtRFC3339(2) }),
+				searchPath({
+					q: corpus.nonce,
+					user_id: corpus.userId,
+					published_after: publishedAtRFC3339(2),
+				}),
 			),
 			200,
 			nonEmptySearchResponseSchema,
@@ -61,7 +63,11 @@ test.describe("date-windowed search", () => {
 		// Mirror of the above: `published_at <= before.Unix()`, so 0, 1 and 2.
 		const body = await expectJsonStatus(
 			await rest.get(
-				searchPath({ q: corpus.nonce, published_before: publishedAtRFC3339(2) }),
+				searchPath({
+					q: corpus.nonce,
+					user_id: corpus.userId,
+					published_before: publishedAtRFC3339(2),
+				}),
 			),
 			200,
 			nonEmptySearchResponseSchema,
@@ -81,6 +87,7 @@ test.describe("date-windowed search", () => {
 			await rest.get(
 				searchPath({
 					q: corpus.nonce,
+					user_id: corpus.userId,
 					published_after: publishedAtRFC3339(1),
 					published_before: publishedAtRFC3339(3),
 				}),
@@ -102,7 +109,12 @@ test.describe("date-windowed search", () => {
 		// both are plausible enough regressions to fence.
 		const body = await expectJsonStatus(
 			await rest.get(
-				searchPath({ q: corpus.nonce, published_after: "", published_before: "" }),
+				searchPath({
+					q: corpus.nonce,
+					user_id: corpus.userId,
+					published_after: "",
+					published_before: "",
+				}),
 			),
 			200,
 			nonEmptySearchResponseSchema,
@@ -115,14 +127,14 @@ test.describe("date-windowed search", () => {
 
 test.describe("date parameter validation", () => {
 	for (const parameter of ["published_after", "published_before"] as const) {
-		test(`a non-RFC3339 ${parameter} is a 400`, { tag: "@contract" }, async ({ rest }) => {
-			// Both bounds are parsed before any search runs, and each has its own
-			// message. Asserting the message — not just the status — is what
-			// distinguishes them: a handler that validated `published_after`
-			// twice and never looked at `published_before` still answers 400 to
-			// both, and only the text says which one it actually checked.
+		test(`a non-RFC3339 ${parameter} is a 400`, { tag: "@contract" }, async ({ rest, corpus }) => {
+			// Both bounds are parsed after user_id validation and before search runs.
 			const response = await rest.get(
-				searchPath({ q: "rust", [parameter]: "2026-01-01" }),
+				searchPath({
+					q: "rust",
+					user_id: corpus.userId,
+					[parameter]: "2026-01-01",
+				}),
 			);
 			await expectStatus(response, 400);
 			expect(await response.text()).toContain(`invalid ${parameter} (expected RFC3339)`);
@@ -131,27 +143,58 @@ test.describe("date parameter validation", () => {
 	}
 
 	test(
-		"date bounds combined with user_id are rejected, not ignored",
+		"published_after after published_before is a 400",
 		{ tag: "@contract" },
 		async ({ rest, corpus }) => {
-			// `SearchByUserUsecase` has no date-filtered engine path, so the
-			// handler refuses the combination explicitly — the alternative it
-			// replaced (a recorded api-inconsistency finding in
-			// rest/handler.go) was to accept the request and silently drop the
-			// window, which returns *more* data than the caller asked for. That
-			// is the failure direction that matters, so this asserts a 400
-			// rather than a filtered-or-unfiltered result set.
 			const response = await rest.get(
 				searchPath({
 					q: corpus.nonce,
 					user_id: corpus.userId,
-					published_after: publishedAtRFC3339(2),
+					published_after: publishedAtRFC3339(3),
+					published_before: publishedAtRFC3339(1),
 				}),
 			);
 			await expectStatus(response, 400);
 			expect(await response.text()).toContain(
-				"published_after/published_before are not supported with user_id",
+				"published_after must not be after published_before",
 			);
+			expectHeader(response, "Content-Type", "text/plain; charset=utf-8");
+		},
+	);
+
+	test(
+		"date bounds combined with user_id enforce both tenant isolation and date window",
+		{ tag: ["@contract", "@authz"] },
+		async ({ rest, corpus }) => {
+			// Production supports scoped dates via SearchByUserUsecase.ExecuteWithDateFilter.
+			// Assert positive intersection: corpus owner gets only documents within the date window.
+			const body = await expectJsonStatus(
+				await rest.get(
+					searchPath({
+						q: corpus.nonce,
+						user_id: corpus.userId,
+						published_after: publishedAtRFC3339(2),
+					}),
+				),
+				200,
+				nonEmptySearchResponseSchema,
+			);
+			expect(body.hits.map((hit) => hit.id).sort()).toEqual(idsAt(corpus.docs, [2, 3, 4]));
+
+			// Assert tenant isolation: a foreign user id querying the same date window matches nothing.
+			const foreign = await expectJsonStatus(
+				await rest.get(
+					searchPath({
+						q: corpus.nonce,
+						user_id: corpus.foreignUserId,
+						published_after: publishedAtRFC3339(2),
+					}),
+				),
+				200,
+				searchResponseSchema,
+			);
+			expect(foreign.hits).toHaveLength(0);
+			expect(foreign.total).toBe(0);
 		},
 	);
 
@@ -165,7 +208,11 @@ test.describe("date parameter validation", () => {
 			// search-backend outage and retry.
 			const body = await expectJsonStatus(
 				await rest.get(
-					searchPath({ q: corpus.nonce, published_after: publishedAtRFC3339(5) }),
+					searchPath({
+						q: corpus.nonce,
+						user_id: corpus.userId,
+						published_after: publishedAtRFC3339(5),
+					}),
 				),
 				200,
 				searchResponseSchema,

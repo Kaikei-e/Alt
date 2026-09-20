@@ -48,6 +48,7 @@ def _recap_config():
     config = Mock()
     config.cache_enabled = True
     config.cache_redis_url = "redis://cache-test:6379/0"
+    config.cache_redis_password = None
     config.cache_ttl_seconds = 3600
     # RecapSummaryUsecase generation-path config knobs (mirrors
     # tests/usecase/test_recap_summary_usecase.py fixtures).
@@ -169,6 +170,85 @@ async def test_cache_enabled_results_in_real_reads_and_writes(monkeypatch):
     assert second.summary.bullets == first.summary.bullets
 
     await cache_gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_cache_initialize_forwards_resolved_password(monkeypatch):
+    """The password resolved from REDIS_PASSWORD_FILE must reach
+    redis.Redis.from_url, not just the URL -- otherwise the client silently
+    connects unauthenticated."""
+    fake_client = _FakeRedisClient()
+    captured: dict[str, object] = {}
+
+    def fake_from_url(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return fake_client
+
+    monkeypatch.setattr(
+        "news_creator.gateway.redis_cache_gateway.redis.Redis.from_url",
+        fake_from_url,
+    )
+
+    config = _recap_config()
+    config.cache_redis_password = "hunter2"
+    cache_gateway = RedisCacheGateway(config)
+    await cache_gateway.initialize()
+
+    assert captured["password"] == "hunter2"
+    await cache_gateway.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_cache_authentication_failure_is_a_loud_startup_error(monkeypatch):
+    """NOAUTH/WRONGPASS must not be swallowed into "cache will be disabled" --
+    that would hide a wrong or missing REDIS_PASSWORD_FILE behind a warning
+    log instead of the fail-fast startup error CLAUDE.md rule 9 requires."""
+    from redis.exceptions import AuthenticationError
+
+    class _AuthFailingClient:
+        async def ping(self):
+            raise AuthenticationError("WRONGPASS invalid username-password pair")
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(
+        "news_creator.gateway.redis_cache_gateway.redis.Redis.from_url",
+        lambda *args, **kwargs: _AuthFailingClient(),
+    )
+
+    config = _recap_config()
+    cache_gateway = RedisCacheGateway(config)
+
+    with pytest.raises(AuthenticationError):
+        await cache_gateway.initialize()
+
+
+@pytest.mark.asyncio
+async def test_cache_unreachable_connection_still_soft_disables(monkeypatch):
+    """A genuinely unreachable cache (not an auth failure) keeps the existing
+    soft-disable behaviour -- news-creator must not refuse to start just
+    because Redis has not come up yet."""
+
+    class _UnreachableClient:
+        async def ping(self):
+            raise ConnectionError("Connection refused")
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(
+        "news_creator.gateway.redis_cache_gateway.redis.Redis.from_url",
+        lambda *args, **kwargs: _UnreachableClient(),
+    )
+
+    config = _recap_config()
+    cache_gateway = RedisCacheGateway(config)
+    await cache_gateway.initialize()
+
+    assert cache_gateway._enabled is False
+    assert cache_gateway._client is None
 
 
 @pytest.mark.asyncio

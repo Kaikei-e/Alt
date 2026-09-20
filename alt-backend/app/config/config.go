@@ -52,8 +52,11 @@ type Config struct {
 // service. URL has no default: an empty value means the client stays
 // disabled (see di/knowledge_module.go logSovereignWiringState).
 type SovereignConfig struct {
-	URL        string `json:"url" env:"SOVEREIGN_URL" default:""`
-	MetricsURL string `json:"metrics_url" env:"SOVEREIGN_METRICS_URL" default:"http://knowledge-sovereign:9501"`
+	URL            string `json:"url" env:"SOVEREIGN_URL" default:""`
+	MetricsURL     string `json:"metrics_url" env:"SOVEREIGN_METRICS_URL" default:"http://knowledge-sovereign:9501"`
+	EventToken     string `json:"-" env:"SOVEREIGN_EVENT_TOKEN"`
+	EventTokenFile string `json:"-" env:"SOVEREIGN_EVENT_TOKEN_FILE"`
+	EventAuth      string `json:"-" env:"SOVEREIGN_EVENT_AUTH" default:""`
 }
 
 // MeilisearchConfig holds configuration for the Meilisearch health-check target.
@@ -85,6 +88,9 @@ type RecapConfig struct {
 type RAGConfig struct {
 	OrchestratorURL        string `json:"orchestrator_url" env:"RAG_ORCHESTRATOR_URL" default:"http://rag-orchestrator:9010"`
 	OrchestratorConnectURL string `json:"orchestrator_connect_url" env:"RAG_ORCHESTRATOR_CONNECT_URL" default:"http://rag-orchestrator:9011"`
+	APITokenFile           string `json:"-" env:"RAG_API_TOKEN_FILE"`
+	APIToken               string `json:"-" env:"RAG_API_TOKEN"`
+	APIAuth                string `json:"-" env:"RAG_API_AUTH" default:""`
 }
 
 type AuthHubConfig struct {
@@ -254,7 +260,8 @@ type RateLimitConfig struct {
 	// composition roots log host_rate_limiter.mode=local at startup and state
 	// that the guarantee is per process, so an unset value can never be
 	// mistaken for wiring that silently went missing (rules 8 and 9).
-	CoordinationRedisURL string `json:"coordination_redis_url" env:"HOST_RATE_LIMITER_REDIS_URL" default:""`
+	CoordinationRedisURL      string `json:"coordination_redis_url" env:"HOST_RATE_LIMITER_REDIS_URL" default:""`
+	CoordinationRedisPassword string `json:"-"`
 
 	// InteractiveSlotWait bounds how long a request a user is waiting on may
 	// queue for its turn at a host before giving the turn up and telling the
@@ -466,6 +473,21 @@ func NewConfig() (*Config, error) {
 		config.Auth.InternalAuthSecret = secret
 	}
 
+	if config.Rag.APITokenFile != "" {
+		content, err := os.ReadFile(config.Rag.APITokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("read RAG_API_TOKEN_FILE %s: %w",
+				config.Rag.APITokenFile, err)
+		}
+		secret := strings.TrimSpace(string(content))
+		if secret == "" {
+			return nil, fmt.Errorf("RAG_API_TOKEN_FILE=%s resolved to an empty secret: "+
+				"mount a non-empty secret or set RAG_API_TOKEN instead",
+				config.Rag.APITokenFile)
+		}
+		config.Rag.APIToken = secret
+	}
+
 	// The two secrets exist precisely so the signing key stays inside the
 	// process. Handing both jobs one value again is the exposure this split
 	// removed, so it exits non-zero instead of degrading back to it. The guard
@@ -504,7 +526,62 @@ func NewConfig() (*Config, error) {
 		return nil, fmt.Errorf("auth config validation failed: %w", err)
 	}
 
+	// Validate sovereign event authentication configuration when sovereign is configured.
+	if config.Sovereign.URL != "" {
+		if err := validateSovereignConfig(&config.Sovereign, config.AppEnv); err != nil {
+			return nil, fmt.Errorf("sovereign config validation failed: %w", err)
+		}
+	}
+
+	// Only resolve when coordination is actually configured: cmd/datahub and
+	// cmd/notifier share this loader but have no HOST_RATE_LIMITER_REDIS_URL
+	// capability, and a binary already running the explicit local mode has
+	// nothing to authenticate against. Gating here keeps redis_auth_disabled
+	// from firing for a capability the binary never asked for.
+	redisPassword, err := resolveCoordinationRedisPassword(config.RateLimit.CoordinationRedisURL)
+	if err != nil {
+		return nil, fmt.Errorf("resolve redis password: %w", err)
+	}
+	config.RateLimit.CoordinationRedisPassword = redisPassword
+
 	return config, nil
+}
+
+const minSovereignEventTokenLen = 24
+
+func validateSovereignConfig(cfg *SovereignConfig, appEnv string) error {
+	if strings.EqualFold(strings.TrimSpace(cfg.EventAuth), "disabled") {
+		if appEnv == "production" {
+			return fmt.Errorf("SOVEREIGN_EVENT_AUTH=disabled is not permitted in production: knowledge-sovereign caller authentication is mandatory")
+		}
+		cfg.EventToken = ""
+		return nil
+	}
+
+	if cfg.EventTokenFile != "" {
+		content, err := os.ReadFile(cfg.EventTokenFile)
+		if err != nil {
+			return fmt.Errorf("read SOVEREIGN_EVENT_TOKEN_FILE %s: %w", cfg.EventTokenFile, err)
+		}
+		token := strings.TrimSpace(string(content))
+		if len(token) < minSovereignEventTokenLen {
+			return fmt.Errorf("event token from SOVEREIGN_EVENT_TOKEN_FILE must be at least %d characters", minSovereignEventTokenLen)
+		}
+		cfg.EventToken = token
+		return nil
+	}
+
+	cfg.EventToken = strings.TrimSpace(cfg.EventToken)
+	if cfg.EventToken != "" {
+		if len(cfg.EventToken) < minSovereignEventTokenLen {
+			return fmt.Errorf("SOVEREIGN_EVENT_TOKEN must be at least %d characters", minSovereignEventTokenLen)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("SOVEREIGN_EVENT_TOKEN_FILE or SOVEREIGN_EVENT_TOKEN is required when SOVEREIGN_URL is set: " +
+		"sovereign event caller authentication requires a non-empty token; " +
+		"mount a non-empty secret, set SOVEREIGN_EVENT_TOKEN, or set SOVEREIGN_EVENT_AUTH=disabled")
 }
 
 // appEnvValues enumerates the environments alt-backend recognises. Anything

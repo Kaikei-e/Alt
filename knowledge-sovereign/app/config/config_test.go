@@ -29,6 +29,9 @@ func TestLoad_DefaultAddresses(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "")
 	t.Setenv("ADMIN_TOKEN_FILE", "")
 	t.Setenv("ADMIN_AUTH", "disabled")
+	t.Setenv("EVENT_TOKEN", "")
+	t.Setenv("EVENT_TOKEN_FILE", "")
+	t.Setenv("EVENT_AUTH", "disabled")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -60,6 +63,7 @@ func TestLoad_AdminTokenFromEnv(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "s3cret-admin-token-value-long")
 	t.Setenv("ADMIN_TOKEN_FILE", "")
 	t.Setenv("ADMIN_AUTH", "")
+	t.Setenv("EVENT_AUTH", "disabled")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -75,6 +79,7 @@ func TestLoad_AdminTokenFromFile(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "")
 	t.Setenv("ADMIN_TOKEN_FILE", path)
 	t.Setenv("ADMIN_AUTH", "")
+	t.Setenv("EVENT_AUTH", "disabled")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -88,6 +93,7 @@ func TestLoad_AdminAuthExplicitlyDisabled(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "")
 	t.Setenv("ADMIN_TOKEN_FILE", "")
 	t.Setenv("ADMIN_AUTH", "disabled")
+	t.Setenv("EVENT_AUTH", "disabled")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -100,7 +106,89 @@ func TestLoad_RejectsShortAdminToken(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "short")
 	t.Setenv("ADMIN_TOKEN_FILE", "")
 	t.Setenv("ADMIN_AUTH", "")
+	t.Setenv("EVENT_AUTH", "disabled")
 
 	_, err := Load()
 	require.Error(t, err)
+}
+
+func TestLoad_RequiresEventTokenUnlessExplicitlyDisabled(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("ADMIN_AUTH", "disabled")
+	t.Setenv("EVENT_TOKEN", "")
+	t.Setenv("EVENT_TOKEN_FILE", "")
+	t.Setenv("EVENT_AUTH", "")
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "EVENT_TOKEN")
+}
+
+func TestLoad_EventTokenFromEnv(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("ADMIN_AUTH", "disabled")
+	t.Setenv("EVENT_TOKEN", "s3cret-event-token-value-long")
+	t.Setenv("EVENT_TOKEN_FILE", "")
+	t.Setenv("EVENT_AUTH", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "s3cret-event-token-value-long", cfg.EventToken)
+	assert.True(t, cfg.EventAuthEnabled)
+}
+
+func TestLoad_EventTokenFromFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "event_token")
+	require.NoError(t, os.WriteFile(path, []byte("  file-event-token-that-is-long-enough\n"), 0o600))
+
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("ADMIN_AUTH", "disabled")
+	t.Setenv("EVENT_TOKEN", "")
+	t.Setenv("EVENT_TOKEN_FILE", path)
+	t.Setenv("EVENT_AUTH", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "file-event-token-that-is-long-enough", cfg.EventToken)
+	assert.True(t, cfg.EventAuthEnabled)
+}
+
+func TestLoad_EventAuthExplicitlyDisabled(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("ADMIN_AUTH", "disabled")
+	t.Setenv("EVENT_TOKEN", "")
+	t.Setenv("EVENT_TOKEN_FILE", "")
+	t.Setenv("EVENT_AUTH", "disabled")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.False(t, cfg.EventAuthEnabled)
+	assert.Empty(t, cfg.EventToken)
+}
+
+func TestLoad_RejectsShortEventToken(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("ADMIN_AUTH", "disabled")
+	t.Setenv("EVENT_TOKEN", "short")
+	t.Setenv("EVENT_TOKEN_FILE", "")
+	t.Setenv("EVENT_AUTH", "")
+
+	_, err := Load()
+	require.Error(t, err)
+}
+
+func TestLoad_EventAuthDisabledTakesPrecedenceOverTokenFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "event_token")
+	require.NoError(t, os.WriteFile(path, []byte("file-event-token-that-is-long-enough"), 0o600))
+
+	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+	t.Setenv("ADMIN_AUTH", "disabled")
+	t.Setenv("EVENT_TOKEN", "")
+	t.Setenv("EVENT_TOKEN_FILE", path)
+	t.Setenv("EVENT_AUTH", "disabled")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.False(t, cfg.EventAuthEnabled)
+	assert.Empty(t, cfg.EventToken)
 }

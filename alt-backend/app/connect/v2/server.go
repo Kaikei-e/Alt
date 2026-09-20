@@ -229,8 +229,16 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 // service-to-service one. They are separate binaries now — the
 // service-to-service surface lives in SetupDataHubConnectHandlers — so neither
 // may re-acquire the other's services.
-func SetupOperatorConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) {
+//
+// operatorToken/operatorAuthEnabled come from config.LoadOperatorAuth and gate
+// every RPC here on "Authorization: Bearer <token>" — the BFF and altctl are
+// the only intended callers. enabled is false only for an explicit
+// OPERATOR_AUTH=disabled; cmd/backend refuses to start otherwise (rule 9), so
+// this function never has to guess whether an empty token means "open" or
+// "forgot to wire it".
+func SetupOperatorConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger, operatorToken string, operatorAuthEnabled bool) {
 	cancelInterceptor := middleware.NewContextCancelInterceptor(logger)
+	operatorAuthInterceptor := middleware.NewOperatorAuthInterceptor(operatorToken, operatorAuthEnabled)
 
 	// The custom JSON codec replaces Connect-RPC's default protojson
 	// marshaler so proto3 default-valued scalars (zero counters, false
@@ -240,6 +248,7 @@ func SetupOperatorConnectHandlers(mux *http.ServeMux, container *di.ApplicationC
 	// which is impossible if the wire encoder strips zero values.
 	adminOpts := connect.WithInterceptors(
 		cancelInterceptor.Interceptor(),
+		operatorAuthInterceptor.Interceptor(),
 	)
 	khAdminHandler := knowledge_home_admin.NewHandler(
 		container.KnowledgeBackfillUsecase,
@@ -293,11 +302,12 @@ func CreateConnectServer(container *di.ApplicationComponents, cfg *config.Config
 // cmd/backend's loopback operator listener: admin surfaces only.
 //
 // Cleartext HTTP/2 is enabled by bootstrap.NewServiceServer, which is what
-// mounts this handler.
-func CreateOperatorConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) http.Handler {
+// mounts this handler. operatorToken/operatorAuthEnabled are threaded through
+// to SetupOperatorConnectHandlers — see its doc comment.
+func CreateOperatorConnectServer(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger, operatorToken string, operatorAuthEnabled bool) http.Handler {
 	mux := http.NewServeMux()
 	muxutil.RegisterHealth(mux)
-	SetupOperatorConnectHandlers(mux, container, cfg, logger)
+	SetupOperatorConnectHandlers(mux, container, cfg, logger, operatorToken, operatorAuthEnabled)
 
 	return mux
 }

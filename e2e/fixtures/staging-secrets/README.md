@@ -15,9 +15,11 @@ against it.
 |------|---------|------|
 | `meili_master_key.txt` | `search-indexer` profile | Meilisearch admin key |
 | `alt_backend_token_secret.txt` | `alt-backend`, `auth-hub` profiles | HS256 secret. In the `alt-backend` profile it validates the pre-minted JWT at `e2e/fixtures/alt-backend/test-jwt.txt`; in the `auth-hub` profile it is the signing key for the `X-Alt-Backend-Token` JWT that `/validate` issues, and only that — `/internal/system-user` keys on `INTERNAL_AUTH_SECRET` instead, and auth-hub refuses to start when the two are equal. |
+| `backend_token_secret.txt` | `acolyte-orchestrator` profile | HS256 secret for backend token (`X-Alt-Backend-Token`) user identity verification. |
 | `auth_hub_csrf_secret.txt` | `auth-hub` profile | HMAC-SHA256 secret used by auth-hub's CSRF token generator. Must be ≥ 32 bytes. |
 | `auth_hub_kratos_cookie_secret.txt` | `auth-hub` profile | Kratos `secrets.cookie[0]` — HMAC key over `ory_kratos_session` cookies in staging. |
 | `auth_hub_kratos_cipher_secret.txt` | `auth-hub` profile | Kratos `secrets.cipher[0]` — exactly 32 bytes (xchacha20-poly1305 requirement). |
+| `redis_password.txt` | `mq-hub`, `tag-generator` profiles | `redis-streams`' `--requirepass`, read via `REDIS_PASSWORD_FILE` by `mq-hub` and `tag-generator`. |
 
 The `/internal/system-user` shared bearer has no file here: `INTERNAL_AUTH_SECRET`
 is set inline on both the `auth-hub` and `alt-data-hub` services in

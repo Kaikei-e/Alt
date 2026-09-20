@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -164,8 +163,7 @@ func (d *MeilisearchDriver) hybridSnapshot() (string, float64) {
 }
 
 // newBaseSearchRequest centralises SearchRequest construction so hybrid
-// plumbing stays consistent across Search, SearchWithFilters, and the
-// user-scoped search variants.
+// plumbing stays consistent across the user-scoped search variants.
 //
 // AttributesToRetrieve excludes the full content field — the driver no
 // longer needs the raw body once Meilisearch is asked to crop it.
@@ -250,127 +248,6 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 	}
 
 	return nil
-}
-
-func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int) ([]SearchDocumentDriver, error) {
-	emb, ratio := d.hybridSnapshot()
-	key := cacheKey{
-		Query:         normalizeCacheKeyQuery(query),
-		Limit:         int64(limit),
-		Embedder:      emb,
-		SemanticRatio: ratio,
-	}
-	if e, ok := d.cache.get(key); ok {
-		appotel.RecordMeilisearchProcessing(ctx, "Search.cacheHit", e.ProcessingMs)
-		return e.Docs, nil
-	}
-
-	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
-		searchRequest := d.newBaseSearchRequest(query, limit)
-		// Locales intentionally omitted: let Meilisearch match across all configured
-		// locales (jpn + eng). Previously CJK queries were restricted to jpn-only,
-		// which prevented Japanese queries from matching English article content
-		// (e.g., "ヴァンス副大統領" could not find "JD Vance" articles).
-		result, err := d.searchIndex.SearchWithContext(ctx, query, searchRequest)
-		if err != nil {
-			return cacheEntry{}, err
-		}
-		d.recordProcessing(ctx, "Search", result)
-		docs := d.hitsToDocs(result.Hits)
-		e := cacheEntry{Docs: docs, ProcessingMs: result.ProcessingTimeMs}
-		d.cache.put(key, e)
-		return e, nil
-	})
-	if err != nil {
-		return nil, &DriverError{Op: "Search", Err: err}
-	}
-	return entry.Docs, nil
-}
-
-func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]SearchDocumentDriver, error) {
-	filter := d.buildSecureFilter(filters)
-
-	emb, ratio := d.hybridSnapshot()
-	key := cacheKey{
-		Query:         normalizeCacheKeyQuery(query),
-		Filter:        filter,
-		Limit:         int64(limit),
-		Embedder:      emb,
-		SemanticRatio: ratio,
-	}
-	if e, ok := d.cache.get(key); ok {
-		appotel.RecordMeilisearchProcessing(ctx, "SearchWithFilters.cacheHit", e.ProcessingMs)
-		return e.Docs, nil
-	}
-
-	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
-		searchRequest := d.newBaseSearchRequest(query, limit)
-		if filter != "" {
-			searchRequest.Filter = filter
-		}
-		result, err := d.searchIndex.SearchWithContext(ctx, query, searchRequest)
-		if err != nil {
-			return cacheEntry{}, err
-		}
-		d.recordProcessing(ctx, "SearchWithFilters", result)
-		docs := d.hitsToDocs(result.Hits)
-		e := cacheEntry{Docs: docs, ProcessingMs: result.ProcessingTimeMs}
-		d.cache.put(key, e)
-		return e, nil
-	})
-	if err != nil {
-		return nil, &DriverError{Op: "SearchWithFilters", Err: err}
-	}
-	return entry.Docs, nil
-}
-
-// SearchWithDateFilter restricts results to documents whose “published_at“
-// (Unix seconds) is inside the requested window. Either bound may be nil.
-// When both are nil this degrades to a plain Search.
-func (d *MeilisearchDriver) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]SearchDocumentDriver, error) {
-	if publishedAfter == nil && publishedBefore == nil {
-		return d.Search(ctx, query, limit)
-	}
-
-	filterClauses := make([]string, 0, 2)
-	if publishedAfter != nil {
-		filterClauses = append(filterClauses, "published_at >= "+strconv.FormatInt(publishedAfter.Unix(), 10))
-	}
-	if publishedBefore != nil {
-		filterClauses = append(filterClauses, "published_at <= "+strconv.FormatInt(publishedBefore.Unix(), 10))
-	}
-	filter := strings.Join(filterClauses, " AND ")
-
-	emb, ratio := d.hybridSnapshot()
-	key := cacheKey{
-		Query:         normalizeCacheKeyQuery(query),
-		Filter:        filter,
-		Limit:         int64(limit),
-		Embedder:      emb,
-		SemanticRatio: ratio,
-	}
-	if e, ok := d.cache.get(key); ok {
-		appotel.RecordMeilisearchProcessing(ctx, "SearchWithDateFilter.cacheHit", e.ProcessingMs)
-		return e.Docs, nil
-	}
-
-	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
-		searchRequest := d.newBaseSearchRequest(query, limit)
-		searchRequest.Filter = filter
-		result, err := d.searchIndex.SearchWithContext(ctx, query, searchRequest)
-		if err != nil {
-			return cacheEntry{}, err
-		}
-		d.recordProcessing(ctx, "SearchWithDateFilter", result)
-		docs := d.hitsToDocs(result.Hits)
-		e := cacheEntry{Docs: docs, ProcessingMs: result.ProcessingTimeMs}
-		d.cache.put(key, e)
-		return e, nil
-	})
-	if err != nil {
-		return nil, &DriverError{Op: "SearchWithDateFilter", Err: err}
-	}
-	return entry.Docs, nil
 }
 
 // hitsToDocs flattens a Meilisearch result slice into SearchDocumentDriver
@@ -617,6 +494,9 @@ func (d *MeilisearchDriver) getInt64(m meilisearch.Hit, key string) int64 {
 }
 
 func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]SearchDocumentDriver, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, &DriverError{Op: "SearchByUserID", Err: errors.New("user_id is required")}
+	}
 	filter := BuildUserFilter(userID)
 
 	emb, ratio := d.hybridSnapshot()
@@ -656,6 +536,9 @@ func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, us
 }
 
 func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]SearchDocumentDriver, int64, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, 0, &DriverError{Op: "SearchByUserIDWithPagination", Err: errors.New("user_id is required")}
+	}
 	if limit <= 0 {
 		limit = 20
 	}
@@ -705,6 +588,48 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 		return nil, 0, &DriverError{Op: "SearchByUserIDWithPagination", Err: err}
 	}
 	return entry.Docs, entry.EstimatedTotal, nil
+}
+
+func (d *MeilisearchDriver) SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]SearchDocumentDriver, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, &DriverError{Op: "SearchByUserIDWithDateFilter", Err: errors.New("user_id is required")}
+	}
+	filter := BuildUserDateFilter(userID, publishedAfter, publishedBefore)
+
+	emb, ratio := d.hybridSnapshot()
+	key := cacheKey{
+		Query:         normalizeCacheKeyQuery(query),
+		UserID:        userID,
+		Filter:        filter,
+		Limit:         int64(limit),
+		Embedder:      emb,
+		SemanticRatio: ratio,
+	}
+	if e, ok := d.cache.get(key); ok {
+		appotel.RecordMeilisearchProcessing(ctx, "SearchByUserIDWithDateFilter.cacheHit", e.ProcessingMs)
+		return e.Docs, nil
+	}
+
+	entry, err := d.singleflightSearch(ctx, key.String(), func() (cacheEntry, error) {
+		req := d.newBaseSearchRequest(query, limit)
+		req.Filter = filter
+		if containsCJK(query) {
+			req.Locales = []string{"jpn"}
+		}
+		result, err := d.searchIndex.SearchWithContext(ctx, query, req)
+		if err != nil {
+			return cacheEntry{}, err
+		}
+		d.recordProcessing(ctx, "SearchByUserIDWithDateFilter", result)
+		docs := d.hitsToDocs(result.Hits)
+		e := cacheEntry{Docs: docs, ProcessingMs: result.ProcessingTimeMs}
+		d.cache.put(key, e)
+		return e, nil
+	})
+	if err != nil {
+		return nil, &DriverError{Op: "SearchByUserIDWithDateFilter", Err: err}
+	}
+	return entry.Docs, nil
 }
 
 func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
@@ -780,11 +705,6 @@ func (d *MeilisearchDriver) PruneTaskHistory(ctx context.Context, olderThan time
 	}
 
 	return nil
-}
-
-// buildSecureFilter creates a secure filter from tag filters
-func (d *MeilisearchDriver) buildSecureFilter(filters []string) string {
-	return makeSecureSearchFilter(filters)
 }
 
 // containsCJK checks if text contains CJK characters (Hiragana, Katakana, Han/Kanji).

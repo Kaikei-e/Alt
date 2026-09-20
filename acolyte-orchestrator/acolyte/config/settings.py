@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -154,7 +155,129 @@ class Settings(BaseSettings):
     mtls_key_file: str = ""
     mtls_ca_file: str = ""
 
+    # Backend token verification for user identity (X-Alt-Backend-Token).
+    # Startup fails loudly when BACKEND_TOKEN_VERIFICATION is enabled and
+    # BACKEND_TOKEN_SECRET_FILE is missing/unreadable.
+    backend_token_secret_file: str = "/run/secrets/backend_token_secret"  # noqa: S105 — filesystem path to secret file
+    backend_token_issuer: str = "auth-hub"  # noqa: S105 — JWT issuer claim, not a secret
+    backend_token_audience: str = "alt-backend"  # noqa: S105 — JWT audience claim, not a secret
+    backend_token_verification: str = "enabled"  # noqa: S105 — verification mode flag, not a secret
+    user_identity_dev_user_id: str = ""
+
+    # Legacy report owner backfill & startup gate
+    legacy_report_owner_id: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "ACOLYTE_LEGACY_REPORT_OWNER_ID",
+            "acolyte_legacy_report_owner_id",
+            "legacy_report_owner_id",
+        ),
+    )
+    legacy_report_mapping_file: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "ACOLYTE_LEGACY_REPORT_MAPPING_FILE",
+            "acolyte_legacy_report_mapping_file",
+            "legacy_report_mapping_file",
+        ),
+    )
+
     model_config = {"env_prefix": "", "case_sensitive": False}
+
+    def resolve_backend_token_secret(self) -> bytes | None:
+        """Resolve the JWT signing secret for backend token verification.
+
+        Returns None only when backend_token_verification is explicitly
+        'disabled'. Otherwise requires a valid, readable, non-empty secret file.
+        """
+        if self.backend_token_verification.strip().lower() == "disabled":
+            return None
+
+        if not self.backend_token_secret_file:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                "BACKEND_TOKEN_SECRET_FILE is not configured: "
+                "user identity verification requires a secret file unless BACKEND_TOKEN_VERIFICATION=disabled"
+            )
+
+        secret_path = Path(self.backend_token_secret_file)
+        if not secret_path.is_file():
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                f"BACKEND_TOKEN_SECRET_FILE is missing or unreadable: {self.backend_token_secret_file}"
+            )
+
+        secret = secret_path.read_bytes().strip()
+        if not secret:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                f"BACKEND_TOKEN_SECRET_FILE is empty: {self.backend_token_secret_file}"
+            )
+
+        return secret
+
+    def resolve_dev_user_id(self) -> UUID:
+        """Resolve the dev user identity UUID when backend token verification is disabled.
+
+        Required when BACKEND_TOKEN_VERIFICATION=disabled; raises RuntimeError if unset or invalid.
+        """
+        raw = self.user_identity_dev_user_id.strip()
+        if not raw:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                "USER_IDENTITY_DEV_USER_ID must be set when BACKEND_TOKEN_VERIFICATION=disabled"
+            )
+        try:
+            return UUID(raw)
+        except ValueError as exc:
+            raise RuntimeError(  # noqa: TRY003 — startup config error, single call site
+                f"USER_IDENTITY_DEV_USER_ID is not a valid UUID: {raw}"
+            ) from exc
+
+    def resolve_legacy_report_owner_id(self) -> UUID | None:
+        """Resolve legacy report owner UUID when single-owner backfill is configured."""
+        raw = self.legacy_report_owner_id.strip()
+        if not raw:
+            return None
+        try:
+            return UUID(raw)
+        except ValueError as exc:
+            raise RuntimeError(  # noqa: TRY003 — fail-fast startup config error, single call site
+                f"ACOLYTE_LEGACY_REPORT_OWNER_ID is not a valid UUID: {raw!r}"
+            ) from exc
+
+    def resolve_legacy_report_mapping(self) -> dict[UUID, UUID] | None:
+        """Resolve per-report mapping from JSON file when multi-tenant backfill is configured."""
+        raw_path = self.legacy_report_mapping_file.strip()
+        if not raw_path:
+            return None
+        path = Path(raw_path)
+        if not path.is_file():
+            raise RuntimeError(  # noqa: TRY003 — fail-fast startup config error, single call site
+                f"ACOLYTE_LEGACY_REPORT_MAPPING_FILE is missing or unreadable: {raw_path!r}"
+            )
+        try:
+            raw_data = json.loads(path.read_text())
+        except Exception as exc:
+            raise RuntimeError(  # noqa: TRY003 — fail-fast startup config error, single call site
+                f"ACOLYTE_LEGACY_REPORT_MAPPING_FILE contains invalid JSON: {exc}"
+            ) from exc
+        if not isinstance(raw_data, dict):
+            raise TypeError(  # noqa: TRY003 — non-dict mapping is a type error
+                "ACOLYTE_LEGACY_REPORT_MAPPING_FILE must contain a JSON object mapping report_id to user_id"
+            )
+        mapping: dict[UUID, UUID] = {}
+        for k, v in raw_data.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                raise TypeError(  # noqa: TRY003 — non-string key or value in mapping
+                    f"ACOLYTE_LEGACY_REPORT_MAPPING_FILE keys and values must be string UUIDs, got key {k!r} "
+                    f"({type(k).__name__}) and value {v!r} ({type(v).__name__})"
+                )
+            try:
+                k_uuid = UUID(k)
+                v_uuid = UUID(v)
+            except ValueError as exc:
+                raise ValueError(  # noqa: TRY003 — malformed UUID string
+                    f"ACOLYTE_LEGACY_REPORT_MAPPING_FILE keys and values must be valid UUIDs: {exc}"
+                ) from exc
+            mapping[k_uuid] = v_uuid
+        return mapping
 
     def resolve_notification_relay_config(self) -> NotificationRelayConfig | None:
         """Validate the relay configuration, or explain exactly what is missing.

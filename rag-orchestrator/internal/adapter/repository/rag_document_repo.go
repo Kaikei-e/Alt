@@ -35,14 +35,14 @@ func (r *ragDocumentRepository) getExecutor(ctx context.Context) interface {
 
 func (r *ragDocumentRepository) GetByArticleID(ctx context.Context, articleID string) (*domain.RagDocument, error) {
 	query := `
-		SELECT id, article_id, current_version_id, created_at, updated_at
+		SELECT id, article_id, user_id, current_version_id, created_at, updated_at
 		FROM rag_documents
 		WHERE article_id = $1
 	`
 	row := r.getExecutor(ctx).QueryRow(ctx, query, articleID)
 
 	var doc domain.RagDocument
-	err := row.Scan(&doc.ID, &doc.ArticleID, &doc.CurrentVersionID, &doc.CreatedAt, &doc.UpdatedAt)
+	err := row.Scan(&doc.ID, &doc.ArticleID, &doc.UserID, &doc.CurrentVersionID, &doc.CreatedAt, &doc.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -54,10 +54,10 @@ func (r *ragDocumentRepository) GetByArticleID(ctx context.Context, articleID st
 
 func (r *ragDocumentRepository) CreateDocument(ctx context.Context, doc *domain.RagDocument) error {
 	query := `
-		INSERT INTO rag_documents (id, article_id, current_version_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO rag_documents (id, article_id, user_id, current_version_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`
-	_, err := r.getExecutor(ctx).Exec(ctx, query, doc.ID, doc.ArticleID, doc.CurrentVersionID, doc.CreatedAt, doc.UpdatedAt)
+	_, err := r.getExecutor(ctx).Exec(ctx, query, doc.ID, doc.ArticleID, doc.UserID, doc.CurrentVersionID, doc.CreatedAt, doc.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to insert document: %w", err)
 	}
@@ -75,6 +75,46 @@ func (r *ragDocumentRepository) UpdateCurrentVersion(ctx context.Context, docID 
 		return fmt.Errorf("failed to update current version: %w", err)
 	}
 	return nil
+}
+
+func (r *ragDocumentRepository) SetDocumentOwner(ctx context.Context, docID uuid.UUID, userID uuid.UUID) error {
+	query := `
+		UPDATE rag_documents
+		SET user_id = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	_, err := r.getExecutor(ctx).Exec(ctx, query, userID, docID)
+	if err != nil {
+		return fmt.Errorf("failed to set document owner: %w", err)
+	}
+	return nil
+}
+
+func (r *ragDocumentRepository) BackfillOwnerIfNull(ctx context.Context, articleID string, userID uuid.UUID) (bool, bool, error) {
+	tag, err := r.getExecutor(ctx).Exec(ctx, `
+		UPDATE rag_documents
+		SET user_id = $1, updated_at = NOW()
+		WHERE article_id = $2 AND user_id IS NULL
+	`, userID, articleID)
+	if err != nil {
+		return false, false, fmt.Errorf("failed to backfill owner for article %s: %w", articleID, err)
+	}
+	if tag.RowsAffected() > 0 {
+		return true, false, nil
+	}
+
+	var dummy int
+	err = r.getExecutor(ctx).QueryRow(ctx, `
+		SELECT 1 FROM rag_documents WHERE article_id = $1
+	`, articleID).Scan(&dummy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("failed to check existing owner for article %s: %w", articleID, err)
+	}
+
+	return false, true, nil
 }
 
 func (r *ragDocumentRepository) GetLatestVersion(ctx context.Context, docID uuid.UUID) (*domain.RagDocumentVersion, error) {

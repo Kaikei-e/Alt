@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testStreamUserID = "11111111-1111-4111-8111-111111111111"
+
 // collectStreamEvents drains a StreamEvent channel and returns all events.
 func collectStreamEvents(ch <-chan usecase.StreamEvent) []usecase.StreamEvent {
 	var events []usecase.StreamEvent
@@ -95,7 +97,7 @@ func TestStreamParser_FullJSONInSingleChunk(t *testing.T) {
 	})
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "what is AI?"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "what is AI?", UserID: testStreamUserID}))
 
 	// Should have delta events containing the answer text
 	deltas := findEvents(events, usecase.StreamEventKindDelta)
@@ -128,7 +130,7 @@ func TestStreamParser_JSONChunkedAcrossMultipleTokens(t *testing.T) {
 	chunkCh, errCh := makeLLMStream(chunks)
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "hello"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "hello", UserID: testStreamUserID}))
 
 	deltas := findEvents(events, usecase.StreamEventKindDelta)
 	assert.NotEmpty(t, deltas, "should progressively emit delta events")
@@ -151,7 +153,7 @@ func TestStreamParser_EscapedCharactersInAnswer(t *testing.T) {
 	})
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: testStreamUserID}))
 
 	deltas := findEvents(events, usecase.StreamEventKindDelta)
 	var fullAnswer string
@@ -177,7 +179,7 @@ func TestStreamParser_EscapeSplitAcrossChunks(t *testing.T) {
 	chunkCh, errCh := makeLLMStream(chunks)
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test escape split"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test escape split", UserID: testStreamUserID}))
 
 	deltas := findEvents(events, usecase.StreamEventKindDelta)
 	var fullAnswer string
@@ -203,7 +205,7 @@ func TestStreamParser_FallbackResponse(t *testing.T) {
 	})
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: testStreamUserID}))
 
 	fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
 	assert.NotNil(t, fallbackEvt, "fallback response should emit fallback event")
@@ -212,7 +214,7 @@ func TestStreamParser_FallbackResponse(t *testing.T) {
 func TestStreamParser_EmptyQuery(t *testing.T) {
 	_, _, uc, _ := setupStreamTest(t)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: ""}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "", UserID: testStreamUserID}))
 
 	errorEvt := findEvent(events, usecase.StreamEventKindError)
 	assert.NotNil(t, errorEvt, "empty query should emit error event")
@@ -222,7 +224,7 @@ func TestStreamParser_EmptyQuery(t *testing.T) {
 func TestStreamParser_WhitespaceQuery(t *testing.T) {
 	_, _, uc, _ := setupStreamTest(t)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "   "}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "   ", UserID: testStreamUserID}))
 
 	errorEvt := findEvent(events, usecase.StreamEventKindError)
 	assert.NotNil(t, errorEvt, "whitespace-only query should emit error event")
@@ -233,7 +235,7 @@ func TestStreamParser_LLMStreamSetupError(t *testing.T) {
 
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil, assert.AnError)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: testStreamUserID}))
 
 	fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
 	assert.NotNil(t, fallbackEvt, "LLM stream setup failure should produce fallback")
@@ -250,7 +252,7 @@ func TestStreamParser_LLMStreamError(t *testing.T) {
 
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return((<-chan domain.LLMStreamChunk)(chunkCh), (<-chan error)(errCh), nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: testStreamUserID}))
 
 	fallbackEvt := findEvent(events, usecase.StreamEventKindFallback)
 	assert.NotNil(t, fallbackEvt, "LLM stream error should produce fallback")
@@ -269,7 +271,7 @@ func TestStreamParser_ThinkingEventsForwarded(t *testing.T) {
 	chunkCh, errCh := makeLLMStream(chunks)
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test thinking"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test thinking", UserID: testStreamUserID}))
 
 	thinkingEvents := findEvents(events, usecase.StreamEventKindThinking)
 	// First thinking event is the pre-retrieval one, then the two LLM thinking events
@@ -286,7 +288,7 @@ func TestStreamParser_EventSequence(t *testing.T) {
 	})
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test sequence"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test sequence", UserID: testStreamUserID}))
 
 	// Verify event sequence order
 	var kinds []usecase.StreamEventKind
@@ -342,7 +344,7 @@ func TestStreamParser_UnescapedQuoteInAnswer(t *testing.T) {
 	})
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "OGタグとは"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "OGタグとは", UserID: testStreamUserID}))
 
 	deltas := findEvents(events, usecase.StreamEventKindDelta)
 	var fullAnswer string
@@ -369,7 +371,7 @@ func TestStreamParser_UnescapedQuoteChunked(t *testing.T) {
 	chunkCh, errCh := makeLLMStream(chunks)
 	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
 
-	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "HTMLタグ"}))
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "HTMLタグ", UserID: testStreamUserID}))
 
 	deltas := findEvents(events, usecase.StreamEventKindDelta)
 	var fullAnswer string
@@ -390,7 +392,7 @@ func TestStreamParser_ContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	eventCh := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test cancel"})
+	eventCh := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test cancel", UserID: testStreamUserID})
 
 	// Read the initial thinking event
 	first := <-eventCh

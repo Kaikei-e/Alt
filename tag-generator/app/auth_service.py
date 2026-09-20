@@ -456,12 +456,13 @@ app = FastAPI(title="Tag Generator Service", version="1.0.0", lifespan=lifespan)
 from tag_generator.infra.peer_identity import (  # noqa: E402
     PeerIdentityMiddleware,
     allowed_peers_from_env,
+    strict_from_env,
 )
 
 app.add_middleware(
     PeerIdentityMiddleware,
     allowed=allowed_peers_from_env(),
-    strict=False,  # flip to True once all callers present client certs
+    strict=strict_from_env(),
 )
 # Flipping strict=True is safe with respect to header forgery: in-process
 # mTLS takes identity from the client cert, and the sidecar header is
@@ -543,11 +544,10 @@ async def get_user_preferences(user_context: UserContext) -> dict[str, Any]:
 def verify_service_token(request: Request) -> None:
     """No-op. Retained so existing handler decorators compile unchanged.
 
-    This authenticates nothing. The mTLS sidecar rejects uncredentialled
-    callers on :9443 only, and tag-generator also serves the same routes on
-    the plaintext :9400 that the sidecar never sees. Reachability is what
-    keeps :9400 closed today (compose binds it to 127.0.0.1); do not read
-    this function as a second control.
+    The plaintext port :9400 has no caller authentication; peer identity
+    is enforced only on the in-process mTLS listener on :9443. Reachability
+    is what keeps :9400 closed to external traffic (compose binds it to
+    127.0.0.1); do not treat this function as a security control.
     """
     _ = request  # silence lint
 

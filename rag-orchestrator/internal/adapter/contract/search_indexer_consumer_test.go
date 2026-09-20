@@ -33,8 +33,7 @@ func newSearchIndexerPact(t *testing.T) *consumer.V3HTTPMockProvider {
 
 // TestSearchIndexerSearchContract pins the `Search()` request/response:
 //   - GET /v1/search
-//   - q query param only; no user_id, so search-indexer serves the unfiltered
-//     internal RAG route instead of scoping hits to a per-user filter
+//   - q and user_id query params; search-indexer scopes hits to the authenticated user
 func TestSearchIndexerSearchContract(t *testing.T) {
 	mockProvider := newSearchIndexerPact(t)
 
@@ -46,7 +45,8 @@ func TestSearchIndexerSearchContract(t *testing.T) {
 			Method: "GET",
 			Path:   matchers.String("/v1/search"),
 			Query: matchers.MapMatcher{
-				"q": matchers.Like("LLM"),
+				"q":       matchers.Like("LLM"),
+				"user_id": matchers.Like("00000000-0000-0000-0000-000000000001"),
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -70,7 +70,7 @@ func TestSearchIndexerSearchContract(t *testing.T) {
 				5,
 				"",
 			)
-			hits, err := client.Search(context.Background(), "LLM")
+			hits, err := client.Search(context.Background(), "LLM", "00000000-0000-0000-0000-000000000001")
 			if err != nil {
 				return fmt.Errorf("Search failed: %w", err)
 			}
@@ -82,7 +82,7 @@ func TestSearchIndexerSearchContract(t *testing.T) {
 }
 
 // TestSearchIndexerSearchBM25Contract pins `SearchBM25()`:
-// - GET /v1/search with q + limit (no user_id — global retrieval for RAG)
+// - GET /v1/search with q, limit, and user_id for user-scoped BM25 hybrid search
 func TestSearchIndexerSearchBM25Contract(t *testing.T) {
 	mockProvider := newSearchIndexerPact(t)
 
@@ -94,8 +94,9 @@ func TestSearchIndexerSearchBM25Contract(t *testing.T) {
 			Method: "GET",
 			Path:   matchers.String("/v1/search"),
 			Query: matchers.MapMatcher{
-				"q":     matchers.Like("multi agent systems"),
-				"limit": matchers.Like("10"),
+				"q":       matchers.Like("multi agent systems"),
+				"limit":   matchers.Like("10"),
+				"user_id": matchers.Like("00000000-0000-0000-0000-000000000001"),
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -119,7 +120,7 @@ func TestSearchIndexerSearchBM25Contract(t *testing.T) {
 				5,
 				"",
 			)
-			results, err := client.SearchBM25(context.Background(), "multi agent systems", 10)
+			results, err := client.SearchBM25(context.Background(), "multi agent systems", 10, "00000000-0000-0000-0000-000000000001")
 			if err != nil {
 				return fmt.Errorf("SearchBM25 failed: %w", err)
 			}

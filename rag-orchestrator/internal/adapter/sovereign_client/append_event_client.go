@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -21,6 +23,77 @@ import (
 
 	"rag-orchestrator/internal/usecase"
 )
+
+// Option configures AppendEventClient.
+type Option func(*clientOptions)
+
+type clientOptions struct {
+	token string
+}
+
+// WithToken configures the Bearer token for authenticating to knowledge-sovereign.
+func WithToken(token string) Option {
+	return func(o *clientOptions) {
+		o.token = token
+	}
+}
+
+type clientAuthInterceptor struct {
+	token string
+}
+
+func (i *clientAuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		if i.token != "" {
+			req.Header().Set("Authorization", "Bearer "+i.token)
+		}
+		return next(ctx, req)
+	}
+}
+
+func (i *clientAuthInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		if i.token != "" {
+			conn.RequestHeader().Set("Authorization", "Bearer "+i.token)
+		}
+		return conn
+	}
+}
+
+func (i *clientAuthInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
+}
+
+const minSovereignEventTokenLen = 24
+
+// LoadSovereignEventToken resolves the caller authentication token for
+// knowledge-sovereign's event listener.
+// If authMode is "disabled", it returns ("", nil).
+// Otherwise, tokenFile (or SOVEREIGN_EVENT_TOKEN) must be non-empty and at least 24 chars.
+func LoadSovereignEventToken(tokenFile, authMode string) (string, error) {
+	if strings.EqualFold(strings.TrimSpace(authMode), "disabled") {
+		return "", nil
+	}
+	if tokenFile != "" {
+		content, err := os.ReadFile(tokenFile) // #nosec G304 -- tokenFile is operator-configured secret path from env
+		if err != nil {
+			return "", fmt.Errorf("read SOVEREIGN_EVENT_TOKEN_FILE %s: %w", tokenFile, err)
+		}
+		token := strings.TrimSpace(string(content))
+		if len(token) < minSovereignEventTokenLen {
+			return "", fmt.Errorf("event token from SOVEREIGN_EVENT_TOKEN_FILE must be at least %d characters", minSovereignEventTokenLen)
+		}
+		return token, nil
+	}
+	if token := strings.TrimSpace(os.Getenv("SOVEREIGN_EVENT_TOKEN")); token != "" {
+		if len(token) < minSovereignEventTokenLen {
+			return "", fmt.Errorf("SOVEREIGN_EVENT_TOKEN must be at least %d characters", minSovereignEventTokenLen)
+		}
+		return token, nil
+	}
+	return "", errors.New("SOVEREIGN_EVENT_TOKEN_FILE or SOVEREIGN_EVENT_TOKEN is required unless SOVEREIGN_EVENT_AUTH=disabled")
+}
 
 // AppendEventClient implements usecase.KnowledgeEventEmitter against
 // knowledge-sovereign's KnowledgeSovereignService.AppendKnowledgeEvent RPC.
@@ -43,10 +116,20 @@ type AppendEventClient struct {
 // Pact CDC contract that pins protojson camelCase field names. Without
 // this option Connect-go defaults to application/proto, which the
 // provider stub does not decode and which silently breaks the pact gate.
-func NewAppendEventClient(baseURL string, httpClient *http.Client) *AppendEventClient {
+func NewAppendEventClient(baseURL string, httpClient *http.Client, opts ...Option) *AppendEventClient {
+	var co clientOptions
+	for _, opt := range opts {
+		opt(&co)
+	}
+
+	clientOpts := []connect.ClientOption{connect.WithProtoJSON()}
+	if co.token != "" {
+		clientOpts = append(clientOpts, connect.WithInterceptors(&clientAuthInterceptor{token: co.token}))
+	}
+
 	return &AppendEventClient{
 		rpc: sovereignv1connect.NewKnowledgeSovereignServiceClient(
-			httpClient, baseURL, connect.WithProtoJSON(),
+			httpClient, baseURL, clientOpts...,
 		),
 	}
 }

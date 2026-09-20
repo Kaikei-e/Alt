@@ -110,14 +110,8 @@ func (c *BackendClient) ForwardStreamingRequest(req *http.Request, token string)
 }
 
 // ForwardServiceRequest forwards a Connect-RPC request to the backend using
-// service-token authentication instead of a user backend token.
-//
-// serviceToken is currently unused: config.LoadServiceSecret is a no-op stub,
-// so admin RPC authentication to alt-backend is established solely by the
-// mTLS transport (see newMTLSBackendTransport in main.go). When MTLS_ENFORCE
-// is off, that transport-layer auth is absent and these requests reach
-// alt-backend with no service-level auth at all — main.go logs
-// mtls_enforce_disabled loudly at startup so this is not a silent gap.
+// service-token authentication (Authorization: Bearer <serviceToken>)
+// instead of a user backend token.
 func (c *BackendClient) ForwardServiceRequest(req *http.Request, serviceToken string) (*http.Response, error) {
 	backendURL := c.BuildBackendURL(req.URL.Path)
 
@@ -128,7 +122,9 @@ func (c *BackendClient) ForwardServiceRequest(req *http.Request, serviceToken st
 
 	copyHeaders(req.Header, backendReq.Header)
 	backendReq.Header.Del(middleware.BackendTokenHeader)
-	_ = serviceToken // retained for signature compat; see doc comment above
+	if serviceToken != "" {
+		backendReq.Header.Set("Authorization", "Bearer "+serviceToken)
+	}
 
 	return c.httpClient.Do(backendReq)
 }

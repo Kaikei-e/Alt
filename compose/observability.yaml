@@ -4,6 +4,11 @@
 include:
   - base.yaml
 
+networks:
+  # Internal-only network shared with docker-socket-proxy-ro (declared in logging.yaml).
+  logging-docker-proxy:
+    internal: true
+
 services:
   # Prometheus metrics collection
   prometheus:
@@ -108,8 +113,12 @@ services:
     image: grafana/grafana:11.4.0
     restart: unless-stopped
     mem_limit: 256m
+    # Loopback only: a 0.0.0.0 publish is DNAT'd by Docker ahead of the host
+    # INPUT chain, so the LAN could reach Grafana's login page directly.
+    # Operators reach it through an SSH tunnel (ssh -L 3001:127.0.0.1:3001),
+    # the same pattern prometheus and cadvisor already use in this file.
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -156,21 +165,35 @@ services:
     image: gcr.io/cadvisor/cadvisor:v0.51.0
     restart: unless-stopped
     mem_limit: 384m
-    privileged: true
     environment:
       - DOCKER_API_VERSION=1.44
+    depends_on:
+      docker-socket-proxy-ro:
+        condition: service_healthy
+    command:
+      - '--docker=tcp://docker-socket-proxy-ro:2375'
     volumes:
+      # Host root filesystem inspection and root cgroup hierarchy resolution
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      # Host cgroup v1/v2 controller hierarchy for CPU, memory, and I/O metrics
       - /sys:/sys:ro
+      # Docker container storage driver layer metadata and disk usage
       - /var/lib/docker/:/var/lib/docker:ro
+      # Physical block device identification for disk I/O metrics mapping
       - /dev/disk/:/dev/disk:ro
-    # privileged + host FS mounts — bind UI/metrics to loopback only
-    # (same pattern as prometheus / pact-broker).
+    devices:
+      # Kernel log buffer device for container OOM event tracking without privileged mode
+      - /dev/kmsg:/dev/kmsg
+    cap_add:
+      # Required with /dev/kmsg to read kernel log buffer on hosts with kernel.dmesg_restrict=1.
+      # Per-container network counters may degrade without CAP_NET_ADMIN and must be checked post-deploy on /metrics.
+      - SYSLOG
+    # Host FS mounts and loopback metrics publishing (same pattern as prometheus / pact-broker).
     ports:
       - "127.0.0.1:8181:8080"
     networks:
       - alt-network
+      - logging-docker-proxy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
       interval: 30s

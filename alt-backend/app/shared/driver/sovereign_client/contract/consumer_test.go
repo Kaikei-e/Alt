@@ -33,6 +33,7 @@ import (
 
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
+	"alt/shared/driver/sovereign_client"
 )
 
 const pactDir = "../../../../../pacts"
@@ -53,7 +54,15 @@ func newSovereignClient(config consumer.MockServerConfig) sovereignv1connect.Kno
 		http.DefaultClient,
 		fmt.Sprintf("http://%s:%d", config.Host, config.Port),
 		connect.WithProtoJSON(),
+		connect.WithInterceptors(sovereign_client.NewClientAuthInterceptor("test-sovereign-event-token")),
 	)
+}
+
+func sovereignHeaders() matchers.MapMatcher {
+	return matchers.MapMatcher{
+		"Content-Type":  matchers.String("application/json"),
+		"Authorization": matchers.Regex("Bearer test-sovereign-event-token", `^Bearer .+$`),
+	}
 }
 
 func TestApplyProjectionMutationUpsertHomeItem(t *testing.T) {
@@ -64,11 +73,9 @@ func TestApplyProjectionMutationUpsertHomeItem(t *testing.T) {
 		Given("the projection mutation upsert_home_item is accepted").
 		UponReceiving("an ApplyProjectionMutation request of kind upsert_home_item").
 		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation"),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation"),
+			Headers: sovereignHeaders(),
 			Body: matchers.MapMatcher{
 				"mutationType":   matchers.String("upsert_home_item"),
 				"entityId":       matchers.Like("user-1:article-1"),
@@ -110,11 +117,9 @@ func TestApplyProjectionMutationReturnsErrorMessageOnRejection(t *testing.T) {
 		Given("the projection mutation is rejected with an error").
 		UponReceiving("an ApplyProjectionMutation request that the provider refuses to apply").
 		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation"),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ApplyProjectionMutation"),
+			Headers: sovereignHeaders(),
 			Body: matchers.MapMatcher{
 				"mutationType":   matchers.String("dismiss_home_item"),
 				"entityId":       matchers.Like("user-1:article-2"),
@@ -163,11 +168,9 @@ func TestApplyRecallMutationSnoozeCandidate(t *testing.T) {
 		Given("the recall mutation snooze_candidate is accepted").
 		UponReceiving("an ApplyRecallMutation request of kind snooze_candidate").
 		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ApplyRecallMutation"),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ApplyRecallMutation"),
+			Headers: sovereignHeaders(),
 			Body: matchers.MapMatcher{
 				"mutationType":   matchers.String("snooze_candidate"),
 				"entityId":       matchers.Like("user-1:article-3"),
@@ -214,11 +217,9 @@ func TestApplyCurationMutationDismissCuration(t *testing.T) {
 		Given("the curation mutation dismiss_curation is accepted").
 		UponReceiving("an ApplyCurationMutation request of kind dismiss_curation").
 		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ApplyCurationMutation"),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ApplyCurationMutation"),
+			Headers: sovereignHeaders(),
 			Body: matchers.MapMatcher{
 				"mutationType":   matchers.String("dismiss_curation"),
 				"entityId":       matchers.Like("user-1:article-2"),

@@ -2,22 +2,22 @@
   "consumer": {
     "name": "recap-worker"
   },
+  "provider": {
+    "name": "recap-subworker"
+  },
   "interactions": [
     {
       "description": "a classification job submission",
-      "providerStates": [
-        {
-          "name": "the classification model is loaded"
-        }
-      ],
       "request": {
+        "method": "POST",
+        "path": "/v1/classify-runs",
+        "headers": {
+          "content-type": "application/json"
+        },
         "body": {
           "texts": [
             "Article text to classify"
           ]
-        },
-        "headers": {
-          "content-type": "application/json"
         },
         "matchingRules": {
           "body": {
@@ -30,7 +30,7 @@
                 }
               ]
             },
-            "$.texts[*]": {
+            "$.texts[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -38,7 +38,7 @@
                 }
               ]
             },
-            "$.texts[*].*": {
+            "$.texts[*]": {
               "combine": "AND",
               "matchers": [
                 {
@@ -47,23 +47,22 @@
               ]
             }
           }
-        },
-        "method": "POST",
-        "path": "/v1/classify-runs"
+        }
       },
       "response": {
-        "body": {
-          "job_id": "00000000-0000-0000-0000-000000000001",
-          "result_count": 0,
-          "run_id": 1,
-          "status": "running"
-        },
+        "status": 200,
         "headers": {
           "content-type": "application/json"
         },
+        "body": {
+          "run_id": 1,
+          "status": "running",
+          "result_count": 0,
+          "job_id": "00000000-0000-0000-0000-000000000001"
+        },
         "matchingRules": {
           "body": {
-            "$.job_id": {
+            "$.status": {
               "combine": "AND",
               "matchers": [
                 {
@@ -79,6 +78,14 @@
                 }
               ]
             },
+            "$.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.run_id": {
               "combine": "AND",
               "matchers": [
@@ -86,76 +93,134 @@
                   "match": "type"
                 }
               ]
+            }
+          }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "the classification model is loaded"
+        }
+      ]
+    },
+    {
+      "description": "a clustering run submission",
+      "request": {
+        "method": "POST",
+        "path": "/v1/runs",
+        "headers": {
+          "Authorization": "Bearer test-recap-subworker-token-42",
+          "X-Alt-Genre": "technology",
+          "X-Alt-Job-Id": "00000000-0000-0000-0000-000000000001",
+          "content-type": "application/json"
+        },
+        "body": {
+          "params": {
+            "max_sentences_per_cluster": 20,
+            "mmr_lambda": 0.35,
+            "max_sentences_total": 2000,
+            "hdbscan_min_cluster_size": 5,
+            "umap_n_components": 25
+          },
+          "documents": [
+            {
+              "paragraphs": [
+                "AI is transforming industries across every major economic sector."
+              ],
+              "article_id": "art-001"
             },
-            "$.status": {
+            {
+              "paragraphs": [
+                "AI is transforming industries across every major economic sector."
+              ],
+              "article_id": "art-001"
+            },
+            {
+              "paragraphs": [
+                "AI is transforming industries across every major economic sector."
+              ],
+              "article_id": "art-001"
+            }
+          ],
+          "metadata": {
+            "article_count": 3,
+            "primary_language": "en",
+            "sentence_count": 10,
+            "character_count": 500
+          }
+        },
+        "matchingRules": {
+          "body": {
+            "$.params.umap_n_components": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type"
                 }
               ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "a clustering run submission",
-      "providerStates": [
-        {
-          "name": "the clustering pipeline accepts a new run"
-        }
-      ],
-      "request": {
-        "body": {
-          "documents": [
-            {
-              "article_id": "art-001",
-              "paragraphs": [
-                "AI is transforming industries across every major economic sector."
+            },
+            "$.metadata.sentence_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
               ]
             },
-            {
-              "article_id": "art-001",
-              "paragraphs": [
-                "AI is transforming industries across every major economic sector."
+            "$.params.hdbscan_min_cluster_size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
               ]
             },
-            {
-              "article_id": "art-001",
-              "paragraphs": [
-                "AI is transforming industries across every major economic sector."
-              ]
-            }
-          ],
-          "metadata": {
-            "article_count": 3,
-            "character_count": 500,
-            "primary_language": "en",
-            "sentence_count": 10
-          },
-          "params": {
-            "hdbscan_min_cluster_size": 5,
-            "max_sentences_per_cluster": 20,
-            "max_sentences_total": 2000,
-            "mmr_lambda": 0.35,
-            "umap_n_components": 25
-          }
-        },
-        "headers": {
-          "X-Alt-Genre": "technology",
-          "X-Alt-Job-Id": "00000000-0000-0000-0000-000000000001",
-          "content-type": "application/json"
-        },
-        "matchingRules": {
-          "body": {
             "$.documents": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
                   "min": 3
+                }
+              ]
+            },
+            "$.metadata.character_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.documents[*].paragraphs[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.documents[*].article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.metadata.article_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.mmr_lambda": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             },
@@ -167,7 +232,7 @@
                 }
               ]
             },
-            "$.documents[*].article_id": {
+            "$.params.max_sentences_total": {
               "combine": "AND",
               "matchers": [
                 {
@@ -192,23 +257,7 @@
                 }
               ]
             },
-            "$.documents[*].paragraphs[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.metadata.article_count": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.metadata.character_count": {
+            "$.params.max_sentences_per_cluster": {
               "combine": "AND",
               "matchers": [
                 {
@@ -223,84 +272,27 @@
                   "match": "type"
                 }
               ]
-            },
-            "$.metadata.sentence_count": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.params.hdbscan_min_cluster_size": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.params.max_sentences_per_cluster": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.params.max_sentences_total": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.params.mmr_lambda": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.params.umap_n_components": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
             }
           }
-        },
-        "method": "POST",
-        "path": "/v1/runs"
+        }
       },
       "response": {
-        "body": {
-          "cluster_count": 0,
-          "clusters": [],
-          "diagnostics": {},
-          "genre": "technology",
-          "job_id": "00000000-0000-0000-0000-000000000001",
-          "run_id": 42,
-          "status": "running"
-        },
+        "status": 202,
         "headers": {
           "content-type": "application/json"
         },
+        "body": {
+          "clusters": [],
+          "run_id": 42,
+          "job_id": "00000000-0000-0000-0000-000000000001",
+          "cluster_count": 0,
+          "genre": "technology",
+          "diagnostics": {},
+          "status": "running"
+        },
         "matchingRules": {
           "body": {
-            "$.cluster_count": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.genre": {
+            "$.status": {
               "combine": "AND",
               "matchers": [
                 {
@@ -324,7 +316,15 @@
                 }
               ]
             },
-            "$.status": {
+            "$.cluster_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.genre": {
               "combine": "AND",
               "matchers": [
                 {
@@ -333,23 +333,24 @@
               ]
             }
           }
-        },
-        "status": 202
-      }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "the clustering pipeline accepts a new run"
+        }
+      ]
     },
     {
       "description": "a coarse classification request",
-      "providerStates": [
-        {
-          "name": "the classification model is loaded"
-        }
-      ],
       "request": {
-        "body": {
-          "text": "Breaking news about AI technology"
-        },
+        "method": "POST",
+        "path": "/v1/classify/coarse",
         "headers": {
           "content-type": "application/json"
+        },
+        "body": {
+          "text": "Breaking news about AI technology"
         },
         "matchingRules": {
           "body": {
@@ -362,19 +363,18 @@
               ]
             }
           }
-        },
-        "method": "POST",
-        "path": "/v1/classify/coarse"
+        }
       },
       "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
         "body": {
           "scores": {
             "science": 0.15,
             "technology": 0.8
           }
-        },
-        "headers": {
-          "content-type": "application/json"
         },
         "matchingRules": {
           "body": {
@@ -395,44 +395,44 @@
               ]
             }
           }
-        },
-        "status": 200
-      }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "the classification model is loaded"
+        }
+      ]
     },
     {
       "description": "polling a completed classification job",
-      "providerStates": [
-        {
-          "name": "classification job 42 has succeeded"
-        }
-      ],
       "request": {
         "method": "GET",
         "path": "/v1/classify-runs/42"
       },
       "response": {
-        "body": {
-          "job_id": "00000000-0000-0000-0000-000000000001",
-          "result_count": 5,
-          "results": [
-            {
-              "confidence": 0.85,
-              "scores": {
-                "science": 0.1,
-                "technology": 0.85
-              },
-              "top_genre": "technology"
-            }
-          ],
-          "run_id": 42,
-          "status": "succeeded"
-        },
+        "status": 200,
         "headers": {
           "content-type": "application/json"
         },
+        "body": {
+          "job_id": "00000000-0000-0000-0000-000000000001",
+          "results": [
+            {
+              "scores": {
+                "technology": 0.85,
+                "science": 0.1
+              },
+              "top_genre": "technology",
+              "confidence": 0.85
+            }
+          ],
+          "result_count": 5,
+          "status": "succeeded",
+          "run_id": 42
+        },
         "matchingRules": {
           "body": {
-            "$.job_id": {
+            "$.result_count": {
               "combine": "AND",
               "matchers": [
                 {
@@ -440,7 +440,23 @@
                 }
               ]
             },
-            "$.result_count": {
+            "$.results[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.results[*].scores.technology": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.status": {
               "combine": "AND",
               "matchers": [
                 {
@@ -457,15 +473,7 @@
                 }
               ]
             },
-            "$.results[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.results[*].confidence": {
+            "$.results[*].top_genre": {
               "combine": "AND",
               "matchers": [
                 {
@@ -481,22 +489,6 @@
                 }
               ]
             },
-            "$.results[*].scores.technology": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.results[*].top_genre": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.run_id": {
               "combine": "AND",
               "matchers": [
@@ -505,7 +497,15 @@
                 }
               ]
             },
-            "$.status": {
+            "$.results[*].confidence": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.job_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -514,57 +514,68 @@
               ]
             }
           }
-        },
-        "status": 200
-      }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "classification job 42 has succeeded"
+        }
+      ]
     },
     {
       "description": "polling a completed clustering run",
-      "providerStates": [
-        {
-          "name": "clustering run 42 has succeeded"
-        }
-      ],
       "request": {
         "method": "GET",
-        "path": "/v1/runs/42"
+        "path": "/v1/runs/42",
+        "headers": {
+          "Authorization": "Bearer test-recap-subworker-token-42"
+        }
       },
       "response": {
-        "body": {
-          "cluster_count": 1,
-          "clusters": [
-            {
-              "cluster_id": 0,
-              "label": "technology",
-              "representatives": [
-                {
-                  "article_id": "art-001",
-                  "lang": "en",
-                  "paragraph_idx": 0,
-                  "score": 0.95,
-                  "sentence_text": "AI is transforming industries across every major economic sector."
-                }
-              ],
-              "size": 5,
-              "stats": {},
-              "top_terms": [
-                "AI"
-              ]
-            }
-          ],
-          "diagnostics": {
-            "dedup_pairs": 0
-          },
-          "genre": "technology",
-          "job_id": "00000000-0000-0000-0000-000000000001",
-          "run_id": 42,
-          "status": "succeeded"
-        },
+        "status": 200,
         "headers": {
           "content-type": "application/json"
         },
+        "body": {
+          "genre": "technology",
+          "status": "succeeded",
+          "clusters": [
+            {
+              "representatives": [
+                {
+                  "score": 0.95,
+                  "paragraph_idx": 0,
+                  "sentence_text": "AI is transforming industries across every major economic sector.",
+                  "lang": "en",
+                  "article_id": "art-001"
+                }
+              ],
+              "top_terms": [
+                "AI"
+              ],
+              "size": 5,
+              "cluster_id": 0,
+              "stats": {},
+              "label": "technology"
+            }
+          ],
+          "job_id": "00000000-0000-0000-0000-000000000001",
+          "run_id": 42,
+          "cluster_count": 1,
+          "diagnostics": {
+            "dedup_pairs": 0
+          }
+        },
         "matchingRules": {
           "body": {
+            "$.genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.cluster_count": {
               "combine": "AND",
               "matchers": [
@@ -573,12 +584,11 @@
                 }
               ]
             },
-            "$.clusters": {
+            "$.diagnostics.dedup_pairs": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "type",
-                  "min": 1
+                  "match": "type"
                 }
               ]
             },
@@ -590,7 +600,7 @@
                 }
               ]
             },
-            "$.clusters[*].cluster_id": {
+            "$.clusters[*].representatives[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -606,16 +616,7 @@
                 }
               ]
             },
-            "$.clusters[*].representatives": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.clusters[*].representatives[*].*": {
+            "$.clusters[*].top_terms[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -623,7 +624,15 @@
                 }
               ]
             },
-            "$.clusters[*].representatives[*].article_id": {
+            "$.run_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.job_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -639,31 +648,7 @@
                 }
               ]
             },
-            "$.clusters[*].representatives[*].paragraph_idx": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.clusters[*].representatives[*].score": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].representatives[*].sentence_text": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].size": {
               "combine": "AND",
               "matchers": [
                 {
@@ -680,47 +665,41 @@
                 }
               ]
             },
+            "$.clusters": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.clusters[*].size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].paragraph_idx": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
             "$.clusters[*].top_terms[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].top_terms[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.diagnostics.dedup_pairs": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.genre": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.job_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.run_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -735,11 +714,39 @@
                   "match": "type"
                 }
               ]
+            },
+            "$.clusters[*].cluster_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].sentence_text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
             }
           }
-        },
-        "status": 200
-      }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "clustering run 42 has succeeded"
+        }
+      ]
     }
   ],
   "metadata": {
@@ -751,8 +758,5 @@
     "pactSpecification": {
       "version": "3.0.0"
     }
-  },
-  "provider": {
-    "name": "recap-subworker"
   }
 }

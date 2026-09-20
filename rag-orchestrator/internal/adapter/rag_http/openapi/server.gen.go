@@ -4,8 +4,16 @@
 package openapi
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/base64"
+	"fmt"
+	"net/url"
+	"path"
+	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/labstack/echo/v4"
 )
 
@@ -86,11 +94,32 @@ type DeleteIndexRequest struct {
 	UserId    string `json:"user_id"`
 }
 
+// OwnerBackfillItem defines model for OwnerBackfillItem.
+type OwnerBackfillItem struct {
+	ArticleId string `json:"article_id"`
+	UserId    string `json:"user_id"`
+}
+
+// OwnerBackfillRequest defines model for OwnerBackfillRequest.
+type OwnerBackfillRequest struct {
+	Items []OwnerBackfillItem `json:"items"`
+}
+
+// OwnerBackfillResponse defines model for OwnerBackfillResponse.
+type OwnerBackfillResponse struct {
+	AlreadySet int64 `json:"already_set"`
+	NotFound   int64 `json:"not_found"`
+	Updated    int64 `json:"updated"`
+}
+
 // RetrieveRequest defines model for RetrieveRequest.
 type RetrieveRequest struct {
 	// CandidateArticleIds Optional list of article IDs to restrict search to
 	CandidateArticleIds *[]string `json:"candidate_article_ids,omitempty"`
 	Query               string    `json:"query"`
+
+	// UserId User ID owning the documents to retrieve
+	UserId string `json:"user_id"`
 }
 
 // RetrieveResponse defines model for RetrieveResponse.
@@ -120,6 +149,9 @@ type DeleteIndexJSONRequestBody = DeleteIndexRequest
 // UpsertIndexJSONRequestBody defines body for UpsertIndex for application/json ContentType.
 type UpsertIndexJSONRequestBody = UpsertIndexRequest
 
+// BackfillDocumentOwnersJSONRequestBody defines body for BackfillDocumentOwners for application/json ContentType.
+type BackfillDocumentOwnersJSONRequestBody = OwnerBackfillRequest
+
 // AnswerWithRAGJSONRequestBody defines body for AnswerWithRAG for application/json ContentType.
 type AnswerWithRAGJSONRequestBody = AnswerRequest
 
@@ -137,6 +169,9 @@ type ServerInterface interface {
 	// Upsert an article to the RAG index
 	// (POST /internal/rag/index/upsert)
 	UpsertIndex(ctx echo.Context) error
+	// Backfill document owners
+	// (POST /v1/documents/owners)
+	BackfillDocumentOwners(ctx echo.Context) error
 	// Answer a query using RAG (with LLM generation)
 	// (POST /v1/rag/answer)
 	AnswerWithRAG(ctx echo.Context) error
@@ -168,6 +203,15 @@ func (w *ServerInterfaceWrapper) UpsertIndex(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpsertIndex(ctx)
+	return err
+}
+
+// BackfillDocumentOwners converts echo context to params.
+func (w *ServerInterfaceWrapper) BackfillDocumentOwners(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.BackfillDocumentOwners(ctx)
 	return err
 }
 
@@ -228,8 +272,118 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 
 	router.POST(baseURL+"/internal/rag/index/delete", wrapper.DeleteIndex)
 	router.POST(baseURL+"/internal/rag/index/upsert", wrapper.UpsertIndex)
+	router.POST(baseURL+"/v1/documents/owners", wrapper.BackfillDocumentOwners)
 	router.POST(baseURL+"/v1/rag/answer", wrapper.AnswerWithRAG)
 	router.POST(baseURL+"/v1/rag/answer/stream", wrapper.AnswerWithRAGStream)
 	router.POST(baseURL+"/v1/rag/retrieve", wrapper.RetrieveContext)
 
+}
+
+// Base64 encoded, gzipped, json marshaled Swagger object
+var swaggerSpec = []string{
+
+	"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",
+	"AA==",
+}
+
+// GetSwagger returns the content of the embedded swagger specification file
+// or error if failed to decode
+func decodeSpec() ([]byte, error) {
+	zipped, err := base64.StdEncoding.DecodeString(strings.Join(swaggerSpec, ""))
+	if err != nil {
+		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(zipped))
+	if err != nil {
+		return nil, fmt.Errorf("error decompressing spec: %w", err)
+	}
+	var buf bytes.Buffer
+	_, err = buf.ReadFrom(zr)
+	if err != nil {
+		return nil, fmt.Errorf("error decompressing spec: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+var rawSpec = decodeSpecCached()
+
+// a naive cached of a decoded swagger spec
+func decodeSpecCached() func() ([]byte, error) {
+	data, err := decodeSpec()
+	return func() ([]byte, error) {
+		return data, err
+	}
+}
+
+// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
+func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
+	res := make(map[string]func() ([]byte, error))
+	if len(pathToFile) > 0 {
+		res[pathToFile] = rawSpec
+	}
+
+	return res
+}
+
+// GetSwagger returns the Swagger specification corresponding to the generated code
+// in this file. The external references of Swagger specification are resolved.
+// The logic of resolving external references is tightly connected to "import-mapping" feature.
+// Externally referenced files must be embedded in the corresponding golang packages.
+// Urls can be supported but this task was out of the scope.
+func GetSwagger() (swagger *openapi3.T, err error) {
+	resolvePath := PathToRawSpec("")
+
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
+		pathToFile := url.String()
+		pathToFile = path.Clean(pathToFile)
+		getSpec, ok := resolvePath[pathToFile]
+		if !ok {
+			err1 := fmt.Errorf("path not found: %s", pathToFile)
+			return nil, err1
+		}
+		return getSpec()
+	}
+	var specData []byte
+	specData, err = rawSpec()
+	if err != nil {
+		return
+	}
+	swagger, err = loader.LoadFromData(specData)
+	if err != nil {
+		return
+	}
+	return
 }

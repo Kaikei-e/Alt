@@ -24,6 +24,7 @@ from acolyte.domain.report import (
 from acolyte.domain.run import ReportJob, ReportRun
 from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
 from acolyte.handler.connect_service import AcolyteConnectService
+from tests.conftest import TEST_USER_ID, make_request_ctx
 
 
 class _FakeRepo:
@@ -44,13 +45,13 @@ class _FakeRepo:
         return None
 
     # Stubs for the rest of the port (not exercised here).
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         raise NotImplementedError
 
     async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
         raise NotImplementedError
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         return [], None
 
     async def bump_version(
@@ -147,6 +148,7 @@ def _seed_report(repo: _FakeRepo) -> UUID:
         current_version=0,
         latest_successful_run_id=None,
         created_at=datetime.now(UTC),
+        user_id=TEST_USER_ID,
     )
     return rid
 
@@ -168,7 +170,7 @@ async def test_get_report_includes_active_run_when_queue_has_one() -> None:
     service = AcolyteConnectService(MagicMock(), repo, job_queue=queue)
     response = await service.get_report(
         acolyte_pb2.GetReportRequest(report_id=str(rid)),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=make_request_ctx("GetReport"),
     )
 
     assert queue.calls == [rid]
@@ -189,7 +191,7 @@ async def test_get_report_omits_active_run_when_queue_returns_none() -> None:
     service = AcolyteConnectService(MagicMock(), repo, job_queue=queue)
     response = await service.get_report(
         acolyte_pb2.GetReportRequest(report_id=str(rid)),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=make_request_ctx("GetReport"),
     )
 
     assert queue.calls == [rid]
@@ -205,7 +207,7 @@ async def test_get_report_skips_queue_lookup_when_job_queue_is_none() -> None:
     service = AcolyteConnectService(MagicMock(), repo, job_queue=None)
     response = await service.get_report(
         acolyte_pb2.GetReportRequest(report_id=str(rid)),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=make_request_ctx("GetReport"),
     )
 
     assert not response.HasField("active_run")

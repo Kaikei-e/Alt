@@ -18,7 +18,7 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -26,6 +26,7 @@ from ..infra.config import get_settings
 from ..infra.logging import configure_logging
 from ..infra.telemetry import setup_metrics
 from .container import ServiceContainer
+from .infra.admin_auth import load_admin_auth_config, require_admin_token
 from .routers import (
     admin,
     classification,
@@ -96,6 +97,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     container = ServiceContainer(settings)
     app.state.container = container
     app.state.deep_health_runner = health.build_deep_health_runner(settings)
+    # Fail-closed: a misconfigured ADMIN_AUTH/ADMIN_TOKEN_FILE aborts
+    # startup here rather than serving /admin/* and /v1/runs either
+    # unauthenticated or 500-ing per request (CLAUDE.md rule 9).
+    app.state.admin_auth = load_admin_auth_config()
     try:
         yield
     finally:
@@ -140,8 +145,8 @@ def create_app() -> FastAPI:
     setup_metrics(app, settings)
 
     app.include_router(health.router)
-    app.include_router(admin.router, prefix="/admin")
-    app.include_router(runs.router)
+    app.include_router(admin.router, prefix="/admin", dependencies=[Depends(require_admin_token)])
+    app.include_router(runs.router, dependencies=[Depends(require_admin_token)])
     app.include_router(evaluation.router)
     app.include_router(classification.router, prefix="/v1")
     app.include_router(preprocessing.router, prefix="/v1")

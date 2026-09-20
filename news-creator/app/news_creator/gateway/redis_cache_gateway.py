@@ -5,8 +5,14 @@ from typing import Any
 
 try:
     import redis.asyncio as redis
+    from redis.exceptions import AuthenticationError as RedisAuthenticationError
 except ImportError:
     redis = None  # type: ignore
+
+    class RedisAuthenticationError(Exception):  # type: ignore[no-redef]
+        """Placeholder so the except clause below still resolves when the
+        redis package itself is unavailable (that path never raises it)."""
+
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.port.cache_port import CachePort
@@ -39,11 +45,15 @@ class RedisCacheGateway(CachePort):
             logger.info("Cache disabled, skipping Redis initialization")
             return
 
+        if redis is None:
+            logger.warning("redis package not installed, cache will be disabled")
+            self._enabled = False
+            return
+
         try:
-            if redis is None:
-                raise RuntimeError("redis package not installed")
             self._client = redis.Redis.from_url(
                 self.config.cache_redis_url,
+                password=self.config.cache_redis_password,
                 decode_responses=True,
             )
             # Test connection
@@ -52,6 +62,18 @@ class RedisCacheGateway(CachePort):
                 "Redis cache gateway initialized",
                 extra={"url": self._sanitize_url(self.config.cache_redis_url)},
             )
+        except RedisAuthenticationError:
+            # A wrong or missing REDIS_PASSWORD_FILE is a startup
+            # misconfiguration, not a genuinely unreachable cache -- swallowing
+            # it as "cache disabled" would hide it behind a warning log
+            # instead of the fail-fast startup error CLAUDE.md rule 9
+            # requires.
+            logger.error(
+                "Redis cache authentication failed (NOAUTH/WRONGPASS); refusing "
+                "to start with cache silently disabled",
+                extra={"url": self._sanitize_url(self.config.cache_redis_url)},
+            )
+            raise
         except Exception as e:
             logger.error(
                 "Failed to connect to Redis, cache will be disabled",

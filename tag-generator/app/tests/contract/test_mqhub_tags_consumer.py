@@ -23,15 +23,33 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
 from pact import Pact, match
 
 from tag_generator.handler.event_payload import TagGenerationRequestPayload
+from tag_generator.infra import redis_auth
 from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer
 from tag_generator.stream_event_handler import TagGeneratorEventHandler
 
 PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "pacts"
 
 MESSAGE_ID = "1742947200000-0"
+TEST_REDIS_PASSWORD = "contract-test-redis-password"
+
+
+@pytest.fixture(autouse=True)
+def redis_auth_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Explicit test credential fixture providing a temporary Redis password file.
+
+    Ensures ConsumerConfig resolves a real password from REDIS_PASSWORD_FILE
+    without globally disabling auth or weakening production requirements.
+    """
+    pw_file = tmp_path / "redis_password.txt"
+    pw_file.write_text(TEST_REDIS_PASSWORD)
+    monkeypatch.delenv("REDIS_AUTH", raising=False)
+    monkeypatch.setenv("REDIS_PASSWORD_FILE", str(pw_file))
+    monkeypatch.setattr(redis_auth, "_disabled_logged", False)
+    return TEST_REDIS_PASSWORD
 
 
 def _new_pact() -> Pact:
@@ -69,7 +87,11 @@ def test_consume_tag_generation_requested_event():
     service = _stub_service()
     replies: list[tuple[str, dict[str, Any]]] = []
 
+    config = ConsumerConfig.tags_stream_from_env()
+    assert config.redis_password == TEST_REDIS_PASSWORD
+
     stream_consumer = MagicMock()
+    stream_consumer.config = config
 
     async def _capture_reply(stream: str, event_data: dict[str, Any]) -> str:
         replies.append((stream, event_data))
@@ -78,7 +100,9 @@ def test_consume_tag_generation_requested_event():
     stream_consumer.publish_reply = _capture_reply
 
     handler = TagGeneratorEventHandler(service, stream_consumer)
-    parser = StreamConsumer(ConsumerConfig.tags_stream_from_env(), handler)
+    parser = StreamConsumer(config, handler)
+    assert parser.config.redis_password == TEST_REDIS_PASSWORD
+    assert stream_consumer.config.redis_password == TEST_REDIS_PASSWORD
 
     (
         pact.upon_receiving("a TagGenerationRequested event on alt:events:tags", "Async")
@@ -144,6 +168,7 @@ def test_tags_consumer_reads_the_stream_mq_hub_publishes_to():
 
     assert config.stream_key == "alt:events:tags"
     assert config.group_name == "tag-generator-tags-group"
+    assert config.redis_password == TEST_REDIS_PASSWORD
 
 
 def test_tag_generation_request_payload_binds_only_contracted_fields():

@@ -29,6 +29,7 @@ var streamingProcedures = map[string]bool{
 	"/alt.augur.v2.AugurService/StreamChat":                                  true,
 	"/alt.morning_letter.v2.MorningLetterService/StreamChat":                 true,
 	"/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates": true,
+	"/alt.acolyte.v1.AcolyteService/StreamRunProgress":                       true,
 }
 
 // ProxyHandler proxies Connect-RPC requests to the backend.

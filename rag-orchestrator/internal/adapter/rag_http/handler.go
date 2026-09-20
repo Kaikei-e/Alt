@@ -3,6 +3,7 @@ package rag_http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -184,6 +185,15 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 	if strings.TrimSpace(req.ArticleId) == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "article_id is required"})
 	}
+	trimmedUserID := strings.TrimSpace(req.UserId)
+	if trimmedUserID == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
+	}
+	parsedUserID, err := uuid.Parse(trimmedUserID)
+	if err != nil || parsedUserID == uuid.Nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+	}
+	req.UserId = parsedUserID.String()
 
 	// Server-side timeout decoupled from caller's context
 	timeoutCtx, cancel := context.WithTimeout(ctx.Request().Context(), upsertTimeout)
@@ -208,18 +218,60 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 	if err := indexUsecase.Upsert(
 		timeoutCtx,
 		req.ArticleId,
+		req.UserId,
 		req.Title,
 		req.Url, // URL is a required field per OpenAPI spec
 		req.Body,
 	); err != nil {
 		h.logger.Error("failed to upsert index", "error", err)
-		if isDuplicateKeyError(err) {
-			return ctx.JSON(http.StatusConflict, map[string]string{"error": "duplicate key"})
+		if errors.Is(err, usecase.ErrBlankArticleID) {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "article_id is required"})
+		}
+		if errors.Is(err, usecase.ErrBlankUserID) {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
+		}
+		if errors.Is(err, usecase.ErrInvalidUserID) {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+		}
+		if errors.Is(err, usecase.ErrOwnerConflict) || isDuplicateKeyError(err) {
+			return ctx.JSON(http.StatusConflict, map[string]string{"error": "document owned by another user"})
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to index article"})
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"status": "indexed"})
+}
+
+// BackfillDocumentOwners sets user_id for documents where user_id is currently NULL.
+// (POST /v1/documents/owners)
+func (h *Handler) BackfillDocumentOwners(ctx echo.Context) error {
+	var req openapi.OwnerBackfillRequest
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	items := make([]usecase.OwnerBackfillItem, len(req.Items))
+	for i, item := range req.Items {
+		items[i] = usecase.OwnerBackfillItem{
+			ArticleID: item.ArticleId,
+			UserID:    item.UserId,
+		}
+	}
+
+	result, err := h.indexUsecase.BackfillOwners(ctx.Request().Context(), items)
+	if err != nil {
+		h.logger.Error("failed to backfill document owners", "error", err)
+		if errors.Is(err, usecase.ErrBlankArticleID) || errors.Is(err, usecase.ErrBlankUserID) || errors.Is(err, usecase.ErrInvalidUserID) {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to backfill document owners"})
+	}
+
+	return ctx.JSON(http.StatusOK, openapi.OwnerBackfillResponse{
+		Updated:    result.Updated,
+		AlreadySet: result.AlreadySet,
+		NotFound:   result.NotFound,
+	})
 }
 
 func isDuplicateKeyError(err error) bool {
@@ -240,10 +292,22 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 	}
 
 	input := mapAnswerRequestToInput(req)
+	if input.UserID == "" {
+		input.UserID = ctx.Request().Header.Get("X-Alt-User-Id")
+	}
+	if strings.TrimSpace(input.UserID) == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
+	}
+	if _, err := uuid.Parse(strings.TrimSpace(input.UserID)); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+	}
 
 	output, err := h.answerUsecase.Execute(ctx.Request().Context(), input)
 	if err != nil {
 		h.logger.Error("failed to answer with RAG", "error", err)
+		if errors.Is(err, usecase.ErrEmptyUserID) || errors.Is(err, usecase.ErrInvalidUserID) {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate answer"})
 	}
 
@@ -343,6 +407,15 @@ func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 	}
 
 	input := mapAnswerRequestToInput(req)
+	if input.UserID == "" {
+		input.UserID = ctx.Request().Header.Get("X-Alt-User-Id")
+	}
+	if strings.TrimSpace(input.UserID) == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
+	}
+	if _, err := uuid.Parse(strings.TrimSpace(input.UserID)); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+	}
 	events := h.answerUsecase.Stream(ctx.Request().Context(), input)
 
 	res := ctx.Response()
@@ -389,6 +462,7 @@ func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 // type-asserts to string, not that it is a real article id.
 type backfillRequest struct {
 	ArticleID string `json:"article_id"`
+	UserID    string `json:"user_id"`
 	Title     string `json:"title"`
 	Body      string `json:"body"`
 	URL       string `json:"url"`
@@ -409,6 +483,18 @@ func (h *Handler) Backfill(ctx echo.Context) error {
 	if _, err := uuid.Parse(req.ArticleID); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid article_id"})
 	}
+	userID := req.UserID
+	if userID == "" {
+		userID = ctx.Request().Header.Get("X-Alt-User-Id")
+	}
+	trimmedUserID := strings.TrimSpace(userID)
+	if trimmedUserID == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing user_id"})
+	}
+	parsedUID, err := uuid.Parse(trimmedUserID)
+	if err != nil || parsedUID == uuid.Nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+	}
 	if req.Title == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing title"})
 	}
@@ -418,6 +504,7 @@ func (h *Handler) Backfill(ctx echo.Context) error {
 
 	payload := map[string]interface{}{
 		"article_id": req.ArticleID,
+		"user_id":    parsedUID.String(),
 		"title":      req.Title,
 		"body":       req.Body,
 	}
@@ -450,8 +537,24 @@ func (h *Handler) RetrieveContext(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
+	if strings.TrimSpace(req.Query) == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "query is required"})
+	}
+
+	userID := req.UserId
+	if userID == "" {
+		userID = ctx.Request().Header.Get("X-Alt-User-Id")
+	}
+	if strings.TrimSpace(userID) == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
+	}
+	if _, err := uuid.Parse(strings.TrimSpace(userID)); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+	}
+
 	input := usecase.RetrieveContextInput{
-		Query: req.Query,
+		Query:  req.Query,
+		UserID: userID,
 	}
 	if req.CandidateArticleIds != nil {
 		input.CandidateArticleIDs = *req.CandidateArticleIds
@@ -460,29 +563,41 @@ func (h *Handler) RetrieveContext(ctx echo.Context) error {
 	output, err := h.retrieveUsecase.Execute(ctx.Request().Context(), input)
 	if err != nil {
 		h.logger.Error("failed to retrieve context", "error", err)
+		if errors.Is(err, usecase.ErrEmptyUserID) || errors.Is(err, usecase.ErrInvalidUserID) {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to retrieve context"})
 	}
 
-	contexts := make([]openapi.Context, 0, len(output.Contexts))
-	for _, c := range output.Contexts {
-		score := float32(c.Score)
-		docVer := int64(c.DocumentVersion)
+	contexts := make([]openapi.Context, 0)
+	if output != nil {
+		for _, c := range output.Contexts {
+			score := float32(c.Score)
+			docVer := int64(c.DocumentVersion)
 
-		var pubAt *time.Time
-		if c.PublishedAt != "" {
-			if t, err := time.Parse(time.RFC3339, c.PublishedAt); err == nil {
-				pubAt = &t
+			var pubAt *time.Time
+			if c.PublishedAt != "" {
+				if t, err := time.Parse(time.RFC3339, c.PublishedAt); err == nil {
+					pubAt = &t
+				}
 			}
-		}
 
-		contexts = append(contexts, openapi.Context{
-			ChunkText:       &c.ChunkText,
-			Url:             &c.URL,
-			Title:           &c.Title,
-			PublishedAt:     pubAt,
-			Score:           &score,
-			DocumentVersion: &docVer,
-		})
+			var chunkID *string
+			if c.ChunkID != uuid.Nil {
+				str := c.ChunkID.String()
+				chunkID = &str
+			}
+
+			contexts = append(contexts, openapi.Context{
+				ChunkId:         chunkID,
+				ChunkText:       &c.ChunkText,
+				Url:             &c.URL,
+				Title:           &c.Title,
+				PublishedAt:     pubAt,
+				Score:           &score,
+				DocumentVersion: &docVer,
+			})
+		}
 	}
 
 	return ctx.JSON(http.StatusOK, openapi.RetrieveResponse{
@@ -527,6 +642,7 @@ func writeSSE(w io.Writer, kind usecase.StreamEventKind, payload interface{}) er
 // MorningLetterRequest defines the request for morning letter
 type MorningLetterRequest struct {
 	Query       string `json:"query"`
+	UserId      string `json:"user_id,omitempty"`
 	WithinHours *int   `json:"within_hours,omitempty"`
 	TopicLimit  *int   `json:"topic_limit,omitempty"`
 	Locale      string `json:"locale,omitempty"`
@@ -558,7 +674,7 @@ type ArticleRef struct {
 	PublishedAt time.Time `json:"published_at"`
 }
 
-// TimeWindowResponse represents the time range for the query
+// TimeWindowResponse represents the time range in the response
 type TimeWindowResponse struct {
 	Since time.Time `json:"since"`
 	Until time.Time `json:"until"`
@@ -582,8 +698,20 @@ func (h *Handler) MorningLetter(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "query is required"})
 	}
 
+	userID := req.UserId
+	if userID == "" {
+		userID = ctx.Request().Header.Get("X-Alt-User-Id")
+	}
+	if strings.TrimSpace(userID) == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
+	}
+	if _, err := uuid.Parse(strings.TrimSpace(userID)); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+	}
+
 	input := usecase.MorningLetterInput{
 		Query:  req.Query,
+		UserID: userID,
 		Locale: req.Locale,
 	}
 	if req.WithinHours != nil {
@@ -596,6 +724,9 @@ func (h *Handler) MorningLetter(ctx echo.Context) error {
 	output, err := h.morningLetterUsecase.Execute(ctx.Request().Context(), input)
 	if err != nil {
 		h.logger.Error("failed to generate morning letter", "error", err)
+		if errors.Is(err, usecase.ErrEmptyUserID) || errors.Is(err, usecase.ErrInvalidUserID) {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate morning letter"})
 	}
 

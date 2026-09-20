@@ -56,6 +56,7 @@ func run() error {
 	redisDriver, err := driver.NewRedisDriverWithURLAndOptions(cfg.RedisURL, &driver.RedisDriverOptions{
 		PoolSize:     cfg.RedisPoolSize,
 		StreamMaxLen: cfg.StreamMaxLen,
+		Password:     cfg.RedisPassword,
 	})
 	if err != nil {
 		return fmt.Errorf("connect to Redis: %w", err)

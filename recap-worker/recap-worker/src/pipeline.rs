@@ -63,6 +63,7 @@ mod tests {
                 ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
                 ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
             ],
             || Config::from_env().expect("config should load for tests"),
         ))

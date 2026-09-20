@@ -33,9 +33,11 @@ async def test_create_app_compiles_graph_with_checkpointer_on_startup(monkeypatc
     monkeypatch.setattr(main_module._pool, "open", AsyncMock())
     monkeypatch.setattr(main_module._pool, "close", AsyncMock())
     monkeypatch.setattr(main_module._http_client, "aclose", AsyncMock())
-    # Startup reconciliation queries report_runs via the real pool otherwise —
-    # this test doesn't boot a live DB, so stub the one query it makes.
+    # Startup reconciliation and owner backfill query the DB via the real pool otherwise —
+    # this test doesn't boot a live DB, so stub the queries they make.
     monkeypatch.setattr(main_module._job_queue, "list_running_runs", AsyncMock(return_value=[]))
+    mock_backfill = AsyncMock(return_value=0)
+    monkeypatch.setattr(main_module._report_repo, "backfill_owners", mock_backfill)
 
     app = main_module.create_app()
 
@@ -46,3 +48,4 @@ async def test_create_app_compiles_graph_with_checkpointer_on_startup(monkeypatc
     main_module._pool.open.assert_awaited_once()  # type: ignore[missing-attribute]
     main_module._pool.close.assert_awaited_once()  # type: ignore[missing-attribute]
     main_module._http_client.aclose.assert_awaited_once()  # type: ignore[missing-attribute]
+    mock_backfill.assert_awaited_once_with(single_owner_id=None, mapping=None)

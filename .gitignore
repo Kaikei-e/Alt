@@ -191,3 +191,4 @@ secrets.bak-20260724094929
 altctl/altctl
 # Augur eval cases mined from the live corpus — real queries, titles and article ids
 rag-orchestrator/eval/testdata/golden_cases.local.json
+.mcp.json

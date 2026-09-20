@@ -9,7 +9,6 @@ import { P } from "./fixtures.js";
 import {
 	createReportResponseSchema,
 	healthCheckResponseSchema,
-	listReportVersionsResponseSchema,
 	listReportsResponseSchema,
 } from "./schemas.js";
 
@@ -43,11 +42,12 @@ import {
  * dropped a handler could not keep answering `not_found` for `GetReport` and
  * `invalid_argument` for `RerunSection` from the same generic fallback.
  *
- * The four procedures that answer 2xx are held to the same standard from the
- * other side: each carries its own response schema and the probe parses the
- * body against it, plus `notAnErrorEnvelope`. A status-only check there would
- * have let anything that could answer 200 — a shim, a catch-all route, a
- * Connect error envelope under a 200 — stand in for a registered handler.
+ * The three procedures that answer 2xx (HealthCheck, CreateReport,
+ * ListReports) are held to the same standard from the other side: each carries
+ * its own response schema and the probe parses the body against it, plus
+ * `notAnErrorEnvelope`. A status-only check there would have let anything that
+ * could answer 200 — a shim, a catch-all route, a Connect error envelope under
+ * a 200 — stand in for a registered handler.
  *
  * The two genuinely-unimplemented procedures (`GetReportVersion`,
  * `DiffReportVersions`) are the honest exception: `unimplemented` is both their
@@ -126,12 +126,11 @@ export const PROCEDURE_PROBES: readonly ProcedureProbe[] = [
 	},
 	{
 		procedure: P.listReportVersions,
-		// A syntactically valid UUID that owns no rows: the handler parses it,
-		// queries, and returns an empty page — so this reaches the repository
-		// rather than bouncing off argument validation.
+		// An unknown report_id (or one not owned by caller) raises NOT_FOUND
+		// under the report owner check, proving the handler exists and enforces ownership.
 		request: { reportId: ZERO_UUID, limit: 1 },
-		expectation: { kind: "ok", schema: listReportVersionsResponseSchema },
-		why: "connect_service.py:177 — an unknown report_id yields an empty page, not an error",
+		expectation: { kind: "error", code: ConnectCode.notFound },
+		why: "connect_service.py:203 — unknown report or non-matching owner raises Code.NOT_FOUND",
 	},
 	{
 		procedure: P.diffReportVersions,

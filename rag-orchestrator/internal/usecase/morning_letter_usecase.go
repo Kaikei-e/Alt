@@ -16,6 +16,7 @@ import (
 // MorningLetterInput defines the input for morning letter extraction
 type MorningLetterInput struct {
 	Query       string // User query (e.g., "important news from yesterday")
+	UserID      string // User ID owning the documents
 	WithinHours int    // Time window (default: 24)
 	TopicLimit  int    // Max topics to return (default: 5)
 	Locale      string // Response language
@@ -95,6 +96,13 @@ func NewMorningLetterUsecase(
 
 // Execute extracts important topics from recent articles
 func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterInput) (*MorningLetterOutput, error) {
+	if strings.TrimSpace(input.UserID) == "" {
+		return nil, ErrEmptyUserID
+	}
+	if _, err := uuid.Parse(strings.TrimSpace(input.UserID)); err != nil {
+		return nil, ErrInvalidUserID
+	}
+
 	// 1. Validate and set defaults
 	withinHours := input.WithinHours
 	if withinHours <= 0 {
@@ -164,6 +172,7 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 	// 4. Retrieve context with temporal filtering
 	retrieveOutput, err := u.retrieveUC.Execute(ctx, RetrieveContextInput{
 		Query:               input.Query,
+		UserID:              input.UserID,
 		CandidateArticleIDs: articleIDs,
 	})
 	if err != nil {

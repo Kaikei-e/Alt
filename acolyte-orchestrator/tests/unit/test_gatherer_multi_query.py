@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import UUID
 
 import pytest
 
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.port.evidence_provider import ArticleHit, RecapHit
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
+from tests.conftest import TEST_USER_ID
 
 
 class FakeEvidence:
@@ -17,15 +19,18 @@ class FakeEvidence:
     def __init__(self, articles_by_query: dict[str, list[ArticleHit]] | None = None) -> None:
         self._articles_by_query = articles_by_query or {}
         self.search_calls: list[str] = []
+        self.user_ids: list[UUID] = []
 
     async def search_articles(
         self,
         query: str,
         *,
+        user_id: UUID,
         limit: int = 20,
         published_after: datetime | None = None,
         published_before: datetime | None = None,
     ) -> list[ArticleHit]:
+        self.user_ids.append(user_id)
         self.search_calls.append(query)
         # Match on substring
         for keyword, hits in self._articles_by_query.items():
@@ -55,6 +60,7 @@ async def test_gatherer_uses_per_section_queries() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI semiconductor"},
         "outline": [
             {"key": "market", "title": "Market", "search_queries": ["market trends"]},
@@ -83,6 +89,7 @@ async def test_gatherer_tags_evidence_with_section_keys() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI"},
         "outline": [
             {"key": "intro", "title": "Intro", "search_queries": ["AI overview"]},
@@ -113,6 +120,7 @@ async def test_gatherer_deduplicates_by_article_id() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI"},
         "outline": [
             {"key": "market", "title": "Market", "search_queries": ["market trends"]},
@@ -139,6 +147,7 @@ async def test_gatherer_falls_back_to_topic_when_no_outline() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI trends"},
         "outline": [
             {"key": "summary", "title": "Summary"},  # no search_queries
@@ -177,6 +186,7 @@ async def test_gatherer_uses_faceted_queries_when_available() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI trends"},
         "outline": [
             {
@@ -215,6 +225,7 @@ async def test_gatherer_falls_back_to_search_queries_without_facets() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI semiconductor"},
         "outline": [
             {"key": "market", "title": "Market", "search_queries": ["market trends"]},
@@ -239,6 +250,7 @@ async def test_gatherer_flags_weak_facets() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "niche topic"},
         "outline": [
             {
@@ -278,6 +290,7 @@ async def test_gatherer_deduplicates_across_facets() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI GPU"},
         "outline": [
             {
@@ -328,6 +341,7 @@ async def test_gatherer_propagates_language_via_facets() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI trends"},
         "outline": [
             {
@@ -364,6 +378,7 @@ async def test_gatherer_propagates_language_via_legacy_queries() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI semiconductor"},
         "outline": [
             {"key": "market", "title": "Market", "search_queries": ["market trends"]},
@@ -383,6 +398,7 @@ async def test_gatherer_synthesis_only_sections_skip_search() -> None:
     node = GathererNode(evidence, content_store=content_store)
 
     state = {
+        "user_id": TEST_USER_ID,
         "brief": {"topic": "AI"},
         "outline": [
             {

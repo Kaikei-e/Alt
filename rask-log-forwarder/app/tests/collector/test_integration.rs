@@ -1,4 +1,5 @@
 use rask_log_forwarder::collector::{CollectorConfig, CollectorError, LogCollector};
+use serial_test::serial;
 
 #[tokio::test]
 async fn test_integration_config_creation() {
@@ -15,10 +16,12 @@ async fn test_integration_config_creation() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_integration_with_env_var() {
     // Test environment variable configuration
     unsafe {
         std::env::set_var("TARGET_SERVICE", "nginx");
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
     }
 
     let config = CollectorConfig::default();
@@ -40,11 +43,17 @@ async fn test_integration_with_env_var() {
 
     unsafe {
         std::env::remove_var("TARGET_SERVICE");
+        std::env::remove_var("DOCKER_HOST");
     }
 }
 
 #[tokio::test]
+#[serial]
 async fn test_integration_auto_discover_failure() {
+    unsafe {
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
+
     // Test with hostname that doesn't match pattern
     let config = CollectorConfig {
         auto_discover: true,
@@ -57,10 +66,19 @@ async fn test_integration_auto_discover_failure() {
     let result = LogCollector::new(config).await;
     // May succeed or fail depending on hostname, but shouldn't panic
     assert!(result.is_ok() || result.is_err());
+
+    unsafe {
+        std::env::remove_var("DOCKER_HOST");
+    }
 }
 
 #[tokio::test]
+#[serial]
 async fn test_integration_explicit_service() {
+    unsafe {
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
+
     let config = CollectorConfig {
         auto_discover: false,
         target_service: Some("test-service".to_string()),
@@ -82,5 +100,9 @@ async fn test_integration_explicit_service() {
         Err(e) => {
             println!("Other error (may be expected): {e}");
         }
+    }
+
+    unsafe {
+        std::env::remove_var("DOCKER_HOST");
     }
 }

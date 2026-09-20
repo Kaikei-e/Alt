@@ -430,3 +430,56 @@ func TestRegisterFeedUsecase_FailsWhenAvailabilityInitializationFails(t *testing
 		t.Fatal("Expected error, got nil")
 	}
 }
+
+func TestRegisterFeedUsecase_SelfLinkValidation_PrivateSelfLinkKeepsOriginalURL(t *testing.T) {
+	logger.InitLogger()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
+	mockRegisterFeedLinkPort := mocks.NewMockRegisterFeedLinkPort(ctrl)
+	mockRegisterFeedsPort := mocks.NewMockRegisterFeedsPort(ctrl)
+	mockData := testutil.CreateMockFeedItems()
+
+	originalLink := "https://example.com/rss/feed.xml"
+	maliciousSelfLink := "http://10.0.0.1/internal-feed.xml"
+
+	// ValidateAndFetch returns feed with private rel=self link
+	pf := mockParsedFeed(maliciousSelfLink, mockData)
+	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), originalLink).Return(pf, nil).Times(1)
+
+	// Must register the original registered URL, NOT the malicious rel=self link
+	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), originalLink).Return(nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1"), nil).Times(1)
+
+	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, nil)
+
+	err := r.Execute(context.Background(), originalLink)
+	require.NoError(t, err, "validation failure of rel=self must not fail the whole feed fetch")
+}
+
+func TestRegisterFeedUsecase_SelfLinkValidation_ValidSelfLinkPersisted(t *testing.T) {
+	logger.InitLogger()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
+	mockRegisterFeedLinkPort := mocks.NewMockRegisterFeedLinkPort(ctrl)
+	mockRegisterFeedsPort := mocks.NewMockRegisterFeedsPort(ctrl)
+	mockData := testutil.CreateMockFeedItems()
+
+	originalLink := "https://example.com/rss/feed"
+	validSelfLink := "https://example.com/rss/canonical.xml"
+
+	pf := mockParsedFeed(validSelfLink, mockData)
+	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), originalLink).Return(pf, nil).Times(1)
+
+	// Valid rel=self link should be registered
+	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), validSelfLink).Return(nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1"), nil).Times(1)
+
+	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, nil)
+
+	err := r.Execute(context.Background(), originalLink)
+	require.NoError(t, err)
+}

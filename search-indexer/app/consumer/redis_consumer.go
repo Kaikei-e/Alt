@@ -82,6 +82,9 @@ func NewConsumer(config Config, handler EventHandler, logger *slog.Logger) (*Con
 	if err != nil {
 		return nil, err
 	}
+	if config.RedisPassword != "" {
+		opts.Password = config.RedisPassword
+	}
 
 	client := redis.NewClient(opts)
 

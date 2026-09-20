@@ -115,7 +115,7 @@ edge proxy (`plecto-proxy`, `plecto/manifest.toml`) には auth-hub 向けの up
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `KRATOS_URL` | http://kratos:4433 | Kratos public URL |
-| `KRATOS_ADMIN_URL` | http://kratos:4434 | Kratos admin URL |
+| `KRATOS_ADMIN_URL` | http://kratos-admin:4434 | Kratos admin URL |
 | `PORT` | 8888 | サービスポート |
 | `CACHE_TTL` | 5m | セッションキャッシュ TTL |
 | `CSRF_SECRET` | (required) | CSRF シークレット (最低 32 文字, `_FILE` サフィックス対応) |

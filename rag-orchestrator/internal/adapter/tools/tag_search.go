@@ -27,7 +27,15 @@ func (t *TagSearchTool) Execute(ctx context.Context, params map[string]string) (
 		return &domain.ToolResult{Success: false, Error: "query is required"}, nil
 	}
 
-	hits, err := t.client.Search(ctx, query)
+	userID := params["user_id"]
+	if userID == "" {
+		userID = domain.UserIDFromContext(ctx)
+	}
+	if userID == "" {
+		return &domain.ToolResult{Success: false, Error: "user_id is required"}, fmt.Errorf("user_id is required")
+	}
+
+	hits, err := t.client.Search(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("tag search failed: %w", err)
 	}

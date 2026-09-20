@@ -185,12 +185,15 @@ func Run(ctx context.Context) error {
 	// ── Use cases (application layer) ──
 	indexUsecase := usecase.NewIndexArticlesUsecase(articleRepo, searchEngine, tokenizer)
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(searchEngine)
-	searchArticlesUsecase := usecase.NewSearchArticlesUsecase(searchEngine)
 
 	// ── Redis Streams Consumer ──
 	var redisConsumer *consumer.Consumer
 	var eventHandler *consumer.IndexEventHandler
-	consumerCfg := consumer.ConfigFromEnv()
+	consumerCfg, err := consumer.ConfigFromEnv()
+	if err != nil {
+		logger.Logger.Error("Failed to load Redis Streams consumer config", "err", err)
+		return fmt.Errorf("load redis streams consumer config: %w", err)
+	}
 	if consumerCfg.Enabled {
 		eventHandler = consumer.NewIndexEventHandler(indexUsecase, logger.Logger)
 		redisConsumer, err = consumer.NewConsumer(consumerCfg, eventHandler, logger.Logger)
@@ -229,7 +232,7 @@ func Run(ctx context.Context) error {
 
 	// ── Servers ──
 	app := &App{
-		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg, appCfg.RateLimit, searchDriver.Ping),
+		httpServer:    newHTTPServer(searchByUserUsecase, otelCfg, appCfg.RateLimit, searchDriver.Ping),
 		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, appCfg.RateLimit),
 		redisConsumer: redisConsumer,
 		eventHandler:  eventHandler,
@@ -291,7 +294,6 @@ func Run(ctx context.Context) error {
 			// window for callers that have not yet switched to mTLS.
 			mtlsHandler := newMTLSMuxHandler(
 				searchByUserUsecase,
-				searchArticlesUsecase,
 				app.connectServer.Handler,
 				otelCfg,
 				appCfg.RateLimit,

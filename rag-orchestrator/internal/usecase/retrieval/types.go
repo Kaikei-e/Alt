@@ -11,6 +11,8 @@ type StageContext struct {
 	// Input
 	RetrievalID         string
 	Query               string
+	UserID              string
+	UserUUID            uuid.UUID
 	CandidateArticleIDs []string
 	ConversationHistory []domain.Message // Recent turns for multi-turn query rewriting
 	PlannerQueries      []string         // Pre-filtered queries from query planner (skip expand-query when set)

@@ -37,6 +37,57 @@ var metadataHosts = map[string]struct{}{
 	"192.0.0.192":              {},
 }
 
+// IsMetadataHost reports whether hostname matches a known cloud metadata endpoint.
+func IsMetadataHost(hostname string) bool {
+	_, isMetadata := metadataHosts[strings.ToLower(hostname)]
+	return isMetadata
+}
+
+// ValidateParsedRSSURL performs security validation on a parsed RSS URL
+func (v *URLSecurityValidator) ValidateParsedRSSURL(parsedURL *url.URL) error {
+	if parsedURL == nil {
+		return errors.New("nil URL")
+	}
+
+	// Validate scheme first (before checking host)
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return errors.New("only HTTP and HTTPS schemes allowed")
+	}
+
+	if v.requireHTTPS && parsedURL.Scheme != "https" {
+		return errors.New("HTTPS scheme is required for this endpoint")
+	}
+
+	// Reject userinfo
+	if parsedURL.User != nil {
+		return errors.New("userinfo not allowed in URL")
+	}
+
+	// Reject non-standard ports (allowed: absent, 80, 443; FEED_ALLOWED_HOSTS bypasses)
+	port := parsedURL.Port()
+	if port != "" && port != "80" && port != "443" && !IsFeedHostAllowed(parsedURL.Hostname()) {
+		return errors.New("port not allowed")
+	}
+
+	// Check if URL has scheme and host (basic malformed URL detection)
+	if parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return errors.New("invalid URL format")
+	}
+
+	// Reject cloud metadata endpoints by exact hostname (M-004).
+	hostname := strings.ToLower(parsedURL.Hostname())
+	if IsMetadataHost(hostname) {
+		return errors.New("metadata server access denied")
+	}
+
+	// Validate host for private networks
+	if v.isPrivateNetwork(parsedURL.Hostname()) {
+		return errors.New("private network access denied")
+	}
+
+	return nil
+}
+
 // ValidateRSSURL performs comprehensive security validation on RSS URLs
 func (v *URLSecurityValidator) ValidateRSSURL(rawURL string) error {
 	// Check for empty URL
@@ -60,32 +111,7 @@ func (v *URLSecurityValidator) ValidateRSSURL(rawURL string) error {
 		return errors.New("invalid URL format")
 	}
 
-	// Validate scheme first (before checking host)
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return errors.New("only HTTP and HTTPS schemes allowed")
-	}
-
-	if v.requireHTTPS && parsedURL.Scheme != "https" {
-		return errors.New("HTTPS scheme is required for this endpoint")
-	}
-
-	// Check if URL has scheme and host (basic malformed URL detection)
-	if parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return errors.New("invalid URL format")
-	}
-
-	// Reject cloud metadata endpoints by exact hostname (M-004).
-	hostname := strings.ToLower(parsedURL.Hostname())
-	if _, isMetadata := metadataHosts[hostname]; isMetadata {
-		return errors.New("metadata server access denied")
-	}
-
-	// Validate host for private networks
-	if v.isPrivateNetwork(parsedURL.Host) {
-		return errors.New("private network access denied")
-	}
-
-	return nil
+	return v.ValidateParsedRSSURL(parsedURL)
 }
 
 // ValidateForRSSFeed performs RSS-specific validation
@@ -146,8 +172,8 @@ func (v *URLSecurityValidator) isPrivateNetwork(hostname string) bool {
 	// Try to parse as IP address
 	ip := net.ParseIP(hostname)
 	if ip != nil {
-		// Check private IP ranges
-		return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
+		// Check private IP ranges using hardened IsPrivateIPAddress
+		return IsPrivateIPAddress(ip)
 	}
 
 	// Fast-path check for common private domain suffixes before paying for

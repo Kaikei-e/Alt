@@ -10,12 +10,57 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	c := NewClient("http://localhost:9001")
+	c := NewClient("http://localhost:9001", "an-operator-token")
 	if c.BaseURL != "http://localhost:9001" {
 		t.Errorf("expected BaseURL http://localhost:9001, got %s", c.BaseURL)
 	}
+	if c.OperatorToken != "an-operator-token" {
+		t.Errorf("expected OperatorToken an-operator-token, got %s", c.OperatorToken)
+	}
 	if c.HTTPClient == nil {
 		t.Fatal("expected HTTPClient to be non-nil")
+	}
+}
+
+// TestCall_SendsAuthorizationBearer pins that alt-backend's :9102 listener
+// now requires "Authorization: Bearer <token>" on every admin RPC, and
+// AdminClient is the only caller altctl's home subcommands go through.
+func TestCall_SendsAuthorizationBearer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer an-operator-token" {
+			t.Errorf("expected Authorization %q, got %q", "Bearer an-operator-token", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "an-operator-token")
+
+	var resp map[string]string
+	if err := c.Call(context.Background(), "GetSLOStatus", map[string]string{}, &resp); err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+}
+
+// TestCall_EmptyOperatorToken_NoAuthorizationHeader covers the
+// OPERATOR_AUTH=disabled path: an empty token must not send a bogus "Bearer "
+// header.
+func TestCall_EmptyOperatorToken_NoAuthorizationHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Errorf("expected no Authorization header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "")
+
+	var resp map[string]string
+	if err := c.Call(context.Background(), "GetSLOStatus", map[string]string{}, &resp); err != nil {
+		t.Fatalf("Call failed: %v", err)
 	}
 }
 
@@ -53,7 +98,7 @@ func TestCall_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL)
+	c := NewClient(server.URL, "")
 
 	req := map[string]string{"mode": "dry_run"}
 	var resp map[string]string
@@ -80,7 +125,7 @@ func TestCall_ServiceError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL)
+	c := NewClient(server.URL, "")
 
 	req := map[string]string{}
 	var resp map[string]string
@@ -98,7 +143,7 @@ func TestCall_ServiceError(t *testing.T) {
 }
 
 func TestCall_ConnectionError(t *testing.T) {
-	c := NewClient("http://127.0.0.1:1")
+	c := NewClient("http://127.0.0.1:1", "")
 	c.HTTPClient.Timeout = 1 * time.Second
 
 	req := map[string]string{}
@@ -115,7 +160,7 @@ func TestCall_ContextCanceled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL)
+	c := NewClient(server.URL, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
@@ -143,7 +188,7 @@ func TestCall_EmptyBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := NewClient(server.URL)
+	c := NewClient(server.URL, "")
 
 	req := map[string]interface{}{}
 	var resp map[string]string

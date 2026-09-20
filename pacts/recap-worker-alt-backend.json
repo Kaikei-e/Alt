@@ -2,39 +2,39 @@
   "consumer": {
     "name": "recap-worker"
   },
+  "provider": {
+    "name": "alt-backend"
+  },
   "interactions": [
     {
       "description": "a batch tags request by article ids",
-      "providerStates": [
-        {
-          "name": "tags exist for the requested articles"
-        }
-      ],
       "request": {
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/BatchGetTagsByArticleIDs",
+        "headers": {
+          "content-type": "application/json"
+        },
         "body": {
           "articleIds": [
             "art-001"
           ]
         },
-        "headers": {
-          "content-type": "application/json"
-        },
         "matchingRules": {
           "body": {
+            "$.articleIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.articleIds": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
                   "min": 1
-                }
-              ]
-            },
-            "$.articleIds[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
                 }
               ]
             },
@@ -47,19 +47,21 @@
               ]
             }
           }
-        },
-        "method": "POST",
-        "path": "/services.datahub.v1.DataHubService/BatchGetTagsByArticleIDs"
+        }
       },
       "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
         "body": {
           "items": [
             {
               "articleId": "art-001",
               "tags": [
                 {
-                  "confidence": 0.95,
                   "source": "ml_model",
+                  "confidence": 0.95,
                   "tagName": "technology",
                   "updatedAt": "2026-03-26T00:00:00Z"
                 }
@@ -67,11 +69,16 @@
             }
           ]
         },
-        "headers": {
-          "content-type": "application/json"
-        },
         "matchingRules": {
           "body": {
+            "$.items[*].tags[*].confidence": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.items": {
               "combine": "AND",
               "matchers": [
@@ -81,15 +88,7 @@
                 }
               ]
             },
-            "$.items[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].articleId": {
+            "$.items[*].tags[*].source": {
               "combine": "AND",
               "matchers": [
                 {
@@ -106,6 +105,14 @@
                 }
               ]
             },
+            "$.items[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.items[*].tags[*].*": {
               "combine": "AND",
               "matchers": [
@@ -114,23 +121,7 @@
                 }
               ]
             },
-            "$.items[*].tags[*].confidence": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].tags[*].source": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].tags[*].tagName": {
+            "$.items[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -145,31 +136,48 @@
                   "match": "type"
                 }
               ]
+            },
+            "$.items[*].tags[*].tagName": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
             }
           }
-        },
-        "status": 200
-      }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "tags exist for the requested articles"
+        }
+      ]
     },
     {
       "description": "a paginated recap articles request",
-      "providerStates": [
-        {
-          "name": "articles exist in the recap window"
-        }
-      ],
       "request": {
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/ListRecapArticles",
+        "headers": {
+          "content-type": "application/json"
+        },
         "body": {
           "from": "2026-03-19T00:00:00Z",
           "page": 1,
           "pageSize": 500,
           "to": "2026-03-26T00:00:00Z"
         },
-        "headers": {
-          "content-type": "application/json"
-        },
         "matchingRules": {
           "body": {
+            "$.pageSize": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.from": {
               "combine": "AND",
               "matchers": [
@@ -186,14 +194,6 @@
                 }
               ]
             },
-            "$.pageSize": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.to": {
               "combine": "AND",
               "matchers": [
@@ -203,50 +203,32 @@
               ]
             }
           }
-        },
-        "method": "POST",
-        "path": "/services.datahub.v1.DataHubService/ListRecapArticles"
+        }
       },
       "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
         "body": {
+          "range": {
+            "to": "2026-03-26T00:00:00Z",
+            "from": "2026-03-19T00:00:00Z"
+          },
+          "total": 42,
           "articles": [
             {
+              "title": "Test Article Title",
               "articleId": "art-001",
-              "fulltext": "Full article text content here.",
-              "title": "Test Article Title"
+              "fulltext": "Full article text content here."
             }
           ],
           "hasMore": false,
           "page": 1,
-          "pageSize": 500,
-          "range": {
-            "from": "2026-03-19T00:00:00Z",
-            "to": "2026-03-26T00:00:00Z"
-          },
-          "total": 42
-        },
-        "headers": {
-          "content-type": "application/json"
+          "pageSize": 500
         },
         "matchingRules": {
           "body": {
-            "$.articles": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.articles[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.articles[*].articleId": {
               "combine": "AND",
               "matchers": [
@@ -255,7 +237,7 @@
                 }
               ]
             },
-            "$.articles[*].fulltext": {
+            "$.total": {
               "combine": "AND",
               "matchers": [
                 {
@@ -263,11 +245,12 @@
                 }
               ]
             },
-            "$.articles[*].title": {
+            "$.articles": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "type"
+                  "match": "type",
+                  "min": 1
                 }
               ]
             },
@@ -287,7 +270,7 @@
                 }
               ]
             },
-            "$.pageSize": {
+            "$.articles[*].fulltext": {
               "combine": "AND",
               "matchers": [
                 {
@@ -295,7 +278,7 @@
                 }
               ]
             },
-            "$.range.from": {
+            "$.articles[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -311,7 +294,23 @@
                 }
               ]
             },
-            "$.total": {
+            "$.articles[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.range.from": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pageSize": {
               "combine": "AND",
               "matchers": [
                 {
@@ -320,9 +319,13 @@
               ]
             }
           }
-        },
-        "status": 200
-      }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "articles exist in the recap window"
+        }
+      ]
     }
   ],
   "metadata": {
@@ -334,8 +337,5 @@
     "pactSpecification": {
       "version": "3.0.0"
     }
-  },
-  "provider": {
-    "name": "alt-backend"
   }
 }

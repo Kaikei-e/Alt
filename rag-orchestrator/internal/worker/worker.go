@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -152,9 +155,18 @@ func (w *JobWorker) processBackfillArticle(ctx context.Context, job *domain.RagJ
 	if !ok {
 		url = "" // Default if missing
 	}
+	rawUserID, ok := payload["user_id"].(string)
+	trimmedUserID := strings.TrimSpace(rawUserID)
+	if !ok || trimmedUserID == "" {
+		return fmt.Errorf("missing or invalid user_id")
+	}
+	parsedUserID, err := uuid.Parse(trimmedUserID)
+	if err != nil || parsedUserID == uuid.Nil {
+		return fmt.Errorf("invalid user_id: %w", err)
+	}
 
 	// Throttling could be implemented here (e.g., token bucket or simple sleep)
 	// For now, let's keep it simple as relying on the poll interval acts as a basic rate limiter (1 job/sec/worker)
 
-	return w.indexUsecase.Upsert(ctx, articleID, title, url, body)
+	return w.indexUsecase.Upsert(ctx, articleID, parsedUserID.String(), title, url, body)
 }

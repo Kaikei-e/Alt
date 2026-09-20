@@ -302,8 +302,8 @@ cargo run -- --target-service alt-backend \
 
 ## Volume Mounts
 
-各 forwarder インスタンスは以下をマウント:
-- `/var/run/docker.sock:/var/run/docker.sock:ro` - Docker socket
+各 forwarder インスタンスは以下を使用:
+- `DOCKER_HOST=tcp://docker-socket-proxy-ro:2375` - Docker socket proxy (raw socket マウントは廃止)
 - `/var/lib/docker/containers:/var/lib/docker/containers:ro` - Container logs
 
 ## Known failure patterns

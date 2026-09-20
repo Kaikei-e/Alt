@@ -134,6 +134,94 @@ func TestBackendClient_ForwardRequest_Timeout(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestBackendClient_ForwardServiceRequest_SetsAuthorizationBearer pins the
+// ForwardServiceRequest used to be a no-op stub
+// (auth was mTLS-transport-only); it now carries the operator token to
+// alt-backend's :9102 listener as "Authorization: Bearer <token>" so the
+// listener's bearer-auth interceptor accepts the call.
+func TestBackendClient_ForwardServiceRequest_SetsAuthorizationBearer(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer the-operator-token", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	client := newTestClient(backend.URL)
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		backend.URL+"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview",
+		strings.NewReader("{}"),
+	)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.ForwardServiceRequest(req, "the-operator-token")
+
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// TestBackendClient_ForwardServiceRequest_EmptyToken_NoAuthorizationHeader
+// covers the OPERATOR_AUTH=disabled / operator auth not configured path:
+// an empty serviceToken must not send a bogus "Bearer " header that would
+// only confuse a provider expecting either a real token or none at all.
+func TestBackendClient_ForwardServiceRequest_EmptyToken_NoAuthorizationHeader(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	client := newTestClient(backend.URL)
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		backend.URL+"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview",
+		strings.NewReader("{}"),
+	)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.ForwardServiceRequest(req, "")
+
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// TestBackendClient_ForwardServiceRequest_StripsCallerBackendToken proves the
+// caller's own X-Alt-Backend-Token (a user session token) never reaches
+// alt-backend's admin surface alongside the operator token — the admin RPC
+// caller is the BFF/altctl operator identity, not the end user whose JWT
+// happened to authorize the proxy hop at the BFF boundary.
+func TestBackendClient_ForwardServiceRequest_StripsCallerBackendToken(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Header.Get("X-Alt-Backend-Token"))
+		assert.Equal(t, "Bearer the-operator-token", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	client := newTestClient(backend.URL)
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		backend.URL+"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview",
+		strings.NewReader("{}"),
+	)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Alt-Backend-Token", "user-session-jwt")
+
+	resp, err := client.ForwardServiceRequest(req, "the-operator-token")
+
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
 func TestBackendClient_BuildBackendURL(t *testing.T) {
 	client := newTestClient("http://localhost:9101")
 

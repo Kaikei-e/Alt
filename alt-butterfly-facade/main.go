@@ -99,6 +99,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Load operator token for alt-backend internal listener (:9102)
+	operatorToken, operatorAuthEnabled, err := cfg.LoadOperatorToken()
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to load operator token", "error", err)
+		os.Exit(1)
+	}
+	if operatorAuthEnabled {
+		slog.InfoContext(ctx, "backend_operator_auth_enabled", "internal_url", cfg.BackendInternalConnectURL)
+	} else {
+		slog.WarnContext(ctx, "backend_operator_auth_disabled: operator authentication is disabled for admin RPCs", "internal_url", cfg.BackendInternalConnectURL)
+	}
+
 	// Service-to-service auth is established at the TLS transport layer.
 
 	backendURL := cfg.BackendConnectURL
@@ -127,14 +139,7 @@ func main() {
 		slog.InfoContext(ctx, "BFF outbound clients: mtls_enforce_enabled",
 			"backend", backendURL, "acolyte", acolyteURL)
 	} else {
-		// Admin proxy routes (KnowledgeHomeAdminService, AdminMonitorService)
-		// authenticate the caller via JWT role check at the BFF boundary but
-		// rely entirely on this transport for backend-facing auth
-		// (ForwardServiceRequest's serviceToken is presently a no-op stub).
-		// With enforcement off, those RPCs travel to alt-backend in plaintext
-		// with no service-level auth at all — surface that loudly instead of
-		// letting it default silently.
-		slog.WarnContext(ctx, "BFF outbound clients: mtls_enforce_disabled — admin RPCs to alt-backend run over plaintext h2c with no service-level auth",
+		slog.InfoContext(ctx, "BFF outbound clients: mtls_enforce_disabled",
 			"backend", backendURL, "acolyte", acolyteURL)
 	}
 
@@ -144,7 +149,7 @@ func main() {
 	logBFFFeatureWiring(ctx, cfg)
 
 	// Create server configuration
-	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, acolyteURL, secret)
+	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, acolyteURL, secret, operatorToken)
 
 	// Connect-RPC uses the mTLS transport when enforcement is on; REST
 	// proxies always stay on the default plaintext transport so that
@@ -205,6 +210,12 @@ func main() {
 				}
 			}()
 		}
+	} else {
+		// No caller dials alt-butterfly-facade:9443 today (the frontend
+		// and alt-backend use plaintext :9250 / h2c) — closed until one
+		// with a client cert appears. Explicit log so "nobody wired
+		// MTLS_LISTEN" stays distinguishable from "intentionally closed".
+		slog.InfoContext(ctx, "mtls_listener_disabled", "reason", "MTLS_LISTEN is not true")
 	}
 
 	// Wait for interrupt signal to gracefully shutdown the server

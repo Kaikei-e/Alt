@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -154,7 +155,7 @@ func testArticle(id string, createdAt time.Time) Article {
 		Title:     "title " + id,
 		Body:      "body " + id,
 		URL:       "https://example.test/" + id,
-		UserID:    "user-1",
+		UserID:    "00000000-0000-0000-0000-000000000001",
 		CreatedAt: createdAt,
 	}
 }
@@ -392,4 +393,104 @@ func (r *fakeArticleRows) Next(dest []driver.Value) error {
 	dest[4] = a.UserID
 	dest[5] = a.CreatedAt
 	return nil
+}
+
+func TestRunner_AttachesAuthorizationBearerToken(t *testing.T) {
+	expectedToken := "secret-token-with-at-least-24-chars"
+	var receivedAuthHeader string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuthHeader = r.Header.Get("Authorization")
+		if receivedAuthHeader != "Bearer "+expectedToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"indexed"}`))
+	}))
+	defer srv.Close()
+
+	rows := []Article{testArticle("auth-test-1", time.Now())}
+	cursorPath := filepath.Join(t.TempDir(), "cursor.json")
+
+	// 1. Without APIToken -> 401 failure
+	runnerNoAuth := newTestRunner(t, cursorPath, srv.URL, rows)
+	err := runnerNoAuth.Run(context.Background())
+	require.NoError(t, err) // Run handles per-article errors by recording failure
+	assert.Equal(t, int64(1), atomic.LoadInt64(&runnerNoAuth.stats.Failed))
+
+	// 2. With APIToken -> 200 OK
+	runnerWithAuth := newTestRunner(t, cursorPath, srv.URL, rows)
+	runnerWithAuth.cfg.APIToken = expectedToken
+	err = runnerWithAuth.Run(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&runnerWithAuth.stats.Processed))
+	assert.Equal(t, "Bearer "+expectedToken, receivedAuthHeader)
+}
+
+func TestLoadAPIToken(t *testing.T) {
+	t.Run("disabled", func(t *testing.T) {
+		t.Setenv("RAG_API_AUTH", "disabled")
+		t.Setenv("RAG_API_TOKEN", "")
+		t.Setenv("RAG_API_TOKEN_FILE", "")
+		token, err := LoadAPIToken()
+		require.NoError(t, err)
+		assert.Empty(t, token)
+	})
+
+	t.Run("from env", func(t *testing.T) {
+		t.Setenv("RAG_API_AUTH", "")
+		t.Setenv("RAG_API_TOKEN_FILE", "")
+		validToken := "this-is-a-valid-token-with-at-least-24-characters"
+		t.Setenv("RAG_API_TOKEN", validToken)
+		token, err := LoadAPIToken()
+		require.NoError(t, err)
+		assert.Equal(t, validToken, token)
+	})
+
+	t.Run("from file", func(t *testing.T) {
+		t.Setenv("RAG_API_AUTH", "")
+		t.Setenv("RAG_API_TOKEN", "")
+		validToken := "this-is-a-valid-token-from-file-at-least-24-chars"
+		tmpFile := filepath.Join(t.TempDir(), "token.txt")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(validToken+"\n"), 0600))
+		t.Setenv("RAG_API_TOKEN_FILE", tmpFile)
+		token, err := LoadAPIToken()
+		require.NoError(t, err)
+		assert.Equal(t, validToken, token)
+	})
+
+	t.Run("missing both panics or errors", func(t *testing.T) {
+		t.Setenv("RAG_API_AUTH", "")
+		t.Setenv("RAG_API_TOKEN", "")
+		t.Setenv("RAG_API_TOKEN_FILE", "")
+		_, err := LoadAPIToken()
+		assert.Error(t, err)
+	})
+}
+
+func TestRunner_SkipsMissingOrInvalidOwnerSafely(t *testing.T) {
+	now := time.Now()
+	noOwner := testArticle("no-owner", now)
+	noOwner.UserID = ""
+	invalidOwner := testArticle("invalid-owner", now)
+	invalidOwner.UserID = "not-a-uuid"
+	nilOwner := testArticle("nil-owner", now)
+	nilOwner.UserID = "00000000-0000-0000-0000-000000000000"
+	valid := testArticle("valid", now)
+
+	orch := newFakeOrchestrator()
+	srv := httptest.NewServer(orch)
+	defer srv.Close()
+
+	cursorPath := filepath.Join(t.TempDir(), "cursor.json")
+	runner := newTestRunner(t, cursorPath, srv.URL, []Article{noOwner, invalidOwner, nilOwner, valid})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(3), atomic.LoadInt64(&runner.stats.Skipped))
+	assert.Equal(t, int64(1), atomic.LoadInt64(&runner.stats.Processed))
+	assert.ElementsMatch(t, []string{"valid"}, orch.indexedIDs())
 }

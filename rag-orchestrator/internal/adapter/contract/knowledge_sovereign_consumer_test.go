@@ -99,7 +99,8 @@ func TestAugurConversationLinkedContract(t *testing.T) {
 			Method: "POST",
 			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
 			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
+				"Content-Type":  matchers.String("application/json"),
+				"Authorization": matchers.Regex("Bearer test-sovereign-event-token", `^Bearer .+$`),
 			},
 			Body: matchers.MapMatcher{
 				"event": matchers.Like(map[string]interface{}{
@@ -134,6 +135,7 @@ func TestAugurConversationLinkedContract(t *testing.T) {
 			client := sovereign_client.NewAppendEventClient(
 				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
 				http.DefaultClient,
+				sovereign_client.WithToken("test-sovereign-event-token"),
 			)
 			return client.EmitAugurConversationLinked(context.Background(), usecase.AugurConversationLinkedInput{
 				UserID:         userID,

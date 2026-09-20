@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -54,6 +55,11 @@ func NewAugurAdapter(client RagClientInterface) rag_integration_port.RagIntegrat
 }
 
 func (a *AugurAdapter) UpsertArticle(ctx context.Context, input rag_integration_port.UpsertArticleInput) error {
+	if strings.TrimSpace(input.UserID) == "" {
+		logger.Logger.ErrorContext(ctx, "RAG upsert rejected: missing owner user_id", "article_id", input.ArticleID)
+		return fmt.Errorf("%w: article %s has no user_id", rag_integration_port.ErrMissingUserID, input.ArticleID)
+	}
+
 	var publishedAt time.Time
 	if input.PublishedAt != nil {
 		publishedAt = *input.PublishedAt
@@ -104,10 +110,15 @@ func (a *AugurAdapter) UpsertArticle(ctx context.Context, input rag_integration_
 	return nil
 }
 
-func (a *AugurAdapter) RetrieveContext(ctx context.Context, query string, candidateIDs []string) ([]rag_integration_port.RagContext, error) {
+func (a *AugurAdapter) RetrieveContext(ctx context.Context, query string, candidateIDs []string, userID string) ([]rag_integration_port.RagContext, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, fmt.Errorf("%w: retrieve context requires user_id", rag_integration_port.ErrMissingUserID)
+	}
+
 	body := rag_gateway.RetrieveRequest{
 		Query:               query,
 		CandidateArticleIds: &candidateIDs,
+		UserId:              userID,
 	}
 
 	resp, err := a.client.RetrieveContextWithResponse(ctx, body)

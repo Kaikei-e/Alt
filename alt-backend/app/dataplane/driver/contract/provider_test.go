@@ -33,6 +33,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -533,6 +534,16 @@ func startStubServer(t *testing.T) int {
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			// alt-backend's operator listener requires "Authorization: Bearer
+			// <token>" (config.LoadOperatorAuth + the operator auth
+			// interceptor); the BFF is the only consumer of this pact and
+			// always sends one.
+			auth := r.Header.Get("Authorization")
+			hasBearer := strings.HasPrefix(auth, "Bearer ") && len(strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))) > 0
+			if !hasBearer {
+				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
 			_, _ = io.Copy(io.Discard, r.Body)

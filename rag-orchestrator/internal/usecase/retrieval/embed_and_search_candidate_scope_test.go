@@ -18,6 +18,9 @@ import (
 )
 
 func TestRetrievalGraph_Execute_CandidateScoped_DoesNotLeakCorpusWideBM25Hits(t *testing.T) {
+	testUID := "a0000000-0000-0000-0000-000000000001"
+	testUUID := uuid.MustParse(testUID)
+
 	// Morning Letter scopes retrieval to the article IDs of a 24h window.
 	// SearchBM25 carries no article filter, so a corpus-wide BM25 arm fuses
 	// hits from outside the window into the original-query results, and the
@@ -33,9 +36,9 @@ func TestRetrievalGraph_Execute_CandidateScoped_DoesNotLeakCorpusWideBM25Hits(t 
 	articleIDs := []string{"art-in-window"}
 
 	expander.On("ExpandQuery", mock.Anything, "today's news", 1, 3).Return([]string{}, nil)
-	search.On("Search", mock.Anything, "today's news").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "today's news", testUID).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
-	chunkRepo.On("SearchWithinArticles", mock.Anything, queryVec, articleIDs, 50).Return([]domain.SearchResult{
+	chunkRepo.On("SearchWithinArticles", mock.Anything, queryVec, articleIDs, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:           domain.RagChunk{ID: uuid.New(), Content: "fresh content", CreatedAt: time.Now()},
 			Score:           0.92,
@@ -46,7 +49,7 @@ func TestRetrievalGraph_Execute_CandidateScoped_DoesNotLeakCorpusWideBM25Hits(t 
 		},
 	}, nil)
 	// The whole corpus answers this keyword query, including a half-year-old article.
-	bm25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything).Return([]domain.BM25SearchResult{
+	bm25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything, testUID).Return([]domain.BM25SearchResult{
 		{ArticleID: "art-six-months-old", Content: "stale content", Title: "Stale Article", Rank: 1, Score: 30.0},
 	}, nil)
 
@@ -72,6 +75,7 @@ func TestRetrievalGraph_Execute_CandidateScoped_DoesNotLeakCorpusWideBM25Hits(t 
 	result, err := g.Execute(context.Background(), retrieval.GraphInput{
 		Query:               "today's news",
 		CandidateArticleIDs: articleIDs,
+		UserID:              testUID,
 	})
 
 	require.NoError(t, err)
@@ -88,11 +92,14 @@ func TestRetrievalGraph_Execute_CandidateScoped_DoesNotLeakCorpusWideBM25Hits(t 
 	// A corpus-wide BM25 query cannot contribute anything usable to a scoped
 	// retrieval — every hit outside the scope has to be discarded — so it must
 	// not be issued at all.
-	bm25.AssertNotCalled(t, "SearchBM25", mock.Anything, mock.Anything, mock.Anything)
+	bm25.AssertNotCalled(t, "SearchBM25", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	assert.Zero(t, result.BM25HitCount, "no BM25 arm runs under candidate scoping")
 }
 
 func TestEmbedAndSearch_CandidateArticles_SkipsUnfilterableBM25Arm(t *testing.T) {
+	testUID := "a0000000-0000-0000-0000-000000000001"
+	testUUID := uuid.MustParse(testUID)
+
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	mockEncoder := new(MockVectorEncoder)
 	mockBM25 := new(MockBM25Searcher)
@@ -105,12 +112,14 @@ func TestEmbedAndSearch_CandidateArticles_SkipsUnfilterableBM25Arm(t *testing.T)
 		OriginalEmbedding:   queryVec,
 		CandidateArticleIDs: []string{"art-1"},
 		SearchLimit:         50,
+		UserID:              testUID,
+		UserUUID:            testUUID,
 	}
 
-	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything).Return([]domain.BM25SearchResult{
+	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]domain.BM25SearchResult{
 		{ArticleID: "art-out-of-scope", Content: "unscoped", Title: "Unscoped", Rank: 1, Score: 9.0},
 	}, nil)
-	mockChunkRepo.On("SearchWithinArticles", mock.Anything, queryVec, sc.CandidateArticleIDs, 50).Return([]domain.SearchResult{
+	mockChunkRepo.On("SearchWithinArticles", mock.Anything, queryVec, sc.CandidateArticleIDs, 50, testUUID).Return([]domain.SearchResult{
 		{Chunk: domain.RagChunk{Content: "scoped result"}, Score: 0.7, ArticleID: "art-1"},
 	}, nil)
 
@@ -118,6 +127,6 @@ func TestEmbedAndSearch_CandidateArticles_SkipsUnfilterableBM25Arm(t *testing.T)
 	require.NoError(t, err)
 
 	assert.Empty(t, sc.BM25Results, "BM25 has no article filter, so it must not run under candidate scoping")
-	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, mock.Anything, mock.Anything)
+	mockBM25.AssertNotCalled(t, "SearchBM25", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	assert.Len(t, sc.OriginalResults, 1, "the scoped vector arm must still run")
 }

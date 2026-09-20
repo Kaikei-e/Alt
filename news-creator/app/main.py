@@ -231,12 +231,13 @@ instrument_fastapi(app)
 from news_creator.infra.peer_identity import (  # noqa: E402
     PeerIdentityMiddleware,
     allowed_peers_from_env,
+    strict_from_env,
 )
 
 app.add_middleware(
     PeerIdentityMiddleware,
     allowed=allowed_peers_from_env(),
-    strict=False,
+    strict=strict_from_env(),
 )
 
 # Prometheus scrape endpoint — serves OTel instruments registered via

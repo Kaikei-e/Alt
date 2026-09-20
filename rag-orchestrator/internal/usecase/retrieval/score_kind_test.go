@@ -104,6 +104,7 @@ func TestFuseResults_ExpandedHits_CarryTheFusedRRFScore(t *testing.T) {
 	repo := new(MockRagChunkRepository)
 	sharedID := uuid.New()
 	loneID := uuid.New()
+	testUUID := uuid.New()
 
 	sc := &retrieval.StageContext{
 		RetrievalID:          "score-kind-expanded",
@@ -113,14 +114,16 @@ func TestFuseResults_ExpandedHits_CarryTheFusedRRFScore(t *testing.T) {
 		AdditionalQueries:    []string{"expanded 1", "expanded 2"},
 		SearchLimit:          50,
 		RRFK:                 60.0,
+		UserID:               testUUID.String(),
+		UserUUID:             testUUID,
 	}
 
 	// The lone chunk wins on raw similarity but is found by one query only;
 	// the shared chunk is found by both, so RRF must rank it first.
-	repo.On("Search", mock.Anything, []float32{0.3, 0.4}, 50).Return([]domain.SearchResult{
+	repo.On("Search", mock.Anything, []float32{0.3, 0.4}, 50, testUUID).Return([]domain.SearchResult{
 		{Chunk: domain.RagChunk{ID: sharedID, Content: "shared", CreatedAt: time.Now()}, Score: 0.5, ScoreKind: domain.ScoreKindVector, ArticleID: "art-shared"},
 	}, nil)
-	repo.On("Search", mock.Anything, []float32{0.5, 0.6}, 50).Return([]domain.SearchResult{
+	repo.On("Search", mock.Anything, []float32{0.5, 0.6}, 50, testUUID).Return([]domain.SearchResult{
 		{Chunk: domain.RagChunk{ID: loneID, Content: "lone", CreatedAt: time.Now()}, Score: 0.99, ScoreKind: domain.ScoreKindVector, ArticleID: "art-lone"},
 		{Chunk: domain.RagChunk{ID: sharedID, Content: "shared", CreatedAt: time.Now()}, Score: 0.5, ScoreKind: domain.ScoreKindVector, ArticleID: "art-shared"},
 	}, nil)
@@ -197,12 +200,13 @@ func TestRetrievalGraph_Execute_EveryContextDeclaresItsScoreSpace(t *testing.T) 
 	search := new(mockSearchClient)
 	encoder := new(mockVectorEncoder)
 	chunkRepo := new(mockChunkRepo)
+	testUUID := uuid.New()
 
 	queryVec := []float32{0.1, 0.2, 0.3}
 	expander.On("ExpandQuery", mock.Anything, "test query", 1, 3).Return([]string{"expanded"}, nil)
-	search.On("Search", mock.Anything, "test query").Return([]domain.SearchHit{}, nil)
+	search.On("Search", mock.Anything, "test query", testUUID.String()).Return([]domain.SearchHit{}, nil)
 	encoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
-	chunkRepo.On("Search", mock.Anything, mock.Anything, 50).Return([]domain.SearchResult{
+	chunkRepo.On("Search", mock.Anything, mock.Anything, 50, testUUID).Return([]domain.SearchResult{
 		{
 			Chunk:     domain.RagChunk{ID: uuid.New(), Content: "hit", CreatedAt: time.Now()},
 			Score:     0.9,
@@ -228,7 +232,10 @@ func TestRetrievalGraph_Execute_EveryContextDeclaresItsScoreSpace(t *testing.T) 
 		Logger: discardLogger(),
 	})
 
-	out, err := g.Execute(context.Background(), retrieval.GraphInput{Query: "test query"})
+	out, err := g.Execute(context.Background(), retrieval.GraphInput{
+		Query:  "test query",
+		UserID: testUUID.String(),
+	})
 	require.NoError(t, err)
 	require.NotEmpty(t, out.Contexts)
 	for _, c := range out.Contexts {

@@ -9,7 +9,7 @@ from uuid import UUID
 import structlog
 
 from acolyte.domain.brief import ReportBrief
-from acolyte.domain.exceptions import StaleVersionError
+from acolyte.domain.exceptions import StaleVersionError, UnmappedLegacyReportsError
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 
 if TYPE_CHECKING:
@@ -19,6 +19,8 @@ logger = structlog.get_logger(__name__)
 
 # Re-export for callers that historically imported from this module.
 __all__ = ["PostgresReportGateway", "StaleVersionError"]
+
+_MAX_DIAGNOSTIC_REPORT_IDS = 5
 
 # LangGraph writes a checkpoint per super-step (article bodies included) into
 # tables AsyncPostgresSaver.setup() creates — they are outside Atlas and carry
@@ -37,12 +39,13 @@ class PostgresReportGateway:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         async with self._pool.connection() as conn:
             row = await conn.execute(
-                "INSERT INTO reports (title, report_type) VALUES (%s, %s) "
-                "RETURNING report_id, title, report_type, current_version, latest_successful_run_id, created_at",
-                [title, report_type],
+                "INSERT INTO reports (title, report_type, user_id) VALUES (%s, %s, %s) "
+                "RETURNING report_id, title, report_type, current_version, "
+                "latest_successful_run_id, created_at, user_id",
+                [title, report_type, user_id],
             )
             r = await row.fetchone()
             assert r is not None
@@ -53,6 +56,7 @@ class PostgresReportGateway:
                 current_version=r[3],
                 latest_successful_run_id=r[4],
                 created_at=r[5],
+                user_id=r[6],
             )
 
     async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
@@ -94,7 +98,7 @@ class PostgresReportGateway:
     async def get_report(self, report_id: UUID) -> Report | None:
         async with self._pool.connection() as conn:
             row = await conn.execute(
-                "SELECT report_id, title, report_type, current_version, latest_successful_run_id, created_at "
+                "SELECT report_id, title, report_type, current_version, latest_successful_run_id, created_at, user_id "
                 "FROM reports WHERE report_id = %s",
                 [report_id],
             )
@@ -108,21 +112,24 @@ class PostgresReportGateway:
                 current_version=r[3],
                 latest_successful_run_id=r[4],
                 created_at=r[5],
+                user_id=r[6],
             )
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         async with self._pool.connection() as conn:
             if cursor:
                 row = await conn.execute(
-                    "SELECT report_id, title, report_type, current_version, latest_successful_run_id, created_at "
-                    "FROM reports WHERE created_at < %s ORDER BY created_at DESC LIMIT %s",
-                    [cursor, limit + 1],
+                    "SELECT report_id, title, report_type, current_version, "
+                    "latest_successful_run_id, created_at, user_id "
+                    "FROM reports WHERE user_id = %s AND created_at < %s ORDER BY created_at DESC LIMIT %s",
+                    [user_id, cursor, limit + 1],
                 )
             else:
                 row = await conn.execute(
-                    "SELECT report_id, title, report_type, current_version, latest_successful_run_id, created_at "
-                    "FROM reports ORDER BY created_at DESC LIMIT %s",
-                    [limit + 1],
+                    "SELECT report_id, title, report_type, current_version, "
+                    "latest_successful_run_id, created_at, user_id "
+                    "FROM reports WHERE user_id = %s ORDER BY created_at DESC LIMIT %s",
+                    [user_id, limit + 1],
                 )
             rows = await row.fetchall()
 
@@ -134,6 +141,7 @@ class PostgresReportGateway:
                 current_version=r[3],
                 latest_successful_run_id=r[4],
                 created_at=r[5],
+                user_id=r[6],
             )
             for r in rows[:limit]
         ]
@@ -392,3 +400,56 @@ class PostgresReportGateway:
                 citations=r[4] if r[4] else [],
                 created_at=r[5],
             )
+
+    async def backfill_owners(
+        self,
+        *,
+        single_owner_id: UUID | None = None,
+        mapping: dict[UUID, UUID] | None = None,
+    ) -> int:
+        """Backfill unowned legacy reports inside an exclusive transaction.
+
+        Uses SELECT ... FOR UPDATE to lock unowned rows. If any unowned row
+        cannot be mapped, raises UnmappedLegacyReportsError and aborts the
+        transaction cleanly without any partial commit.
+        """
+        async with self._pool.connection() as conn, conn.transaction():
+            cur = await conn.execute("SELECT report_id FROM reports WHERE user_id IS NULL FOR UPDATE")
+            rows = await cur.fetchall()
+            unowned_ids = [r[0] for r in rows]
+
+            if not unowned_ids:
+                return 0
+
+            if single_owner_id is not None:
+                await conn.execute(
+                    "UPDATE reports SET user_id = %s WHERE user_id IS NULL",
+                    [single_owner_id],
+                )
+                return len(unowned_ids)
+
+            if mapping is not None:
+                missing = [rid for rid in unowned_ids if rid not in mapping]
+                if missing:
+                    msg = (
+                        f"Cannot backfill: {len(missing)} legacy reports have no owner in mapping: "
+                        f"{[str(m) for m in missing]}. Aborting transaction with no partial commit."
+                    )
+                    raise UnmappedLegacyReportsError(msg)
+
+                for rid in unowned_ids:
+                    target_owner = mapping[rid]
+                    await conn.execute(
+                        "UPDATE reports SET user_id = %s WHERE report_id = %s AND user_id IS NULL",
+                        [target_owner, rid],
+                    )
+                return len(unowned_ids)
+
+            msg = (
+                f"Startup gate rejected: found {len(unowned_ids)} unowned legacy reports "
+                f"({[str(r) for r in unowned_ids[:_MAX_DIAGNOSTIC_REPORT_IDS]]}"
+                f"{'...' if len(unowned_ids) > _MAX_DIAGNOSTIC_REPORT_IDS else ''}) "
+                "with user_id=NULL. Configure ACOLYTE_LEGACY_REPORT_OWNER_ID or "
+                "ACOLYTE_LEGACY_REPORT_MAPPING_FILE to migrate them safely."
+            )
+            raise UnmappedLegacyReportsError(msg)

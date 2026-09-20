@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -49,7 +50,7 @@ type stubIndexUsecase struct {
 	returnErr   error
 }
 
-func (s *stubIndexUsecase) Upsert(ctx context.Context, articleID, title, url, body string) error {
+func (s *stubIndexUsecase) Upsert(ctx context.Context, articleID, userID, title, url, body string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.capturedCtx = ctx
@@ -60,12 +61,17 @@ func (s *stubIndexUsecase) Delete(ctx context.Context, articleID string) error {
 	return nil
 }
 
+func (s *stubIndexUsecase) BackfillOwners(ctx context.Context, items []usecase.OwnerBackfillItem) (usecase.OwnerBackfillResult, error) {
+	return usecase.OwnerBackfillResult{}, nil
+}
+
 func makeJob() *domain.RagJob {
 	return &domain.RagJob{
 		ID:      uuid.New(),
 		JobType: "backfill_article",
 		Payload: map[string]interface{}{
 			"article_id": "art-1",
+			"user_id":    uuid.NewString(),
 			"title":      "Test",
 			"body":       "Body",
 			"url":        "https://example.com",
@@ -147,4 +153,60 @@ func TestJobWorker_BackoffCapsAtMax(t *testing.T) {
 	}
 	assert.Equal(t, maxBackoff, bo, "backoff must cap at maxBackoff")
 	assert.LessOrEqual(t, bo, maxBackoff)
+}
+
+func TestJobWorker_FailsOnMissingUserID(t *testing.T) {
+	job := makeJob()
+	delete(job.Payload, "user_id")
+	repo := &stubJobRepo{jobs: []*domain.RagJob{job}}
+	uc := &stubIndexUsecase{}
+
+	w := NewJobWorker(repo, uc, testLogger())
+	w.processNextJob()
+
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	assert.Nil(t, uc.capturedCtx, "Upsert should not have been called without user_id")
+}
+
+func TestJobWorker_FailsOnEmptyUserID(t *testing.T) {
+	job := makeJob()
+	job.Payload["user_id"] = "   "
+	repo := &stubJobRepo{jobs: []*domain.RagJob{job}}
+	uc := &stubIndexUsecase{}
+
+	w := NewJobWorker(repo, uc, testLogger())
+	w.processNextJob()
+
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	assert.Nil(t, uc.capturedCtx, "Upsert should not have been called with empty user_id")
+}
+
+func TestJobWorker_FailsOnInvalidUUID(t *testing.T) {
+	job := makeJob()
+	job.Payload["user_id"] = "not-a-valid-uuid"
+	repo := &stubJobRepo{jobs: []*domain.RagJob{job}}
+	uc := &stubIndexUsecase{}
+
+	w := NewJobWorker(repo, uc, testLogger())
+	w.processNextJob()
+
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	assert.Nil(t, uc.capturedCtx, "Upsert should not have been called with invalid UUID user_id")
+}
+
+func TestJobWorker_FailsOnNilUUID(t *testing.T) {
+	job := makeJob()
+	job.Payload["user_id"] = "00000000-0000-0000-0000-000000000000"
+	repo := &stubJobRepo{jobs: []*domain.RagJob{job}}
+	uc := &stubIndexUsecase{}
+
+	w := NewJobWorker(repo, uc, testLogger())
+	w.processNextJob()
+
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	assert.Nil(t, uc.capturedCtx, "Upsert should not have been called with nil UUID user_id")
 }

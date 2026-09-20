@@ -7,10 +7,12 @@
 //! actual log bytes to arrive on the broadcast channel whenever a real
 //! Docker daemon is available, and only fall back to a skip when it isn't
 //! (matching the convention in `test_reconnect.rs`).
-use bytes::Bytes;
-use rask_log_forwarder::collector::{DockerCollector, LogStreamOptions};
 use std::process::{Command, Stdio};
 use std::time::Duration;
+
+use bytes::Bytes;
+use rask_log_forwarder::collector::{DockerCollector, LogStreamOptions};
+use serial_test::serial;
 use tokio::sync::broadcast;
 
 fn docker_ok(args: &[&str]) -> bool {
@@ -70,19 +72,30 @@ async fn wait_for_log_bytes(
 }
 
 #[tokio::test]
+#[serial]
 async fn test_nginx_log_stream_initialization() {
     const CONTAINER_NAME: &str = "test-rlf-log-stream-init";
     cleanup(CONTAINER_NAME);
 
+    unsafe {
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
+
     let collector = match DockerCollector::new().await {
         Ok(c) => c,
         Err(e) => {
+            unsafe {
+                std::env::remove_var("DOCKER_HOST");
+            }
             println!("Docker not available, skipping: {e}");
             return;
         }
     };
 
     if !start_chatty_container(CONTAINER_NAME) {
+        unsafe {
+            std::env::remove_var("DOCKER_HOST");
+        }
         println!("Cannot start test container, skipping (Docker may not be available)");
         return;
     }
@@ -97,6 +110,10 @@ async fn test_nginx_log_stream_initialization() {
     let received = wait_for_log_bytes(&mut rx, Duration::from_secs(10)).await;
     cleanup(CONTAINER_NAME);
 
+    unsafe {
+        std::env::remove_var("DOCKER_HOST");
+    }
+
     let bytes = received.expect("must receive at least one log chunk from the tailed container");
     let text = String::from_utf8_lossy(&bytes);
     assert!(
@@ -106,19 +123,30 @@ async fn test_nginx_log_stream_initialization() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_log_stream_with_options() {
     const CONTAINER_NAME: &str = "test-rlf-log-stream-options";
     cleanup(CONTAINER_NAME);
 
+    unsafe {
+        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
+    }
+
     let collector = match DockerCollector::new().await {
         Ok(c) => c,
         Err(e) => {
+            unsafe {
+                std::env::remove_var("DOCKER_HOST");
+            }
             println!("Docker not available, skipping: {e}");
             return;
         }
     };
 
     if !start_chatty_container(CONTAINER_NAME) {
+        unsafe {
+            std::env::remove_var("DOCKER_HOST");
+        }
         println!("Cannot start test container, skipping (Docker may not be available)");
         return;
     }
@@ -131,6 +159,7 @@ async fn test_log_stream_with_options() {
         stderr: true,
         timestamps: true,
         tail: "100".to_string(),
+        since: 0,
     };
 
     collector
@@ -140,6 +169,10 @@ async fn test_log_stream_with_options() {
 
     let received = wait_for_log_bytes(&mut rx, Duration::from_secs(10)).await;
     cleanup(CONTAINER_NAME);
+
+    unsafe {
+        std::env::remove_var("DOCKER_HOST");
+    }
 
     let bytes = received.expect("must receive at least one log chunk from the tailed container");
     let text = String::from_utf8_lossy(&bytes);

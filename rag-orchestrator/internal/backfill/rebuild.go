@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -343,6 +344,13 @@ func (e *RebuildEngine) rebuildArticle(ctx context.Context, job *domain.RagJob, 
 		return outcomeRebuilt, err
 	}
 	url, _ := job.Payload["url"].(string)
+	userID, err := payloadString(job.Payload, "user_id")
+	if err != nil {
+		return outcomeRebuilt, err
+	}
+	if strings.TrimSpace(userID) == "" {
+		return outcomeRebuilt, fmt.Errorf("job payload has empty \"user_id\"")
+	}
 
 	before, found, err := e.state.CurrentState(ctx, articleID)
 	if err != nil {
@@ -352,7 +360,7 @@ func (e *RebuildEngine) rebuildArticle(ctx context.Context, job *domain.RagJob, 
 		return outcomeSkipped, nil
 	}
 
-	if err := indexer.Upsert(ctx, articleID, title, url, body); err != nil {
+	if err := indexer.Upsert(ctx, articleID, userID, title, url, body); err != nil {
 		return outcomeRebuilt, fmt.Errorf("upsert %s: %w", articleID, err)
 	}
 

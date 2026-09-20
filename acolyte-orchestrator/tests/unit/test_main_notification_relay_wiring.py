@@ -64,12 +64,15 @@ async def test_lifespan_runs_the_relay_loop_and_stops_it(monkeypatch: pytest.Mon
     monkeypatch.setattr(main_module._pool, "close", AsyncMock())
     monkeypatch.setattr(main_module._http_client, "aclose", AsyncMock())
     monkeypatch.setattr(main_module._job_queue, "list_running_runs", AsyncMock(return_value=[]))
+    mock_backfill = AsyncMock(return_value=0)
+    monkeypatch.setattr(main_module._report_repo, "backfill_owners", mock_backfill)
 
     app = main_module.create_app()
     async with app.router.lifespan_context(app):
         await asyncio.wait_for(started.wait(), timeout=1.0)
 
     await asyncio.wait_for(cancelled.wait(), timeout=1.0)
+    mock_backfill.assert_awaited_once_with(single_owner_id=None, mapping=None)
 
 
 @pytest.mark.asyncio
@@ -81,11 +84,14 @@ async def test_lifespan_starts_no_loop_when_the_relay_is_off(monkeypatch: pytest
     monkeypatch.setattr(main_module._pool, "close", AsyncMock())
     monkeypatch.setattr(main_module._http_client, "aclose", AsyncMock())
     monkeypatch.setattr(main_module._job_queue, "list_running_runs", AsyncMock(return_value=[]))
+    mock_backfill = AsyncMock(return_value=0)
+    monkeypatch.setattr(main_module._report_repo, "backfill_owners", mock_backfill)
 
     app = main_module.create_app()
     async with app.router.lifespan_context(app):
         relay_tasks = [t for t in asyncio.all_tasks() if t.get_name() == "notification-outbox-relay"]
         assert relay_tasks == []
+    mock_backfill.assert_awaited_once_with(single_owner_id=None, mapping=None)
 
 
 @pytest.mark.asyncio
@@ -116,6 +122,7 @@ async def test_lifespan_starts_enrollment_before_inbound_tls(monkeypatch: pytest
     monkeypatch.setattr(main_module._pool, "close", AsyncMock())
     monkeypatch.setattr(main_module._http_client, "aclose", AsyncMock())
     monkeypatch.setattr(main_module._job_queue, "list_running_runs", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main_module._report_repo, "backfill_owners", AsyncMock(return_value=0))
     monkeypatch.setattr(main_module, "_relay", None)
     monkeypatch.setattr(main_module, "_relay_config", None)
 
@@ -149,6 +156,7 @@ async def test_lifespan_wires_inbound_tls_listener(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(main_module._pool, "close", AsyncMock())
     monkeypatch.setattr(main_module._http_client, "aclose", AsyncMock())
     monkeypatch.setattr(main_module._job_queue, "list_running_runs", AsyncMock(return_value=[]))
+    monkeypatch.setattr(main_module._report_repo, "backfill_owners", AsyncMock(return_value=0))
     monkeypatch.setattr(main_module, "_relay", None)
     monkeypatch.setattr(main_module, "_relay_config", None)
 

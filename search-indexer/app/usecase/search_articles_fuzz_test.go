@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func FuzzSearchArticlesValidation(f *testing.F) {
+func FuzzSearchByUserValidation(f *testing.F) {
 	// Seed corpus with known attack vectors
 	f.Add("<script>alert('xss')</script>")
 	f.Add("'; DROP TABLE articles; --")
@@ -28,7 +28,7 @@ func FuzzSearchArticlesValidation(f *testing.F) {
 	f.Add("golang 1.24")
 
 	searchEngine := &mockSearchEngine{}
-	usecase := NewSearchArticlesUsecase(searchEngine)
+	usecase := NewSearchByUserUsecase(searchEngine)
 
 	f.Fuzz(func(t *testing.T, query string) {
 		// The usecase must never panic, regardless of input. Policy: allow
@@ -37,7 +37,7 @@ func FuzzSearchArticlesValidation(f *testing.F) {
 		// H-002 because Meilisearch is not a vulnerable sink for those
 		// payloads and regex denylists produced false positives for legit
 		// queries.
-		_, err := usecase.Execute(context.Background(), query, 10)
+		_, err := usecase.Execute(context.Background(), query, "user1")
 
 		if query == "" && err == nil {
 			t.Error("empty query should return error")

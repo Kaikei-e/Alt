@@ -12,10 +12,14 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"rag-orchestrator/internal/infra/config"
+
+	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 )
 
@@ -41,6 +45,7 @@ type Config struct {
 	DryRun              bool
 	RequestTimeout      time.Duration
 	EmbedderOverrideURL string // hyper-boost: override embedder URL via X-Embedder-URL header
+	APIToken            string // Bearer token for authenticating to orchestrator :9010
 
 	// Direct mode: bypass HTTP, index via usecase directly.
 	Direct        bool
@@ -323,9 +328,13 @@ func (r *Runner) processBatches(ctx context.Context, query string, args []interf
 		// Fetch batch
 		for i := 0; i < r.cfg.BatchSize && rows.Next(); i++ {
 			var a Article
-			if err := rows.Scan(&a.ID, &a.Title, &a.Body, &a.URL, &a.UserID, &a.CreatedAt); err != nil {
+			var rawUserID sql.NullString
+			if err := rows.Scan(&a.ID, &a.Title, &a.Body, &a.URL, &rawUserID, &a.CreatedAt); err != nil {
 				r.logger.Warn("failed to scan article", slog.String("error", err.Error()))
 				continue
+			}
+			if rawUserID.Valid {
+				a.UserID = strings.TrimSpace(rawUserID.String)
 			}
 			batch = append(batch, a)
 		}
@@ -363,6 +372,20 @@ func (r *Runner) processBatches(ctx context.Context, query string, args []interf
 					atomic.AddInt64(&r.stats.Skipped, 1)
 					return
 				}
+
+				trimmedUserID := strings.TrimSpace(article.UserID)
+				if trimmedUserID == "" {
+					r.logger.Warn("skipping article with missing owner", slog.String("id", article.ID))
+					atomic.AddInt64(&r.stats.Skipped, 1)
+					return
+				}
+				parsedUserID, err := uuid.Parse(trimmedUserID)
+				if err != nil || parsedUserID == uuid.Nil {
+					r.logger.Warn("skipping article with invalid owner", slog.String("id", article.ID), slog.String("user_id", article.UserID))
+					atomic.AddInt64(&r.stats.Skipped, 1)
+					return
+				}
+				article.UserID = parsedUserID.String()
 
 				if err := r.indexArticle(ctx, article); err != nil {
 					r.logger.Warn("failed to send article",
@@ -453,6 +476,9 @@ func (r *Runner) sendArticle(ctx context.Context, a Article) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if r.cfg.APIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+r.cfg.APIToken)
+	}
 	if r.cfg.EmbedderOverrideURL != "" {
 		req.Header.Set("X-Embedder-URL", r.cfg.EmbedderOverrideURL)
 	}
@@ -516,4 +542,14 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// LoadAPIToken loads the bearer token for authenticating to the orchestrator.
+// It reuses the server config resolver to ensure consistent auth semantics.
+func LoadAPIToken() (string, error) {
+	auth, err := config.ResolveAPIAuth()
+	if err != nil {
+		return "", err
+	}
+	return auth.Token, nil
 }

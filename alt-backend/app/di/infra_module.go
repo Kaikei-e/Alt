@@ -139,7 +139,7 @@ func newInfraModule(cfg *config.Config) *InfraModule {
 	// collector and og-image backfill fetch, so the two coordinate through a
 	// shared arbiter when one is configured, and say loudly at startup when
 	// one is not (ADR-000954 review, weakness 5).
-	rateLimiterCoordinator := NewHostRateLimiterCoordinator("alt-backend", cfg.RateLimit.CoordinationRedisURL)
+	rateLimiterCoordinator := NewHostRateLimiterCoordinator("alt-backend", cfg.RateLimit.CoordinationRedisURL, cfg.RateLimit.CoordinationRedisPassword)
 	hostRateLimiter := rateLimiterCoordinator.Limiter(
 		rate_limiter.NamespaceExternalAPI, rateLimitConfig.ExternalAPIInterval, rateLimitConfig.ExternalAPIBurst)
 

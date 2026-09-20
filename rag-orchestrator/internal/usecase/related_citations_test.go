@@ -21,15 +21,17 @@ type fakeNeighborSearcher struct {
 	lastSeeds  []string
 	lastQuery  string
 	lastVector []float32
+	lastUserID uuid.UUID
 	hits       []domain.SearchResult
 	err        error
 }
 
-func (f *fakeNeighborSearcher) HybridSearch(_ context.Context, _ []float32, _ string, _ int) ([]domain.SearchResult, error) {
+func (f *fakeNeighborSearcher) HybridSearch(_ context.Context, _ []float32, _ string, _ int, _ uuid.UUID) ([]domain.SearchResult, error) {
 	return nil, nil
 }
 
-func (f *fakeNeighborSearcher) SearchNeighbors(_ context.Context, vector []float32, queryText string, seeds []string, _ int) ([]domain.SearchResult, error) {
+func (f *fakeNeighborSearcher) SearchNeighbors(_ context.Context, vector []float32, queryText string, seeds []string, _ int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	f.lastUserID = userID
 	f.lastSeeds = append([]string(nil), seeds...)
 	f.lastQuery = queryText
 	f.lastVector = append([]float32(nil), vector...)
@@ -75,6 +77,7 @@ func newTestUsecaseWithNeighbor(searcher domain.HybridSearcher) *answerWithRAGUs
 func TestBuildRelatedCitations_PassesSeedsAndTitleQuery(t *testing.T) {
 	a := uuid.New().String()
 	b := uuid.New().String()
+	testUserID := uuid.New().String()
 	fake := &fakeNeighborSearcher{
 		hits: []domain.SearchResult{
 			{ArticleID: uuid.New().String(), Title: "Neighbor X", URL: "https://x.test"},
@@ -88,11 +91,12 @@ func TestBuildRelatedCitations_PassesSeedsAndTitleQuery(t *testing.T) {
 		{ArticleID: b, Title: "Direct B"},
 	}
 
-	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	related := u.buildRelatedCitations(context.Background(), direct, "user query", testUserID)
 	require.Len(t, related, 2)
 
 	assert.ElementsMatch(t, []string{a, b}, fake.lastSeeds)
 	assert.Equal(t, "Direct A Direct B", fake.lastQuery)
+	assert.Equal(t, testUserID, fake.lastUserID.String())
 	assert.Equal(t, "Neighbor X", related[0].Title)
 	assert.Equal(t, "Neighbor Y", related[1].Title)
 }
@@ -103,7 +107,7 @@ func TestBuildRelatedCitations_NoDirectCitations_ReturnsNil(t *testing.T) {
 	fake := &fakeNeighborSearcher{}
 	u := newTestUsecaseWithNeighbor(fake)
 
-	related := u.buildRelatedCitations(context.Background(), nil, "user query")
+	related := u.buildRelatedCitations(context.Background(), nil, "user query", uuid.New().String())
 	assert.Nil(t, related)
 	assert.Nil(t, fake.lastSeeds)
 }
@@ -119,7 +123,7 @@ func TestBuildRelatedCitations_NoParseableArticleIDs_ReturnsNil(t *testing.T) {
 		{ArticleID: "not-a-uuid", Title: "Garbage"},
 	}
 
-	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	related := u.buildRelatedCitations(context.Background(), direct, "user query", uuid.New().String())
 	assert.Nil(t, related)
 	assert.Nil(t, fake.lastSeeds, "seed list never reaches the searcher when ArticleIDs are unusable")
 }
@@ -135,7 +139,7 @@ func TestBuildRelatedCitations_SearcherError_ReturnsNil(t *testing.T) {
 		{ArticleID: uuid.New().String(), Title: "Direct"},
 	}
 
-	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	related := u.buildRelatedCitations(context.Background(), direct, "user query", uuid.New().String())
 	assert.Nil(t, related)
 }
 
@@ -146,6 +150,7 @@ func TestBuildRelatedCitations_SearcherError_ReturnsNil(t *testing.T) {
 // single error being logged. Encoding the synthetic query is what makes the
 // semantic arm run at all.
 func TestBuildRelatedCitations_EncodesQueryVectorForSemanticArm(t *testing.T) {
+	testUserID := uuid.New().String()
 	fake := &fakeNeighborSearcher{
 		hits: []domain.SearchResult{{ArticleID: uuid.New().String(), Title: "Neighbor"}},
 	}
@@ -155,11 +160,12 @@ func TestBuildRelatedCitations_EncodesQueryVectorForSemanticArm(t *testing.T) {
 
 	direct := []Citation{{ArticleID: uuid.New().String(), Title: "Direct A"}}
 
-	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	related := u.buildRelatedCitations(context.Background(), direct, "user query", testUserID)
 	require.Len(t, related, 1)
 	assert.Equal(t, 1, encoder.calls, "the synthetic neighbor query must be embedded once")
 	assert.Equal(t, []float32{0.1, 0.2, 0.3}, fake.lastVector,
 		"SearchNeighbors must receive the query vector so the pgvector arm is compiled into the SQL")
+	assert.Equal(t, testUserID, fake.lastUserID.String())
 }
 
 // A failed embedding is a real degradation (lexical-only neighbors), not a
@@ -175,7 +181,7 @@ func TestBuildRelatedCitations_EmbeddingFailure_LogsAndDegrades(t *testing.T) {
 
 	direct := []Citation{{ArticleID: uuid.New().String(), Title: "Direct A"}}
 
-	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	related := u.buildRelatedCitations(context.Background(), direct, "user query", uuid.New().String())
 	require.Len(t, related, 1, "lexical arm still runs when the encoder is down")
 	assert.Empty(t, fake.lastVector)
 	assert.Contains(t, buf.String(), "related_citation_embedding_failed")
@@ -193,7 +199,7 @@ func TestBuildRelatedCitations_ZeroHits_LogsReason(t *testing.T) {
 
 	direct := []Citation{{ArticleID: uuid.New().String(), Title: "Direct A"}}
 
-	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	related := u.buildRelatedCitations(context.Background(), direct, "user query", uuid.New().String())
 	assert.Nil(t, related)
 
 	logged := buf.String()
@@ -212,7 +218,7 @@ func TestBuildRelatedCitations_NoSearcher_LogsUnwired(t *testing.T) {
 	}
 
 	direct := []Citation{{ArticleID: uuid.New().String(), Title: "Direct"}}
-	assert.Nil(t, u.buildRelatedCitations(context.Background(), direct, "user query"))
+	assert.Nil(t, u.buildRelatedCitations(context.Background(), direct, "user query", uuid.New().String()))
 	assert.Contains(t, buf.String(), "related_citation_searcher_unwired")
 }
 
@@ -230,6 +236,6 @@ func TestBuildRelatedCitations_NoSearcher_ReturnsNil(t *testing.T) {
 		{ArticleID: uuid.New().String(), Title: "Direct"},
 	}
 
-	related := u.buildRelatedCitations(context.Background(), direct, "user query")
+	related := u.buildRelatedCitations(context.Background(), direct, "user query", uuid.New().String())
 	assert.Nil(t, related)
 }

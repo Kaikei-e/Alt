@@ -2,25 +2,25 @@
   "consumer": {
     "name": "recap-worker"
   },
+  "provider": {
+    "name": "tag-generator"
+  },
   "interactions": [
     {
       "description": "a tag extraction request",
-      "providerStates": [
-        {
-          "name": "the tag extraction model is loaded"
-        }
-      ],
       "request": {
-        "body": {
-          "content": "Detailed article content about artificial intelligence.",
-          "title": "AI Advances in 2026"
-        },
+        "method": "POST",
+        "path": "/api/v1/extract-tags",
         "headers": {
           "content-type": "application/json"
         },
+        "body": {
+          "title": "AI Advances in 2026",
+          "content": "Detailed article content about artificial intelligence."
+        },
         "matchingRules": {
           "body": {
-            "$.content": {
+            "$.title": {
               "combine": "AND",
               "matchers": [
                 {
@@ -28,7 +28,7 @@
                 }
               ]
             },
-            "$.title": {
+            "$.content": {
               "combine": "AND",
               "matchers": [
                 {
@@ -37,24 +37,23 @@
               ]
             }
           }
-        },
-        "method": "POST",
-        "path": "/api/v1/extract-tags"
+        }
       },
       "response": {
-        "body": {
-          "confidence": 0.92,
-          "success": true,
-          "tags": [
-            "artificial-intelligence"
-          ]
-        },
+        "status": 200,
         "headers": {
           "content-type": "application/json"
         },
+        "body": {
+          "success": true,
+          "tags": [
+            "artificial-intelligence"
+          ],
+          "confidence": 0.92
+        },
         "matchingRules": {
           "body": {
-            "$.confidence": {
+            "$.tags[*]": {
               "combine": "AND",
               "matchers": [
                 {
@@ -62,7 +61,15 @@
                 }
               ]
             },
-            "$.success": {
+            "$.tags[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.confidence": {
               "combine": "AND",
               "matchers": [
                 {
@@ -79,15 +86,7 @@
                 }
               ]
             },
-            "$.tags[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.tags[*].*": {
+            "$.success": {
               "combine": "AND",
               "matchers": [
                 {
@@ -96,9 +95,13 @@
               ]
             }
           }
-        },
-        "status": 200
-      }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "the tag extraction model is loaded"
+        }
+      ]
     }
   ],
   "metadata": {
@@ -110,8 +113,5 @@
     "pactSpecification": {
       "version": "3.0.0"
     }
-  },
-  "provider": {
-    "name": "tag-generator"
   }
 }

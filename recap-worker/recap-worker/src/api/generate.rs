@@ -148,6 +148,7 @@ mod tests {
                 ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
                 ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",

@@ -113,6 +113,7 @@ services:
       - KRATOS_VERIFICATION_UI_URL=${KRATOS_VERIFICATION_UI_URL:-http://localhost:4173/sv/verification}
       - KRATOS_COOKIE_SECRET_FILE=/run/secrets/kratos_cookie_secret
       - KRATOS_CIPHER_SECRET_FILE=/run/secrets/kratos_cipher_secret
+      - SERVE_ADMIN_HOST=${KRATOS_ADMIN_IP:-172.16.250.2}
     secrets:
       - kratos_db_password
       - kratos_cookie_secret
@@ -125,15 +126,20 @@ services:
         condition: service_healthy
       kratos-migrate:
         condition: service_completed_successfully
+    # Proves public listener is ready and admin listener is isolated from loopback (asserts SERVE_ADMIN_HOST).
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:4434/admin/health/ready"]
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:4433/health/ready && ! wget --spider -q http://127.0.0.1:4434/admin/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 30s
     restart: unless-stopped
     networks:
-      - alt-network
+      alt-network:
+      kratos-admin:
+        ipv4_address: ${KRATOS_ADMIN_IP:-172.16.250.2}
+        aliases:
+          - kratos-admin
 
   auth-hub:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-auth-hub:${IMAGE_TAG:-main}
@@ -142,7 +148,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - KRATOS_URL=http://kratos:4433
-      - KRATOS_ADMIN_URL=http://kratos:4434
+      - KRATOS_ADMIN_URL=http://kratos-admin:4434
       - PORT=8888
       - CACHE_TTL=5m
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
@@ -161,8 +167,8 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      - MTLS_CLIENT_AUTH=${AUTH_HUB_MTLS_CLIENT_AUTH:-}
-      - MTLS_ALLOWED_PEERS=${AUTH_HUB_MTLS_ALLOWED_PEERS:-}
+      - MTLS_CLIENT_AUTH=${AUTH_HUB_MTLS_CLIENT_AUTH:-require_and_verify}
+      - MTLS_ALLOWED_PEERS=${AUTH_HUB_MTLS_ALLOWED_PEERS:-alt-backend,alt-butterfly-facade,alt-data-hub}
       - PKI_ENROLLMENT=enabled
       - CERT_SUBJECT=auth-hub
       - CERT_SANS=auth-hub,localhost
@@ -202,6 +208,7 @@ services:
     mem_limit: 128m
     networks:
       - alt-network
+      - kratos-admin
     deploy:
       resources:
         reservations:
@@ -213,3 +220,12 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  kratos-admin:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+      config:
+        - subnet: ${KRATOS_ADMIN_SUBNET:-172.16.250.0/24}

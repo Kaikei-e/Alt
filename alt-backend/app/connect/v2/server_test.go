@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"alt/config"
@@ -92,7 +93,7 @@ func TestSetupConnectHandlers_ExcludesInternalAndAdminServices(t *testing.T) {
 func TestSetupOperatorConnectHandlers_ServesOnlyTheAdminSurfaces(t *testing.T) {
 	container, cfg, logger := testDeps()
 	mux := http.NewServeMux()
-	SetupOperatorConnectHandlers(mux, container, cfg, logger)
+	SetupOperatorConnectHandlers(mux, container, cfg, logger, "test-operator-token", true)
 
 	for _, path := range operatorServicePaths {
 		if !mounted(t, mux, path) {
@@ -117,7 +118,7 @@ func TestConnectServers_NeverShareSurfaces(t *testing.T) {
 	userMux := http.NewServeMux()
 	SetupConnectHandlers(userMux, container, cfg, logger)
 	operatorMux := http.NewServeMux()
-	SetupOperatorConnectHandlers(operatorMux, container, cfg, logger)
+	SetupOperatorConnectHandlers(operatorMux, container, cfg, logger, "test-operator-token", true)
 
 	surfaces := []struct {
 		name  string
@@ -144,5 +145,73 @@ func TestConnectServers_NeverShareSurfaces(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSetupOperatorConnectHandlers_RejectsUnauthenticatedRequests proves the
+// operator auth interceptor is actually wired onto the admin handlers, not
+// merely unit-tested in isolation (CLAUDE.md rule 8: check the interceptor
+// reaches the handler chain, not just that it exists). Both cases reject
+// before the handler runs, so they are safe to exercise even though testDeps
+// wires every admin usecase to nil — a request that passed auth would panic
+// on the nil usecase, which is exactly why this test only covers the reject
+// path; the accept path is covered at the interceptor unit level in
+// connect/v2/middleware.
+func TestSetupOperatorConnectHandlers_RejectsUnauthenticatedRequests(t *testing.T) {
+	container, cfg, logger := testDeps()
+	mux := http.NewServeMux()
+	SetupOperatorConnectHandlers(mux, container, cfg, logger, "correct-operator-token", true)
+
+	path := "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth"
+
+	t.Run("missing Authorization header", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("wrong bearer token", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer wrong-token")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+		}
+	})
+}
+
+// TestSetupOperatorConnectHandlers_Disabled_SkipsAuthCheck proves
+// OPERATOR_AUTH=disabled reaches the interceptor as enabled=false rather than
+// silently defaulting to it. It cannot assert a 200 for the reason described
+// above (nil usecase), so it asserts the request was not rejected for lack of
+// auth — an unauthenticated 401 here would mean "disabled" failed to travel
+// from config to the interceptor.
+func TestSetupOperatorConnectHandlers_Disabled_SkipsAuthCheck(t *testing.T) {
+	container, cfg, logger := testDeps()
+	mux := http.NewServeMux()
+	SetupOperatorConnectHandlers(mux, container, cfg, logger, "", false)
+
+	req := httptest.NewRequest(http.MethodPost,
+		"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
+		strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	defer func() {
+		// A panic here means the request reached the nil usecase, i.e. auth
+		// was correctly skipped; that is this test passing, not failing.
+		if r := recover(); r != nil {
+			return
+		}
+	}()
+	mux.ServeHTTP(rec, req)
+	if rec.Code == http.StatusUnauthorized {
+		t.Errorf("status = %d, want anything but 401 when OPERATOR_AUTH=disabled", rec.Code)
 	}
 }

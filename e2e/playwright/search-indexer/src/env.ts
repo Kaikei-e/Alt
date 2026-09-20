@@ -96,4 +96,8 @@ export const SharedCorpus = {
 	unknownUser: "nobody",
 	/** How many documents `q=rust` matches across the whole fixture corpus. */
 	rustHitCount: 2,
+	/** How many documents `q=rust` matches for tenant alice. */
+	aliceRustHitCount: 1,
+	/** How many documents `q=rust` matches for tenant bob. */
+	bobRustHitCount: 1,
 } as const;

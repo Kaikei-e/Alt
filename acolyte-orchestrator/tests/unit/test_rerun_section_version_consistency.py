@@ -31,6 +31,7 @@ from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersi
 from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
 from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.port.llm_provider import LLMResponse
+from tests.conftest import TEST_USER_ID, make_request_ctx
 
 if TYPE_CHECKING:
     from acolyte.domain.brief import ReportBrief
@@ -52,6 +53,7 @@ class _LockingRepo:
             current_version=1,
             latest_successful_run_id=None,
             created_at=datetime.now(UTC),
+            user_id=TEST_USER_ID,
         )
         self.sections: dict[str, ReportSection] = {
             "summary": ReportSection(report_id=report_id, section_key="summary", current_version=1, display_order=0),
@@ -97,6 +99,7 @@ class _LockingRepo:
             current_version=new_v,
             latest_successful_run_id=self.report.latest_successful_run_id,
             created_at=self.report.created_at,
+            user_id=TEST_USER_ID,
         )
 
     def concurrent_rerun_of_other_section(self) -> None:
@@ -121,6 +124,7 @@ class _LockingRepo:
             current_version=new_v,
             latest_successful_run_id=self.report.latest_successful_run_id,
             created_at=self.report.created_at,
+            user_id=TEST_USER_ID,
         )
         self.report_versions[new_v] = ReportVersion(
             report_id=self.report.report_id,
@@ -183,6 +187,7 @@ class _LockingRepo:
             current_version=new_v,
             latest_successful_run_id=self.report.latest_successful_run_id,
             created_at=self.report.created_at,
+            user_id=TEST_USER_ID,
         )
         self.report_versions[new_v] = ReportVersion(
             report_id=report_id,
@@ -222,13 +227,13 @@ class _LockingRepo:
         return None
 
     # Unused stubs for the rest of ReportRepositoryPort.
-    async def create_report(self, title: str, report_type: str) -> Report:
+    async def create_report(self, title: str, report_type: str, user_id: UUID) -> Report:
         raise NotImplementedError
 
     async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
         raise NotImplementedError
 
-    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+    async def list_reports(self, cursor: str | None, limit: int, user_id: UUID) -> tuple[list[Report], str | None]:
         raise NotImplementedError
 
     async def list_report_versions(
@@ -278,7 +283,7 @@ async def test_rerun_survives_a_concurrent_writer_during_the_llm_call() -> None:
 
     await service.rerun_section(
         acolyte_pb2.RerunSectionRequest(report_id=str(report_id), section_key="summary"),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=make_request_ctx("RerunSection"),
     )
 
     assert repo.orphaned_section_bodies() == []
@@ -301,7 +306,7 @@ async def test_rerun_writes_no_body_when_the_report_version_lock_is_lost() -> No
     with pytest.raises(ConnectError):
         await service.rerun_section(
             acolyte_pb2.RerunSectionRequest(report_id=str(report_id), section_key="summary"),
-            ctx=None,  # type: ignore[bad-argument-type]
+            ctx=make_request_ctx("RerunSection"),
         )
 
     assert repo.orphaned_section_bodies() == []
@@ -323,7 +328,7 @@ async def test_rerun_refuses_while_a_pipeline_run_is_active() -> None:
     with pytest.raises(ConnectError) as excinfo:
         await service.rerun_section(
             acolyte_pb2.RerunSectionRequest(report_id=str(report_id), section_key="summary"),
-            ctx=None,  # type: ignore[bad-argument-type]
+            ctx=make_request_ctx("RerunSection"),
         )
 
     # "a run owns this report" is a precondition the caller can wait out, not a
@@ -348,7 +353,7 @@ async def test_rerun_commits_body_and_version_together_when_uncontended() -> Non
 
     await service.rerun_section(
         acolyte_pb2.RerunSectionRequest(report_id=str(report_id), section_key="summary"),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=make_request_ctx("RerunSection"),
     )
 
     assert repo.report.current_version == 2
@@ -374,7 +379,7 @@ async def test_rerun_aborts_when_a_sibling_rerun_took_the_same_section() -> None
     with pytest.raises(ConnectError):
         await service.rerun_section(
             acolyte_pb2.RerunSectionRequest(report_id=str(report_id), section_key="summary"),
-            ctx=None,  # type: ignore[bad-argument-type]
+            ctx=make_request_ctx("RerunSection"),
         )
 
     assert repo.section_bodies[("summary", 2)] == "Sibling rerun body.", "the sibling's body must survive"

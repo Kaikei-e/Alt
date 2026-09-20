@@ -129,11 +129,9 @@ func TestCreateArticleAppendsArticleCreatedForAnExistingArticle(t *testing.T) {
 		Given("sovereign accepts ArticleCreated events carrying title and url").
 		UponReceiving("an AppendKnowledgeEvent request for ArticleCreated from the CreateArticle procedure").
 		WithCompleteRequest(consumer.Request{
-			Method: "POST",
-			Path:   matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
-			Headers: matchers.MapMatcher{
-				"Content-Type": matchers.String("application/json"),
-			},
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"),
+			Headers: sovereignHeaders(),
 			Body: matchers.MapMatcher{
 				"event": matchers.Like(map[string]any{
 					"eventId":    exampleEventID,

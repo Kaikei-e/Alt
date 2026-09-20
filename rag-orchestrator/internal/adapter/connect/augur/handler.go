@@ -232,7 +232,8 @@ func (h *Handler) StreamChat(
 	locale := detectLocale(query)
 	input := usecase.AnswerWithRAGInput{
 		Query:               query,
-		UserID:              threadID,
+		UserID:              userID.String(),
+		ConversationID:      threadID,
 		Locale:              locale,
 		ConversationHistory: conversationHistory,
 	}
@@ -765,7 +766,8 @@ func (h *Handler) RetrieveContext(
 	ctx context.Context,
 	req *connect.Request[augurv2.RetrieveContextRequest],
 ) (*connect.Response[augurv2.RetrieveContextResponse], error) {
-	if _, err := extractUserID(req.Header()); err != nil {
+	userID, err := extractUserID(req.Header())
+	if err != nil {
 		h.logger.Warn("retrieve context rejected", slog.String("error", err.Error()))
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
@@ -780,7 +782,8 @@ func (h *Handler) RetrieveContext(
 		slog.Int("limit", int(req.Msg.Limit)))
 
 	input := usecase.RetrieveContextInput{
-		Query: query,
+		Query:  query,
+		UserID: userID.String(),
 	}
 
 	output, err := h.retrieveUsecase.Execute(ctx, input)

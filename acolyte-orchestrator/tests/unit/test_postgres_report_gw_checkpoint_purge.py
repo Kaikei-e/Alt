@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
@@ -27,6 +28,13 @@ import pytest
 from acolyte.gateway.postgres_report_gw import PostgresReportGateway
 from acolyte.gen.proto.alt.acolyte.v1 import acolyte_pb2
 from acolyte.handler.connect_service import AcolyteConnectService
+
+_DEFAULT_USER_ID = uuid4()
+
+
+def _make_ctx(user_id: UUID = _DEFAULT_USER_ID) -> object:
+    return SimpleNamespace(user_id=user_id)
+
 
 _CHECKPOINT_TABLES = ("checkpoints", "checkpoint_blobs", "checkpoint_writes")
 _UNDEFINED_TABLE = 'relation "checkpoints" does not exist'
@@ -97,8 +105,8 @@ async def _conn_cm(conn: _FakeConnection) -> AsyncIterator[_FakeConnection]:
     yield conn
 
 
-def _report_row(report_id: UUID) -> Sequence[Any]:
-    return (report_id, "Disposable", "custom", 1, None, datetime(2026, 8, 14, tzinfo=UTC))
+def _report_row(report_id: UUID, user_id: UUID = _DEFAULT_USER_ID) -> Sequence[Any]:
+    return (report_id, "Disposable", "custom", 1, None, datetime(2026, 8, 14, tzinfo=UTC), user_id)
 
 
 def _service(conn: _FakeConnection) -> AcolyteConnectService:
@@ -117,7 +125,7 @@ async def test_delete_report_purges_checkpoints_of_every_run() -> None:
 
     await _service(conn).delete_report(
         acolyte_pb2.DeleteReportRequest(report_id=str(report_id)),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=_make_ctx(),  # type: ignore[bad-argument-type]
     )
 
     expected_threads = {f"acolyte-run:{run_a}", f"acolyte-run:{run_b}"}
@@ -145,7 +153,7 @@ async def test_delete_report_reads_run_ids_before_the_cascade_removes_them() -> 
 
     await _service(conn).delete_report(
         acolyte_pb2.DeleteReportRequest(report_id=str(report_id)),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=_make_ctx(),  # type: ignore[bad-argument-type]
     )
 
     queries = [q for q, _ in conn.executed]
@@ -162,7 +170,7 @@ async def test_delete_report_without_runs_touches_no_checkpoint_table() -> None:
 
     await _service(conn).delete_report(
         acolyte_pb2.DeleteReportRequest(report_id=str(report_id)),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=_make_ctx(),  # type: ignore[bad-argument-type]
     )
 
     assert not [q for q, _ in conn.executed if "checkpoint" in q]
@@ -177,7 +185,7 @@ async def test_delete_report_succeeds_when_checkpointing_was_never_enabled() -> 
 
     resp = await _service(conn).delete_report(
         acolyte_pb2.DeleteReportRequest(report_id=str(report_id)),
-        ctx=None,  # type: ignore[bad-argument-type]
+        ctx=_make_ctx(),  # type: ignore[bad-argument-type]
     )
 
     assert isinstance(resp, acolyte_pb2.DeleteReportResponse)

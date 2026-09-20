@@ -54,13 +54,7 @@ func (noopSearchEngine) IndexDocuments(ctx context.Context, docs []domain.Search
 	return nil
 }
 func (noopSearchEngine) DeleteDocuments(ctx context.Context, ids []string) error { return nil }
-func (noopSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
-	return nil, nil
-}
-func (noopSearchEngine) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
-	return nil, nil
-}
-func (noopSearchEngine) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
+func (noopSearchEngine) SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
 	return nil, nil
 }
 func (noopSearchEngine) EnsureIndex(ctx context.Context) error { return nil }

@@ -8,7 +8,11 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from news_creator.infra.inbound_tls import forget_tls_peer, remember_tls_peer
+from news_creator.infra.inbound_tls import (
+    forget_tls_peer,
+    is_tls_peer,
+    remember_tls_peer,
+)
 from news_creator.infra.peer_identity import (
     PEER_IDENTITY_HEADER,
     PeerIdentityMiddleware,
@@ -124,3 +128,126 @@ def test_tls_peer_cn_is_allowlisted(monkeypatch: pytest.MonkeyPatch) -> None:
             assert resp.status_code == 403
     finally:
         forget_tls_peer(client)
+
+
+# strict=False is the production default (main.py). A TLS-origin caller has
+# already presented a client cert at the :9443 handshake, so allowlist
+# enforcement for that traffic must not depend on strict — otherwise the
+# allowlist in MTLS_ALLOWED_PEERS is decorative.
+
+
+def test_tls_peer_not_allowlisted_rejected_even_when_not_strict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ("10.0.8.6", 44444)
+    remember_tls_peer(client, "impostor")
+    try:
+        app = _build_app(monkeypatch, allowed=["recap-worker"], strict=False)
+        with TestClient(app, client=client) as http:
+            resp = http.get("/echo")
+            assert resp.status_code == 403
+    finally:
+        forget_tls_peer(client)
+
+
+def test_tls_peer_allowlisted_passes_even_when_not_strict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ("10.0.8.7", 44444)
+    remember_tls_peer(client, "recap-worker")
+    try:
+        app = _build_app(monkeypatch, allowed=["recap-worker"], strict=False)
+        with TestClient(app, client=client) as http:
+            resp = http.get("/echo")
+            assert resp.status_code == 200
+            assert resp.json() == {"peer": "recap-worker"}
+    finally:
+        forget_tls_peer(client)
+
+
+def test_plaintext_origin_without_cert_unaffected_by_tls_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No TLS peer was ever recorded for DIRECT — this caller never completed
+    # the :9443 handshake — so the new TLS-origin enforcement must not touch
+    # it. strict stays False, matching today's plaintext-port behavior.
+    app = _build_app(
+        monkeypatch, allowed=["recap-worker"], strict=False, verify_client="off"
+    )
+    with TestClient(app, client=DIRECT) as http:
+        resp = http.get("/echo")
+        assert resp.status_code == 200
+        assert resp.json() == {"peer": None}
+
+
+def test_health_on_tls_port_exempt_from_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ("10.0.8.8", 44444)
+    remember_tls_peer(client, "impostor")
+    try:
+        app = Starlette(routes=[Route("/health", _echo_peer)])
+        app.add_middleware(
+            PeerIdentityMiddleware, allowed=["recap-worker"], strict=False
+        )
+        with TestClient(app, client=client) as http:
+            resp = http.get("/health")
+            assert resp.status_code == 200
+    finally:
+        forget_tls_peer(client)
+
+
+def test_tls_peer_empty_cn_rejected_even_when_not_strict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ("10.0.8.9", 44444)
+    remember_tls_peer(client, "")
+    try:
+        app = _build_app(monkeypatch, allowed=["recap-worker"], strict=False)
+        with TestClient(app, client=client) as http:
+            resp = http.get("/echo")
+            assert resp.status_code == 403
+    finally:
+        forget_tls_peer(client)
+
+
+def test_tls_peer_empty_cn_rejected_without_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ("10.0.8.10", 44444)
+    remember_tls_peer(client, "")
+    try:
+        app = _build_app(monkeypatch, allowed=None, strict=False)
+        with TestClient(app, client=client) as http:
+            resp = http.get("/echo")
+            assert resp.status_code == 403
+    finally:
+        forget_tls_peer(client)
+
+
+def test_health_on_tls_port_with_empty_cn_exempt_from_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ("10.0.8.11", 44444)
+    remember_tls_peer(client, "")
+    try:
+        app = Starlette(routes=[Route("/health", _echo_peer)])
+        app.add_middleware(
+            PeerIdentityMiddleware, allowed=["recap-worker"], strict=False
+        )
+        with TestClient(app, client=client) as http:
+            resp = http.get("/health")
+            assert resp.status_code == 200
+            assert resp.json() == {"peer": None}
+    finally:
+        forget_tls_peer(client)
+
+
+def test_remember_tls_peer_records_empty_cn() -> None:
+    client = ("10.0.8.12", 44444)
+    remember_tls_peer(client, "")
+    try:
+        assert is_tls_peer(client) is True
+    finally:
+        forget_tls_peer(client)
+        assert is_tls_peer(client) is False

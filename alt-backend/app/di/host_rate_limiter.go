@@ -50,7 +50,7 @@ type HostRateLimiterCoordinator struct {
 // into a store panics rather than falling back: an operator who set the
 // variable believes coordination is on, and quietly giving them the local mode
 // is precisely the silent-fallback shape CLAUDE.md rule 8 forbids.
-func NewHostRateLimiterCoordinator(binary, redisURL string) *HostRateLimiterCoordinator {
+func NewHostRateLimiterCoordinator(binary, redisURL, redisPassword string) *HostRateLimiterCoordinator {
 	owner := fmt.Sprintf("%s/%d", binary, os.Getpid())
 
 	if redisURL == "" {
@@ -62,7 +62,7 @@ func NewHostRateLimiterCoordinator(binary, redisURL string) *HostRateLimiterCoor
 		return &HostRateLimiterCoordinator{owner: owner}
 	}
 
-	store, err := redis_slot_store.NewFromURL(redisURL)
+	store, err := redis_slot_store.NewFromURL(redisURL, redisPassword)
 	if err != nil {
 		panic(fmt.Sprintf("host rate limiter: HOST_RATE_LIMITER_REDIS_URL is set but unusable (%v); "+
 			"unset it to run in local mode deliberately", err))

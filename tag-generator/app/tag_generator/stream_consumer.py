@@ -15,6 +15,8 @@ import structlog
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from tag_generator.infra.redis_auth import resolve_redis_password
+
 logger = structlog.get_logger(__name__)
 
 # Redis rejects writes for reasons that clear on their own: the instance is at
@@ -137,6 +139,9 @@ class ConsumerConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
 
     redis_url: str = Field(default="redis://localhost:6379", validation_alias="REDIS_STREAMS_URL")
+    # Resolved from REDIS_PASSWORD_FILE via resolve_redis_password(), never
+    # sourced from env directly -- see from_env()/tags_stream_from_env().
+    redis_password: str | None = Field(default=None, exclude=True)
     group_name: str = Field(default="tag-generator-group", validation_alias="CONSUMER_GROUP")
     consumer_name: str = Field(
         default_factory=lambda: f"tag-generator-{os.getpid()}",
@@ -162,7 +167,7 @@ class ConsumerConfig(BaseSettings):
     @classmethod
     def from_env(cls) -> ConsumerConfig:
         """Create config from environment variables."""
-        return cls()
+        return cls(redis_password=resolve_redis_password())
 
     @classmethod
     def tags_stream_from_env(cls) -> ConsumerConfig:
@@ -172,6 +177,7 @@ class ConsumerConfig(BaseSettings):
         """
         return cls(
             redis_url=os.getenv("REDIS_STREAMS_URL", "redis://localhost:6379"),
+            redis_password=resolve_redis_password(),
             group_name=os.getenv("TAGS_CONSUMER_GROUP", "tag-generator-tags-group"),
             consumer_name=os.getenv("TAGS_CONSUMER_NAME", f"tag-generator-tags-{os.getpid()}"),
             stream_key="alt:events:tags",
@@ -182,6 +188,20 @@ class ConsumerConfig(BaseSettings):
             max_delivery_count=os.getenv("CONSUMER_MAX_DELIVERY_COUNT", "5"),
             reclaim_interval_seconds=os.getenv("CONSUMER_RECLAIM_INTERVAL_SECONDS", "30"),
         )
+
+
+def build_redis_client(config: ConsumerConfig, socket_timeout_seconds: float) -> redis.Redis:
+    """Build the Redis Streams client, authenticating when a password was resolved.
+
+    A helper of its own so the password wiring is directly testable without
+    driving the full `start()` task group.
+    """
+    return redis.from_url(
+        config.redis_url,
+        password=config.redis_password,
+        decode_responses=True,
+        socket_timeout=socket_timeout_seconds,
+    )
 
 
 @dataclass
@@ -229,11 +249,7 @@ class StreamConsumer:
         # socket_timeout must clear block_timeout_ms by a wide margin -- see
         # _SOCKET_TIMEOUT_MARGIN_SECONDS above for why.
         socket_timeout_seconds = self.config.block_timeout_ms / 1000 + _SOCKET_TIMEOUT_MARGIN_SECONDS
-        self.client = redis.from_url(
-            self.config.redis_url,
-            decode_responses=True,
-            socket_timeout=socket_timeout_seconds,
-        )
+        self.client = build_redis_client(self.config, socket_timeout_seconds)
 
         # Ensure consumer group exists
         await self._ensure_consumer_group()

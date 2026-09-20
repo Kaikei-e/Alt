@@ -10,6 +10,7 @@ import (
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase/retrieval"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -35,8 +36,8 @@ type MockBM25Searcher struct {
 	mock.Mock
 }
 
-func (m *MockBM25Searcher) SearchBM25(ctx context.Context, query string, limit int) ([]domain.BM25SearchResult, error) {
-	args := m.Called(ctx, query, limit)
+func (m *MockBM25Searcher) SearchBM25(ctx context.Context, query string, limit int, userID string) ([]domain.BM25SearchResult, error) {
+	args := m.Called(ctx, query, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -48,16 +49,16 @@ type MockHybridSearcher struct {
 	mock.Mock
 }
 
-func (m *MockHybridSearcher) HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, queryText, limit)
+func (m *MockHybridSearcher) HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, queryText, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]domain.SearchResult), args.Error(1)
 }
 
-func (m *MockHybridSearcher) SearchNeighbors(ctx context.Context, queryVector []float32, queryText string, seedArticleIDs []string, limit int) ([]domain.SearchResult, error) {
-	args := m.Called(ctx, queryVector, queryText, seedArticleIDs, limit)
+func (m *MockHybridSearcher) SearchNeighbors(ctx context.Context, queryVector []float32, queryText string, seedArticleIDs []string, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
+	args := m.Called(ctx, queryVector, queryText, seedArticleIDs, limit, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -70,15 +71,18 @@ func TestEmbedAndSearch_NilEmbedding_SkipsVectorSearch_RunsBM25(t *testing.T) {
 	mockBM25 := new(MockBM25Searcher)
 	mockChunkRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-degraded",
 		Query:             "test query",
 		OriginalEmbedding: nil, // Embedding failed in Stage 1
 		SearchLimit:       50,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
 	}
 
 	// BM25 should still be called
-	mockBM25.On("SearchBM25", mock.Anything, "test query", 50).Return([]domain.BM25SearchResult{
+	mockBM25.On("SearchBM25", mock.Anything, "test query", 50, testUUID.String()).Return([]domain.BM25SearchResult{
 		{ArticleID: "art-1", Content: "BM25 content", Title: "BM25 Title", Rank: 1, Score: 10.0},
 	}, nil)
 
@@ -90,7 +94,7 @@ func TestEmbedAndSearch_NilEmbedding_SkipsVectorSearch_RunsBM25(t *testing.T) {
 
 	assert.Len(t, sc.BM25Results, 1, "BM25 results should be populated")
 	assert.Empty(t, sc.OriginalResults, "vector search should not run when embedding is nil")
-	mockChunkRepo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestEmbedAndSearch_NilEmbedding_NoBM25Searcher_NoError(t *testing.T) {
@@ -98,11 +102,14 @@ func TestEmbedAndSearch_NilEmbedding_NoBM25Searcher_NoError(t *testing.T) {
 	mockEncoder := new(MockVectorEncoder)
 	mockChunkRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-degraded-no-bm25",
 		Query:             "test query",
 		OriginalEmbedding: nil,
 		SearchLimit:       50,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
 	}
 
 	// No BM25 searcher, no vector search possible — should complete without error
@@ -118,15 +125,18 @@ func TestEmbedAndSearch_WithEmbedding_RunsVectorSearch(t *testing.T) {
 	mockEncoder := new(MockVectorEncoder)
 	mockChunkRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	queryVec := []float32{0.1, 0.2, 0.3}
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-normal",
 		Query:             "test query",
 		OriginalEmbedding: queryVec,
 		SearchLimit:       50,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
 	}
 
-	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{
 		{Chunk: domain.RagChunk{Content: "result"}, Score: 0.9, Title: "Article"},
 	}, nil)
 
@@ -134,7 +144,7 @@ func TestEmbedAndSearch_WithEmbedding_RunsVectorSearch(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Len(t, sc.OriginalResults, 1)
-	mockChunkRepo.AssertCalled(t, "Search", mock.Anything, queryVec, 50)
+	mockChunkRepo.AssertCalled(t, "Search", mock.Anything, queryVec, 50, testUUID)
 }
 
 func TestEmbedAndSearch_BM25UsesExpandedQueries(t *testing.T) {
@@ -143,6 +153,7 @@ func TestEmbedAndSearch_BM25UsesExpandedQueries(t *testing.T) {
 	mockBM25 := new(MockBM25Searcher)
 	mockChunkRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	queryVec := []float32{0.1, 0.2, 0.3}
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-bm25-expanded",
@@ -150,18 +161,20 @@ func TestEmbedAndSearch_BM25UsesExpandedQueries(t *testing.T) {
 		OriginalEmbedding: queryVec,
 		ExpandedQueries:   []string{"JD Vance vice president activities"}, // English translation
 		SearchLimit:       50,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
 	}
 
 	// BM25 should be called for BOTH original query AND expanded query
-	mockBM25.On("SearchBM25", mock.Anything, "ヴァンス副大統領の動き", 50).Return([]domain.BM25SearchResult{
+	mockBM25.On("SearchBM25", mock.Anything, "ヴァンス副大統領の動き", 50, testUUID.String()).Return([]domain.BM25SearchResult{
 		{ArticleID: "art-jp", Content: "日本語結果", Title: "JP Article", Rank: 1, Score: 5.0},
 	}, nil)
-	mockBM25.On("SearchBM25", mock.Anything, "JD Vance vice president activities", 50).Return([]domain.BM25SearchResult{
+	mockBM25.On("SearchBM25", mock.Anything, "JD Vance vice president activities", 50, testUUID.String()).Return([]domain.BM25SearchResult{
 		{ArticleID: "art-en", Content: "English result", Title: "EN Article", Rank: 1, Score: 12.0},
 	}, nil)
 
 	// Vector search setup
-	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{}, nil)
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{}, nil)
 	// Expanded embedding
 	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
 
@@ -169,8 +182,8 @@ func TestEmbedAndSearch_BM25UsesExpandedQueries(t *testing.T) {
 	require.NoError(t, err)
 
 	// Both original and expanded query should have been searched via BM25
-	mockBM25.AssertCalled(t, "SearchBM25", mock.Anything, "ヴァンス副大統領の動き", 50)
-	mockBM25.AssertCalled(t, "SearchBM25", mock.Anything, "JD Vance vice president activities", 50)
+	mockBM25.AssertCalled(t, "SearchBM25", mock.Anything, "ヴァンス副大統領の動き", 50, testUUID.String())
+	mockBM25.AssertCalled(t, "SearchBM25", mock.Anything, "JD Vance vice president activities", 50, testUUID.String())
 
 	// Results should be merged (2 articles from 2 queries)
 	assert.GreaterOrEqual(t, len(sc.BM25Results), 2, "BM25 results from both queries should be merged")
@@ -182,6 +195,7 @@ func TestEmbedAndSearch_BM25ExpandedDeduplicatesResults(t *testing.T) {
 	mockBM25 := new(MockBM25Searcher)
 	mockChunkRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	queryVec := []float32{0.1, 0.2, 0.3}
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-bm25-dedup",
@@ -189,15 +203,17 @@ func TestEmbedAndSearch_BM25ExpandedDeduplicatesResults(t *testing.T) {
 		OriginalEmbedding: queryVec,
 		ExpandedQueries:   []string{"query B"},
 		SearchLimit:       50,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
 	}
 
 	// Both queries return the same article
 	sameResult := []domain.BM25SearchResult{
 		{ArticleID: "art-same", Content: "same content", Title: "Same", Rank: 1, Score: 10.0},
 	}
-	mockBM25.On("SearchBM25", mock.Anything, "query A", 50).Return(sameResult, nil)
-	mockBM25.On("SearchBM25", mock.Anything, "query B", 50).Return(sameResult, nil)
-	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{}, nil)
+	mockBM25.On("SearchBM25", mock.Anything, "query A", 50, testUUID.String()).Return(sameResult, nil)
+	mockBM25.On("SearchBM25", mock.Anything, "query B", 50, testUUID.String()).Return(sameResult, nil)
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return([]domain.SearchResult{}, nil)
 	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
 
 	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, mockBM25, nil, mockChunkRepo, true, 50, logger)
@@ -212,15 +228,18 @@ func TestEmbedAndSearch_VectorSearchFails_ReturnsError(t *testing.T) {
 	mockEncoder := new(MockVectorEncoder)
 	mockChunkRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	queryVec := []float32{0.1, 0.2, 0.3}
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-search-fail",
 		Query:             "test query",
 		OriginalEmbedding: queryVec,
 		SearchLimit:       50,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
 	}
 
-	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return(nil, fmt.Errorf("db connection lost"))
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return(nil, fmt.Errorf("db connection lost"))
 
 	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, nil, mockChunkRepo, false, 50, logger)
 	assert.Error(t, err)
@@ -233,15 +252,18 @@ func TestEmbedAndSearch_HybridSearcher_UsedInsteadOfBM25AndVector(t *testing.T) 
 	mockHybrid := new(MockHybridSearcher)
 	mockChunkRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	queryVec := []float32{0.1, 0.2, 0.3}
 	sc := &retrieval.StageContext{
 		RetrievalID:       "test-hybrid-searcher",
 		Query:             "test query",
 		OriginalEmbedding: queryVec,
 		SearchLimit:       50,
+		UserID:            testUUID.String(),
+		UserUUID:          testUUID,
 	}
 
-	mockHybrid.On("HybridSearch", mock.Anything, queryVec, "test query", 50).Return([]domain.SearchResult{
+	mockHybrid.On("HybridSearch", mock.Anything, queryVec, "test query", 50, testUUID).Return([]domain.SearchResult{
 		{Chunk: domain.RagChunk{Content: "fused result"}, Score: 0.5, ArticleID: "art-1"},
 	}, nil)
 
@@ -251,8 +273,8 @@ func TestEmbedAndSearch_HybridSearcher_UsedInsteadOfBM25AndVector(t *testing.T) 
 	assert.Len(t, sc.OriginalResults, 1, "hybrid searcher results should populate OriginalResults")
 	assert.Equal(t, "fused result", sc.OriginalResults[0].Chunk.Content)
 	assert.Empty(t, sc.BM25Results, "hybrid searcher path should not run a separate BM25 arm")
-	mockChunkRepo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything)
-	mockChunkRepo.AssertNotCalled(t, "SearchWithinArticles", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "Search", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mockChunkRepo.AssertNotCalled(t, "SearchWithinArticles", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestEmbedAndSearch_HybridSearcher_SkippedWhenCandidateArticlesScoped(t *testing.T) {
@@ -264,6 +286,7 @@ func TestEmbedAndSearch_HybridSearcher_SkippedWhenCandidateArticlesScoped(t *tes
 	mockHybrid := new(MockHybridSearcher)
 	mockChunkRepo := new(MockRagChunkRepository)
 
+	testUUID := uuid.New()
 	queryVec := []float32{0.1, 0.2, 0.3}
 	sc := &retrieval.StageContext{
 		RetrievalID:         "test-hybrid-scoped",
@@ -271,9 +294,11 @@ func TestEmbedAndSearch_HybridSearcher_SkippedWhenCandidateArticlesScoped(t *tes
 		OriginalEmbedding:   queryVec,
 		CandidateArticleIDs: []string{"art-1"},
 		SearchLimit:         50,
+		UserID:              testUUID.String(),
+		UserUUID:            testUUID,
 	}
 
-	mockChunkRepo.On("SearchWithinArticles", mock.Anything, queryVec, sc.CandidateArticleIDs, 50).Return([]domain.SearchResult{
+	mockChunkRepo.On("SearchWithinArticles", mock.Anything, queryVec, sc.CandidateArticleIDs, 50, testUUID).Return([]domain.SearchResult{
 		{Chunk: domain.RagChunk{Content: "scoped result"}, Score: 0.7, ArticleID: "art-1"},
 	}, nil)
 
@@ -282,5 +307,5 @@ func TestEmbedAndSearch_HybridSearcher_SkippedWhenCandidateArticlesScoped(t *tes
 
 	assert.Len(t, sc.OriginalResults, 1)
 	assert.Equal(t, "scoped result", sc.OriginalResults[0].Chunk.Content)
-	mockHybrid.AssertNotCalled(t, "HybridSearch", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mockHybrid.AssertNotCalled(t, "HybridSearch", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

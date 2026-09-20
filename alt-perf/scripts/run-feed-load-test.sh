@@ -241,7 +241,7 @@ fi
 
 echo "  Generated $GENERATED_OVERLAY with $ALIAS_COUNT aliases"
 
-COMPOSE="docker compose -f compose/compose.yaml -f compose/load-test.yaml -f ${GENERATED_OVERLAY} -p alt"
+COMPOSE="docker compose -f compose/compose.yaml -f compose/load-test.yaml -f ${GENERATED_OVERLAY} -p ${COMPOSE_PROJECT_NAME:-alt}"
 
 # --- Phase 1: Start mock-rss-server & restart alt-backend with FEED_ALLOWED_HOSTS ---
 echo ""
@@ -269,7 +269,7 @@ done
 
 echo "Waiting for kratos health..."
 for i in $(seq 1 60); do
-  if $COMPOSE exec -T kratos wget -qO- http://127.0.0.1:4434/admin/health/ready > /dev/null 2>&1; then
+  if $COMPOSE exec -T kratos wget -qO- http://127.0.0.1:4433/health/ready > /dev/null 2>&1; then
     echo "  kratos is healthy"
     break
   fi
@@ -309,13 +309,20 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-# When kratos replicas > 1, host ports are cleared; resolve admin URL via container IP
+# When kratos replicas > 1, host ports are cleared; resolve admin URL via container IP on kratos-admin network
 if [ "$USER_COUNT" -gt 1000 ]; then
-  KRATOS_IP=$($COMPOSE exec -T --index=1 kratos hostname -i 2>/dev/null | tr -d '[:space:]')
-  if [ -n "$KRATOS_IP" ]; then
-    export KRATOS_ADMIN_URL="http://${KRATOS_IP}:4434"
-    echo "  Kratos admin URL (container IP): $KRATOS_ADMIN_URL"
+  KRATOS_CONTAINER=$($COMPOSE ps -q kratos 2>/dev/null | head -n1)
+  if [ -z "$KRATOS_CONTAINER" ]; then
+    echo "  ERROR: failed to resolve kratos container ID for admin IP lookup" >&2
+    exit 1
   fi
+  KRATOS_ADMIN_NET="${COMPOSE_PROJECT_NAME:-alt}_kratos-admin"
+  if ! KRATOS_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "'"${KRATOS_ADMIN_NET}"'").IPAddress}}' "$KRATOS_CONTAINER" 2>&1); then
+    echo "  ERROR: failed to resolve kratos admin IP on network ${KRATOS_ADMIN_NET}: ${KRATOS_IP}" >&2
+    exit 1
+  fi
+  export KRATOS_ADMIN_URL="http://${KRATOS_IP}:4434"
+  echo "  Kratos admin URL (container IP): $KRATOS_ADMIN_URL"
 fi
 
 # --- Phase 2: Create test users ---

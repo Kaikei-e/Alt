@@ -94,8 +94,8 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      - MTLS_CLIENT_AUTH=${SEARCH_INDEXER_MTLS_CLIENT_AUTH:-}
-      - MTLS_ALLOWED_PEERS=${SEARCH_INDEXER_MTLS_ALLOWED_PEERS:-}
+      - MTLS_CLIENT_AUTH=${SEARCH_INDEXER_MTLS_CLIENT_AUTH:-require_and_verify}
+      - MTLS_ALLOWED_PEERS=${SEARCH_INDEXER_MTLS_ALLOWED_PEERS:-alt-backend,rag-orchestrator,acolyte-orchestrator}
       - PKI_ENROLLMENT=enabled
       - CERT_SUBJECT=search-indexer
       - CERT_SANS=search-indexer,localhost
@@ -132,6 +132,7 @@ services:
       - MEILI_HYBRID_EMBEDDER=${MEILI_HYBRID_EMBEDDER:-bge-m3}
       - MEILI_HYBRID_SEMANTIC_RATIO=${MEILI_HYBRID_SEMANTIC_RATIO:-0.7}
       - REDIS_STREAMS_URL=redis://redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=search-indexer-group
       - CONSUMER_NAME=search-indexer-1
@@ -144,6 +145,7 @@ services:
       - meili_master_key
       - meili_search_key
       - pki-agent-search-indexer-jwk
+      - redis_password
     networks:
       - alt-network
     volumes:
@@ -152,8 +154,8 @@ services:
     pre_start:
       - <<: *pki-cert-volume-chown-distroless
     ports:
-      # The peer-identity allowlist lives on the mTLS :9443 listener only, so
-      # these two are the unguarded twins. Loopback bind.
+      # Peer identity is enforced on mTLS :9443 (require_and_verify);
+      # plaintext :9300 and :9301 carry no caller authentication. Loopback bind.
       - "127.0.0.1:9300:9300"   # REST API
       - "127.0.0.1:9301:9301"   # Connect-RPC
       # mTLS :9443 intentionally not published (internal east-west only)
@@ -190,9 +192,8 @@ services:
     networks:
       - alt-network
     ports:
-      # /extract-tags and /health carry no @require_auth on plaintext :9400.
-      # Wave 4 in-process mTLS owns :9443. Loopback bind for the cheap health
-      # port — it is not an external mTLS fallback.
+      # Plaintext :9400 has no caller authentication; peer identity is
+      # enforced on in-process mTLS :9443. Loopback bind for health checks.
       - "127.0.0.1:9400:9400"
     environment:
       # Plaintext fallback used only when MTLS_ENFORCE is off. :9102 is
@@ -233,6 +234,7 @@ services:
       - PORT=9400
       - CUDA_VISIBLE_DEVICES=""
       - REDIS_STREAMS_URL=redis://redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=tag-generator-group
       - CONSUMER_NAME=tag-generator-1
@@ -246,6 +248,7 @@ services:
       - OTEL_SERVICE_NAME=tag-generator
     secrets:
       - pki-agent-tag-generator-jwk
+      - redis_password
     volumes:
       - ../scripts:/scripts:ro
       # ONNX classifier models — 479 MB and gitignored, so a path relative to

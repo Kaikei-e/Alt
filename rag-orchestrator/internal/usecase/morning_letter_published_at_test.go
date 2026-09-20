@@ -43,6 +43,7 @@ func TestMorningLetterUsecase_Execute_BoostsAndCitesByArticlePublishedAt(t *test
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
 		Query:       "What are the important news?",
+		UserID:      uuid.NewString(),
 		WithinHours: 168,
 		TopicLimit:  5,
 		Locale:      "ja",
@@ -157,6 +158,7 @@ func TestMorningLetterUsecase_Execute_DoesNotBoostUnknownPublishedAt(t *testing.
 	ctx := context.Background()
 	input := usecase.MorningLetterInput{
 		Query:       "What are the important news?",
+		UserID:      uuid.NewString(),
 		WithinHours: 24,
 		TopicLimit:  5,
 		Locale:      "ja",

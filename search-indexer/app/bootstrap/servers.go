@@ -20,8 +20,8 @@ import (
 )
 
 // newHTTPServer creates the REST HTTP server.
-func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase, otelCfg appOtel.Config, rlCfg config.RateLimitConfig, meiliPing func(context.Context) error) *http.Server {
-	restHandler := rest.NewHandler(searchByUserUsecase, searchArticlesUsecase)
+func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, otelCfg appOtel.Config, rlCfg config.RateLimitConfig, meiliPing func(context.Context) error) *http.Server {
+	restHandler := rest.NewHandler(searchByUserUsecase)
 
 	mux := http.NewServeMux()
 
@@ -97,12 +97,11 @@ func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRe
 // callers have moved; until then the mTLS mux runs in parallel.
 func newMTLSMuxHandler(
 	searchByUserUsecase *usecase.SearchByUserUsecase,
-	searchArticlesUsecase *usecase.SearchArticlesUsecase,
 	connectServerHandler http.Handler,
 	otelCfg appOtel.Config,
 	rlCfg config.RateLimitConfig,
 ) http.Handler {
-	restHandler := rest.NewHandler(searchByUserUsecase, searchArticlesUsecase)
+	restHandler := rest.NewHandler(searchByUserUsecase)
 
 	allowed := parseAllowedPeers(os.Getenv("MTLS_ALLOWED_PEERS"))
 	peer := middleware.NewPeerIdentityMiddleware(allowed)

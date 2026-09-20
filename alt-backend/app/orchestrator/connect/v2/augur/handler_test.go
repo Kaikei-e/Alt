@@ -10,6 +10,7 @@ import (
 	"alt/domain"
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/mocks"
+	"alt/orchestrator/port/rag_integration_port"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -341,4 +342,56 @@ func TestGetConversation_NonNotFoundStillWrapsAsInternal(t *testing.T) {
 	require.Nil(t, resp)
 	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err),
 		"non-NotFound upstream codes must still be sanitised to Internal")
+}
+
+type stubRetrieveContextUsecase struct {
+	capturedQuery  string
+	capturedUserID string
+	contexts       []rag_integration_port.RagContext
+	err            error
+}
+
+func (s *stubRetrieveContextUsecase) Execute(ctx context.Context, query string, userID string) ([]rag_integration_port.RagContext, error) {
+	s.capturedQuery = query
+	s.capturedUserID = userID
+	return s.contexts, s.err
+}
+
+func TestRetrieveContext_Unauthenticated_Rejected(t *testing.T) {
+	stubUC := &stubRetrieveContextUsecase{}
+	h := NewHandler(stubUC, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	resp, err := h.RetrieveContext(context.Background(), connect.NewRequest(&augurv2.RetrieveContextRequest{
+		Query: "test query",
+	}))
+
+	require.Error(t, err)
+	require.Nil(t, resp)
+	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+	assert.Empty(t, stubUC.capturedUserID, "usecase must not be called when unauthenticated")
+}
+
+func TestRetrieveContext_Authenticated_ForwardsUserID(t *testing.T) {
+	stubUC := &stubRetrieveContextUsecase{
+		contexts: []rag_integration_port.RagContext{
+			{Title: "relevant knowledge", URL: "https://example.com", Score: 0.95},
+		},
+	}
+	h := NewHandler(stubUC, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	ctx := authedCtx()
+	user, err := domain.GetUserFromContext(ctx)
+	require.NoError(t, err)
+
+	resp, err := h.RetrieveContext(ctx, connect.NewRequest(&augurv2.RetrieveContextRequest{
+		Query: "test query",
+	}))
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "test query", stubUC.capturedQuery)
+	assert.Equal(t, user.UserID.String(), stubUC.capturedUserID,
+		"authenticated user_id must be forwarded to RetrieveContext usecase")
+	require.Len(t, resp.Msg.Contexts, 1)
+	assert.Equal(t, "relevant knowledge", resp.Msg.Contexts[0].Title)
 }

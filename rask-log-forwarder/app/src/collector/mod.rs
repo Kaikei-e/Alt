@@ -3,12 +3,13 @@ pub mod docker;
 
 use std::sync::Arc;
 use std::time::Duration;
+
+use bollard::container::LogOutput;
+use bytes::Bytes;
+use chrono::{DateTime, Utc};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-// Ensure zero-copy processing by using Bytes throughout
-use bollard::container::LogOutput;
-use bytes::Bytes;
 
 /// Initial delay before the first reconnect attempt after a Docker log
 /// stream error, EOF (container restart), or discovery failure.
@@ -34,7 +35,10 @@ enum StreamExit {
 pub type LogBytes = Bytes;
 pub use discovery::{ContainerInfo, DiscoveryError, ServiceDiscovery, ServiceDiscoveryTrait};
 pub use docker::{
-    CollectorError as DockerError, DockerCollector, DockerContainerInfo, LogStreamOptions,
+    CollectorError as DockerError, DedupeFilter, DockerCollector, DockerConnectError,
+    DockerContainerInfo, DockerEndpointError, LogStreamOptions, compute_resume_log_options,
+    connect_docker, get_validated_docker_endpoint, parse_log_timestamp_prefix,
+    validate_docker_endpoint,
 };
 
 #[derive(Error, Debug)]
@@ -126,6 +130,8 @@ pub struct LogCollector {
     discovery: discovery::ServiceDiscovery,
     container_info: Option<Arc<discovery::ContainerInfo>>,
     target_service: String,
+    last_timestamp: Option<DateTime<Utc>>,
+    warned_malformed_prefix: bool,
 }
 
 impl LogCollector {
@@ -147,6 +153,8 @@ impl LogCollector {
             discovery,
             container_info: None,
             target_service,
+            last_timestamp: None,
+            warned_malformed_prefix: false,
         })
     }
 
@@ -192,10 +200,20 @@ impl LogCollector {
                     continue;
                 }
             };
+            if self.container_info.as_ref().map(|c| c.id.as_str()) != Some(&container_info.id) {
+                self.warned_malformed_prefix = false;
+            }
             self.container_info = Some(Arc::clone(&container_info));
 
             let docker_collector = match DockerCollector::new().await {
                 Ok(c) => c,
+                Err(e @ docker::CollectorError::EndpointError(_)) => {
+                    tracing::error!(
+                        "Fatal Docker endpoint configuration error for service '{}': {e}",
+                        self.target_service
+                    );
+                    return Err(CollectorError::DockerError(e));
+                }
                 Err(e) => {
                     tracing::warn!(
                         "Failed to create Docker client for service '{}': {e}; retrying in {:?}",
@@ -266,7 +284,7 @@ impl LogCollector {
     }
 
     async fn start_docker_api_streaming(
-        &self,
+        &mut self,
         docker_collector: DockerCollector,
         container: &Arc<ContainerInfo>,
         tx: mpsc::Sender<LogEntry>,
@@ -278,17 +296,18 @@ impl LogCollector {
         // Reuse the DockerCollector's existing Docker client
         let docker = docker_collector.docker();
 
-        // IMPORTANT: Set timestamps to false to avoid Docker adding timestamps to log messages
+        let resume_options = compute_resume_log_options(self.last_timestamp);
         let options = LogsOptions {
-            follow: true,
-            stdout: true,
-            stderr: true,
-            timestamps: false, // Changed from true to false
-            // "0": stream new lines only. "all" would re-send the container's
-            // entire log history on every forwarder restart/reconnect.
-            tail: "0".to_string(),
+            follow: resume_options.follow,
+            stdout: resume_options.stdout,
+            stderr: resume_options.stderr,
+            since: resume_options.since,
+            timestamps: resume_options.timestamps,
+            tail: resume_options.tail,
             ..Default::default()
         };
+
+        let mut dedupe_filter = DedupeFilter::new(self.last_timestamp);
 
         let mut stream = docker.logs(&container.id, Some(options));
 
@@ -307,12 +326,33 @@ impl LogCollector {
                             // discards the variant - it is the only place
                             // stderr is still distinguishable.
                             let stream = LogStream::from_log_output(&log_chunk);
+                            let raw_bytes = log_chunk.into_bytes();
+
+                            let (parsed_ts, payload) = parse_log_timestamp_prefix(raw_bytes);
+
+                            if parsed_ts.is_none() && !self.warned_malformed_prefix {
+                                tracing::warn!(
+                                    container_id = %container.id,
+                                    container_name = %container.service_name,
+                                    "Malformed timestamp prefix in Docker log stream; forwarding line unchanged"
+                                );
+                                self.warned_malformed_prefix = true;
+                            }
+
+                            if dedupe_filter.should_drop(parsed_ts) {
+                                tracing::debug!(
+                                    container_id = %container.id,
+                                    timestamp = ?parsed_ts,
+                                    "Dropping duplicate boundary log line on reconnect"
+                                );
+                                continue;
+                            }
 
                             // Create LogEntry with raw bytes - let the parser handle the actual parsing
                             let entry = LogEntry {
                                 container: Arc::clone(container),
                                 stream,
-                                raw_bytes: log_chunk.into_bytes(),
+                                raw_bytes: payload,
                             };
 
                             // Bounded channel: block (apply backpressure) rather than
@@ -328,6 +368,10 @@ impl LogCollector {
                                         return Err(CollectorError::CollectionStopped);
                                     }
                                 }
+                            }
+
+                            if let Some(ts) = parsed_ts {
+                                self.last_timestamp = Some(ts);
                             }
                         }
                         Some(Err(e)) => {

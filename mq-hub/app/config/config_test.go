@@ -8,6 +8,8 @@ import (
 )
 
 func TestNewConfig_ReplyStreamSweepEnabled(t *testing.T) {
+	t.Setenv("REDIS_AUTH", "disabled")
+
 	t.Run("defaults to enabled when unset", func(t *testing.T) {
 		t.Setenv("REPLY_STREAM_SWEEP_ENABLED", "")
 		cfg, err := NewConfig()
