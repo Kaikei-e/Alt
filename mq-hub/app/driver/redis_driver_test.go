@@ -563,3 +563,23 @@ func setupTestDriver(t *testing.T) (*RedisDriver, func()) {
 
 	return driver, cleanup
 }
+
+func TestNewRedisDriverWithOptions_Password(t *testing.T) {
+	driver, err := NewRedisDriverWithOptions("localhost:6379", &RedisDriverOptions{
+		Password: "test-secret-password",
+	})
+	require.NoError(t, err)
+	defer driver.Close()
+
+	assert.Equal(t, "test-secret-password", driver.client.Options().Password)
+}
+
+func TestNewRedisDriverWithURLAndOptions_Password(t *testing.T) {
+	driver, err := NewRedisDriverWithURLAndOptions("redis://localhost:6379", &RedisDriverOptions{
+		Password: "test-secret-password-url",
+	})
+	require.NoError(t, err)
+	defer driver.Close()
+
+	assert.Equal(t, "test-secret-password-url", driver.client.Options().Password)
+}
