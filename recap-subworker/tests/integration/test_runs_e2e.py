@@ -16,6 +16,7 @@ import httpx
 import pytest
 
 from recap_subworker.app import deps
+from recap_subworker.app.infra.admin_auth import AdminAuthConfig, get_admin_auth_config
 from recap_subworker.app.main import create_app
 from recap_subworker.db.dao import RunRecord
 from recap_subworker.services.run_manager import RunSubmission
@@ -75,6 +76,10 @@ async def test_post_then_get_runs_round_trip_via_asgi_transport() -> None:
     app.dependency_overrides[deps.get_get_run_usecase_dep] = lambda: GetRunUsecase(
         reader=store,
     )
+    # ASGITransport never runs the FastAPI lifespan, so app.state.admin_auth
+    # is never populated by create_app()'s _lifespan; override the
+    # dependency directly instead of asserting on unset app.state.
+    app.dependency_overrides[get_admin_auth_config] = lambda: AdminAuthConfig(token=None)
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -100,6 +105,7 @@ async def test_missing_run_returns_404_via_asgi_transport() -> None:
     app.dependency_overrides[deps.get_get_run_usecase_dep] = lambda: GetRunUsecase(
         reader=_InMemoryRunStore(),
     )
+    app.dependency_overrides[get_admin_auth_config] = lambda: AdminAuthConfig(token=None)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         resp = await client.get("/v1/runs/999")

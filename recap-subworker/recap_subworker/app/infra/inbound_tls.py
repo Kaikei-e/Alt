@@ -27,10 +27,10 @@ WAVE4_INBOUND_TLS = "in-process inbound TLS"
 
 logger = logging.getLogger(__name__)
 
-# Connection-local map of verified client CNs. uvicorn does not put the
-# peer certificate in the ASGI scope, so the HTTP protocol records it at
-# handshake and PeerIdentityMiddleware reads it here. Never source this
-# from X-Alt-Peer-Identity.
+# Connection-local map of verified client CNs. Every TLS connection is
+# recorded here at handshake (even with an empty CN for SAN-only leaves)
+# so PeerIdentityMiddleware can distinguish TLS from plaintext callers.
+# Never source this from X-Alt-Peer-Identity.
 _verified_peers: dict[tuple[str, int], str] = {}
 
 
@@ -183,15 +183,22 @@ def common_name_from_ssl(ssl_object: ssl.SSLObject | ssl.SSLSocket | None) -> st
 def remember_tls_peer(client: tuple[str, int] | None, cn: str) -> None:
     if client is None:
         return
-    if cn:
-        _verified_peers[client] = cn
-    else:
-        _verified_peers.pop(client, None)
+    _verified_peers[client] = cn
 
 
 def forget_tls_peer(client: tuple[str, int] | None) -> None:
     if client is not None:
         _verified_peers.pop(client, None)
+
+
+def is_tls_peer(client: tuple[str, int] | None) -> bool:
+    """Report whether the client transport completed an inbound TLS handshake."""
+    if client is None:
+        return False
+    return client in _verified_peers
+
+
+is_tls_connection = is_tls_peer
 
 
 def verified_peer_cn(client: tuple[str, int] | None) -> str:

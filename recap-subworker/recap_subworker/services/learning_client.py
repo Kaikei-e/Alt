@@ -43,6 +43,7 @@ class LearningClient:
         # Enforce a floor on the read stage so the connect < read invariant
         # holds even if a caller passes a tiny budget.
         read_timeout = max(timeout_seconds, _CONNECT_TIMEOUT_SECONDS + 0.5)
+        from recap_subworker.app.infra.admin_auth import load_admin_auth_config
         from recap_subworker.app.infra.mtls_client import (
             SslContextReloader,
             build_ssl_context,
@@ -56,9 +57,21 @@ class LearningClient:
                 os.environ["MTLS_CERT_FILE"],
                 os.environ["MTLS_KEY_FILE"],
             )
+        # recap-worker guards /admin/genre-learning with the same
+        # recap_admin_token secret this service's own /admin/* routes
+        # require. Reuse load_admin_auth_config() instead of a second env
+        # lookup so ADMIN_AUTH=disabled / ADMIN_TOKEN_FILE semantics can't
+        # drift between the inbound guard and this outbound call.
+        admin_auth = load_admin_auth_config()
+        headers = (
+            {"Authorization": f"Bearer {admin_auth.token}"}
+            if admin_auth.token is not None
+            else None
+        )
         client = httpx.AsyncClient(
             timeout=_build_timeout(read_timeout),
             verify=ssl_ctx if ssl_ctx is not None else True,
+            headers=headers,
         )
         sanitized = base_url.rstrip("/")
         return cls(
@@ -70,6 +83,7 @@ class LearningClient:
 
     async def send_learning_payload(self, payload: dict[str, Any]) -> httpx.Response:
         import structlog
+
         logger = structlog.get_logger(__name__)
 
         # Pick up any cert rotation done by pki-agent before opening a new

@@ -111,6 +111,22 @@ def _allow_embedding_drift_in_tests() -> None:
     os.environ.setdefault("RECAP_SUBWORKER_ALLOW_EMBEDDING_DRIFT", "true")
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _default_admin_auth_disabled_in_tests() -> None:
+    """Default `/admin/*` and `/v1/runs` to unauthenticated in the suite.
+
+    `create_app()`'s lifespan calls `load_admin_auth_config()`, which raises
+    unless `ADMIN_AUTH=disabled` or a real `ADMIN_TOKEN_FILE` is set (see
+    `app/infra/admin_auth.py`). Every test that boots the app via
+    `TestClient(create_app())` would otherwise fail fast on the missing
+    token file. `tests/unit/test_admin_auth.py` opts back in per-test via
+    `monkeypatch.setenv`, which overrides this default for that test only.
+    """
+    import os
+
+    os.environ.setdefault("ADMIN_AUTH", "disabled")
+
+
 @pytest.fixture
 def test_settings() -> Settings:
     """Minimal Settings instance for unit tests."""

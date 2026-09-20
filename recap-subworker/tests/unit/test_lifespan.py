@@ -65,6 +65,25 @@ def test_lifespan_binds_deep_health_runner(app_factory) -> None:
         assert runner is not None, "app.state.deep_health_runner must be set by lifespan"
 
 
+def test_lifespan_binds_admin_auth_to_app_state(app_factory) -> None:
+    app = app_factory()
+    with TestClient(app):
+        admin_auth = getattr(app.state, "admin_auth", None)
+        assert admin_auth is not None, "app.state.admin_auth must be set by lifespan"
+
+
+def test_lifespan_fails_fast_when_admin_auth_enabled_without_token(
+    app_factory, monkeypatch
+) -> None:
+    """CLAUDE.md rule 9: a forgotten ADMIN_TOKEN_FILE must abort startup,
+    never silently serve /admin/* and /v1/runs unauthenticated."""
+    monkeypatch.delenv("ADMIN_AUTH", raising=False)
+    monkeypatch.delenv("ADMIN_TOKEN_FILE", raising=False)
+    app = app_factory()
+    with pytest.raises(RuntimeError, match="ADMIN_TOKEN_FILE"), TestClient(app):
+        pass
+
+
 def test_separate_apps_have_independent_deep_health_runners(app_factory) -> None:
     app_a = app_factory()
     app_b = app_factory()
