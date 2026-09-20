@@ -202,6 +202,14 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 	cfg.BatchSize = batchSize
 	cfg.DryRun = dryRun
 
+	if !directMode && !dryRun {
+		token, err := backfill.LoadAPIToken()
+		if err != nil {
+			return fmt.Errorf("load API token: %w", err)
+		}
+		cfg.APIToken = token
+	}
+
 	// Setup context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

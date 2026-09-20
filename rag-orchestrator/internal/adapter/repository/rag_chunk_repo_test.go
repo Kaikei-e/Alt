@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -271,10 +272,11 @@ func TestSearch_OverfetchIsRightSized(t *testing.T) {
 	assert.Equal(t, chunkRepoTestUserID, args[3])
 }
 
-// TestSearch_BareCTECandidatePoolAndUserFilter verifies that the search query
-// uses a bare candidates CTE for pgvector HNSW index utilization with 4x overfetch,
-// and filters by user_id in the outer query before applying the final limit.
-func TestSearch_BareCTECandidatePoolAndUserFilter(t *testing.T) {
+// TestSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit verifies that the search query
+// filters candidates by user_id and current version INSIDE the candidates CTE before applying
+// the candidate limit ($2), so that other users' chunks cannot saturate the candidate pool
+// and destroy user recall.
+func TestSearch_CandidatePoolFiltersByOwnerWithinCandidateLimit(t *testing.T) {
 	repo := NewRagChunkRepository(nil)
 
 	tx := &recordingTx{rows: &enrichedChunkRow{id: uuid.New(), versionID: uuid.New()}}
@@ -286,11 +288,14 @@ func TestSearch_BareCTECandidatePoolAndUserFilter(t *testing.T) {
 	require.Len(t, tx.queries, 1)
 	q := tx.queries[0]
 	assert.Contains(t, q, "WITH candidates AS")
-	assert.Contains(t, q, "SELECT c.id, (c.embedding <=> $1) AS distance")
-	assert.Contains(t, q, "FROM rag_chunks c")
-	assert.Contains(t, q, "LIMIT $2")
-	assert.Contains(t, q, "d.user_id = $4")
-	assert.Contains(t, q, "LIMIT $3")
+	parts := strings.SplitN(q, "SELECT\n\t\t\tc.id", 2)
+	require.Len(t, parts, 2, "must have candidates CTE and outer SELECT")
+	candidatesCTE := parts[0]
+	assert.Contains(t, candidatesCTE, "JOIN rag_document_versions v ON c.version_id = v.id")
+	assert.Contains(t, candidatesCTE, "JOIN rag_documents d ON v.document_id = d.id")
+	assert.Contains(t, candidatesCTE, "d.current_version_id = v.id")
+	assert.Contains(t, candidatesCTE, "d.user_id = $4")
+	assert.Contains(t, candidatesCTE, "LIMIT $2")
 
 	require.Len(t, tx.args, 1)
 	assert.Equal(t, 80, tx.args[0][1], "candidateLimit = limit * 4")

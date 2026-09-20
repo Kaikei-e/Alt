@@ -182,3 +182,31 @@ func TestJobWorker_FailsOnEmptyUserID(t *testing.T) {
 	defer uc.mu.Unlock()
 	assert.Nil(t, uc.capturedCtx, "Upsert should not have been called with empty user_id")
 }
+
+func TestJobWorker_FailsOnInvalidUUID(t *testing.T) {
+	job := makeJob()
+	job.Payload["user_id"] = "not-a-valid-uuid"
+	repo := &stubJobRepo{jobs: []*domain.RagJob{job}}
+	uc := &stubIndexUsecase{}
+
+	w := NewJobWorker(repo, uc, testLogger())
+	w.processNextJob()
+
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	assert.Nil(t, uc.capturedCtx, "Upsert should not have been called with invalid UUID user_id")
+}
+
+func TestJobWorker_FailsOnNilUUID(t *testing.T) {
+	job := makeJob()
+	job.Payload["user_id"] = "00000000-0000-0000-0000-000000000000"
+	repo := &stubJobRepo{jobs: []*domain.RagJob{job}}
+	uc := &stubIndexUsecase{}
+
+	w := NewJobWorker(repo, uc, testLogger())
+	w.processNextJob()
+
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	assert.Nil(t, uc.capturedCtx, "Upsert should not have been called with nil UUID user_id")
+}

@@ -185,12 +185,15 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 	if strings.TrimSpace(req.ArticleId) == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "article_id is required"})
 	}
-	if strings.TrimSpace(req.UserId) == "" {
+	trimmedUserID := strings.TrimSpace(req.UserId)
+	if trimmedUserID == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
 	}
-	if _, err := uuid.Parse(strings.TrimSpace(req.UserId)); err != nil {
+	parsedUserID, err := uuid.Parse(trimmedUserID)
+	if err != nil || parsedUserID == uuid.Nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
 	}
+	req.UserId = parsedUserID.String()
 
 	// Server-side timeout decoupled from caller's context
 	timeoutCtx, cancel := context.WithTimeout(ctx.Request().Context(), upsertTimeout)
@@ -459,6 +462,7 @@ func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 // type-asserts to string, not that it is a real article id.
 type backfillRequest struct {
 	ArticleID string `json:"article_id"`
+	UserID    string `json:"user_id"`
 	Title     string `json:"title"`
 	Body      string `json:"body"`
 	URL       string `json:"url"`
@@ -479,6 +483,18 @@ func (h *Handler) Backfill(ctx echo.Context) error {
 	if _, err := uuid.Parse(req.ArticleID); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid article_id"})
 	}
+	userID := req.UserID
+	if userID == "" {
+		userID = ctx.Request().Header.Get("X-Alt-User-Id")
+	}
+	trimmedUserID := strings.TrimSpace(userID)
+	if trimmedUserID == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing user_id"})
+	}
+	parsedUID, err := uuid.Parse(trimmedUserID)
+	if err != nil || parsedUID == uuid.Nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+	}
 	if req.Title == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing title"})
 	}
@@ -488,6 +504,7 @@ func (h *Handler) Backfill(ctx echo.Context) error {
 
 	payload := map[string]interface{}{
 		"article_id": req.ArticleID,
+		"user_id":    parsedUID.String(),
 		"title":      req.Title,
 		"body":       req.Body,
 	}

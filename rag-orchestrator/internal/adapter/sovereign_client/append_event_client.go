@@ -76,7 +76,7 @@ func LoadSovereignEventToken(tokenFile, authMode string) (string, error) {
 		return "", nil
 	}
 	if tokenFile != "" {
-		content, err := os.ReadFile(tokenFile)
+		content, err := os.ReadFile(tokenFile) // #nosec G304 -- tokenFile is operator-configured secret path from env
 		if err != nil {
 			return "", fmt.Errorf("read SOVEREIGN_EVENT_TOKEN_FILE %s: %w", tokenFile, err)
 		}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -93,8 +94,12 @@ func scanArticlePage(rows *sql.Rows, fn func(Article) error) (articlePage, error
 	var page articlePage
 	for rows.Next() {
 		var a Article
-		if err := rows.Scan(&a.ID, &a.Title, &a.Body, &a.URL, &a.UserID, &a.CreatedAt); err != nil {
+		var rawUserID sql.NullString
+		if err := rows.Scan(&a.ID, &a.Title, &a.Body, &a.URL, &rawUserID, &a.CreatedAt); err != nil {
 			return page, fmt.Errorf("scan article: %w", err)
+		}
+		if rawUserID.Valid {
+			a.UserID = strings.TrimSpace(rawUserID.String)
 		}
 		page.count++
 		page.lastCreatedAt, page.lastID = a.CreatedAt, a.ID

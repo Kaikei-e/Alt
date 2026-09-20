@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"rag-orchestrator/internal/domain"
@@ -120,6 +121,14 @@ func (e *Enqueuer) Run(ctx context.Context) (EnqueueStats, error) {
 			e.logger.Warn("rebuild_enqueue_skipped_empty_body", slog.String("article_id", a.ID))
 			return nil
 		}
+		parsedUserID, err := uuid.Parse(strings.TrimSpace(a.UserID))
+		if err != nil || parsedUserID == uuid.Nil {
+			e.logger.Warn("rebuild_enqueue_skipped_missing_owner",
+				slog.String("article_id", a.ID),
+				slog.String("user_id", a.UserID))
+			return nil
+		}
+		a.UserID = parsedUserID.String()
 		if _, ok := upToDate[a.ID]; ok {
 			stats.SkippedUpToDate++
 			return nil

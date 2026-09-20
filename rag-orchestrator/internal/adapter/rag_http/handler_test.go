@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type dummyRetrieveUsecase struct {
@@ -664,4 +665,92 @@ func TestRetrieveContext_RequiresUserID(t *testing.T) {
 	err = handler.RetrieveContext(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+type stubJobRepo struct {
+	enqueued []*domain.RagJob
+}
+
+func (s *stubJobRepo) Enqueue(ctx context.Context, job *domain.RagJob) error {
+	s.enqueued = append(s.enqueued, job)
+	return nil
+}
+
+func (s *stubJobRepo) AcquireNextJob(ctx context.Context) (*domain.RagJob, error) {
+	return nil, nil
+}
+
+func (s *stubJobRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string, errMsg *string) error {
+	return nil
+}
+
+func TestBackfill_RequiresUserID_AndEnqueuesOwner(t *testing.T) {
+	e := echo.New()
+	jobRepo := &stubJobRepo{}
+	handler := rag_http.NewHandler(nil, nil, nil, jobRepo, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+
+	articleID := uuid.New().String()
+
+	// 1. Missing user_id -> 400
+	body := bytes.NewBufferString(`{"article_id":"` + articleID + `","title":"Test","body":"Content"}`)
+	req := httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.Backfill(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "user_id")
+
+	// 2. Invalid user_id -> 400
+	body = bytes.NewBufferString(`{"article_id":"` + articleID + `","user_id":"not-a-uuid","title":"Test","body":"Content"}`)
+	req = httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+
+	err = handler.Backfill(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	// 2b. Nil UUID user_id -> 400
+	body = bytes.NewBufferString(`{"article_id":"` + articleID + `","user_id":"00000000-0000-0000-0000-000000000000","title":"Test","body":"Content"}`)
+	req = httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+
+	err = handler.Backfill(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	// 3. Valid user_id in JSON body -> 202 and user_id in job payload
+	validUserID := "00000000-0000-0000-0000-000000000001"
+	body = bytes.NewBufferString(`{"article_id":"` + articleID + `","user_id":"` + validUserID + `","title":"Test","body":"Content"}`)
+	req = httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+
+	err = handler.Backfill(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusAccepted, rec.Code)
+	require.Len(t, jobRepo.enqueued, 1)
+	assert.Equal(t, validUserID, jobRepo.enqueued[0].Payload["user_id"])
+
+	// 4. Valid user_id via X-Alt-User-Id header -> 202 and user_id in job payload
+	articleID2 := uuid.New().String()
+	body = bytes.NewBufferString(`{"article_id":"` + articleID2 + `","title":"Test 2","body":"Content 2"}`)
+	req = httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Alt-User-Id", validUserID)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+
+	err = handler.Backfill(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusAccepted, rec.Code)
+	require.Len(t, jobRepo.enqueued, 2)
+	assert.Equal(t, validUserID, jobRepo.enqueued[1].Payload["user_id"])
 }

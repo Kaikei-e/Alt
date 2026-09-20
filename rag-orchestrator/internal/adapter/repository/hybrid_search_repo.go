@@ -71,46 +71,7 @@ func (r *hybridSearchRepository) HybridSearch(ctx context.Context, queryVector [
 	}
 
 	tsConfig := tsqueryConfig(queryText)
-	query := fmt.Sprintf(`
-		WITH vector_matches AS (
-			SELECT id, rank() OVER (ORDER BY embedding <=> $1) AS rank
-			FROM rag_chunks
-			ORDER BY embedding <=> $1
-			LIMIT $3
-		),
-		text_matches AS (
-			SELECT id, rank() OVER (ORDER BY ts_rank_cd(tsv, plainto_tsquery('%s', $2)) DESC) AS rank
-			FROM rag_chunks
-			WHERE tsv @@ plainto_tsquery('%s', $2)
-			ORDER BY rank
-			LIMIT $3
-		),
-		rrf AS (
-			SELECT id, SUM(1.0 / (rank + %d)) AS score
-			FROM (
-				SELECT id, rank FROM vector_matches
-				UNION ALL
-				SELECT id, rank FROM text_matches
-			) combined
-			GROUP BY id
-			ORDER BY score DESC
-			LIMIT $4
-		)
-		SELECT
-			r.score,
-			c.id, c.version_id, c.ordinal, c.content, c.created_at,
-			d.article_id,
-			v.version_number,
-			v.title,
-			v.url
-		FROM rrf r
-		JOIN rag_chunks c ON r.id = c.id
-		JOIN rag_document_versions v ON c.version_id = v.id
-		JOIN rag_documents d ON v.document_id = d.id
-		WHERE d.current_version_id = v.id
-		  AND d.user_id = $5
-		ORDER BY r.score DESC
-	`, tsConfig, tsConfig, r.rrfK)
+	query := buildHybridSearchQuery(tsConfig, r.rrfK)
 
 	rows, err := r.pool.Query(ctx, query,
 		pgvector.NewVector(queryVector),
@@ -210,63 +171,17 @@ func (r *hybridSearchRepository) SearchNeighbors(
 
 	// Optional vector arm: when the encoder failed upstream, queryVector may be
 	// empty. We still run the text arm so the lexical neighbors survive.
-	vectorArm := ""
 	args := []any{queryText, candidateLimit, rrfLimit}
+	vectorArmArg := 0
 	if len(queryVector) > 0 {
-		vectorArm = `
-			vector_matches AS (
-				SELECT id, rank() OVER (ORDER BY embedding <=> $4) AS rank
-				FROM rag_chunks
-				ORDER BY embedding <=> $4
-				LIMIT $2
-			),`
 		args = append(args, pgvector.NewVector(queryVector))
+		vectorArmArg = len(args)
 	}
-
-	userArgIdx := len(args) + 1
 	args = append(args, userID)
-
-	combinedSource := `SELECT id, rank FROM text_matches`
-	if vectorArm != "" {
-		combinedSource = `SELECT id, rank FROM vector_matches
-				UNION ALL
-				SELECT id, rank FROM text_matches`
-	}
+	userArgIdx := len(args)
 
 	tsConfig := tsqueryConfig(queryText)
-	query := fmt.Sprintf(`
-		WITH %s
-		text_matches AS (
-			SELECT id, rank() OVER (ORDER BY ts_rank_cd(tsv, plainto_tsquery('%s', $1)) DESC) AS rank
-			FROM rag_chunks
-			WHERE tsv @@ plainto_tsquery('%s', $1)
-			ORDER BY rank
-			LIMIT $2
-		),
-		rrf AS (
-			SELECT id, SUM(1.0 / (rank + %d)) AS score
-			FROM (
-				%s
-			) combined
-			GROUP BY id
-			ORDER BY score DESC
-			LIMIT $3
-		)
-		SELECT
-			r.score,
-			c.id, c.version_id, c.ordinal, c.content, c.created_at,
-			d.article_id,
-			v.version_number,
-			v.title,
-			v.url
-		FROM rrf r
-		JOIN rag_chunks c ON r.id = c.id
-		JOIN rag_document_versions v ON c.version_id = v.id
-		JOIN rag_documents d ON v.document_id = d.id
-		WHERE d.current_version_id = v.id
-		  AND d.user_id = $%d
-		ORDER BY r.score DESC
-	`, vectorArm, tsConfig, tsConfig, r.rrfK, combinedSource, userArgIdx)
+	query := buildSearchNeighborsQuery(tsConfig, r.rrfK, vectorArmArg, userArgIdx)
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -323,4 +238,117 @@ func (r *hybridSearchRepository) SearchNeighbors(
 	}
 
 	return results, nil
+}
+
+func buildHybridSearchQuery(tsConfig string, rrfK int) string {
+	return fmt.Sprintf(`
+		WITH vector_matches AS (
+			SELECT c.id, rank() OVER (ORDER BY c.embedding <=> $1) AS rank
+			FROM rag_chunks c
+			JOIN rag_document_versions v ON c.version_id = v.id
+			JOIN rag_documents d ON v.document_id = d.id
+			WHERE d.current_version_id = v.id
+			  AND d.user_id = $5
+			ORDER BY c.embedding <=> $1
+			LIMIT $3
+		),
+		text_matches AS (
+			SELECT c.id, rank() OVER (ORDER BY ts_rank_cd(c.tsv, plainto_tsquery('%s', $2)) DESC) AS rank
+			FROM rag_chunks c
+			JOIN rag_document_versions v ON c.version_id = v.id
+			JOIN rag_documents d ON v.document_id = d.id
+			WHERE d.current_version_id = v.id
+			  AND d.user_id = $5
+			  AND c.tsv @@ plainto_tsquery('%s', $2)
+			ORDER BY rank
+			LIMIT $3
+		),
+		rrf AS (
+			SELECT id, SUM(1.0 / (rank + %d)) AS score
+			FROM (
+				SELECT id, rank FROM vector_matches
+				UNION ALL
+				SELECT id, rank FROM text_matches
+			) combined
+			GROUP BY id
+			ORDER BY score DESC
+			LIMIT $4
+		)
+		SELECT
+			r.score,
+			c.id, c.version_id, c.ordinal, c.content, c.created_at,
+			d.article_id,
+			v.version_number,
+			v.title,
+			v.url
+		FROM rrf r
+		JOIN rag_chunks c ON r.id = c.id
+		JOIN rag_document_versions v ON c.version_id = v.id
+		JOIN rag_documents d ON v.document_id = d.id
+		WHERE d.current_version_id = v.id
+		  AND d.user_id = $5
+		ORDER BY r.score DESC
+	`, tsConfig, tsConfig, rrfK)
+}
+
+func buildSearchNeighborsQuery(tsConfig string, rrfK int, vectorArmArg, userArgIdx int) string {
+	vectorArm := ""
+	if vectorArmArg > 0 {
+		vectorArm = fmt.Sprintf(`
+			vector_matches AS (
+				SELECT c.id, rank() OVER (ORDER BY c.embedding <=> $%d) AS rank
+				FROM rag_chunks c
+				JOIN rag_document_versions v ON c.version_id = v.id
+				JOIN rag_documents d ON v.document_id = d.id
+				WHERE d.current_version_id = v.id
+				  AND d.user_id = $%d
+				ORDER BY c.embedding <=> $%d
+				LIMIT $2
+			),`, vectorArmArg, userArgIdx, vectorArmArg)
+	}
+
+	combinedSource := `SELECT id, rank FROM text_matches`
+	if vectorArm != "" {
+		combinedSource = `SELECT id, rank FROM vector_matches
+				UNION ALL
+				SELECT id, rank FROM text_matches`
+	}
+
+	return fmt.Sprintf(`
+		WITH %s
+		text_matches AS (
+			SELECT c.id, rank() OVER (ORDER BY ts_rank_cd(c.tsv, plainto_tsquery('%s', $1)) DESC) AS rank
+			FROM rag_chunks c
+			JOIN rag_document_versions v ON c.version_id = v.id
+			JOIN rag_documents d ON v.document_id = d.id
+			WHERE d.current_version_id = v.id
+			  AND d.user_id = $%d
+			  AND c.tsv @@ plainto_tsquery('%s', $1)
+			ORDER BY rank
+			LIMIT $2
+		),
+		rrf AS (
+			SELECT id, SUM(1.0 / (rank + %d)) AS score
+			FROM (
+				%s
+			) combined
+			GROUP BY id
+			ORDER BY score DESC
+			LIMIT $3
+		)
+		SELECT
+			r.score,
+			c.id, c.version_id, c.ordinal, c.content, c.created_at,
+			d.article_id,
+			v.version_number,
+			v.title,
+			v.url
+		FROM rrf r
+		JOIN rag_chunks c ON r.id = c.id
+		JOIN rag_document_versions v ON c.version_id = v.id
+		JOIN rag_documents d ON v.document_id = d.id
+		WHERE d.current_version_id = v.id
+		  AND d.user_id = $%d
+		ORDER BY r.score DESC
+	`, vectorArm, tsConfig, userArgIdx, tsConfig, rrfK, combinedSource, userArgIdx)
 }

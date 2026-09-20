@@ -133,16 +133,10 @@ func (r *ragChunkRepository) InsertEvents(ctx context.Context, events []domain.R
 	return nil
 }
 
-// Overfetch bounds for the vector candidate pool. With per-user scoping applied
-// after the bare CTE, the candidate pool must absorb not only non-current versions
-// but also chunks belonging to other users before the outer query filters by
-// d.user_id = $4 and applies the final LIMIT $3. Hence 4x overfetch (capped at
-// searchOverfetchCap).
-//
-// The size is also matched to what the index can actually produce: the cluster
-// sets hnsw.ef_search=100 (docker/postgres/postgresql-rag.conf), so the previous
-// 3x/500 pool asked for rows the scan was never going to return. Sizing is a
-// server setting, not a per-query one — no session-level SET belongs here.
+// Overfetch bounds for the vector candidate pool. Candidates are scoped to
+// the requested user_id and current document version inside the CTE, so the
+// candidate pool contains only current versions belonging to the user before
+// the outer query applies the final LIMIT $3.
 const (
 	searchOverfetchMultiplier = 4
 	searchOverfetchCap        = 200
@@ -151,7 +145,8 @@ const (
 // Search performs a vector search across chunks belonging to userID (Augur use case).
 //
 // One round-trip: the candidate scan and the metadata enrichment are a single CTE query,
-// filtered by rag_documents.user_id = userID (NULL-owner rows are invisible).
+// filtered by rag_documents.user_id = userID (NULL-owner rows are invisible) within the
+// candidate CTE before LIMIT $2 is applied to guarantee user recall.
 func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, limit int, userID uuid.UUID) ([]domain.SearchResult, error) {
 	if userID == uuid.Nil {
 		return nil, fmt.Errorf("ragChunkRepository.Search: user_id is required")
@@ -162,12 +157,9 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		candidateLimit = searchOverfetchCap
 	}
 
-	// The candidates CTE keeps its own ORDER BY ... LIMIT on the bare distance
-	// expression, which is what lets pgvector use the HNSW index; the joins that
-	// would otherwise defeat it happen outside, over the candidate set.
-	// The outer ORDER BY is not redundant: the cluster runs
-	// hnsw.iterative_scan='relaxed_order', so the CTE may hand back candidates
-	// slightly out of distance order.
+	// The candidates CTE filters by current document version and user_id before
+	// applying candidateLimit ($2), ensuring other users' chunks cannot crowd out
+	// this user's results.
 	//
 	// c.embedding is selected only inside the distance projection, never as its
 	// own column: scanning it into the non-nullable domain.RagChunk.Embedding
@@ -176,6 +168,10 @@ func (r *ragChunkRepository) Search(ctx context.Context, queryVector []float32, 
 		WITH candidates AS (
 			SELECT c.id, (c.embedding <=> $1) AS distance
 			FROM rag_chunks c
+			JOIN rag_document_versions v ON c.version_id = v.id
+			JOIN rag_documents d ON v.document_id = d.id
+			WHERE d.current_version_id = v.id
+			  AND d.user_id = $4
 			ORDER BY c.embedding <=> $1
 			LIMIT $2
 		)

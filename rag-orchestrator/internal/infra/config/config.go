@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -349,32 +350,44 @@ type APIAuthConfig struct {
 
 const minAPITokenLen = 24
 
-func loadAPIAuth() APIAuthConfig {
+// ResolveAPIAuth resolves the API authentication token following server config semantics.
+// It checks RAG_API_AUTH ("disabled" returns ("", false, nil)),
+// RAG_API_TOKEN_FILE (must be readable, >= 24 chars),
+// and RAG_API_TOKEN (>= 24 chars).
+func ResolveAPIAuth() (APIAuthConfig, error) {
 	authEnv := strings.TrimSpace(os.Getenv("RAG_API_AUTH"))
 	if strings.EqualFold(authEnv, "disabled") {
-		return APIAuthConfig{Token: "", Enabled: false}
+		return APIAuthConfig{Token: "", Enabled: false}, nil
 	}
 
 	if path := strings.TrimSpace(os.Getenv("RAG_API_TOKEN_FILE")); path != "" {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304 -- path is operator-configured secret path from RAG_API_TOKEN_FILE
 		if err != nil {
-			panic(fmt.Sprintf("config: read RAG_API_TOKEN_FILE %s: %v", path, err))
+			return APIAuthConfig{}, fmt.Errorf("read RAG_API_TOKEN_FILE %s: %w", path, err)
 		}
 		token := strings.TrimSpace(string(data))
 		if len(token) < minAPITokenLen {
-			panic(fmt.Sprintf("config: token from RAG_API_TOKEN_FILE must be at least %d characters, got %d", minAPITokenLen, len(token)))
+			return APIAuthConfig{}, fmt.Errorf("token from RAG_API_TOKEN_FILE must be at least %d characters, got %d", minAPITokenLen, len(token))
 		}
-		return APIAuthConfig{Token: token, Enabled: true}
+		return APIAuthConfig{Token: token, Enabled: true}, nil
 	}
 
 	if token := strings.TrimSpace(os.Getenv("RAG_API_TOKEN")); token != "" {
 		if len(token) < minAPITokenLen {
-			panic(fmt.Sprintf("config: RAG_API_TOKEN must be at least %d characters, got %d", minAPITokenLen, len(token)))
+			return APIAuthConfig{}, fmt.Errorf("RAG_API_TOKEN must be at least %d characters, got %d", minAPITokenLen, len(token))
 		}
-		return APIAuthConfig{Token: token, Enabled: true}
+		return APIAuthConfig{Token: token, Enabled: true}, nil
 	}
 
-	panic("config: RAG_API_TOKEN_FILE or RAG_API_TOKEN is required; set RAG_API_AUTH=disabled to run the :9010 listener without authentication")
+	return APIAuthConfig{}, errors.New("RAG_API_TOKEN_FILE or RAG_API_TOKEN is required; set RAG_API_AUTH=disabled to run the :9010 listener without authentication")
+}
+
+func loadAPIAuth() APIAuthConfig {
+	cfg, err := ResolveAPIAuth()
+	if err != nil {
+		panic(fmt.Sprintf("config: %v", err))
+	}
+	return cfg
 }
 
 // Config is the top-level configuration, organized by concern.
