@@ -12,15 +12,17 @@ import (
 )
 
 type fakeWarmupEngine struct {
-	calls    atomic.Int32
-	delay    time.Duration
-	err      error
-	gotQuery atomic.Value // string
+	calls     atomic.Int32
+	delay     time.Duration
+	err       error
+	gotQuery  atomic.Value // string
+	gotUserID atomic.Value // string
 }
 
-func (f *fakeWarmupEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
+func (f *fakeWarmupEngine) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
 	f.calls.Add(1)
 	f.gotQuery.Store(query)
+	f.gotUserID.Store(userID)
 	if f.delay > 0 {
 		select {
 		case <-time.After(f.delay):
@@ -31,8 +33,8 @@ func (f *fakeWarmupEngine) Search(ctx context.Context, query string, limit int) 
 	return nil, f.err
 }
 
-// TestWarmupSearchEngine_CallsSearchOnce confirms warmup invokes Search exactly
-// once. The probe is what brings the embedding model into Ollama's
+// TestWarmupSearchEngine_CallsSearchOnce confirms warmup invokes SearchByUserID exactly
+// once with system:warmup. The probe is what brings the embedding model into Ollama's
 // GPU-resident set so the first user query no longer pays the ~1100ms model-load
 // penalty.
 func TestWarmupSearchEngine_CallsSearchOnce(t *testing.T) {
@@ -40,7 +42,10 @@ func TestWarmupSearchEngine_CallsSearchOnce(t *testing.T) {
 	eng := &fakeWarmupEngine{}
 	warmupSearchEngine(context.Background(), eng)
 	if got := eng.calls.Load(); got != 1 {
-		t.Fatalf("Search call count = %d, want 1", got)
+		t.Fatalf("SearchByUserID call count = %d, want 1", got)
+	}
+	if gotUID, _ := eng.gotUserID.Load().(string); gotUID != "system:warmup" {
+		t.Fatalf("SearchByUserID user_id = %q, want %q", gotUID, "system:warmup")
 	}
 }
 

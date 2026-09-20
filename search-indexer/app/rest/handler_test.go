@@ -6,10 +6,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"search-indexer/domain"
 	"search-indexer/logger"
 	"search-indexer/usecase"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,20 +27,28 @@ type mockSearchEngine struct {
 	searchErr            error
 	searchByUserIDResult []domain.SearchDocument
 	searchByUserIDErr    error
+
+	// Recorded by SearchByUserIDWithDateFilter so tests can catch a
+	// regression that silently drops the date window instead of forwarding
+	// it to the search engine.
+	dateFilterCalls     int
+	gotDateFilterQuery  string
+	gotDateFilterUserID string
+	gotPublishedAfter   *time.Time
+	gotPublishedBefore  *time.Time
 }
 
 func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
 	return nil
 }
 func (m *mockSearchEngine) DeleteDocuments(ctx context.Context, ids []string) error { return nil }
-func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
-	return m.searchResult, m.searchErr
-}
-func (m *mockSearchEngine) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
-	return nil, nil
-}
-func (m *mockSearchEngine) SearchWithDateFilter(ctx context.Context, query string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
-	return nil, nil
+func (m *mockSearchEngine) SearchByUserIDWithDateFilter(ctx context.Context, query string, userID string, publishedAfter, publishedBefore *time.Time, limit int) ([]domain.SearchDocument, error) {
+	m.dateFilterCalls++
+	m.gotDateFilterQuery = query
+	m.gotDateFilterUserID = userID
+	m.gotPublishedAfter = publishedAfter
+	m.gotPublishedBefore = publishedBefore
+	return m.searchByUserIDResult, m.searchByUserIDErr
 }
 func (m *mockSearchEngine) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
 	return m.searchByUserIDResult, m.searchByUserIDErr
@@ -81,6 +91,18 @@ func TestHandler_SearchArticles(t *testing.T) {
 			wantStatusCode: http.StatusBadRequest,
 		},
 		{
+			name:           "missing user_id",
+			query:          "test",
+			userID:         "",
+			wantStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:           "whitespace user_id",
+			query:          "test",
+			userID:         "   ",
+			wantStatusCode: http.StatusBadRequest,
+		},
+		{
 			name:           "search engine error",
 			query:          "test",
 			userID:         "user1",
@@ -105,18 +127,17 @@ func TestHandler_SearchArticles(t *testing.T) {
 			}
 
 			searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
-			searchArticlesUsecase := usecase.NewSearchArticlesUsecase(mock)
-			handler := NewHandler(searchByUserUsecase, searchArticlesUsecase)
+			handler := NewHandler(searchByUserUsecase)
 
-			url := "/v1/search?"
+			values := url.Values{}
 			if tt.query != "" {
-				url += "q=" + tt.query + "&"
+				values.Set("q", tt.query)
 			}
 			if tt.userID != "" {
-				url += "user_id=" + tt.userID
+				values.Set("user_id", tt.userID)
 			}
 
-			req := httptest.NewRequest(http.MethodGet, url, nil)
+			req := httptest.NewRequest(http.MethodGet, "/v1/search?"+values.Encode(), nil)
 			rec := httptest.NewRecorder()
 
 			handler.SearchArticles(rec, req)
@@ -138,37 +159,66 @@ func TestHandler_SearchArticles(t *testing.T) {
 	}
 }
 
-func TestHandler_SearchArticles_WithoutUserID_UsesUnfilteredSearch(t *testing.T) {
-	unfilteredResults := []domain.SearchDocument{
-		{ID: "1", Title: "Iran Oil Crisis", Content: "Content about Iran", Tags: []string{"iran"}},
-		{ID: "2", Title: "Oil Price Surge", Content: "Oil prices rising", Tags: []string{"oil"}},
-	}
-
-	mock := &mockSearchEngine{
-		searchResult:         unfilteredResults,
-		searchByUserIDResult: nil, // user-scoped search returns nothing
-	}
+func TestHandler_SearchArticles_WithoutUserID_ReturnsBadRequest(t *testing.T) {
+	mock := &mockSearchEngine{}
 
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
-	searchArticlesUsecase := usecase.NewSearchArticlesUsecase(mock)
-	handler := NewHandler(searchByUserUsecase, searchArticlesUsecase)
+	handler := NewHandler(searchByUserUsecase)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=iran+oil&limit=50", nil)
 	rec := httptest.NewRecorder()
 
 	handler.SearchArticles(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusOK)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 
-	var resp SearchArticlesResponse
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+	body := rec.Body.String()
+	if !strings.Contains(body, "user_id parameter required") {
+		t.Errorf("body = %q, want containing 'user_id parameter required'", body)
+	}
+}
+
+func TestHandler_SearchArticles_EmptyUserID_ReturnsBadRequest(t *testing.T) {
+	mock := &mockSearchEngine{}
+
+	searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
+	handler := NewHandler(searchByUserUsecase)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=iran+oil&user_id=&limit=50", nil)
+	rec := httptest.NewRecorder()
+
+	handler.SearchArticles(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 
-	if len(resp.Hits) != 2 {
-		t.Errorf("hit count = %d, want 2 (unfiltered search should return all results)", len(resp.Hits))
+	body := rec.Body.String()
+	if !strings.Contains(body, "user_id parameter required") {
+		t.Errorf("body = %q, want containing 'user_id parameter required'", body)
+	}
+}
+
+func TestHandler_SearchArticles_WhitespaceUserID_ReturnsBadRequest(t *testing.T) {
+	mock := &mockSearchEngine{}
+
+	searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
+	handler := NewHandler(searchByUserUsecase)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=iran+oil&user_id=%20%20&limit=50", nil)
+	rec := httptest.NewRecorder()
+
+	handler.SearchArticles(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "user_id parameter required") {
+		t.Errorf("body = %q, want containing 'user_id parameter required'", body)
 	}
 }
 
@@ -188,7 +238,6 @@ func TestHandler_SearchArticles_ResponseHasTotal(t *testing.T) {
 
 	handler := NewHandler(
 		usecase.NewSearchByUserUsecase(mock),
-		usecase.NewSearchArticlesUsecase(mock),
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=test&user_id=u1", nil)

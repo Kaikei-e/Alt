@@ -66,11 +66,6 @@ func TestCompilation(t *testing.T) {
 	// Usecase constructors must return usable, non-nil instances even when
 	// wired with a nil dependency (the real dependency is injected later by
 	// bootstrap; the constructor itself must not panic or return nil).
-	searchUsecase := usecase.NewSearchArticlesUsecase(nil)
-	if searchUsecase == nil {
-		t.Fatal("NewSearchArticlesUsecase(nil) = nil, want non-nil usecase")
-	}
-
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(nil)
 	if searchByUserUsecase == nil {
 		t.Fatal("NewSearchByUserUsecase(nil) = nil, want non-nil usecase")

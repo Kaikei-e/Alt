@@ -73,7 +73,7 @@ func TestMeilisearchDriver_Search_LeaderCancelDoesNotFailOtherCallers(t *testing
 
 	leaderErr := make(chan error, 1)
 	go func() {
-		_, err := d.Search(leaderCtx, "vance", 10)
+		_, err := d.SearchByUserID(leaderCtx, "vance", "u1", 10)
 		leaderErr <- err
 	}()
 
@@ -92,7 +92,7 @@ func TestMeilisearchDriver_Search_LeaderCancelDoesNotFailOtherCallers(t *testing
 	}
 	follower := make(chan searchResult, 1)
 	go func() {
-		docs, err := d.Search(context.Background(), "vance", 10)
+		docs, err := d.SearchByUserID(context.Background(), "vance", "u1", 10)
 		follower <- searchResult{docs: docs, err: err}
 	}()
 
@@ -140,16 +140,16 @@ func TestMeilisearchDriver_Search_LeaderCancelDoesNotFailOtherCallers(t *testing
 	}
 }
 
-// TestMeilisearchDriver_Search_RealFailureIsNotRetried pins the other half of
+// TestMeilisearchDriver_SearchByUserID_RealFailureIsNotRetried pins the other half of
 // the failover rule: a genuine Meilisearch failure must surface to every
 // waiter as-is. Re-running the search on non-cancellation errors would turn a
 // broken engine into an N-times amplified load.
-func TestMeilisearchDriver_Search_RealFailureIsNotRetried(t *testing.T) {
+func TestMeilisearchDriver_SearchByUserID_RealFailureIsNotRetried(t *testing.T) {
 	boom := errors.New("index not found")
 	idx := &failingSearchIndex{err: boom}
 	d := NewMeilisearchDriverWithClients(&fakeServiceManager{idx: idx}, nil, "articles")
 
-	_, err := d.Search(context.Background(), "vance", 10)
+	_, err := d.SearchByUserID(context.Background(), "vance", "u1", 10)
 	if !errors.Is(err, boom) {
 		t.Fatalf("got %v, want the underlying engine error", err)
 	}

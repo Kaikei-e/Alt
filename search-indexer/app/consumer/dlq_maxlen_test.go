@@ -63,8 +63,12 @@ func TestReclaimPending_BoundsDLQStreamLength(t *testing.T) {
 	const dlqMaxLen = 3
 
 	t.Setenv("CONSUMER_DLQ_MAX_LEN", fmt.Sprintf("%d", dlqMaxLen))
+	t.Setenv("REDIS_AUTH", "disabled")
 
-	cfg := ConfigFromEnv()
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("ConfigFromEnv: %v", err)
+	}
 	cfg.RedisURL = fmt.Sprintf("redis://%s", srv.Addr())
 	cfg.GroupName = reclaimTestGroup
 	cfg.ConsumerName = "consumer-a"

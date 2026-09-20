@@ -13,9 +13,9 @@ import (
 )
 
 // TestMain ensures logger.Logger is initialized before any test in this
-// package runs -- recordProcessing (invoked by Search/SearchWithFilters/
-// etc.) calls logger.Logger.DebugContext unconditionally, and the package
-// had no test exercising those methods end-to-end before this file.
+// package runs -- recordProcessing (invoked by the user-scoped search
+// variants) calls logger.Logger.DebugContext unconditionally, and the
+// package had no test exercising those methods end-to-end before this file.
 func TestMain(m *testing.M) {
 	logger.Init()
 	os.Exit(m.Run())
@@ -222,17 +222,17 @@ func TestMeilisearchDriver_DeleteDocuments_PropagatesCallerContext(t *testing.T)
 	}
 }
 
-// TestMeilisearchDriver_Search_PropagatesCallerContext covers the read path,
+// TestMeilisearchDriver_SearchByUserID_PropagatesCallerContext covers the read path,
 // which doesn't go through waitForTask at all.
-func TestMeilisearchDriver_Search_PropagatesCallerContext(t *testing.T) {
+func TestMeilisearchDriver_SearchByUserID_PropagatesCallerContext(t *testing.T) {
 	fake := newFakeIndexManager()
 	sm := &fakeServiceManager{idx: fake}
 	d := NewMeilisearchDriverWithClients(sm, nil, "articles")
 
 	ctx := withMarker(context.Background(), "caller-marker")
 
-	if _, err := d.Search(ctx, "query", 10); err != nil {
-		t.Fatalf("Search() error = %v", err)
+	if _, err := d.SearchByUserID(ctx, "query", "user1", 10); err != nil {
+		t.Fatalf("SearchByUserID() error = %v", err)
 	}
 
 	if got := markerOf(fake.ctxFor("Search")); got != "caller-marker" {

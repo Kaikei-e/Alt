@@ -2,15 +2,20 @@
 package consumer
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"time"
+
+	"search-indexer/config"
 )
 
 // Config holds consumer configuration.
 type Config struct {
 	// RedisURL is the Redis connection URL.
 	RedisURL string
+	// RedisPassword is the authentication password for Redis, loaded from REDIS_PASSWORD_FILE.
+	RedisPassword string
 	// GroupName is the consumer group name.
 	GroupName string
 	// ConsumerName is this consumer's name within the group.
@@ -81,8 +86,14 @@ func DefaultConfig() Config {
 }
 
 // ConfigFromEnv loads consumer configuration from environment variables.
-func ConfigFromEnv() Config {
+func ConfigFromEnv() (Config, error) {
 	cfg := DefaultConfig()
+
+	redisPassword, err := config.ResolveRedisPassword(nil)
+	if err != nil {
+		return cfg, fmt.Errorf("resolve redis password: %w", err)
+	}
+	cfg.RedisPassword = redisPassword
 
 	if v := os.Getenv("REDIS_STREAMS_URL"); v != "" {
 		cfg.RedisURL = v
@@ -123,5 +134,5 @@ func ConfigFromEnv() Config {
 		}
 	}
 
-	return cfg
+	return cfg, nil
 }
