@@ -609,3 +609,10 @@ pre {
 		@apply bg-background text-foreground;
 	}
 }
+
+/* External link indicator for markdown and user/LLM content */
+a.external-link::after {
+	content: " ↗";
+	font-size: 0.85em;
+	opacity: 0.7;
+}

@@ -1,11 +1,15 @@
 import DOMPurify from "isomorphic-dompurify";
 
-// Add hook to force target="_blank" and rel="noopener noreferrer" on all links
-// This ensures external links open in new tabs safely
+// Add hook to force target="_blank", rel="noopener noreferrer nofollow ugc",
+// and external-link class on external links for security against injection / phishing
 DOMPurify.addHook("afterSanitizeAttributes", (node) => {
 	if (node.tagName === "A") {
 		node.setAttribute("target", "_blank");
-		node.setAttribute("rel", "noopener noreferrer");
+		node.setAttribute("rel", "noopener noreferrer nofollow ugc");
+		const href = node.getAttribute("href") || "";
+		if (/^https?:\/\//i.test(href)) {
+			node.classList.add("external-link");
+		}
 	}
 });
 
@@ -88,8 +92,9 @@ export function sanitizeHtml(html: string): string {
 		ADD_ATTR: ["target", "rel"],
 		// Prevent data: URLs which can be used for XSS
 		ALLOW_DATA_ATTR: false,
-		// Allow only safe URL protocols (https/http only, mailto excluded for RSS context)
+		// Allow only safe URL protocols (http, https, and mailto)
 		// Note: hyphen escaped as \- to avoid ambiguous character range (CodeQL js/overly-large-range)
-		ALLOWED_URI_REGEXP: /^(?:https?:|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+		ALLOWED_URI_REGEXP:
+			/^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
 	});
 }

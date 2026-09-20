@@ -83,16 +83,27 @@ const config = {
 			// and falling into "Cannot Open the Page" on iOS Safari.
 			pollInterval: 5 * 60 * 1000,
 		},
-		// This app renders RSS/upstream-API HTML via {@html} in ~13 places
-		// (always through sanitizeHtml/parseMarkdown, but that's the only
-		// defense layer if a sanitizer bug ever lets a script through).
-		// `script-src: 'self'` blocks that from executing. SvelteKit hashes
-		// its own inline scripts/styles (and app.html's) automatically in
-		// 'auto' mode, so this doesn't require manual nonce wiring.
+		// Hardened CSP defense-in-depth policy:
+		// - script-src 'self' (auto mode generates nonces on adapter-node)
+		// - default-src 'self', object-src 'none', base-uri 'self', frame-ancestors 'self'
+		// - style-src 'self' 'unsafe-inline' https://fonts.googleapis.com (required for Svelte inline styles & Google Fonts)
+		// - font-src 'self' https://fonts.gstatic.com (required for Google Fonts in app.html)
+		// - img-src 'self' data: https: (required for proxied/direct OG images & avatars)
+		// - connect-src 'self' (for same-origin Connect-RPC & SSE endpoints)
+		// - form-action 'self' (for Ory Kratos and internal form submissions)
 		csp: {
 			mode: "auto",
 			directives: {
+				"default-src": ["self"],
 				"script-src": ["self"],
+				"style-src": ["self", "unsafe-inline", "https://fonts.googleapis.com"],
+				"font-src": ["self", "https://fonts.gstatic.com"],
+				"img-src": ["self", "data:", "https:"],
+				"connect-src": ["self"],
+				"object-src": ["none"],
+				"base-uri": ["self"],
+				"frame-ancestors": ["self"],
+				"form-action": ["self"],
 			},
 		},
 	},

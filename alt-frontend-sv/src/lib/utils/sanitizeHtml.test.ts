@@ -51,11 +51,12 @@ describe("sanitizeHtml", () => {
 		expect(result).toContain("Link");
 	});
 
-	it("adds target=_blank and rel=noopener noreferrer to links", () => {
+	it("adds target=_blank and rel=noopener noreferrer nofollow ugc to links", () => {
 		const html = '<a href="https://example.com">Link</a>';
 		const result = sanitizeHtml(html);
 		expect(result).toContain('target="_blank"');
-		expect(result).toContain('rel="noopener noreferrer"');
+		expect(result).toContain('rel="noopener noreferrer nofollow ugc"');
+		expect(result).toContain('class="external-link"');
 	});
 
 	it("overwrites existing target and rel attributes on links", () => {
@@ -63,9 +64,15 @@ describe("sanitizeHtml", () => {
 			'<a href="https://example.com" target="_self" rel="author">Link</a>';
 		const result = sanitizeHtml(html);
 		expect(result).toContain('target="_blank"');
-		expect(result).toContain('rel="noopener noreferrer"');
+		expect(result).toContain('rel="noopener noreferrer nofollow ugc"');
 		expect(result).not.toContain('target="_self"');
 		expect(result).not.toContain('rel="author"');
+	});
+
+	it("allows mailto: scheme links", () => {
+		const html = '<a href="mailto:editor@example.com">Contact</a>';
+		const result = sanitizeHtml(html);
+		expect(result).toContain('href="mailto:editor@example.com"');
 	});
 
 	it("removes img tags for security (XSS via onerror/onload)", () => {
