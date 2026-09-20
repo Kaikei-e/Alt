@@ -412,7 +412,7 @@ jobs:
           # Any imports that need DNS/egress should be caught by this isolation.
           RUN_OPTS="--rm --network=none --read-only --tmpfs /tmp --cap-drop=ALL"
           if [ "$SERVICE" = "news-creator" ]; then
-            docker run $RUN_OPTS -e SERVICE_SECRET=ci "$IMAGE_TAG" python -c "
+            docker run $RUN_OPTS -e SERVICE_SECRET=ci -e REDIS_AUTH=disabled "$IMAGE_TAG" python -c "
           import sys, importlib
           import torch
           assert not torch.cuda.is_available(), 'torch CUDA must be disabled'
