@@ -25,6 +25,10 @@ pub(crate) struct SubworkerClient {
     /// `DEFAULT_COARSE_CLASSIFY_TIMEOUT_SECS` for the ~20 call sites that
     /// don't opt into a config-driven override.
     coarse_classify_timeout: Duration,
+    /// Bearer token sent on `/admin/*` and `/v1/runs` requests to
+    /// recap-subworker. `None` exactly when `RECAP_ADMIN_AUTH=disabled` was
+    /// set explicitly — see `with_admin_token`.
+    admin_token: Option<String>,
 }
 
 impl SubworkerClient {
@@ -49,6 +53,7 @@ impl SubworkerClient {
             base_url,
             min_documents_per_genre,
             coarse_classify_timeout: Duration::from_secs(DEFAULT_COARSE_CLASSIFY_TIMEOUT_SECS),
+            admin_token: None,
         })
     }
 
@@ -58,5 +63,28 @@ impl SubworkerClient {
     pub(crate) fn with_coarse_classify_timeout(mut self, timeout: Duration) -> Self {
         self.coarse_classify_timeout = timeout;
         self
+    }
+
+    /// Sets the bearer token sent on `/admin/*` and `/v1/runs` requests to
+    /// recap-subworker. Used by `app.rs` to wire in
+    /// `Config::admin_auth_token` — the same secret recap-worker requires
+    /// on its own `/admin/*` routes (see the `AdminAuth` doc comment in
+    /// `config.rs`). `None` sends no `Authorization` header, matching
+    /// `RECAP_ADMIN_AUTH=disabled`.
+    #[must_use]
+    pub(crate) fn with_admin_token(mut self, token: Option<String>) -> Self {
+        self.admin_token = token;
+        self
+    }
+
+    /// Applies the `Authorization: Bearer <token>` header when an admin
+    /// token is configured, so every `/admin/*` and `/v1/runs` call site
+    /// stays in sync with `with_admin_token` instead of reimplementing the
+    /// header format.
+    pub(crate) fn authorize(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.admin_token {
+            Some(token) => builder.bearer_auth(token),
+            None => builder,
+        }
     }
 }

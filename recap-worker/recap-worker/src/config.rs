@@ -125,6 +125,7 @@ pub struct Config {
     embedding_required: FeatureToggle,
     knowledge_emit: KnowledgeEmit,
     max_degraded_genre_ratio: f64,
+    admin_auth: AdminAuth,
 }
 
 /// Resolved knowledge-loop owner ids sourced from
@@ -151,8 +152,31 @@ enum KnowledgeEmit {
     Enabled {
         owner: KnowledgeOwnerIds,
         sovereign_url: String,
+        token: Option<String>,
     },
     Disabled,
+}
+
+/// Shared bearer-token guard for recap-worker's own admin/mutating routes
+/// (`/admin/jobs/retry`, `/admin/genre-learning`) and for the Authorization
+/// header this process presents when it calls recap-subworker's
+/// `/admin/*` / `/v1/runs`. recap-subworker has no caller other than
+/// recap-worker, so provisioning a second secret for that direction would
+/// only double the rotation surface without adding isolation — both sides
+/// read the same `RECAP_ADMIN_TOKEN_FILE`-mounted secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum AdminAuth {
+    Enabled { token: String },
+    Disabled,
+}
+
+impl AdminAuth {
+    fn token(&self) -> Option<&str> {
+        match self {
+            AdminAuth::Enabled { token } => Some(token),
+            AdminAuth::Disabled => None,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -328,6 +352,7 @@ impl Config {
         // quality collapse that must surface as `failed`, not silently
         // succeed with a handful of stored genres (CLAUDE.md rule 8).
         let max_degraded_genre_ratio = parse_f64("RECAP_MAX_DEGRADED_GENRE_RATIO", 0.5)?;
+        let admin_auth = load_admin_auth()?;
 
         Ok(Self::from_components(
             basic,
@@ -349,6 +374,7 @@ impl Config {
             embedding_required,
             knowledge_emit,
             max_degraded_genre_ratio,
+            admin_auth,
         ))
     }
 
@@ -373,6 +399,7 @@ impl Config {
         embedding_required: FeatureToggle,
         knowledge_emit: KnowledgeEmit,
         max_degraded_genre_ratio: f64,
+        admin_auth: AdminAuth,
     ) -> Self {
         Self {
             http_bind: basic.http_bind,
@@ -438,6 +465,7 @@ impl Config {
             embedding_required,
             knowledge_emit,
             max_degraded_genre_ratio,
+            admin_auth,
         }
     }
 
@@ -821,6 +849,16 @@ impl Config {
         }
     }
 
+    /// Sovereign Bearer token for the topic-snapshot emit, if caller authentication is enabled.
+    /// `Some` when `RECAP_KNOWLEDGE_EMIT=true` and a valid token file was supplied.
+    /// `None` when emission is disabled or `RECAP_KNOWLEDGE_SOVEREIGN_AUTH=disabled`.
+    pub fn knowledge_sovereign_token(&self) -> Option<&str> {
+        match &self.knowledge_emit {
+            KnowledgeEmit::Enabled { token, .. } => token.as_deref(),
+            KnowledgeEmit::Disabled => None,
+        }
+    }
+
     /// Maximum tolerated ratio of failed/degraded genres among a job's
     /// dispatched genres (`genres_failed / (genres_stored + genres_failed)`)
     /// before `Scheduler::evaluate_job_outcome` marks the job `failed`
@@ -831,6 +869,15 @@ impl Config {
     #[must_use]
     pub fn max_degraded_genre_ratio(&self) -> f64 {
         self.max_degraded_genre_ratio
+    }
+
+    /// Bearer token guarding `/admin/jobs/retry`, `/admin/genre-learning`
+    /// and every outbound call this process makes into recap-subworker's
+    /// `/admin/*` / `/v1/runs`. `None` exactly when `RECAP_ADMIN_AUTH=disabled`
+    /// was set explicitly (CLAUDE.md rule 9: disabled is never inferred).
+    #[must_use]
+    pub fn admin_auth_token(&self) -> Option<&str> {
+        self.admin_auth.token()
     }
 }
 
@@ -1124,10 +1171,108 @@ fn load_knowledge_emit() -> Result<KnowledgeEmit, ConfigError> {
                  or empty; set it or set RECAP_KNOWLEDGE_EMIT=false explicitly",
             )
         })?;
+
+    let auth_mode =
+        env_var_optional("RECAP_KNOWLEDGE_SOVEREIGN_AUTH").map(|s| s.trim().to_lowercase());
+    let token = if auth_mode.as_deref() == Some("disabled") {
+        tracing::warn!(
+            "knowledge_sovereign_auth_disabled: RECAP_KNOWLEDGE_SOVEREIGN_AUTH=disabled was set explicitly; events will be emitted unauthenticated"
+        );
+        None
+    } else {
+        let token_file = env_var_optional("RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                invalid_config(
+                    "RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE",
+                    "emit is enabled but RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE is unset \
+                     or empty; set it or set RECAP_KNOWLEDGE_SOVEREIGN_AUTH=disabled explicitly",
+                )
+            })?;
+        let content = std::fs::read_to_string(&token_file).map_err(|err| {
+            invalid_config(
+                "RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE",
+                format!("failed to read token file '{token_file}': {err}"),
+            )
+        })?;
+        let trimmed = content.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(invalid_config(
+                "RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE",
+                format!("token file '{token_file}' resolved to an empty token"),
+            ));
+        }
+        if trimmed.len() < 24 {
+            return Err(invalid_config(
+                "RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE",
+                format!(
+                    "token from '{token_file}' must be at least 24 characters (got {})",
+                    trimmed.len()
+                ),
+            ));
+        }
+        tracing::info!("knowledge_sovereign_auth_enabled");
+        Some(trimmed)
+    };
+
     Ok(KnowledgeEmit::Enabled {
         owner,
         sovereign_url,
+        token,
     })
+}
+
+/// Resolve the shared admin-token guard from env.
+///
+/// `RECAP_ADMIN_AUTH=disabled` is the only way to leave `/admin/jobs/retry`,
+/// `/admin/genre-learning` and the recap-subworker admin/runs client
+/// unauthenticated; an unset var is treated as "enabled", so a deployment
+/// that forgets to mount `RECAP_ADMIN_TOKEN_FILE` fails startup instead of
+/// silently serving those routes unauthenticated (CLAUDE.md rule 9).
+fn load_admin_auth() -> Result<AdminAuth, ConfigError> {
+    let auth_mode = env_var_optional("RECAP_ADMIN_AUTH").map(|s| s.trim().to_lowercase());
+    if auth_mode.as_deref() == Some("disabled") {
+        tracing::warn!(
+            "recap_admin_auth_disabled: RECAP_ADMIN_AUTH=disabled was set explicitly; /admin/jobs/retry, /admin/genre-learning and the recap-subworker admin/runs client accept unauthenticated requests"
+        );
+        return Ok(AdminAuth::Disabled);
+    }
+
+    let token_file = env_var_optional("RECAP_ADMIN_TOKEN_FILE")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            invalid_config(
+                "RECAP_ADMIN_TOKEN_FILE",
+                "RECAP_ADMIN_TOKEN_FILE is unset or empty; set it or set \
+                 RECAP_ADMIN_AUTH=disabled explicitly",
+            )
+        })?;
+    let content = std::fs::read_to_string(&token_file).map_err(|err| {
+        invalid_config(
+            "RECAP_ADMIN_TOKEN_FILE",
+            format!("failed to read token file '{token_file}': {err}"),
+        )
+    })?;
+    let trimmed = content.trim().to_string();
+    if trimmed.is_empty() {
+        return Err(invalid_config(
+            "RECAP_ADMIN_TOKEN_FILE",
+            format!("token file '{token_file}' resolved to an empty token"),
+        ));
+    }
+    if trimmed.len() < 24 {
+        return Err(invalid_config(
+            "RECAP_ADMIN_TOKEN_FILE",
+            format!(
+                "token from '{token_file}' must be at least 24 characters (got {})",
+                trimmed.len()
+            ),
+        ));
+    }
+    tracing::info!("recap_admin_auth_enabled");
+    Ok(AdminAuth::Enabled { token: trimmed })
 }
 
 /// Resolve the knowledge-loop owner from the two owner env vars.
@@ -1358,7 +1503,15 @@ mod tests {
             ("RECAP_KNOWLEDGE_SOVEREIGN_URL", None),
             ("RECAP_KNOWLEDGE_OWNER_USER_ID", None),
             ("RECAP_KNOWLEDGE_OWNER_TENANT_ID", None),
+            ("RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE", None),
+            ("RECAP_KNOWLEDGE_SOVEREIGN_AUTH", None),
             ("RECAP_MAX_DEGRADED_GENRE_RATIO", None),
+            // Explicit disabled, not a reset: an unset RECAP_ADMIN_AUTH
+            // requires RECAP_ADMIN_TOKEN_FILE (CLAUDE.md rule 9), so every
+            // fixture must state its intent. Tests exercising the enabled
+            // case override this entry.
+            ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("RECAP_ADMIN_TOKEN_FILE", None),
         ]
     }
 
@@ -1394,6 +1547,7 @@ mod tests {
                 "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
                 Some("11111111-1111-1111-1111-111111111111"),
             ),
+            ("RECAP_KNOWLEDGE_SOVEREIGN_AUTH", Some("disabled")),
         ]);
         temp_env::with_vars(vars, || {
             let config = Config::from_env().expect("config should load");
@@ -1995,6 +2149,288 @@ mod tests {
         temp_env::with_vars(vars, || {
             let config = Config::from_env().expect("config should load");
             assert!((config.max_degraded_genre_ratio() - 0.3).abs() < f64::EPSILON);
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_emit_enabled_without_token_file_or_disabled_auth() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                res.is_err(),
+                "emit enabled without token file and without disabled auth must fail"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_emit_enabled_with_missing_token_file() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE",
+                Some("/tmp/nonexistent-sovereign-token-file-xyz"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(res.is_err(), "missing token file must fail");
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_emit_enabled_with_empty_token_file() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let token_path = temp_dir.path().join("empty_token");
+        std::fs::write(&token_path, "   \n\t  ").expect("write token");
+        let token_path_str = token_path.to_str().unwrap().to_string();
+
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE",
+                Some(token_path_str.as_str()),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(res.is_err(), "empty token file must fail");
+        });
+    }
+
+    #[test]
+    fn from_env_resolves_token_when_valid_token_file_present() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let token_path = temp_dir.path().join("sovereign_token");
+        std::fs::write(&token_path, "test-recap-sovereign-token\n").expect("write token");
+        let token_path_str = token_path.to_str().unwrap().to_string();
+
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE",
+                Some(token_path_str.as_str()),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert_eq!(
+                config.knowledge_sovereign_token(),
+                Some("test-recap-sovereign-token")
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_disabled_auth_leaves_token_none() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+            ("RECAP_KNOWLEDGE_SOVEREIGN_AUTH", Some("disabled")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert_eq!(config.knowledge_sovereign_token(), None);
+        });
+    }
+
+    #[test]
+    fn from_env_rejects_short_sovereign_token() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let token_path = temp_dir.path().join("short_token.txt");
+        std::fs::write(&token_path, "short-token").expect("write token");
+        let token_path_str = token_path.to_str().unwrap().to_string();
+
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                Some("http://localhost:9500"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_USER_ID",
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_OWNER_TENANT_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+            (
+                "RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE",
+                Some(token_path_str.as_str()),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let result = Config::from_env();
+            assert!(result.is_err(), "short token must be rejected");
+            let err_msg = format!("{:#}", result.unwrap_err());
+            assert!(
+                err_msg.contains("at least 24 characters"),
+                "error must mention minimum length: {err_msg}"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_admin_auth_unset_and_token_file_missing() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        // base_env_vars() defaults RECAP_ADMIN_AUTH=disabled for every other
+        // fixture; unset it here to pin the real "forgot to configure"
+        // startup failure (CLAUDE.md rule 9 — never silently disable).
+        vars.extend([("RECAP_ADMIN_AUTH", None)]);
+        temp_env::with_vars(vars, || {
+            let result = Config::from_env();
+            assert!(
+                result.is_err(),
+                "an unset RECAP_ADMIN_AUTH must require RECAP_ADMIN_TOKEN_FILE, never silently disable"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_disabled_admin_auth_leaves_token_none() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        temp_env::with_vars(required_base(), || {
+            let config = Config::from_env().expect("config should load");
+            assert_eq!(config.admin_auth_token(), None);
+        });
+    }
+
+    #[test]
+    fn from_env_resolves_admin_token_when_valid_token_file_present() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let token_path = temp_dir.path().join("admin_token");
+        std::fs::write(&token_path, "test-recap-admin-token-1234567890\n").expect("write token");
+        let token_path_str = token_path.to_str().unwrap().to_string();
+
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_ADMIN_AUTH", None),
+            ("RECAP_ADMIN_TOKEN_FILE", Some(token_path_str.as_str())),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert_eq!(
+                config.admin_auth_token(),
+                Some("test-recap-admin-token-1234567890")
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_rejects_short_admin_token() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let token_path = temp_dir.path().join("short_admin_token.txt");
+        std::fs::write(&token_path, "too-short").expect("write token");
+        let token_path_str = token_path.to_str().unwrap().to_string();
+
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_ADMIN_AUTH", None),
+            ("RECAP_ADMIN_TOKEN_FILE", Some(token_path_str.as_str())),
+        ]);
+        temp_env::with_vars(vars, || {
+            let result = Config::from_env();
+            assert!(result.is_err(), "short admin token must be rejected");
+            let err_msg = format!("{:#}", result.unwrap_err());
+            assert!(
+                err_msg.contains("at least 24 characters"),
+                "error must mention minimum length: {err_msg}"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_rejects_missing_admin_token_file() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars = required_base();
+        vars.extend([
+            ("RECAP_ADMIN_AUTH", None),
+            (
+                "RECAP_ADMIN_TOKEN_FILE",
+                Some("/tmp/does-not-exist-recap-admin-token"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let result = Config::from_env();
+            assert!(result.is_err(), "unreadable token file must fail startup");
         });
     }
 }

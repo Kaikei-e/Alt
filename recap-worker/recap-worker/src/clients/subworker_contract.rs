@@ -172,6 +172,8 @@ async fn contract_subworker_clustering_submit() {
             i.request
                 .header("X-Alt-Job-Id", "00000000-0000-0000-0000-000000000001");
             i.request.header("X-Alt-Genre", "technology");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
             i.request.json_body(json_pattern!({
                 "params": json_pattern!({
                     "max_sentences_total": like!(2000i64),
@@ -242,6 +244,7 @@ async fn contract_subworker_clustering_submit() {
 
     let resp = Client::new()
         .post(url)
+        .header("Authorization", "Bearer test-recap-subworker-token-42")
         .header("X-Alt-Job-Id", "00000000-0000-0000-0000-000000000001")
         .header("X-Alt-Genre", "technology")
         .json(&body)
@@ -268,6 +271,8 @@ async fn contract_subworker_clustering_poll_succeeded() {
             i.given("clustering run 42 has succeeded");
             i.request.method("GET");
             i.request.path("/v1/runs/42");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
             i.response.status(200);
             i.response.content_type("application/json");
             i.response.json_body(json_pattern!({
@@ -305,6 +310,7 @@ async fn contract_subworker_clustering_poll_succeeded() {
 
     let resp = Client::new()
         .get(url)
+        .header("Authorization", "Bearer test-recap-subworker-token-42")
         .send()
         .await
         .expect("request should succeed");

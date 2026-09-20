@@ -61,6 +61,8 @@ async fn contract_recap_topic_snapshotted_v1() {
                 i.request
                     .path("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent");
                 i.request.content_type("application/json");
+                i.request
+                    .header("Authorization", term!(r"^Bearer .+$", "Bearer test-sovereign-event-token"));
                 i.request.json_body(json_pattern!({
                     "event": json_pattern!({
                         "eventId": term!(
@@ -96,7 +98,11 @@ async fn contract_recap_topic_snapshotted_v1() {
         .start_mock_server(None, None);
 
     let url = pact.url();
-    let client = KnowledgeSovereignClient::new(url.to_string()).expect("client should build");
+    let client = KnowledgeSovereignClient::new(
+        url.to_string(),
+        Some("test-sovereign-event-token".to_string()),
+    )
+    .expect("client should build");
     let input = TopicSnapshottedInput {
         user_id,
         tenant_id,

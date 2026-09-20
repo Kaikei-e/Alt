@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use reqwest::{Client, Url};
 use serde::Serialize;
 use serde_json::json;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 /// Input for [`KnowledgeSovereignClient::emit_recap_topic_snapshotted`].
@@ -45,18 +45,23 @@ pub(crate) struct TopicSnapshottedInput {
 pub(crate) struct KnowledgeSovereignClient {
     client: Client,
     base_url: Url,
+    token: Option<String>,
 }
 
 #[allow(dead_code)]
 impl KnowledgeSovereignClient {
-    pub(crate) fn new(base_url: impl Into<String>) -> Result<Self> {
+    pub(crate) fn new(base_url: impl Into<String>, token: Option<String>) -> Result<Self> {
         let base_url =
             Url::parse(&base_url.into()).context("invalid knowledge-sovereign base URL")?;
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .build()
             .context("failed to build knowledge-sovereign HTTP client")?;
-        Ok(Self { client, base_url })
+        Ok(Self {
+            client,
+            base_url,
+            token,
+        })
     }
 
     #[cfg(test)]
@@ -64,6 +69,19 @@ impl KnowledgeSovereignClient {
         Self {
             client: Client::new(),
             base_url: Url::parse(&base_url.into()).unwrap(),
+            token: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test_with_token(
+        base_url: impl Into<String>,
+        token: Option<String>,
+    ) -> Self {
+        Self {
+            client: Client::new(),
+            base_url: Url::parse(&base_url.into()).unwrap(),
+            token,
         }
     }
 
@@ -130,10 +148,16 @@ impl KnowledgeSovereignClient {
             "emitting recap.topic_snapshotted.v1 to knowledge-sovereign"
         );
 
-        let response = self
+        let mut request = self
             .client
             .post(url)
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json");
+
+        if let Some(ref token) = self.token {
+            request = request.header("Authorization", format!("Bearer {token}"));
+        }
+
+        let response = request
             .json(&body)
             .send()
             .await
@@ -142,11 +166,21 @@ impl KnowledgeSovereignClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            warn!(
-                status = %status,
-                body = %body,
-                "AppendKnowledgeEvent returned non-2xx (continuing)"
-            );
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
+                error!(
+                    status = %status,
+                    body = %body,
+                    "AppendKnowledgeEvent unauthenticated or forbidden; check RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE"
+                );
+            } else {
+                warn!(
+                    status = %status,
+                    body = %body,
+                    "AppendKnowledgeEvent returned non-2xx (continuing)"
+                );
+            }
             return Err(anyhow!(
                 "AppendKnowledgeEvent returned status {status}: {body}"
             ));
@@ -238,5 +272,48 @@ mod tests {
             format!("{:?}", result.unwrap_err()).contains("tenant_id"),
             "error must mention tenant_id"
         );
+    }
+
+    #[tokio::test]
+    async fn emits_with_authorization_header() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+            ))
+            .and(header(
+                "Authorization",
+                "Bearer test-sovereign-token-wire-test-1234",
+            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("Content-Type", "application/json")
+                    .set_body_string(r#"{"eventSeq":"123"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = KnowledgeSovereignClient::new_for_test_with_token(
+            server.uri(),
+            Some("test-sovereign-token-wire-test-1234".to_string()),
+        );
+
+        let input = TopicSnapshottedInput {
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            recap_topic_snapshot_id: Uuid::new_v4(),
+            aggregate_id: "agg".into(),
+            top_terms: vec!["a".into()],
+            cluster_id: 0,
+            snapshot_window_start: Utc.with_ymd_and_hms(2026, 4, 26, 0, 0, 0).unwrap(),
+            snapshot_window_end: Utc.with_ymd_and_hms(2026, 4, 26, 1, 0, 0).unwrap(),
+        };
+
+        let result = client.emit_recap_topic_snapshotted(&input).await;
+        assert!(result.is_ok(), "emit with auth header should succeed");
     }
 }

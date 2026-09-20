@@ -134,8 +134,7 @@ impl SubworkerClient {
         }
 
         let response = self
-            .client
-            .post(runs_url.clone())
+            .authorize(self.client.post(runs_url.clone()))
             .json(&request_payload)
             .header("X-Alt-Job-Id", job_id.to_string())
             .header("X-Alt-Genre", &corpus.genre)
@@ -402,8 +401,7 @@ impl SubworkerClient {
 
         for retry in 0..POLL_REQUEST_RETRIES {
             match self
-                .client
-                .get(url.clone())
+                .authorize(self.client.get(url.clone()))
                 .timeout(Duration::from_secs(POLL_REQUEST_TIMEOUT_SECS))
                 .send()
                 .await
