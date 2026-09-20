@@ -13,6 +13,7 @@ from news_creator.config.llm_config import LLMConfig
 from news_creator.config.scheduling_config import SchedulingConfig
 from news_creator.config.hierarchical_config import HierarchicalConfig
 from news_creator.config.model_routing_config import ModelRoutingConfig
+from news_creator.config.redis_auth import resolve_redis_password
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,9 @@ class NewsCreatorConfig:
         self.cache_enabled = os.getenv("CACHE_ENABLED", "false").lower() == "true"
         self.cache_redis_url = os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0")
         self.cache_ttl_seconds = self._get_int("CACHE_TTL_SECONDS", 86400)
+        # Resolved eagerly (not just when cache_enabled) so a REDIS_PASSWORD_FILE
+        # misconfiguration fails startup regardless of how CACHE_ENABLED is set.
+        self.cache_redis_password = resolve_redis_password()
 
         # Event-loop scheduling-lag probe threshold (remains at top level;
         # the probe itself is always-on, not feature-flagged).

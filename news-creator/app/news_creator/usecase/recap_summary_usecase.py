@@ -20,6 +20,11 @@ except ImportError:
     json_repair = None  # type: ignore
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.output_guard import sanitize_output_markdown
+from news_creator.domain.prompt_boundary import (
+    sanitize_untrusted_content,
+    wrap_untrusted_content,
+)
 from news_creator.domain.models import (
     BatchRecapSummaryError,
     BatchRecapSummaryRequest,
@@ -37,6 +42,7 @@ from news_creator.domain.models import (
 from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
 from news_creator.port.cache_port import CachePort
 from news_creator.port.llm_provider_port import LLMProviderPort
+from news_creator.usecase.prompt_builder import PromptBuilderFactory
 from news_creator.utils.repetition_detector import detect_repetition
 
 logger = logging.getLogger(__name__)
@@ -69,7 +75,7 @@ PLACEHOLDER_BULLET_RE = re.compile(r"^\s*(?:\.\.\.|…)(?:\s*\[\d+\])?\s*$")
 JAPANESE_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")
 LATIN_CHAR_RE = re.compile(r"[A-Za-z]")
 
-GEMMA_RECAP_SYSTEM_PROMPT = (
+GEMMA_RECAP_SYSTEM_PROMPT = PromptBuilderFactory.system().build(
     "You are an expert Japanese news editor. "
     "Follow the JSON contract exactly and respond with only the requested JSON object."
 )
@@ -1400,7 +1406,7 @@ class RecapSummaryUsecase:
         genre_ja = self._genre_to_japanese(request.genre)
         summary = RecapSummary(
             title=f"{genre_ja}の{title_suffix}",
-            bullets=bullets,
+            bullets=[sanitize_output_markdown(bullet) for bullet in bullets],
             language="ja",
             references=references if references else None,
         )
@@ -1565,10 +1571,15 @@ class RecapSummaryUsecase:
         }
 
         if request.genre_highlights:
-            render_kwargs["highlights"] = request.genre_highlights
+            render_kwargs["highlights"] = [
+                highlight.model_copy(
+                    update={"text": sanitize_untrusted_content(highlight.text)}
+                )
+                for highlight in request.genre_highlights
+            ]
             render_kwargs["cluster_section"] = None  # Force use of highlights path
         else:
-            render_kwargs["cluster_section"] = cluster_section
+            render_kwargs["cluster_section"] = wrap_untrusted_content(cluster_section)
             render_kwargs["highlights"] = None
 
         # Select template: 3days change-focused vs 7days deep-dive
@@ -1915,7 +1926,7 @@ class RecapSummaryUsecase:
 
         if not isinstance(title, str) or not title.strip():
             title = "" if strict_contract else "主要トピックのまとめ"
-        title = title.strip()[:200]
+        title = sanitize_output_markdown(title).strip()[:200]
 
         bullets_field = payload.get("bullets")
         if isinstance(bullets_field, list):
@@ -2008,7 +2019,7 @@ class RecapSummaryUsecase:
         # Auto-inject [n] reference markers into bullets that lack them
         final_bullets = []
         for idx, bullet in enumerate(bullets):
-            trimmed = bullet[:1000]
+            trimmed = sanitize_output_markdown(bullet)[:1000]
             if references and not REFERENCE_MARKER_RE.search(trimmed):
                 # Assign the reference ID round-robin from available references
                 ref_id = references[idx % len(references)]["id"]

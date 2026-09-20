@@ -33,22 +33,8 @@
 - "top3" は最大 3 件の最重要ニュース
 - 入力にない事実は作らない
 
-{% if recap_summaries %}
-### 直近の Recap 要約
-{% for recap in recap_summaries %}
-#### {{ recap.genre }}: {{ recap.title }}
-{% for bullet in recap.bullets %}
-- {{ bullet }}
-{% endfor %}
-{% endfor %}
-{% endif %}
-
-### 本日のニュースグループ
-{% for group in overnight_groups %}
-{% for article in group.articles %}
-- {{ article.text }}
-{% endfor %}
-{% endfor %}
+### 入力データ
+{{ input_data }}
 
 ### 出力
 上記の仕様をすべて満たす JSON オブジェクトのみを出力してください。

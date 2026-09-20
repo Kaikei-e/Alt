@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 from typing import Protocol
 
+from news_creator.domain.prompt_boundary import SYSTEM_BOUNDARY_INSTRUCTION
 from news_creator.domain.prompts import (
     SUMMARY_PROMPT_TEMPLATE,
     CHUNK_SUMMARY_PROMPT_TEMPLATE,
@@ -120,6 +121,30 @@ class RecapPromptBuilder:
         )
 
 
+class SystemPromptBuilder:
+    """Builds system prompt instructions for LLM requests including security boundaries.
+
+    Ensures the model treats all content within boundary delimiters as untrusted data.
+    Only backends that accept a system role can carry it; the prompts sent with
+    raw=True state the same policy per call, immediately before the delimiters.
+    """
+
+    SYSTEM_INSTRUCTION: str = SYSTEM_BOUNDARY_INSTRUCTION
+
+    def build(self, role_instruction: str = "") -> str:
+        """Build a system prompt string.
+
+        Args:
+            role_instruction: Optional role description
+
+        Returns:
+            Complete system prompt with security boundary directive
+        """
+        if role_instruction:
+            return f"{role_instruction}\n\n{self.SYSTEM_INSTRUCTION}"
+        return self.SYSTEM_INSTRUCTION
+
+
 class PromptBuilderFactory:
     """Factory for creating prompt builders.
 
@@ -141,3 +166,8 @@ class PromptBuilderFactory:
     def recap() -> RecapPromptBuilder:
         """Create a recap prompt builder."""
         return RecapPromptBuilder()
+
+    @staticmethod
+    def system() -> SystemPromptBuilder:
+        """Create a system prompt builder."""
+        return SystemPromptBuilder()
