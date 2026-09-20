@@ -17,6 +17,8 @@ import (
 type Config struct {
 	// RedisURL is the Redis connection URL.
 	RedisURL string
+	// RedisPassword is the authentication password for Redis, loaded from REDIS_PASSWORD_FILE.
+	RedisPassword string
 	// GroupName is the consumer group name.
 	GroupName string
 	// ConsumerName is this consumer's name within the group.
@@ -143,6 +145,9 @@ func NewConsumer(config Config, handler EventHandler, logger *slog.Logger) (*Con
 	opts, err := redis.ParseURL(config.RedisURL)
 	if err != nil {
 		return nil, err
+	}
+	if config.RedisPassword != "" {
+		opts.Password = config.RedisPassword
 	}
 
 	client := redis.NewClient(opts)
