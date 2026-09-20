@@ -158,22 +158,33 @@ test.describe("SearchArticles request validation", () => {
 	}
 
 	test(
-		"user_id is required even though REST makes it optional",
+		"user_id is mandatory across both Connect and REST protocols",
 		{ tag: "@contract" },
 		async ({ connect, rest }) => {
-			// The two transports disagree on purpose and the disagreement is
-			// load-bearing: `GET /v1/search?q=rust` with no `user_id` runs the
-			// *unfiltered* `SearchArticlesUsecase` for internal RAG/BM25 callers,
-			// while the Connect procedure hard-requires it. Anyone adding an
-			// unfiltered branch to the RPC would be putting every tenant's
-			// documents behind one plaintext, unauthenticated port.
+			// Both transports hard-require user_id:
+			// - Connect returns invalid_argument when user_id is missing.
+			// - REST returns 400 when user_id is missing.
 			await expectUnaryError(
 				connect,
 				Procedure.searchArticles,
 				{ query: "rust" },
 				ConnectCode.invalidArgument,
 			);
-			await expectStatus(await rest.get("/v1/search?q=rust&limit=1"), 200);
+			const restMissingUser = await rest.get("/v1/search?q=rust&limit=1");
+			await expectStatus(restMissingUser, 400);
+			expect(await restMissingUser.text()).toContain("user_id parameter required");
+
+			// Both transports accept requests when a valid owner is provided:
+			const connectValid = await callUnary(connect, Procedure.searchArticles, {
+				query: "rust",
+				userId: SharedCorpus.aliceUser,
+			});
+			await expectStatus(connectValid, 200);
+
+			const restValid = await rest.get(
+				`/v1/search?q=rust&user_id=${SharedCorpus.aliceUser}&limit=1`,
+			);
+			await expectStatus(restValid, 200);
 		},
 	);
 });

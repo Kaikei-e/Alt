@@ -114,6 +114,7 @@ export default async function globalSetup(): Promise<void> {
 				run: async (api) => {
 					const url =
 						`${env.baseURL}/v1/search?q=${encodeURIComponent(SharedCorpus.rustQuery)}` +
+						`&user_id=${encodeURIComponent(SharedCorpus.aliceUser)}` +
 						`&limit=5`;
 					const response = await api.get(url, { timeout: 10_000 });
 					if (!response.ok()) {
@@ -121,9 +122,9 @@ export default async function globalSetup(): Promise<void> {
 					}
 					const body: unknown = await response.json();
 					const hits = isRecord(body) ? body["hits"] : undefined;
-					if (!Array.isArray(hits) || hits.length < SharedCorpus.rustHitCount) {
+					if (!Array.isArray(hits) || hits.length < SharedCorpus.aliceRustHitCount) {
 						throw new Error(
-							`expected at least ${SharedCorpus.rustHitCount} hits, got ` +
+							`expected at least ${SharedCorpus.aliceRustHitCount} hits, got ` +
 								`${JSON.stringify(body).slice(0, 300)}`,
 						);
 					}
