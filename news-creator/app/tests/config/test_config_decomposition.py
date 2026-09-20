@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("dummy_redis_password_file")
+
 
 class TestLLMConfig:
     """Tests for LLMConfig dataclass."""

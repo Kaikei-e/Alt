@@ -32,7 +32,9 @@ def resolve_redis_password() -> str | None:
     auth_mode = os.environ.get("REDIS_AUTH", "").strip()
     if auth_mode.lower() == "disabled":
         if not _disabled_logged:
-            logger.warning("redis_auth_disabled: REDIS_AUTH=disabled was set explicitly")
+            logger.warning(
+                "redis_auth_disabled: REDIS_AUTH=disabled was set explicitly"
+            )
             _disabled_logged = True
         return None
 

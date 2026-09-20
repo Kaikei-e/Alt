@@ -1,6 +1,10 @@
 """Tests for the event-loop lag probe threshold configuration."""
 
+import pytest
+
 from news_creator.config.config import NewsCreatorConfig
+
+pytestmark = pytest.mark.usefixtures("dummy_redis_password_file")
 
 
 def test_event_loop_lag_warn_ms_default(monkeypatch):

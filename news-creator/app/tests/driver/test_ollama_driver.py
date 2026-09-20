@@ -22,6 +22,8 @@ from aiohttp.test_utils import TestServer
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.driver.ollama_driver import OllamaDriver
 
+pytestmark = pytest.mark.usefixtures("dummy_redis_password_file")
+
 
 def _make_config(service_url: str, timeout_seconds: int) -> NewsCreatorConfig:
     with patch.dict(

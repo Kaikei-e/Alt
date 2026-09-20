@@ -1,6 +1,10 @@
 """Tests for configuration module."""
 
+import pytest
+
 from news_creator.config.config import NewsCreatorConfig
+
+pytestmark = pytest.mark.usefixtures("dummy_redis_password_file")
 
 
 def test_config_loads_defaults(monkeypatch):

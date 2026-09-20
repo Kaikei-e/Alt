@@ -12,6 +12,8 @@ import pytest
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.driver.ollama_stream_driver import OllamaStreamDriver
 
+pytestmark = pytest.mark.usefixtures("dummy_redis_password_file")
+
 
 @pytest.fixture
 def config():
