@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# Tests for deploy-system/deploy-local.sh's DOCKER_GROUP_ID guard (LOW
-# finding): compose.yaml's logging include needs DOCKER_GROUP_ID to even
-# parse (`${DOCKER_GROUP_ID:?...}` in compose/logging.yaml), which would
-# otherwise surface as an opaque `docker compose ... build` failure instead
-# of a clear, actionable message. The guard must fail fast, before any git
-# or docker operation, when the var is unset.
+# Tests for deploy-system/deploy-local.sh's DOCKER_GROUP_ID guard:
+# deploy-local.sh guards DOCKER_GROUP_ID before any git or docker operation.
+# The guard must fail fast, before any git or docker operation, when the var is unset.
 #
 # The rest of deploy-local.sh (git fetch/pull, docker compose build, c2quay
 # deploy, smoke tests) needs network/docker and PROJECT_ROOT is derived from

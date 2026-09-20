@@ -145,6 +145,8 @@ services:
       # keeps live behavior unchanged.
       - RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=${RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT:-true}
       - RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL=${RAG_ORCHESTRATOR_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
+      - SOVEREIGN_EVENT_TOKEN_FILE=/run/secrets/sovereign_event_token
+      - SOVEREIGN_EVENT_AUTH=${SOVEREIGN_EVENT_AUTH:-}
       # Outbound to the data plane (ADR-000954 D7, Wave 2-B). ALT_BACKEND_URL
       # and ALT_BACKEND_CONNECT_URL used to sit here, both pointed at
       # http://alt-backend:9102, and both had been dead since the 3-binary
@@ -191,18 +193,22 @@ services:
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-rag-orchestrator-jwk
       - RENEW_AT_FRACTION=0.66
       - OPS_LISTEN=:9110
+      - RAG_API_TOKEN_FILE=/run/secrets/rag_api_token
+      - RAG_API_AUTH=${RAG_API_AUTH:-}
     secrets:
       - rag_db_password
+      - sovereign_event_token
       - pki-agent-rag-orchestrator-jwk
+      - rag_api_token
     volumes:
       - rag_orchestrator_certs:/certs
       - pki_trust_bundle:/trust:ro
     pre_start:
       - <<: *pki-cert-volume-chown
     ports:
-      # East-west only. With PEER_IDENTITY_MODE=disabled the Connect listener
-      # is plaintext h2c and augur/handler.go trusts X-Alt-User-Id from the
-      # caller, so the host must not be able to reach it.
+      # East-west only. The REST listener (:9010) enforces bearer auth via
+      # RAG_API_TOKEN_FILE and the Connect listener (:9011) enforces mTLS peer
+      # identity to ensure X-Alt-User-Id is only trusted from authenticated callers.
       - "127.0.0.1:9010:9010"
       - "127.0.0.1:9011:9011"
     depends_on:

@@ -215,9 +215,9 @@ services:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9101:9101"
       # :9102 is the operator listener and carries the admin Connect services
-      # (KnowledgeHomeAdminService, AdminMonitorService) — which authenticate
-      # nobody. Loopback bind keeps it reachable for altctl on this host while
-      # removing it from every other NIC.
+      # (KnowledgeHomeAdminService, AdminMonitorService), protected by the
+      # operator bearer token interceptor. Loopback bind keeps it reachable for
+      # altctl on this host while removing it from every other NIC.
       # The data plane and /v1/internal/* are NOT here: they moved to
       # alt-data-hub's mTLS listener in the split (ADR-000954) and are served
       # as `services.datahub.v1.DataHubService`, and
@@ -277,6 +277,12 @@ services:
       # plus its reach at startup. What keeps the surface off other hosts is
       # the 127.0.0.1 prefix on the publish, not the in-container bind.
       - OPERATOR_LISTEN_ADDR=:9102
+      # Bearer token the operator listener's interceptor requires on every
+      # RPC (config.LoadOperatorAuth) — the bind address above is only the
+      # network-reachability floor, not the access control, once this is set.
+      # alt-butterfly-facade and altctl are the only intended callers, and
+      # both present the same secrets/backend_operator_token.txt.
+      - OPERATOR_TOKEN_FILE=/run/secrets/backend_operator_token
       # MTLS_LISTEN / MTLS_PORT / MTLS_CLIENT_AUTH / MTLS_ALLOWED_PEERS are
       # deliberately absent: they configured the removed mixed-surface :9443
       # listener, which is now cmd/datahub's (DATAHUB_* below). Nothing here
@@ -315,9 +321,12 @@ services:
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub:9500
       - SOVEREIGN_URL=http://knowledge-sovereign:9500
+      - SOVEREIGN_EVENT_TOKEN_FILE=/run/secrets/sovereign_event_token
       # https scheme makes alt-backend present its leaf cert; rag-orchestrator
       # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml).
       - RAG_ORCHESTRATOR_CONNECT_URL=${RAG_ORCHESTRATOR_CONNECT_URL:-https://rag-orchestrator:9011}
+      - RAG_API_TOKEN_FILE=/run/secrets/rag_api_token
+      - RAG_API_AUTH=${RAG_API_AUTH:-}
       - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret
       # Served by alt.push.v1.PushService.GetPushConfig so the browser can pass
       # it to pushManager.subscribe, and so a client can compare it against the
@@ -333,6 +342,7 @@ services:
       # keys clear of mq-hub's streams on db 0. Unset = local mode, logged
       # loudly at startup as a per-process-only guarantee.
       - HOST_RATE_LIMITER_REDIS_URL=redis://redis-streams:6379/3
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       # alt-data-hub is reachable over mTLS only; there is no plaintext
       # east-west port to fall back to (see alt-data-hub below).
       #
@@ -378,7 +388,11 @@ services:
       # Public half only. This process serves the key to browsers and sends no
       # pushes, so the signing key stays out of it — see alt-notifier below.
       - vapid_public_key
+      - sovereign_event_token
       - pki-agent-alt-backend-jwk
+      - redis_password
+      - backend_operator_token
+      - rag_api_token
     deploy:
       # memory used to sit under reservations alone, which is a scheduling
       # hint and not a cap: a leak in the user-facing API would have run until
@@ -506,11 +520,14 @@ services:
       RENEW_AT_FRACTION: "0.66"
       # --- upstreams the jobs call --------------------------------------
       SOVEREIGN_URL: http://knowledge-sovereign:9500
+      SOVEREIGN_EVENT_TOKEN_FILE: /run/secrets/sovereign_event_token
       # https makes alt-harvester present its leaf cert; rag-orchestrator
       # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml). Its
       # PEER_IDENTITY_ALLOWED_PEERS must name alt-harvester once outbox-worker
       # runs here — see the wave 2 map in the split plan.
       RAG_ORCHESTRATOR_CONNECT_URL: ${RAG_ORCHESTRATOR_CONNECT_URL:-https://rag-orchestrator:9011}
+      RAG_API_TOKEN_FILE: /run/secrets/rag_api_token
+      RAG_API_AUTH: ${RAG_API_AUTH:-}
       MQHUB_ENABLED: "true"
       MQHUB_CONNECT_URL: http://mq-hub:9500
       # ogp-image-warmer / og-image-backfill mint proxy URLs, so the signing
@@ -521,12 +538,16 @@ services:
       # per-host interval hold across the two internet-facing binaries instead
       # of once each (CLAUDE.md rule 2). See the comment there.
       HOST_RATE_LIMITER_REDIS_URL: redis://redis-streams:6379/3
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
       OTEL_EXPORTER_OTLP_ENDPOINT: http://rask-log-aggregator:4318
       OTEL_SERVICE_NAME: alt-harvester
     secrets:
       # postgres_password went with the DB_* block (ADR-000954 Wave 3 batch 6).
       - image_proxy_secret
+      - sovereign_event_token
       - pki-agent-alt-harvester-jwk
+      - redis_password
+      - rag_api_token
     deploy:
       # Memory belongs under deploy.resources.limits, not mem_limit: compose
       # rejects a project that sets both unless the values agree, and the
@@ -696,9 +717,9 @@ services:
       # Every DATAHUB_* value below is required: LoadDataHubConfig has no
       # defaults, so a forgotten line is a non-zero exit rather than a
       # listener that quietly comes up wrong. Deliberately NOT the generic
-      # MTLS_* set that alt-backend uses — tlsutil.OptionsFromEnv fails open
-      # twice (unset MTLS_CLIENT_AUTH gives TLS with no peer verification,
-      # unset MTLS_ALLOWED_PEERS accepts every cert the shared CA issued).
+      # MTLS_* set that alt-backend uses — DATAHUB_* enforces client certificate
+      # verification and peer allowlist at config load time rather than relying
+      # on optional env defaults that fail open when unset.
       DATAHUB_LISTEN_ADDR: ":9443"
       DATAHUB_TLS_CERT_FILE: /certs/svc-cert.pem
       DATAHUB_TLS_KEY_FILE: /certs/svc-key.pem
@@ -757,6 +778,7 @@ services:
       # SOVEREIGN_URL has no default; unset means the sovereign client no-ops
       # every append while the caller still records success.
       SOVEREIGN_URL: http://knowledge-sovereign:9500
+      SOVEREIGN_EVENT_TOKEN_FILE: /run/secrets/sovereign_event_token
       # MQHUB_ENABLED defaults to false, and a disabled client no-ops every
       # publish — DataHubService article RPCs would answer 200 having
       # emitted nothing (ADR-000928). ValidateDataHubConfig rejects false
@@ -779,6 +801,7 @@ services:
       - postgres_password
       - backend_token_secret
       - auth_hub_internal_secret
+      - sovereign_event_token
       - pki-agent-alt-data-hub-jwk
     deploy:
       # See alt-harvester: mem_limit and deploy.resources.limits cannot both

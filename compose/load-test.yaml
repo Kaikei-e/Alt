@@ -14,7 +14,7 @@ services:
     build:
       context: ../alt-perf/k6/mock-rss-server
     ports:
-      - "8091:8080"
+      - "127.0.0.1:8091:8080"
     networks:
       - alt-network
     healthcheck:

@@ -28,6 +28,10 @@ services:
       - BACKEND_CONNECT_URL=http://alt-backend:9101
       # Admin Connect-RPC services live on alt-backend's internal listener.
       - BACKEND_INTERNAL_CONNECT_URL=http://alt-backend:9102
+      # Bearer token the admin/admin-monitor proxies present to alt-backend's
+      # :9102 listener (config.LoadOperatorAuth requires it there). Same
+      # secret as alt-backend's OPERATOR_TOKEN_FILE in compose/core.yaml.
+      - BACKEND_OPERATOR_TOKEN_FILE=/run/secrets/backend_operator_token
       - BACKEND_REST_URL=http://alt-backend:9000
       - AUTH_HUB_INTERNAL_URL=http://auth-hub:8888
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
@@ -36,7 +40,11 @@ services:
       - BFF_REQUEST_TIMEOUT=30s
       - BFF_STREAMING_TIMEOUT=40m
       - ACOLYTE_CONNECT_URL=http://acolyte-orchestrator:8090
-      - MTLS_LISTEN=${MTLS_LISTEN:-true}
+      # Service-specific (not the shared MTLS_LISTEN=true default other
+      # services use, e.g. compose/auth.yaml auth-hub): no caller dials
+      # alt-butterfly-facade:9443 today, so this listener stays closed
+      # until one with a client cert appears.
+      - MTLS_LISTEN=${ALT_BUTTERFLY_FACADE_MTLS_LISTEN:-false}
       - MTLS_PORT=9443
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
@@ -88,6 +96,7 @@ services:
     secrets:
       - backend_token_secret
       - pki-agent-alt-butterfly-facade-jwk
+      - backend_operator_token
     ports:
       # The frontend calls the BFF over the container network; browsers reach
       # it through plecto. Loopback bind keeps local curl / e2e working.

@@ -3,8 +3,8 @@
 # acolyte-db-migrator: Atlas migration runner
 # acolyte-orchestrator: Python service (Starlette + Connect-RPC + LangGraph)
 # Enrollment is in-process (PKI_ENROLLMENT=enabled). No pki-agent sidecar.
-# Wave 4: inbound mTLS lives in-process on :9443. Plaintext :8090 stays
-# loopback-only for cheap health; it is not an external mTLS fallback.
+# Inbound mTLS lives in-process on :9443. Plaintext :8090 is reached by BFF
+# with caller identity verified via forwarded signed X-Alt-Backend-Token.
 
 include:
   - base.yaml
@@ -142,11 +142,11 @@ services:
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       # --- notification outbox relay ---------------------------------------
-      # acolyte-db carries no owner column on reports, report_runs or
-      # report_briefs, so there is no row to derive a recipient from and the
-      # user has to be supplied. Unset means the relay logs
-      # notification_outbox_relay_disabled and does not run; a malformed value
-      # is a startup failure rather than a relay that forwards to nobody.
+      # reports now carries a user_id column; NOTIFICATION_USER_ID serves as
+      # fallback recipient when deriving user from run is not available.
+      # Unset means the relay logs notification_outbox_relay_disabled and does
+      # not run; a malformed value is a startup failure rather than a relay that
+      # forwards to nobody.
       - NOTIFICATIONS_ENABLED=${ACOLYTE_NOTIFICATIONS_ENABLED:-false}
       - NOTIFICATION_USER_ID=${ALT_NOTIFICATION_USER_ID:-}
       - DATAHUB_URL=https://alt-data-hub:9443
@@ -154,6 +154,10 @@ services:
       # client cert on :9443; never from a caller-supplied header.
       - INBOUND_TLS_ENABLED=true
       - MTLS_ALLOWED_PEERS=${ACOLYTE_ORCHESTRATOR_MTLS_ALLOWED_PEERS:-alt-butterfly-facade}
+      # PeerIdentityMiddleware strict mode (settings.peer_identity_strict).
+      # The :9443 TLS boundary already rejects unlisted CNs at handshake
+      # regardless of this flag; strict only adds a 401 for a missing peer.
+      - PEER_IDENTITY_STRICT=${ACOLYTE_ORCHESTRATOR_PEER_IDENTITY_STRICT:-false}
       - PEER_IDENTITY_TRUSTED=off
       - PKI_ENROLLMENT=enabled
       - CERT_SUBJECT=acolyte-orchestrator
@@ -166,18 +170,23 @@ services:
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/pki-agent-acolyte-orchestrator-jwk
       - RENEW_AT_FRACTION=0.66
       - OPS_LISTEN=:9110
+      # User identity verification
+      - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
+      - BACKEND_TOKEN_ISSUER=auth-hub
+      - BACKEND_TOKEN_AUDIENCE=alt-backend
+      - BACKEND_TOKEN_VERIFICATION=enabled
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=acolyte-orchestrator
     secrets:
       - acolyte_db_password
       - pki-agent-acolyte-orchestrator-jwk
+      - backend_token_secret
     extra_hosts:
       - "llm-external:${ACOLYTE_LLM_HOST:-127.0.0.1}"
     ports:
-      # Plaintext twin of the in-process mTLS :9443. AcolyteService
-      # authenticates nobody on it, so publishing it on every NIC is a
-      # second entrance the TLS listener cannot see. Loopback bind.
+      # Plaintext twin of the in-process mTLS :9443. Caller identity is
+      # verified via signed X-Alt-Backend-Token. Loopback bind on host.
       - "127.0.0.1:8090:8090"
     networks:
       - alt-network

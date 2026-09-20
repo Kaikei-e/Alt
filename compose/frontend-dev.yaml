@@ -79,6 +79,7 @@ services:
       # No knowledge-sovereign in this stack, so the admin client runs tokenless
       # by explicit choice rather than by an unset secret.
       - SOVEREIGN_ADMIN_AUTH=disabled
+      - SOVEREIGN_EVENT_AUTH=disabled
     depends_on:
       mock-auth:
         condition: service_healthy

@@ -178,10 +178,19 @@ services:
       - RECAP_KNOWLEDGE_SOVEREIGN_URL=${RECAP_KNOWLEDGE_SOVEREIGN_URL:-http://knowledge-sovereign:9500}
       - RECAP_KNOWLEDGE_OWNER_USER_ID=${RECAP_KNOWLEDGE_OWNER_USER_ID:-}
       - RECAP_KNOWLEDGE_OWNER_TENANT_ID=${RECAP_KNOWLEDGE_OWNER_TENANT_ID:-}
+      - RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE=/run/secrets/sovereign_event_token
+      - RECAP_KNOWLEDGE_SOVEREIGN_AUTH=${RECAP_KNOWLEDGE_SOVEREIGN_AUTH:-}
+      # Bearer guard for /admin/jobs/retry, /admin/genre-learning and this
+      # process's own calls into recap-subworker's /admin/* + /v1/runs — the
+      # same secret is mounted into recap-subworker as ADMIN_TOKEN_FILE.
+      - RECAP_ADMIN_TOKEN_FILE=/run/secrets/recap_admin_token
+      - RECAP_ADMIN_AUTH=${RECAP_ADMIN_AUTH:-}
     secrets:
       - recap_db_password
       - hugging_face_token
+      - sovereign_event_token
       - pki-agent-recap-worker-jwk
+      - recap_admin_token
     volumes:
       - recap_worker_certs:/certs
       - pki_trust_bundle:/trust:ro
@@ -206,8 +215,11 @@ services:
         reservations:
           memory: 768M
     ports:
-      # Same router as the mTLS listener, minus the transport: /admin/jobs/retry
-      # and /v1/generate/* carry no auth extractor at all. Loopback bind.
+      # Same router as the mTLS listener, minus the transport. /admin/jobs/retry
+      # and /admin/genre-learning require RECAP_ADMIN_TOKEN_FILE's bearer token;
+      # /v1/generate/* and /v1/morning/letters/regenerate still carry no auth
+      # extractor (their callers — alt-frontend-sv, alt-backend — are outside
+      # this change). Loopback bind.
       - "127.0.0.1:9005:9005"
     healthcheck:
       test: ["CMD", "/usr/local/bin/recap-worker", "healthcheck"]
@@ -290,13 +302,18 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-subworker
+      # Bearer guard for /admin/* and /v1/runs. recap-worker is the only
+      # caller, and reads the same recap_admin_token secret to send it.
+      - ADMIN_TOKEN_FILE=/run/secrets/recap_admin_token
+      - ADMIN_AUTH=${RECAP_ADMIN_AUTH:-}
     ports:
-      # Plaintext twin of the in-process mTLS :9443; only recap-worker
-      # should reach the TLS port. Loopback bind for cheap health.
+      # Plaintext twin of the in-process mTLS :9443 (where recap-worker calls
+      # with mTLS and admin bearer auth). Loopback bind for cheap health.
       - "127.0.0.1:8002:8002"
     secrets:
       - recap_db_password
       - pki-agent-recap-subworker-jwk
+      - recap_admin_token
     volumes:
       # joblib artefacts (genre_classifier*.joblib, tfidf_vectorizer*.joblib,
       # genre_thresholds*.json, golden_classification.json) live on the
@@ -394,8 +411,12 @@ services:
       - RECAP_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_DB_NAME=${RECAP_DB_NAME}
       - SSE_PORT=8000
+      - SSE_AUTH_TOKEN_FILE=/run/secrets/dashboard_sse_token
+      # Streamlit UI origin allowed to connect to SSE stream
+      - SSE_ALLOWED_ORIGIN=http://localhost:8501
     secrets:
       - recap_db_password
+      - dashboard_sse_token
     depends_on:
       recap-db:
         condition: service_healthy
@@ -453,3 +474,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+secrets:
+  dashboard_sse_token:
+    file: ../secrets/dashboard_sse_token.txt

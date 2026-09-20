@@ -98,6 +98,7 @@ services:
       # No knowledge-sovereign in this stack, so the admin client runs tokenless
       # by explicit choice rather than by an unset secret.
       - SOVEREIGN_ADMIN_AUTH=disabled
+      - SOVEREIGN_EVENT_AUTH=disabled
     depends_on:
       mock-auth:
         condition: service_healthy
@@ -162,6 +163,16 @@ services:
       # because IMAGE_PROXY_ENABLED defaults to true; without it
       # config.validateImageProxyConfig exits non-zero at startup.
       - IMAGE_PROXY_SECRET_FILE=/secrets/dev_image_proxy_secret.txt
+      # No BFF/altctl-with-a-token in this stack, so the operator listener
+      # runs tokenless by explicit choice rather than by an unset secret —
+      # same "no real caller in this stack" shape as alt-frontend-sv's
+      # SOVEREIGN_ADMIN_AUTH/SOVEREIGN_EVENT_AUTH=disabled above.
+      - OPERATOR_AUTH=disabled
+      # No Redis instance in this stack; run with Redis auth disabled explicitly
+      # if host rate limiter coordination is enabled via env.
+      - REDIS_AUTH=disabled
+      # No rag-orchestrator in the dev stack; disable RAG API auth explicitly.
+      - RAG_API_AUTH=disabled
     depends_on:
       dev-secret-init:
         condition: service_completed_successfully

@@ -58,19 +58,14 @@ addresses = ["kratos:4433"]
 [upstream.health]
 path = "/health/alive"
 
-[[upstream]]
-name = "dashboard"
-addresses = ["dashboard:8000"]
-[upstream.health]
-path = "/health"
-
-# Every route below repeats the same four baseline security headers, the ones
-# nginx applied via `include conf.d/snippets/security-headers.conf`. They were a
-# WASM filter until 0.7.0 gave routes a native declaration; a constant header set
-# never needed a signed component. The declaration is a floor: it lands on
-# forwarded responses, a filter's replace, the rate limit's 429, and the
-# forward-side 502/503/504 alike. Only a response returned before a route is
-# chosen carries none, and route 10's "/" prefix leaves no such request.
+# Every route below repeats the same five baseline security headers, the ones
+# nginx applied via `include conf.d/snippets/security-headers.conf` plus
+# strict-transport-security. They were a WASM filter until 0.7.0 gave routes a native
+# declaration; a constant header set never needed a signed component. The
+# declaration is a floor: it lands on forwarded responses, a filter's replace,
+# the rate limit's 429, and the forward-side 502/503/504 alike. Only a response
+# returned before a route is chosen carries none, and route 9's "/" prefix leaves
+# no such request.
 
 # 1. Browser-direct SSE
 [[route]]
@@ -79,17 +74,9 @@ strip_prefix = "/api"
 [route.match]
 path_prefix = "/api/v1/sse/"
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
-# 2. Dashboard SSE
-[[route]]
-upstream = "dashboard"
-[route.match]
-path_prefix = "/sse/dashboard/"
-[route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
-
-# 3. Kratos. nginx's own CORS preflight handling is dropped here deliberately: Kratos's
+# 2. Kratos. nginx's own CORS preflight handling is dropped here deliberately: Kratos's
 # own kratos.yml already declares cors: enabled: true with the identical origin list
 # (localhost / the production origin) and allow_credentials: true — nginx's handling was
 # redundant, not load-bearing.
@@ -99,7 +86,7 @@ strip_prefix = "/ory"
 [route.match]
 path_prefix = "/ory/"
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 [route.rate_limit]
 rate = 20
 burst = 40
@@ -110,23 +97,20 @@ protocols = ["websocket"]
 # how long a browser waits on a wedged Kratos before being told anything.
 [route.timeouts]
 request_timeout_ms = 10000
-# nginx never set `gzip off` here, so this location inherited the global `gzip on` —
-# Kratos JSON flow responses (incl. CSRF tokens) were already compressed pre-cutover.
-# This restores that parity. NOTE: ADR 000075 flags reflected-secret routes as a BREACH
-# risk; see docs/review/plecto-proxy-v0.3.0-gzip-2026-07-11.md for the write-up.
-[route.compression]
+# Response compression disabled on /ory/ to mitigate BREACH secret leakage of CSRF tokens.
 
-# 4. `/auth-validate` is NOT ported — confirmed dead: no `auth_request` directive
+
+# 3. `/auth-validate` is NOT ported — confirmed dead: no `auth_request` directive
 # anywhere in the repo references it; auth enforcement happens in-service.
 
-# 5. OGP image proxy. No Plecto equivalent to nginx's disk-backed proxy_cache — every
+# 4. OGP image proxy. No Plecto equivalent to nginx's disk-backed proxy_cache — every
 # request now round-trips to alt-backend (accepted regression, see review doc).
 [[route]]
 upstream = "alt-backend"
 [route.match]
 path_prefix = "/v1/images/proxy/"
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 [route.rate_limit]
 rate = 20
 burst = 40
@@ -137,11 +121,11 @@ key = "client-ip"
 [route.timeouts]
 request_timeout_ms = 12000
 
-# 6. nginx's generic `~* ^/api/.*(stream|sse)` regex catch-all has no Plecto equivalent
+# 5. nginx's generic `~* ^/api/.*(stream|sse)` regex catch-all has no Plecto equivalent
 # (path_prefix/host/method/header/query only, no regex). Any NEW streaming RPC added in
 # future needs an explicit route below — no more silent fallback.
 
-# 7. Immutable static assets (merges nginx's prefix + regex/JS variant into one route).
+# 6. Immutable static assets (merges nginx's prefix + regex/JS variant into one route).
 # The filter answers a 404 on a `.js` / `.mjs` chunk with a synthesised 200, the way
 # nginx's `error_page 404 = @stale_chunk_reload` did — a browser left on the previous
 # deploy gets a script that reloads it instead of iOS Safari's full-sheet "Cannot Open
@@ -152,7 +136,7 @@ upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/_app/immutable/"
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 # Serving a hashed file off disk: measured p99 38 ms, max 62 ms over two days.
 [route.timeouts]
 request_timeout_ms = 5000
@@ -162,60 +146,60 @@ request_timeout_ms = 5000
 [route.compression]
 min_length = 256
 
-# 8. Enumerated Connect-RPC streaming routes (regex -> explicit path_prefix).
+# 7. Enumerated Connect-RPC streaming routes (regex -> explicit path_prefix).
 [[route]]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.augur.v2."
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.morning_letter.v2."
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.feeds.v2."
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.knowledge.loop.v1."
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.knowledge_home.v1."
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
 [[route]]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/v2/alt.admin_monitor.v1."
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 
-# 9. SvelteKit API catch-all (non-streaming Connect-RPC / REST).
+# 8. SvelteKit API catch-all (non-streaming Connect-RPC / REST).
 [[route]]
 upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/api/"
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 [route.upgrade]
 protocols = ["websocket"]
 
-# 10. SSR catch-all (favicon.svg is covered by prefix "/" too). No [route.timeouts]:
+# 9. SSR catch-all (favicon.svg is covered by prefix "/" too). No [route.timeouts]:
 # SSR's measured tail reaches 17.8 s, so any bound tighter than the upstream's 30 s
 # default would turn a slow page into a 504 for a request that was going to succeed.
 [[route]]
@@ -223,7 +207,7 @@ upstream = "alt-frontend-sv"
 [route.match]
 path_prefix = "/"
 [route.headers]
-set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()" }
+set = { x-frame-options = "SAMEORIGIN", x-content-type-options = "nosniff", referrer-policy = "strict-origin-when-cross-origin", permissions-policy = "geolocation=(), camera=(), microphone=()", strict-transport-security = "max-age=31536000; includeSubDomains" }
 [route.upgrade]
 protocols = ["websocket"]
 # Mirrors nginx's `gzip on; gzip_types text/css application/javascript application/json

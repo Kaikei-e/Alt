@@ -18,19 +18,25 @@ services:
   redis-streams:
     image: redis:8.4.5-alpine
     container_name: redis-streams
-    command: >
-      redis-server
-      --maxmemory 1gb
-      --maxmemory-policy noeviction
-      --appendonly yes
-      --io-threads 4
-      --io-threads-do-reads yes
+    # The custom shell entrypoint below (needed to expand
+    # $$(cat /run/secrets/redis_password)) bypasses the official image's
+    # docker-entrypoint.sh, which normally chowns /data and drops root via
+    # gosu before exec'ing redis-server. Without this, redis-server ran as
+    # root. See the deploy note on the redis_password secret slice for the
+    # /data ownership check this requires on the existing named volume.
+    user: redis
+    entrypoint:
+      - /bin/sh
+      - -c
+      - exec redis-server --requirepass "$$(cat /run/secrets/redis_password)" --maxmemory 1gb --maxmemory-policy noeviction --appendonly yes --io-threads 4 --io-threads-do-reads yes
     volumes:
       - redis-streams-data:/data
     networks:
       - alt-network
+    secrets:
+      - redis_password
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -55,6 +61,7 @@ services:
     mem_limit: 128m
     environment:
       - REDIS_URL=redis://redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       - CONNECT_PORT=9500
       - LOG_LEVEL=info
       # OpenTelemetry
@@ -87,6 +94,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    secrets:
+      - redis_password
     restart: unless-stopped
     labels:
       - rask.group=mq-hub

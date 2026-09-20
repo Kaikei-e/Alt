@@ -143,6 +143,7 @@ services:
       - MEILI_MASTER_KEY_FILE=/run/secrets/meili_master_key
       - CONSUMER_ENABLED=false
       - REDIS_STREAMS_URL=redis://stub-backend:6379
+      - REDIS_AUTH=disabled
       - RECAP_WORKER_URL=http://stub-backend
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://stub-backend:4318
       - OTEL_SERVICE_NAME=search-indexer-staging
@@ -171,16 +172,21 @@ services:
     image: redis:8.4.5-alpine
     container_name: alt-staging-redis-streams
     profiles: [mq-hub, tag-generator]
-    command: >
-      redis-server
-      --maxmemory 256mb
-      --maxmemory-policy noeviction
-      --appendonly no
-      --save ""
+    # See compose/mq.yaml's redis-streams: the custom shell entrypoint
+    # bypasses docker-entrypoint.sh's chown+gosu drop. No named volume here
+    # (--save "" below), so unlike production there is no pre-existing /data
+    # ownership to reconcile.
+    user: redis
+    entrypoint:
+      - /bin/sh
+      - -c
+      - exec redis-server --requirepass "$$(cat /run/secrets/redis_password)" --maxmemory 256mb --maxmemory-policy noeviction --appendonly no --save ""
     networks:
       - alt-staging
+    secrets:
+      - redis_password
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/redis_password)\" redis-cli ping | grep -q PONG"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -198,6 +204,7 @@ services:
         condition: service_healthy
     environment:
       - REDIS_URL=redis://redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       - CONNECT_PORT=9500
       - LOG_LEVEL=info
       - REDIS_POOL_SIZE=20
@@ -208,6 +215,8 @@ services:
       - "19500:9500"
     networks:
       - alt-staging
+    secrets:
+      - redis_password
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9500/health"]
       interval: 3s
@@ -293,6 +302,7 @@ services:
       # supplies ADMIN_TOKEN_FILE (compose/sovereign.yaml); an unset token
       # is a startup failure there, never an open surface.
       - ADMIN_AUTH=disabled
+      - EVENT_AUTH=disabled
       # Tighten cron cadence so the E2E suite's surface-planner scenario
       # can observe a SurfacePlanRecomputed emission within its 45 s
       # retry budget (30 retries × 1.5 s). Production defaults stay at
@@ -413,6 +423,8 @@ services:
       # Explicit opt-out for the *inbound* listener: this suite speaks plain
       # h2c to :9011, so no client certificate is demanded of the test client.
       - PEER_IDENTITY_MODE=disabled
+      - SOVEREIGN_EVENT_AUTH=disabled
+      - RAG_API_AUTH=disabled
       # The *outbound* data-hub client is not covered by that opt-out.
       # config.loadDataHub panics on an unset or non-https DATAHUB_MTLS_URL,
       # and httpclient.NewDataHubClient reads the cert material at
@@ -462,6 +474,7 @@ services:
       - PORT=9400
       - BACKEND_API_URL=http://stub-backend
       - REDIS_STREAMS_URL=redis://redis-streams:6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=tag-generator-group
       - CONSUMER_NAME=tag-generator-staging
@@ -480,6 +493,8 @@ services:
       # mode is safe and the correct semantic for E2E.
       - HF_HUB_OFFLINE=1
       - TRANSFORMERS_OFFLINE=1
+    secrets:
+      - redis_password
     ports:
       - "19400:9400"
     networks:
@@ -565,6 +580,7 @@ services:
       # No Redis cache wired in this slice — defaults to false anyway,
       # but make it explicit so the lifespan never tries to dial Redis.
       - CACHE_ENABLED=false
+      - REDIS_AUTH=disabled
       # mTLS off, peer-identity unauthenticated. Matches mq-hub /
       # tag-generator / knowledge-sovereign staging conventions.
       - MTLS_ENFORCE=false
@@ -740,6 +756,12 @@ services:
       # knowledge owner id pair) and the staging suite has no
       # knowledge-sovereign to emit into.
       - RECAP_KNOWLEDGE_EMIT=false
+      - RECAP_KNOWLEDGE_SOVEREIGN_AUTH=disabled
+      # Explicit disable: RECAP_ADMIN_TOKEN_FILE guards /admin/jobs/retry
+      # and /admin/genre-learning, and the staging suite has no
+      # recap-subworker (SUBWORKER_BASE_URL points at rw-stub-subworker)
+      # to hold the shared secret.
+      - RECAP_ADMIN_AUTH=disabled
       - TAG_GENERATOR_BASE_URL=http://rw-stub-tag-generator/
       - HUGGING_FACE_TOKEN_PATH=/tmp/staging-hf-token-not-used
       # Staging has no real HF token (path above is intentionally absent),
@@ -989,6 +1011,13 @@ services:
       # :9102 is what the alt-backend suite reaches as INTERNAL_URL — see
       # tests/admin-url-backfill.spec.ts and tests/topology.spec.ts.
       - OPERATOR_LISTEN_ADDR=:9102
+      # The `operator` fixture (e2e/playwright/alt-backend/src/fixtures.ts)
+      # calls :9102 with X-Alt-Backend-Token only, no Authorization header —
+      # this slice has no BFF/altctl-with-a-token in front of it, so the
+      # operator listener runs tokenless by explicit choice.
+      - OPERATOR_AUTH=disabled
+      - REDIS_AUTH=disabled
+      - RAG_API_AUTH=disabled
       # :9110 is {{ops_url}} — /health and /metrics, asserted by
       # tests/health.spec.ts — and the address the `healthcheck` subcommand
       # self-probes.
@@ -1039,6 +1068,7 @@ services:
       # ReserveKnowledgeLoopTransition handler there drives the
       # dedupe-barrier branch of the usecase.
       - SOVEREIGN_URL=http://knowledge-sovereign
+      - SOVEREIGN_EVENT_AUTH=disabled
       # SSRF allowlist — only stub.invalid is reachable and feed
       # registration needs to bypass the private-IP guard for it.
       - FEED_ALLOWED_HOSTS=stub.invalid
@@ -1150,6 +1180,9 @@ services:
       # client no-ops every append while outbox-worker still marks the row
       # PROCESSED, which breaks the append-first invariant silently.
       - SOVEREIGN_URL=http://knowledge-sovereign
+      - SOVEREIGN_EVENT_AUTH=disabled
+      - REDIS_AUTH=disabled
+      - RAG_API_AUTH=disabled
       - RAG_ORCHESTRATOR_URL=http://rag-orchestrator/
       - RAG_ORCHESTRATOR_CONNECT_URL=http://rag-orchestrator/
       - PRE_PROCESSOR_URL=http://pre-processor/
@@ -1268,6 +1301,7 @@ services:
       # alt_backend_token_secret — see the comment on the auth-hub service.
       - INTERNAL_AUTH_SECRET=staging-fixture-internal-auth-secret-not-a-real-key
       - SOVEREIGN_URL=http://knowledge-sovereign
+      - SOVEREIGN_EVENT_AUTH=disabled
       # A disabled mq-hub client no-ops every publish while the article RPCs
       # still answer 200 (ADR-000928), so the enabled value is carried into
       # staging rather than switched off for convenience.
@@ -1462,3 +1496,5 @@ secrets:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cookie_secret.txt
   kratos_cipher_secret:
     file: ../e2e/fixtures/staging-secrets/auth_hub_kratos_cipher_secret.txt
+  redis_password:
+    file: ../e2e/fixtures/staging-secrets/redis_password.txt

@@ -18,6 +18,7 @@ against it.
 | `auth_hub_csrf_secret.txt` | `auth-hub` profile | HMAC-SHA256 secret used by auth-hub's CSRF token generator. Must be ≥ 32 bytes. |
 | `auth_hub_kratos_cookie_secret.txt` | `auth-hub` profile | Kratos `secrets.cookie[0]` — HMAC key over `ory_kratos_session` cookies in staging. |
 | `auth_hub_kratos_cipher_secret.txt` | `auth-hub` profile | Kratos `secrets.cipher[0]` — exactly 32 bytes (xchacha20-poly1305 requirement). |
+| `redis_password.txt` | `mq-hub`, `tag-generator` profiles | `redis-streams`' `--requirepass`, read via `REDIS_PASSWORD_FILE` by `mq-hub` and `tag-generator`. |
 
 The `/internal/system-user` shared bearer has no file here: `INTERNAL_AUTH_SECRET`
 is set inline on both the `auth-hub` and `alt-data-hub` services in

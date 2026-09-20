@@ -4,9 +4,14 @@
 include:
   - base.yaml
 
+networks:
+  # Internal-only network shared by log forwarders, cAdvisor, and docker-socket-proxy-ro.
+  # Keeps the read-only Docker API off the main application network.
+  logging-docker-proxy:
+    internal: true
+
 # Shared forwarder definition. TARGET_SERVICE (and optional mem_limit) are
-# overridden per service. DOCKER_GROUP_ID has no host-magic fallback — inject
-# via `export DOCKER_GROUP_ID=$(./scripts/get-docker-gid.sh)` (start.sh does this).
+# overridden per service.
 x-rask-forwarder: &rask-forwarder
   image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-forwarder:${IMAGE_TAG:-main}
   build:
@@ -15,20 +20,14 @@ x-rask-forwarder: &rask-forwarder
   mem_limit: 64m
   networks:
     - alt-network
+    - logging-docker-proxy
   depends_on:
     rask-log-aggregator:
       condition: service_healthy
+    docker-socket-proxy-ro:
+      condition: service_healthy
   volumes:
-    - type: bind
-      source: /var/run/docker.sock
-      target: /var/run/docker.sock
-      read_only: true
-      bind:
-        create_host_path: false
     - /var/lib/docker/containers:/var/lib/docker/containers:ro
-  group_add:
-    # Fail-fast when unset: a wrong fallback GID silently breaks sock access.
-    - "${DOCKER_GROUP_ID:?DOCKER_GROUP_ID must be set (run: export DOCKER_GROUP_ID=$(./scripts/get-docker-gid.sh))}"
   restart: unless-stopped
   stop_grace_period: 12s
   healthcheck:
@@ -39,7 +38,7 @@ x-rask-forwarder: &rask-forwarder
     start_period: 15s
 
 x-rask-forwarder-env: &rask-forwarder-env
-  DOCKER_HOST: "unix:///var/run/docker.sock"
+  DOCKER_HOST: "tcp://docker-socket-proxy-ro:2375"
   LOG_LEVEL: "info"
   RUST_LOG: "info"
   RASK_ENDPOINT: "http://rask-log-aggregator:9600/v1/aggregate"
@@ -48,6 +47,66 @@ x-rask-forwarder-env: &rask-forwarder-env
   BUFFER_CAPACITY: "100000"
 
 services:
+  docker-socket-proxy-ro:
+    # Read-only Docker API proxy for log forwarders and cAdvisor metrics.
+    # Disallows POST and mutating endpoints; only permits read-only discovery,
+    # metadata, and log streaming APIs.
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    container_name: alt-docker-socket-proxy-ro
+    environment:
+      # Master switch: POST=0 denies all mutating operations.
+      - POST=0
+      # Endpoints required by rask-log-forwarder and cAdvisor
+      - CONTAINERS=1
+      - INFO=1
+      - VERSION=1
+      - EVENTS=1
+      - PING=1
+      # Explicitly disabled endpoints (deny by default)
+      - ALLOW_RESTARTS=0
+      - ALLOW_START=0
+      - ALLOW_STOP=0
+      - AUTH=0
+      - BUILD=0
+      - COMMIT=0
+      - CONFIGS=0
+      - DISTRIBUTION=0
+      - EXEC=0
+      - GRPC=0
+      - IMAGES=0
+      - NETWORKS=0
+      - NODES=0
+      - PLUGINS=0
+      - SECRETS=0
+      - SERVICES=0
+      - SESSION=0
+      - SWARM=0
+      - SYSTEM=0
+      - TASKS=0
+      - VOLUMES=0
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - logging-docker-proxy
+    restart: unless-stopped
+    labels:
+      - rask.group=logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2375/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
   rask-log-aggregator:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-rask-log-aggregator:${IMAGE_TAG:-main}
     build:
