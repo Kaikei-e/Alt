@@ -186,7 +186,7 @@
       }
     },
     {
-      "description": "a GetProjectionHealth admin Connect-RPC request",
+      "description": "a GetOverview admin Connect-RPC request",
       "providerStates": [
         {
           "name": "knowledge home admin service is available"
@@ -212,12 +212,11 @@
           }
         },
         "method": "POST",
-        "path": "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth"
+        "path": "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview"
       },
       "response": {
         "body": {
-          "activeVersion": 3,
-          "lastUpdated": "2026-03-20T09:30:00Z"
+          "totalEvents": 100
         },
         "headers": {
           "Content-Type": "application/json"

@@ -556,6 +556,19 @@ A08 Integrity Failure そのものになる。
 - **provider 側の検証を緩めて緑にしない。** テナント分離や認証を optional に
   戻すのは一時的なセキュリティ後退であり、契約の問題を本番の問題に移し替えるだけ。
 
+### interaction の追加 / 改名も lockstep 変更である
+
+consumer pact に interaction を追加したり、パスや description を変えると、Broker の
+`contract_requiring_verification_published` webhook が発火し、provider 側を
+**既にデプロイ済みの version** で checkout して検証しにくる。provider 検証は
+スタブサーバに対して走るため、新しいパスは旧 version のスタブに存在せず
+**404 / `text/plain`** になり、Broker に failure verdict が記録されて
+can-i-deploy が赤くなる。
+
+したがって interaction の追加 / 改名は、**provider 側のルートを先に出してから**
+consumer を変える。consumer 単独の「契約の書き直し」は、たとえ実装に近づける
+方向の修正であっても安全ではない。
+
 ### 実例 (2026-09-21)
 
 `12ecb77a` のリリースで 2 ジョブ・計 8 interaction が失敗。全て本番 pin された

@@ -132,10 +132,10 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 	err := mockProvider.
 		AddInteraction().
 		Given("knowledge home admin service is available").
-		UponReceiving("a GetProjectionHealth admin Connect-RPC request").
+		UponReceiving("a GetOverview admin Connect-RPC request").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
-			Path:   matchers.String("/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth"),
+			Path:   matchers.String("/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview"),
 			Headers: matchers.MapMatcher{
 				"Content-Type":  matchers.String("application/json"),
 				"Authorization": matchers.Regex("Bearer test-operator-token", `^Bearer .+$`),
@@ -148,8 +148,7 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.Like(map[string]interface{}{
-				"activeVersion": 3,
-				"lastUpdated":   "2026-03-20T09:30:00Z",
+				"totalEvents": 100,
 			}),
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
@@ -168,7 +167,7 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 
 			req := httptest.NewRequest(
 				http.MethodPost,
-				"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
+				"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview",
 				strings.NewReader("{}"),
 			)
 			req.Header.Set("Content-Type", "application/json")
@@ -178,7 +177,7 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 			handler.ServeHTTP(recorder, req)
 
 			assert.Equal(t, http.StatusOK, recorder.Code)
-			assert.Contains(t, recorder.Body.String(), "activeVersion")
+			assert.Contains(t, recorder.Body.String(), "totalEvents")
 			return nil
 		})
 	require.NoError(t, err)
