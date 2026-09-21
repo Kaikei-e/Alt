@@ -398,22 +398,42 @@ curl -fsS -u "pact:${PACT_BROKER_PASSWORD}" \
 pact-broker-cli can-i-deploy --pacticipant <P> --version <new-sha> --to-environment production
 ```
 
-### Secondary（真に force-override 必要な例外経路のみ）
+### Secondary（真に force-override が必要な例外経路のみ）
 
-⚠️ **これは production gate を人間の主張で override する A08 Integrity Failure 相当のリスクを持つ**。使用時は次の 3 条件全てを満たすこと:
+⚠️ **これは production gate を人間の主張で override する A08 Integrity Failure 相当の
+リスクを持つ**。PRIMARY の再 verify が技術的に不可能な場合にのみ使う。
 
-1. **2 人承認**: Linear issue + 別エンジニアの approve コメント
-2. **`--build-url` に Linear issue URL を固定**（自由文字列禁止）
-3. **監査ログ**: 実行後に slack #prod-audit へ invalidation URL + 理由 + approver 2 名を post
+単独運用のため第三者承認は成立しない。代わりに **証跡を必ず残すこと** を条件とする。
+統制の目的は「一人がゲートを黙って偽装できない」ことであり、守れない承認フローを
+書いておくと override が記録されないまま起きるので、かえって危険になる。
+
+1. **`--build-url` にブロックされた release-deploy の run URL を固定**する（自由文字列
+   禁止）。後からどのリリースで何を通したのかを辿れるようにする
+2. **override した pact URL・provider version・理由を追記する**。置き場所は gitignore
+   下の `docs/daily/` — broker の内部 ID (`pact-version/<hash>` /
+   `verification-results/<n>`) と deploy 側の run ID は、公開リポジトリの tracked
+   content に入れない
+3. **次のリリースで override が不要になったことを確認する**。必要なままなら、それは
+   一時的な例外ではなく未解決の非互換なので section 9.6 の分類に戻る
 
 ```bash
 # ⚠️ PRIMARY の再 verify が技術的に不可能な場合にのみ
-pact-broker-cli create-or-update-verification \
-  --pact-url "$PACT_URL" \
-  --provider-version "$CURRENT_PROD_SHA" \
-  --success true \
-  --build-url "https://linear.app/<org>/issue/<INC-NNNN>"
+# BUILD_URL はブロックされた release-deploy の run URL
+override() {
+  local PACT_URL="$1" PROVIDER_VERSION="$2" REASON="$3"
+  pact-broker-cli create-or-update-verification \
+    --pact-url "$PACT_URL" \
+    --provider-version "$PROVIDER_VERSION" \
+    --success true \
+    --build-url "$BUILD_URL" \
+  && printf '%s\t%s\t%s\t%s\n' "$(date -Is)" "$PACT_URL" "$PROVIDER_VERSION" "$REASON" \
+     >> docs/daily/pact-overrides.tsv
+}
 ```
+
+`--provider-version` は `can-i-deploy` の失敗文が名指しするほうを渡す。「新 consumer ×
+本番の provider」なら provider の本番 SHA、「本番の consumer × 新 provider」なら
+リリース対象の SHA。ここを取り違えても gate は開かず、無意味なレコードが増えるだけ。
 
 将来の予防策（backlog）:
 
@@ -553,6 +573,9 @@ A08 Integrity Failure そのものになる。
   デプロイ窓の非互換は消えていないので、gate を通した意味が無くなる。
 - **selector から `DeployedOrReleased` を外さない。** これはデプロイ窓の非互換を
   検出する唯一の仕掛けで、外すと本節の症状が「静かな本番障害」に変わる。
+- **force-override (section 9 Secondary) で gate を通しても、デプロイ窓の非互換は
+  消えない。** override が動かすのは CI の判定だけで、実際の 401 / 400 を防ぐのは
+  ロール順序だけである。override したからといって順序を飛ばすと本番で落ちる。
 - **provider 側の検証を緩めて緑にしない。** テナント分離や認証を optional に
   戻すのは一時的なセキュリティ後退であり、契約の問題を本番の問題に移し替えるだけ。
 
