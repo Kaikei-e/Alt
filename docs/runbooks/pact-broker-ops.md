@@ -571,18 +571,37 @@ consumer を変える。consumer 単独の「契約の書き直し」は、た�
 
 ### 実例 (2026-09-21)
 
-`12ecb77a` のリリースで 2 ジョブ・計 8 interaction が失敗。全て本番 pin された
-pact のみで、main の pact は全 PASS だった。
+1 リリースで 4 つの provider の inbound 認証 / テナント分離を同時に強化した結果、
+契約検証が 5 グループ失敗した。いずれも「本番稼働中の consumer がその資格情報を
+持っていない」であり、リグレッションは 1 件も無かった。
 
-| 分類 | provider ← consumer | 内容 |
-|---|---|---|
-| A | search-indexer ← rag-orchestrator / acolyte-orchestrator | `1332fe974` が `user_id` を必須化 (`app/rest/handler.go`)。旧 consumer は `SearchBM25` で `user_id` を送っておらず 400 |
-| B | alt-backend ← alt-butterfly-facade | provider 側スタブが `Authorization: Bearer` を要求 (`13673a3fa`)。旧 pact は `X-Service-Token` のみ。しかも対象の `GetOverview` は proto に存在しない RPC だった |
-| B | search-indexer ← alt-backend | `estimatedTotalHits` が String vs Integer。proto は当初から `int64` で本番は常に文字列を返しており、旧 provider スタブが `encoding/json` + `int` で本番と食い違っていただけ |
+| provider | 強化コミット | 影響 consumer | 検証の相手 | 分類 |
+|---|---|---|---|---|
+| knowledge-sovereign | `a19597d6c` | alt-backend / rag-orchestrator | 実サーバ | **A** |
+| recap-subworker | `3dda95fd2` | recap-worker | 実アプリ router | **A** |
+| search-indexer | `1332fe974` | rag-orchestrator / acolyte-orchestrator | 実サーバ | **A** |
+| search-indexer | `1332fe974` | alt-backend | 実サーバ | B — `estimatedTotalHits` は proto が当初から `int64` で本番は常に文字列を返していた。旧 provider スタブが `encoding/json` + `int` で本番と食い違っていただけ |
+| alt-backend | `13673a3fa` | alt-butterfly-facade | スタブ | B — 対象の `GetOverview` は proto に存在しない RPC だった |
 
-ロール順は wave 1 = `alt-butterfly-facade` / `rag-orchestrator` / `acolyte-orchestrator`、
-wave 2 = `alt-backend` / `search-indexer`。`alt-backend` は facade に対する provider
-でもあるため facade より後に置く。
+`gate` と `e2e` の失敗はすべて gate artifact 欠損による派生で、独立した原因は無い。
+**分類の当たりを付けるには、まず provider 検証が実サーバを立てているのかスタブなのかを
+確認する**。この repo では両方の流儀が混在しており、そこを取り違えると結論が反転する。
+
+ロール順は以下。
+
+```
+wave 1  alt-butterfly-facade  rag-orchestrator  acolyte-orchestrator  recap-worker
+wave 2  alt-backend
+wave 3  search-indexer  knowledge-sovereign  recap-subworker
+```
+
+`alt-backend` が wave 2 なのは、alt-butterfly-facade に対しては provider、
+search-indexer と knowledge-sovereign に対しては consumer という両義性があるため。
+
+新 consumer は旧 provider に対して全ケース安全だった（旧 provider には interceptor が
+無く余分な `Authorization` を無視する。search-indexer の `user_id` も旧実装では任意
+パラメータとして受理されていた）。逆順にすると `/trail` の描画、Trail 検索、記事取り込みの
+イベント追記、outbox worker、日次 recap のクラスタリングが実際に 401 / 400 で落ちる。
 
 ## 参考
 
