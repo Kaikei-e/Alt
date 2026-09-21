@@ -530,7 +530,7 @@ func startStubServer(t *testing.T) int {
 			})
 		})
 
-	mux.HandleFunc("/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview",
+	mux.HandleFunc("/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -548,8 +548,9 @@ func startStubServer(t *testing.T) int {
 			}
 			_, _ = io.Copy(io.Discard, r.Body)
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]int{
-				"totalEvents": 100,
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"activeVersion": 3,
+				"lastUpdated":   "2026-03-20T09:30:00Z",
 			})
 		})
 
@@ -661,7 +662,7 @@ func TestVerifyRecapWorkerContract(t *testing.T) {
 
 // TestVerifyAltButterflyFacadeContract verifies that alt-backend satisfies
 // the BFF's proxy-layer contract for FeedService.GetFeed/GetFeedStats and
-// KnowledgeHomeAdminService.GetOverview. The BFF fans these Connect-RPC
+// KnowledgeHomeAdminService.GetProjectionHealth. The BFF fans these Connect-RPC
 // calls out to alt-backend; alt-backend must keep the wire format stable.
 func TestVerifyAltButterflyFacadeContract(t *testing.T) {
 	pactFile := filepath.Join(pactDir, altButterflyFacadePactFile)

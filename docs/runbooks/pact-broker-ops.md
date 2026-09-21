@@ -470,6 +470,107 @@ c2quay がこのスタックの `record-deployment` を内部で実行してい�
 4. 恒久策として、以後の `record-deployment` / `record-undeployment` には
    常に同じ `--application-instance` を明示して渡す（未指定のままにしない）。
 
+## 9.6. Lockstep breaking migration による provider verification デッドロック
+
+### 症状
+
+release-deploy.yaml の `pact-publish-provider (<P>)` が落ち、ログの `Failures:` が
+**すべて `currently deployed to production` で選択された pact に対するもの**で、
+同じ consumer の `latest version ... from the main branch` の pact は全て PASS する。
+
+section 9 は can-i-deploy が古い *verification record* で落ちるケース、
+section 9.5 は `--application-instance` 未指定で deployment 行が固着するケース。
+本節はそのどちらでもなく、**deployment 記録も verification 記録も正しいまま**落ちる。
+
+### 原因
+
+デプロイ側パイプラインでは provider 検証がリリースの序盤に走るのに対し、
+`record-deployment` は **ロールが完了した最終段でしか走らない**。一方 provider 検証は
+`DeployedOrReleased: true` selector により **前回リリースの consumer version** を
+相手に走る。
+
+consumer と provider を同一コミットで同時に変える lockstep な破壊的変更では、
+「前回の consumer が新しい provider を満たさない」のは定義上の帰結であり、
+そのリリースは record-deployment に到達できない = 永久に通らない。
+
+[[PM-2026-053]] の根本原因表 #3 に「鶏卵デッドロック」として記録済み。本節は
+そのアクションアイテム #10（手動 record-deployment 手順の文書化）に対応する。
+
+### まず分類する（ここを飛ばさない）
+
+落ちた interaction を 2 つに仕分ける。
+
+- **A. 実在する非互換** — 旧 consumer が新 provider に送るリクエストが本当に
+  弾かれる。ロール順を誤ればデプロイ窓で実害が出る。
+- **B. テストフィクスチャの虚構** — provider 側がスタブで、契約が実装と無関係に
+  書かれていた / スタブが本番と違う直列化をしていた等。本番は最初から壊れていない。
+
+section 9 の Secondary（verification を success として POST する force-override）は
+**本節では使ってはならない**。検証は正しく失敗しており、成功を主張するのは
+A08 Integrity Failure そのものになる。
+
+### 復旧手順
+
+原則は **consumer を先に出す**。新 consumer は旧 provider に対しても動く
+（追加したヘッダ / パラメータは旧 provider から見れば未知で無視される）が、
+逆は成り立たない。
+
+1. 分類 A の consumer を先にロールする。イメージは失敗した run の build ジョブが
+   既に GHCR へ push している（タグ `sha-<short>`）。
+
+   ```bash
+   # 本番ホストで
+   docker compose -f compose/compose.yaml -p alt up -d --no-deps <consumer...>
+   ```
+
+2. ロールできた consumer を broker に記録する。**`--application-instance` は
+   付けない** — release-deploy.yaml の record-deployment が未指定で記録している
+   ので、付けると別行になって supersede しない（section 9.5）。
+
+   ```bash
+   export PACT_BROKER_USERNAME=pact
+   export PACT_BROKER_PASSWORD=$(cat secrets/pact_broker_basic_auth_password.txt)
+   export SHA=<new-sha>
+   for p in <consumer...>; do
+     pact-broker-cli record-deployment \
+       --pacticipant "$p" \
+       --version "$SHA" \
+       --environment production \
+       --broker-base-url http://localhost:9292
+   done
+   ```
+
+   `--broker-password` は 401 になる。password は env 経由のみ。
+
+3. release-deploy を再 dispatch する。provider 検証の `DeployedOrReleased` が
+   新しい version を指すようになり、分類 A / B とも解消する。
+
+4. 残りの provider はパイプラインの deploy ジョブに任せる。
+
+### やってはいけないこと
+
+- **まだロールしていない version を record-deployment しない。** 検証は通るが
+  デプロイ窓の非互換は消えていないので、gate を通した意味が無くなる。
+- **selector から `DeployedOrReleased` を外さない。** これはデプロイ窓の非互換を
+  検出する唯一の仕掛けで、外すと本節の症状が「静かな本番障害」に変わる。
+- **provider 側の検証を緩めて緑にしない。** テナント分離や認証を optional に
+  戻すのは一時的なセキュリティ後退であり、契約の問題を本番の問題に移し替えるだけ。
+
+### 実例 (2026-09-21)
+
+`12ecb77a` のリリースで 2 ジョブ・計 8 interaction が失敗。全て本番 pin された
+pact のみで、main の pact は全 PASS だった。
+
+| 分類 | provider ← consumer | 内容 |
+|---|---|---|
+| A | search-indexer ← rag-orchestrator / acolyte-orchestrator | `1332fe974` が `user_id` を必須化 (`app/rest/handler.go`)。旧 consumer は `SearchBM25` で `user_id` を送っておらず 400 |
+| B | alt-backend ← alt-butterfly-facade | provider 側スタブが `Authorization: Bearer` を要求 (`13673a3fa`)。旧 pact は `X-Service-Token` のみ。しかも対象の `GetOverview` は proto に存在しない RPC だった |
+| B | search-indexer ← alt-backend | `estimatedTotalHits` が String vs Integer。proto は当初から `int64` で本番は常に文字列を返しており、旧 provider スタブが `encoding/json` + `int` で本番と食い違っていただけ |
+
+ロール順は wave 1 = `alt-butterfly-facade` / `rag-orchestrator` / `acolyte-orchestrator`、
+wave 2 = `alt-backend` / `search-indexer`。`alt-backend` は facade に対する provider
+でもあるため facade より後に置く。
+
 ## 参考
 
 - [[000591]] Pact CDC 全面展開
