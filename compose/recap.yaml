@@ -255,6 +255,7 @@ services:
     environment:
       - RECAP_SUBWORKER_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_SUBWORKER_BASE_URL=http://recap-subworker:8002
+      - RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES=67108864
       - RECAP_SUBWORKER_MODEL_BACKEND=${RECAP_SUBWORKER_MODEL_BACKEND:-ollama-remote}
       - RECAP_SUBWORKER_MODEL_ID=${RECAP_SUBWORKER_MODEL_ID:-BAAI/bge-m3}
       - RECAP_SUBWORKER_OLLAMA_EMBED_URL=${OLLAMA_EMBED_URL:-http://knowledge-embedder-local:11434}

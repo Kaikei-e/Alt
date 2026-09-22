@@ -43,8 +43,8 @@ from .routers import (
 
 logger = structlog.get_logger(__name__)
 
-# 10 MB request body limit
-_MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
+# Default 64 MiB request body limit
+DEFAULT_MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
 
 
 class RequestSizeLimitMiddleware:
@@ -57,7 +57,7 @@ class RequestSizeLimitMiddleware:
     consumed by this middleware.
     """
 
-    def __init__(self, app: ASGIApp, max_bytes: int = _MAX_REQUEST_BODY_BYTES) -> None:
+    def __init__(self, app: ASGIApp, max_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES) -> None:
         self.app = app
         self.max_bytes = max_bytes
 
@@ -119,6 +119,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         "effective filler phrases configured at startup",
         count=len(effective_phrases),
     )
+    structlog.get_logger(__name__).info(
+        "request size limit configured at startup",
+        max_request_body_bytes=settings.max_request_body_bytes,
+        max_request_body_mib=settings.max_request_body_bytes / (1024 * 1024),
+    )
 
     try:
         yield
@@ -147,7 +152,7 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
 
-    app.add_middleware(RequestSizeLimitMiddleware)
+    app.add_middleware(RequestSizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
 
     # peer-identity capture for mTLS audit (ADR-000737).
     from recap_subworker.app.infra.peer_identity import (

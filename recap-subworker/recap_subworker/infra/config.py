@@ -967,6 +967,15 @@ class Settings(BaseSettings):
         description="Optional comma-separated speculation/filler phrases overriding default list",
         validation_alias=AliasChoices("RECAP_FILLER_PHRASES", "RECAP_SUBWORKER_FILLER_PHRASES"),
     )
+    max_request_body_bytes: int = Field(
+        default=64 * 1024 * 1024,
+        gt=0,
+        description="Maximum request body size in bytes accepted by RequestSizeLimitMiddleware (default: 64 MiB)",
+        validation_alias=AliasChoices(
+            "RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES",
+            "RECAP_MAX_REQUEST_BODY_BYTES",
+        ),
+    )
     classification_backend: Literal["joblib", "learning_machine"] = Field(
         "joblib",
         description="Classification backend: 'joblib' for traditional classifier, 'learning_machine' for student models",
