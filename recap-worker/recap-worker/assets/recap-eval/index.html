@@ -248,6 +248,37 @@
       color: var(--text-sub);
     }
 
+    .badge-params {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text-sub);
+    }
+
+    .badge-default {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 6px;
+      background: var(--top-bg);
+      color: var(--top-color);
+      border: 1px solid var(--top-border);
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    tr.is-default-window td {
+      background: #fafcff;
+    }
+
+    tr.is-default-window:hover td {
+      background: #f0f7ff;
+    }
+
     .shortcuts-bar {
       font-size: 12px;
       color: var(--text-muted);
@@ -826,6 +857,8 @@
             <tr>
               <th>From</th>
               <th>To</th>
+              <th>Version</th>
+              <th>Created</th>
               <th>Snapshot Job</th>
               <th>Candidates</th>
               <th>Judged</th>
@@ -833,7 +866,7 @@
             </tr>
           </thead>
           <tbody id="windows-table-body">
-            <tr><td colspan="6" class="empty-state">Loading windows...</td></tr>
+            <tr><td colspan="8" class="empty-state">Loading windows...</td></tr>
           </tbody>
         </table>
       </div>
@@ -1182,7 +1215,7 @@
         windowsTableBody.replaceChildren();
         const trLoading = document.createElement('tr');
         const tdLoading = document.createElement('td');
-        tdLoading.colSpan = 6;
+        tdLoading.colSpan = 8;
         tdLoading.className = 'empty-state';
         tdLoading.textContent = 'Loading windows...';
         trLoading.appendChild(tdLoading);
@@ -1197,7 +1230,7 @@
           if (windows.length === 0) {
             const trEmpty = document.createElement('tr');
             const tdEmpty = document.createElement('td');
-            tdEmpty.colSpan = 6;
+            tdEmpty.colSpan = 8;
             tdEmpty.className = 'empty-state';
             tdEmpty.textContent = 'No evaluation windows found.';
             trEmpty.appendChild(tdEmpty);
@@ -1205,8 +1238,25 @@
             return;
           }
 
+          // Ensure sorted newest first by creation time
+          windows.sort(function (a, b) {
+            const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return tB - tA;
+          });
+
+          // Mark newest window per date range as default choice
+          const seenDateRanges = new Set();
+
           windows.forEach(function (win) {
             const tr = document.createElement('tr');
+            const rangeKey = (win.from_ts || '') + '::' + (win.to_ts || '');
+            const isDefault = !seenDateRanges.has(rangeKey);
+            seenDateRanges.add(rangeKey);
+
+            if (isDefault) {
+              tr.className = 'is-default-window';
+            }
 
             const tdFrom = document.createElement('td');
             tdFrom.textContent = win.from_ts || '-';
@@ -1215,6 +1265,30 @@
             const tdTo = document.createElement('td');
             tdTo.textContent = win.to_ts || '-';
             tr.appendChild(tdTo);
+
+            const tdVersion = document.createElement('td');
+            const spanVer = document.createElement('span');
+            spanVer.className = 'badge-params';
+            spanVer.textContent = win.params_version || '-';
+            tdVersion.appendChild(spanVer);
+
+            if (isDefault) {
+              const spanDef = document.createElement('span');
+              spanDef.className = 'badge-default';
+              spanDef.style.marginLeft = '6px';
+              spanDef.textContent = 'default';
+              tdVersion.appendChild(spanDef);
+            }
+            tr.appendChild(tdVersion);
+
+            const tdCreated = document.createElement('td');
+            tdCreated.style.fontSize = '12px';
+            tdCreated.style.color = 'var(--text-muted)';
+            tdCreated.textContent = win.created_at ? String(win.created_at).replace('T', ' ').substring(0, 19) : '-';
+            if (win.created_at) {
+              tdCreated.title = win.created_at;
+            }
+            tr.appendChild(tdCreated);
 
             const tdJob = document.createElement('td');
             tdJob.style.fontFamily = 'var(--font-mono)';
@@ -1238,9 +1312,9 @@
 
             const tdAction = document.createElement('td');
             const btnOpen = document.createElement('button');
-            btnOpen.className = 'btn btn-sm btn-primary';
+            btnOpen.className = isDefault ? 'btn btn-sm btn-primary' : 'btn btn-sm';
             btnOpen.type = 'button';
-            btnOpen.textContent = 'Evaluate Candidates';
+            btnOpen.textContent = isDefault ? 'Evaluate (Default)' : 'Evaluate';
             btnOpen.addEventListener('click', function () {
               openCandidatesView(win.id, win);
             });
@@ -1253,7 +1327,7 @@
           windowsTableBody.replaceChildren();
           const trErr = document.createElement('tr');
           const tdErr = document.createElement('td');
-          tdErr.colSpan = 6;
+          tdErr.colSpan = 8;
           tdErr.className = 'empty-state';
           tdErr.style.color = 'var(--noise-color)';
           tdErr.textContent = 'Failed to load windows: ' + err.message;
@@ -1279,7 +1353,8 @@
         const dateRange = (windowMeta && windowMeta.from_ts && windowMeta.to_ts)
           ? ' (' + String(windowMeta.from_ts).substring(0, 10) + ' – ' + String(windowMeta.to_ts).substring(0, 10) + ')'
           : '';
-        candidatesViewTitle.textContent = 'Window ' + (windowId ? String(windowId).substring(0, 8) : '') + dateRange;
+        const verStr = (windowMeta && windowMeta.params_version) ? ' [' + windowMeta.params_version + ']' : '';
+        candidatesViewTitle.textContent = 'Window ' + (windowId ? String(windowId).substring(0, 8) : '') + dateRange + verStr;
         candidatesProgressBadge.textContent = 'Loading...';
 
         candidatesContainer.replaceChildren();
@@ -1295,8 +1370,9 @@
           if (reqGen !== candidatesRequestGen) return;
 
           if (data && data.window && data.window.from_ts && data.window.to_ts) {
+            const verStr = (windowMeta && windowMeta.params_version) ? ' [' + windowMeta.params_version + ']' : '';
             candidatesViewTitle.textContent = 'Window ' + String(windowId).substring(0, 8) + ' (' +
-              String(data.window.from_ts).substring(0, 10) + ' – ' + String(data.window.to_ts).substring(0, 10) + ')';
+              String(data.window.from_ts).substring(0, 10) + ' – ' + String(data.window.to_ts).substring(0, 10) + ')' + verStr;
           }
 
           const candidates = (data && data.candidates) || [];

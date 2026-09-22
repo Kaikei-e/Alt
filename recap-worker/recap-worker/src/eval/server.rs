@@ -616,14 +616,16 @@ mod tests {
         let (app, dao) = setup_test_app();
 
         let window_id = Uuid::new_v4();
+        let now = Utc::now();
         dao.windows.lock().unwrap().push(RecapEvalWindowSummary {
             id: window_id,
-            from_ts: Utc::now(),
-            to_ts: Utc::now(),
+            from_ts: now,
+            to_ts: now,
             snapshot_job_id: Uuid::new_v4(),
-            created_at: Utc::now(),
+            created_at: now,
             candidate_count: 5,
             judged_count: 2,
+            params_version: "cards-v0.2".to_string(),
         });
 
         let req = Request::builder()
@@ -642,6 +644,60 @@ mod tests {
         assert_eq!(val["windows"][0]["id"], window_id.to_string());
         assert_eq!(val["windows"][0]["candidate_count"], 5);
         assert_eq!(val["windows"][0]["judged_count"], 2);
+        assert_eq!(val["windows"][0]["params_version"], "cards-v0.2");
+        assert!(val["windows"][0]["created_at"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_list_windows_newest_first_with_params_version() {
+        let (app, dao) = setup_test_app();
+
+        let w1_id = Uuid::new_v4();
+        let w2_id = Uuid::new_v4();
+        let now = Utc::now();
+        let earlier = now - chrono::Duration::hours(1);
+
+        dao.windows.lock().unwrap().extend(vec![
+            RecapEvalWindowSummary {
+                id: w2_id,
+                from_ts: now - chrono::Duration::days(7),
+                to_ts: now,
+                snapshot_job_id: Uuid::new_v4(),
+                created_at: now,
+                candidate_count: 10,
+                judged_count: 0,
+                params_version: "cards-v0.2".to_string(),
+            },
+            RecapEvalWindowSummary {
+                id: w1_id,
+                from_ts: now - chrono::Duration::days(7),
+                to_ts: now,
+                snapshot_job_id: Uuid::new_v4(),
+                created_at: earlier,
+                candidate_count: 8,
+                judged_count: 8,
+                params_version: "cards-v0.1".to_string(),
+            },
+        ]);
+
+        let req = Request::builder()
+            .uri("/v1/eval/windows")
+            .header(header::AUTHORIZATION, format!("Bearer {TEST_TOKEN}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let val: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        let windows = val["windows"].as_array().unwrap();
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0]["id"], w2_id.to_string());
+        assert_eq!(windows[0]["params_version"], "cards-v0.2");
+        assert_eq!(windows[1]["id"], w1_id.to_string());
+        assert_eq!(windows[1]["params_version"], "cards-v0.1");
     }
 
     #[tokio::test]

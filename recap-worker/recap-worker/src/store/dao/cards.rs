@@ -108,6 +108,7 @@ pub struct RecapEvalWindowSummary {
     pub created_at: DateTime<Utc>,
     pub candidate_count: i64,
     pub judged_count: i64,
+    pub params_version: String,
 }
 
 /// 6. Human golden judgments on candidate clusters (top / not_top / noise).
@@ -339,6 +340,7 @@ impl CardsDaoOps {
                 w.to_ts,
                 w.snapshot_job_id,
                 w.created_at,
+                COALESCE(s.params_version, snap.params_version, '') AS params_version,
                 COALESCE((
                     SELECT COUNT(*)::bigint
                     FROM recap_card_candidates c
@@ -350,6 +352,8 @@ impl CardsDaoOps {
                     WHERE j.window_id = w.id
                 ), 0) AS judged_count
             FROM recap_eval_windows w
+            LEFT JOIN recap_card_job_stats s ON s.job_id = w.snapshot_job_id
+            LEFT JOIN recap_card_snapshots snap ON snap.job_id = w.snapshot_job_id
             ORDER BY w.created_at DESC
             ",
         )
@@ -367,6 +371,7 @@ impl CardsDaoOps {
                 created_at: r.try_get("created_at")?,
                 candidate_count: r.try_get("candidate_count")?,
                 judged_count: r.try_get("judged_count")?,
+                params_version: r.try_get("params_version")?,
             });
         }
         Ok(res)
