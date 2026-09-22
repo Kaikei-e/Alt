@@ -1,7 +1,7 @@
 // Clippy lint policy lives in Cargo.toml [lints.clippy] (DECREE §13).
 
 pub mod analysis;
-pub(crate) mod api;
+pub mod api;
 pub mod app;
 pub mod classification;
 pub mod classifier;

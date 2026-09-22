@@ -152,6 +152,16 @@ pub struct PreviousCardSummary {
     pub centroid: Vec<f32>,
 }
 
+/// Metadata about the latest completed cards job.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PreviousCardsJobMeta {
+    pub job_id: Uuid,
+    pub kicked_at: DateTime<Utc>,
+    pub from_ts: DateTime<Utc>,
+    pub to_ts: DateTime<Utc>,
+    pub params_version: String,
+}
+
 /// Information about the latest completed cards job and its cards.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviousCardsJob {
@@ -667,8 +677,10 @@ impl CardsDaoOps {
         Ok(res)
     }
 
-    /// Retrieve the latest completed cards job and its card centroids for novelty comparison.
-    pub async fn get_latest_completed_cards_job(pool: &PgPool) -> Result<Option<PreviousCardsJob>> {
+    /// Retrieve the latest completed cards job metadata.
+    pub async fn get_latest_completed_cards_job_meta(
+        pool: &PgPool,
+    ) -> Result<Option<PreviousCardsJobMeta>> {
         let job_row = sqlx::query(
             r"
             SELECT j.job_id, j.kicked_at, s.from_ts, s.to_ts, s.params_version
@@ -688,11 +700,20 @@ impl CardsDaoOps {
             return Ok(None);
         };
 
-        let job_id: Uuid = job_row.try_get("job_id")?;
-        let kicked_at: DateTime<Utc> = job_row.try_get("kicked_at")?;
-        let from_ts: DateTime<Utc> = job_row.try_get("from_ts")?;
-        let to_ts: DateTime<Utc> = job_row.try_get("to_ts")?;
-        let params_version: String = job_row.try_get("params_version")?;
+        Ok(Some(PreviousCardsJobMeta {
+            job_id: job_row.try_get("job_id")?,
+            kicked_at: job_row.try_get("kicked_at")?,
+            from_ts: job_row.try_get("from_ts")?,
+            to_ts: job_row.try_get("to_ts")?,
+            params_version: job_row.try_get("params_version")?,
+        }))
+    }
+
+    /// Retrieve the latest completed cards job and its card centroids for novelty comparison.
+    pub async fn get_latest_completed_cards_job(pool: &PgPool) -> Result<Option<PreviousCardsJob>> {
+        let Some(meta) = Self::get_latest_completed_cards_job_meta(pool).await? else {
+            return Ok(None);
+        };
 
         let card_rows = sqlx::query(
             r"
@@ -702,12 +723,13 @@ impl CardsDaoOps {
             ORDER BY rank ASC
             ",
         )
-        .bind(job_id)
+        .bind(meta.job_id)
         .fetch_all(pool)
         .await
         .map_err(|e| {
             RecapError::Db(format!(
-                "failed to get cards for previous job {job_id}: {e}"
+                "failed to get cards for previous job {}: {e}",
+                meta.job_id
             ))
         })?;
 
@@ -723,14 +745,14 @@ impl CardsDaoOps {
             .collect::<std::result::Result<Vec<(Uuid, Uuid, Option<Vec<f32>>)>, sqlx::Error>>()
             .map_err(|e| RecapError::Db(format!("failed to parse previous cards rows: {e}")))?;
 
-        let (cards, _) = parse_previous_card_rows(job_id, raw_rows);
+        let (cards, _) = parse_previous_card_rows(meta.job_id, raw_rows);
 
         Ok(Some(PreviousCardsJob {
-            job_id,
-            kicked_at,
-            from_ts,
-            to_ts,
-            params_version,
+            job_id: meta.job_id,
+            kicked_at: meta.kicked_at,
+            from_ts: meta.from_ts,
+            to_ts: meta.to_ts,
+            params_version: meta.params_version,
             cards,
         }))
     }
