@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import warnings
 
 # Configure threading to avoid contention in container environments with high concurrency
@@ -49,6 +50,7 @@ logger = structlog.get_logger(__name__)
 
 # Default 64 MiB request body limit
 DEFAULT_MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
+_STRICT_DIGITS_RE = re.compile(rb"[0-9]+")
 
 
 class RequestSizeLimitMiddleware:
@@ -59,6 +61,14 @@ class RequestSizeLimitMiddleware:
     materialize a second ``Request`` object (see starlette #847 / #1320).
     Only header metadata is inspected; the body stream is not consumed by
     this middleware.
+
+    Contract:
+    - A request with a body must carry Content-Length with strictly numeric digits (0-9).
+    - Chunked transfer (Transfer-Encoding header present) is answered 411 Length Required
+      regardless of Content-Length (no client of this service streams today: recap-worker
+      uses reqwest ``.json()``, all pact interactions are fixed bodies).
+    - Malformed, non-digit, or differing duplicate Content-Length headers are answered 400 Bad Request.
+    - Bodies exceeding max_bytes are answered 413 Content Too Large.
     """
 
     def __init__(self, app: ASGIApp, max_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES) -> None:
@@ -70,39 +80,38 @@ class RequestSizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        content_length_raw: bytes | None = None
+        content_lengths: list[bytes] = []
         has_transfer_encoding = False
         for name, value in scope.get("headers", []):
             lower_name = name.lower()
-            if lower_name == b"content-length":
-                content_length_raw = value
-            elif lower_name == b"transfer-encoding":
+            if lower_name == b"transfer-encoding":
                 has_transfer_encoding = True
+            elif lower_name == b"content-length":
+                content_lengths.append(value)
 
-        if content_length_raw is None:
-            if has_transfer_encoding:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": HTTP_411_LENGTH_REQUIRED,
-                        "headers": [(b"content-type", b"application/json")],
-                    }
-                )
-                await send(
-                    {
-                        "type": "http.response.body",
-                        "body": b'{"detail":"Length Required"}',
-                    }
-                )
-                return
+        if has_transfer_encoding:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": HTTP_411_LENGTH_REQUIRED,
+                    "headers": [(b"content-type", b"application/json")],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b'{"detail":"Length Required"}',
+                }
+            )
+            return
+
+        if not content_lengths:
             await self.app(scope, receive, send)
             return
 
-        try:
-            length = int(content_length_raw)
-            if length < 0:
-                raise ValueError("negative content length")
-        except ValueError:
+        if len(set(content_lengths)) > 1 or any(
+            not _STRICT_DIGITS_RE.fullmatch(val) for val in content_lengths
+        ):
             await send(
                 {
                     "type": "http.response.start",
@@ -118,6 +127,7 @@ class RequestSizeLimitMiddleware:
             )
             return
 
+        length = int(content_lengths[0])
         if length > self.max_bytes:
             await send(
                 {

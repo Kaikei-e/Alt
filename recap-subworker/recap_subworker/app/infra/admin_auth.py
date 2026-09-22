@@ -85,7 +85,10 @@ async def require_admin_token(
     authorization: str | None = Header(default=None),
     auth_config: AdminAuthConfig = Depends(get_admin_auth_config),
 ) -> None:
-    """Router-level dependency guarding protected routes (`/admin/*`, `/v1/runs`, `/v1/embed`, `/v1/cluster-stories`, `/v1/verify`).
+    """Router-level dependency guarding protected routes.
+
+    Guards `/admin/*`, `/v1/runs`, `/v1/embed`, `/v1/cluster-stories`, and
+    `/v1/verify`.
 
     Missing/malformed `Authorization` header and a present-but-wrong token
     both -> 401 with `WWW-Authenticate: Bearer` and the same detail, so a

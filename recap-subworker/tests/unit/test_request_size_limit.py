@@ -115,10 +115,31 @@ async def test_middleware_chunked_transfer_encoding_without_content_length_retur
     assert resp.json() == {"detail": "Length Required"}
 
 
-@pytest.mark.parametrize("invalid_length", ["invalid", "-1", "-100", "12.34"])
+@pytest.mark.asyncio
+async def test_middleware_chunked_transfer_encoding_with_content_length_returns_411() -> None:
+    """Transfer-Encoding with Content-Length present must return 411 Length Required."""
+    app = FastAPI()
+    app.add_middleware(RequestSizeLimitMiddleware, max_bytes=100)
+
+    @app.post("/test")
+    async def endpoint() -> dict[str, bool]:
+        return {"ok": True}
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/test",
+            headers={"transfer-encoding": "chunked", "content-length": "1"},
+        )
+    assert resp.status_code == 411
+    assert resp.headers["content-type"] == "application/json"
+    assert resp.json() == {"detail": "Length Required"}
+
+
+@pytest.mark.parametrize("invalid_length", ["invalid", "-1", "-100", "12.34", "+5", " 5 ", "1_0"])
 @pytest.mark.asyncio
 async def test_middleware_malformed_content_length_returns_400(invalid_length: str) -> None:
-    """Malformed or negative Content-Length must return 400 Bad Request."""
+    """Malformed, non-digit, or negative Content-Length must return 400 Bad Request."""
     app = FastAPI()
     app.add_middleware(RequestSizeLimitMiddleware, max_bytes=100)
 
@@ -132,6 +153,34 @@ async def test_middleware_malformed_content_length_returns_400(invalid_length: s
     assert resp.status_code == 400
     assert resp.headers["content-type"] == "application/json"
     assert resp.json() == {"detail": "Invalid Content-Length"}
+
+
+@pytest.mark.asyncio
+async def test_middleware_conflicting_content_length_headers_returns_400() -> None:
+    """Conflicting duplicate Content-Length headers must return 400 Bad Request."""
+    sent_events: list[dict[str, object]] = []
+
+    async def dummy_send(event: dict[str, object]) -> None:
+        sent_events.append(event)
+
+    async def dummy_receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b""}
+
+    async def inner_app(scope: Scope, receive: Receive, send: Send) -> None:
+        pass
+
+    middleware = RequestSizeLimitMiddleware(inner_app, max_bytes=100)
+    scope: Scope = {
+        "type": "http",
+        "headers": [
+            (b"content-length", b"10"),
+            (b"content-length", b"20"),
+        ],
+    }
+    await middleware(scope, dummy_receive, dummy_send)  # type: ignore[arg-type]
+    assert len(sent_events) == 2
+    assert sent_events[0]["status"] == 400
+    assert sent_events[1]["body"] == b'{"detail":"Invalid Content-Length"}'
 
 
 @pytest.mark.asyncio
