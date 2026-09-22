@@ -476,6 +476,58 @@ impl CardsPipeline {
         }
     }
 
+    async fn fetch_read_items(
+        &self,
+        job_id: Uuid,
+        user_id: Uuid,
+        to: DateTime<Utc>,
+    ) -> Result<(Vec<Uuid>, Vec<(DateTime<Utc>, String)>, usize)> {
+        let since = to - chrono::Duration::days(30);
+        let read_feed_ids = self
+            .feed_source
+            .get_all_read_feed_ids(user_id, Some(since))
+            .await
+            .context("failed to fetch read feed ids")?;
+
+        if read_feed_ids.is_empty() {
+            tracing::warn!(job_id = %job_id, "personal_vector_disabled");
+            return Ok((read_feed_ids, Vec::new(), 0));
+        }
+
+        let read_window_from = to - chrono::Duration::days(30);
+        let candidate_feeds = self
+            .feed_source
+            .fetch_all_feeds_in_window(read_window_from, to)
+            .await
+            .context("failed to fetch feeds for personal vector")?;
+        let fetched_count = candidate_feeds.len();
+
+        let read_set: std::collections::HashSet<Uuid> = read_feed_ids.iter().copied().collect();
+        let mut items: Vec<(DateTime<Utc>, String)> = Vec::new();
+
+        for f in &candidate_feeds {
+            let Ok(id) = Uuid::parse_str(&f.id) else {
+                continue;
+            };
+            if !read_set.contains(&id) {
+                continue;
+            }
+            if let Ok(Ok(norm)) = normalize_feed(f) {
+                let text = format!("{} — {}", norm.title, norm.lede);
+                items.push((norm.pub_date, text));
+            }
+        }
+
+        if items.is_empty() {
+            tracing::warn!(
+                job_id = %job_id,
+                "no valid items found for read feed ids; personal_vector_disabled"
+            );
+        }
+
+        Ok((read_feed_ids, items, fetched_count))
+    }
+
     async fn stage_snapshot(
         &self,
         job_id: Uuid,
@@ -486,7 +538,7 @@ impl CardsPipeline {
     ) -> Result<(
         Vec<AltBackendFeed>,
         RecapCardSnapshot,
-        Vec<Uuid>,
+        Vec<(DateTime<Utc>, String)>,
         Vec<PreviousCardSummary>,
         Option<DateTime<Utc>>,
     )> {
@@ -509,16 +561,8 @@ impl CardsPipeline {
             feed_ids.push(id);
         }
 
-        let since = to - chrono::Duration::days(30);
-        let read_feed_ids = self
-            .feed_source
-            .get_all_read_feed_ids(user_id, Some(since))
-            .await
-            .context("failed to fetch read feed ids")?;
-
-        if read_feed_ids.is_empty() {
-            tracing::warn!(job_id = %job_id, "personal_vector_disabled");
-        }
+        let (read_feed_ids, read_items, read_items_fetched) =
+            self.fetch_read_items(job_id, user_id, to).await?;
 
         let (previous_job_id, previous_cards_val, prev_cards_list, previous_job_to) =
             if let Some(prev) = self
@@ -556,13 +600,14 @@ impl CardsPipeline {
             job_id = %job_id,
             items_fetched,
             read_feed_ids_count = read_feed_ids.len(),
+            read_items_fetched,
             has_previous_job = previous_job_id.is_some(),
             "cards snapshot staged in memory"
         );
         Ok((
             feeds,
             snapshot,
-            read_feed_ids,
+            read_items,
             prev_cards_list,
             previous_job_to,
         ))
@@ -571,42 +616,11 @@ impl CardsPipeline {
     async fn stage_personal_vector(
         &self,
         job_id: Uuid,
-        read_feed_ids: &[Uuid],
+        read_items: &[(DateTime<Utc>, String)],
         to: DateTime<Utc>,
         tau_days: f32,
     ) -> Result<Option<Vec<f32>>> {
-        if read_feed_ids.is_empty() {
-            return Ok(None);
-        }
-
-        let read_window_from = to - chrono::Duration::days(30);
-        let candidate_feeds = self
-            .feed_source
-            .fetch_all_feeds_in_window(read_window_from, to)
-            .await
-            .context("failed to fetch feeds for personal vector")?;
-
-        let read_set: std::collections::HashSet<Uuid> = read_feed_ids.iter().copied().collect();
-        let mut read_items: Vec<(DateTime<Utc>, String)> = Vec::new();
-
-        for f in &candidate_feeds {
-            let Ok(id) = Uuid::parse_str(&f.id) else {
-                continue;
-            };
-            if !read_set.contains(&id) {
-                continue;
-            }
-            if let Ok(Ok(norm)) = normalize_feed(f) {
-                let text = format!("{} — {}", norm.title, norm.lede);
-                read_items.push((norm.pub_date, text));
-            }
-        }
-
         if read_items.is_empty() {
-            tracing::warn!(
-                job_id = %job_id,
-                "no valid items found for read feed ids; personal_vector_disabled"
-            );
             return Ok(None);
         }
 
@@ -1288,7 +1302,7 @@ impl CardsPipeline {
         total_start: Instant,
     ) -> Result<RecapCardJobStats> {
         // Stage 1: Snapshot
-        let (feeds, snapshot, read_feed_ids, prev_cards, prev_job_to) =
+        let (feeds, snapshot, read_items, prev_cards, prev_job_to) =
             self.stage_snapshot(job_id, from, to, params, to).await?;
         let items_fetched = feeds.len();
 
@@ -1354,7 +1368,7 @@ impl CardsPipeline {
 
         // Stage 5c: Personal Vector
         let personal_vector = self
-            .stage_personal_vector(job_id, &read_feed_ids, to, params.recency_tau_days)
+            .stage_personal_vector(job_id, &read_items, to, params.recency_tau_days)
             .await?;
 
         // Stage 6: Cluster
@@ -2058,6 +2072,68 @@ mod tests {
         assert_eq!(c.scores["continues_card_id"], json!(prev_card_id));
         assert!((c.scores["personal"].as_f64().unwrap() - 1.0).abs() < 1e-4);
         assert!((c.scores["total"].as_f64().unwrap() - 1.5).abs() < 1e-4);
+    }
+
+    #[tokio::test]
+    async fn test_cards_pipeline_personal_vector_fetch_failure_fails_fast_in_snapshot() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "Continuation headline",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+
+        // First fetch (window feeds) succeeds; second fetch (30-day read feeds) fails
+        let feed_source = Arc::new(FakeFeedSource::with_fail_after_n_fetches(
+            vec![feed],
+            vec![id1],
+            1,
+        ));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        let tagger = Arc::new(FakeGenreTagger::new());
+
+        let pipeline = CardsPipeline::selection_only(
+            feed_source.clone(),
+            ml_port.clone(),
+            dao.clone(),
+            tagger.clone(),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        let job_id = Uuid::new_v4();
+        let from = DateTime::parse_from_rfc3339("2026-03-19T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let to = DateTime::parse_from_rfc3339("2026-03-21T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let params = CardsParams::default();
+
+        let res = pipeline.run(job_id, from, to, &params).await;
+
+        assert!(res.is_err(), "pipeline run must fail fast");
+        let err_msg = format!("{:#}", res.unwrap_err());
+        assert!(
+            err_msg.contains("failed to fetch feeds for personal vector"),
+            "expected error to mention failed to fetch feeds for personal vector, got: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("date range exceeds 8 days"),
+            "expected error to contain underlying cause, got: {err_msg}"
+        );
+
+        // Fail-fast assertion: genre classification was never invoked
+        assert_eq!(
+            tagger.calls.lock().unwrap().len(),
+            0,
+            "genre tagger must not be called when snapshot stage fails"
+        );
+
+        // Nothing was persisted to DAO
+        assert_eq!(dao.snapshots.lock().unwrap().len(), 0);
+        assert_eq!(dao.candidates.lock().unwrap().len(), 0);
     }
 
     #[tokio::test]

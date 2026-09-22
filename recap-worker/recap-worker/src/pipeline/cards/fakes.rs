@@ -22,6 +22,8 @@ use crate::clients::subworker::cards::{
 pub struct FakeFeedSource {
     pub feeds: Arc<Mutex<Vec<AltBackendFeed>>>,
     pub read_feed_ids: Arc<Mutex<Vec<Uuid>>>,
+    pub fail_after_n_fetches: Arc<Mutex<Option<usize>>>,
+    pub fetch_count: Arc<Mutex<usize>>,
 }
 
 impl FakeFeedSource {
@@ -29,6 +31,8 @@ impl FakeFeedSource {
         Self {
             feeds: Arc::new(Mutex::new(feeds)),
             read_feed_ids: Arc::new(Mutex::new(Vec::new())),
+            fail_after_n_fetches: Arc::new(Mutex::new(None)),
+            fetch_count: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -36,6 +40,21 @@ impl FakeFeedSource {
         Self {
             feeds: Arc::new(Mutex::new(feeds)),
             read_feed_ids: Arc::new(Mutex::new(read_ids)),
+            fail_after_n_fetches: Arc::new(Mutex::new(None)),
+            fetch_count: Arc::new(Mutex::new(0)),
+        }
+    }
+
+    pub fn with_fail_after_n_fetches(
+        feeds: Vec<AltBackendFeed>,
+        read_ids: Vec<Uuid>,
+        n: usize,
+    ) -> Self {
+        Self {
+            feeds: Arc::new(Mutex::new(feeds)),
+            read_feed_ids: Arc::new(Mutex::new(read_ids)),
+            fail_after_n_fetches: Arc::new(Mutex::new(Some(n))),
+            fetch_count: Arc::new(Mutex::new(0)),
         }
     }
 }
@@ -47,6 +66,15 @@ impl FeedSource for FakeFeedSource {
         _from: DateTime<Utc>,
         _to: DateTime<Utc>,
     ) -> Result<Vec<AltBackendFeed>> {
+        let mut count = self.fetch_count.lock().unwrap();
+        *count += 1;
+        if let Some(limit) = *self.fail_after_n_fetches.lock().unwrap() {
+            if *count > limit {
+                anyhow::bail!(
+                    "alt-backend returned error status 400 Bad Request: {{\"code\":\"invalid_argument\",\"message\":\"date range exceeds 8 days\"}}"
+                );
+            }
+        }
         Ok(self.feeds.lock().unwrap().clone())
     }
 
