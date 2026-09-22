@@ -466,6 +466,9 @@ impl AltBackendClient {
     /// Fetch all feeds in window by splitting the requested range into consecutive
     /// half-open sub-ranges of at most 7 days, paginating each until has_more is false (page_size 500),
     /// and concatenating in order.
+    ///
+    /// The result is ordered oldest-chunk-first, preserving the provider's per-chunk order
+    /// (`created_at` DESC) within each chunk, rather than being globally chronological.
     pub(crate) async fn fetch_all_feeds_in_window(
         &self,
         from: DateTime<Utc>,
@@ -475,15 +478,11 @@ impl AltBackendClient {
         let chunk_duration = chrono::Duration::days(MAX_CHUNK_DAYS);
 
         let mut chunks = Vec::new();
-        if to <= from + chunk_duration {
-            chunks.push((from, to));
-        } else {
-            let mut cur = from;
-            while cur < to {
-                let next = (cur + chunk_duration).min(to);
-                chunks.push((cur, next));
-                cur = next;
-            }
+        let mut cur = from;
+        while cur < to {
+            let next = (cur + chunk_duration).min(to);
+            chunks.push((cur, next));
+            cur = next;
         }
 
         let mut all_feeds = Vec::new();
@@ -1187,5 +1186,202 @@ mod tests {
         let req_body: serde_json::Value = requests[0].body_json().unwrap();
         assert_eq!(req_body["from"].as_str().unwrap(), from.to_rfc3339());
         assert_eq!(req_body["to"].as_str().unwrap(), to.to_rfc3339());
+    }
+
+    #[tokio::test]
+    async fn fetch_all_feeds_in_window_exactly_7_days_produces_single_request() {
+        let server = MockServer::start().await;
+        let from = DateTime::parse_from_rfc3339("2026-03-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let to = DateTime::parse_from_rfc3339("2026-03-08T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let req_matcher = serde_json::json!({
+            "from": from.to_rfc3339(),
+            "to": to.to_rfc3339(),
+            "page": 1,
+            "pageSize": 500,
+        });
+
+        let resp_body = serde_json::json!({
+            "total": 1,
+            "page": 1,
+            "pageSize": 500,
+            "hasMore": false,
+            "feeds": [
+                {
+                    "id": "feed-7d",
+                    "title": "Headline 7d",
+                    "description": "<p>Lede 7d</p>",
+                    "websiteUrl": "https://example.com/7d",
+                    "isRead": false
+                }
+            ]
+        });
+
+        Mock::given(method("POST"))
+            .and(path(format!("/{LIST_FEEDS_IN_WINDOW_PATH}")))
+            .and(body_json(&req_matcher))
+            .respond_with(ResponseTemplate::new(200).set_body_json(resp_body))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let feeds = client
+            .fetch_all_feeds_in_window(from, to)
+            .await
+            .expect("fetch should succeed");
+
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].id, "feed-7d");
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            requests.len(),
+            1,
+            "expected single request for exactly 7-day range"
+        );
+        let req_body: serde_json::Value = requests[0].body_json().unwrap();
+        assert_eq!(req_body["from"].as_str().unwrap(), from.to_rfc3339());
+        assert_eq!(req_body["to"].as_str().unwrap(), to.to_rfc3339());
+    }
+
+    #[tokio::test]
+    async fn fetch_all_feeds_in_window_7_days_plus_1_second_produces_two_contiguous_requests() {
+        let server = MockServer::start().await;
+        let from = DateTime::parse_from_rfc3339("2026-03-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let mid = from + chrono::Duration::days(7);
+        let to = mid + chrono::Duration::seconds(1);
+
+        // Chunk 1: [from, mid)
+        let req_matcher_1 = serde_json::json!({
+            "from": from.to_rfc3339(),
+            "to": mid.to_rfc3339(),
+            "page": 1,
+            "pageSize": 500,
+        });
+        let resp_body_1 = serde_json::json!({
+            "total": 1,
+            "page": 1,
+            "pageSize": 500,
+            "hasMore": false,
+            "feeds": [
+                {
+                    "id": "feed-chunk-1",
+                    "title": "Headline 1",
+                    "description": "<p>Lede 1</p>",
+                    "websiteUrl": "https://example.com/1",
+                    "isRead": false
+                }
+            ]
+        });
+        Mock::given(method("POST"))
+            .and(path(format!("/{LIST_FEEDS_IN_WINDOW_PATH}")))
+            .and(body_json(&req_matcher_1))
+            .respond_with(ResponseTemplate::new(200).set_body_json(resp_body_1))
+            .mount(&server)
+            .await;
+
+        // Chunk 2: [mid, to)
+        let req_matcher_2 = serde_json::json!({
+            "from": mid.to_rfc3339(),
+            "to": to.to_rfc3339(),
+            "page": 1,
+            "pageSize": 500,
+        });
+        let resp_body_2 = serde_json::json!({
+            "total": 1,
+            "page": 1,
+            "pageSize": 500,
+            "hasMore": false,
+            "feeds": [
+                {
+                    "id": "feed-chunk-2",
+                    "title": "Headline 2",
+                    "description": "<p>Lede 2</p>",
+                    "websiteUrl": "https://example.com/2",
+                    "isRead": false
+                }
+            ]
+        });
+        Mock::given(method("POST"))
+            .and(path(format!("/{LIST_FEEDS_IN_WINDOW_PATH}")))
+            .and(body_json(&req_matcher_2))
+            .respond_with(ResponseTemplate::new(200).set_body_json(resp_body_2))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let feeds = client
+            .fetch_all_feeds_in_window(from, to)
+            .await
+            .expect("fetch should succeed");
+
+        assert_eq!(feeds.len(), 2);
+        assert_eq!(feeds[0].id, "feed-chunk-1");
+        assert_eq!(feeds[1].id, "feed-chunk-2");
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            requests.len(),
+            2,
+            "expected exactly two requests for 7 days + 1 second"
+        );
+        let body1: serde_json::Value = requests[0].body_json().unwrap();
+        let body2: serde_json::Value = requests[1].body_json().unwrap();
+        assert_eq!(body1["from"].as_str().unwrap(), from.to_rfc3339());
+        assert_eq!(body1["to"].as_str().unwrap(), mid.to_rfc3339());
+        assert_eq!(body2["from"].as_str().unwrap(), mid.to_rfc3339());
+        assert_eq!(body2["to"].as_str().unwrap(), to.to_rfc3339());
+    }
+
+    #[tokio::test]
+    async fn fetch_all_feeds_in_window_per_chunk_page_cap_exhaustion_fails_loudly() {
+        let server = MockServer::start().await;
+        let from = DateTime::parse_from_rfc3339("2026-03-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let to = DateTime::parse_from_rfc3339("2026-03-02T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        // Always return hasMore = true to simulate infinite pagination / page-cap exhaustion
+        let resp_body = serde_json::json!({
+            "total": 999_999,
+            "page": 1,
+            "pageSize": 500,
+            "hasMore": true,
+            "feeds": [
+                {
+                    "id": "feed-endless",
+                    "title": "Endless feed",
+                    "description": "<p>Endless lede</p>",
+                    "websiteUrl": "https://example.com/endless",
+                    "isRead": false
+                }
+            ]
+        });
+
+        Mock::given(method("POST"))
+            .and(path(format!("/{LIST_FEEDS_IN_WINDOW_PATH}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(resp_body))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let err = client
+            .fetch_all_feeds_in_window(from, to)
+            .await
+            .expect_err("should bail loudly when page limit is reached");
+
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("reached max page limit"),
+            "expected error to mention max page limit exhaustion, got: {err_msg}"
+        );
     }
 }

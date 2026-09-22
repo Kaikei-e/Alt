@@ -218,18 +218,31 @@ pub async fn run_eval_replay(
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     params: &CardsParams,
+    generate: bool,
 ) -> Result<ReplayResult> {
     let user_id = config.cards_user_id().context(
         "cards user id not configured (RECAP_CARDS_USER_ID is required for eval replay)",
     )?;
 
+    let (pipeline, mode_str) = if generate {
+        (
+            build_production_cards_pipeline(pool, config, params)
+                .await?
+                .with_user_id(user_id),
+            "full",
+        )
+    } else {
+        (
+            build_cards_pipeline(pool, config, params)?.with_user_id(user_id),
+            "selection_only",
+        )
+    };
+
     info!(
-        mode = "selection_only",
+        mode = mode_str,
         params_version = %params.params_version,
         "starting cards pipeline eval replay"
     );
-
-    let pipeline = build_cards_pipeline(pool, config, params)?.with_user_id(user_id);
 
     pipeline
         .run_replay(from, to, params)
@@ -275,7 +288,7 @@ mod tests {
                 let pool =
                     sqlx::PgPool::connect_lazy("postgres://user:pass@localhost:5432/db").unwrap();
                 let params = CardsParams::default();
-                run_eval_replay(&pool, &config, Utc::now(), Utc::now(), &params).await
+                run_eval_replay(&pool, &config, Utc::now(), Utc::now(), &params, false).await
             });
             assert!(res.is_err());
             let err = res.unwrap_err().to_string();
@@ -451,5 +464,76 @@ mod tests {
             );
         });
         drop(server);
+    }
+
+    #[test]
+    fn test_eval_replay_generate_flag_selects_full_builder() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let expected_user_id = "33333333-3333-3333-3333-333333333333";
+        let vars = vec![
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://user:pass@localhost:5432/db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+            ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+            ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_CARDS_USER_ID", Some(expected_user_id)),
+            ("RECAP_EVAL_LISTENER", Some("disabled")),
+            // TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK is deliberately NOT set
+            // so building NewsCreatorClient in full mode fails hermetically without network.
+            ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", None),
+        ];
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config loads");
+            let _guard = rt.enter();
+            let pool =
+                sqlx::PgPool::connect_lazy("postgres://user:pass@localhost:5432/db").unwrap();
+            let params = CardsParams::default();
+
+            // When generate = false (selection_only), news-creator client is NOT built.
+            // Pipeline builder succeeds (failure happens later on DB query in run_replay).
+            let res_selection = rt.block_on(run_eval_replay(
+                &pool,
+                &config,
+                Utc::now(),
+                Utc::now(),
+                &params,
+                false,
+            ));
+            assert!(res_selection.is_err());
+            let err_selection = res_selection.unwrap_err().to_string();
+            assert!(
+                !err_selection.contains("failed to create news-creator client"),
+                "selection_only mode must not attempt to build news-creator client, got: {err_selection}"
+            );
+
+            // When generate = true (full mode), news-creator client IS built.
+            // Because TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK is unset, builder fails immediately.
+            let res_full = rt.block_on(run_eval_replay(
+                &pool,
+                &config,
+                Utc::now(),
+                Utc::now(),
+                &params,
+                true,
+            ));
+            assert!(res_full.is_err());
+            let err_full = res_full.unwrap_err().to_string();
+            assert!(
+                err_full.contains("failed to create news-creator client")
+                    || err_full.contains("token counter"),
+                "full mode must build news-creator client and fail hermetically, got: {err_full}"
+            );
+        });
     }
 }

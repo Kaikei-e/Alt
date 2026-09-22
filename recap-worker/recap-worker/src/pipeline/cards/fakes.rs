@@ -24,6 +24,7 @@ pub struct FakeFeedSource {
     pub read_feed_ids: Arc<Mutex<Vec<Uuid>>>,
     pub fail_after_n_fetches: Arc<Mutex<Option<usize>>>,
     pub fetch_count: Arc<Mutex<usize>>,
+    pub read_window_feeds: Arc<Mutex<Option<Vec<AltBackendFeed>>>>,
 }
 
 impl FakeFeedSource {
@@ -33,6 +34,7 @@ impl FakeFeedSource {
             read_feed_ids: Arc::new(Mutex::new(Vec::new())),
             fail_after_n_fetches: Arc::new(Mutex::new(None)),
             fetch_count: Arc::new(Mutex::new(0)),
+            read_window_feeds: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -42,6 +44,7 @@ impl FakeFeedSource {
             read_feed_ids: Arc::new(Mutex::new(read_ids)),
             fail_after_n_fetches: Arc::new(Mutex::new(None)),
             fetch_count: Arc::new(Mutex::new(0)),
+            read_window_feeds: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -55,6 +58,21 @@ impl FakeFeedSource {
             read_feed_ids: Arc::new(Mutex::new(read_ids)),
             fail_after_n_fetches: Arc::new(Mutex::new(Some(n))),
             fetch_count: Arc::new(Mutex::new(0)),
+            read_window_feeds: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn with_read_window_feeds(
+        window_feeds: Vec<AltBackendFeed>,
+        read_feed_ids: Vec<Uuid>,
+        read_feeds: Vec<AltBackendFeed>,
+    ) -> Self {
+        Self {
+            feeds: Arc::new(Mutex::new(window_feeds)),
+            read_feed_ids: Arc::new(Mutex::new(read_feed_ids)),
+            fail_after_n_fetches: Arc::new(Mutex::new(None)),
+            fetch_count: Arc::new(Mutex::new(0)),
+            read_window_feeds: Arc::new(Mutex::new(Some(read_feeds))),
         }
     }
 }
@@ -73,6 +91,11 @@ impl FeedSource for FakeFeedSource {
                 anyhow::bail!(
                     "alt-backend returned error status 400 Bad Request: {{\"code\":\"invalid_argument\",\"message\":\"date range exceeds 8 days\"}}"
                 );
+            }
+        }
+        if *count == 2 {
+            if let Some(ref r) = *self.read_window_feeds.lock().unwrap() {
+                return Ok(r.clone());
             }
         }
         Ok(self.feeds.lock().unwrap().clone())

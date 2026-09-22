@@ -21,20 +21,20 @@
         },
         "matchingRules": {
           "body": {
+            "$.articleIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.articleIds": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
                   "min": 1
-                }
-              ]
-            },
-            "$.articleIds[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
                 }
               ]
             },
@@ -60,10 +60,10 @@
               "articleId": "art-001",
               "tags": [
                 {
-                  "updatedAt": "2026-03-26T00:00:00Z",
-                  "source": "ml_model",
+                  "tagName": "technology",
                   "confidence": 0.95,
-                  "tagName": "technology"
+                  "source": "ml_model",
+                  "updatedAt": "2026-03-26T00:00:00Z"
                 }
               ]
             }
@@ -71,7 +71,7 @@
         },
         "matchingRules": {
           "body": {
-            "$.items[*].tags[*].tagName": {
+            "$.items[*].tags[*].updatedAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -79,7 +79,24 @@
                 }
               ]
             },
-            "$.items[*].tags[*].*": {
+            "$.items[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].tags": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.items[*].tags[*].tagName": {
               "combine": "AND",
               "matchers": [
                 {
@@ -95,20 +112,20 @@
                 }
               ]
             },
-            "$.items[*].tags[*].updatedAt": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.items": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
                   "min": 1
+                }
+              ]
+            },
+            "$.items[*].tags[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             },
@@ -127,17 +144,57 @@
                   "match": "type"
                 }
               ]
-            },
-            "$.items[*].tags": {
+            }
+          }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "tags exist for the requested articles"
+        }
+      ]
+    },
+    {
+      "description": "a feeds in window request exceeding eight days fails with 400",
+      "request": {
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/ListFeedsInWindow",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "from": "2026-09-01T00:00:00Z",
+          "page": 1,
+          "pageSize": 500,
+          "to": "2026-09-10T00:00:00Z"
+        },
+        "matchingRules": {
+          "body": {
+            "$.pageSize": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "type",
-                  "min": 1
+                  "match": "type"
                 }
               ]
             },
-            "$.items[*].*": {
+            "$.page": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.from": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.to": {
               "combine": "AND",
               "matchers": [
                 {
@@ -148,9 +205,19 @@
           }
         }
       },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "message": "date range exceeds 8 days",
+          "code": "invalid_argument"
+        }
+      },
       "providerStates": [
         {
-          "name": "tags exist for the requested articles"
+          "name": "the feed window limit is eight days"
         }
       ]
     },
@@ -163,12 +230,12 @@
           "content-type": "application/json"
         },
         "body": {
-          "userId": "00000000-0000-0000-0000-000000000001",
-          "since": "2026-08-19T17:00:00Z"
+          "since": "2026-08-19T17:00:00Z",
+          "userId": "00000000-0000-0000-0000-000000000001"
         },
         "matchingRules": {
           "body": {
-            "$.since": {
+            "$.userId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -176,7 +243,7 @@
                 }
               ]
             },
-            "$.userId": {
+            "$.since": {
               "combine": "AND",
               "matchers": [
                 {
@@ -199,15 +266,6 @@
         },
         "matchingRules": {
           "body": {
-            "$.readFeedIds": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
             "$.readFeedIds[*].*": {
               "combine": "AND",
               "matchers": [
@@ -221,6 +279,15 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            },
+            "$.readFeedIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
                 }
               ]
             }
@@ -242,29 +309,13 @@
           "content-type": "application/json"
         },
         "body": {
-          "to": "2026-09-21T17:00:00Z",
+          "page": 1,
           "pageSize": 500,
-          "from": "2026-09-18T17:00:00Z",
-          "page": 1
+          "to": "2026-09-21T17:00:00Z",
+          "from": "2026-09-18T17:00:00Z"
         },
         "matchingRules": {
           "body": {
-            "$.from": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.pageSize": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.to": {
               "combine": "AND",
               "matchers": [
@@ -273,7 +324,23 @@
                 }
               ]
             },
+            "$.from": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.page": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pageSize": {
               "combine": "AND",
               "matchers": [
                 {
@@ -292,25 +359,25 @@
         "body": {
           "feeds": [
             {
-              "pubDate": "2026-09-20T10:00:00Z",
-              "websiteUrl": "https://example.com/post",
-              "isRead": false,
-              "title": "Example headline",
-              "updatedAt": "2026-09-20T10:05:00Z",
-              "createdAt": "2026-09-20T10:05:00Z",
               "id": "00000000-0000-0000-0000-000000000001",
               "description": "<p>Example lede.</p>",
-              "feedLinkId": "00000000-0000-0000-0000-000000000002"
+              "createdAt": "2026-09-20T10:05:00Z",
+              "updatedAt": "2026-09-20T10:05:00Z",
+              "title": "Example headline",
+              "feedLinkId": "00000000-0000-0000-0000-000000000002",
+              "isRead": false,
+              "websiteUrl": "https://example.com/post",
+              "pubDate": "2026-09-20T10:00:00Z"
             }
           ],
-          "total": 1,
           "pageSize": 500,
+          "hasMore": false,
           "page": 1,
-          "hasMore": false
+          "total": 1
         },
         "matchingRules": {
           "body": {
-            "$.feeds[*].*": {
+            "$.feeds[*].id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -318,7 +385,15 @@
                 }
               ]
             },
-            "$.page": {
+            "$.feeds[*].isRead": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].updatedAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -342,38 +417,6 @@
                 }
               ]
             },
-            "$.feeds[*].title": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.feeds[*].updatedAt": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.feeds[*].id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.pageSize": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.hasMore": {
               "combine": "AND",
               "matchers": [
@@ -382,7 +425,7 @@
                 }
               ]
             },
-            "$.feeds[*].pubDate": {
+            "$.feeds[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -398,7 +441,39 @@
                 }
               ]
             },
-            "$.feeds[*].isRead": {
+            "$.total": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pageSize": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.page": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].pubDate": {
               "combine": "AND",
               "matchers": [
                 {
@@ -422,14 +497,6 @@
                   "min": 1
                 }
               ]
-            },
-            "$.total": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
             }
           }
         }
@@ -449,9 +516,9 @@
           "content-type": "application/json"
         },
         "body": {
+          "from": "2026-03-19T00:00:00Z",
           "pageSize": 500,
           "page": 1,
-          "from": "2026-03-19T00:00:00Z",
           "to": "2026-03-26T00:00:00Z"
         },
         "matchingRules": {
@@ -497,25 +564,25 @@
           "content-type": "application/json"
         },
         "body": {
-          "range": {
-            "to": "2026-03-26T00:00:00Z",
-            "from": "2026-03-19T00:00:00Z"
-          },
-          "hasMore": false,
           "articles": [
             {
-              "title": "Test Article Title",
               "articleId": "art-001",
-              "fulltext": "Full article text content here."
+              "fulltext": "Full article text content here.",
+              "title": "Test Article Title"
             }
           ],
-          "pageSize": 500,
           "total": 42,
-          "page": 1
+          "range": {
+            "from": "2026-03-19T00:00:00Z",
+            "to": "2026-03-26T00:00:00Z"
+          },
+          "pageSize": 500,
+          "page": 1,
+          "hasMore": false
         },
         "matchingRules": {
           "body": {
-            "$.articles[*].title": {
+            "$.total": {
               "combine": "AND",
               "matchers": [
                 {
@@ -523,7 +590,15 @@
                 }
               ]
             },
-            "$.hasMore": {
+            "$.articles[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].title": {
               "combine": "AND",
               "matchers": [
                 {
@@ -539,7 +614,39 @@
                 }
               ]
             },
-            "$.articles[*].articleId": {
+            "$.pageSize": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.hasMore": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.range.from": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.page": {
               "combine": "AND",
               "matchers": [
                 {
@@ -556,47 +663,7 @@
                 }
               ]
             },
-            "$.articles[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.range.to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.range.from": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.pageSize": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.page": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.total": {
               "combine": "AND",
               "matchers": [
                 {

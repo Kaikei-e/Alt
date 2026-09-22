@@ -128,7 +128,7 @@ async fn run_eval_replay_cli(args: &[String]) -> i32 {
         Err(err) => {
             eprintln!("eval replay error: {err}");
             eprintln!(
-                "usage: recap-worker eval replay --from <RFC3339> --to <RFC3339> [--param key=value ...] [--params-version <label>]"
+                "usage: recap-worker eval replay --from <RFC3339> --to <RFC3339> [--param key=value ...] [--params-version <label>] [--generate]"
             );
             return 1;
         }
@@ -160,6 +160,7 @@ async fn run_eval_replay_cli(args: &[String]) -> i32 {
         cli_args.from,
         cli_args.to,
         &cli_args.params,
+        cli_args.generate,
     )
     .await
     {
@@ -170,7 +171,26 @@ async fn run_eval_replay_cli(args: &[String]) -> i32 {
         }
     };
 
-    match serde_json::to_string(&result) {
+    let mut val = match serde_json::to_value(&result) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("failed to serialize replay result: {e}");
+            return 1;
+        }
+    };
+    if let serde_json::Value::Object(ref mut map) = val {
+        map.insert(
+            "cards_selected".to_string(),
+            serde_json::json!(result.stats.cards_selected),
+        );
+        map.insert(
+            "cards_dropped".to_string(),
+            result.stats.cards_dropped.clone(),
+        );
+        map.insert("llm_ms".to_string(), serde_json::json!(result.stats.llm_ms));
+    }
+
+    match serde_json::to_string(&val) {
         Ok(json) => println!("{json}"),
         Err(e) => {
             eprintln!("failed to format json: {e}");
@@ -193,7 +213,7 @@ pub(crate) async fn try_eval(args: &[String]) -> Option<i32> {
         _ => {
             eprintln!("unknown eval command");
             eprintln!(
-                "usage: recap-worker eval report --window <uuid> [--k 10] [--format json|markdown]\n       recap-worker eval replay --from <RFC3339> --to <RFC3339> [--param key=value ...] [--params-version <label>]"
+                "usage: recap-worker eval report --window <uuid> [--k 10] [--format json|markdown]\n       recap-worker eval replay --from <RFC3339> --to <RFC3339> [--param key=value ...] [--params-version <label>] [--generate]"
             );
             Some(1)
         }
@@ -290,6 +310,7 @@ pub struct EvalReplayCliArgs {
     pub from: chrono::DateTime<chrono::Utc>,
     pub to: chrono::DateTime<chrono::Utc>,
     pub params: recap_worker::pipeline::cards::CardsParams,
+    pub generate: bool,
 }
 
 impl EvalReplayCliArgs {
@@ -299,11 +320,13 @@ impl EvalReplayCliArgs {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn parse_eval_replay_args(args: &[String]) -> Result<EvalReplayCliArgs, String> {
     let mut from = None;
     let mut to = None;
     let mut params_version = None;
     let mut param_overrides = Vec::new();
+    let mut generate = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -380,6 +403,15 @@ pub fn parse_eval_replay_args(args: &[String]) -> Result<EvalReplayCliArgs, Stri
                 }
                 param_overrides.push((key.trim().to_string(), value.to_string()));
             }
+            "--generate" => {
+                generate = true;
+            }
+            s if s.starts_with("--generate=") => {
+                let val = &s["--generate=".len()..];
+                generate = val
+                    .parse::<bool>()
+                    .map_err(|e| format!("invalid --generate boolean '{val}': {e}"))?;
+            }
             other => {
                 return Err(format!("unknown argument: '{other}'"));
             }
@@ -402,7 +434,12 @@ pub fn parse_eval_replay_args(args: &[String]) -> Result<EvalReplayCliArgs, Stri
             .map_err(|e| format!("invalid parameter override '{key}={val}': {e}"))?;
     }
 
-    Ok(EvalReplayCliArgs { from, to, params })
+    Ok(EvalReplayCliArgs {
+        from,
+        to,
+        params,
+        generate,
+    })
 }
 
 /// Install a panic hook that routes panics through `tracing`.
@@ -526,6 +563,88 @@ mod tests {
         );
         assert_eq!(parsed.params.params_version, "cards-v0.2");
         assert_eq!(parsed.params_version(), "cards-v0.2");
+        assert!(!parsed.generate);
+    }
+
+    #[test]
+    fn test_parse_eval_replay_args_with_generate() {
+        let args = vec![
+            "--from".to_string(),
+            "2026-09-18T00:00:00Z".to_string(),
+            "--to".to_string(),
+            "2026-09-21T00:00:00Z".to_string(),
+            "--generate".to_string(),
+        ];
+        let parsed = parse_eval_replay_args(&args).expect("valid args");
+        assert!(parsed.generate);
+    }
+
+    #[test]
+    fn test_parse_eval_replay_args_generate_position_independent() {
+        // 1. --generate at the beginning
+        let args1 = vec![
+            "--generate".to_string(),
+            "--from".to_string(),
+            "2026-09-18T00:00:00Z".to_string(),
+            "--to".to_string(),
+            "2026-09-21T00:00:00Z".to_string(),
+        ];
+        let parsed1 = parse_eval_replay_args(&args1).expect("valid args");
+        assert!(parsed1.generate);
+
+        // 2. --generate in the middle
+        let args2 = vec![
+            "--from".to_string(),
+            "2026-09-18T00:00:00Z".to_string(),
+            "--generate".to_string(),
+            "--to".to_string(),
+            "2026-09-21T00:00:00Z".to_string(),
+        ];
+        let parsed2 = parse_eval_replay_args(&args2).expect("valid args");
+        assert!(parsed2.generate);
+
+        // 3. --generate mixed with --param and --params-version
+        let args3 = vec![
+            "--from=2026-09-18T00:00:00Z".to_string(),
+            "--param=alpha=0.7".to_string(),
+            "--generate".to_string(),
+            "--to=2026-09-21T00:00:00Z".to_string(),
+            "--params-version=cards-v0.3".to_string(),
+        ];
+        let parsed3 = parse_eval_replay_args(&args3).expect("valid args");
+        assert!(parsed3.generate);
+        assert_eq!(parsed3.params.params_version, "cards-v0.3+alpha=0.7");
+    }
+
+    #[test]
+    fn test_parse_eval_replay_args_generate_equals_syntax() {
+        let args_true = vec![
+            "--from=2026-09-18T00:00:00Z".to_string(),
+            "--to=2026-09-21T00:00:00Z".to_string(),
+            "--generate=true".to_string(),
+        ];
+        let parsed_true = parse_eval_replay_args(&args_true).expect("valid args");
+        assert!(parsed_true.generate);
+
+        let args_false = vec![
+            "--from=2026-09-18T00:00:00Z".to_string(),
+            "--to=2026-09-21T00:00:00Z".to_string(),
+            "--generate=false".to_string(),
+        ];
+        let parsed_false = parse_eval_replay_args(&args_false).expect("valid args");
+        assert!(!parsed_false.generate);
+    }
+
+    #[test]
+    fn test_parse_eval_replay_args_generate_invalid_boolean() {
+        let args = vec![
+            "--from=2026-09-18T00:00:00Z".to_string(),
+            "--to=2026-09-21T00:00:00Z".to_string(),
+            "--generate=notabool".to_string(),
+        ];
+        let res = parse_eval_replay_args(&args);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("invalid --generate boolean"));
     }
 
     #[test]

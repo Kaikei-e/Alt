@@ -228,3 +228,50 @@ async fn contract_alt_backend_get_all_read_feed_ids() {
         uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap()
     );
 }
+
+/// Feeds in window exceeds 8 days: POST /services.datahub.v1.DataHubService/ListFeedsInWindow → 400 Bad Request
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_alt_backend_list_feeds_in_window_range_exceeds_8_days() {
+    let pact = PactBuilder::new("recap-worker", "alt-backend")
+        .interaction(
+            "a feeds in window request exceeding eight days fails with 400",
+            "",
+            |mut i| {
+                i.given("the feed window limit is eight days");
+                i.request.method("POST");
+                i.request
+                    .path("/services.datahub.v1.DataHubService/ListFeedsInWindow");
+                i.request.content_type("application/json");
+                i.request.json_body(json_pattern!({
+                    "from": like!("2026-09-01T00:00:00Z"),
+                    "to": like!("2026-09-10T00:00:00Z"),
+                    "page": like!(1i64),
+                    "pageSize": like!(500i64),
+                }));
+                i.response.status(400);
+                i.response.content_type("application/json");
+                i.response.json_body(json_pattern!({
+                    "code": "invalid_argument",
+                    "message": "date range exceeds 8 days",
+                }));
+                i
+            },
+        )
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let err = contract_client(pact.url().to_string())
+        .list_feeds_in_window(
+            ts("2026-09-01T00:00:00Z"),
+            ts("2026-09-10T00:00:00Z"),
+            1,
+            500,
+        )
+        .await
+        .expect_err("range exceeding 8 days must fail with 400");
+
+    let err_msg = err.to_string();
+    assert!(err_msg.contains("400"));
+    assert!(err_msg.contains("date range exceeds 8 days"));
+}

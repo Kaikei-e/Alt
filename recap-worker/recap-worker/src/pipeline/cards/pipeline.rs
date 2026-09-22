@@ -544,10 +544,9 @@ impl CardsPipeline {
             return Ok((read_feed_ids, Vec::new(), 0));
         }
 
-        let read_window_from = to - chrono::Duration::days(30);
         let candidate_feeds = self
             .feed_source
-            .fetch_all_feeds_in_window(read_window_from, to)
+            .fetch_all_feeds_in_window(since, to)
             .await
             .context("failed to fetch feeds for personal vector")?;
         let fetched_count = candidate_feeds.len();
@@ -556,13 +555,13 @@ impl CardsPipeline {
         let mut items: Vec<(DateTime<Utc>, String)> = Vec::new();
 
         for f in &candidate_feeds {
-            let Ok(id) = Uuid::parse_str(&f.id) else {
-                continue;
-            };
+            let id = Uuid::parse_str(&f.id).map_err(|e| {
+                anyhow::anyhow!("contract violation: unparseable feed id '{}': {e}", f.id)
+            })?;
             if !read_set.contains(&id) {
                 continue;
             }
-            if let Ok(Ok(norm)) = normalize_feed(f) {
+            if let Ok(norm) = normalize_feed(f)? {
                 let text = format!("{} — {}", norm.title, norm.lede);
                 items.push((norm.pub_date, text));
             }
@@ -646,11 +645,13 @@ impl CardsPipeline {
             created_at,
         };
 
+        let read_items_matched = read_items.len();
         info!(
             job_id = %job_id,
             items_fetched,
             read_feed_ids_count = read_feed_ids.len(),
             read_items_fetched,
+            read_items_matched,
             has_previous_job = previous_job_id.is_some(),
             "cards snapshot staged in memory"
         );
@@ -2346,6 +2347,112 @@ mod tests {
         // Nothing was persisted to DAO
         assert_eq!(dao.snapshots.lock().unwrap().len(), 0);
         assert_eq!(dao.candidates.lock().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_cards_pipeline_read_feed_unparseable_uuid_fails_loudly() {
+        let id1 = Uuid::new_v4();
+        let window_feeds = vec![sample_feed(
+            id1,
+            "Valid headline",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        )];
+
+        let mut bad_feed = sample_feed(
+            id1,
+            "Bad feed headline",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        bad_feed.id = "not-a-valid-uuid".to_string();
+
+        let feed_source = Arc::new(FakeFeedSource::with_read_window_feeds(
+            window_feeds,
+            vec![id1],
+            vec![bad_feed],
+        ));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        let tagger = Arc::new(FakeGenreTagger::new());
+
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone(), tagger)
+            .with_user_id(Uuid::new_v4());
+
+        let job_id = Uuid::new_v4();
+        let from = DateTime::parse_from_rfc3339("2026-03-19T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let to = DateTime::parse_from_rfc3339("2026-03-21T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let params = CardsParams::default();
+
+        let res = pipeline.run(job_id, from, to, &params).await;
+        assert!(
+            res.is_err(),
+            "pipeline must fail loudly on unparseable read feed id"
+        );
+        let err_msg = format!("{:#}", res.unwrap_err());
+        assert!(
+            err_msg.contains("contract violation: unparseable feed id 'not-a-valid-uuid'"),
+            "expected error to mention contract violation unparseable feed id, got: {err_msg}"
+        );
+        assert_eq!(dao.snapshots.lock().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_cards_pipeline_read_feed_noise_skipped_cleanly() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        let window_feeds = vec![sample_feed(
+            id1,
+            "Valid headline 1",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        )];
+
+        let valid_read = sample_feed(
+            id1,
+            "Valid read item",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let mut noise_read = sample_feed(
+            id2,
+            "Noise read item without date",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        noise_read.pub_date = None;
+        noise_read.created_at = None;
+
+        let feed_source = Arc::new(FakeFeedSource::with_read_window_feeds(
+            window_feeds,
+            vec![id1, id2],
+            vec![valid_read, noise_read],
+        ));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        let tagger = Arc::new(FakeGenreTagger::new());
+
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone(), tagger)
+            .with_user_id(Uuid::new_v4());
+
+        let job_id = Uuid::new_v4();
+        let from = DateTime::parse_from_rfc3339("2026-03-19T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let to = DateTime::parse_from_rfc3339("2026-03-21T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let params = CardsParams::default();
+
+        let res = pipeline.run(job_id, from, to, &params).await;
+        assert!(
+            res.is_ok(),
+            "noise item in read feeds must be skipped cleanly: {res:?}"
+        );
     }
 
     #[tokio::test]
