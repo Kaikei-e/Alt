@@ -260,6 +260,18 @@ func startStubServer(t *testing.T) int {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+
+		from, errFrom := time.Parse(time.RFC3339, req.From)
+		to, errTo := time.Parse(time.RFC3339, req.To)
+		if errFrom == nil && errTo == nil && to.Sub(from) > 8*24*time.Hour {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"code":    "invalid_argument",
+				"message": "date range exceeds 8 days",
+			})
+			return
+		}
 		page := 1
 		if req.Page != nil && *req.Page > 0 {
 			page = *req.Page
@@ -715,6 +727,10 @@ func TestVerifyRecapWorkerContract(t *testing.T) {
 			},
 			"feeds exist in window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				// No-op: stub server always returns feeds
+				return nil, nil
+			},
+			"the feed window limit is eight days": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				// No-op: request exceeds 8 days, stub rejects with 400
 				return nil, nil
 			},
 			"tags exist for the requested articles": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {

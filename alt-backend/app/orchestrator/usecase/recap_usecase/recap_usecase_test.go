@@ -34,6 +34,14 @@ func (m *MockRecapPort) GetThreeDayRecap(ctx context.Context) (*domain.RecapSumm
 	return args.Get(0).(*domain.RecapSummary), args.Error(1)
 }
 
+func (m *MockRecapPort) GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.RecapCardsResponse), args.Error(1)
+}
+
 func (m *MockRecapPort) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {
 	args := m.Called(ctx, date)
 	if args.Get(0) == nil {
@@ -152,6 +160,73 @@ func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 		assert.Equal(t, domain.PulseStatusQuietDay, result.Status)
 		require.NotNil(t, result.QuietDay)
 		assert.Len(t, result.QuietDay.WeeklyHighlights, 1)
+		mockPort.AssertExpectations(t)
+	})
+}
+
+func TestRecapUsecase_GetThreeDayRecapCards(t *testing.T) {
+	t.Run("success - returns cards response", func(t *testing.T) {
+		mockPort := new(MockRecapPort)
+		expected := &domain.RecapCardsResponse{
+			Job: &domain.RecapCardsJob{
+				JobID:         "job-1",
+				KickedAt:      "2026-09-22T17:00:00Z",
+				From:          "2026-09-19T17:00:00Z",
+				To:            "2026-09-22T17:00:00Z",
+				ParamsVersion: "cards-v0.2",
+				CardsSelected: 1,
+				Degraded:      false,
+			},
+			Cards: []*domain.RecapCard{
+				{
+					ID:         "card-1",
+					Rank:       1,
+					StoryID:    "story-1",
+					HeadlineJa: "見出し",
+					WhatJa:     "内容[1]",
+					CreatedAt:  "2026-09-22T17:05:00Z",
+				},
+			},
+		}
+
+		mockPort.On("GetThreeDayRecapCards", mock.Anything).Return(expected, nil)
+
+		uc := NewRecapUsecase(mockPort)
+		result, err := uc.GetThreeDayRecapCards(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, expected, result)
+		mockPort.AssertExpectations(t)
+	})
+
+	t.Run("success - empty cards response", func(t *testing.T) {
+		mockPort := new(MockRecapPort)
+		expected := &domain.RecapCardsResponse{
+			Job:   nil,
+			Cards: []*domain.RecapCard{},
+		}
+
+		mockPort.On("GetThreeDayRecapCards", mock.Anything).Return(expected, nil)
+
+		uc := NewRecapUsecase(mockPort)
+		result, err := uc.GetThreeDayRecapCards(context.Background())
+
+		require.NoError(t, err)
+		assert.Nil(t, result.Job)
+		assert.Empty(t, result.Cards)
+		mockPort.AssertExpectations(t)
+	})
+
+	t.Run("error - port failure propagates", func(t *testing.T) {
+		mockPort := new(MockRecapPort)
+		mockPort.On("GetThreeDayRecapCards", mock.Anything).Return(nil, errors.New("upstream failure"))
+
+		uc := NewRecapUsecase(mockPort)
+		result, err := uc.GetThreeDayRecapCards(context.Background())
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Equal(t, "upstream failure", err.Error())
 		mockPort.AssertExpectations(t)
 	})
 }

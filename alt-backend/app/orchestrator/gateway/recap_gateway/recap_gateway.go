@@ -35,12 +35,58 @@ func NewRecapGateway(searchIndexer search_indexer_port.SearchIndexerPort) recap_
 	}
 }
 
+// NewRecapGatewayWithConfig creates a RecapGateway with custom client and URL (for testing and contract tests).
+func NewRecapGatewayWithConfig(httpClient *http.Client, recapWorkerURL string, searchIndexer search_indexer_port.SearchIndexerPort) *RecapGateway {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+	if recapWorkerURL == "" {
+		recapWorkerURL = "http://recap-worker:9005" //#nosec G101 -- service-discovery default, not a credential
+	}
+	return &RecapGateway{
+		httpClient:     httpClient,
+		recapWorkerURL: recapWorkerURL,
+		searchIndexer:  searchIndexer,
+	}
+}
+
 func (g *RecapGateway) GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
 	return g.getRecapByWindow(ctx, 7)
 }
 
 func (g *RecapGateway) GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
 	return g.getRecapByWindow(ctx, 3)
+}
+
+func (g *RecapGateway) GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
+	url := fmt.Sprintf("%s/v1/recaps/3days/cards", g.recapWorkerURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := g.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch recap cards from recap-worker: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			_ = closeErr
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var cardsResp domain.RecapCardsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&cardsResp); err != nil {
+		return nil, fmt.Errorf("failed to decode recap cards response: %w", err)
+	}
+
+	return &cardsResp, nil
 }
 
 func (g *RecapGateway) getRecapByWindow(ctx context.Context, windowDays int) (*domain.RecapSummary, error) {
