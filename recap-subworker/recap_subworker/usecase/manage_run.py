@@ -46,9 +46,7 @@ class ManageRunUsecase:
         """
         return await self._run_manager.create_run(submission)
 
-    async def create_classification_run(
-        self, submission: ClassificationRunSubmission
-    ) -> RunRecord:
+    async def create_classification_run(self, submission: ClassificationRunSubmission) -> RunRecord:
         """Create a new classification run or return existing idempotent run."""
         return await self._run_manager.create_classification_run(submission)
 

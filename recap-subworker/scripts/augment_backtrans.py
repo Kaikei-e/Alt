@@ -292,13 +292,15 @@ def main():
                 backtranslated = translator.backtranslate(text, lang)
 
                 if backtranslated and validate_backtranslation(text, backtranslated):
-                    augmented_rows.append({
-                        "content": backtranslated,
-                        "genre": genre,
-                        "augmentation_method": "backtranslation",
-                        "source_language": lang,
-                        "source_genre": genre,
-                    })
+                    augmented_rows.append(
+                        {
+                            "content": backtranslated,
+                            "genre": genre,
+                            "augmentation_method": "backtranslation",
+                            "source_language": lang,
+                            "source_genre": genre,
+                        }
+                    )
                     processed += 1
                 else:
                     failed += 1

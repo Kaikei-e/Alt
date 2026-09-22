@@ -40,9 +40,7 @@ _otel_shutdown: Callable[[], None] = _noop_shutdown
 # Context variables for ADR 98 business context (thread-safe for async)
 _alt_job_id: ContextVar[str | None] = ContextVar("alt.job.id", default=None)
 _alt_article_id: ContextVar[str | None] = ContextVar("alt.article.id", default=None)
-_alt_processing_stage: ContextVar[str | None] = ContextVar(
-    "alt.processing.stage", default=None
-)
+_alt_processing_stage: ContextVar[str | None] = ContextVar("alt.processing.stage", default=None)
 
 
 def add_business_context(
@@ -175,7 +173,7 @@ class DBLogHandler(logging.Handler):
                         "error_type": error_type[:255],
                         "message": msg,  # This might be JSON if structlog is successfully hooking stdlib
                         "raw_line": msg,
-                    }
+                    },
                 )
                 conn.commit()
 

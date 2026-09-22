@@ -30,10 +30,7 @@ class ContentExtractor:
         try:
             # Trafilatura handles boilerplate removal and main content extraction
             text = trafilatura.extract(
-                html,
-                include_comments=include_comments,
-                include_tables=False,
-                no_fallback=False
+                html, include_comments=include_comments, include_tables=False, no_fallback=False
             )
             return text if text else ""
         except (ValueError, TypeError, RuntimeError) as exc:

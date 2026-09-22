@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from recap_subworker.services.g_eval import (
+    EvaluationDimension,
     GEvalEvaluator,
     GEvalResult,
-    EvaluationDimension,
 )
 
 
@@ -242,10 +243,7 @@ class TestGEvalPrompts:
             source="Test",
         )
         # Should mention coherence-related terms
-        assert any(
-            term in prompt.lower()
-            for term in ["coherence", "logical", "flow", "structure"]
-        )
+        assert any(term in prompt.lower() for term in ["coherence", "logical", "flow", "structure"])
 
     def test_consistency_prompt_contains_criteria(self):
         """Consistency prompt should mention factual alignment."""
@@ -256,8 +254,7 @@ class TestGEvalPrompts:
             source="Test",
         )
         assert any(
-            term in prompt.lower()
-            for term in ["consistency", "factual", "accurate", "source"]
+            term in prompt.lower() for term in ["consistency", "factual", "accurate", "source"]
         )
 
     def test_fluency_prompt_contains_criteria(self):
@@ -268,10 +265,7 @@ class TestGEvalPrompts:
             summary="Test",
             source="Test",
         )
-        assert any(
-            term in prompt.lower()
-            for term in ["fluency", "grammar", "readable", "natural"]
-        )
+        assert any(term in prompt.lower() for term in ["fluency", "grammar", "readable", "natural"])
 
     def test_relevance_prompt_contains_criteria(self):
         """Relevance prompt should mention information coverage."""
@@ -281,7 +275,4 @@ class TestGEvalPrompts:
             summary="Test",
             source="Test",
         )
-        assert any(
-            term in prompt.lower()
-            for term in ["relevance", "important", "key", "coverage"]
-        )
+        assert any(term in prompt.lower() for term in ["relevance", "important", "key", "coverage"])

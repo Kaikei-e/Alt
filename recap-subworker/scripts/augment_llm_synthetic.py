@@ -92,9 +92,9 @@ class OllamaSyntheticGenerator:
         prompt = f"""あなたはニュース記事のコンテンツライターです。
 以下のジャンルに該当する、リアルなニュース記事の本文を生成してください。
 
-ジャンル: {genre_info['name_ja']}
-定義: {genre_info['definition_ja']}
-除外条件: {genre_info['exclusions_ja']}
+ジャンル: {genre_info["name_ja"]}
+定義: {genre_info["definition_ja"]}
+除外条件: {genre_info["exclusions_ja"]}
 
 要件:
 - 200〜500文字程度の日本語記事
@@ -119,9 +119,9 @@ class OllamaSyntheticGenerator:
         prompt = f"""You are a news content writer.
 Generate a realistic news article body for the following genre.
 
-Genre: {genre_info['name_en']}
-Definition: {genre_info['definition_en']}
-Exclusions: {genre_info['exclusions_en']}
+Genre: {genre_info["name_en"]}
+Definition: {genre_info["definition_en"]}
+Exclusions: {genre_info["exclusions_en"]}
 
 Requirements:
 - 150-400 words in English
@@ -337,13 +337,15 @@ def main():
                 continue
 
             if text is not None and validate_synthetic_sample(text):
-                all_samples.append({
-                    "content": text,
-                    "genre": genre,
-                    "augmentation_method": "llm_synthetic",
-                    "source_language": lang,
-                    "source_genre": genre,
-                })
+                all_samples.append(
+                    {
+                        "content": text,
+                        "genre": genre,
+                        "augmentation_method": "llm_synthetic",
+                        "source_language": lang,
+                        "source_genre": genre,
+                    }
+                )
 
                 if lang == "ja":
                     generated_ja += 1

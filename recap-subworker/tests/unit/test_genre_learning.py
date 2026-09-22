@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -11,7 +11,6 @@ import pytest
 from recap_subworker.services.genre_learning import (
     ClusterBuilder,
     GenreLearningService,
-    GenreLearningSummary,
     build_graph_boost_snapshot_entries,
 )
 
@@ -31,7 +30,7 @@ def sample_rows():
         {
             "job_id": job_id,
             "article_id": "article-1",
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
             "coarse_candidates": [
                 {"score": 0.8, "graph_boost": 0.2, "genre": "society_justice"},
                 {"score": 0.6, "graph_boost": 0.1, "genre": "art_culture"},
@@ -52,7 +51,7 @@ def sample_rows():
         {
             "job_id": job_id,
             "article_id": "article-2",
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
             "coarse_candidates": [
                 {"score": 0.7, "graph_boost": 0.05, "genre": "society_justice"},
                 {"score": 0.65, "graph_boost": 0.0, "genre": "art_culture"},
@@ -124,7 +123,7 @@ async def test_generate_learning_result_with_bayes_optimization(mock_session):
             {
                 "job_id": job_id,
                 "article_id": f"article-{i}",
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(UTC),
                 "coarse_candidates": [
                     {
                         "score": 0.8 + (i % 10) * 0.01,
@@ -276,7 +275,6 @@ def test_summarize_entries():
 
 def test_bayes_optimization_with_sufficient_samples():
     """Test that Bayes optimization runs when sufficient samples are available."""
-    import pandas as pd
 
     from recap_subworker.services.genre_learning import (
         _prepare_dataframe_from_entries,
@@ -299,9 +297,7 @@ def test_bayes_optimization_with_sufficient_samples():
     df = _prepare_dataframe_from_entries(entries)
     assert len(df) >= 100
 
-    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
-        df, iterations=10, seed=42
-    )
+    best_params, train_accuracy, test_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
 
     assert best_params.graph_margin >= 0.05
     assert best_params.graph_margin <= 0.25
@@ -317,7 +313,6 @@ def test_bayes_optimization_with_sufficient_samples():
 
 def test_bayes_optimization_with_zero_boost():
     """Test that Bayes optimization handles zero boost values correctly."""
-    import pandas as pd
 
     from recap_subworker.services.genre_learning import (
         _prepare_dataframe_from_entries,
@@ -338,9 +333,7 @@ def test_bayes_optimization_with_zero_boost():
         )
 
     df = _prepare_dataframe_from_entries(entries)
-    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
-        df, iterations=10, seed=42
-    )
+    best_params, train_accuracy, test_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
 
     # boost_threshold should still be optimized, but will be ignored in objective
     assert best_params.boost_threshold >= 0.0
@@ -402,9 +395,7 @@ def test_bayes_optimization_with_small_dataset():
     df = _prepare_dataframe_from_entries(entries)
     assert len(df) < 200  # Below threshold for train/test split
 
-    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
-        df, iterations=5, seed=42
-    )
+    best_params, train_accuracy, test_accuracy = run_bayes_optimization(df, iterations=5, seed=42)
 
     # Should still return valid parameters
     assert best_params.graph_margin >= 0.05
@@ -438,9 +429,7 @@ def test_bayes_optimization_train_test_split():
     df = _prepare_dataframe_from_entries(entries)
     assert len(df) >= 200  # Above threshold for train/test split
 
-    best_params, train_accuracy, test_accuracy = run_bayes_optimization(
-        df, iterations=10, seed=42
-    )
+    best_params, train_accuracy, test_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
 
     # Should return valid parameters
     assert best_params.graph_margin >= 0.05
@@ -450,4 +439,3 @@ def test_bayes_optimization_train_test_split():
     # For large datasets, test_accuracy should be independent from train_accuracy
     # (they may be similar but are computed on different data)
     assert test_accuracy is not None
-

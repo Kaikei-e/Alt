@@ -17,12 +17,14 @@ from recap_subworker.infra.config import Settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def get_db_url_with_password(settings: Settings) -> str:
     db_url: str = settings.db_url_str
     if "recap-db" in db_url:
         db_url = db_url.replace("recap-db", "localhost").replace("5432", "5435")
 
     from urllib.parse import urlparse, urlunparse
+
     secret_path = project_root.parent / "secrets" / "recap_db_password.txt"
 
     if secret_path.exists():
@@ -30,10 +32,10 @@ def get_db_url_with_password(settings: Settings) -> str:
             with open(secret_path) as f:
                 password = f.read().strip()
             u = urlparse(db_url)
-            if '@' in u.netloc:
-                user_pass, host_port = u.netloc.rsplit('@', 1)
-                if ':' in user_pass:
-                    user, _ = user_pass.split(':', 1)
+            if "@" in u.netloc:
+                user_pass, host_port = u.netloc.rsplit("@", 1)
+                if ":" in user_pass:
+                    user, _ = user_pass.split(":", 1)
                     new_user_pass = f"{user}:{password}"
                 else:
                     new_user_pass = f"{user_pass}:{password}"
@@ -43,6 +45,7 @@ def get_db_url_with_password(settings: Settings) -> str:
             logger.warning(f"Failed to read password secret: {e}")
     return db_url
 
+
 async def main():
     settings = Settings()
     db_url = get_db_url_with_password(settings)
@@ -50,6 +53,7 @@ async def main():
 
     async with engine.connect() as conn:
         logger.info("Inspecting columns for 'recap_job_articles'...")
+
         # Note: inspect is synchronous, need run_sync
         def get_columns(connection):
             inspector = inspect(connection)
@@ -63,6 +67,7 @@ async def main():
             logger.error(f"Error inspecting table: {e}")
 
     await engine.dispose()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

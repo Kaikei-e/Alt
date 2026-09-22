@@ -69,11 +69,7 @@ async def build_tag_label_graph(
                 min_confidence=settings.graph_build_min_confidence,
                 min_support=settings.graph_build_min_support,
             )
-            windows = [
-                int(w.strip())
-                for w in settings.graph_build_windows.split(",")
-                if w.strip()
-            ]
+            windows = [int(w.strip()) for w in settings.graph_build_windows.split(",") if w.strip()]
 
             results: dict[str, int] = {}
             for window_days in windows:
@@ -148,6 +144,7 @@ async def create_graph_job(
     service: AdminJobService = Depends(get_admin_job_service_dep),
 ) -> dict[str, object]:
     import structlog
+
     logger = structlog.get_logger(__name__)
     try:
         job_id = await service.enqueue_graph_job()

@@ -184,7 +184,8 @@ class LearningScheduler:
                     graph_boost_count=learning_result.summary.graph_boost_count,
                     graph_boost_percentage=learning_result.summary.graph_boost_percentage,
                     has_cluster_draft=learning_result.cluster_draft is not None,
-                    has_bayes_optimization=learning_result.summary.boost_threshold_reference is not None,
+                    has_bayes_optimization=learning_result.summary.boost_threshold_reference
+                    is not None,
                     accuracy_estimate=learning_result.summary.accuracy_estimate,
                 )
 
@@ -244,4 +245,3 @@ class LearningScheduler:
         payload shape can't drift between the scheduler and admin-job paths.
         """
         return build_learning_payload(result, now=datetime.now(UTC))
-

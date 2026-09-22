@@ -24,9 +24,7 @@ class _FakeClassifySubmitter:
         self.raise_exc = raise_exc
         self.submissions: list[ClassificationRunSubmission] = []
 
-    async def create_classification_run(
-        self, submission: ClassificationRunSubmission
-    ) -> RunRecord:
+    async def create_classification_run(self, submission: ClassificationRunSubmission) -> RunRecord:
         self.submissions.append(submission)
         if self.raise_exc is not None:
             raise self.raise_exc

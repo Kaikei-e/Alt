@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
@@ -72,6 +70,7 @@ async def test_scheduler_execute_learning_success(mock_settings):
 
     # Mock session factory
     mock_session = AsyncMock()
+
     class _Ctx:
         async def __aenter__(self):
             return mock_session
@@ -195,6 +194,3 @@ async def test_scheduler_cancellation(mock_settings):
     await asyncio.sleep(0.1)
 
     assert not scheduler._running
-
-
-

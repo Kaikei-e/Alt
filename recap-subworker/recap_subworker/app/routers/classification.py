@@ -11,15 +11,18 @@ from ..deps import get_classifier_dep
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
+
 class ClassificationRequest(BaseModel):
     texts: list[str]
     multi_label: bool = False
     top_k: int = 5
 
+
 class ValidationCandidate(BaseModel):
     genre: str
     score: float
     threshold: float
+
 
 class ClassificationResult(BaseModel):
     top_genre: str
@@ -27,8 +30,10 @@ class ClassificationResult(BaseModel):
     scores: dict[str, float]
     candidates: list[ValidationCandidate] = []
 
+
 class ClassificationResponse(BaseModel):
     results: list[ClassificationResult]
+
 
 @router.post("/classify", response_model=ClassificationResponse)
 async def classify_texts(
@@ -41,11 +46,14 @@ async def classify_texts(
     logger.info(
         "Starting classification",
         total_texts=total_texts,
-        batch_size=classifier.embedder.config.batch_size if hasattr(classifier, 'embedder') else None,
+        batch_size=classifier.embedder.config.batch_size
+        if hasattr(classifier, "embedder")
+        else None,
         multi_label=request.multi_label,
     )
 
     from ..deps import get_settings
+
     settings = get_settings()
     overrides = settings.genre_threshold_overrides_parsed
 
@@ -56,7 +64,7 @@ async def classify_texts(
         request.texts,
         multi_label=request.multi_label,
         top_k=request.top_k,
-        threshold_overrides=overrides
+        threshold_overrides=overrides,
     )
 
     elapsed_time = time.time() - start_time

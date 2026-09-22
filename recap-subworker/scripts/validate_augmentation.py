@@ -23,8 +23,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 def load_embedder():
     """Load the E5 embedder."""
-    from recap_subworker.services.embedder import Embedder, EmbedderConfig
     from recap_subworker.infra.config import get_settings
+    from recap_subworker.services.embedder import Embedder, EmbedderConfig
 
     settings = get_settings()
 
@@ -75,10 +75,7 @@ def validate_semantic_similarity(
 
         # Compute pairwise similarities
         for i, (aug_emb, orig_emb) in enumerate(zip(aug_embs, orig_embs)):
-            similarity = cosine_similarity(
-                aug_emb.reshape(1, -1),
-                orig_emb.reshape(1, -1)
-            )[0, 0]
+            similarity = cosine_similarity(aug_emb.reshape(1, -1), orig_emb.reshape(1, -1))[0, 0]
 
             if similarity >= min_similarity:
                 valid_samples.append((batch_start + i, float(similarity)))
@@ -175,9 +172,7 @@ def validate_label_consistency(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Validate augmented data quality"
-    )
+    parser = argparse.ArgumentParser(description="Validate augmented data quality")
     parser.add_argument(
         "--input",
         type=Path,
@@ -276,7 +271,7 @@ def main():
         genre = row["genre"]
         aug_text = row["content"]
 
-        if genre in orig_by_genre and orig_by_genre[genre]:
+        if orig_by_genre.get(genre):
             # Compare to average original length
             avg_orig_len = np.mean([len(t) for t in orig_by_genre[genre]])
             ratio = len(aug_text) / avg_orig_len
@@ -311,7 +306,7 @@ def main():
             # Get reference originals
             orig_refs = []
             for genre in genres:
-                if genre in orig_by_genre and orig_by_genre[genre]:
+                if orig_by_genre.get(genre):
                     orig_refs.append(orig_by_genre[genre][0])  # First sample as reference
                 else:
                     orig_refs.append(aug_texts[genres.index(genre)])  # Self reference
@@ -326,10 +321,9 @@ def main():
                 if not validation_mask[global_idx]:
                     continue
 
-                similarity = cosine_similarity(
-                    aug_emb.reshape(1, -1),
-                    orig_emb.reshape(1, -1)
-                )[0, 0]
+                similarity = cosine_similarity(aug_emb.reshape(1, -1), orig_emb.reshape(1, -1))[
+                    0, 0
+                ]
 
                 similarity_scores[global_idx] = similarity
 
@@ -385,10 +379,10 @@ def main():
     validated_df["similarity_score"] = similarity_scores[validation_mask]
     validated_df["confidence_score"] = confidence_scores[validation_mask]
 
-    print(f"\n=== Validation Summary ===")
+    print("\n=== Validation Summary ===")
     print(f"Input samples: {len(aug_df)}")
     print(f"Validated samples: {len(validated_df)}")
-    print(f"Validation rate: {len(validated_df)/len(aug_df)*100:.1f}%")
+    print(f"Validation rate: {len(validated_df) / len(aug_df) * 100:.1f}%")
 
     # Print by genre
     print("\nValidated samples by genre:")

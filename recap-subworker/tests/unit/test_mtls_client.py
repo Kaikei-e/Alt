@@ -104,7 +104,7 @@ def test_ssl_context_reloader_reloads_on_mtime_advance(tmp_path):
     new_cert, new_key = _write_test_identity(tmp_path, "rotated")
     cert.write_bytes(new_cert.read_bytes())
     key.write_bytes(new_key.read_bytes())
-    future = reloader._cert_mtime + 2.0  # noqa: SLF001 — test-only access
+    future = reloader._cert_mtime + 2.0
     os.utime(cert, (future, future))
     os.utime(key, (future, future))
 
@@ -119,7 +119,7 @@ def test_ssl_context_reloader_swallows_transient_error(tmp_path):
 
     reloader = SslContextReloader(ctx, str(cert), str(key))
     cert.write_bytes(b"not a pem")
-    future = reloader._cert_mtime + 2.0  # noqa: SLF001 — test-only access
+    future = reloader._cert_mtime + 2.0
     os.utime(cert, (future, future))
 
     assert reloader.maybe_reload() is False

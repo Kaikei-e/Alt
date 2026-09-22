@@ -87,9 +87,15 @@ async def test_enqueue_graph_job_creates_job(monkeypatch, fake_settings):
             return False
 
     # Patch DAO and schedule to avoid background execution
-    monkeypatch.setattr("recap_subworker.services.async_jobs.SubworkerDAO", lambda session: fake_dao)
-    monkeypatch.setattr("recap_subworker.services.async_jobs.TagLabelGraphBuilder", lambda *a, **k: None)
-    monkeypatch.setattr("recap_subworker.services.async_jobs.AdminJobService._schedule", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "recap_subworker.services.async_jobs.SubworkerDAO", lambda session: fake_dao
+    )
+    monkeypatch.setattr(
+        "recap_subworker.services.async_jobs.TagLabelGraphBuilder", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        "recap_subworker.services.async_jobs.AdminJobService._schedule", lambda *a, **k: None
+    )
 
     service = AdminJobService(
         settings=fake_settings,
@@ -117,8 +123,12 @@ async def test_enqueue_graph_job_rejects_when_running(monkeypatch, fake_settings
         async def __aexit__(self, *args, **kwargs):
             return False
 
-    monkeypatch.setattr("recap_subworker.services.async_jobs.SubworkerDAO", lambda session: fake_dao)
-    monkeypatch.setattr("recap_subworker.services.async_jobs.AdminJobService._schedule", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "recap_subworker.services.async_jobs.SubworkerDAO", lambda session: fake_dao
+    )
+    monkeypatch.setattr(
+        "recap_subworker.services.async_jobs.AdminJobService._schedule", lambda *a, **k: None
+    )
 
     service = AdminJobService(
         settings=fake_settings,
@@ -128,4 +138,3 @@ async def test_enqueue_graph_job_rejects_when_running(monkeypatch, fake_settings
 
     with pytest.raises(ConcurrentAdminJobError):
         await service.enqueue_graph_job()
-

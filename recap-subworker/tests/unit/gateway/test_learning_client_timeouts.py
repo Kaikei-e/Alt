@@ -31,14 +31,14 @@ def test_create_uses_per_stage_httpx_timeout() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_learning_payload_applies_asyncio_timeout(monkeypatch):  # noqa: ANN001
+async def test_send_learning_payload_applies_asyncio_timeout(monkeypatch):
     """Invoke the client against a fake transport that never responds;
     the call must raise within the overall asyncio budget instead of
     hanging indefinitely."""
     import asyncio
 
     class _NeverRespondTransport(httpx.AsyncBaseTransport):
-        async def handle_async_request(self, request):  # noqa: ANN001
+        async def handle_async_request(self, request):
             await asyncio.sleep(60)
             raise AssertionError("transport should have been cancelled")
 

@@ -56,6 +56,7 @@ def compute_knn_faiss(embeddings: np.ndarray, n_neighbors: int) -> tuple[np.ndar
 
     return indices, distances
 
+
 @dataclass(slots=True)
 class ClusterParams:
     min_cluster_size: int
@@ -196,7 +197,6 @@ class Clusterer:
         min_samples: int,
         umap_n_neighbors: int | None = None,
         umap_n_components: int | None = None,
-
         umap_min_dist: float | None = None,
         hdbscan_cluster_selection_epsilon: float | None = None,
         hdbscan_cluster_selection_method: str | None = None,
@@ -271,7 +271,9 @@ class Clusterer:
 
         # HDBSCAN (using sklearn.cluster.HDBSCAN) with timeout and fallback
         used_fallback = False
-        effective_mcs = min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size
+        effective_mcs = (
+            min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size
+        )
         effective_ms = min_samples if min_samples > 0 else self.settings.hdbscan_min_samples
 
         def run_hdbscan() -> tuple[np.ndarray, np.ndarray]:
@@ -279,9 +281,14 @@ class Clusterer:
                 min_cluster_size=effective_mcs,
                 min_samples=effective_ms,
                 metric="euclidean",
-                cluster_selection_epsilon=hdbscan_cluster_selection_epsilon if hdbscan_cluster_selection_epsilon is not None else 0.0,
-                allow_single_cluster=hdbscan_allow_single_cluster if hdbscan_allow_single_cluster is not None else False,
-                cluster_selection_method=hdbscan_cluster_selection_method or self.settings.hdbscan_cluster_selection_method,
+                cluster_selection_epsilon=hdbscan_cluster_selection_epsilon
+                if hdbscan_cluster_selection_epsilon is not None
+                else 0.0,
+                allow_single_cluster=hdbscan_allow_single_cluster
+                if hdbscan_allow_single_cluster is not None
+                else False,
+                cluster_selection_method=hdbscan_cluster_selection_method
+                or self.settings.hdbscan_cluster_selection_method,
             )
             clusterer.fit(reduced)
             return clusterer.labels_, clusterer.probabilities_
@@ -319,8 +326,7 @@ class Clusterer:
                 # Determine optimal number of clusters for noise points
                 # Use silhouette score to select k
                 max_k = min(
-                    self.settings.noise_recluster_max_clusters,
-                    n_noise // max(2, min_cluster_size)
+                    self.settings.noise_recluster_max_clusters, n_noise // max(2, min_cluster_size)
                 )
 
                 if max_k >= 2:
@@ -330,6 +336,7 @@ class Clusterer:
                     for k in range(2, max_k + 1):
                         try:
                             from sklearn.cluster import KMeans
+
                             kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
                             kmeans_labels = kmeans.fit_predict(noise_embeddings)
 
@@ -351,6 +358,7 @@ class Clusterer:
                     if best_k >= 2:
                         try:
                             from sklearn.cluster import KMeans
+
                             kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
                             noise_labels = kmeans.fit_predict(noise_embeddings)
 
@@ -422,7 +430,7 @@ class Clusterer:
             if len(set(filtered_labels)) < 2:
                 return None
 
-            dbcv = float(validity_index(filtered_X, filtered_labels, metric='euclidean'))
+            dbcv = float(validity_index(filtered_X, filtered_labels, metric="euclidean"))
 
             # Ensure result is finite (handle NaN/Inf)
             if not np.isfinite(dbcv):
@@ -437,9 +445,7 @@ class Clusterer:
             )
             return None
 
-    def _calculate_silhouette(
-        self, embeddings: np.ndarray, labels: np.ndarray
-    ) -> float | None:
+    def _calculate_silhouette(self, embeddings: np.ndarray, labels: np.ndarray) -> float | None:
         """Returns None (not a measured 0.0) when the score can't be computed."""
         try:
             # Silhouette score requires at least 2 distinct labels
@@ -535,7 +541,7 @@ class Clusterer:
 
         # Pre-validation
         if embeddings.size == 0 or not np.isfinite(embeddings).all():
-             return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
+            return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
         n_data_points = embeddings.shape[0]
 
@@ -578,7 +584,9 @@ class Clusterer:
 
                         # Optimization metric: composite score (0.6 * silhouette + 0.4 * DBCV)
                         # Both scores are typically in [-1, 1] range, so weighted sum is reasonable
-                        score = 0.6 * (result.silhouette_score or 0.0) + 0.4 * (result.dbcv_score or 0.0)
+                        score = 0.6 * (result.silhouette_score or 0.0) + 0.4 * (
+                            result.dbcv_score or 0.0
+                        )
 
                         # Tie-breaking logic:
                         # 1. Higher composite score (better cluster separation and density validity)
@@ -596,7 +604,9 @@ class Clusterer:
 
         if best_result is None:
             # Fallback for very small data or failed searches
-            best_result = self.cluster(embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1)
+            best_result = self.cluster(
+                embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1
+            )
 
         # Recursive step to break down large clusters
         if token_counts is not None and best_result.labels.size > 0:
@@ -654,13 +664,12 @@ class Clusterer:
                 # Clamp to floor and ceiling
                 max_tokens = max(
                     self.settings.recursive_max_tokens_floor,
-                    min(dynamic_max_tokens, self.settings.recursive_max_tokens_ceil)
+                    min(dynamic_max_tokens, self.settings.recursive_max_tokens_ceil),
                 )
 
                 # Dynamic min_split_size: 10th percentile of cluster sizes, but at least 5
                 min_split_size = max(
-                    5,
-                    int(np.percentile(cluster_sizes, 10)) if len(cluster_sizes) > 0 else 5
+                    5, int(np.percentile(cluster_sizes, 10)) if len(cluster_sizes) > 0 else 5
                 )
             else:
                 # Fallback to settings if no clusters
@@ -709,9 +718,7 @@ class Clusterer:
 
                     # Bisect into 2
                     splitter = BisectingKMeans(
-                        n_clusters=2,
-                        random_state=42,
-                        bisecting_strategy="largest_cluster"
+                        n_clusters=2, random_state=42, bisecting_strategy="largest_cluster"
                     )
                     sub_labels = splitter.fit_predict(sub_embeddings)
 
@@ -813,8 +820,7 @@ class Clusterer:
         # UMAP pynndescent is unstable when n_neighbors is close to dataset size
         max_safe_neighbors = max(2, n_data_points // 3)
         umap_n_neighbors_list = [
-            n for n in umap_n_neighbors_range
-            if n is not None and n <= max_safe_neighbors
+            n for n in umap_n_neighbors_range if n is not None and n <= max_safe_neighbors
         ]
         # Fallback if all n_neighbors values exceed the safety limit
         if not umap_n_neighbors_list:
@@ -836,19 +842,23 @@ class Clusterer:
 
             try:
                 # Suggest hyperparameters
-                mcs = trial.suggest_int('min_cluster_size', mcs_min, mcs_max)
+                mcs = trial.suggest_int("min_cluster_size", mcs_min, mcs_max)
                 # Ensure min_samples <= min_cluster_size
                 ms_upper = min(ms_max, mcs)
-                ms = trial.suggest_int('min_samples', 1, ms_upper)
+                ms = trial.suggest_int("min_samples", 1, ms_upper)
 
                 # UMAP parameters (categorical if multiple options, otherwise fixed)
                 if len(umap_n_neighbors_list) > 1:
-                    n_neighbors = trial.suggest_categorical('umap_n_neighbors', umap_n_neighbors_list)
+                    n_neighbors = trial.suggest_categorical(
+                        "umap_n_neighbors", umap_n_neighbors_list
+                    )
                 else:
                     n_neighbors = umap_n_neighbors_list[0] if umap_n_neighbors_list else None
 
                 if len(umap_n_components_list) > 1:
-                    n_components = trial.suggest_categorical('umap_n_components', umap_n_components_list)
+                    n_components = trial.suggest_categorical(
+                        "umap_n_components", umap_n_components_list
+                    )
                 else:
                     n_components = umap_n_components_list[0] if umap_n_components_list else None
 
@@ -872,19 +882,19 @@ class Clusterer:
                     "optuna_trial_failed",
                     trial_number=trial.number,
                     params={
-                        'min_cluster_size': mcs,
-                        'min_samples': ms,
-                        'n_neighbors': n_neighbors,
-                        'n_components': n_components,
+                        "min_cluster_size": mcs,
+                        "min_samples": ms,
+                        "n_neighbors": n_neighbors,
+                        "n_components": n_components,
                     },
                     error=str(e),
                 )
                 # Return worst score to discourage this parameter region
-                return float('-inf')
+                return float("-inf")
 
         # Create study with TPE sampler and seed for reproducibility
         sampler = TPESampler(seed=42)
-        study = optuna.create_study(direction='maximize', sampler=sampler)
+        study = optuna.create_study(direction="maximize", sampler=sampler)
 
         # Optimize with timeout if specified
         timeout = self.settings.bayes_opt_timeout_seconds
@@ -899,10 +909,10 @@ class Clusterer:
         best_params = study.best_params
         best_result = self.cluster(
             embeddings,
-            min_cluster_size=best_params['min_cluster_size'],
-            min_samples=best_params['min_samples'],
-            umap_n_neighbors=best_params.get('umap_n_neighbors'),
-            umap_n_components=best_params.get('umap_n_components'),
+            min_cluster_size=best_params["min_cluster_size"],
+            min_samples=best_params["min_samples"],
+            umap_n_neighbors=best_params.get("umap_n_neighbors"),
+            umap_n_components=best_params.get("umap_n_components"),
             hdbscan_cluster_selection_epsilon=0.5,
             hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
             hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
@@ -949,7 +959,7 @@ class Clusterer:
 
         # Pre-validation
         if embeddings.size == 0 or not np.isfinite(embeddings).all():
-             return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
+            return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
         n_data_points = embeddings.shape[0]
 
@@ -976,7 +986,9 @@ class Clusterer:
                             hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
                         )
 
-                        score = 0.6 * (result.silhouette_score or 0.0) + 0.4 * (result.dbcv_score or 0.0)
+                        score = 0.6 * (result.silhouette_score or 0.0) + 0.4 * (
+                            result.dbcv_score or 0.0
+                        )
 
                         if score > best_score:
                             best_score = score
@@ -989,7 +1001,9 @@ class Clusterer:
                                 best_result = result
 
         if best_result is None:
-            best_result = self.cluster(embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1)
+            best_result = self.cluster(
+                embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1
+            )
 
         if token_counts is not None and best_result.labels.size > 0:
             new_labels, new_probs = self.recursive_cluster(
@@ -1000,7 +1014,9 @@ class Clusterer:
 
         return best_result
 
-    def subcluster_other(self, embeddings: np.ndarray, token_counts: np.ndarray | None = None) -> ClusterResult:
+    def subcluster_other(
+        self, embeddings: np.ndarray, token_counts: np.ndarray | None = None
+    ) -> ClusterResult:
         """
         Specialized clustering for 'Other' genre.
         Deep search with smaller parameters to break down large blobs.

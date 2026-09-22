@@ -84,10 +84,12 @@ def format_report(results: dict) -> str:
         lines.append("## Statistical Power Analysis\n")
         lines.append(f"- **Current Power**: {power_info.get('current_power', 0):.4f}")
         lines.append(f"- **Current Sample Size**: {power_info.get('current_sample_size', 0)}")
-        lines.append(f"- **Required Sample Size** (for 80% power): {power_info.get('required_sample_size', 0)}")
-        if power_info.get('current_sample_size', 0) < power_info.get('required_sample_size', 0):
+        lines.append(
+            f"- **Required Sample Size** (for 80% power): {power_info.get('required_sample_size', 0)}"
+        )
+        if power_info.get("current_sample_size", 0) < power_info.get("required_sample_size", 0):
             lines.append(
-                f"  - ⚠️ **Warning**: Current sample size may be insufficient for reliable results."
+                "  - ⚠️ **Warning**: Current sample size may be insufficient for reliable results."
             )
         lines.append("")
 
@@ -98,8 +100,12 @@ def format_report(results: dict) -> str:
         cv_macro = results.get("cv_macro_f1", {})
         cv_micro = results.get("cv_micro_f1", {})
         lines.append(f"- **Accuracy**: {cv_acc.get('mean', 0):.4f} ± {cv_acc.get('std', 0):.4f}")
-        lines.append(f"- **Macro F1**: {cv_macro.get('mean', 0):.4f} ± {cv_macro.get('std', 0):.4f}")
-        lines.append(f"- **Micro F1**: {cv_micro.get('mean', 0):.4f} ± {cv_micro.get('std', 0):.4f}")
+        lines.append(
+            f"- **Macro F1**: {cv_macro.get('mean', 0):.4f} ± {cv_macro.get('std', 0):.4f}"
+        )
+        lines.append(
+            f"- **Micro F1**: {cv_micro.get('mean', 0):.4f} ± {cv_micro.get('std', 0):.4f}"
+        )
         lines.append(f"- **Number of Folds**: {results.get('n_folds', 0)}")
 
         # CV std check (stability indicator)
@@ -130,7 +136,9 @@ def format_report(results: dict) -> str:
     lines.append(
         "| Genre | Precision | Precision CI | Recall | Recall CI | F1 | Support | Warning |"
     )
-    lines.append("|-------|-----------|--------------|--------|-----------|----|---------|---------|")
+    lines.append(
+        "|-------|-----------|--------------|--------|-----------|----|---------|---------|"
+    )
 
     per_genre = results.get("per_genre_metrics", {})
     for genre in sorted(per_genre.keys()):
@@ -141,9 +149,7 @@ def format_report(results: dict) -> str:
         warning = "⚠️" if metrics.get("warning", False) else ""
 
         prec_ci_str = (
-            f"[{prec_ci.get('lower', 0):.3f}, {prec_ci.get('upper', 0):.3f}]"
-            if prec_ci
-            else "-"
+            f"[{prec_ci.get('lower', 0):.3f}, {prec_ci.get('upper', 0):.3f}]" if prec_ci else "-"
         )
         recall_ci_str = (
             f"[{recall_ci.get('lower', 0):.3f}, {recall_ci.get('upper', 0):.3f}]"
@@ -172,11 +178,7 @@ def format_report(results: dict) -> str:
 
         # 各行
         for i, label in enumerate(labels):
-            row = (
-                f"| {label} | "
-                + " | ".join(str(matrix[i][j]) for j in range(len(labels)))
-                + " |"
-            )
+            row = f"| {label} | " + " | ".join(str(matrix[i][j]) for j in range(len(labels))) + " |"
             lines.append(row)
         lines.append("")
 
@@ -206,11 +208,10 @@ def format_report_by_language(results: dict) -> str:
 
     return "\n".join(lines)
 
+
 def main():
     """メイン関数。"""
-    parser = argparse.ArgumentParser(
-        description="Evaluate genre classification on golden dataset"
-    )
+    parser = argparse.ArgumentParser(description="Evaluate genre classification on golden dataset")
     parser.add_argument(
         "--golden-data",
         type=str,
@@ -224,12 +225,36 @@ def main():
         help="Path to default genre classifier weights JSON file",
     )
     # JA/EN Specific Args
-    parser.add_argument("--weights-ja", type=str, default="/app/data/genre_classifier_ja.joblib", help="JA weights")
-    parser.add_argument("--weights-en", type=str, default="/app/data/genre_classifier_en.joblib", help="EN weights")
-    parser.add_argument("--vectorizer-ja", type=str, default="/app/data/dataset/ja/tfidf_vectorizer.joblib", help="JA vectorizer")
-    parser.add_argument("--vectorizer-en", type=str, default="/app/data/dataset/en/tfidf_vectorizer.joblib", help="EN vectorizer")
-    parser.add_argument("--thresholds-ja", type=str, default="/app/data/genre_thresholds_ja.json", help="JA thresholds")
-    parser.add_argument("--thresholds-en", type=str, default="/app/data/genre_thresholds_en.json", help="EN thresholds")
+    parser.add_argument(
+        "--weights-ja", type=str, default="/app/data/genre_classifier_ja.joblib", help="JA weights"
+    )
+    parser.add_argument(
+        "--weights-en", type=str, default="/app/data/genre_classifier_en.joblib", help="EN weights"
+    )
+    parser.add_argument(
+        "--vectorizer-ja",
+        type=str,
+        default="/app/data/dataset/ja/tfidf_vectorizer.joblib",
+        help="JA vectorizer",
+    )
+    parser.add_argument(
+        "--vectorizer-en",
+        type=str,
+        default="/app/data/dataset/en/tfidf_vectorizer.joblib",
+        help="EN vectorizer",
+    )
+    parser.add_argument(
+        "--thresholds-ja",
+        type=str,
+        default="/app/data/genre_thresholds_ja.json",
+        help="JA thresholds",
+    )
+    parser.add_argument(
+        "--thresholds-en",
+        type=str,
+        default="/app/data/genre_thresholds_en.json",
+        help="EN thresholds",
+    )
 
     parser.add_argument(
         "--output",
@@ -314,6 +339,7 @@ def main():
 
         traceback.print_exc()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

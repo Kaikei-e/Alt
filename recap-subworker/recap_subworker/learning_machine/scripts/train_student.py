@@ -45,12 +45,8 @@ def _setup_cuda_library_path():
     # 4. ldconfigで検出されたCUDAライブラリのパスを確認
     try:
         import subprocess
-        result = subprocess.run(
-            ["ldconfig", "-p"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+
+        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             for line in result.stdout.split("\n"):
                 if "cuda" in line.lower() and "=>" in line:
@@ -72,6 +68,7 @@ def _setup_cuda_library_path():
         current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
         updated_ld_path = ":".join(new_paths + ([current_ld_path] if current_ld_path else []))
         os.environ["LD_LIBRARY_PATH"] = updated_ld_path
+
 
 _setup_cuda_library_path()
 
@@ -98,6 +95,7 @@ from recap_subworker.learning_machine.student.model import StudentDistilBERT
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class DistillationDataset(Dataset):
     def __init__(self, items, tokenizer, num_labels: int, max_length: int = 256):
         self.items = items
@@ -117,35 +115,37 @@ class DistillationDataset(Dataset):
         teacher_logits = item.get("logits")
         has_Teacher = False
         if teacher_logits:
-             teacher_logits = torch.tensor(teacher_logits, dtype=torch.float)
-             has_Teacher = True
+            teacher_logits = torch.tensor(teacher_logits, dtype=torch.float)
+            has_Teacher = True
         else:
-             # If no logits, use dummy of correct shape
-             teacher_logits = torch.zeros(self.num_labels, dtype=torch.float)
+            # If no logits, use dummy of correct shape
+            teacher_logits = torch.zeros(self.num_labels, dtype=torch.float)
 
         encoding = self.tokenizer(
             text,
             add_special_tokens=True,
             max_length=self.max_length,
             return_token_type_ids=False,
-            padding='max_length',
+            padding="max_length",
             truncation=True,
             return_attention_mask=True,
-            return_tensors='pt',
+            return_tensors="pt",
         )
 
         return {
-            'input_ids': encoding['input_ids'].flatten(),
-            'attention_mask': encoding['attention_mask'].flatten(),
-            'labels': torch.tensor(label, dtype=torch.long),
-            'teacher_logits': teacher_logits,
-            'has_teacher': torch.tensor(1 if has_Teacher else 0, dtype=torch.long)
+            "input_ids": encoding["input_ids"].flatten(),
+            "attention_mask": encoding["attention_mask"].flatten(),
+            "labels": torch.tensor(label, dtype=torch.long),
+            "teacher_logits": teacher_logits,
+            "has_teacher": torch.tensor(1 if has_Teacher else 0, dtype=torch.long),
         }
+
 
 def load_genres(path: Path) -> list[str]:
     with open(path) as f:
         data = yaml.safe_load(f)
         return data.get("genres", [])
+
 
 def load_jsonl(path: Path, label2id: dict) -> list[dict]:
     data = []
@@ -165,16 +165,19 @@ def load_jsonl(path: Path, label2id: dict) -> list[dict]:
                         if lbls and isinstance(lbls, list):
                             lbl = lbls[0]
 
-                    if isinstance(lbl, list) and lbl: lbl = lbl[0]
+                    if isinstance(lbl, list) and lbl:
+                        lbl = lbl[0]
 
                     if text and lbl in label2id:
                         logits = obj.get("logits")
-                        data.append({
-                            "text": text,
-                            "label": label2id[lbl],
-                            "logits": logits,
-                            "lang": obj.get("lang")  # Preserve language field for filtering
-                        })
+                        data.append(
+                            {
+                                "text": text,
+                                "label": label2id[lbl],
+                                "logits": logits,
+                                "lang": obj.get("lang"),  # Preserve language field for filtering
+                            }
+                        )
                 except (KeyError, ValueError, json.JSONDecodeError) as exc:
                     skipped += 1
                     logger.debug("skipping malformed training record: %s", exc)
@@ -182,20 +185,62 @@ def load_jsonl(path: Path, label2id: dict) -> list[dict]:
         logger.warning("skipped %d malformed training records", skipped)
     return data
 
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=None, help="Number of epochs (default: language-specific)")
-    parser.add_argument("--batch_size", type=int, default=None, help="Batch size (default: language-specific)")
-    parser.add_argument("--lr", type=float, default=None, help="Learning rate (default: language-specific)")
-    parser.add_argument("--alpha", type=float, default=None, help="Distillation weight (0.0=Hard only, 1.0=Soft only, default: language-specific)")
-    parser.add_argument("--temperature", type=float, default=None, help="Temperature for distillation (default: language-specific)")
-    parser.add_argument("--weight_decay", type=float, default=None, help="Weight decay (default: language-specific)")
-    parser.add_argument("--warmup_steps", type=int, default=None, help="Warmup steps (default: language-specific)")
-    parser.add_argument("--max_length", type=int, default=None, help="Max sequence length (default: language-specific)")
+    parser.add_argument(
+        "--epochs", type=int, default=None, help="Number of epochs (default: language-specific)"
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=None, help="Batch size (default: language-specific)"
+    )
+    parser.add_argument(
+        "--lr", type=float, default=None, help="Learning rate (default: language-specific)"
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=None,
+        help="Distillation weight (0.0=Hard only, 1.0=Soft only, default: language-specific)",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Temperature for distillation (default: language-specific)",
+    )
+    parser.add_argument(
+        "--weight_decay", type=float, default=None, help="Weight decay (default: language-specific)"
+    )
+    parser.add_argument(
+        "--warmup_steps", type=int, default=None, help="Warmup steps (default: language-specific)"
+    )
+    parser.add_argument(
+        "--max_length",
+        type=int,
+        default=None,
+        help="Max sequence length (default: language-specific)",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--output_dir", type=str, default=None, help="Output directory (default: artifacts/student/v0_{language})")
-    parser.add_argument("--language", type=str, choices=["ja", "en"], default="ja", help="Language filter for training data")
-    parser.add_argument("--model_name", type=str, default=None, help="Base model name (default: Japanese DistilBERT for ja, distilbert-base-uncased for en)")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Output directory (default: artifacts/student/v0_{language})",
+    )
+    parser.add_argument(
+        "--language",
+        type=str,
+        choices=["ja", "en"],
+        default="ja",
+        help="Language filter for training data",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=None,
+        help="Base model name (default: Japanese DistilBERT for ja, distilbert-base-uncased for en)",
+    )
     args = parser.parse_args()
 
     # Language-specific defaults
@@ -246,11 +291,13 @@ def main():
         torch.cuda.manual_seed_all(args.seed)
 
     logger.info(f"Random seed set to: {args.seed}")
-    logger.info(f"Language-specific defaults (language={args.language}): "
-                f"epochs={args.epochs}, batch_size={args.batch_size}, lr={args.lr}, "
-                f"alpha={args.alpha}, temperature={args.temperature}, "
-                f"weight_decay={args.weight_decay}, warmup_steps={args.warmup_steps}, "
-                f"max_length={args.max_length}")
+    logger.info(
+        f"Language-specific defaults (language={args.language}): "
+        f"epochs={args.epochs}, batch_size={args.batch_size}, lr={args.lr}, "
+        f"alpha={args.alpha}, temperature={args.temperature}, "
+        f"weight_decay={args.weight_decay}, warmup_steps={args.warmup_steps}, "
+        f"max_length={args.max_length}"
+    )
 
     # Set default output_dir based on language
     if args.output_dir is None:
@@ -268,9 +315,7 @@ def main():
         )
     else:
         device = torch.device("cpu")
-        logger.warning(
-            f"CUDA not available, using CPU. Training will be slow! Device: {device}"
-        )
+        logger.warning(f"CUDA not available, using CPU. Training will be slow! Device: {device}")
 
     # Load Genres
     taxonomy_path = Path("recap_subworker/learning_machine/taxonomy/genres.yaml")
@@ -280,9 +325,13 @@ def main():
 
     # Load Data
     gold_data = load_jsonl(Path("recap_subworker/learning_machine/data/gold_seed.jsonl"), label2id)
-    silver_ext = load_jsonl(Path("recap_subworker/learning_machine/data/silver_external.jsonl"), label2id)
+    silver_ext = load_jsonl(
+        Path("recap_subworker/learning_machine/data/silver_external.jsonl"), label2id
+    )
     # Load language-specific pseudo labels
-    silver_pseudo_path = Path(f"recap_subworker/learning_machine/data/silver_teacher_v0_{args.language}.jsonl")
+    silver_pseudo_path = Path(
+        f"recap_subworker/learning_machine/data/silver_teacher_v0_{args.language}.jsonl"
+    )
     silver_pseudo = load_jsonl(silver_pseudo_path, label2id) if silver_pseudo_path.exists() else []
 
     # Filter by language
@@ -290,7 +339,9 @@ def main():
     silver_ext = [item for item in silver_ext if item.get("lang") == args.language]
     silver_pseudo = [item for item in silver_pseudo if item.get("lang") == args.language]
 
-    logger.info(f"Data (language={args.language}): Gold={len(gold_data)}, SilverExt={len(silver_ext)}, Pseudo={len(silver_pseudo)}")
+    logger.info(
+        f"Data (language={args.language}): Gold={len(gold_data)}, SilverExt={len(silver_ext)}, Pseudo={len(silver_pseudo)}"
+    )
 
     # Validation uses ONLY Gold (and maybe a slice of silver if gold is too small, but aim for Gold)
     # Since Gold is small (60), we might need CrossValid, but here Stratified Split of combined?
@@ -324,15 +375,21 @@ def main():
     student = StudentDistilBERT(model_name, num_labels)
     student.to(device)
 
-    train_dataset = DistillationDataset(train_items, student.tokenizer, num_labels, max_length=args.max_length)
-    val_dataset = DistillationDataset(val_items, student.tokenizer, num_labels, max_length=args.max_length)
+    train_dataset = DistillationDataset(
+        train_items, student.tokenizer, num_labels, max_length=args.max_length
+    )
+    val_dataset = DistillationDataset(
+        val_items, student.tokenizer, num_labels, max_length=args.max_length
+    )
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
     optimizer = AdamW(student.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     total_steps = len(train_loader) * args.epochs
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps)
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps
+    )
 
     ce_loss = nn.CrossEntropyLoss()
     kl_loss = nn.KLDivLoss(reduction="batchmean")
@@ -354,11 +411,11 @@ def main():
         for batch_idx, batch in enumerate(train_loader):
             optimizer.zero_grad()
 
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
-            teacher_logits = batch['teacher_logits'].to(device)
-            has_teacher = batch['has_teacher'].to(device)
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            labels = batch["labels"].to(device)
+            teacher_logits = batch["teacher_logits"].to(device)
+            has_teacher = batch["has_teacher"].to(device)
 
             # 最初のバッチでGPU使用を確認
             if epoch == 0 and batch_idx == 0 and torch.cuda.is_available():
@@ -390,13 +447,13 @@ def main():
                 # Filter
                 s_log = F.log_softmax(student_logits[mask] / args.temperature, dim=-1)
                 t_prob = F.softmax(teacher_logits[mask] / args.temperature, dim=-1)
-                loss_distill = kl_loss(s_log, t_prob) * (args.temperature ** 2)
+                loss_distill = kl_loss(s_log, t_prob) * (args.temperature**2)
 
             if mask.any():
                 # Weighted Sum
                 loss = args.alpha * loss_distill + (1.0 - args.alpha) * loss_ce
             else:
-                loss = loss_ce # Only hard labels
+                loss = loss_ce  # Only hard labels
 
             loss.backward()
             optimizer.step()
@@ -420,9 +477,9 @@ def main():
         true_lbls = []
 
         for batch in val_loader:
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            lbl = batch['labels'].to(device)
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            lbl = batch["labels"].to(device)
 
             with torch.no_grad():
                 outputs = student(input_ids, attention_mask)
@@ -433,7 +490,9 @@ def main():
 
         val_f1_macro = f1_score(true_lbls, preds, average="macro")
         val_f1_weighted = f1_score(true_lbls, preds, average="weighted")
-        logger.info(f"Epoch {epoch+1} | Loss: {avg_train_loss:.4f} | Val Macro F1: {val_f1_macro:.4f} | Val Weighted F1: {val_f1_weighted:.4f}")
+        logger.info(
+            f"Epoch {epoch + 1} | Loss: {avg_train_loss:.4f} | Val Macro F1: {val_f1_macro:.4f} | Val Weighted F1: {val_f1_weighted:.4f}"
+        )
 
         # Use macro F1 as the primary metric for model selection
         if val_f1_macro >= best_f1:
@@ -442,6 +501,7 @@ def main():
             logger.info(f"New best model saved (Macro F1: {best_f1:.4f})")
 
     logger.info(f"Student training finished. Best Macro F1: {best_f1:.4f}")
+
 
 if __name__ == "__main__":
     main()

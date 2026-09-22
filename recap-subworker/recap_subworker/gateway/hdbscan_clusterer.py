@@ -110,6 +110,4 @@ class HdbscanClustererGateway:
         probabilities: np.ndarray,
         token_counts: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
-        return self._clusterer.recursive_cluster(
-            embeddings, labels, probabilities, token_counts
-        )
+        return self._clusterer.recursive_cluster(embeddings, labels, probabilities, token_counts)

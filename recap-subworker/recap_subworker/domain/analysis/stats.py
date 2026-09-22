@@ -133,9 +133,7 @@ def bootstrap_confidence_interval(
         upper = np.percentile(bootstrap_stats, upper_percentile)
     elif method == "bca":
         # Bias-corrected and accelerated (BCa) bootstrap
-        lower, upper = _bca_bootstrap_interval(
-            data, bootstrap_stats, original_stat, confidence
-        )
+        lower, upper = _bca_bootstrap_interval(data, bootstrap_stats, original_stat, confidence)
     else:
         raise ValueError(f"Unknown method: {method}")
 
@@ -305,9 +303,7 @@ def calculate_required_sample_size(
             effect_size, power=power, alpha=alpha, alternative="two-sided"
         )
     else:
-        n = power_analysis.solve_power(
-            effect_size, power=power, alpha=alpha, alternative="larger"
-        )
+        n = power_analysis.solve_power(effect_size, power=power, alpha=alpha, alternative="larger")
 
     return int(np.ceil(n))
 
@@ -376,7 +372,7 @@ def cramers_v(confusion_matrix: np.ndarray) -> float:
         # chi2がNaNやInfの場合は0.0を返す
         if not np.isfinite(chi2) or chi2 < 0:
             return 0.0
-    except (ValueError, ZeroDivisionError):
+    except ValueError, ZeroDivisionError:
         # 期待度数がゼロなどの場合、エラーをキャッチして0.0を返す
         return 0.0
 
@@ -384,9 +380,7 @@ def cramers_v(confusion_matrix: np.ndarray) -> float:
     return min(v, 1.0)
 
 
-def wilcoxon_signed_rank_test(
-    group1: np.ndarray, group2: np.ndarray
-) -> tuple[float, float]:
+def wilcoxon_signed_rank_test(group1: np.ndarray, group2: np.ndarray) -> tuple[float, float]:
     """Wilcoxon signed-rank testを実行（対応のある2群の比較）。
 
     Args:
@@ -436,4 +430,3 @@ def bonferroni_correction(pvalues: list[float], alpha: float = 0.05) -> list[flo
 
     corrected_pvalues = [min(p * n, 1.0) for p in pvalues]
     return corrected_pvalues
-

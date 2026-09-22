@@ -1,11 +1,14 @@
 import numpy as np
 import pytest
-from recap_subworker.services.clusterer import Clusterer
+
 from recap_subworker.infra.config import Settings
+from recap_subworker.services.clusterer import Clusterer
+
 
 @pytest.fixture
 def settings():
     return Settings()
+
 
 def test_optimize_clustering_finds_best_params(settings):
     clusterer = Clusterer(settings)
@@ -22,9 +25,7 @@ def test_optimize_clustering_finds_best_params(settings):
     # If we set min_cluster_size=20, it might merge them or find nothing.
 
     result = clusterer.optimize_clustering(
-        embeddings,
-        min_cluster_size_range=[5, 15],
-        min_samples_range=[1, 3]
+        embeddings, min_cluster_size_range=[5, 15], min_samples_range=[1, 3]
     )
 
     assert result.labels.size == 30
@@ -33,11 +34,12 @@ def test_optimize_clustering_finds_best_params(settings):
     # We expect it to find 3 clusters (labels 0, 1, 2) plus maybe noise (-1)
     unique_labels = set(result.labels)
     unique_labels.discard(-1)
-    assert len(unique_labels) >= 2 # Should find at least 2 clusters
+    assert len(unique_labels) >= 2  # Should find at least 2 clusters
 
     # Check that it selected valid params within the search range
     assert 5 <= result.params.min_cluster_size <= 15
     assert 1 <= result.params.min_samples <= 3
+
 
 def test_optimize_clustering_handles_empty(settings):
     clusterer = Clusterer(settings)

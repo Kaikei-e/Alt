@@ -21,6 +21,7 @@ import structlog
 try:
     from gensim.corpora import Dictionary
     from gensim.models.coherencemodel import CoherenceModel
+
     GENSIM_AVAILABLE = True
 except ImportError:
     CoherenceModel = None
@@ -31,14 +32,76 @@ logger = structlog.get_logger(__name__)
 
 # Simple English stopwords list
 ENGLISH_STOPWORDS = {
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-    "has", "he", "in", "is", "it", "its", "of", "on", "that", "the",
-    "to", "was", "were", "will", "with", "this", "they", "their",
-    "have", "had", "been", "would", "could", "should", "can", "may",
-    "might", "must", "shall", "do", "does", "did", "or", "but", "not",
-    "no", "so", "if", "than", "then", "too", "very", "just", "also",
-    "more", "most", "some", "any", "all", "each", "every", "other",
-    "such", "only", "own", "same", "both", "few", "many", "much",
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "has",
+    "he",
+    "in",
+    "is",
+    "it",
+    "its",
+    "of",
+    "on",
+    "that",
+    "the",
+    "to",
+    "was",
+    "were",
+    "will",
+    "with",
+    "this",
+    "they",
+    "their",
+    "have",
+    "had",
+    "been",
+    "would",
+    "could",
+    "should",
+    "can",
+    "may",
+    "might",
+    "must",
+    "shall",
+    "do",
+    "does",
+    "did",
+    "or",
+    "but",
+    "not",
+    "no",
+    "so",
+    "if",
+    "than",
+    "then",
+    "too",
+    "very",
+    "just",
+    "also",
+    "more",
+    "most",
+    "some",
+    "any",
+    "all",
+    "each",
+    "every",
+    "other",
+    "such",
+    "only",
+    "own",
+    "same",
+    "both",
+    "few",
+    "many",
+    "much",
 }
 
 
@@ -143,6 +206,7 @@ class TopicCoherenceEvaluator:
             # or integrate with existing tokenizer
             try:
                 from janome.tokenizer import Tokenizer
+
                 tokenizer = Tokenizer()
                 tokens = [
                     token.surface.lower()
@@ -152,10 +216,10 @@ class TopicCoherenceEvaluator:
                 return tokens
             except ImportError:
                 # Fallback: simple splitting
-                return [w for w in re.findall(r'\w+', text.lower()) if len(w) > 1]
+                return [w for w in re.findall(r"\w+", text.lower()) if len(w) > 1]
         else:
             # English tokenization
-            words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
+            words = re.findall(r"\b[a-zA-Z]+\b", text.lower())
             # Remove stopwords
             return [w for w in words if w not in ENGLISH_STOPWORDS and len(w) > 2]
 
@@ -213,9 +277,7 @@ class TopicCoherenceEvaluator:
             raise ValueError("texts cannot be empty")
 
         if not GENSIM_AVAILABLE:
-            raise RuntimeError(
-                "gensim is not installed. Install with: pip install gensim"
-            )
+            raise RuntimeError("gensim is not installed. Install with: pip install gensim")
 
         logger.info(
             "Computing topic coherence",
@@ -295,10 +357,15 @@ class TopicCoherenceEvaluator:
         # Compute weighted average coherence
         if per_cluster_coherence:
             total_weight = sum(cluster_sizes.values())
-            overall_coherence = sum(
-                coherence * cluster_sizes[cid]
-                for cid, coherence in per_cluster_coherence.items()
-            ) / total_weight if total_weight > 0 else 0.0
+            overall_coherence = (
+                sum(
+                    coherence * cluster_sizes[cid]
+                    for cid, coherence in per_cluster_coherence.items()
+                )
+                / total_weight
+                if total_weight > 0
+                else 0.0
+            )
         else:
             overall_coherence = 0.0
 
@@ -341,9 +408,7 @@ class TopicCoherenceEvaluator:
             raise ValueError("texts cannot be empty")
 
         if not GENSIM_AVAILABLE:
-            raise RuntimeError(
-                "gensim is not installed. Install with: pip install gensim"
-            )
+            raise RuntimeError("gensim is not installed. Install with: pip install gensim")
 
         assert Dictionary is not None  # guarded by GENSIM_AVAILABLE check above
         assert CoherenceModel is not None  # guarded by GENSIM_AVAILABLE check above

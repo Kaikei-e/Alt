@@ -12,6 +12,7 @@ from recap_subworker.infra.config import get_settings
 _settings = get_settings()
 logger = structlog.get_logger(__name__)
 
+
 def _worker_count() -> int:
     if _settings.gunicorn_workers:
         return _settings.gunicorn_workers
@@ -27,6 +28,7 @@ def _worker_count() -> int:
         return 1
 
     return max(2, multiprocessing.cpu_count() * 2 + 1)
+
 
 # Global scheduler process for master process
 _scheduler_process: multiprocessing.process.BaseProcess | None = None
@@ -90,6 +92,7 @@ def _run_scheduler_process() -> None:
     except Exception as exc:
         logger.critical("failed to start scheduler process", error=str(exc), exc_info=True)
         import sys
+
         sys.exit(1)
 
 
@@ -99,6 +102,7 @@ import logging
 class NoisyPathFilter(logging.Filter):
     def filter(self, record):
         return "/v1/extract" not in record.getMessage()
+
 
 def on_starting(server) -> None:
     """Called just before the master process is initialized."""

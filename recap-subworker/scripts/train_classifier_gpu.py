@@ -1,31 +1,47 @@
-import pickle
 import argparse
-import joblib
 import json
+import pickle
 import time
 from pathlib import Path
+
+import joblib
 import numpy as np
-import pandas as pd
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, f1_score, precision_recall_curve
-from sklearn.preprocessing import label_binarize
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, f1_score, precision_recall_curve
+from sklearn.preprocessing import label_binarize
+from torch.utils.data import DataLoader, TensorDataset
+
 
 def main():
     parser = argparse.ArgumentParser(description="Train genre classifier (GPU accelerated)")
-    parser.add_argument("--data_dir", type=str, default="data/dataset", help="Directory containing pickle files")
-    parser.add_argument("--output_model", type=str, default="data/genre_classifier.joblib", help="Output model path")
-    parser.add_argument("--output_thresholds", type=str, default="data/genre_thresholds.json", help="Output thresholds path")
+    parser.add_argument(
+        "--data_dir", type=str, default="data/dataset", help="Directory containing pickle files"
+    )
+    parser.add_argument(
+        "--output_model", type=str, default="data/genre_classifier.joblib", help="Output model path"
+    )
+    parser.add_argument(
+        "--output_thresholds",
+        type=str,
+        default="data/genre_thresholds.json",
+        help="Output thresholds path",
+    )
     parser.add_argument("--epochs", type=int, default=100, help="Number of epochs")
     parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="L2 Regularization")
-    parser.add_argument("--loss_type", type=str, default="bce", choices=["bce", "focal"], help="Loss function")
-    parser.add_argument("--scheduler", type=str, default="none", choices=["none", "onecycle"], help="LR Scheduler")
-    parser.add_argument("--label_smoothing", type=float, default=0.0, help="Label smoothing epsilon")
+    parser.add_argument(
+        "--loss_type", type=str, default="bce", choices=["bce", "focal"], help="Loss function"
+    )
+    parser.add_argument(
+        "--scheduler", type=str, default="none", choices=["none", "onecycle"], help="LR Scheduler"
+    )
+    parser.add_argument(
+        "--label_smoothing", type=float, default=0.0, help="Label smoothing epsilon"
+    )
     parser.add_argument("--no_class_weights", action="store_true", help="Disable class weights")
     args = parser.parse_args()
 
@@ -117,18 +133,18 @@ def main():
 
     # Focal Loss Implementation
     class FocalLoss(nn.Module):
-        def __init__(self, alpha=None, gamma=2.0, reduction='mean'):
-            super(FocalLoss, self).__init__()
-            self.alpha = alpha # Alpha can be pos_weight
+        def __init__(self, alpha=None, gamma=2.0, reduction="mean"):
+            super().__init__()
+            self.alpha = alpha  # Alpha can be pos_weight
             self.gamma = gamma
             self.reduction = reduction
-            self.bce = nn.BCEWithLogitsLoss(pos_weight=alpha, reduction='none')
+            self.bce = nn.BCEWithLogitsLoss(pos_weight=alpha, reduction="none")
 
         def forward(self, inputs, targets):
             bce_loss = self.bce(inputs, targets)
-            pt = torch.exp(-bce_loss) # prevent numerical instability
+            pt = torch.exp(-bce_loss)  # prevent numerical instability
             focal_loss = ((1 - pt) ** self.gamma) * bce_loss
-            if self.reduction == 'mean':
+            if self.reduction == "mean":
                 return focal_loss.mean()
             return focal_loss.sum()
 
@@ -138,10 +154,10 @@ def main():
 
     # Loss Selection
     if args.loss_type == "focal":
-        print(f"Using Focal Loss (gamma=2.0)")
+        print("Using Focal Loss (gamma=2.0)")
         criterion = FocalLoss(alpha=pos_weight_tensor, gamma=2.0)
     else:
-        print(f"Using BCE With Logits Loss")
+        print("Using BCE With Logits Loss")
         criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -150,10 +166,7 @@ def main():
     if args.scheduler == "onecycle":
         print("Using OneCycleLR Scheduler")
         scheduler = optim.lr_scheduler.OneCycleLR(
-            optimizer,
-            max_lr=args.lr,
-            epochs=args.epochs,
-            steps_per_epoch=len(train_loader)
+            optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=len(train_loader)
         )
 
     print("Starting training...")
@@ -185,19 +198,21 @@ def main():
         # Validation
         model.eval()
         with torch.no_grad():
-             # OVR validation
-             val_outputs = model(X_valid_tensor)
-             # BCE loss
-             val_one_hot = torch.zeros(X_valid_tensor.size(0), num_classes, device=device)
-             val_one_hot.scatter_(1, y_valid_tensor.unsqueeze(1), 1.0)
-             val_loss = criterion(val_outputs, val_one_hot).item()
+            # OVR validation
+            val_outputs = model(X_valid_tensor)
+            # BCE loss
+            val_one_hot = torch.zeros(X_valid_tensor.size(0), num_classes, device=device)
+            val_one_hot.scatter_(1, y_valid_tensor.unsqueeze(1), 1.0)
+            val_loss = criterion(val_outputs, val_one_hot).item()
 
-             # Argmax F1 equivalent check
-             val_preds = torch.argmax(val_outputs, dim=1)
-             val_f1 = f1_score(y_valid_idx, val_preds.cpu().numpy(), average='macro')
+            # Argmax F1 equivalent check
+            val_preds = torch.argmax(val_outputs, dim=1)
+            val_f1 = f1_score(y_valid_idx, val_preds.cpu().numpy(), average="macro")
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
-            print(f"Epoch {epoch+1}/{args.epochs} | Loss: {avg_loss:.4f} | Val Loss: {val_loss:.4f} | Val Macro F1: {val_f1:.4f}")
+            print(
+                f"Epoch {epoch + 1}/{args.epochs} | Loss: {avg_loss:.4f} | Val Loss: {val_loss:.4f} | Val Macro F1: {val_f1:.4f}"
+            )
 
     print(f"Training finished in {time.time() - start_time:.2f}s")
 
@@ -210,10 +225,10 @@ def main():
     # intercept_: (n_classes,)
     # classes_: array of class labels
 
-    weights = model.weight.data.cpu().numpy() # (n_classes, n_features)
-    bias = model.bias.data.cpu().numpy()      # (n_classes,)
+    weights = model.weight.data.cpu().numpy()  # (n_classes, n_features)
+    bias = model.bias.data.cpu().numpy()  # (n_classes,)
 
-    sklearn_model = LogisticRegression(solver='liblinear')
+    sklearn_model = LogisticRegression(solver="liblinear")
     # Use standard attributes
     sklearn_model.classes_ = np.array(classes)
     sklearn_model.coef_ = weights
@@ -227,7 +242,7 @@ def main():
     sk_preds = sklearn_model.predict(X_test_cpu)
 
     # Calculate Test F1
-    test_f1 = f1_score(y_test, sk_preds, average='macro')
+    test_f1 = f1_score(y_test, sk_preds, average="macro")
     print(f"Exported Sklearn Model Test Macro F1: {test_f1:.4f}")
 
     # Save Model
@@ -249,11 +264,11 @@ def main():
 
     for i, class_label in enumerate(best_model.classes_):
         if n_classes == 2:
-             y_true_col = y_valid_bin[:, 0] if i == 1 else 1 - y_valid_bin[:, 0]
-             y_score_col = y_valid_proba[:, i]
+            y_true_col = y_valid_bin[:, 0] if i == 1 else 1 - y_valid_bin[:, 0]
+            y_score_col = y_valid_proba[:, i]
         else:
-             y_true_col = y_valid_bin[:, i]
-             y_score_col = y_valid_proba[:, i]
+            y_true_col = y_valid_bin[:, i]
+            y_score_col = y_valid_proba[:, i]
 
         if np.sum(y_true_col) == 0:
             thresholds_map[class_label] = 0.5
@@ -272,13 +287,14 @@ def main():
         print(f"Class: {class_label}, Best Threshold: {best_thresh:.4f}")
 
     output_thresholds_path = Path(args.output_thresholds)
-    with open(output_thresholds_path, 'w') as f:
+    with open(output_thresholds_path, "w") as f:
         json.dump(thresholds_map, f, indent=2)
     print(f"Thresholds saved to {output_thresholds_path}")
 
     # Final Report
     print("\n--- Standard ArgMax Evaluation on Test ---")
     print(classification_report(y_test, sk_preds))
+
 
 if __name__ == "__main__":
     main()

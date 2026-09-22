@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from recap_subworker.domain.models import ClusterDocument, EvidenceRequest
 from recap_subworker.infra.config import Settings
@@ -30,10 +29,19 @@ class FakeClusterer:
     def cluster(self, embeddings, *, min_cluster_size, min_samples):
         labels = np.zeros((embeddings.shape[0],), dtype=int)
         probs = np.ones_like(labels, dtype=float)
-        return ClusterResult(labels, probs, False, HDBSCANSettings(min_cluster_size=min_cluster_size, min_samples=min_samples))
+        return ClusterResult(
+            labels,
+            probs,
+            False,
+            HDBSCANSettings(min_cluster_size=min_cluster_size, min_samples=min_samples),
+        )
 
-    def optimize_clustering(self, embeddings, *, min_cluster_size_range, min_samples_range, **kwargs):
-        return self.cluster(embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0])
+    def optimize_clustering(
+        self, embeddings, *, min_cluster_size_range, min_samples_range, **kwargs
+    ):
+        return self.cluster(
+            embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0]
+        )
 
 
 class SplitClusterer:
@@ -49,8 +57,12 @@ class SplitClusterer:
             HDBSCANSettings(min_cluster_size=min_cluster_size, min_samples=min_samples),
         )
 
-    def optimize_clustering(self, embeddings, *, min_cluster_size_range, min_samples_range, **kwargs):
-        return self.cluster(embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0])
+    def optimize_clustering(
+        self, embeddings, *, min_cluster_size_range, min_samples_range, **kwargs
+    ):
+        return self.cluster(
+            embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0]
+        )
 
 
 def test_pipeline_basic_flow():
@@ -69,8 +81,10 @@ def test_pipeline_basic_flow():
             ),
             ClusterDocument(
                 article_id="art2",
-                paragraphs=["Another qualifying document ensures topic extraction has enough data."],
-            )
+                paragraphs=[
+                    "Another qualifying document ensures topic extraction has enough data."
+                ],
+            ),
         ],
     )
 
@@ -105,8 +119,12 @@ def test_pipeline_keeps_clusters_non_empty_even_when_articles_reused():
 
     assert len(response.clusters) >= 2
     for cluster in response.clusters[:2]:
-        assert cluster.representatives, "cluster should retain at least one representative even after reuse"
-        assert cluster.supporting_ids == ["dup"], "fallback should not introduce additional article ids"
+        assert cluster.representatives, (
+            "cluster should retain at least one representative even after reuse"
+        )
+        assert cluster.supporting_ids == ["dup"], (
+            "fallback should not introduce additional article ids"
+        )
 
 
 def test_normalize_text_url_replacement():
@@ -169,9 +187,7 @@ def test_normalize_text_empty_string():
 
 def test_adjust_dedup_threshold_genre_override():
     """Test that genre-specific dedup thresholds override base threshold."""
-    import json
     import os
-    from recap_subworker.domain.models import CorpusMetadata
 
     # Temporarily clear environment variable to avoid interference
     old_val = os.environ.pop("RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS", None)
@@ -202,7 +218,8 @@ def test_adjust_dedup_threshold_genre_override():
 def test_adjust_dedup_threshold_classifier_adjustment():
     """Test that classifier-based adjustment works when genre override is not set."""
     import os
-    from recap_subworker.domain.models import CorpusMetadata, CorpusClassifierStats
+
+    from recap_subworker.domain.models import CorpusClassifierStats, CorpusMetadata
 
     # Temporarily clear environment variable
     old_val = os.environ.pop("RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS", None)
@@ -218,11 +235,8 @@ def test_adjust_dedup_threshold_classifier_adjustment():
             primary_language="ja",
             character_count=5000,
             classifier=CorpusClassifierStats(
-                avg_confidence=0.30,
-                max_confidence=0.40,
-                min_confidence=0.20,
-                coverage_ratio=0.5
-            )
+                avg_confidence=0.30, max_confidence=0.40, min_confidence=0.20, coverage_ratio=0.5
+            ),
         )
         threshold_low = pipeline._adjust_dedup_threshold(0.92, low_conf_metadata, "ai")
         assert threshold_low > 0.92
@@ -235,11 +249,8 @@ def test_adjust_dedup_threshold_classifier_adjustment():
             primary_language="ja",
             character_count=5000,
             classifier=CorpusClassifierStats(
-                avg_confidence=0.80,
-                max_confidence=0.90,
-                min_confidence=0.70,
-                coverage_ratio=0.7
-            )
+                avg_confidence=0.80, max_confidence=0.90, min_confidence=0.70, coverage_ratio=0.7
+            ),
         )
         threshold_high = pipeline._adjust_dedup_threshold(0.92, high_conf_metadata, "ai")
         assert threshold_high < 0.92
@@ -251,9 +262,9 @@ def test_adjust_dedup_threshold_classifier_adjustment():
 
 def test_adjust_dedup_threshold_genre_override_priority():
     """Test that genre override takes priority over classifier adjustment."""
-    import json
     import os
-    from recap_subworker.domain.models import CorpusMetadata, CorpusClassifierStats
+
+    from recap_subworker.domain.models import CorpusClassifierStats, CorpusMetadata
 
     # Temporarily clear environment variable
     old_val = os.environ.pop("RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS", None)
@@ -270,11 +281,8 @@ def test_adjust_dedup_threshold_genre_override_priority():
             primary_language="ja",
             character_count=5000,
             classifier=CorpusClassifierStats(
-                avg_confidence=0.30,
-                max_confidence=0.40,
-                min_confidence=0.20,
-                coverage_ratio=0.5
-            )
+                avg_confidence=0.30, max_confidence=0.40, min_confidence=0.20, coverage_ratio=0.5
+            ),
         )
         threshold = pipeline._adjust_dedup_threshold(0.92, low_conf_metadata, "ai")
         assert threshold == 0.91  # Genre override, not classifier adjustment
@@ -293,11 +301,14 @@ def test_avg_pairwise_cosine_sim_high_similarity():
     # Normalize
     base_vec = base_vec / np.linalg.norm(base_vec)
     # Add small variations
-    embeddings = np.array([
-        base_vec,
-        base_vec + np.array([0.01, 0.0, 0.0], dtype=np.float32),
-        base_vec + np.array([0.02, 0.0, 0.0], dtype=np.float32),
-    ], dtype=np.float32)
+    embeddings = np.array(
+        [
+            base_vec,
+            base_vec + np.array([0.01, 0.0, 0.0], dtype=np.float32),
+            base_vec + np.array([0.02, 0.0, 0.0], dtype=np.float32),
+        ],
+        dtype=np.float32,
+    )
     # Normalize each row
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
     embeddings = embeddings / norms
@@ -313,11 +324,14 @@ def test_avg_pairwise_cosine_sim_low_similarity():
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
 
     # Create orthogonal embeddings (low similarity)
-    embeddings = np.array([
-        [1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0],
-    ], dtype=np.float32)
+    embeddings = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
     # Normalize each row
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
     embeddings = embeddings / norms

@@ -41,7 +41,7 @@ def _coerce_json(value: Any) -> Any:
             import json
 
             return json.loads(value)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
     return value
 
@@ -63,7 +63,7 @@ def _ensure_list(value: Any) -> list[dict[str, Any]]:
 def _ensure_confidence(value: Any) -> float | None:
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -100,11 +100,7 @@ def build_graph_boost_snapshot_entries(
         margin, top_boost, candidate_count = _compute_boosted_scores(candidates)
         tag_profile = _ensure_dict(row.get("tag_profile"))
         raw_top_tags = _ensure_list(tag_profile.get("top_tags"))
-        tag_labels = [
-            tag.get("label")
-            for tag in raw_top_tags
-            if isinstance(tag.get("label"), str)
-        ]
+        tag_labels = [tag.get("label") for tag in raw_top_tags if isinstance(tag.get("label"), str)]
         refine_decision = _ensure_dict(row.get("refine_decision"))
         entry = {
             "job_id": str(row.get("job_id") or ""),
@@ -217,9 +213,7 @@ class ClusterBuilder:
         clusters: list[dict[str, Any]] = []
         for label in sorted(set(labels)):
             cluster_entries = [
-                entry
-                for entry, assigned in zip(entries, labels, strict=False)
-                if assigned == label
+                entry for entry, assigned in zip(entries, labels, strict=False) if assigned == label
             ]
             if not cluster_entries:
                 continue
@@ -245,7 +239,9 @@ class ClusterBuilder:
         top_boosts = [float(entry.get("top_boost") or 0.0) for entry in entries]
         tag_counts = [float(entry.get("tag_count") or 0) for entry in entries]
         entropies = [float(entry.get("tag_entropy") or 0.0) for entry in entries]
-        graph_boost_flags = [1.0 if entry.get("graph_boost_available") else 0.0 for entry in entries]
+        graph_boost_flags = [
+            1.0 if entry.get("graph_boost_available") else 0.0 for entry in entries
+        ]
 
         tag_counter: Counter[str] = Counter()
         for entry in entries:
@@ -317,17 +313,12 @@ def _objective_bayes(params: Sequence[float], df: pd.DataFrame) -> float:
         )
     else:
         # top_boost がすべて 0 の場合は boost_threshold 条件をスキップ
-        preds = (
-            (df["margin"] >= graph_margin)
-            & (df["tag_count"] >= round(tag_count_min))
-        )
+        preds = (df["margin"] >= graph_margin) & (df["tag_count"] >= round(tag_count_min))
     accuracy = accuracy_score(df["label"], preds)
     return 1.0 - accuracy
 
 
-def _evaluate_on_test_set(
-    params: GraphBoostParams, test_df: pd.DataFrame
-) -> float:
+def _evaluate_on_test_set(params: GraphBoostParams, test_df: pd.DataFrame) -> float:
     """Evaluate optimized parameters on test set.
 
     This function evaluates the optimized parameters on a held-out test set
@@ -341,9 +332,8 @@ def _evaluate_on_test_set(
             & (test_df["tag_count"] >= params.tag_count_threshold)
         )
     else:
-        preds = (
-            (test_df["margin"] >= params.graph_margin)
-            & (test_df["tag_count"] >= params.tag_count_threshold)
+        preds = (test_df["margin"] >= params.graph_margin) & (
+            test_df["tag_count"] >= params.tag_count_threshold
         )
     return accuracy_score(test_df["label"], preds)
 
@@ -382,6 +372,7 @@ def run_bayes_optimization(
         # For small datasets, use all data for training and return same accuracy for both
         # This maintains backward compatibility while warning about statistical validity
         import structlog
+
         logger = structlog.get_logger(__name__)
         logger.warning(
             "insufficient samples for train/test split, using all data for training",
@@ -539,6 +530,7 @@ class GenreLearningService:
             List of genre names sorted alphabetically
         """
         import structlog
+
         logger = structlog.get_logger(__name__)
 
         logger.debug(
@@ -578,6 +570,7 @@ class GenreLearningService:
     async def _fetch_graph_edges(self) -> dict[tuple[str, str], float]:
         """Fetch graph edges from database (async)."""
         import structlog
+
         logger = structlog.get_logger(__name__)
 
         # Load tag_label_graph into memory
@@ -586,9 +579,7 @@ class GenreLearningService:
             FROM tag_label_graph
             WHERE window_label = :window_label
         """)
-        result = await self.session.execute(
-            query, {"window_label": self.tag_label_graph_window}
-        )
+        result = await self.session.execute(query, {"window_label": self.tag_label_graph_window})
         graph_edges: dict[tuple[str, str], float] = {}
         genre_set: set[str] = set()
         tag_set: set[str] = set()
@@ -611,12 +602,11 @@ class GenreLearningService:
         return graph_edges
 
     def _apply_graph_boosts(
-        self,
-        rows: list[dict[str, Any]],
-        graph_edges: dict[tuple[str, str], float]
+        self, rows: list[dict[str, Any]], graph_edges: dict[tuple[str, str], float]
     ) -> None:
         """Apply graph boosts to rows using graph_edges (CPU-bound)."""
         import structlog
+
         logger = structlog.get_logger(__name__)
 
         # Statistics for debugging
@@ -677,7 +667,9 @@ class GenreLearningService:
 
         # Log detailed statistics
         match_rate = (matched_tag_count / total_tag_count * 100) if total_tag_count > 0 else 0.0
-        boost_rate = (candidates_with_boost / total_candidates * 100) if total_candidates > 0 else 0.0
+        boost_rate = (
+            (candidates_with_boost / total_candidates * 100) if total_candidates > 0 else 0.0
+        )
         avg_boost = total_boost_sum / candidates_with_boost if candidates_with_boost > 0 else 0.0
 
         logger.info(
@@ -708,10 +700,7 @@ class GenreLearningService:
         graph_edges = await self._fetch_graph_edges()
 
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            partial(self._apply_graph_boosts, rows, graph_edges)
-        )
+        await loop.run_in_executor(None, partial(self._apply_graph_boosts, rows, graph_edges))
 
     async def fetch_snapshot_rows(
         self,
@@ -719,6 +708,7 @@ class GenreLearningService:
         limit: int = DEFAULT_SNAPSHOT_LIMIT,
     ) -> list[dict[str, Any]]:
         import structlog
+
         logger = structlog.get_logger(__name__)
 
         logger.debug(
@@ -766,6 +756,7 @@ class GenreLearningService:
         limit: int = DEFAULT_SNAPSHOT_LIMIT,
     ) -> GenreLearningResult:
         import structlog
+
         logger = structlog.get_logger(__name__)
 
         rows = await self.fetch_snapshot_rows(days=days, limit=limit)
@@ -806,8 +797,7 @@ class GenreLearningService:
 
         loop = asyncio.get_running_loop()
         entries = await loop.run_in_executor(
-            None,
-            partial(build_graph_boost_snapshot_entries, rows, self.graph_margin)
+            None, partial(build_graph_boost_snapshot_entries, rows, self.graph_margin)
         )
 
         # Debug: Check top_boost distribution before Bayes optimization
@@ -822,7 +812,9 @@ class GenreLearningService:
                 min_boost=round(min(top_boosts), 6),
                 max_boost=round(max(top_boosts), 6),
                 avg_boost=round(sum(top_boosts) / len(top_boosts), 6) if top_boosts else 0.0,
-                avg_non_zero_boost=round(sum(non_zero_boosts) / len(non_zero_boosts), 6) if non_zero_boosts else 0.0,
+                avg_non_zero_boost=round(sum(non_zero_boosts) / len(non_zero_boosts), 6)
+                if non_zero_boosts
+                else 0.0,
             )
         else:
             logger.warning("no entries found after building snapshot entries")
@@ -858,11 +850,8 @@ class GenreLearningService:
                         best_params, train_accuracy, test_accuracy = await loop.run_in_executor(
                             None,
                             partial(
-                                run_bayes_optimization,
-                                df,
-                                self.bayes_iterations,
-                                self.bayes_seed
-                            )
+                                run_bayes_optimization, df, self.bayes_iterations, self.bayes_seed
+                            ),
                         )
 
                         summary.boost_threshold_reference = best_params.boost_threshold
@@ -909,9 +898,7 @@ class GenreLearningService:
         if self.auto_detect_genres:
             logger.debug("auto-detecting genres from database")
             try:
-                available_genres = await self.fetch_available_genres(
-                    days=days, limit=limit
-                )
+                available_genres = await self.fetch_available_genres(days=days, limit=limit)
                 if available_genres:
                     genres_to_cluster = available_genres
                     logger.info(
@@ -948,7 +935,7 @@ class GenreLearningService:
                 entries,
                 genres=genres_to_cluster,
                 min_samples=DEFAULT_CLUSTER_MIN_SAMPLES,
-            )
+            ),
         )
 
         if cluster_draft:
@@ -968,7 +955,9 @@ class GenreLearningService:
         graph_boost_percentage = (graph_boost_count / total * 100) if total else 0.0
         margins = [float(entry.get("margin") or 0.0) for entry in entries]
         top_boosts = [float(entry.get("top_boost") or 0.0) for entry in entries]
-        confidences = [entry.get("confidence") for entry in entries if entry.get("confidence") is not None]
+        confidences = [
+            entry.get("confidence") for entry in entries if entry.get("confidence") is not None
+        ]
         tag_counts = [entry.get("tag_count") or 0 for entry in entries]
         tag_coverage_pct = (
             (sum(1 for count in tag_counts if count > 0) / total) * 100 if total else 0.0
@@ -987,4 +976,3 @@ class GenreLearningService:
             accuracy_estimate=None,  # Will be set by Bayes optimization if enabled
             test_accuracy=None,  # Will be set by Bayes optimization if enabled
         )
-

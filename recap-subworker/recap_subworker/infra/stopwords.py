@@ -22,7 +22,7 @@ try:
     from nltk.corpus import stopwords as nltk_stopwords
 
     NLTK_AVAILABLE = True
-except (ImportError, OSError):
+except ImportError, OSError:
     NLTK_AVAILABLE = False
     nltk_stopwords = None
 

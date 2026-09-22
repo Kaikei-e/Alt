@@ -26,9 +26,7 @@ def compute_content_hash(text: str) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Merge original and augmented training data"
-    )
+    parser = argparse.ArgumentParser(description="Merge original and augmented training data")
     parser.add_argument(
         "--original",
         type=Path,
@@ -136,8 +134,12 @@ def main():
     # Print current distribution
     print("\nCurrent genre distribution:")
     for genre, count in combined_df["genre"].value_counts().items():
-        orig_count = len(combined_df[(combined_df["genre"] == genre) & (~combined_df["is_augmented"])])
-        aug_count = len(combined_df[(combined_df["genre"] == genre) & (combined_df["is_augmented"])])
+        orig_count = len(
+            combined_df[(combined_df["genre"] == genre) & (~combined_df["is_augmented"])]
+        )
+        aug_count = len(
+            combined_df[(combined_df["genre"] == genre) & (combined_df["is_augmented"])]
+        )
         print(f"  {genre}: {count} (orig: {orig_count}, aug: {aug_count})")
 
     # Balance classes if specified
@@ -157,8 +159,7 @@ def main():
                 if len(orig_samples) >= args.max_samples_per_genre:
                     # Only use originals
                     sampled = orig_samples.sample(
-                        n=args.max_samples_per_genre,
-                        random_state=args.seed
+                        n=args.max_samples_per_genre, random_state=args.seed
                     )
                 else:
                     # Use all originals + sample from augmented
@@ -188,7 +189,7 @@ def main():
     # Final output (keep only content and genre for training)
     final_df = combined_df[["content", "genre"]].copy()
 
-    print(f"\n=== Final Dataset ===")
+    print("\n=== Final Dataset ===")
     print(f"Total samples: {len(final_df)}")
     print(f"Original: {len(combined_df[~combined_df['is_augmented']])}")
     print(f"Augmented: {len(combined_df[combined_df['is_augmented']])}")

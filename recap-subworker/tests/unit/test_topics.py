@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from recap_subworker.domain import stopwords
-from recap_subworker.domain import topics
+from recap_subworker.domain import stopwords, topics
 
 
 @pytest.fixture(autouse=True)
@@ -202,7 +201,22 @@ def test_extract_topics_filters_web_and_code_noise():
 
     # First cluster: web/code noise should be filtered out
     first_cluster = result[0]
-    web_noise = {"url", "http", "https", "www", "com", "self", "null", "none", "true", "false", "class", "def", "return", "import"}
+    web_noise = {
+        "url",
+        "http",
+        "https",
+        "www",
+        "com",
+        "self",
+        "null",
+        "none",
+        "true",
+        "false",
+        "class",
+        "def",
+        "return",
+        "import",
+    }
     for noise in web_noise:
         assert noise not in first_cluster, f"Found web/code noise: {noise}"
 
@@ -212,8 +226,22 @@ def test_stopwords_include_web_tech_terms():
     stopwords.get_stopwords.cache_clear()
     terms = stopwords.get_stopwords()
 
-    web_terms = {"url", "http", "https", "www", "com", "self", "null", "none",
-                 "true", "false", "class", "def", "return", "import", "function"}
+    web_terms = {
+        "url",
+        "http",
+        "https",
+        "www",
+        "com",
+        "self",
+        "null",
+        "none",
+        "true",
+        "false",
+        "class",
+        "def",
+        "return",
+        "import",
+        "function",
+    }
     for term in web_terms:
         assert term in terms, f"Missing web/tech stopword: {term}"
-

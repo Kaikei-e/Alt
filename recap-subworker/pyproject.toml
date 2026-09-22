@@ -170,7 +170,13 @@ known-first-party = ["recap_subworker"]
 "recap_subworker/infra/classifier/**/*.py" = ["PTH", "B904"]
 # Gunicorn 設定は postgres ライブラリの遅延 import が必要
 "recap_subworker/infra/gunicorn_conf.py" = ["E402"]
-"tests/**" = ["S101", "S105", "S106", "S603", "S607", "S110", "ANN", "PLR2004"]
+"tests/**" = [
+  "S101", "S105", "S106", "S603", "S607", "S110", "ANN", "PLR2004", "PLW0108",
+  "PTH118", "PTH208", "E741", "E731", "C4", "SIM", "B905", "F841", "RUF059", "S311", "I001",
+]
+"scripts/**" = [
+  "E402", "PTH", "S301", "S311", "S324", "C4", "SIM", "B905", "F841", "RUF059", "B007", "I001", "E741",
+]
 "**/test_*.py" = ["S101", "ANN", "PLR2004"]
 
 [tool.pyrefly]

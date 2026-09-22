@@ -49,4 +49,3 @@ async def release_scheduler_lock(session: AsyncSession) -> bool:
         {"lock_id": SCHEDULER_LOCK_ID},
     )
     return result.scalar() is True
-

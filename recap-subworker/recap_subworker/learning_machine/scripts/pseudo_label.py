@@ -45,12 +45,8 @@ def _setup_cuda_library_path():
     # 4. ldconfigで検出されたCUDAライブラリのパスを確認
     try:
         import subprocess
-        result = subprocess.run(
-            ["ldconfig", "-p"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+
+        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             for line in result.stdout.split("\n"):
                 if "cuda" in line.lower() and "=>" in line:
@@ -73,6 +69,7 @@ def _setup_cuda_library_path():
         updated_ld_path = ":".join(new_paths + ([current_ld_path] if current_ld_path else []))
         os.environ["LD_LIBRARY_PATH"] = updated_ld_path
 
+
 _setup_cuda_library_path()
 
 import torch
@@ -93,6 +90,7 @@ from recap_subworker.learning_machine.teacher.model import TeacherBERT
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class InferenceDataset(Dataset):
     def __init__(self, texts: list[str], tokenizer, max_length: int = 256):
         self.texts = texts
@@ -109,42 +107,98 @@ class InferenceDataset(Dataset):
             add_special_tokens=True,
             max_length=self.max_length,
             return_token_type_ids=False,
-            padding='max_length',
+            padding="max_length",
             truncation=True,
             return_attention_mask=True,
-            return_tensors='pt',
+            return_tensors="pt",
         )
         return {
-            'input_ids': encoding['input_ids'].flatten(),
-            'attention_mask': encoding['attention_mask'].flatten()
+            "input_ids": encoding["input_ids"].flatten(),
+            "attention_mask": encoding["attention_mask"].flatten(),
         }
+
 
 def load_genres(path: Path) -> list[str]:
     with open(path) as f:
         data = yaml.safe_load(f)
         return data.get("genres", [])
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--threshold", type=float, default=None, help="Confidence threshold (alternative to top-percent/margin)")
-    parser.add_argument("--model_dir", type=str, default=None, help="Model directory (default: artifacts/teacher/v0_{language})")
-    parser.add_argument("--input_path", type=str, default="recap_subworker/learning_machine/data/raw_articles.jsonl")
-    parser.add_argument("--output_path", type=str, default=None, help="Output path (default: silver_teacher_v0_{language}.jsonl)")
-    parser.add_argument("--language", type=str, choices=["ja", "en"], default="ja", help="Language filter for pseudo-labeling")
-    parser.add_argument("--max_items", type=int, default=None, help="Limit number of items for distribution estimation (for stats_only)")
-    parser.add_argument("--stats_only", action="store_true", help="Only output statistics, do not generate pseudo-labels")
-    parser.add_argument("--accept_top_percent", type=float, default=None, help="Accept top P% of samples by confidence (alternative to threshold)")
-    parser.add_argument("--min_margin", type=float, default=None, help="Minimum margin (top1 - top2) to accept (alternative to threshold)")
-    parser.add_argument("--temperature", type=float, default=1.0, help="Temperature scaling for softmax (T>1 flattens, T<1 sharpens)")
-    parser.add_argument("--per_class_cap", type=int, default=None, help="Maximum pseudo-labels per class (for class balance)")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Confidence threshold (alternative to top-percent/margin)",
+    )
+    parser.add_argument(
+        "--model_dir",
+        type=str,
+        default=None,
+        help="Model directory (default: artifacts/teacher/v0_{language})",
+    )
+    parser.add_argument(
+        "--input_path", type=str, default="recap_subworker/learning_machine/data/raw_articles.jsonl"
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        default=None,
+        help="Output path (default: silver_teacher_v0_{language}.jsonl)",
+    )
+    parser.add_argument(
+        "--language",
+        type=str,
+        choices=["ja", "en"],
+        default="ja",
+        help="Language filter for pseudo-labeling",
+    )
+    parser.add_argument(
+        "--max_items",
+        type=int,
+        default=None,
+        help="Limit number of items for distribution estimation (for stats_only)",
+    )
+    parser.add_argument(
+        "--stats_only",
+        action="store_true",
+        help="Only output statistics, do not generate pseudo-labels",
+    )
+    parser.add_argument(
+        "--accept_top_percent",
+        type=float,
+        default=None,
+        help="Accept top P% of samples by confidence (alternative to threshold)",
+    )
+    parser.add_argument(
+        "--min_margin",
+        type=float,
+        default=None,
+        help="Minimum margin (top1 - top2) to accept (alternative to threshold)",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Temperature scaling for softmax (T>1 flattens, T<1 sharpens)",
+    )
+    parser.add_argument(
+        "--per_class_cap",
+        type=int,
+        default=None,
+        help="Maximum pseudo-labels per class (for class balance)",
+    )
     args = parser.parse_args()
 
     # Set defaults based on language
     if args.model_dir is None:
         args.model_dir = f"recap_subworker/learning_machine/artifacts/teacher/v0_{args.language}"
     if args.output_path is None:
-        args.output_path = f"recap_subworker/learning_machine/data/silver_teacher_v0_{args.language}.jsonl"
+        args.output_path = (
+            f"recap_subworker/learning_machine/data/silver_teacher_v0_{args.language}.jsonl"
+        )
 
     # GPU確認と詳細ログ
     if torch.cuda.is_available():
@@ -191,15 +245,30 @@ def main():
         if len(text) < min_chars:
             return "unknown"
         has_japanese = any(
-            "\u3040" <= char <= "\u309F" or  # Hiragana
-            "\u30A0" <= char <= "\u30FF" or  # Katakana
-            "\u4E00" <= char <= "\u9FAF"     # CJK Unified Ideographs
+            "\u3040" <= char <= "\u309f"  # Hiragana
+            or "\u30a0" <= char <= "\u30ff"  # Katakana
+            or "\u4e00" <= char <= "\u9faf"  # CJK Unified Ideographs
             for char in text
         )
         has_english = any(char.isascii() and char.isalpha() for char in text)
-        jp_chars = sum(1 for char in text if "\u3040" <= char <= "\u309F" or "\u30A0" <= char <= "\u30FF" or "\u4E00" <= char <= "\u9FAF")
+        jp_chars = sum(
+            1
+            for char in text
+            if "\u3040" <= char <= "\u309f"
+            or "\u30a0" <= char <= "\u30ff"
+            or "\u4e00" <= char <= "\u9faf"
+        )
         en_chars = sum(1 for char in text if char.isascii() and char.isalpha())
-        total_chars = len([c for c in text if c.isalnum() or ("\u3040" <= c <= "\u309F") or ("\u30A0" <= c <= "\u30FF") or ("\u4E00" <= c <= "\u9FAF")])
+        total_chars = len(
+            [
+                c
+                for c in text
+                if c.isalnum()
+                or ("\u3040" <= c <= "\u309f")
+                or ("\u30a0" <= c <= "\u30ff")
+                or ("\u4e00" <= c <= "\u9faf")
+            ]
+        )
         if total_chars == 0:
             return "unknown"
         jp_ratio = jp_chars / total_chars if total_chars > 0 else 0
@@ -235,7 +304,7 @@ def main():
 
     # Apply max_items limit if specified (for stats_only mode)
     if args.max_items and args.max_items < len(raw_items):
-        raw_items = raw_items[:args.max_items]
+        raw_items = raw_items[: args.max_items]
         logger.info(f"Limited to {args.max_items} items for distribution estimation.")
 
     # 4. Inference
@@ -252,8 +321,8 @@ def main():
     logger.info("Running inference...")
     with torch.no_grad():
         for i, batch in enumerate(tqdm(loader)):
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
 
             outputs = model(input_ids, attention_mask)
             logits = outputs.logits
@@ -283,16 +352,19 @@ def main():
                 margin_stats.append(margin)
 
                 # Store candidate item with metadata
-                candidate_items.append({
-                    "item": raw_items[idx].copy(),
-                    "max_prob": max_prob,
-                    "margin": margin,
-                    "pred_label": pred_label,
-                    "logits": logits[j].cpu().tolist(),
-                })
+                candidate_items.append(
+                    {
+                        "item": raw_items[idx].copy(),
+                        "max_prob": max_prob,
+                        "margin": margin,
+                        "pred_label": pred_label,
+                        "logits": logits[j].cpu().tolist(),
+                    }
+                )
 
     # Calculate statistics and determine selection criteria
     import numpy as np
+
     if not confidence_stats:
         logger.error("No confidence statistics collected!")
         return
@@ -319,7 +391,9 @@ def main():
         sorted_indices = np.argsort(conf_array)[::-1]
         n_accept = int(len(candidate_items) * args.accept_top_percent / 100.0)
         selected_indices = sorted_indices[:n_accept]
-        effective_threshold = conf_array[sorted_indices[n_accept - 1]] if n_accept > 0 else conf_array.max()
+        effective_threshold = (
+            conf_array[sorted_indices[n_accept - 1]] if n_accept > 0 else conf_array.max()
+        )
     elif args.min_margin is not None:
         selection_method = "margin"
         effective_threshold = f"margin >= {args.min_margin}"
@@ -334,7 +408,9 @@ def main():
         sorted_indices = np.argsort(conf_array)[::-1]
         n_accept = max(1, int(len(candidate_items) * 5 / 100.0))
         selected_indices = sorted_indices[:n_accept]
-        effective_threshold = conf_array[sorted_indices[n_accept - 1]] if n_accept > 0 else conf_array.max()
+        effective_threshold = (
+            conf_array[sorted_indices[n_accept - 1]] if n_accept > 0 else conf_array.max()
+        )
 
     # Apply per-class cap if specified
     if args.per_class_cap:
@@ -346,7 +422,9 @@ def main():
                 filtered_indices.append(idx)
                 class_counts[label] = class_counts.get(label, 0) + 1
         selected_indices = np.array(filtered_indices)
-        logger.info(f"Applied per-class cap ({args.per_class_cap}): {len(selected_indices)} items selected")
+        logger.info(
+            f"Applied per-class cap ({args.per_class_cap}): {len(selected_indices)} items selected"
+        )
 
     # Build pseudo-labeled items
     for idx in selected_indices:
@@ -368,24 +446,32 @@ def main():
     logger.info(f"Median: {np.median(conf_array):.4f}")
     logger.info(f"Std: {conf_array.std():.4f}")
     logger.info(f"Min: {conf_array.min():.4f}, Max: {conf_array.max():.4f}")
-    logger.info(f"Percentiles - p50: {percentiles['p50']:.4f}, p75: {percentiles['p75']:.4f}, "
-                f"p90: {percentiles['p90']:.4f}, p95: {percentiles['p95']:.4f}, p99: {percentiles['p99']:.4f}")
+    logger.info(
+        f"Percentiles - p50: {percentiles['p50']:.4f}, p75: {percentiles['p75']:.4f}, "
+        f"p90: {percentiles['p90']:.4f}, p95: {percentiles['p95']:.4f}, p99: {percentiles['p99']:.4f}"
+    )
     logger.info("")
     logger.info("Margin Statistics (top1 - top2)")
-    logger.info(f"Mean: {margin_array.mean():.4f}, Median: {np.median(margin_array):.4f}, "
-                f"Max: {margin_array.max():.4f}, Min: {margin_array.min():.4f}")
+    logger.info(
+        f"Mean: {margin_array.mean():.4f}, Median: {np.median(margin_array):.4f}, "
+        f"Max: {margin_array.max():.4f}, Min: {margin_array.min():.4f}"
+    )
     logger.info("")
     logger.info("Selection Method & Estimates")
     logger.info(f"Method: {selection_method}")
     logger.info(f"Effective threshold: {effective_threshold}")
-    logger.info(f"Selected: {len(pseudo_labeled)}/{len(candidate_items)} ({len(pseudo_labeled)/len(candidate_items)*100:.1f}%)")
+    logger.info(
+        f"Selected: {len(pseudo_labeled)}/{len(candidate_items)} ({len(pseudo_labeled) / len(candidate_items) * 100:.1f}%)"
+    )
 
     # Estimate for different thresholds
     logger.info("")
     logger.info("Estimated counts for different thresholds:")
     for thresh in [0.3, 0.5, 0.7, 0.85, 0.9]:
         count = np.sum(conf_array >= thresh)
-        logger.info(f"  threshold >= {thresh}: {count} items ({count/len(conf_array)*100:.1f}%)")
+        logger.info(
+            f"  threshold >= {thresh}: {count} items ({count / len(conf_array) * 100:.1f}%)"
+        )
 
     # Estimate for different top-percent
     logger.info("")
@@ -400,7 +486,9 @@ def main():
     logger.info("Estimated counts for different margins:")
     for margin_val in [0.05, 0.1, 0.15, 0.2]:
         count = np.sum(margin_array >= margin_val)
-        logger.info(f"  margin >= {margin_val}: {count} items ({count/len(margin_array)*100:.1f}%)")
+        logger.info(
+            f"  margin >= {margin_val}: {count} items ({count / len(margin_array) * 100:.1f}%)"
+        )
 
     logger.info("=" * 80)
 
@@ -429,8 +517,9 @@ def main():
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
     logger.info(f"Generated {len(pseudo_labeled)} pseudo-labels")
-    logger.info(f"Ratio: {len(pseudo_labeled)/len(raw_items):.1%}")
+    logger.info(f"Ratio: {len(pseudo_labeled) / len(raw_items):.1%}")
     logger.info(f"Saved to: {output_path}")
+
 
 if __name__ == "__main__":
     main()

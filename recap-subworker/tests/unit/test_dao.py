@@ -25,7 +25,9 @@ async def test_insert_run_returns_generated_id():
     session.execute.return_value = result
     dao = SubworkerDAO(session)
 
-    run_id = await dao.insert_run(NewRun(job_id=uuid4(), genre="ai", status="running", request_payload={}))
+    run_id = await dao.insert_run(
+        NewRun(job_id=uuid4(), genre="ai", status="running", request_payload={})
+    )
 
     assert run_id == 99
     session.execute.assert_awaited()

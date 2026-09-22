@@ -57,9 +57,7 @@ class TestErrorHierarchy:
 
     def test_embedding_hierarchy(self):
         assert isinstance(ModelNotLoadedError(), EmbeddingError)
-        assert isinstance(
-            OllamaConnectionError("http://localhost", "err"), EmbeddingError
-        )
+        assert isinstance(OllamaConnectionError("http://localhost", "err"), EmbeddingError)
 
     def test_classification_hierarchy(self):
         assert isinstance(ModelArtifactNotFoundError("/path"), ClassificationError)

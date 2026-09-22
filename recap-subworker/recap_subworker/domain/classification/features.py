@@ -1,6 +1,5 @@
 """トークン列から特徴量を抽出する。"""
 
-
 import xxhash
 
 EMBEDDING_DIM = 6
@@ -238,4 +237,3 @@ class FeatureExtractor:
         self.embedding_stats.normalize(embedding)
 
         return FeatureVector(tfidf=tfidf, bm25=bm25, embedding=embedding)
-

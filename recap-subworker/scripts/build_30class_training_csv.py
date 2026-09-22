@@ -114,9 +114,7 @@ def main() -> None:
         print(f"{silver_v0.name}: {len(sp)} rows")
         pairs.extend(sp)
 
-    df = pd.DataFrame(pairs, columns=["content", "genre"]).dropna(
-        subset=["content", "genre"]
-    )
+    df = pd.DataFrame(pairs, columns=["content", "genre"]).dropna(subset=["content", "genre"])
     before = len(df)
     df = df.drop_duplicates(subset=["content", "genre"])
     print(f"dropped {before - len(df)} exact duplicates")
@@ -128,14 +126,35 @@ def main() -> None:
 
     missing = sorted(
         {
-            "ai_data", "software_dev", "cybersecurity", "consumer_tech",
-            "internet_platforms", "space_astronomy", "climate_environment",
-            "energy_transition", "health_medicine", "life_science",
-            "economics_macro", "markets_finance", "startups_innovation",
-            "industry_logistics", "politics_government", "diplomacy_security",
-            "law_crime", "education", "labor_workplace", "society_demographics",
-            "culture_arts", "film_tv", "music_audio", "sports", "food_cuisine",
-            "travel_places", "home_living", "games_esports", "mobility_automotive",
+            "ai_data",
+            "software_dev",
+            "cybersecurity",
+            "consumer_tech",
+            "internet_platforms",
+            "space_astronomy",
+            "climate_environment",
+            "energy_transition",
+            "health_medicine",
+            "life_science",
+            "economics_macro",
+            "markets_finance",
+            "startups_innovation",
+            "industry_logistics",
+            "politics_government",
+            "diplomacy_security",
+            "law_crime",
+            "education",
+            "labor_workplace",
+            "society_demographics",
+            "culture_arts",
+            "film_tv",
+            "music_audio",
+            "sports",
+            "food_cuisine",
+            "travel_places",
+            "home_living",
+            "games_esports",
+            "mobility_automotive",
             "consumer_products",
         }
         - set(counts.keys())

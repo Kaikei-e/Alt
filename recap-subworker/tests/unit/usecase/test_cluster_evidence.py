@@ -5,16 +5,14 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from recap_subworker.domain.models import (
+    ClusterDocument,
     EvidenceBudget,
+    EvidenceConstraints,
+    EvidenceRequest,
     EvidenceResponse,
     WarmupResponse,
 )
 from recap_subworker.infra.config import Settings
-from recap_subworker.domain.models import (
-    ClusterDocument,
-    EvidenceConstraints,
-    EvidenceRequest,
-)
 from recap_subworker.usecase.cluster_evidence import ClusterEvidenceUsecase
 
 
@@ -45,9 +43,7 @@ class TestClusterEvidenceUsecase:
             clusters=[],
             evidence_budget=EvidenceBudget(sentences=0, tokens_estimated=0),
         )
-        mock_pipeline.warmup.return_value = WarmupResponse(
-            warmed=True, batches=1, backend="hash"
-        )
+        mock_pipeline.warmup.return_value = WarmupResponse(warmed=True, batches=1, backend="hash")
 
         return ClusterEvidenceUsecase(
             settings=settings,

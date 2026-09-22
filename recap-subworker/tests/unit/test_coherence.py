@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from recap_subworker.services.coherence import (
-    TopicCoherenceEvaluator,
+    GENSIM_AVAILABLE,
     CoherenceResult,
     CoherenceType,
-    GENSIM_AVAILABLE,
+    TopicCoherenceEvaluator,
 )
 
 gensim_required = pytest.mark.skipif(not GENSIM_AVAILABLE, reason="gensim not installed")

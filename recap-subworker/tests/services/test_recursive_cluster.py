@@ -1,8 +1,11 @@
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock
-from recap_subworker.services.clusterer import Clusterer
+
 from recap_subworker.infra.config import Settings
+from recap_subworker.services.clusterer import Clusterer
+
 
 @pytest.fixture
 def mock_settings():
@@ -18,14 +21,16 @@ def mock_settings():
     settings.hdbscan_cluster_selection_method = "eom"
     # Recursive settings
     settings.clustering_recursive_enabled = True
-    settings.clustering_max_tokens_per_cluster = 100 # Low threshold to force split
+    settings.clustering_max_tokens_per_cluster = 100  # Low threshold to force split
     settings.clustering_min_split_size = 5
     settings.recursive_dynamic_thresholds = False
     return settings
 
+
 @pytest.fixture
 def clusterer(mock_settings):
     return Clusterer(mock_settings)
+
 
 def test_recursive_cluster_splits_large_cluster(clusterer):
     # Setup: 20 points
@@ -47,11 +52,11 @@ def test_recursive_cluster_splits_large_cluster(clusterer):
     # Cluster 1 members (indices 10-19)
     embeddings[10:20] = np.random.normal(10, 0.1, (10, 2))
 
-    labels = np.array([0]*10 + [1]*10)
+    labels = np.array([0] * 10 + [1] * 10)
     probabilities = np.ones(20)
 
     # Token counts
-    token_counts = np.array([20]*10 + [5]*10) # Cluster 0 has 200, Cluster 1 has 50
+    token_counts = np.array([20] * 10 + [5] * 10)  # Cluster 0 has 200, Cluster 1 has 50
 
     new_labels, new_probs = clusterer.recursive_cluster(
         embeddings, labels, probabilities, token_counts
@@ -76,19 +81,19 @@ def test_recursive_cluster_splits_large_cluster(clusterer):
     # Probabilities for split items should be 1.0
     assert np.all(new_probs[0:10] == 1.0)
 
+
 def test_recursive_cluster_respects_disable(clusterer):
     clusterer.settings.clustering_recursive_enabled = False
 
     embeddings = np.random.rand(20, 2)
     labels = np.zeros(20, dtype=int)
     probabilities = np.ones(20)
-    token_counts = np.full(20, 100) # Huge count
+    token_counts = np.full(20, 100)  # Huge count
 
-    new_labels, _ = clusterer.recursive_cluster(
-        embeddings, labels, probabilities, token_counts
-    )
+    new_labels, _ = clusterer.recursive_cluster(embeddings, labels, probabilities, token_counts)
 
     assert np.array_equal(new_labels, labels)
+
 
 def test_recursive_cluster_min_size(clusterer):
     # Cluster size 4 < min_split_size 5
@@ -98,10 +103,8 @@ def test_recursive_cluster_min_size(clusterer):
     embeddings = np.random.rand(4, 2)
     labels = np.zeros(4, dtype=int)
     probabilities = np.ones(4)
-    token_counts = np.full(4, 1000) # Huge count
+    token_counts = np.full(4, 1000)  # Huge count
 
-    new_labels, _ = clusterer.recursive_cluster(
-        embeddings, labels, probabilities, token_counts
-    )
+    new_labels, _ = clusterer.recursive_cluster(embeddings, labels, probabilities, token_counts)
 
     assert np.array_equal(new_labels, labels)

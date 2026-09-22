@@ -168,7 +168,7 @@ class TokenPipeline:
         if provided != ClassificationLanguage.UNKNOWN:
             return provided
         # 簡易的な言語検出（日本語文字が含まれていれば日本語）
-        if any("\u3040" <= char <= "\u309F" or "\u30A0" <= char <= "\u30FF" for char in text):
+        if any("\u3040" <= char <= "\u309f" or "\u30a0" <= char <= "\u30ff" for char in text):
             return ClassificationLanguage.JAPANESE
         # 英語の簡易検出
         if any(char.isascii() and char.isalpha() for char in text):
@@ -183,9 +183,7 @@ class TokenPipeline:
             return EnglishTokenizer.tokenize(text)
         return self.fallback.tokenize(text)
 
-    def preprocess(
-        self, title: str, body: str, lang: ClassificationLanguage
-    ) -> NormalizedDocument:
+    def preprocess(self, title: str, body: str, lang: ClassificationLanguage) -> NormalizedDocument:
         """前処理（トークン化 + 同義語拡張）。"""
         combined = f"{title} {body}"
         resolved = self.resolve_language(lang, combined)
@@ -219,4 +217,3 @@ class TokenPipeline:
                     ("multimodal", ["transformer", "machine learning"]),
                 ],
             )
-

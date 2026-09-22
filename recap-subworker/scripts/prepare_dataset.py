@@ -1,6 +1,6 @@
+import argparse
 import json
 import pickle
-import argparse
 import sys
 from pathlib import Path
 
@@ -8,26 +8,38 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from sklearn.model_selection import train_test_split
-from sentence_transformers import SentenceTransformer
-from sklearn.feature_extraction.text import TfidfVectorizer
+import joblib
+
 # from imblearn.over_sampling import SMOTE
 # from sudachipy import tokenizer, dictionary # Removed, inside SudachiTokenizer now
 import pandas as pd
-import numpy as np
 import scipy.sparse as sp
-import joblib
+from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import train_test_split
 
 # Import SudachiTokenizer from the service module where it is defined cleanly
 from recap_subworker.services.classifier import SudachiTokenizer
 
+
 def main():
     parser = argparse.ArgumentParser(description="Prepare dataset for genre classification")
-    parser.add_argument("--input", type=str, required=True, help="Path to golden_classification.json")
-    parser.add_argument("--output_dir", type=str, default="data/dataset", help="Output directory for pickle files")
-    parser.add_argument("--model_name", type=str, default="BAAI/bge-m3", help="Embedding model name")
-    parser.add_argument("--language", type=str, choices=["ja", "en", "both"], default="both",
-                        help="Language filter: 'ja' for Japanese only, 'en' for English only, 'both' for both (ja priority)")
+    parser.add_argument(
+        "--input", type=str, required=True, help="Path to golden_classification.json"
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default="data/dataset", help="Output directory for pickle files"
+    )
+    parser.add_argument(
+        "--model_name", type=str, default="BAAI/bge-m3", help="Embedding model name"
+    )
+    parser.add_argument(
+        "--language",
+        type=str,
+        choices=["ja", "en", "both"],
+        default="both",
+        help="Language filter: 'ja' for Japanese only, 'en' for English only, 'both' for both (ja priority)",
+    )
     args = parser.parse_args()
 
     # Load Golden Dataset
@@ -35,7 +47,7 @@ def main():
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
-    with open(input_path, "r") as f:
+    with open(input_path) as f:
         data = json.load(f)
 
     if isinstance(data, dict) and "items" in data:
@@ -99,18 +111,25 @@ def main():
     # Split Data
     # Stratified split 50/50 Train/Temp, then Temp -> 50/50 Valid/Test
     try:
-        train_df, temp_df = train_test_split(df, test_size=0.5, stratify=df["label"], random_state=42)
+        train_df, temp_df = train_test_split(
+            df, test_size=0.5, stratify=df["label"], random_state=42
+        )
     except ValueError:
         print("Warning: Stratified split failed. Random split.")
         train_df, temp_df = train_test_split(df, test_size=0.5, random_state=42)
 
     try:
         if len(temp_df) < 2:
-             valid_df = temp_df.copy()
-             test_df = temp_df.copy()
+            valid_df = temp_df.copy()
+            test_df = temp_df.copy()
         else:
-             valid_df, test_df = train_test_split(
-                temp_df, test_size=0.5, stratify=temp_df["label"] if len(temp_df["label"].unique()) < len(temp_df) else None, random_state=42
+            valid_df, test_df = train_test_split(
+                temp_df,
+                test_size=0.5,
+                stratify=temp_df["label"]
+                if len(temp_df["label"].unique()) < len(temp_df)
+                else None,
+                random_state=42,
             )
     except ValueError:
         valid_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42)
@@ -137,6 +156,7 @@ def main():
 
     # 2. E5 Embeddings
     import torch
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Loading model: {args.model_name} on {device}")
     model = SentenceTransformer(args.model_name, device=device)
@@ -160,9 +180,9 @@ def main():
     # Let's stack them as dense arrays for simplicity, assuming memory fits (small dataset for now).
     # Or keep sparse? SMOTE supports sparse.
 
-    X_train_combined = sp.hstack([X_train_emb, X_train_tfidf], format='csr')
-    X_valid_combined = sp.hstack([X_valid_emb, X_valid_tfidf], format='csr')
-    X_test_combined = sp.hstack([X_test_emb, X_test_tfidf], format='csr')
+    X_train_combined = sp.hstack([X_train_emb, X_train_tfidf], format="csr")
+    X_valid_combined = sp.hstack([X_valid_emb, X_valid_tfidf], format="csr")
+    X_test_combined = sp.hstack([X_test_emb, X_test_tfidf], format="csr")
 
     y_train = train_df["label"].values
     y_valid = valid_df["label"].values
@@ -203,10 +223,11 @@ def main():
         pickle.dump((X_test_combined, y_test), f)
 
     # Save Vectorizer
-    import joblib
+
     joblib.dump(vectorizer, output_dir / "tfidf_vectorizer.joblib")
 
     print(f"Saved datasets and vectorizer to {output_dir}")
+
 
 if __name__ == "__main__":
     main()

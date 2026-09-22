@@ -35,9 +35,7 @@ def _record_to_classification_response(record) -> ClassificationJobResponse:
     """Convert RunRecord to ClassificationJobResponse."""
     results = None
     if record.response_payload and "results" in record.response_payload:
-        results = [
-            ClassificationResult(**r) for r in record.response_payload["results"]
-        ]
+        results = [ClassificationResult(**r) for r in record.response_payload["results"]]
 
     return ClassificationJobResponse(
         run_id=record.run_id,
@@ -58,17 +56,13 @@ async def create_classification_run(
     payload: ClassificationJobPayload,
     job_id_header: str = Header(..., alias="X-Alt-Job-Id"),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    submit_uc: SubmitClassificationRunUsecase = Depends(
-        get_submit_classification_run_usecase_dep
-    ),
+    submit_uc: SubmitClassificationRunUsecase = Depends(get_submit_classification_run_usecase_dep),
 ) -> ClassificationJobResponse:
     """Create a new classification run (async job pattern)."""
     try:
         job_id = UUID(job_id_header)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=400, detail="X-Alt-Job-Id must be a valid UUID"
-        ) from exc
+        raise HTTPException(status_code=400, detail="X-Alt-Job-Id must be a valid UUID") from exc
     submission = ClassificationRunSubmission(
         job_id=job_id,
         payload=payload,
@@ -131,9 +125,7 @@ async def create_classification_run(
 @router.get("/v1/classify-runs/{run_id}", response_model=ClassificationJobResponse)
 async def get_classification_run(
     run_id: int,
-    get_uc: GetClassificationRunUsecase = Depends(
-        get_get_classification_run_usecase_dep
-    ),
+    get_uc: GetClassificationRunUsecase = Depends(get_get_classification_run_usecase_dep),
 ) -> ClassificationJobResponse:
     """Get classification run status and results."""
     record = await get_uc.execute(run_id)
@@ -141,4 +133,3 @@ async def get_classification_run(
         raise HTTPException(status_code=404, detail="run not found")
 
     return _record_to_classification_response(record)
-
