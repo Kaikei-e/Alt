@@ -1,11 +1,12 @@
 /**
- * Batches on-demand og:image resolution requests.
+ * Manages on-demand og:image resolution requests with bounded concurrency.
  *
- * Cards enter the viewport a few at a time, and each one asking on its own
- * would turn a scroll into a burst of RPCs. Requests raised within the same
- * short window are coalesced into one call, and a feed whose answer is settled
- * is asked at most once per session: the origin's refusal is already recorded
- * server-side, and asking again would only cost the publisher another request.
+ * Cards enter the viewport and request resolution independently as singletons.
+ * Instead of an all-or-nothing batch await barrier where a slow publisher
+ * scrape or politeness wait freezes all cards in the batch, requests are
+ * dispatched independently via a work-conserving queue with a concurrency cap
+ * (`maxConcurrent`, default 4). When any request completes, the next queued card
+ * begins immediately.
  *
  * What is *not* remembered is an answer that says "not yet". Two different
  * things say it. One is a failure to ask at all: `ResolveOgImages` fetches the
@@ -27,6 +28,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import type { OgImageResolution } from "$lib/connect/feeds/ogImages";
 import { FAILURE_SCOPE_HEADER } from "./errorClassification";
 import { OG_RETRY_CEILING_MS } from "./ogImageRetry";
+import { createRequestQueue } from "./requestQueue";
 import { parseRetryAfter } from "./retryAfter";
 
 /**
@@ -49,22 +51,15 @@ export type OgImageOutcome =
 	| { status: "unavailable"; retryAfterMs: number | null };
 
 export interface OgImageResolverOptions {
-	/** Sends one batch. Returns the server's two lists for those feeds. */
+	/** Sends one singleton request. Returns the server's two lists for those feeds. */
 	send: (feedIds: string[]) => Promise<OgImageResolution>;
-	/** How long to gather feeds before sending. */
-	flushMs?: number;
-	/** Server-side cap on one batch; must not exceed the RPC's own limit. */
-	maxBatch?: number;
+	/** Maximum concurrent in-flight requests. Defaults to 4. */
+	maxConcurrent?: number;
 }
 
 export interface OgImageResolver {
-	/** Asks about this feed, coalesced with whatever else is being asked. */
+	/** Asks about this feed, bounded by the resolver's concurrency cap. */
 	resolve: (feedId: string) => Promise<OgImageOutcome>;
-}
-
-interface Waiter {
-	feedId: string;
-	settle: (outcome: OgImageOutcome) => void;
 }
 
 const ABSENT: OgImageOutcome = { status: "absent" };
@@ -184,8 +179,7 @@ function classifyFailure(err: unknown): OgImageOutcome {
 export function createOgImageResolver(
 	options: OgImageResolverOptions,
 ): OgImageResolver {
-	const flushMs = options.flushMs ?? 40;
-	const maxBatch = options.maxBatch ?? 10;
+	const queue = createRequestQueue({ concurrency: options.maxConcurrent });
 
 	// Feeds whose answer is settled, with that answer. An `absent` value is
 	// "asked, and there is nothing to be had" — kept precisely so scrolling back
@@ -193,48 +187,6 @@ export function createOgImageResolver(
 	// from a transport failure or from the server naming a retry bar.
 	const settled = new Map<string, OgImageOutcome>();
 	const inFlight = new Map<string, Promise<OgImageOutcome>>();
-
-	let queue: Waiter[] = [];
-	let timer: ReturnType<typeof setTimeout> | null = null;
-
-	async function flush() {
-		timer = null;
-		const batch = queue;
-		queue = [];
-
-		for (let i = 0; i < batch.length; i += maxBatch) {
-			const slice = batch.slice(i, i + maxBatch);
-			const ids = slice.map((w) => w.feedId);
-
-			try {
-				const answer = await options.send(ids);
-				for (const waiter of slice) {
-					const outcome = outcomeFor(waiter.feedId, answer);
-					// Only the server's settled answers are remembered.
-					// `unavailable` is a bar that will lift, so recording it
-					// would turn a five-second wait into a permanent blank.
-					if (outcome.status !== "unavailable") {
-						settled.set(waiter.feedId, outcome);
-					}
-					waiter.settle(outcome);
-				}
-			} catch (err) {
-				// A transport failure is ours, not the origin's answer. Only a
-				// classification that says "this will answer the same way
-				// forever" is remembered; anything else leaves the feed
-				// unsettled so the caller's ladder may ask again.
-				const outcome = classifyFailure(err);
-				if (outcome.status === "absent") {
-					for (const waiter of slice) settled.set(waiter.feedId, outcome);
-				}
-				for (const waiter of slice) waiter.settle(outcome);
-			} finally {
-				for (const waiter of slice) {
-					inFlight.delete(waiter.feedId);
-				}
-			}
-		}
-	}
 
 	function resolve(feedId: string): Promise<OgImageOutcome> {
 		if (!feedId) return Promise.resolve(ABSENT);
@@ -245,14 +197,48 @@ export function createOgImageResolver(
 		const pending = inFlight.get(feedId);
 		if (pending) return pending;
 
-		const promise = new Promise<OgImageOutcome>((settle) => {
-			queue.push({ feedId, settle });
+		let settle!: (outcome: OgImageOutcome) => void;
+		let fail!: (err: unknown) => void;
+		const promise = new Promise<OgImageOutcome>((s, f) => {
+			settle = s;
+			fail = f;
 		});
+
+		// Register inFlight BEFORE queueing/dispatching to prevent stale registration
+		// if send throws synchronously.
 		inFlight.set(feedId, promise);
 
-		if (timer === null) {
-			timer = setTimeout(flush, flushMs);
-		}
+		queue
+			.add(async () => {
+				try {
+					const answer = await options.send([feedId]);
+					const outcome = outcomeFor(feedId, answer);
+					// Only the server's settled answers are remembered.
+					// `unavailable` is a bar that will lift, so recording it
+					// would turn a five-second wait into a permanent blank.
+					if (outcome.status !== "unavailable") {
+						settled.set(feedId, outcome);
+					}
+					return outcome;
+				} catch (err) {
+					// A transport failure is ours, not the origin's answer. Only a
+					// classification that says "this will answer the same way
+					// forever" is remembered; anything else leaves the feed
+					// unsettled so the caller's ladder may ask again.
+					const outcome = classifyFailure(err);
+					if (outcome.status === "absent") {
+						settled.set(feedId, outcome);
+					}
+					return outcome;
+				} finally {
+					inFlight.delete(feedId);
+				}
+			})
+			.then(settle, (err) => {
+				inFlight.delete(feedId);
+				fail(err);
+			});
+
 		return promise;
 	}
 

@@ -17,6 +17,7 @@ import type { RenderFeed } from "$lib/schema/feed";
 import { ogImageOverlay } from "$lib/stores/ogImageOverlay.svelte";
 import { isDesktop } from "$lib/stores/viewport.svelte";
 import { selectOgImagePrefetchIds } from "$lib/utils/ogImagePrefetch";
+import { createRequestQueue } from "$lib/utils/requestQueue";
 
 interface PageData {
 	initialFeeds?: RenderFeed[];
@@ -56,7 +57,10 @@ onMount(async () => {
 	}
 });
 
-// Batch prefetch OG images for visible feeds that have articleId but no ogImageProxyUrl.
+// Bounded queue for article OG image prefetch created outside $effect (global cap across effect re-runs)
+const articlePrefetchQueue = createRequestQueue({ concurrency: 4 });
+
+// Bounded progressive prefetch of OG images for visible feeds that have articleId but no ogImageProxyUrl.
 //
 // The result is written to the shared overlay keyed by article, never onto the
 // feed objects. Two reasons, both of which used to lose the picture silently:
@@ -80,17 +84,22 @@ $effect(() => {
 	// Mark in-flight before awaiting so re-runs don't re-request the same ids.
 	for (const id of articleIds) requestedOgImageArticleIds.add(id);
 
-	batchPrefetchImagesClient(articleIds)
-		.then((results) => {
-			for (const result of results) {
-				ogImageOverlay.resolve(result.articleId, result.proxyUrl);
-			}
-		})
-		.catch((err) => {
-			console.error("Failed to prefetch OG images:", err);
-			// Allow retry on the next change.
-			for (const id of articleIds) requestedOgImageArticleIds.delete(id);
-		});
+	// Dispatch each article independently through the bounded request queue so fast cards
+	// resolve progressively into the overlay without unbounded bursts or group blocking.
+	for (const id of articleIds) {
+		articlePrefetchQueue
+			.add(() => batchPrefetchImagesClient([id]))
+			.then((results) => {
+				for (const result of results) {
+					ogImageOverlay.resolve(result.articleId, result.proxyUrl);
+				}
+			})
+			.catch((err) => {
+				console.error(`Failed to prefetch OG image for article ${id}:`, err);
+				// Allow retry on the next change.
+				requestedOgImageArticleIds.delete(id);
+			});
+	}
 });
 
 const selectedFeed = $derived.by(() => {
