@@ -166,8 +166,7 @@ pub fn build_cards_pipeline(
     let dao = Arc::new(UnifiedDao::new(pool.clone()));
     let genre_tagger = build_subworker_genre_tagger(config, mtls_paths.as_ref())?;
 
-    let mut pipeline = CardsPipeline::selection_only(feed_source, embed_cluster, dao)
-        .with_genre_tagger(genre_tagger);
+    let mut pipeline = CardsPipeline::selection_only(feed_source, embed_cluster, dao, genre_tagger);
     if let Some(user_id) = config.cards_user_id() {
         pipeline = pipeline.with_user_id(user_id);
     }
@@ -202,8 +201,8 @@ pub async fn build_production_cards_pipeline(
         dao,
         card_generator,
         card_verifier,
-    )
-    .with_genre_tagger(genre_tagger);
+        genre_tagger,
+    );
 
     if let Some(user_id) = config.cards_user_id() {
         pipeline = pipeline.with_user_id(user_id);

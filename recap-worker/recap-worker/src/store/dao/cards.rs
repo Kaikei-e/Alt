@@ -126,16 +126,6 @@ pub struct RecapCardRating {
     pub rated_at: DateTime<Utc>,
 }
 
-/// Summary of a cards job from recap_jobs.
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CardsJob {
-    pub job_id: Uuid,
-    pub status: String,
-    pub trigger_source: String,
-    pub created_at: DateTime<Utc>,
-}
-
 /// Summary of a cards job from recap_jobs with aggregate card and rating counts.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardsJobSummary {
@@ -175,232 +165,9 @@ pub fn is_valid_score(score: i16) -> bool {
     (0..=2).contains(&score)
 }
 
-/// Trait for Cards & Evaluation data access operations.
-#[allow(dead_code)]
-pub trait CardsDao: Send + Sync {
-    fn insert_card_snapshot(
-        &self,
-        snapshot: &RecapCardSnapshot,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
-
-    fn get_card_snapshot(
-        &self,
-        job_id: Uuid,
-    ) -> impl std::future::Future<Output = Result<Option<RecapCardSnapshot>>> + Send;
-
-    fn insert_card_candidates(
-        &self,
-        candidates: &[RecapCardCandidate],
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
-
-    fn get_card_candidates(
-        &self,
-        job_id: Uuid,
-    ) -> impl std::future::Future<Output = Result<Vec<RecapCardCandidate>>> + Send;
-
-    fn get_candidates_for_window(
-        &self,
-        window_id: Uuid,
-    ) -> impl std::future::Future<Output = Result<Vec<RecapCardCandidate>>> + Send;
-
-    fn insert_cards(
-        &self,
-        cards: &[RecapCard],
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
-
-    fn get_cards_for_job(
-        &self,
-        job_id: Uuid,
-    ) -> impl std::future::Future<Output = Result<Vec<RecapCard>>> + Send;
-
-    fn insert_job_stats(
-        &self,
-        stats: &RecapCardJobStats,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
-
-    fn get_job_stats(
-        &self,
-        job_id: Uuid,
-    ) -> impl std::future::Future<Output = Result<Option<RecapCardJobStats>>> + Send;
-
-    fn insert_eval_window(
-        &self,
-        window: &RecapEvalWindow,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
-
-    fn get_eval_window(
-        &self,
-        window_id: Uuid,
-    ) -> impl std::future::Future<Output = Result<Option<RecapEvalWindow>>> + Send;
-
-    fn list_eval_windows(
-        &self,
-    ) -> impl std::future::Future<Output = Result<Vec<RecapEvalWindowSummary>>> + Send;
-
-    fn insert_story_judgment(
-        &self,
-        judgment: &RecapStoryJudgment,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
-
-    fn latest_judgments_for_window(
-        &self,
-        window_id: Uuid,
-    ) -> impl std::future::Future<Output = Result<Vec<RecapStoryJudgment>>> + Send;
-
-    fn insert_card_rating(
-        &self,
-        rating: &RecapCardRating,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
-
-    fn latest_rating_per_card(
-        &self,
-        job_id: Uuid,
-    ) -> impl std::future::Future<Output = Result<Vec<RecapCardRating>>> + Send;
-
-    fn list_cards_jobs(
-        &self,
-        limit: i64,
-    ) -> impl std::future::Future<Output = Result<Vec<CardsJobSummary>>> + Send;
-}
-
 pub struct CardsDaoOps;
 
-#[allow(dead_code)]
 impl CardsDaoOps {
-    pub async fn insert_snapshot(pool: &PgPool, s: &RecapCardSnapshot) -> Result<()> {
-        sqlx::query(
-            r"
-            INSERT INTO recap_card_snapshots (
-                job_id, from_ts, to_ts, feed_ids, read_feed_ids,
-                previous_job_id, previous_cards, params_version, params
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ",
-        )
-        .bind(s.job_id)
-        .bind(s.from_ts)
-        .bind(s.to_ts)
-        .bind(&s.feed_ids)
-        .bind(&s.read_feed_ids)
-        .bind(s.previous_job_id)
-        .bind(Json(&s.previous_cards))
-        .bind(&s.params_version)
-        .bind(Json(&s.params))
-        .execute(pool)
-        .await
-        .map_err(|e| RecapError::Db(format!("failed to insert recap_card_snapshot: {e}")))?;
-        Ok(())
-    }
-
-    pub async fn get_snapshot(pool: &PgPool, job_id: Uuid) -> Result<Option<RecapCardSnapshot>> {
-        let row = sqlx::query(
-            r"
-            SELECT job_id, from_ts, to_ts, feed_ids, read_feed_ids,
-                   previous_job_id, previous_cards, params_version, params, created_at
-            FROM recap_card_snapshots
-            WHERE job_id = $1
-            ",
-        )
-        .bind(job_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| RecapError::Db(format!("failed to get recap_card_snapshot: {e}")))?;
-
-        match row {
-            Some(r) => {
-                let previous_cards: Value = r.try_get::<Json<Value>, _>("previous_cards")?.0;
-                let params: Value = r.try_get::<Json<Value>, _>("params")?.0;
-                Ok(Some(RecapCardSnapshot {
-                    job_id: r.try_get("job_id")?,
-                    from_ts: r.try_get("from_ts")?,
-                    to_ts: r.try_get("to_ts")?,
-                    feed_ids: r.try_get("feed_ids")?,
-                    read_feed_ids: r.try_get("read_feed_ids")?,
-                    previous_job_id: r.try_get("previous_job_id")?,
-                    previous_cards,
-                    params_version: r.try_get("params_version")?,
-                    params,
-                    created_at: r.try_get("created_at")?,
-                }))
-            }
-            None => Ok(None),
-        }
-    }
-
-    pub async fn insert_candidates(pool: &PgPool, candidates: &[RecapCardCandidate]) -> Result<()> {
-        if candidates.is_empty() {
-            return Ok(());
-        }
-        let mut tx = pool
-            .begin()
-            .await
-            .map_err(|e| RecapError::Db(format!("failed to begin tx: {e}")))?;
-        for c in candidates {
-            sqlx::query(
-                r"
-                INSERT INTO recap_card_candidates (
-                    id, job_id, rank, cluster_fingerprint, size,
-                    domains, items, scores, centroid
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                ",
-            )
-            .bind(c.id)
-            .bind(c.job_id)
-            .bind(c.rank)
-            .bind(&c.cluster_fingerprint)
-            .bind(c.size)
-            .bind(Json(&c.domains))
-            .bind(Json(&c.items))
-            .bind(Json(&c.scores))
-            .bind(c.centroid.as_deref())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| RecapError::Db(format!("failed to insert candidate: {e}")))?;
-        }
-        tx.commit()
-            .await
-            .map_err(|e| RecapError::Db(format!("failed to commit candidates: {e}")))?;
-        Ok(())
-    }
-
-    pub async fn get_candidates_for_job(
-        pool: &PgPool,
-        job_id: Uuid,
-    ) -> Result<Vec<RecapCardCandidate>> {
-        let rows = sqlx::query(
-            r"
-            SELECT id, job_id, rank, cluster_fingerprint, size,
-                   domains, items, scores, centroid, created_at
-            FROM recap_card_candidates
-            WHERE job_id = $1
-            ORDER BY rank ASC
-            ",
-        )
-        .bind(job_id)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| RecapError::Db(format!("failed to get candidates: {e}")))?;
-
-        let mut res = Vec::with_capacity(rows.len());
-        for r in rows {
-            let domains: Value = r.try_get::<Json<Value>, _>("domains")?.0;
-            let items: Value = r.try_get::<Json<Value>, _>("items")?.0;
-            let scores: Value = r.try_get::<Json<Value>, _>("scores")?.0;
-            res.push(RecapCardCandidate {
-                id: r.try_get("id")?,
-                job_id: r.try_get("job_id")?,
-                rank: r.try_get("rank")?,
-                cluster_fingerprint: r.try_get("cluster_fingerprint")?,
-                size: r.try_get("size")?,
-                domains,
-                items,
-                scores,
-                centroid: r.try_get("centroid")?,
-                created_at: r.try_get("created_at")?,
-            });
-        }
-        Ok(res)
-    }
-
     pub async fn get_candidates_for_window(
         pool: &PgPool,
         window_id: Uuid,
@@ -439,50 +206,6 @@ impl CardsDaoOps {
             });
         }
         Ok(res)
-    }
-
-    pub async fn insert_cards(pool: &PgPool, cards: &[RecapCard]) -> Result<()> {
-        if cards.is_empty() {
-            return Ok(());
-        }
-        let mut tx = pool
-            .begin()
-            .await
-            .map_err(|e| RecapError::Db(format!("failed to begin tx: {e}")))?;
-        for c in cards {
-            sqlx::query(
-                r"
-                INSERT INTO recap_cards (
-                    id, job_id, rank, story_id, continues_card_id, merged_from,
-                    headline_ja, what_ja, why_ja, genre, member_feed_ids,
-                    sources, centroid, scores, gates, generation
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-                ",
-            )
-            .bind(c.id)
-            .bind(c.job_id)
-            .bind(c.rank)
-            .bind(c.story_id)
-            .bind(c.continues_card_id)
-            .bind(c.merged_from.as_deref())
-            .bind(&c.headline_ja)
-            .bind(&c.what_ja)
-            .bind(c.why_ja.as_deref())
-            .bind(c.genre.as_deref())
-            .bind(&c.member_feed_ids)
-            .bind(Json(&c.sources))
-            .bind(c.centroid.as_deref())
-            .bind(Json(&c.scores))
-            .bind(Json(&c.gates))
-            .bind(Json(&c.generation))
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| RecapError::Db(format!("failed to insert card: {e}")))?;
-        }
-        tx.commit()
-            .await
-            .map_err(|e| RecapError::Db(format!("failed to commit cards: {e}")))?;
-        Ok(())
     }
 
     pub async fn get_cards_for_job(pool: &PgPool, job_id: Uuid) -> Result<Vec<RecapCard>> {
@@ -530,36 +253,6 @@ impl CardsDaoOps {
         Ok(res)
     }
 
-    pub async fn insert_job_stats(pool: &PgPool, s: &RecapCardJobStats) -> Result<()> {
-        sqlx::query(
-            r"
-            INSERT INTO recap_card_job_stats (
-                job_id, items_fetched, items_after_noise, items_after_dedup,
-                clusters, candidates, cards_selected, cards_dropped,
-                embed_ms, cluster_ms, llm_ms, total_ms, params_version, params
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-            ",
-        )
-        .bind(s.job_id)
-        .bind(s.items_fetched)
-        .bind(s.items_after_noise)
-        .bind(s.items_after_dedup)
-        .bind(s.clusters)
-        .bind(s.candidates)
-        .bind(s.cards_selected)
-        .bind(Json(&s.cards_dropped))
-        .bind(s.embed_ms)
-        .bind(s.cluster_ms)
-        .bind(s.llm_ms)
-        .bind(s.total_ms)
-        .bind(&s.params_version)
-        .bind(serde_json::json!({}))
-        .execute(pool)
-        .await
-        .map_err(|e| RecapError::Db(format!("failed to insert recap_card_job_stats: {e}")))?;
-        Ok(())
-    }
-
     pub async fn get_job_stats(pool: &PgPool, job_id: Uuid) -> Result<Option<RecapCardJobStats>> {
         let row = sqlx::query(
             r"
@@ -597,24 +290,6 @@ impl CardsDaoOps {
             }
             None => Ok(None),
         }
-    }
-
-    pub async fn insert_eval_window(pool: &PgPool, w: &RecapEvalWindow) -> Result<()> {
-        sqlx::query(
-            r"
-            INSERT INTO recap_eval_windows (
-                id, from_ts, to_ts, snapshot_job_id
-            ) VALUES ($1, $2, $3, $4)
-            ",
-        )
-        .bind(w.id)
-        .bind(w.from_ts)
-        .bind(w.to_ts)
-        .bind(w.snapshot_job_id)
-        .execute(pool)
-        .await
-        .map_err(|e| RecapError::Db(format!("failed to insert eval_window: {e}")))?;
-        Ok(())
     }
 
     pub async fn get_eval_window(
@@ -887,27 +562,19 @@ impl CardsDaoOps {
             ))
         })?;
 
-        let mut cards = Vec::with_capacity(card_rows.len());
-        let mut null_centroids = 0;
-        for r in card_rows {
-            let centroid: Option<Vec<f32>> = r.try_get("centroid")?;
-            if let Some(c) = centroid {
-                cards.push(PreviousCardSummary {
-                    id: r.try_get("id")?,
-                    story_id: r.try_get("story_id")?,
-                    centroid: c,
-                });
-            } else {
-                null_centroids += 1;
-            }
-        }
-        if null_centroids > 0 {
-            tracing::warn!(
-                job_id = %job_id,
-                null_centroids,
-                "previous cards job had cards with NULL centroid"
-            );
-        }
+        let raw_rows = card_rows
+            .into_iter()
+            .map(|r| {
+                Ok((
+                    r.try_get("id")?,
+                    r.try_get("story_id")?,
+                    r.try_get("centroid")?,
+                ))
+            })
+            .collect::<std::result::Result<Vec<(Uuid, Uuid, Option<Vec<f32>>)>, sqlx::Error>>()
+            .map_err(|e| RecapError::Db(format!("failed to parse previous cards rows: {e}")))?;
+
+        let (cards, _) = parse_previous_card_rows(job_id, raw_rows);
 
         Ok(Some(PreviousCardsJob {
             job_id,
@@ -915,6 +582,33 @@ impl CardsDaoOps {
             cards,
         }))
     }
+}
+
+pub(crate) fn parse_previous_card_rows(
+    job_id: Uuid,
+    card_rows: impl IntoIterator<Item = (Uuid, Uuid, Option<Vec<f32>>)>,
+) -> (Vec<PreviousCardSummary>, usize) {
+    let mut cards = Vec::new();
+    let mut null_centroids = 0;
+    for (id, story_id, centroid) in card_rows {
+        if let Some(c) = centroid {
+            cards.push(PreviousCardSummary {
+                id,
+                story_id,
+                centroid: c,
+            });
+        } else {
+            null_centroids += 1;
+        }
+    }
+    if null_centroids > 0 {
+        tracing::warn!(
+            job_id = %job_id,
+            null_centroids,
+            "previous cards job had cards with NULL centroid"
+        );
+    }
+    (cards, null_centroids)
 }
 
 #[cfg(test)]
@@ -984,5 +678,30 @@ mod tests {
         assert_eq!(prev.cards[0].id, deserialized.cards[0].id);
         assert_eq!(prev.cards[0].story_id, deserialized.cards[0].story_id);
         assert_eq!(prev.cards[0].centroid, deserialized.cards[0].centroid);
+    }
+
+    #[test]
+    fn test_parse_previous_card_rows_null_centroid_warning_path() {
+        let job_id = Uuid::new_v4();
+        let card1_id = Uuid::new_v4();
+        let card1_story = Uuid::new_v4();
+        let card2_id = Uuid::new_v4();
+        let card2_story = Uuid::new_v4();
+        let card3_id = Uuid::new_v4();
+        let card3_story = Uuid::new_v4();
+
+        let rows = vec![
+            (card1_id, card1_story, Some(vec![0.1, 0.2])),
+            (card2_id, card2_story, None),
+            (card3_id, card3_story, Some(vec![0.3, 0.4])),
+        ];
+
+        let (cards, null_count) = parse_previous_card_rows(job_id, rows);
+        assert_eq!(null_count, 1);
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].id, card1_id);
+        assert_eq!(cards[0].centroid, vec![0.1, 0.2]);
+        assert_eq!(cards[1].id, card3_id);
+        assert_eq!(cards[1].centroid, vec![0.3, 0.4]);
     }
 }

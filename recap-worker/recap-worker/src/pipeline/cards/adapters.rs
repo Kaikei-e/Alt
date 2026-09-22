@@ -118,6 +118,24 @@ impl GenreTagger for SubworkerGenreTagger {
     async fn tag_genre(&self, text: &str) -> Result<HashMap<String, f32>> {
         self.client.classify_coarse(text).await
     }
+
+    async fn tag_genres(
+        &self,
+        texts: &[String],
+        concurrency: usize,
+    ) -> Result<Vec<HashMap<String, f32>>> {
+        use futures::stream::{self, StreamExt, TryStreamExt};
+        let concurrency = concurrency.max(1);
+        let client = Arc::clone(&self.client);
+        stream::iter(texts.iter().cloned())
+            .map(move |t| {
+                let client = Arc::clone(&client);
+                async move { client.classify_coarse(&t).await }
+            })
+            .buffered(concurrency)
+            .try_collect()
+            .await
+    }
 }
 
 /// Adapter wrapping `NewsCreatorClient` as a `CardGenerator`.

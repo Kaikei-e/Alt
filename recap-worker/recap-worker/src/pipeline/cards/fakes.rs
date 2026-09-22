@@ -118,6 +118,8 @@ pub struct FakeGenreTagger {
     pub fixed_scores: Arc<Mutex<Option<HashMap<String, f32>>>>,
     pub calls: Arc<Mutex<Vec<String>>>,
     pub should_fail: Arc<Mutex<bool>>,
+    pub in_flight: Arc<std::sync::atomic::AtomicUsize>,
+    pub max_in_flight: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl FakeGenreTagger {
@@ -130,6 +132,8 @@ impl FakeGenreTagger {
             fixed_scores: Arc::new(Mutex::new(Some(scores))),
             calls: Arc::new(Mutex::new(Vec::new())),
             should_fail: Arc::new(Mutex::new(false)),
+            in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            max_in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 
@@ -138,6 +142,8 @@ impl FakeGenreTagger {
             fixed_scores: Arc::new(Mutex::new(None)),
             calls: Arc::new(Mutex::new(Vec::new())),
             should_fail: Arc::new(Mutex::new(true)),
+            in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            max_in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 }
@@ -146,15 +152,41 @@ impl FakeGenreTagger {
 impl GenreTagger for FakeGenreTagger {
     async fn tag_genre(&self, text: &str) -> Result<HashMap<String, f32>> {
         self.calls.lock().unwrap().push(text.to_string());
-        if *self.should_fail.lock().unwrap() {
-            anyhow::bail!("simulated classifier failure");
-        }
-        if let Some(scores) = self.fixed_scores.lock().unwrap().as_ref() {
-            return Ok(scores.clone());
-        }
-        let mut map = HashMap::new();
-        map.insert("technology".to_string(), 0.95);
-        Ok(map)
+        let cur = self
+            .in_flight
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        self.max_in_flight
+            .fetch_max(cur, std::sync::atomic::Ordering::SeqCst);
+        tokio::task::yield_now().await;
+
+        let res = if *self.should_fail.lock().unwrap() {
+            Err(anyhow::anyhow!("simulated classifier failure"))
+        } else if let Some(scores) = self.fixed_scores.lock().unwrap().as_ref() {
+            Ok(scores.clone())
+        } else {
+            let mut map = HashMap::new();
+            map.insert("technology".to_string(), 0.95);
+            Ok(map)
+        };
+
+        self.in_flight
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        res
+    }
+
+    async fn tag_genres(
+        &self,
+        texts: &[String],
+        concurrency: usize,
+    ) -> Result<Vec<HashMap<String, f32>>> {
+        use futures::stream::{self, StreamExt, TryStreamExt};
+        let concurrency = concurrency.max(1);
+        stream::iter(texts.iter().cloned())
+            .map(|t| async move { self.tag_genre(&t).await })
+            .buffered(concurrency)
+            .try_collect()
+            .await
     }
 }
 

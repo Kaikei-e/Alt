@@ -37,12 +37,18 @@ pub trait EmbedCluster: Send + Sync {
 pub trait GenreTagger: Send + Sync {
     async fn tag_genre(&self, text: &str) -> Result<HashMap<String, f32>>;
 
-    async fn tag_genres(&self, texts: &[String]) -> Result<Vec<HashMap<String, f32>>> {
-        let mut results = Vec::with_capacity(texts.len());
-        for text in texts {
-            results.push(self.tag_genre(text).await?);
-        }
-        Ok(results)
+    async fn tag_genres(
+        &self,
+        texts: &[String],
+        concurrency: usize,
+    ) -> Result<Vec<HashMap<String, f32>>> {
+        use futures::stream::{self, StreamExt, TryStreamExt};
+        let concurrency = concurrency.max(1);
+        stream::iter(texts.iter().cloned())
+            .map(|t| async move { self.tag_genre(&t).await })
+            .buffered(concurrency)
+            .try_collect()
+            .await
     }
 }
 

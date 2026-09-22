@@ -17,8 +17,8 @@ pub const DEFAULT_EXPECTED_EMBED_DIM: usize = 1024;
 pub const DEFAULT_TAU_A: f32 = 0.55;
 pub const DEFAULT_GENRE_TAGGING: bool = true;
 pub const DEFAULT_GENRE_MIN_CONFIDENCE: f32 = 0.5;
-/// Default chunk size for batching classifier calls during genre tagging.
-pub const DEFAULT_GENRE_BATCH_SIZE: usize = 32;
+/// Default concurrency for calling coarse classifier during genre tagging.
+pub const DEFAULT_GENRE_CONCURRENCY: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardsParams {
@@ -37,8 +37,8 @@ pub struct CardsParams {
     pub tau_a: f32,
     pub genre_tagging: bool,
     pub genre_min_confidence: f32,
-    /// Batch size for classifying candidate item genres via the subworker.
-    pub genre_batch_size: usize,
+    /// Concurrency bound for classifying candidate item genres via the subworker.
+    pub genre_concurrency: usize,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<String, String>,
 }
@@ -65,7 +65,7 @@ impl Default for CardsParams {
             tau_a: DEFAULT_TAU_A,
             genre_tagging: DEFAULT_GENRE_TAGGING,
             genre_min_confidence: DEFAULT_GENRE_MIN_CONFIDENCE,
-            genre_batch_size: DEFAULT_GENRE_BATCH_SIZE,
+            genre_concurrency: DEFAULT_GENRE_CONCURRENCY,
             overrides: BTreeMap::new(),
         }
     }
@@ -184,9 +184,9 @@ impl CardsParams {
                 self.genre_min_confidence = v;
                 format!("{v}")
             }
-            "genre_batch_size" => {
-                let v = parse_usize(value, "genre_batch_size")?;
-                self.genre_batch_size = v;
+            "genre_concurrency" => {
+                let v = parse_usize(value, "genre_concurrency")?;
+                self.genre_concurrency = v;
                 v.to_string()
             }
             "min_cluster_size_by_language" => {
@@ -206,7 +206,7 @@ impl CardsParams {
                 let v = value
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("params_version must be a string"))?;
-                let base = v.split('+').next().unwrap_or(v);
+                let (base, _) = v.split_once('+').unwrap_or((v, ""));
                 self.params_version = base.to_string();
                 self.recompute_params_version();
                 return Ok(());
@@ -220,11 +220,10 @@ impl CardsParams {
     }
 
     fn recompute_params_version(&mut self) {
-        let base = self
+        let (base, _) = self
             .params_version
-            .split('+')
-            .next()
-            .unwrap_or(DEFAULT_PARAMS_VERSION);
+            .split_once('+')
+            .unwrap_or((&self.params_version, ""));
         if self.overrides.is_empty() {
             self.params_version = base.to_string();
         } else {
@@ -251,7 +250,7 @@ mod tests {
         assert_eq!(params.alpha, 0.5);
         assert!(params.genre_tagging);
         assert_eq!(params.genre_min_confidence, 0.5);
-        assert_eq!(params.genre_batch_size, 32);
+        assert_eq!(params.genre_concurrency, 8);
         assert_eq!(params.min_cluster_size_by_language.get("ja"), Some(&1));
         assert_eq!(params.min_cluster_size_by_language.get("en"), Some(&1));
     }
@@ -300,12 +299,12 @@ mod tests {
         assert_eq!(params.params_version, "cards-v0.2+alpha=0.7");
 
         params
-            .apply_override("genre_batch_size", &serde_json::json!(64))
+            .apply_override("genre_concurrency", &serde_json::json!(16))
             .unwrap();
-        assert_eq!(params.genre_batch_size, 64);
+        assert_eq!(params.genre_concurrency, 16);
         assert_eq!(
             params.params_version,
-            "cards-v0.2+alpha=0.7,genre_batch_size=64"
+            "cards-v0.2+alpha=0.7,genre_concurrency=16"
         );
     }
 
@@ -333,7 +332,7 @@ mod tests {
         );
         assert!(
             params
-                .with_override("genre_batch_size", &serde_json::json!(-5))
+                .with_override("genre_concurrency", &serde_json::json!(-5))
                 .is_err()
         );
 

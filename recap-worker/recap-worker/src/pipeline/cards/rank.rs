@@ -226,7 +226,7 @@ fn score_cluster(
         .iter()
         .map(|it| it.pub_date)
         .max()
-        .unwrap_or(DateTime::<Utc>::MIN_UTC);
+        .expect("member_items is non-empty");
 
     let mut cluster_host_counts: HashMap<String, usize> = HashMap::new();
     let mut genre_counts: HashMap<String, usize> = HashMap::new();
