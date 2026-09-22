@@ -113,13 +113,11 @@ impl EmbedCluster for FakeEmbedCluster {
     }
 }
 
-/// Type alias for backward compatibility.
-pub type FakeCardsMlPort = FakeEmbedCluster;
-
 #[derive(Clone, Default)]
 pub struct FakeGenreTagger {
     pub fixed_scores: Arc<Mutex<Option<HashMap<String, f32>>>>,
     pub calls: Arc<Mutex<Vec<String>>>,
+    pub should_fail: Arc<Mutex<bool>>,
 }
 
 impl FakeGenreTagger {
@@ -131,6 +129,15 @@ impl FakeGenreTagger {
         Self {
             fixed_scores: Arc::new(Mutex::new(Some(scores))),
             calls: Arc::new(Mutex::new(Vec::new())),
+            should_fail: Arc::new(Mutex::new(false)),
+        }
+    }
+
+    pub fn with_failure() -> Self {
+        Self {
+            fixed_scores: Arc::new(Mutex::new(None)),
+            calls: Arc::new(Mutex::new(Vec::new())),
+            should_fail: Arc::new(Mutex::new(true)),
         }
     }
 }
@@ -139,6 +146,9 @@ impl FakeGenreTagger {
 impl GenreTagger for FakeGenreTagger {
     async fn tag_genre(&self, text: &str) -> Result<HashMap<String, f32>> {
         self.calls.lock().unwrap().push(text.to_string());
+        if *self.should_fail.lock().unwrap() {
+            anyhow::bail!("simulated classifier failure");
+        }
         if let Some(scores) = self.fixed_scores.lock().unwrap().as_ref() {
             return Ok(scores.clone());
         }

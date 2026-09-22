@@ -70,9 +70,16 @@ pub fn deduplicate(mut items: Vec<NormalizedItem>) -> (Vec<NormalizedItem>, usiz
 }
 
 /// Compute cosine similarity between two vectors.
-pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.is_empty() || b.is_empty() || a.len() != b.len() {
-        return 0.0;
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> Result<f32> {
+    if a.is_empty() || b.is_empty() {
+        anyhow::bail!("cannot compute cosine similarity for empty vector");
+    }
+    if a.len() != b.len() {
+        anyhow::bail!(
+            "vector dimension mismatch in cosine similarity: {} vs {}",
+            a.len(),
+            b.len()
+        );
     }
     let mut dot = 0.0_f32;
     let mut norm_a = 0.0_f32;
@@ -83,9 +90,9 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         norm_b += y * y;
     }
     if norm_a <= 1e-9 || norm_b <= 1e-9 {
-        return 0.0;
+        return Ok(0.0);
     }
-    (dot / (norm_a.sqrt() * norm_b.sqrt())).clamp(-1.0, 1.0)
+    Ok((dot / (norm_a.sqrt() * norm_b.sqrt())).clamp(-1.0, 1.0))
 }
 
 /// Near-duplicate deduplication using embedding cosine similarity.
@@ -111,9 +118,13 @@ pub fn deduplicate_near_duplicates(
     let mut kept_embeddings: Vec<Vec<f32>> = Vec::with_capacity(initial_count);
 
     for (item, emb) in items.into_iter().zip(embeddings) {
-        let is_near_dup = kept_embeddings
-            .iter()
-            .any(|kept_emb| cosine_similarity(kept_emb, &emb) >= threshold);
+        let mut is_near_dup = false;
+        for kept_emb in &kept_embeddings {
+            if cosine_similarity(kept_emb, &emb)? >= threshold {
+                is_near_dup = true;
+                break;
+            }
+        }
 
         if is_near_dup {
             continue;
@@ -277,13 +288,22 @@ mod tests {
     fn test_cosine_similarity_computation() {
         let v1 = vec![1.0, 0.0, 0.0];
         let v2 = vec![1.0, 0.0, 0.0];
-        assert!((cosine_similarity(&v1, &v2) - 1.0).abs() < 1e-6);
+        assert!((cosine_similarity(&v1, &v2).unwrap() - 1.0).abs() < 1e-6);
 
         let v3 = vec![0.0, 1.0, 0.0];
-        assert!(cosine_similarity(&v1, &v3).abs() < 1e-6);
+        assert!(cosine_similarity(&v1, &v3).unwrap().abs() < 1e-6);
 
         let v4 = vec![-1.0, 0.0, 0.0];
-        assert!((cosine_similarity(&v1, &v4) - (-1.0)).abs() < 1e-6);
+        assert!((cosine_similarity(&v1, &v4).unwrap() - (-1.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cosine_similarity_dimension_mismatch_errors() {
+        let v1 = vec![1.0, 0.0];
+        let v2 = vec![1.0, 0.0, 0.0];
+        let res = cosine_similarity(&v1, &v2);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("dimension mismatch"));
     }
 
     #[test]

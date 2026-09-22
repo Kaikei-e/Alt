@@ -108,7 +108,6 @@ pub struct SubworkerGenreTagger {
 }
 
 impl SubworkerGenreTagger {
-    #[allow(dead_code)]
     pub(crate) fn new(client: Arc<SubworkerClient>) -> Self {
         Self { client }
     }
@@ -122,13 +121,13 @@ impl GenreTagger for SubworkerGenreTagger {
 }
 
 /// Adapter wrapping `NewsCreatorClient` as a `CardGenerator`.
-#[allow(private_interfaces, dead_code)]
+#[allow(private_interfaces)]
 #[derive(Clone)]
 pub struct NewsCreatorCardGenerator {
     client: Arc<NewsCreatorClient>,
 }
 
-#[allow(private_interfaces, dead_code)]
+#[allow(private_interfaces)]
 impl NewsCreatorCardGenerator {
     pub fn new(client: Arc<NewsCreatorClient>) -> Self {
         Self { client }
@@ -147,13 +146,11 @@ impl CardGenerator for NewsCreatorCardGenerator {
 }
 
 /// Adapter wrapping `SubworkerCardsClient` as a `CardVerifier`.
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct SubworkerCardVerifier {
     client: Arc<SubworkerCardsClient>,
 }
 
-#[allow(dead_code)]
 impl SubworkerCardVerifier {
     pub fn new(client: Arc<SubworkerCardsClient>) -> Self {
         Self { client }

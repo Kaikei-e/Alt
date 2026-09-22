@@ -3,8 +3,6 @@
 //! All tables are INSERT-only: snapshots, candidates, cards, job_stats,
 //! eval_windows, story_judgments, and card_ratings.
 
-#![allow(dead_code)]
-
 use crate::error::{RecapError, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -129,6 +127,7 @@ pub struct RecapCardRating {
 }
 
 /// Summary of a cards job from recap_jobs.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardsJob {
     pub job_id: Uuid,
@@ -177,6 +176,7 @@ pub fn is_valid_score(score: i16) -> bool {
 }
 
 /// Trait for Cards & Evaluation data access operations.
+#[allow(dead_code)]
 pub trait CardsDao: Send + Sync {
     fn insert_card_snapshot(
         &self,
@@ -265,6 +265,7 @@ pub trait CardsDao: Send + Sync {
 
 pub struct CardsDaoOps;
 
+#[allow(dead_code)]
 impl CardsDaoOps {
     pub async fn insert_snapshot(pool: &PgPool, s: &RecapCardSnapshot) -> Result<()> {
         sqlx::query(
@@ -338,8 +339,8 @@ impl CardsDaoOps {
                 r"
                 INSERT INTO recap_card_candidates (
                     id, job_id, rank, cluster_fingerprint, size,
-                    domains, items, scores, centroid, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    domains, items, scores, centroid
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ",
             )
             .bind(c.id)
@@ -351,7 +352,6 @@ impl CardsDaoOps {
             .bind(Json(&c.items))
             .bind(Json(&c.scores))
             .bind(c.centroid.as_deref())
-            .bind(c.created_at)
             .execute(&mut *tx)
             .await
             .map_err(|e| RecapError::Db(format!("failed to insert candidate: {e}")))?;
@@ -455,8 +455,8 @@ impl CardsDaoOps {
                 INSERT INTO recap_cards (
                     id, job_id, rank, story_id, continues_card_id, merged_from,
                     headline_ja, what_ja, why_ja, genre, member_feed_ids,
-                    sources, centroid, scores, gates, generation, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                    sources, centroid, scores, gates, generation
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                 ",
             )
             .bind(c.id)
@@ -475,7 +475,6 @@ impl CardsDaoOps {
             .bind(Json(&c.scores))
             .bind(Json(&c.gates))
             .bind(Json(&c.generation))
-            .bind(c.created_at)
             .execute(&mut *tx)
             .await
             .map_err(|e| RecapError::Db(format!("failed to insert card: {e}")))?;
@@ -604,15 +603,14 @@ impl CardsDaoOps {
         sqlx::query(
             r"
             INSERT INTO recap_eval_windows (
-                id, from_ts, to_ts, snapshot_job_id, created_at
-            ) VALUES ($1, $2, $3, $4, $5)
+                id, from_ts, to_ts, snapshot_job_id
+            ) VALUES ($1, $2, $3, $4)
             ",
         )
         .bind(w.id)
         .bind(w.from_ts)
         .bind(w.to_ts)
         .bind(w.snapshot_job_id)
-        .bind(w.created_at)
         .execute(pool)
         .await
         .map_err(|e| RecapError::Db(format!("failed to insert eval_window: {e}")))?;
@@ -890,6 +888,7 @@ impl CardsDaoOps {
         })?;
 
         let mut cards = Vec::with_capacity(card_rows.len());
+        let mut null_centroids = 0;
         for r in card_rows {
             let centroid: Option<Vec<f32>> = r.try_get("centroid")?;
             if let Some(c) = centroid {
@@ -898,7 +897,16 @@ impl CardsDaoOps {
                     story_id: r.try_get("story_id")?,
                     centroid: c,
                 });
+            } else {
+                null_centroids += 1;
             }
+        }
+        if null_centroids > 0 {
+            tracing::warn!(
+                job_id = %job_id,
+                null_centroids,
+                "previous cards job had cards with NULL centroid"
+            );
         }
 
         Ok(Some(PreviousCardsJob {

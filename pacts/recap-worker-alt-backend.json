@@ -57,20 +57,52 @@
         "body": {
           "items": [
             {
-              "articleId": "art-001",
               "tags": [
                 {
-                  "tagName": "technology",
                   "confidence": 0.95,
+                  "updatedAt": "2026-03-26T00:00:00Z",
                   "source": "ml_model",
-                  "updatedAt": "2026-03-26T00:00:00Z"
+                  "tagName": "technology"
                 }
-              ]
+              ],
+              "articleId": "art-001"
             }
           ]
         },
         "matchingRules": {
           "body": {
+            "$.items[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].tags[*].updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].tags[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].tags[*].source": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.items[*].tags": {
               "combine": "AND",
               "matchers": [
@@ -89,15 +121,7 @@
                 }
               ]
             },
-            "$.items[*].tags[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].*": {
+            "$.items[*].tags[*].confidence": {
               "combine": "AND",
               "matchers": [
                 {
@@ -113,31 +137,7 @@
                 }
               ]
             },
-            "$.items[*].tags[*].confidence": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].tags[*].source": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.items[*].articleId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].tags[*].updatedAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -168,7 +168,7 @@
         },
         "matchingRules": {
           "body": {
-            "$.since": {
+            "$.userId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -176,7 +176,7 @@
                 }
               ]
             },
-            "$.userId": {
+            "$.since": {
               "combine": "AND",
               "matchers": [
                 {
@@ -207,20 +207,20 @@
                 }
               ]
             },
-            "$.readFeedIds[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.readFeedIds": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
                   "min": 1
+                }
+              ]
+            },
+            "$.readFeedIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }
@@ -249,7 +249,15 @@
         },
         "matchingRules": {
           "body": {
-            "$.from": {
+            "$.page": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pageSize": {
               "combine": "AND",
               "matchers": [
                 {
@@ -265,15 +273,7 @@
                 }
               ]
             },
-            "$.page": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.pageSize": {
+            "$.from": {
               "combine": "AND",
               "matchers": [
                 {
@@ -290,27 +290,27 @@
           "content-type": "application/json"
         },
         "body": {
+          "hasMore": false,
           "total": 1,
-          "pageSize": 500,
+          "page": 1,
           "feeds": [
             {
-              "description": "<p>Example lede.</p>",
-              "updatedAt": "2026-09-20T10:05:00Z",
-              "id": "00000000-0000-0000-0000-000000000001",
-              "isRead": false,
-              "title": "Example headline",
+              "createdAt": "2026-09-20T10:05:00Z",
               "feedLinkId": "00000000-0000-0000-0000-000000000002",
               "websiteUrl": "https://example.com/post",
-              "createdAt": "2026-09-20T10:05:00Z",
-              "pubDate": "2026-09-20T10:00:00Z"
+              "isRead": false,
+              "title": "Example headline",
+              "description": "<p>Example lede.</p>",
+              "id": "00000000-0000-0000-0000-000000000001",
+              "pubDate": "2026-09-20T10:00:00Z",
+              "updatedAt": "2026-09-20T10:05:00Z"
             }
           ],
-          "hasMore": false,
-          "page": 1
+          "pageSize": 500
         },
         "matchingRules": {
           "body": {
-            "$.feeds[*].*": {
+            "$.feeds[*].title": {
               "combine": "AND",
               "matchers": [
                 {
@@ -326,47 +326,7 @@
                 }
               ]
             },
-            "$.feeds[*].title": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.hasMore": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.feeds[*].description": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.feeds[*].pubDate": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.feeds[*].createdAt": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.page": {
+            "$.feeds[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -375,14 +335,6 @@
               ]
             },
             "$.feeds[*].feedLinkId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.pageSize": {
               "combine": "AND",
               "matchers": [
                 {
@@ -399,7 +351,7 @@
                 }
               ]
             },
-            "$.feeds[*].id": {
+            "$.feeds[*].isRead": {
               "combine": "AND",
               "matchers": [
                 {
@@ -415,7 +367,15 @@
                 }
               ]
             },
-            "$.feeds[*].isRead": {
+            "$.page": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].createdAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -424,6 +384,46 @@
               ]
             },
             "$.feeds[*].websiteUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.hasMore": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].pubDate": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pageSize": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].description": {
               "combine": "AND",
               "matchers": [
                 {
@@ -449,22 +449,14 @@
           "content-type": "application/json"
         },
         "body": {
-          "from": "2026-03-19T00:00:00Z",
           "page": 1,
-          "to": "2026-03-26T00:00:00Z",
-          "pageSize": 500
+          "from": "2026-03-19T00:00:00Z",
+          "pageSize": 500,
+          "to": "2026-03-26T00:00:00Z"
         },
         "matchingRules": {
           "body": {
-            "$.to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.from": {
+            "$.page": {
               "combine": "AND",
               "matchers": [
                 {
@@ -480,7 +472,15 @@
                 }
               ]
             },
-            "$.page": {
+            "$.to": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.from": {
               "combine": "AND",
               "matchers": [
                 {
@@ -497,65 +497,25 @@
           "content-type": "application/json"
         },
         "body": {
-          "hasMore": false,
-          "page": 1,
           "range": {
-            "from": "2026-03-19T00:00:00Z",
-            "to": "2026-03-26T00:00:00Z"
+            "to": "2026-03-26T00:00:00Z",
+            "from": "2026-03-19T00:00:00Z"
           },
-          "total": 42,
           "pageSize": 500,
           "articles": [
             {
-              "fulltext": "Full article text content here.",
               "articleId": "art-001",
-              "title": "Test Article Title"
+              "title": "Test Article Title",
+              "fulltext": "Full article text content here."
             }
-          ]
+          ],
+          "hasMore": false,
+          "total": 42,
+          "page": 1
         },
         "matchingRules": {
           "body": {
-            "$.pageSize": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.articles[*].fulltext": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.hasMore": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.articles[*].articleId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.total": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.range.to": {
               "combine": "AND",
               "matchers": [
                 {
@@ -571,7 +531,31 @@
                 }
               ]
             },
+            "$.range.from": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.total": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.articles[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].title": {
               "combine": "AND",
               "matchers": [
                 {
@@ -588,7 +572,7 @@
                 }
               ]
             },
-            "$.range.from": {
+            "$.pageSize": {
               "combine": "AND",
               "matchers": [
                 {
@@ -596,7 +580,23 @@
                 }
               ]
             },
-            "$.articles[*].title": {
+            "$.articles[*].fulltext": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.range.to": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.hasMore": {
               "combine": "AND",
               "matchers": [
                 {

@@ -1,5 +1,6 @@
 //! Candidate ranking and candidate DTO formation for CardsPipeline.
 
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -34,23 +35,23 @@ pub struct ScoredCluster {
     pub genre: Option<String>,
 }
 
-fn build_domains_json(cluster_host_counts: &HashMap<&str, usize>) -> (Vec<String>, Value) {
-    let mut domain_entries: Vec<(&&str, &usize)> = cluster_host_counts.iter().collect();
+fn build_domains_json(cluster_host_counts: &HashMap<String, usize>) -> (Vec<String>, Value) {
+    let mut domain_entries: Vec<(&String, &usize)> = cluster_host_counts.iter().collect();
     domain_entries.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
     let domains_json = Value::Array(
         domain_entries
             .iter()
             .map(|(host, count)| {
                 json!({
-                    "host": **host,
+                    "host": (*host).clone(),
                     "count": **count,
                 })
             })
             .collect(),
     );
     let sorted_hosts: Vec<String> = domain_entries
-        .iter()
-        .map(|(h, _)| (**h).to_string())
+        .into_iter()
+        .map(|(host, _)| (*host).clone())
         .collect();
     (sorted_hosts, domains_json)
 }
@@ -131,38 +132,40 @@ fn determine_novelty_and_continuation(
     previous_cards: &[PreviousCardSummary],
     previous_job_to: Option<DateTime<Utc>>,
     theta_novelty: f32,
-) -> Option<NoveltyContinuation> {
+) -> Result<Option<NoveltyContinuation>> {
     if previous_cards.is_empty() {
         let story_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, fingerprint.as_bytes());
-        return Some(NoveltyContinuation {
+        return Ok(Some(NoveltyContinuation {
             novelty_score: 1.0_f64,
             story_id,
             continues_card_id: None,
             merged_from: None,
-        });
+        }));
     }
 
-    let mut matches: Vec<(&PreviousCardSummary, f32)> = previous_cards
-        .iter()
-        .map(|prev| (prev, cosine_similarity(centroid, &prev.centroid)))
-        .filter(|(_, sim)| *sim >= theta_novelty)
-        .collect();
+    let mut matches: Vec<(&PreviousCardSummary, f32)> = Vec::new();
+    for prev in previous_cards {
+        let sim = cosine_similarity(centroid, &prev.centroid)?;
+        if sim >= theta_novelty {
+            matches.push((prev, sim));
+        }
+    }
 
     if matches.is_empty() {
         let story_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, fingerprint.as_bytes());
-        Some(NoveltyContinuation {
+        Ok(Some(NoveltyContinuation {
             novelty_score: 1.0_f64,
             story_id,
             continues_card_id: None,
             merged_from: None,
-        })
+        }))
     } else {
         // Check if any member has pub_date > previous_job_to
         let prev_to = previous_job_to.unwrap_or(DateTime::<Utc>::MIN_UTC);
         let has_new_item = member_items.iter().any(|it| it.pub_date > prev_to);
         if !has_new_item {
             // Drop cluster: old/duplicate story with no new items
-            return None;
+            return Ok(None);
         }
 
         matches.sort_by(|a, b| {
@@ -182,16 +185,19 @@ fn determine_novelty_and_continuation(
         } else {
             None
         };
-        Some(NoveltyContinuation {
+        Ok(Some(NoveltyContinuation {
             novelty_score: 1.0_f64,
             story_id: nearest.story_id,
             continues_card_id: Some(nearest.id),
             merged_from: merged,
-        })
+        }))
     }
 }
 
-fn score_cluster(cluster: &ClusterOutput, ctx: &ClusterScoreContext<'_>) -> Option<ScoredCluster> {
+fn score_cluster(
+    cluster: &ClusterOutput,
+    ctx: &ClusterScoreContext<'_>,
+) -> Result<Option<ScoredCluster>> {
     let member_items: Vec<&NormalizedItem> = cluster
         .member_ids
         .iter()
@@ -199,43 +205,46 @@ fn score_cluster(cluster: &ClusterOutput, ctx: &ClusterScoreContext<'_>) -> Opti
         .collect();
 
     if member_items.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     let fingerprint = compute_cluster_fingerprint(&cluster.member_ids);
 
-    let continuation = determine_novelty_and_continuation(
+    let Some(continuation) = determine_novelty_and_continuation(
         &cluster.centroid,
         &fingerprint,
         &member_items,
         ctx.previous_cards,
         ctx.previous_job_to,
         ctx.theta_novelty,
-    )?;
+    )?
+    else {
+        return Ok(None);
+    };
 
-    let mut cluster_host_counts: HashMap<&str, usize> = HashMap::new();
-    let mut newest_pub_date = member_items[0].pub_date;
-    let mut genre_counts: HashMap<&str, usize> = HashMap::new();
+    let newest_pub_date = member_items
+        .iter()
+        .map(|it| it.pub_date)
+        .max()
+        .unwrap_or(DateTime::<Utc>::MIN_UTC);
 
+    let mut cluster_host_counts: HashMap<String, usize> = HashMap::new();
+    let mut genre_counts: HashMap<String, usize> = HashMap::new();
     for item in &member_items {
-        *cluster_host_counts.entry(&item.host).or_insert(0) += 1;
-        if item.pub_date > newest_pub_date {
-            newest_pub_date = item.pub_date;
-        }
+        *cluster_host_counts.entry(item.host.clone()).or_insert(0) += 1;
         if let Some(ref g) = item.genre {
-            *genre_counts.entry(g.as_str()).or_insert(0) += 1;
+            *genre_counts.entry(g.clone()).or_insert(0) += 1;
         }
     }
 
-    // Determine cluster genre: plurality non-null genre
     let cluster_genre = genre_counts
         .into_iter()
-        .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(a.0)))
-        .map(|(g, _)| g.to_string());
+        .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
+        .map(|(g, _)| g);
 
     let mut corroboration = 0.0_f64;
     for host in cluster_host_counts.keys() {
-        if let Some(&n_d) = ctx.host_counts_in_window.get(host) {
+        if let Some(&n_d) = ctx.host_counts_in_window.get(host.as_str()) {
             if n_d > 0 {
                 corroboration += 1.0 / (n_d as f64).sqrt();
             }
@@ -244,7 +253,7 @@ fn score_cluster(cluster: &ClusterOutput, ctx: &ClusterScoreContext<'_>) -> Opti
 
     let (personal_score, personal_multiplier) = match ctx.personal_vector {
         Some(u) if ctx.alpha > 0.0 => {
-            let cos = f64::from(cosine_similarity(u, &cluster.centroid));
+            let cos = f64::from(cosine_similarity(u, &cluster.centroid)?);
             (Some(cos), 1.0 + f64::from(ctx.alpha) * cos)
         }
         _ => (None, 1.0),
@@ -266,7 +275,7 @@ fn score_cluster(cluster: &ClusterOutput, ctx: &ClusterScoreContext<'_>) -> Opti
         "genre": cluster_genre,
     });
 
-    Some(ScoredCluster {
+    Ok(Some(ScoredCluster {
         fingerprint,
         size: member_items.len(),
         total,
@@ -276,7 +285,7 @@ fn score_cluster(cluster: &ClusterOutput, ctx: &ClusterScoreContext<'_>) -> Opti
         items: items_json,
         scores: scores_json,
         genre: cluster_genre,
-    })
+    }))
 }
 
 /// Apply genre soft cap:
@@ -353,7 +362,7 @@ impl<'a> RankCandidatesArgs<'a> {
 }
 
 /// Pure ranking function: rank clusters and produce top ≤60 RecapCardCandidate records.
-pub fn rank_candidates(args: RankCandidatesArgs<'_>) -> Vec<RecapCardCandidate> {
+pub fn rank_candidates(args: RankCandidatesArgs<'_>) -> Result<Vec<RecapCardCandidate>> {
     let mut host_counts_in_window: HashMap<&str, usize> = HashMap::new();
     let mut item_by_id: HashMap<Uuid, &NormalizedItem> = HashMap::new();
 
@@ -372,11 +381,12 @@ pub fn rank_candidates(args: RankCandidatesArgs<'_>) -> Vec<RecapCardCandidate> 
         theta_novelty: args.theta_novelty,
     };
 
-    let mut scored_clusters: Vec<ScoredCluster> = args
-        .clusters
-        .iter()
-        .filter_map(|c| score_cluster(c, &score_ctx))
-        .collect();
+    let mut scored_clusters = Vec::new();
+    for c in args.clusters {
+        if let Some(sc) = score_cluster(c, &score_ctx)? {
+            scored_clusters.push(sc);
+        }
+    }
 
     scored_clusters.sort_by(|a, b| {
         b.total
@@ -389,7 +399,7 @@ pub fn rank_candidates(args: RankCandidatesArgs<'_>) -> Vec<RecapCardCandidate> 
 
     let capped_clusters = apply_genre_soft_cap(scored_clusters, 4, 12);
 
-    capped_clusters
+    Ok(capped_clusters
         .into_iter()
         .take(60)
         .enumerate()
@@ -408,7 +418,7 @@ pub fn rank_candidates(args: RankCandidatesArgs<'_>) -> Vec<RecapCardCandidate> 
                 created_at: args.created_at,
             }
         })
-        .collect()
+        .collect())
 }
 
 #[cfg(test)]
@@ -487,7 +497,7 @@ mod tests {
         let clusters = vec![cluster1_single_host, cluster2_two_hosts];
         let now = Utc::now();
         let args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
-        let candidates = rank_candidates(args);
+        let candidates = rank_candidates(args).unwrap();
 
         assert_eq!(candidates.len(), 2);
         // Cluster 2 must outrank Cluster 1 because corroboration (1.4142 > 0.0277)
@@ -549,7 +559,7 @@ mod tests {
 
         let now = Utc::now();
         let args = RankCandidatesArgs::new(job_id, now, std::slice::from_ref(&cluster), &deduped);
-        let candidates = rank_candidates(args);
+        let candidates = rank_candidates(args).unwrap();
         assert_eq!(candidates.len(), 1);
 
         let items = candidates[0].items.as_array().unwrap();
@@ -587,10 +597,10 @@ mod tests {
             .with_timezone(&Utc);
 
         let args1 = RankCandidatesArgs::new(job_id, now, std::slice::from_ref(&cluster), &deduped);
-        let run1 = rank_candidates(args1);
+        let run1 = rank_candidates(args1).unwrap();
 
         let args2 = RankCandidatesArgs::new(job_id, now, std::slice::from_ref(&cluster), &deduped);
-        let run2 = rank_candidates(args2);
+        let run2 = rank_candidates(args2).unwrap();
 
         assert_eq!(run1.len(), run2.len());
         for (c1, c2) in run1.iter().zip(run2.iter()) {
@@ -636,7 +646,7 @@ mod tests {
         args.personal_vector = Some(&personal_vector);
         args.alpha = 0.5;
 
-        let candidates = rank_candidates(args);
+        let candidates = rank_candidates(args).unwrap();
         assert_eq!(candidates.len(), 2);
         // Cluster 1 is boosted by (1.0 + 0.5 * 1.0) = 1.5, so it outranks Cluster 2
         assert_eq!(
@@ -695,7 +705,7 @@ mod tests {
         args.previous_job_to = Some(prev_job_to);
         args.theta_novelty = 0.80;
 
-        let candidates = rank_candidates(args);
+        let candidates = rank_candidates(args).unwrap();
         // Only the continuing cluster should survive; the duplicate cluster must be dropped!
         assert_eq!(candidates.len(), 1);
         assert_eq!(
@@ -755,7 +765,7 @@ mod tests {
         args.previous_job_to = Some(prev_job_to);
         args.theta_novelty = 0.80;
 
-        let candidates = rank_candidates(args);
+        let candidates = rank_candidates(args).unwrap();
         assert_eq!(candidates.len(), 1);
         assert_eq!(
             candidates[0].scores["story_id"].as_str().unwrap(),
@@ -820,7 +830,7 @@ mod tests {
 
         let now = Utc::now();
         let args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
-        let candidates = rank_candidates(args);
+        let candidates = rank_candidates(args).unwrap();
 
         // Top 12 must contain at most 4 "tech"
         let top_12 = &candidates[0..12];
@@ -850,5 +860,114 @@ mod tests {
             none_in_top12 >= 6,
             "genre = null candidates remain in candidates"
         );
+    }
+
+    #[test]
+    fn test_apply_genre_soft_cap_overflow_readmission() {
+        // Document and verify: overflow re-admission happens only when fewer than
+        // top_k other-genre candidates exist.
+        let make_scored = |fp: &str, genre: Option<&str>, total: f64| ScoredCluster {
+            fingerprint: fp.to_string(),
+            size: 1,
+            total,
+            newest_pub_date: Utc::now(),
+            centroid: vec![1.0, 0.0],
+            domains: serde_json::json!({}),
+            items: serde_json::json!([]),
+            scores: serde_json::json!({}),
+            genre: genre.map(String::from),
+        };
+
+        // Case A: 6 "tech" candidates and 2 "finance" candidates (total 8 < 12).
+        // Max 4 per genre, top_k = 12.
+        // The 2 overflow "tech" candidates are re-admitted to fill the remaining slots.
+        let mut clusters_a = Vec::new();
+        for i in 0..6 {
+            clusters_a.push(make_scored(
+                &format!("tech_{i}"),
+                Some("tech"),
+                10.0 - f64::from(i),
+            ));
+        }
+        for i in 0..2 {
+            clusters_a.push(make_scored(
+                &format!("fin_{i}"),
+                Some("finance"),
+                5.0 - f64::from(i),
+            ));
+        }
+        let res_a = apply_genre_soft_cap(clusters_a, 4, 12);
+        assert_eq!(res_a.len(), 8);
+        let tech_count_a = res_a
+            .iter()
+            .filter(|c| c.genre.as_deref() == Some("tech"))
+            .count();
+        assert_eq!(
+            tech_count_a, 6,
+            "all 6 tech candidates admitted because total (8) < top_k (12)"
+        );
+
+        // Case B: 6 "tech" candidates and 10 other candidates (4 finance, 6 science).
+        // Total other = 10. Top 12 can hold 4 tech + 8 others.
+        // The remaining 2 tech overflow candidates are NOT in top 12.
+        let mut clusters_b = Vec::new();
+        for i in 0..6 {
+            clusters_b.push(make_scored(
+                &format!("tech_{i}"),
+                Some("tech"),
+                10.0 - f64::from(i),
+            ));
+        }
+        for i in 0..4 {
+            clusters_b.push(make_scored(
+                &format!("fin_{i}"),
+                Some("finance"),
+                8.0 - f64::from(i),
+            ));
+        }
+        for i in 0..6 {
+            clusters_b.push(make_scored(
+                &format!("sci_{i}"),
+                Some("science"),
+                7.0 - f64::from(i),
+            ));
+        }
+        let res_b = apply_genre_soft_cap(clusters_b, 4, 12);
+        let top_12_b = &res_b[..12];
+        let tech_in_top_b = top_12_b
+            .iter()
+            .filter(|c| c.genre.as_deref() == Some("tech"))
+            .count();
+        assert_eq!(
+            tech_in_top_b, 4,
+            "tech is strictly capped to 4 when >= top_k slots filled by other genres"
+        );
+    }
+
+    #[test]
+    fn test_rank_candidates_dimension_mismatch_fails() {
+        let item_id = Uuid::new_v4();
+        let args = RankCandidatesArgs {
+            job_id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            clusters: &[ClusterOutput {
+                cluster_id: 0,
+                member_ids: vec![item_id],
+                centroid: vec![1.0, 0.0],
+            }],
+            deduped_items: &[make_item(item_id, "example.com", "2026-03-20T10:00:00Z")],
+            personal_vector: None,
+            alpha: 0.0,
+            previous_cards: &[PreviousCardSummary {
+                id: Uuid::new_v4(),
+                story_id: Uuid::new_v4(),
+                centroid: vec![1.0, 0.0, 0.0], // 3D vs 2D mismatch!
+            }],
+            previous_job_to: None,
+            theta_novelty: 0.8,
+        };
+        let res = rank_candidates(args);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("dimension mismatch"));
     }
 }

@@ -134,21 +134,40 @@ fn build_subworker_genre_tagger(
     Ok(Arc::new(SubworkerGenreTagger::new(subworker_client)))
 }
 
+/// Construct `SubworkerEmbedCluster` configured with expected model and dimension from params.
+pub fn build_cards_embed_cluster(
+    config: &Config,
+    params: &CardsParams,
+) -> Result<Arc<SubworkerEmbedCluster>> {
+    let mtls_paths = MtlsPaths::from_env().context("resolving mTLS env for outbound clients")?;
+    let subworker_cards_client = build_subworker_cards_client(config, mtls_paths.as_ref())?;
+    Ok(Arc::new(SubworkerEmbedCluster::with_expected(
+        subworker_cards_client,
+        &params.expected_embed_model,
+        params.expected_embed_dim,
+    )))
+}
+
 /// Construct CardsPipeline with production dependencies in selection_only mode (candidates only).
-pub fn build_cards_pipeline(pool: &PgPool, config: &Config) -> Result<CardsPipeline> {
+pub fn build_cards_pipeline(
+    pool: &PgPool,
+    config: &Config,
+    params: &CardsParams,
+) -> Result<CardsPipeline> {
     let mtls_paths = MtlsPaths::from_env().context("resolving mTLS env for outbound clients")?;
     let feed_source = build_alt_backend_feed_source(config, mtls_paths.as_ref())?;
     let subworker_cards_client = build_subworker_cards_client(config, mtls_paths.as_ref())?;
 
-    let default_params = CardsParams::default();
     let embed_cluster = Arc::new(SubworkerEmbedCluster::with_expected(
         subworker_cards_client,
-        &default_params.expected_embed_model,
-        default_params.expected_embed_dim,
+        &params.expected_embed_model,
+        params.expected_embed_dim,
     ));
     let dao = Arc::new(UnifiedDao::new(pool.clone()));
+    let genre_tagger = build_subworker_genre_tagger(config, mtls_paths.as_ref())?;
 
-    let mut pipeline = CardsPipeline::selection_only(feed_source, embed_cluster, dao);
+    let mut pipeline = CardsPipeline::selection_only(feed_source, embed_cluster, dao)
+        .with_genre_tagger(genre_tagger);
     if let Some(user_id) = config.cards_user_id() {
         pipeline = pipeline.with_user_id(user_id);
     }
@@ -160,16 +179,16 @@ pub fn build_cards_pipeline(pool: &PgPool, config: &Config) -> Result<CardsPipel
 pub async fn build_production_cards_pipeline(
     pool: &PgPool,
     config: &Config,
+    params: &CardsParams,
 ) -> Result<CardsPipeline> {
     let mtls_paths = MtlsPaths::from_env().context("resolving mTLS env for outbound clients")?;
     let feed_source = build_alt_backend_feed_source(config, mtls_paths.as_ref())?;
     let subworker_cards_client = build_subworker_cards_client(config, mtls_paths.as_ref())?;
 
-    let default_params = CardsParams::default();
     let embed_cluster = Arc::new(SubworkerEmbedCluster::with_expected(
         subworker_cards_client.clone(),
-        &default_params.expected_embed_model,
-        default_params.expected_embed_dim,
+        &params.expected_embed_model,
+        params.expected_embed_dim,
     ));
     let dao = Arc::new(UnifiedDao::new(pool.clone()));
 
@@ -211,7 +230,7 @@ pub async fn run_eval_replay(
         "starting cards pipeline eval replay"
     );
 
-    let pipeline = build_cards_pipeline(pool, config)?.with_user_id(user_id);
+    let pipeline = build_cards_pipeline(pool, config, params)?.with_user_id(user_id);
 
     pipeline
         .run_replay(from, to, params)
@@ -227,11 +246,14 @@ mod tests {
 
     #[test]
     fn test_run_eval_replay_fails_without_user_id() {
-        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
+        let _guard = rt.enter();
         let vars = vec![
             (
                 "RECAP_DB_DSN",
@@ -267,7 +289,9 @@ mod tests {
 
     #[test]
     fn test_run_eval_replay_config_with_user_id_passes_validation() {
-        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -298,7 +322,8 @@ mod tests {
             let _guard = rt.enter();
             let pool =
                 sqlx::PgPool::connect_lazy("postgres://user:pass@localhost:5432/db").unwrap();
-            let pipeline = build_cards_pipeline(&pool, &config);
+            let params = CardsParams::default();
+            let pipeline = build_cards_pipeline(&pool, &config, &params);
             assert!(
                 pipeline.is_ok(),
                 "pipeline builds successfully when user_id is configured"
@@ -307,11 +332,125 @@ mod tests {
                 .unwrap()
                 .with_user_id(config.cards_user_id().expect("cards user id configured"));
 
-            let prod_pipeline = rt.block_on(build_production_cards_pipeline(&pool, &config));
+            let prod_pipeline =
+                rt.block_on(build_production_cards_pipeline(&pool, &config, &params));
             assert!(
                 prod_pipeline.is_ok(),
                 "production pipeline builds successfully when user_id is configured"
             );
         });
+    }
+
+    #[test]
+    fn test_build_cards_embed_cluster_override_model() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = rt.enter();
+
+        let (server, server_uri) = rt.block_on(async {
+            let server = wiremock::MockServer::start().await;
+            let expected_req = serde_json::json!({
+                "texts": ["test text"],
+                "normalize": true,
+            });
+            let res_body = serde_json::json!({
+                "model": "bge-m3",
+                "dim": 1024,
+                "embeddings": [vec![0.1f32; 1024]]
+            });
+
+            wiremock::Mock::given(wiremock::matchers::method("POST"))
+                .and(wiremock::matchers::path("/v1/embed"))
+                .and(wiremock::matchers::body_json(&expected_req))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&res_body))
+                .mount(&server)
+                .await;
+
+            let uri = server.uri();
+            (server, uri)
+        });
+
+        let vars = vec![
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://user:pass@localhost:5432/db"),
+            ),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some(server_uri.as_str())),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+            ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+            ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("RECAP_CARDS_JOB", Some("disabled")),
+            (
+                "RECAP_CARDS_USER_ID",
+                Some("33333333-3333-3333-3333-333333333333"),
+            ),
+            ("RECAP_EVAL_LISTENER", Some("disabled")),
+            ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+        ];
+
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config loads");
+
+            // 1. Default params expect "bge-m3", dim 1024 -> matches mock response
+            let default_params = CardsParams::default();
+            let default_adapter = build_cards_embed_cluster(&config, &default_params)
+                .expect("embed cluster builder succeeds");
+            use crate::pipeline::cards::EmbedCluster;
+            let res = rt.block_on(default_adapter.embed(&["test text".to_string()]));
+            assert!(
+                res.is_ok(),
+                "default adapter matches expected bge-m3 response: {res:?}"
+            );
+
+            // 2. Overridden params expect "custom-embed-model" -> adapter must fail with identity mismatch
+            let overridden_params = default_params
+                .with_override(
+                    "expected_embed_model",
+                    &serde_json::Value::String("custom-embed-model".to_string()),
+                )
+                .expect("override succeeds");
+            assert_eq!(overridden_params.expected_embed_model, "custom-embed-model");
+
+            let overridden_adapter = build_cards_embed_cluster(&config, &overridden_params)
+                .expect("embed cluster builder succeeds with override");
+            let res_err = rt.block_on(overridden_adapter.embed(&["test text".to_string()]));
+            assert!(
+                res_err.is_err(),
+                "overridden adapter must fail when server returns bge-m3"
+            );
+            let err_msg = res_err.unwrap_err().to_string();
+            assert!(
+                err_msg.contains(
+                    "subworker embedding identity mismatch: expected model 'custom-embed-model' with dim 1024, got 'bge-m3' with dim 1024"
+                ),
+                "expected mismatch error message, got: {err_msg}"
+            );
+
+            // 3. Pipeline builders also succeed with overridden params
+            let pool =
+                sqlx::PgPool::connect_lazy("postgres://user:pass@localhost:5432/db").unwrap();
+            let pipeline = build_cards_pipeline(&pool, &config, &overridden_params);
+            assert!(
+                pipeline.is_ok(),
+                "build_cards_pipeline succeeds with overridden params"
+            );
+
+            let prod_pipeline = rt.block_on(build_production_cards_pipeline(
+                &pool,
+                &config,
+                &overridden_params,
+            ));
+            assert!(
+                prod_pipeline.is_ok(),
+                "build_production_cards_pipeline succeeds with overridden params"
+            );
+        });
+        drop(server);
     }
 }

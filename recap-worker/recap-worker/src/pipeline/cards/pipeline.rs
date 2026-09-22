@@ -348,40 +348,6 @@ impl CardsPipeline {
         }
     }
 
-    pub fn new(
-        feed_source: Arc<dyn FeedSource>,
-        ml_port: Arc<dyn EmbedCluster>,
-        dao: Arc<dyn CardsPipelineDao>,
-    ) -> Self {
-        Self::selection_only(feed_source, ml_port, dao)
-    }
-
-    #[allow(private_interfaces, dead_code)]
-    pub fn new_full(
-        feed_source: Arc<dyn FeedSource>,
-        ml_port: Arc<dyn EmbedCluster>,
-        dao: Arc<dyn CardsPipelineDao>,
-        card_generator: Arc<dyn CardGenerator>,
-        card_verifier: Arc<dyn CardVerifier>,
-    ) -> Self {
-        Self::full(feed_source, ml_port, dao, card_generator, card_verifier)
-    }
-
-    #[must_use]
-    #[allow(private_interfaces, dead_code)]
-    pub fn with_card_generator(mut self, generator: Arc<dyn CardGenerator>) -> Self {
-        self.card_generator = Some(generator);
-        self.mode = PipelineMode::Full;
-        self
-    }
-
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn with_card_verifier(mut self, verifier: Arc<dyn CardVerifier>) -> Self {
-        self.card_verifier = Some(verifier);
-        self
-    }
-
     #[must_use]
     pub fn with_genre_tagger(mut self, tagger: Arc<dyn GenreTagger>) -> Self {
         self.genre_tagger = Some(tagger);
@@ -478,7 +444,7 @@ impl CardsPipeline {
             .await
         {
             Ok(stats) => {
-                // M1: Propagate status update error
+                // Propagate status update error
                 self.dao
                     .update_job_status_with_history(
                         job_id,
@@ -490,7 +456,7 @@ impl CardsPipeline {
                 Ok(stats)
             }
             Err(err) => {
-                // M1: On failure, log error if status update fails and return original error
+                // On failure, log error if status update fails and return original error
                 let err_msg = format!("{err:#}");
                 if let Err(status_err) = self
                     .dao
@@ -899,12 +865,24 @@ impl CardsPipeline {
             let mut card_items: Vec<CardItemInput> = Vec::new();
             if let Some(arr) = candidate_items_val {
                 for (idx, it_val) in arr.iter().take(6).enumerate() {
-                    let Some(feed_id_str) = it_val.get("feed_id").and_then(|v| v.as_str()) else {
-                        continue;
-                    };
-                    let Ok(feed_id) = Uuid::parse_str(feed_id_str) else {
-                        continue;
-                    };
+                    let feed_id_str =
+                        it_val
+                            .get("feed_id")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "recap_card_candidate {} item {} missing or invalid feed_id",
+                                    candidate.id,
+                                    idx
+                                )
+                            })?;
+                    let feed_id = Uuid::parse_str(feed_id_str).map_err(|_| {
+                        anyhow::anyhow!(
+                            "recap_card_candidate {} item {} missing or invalid feed_id",
+                            candidate.id,
+                            idx
+                        )
+                    })?;
                     let (title, host, url, pub_date, lede) =
                         if let Some(norm) = item_by_id.get(&feed_id) {
                             let lede = if norm.host == "dev.to" {
@@ -948,8 +926,9 @@ impl CardsPipeline {
                             (title, host, url, pub_date, String::new())
                         };
 
+                    let n = card_items.len() + 1;
                     card_items.push(CardItemInput {
-                        n: idx + 1,
+                        n,
                         feed_id,
                         title,
                         host,
@@ -1053,12 +1032,12 @@ impl CardsPipeline {
                 }
             }
 
+            let mut g2_citations_valid = validate_citations(&current_card, card_items.len());
             filter_valid_citations(&mut current_card, card_items.len());
             if current_card.what_ja.is_empty() {
                 *cards_dropped.entry("g2_citation".to_string()).or_insert(0) += 1;
                 continue;
             }
-            let g2_citations_valid = true;
 
             // Gate G3 & G4 via card_verifier
             let mut verify_req = build_verify_request(
@@ -1110,6 +1089,7 @@ impl CardsPipeline {
                         }
 
                         // Recheck G2
+                        g2_citations_valid = validate_citations(&current_card, card_items.len());
                         filter_valid_citations(&mut current_card, card_items.len());
                         if current_card.what_ja.is_empty() {
                             *cards_dropped.entry("g2_citation".to_string()).or_insert(0) += 1;
@@ -1317,31 +1297,11 @@ impl CardsPipeline {
         let items_fetched = feeds.len();
 
         // Stage 2 & 3: Normalize & Noise
-        let mut normalized = Self::stage_normalize_and_noise(job_id, &feeds)?;
-        if !params.genre_tagging {
-            info!(job_id = %job_id, "genre_tagging_disabled");
-        } else if let Some(tagger) = &self.genre_tagger {
-            for item in &mut normalized {
-                let text = format!("{} {}", item.title, item.lede);
-                let scores = tagger.tag_genre(&text).await.with_context(|| {
-                    format!("genre classification failed for item {}", item.feed_id)
-                })?;
-                let top = scores.into_iter().max_by(|a, b| a.1.total_cmp(&b.1));
-                if let Some((genre, score)) = top {
-                    if score >= params.genre_min_confidence {
-                        item.genre = Some(genre);
-                    } else {
-                        item.genre = None;
-                    }
-                } else {
-                    item.genre = None;
-                }
-            }
-        }
+        let normalized = Self::stage_normalize_and_noise(job_id, &feeds)?;
         let items_after_noise = normalized.len();
 
         // Stage 4: Dedup (exact)
-        let (deduped_exact, dedup_dropped) = deduplicate(normalized);
+        let (mut deduped_exact, dedup_dropped) = deduplicate(normalized);
         info!(
             job_id = %job_id,
             items_before_dedup = items_after_noise,
@@ -1349,6 +1309,40 @@ impl CardsPipeline {
             duplicates_dropped = dedup_dropped,
             "cards exact deduplication complete"
         );
+
+        // Stage 4b: Genre Tagging (after exact dedup)
+        if !params.genre_tagging {
+            info!(job_id = %job_id, "genre_tagging_disabled");
+        } else if let Some(tagger) = &self.genre_tagger {
+            info!(job_id = %job_id, "genre_tagging_enabled");
+            let batch_size = params.genre_batch_size.max(1);
+            for chunk in deduped_exact.chunks_mut(batch_size) {
+                let texts: Vec<String> = chunk
+                    .iter()
+                    .map(|item| format!("{} {}", item.title, item.lede))
+                    .collect();
+                let batch_scores = tagger.tag_genres(&texts).await.with_context(|| {
+                    format!("batch genre classification failed for job {job_id}")
+                })?;
+                for (item, scores) in chunk.iter_mut().zip(batch_scores) {
+                    let mut sorted_scores: Vec<(String, f32)> = scores.into_iter().collect();
+                    sorted_scores.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+                    if let Some((genre, score)) = sorted_scores.into_iter().next() {
+                        if score >= params.genre_min_confidence {
+                            item.genre = Some(genre);
+                        } else {
+                            item.genre = None;
+                        }
+                    } else {
+                        item.genre = None;
+                    }
+                }
+            }
+        } else {
+            anyhow::bail!(
+                "genre_tagger_unwired: genre tagging is enabled but no genre tagger is configured"
+            );
+        }
 
         // Stage 5: Embed
         let (embeddings_exact, embed_ms) = self.stage_embed(job_id, &deduped_exact).await?;
@@ -1389,7 +1383,7 @@ impl CardsPipeline {
             theta_novelty: params.theta_novelty,
             created_at: to,
         };
-        let candidates = rank_candidates(rank_args);
+        let candidates = rank_candidates(rank_args)?;
         let candidates_count = candidates.len();
         info!(
             job_id = %job_id,
@@ -1548,6 +1542,19 @@ fn build_verify_request(
     }
 }
 
+fn validate_citations(card: &CardContent, item_count: usize) -> bool {
+    let what_valid = !card.what_ja.is_empty()
+        && card
+            .what_ja
+            .iter()
+            .all(|s| !s.refs.is_empty() && s.refs.iter().all(|&r| r >= 1 && r <= item_count));
+    let why_valid = match &card.why_ja {
+        Some(w) => !w.refs.is_empty() && w.refs.iter().all(|&r| r >= 1 && r <= item_count),
+        None => true,
+    };
+    what_valid && why_valid
+}
+
 fn filter_valid_citations(card: &mut CardContent, item_count: usize) {
     card.what_ja
         .retain(|s| !s.refs.is_empty() && s.refs.iter().all(|&r| r >= 1 && r <= item_count));
@@ -1580,7 +1587,7 @@ mod tests {
         ClusterOutput, ClusterStoriesResponse, VerifyCardResponse,
     };
     use crate::pipeline::cards::fakes::{
-        FakeCardGenerator, FakeCardVerifier, FakeEmbedCluster, FakeFeedSource,
+        FakeCardGenerator, FakeCardVerifier, FakeEmbedCluster, FakeFeedSource, FakeGenreTagger,
     };
     use std::sync::Mutex;
 
@@ -1731,10 +1738,14 @@ mod tests {
         let dao2 = Arc::new(MockCardsPipelineDao::default());
 
         let user_id = Uuid::new_v4();
-        let pipeline1 = CardsPipeline::new(feed_source.clone(), ml_port.clone(), dao1.clone())
-            .with_user_id(user_id);
-        let pipeline2 = CardsPipeline::new(feed_source.clone(), ml_port.clone(), dao2.clone())
-            .with_user_id(user_id);
+        let pipeline1 =
+            CardsPipeline::selection_only(feed_source.clone(), ml_port.clone(), dao1.clone())
+                .with_user_id(user_id)
+                .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
+        let pipeline2 =
+            CardsPipeline::selection_only(feed_source.clone(), ml_port.clone(), dao2.clone())
+                .with_user_id(user_id)
+                .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
 
         let job_id = Uuid::new_v4();
         let from = Utc::now();
@@ -1778,8 +1789,9 @@ mod tests {
         let ml_port = Arc::new(FakeEmbedCluster::new());
         let dao = Arc::new(MockCardsPipelineDao::default());
 
-        let pipeline =
-            CardsPipeline::new(feed_source, ml_port, dao.clone()).with_user_id(Uuid::new_v4());
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
         let from = Utc::now();
         let to = Utc::now();
         let params = CardsParams::default();
@@ -1833,8 +1845,9 @@ mod tests {
         let ml_port = Arc::new(FailingEmbedPort);
         let dao = Arc::new(MockCardsPipelineDao::default());
 
-        let pipeline =
-            CardsPipeline::new(feed_source, ml_port, dao.clone()).with_user_id(Uuid::new_v4());
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
         let job_id = Uuid::new_v4();
         let from = Utc::now();
         let to = Utc::now();
@@ -1843,7 +1856,7 @@ mod tests {
         let res = pipeline.run(job_id, from, to, &params).await;
         assert!(res.is_err(), "pipeline should fail when embed fails");
 
-        // M5 assert: nothing is persisted to snapshots, candidates, stats, or windows!
+        // Assert: nothing is persisted to snapshots, candidates, stats, or windows!
         assert_eq!(
             dao.snapshots.lock().unwrap().len(),
             0,
@@ -1902,8 +1915,9 @@ mod tests {
         ));
         let dao = Arc::new(MockCardsPipelineDao::default());
 
-        let pipeline =
-            CardsPipeline::new(feed_source, ml_port, dao.clone()).with_user_id(Uuid::new_v4());
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
         let job_id = Uuid::new_v4();
         let res = pipeline
             .run(job_id, Utc::now(), Utc::now(), &CardsParams::default())
@@ -1936,8 +1950,9 @@ mod tests {
         let ml_port = Arc::new(FakeEmbedCluster::new());
         let dao = Arc::new(MockCardsPipelineDao::default());
 
-        let pipeline =
-            CardsPipeline::new(feed_source, ml_port, dao.clone()).with_user_id(Uuid::new_v4());
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
         let res = pipeline
             .run(
                 Uuid::new_v4(),
@@ -1994,8 +2009,9 @@ mod tests {
             cards: vec![prev_card],
         });
 
-        let pipeline =
-            CardsPipeline::new(feed_source, ml_port, dao.clone()).with_user_id(Uuid::new_v4());
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
         let job_id = Uuid::new_v4();
         let from = DateTime::parse_from_rfc3339("2026-03-19T00:00:00Z")
             .unwrap()
@@ -2041,7 +2057,8 @@ mod tests {
         let dao = Arc::new(MockCardsPipelineDao::default());
 
         // Do NOT call with_user_id
-        let pipeline = CardsPipeline::new(feed_source, ml_port, dao.clone());
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
         let res = pipeline
             .run(
                 Uuid::new_v4(),
@@ -2074,14 +2091,15 @@ mod tests {
         let card_gen = Arc::new(FakeCardGenerator::new());
         let card_ver = Arc::new(FakeCardVerifier::new());
 
-        let pipeline = CardsPipeline::new_full(
+        let pipeline = CardsPipeline::full(
             feed_source,
             ml_port,
             dao.clone(),
             card_gen.clone(),
             card_ver.clone(),
         )
-        .with_user_id(Uuid::new_v4());
+        .with_user_id(Uuid::new_v4())
+        .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
 
         let job_id = Uuid::new_v4();
         let from = Utc::now();
@@ -2149,9 +2167,9 @@ mod tests {
         ]));
         let card_ver = Arc::new(FakeCardVerifier::new());
 
-        let pipeline =
-            CardsPipeline::new_full(feed_source, ml_port, dao.clone(), card_gen, card_ver)
-                .with_user_id(Uuid::new_v4());
+        let pipeline = CardsPipeline::full(feed_source, ml_port, dao.clone(), card_gen, card_ver)
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
 
         let job_id = Uuid::new_v4();
         let res = pipeline
@@ -2221,14 +2239,15 @@ mod tests {
         ]));
         let card_ver = Arc::new(FakeCardVerifier::new());
 
-        let pipeline = CardsPipeline::new_full(
+        let pipeline = CardsPipeline::full(
             feed_source,
             ml_port,
             dao.clone(),
             card_gen.clone(),
             card_ver,
         )
-        .with_user_id(Uuid::new_v4());
+        .with_user_id(Uuid::new_v4())
+        .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
 
         let res = pipeline
             .run(
@@ -2298,14 +2317,15 @@ mod tests {
         ]));
         let card_ver = Arc::new(FakeCardVerifier::new());
 
-        let pipeline = CardsPipeline::new_full(
+        let pipeline = CardsPipeline::full(
             feed_source,
             ml_port,
             dao.clone(),
             card_gen.clone(),
             card_ver,
         )
-        .with_user_id(Uuid::new_v4());
+        .with_user_id(Uuid::new_v4())
+        .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
 
         let res = pipeline
             .run(
@@ -2442,14 +2462,15 @@ mod tests {
             pass_verify,
         ]));
 
-        let pipeline = CardsPipeline::new_full(
+        let pipeline = CardsPipeline::full(
             feed_source,
             ml_port,
             dao.clone(),
             card_gen.clone(),
             card_ver,
         )
-        .with_user_id(Uuid::new_v4());
+        .with_user_id(Uuid::new_v4())
+        .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
 
         let res = pipeline
             .run(
@@ -2603,14 +2624,15 @@ mod tests {
             make_verify_resp(),
         ]));
 
-        let pipeline = CardsPipeline::new_full(
+        let pipeline = CardsPipeline::full(
             feed_source,
             ml_port,
             dao.clone(),
             card_gen.clone(),
             card_ver.clone(),
         )
-        .with_user_id(Uuid::new_v4());
+        .with_user_id(Uuid::new_v4())
+        .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
 
         let res = pipeline
             .run(
@@ -2713,9 +2735,9 @@ mod tests {
         };
         let card_ver = Arc::new(FakeCardVerifier::with_responses(vec![verifier_resp]));
 
-        let pipeline =
-            CardsPipeline::new_full(feed_source, ml_port, dao.clone(), card_gen, card_ver)
-                .with_user_id(Uuid::new_v4());
+        let pipeline = CardsPipeline::full(feed_source, ml_port, dao.clone(), card_gen, card_ver)
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
 
         let res = pipeline
             .run(
@@ -2734,5 +2756,179 @@ mod tests {
             cards[0].why_ja, None,
             "why_ja must be dropped when why_hint_present is false"
         );
+    }
+
+    #[tokio::test]
+    async fn test_genre_tagging_disabled_leaves_genre_none() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "Tech announcement",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        let params = CardsParams {
+            genre_tagging: false,
+            ..Default::default()
+        };
+
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4());
+
+        let res = pipeline
+            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
+            .await
+            .expect("pipeline completes when genre tagging is disabled");
+
+        assert_eq!(res.candidates, 1);
+        let candidates = dao.candidates.lock().unwrap().clone();
+        assert_eq!(candidates.len(), 1);
+        let items = candidates[0].items.as_array().unwrap();
+        assert!(items[0]["genre"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_genre_tagger_unwired_fails_job() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "Tech announcement",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        // Default params has genre_tagging = true, but no tagger is provided
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4());
+
+        let res = pipeline
+            .run(
+                Uuid::new_v4(),
+                Utc::now(),
+                Utc::now(),
+                &CardsParams::default(),
+            )
+            .await;
+
+        assert!(res.is_err());
+        assert!(
+            res.unwrap_err()
+                .to_string()
+                .contains("genre_tagger_unwired"),
+            "error should indicate genre_tagger_unwired"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_genre_classifier_error_fails_job() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "Tech announcement",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::with_failure()));
+
+        let res = pipeline
+            .run(
+                Uuid::new_v4(),
+                Utc::now(),
+                Utc::now(),
+                &CardsParams::default(),
+            )
+            .await;
+
+        assert!(res.is_err());
+        let err_str = res.unwrap_err().to_string();
+        assert!(
+            err_str.contains("batch genre classification failed")
+                || err_str.contains("simulated classifier failure")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_genre_score_below_threshold_leaves_genre_none() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "Tech announcement",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        let mut low_scores = HashMap::new();
+        low_scores.insert("technology".to_string(), 0.3_f32); // 0.3 < default threshold 0.5
+
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::with_fixed(low_scores)));
+
+        let res = pipeline
+            .run(
+                Uuid::new_v4(),
+                Utc::now(),
+                Utc::now(),
+                &CardsParams::default(),
+            )
+            .await
+            .expect("pipeline succeeds");
+
+        assert_eq!(res.candidates, 1);
+        let candidates = dao.candidates.lock().unwrap().clone();
+        let items = candidates[0].items.as_array().unwrap();
+        assert!(items[0]["genre"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_snapshot_params_equals_effective_params_and_stats_row_carries_them() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "Tech announcement",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        let params = CardsParams::default()
+            .with_override("alpha", &serde_json::json!(0.7))
+            .expect("valid override");
+
+        let pipeline = CardsPipeline::selection_only(feed_source, ml_port, dao.clone())
+            .with_user_id(Uuid::new_v4())
+            .with_genre_tagger(Arc::new(FakeGenreTagger::new()));
+
+        pipeline
+            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
+            .await
+            .expect("pipeline succeeds");
+
+        let snapshots = dao.snapshots.lock().unwrap().clone();
+        assert_eq!(snapshots.len(), 1);
+        assert!((snapshots[0].params["alpha"].as_f64().unwrap() - 0.7).abs() < 1e-4);
+        assert_eq!(snapshots[0].params_version, "cards-v0.1+alpha=0.7");
+
+        let stats = dao.stats.lock().unwrap().clone();
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].params_version, "cards-v0.1+alpha=0.7");
     }
 }

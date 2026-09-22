@@ -189,10 +189,12 @@ async fn maybe_spawn_cards_batch_daemon(
             user_id,
         } => {
             info!(utc_hour, utc_minute, %user_id, "cards_job_enabled");
-            let pipeline = recap_worker::eval::build_production_cards_pipeline(pool, config)
-                .await
-                .context("failed to build cards pipeline for daemon")?
-                .with_user_id(*user_id);
+            let default_params = recap_worker::pipeline::cards::CardsParams::default();
+            let pipeline =
+                recap_worker::eval::build_production_cards_pipeline(pool, config, &default_params)
+                    .await
+                    .context("failed to build cards pipeline for daemon")?
+                    .with_user_id(*user_id);
 
             Ok(Some(
                 recap_worker::scheduler::daemon::spawn_cards_batch_daemon(

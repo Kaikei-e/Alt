@@ -17,6 +17,8 @@ pub const DEFAULT_EXPECTED_EMBED_DIM: usize = 1024;
 pub const DEFAULT_TAU_A: f32 = 0.55;
 pub const DEFAULT_GENRE_TAGGING: bool = true;
 pub const DEFAULT_GENRE_MIN_CONFIDENCE: f32 = 0.5;
+/// Default chunk size for batching classifier calls during genre tagging.
+pub const DEFAULT_GENRE_BATCH_SIZE: usize = 32;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardsParams {
@@ -35,6 +37,8 @@ pub struct CardsParams {
     pub tau_a: f32,
     pub genre_tagging: bool,
     pub genre_min_confidence: f32,
+    /// Batch size for classifying candidate item genres via the subworker.
+    pub genre_batch_size: usize,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<String, String>,
 }
@@ -61,6 +65,7 @@ impl Default for CardsParams {
             tau_a: DEFAULT_TAU_A,
             genre_tagging: DEFAULT_GENRE_TAGGING,
             genre_min_confidence: DEFAULT_GENRE_MIN_CONFIDENCE,
+            genre_batch_size: DEFAULT_GENRE_BATCH_SIZE,
             overrides: BTreeMap::new(),
         }
     }
@@ -179,6 +184,11 @@ impl CardsParams {
                 self.genre_min_confidence = v;
                 format!("{v}")
             }
+            "genre_batch_size" => {
+                let v = parse_usize(value, "genre_batch_size")?;
+                self.genre_batch_size = v;
+                v.to_string()
+            }
             "min_cluster_size_by_language" => {
                 let map: HashMap<String, usize> = serde_json::from_value(value.clone())
                     .map_err(|e| anyhow::anyhow!("invalid min_cluster_size_by_language: {e}"))?;
@@ -196,7 +206,9 @@ impl CardsParams {
                 let v = value
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("params_version must be a string"))?;
-                self.params_version = v.to_string();
+                let base = v.split('+').next().unwrap_or(v);
+                self.params_version = base.to_string();
+                self.recompute_params_version();
                 return Ok(());
             }
             unknown => anyhow::bail!("unknown CardsParams override key: {unknown}"),
@@ -239,6 +251,7 @@ mod tests {
         assert_eq!(params.alpha, 0.5);
         assert!(params.genre_tagging);
         assert_eq!(params.genre_min_confidence, 0.5);
+        assert_eq!(params.genre_batch_size, 32);
         assert_eq!(params.min_cluster_size_by_language.get("ja"), Some(&1));
         assert_eq!(params.min_cluster_size_by_language.get("en"), Some(&1));
     }
@@ -274,9 +287,83 @@ mod tests {
     }
 
     #[test]
-    fn test_override_unknown_key_fails() {
+    fn test_params_version_override_recomputes_with_recorded_overrides() {
         let mut params = CardsParams::default();
-        let res = params.apply_override("unknown_key", &serde_json::json!(123));
-        assert!(res.is_err());
+        params
+            .apply_override("alpha", &serde_json::json!(0.7))
+            .unwrap();
+        assert_eq!(params.params_version, "cards-v0.1+alpha=0.7");
+
+        params
+            .apply_override("params_version", &serde_json::json!("cards-v0.2"))
+            .unwrap();
+        assert_eq!(params.params_version, "cards-v0.2+alpha=0.7");
+
+        params
+            .apply_override("genre_batch_size", &serde_json::json!(64))
+            .unwrap();
+        assert_eq!(params.genre_batch_size, 64);
+        assert_eq!(
+            params.params_version,
+            "cards-v0.2+alpha=0.7,genre_batch_size=64"
+        );
+    }
+
+    #[test]
+    fn test_with_override_rejects_bad_values() {
+        let params = CardsParams::default();
+
+        // Bad float
+        assert!(
+            params
+                .with_override("alpha", &serde_json::json!("not_a_float"))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("threshold", &serde_json::json!(true))
+                .is_err()
+        );
+
+        // Bad integer
+        assert!(
+            params
+                .with_override("min_cluster_size", &serde_json::json!("not_an_int"))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("genre_batch_size", &serde_json::json!(-5))
+                .is_err()
+        );
+
+        // Bad bool
+        assert!(
+            params
+                .with_override("genre_tagging", &serde_json::json!("not_a_bool"))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("genre_tagging", &serde_json::json!(123))
+                .is_err()
+        );
+
+        // Bad language map
+        assert!(
+            params
+                .with_override(
+                    "min_cluster_size_by_language",
+                    &serde_json::json!("not_a_map")
+                )
+                .is_err()
+        );
+
+        // Unknown key
+        assert!(
+            params
+                .with_override("unknown_key", &serde_json::json!(123))
+                .is_err()
+        );
     }
 }

@@ -32,13 +32,18 @@ pub trait EmbedCluster: Send + Sync {
     async fn cluster_stories(&self, req: &ClusterStoriesRequest) -> Result<ClusterStoriesResponse>;
 }
 
-/// Backward compatibility alias.
-pub type CardsMlPort = dyn EmbedCluster;
-
 /// Port for coarse genre tagging of normalized items.
 #[async_trait::async_trait]
 pub trait GenreTagger: Send + Sync {
     async fn tag_genre(&self, text: &str) -> Result<HashMap<String, f32>>;
+
+    async fn tag_genres(&self, texts: &[String]) -> Result<Vec<HashMap<String, f32>>> {
+        let mut results = Vec::with_capacity(texts.len());
+        for text in texts {
+            results.push(self.tag_genre(text).await?);
+        }
+        Ok(results)
+    }
 }
 
 /// Port for generating topic cards from candidate items.
