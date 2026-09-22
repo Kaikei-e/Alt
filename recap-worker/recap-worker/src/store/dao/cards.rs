@@ -39,6 +39,7 @@ pub struct RecapCardCandidate {
     pub items: Value,
     pub scores: Value,
     pub centroid: Option<Vec<f32>>,
+    pub member_feed_ids: Vec<Uuid>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -155,7 +156,10 @@ pub struct PreviousCardSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviousCardsJob {
     pub job_id: Uuid,
+    pub kicked_at: DateTime<Utc>,
+    pub from_ts: DateTime<Utc>,
     pub to_ts: DateTime<Utc>,
+    pub params_version: String,
     pub cards: Vec<PreviousCardSummary>,
 }
 
@@ -181,7 +185,7 @@ impl CardsDaoOps {
         let rows = sqlx::query(
             r"
             SELECT c.id, c.job_id, c.rank, c.cluster_fingerprint, c.size,
-                   c.domains, c.items, c.scores, c.centroid, c.created_at
+                   c.domains, c.items, c.scores, c.centroid, c.member_feed_ids, c.created_at
             FROM recap_card_candidates c
             JOIN recap_eval_windows w ON c.job_id = w.snapshot_job_id
             WHERE w.id = $1
@@ -198,6 +202,7 @@ impl CardsDaoOps {
             let domains: Value = r.try_get::<Json<Value>, _>("domains")?.0;
             let items: Value = r.try_get::<Json<Value>, _>("items")?.0;
             let scores: Value = r.try_get::<Json<Value>, _>("scores")?.0;
+            let member_feed_ids: Vec<Uuid> = r.try_get("member_feed_ids")?;
             res.push(RecapCardCandidate {
                 id: r.try_get("id")?,
                 job_id: r.try_get("job_id")?,
@@ -208,6 +213,7 @@ impl CardsDaoOps {
                 items,
                 scores,
                 centroid: r.try_get("centroid")?,
+                member_feed_ids,
                 created_at: r.try_get("created_at")?,
             });
         }
@@ -412,7 +418,7 @@ impl CardsDaoOps {
                 id, window_id, cluster_fingerprint, decision, rated_at
             FROM recap_story_judgments
             WHERE window_id = $1
-            ORDER BY cluster_fingerprint, rated_at DESC
+            ORDER BY cluster_fingerprint, rated_at DESC, id DESC
             ",
         )
         .bind(window_id)
@@ -428,6 +434,131 @@ impl CardsDaoOps {
                 cluster_fingerprint: r.try_get("cluster_fingerprint")?,
                 decision: r.try_get("decision")?,
                 rated_at: r.try_get("rated_at")?,
+            });
+        }
+        Ok(res)
+    }
+
+    /// Retrieve the latest story judgment per cluster across all eval windows covering [from_ts, to_ts).
+    /// Optionally excludes a given window_id (e.g., the window currently being evaluated).
+    pub async fn latest_judgments_for_date_range(
+        pool: &PgPool,
+        from_ts: DateTime<Utc>,
+        to_ts: DateTime<Utc>,
+        exclude_window_id: Option<Uuid>,
+    ) -> Result<Vec<RecapStoryJudgment>> {
+        let rows = sqlx::query(
+            r"
+            SELECT DISTINCT ON (j.window_id, j.cluster_fingerprint)
+                j.id, j.window_id, j.cluster_fingerprint, j.decision, j.rated_at
+            FROM recap_story_judgments j
+            JOIN recap_eval_windows w ON j.window_id = w.id
+            WHERE w.from_ts = $1 AND w.to_ts = $2
+              AND ($3::uuid IS NULL OR w.id != $3)
+            ORDER BY j.window_id, j.cluster_fingerprint, j.rated_at DESC, j.id DESC
+            ",
+        )
+        .bind(from_ts)
+        .bind(to_ts)
+        .bind(exclude_window_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| {
+            RecapError::Db(format!(
+                "failed to get latest judgments for date range: {e}"
+            ))
+        })?;
+
+        let mut res = Vec::with_capacity(rows.len());
+        for r in rows {
+            res.push(RecapStoryJudgment {
+                id: r.try_get("id")?,
+                window_id: r.try_get("window_id")?,
+                cluster_fingerprint: r.try_get("cluster_fingerprint")?,
+                decision: r.try_get("decision")?,
+                rated_at: r.try_get("rated_at")?,
+            });
+        }
+        Ok(res)
+    }
+
+    /// Retrieve all candidate clusters across eval windows covering [from_ts, to_ts).
+    /// Optionally excludes a given window_id.
+    pub async fn get_candidates_for_date_range(
+        pool: &PgPool,
+        from_ts: DateTime<Utc>,
+        to_ts: DateTime<Utc>,
+        exclude_window_id: Option<Uuid>,
+    ) -> Result<Vec<RecapCardCandidate>> {
+        let rows = sqlx::query(
+            r"
+            SELECT c.id, c.job_id, c.rank, c.cluster_fingerprint, c.size,
+                   c.domains, c.items, c.scores, c.member_feed_ids, c.created_at
+            FROM recap_card_candidates c
+            JOIN recap_eval_windows w ON c.job_id = w.snapshot_job_id
+            WHERE w.from_ts = $1 AND w.to_ts = $2
+              AND ($3::uuid IS NULL OR w.id != $3)
+            ORDER BY w.created_at DESC, c.rank ASC
+            ",
+        )
+        .bind(from_ts)
+        .bind(to_ts)
+        .bind(exclude_window_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to get candidates for date range: {e}")))?;
+
+        let mut res = Vec::with_capacity(rows.len());
+        for r in rows {
+            let domains: Value = r.try_get::<Json<Value>, _>("domains")?.0;
+            let items: Value = r.try_get::<Json<Value>, _>("items")?.0;
+            let scores: Value = r.try_get::<Json<Value>, _>("scores")?.0;
+            let member_feed_ids: Vec<Uuid> = r.try_get("member_feed_ids")?;
+            res.push(RecapCardCandidate {
+                id: r.try_get("id")?,
+                job_id: r.try_get("job_id")?,
+                rank: r.try_get("rank")?,
+                cluster_fingerprint: r.try_get("cluster_fingerprint")?,
+                size: r.try_get("size")?,
+                domains,
+                items,
+                scores,
+                centroid: None,
+                member_feed_ids,
+                created_at: r.try_get("created_at")?,
+            });
+        }
+        Ok(res)
+    }
+
+    /// Retrieve all eval windows covering the given [from_ts, to_ts) range, newest first.
+    pub async fn get_eval_windows_for_date_range(
+        pool: &PgPool,
+        from_ts: DateTime<Utc>,
+        to_ts: DateTime<Utc>,
+    ) -> Result<Vec<RecapEvalWindow>> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, from_ts, to_ts, snapshot_job_id, created_at
+            FROM recap_eval_windows
+            WHERE from_ts = $1 AND to_ts = $2
+            ORDER BY created_at DESC
+            ",
+        )
+        .bind(from_ts)
+        .bind(to_ts)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to get eval windows for date range: {e}")))?;
+
+        let mut res = Vec::with_capacity(rows.len());
+        for r in rows {
+            res.push(RecapEvalWindow {
+                id: r.try_get("id")?,
+                from_ts: r.try_get("from_ts")?,
+                to_ts: r.try_get("to_ts")?,
+                snapshot_job_id: r.try_get("snapshot_job_id")?,
+                created_at: r.try_get("created_at")?,
             });
         }
         Ok(res)
@@ -470,7 +601,7 @@ impl CardsDaoOps {
             FROM recap_card_ratings r
             JOIN recap_cards c ON r.card_id = c.id
             WHERE c.job_id = $1
-            ORDER BY r.card_id, r.rated_at DESC
+            ORDER BY r.card_id, r.rated_at DESC, r.id DESC
             ",
         )
         .bind(job_id)
@@ -540,7 +671,7 @@ impl CardsDaoOps {
     pub async fn get_latest_completed_cards_job(pool: &PgPool) -> Result<Option<PreviousCardsJob>> {
         let job_row = sqlx::query(
             r"
-            SELECT j.job_id, s.to_ts
+            SELECT j.job_id, j.kicked_at, s.from_ts, s.to_ts, s.params_version
             FROM recap_jobs j
             JOIN recap_card_snapshots s ON s.job_id = j.job_id
             WHERE j.trigger_source = 'cards'
@@ -558,7 +689,10 @@ impl CardsDaoOps {
         };
 
         let job_id: Uuid = job_row.try_get("job_id")?;
+        let kicked_at: DateTime<Utc> = job_row.try_get("kicked_at")?;
+        let from_ts: DateTime<Utc> = job_row.try_get("from_ts")?;
         let to_ts: DateTime<Utc> = job_row.try_get("to_ts")?;
+        let params_version: String = job_row.try_get("params_version")?;
 
         let card_rows = sqlx::query(
             r"
@@ -593,7 +727,10 @@ impl CardsDaoOps {
 
         Ok(Some(PreviousCardsJob {
             job_id,
+            kicked_at,
+            from_ts,
             to_ts,
+            params_version,
             cards,
         }))
     }
@@ -756,6 +893,7 @@ mod tests {
             items: serde_json::json!([{"feed_id": Uuid::new_v4(), "title": "test"}]),
             scores: serde_json::json!({"corroboration": 1.2}),
             centroid: Some(vec![0.1, 0.2, 0.3]),
+            member_feed_ids: vec![Uuid::new_v4()],
             created_at: Utc::now(),
         };
 
@@ -768,13 +906,18 @@ mod tests {
             candidate.cluster_fingerprint,
             deserialized.cluster_fingerprint
         );
+        assert_eq!(candidate.member_feed_ids, deserialized.member_feed_ids);
     }
 
     #[test]
     fn test_previous_cards_job_serialization() {
+        let now = Utc::now();
         let prev = PreviousCardsJob {
             job_id: Uuid::new_v4(),
-            to_ts: Utc::now(),
+            kicked_at: now,
+            from_ts: now - chrono::Duration::days(3),
+            to_ts: now,
+            params_version: "cards-v0.1".to_string(),
             cards: vec![PreviousCardSummary {
                 id: Uuid::new_v4(),
                 story_id: Uuid::new_v4(),
@@ -785,6 +928,10 @@ mod tests {
         let json = serde_json::to_string(&prev).expect("serialize prev");
         let deserialized: PreviousCardsJob = serde_json::from_str(&json).expect("deserialize prev");
         assert_eq!(prev.job_id, deserialized.job_id);
+        assert_eq!(prev.kicked_at, deserialized.kicked_at);
+        assert_eq!(prev.from_ts, deserialized.from_ts);
+        assert_eq!(prev.to_ts, deserialized.to_ts);
+        assert_eq!(prev.params_version, deserialized.params_version);
         assert_eq!(prev.cards.len(), deserialized.cards.len());
         assert_eq!(prev.cards[0].id, deserialized.cards[0].id);
         assert_eq!(prev.cards[0].story_id, deserialized.cards[0].story_id);

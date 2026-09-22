@@ -39,6 +39,7 @@ pub struct ScoredCluster {
     pub items: Value,
     pub scores: Value,
     pub genre: Option<String>,
+    pub member_feed_ids: Vec<Uuid>,
 }
 
 fn build_domains_json(cluster_host_counts: &HashMap<String, usize>) -> (Vec<String>, Value) {
@@ -286,6 +287,9 @@ fn score_cluster(
         "genre": cluster_genre,
     });
 
+    let mut sorted_member_feed_ids = cluster.member_ids.clone();
+    sorted_member_feed_ids.sort();
+
     Ok(Some(ScoredCluster {
         fingerprint,
         size: member_items.len(),
@@ -296,6 +300,7 @@ fn score_cluster(
         items: items_json,
         scores: scores_json,
         genre: cluster_genre,
+        member_feed_ids: sorted_member_feed_ids,
     }))
 }
 
@@ -426,6 +431,7 @@ pub fn rank_candidates(args: RankCandidatesArgs<'_>) -> Result<Vec<RecapCardCand
                 items: sc.items,
                 scores: sc.scores,
                 centroid: Some(sc.centroid),
+                member_feed_ids: sc.member_feed_ids,
                 created_at: args.created_at,
             }
         })
@@ -1118,6 +1124,7 @@ mod tests {
             centroid: vec![1.0, 0.0],
             domains: serde_json::json!({}),
             items: serde_json::json!([]),
+            member_feed_ids: vec![],
             scores: serde_json::json!({}),
             genre: genre.map(String::from),
         };
@@ -1213,5 +1220,34 @@ mod tests {
         let res = rank_candidates(args);
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("dimension mismatch"));
+    }
+
+    #[test]
+    fn test_rank_candidates_populates_sorted_member_feed_ids() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        let (id_min, id_max) = if id1 < id2 { (id1, id2) } else { (id2, id1) };
+
+        let args = RankCandidatesArgs {
+            job_id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            clusters: &[ClusterOutput {
+                cluster_id: 0,
+                member_ids: vec![id_max, id_min],
+                centroid: vec![1.0, 0.0],
+            }],
+            deduped_items: &[
+                make_item(id_max, "b.com", "2026-03-20T10:00:00Z"),
+                make_item(id_min, "a.com", "2026-03-20T10:00:00Z"),
+            ],
+            personal_vector: None,
+            alpha: 0.0,
+            previous_cards: &[],
+            previous_job_to: None,
+            theta_novelty: 0.8,
+        };
+        let res = rank_candidates(args).expect("rank_candidates must succeed");
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].member_feed_ids, vec![id_min, id_max]);
     }
 }

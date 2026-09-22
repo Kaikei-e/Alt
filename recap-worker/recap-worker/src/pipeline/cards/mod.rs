@@ -28,3 +28,5 @@ pub use pipeline::{
 };
 pub use ports::{CardGenerator, CardVerifier, EmbedCluster, FeedSource, GenreTagger};
 pub use rank::{compute_cluster_fingerprint, rank_candidates};
+
+pub(crate) const CARDS_DEGRADED_MIN_CARDS: usize = 5;

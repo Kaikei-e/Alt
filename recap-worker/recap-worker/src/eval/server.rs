@@ -41,6 +41,23 @@ pub(crate) trait EvalDao: Send + Sync {
     async fn get_cards_for_job(&self, job_id: Uuid) -> Result<Vec<RecapCard>>;
     async fn latest_rating_per_card(&self, job_id: Uuid) -> Result<Vec<RecapCardRating>>;
     async fn insert_card_rating(&self, rating: &RecapCardRating) -> Result<()>;
+    async fn latest_judgments_for_date_range(
+        &self,
+        from_ts: chrono::DateTime<chrono::Utc>,
+        to_ts: chrono::DateTime<chrono::Utc>,
+        exclude_window_id: Option<Uuid>,
+    ) -> Result<Vec<RecapStoryJudgment>>;
+    async fn get_candidates_for_date_range(
+        &self,
+        from_ts: chrono::DateTime<chrono::Utc>,
+        to_ts: chrono::DateTime<chrono::Utc>,
+        exclude_window_id: Option<Uuid>,
+    ) -> Result<Vec<RecapCardCandidate>>;
+    async fn get_eval_windows_for_date_range(
+        &self,
+        from_ts: chrono::DateTime<chrono::Utc>,
+        to_ts: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<RecapEvalWindow>>;
 }
 
 #[async_trait::async_trait]
@@ -75,6 +92,29 @@ impl EvalDao for sqlx::PgPool {
     async fn insert_card_rating(&self, rating: &RecapCardRating) -> Result<()> {
         CardsDaoOps::insert_card_rating(self, rating).await
     }
+    async fn latest_judgments_for_date_range(
+        &self,
+        from_ts: chrono::DateTime<chrono::Utc>,
+        to_ts: chrono::DateTime<chrono::Utc>,
+        exclude_window_id: Option<Uuid>,
+    ) -> Result<Vec<RecapStoryJudgment>> {
+        CardsDaoOps::latest_judgments_for_date_range(self, from_ts, to_ts, exclude_window_id).await
+    }
+    async fn get_candidates_for_date_range(
+        &self,
+        from_ts: chrono::DateTime<chrono::Utc>,
+        to_ts: chrono::DateTime<chrono::Utc>,
+        exclude_window_id: Option<Uuid>,
+    ) -> Result<Vec<RecapCardCandidate>> {
+        CardsDaoOps::get_candidates_for_date_range(self, from_ts, to_ts, exclude_window_id).await
+    }
+    async fn get_eval_windows_for_date_range(
+        &self,
+        from_ts: chrono::DateTime<chrono::Utc>,
+        to_ts: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<RecapEvalWindow>> {
+        CardsDaoOps::get_eval_windows_for_date_range(self, from_ts, to_ts).await
+    }
 }
 
 pub(crate) struct EvalServerState {
@@ -93,6 +133,8 @@ pub struct CandidateWithJudgment {
     #[serde(flatten)]
     pub candidate: RecapCardCandidate,
     pub decision: Option<String>,
+    pub decision_source: Option<String>,
+    pub inherited_source: Option<crate::eval::metrics::InheritedSource>,
 }
 
 #[derive(Debug, Serialize)]
@@ -201,24 +243,54 @@ async fn get_window_candidates(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let judgments = state
+    let direct_judgments = state
         .dao
         .latest_judgments_for_window(window_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let mut judgment_map = std::collections::HashMap::new();
-    for j in judgments {
-        judgment_map.insert(j.cluster_fingerprint, j.decision);
+    let other_windows = state
+        .dao
+        .get_eval_windows_for_date_range(window.from_ts, window.to_ts)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let other_candidates = state
+        .dao
+        .get_candidates_for_date_range(window.from_ts, window.to_ts, Some(window_id))
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let other_judgments = state
+        .dao
+        .latest_judgments_for_date_range(window.from_ts, window.to_ts, Some(window_id))
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let other_judged_clusters = crate::eval::metrics::build_judged_clusters(
+        &other_windows,
+        &other_candidates,
+        &other_judgments,
+    );
+
+    let mut direct_map = std::collections::HashMap::new();
+    for j in &direct_judgments {
+        direct_map.insert(j.cluster_fingerprint.as_str(), j.decision.as_str());
     }
 
     let candidates_with_judgments = candidates
         .into_iter()
         .map(|c| {
-            let decision = judgment_map.get(&c.cluster_fingerprint).cloned();
+            let effective = crate::eval::metrics::resolve_effective_judgment(
+                &c,
+                &direct_map,
+                &other_judged_clusters,
+            );
             CandidateWithJudgment {
                 candidate: c,
-                decision,
+                decision: effective.decision,
+                decision_source: effective.decision_source.map(|s| s.as_str().to_string()),
+                inherited_source: effective.inherited_source,
             }
         })
         .collect();
@@ -408,6 +480,7 @@ mod tests {
 
     #[derive(Default)]
     struct MockEvalDao {
+        windows_full: Mutex<Vec<RecapEvalWindow>>,
         windows: Mutex<Vec<RecapEvalWindowSummary>>,
         candidates: Mutex<Vec<RecapCardCandidate>>,
         judgments: Mutex<Vec<RecapStoryJudgment>>,
@@ -418,26 +491,99 @@ mod tests {
 
     #[async_trait::async_trait]
     impl EvalDao for MockEvalDao {
-        async fn get_eval_window(&self, _window_id: Uuid) -> Result<Option<RecapEvalWindow>> {
-            Ok(None)
+        async fn get_eval_window(&self, window_id: Uuid) -> Result<Option<RecapEvalWindow>> {
+            let list = self.windows_full.lock().unwrap();
+            Ok(list.iter().find(|w| w.id == window_id).cloned())
         }
 
         async fn list_eval_windows(&self) -> Result<Vec<RecapEvalWindowSummary>> {
             Ok(self.windows.lock().unwrap().clone())
         }
 
+        async fn latest_judgments_for_date_range(
+            &self,
+            from_ts: chrono::DateTime<chrono::Utc>,
+            to_ts: chrono::DateTime<chrono::Utc>,
+            exclude_window_id: Option<Uuid>,
+        ) -> Result<Vec<RecapStoryJudgment>> {
+            let windows = self.windows_full.lock().unwrap();
+            let matching_windows: std::collections::HashSet<Uuid> = windows
+                .iter()
+                .filter(|w| {
+                    w.from_ts == from_ts && w.to_ts == to_ts && Some(w.id) != exclude_window_id
+                })
+                .map(|w| w.id)
+                .collect();
+            let judgments = self.judgments.lock().unwrap();
+            Ok(judgments
+                .iter()
+                .filter(|j| matching_windows.contains(&j.window_id))
+                .cloned()
+                .collect())
+        }
+
+        async fn get_candidates_for_date_range(
+            &self,
+            from_ts: chrono::DateTime<chrono::Utc>,
+            to_ts: chrono::DateTime<chrono::Utc>,
+            exclude_window_id: Option<Uuid>,
+        ) -> Result<Vec<RecapCardCandidate>> {
+            let windows = self.windows_full.lock().unwrap();
+            let matching_jobs: std::collections::HashSet<Uuid> = windows
+                .iter()
+                .filter(|w| {
+                    w.from_ts == from_ts && w.to_ts == to_ts && Some(w.id) != exclude_window_id
+                })
+                .map(|w| w.snapshot_job_id)
+                .collect();
+            let candidates = self.candidates.lock().unwrap();
+            Ok(candidates
+                .iter()
+                .filter(|c| matching_jobs.contains(&c.job_id))
+                .cloned()
+                .collect())
+        }
+
+        async fn get_eval_windows_for_date_range(
+            &self,
+            from_ts: chrono::DateTime<chrono::Utc>,
+            to_ts: chrono::DateTime<chrono::Utc>,
+        ) -> Result<Vec<RecapEvalWindow>> {
+            let windows = self.windows_full.lock().unwrap();
+            Ok(windows
+                .iter()
+                .filter(|w| w.from_ts == from_ts && w.to_ts == to_ts)
+                .cloned()
+                .collect())
+        }
+
         async fn get_candidates_for_window(
             &self,
-            _window_id: Uuid,
+            window_id: Uuid,
         ) -> Result<Vec<RecapCardCandidate>> {
-            Ok(self.candidates.lock().unwrap().clone())
+            let windows = self.windows_full.lock().unwrap();
+            if let Some(w) = windows.iter().find(|w| w.id == window_id) {
+                let candidates = self.candidates.lock().unwrap();
+                Ok(candidates
+                    .iter()
+                    .filter(|c| c.job_id == w.snapshot_job_id)
+                    .cloned()
+                    .collect())
+            } else {
+                Ok(self.candidates.lock().unwrap().clone())
+            }
         }
 
         async fn latest_judgments_for_window(
             &self,
-            _window_id: Uuid,
+            window_id: Uuid,
         ) -> Result<Vec<RecapStoryJudgment>> {
-            Ok(self.judgments.lock().unwrap().clone())
+            let judgments = self.judgments.lock().unwrap();
+            Ok(judgments
+                .iter()
+                .filter(|j| j.window_id == window_id)
+                .cloned()
+                .collect())
         }
 
         async fn insert_story_judgment(&self, judgment: &RecapStoryJudgment) -> Result<()> {
@@ -958,5 +1104,172 @@ mod tests {
         assert_eq!(rating["score"], 2);
         assert_eq!(rating["flags"].as_array().unwrap()[0], "accurate");
         assert_eq!(rating["comment"], "good card");
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn test_candidates_endpoint_json_shape() {
+        let (app, dao) = setup_test_app();
+
+        let now = Utc::now();
+        let from_ts = now - chrono::Duration::days(1);
+        let to_ts = now;
+
+        let w1_id = Uuid::new_v4();
+        let job1_id = Uuid::new_v4();
+        let w2_id = Uuid::new_v4();
+        let job2_id = Uuid::new_v4();
+
+        let feed1 = Uuid::new_v4();
+        let feed2 = Uuid::new_v4();
+        let feed3 = Uuid::new_v4();
+
+        // Window 1: target window
+        let window1 = RecapEvalWindow {
+            id: w1_id,
+            from_ts,
+            to_ts,
+            snapshot_job_id: job1_id,
+            created_at: now,
+        };
+
+        // Window 2: another window covering same date range
+        let window2 = RecapEvalWindow {
+            id: w2_id,
+            from_ts,
+            to_ts,
+            snapshot_job_id: job2_id,
+            created_at: now - chrono::Duration::hours(2),
+        };
+
+        dao.windows_full
+            .lock()
+            .unwrap()
+            .extend(vec![window1, window2]);
+
+        // Candidates for Window 1:
+        // cand1: rank 1, fp "fp-direct", items [feed1]
+        // cand2: rank 2, fp "fp-inherited", items [feed2]
+        // cand3: rank 3, fp "fp-unjudged", items [feed3]
+        let cand1 = RecapCardCandidate {
+            id: Uuid::new_v4(),
+            job_id: job1_id,
+            rank: 1,
+            cluster_fingerprint: "fp-direct".to_string(),
+            size: 1,
+            domains: serde_json::json!([]),
+            items: serde_json::json!([{"feed_id": feed1.to_string()}]),
+            member_feed_ids: vec![feed1],
+            scores: serde_json::json!({}),
+            centroid: None,
+            created_at: now,
+        };
+        let cand2 = RecapCardCandidate {
+            id: Uuid::new_v4(),
+            job_id: job1_id,
+            rank: 2,
+            cluster_fingerprint: "fp-inherited".to_string(),
+            size: 1,
+            domains: serde_json::json!([]),
+            items: serde_json::json!([{"feed_id": feed2.to_string()}]),
+            member_feed_ids: vec![feed2],
+            scores: serde_json::json!({}),
+            centroid: None,
+            created_at: now,
+        };
+        let cand3 = RecapCardCandidate {
+            id: Uuid::new_v4(),
+            job_id: job1_id,
+            rank: 3,
+            cluster_fingerprint: "fp-unjudged".to_string(),
+            size: 1,
+            domains: serde_json::json!([]),
+            items: serde_json::json!([{"feed_id": feed3.to_string()}]),
+            member_feed_ids: vec![feed3],
+            scores: serde_json::json!({}),
+            centroid: None,
+            created_at: now,
+        };
+
+        // Candidate for Window 2:
+        // cand_w2: job2_id, fp "fp-src", items [feed2]
+        let cand_w2 = RecapCardCandidate {
+            id: Uuid::new_v4(),
+            job_id: job2_id,
+            rank: 1,
+            cluster_fingerprint: "fp-src".to_string(),
+            size: 1,
+            domains: serde_json::json!([]),
+            items: serde_json::json!([{"feed_id": feed2.to_string()}]),
+            member_feed_ids: vec![feed2],
+            scores: serde_json::json!({}),
+            centroid: None,
+            created_at: now,
+        };
+
+        dao.candidates
+            .lock()
+            .unwrap()
+            .extend(vec![cand1, cand2, cand3, cand_w2]);
+
+        // Direct judgment for Window 1: "fp-direct" is "not_top"
+        let j1 = RecapStoryJudgment {
+            id: Uuid::new_v4(),
+            window_id: w1_id,
+            cluster_fingerprint: "fp-direct".to_string(),
+            decision: "not_top".to_string(),
+            rated_at: now,
+        };
+
+        // Judgment for Window 2: "fp-src" is "top"
+        let j2 = RecapStoryJudgment {
+            id: Uuid::new_v4(),
+            window_id: w2_id,
+            cluster_fingerprint: "fp-src".to_string(),
+            decision: "top".to_string(),
+            rated_at: now,
+        };
+
+        dao.judgments.lock().unwrap().extend(vec![j1, j2]);
+
+        let req = Request::builder()
+            .uri(format!("/v1/eval/windows/{w1_id}/candidates"))
+            .header(header::AUTHORIZATION, format!("Bearer {TEST_TOKEN}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let val: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert_eq!(val["window"]["id"], w1_id.to_string());
+        let candidates = val["candidates"].as_array().unwrap();
+        assert_eq!(candidates.len(), 3);
+
+        // Candidate 1: direct judgment
+        let c1 = &candidates[0];
+        assert_eq!(c1["cluster_fingerprint"], "fp-direct");
+        assert_eq!(c1["decision"], "not_top");
+        assert_eq!(c1["decision_source"], "direct");
+        assert!(c1["inherited_source"].is_null());
+
+        // Candidate 2: inherited judgment from window 2
+        let c2 = &candidates[1];
+        assert_eq!(c2["cluster_fingerprint"], "fp-inherited");
+        assert_eq!(c2["decision"], "top");
+        assert_eq!(c2["decision_source"], "inherited");
+        assert_eq!(c2["inherited_source"]["window_id"], w2_id.to_string());
+        assert_eq!(c2["inherited_source"]["cluster_fingerprint"], "fp-src");
+
+        // Candidate 3: unjudged
+        let c3 = &candidates[2];
+        assert_eq!(c3["cluster_fingerprint"], "fp-unjudged");
+        assert!(c3["decision"].is_null());
+        assert!(c3["decision_source"].is_null());
+        assert!(c3["inherited_source"].is_null());
     }
 }

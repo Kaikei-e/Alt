@@ -11,6 +11,48 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use uuid::Uuid;
 
+/// Source of a candidate's judgment decision: direct in the window or inherited from another window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionSource {
+    Direct,
+    Inherited,
+}
+
+impl DecisionSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DecisionSource::Direct => "direct",
+            DecisionSource::Inherited => "inherited",
+        }
+    }
+}
+
+/// Details of the source cluster from which a judgment was inherited.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InheritedSource {
+    pub window_id: Uuid,
+    pub cluster_fingerprint: String,
+}
+
+/// Effective judgment for a candidate cluster.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffectiveJudgment {
+    pub decision: Option<String>,
+    pub decision_source: Option<DecisionSource>,
+    pub inherited_source: Option<InheritedSource>,
+}
+
+/// A judged cluster from an evaluation window covering the same date range.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JudgedCluster {
+    pub window_id: Uuid,
+    pub cluster_fingerprint: String,
+    pub decision: String,
+    pub member_feed_ids: HashSet<Uuid>,
+    pub candidate_found: bool,
+}
+
 /// Selection metrics for top-k candidate clusters.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SelectionMetrics {
@@ -73,7 +115,16 @@ pub struct DropMetrics {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EvalReport {
     pub window_id: Uuid,
+    /// Selection metrics computed with direct judgments only.
     pub selection: SelectionMetrics,
+    /// Selection metrics computed with judgment inheritance across windows sharing the date range.
+    pub selection_with_inheritance: SelectionMetrics,
+    /// Number of candidates whose effective judgment was inherited.
+    pub inherited_candidates: usize,
+    /// Number of judgments that had no matching candidate row.
+    pub judgments_without_candidate: usize,
+    /// Number of candidates that had an empty member feed IDs list.
+    pub candidates_without_members: usize,
     pub quality: QualityMetrics,
     pub execution: Option<PipelineExecutionMetrics>,
     pub drop_metrics: Option<DropMetrics>,
@@ -90,7 +141,14 @@ impl EvalReport {
         let mut out = String::new();
         let _ = writeln!(out, "# Evaluation Report: Window `{}`\n", self.window_id);
 
-        format_selection_markdown(&mut out, &self.selection);
+        format_selection_markdown(
+            &mut out,
+            &self.selection,
+            &self.selection_with_inheritance,
+            self.inherited_candidates,
+            self.judgments_without_candidate,
+            self.candidates_without_members,
+        );
         format_quality_markdown(&mut out, &self.quality);
         if let Some(exec) = &self.execution {
             format_execution_markdown(&mut out, exec);
@@ -103,28 +161,65 @@ impl EvalReport {
     }
 }
 
-fn format_selection_markdown(out: &mut String, selection: &SelectionMetrics) {
+fn format_selection_markdown(
+    out: &mut String,
+    direct: &SelectionMetrics,
+    with_inheritance: &SelectionMetrics,
+    inherited_candidates: usize,
+    judgments_without_candidate: usize,
+    candidates_without_members: usize,
+) {
     let _ = writeln!(out, "## 1. Topic Selection Metrics\n");
-    let _ = writeln!(out, "- **k**: {}", selection.k);
+    let _ = writeln!(out, "### Direct-Only (No Inheritance)\n");
+    let _ = writeln!(out, "- **k**: {}", direct.k);
     let _ = writeln!(
         out,
         "- **Precision@{}**: {:.4}",
-        selection.k, selection.precision_at_k
+        direct.k, direct.precision_at_k
+    );
+    let _ = writeln!(out, "- **nDCG@{}**: {:.4}", direct.k, direct.ndcg_at_k);
+    let _ = writeln!(
+        out,
+        "- **Judgments (top-{})**: {} top, {} not_top, {} noise, {} unjudged (total: {})\n",
+        direct.k,
+        direct.top_count,
+        direct.not_top_count,
+        direct.noise_count,
+        direct.unjudged_count,
+        direct.total_evaluated
+    );
+
+    let _ = writeln!(out, "### With Judgment Inheritance\n");
+    let _ = writeln!(out, "- **Inherited candidates**: {}", inherited_candidates);
+    let _ = writeln!(
+        out,
+        "- **Judgments without candidate**: {}",
+        judgments_without_candidate
+    );
+    let _ = writeln!(
+        out,
+        "- **Candidates without members**: {}",
+        candidates_without_members
+    );
+    let _ = writeln!(
+        out,
+        "- **Precision@{}**: {:.4}",
+        with_inheritance.k, with_inheritance.precision_at_k
     );
     let _ = writeln!(
         out,
         "- **nDCG@{}**: {:.4}",
-        selection.k, selection.ndcg_at_k
+        with_inheritance.k, with_inheritance.ndcg_at_k
     );
     let _ = writeln!(
         out,
         "- **Judgments (top-{})**: {} top, {} not_top, {} noise, {} unjudged (total: {})\n",
-        selection.k,
-        selection.top_count,
-        selection.not_top_count,
-        selection.noise_count,
-        selection.unjudged_count,
-        selection.total_evaluated
+        with_inheritance.k,
+        with_inheritance.top_count,
+        with_inheritance.not_top_count,
+        with_inheritance.noise_count,
+        with_inheritance.unjudged_count,
+        with_inheritance.total_evaluated
     );
 }
 
@@ -221,15 +316,164 @@ fn format_drop_markdown(out: &mut String, drop: &DropMetrics) {
     );
 }
 
-/// Compute topic candidate selection metrics (Precision@k, nDCG@k with binary gains and E25 cluster dedup).
+/// Build a list of `JudgedCluster`s from eval windows, their candidate clusters, and latest judgments.
+pub fn build_judged_clusters(
+    windows: &[crate::store::dao::cards::RecapEvalWindow],
+    candidates: &[RecapCardCandidate],
+    judgments: &[RecapStoryJudgment],
+) -> Vec<JudgedCluster> {
+    let job_to_window: HashMap<Uuid, Uuid> =
+        windows.iter().map(|w| (w.snapshot_job_id, w.id)).collect();
+
+    let mut candidate_map: HashMap<(Uuid, &str), &RecapCardCandidate> = HashMap::new();
+    for c in candidates {
+        if let Some(&w_id) = job_to_window.get(&c.job_id) {
+            candidate_map.insert((w_id, c.cluster_fingerprint.as_str()), c);
+        }
+    }
+
+    let mut judged_clusters = Vec::new();
+    for j in judgments {
+        let (member_feed_ids, candidate_found) =
+            match candidate_map.get(&(j.window_id, j.cluster_fingerprint.as_str())) {
+                Some(c) => (c.member_feed_ids.iter().copied().collect(), true),
+                None => (HashSet::new(), false),
+            };
+
+        judged_clusters.push(JudgedCluster {
+            window_id: j.window_id,
+            cluster_fingerprint: j.cluster_fingerprint.clone(),
+            decision: j.decision.clone(),
+            member_feed_ids,
+            candidate_found,
+        });
+    }
+
+    judged_clusters
+}
+
+/// Resolve the effective judgment for a candidate cluster.
+///
+/// Rule:
+/// 1. Direct judgment on the candidate's fingerprint in its own window always wins (`decision_source: "direct"`).
+/// 2. Otherwise, check for inheritance from judged clusters of other windows in the same date range
+///    matching via member feed IDs overlap:
+///    - Overlap = |A ∩ B| / min(|A|, |B|) >= 0.5. Empty member lists never match.
+///    - If ANY matching judged cluster is `top` => `top`
+///    - Else if ALL matching judged clusters are `noise` => `noise`
+///    - Else if ANY matching judged cluster => `not_top`
+///    - No match => unjudged (`None`, `decision_source: null`)
+pub fn resolve_effective_judgment<S: ::std::hash::BuildHasher>(
+    candidate: &RecapCardCandidate,
+    direct_judgments: &HashMap<&str, &str, S>,
+    other_judged_clusters: &[JudgedCluster],
+) -> EffectiveJudgment {
+    if let Some(&decision) = direct_judgments.get(candidate.cluster_fingerprint.as_str()) {
+        return EffectiveJudgment {
+            decision: Some(decision.to_string()),
+            decision_source: Some(DecisionSource::Direct),
+            inherited_source: None,
+        };
+    }
+
+    let cand_members: HashSet<Uuid> = candidate.member_feed_ids.iter().copied().collect();
+    if cand_members.is_empty() {
+        return EffectiveJudgment {
+            decision: None,
+            decision_source: None,
+            inherited_source: None,
+        };
+    }
+
+    let matching: Vec<&JudgedCluster> = other_judged_clusters
+        .iter()
+        .filter(|j| {
+            if j.member_feed_ids.is_empty() {
+                return false;
+            }
+            let intersection_count = cand_members
+                .iter()
+                .filter(|id| j.member_feed_ids.contains(id))
+                .count();
+            let min_len = cand_members.len().min(j.member_feed_ids.len());
+            let overlap = intersection_count as f64 / min_len as f64;
+            overlap >= 0.5
+        })
+        .collect();
+
+    if matching.is_empty() {
+        return EffectiveJudgment {
+            decision: None,
+            decision_source: None,
+            inherited_source: None,
+        };
+    }
+
+    if let Some(top_match) = matching.iter().find(|j| j.decision == "top") {
+        return EffectiveJudgment {
+            decision: Some("top".to_string()),
+            decision_source: Some(DecisionSource::Inherited),
+            inherited_source: Some(InheritedSource {
+                window_id: top_match.window_id,
+                cluster_fingerprint: top_match.cluster_fingerprint.clone(),
+            }),
+        };
+    }
+
+    if matching.iter().all(|j| j.decision == "noise") {
+        let noise_match = matching[0];
+        return EffectiveJudgment {
+            decision: Some("noise".to_string()),
+            decision_source: Some(DecisionSource::Inherited),
+            inherited_source: Some(InheritedSource {
+                window_id: noise_match.window_id,
+                cluster_fingerprint: noise_match.cluster_fingerprint.clone(),
+            }),
+        };
+    }
+
+    let not_top_match = matching
+        .iter()
+        .find(|j| j.decision == "not_top")
+        .unwrap_or(&matching[0]);
+    EffectiveJudgment {
+        decision: Some("not_top".to_string()),
+        decision_source: Some(DecisionSource::Inherited),
+        inherited_source: Some(InheritedSource {
+            window_id: not_top_match.window_id,
+            cluster_fingerprint: not_top_match.cluster_fingerprint.clone(),
+        }),
+    }
+}
+
+/// Compute topic candidate selection metrics for direct judgments only.
 pub fn compute_selection_metrics(
     candidates: &[RecapCardCandidate],
     judgments: &[RecapStoryJudgment],
     k: usize,
 ) -> SelectionMetrics {
-    let mut judgment_map: HashMap<&str, &str> = HashMap::new();
-    for j in judgments {
-        judgment_map.insert(&j.cluster_fingerprint, &j.decision);
+    compute_selection_metrics_internal(candidates, judgments, &[], k)
+}
+
+/// Compute topic candidate selection metrics with judgment inheritance across windows in the same date range.
+pub fn compute_selection_metrics_with_inheritance(
+    candidates: &[RecapCardCandidate],
+    direct_judgments: &[RecapStoryJudgment],
+    other_judged_clusters: &[JudgedCluster],
+    k: usize,
+) -> SelectionMetrics {
+    compute_selection_metrics_internal(candidates, direct_judgments, other_judged_clusters, k)
+}
+
+fn compute_selection_metrics_internal(
+    candidates: &[RecapCardCandidate],
+    direct_judgments: &[RecapStoryJudgment],
+    other_judged_clusters: &[JudgedCluster],
+    k: usize,
+) -> SelectionMetrics {
+    let mut direct_map: HashMap<&str, &str> = HashMap::new();
+    for j in direct_judgments {
+        direct_map.insert(&j.cluster_fingerprint, &j.decision);
     }
 
     let mut sorted_candidates = candidates.to_vec();
@@ -248,9 +492,9 @@ pub fn compute_selection_metrics(
 
     for (idx, c) in top_k_candidates.iter().enumerate() {
         let is_first_seen = seen_clusters.insert(c.cluster_fingerprint.as_str());
-        let decision = judgment_map.get(c.cluster_fingerprint.as_str()).copied();
+        let effective = resolve_effective_judgment(c, &direct_map, other_judged_clusters);
 
-        match decision {
+        match effective.decision.as_deref() {
             Some("top") => {
                 top_count += 1;
                 if is_first_seen {
@@ -273,13 +517,21 @@ pub fn compute_selection_metrics(
 
     let precision_at_k = f64::from(relevant_count) / k_eff as f64;
 
-    let total_top_in_window = judgments
-        .iter()
-        .filter(|j| j.decision == "top")
-        .map(|j| j.cluster_fingerprint.as_str())
-        .collect::<HashSet<_>>()
-        .len();
+    let mut top_clusters: HashSet<&str> = HashSet::new();
+    for j in direct_judgments {
+        if j.decision == "top" {
+            top_clusters.insert(j.cluster_fingerprint.as_str());
+        }
+    }
+    // With inheritance, candidates evaluated as top also contribute to top clusters
+    for c in candidates {
+        let eff = resolve_effective_judgment(c, &direct_map, other_judged_clusters);
+        if eff.decision.as_deref() == Some("top") {
+            top_clusters.insert(c.cluster_fingerprint.as_str());
+        }
+    }
 
+    let total_top_in_window = top_clusters.len();
     let ideal_hits = total_top_in_window.min(k_eff);
     let mut idcg = 0.0;
     for idx in 0..ideal_hits {
@@ -454,28 +706,90 @@ pub fn compute_execution_metrics(
     })
 }
 
-/// Compute complete evaluation report given candidate clusters, judgments, generated cards, ratings, and optional aggregate drop metrics.
+/// Compute complete evaluation report given candidate clusters, judgments, other window judged clusters,
+/// generated cards, ratings, and optional aggregate drop metrics.
 #[allow(clippy::too_many_arguments)]
 pub fn compute_eval_report(
     window_id: Uuid,
     candidates: &[RecapCardCandidate],
-    judgments: &[RecapStoryJudgment],
+    direct_judgments: &[RecapStoryJudgment],
+    other_judged_clusters: &[JudgedCluster],
     cards: &[RecapCard],
     ratings: &[RecapCardRating],
     stats: Option<&RecapCardJobStats>,
     drop_metrics: Option<DropMetrics>,
     k: usize,
 ) -> EvalReport {
+    let selection_direct = compute_selection_metrics(candidates, direct_judgments, k);
+    let selection_inherited = compute_selection_metrics_with_inheritance(
+        candidates,
+        direct_judgments,
+        other_judged_clusters,
+        k,
+    );
+
+    let mut direct_map: HashMap<&str, &str> = HashMap::new();
+    for j in direct_judgments {
+        direct_map.insert(&j.cluster_fingerprint, &j.decision);
+    }
+
+    let inherited_candidates = candidates
+        .iter()
+        .filter(|c| {
+            let eff = resolve_effective_judgment(c, &direct_map, other_judged_clusters);
+            eff.decision_source == Some(DecisionSource::Inherited)
+        })
+        .count();
+
+    let direct_candidate_fingerprints: HashSet<&str> = candidates
+        .iter()
+        .map(|c| c.cluster_fingerprint.as_str())
+        .collect();
+    let direct_judgments_without_candidate = direct_judgments
+        .iter()
+        .filter(|j| !direct_candidate_fingerprints.contains(j.cluster_fingerprint.as_str()))
+        .count();
+    let other_judgments_without_candidate = other_judged_clusters
+        .iter()
+        .filter(|j| !j.candidate_found)
+        .count();
+    let judgments_without_candidate =
+        direct_judgments_without_candidate + other_judgments_without_candidate;
+
+    let direct_candidates_without_members = candidates
+        .iter()
+        .filter(|c| c.member_feed_ids.is_empty())
+        .count();
+    let other_candidates_without_members = other_judged_clusters
+        .iter()
+        .filter(|j| j.candidate_found && j.member_feed_ids.is_empty())
+        .count();
+    let candidates_without_members =
+        direct_candidates_without_members + other_candidates_without_members;
+
+    if judgments_without_candidate > 0 || candidates_without_members > 0 {
+        tracing::warn!(
+            window_id = %window_id,
+            judgments_without_candidate,
+            candidates_without_members,
+            "eval report contains judgments without candidate or candidates without members"
+        );
+    }
+
     EvalReport {
         window_id,
-        selection: compute_selection_metrics(candidates, judgments, k),
+        selection: selection_direct,
+        selection_with_inheritance: selection_inherited,
+        inherited_candidates,
+        judgments_without_candidate,
+        candidates_without_members,
         quality: compute_quality_metrics(cards, ratings),
         execution: compute_execution_metrics(stats, cards),
         drop_metrics,
     }
 }
 
-/// Fetch data from DB and compute evaluation report for a window.
+/// Fetch data from DB and compute evaluation report for a window, including judgment inheritance across windows in the same date range.
 pub async fn generate_window_report(
     pool: &sqlx::PgPool,
     window_id: Uuid,
@@ -497,6 +811,35 @@ pub async fn generate_window_report(
         crate::store::dao::cards::CardsDaoOps::latest_judgments_for_window(pool, window_id)
             .await
             .map_err(|e| format!("failed to fetch judgments: {e}"))?;
+
+    let other_windows = crate::store::dao::cards::CardsDaoOps::get_eval_windows_for_date_range(
+        pool,
+        window.from_ts,
+        window.to_ts,
+    )
+    .await
+    .map_err(|e| format!("failed to fetch date range windows: {e}"))?;
+
+    let other_candidates = crate::store::dao::cards::CardsDaoOps::get_candidates_for_date_range(
+        pool,
+        window.from_ts,
+        window.to_ts,
+        Some(window_id),
+    )
+    .await
+    .map_err(|e| format!("failed to fetch date range candidates: {e}"))?;
+
+    let other_judgments = crate::store::dao::cards::CardsDaoOps::latest_judgments_for_date_range(
+        pool,
+        window.from_ts,
+        window.to_ts,
+        Some(window_id),
+    )
+    .await
+    .map_err(|e| format!("failed to fetch date range judgments: {e}"))?;
+
+    let other_judged_clusters =
+        build_judged_clusters(&other_windows, &other_candidates, &other_judgments);
 
     let cards =
         crate::store::dao::cards::CardsDaoOps::get_cards_for_job(pool, window.snapshot_job_id)
@@ -540,6 +883,7 @@ pub async fn generate_window_report(
         window_id,
         &candidates,
         &judgments,
+        &other_judged_clusters,
         &cards,
         &ratings,
         stats.as_ref(),
@@ -567,6 +911,7 @@ mod tests {
                 size: 3,
                 domains: serde_json::json!([{"host": "example.com", "count": 2}]),
                 items: serde_json::json!([]),
+                member_feed_ids: vec![],
                 scores: serde_json::json!({}),
                 centroid: None,
                 created_at: Utc::now(),
@@ -579,6 +924,7 @@ mod tests {
                 size: 2,
                 domains: serde_json::json!([{"host": "example.com", "count": 1}]),
                 items: serde_json::json!([]),
+                member_feed_ids: vec![],
                 scores: serde_json::json!({}),
                 centroid: None,
                 created_at: Utc::now(),
@@ -591,6 +937,7 @@ mod tests {
                 size: 1,
                 domains: serde_json::json!([]),
                 items: serde_json::json!([]),
+                member_feed_ids: vec![],
                 scores: serde_json::json!({}),
                 centroid: None,
                 created_at: Utc::now(),
@@ -621,8 +968,17 @@ mod tests {
             },
         ];
 
-        let report =
-            compute_eval_report(window_id, &candidates, &judgments, &[], &[], None, None, 3);
+        let report = compute_eval_report(
+            window_id,
+            &candidates,
+            &judgments,
+            &[],
+            &[],
+            &[],
+            None,
+            None,
+            3,
+        );
 
         // Top 3 has fp-1 (top), fp-2 (not_top), fp-3 (top)
         // Precision@3 = 2 / 3
@@ -685,6 +1041,7 @@ mod tests {
                 size: 3,
                 domains: serde_json::json!([]),
                 items: serde_json::json!([]),
+                member_feed_ids: vec![],
                 scores: serde_json::json!({}),
                 centroid: None,
                 created_at: Utc::now(),
@@ -697,6 +1054,7 @@ mod tests {
                 size: 3,
                 domains: serde_json::json!([]),
                 items: serde_json::json!([]),
+                member_feed_ids: vec![],
                 scores: serde_json::json!({}),
                 centroid: None,
                 created_at: Utc::now(),
@@ -711,8 +1069,17 @@ mod tests {
             rated_at: Utc::now(),
         }];
 
-        let report =
-            compute_eval_report(window_id, &candidates, &judgments, &[], &[], None, None, 2);
+        let report = compute_eval_report(
+            window_id,
+            &candidates,
+            &judgments,
+            &[],
+            &[],
+            &[],
+            None,
+            None,
+            2,
+        );
 
         // Only 1 relevant unique cluster in top 2 -> precision@2 = 1 / 2 = 0.5
         assert_approx_eq(report.selection.precision_at_k, 0.5);
@@ -779,6 +1146,7 @@ mod tests {
             window_id,
             &[],
             &[],
+            &[],
             &cards,
             &ratings,
             Some(&stats),
@@ -835,6 +1203,7 @@ mod tests {
         let drop_metrics = compute_drop_metrics(&[&stats], &[1]);
         let report = compute_eval_report(
             window_id,
+            &[],
             &[],
             &[],
             &cards,
@@ -950,5 +1319,417 @@ mod tests {
         let exec_4_kept = compute_execution_metrics(Some(&stats_4_kept), &[]).unwrap();
         assert!((exec_4_kept.drop_rate - (2.0 / 6.0)).abs() < 1e-4);
         assert!((exec_4_kept.drop_rate - 0.3333).abs() < 1e-3);
+    }
+
+    fn make_test_candidate_with_feeds(
+        job_id: Uuid,
+        rank: i32,
+        cluster_fingerprint: &str,
+        feed_ids: &[Uuid],
+    ) -> RecapCardCandidate {
+        let items: Vec<serde_json::Value> = feed_ids
+            .iter()
+            .map(|fid| serde_json::json!({"feed_id": fid.to_string(), "title": "Test Item"}))
+            .collect();
+
+        RecapCardCandidate {
+            id: Uuid::new_v4(),
+            job_id,
+            rank,
+            cluster_fingerprint: cluster_fingerprint.to_string(),
+            size: feed_ids.len() as i32,
+            domains: serde_json::json!([]),
+            items: serde_json::Value::Array(items),
+            member_feed_ids: feed_ids.to_vec(),
+            scores: serde_json::json!({}),
+            centroid: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn test_inheritance_top_wins() {
+        let feed1 = Uuid::new_v4();
+        let feed2 = Uuid::new_v4();
+        let cand = make_test_candidate_with_feeds(Uuid::new_v4(), 1, "fp-target", &[feed1, feed2]);
+        let direct_judgments: HashMap<&str, &str> = HashMap::new();
+
+        let src_window_a = Uuid::new_v4();
+        let src_window_b = Uuid::new_v4();
+        let other_judged_clusters = vec![
+            JudgedCluster {
+                window_id: src_window_a,
+                cluster_fingerprint: "fp-noise".to_string(),
+                member_feed_ids: vec![feed1].into_iter().collect(),
+                decision: "noise".to_string(),
+                candidate_found: true,
+            },
+            JudgedCluster {
+                window_id: src_window_b,
+                cluster_fingerprint: "fp-top".to_string(),
+                member_feed_ids: vec![feed2].into_iter().collect(),
+                decision: "top".to_string(),
+                candidate_found: true,
+            },
+        ];
+
+        let effective =
+            resolve_effective_judgment(&cand, &direct_judgments, &other_judged_clusters);
+        assert_eq!(effective.decision.as_deref(), Some("top"));
+        assert_eq!(effective.decision_source, Some(DecisionSource::Inherited));
+        let src = effective
+            .inherited_source
+            .expect("must have inherited source");
+        assert_eq!(src.window_id, src_window_b);
+        assert_eq!(src.cluster_fingerprint, "fp-top");
+    }
+
+    #[test]
+    fn test_inheritance_all_noise() {
+        let feed1 = Uuid::new_v4();
+        let feed2 = Uuid::new_v4();
+        let cand = make_test_candidate_with_feeds(Uuid::new_v4(), 1, "fp-target", &[feed1, feed2]);
+        let direct_judgments: HashMap<&str, &str> = HashMap::new();
+
+        let src_window_a = Uuid::new_v4();
+        let src_window_b = Uuid::new_v4();
+        let other_judged_clusters = vec![
+            JudgedCluster {
+                window_id: src_window_a,
+                cluster_fingerprint: "fp-noise1".to_string(),
+                member_feed_ids: vec![feed1].into_iter().collect(),
+                decision: "noise".to_string(),
+                candidate_found: true,
+            },
+            JudgedCluster {
+                window_id: src_window_b,
+                cluster_fingerprint: "fp-noise2".to_string(),
+                member_feed_ids: vec![feed2].into_iter().collect(),
+                decision: "noise".to_string(),
+                candidate_found: true,
+            },
+        ];
+
+        let effective =
+            resolve_effective_judgment(&cand, &direct_judgments, &other_judged_clusters);
+        assert_eq!(effective.decision.as_deref(), Some("noise"));
+        assert_eq!(effective.decision_source, Some(DecisionSource::Inherited));
+        assert!(effective.inherited_source.is_some());
+    }
+
+    #[test]
+    fn test_inheritance_mixed_not_top() {
+        let feed1 = Uuid::new_v4();
+        let feed2 = Uuid::new_v4();
+        let cand = make_test_candidate_with_feeds(Uuid::new_v4(), 1, "fp-target", &[feed1, feed2]);
+        let direct_judgments: HashMap<&str, &str> = HashMap::new();
+
+        let src_window_a = Uuid::new_v4();
+        let src_window_b = Uuid::new_v4();
+        let other_judged_clusters = vec![
+            JudgedCluster {
+                window_id: src_window_a,
+                cluster_fingerprint: "fp-noise".to_string(),
+                member_feed_ids: vec![feed1].into_iter().collect(),
+                decision: "noise".to_string(),
+                candidate_found: true,
+            },
+            JudgedCluster {
+                window_id: src_window_b,
+                cluster_fingerprint: "fp-not-top".to_string(),
+                member_feed_ids: vec![feed2].into_iter().collect(),
+                decision: "not_top".to_string(),
+                candidate_found: true,
+            },
+        ];
+
+        let effective =
+            resolve_effective_judgment(&cand, &direct_judgments, &other_judged_clusters);
+        assert_eq!(effective.decision.as_deref(), Some("not_top"));
+        assert_eq!(effective.decision_source, Some(DecisionSource::Inherited));
+        let src = effective
+            .inherited_source
+            .expect("must have inherited source");
+        assert_eq!(src.window_id, src_window_b);
+        assert_eq!(src.cluster_fingerprint, "fp-not-top");
+    }
+
+    #[test]
+    fn test_inheritance_no_overlap() {
+        let feed1 = Uuid::new_v4();
+        let feed2 = Uuid::new_v4();
+        let feed3 = Uuid::new_v4();
+        let cand = make_test_candidate_with_feeds(Uuid::new_v4(), 1, "fp-target", &[feed1]);
+        let direct_judgments: HashMap<&str, &str> = HashMap::new();
+
+        let other_judged_clusters = vec![JudgedCluster {
+            window_id: Uuid::new_v4(),
+            cluster_fingerprint: "fp-disjoint".to_string(),
+            member_feed_ids: vec![feed2, feed3].into_iter().collect(),
+            decision: "top".to_string(),
+            candidate_found: true,
+        }];
+
+        let effective =
+            resolve_effective_judgment(&cand, &direct_judgments, &other_judged_clusters);
+        assert_eq!(effective.decision, None);
+        assert_eq!(effective.decision_source, None);
+        assert_eq!(effective.inherited_source, None);
+    }
+
+    #[test]
+    fn test_direct_beats_inherited() {
+        let feed1 = Uuid::new_v4();
+        let cand = make_test_candidate_with_feeds(Uuid::new_v4(), 1, "fp-cand", &[feed1]);
+        let mut direct_judgments: HashMap<&str, &str> = HashMap::new();
+        direct_judgments.insert("fp-cand", "not_top");
+
+        let other_judged_clusters = vec![JudgedCluster {
+            window_id: Uuid::new_v4(),
+            cluster_fingerprint: "fp-other-top".to_string(),
+            member_feed_ids: vec![feed1].into_iter().collect(),
+            decision: "top".to_string(),
+            candidate_found: true,
+        }];
+
+        let effective =
+            resolve_effective_judgment(&cand, &direct_judgments, &other_judged_clusters);
+        assert_eq!(effective.decision.as_deref(), Some("not_top"));
+        assert_eq!(effective.decision_source, Some(DecisionSource::Direct));
+        assert_eq!(effective.inherited_source, None);
+    }
+
+    #[test]
+    fn test_inheritance_overlap_threshold() {
+        let direct_judgments: HashMap<&str, &str> = HashMap::new();
+        let shared1 = Uuid::new_v4();
+        let shared2 = Uuid::new_v4();
+
+        // 1 of 12 shared: |A|=12, |B|=10, shared=1 -> 1 / min(12, 10) = 0.1 < 0.5 => unjudged
+        let cand_12 = {
+            let mut feeds = vec![shared1];
+            for _ in 0..11 {
+                feeds.push(Uuid::new_v4());
+            }
+            make_test_candidate_with_feeds(Uuid::new_v4(), 1, "fp-12", &feeds)
+        };
+        let other_10 = {
+            let mut feeds = vec![shared1];
+            for _ in 0..9 {
+                feeds.push(Uuid::new_v4());
+            }
+            JudgedCluster {
+                window_id: Uuid::new_v4(),
+                cluster_fingerprint: "fp-other-10".to_string(),
+                member_feed_ids: feeds.into_iter().collect(),
+                decision: "top".to_string(),
+                candidate_found: true,
+            }
+        };
+        let eff_below = resolve_effective_judgment(&cand_12, &direct_judgments, &[other_10]);
+        assert_eq!(eff_below.decision, None);
+
+        // 8 of 10 shared: |A|=10, |B|=10, shared=8 -> 8 / 10 = 0.8 >= 0.5 => inherited top
+        let shared_8: Vec<Uuid> = (0..8).map(|_| Uuid::new_v4()).collect();
+        let cand_10 = {
+            let mut feeds = shared_8.clone();
+            feeds.push(Uuid::new_v4());
+            feeds.push(Uuid::new_v4());
+            make_test_candidate_with_feeds(Uuid::new_v4(), 2, "fp-10", &feeds)
+        };
+        let other_shared = {
+            let mut feeds = shared_8;
+            feeds.push(Uuid::new_v4());
+            feeds.push(Uuid::new_v4());
+            JudgedCluster {
+                window_id: Uuid::new_v4(),
+                cluster_fingerprint: "fp-other-top".to_string(),
+                member_feed_ids: feeds.into_iter().collect(),
+                decision: "top".to_string(),
+                candidate_found: true,
+            }
+        };
+        let eff_above = resolve_effective_judgment(&cand_10, &direct_judgments, &[other_shared]);
+        assert_eq!(eff_above.decision.as_deref(), Some("top"));
+
+        // Exactly 0.5: |A|=4, |B|=4, shared=2 -> 2 / 4 = 0.5 >= 0.5 => inherited top
+        let u3 = Uuid::new_v4();
+        let u4 = Uuid::new_v4();
+        let cand_4 =
+            make_test_candidate_with_feeds(Uuid::new_v4(), 3, "fp-4", &[shared1, shared2, u3, u4]);
+        let other_4 = JudgedCluster {
+            window_id: Uuid::new_v4(),
+            cluster_fingerprint: "fp-exact-half".to_string(),
+            member_feed_ids: vec![shared1, shared2, Uuid::new_v4(), Uuid::new_v4()]
+                .into_iter()
+                .collect(),
+            decision: "top".to_string(),
+            candidate_found: true,
+        };
+        let eff_exact = resolve_effective_judgment(&cand_4, &direct_judgments, &[other_4]);
+        assert_eq!(eff_exact.decision.as_deref(), Some("top"));
+    }
+
+    #[test]
+    fn test_inheritance_empty_members_excluded_and_counted() {
+        let window_id = Uuid::new_v4();
+        let job_id = Uuid::new_v4();
+
+        // Candidate with empty members
+        let cand_empty = RecapCardCandidate {
+            id: Uuid::new_v4(),
+            job_id,
+            rank: 1,
+            cluster_fingerprint: "fp-empty".to_string(),
+            size: 0,
+            domains: serde_json::json!([]),
+            items: serde_json::json!([]),
+            member_feed_ids: vec![],
+            scores: serde_json::json!({}),
+            centroid: None,
+            created_at: Utc::now(),
+        };
+
+        let other_judged = JudgedCluster {
+            window_id: Uuid::new_v4(),
+            cluster_fingerprint: "fp-src-empty".to_string(),
+            member_feed_ids: HashSet::new(),
+            decision: "top".to_string(),
+            candidate_found: true,
+        };
+
+        let report = compute_eval_report(
+            window_id,
+            &[cand_empty],
+            &[],
+            &[other_judged],
+            &[],
+            &[],
+            None,
+            None,
+            1,
+        );
+
+        assert_eq!(report.selection_with_inheritance.top_count, 0);
+        assert_eq!(report.inherited_candidates, 0);
+        // cand_empty has empty members (1) + other_judged has empty members (1) = 2
+        assert_eq!(report.candidates_without_members, 2);
+    }
+
+    #[test]
+    fn test_judgments_without_candidate_counted() {
+        let window_id = Uuid::new_v4();
+        let job_id = Uuid::new_v4();
+
+        let cand = make_test_candidate_with_feeds(job_id, 1, "fp-1", &[Uuid::new_v4()]);
+        // Direct judgment whose candidate was purged from candidates
+        let j_purged = RecapStoryJudgment {
+            id: Uuid::new_v4(),
+            window_id,
+            cluster_fingerprint: "fp-purged".to_string(),
+            decision: "top".to_string(),
+            rated_at: Utc::now(),
+        };
+
+        // Other window judgment with candidate_found = false
+        let other_judged = JudgedCluster {
+            window_id: Uuid::new_v4(),
+            cluster_fingerprint: "fp-no-candidate".to_string(),
+            member_feed_ids: HashSet::new(),
+            decision: "top".to_string(),
+            candidate_found: false,
+        };
+
+        let report = compute_eval_report(
+            window_id,
+            &[cand],
+            &[j_purged],
+            &[other_judged],
+            &[],
+            &[],
+            None,
+            None,
+            1,
+        );
+
+        assert_eq!(report.judgments_without_candidate, 2);
+    }
+
+    #[test]
+    fn test_report_numbers_with_and_without_inheritance() {
+        let window_id = Uuid::new_v4();
+        let job_id = Uuid::new_v4();
+        let feed1 = Uuid::new_v4();
+        let feed2 = Uuid::new_v4();
+
+        let cand1 = make_test_candidate_with_feeds(job_id, 1, "fp-1", &[feed1]);
+        let cand2 = make_test_candidate_with_feeds(job_id, 2, "fp-2", &[feed2]);
+        let candidates = vec![cand1, cand2];
+
+        // Direct judgments: only fp-2 is judged (as not_top). fp-1 is unjudged.
+        let direct_judgments = vec![RecapStoryJudgment {
+            id: Uuid::new_v4(),
+            window_id,
+            cluster_fingerprint: "fp-2".to_string(),
+            decision: "not_top".to_string(),
+            rated_at: Utc::now(),
+        }];
+
+        // Other window judged clusters: fp-other has feed1 and was judged "top"
+        let src_window = Uuid::new_v4();
+        let other_judged_clusters = vec![JudgedCluster {
+            window_id: src_window,
+            cluster_fingerprint: "fp-other".to_string(),
+            member_feed_ids: vec![feed1].into_iter().collect(),
+            decision: "top".to_string(),
+            candidate_found: true,
+        }];
+
+        let report = compute_eval_report(
+            window_id,
+            &candidates,
+            &direct_judgments,
+            &other_judged_clusters,
+            &[],
+            &[],
+            None,
+            None,
+            2,
+        );
+
+        // Direct-only selection metrics:
+        // fp-1 is unjudged, fp-2 is not_top
+        assert_eq!(report.selection.top_count, 0);
+        assert_eq!(report.selection.not_top_count, 1);
+        assert_eq!(report.selection.unjudged_count, 1);
+        assert_approx_eq(report.selection.precision_at_k, 0.0);
+        assert_approx_eq(report.selection.ndcg_at_k, 0.0);
+
+        // Selection metrics with inheritance:
+        // fp-1 inherits "top", fp-2 has direct "not_top"
+        assert_eq!(report.selection_with_inheritance.top_count, 1);
+        assert_eq!(report.selection_with_inheritance.not_top_count, 1);
+        assert_eq!(report.selection_with_inheritance.unjudged_count, 0);
+        assert_approx_eq(report.selection_with_inheritance.precision_at_k, 0.5);
+        assert_approx_eq(report.selection_with_inheritance.ndcg_at_k, 1.0);
+
+        assert_eq!(report.inherited_candidates, 1);
+        assert_eq!(report.judgments_without_candidate, 0);
+        assert_eq!(report.candidates_without_members, 0);
+
+        // JSON check
+        let json_str = report.to_json().expect("to_json");
+        assert!(json_str.contains("\"inherited_candidates\": 1"));
+        assert!(json_str.contains("\"judgments_without_candidate\": 0"));
+        assert!(json_str.contains("\"candidates_without_members\": 0"));
+        assert!(json_str.contains("\"selection_with_inheritance\":"));
+
+        // Markdown check
+        let md_str = report.to_markdown();
+        assert!(md_str.contains("### Direct-Only (No Inheritance)"));
+        assert!(md_str.contains("### With Judgment Inheritance"));
+        assert!(md_str.contains("- **Inherited candidates**: 1"));
+        assert!(md_str.contains("- **Judgments without candidate**: 0"));
+        assert!(md_str.contains("- **Candidates without members**: 0"));
     }
 }

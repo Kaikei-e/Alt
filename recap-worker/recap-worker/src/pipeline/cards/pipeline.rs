@@ -189,8 +189,8 @@ impl CardsPipelineDao for UnifiedDao {
                 r"
                 INSERT INTO recap_card_candidates (
                     id, job_id, rank, cluster_fingerprint, size,
-                    domains, items, scores, centroid
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    domains, items, scores, centroid, member_feed_ids
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 ",
             )
             .bind(c.id)
@@ -202,6 +202,7 @@ impl CardsPipelineDao for UnifiedDao {
             .bind(sqlx::types::Json(&c.items))
             .bind(sqlx::types::Json(&c.scores))
             .bind(&c.centroid)
+            .bind(&c.member_feed_ids)
             .execute(&mut *tx)
             .await
             .map_err(|e| anyhow::anyhow!("failed to insert recap_card_candidate: {e}"))?;
@@ -1587,7 +1588,7 @@ impl CardsPipeline {
                     )
                     .await?;
 
-                if cards.len() < 5 {
+                if cards.len() < super::CARDS_DEGRADED_MIN_CARDS {
                     tracing::warn!(
                         job_id = %job_id,
                         cards_selected = cards.len(),
@@ -1598,7 +1599,10 @@ impl CardsPipeline {
                             job_id,
                             JobStatus::Running,
                             Some("cards_job_degraded"),
-                            Some("selected cards count below threshold of 5"),
+                            Some(&format!(
+                                "selected cards count below threshold of {}",
+                                super::CARDS_DEGRADED_MIN_CARDS
+                            )),
                         )
                         .await?;
                 }
@@ -2241,9 +2245,16 @@ mod tests {
         };
         *dao.previous_job.lock().unwrap() = Some(PreviousCardsJob {
             job_id: prev_job_id,
+            kicked_at: DateTime::parse_from_rfc3339("2026-03-19T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            from_ts: DateTime::parse_from_rfc3339("2026-03-16T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
             to_ts: DateTime::parse_from_rfc3339("2026-03-19T00:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc),
+            params_version: "cards-v0.1".to_string(),
             cards: vec![prev_card],
         });
 
@@ -2281,6 +2292,7 @@ mod tests {
         let candidates = dao.candidates.lock().unwrap().clone();
         assert_eq!(candidates.len(), 1);
         let c = &candidates[0];
+        assert_eq!(c.member_feed_ids, vec![id1]);
         assert_eq!(c.scores["story_id"], json!(prev_story_id));
         assert_eq!(c.scores["continues_card_id"], json!(prev_card_id));
         assert!((c.scores["personal"].as_f64().unwrap() - 1.0).abs() < 1e-4);
@@ -2550,7 +2562,7 @@ mod tests {
         assert_eq!(stats.len(), 1);
         assert_eq!(stats[0].cards_selected, 1);
 
-        // Check that degraded status was recorded because cards < 5
+        // Check that degraded status was recorded because cards < CARDS_DEGRADED_MIN_CARDS
         let statuses = dao.statuses.lock().unwrap().clone();
         assert!(
             statuses

@@ -543,6 +543,19 @@
       color: var(--text-muted);
     }
 
+    .inherited-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--primary-subtle);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: var(--primary);
+      display: inline-flex;
+      align-items: center;
+      margin-left: 6px;
+    }
+
     /* Cards view */
     .cards-list {
       display: flex;
@@ -1581,6 +1594,17 @@
           });
 
           actionsDiv.appendChild(btnGroup);
+          if (cand.decision_source === 'inherited') {
+            const inheritedBadge = document.createElement('span');
+            inheritedBadge.className = 'inherited-badge';
+            inheritedBadge.textContent = 'Inherited';
+            if (cand.inherited_source && cand.inherited_source.window_id) {
+              inheritedBadge.title = 'Inherited from window ' + cand.inherited_source.window_id + ' (cluster ' + cand.inherited_source.cluster_fingerprint.substring(0, 8) + '...)';
+            } else {
+              inheritedBadge.title = 'Inherited judgment';
+            }
+            actionsDiv.appendChild(inheritedBadge);
+          }
           actionsDiv.appendChild(statusSpan);
           row.appendChild(actionsDiv);
 
@@ -1636,8 +1660,15 @@
           });
 
           cand.decision = decision;
+          cand.decision_source = 'direct';
+          cand.inherited_source = null;
           statusEl.textContent = 'Saved ✓';
           statusEl.style.color = 'var(--top-color)';
+
+          const inheritedBadge = rowEl.querySelector('.inherited-badge');
+          if (inheritedBadge) {
+            inheritedBadge.remove();
+          }
 
           buttons.forEach(function (b) {
             b.classList.remove('active-top', 'active-not_top', 'active-noise');
