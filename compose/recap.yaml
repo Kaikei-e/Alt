@@ -185,6 +185,11 @@ services:
       # same secret is mounted into recap-subworker as ADMIN_TOKEN_FILE.
       - RECAP_ADMIN_TOKEN_FILE=/run/secrets/recap_admin_token
       - RECAP_ADMIN_AUTH=${RECAP_ADMIN_AUTH:-}
+      - RECAP_EVAL_LISTENER=enabled
+      - RECAP_EVAL_LISTEN_ADDR=0.0.0.0:9006
+      - RECAP_CARDS_JOB=disabled
+      - RECAP_CARDS_JOB_UTC_TIME=17:30
+      - RECAP_CARDS_USER_ID=${RECAP_CARDS_USER_ID:-}
     secrets:
       - recap_db_password
       - hugging_face_token
@@ -221,6 +226,8 @@ services:
       # extractor (their callers — alt-frontend-sv, alt-backend — are outside
       # this change). Loopback bind.
       - "127.0.0.1:9005:9005"
+      # Dedicated evaluation listener: 127.0.0.1 limits the host only; the bearer token is the real gate.
+      - "127.0.0.1:9006:9006"
     healthcheck:
       test: ["CMD", "/usr/local/bin/recap-worker", "healthcheck"]
       interval: 10s

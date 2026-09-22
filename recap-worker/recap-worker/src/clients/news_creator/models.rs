@@ -254,3 +254,87 @@ pub(crate) struct MorningLetterResponseMetadata {
     #[serde(default)]
     pub(crate) processing_time_ms: Option<u64>,
 }
+
+// ============================================================================
+// Card Generation Models
+// ============================================================================
+
+fn default_prompt_version() -> String {
+    "recap_card.v1".to_string()
+}
+
+/// カード生成リクエストの入力アイテム。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardItemInput {
+    pub(crate) n: usize,
+    pub(crate) feed_id: Uuid,
+    pub(crate) title: String,
+    pub(crate) host: String,
+    pub(crate) url: String,
+    #[serde(default)]
+    pub(crate) pub_date: Option<String>,
+    pub(crate) lede: String,
+}
+
+/// カード生成リクエスト (POST /v1/cards/generate)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardGenerateRequest {
+    pub(crate) job_id: Uuid,
+    pub(crate) candidate_id: Uuid,
+    #[serde(default = "default_prompt_version")]
+    pub(crate) prompt_version: String,
+    pub(crate) items: Vec<CardItemInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) revision_note: Option<String>,
+}
+
+/// カード本文の各文および引用番号。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardSentence {
+    pub(crate) text: String,
+    pub(crate) refs: Vec<usize>,
+}
+
+/// カード本文。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardContent {
+    pub(crate) headline_ja: String,
+    pub(crate) what_ja: Vec<CardSentence>,
+    #[serde(default)]
+    pub(crate) why_ja: Option<CardSentence>,
+    pub(crate) used_refs: Vec<usize>,
+}
+
+/// カード生成メタデータ。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardGenerationMetadata {
+    pub(crate) model: String,
+    pub(crate) prompt_version: String,
+    pub(crate) cache_hit: bool,
+    pub(crate) prompt_tokens: usize,
+    pub(crate) completion_tokens: usize,
+    pub(crate) ms: u64,
+    pub(crate) raw_text: String,
+}
+
+/// カード生成成功レスポンス (200 OK)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardGenerateResponse {
+    pub(crate) card: CardContent,
+    pub(crate) generation: CardGenerationMetadata,
+}
+
+/// カード生成失敗レスポンス (422 Unprocessable Entity)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardGenerate422Response {
+    pub(crate) reason: String,
+    pub(crate) attempts: usize,
+    pub(crate) raw_text: String,
+}
+
+/// カード生成呼び出し結果。
+#[derive(Debug, Clone)]
+pub(crate) enum CardGenerateOutcome {
+    Success(CardGenerateResponse),
+    Rejected(CardGenerate422Response),
+}

@@ -35,6 +35,7 @@ import (
 	"alt/dataplane/port/internal_feed_port"
 	"alt/dataplane/port/internal_tag_port"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
+	"alt/dataplane/usecase/feeds_in_window_usecase"
 	"alt/dataplane/usecase/outbox_usecase"
 	"alt/dataplane/usecase/push_delivery_usecase"
 	"alt/dataplane/usecase/recap_articles_usecase"
@@ -114,6 +115,7 @@ type Handler struct {
 
 	// Recap article window (recap-worker paginated fetch).
 	recapArticlesUsecase recapArticlesUsecase
+	feedsInWindowUsecase feedsInWindowUsecase
 
 	// Absorbed REST routes (ADR-000954 D6). Required — see NewHandler.
 	systemUser     SystemUserPort
@@ -1357,6 +1359,20 @@ func WithRecapArticlesUsecase(uc recapArticlesUsecase) HandlerOption {
 	}
 }
 
+// feedsInWindowUsecase is the minimal interface for paginated feed window
+// fetch. The concrete usecase lives at alt/dataplane/usecase/feeds_in_window_usecase.
+type feedsInWindowUsecase interface {
+	Execute(ctx context.Context, input feeds_in_window_usecase.Input) (*domain.FeedsInWindowPage, error)
+}
+
+// WithFeedsInWindowUsecase wires the recap-worker's paginated feed window
+// fetch (service-to-service RPC ListFeedsInWindow).
+func WithFeedsInWindowUsecase(uc feedsInWindowUsecase) HandlerOption {
+	return func(h *Handler) {
+		h.feedsInWindowUsecase = uc
+	}
+}
+
 // ListRecapArticles returns paginated articles in a time window for the
 // recap-worker. Authentication is enforced at the TLS transport layer
 // (mTLS peer identity on :9443); this RPC intentionally does not require
@@ -1445,6 +1461,76 @@ func (h *Handler) ListRecapArticles(
 		PageSize: safeconv.Int32(page.PageSize),
 		HasMore:  page.HasMore,
 		Articles: articles,
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// ListFeedsInWindow returns paginated RSS feed items in a time window for the
+// recap-worker. Authentication is enforced at the TLS transport layer
+// (mTLS peer identity on :9443); this RPC intentionally does not require
+// an end-user auth token.
+func (h *Handler) ListFeedsInWindow(
+	ctx context.Context,
+	req *connect.Request[datahubv1.ListFeedsInWindowRequest],
+) (*connect.Response[datahubv1.ListFeedsInWindowResponse], error) {
+	if h.feedsInWindowUsecase == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ListFeedsInWindow not configured"))
+	}
+
+	msg := req.Msg
+	if msg == nil || strings.TrimSpace(msg.From) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("from is required"))
+	}
+	if strings.TrimSpace(msg.To) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("to is required"))
+	}
+
+	from, err := time.Parse(time.RFC3339, msg.From)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from must be RFC3339: %w", err))
+	}
+	to, err := time.Parse(time.RFC3339, msg.To)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to must be RFC3339: %w", err))
+	}
+
+	if msg.Page != nil && *msg.Page < 1 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("page must be >= 1"))
+	}
+
+	input := feeds_in_window_usecase.Input{
+		From: from.UTC(),
+		To:   to.UTC(),
+	}
+	if msg.Page != nil {
+		input.Page = int(*msg.Page)
+	}
+	if msg.PageSize != nil {
+		input.PageSize = int(*msg.PageSize)
+	}
+
+	page, err := h.feedsInWindowUsecase.Execute(ctx, input)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	if page == nil {
+		page = &domain.FeedsInWindowPage{Page: input.Page, PageSize: input.PageSize}
+	}
+
+	feeds := make([]*datahubv1.Feed, 0, len(page.Feeds))
+	for i := range page.Feeds {
+		if f := feedRowToProto(&page.Feeds[i]); f != nil {
+			feeds = append(feeds, f)
+		}
+	}
+
+	resp := &datahubv1.ListFeedsInWindowResponse{
+		Feeds:    feeds,
+		Total:    safeconv.Int32(page.Total),
+		Page:     safeconv.Int32(page.Page),
+		PageSize: safeconv.Int32(page.PageSize),
+		HasMore:  page.HasMore,
 	}
 	return connect.NewResponse(resp), nil
 }

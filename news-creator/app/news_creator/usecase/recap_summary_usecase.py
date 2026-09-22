@@ -25,6 +25,7 @@ from news_creator.domain.prompt_boundary import (
     sanitize_untrusted_content,
     wrap_untrusted_content,
 )
+from news_creator.domain.prompts import wrap_gemma_prompt
 from news_creator.domain.models import (
     BatchRecapSummaryError,
     BatchRecapSummaryRequest,
@@ -79,6 +80,7 @@ GEMMA_RECAP_SYSTEM_PROMPT = PromptBuilderFactory.system().build(
     "You are an expert Japanese news editor. "
     "Follow the JSON contract exactly and respond with only the requested JSON object."
 )
+
 
 GENRE_JA_MAP: dict[str, str] = {
     "ai_data": "AI・データ",
@@ -199,17 +201,10 @@ class RecapSummaryUsecase:
             return float(self._config_float("recap_summary_temperature", 0.0))
         return float(self.config.llm_temperature)
 
-    def _wrap_gemma_prompt(self, prompt_body: str) -> str:
-        body = prompt_body.strip()
-        return (
-            "<|turn>system\n"
-            f"{GEMMA_RECAP_SYSTEM_PROMPT}\n"
-            "<turn|>\n"
-            "<|turn>user\n"
-            f"{body}\n"
-            "<turn|>\n"
-            "<|turn>model\n"
-        )
+    def _wrap_gemma_prompt(
+        self, prompt_body: str, system_prompt: str = GEMMA_RECAP_SYSTEM_PROMPT
+    ) -> str:
+        return wrap_gemma_prompt(user_prompt=prompt_body, system_prompt=system_prompt)
 
     async def generate_summary(
         self, request: RecapSummaryRequest

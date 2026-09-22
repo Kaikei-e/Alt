@@ -1220,3 +1220,118 @@ async fn non_completion_transitions_enqueue_nothing() -> anyhow::Result<()> {
         .await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn test_delete_old_jobs_preserves_card_snapshots() -> anyhow::Result<()> {
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        return Ok(());
+    };
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await?;
+
+    pool.execute(
+        r"
+        CREATE TABLE IF NOT EXISTS recap_jobs (
+            job_id UUID PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'pending',
+            last_stage TEXT,
+            kicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            note TEXT,
+            trigger_source TEXT NOT NULL DEFAULT 'system',
+            window_days INTEGER NOT NULL DEFAULT 7,
+            user_id UUID
+        );
+        ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS trigger_source TEXT NOT NULL DEFAULT 'system';
+        ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS window_days INTEGER NOT NULL DEFAULT 7;
+        ALTER TABLE recap_jobs ADD COLUMN IF NOT EXISTS user_id UUID;
+        CREATE TABLE IF NOT EXISTS recap_card_snapshots (
+            job_id UUID PRIMARY KEY,
+            from_ts TIMESTAMPTZ NOT NULL,
+            to_ts TIMESTAMPTZ NOT NULL,
+            feed_ids UUID[] NOT NULL DEFAULT '{}',
+            read_feed_ids UUID[] NOT NULL DEFAULT '{}',
+            previous_job_id UUID,
+            previous_cards JSONB NOT NULL DEFAULT '[]',
+            params_version TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        ",
+    )
+    .await?;
+
+    let old_job_id = Uuid::new_v4();
+    let preserved_job_id = Uuid::new_v4();
+
+    // Insert 2 jobs older than 14 days setting every NOT NULL column explicitly
+    sqlx::query(
+        r"
+        INSERT INTO recap_jobs (
+            job_id, status, last_stage, kicked_at, updated_at, note, trigger_source, window_days
+        )
+        VALUES 
+            ($1, 'completed', NULL, NOW() - INTERVAL '30 days', NOW() - INTERVAL '30 days', NULL, 'system', 3),
+            ($2, 'completed', NULL, NOW() - INTERVAL '30 days', NOW() - INTERVAL '30 days', NULL, 'cards', 3)
+        ON CONFLICT (job_id) DO NOTHING
+        ",
+    )
+    .bind(old_job_id)
+    .bind(preserved_job_id)
+    .execute(&pool)
+    .await?;
+
+    // Reference preserved_job_id in recap_card_snapshots with all NOT NULL columns
+    sqlx::query(
+        r"
+        INSERT INTO recap_card_snapshots (job_id, from_ts, to_ts, feed_ids, params_version)
+        VALUES ($1, NOW() - INTERVAL '30 days', NOW() - INTERVAL '27 days', ARRAY[]::uuid[], 'v1')
+        ON CONFLICT (job_id) DO NOTHING
+        ",
+    )
+    .bind(preserved_job_id)
+    .execute(&pool)
+    .await?;
+
+    let dao = UnifiedDao::new(pool.clone());
+
+    // Run delete_old_jobs with 14 days retention
+    let deleted = dao.delete_old_jobs(14).await?;
+    assert_eq!(deleted, 1, "delete_old_jobs must return 1");
+
+    // Verify old system job is deleted
+    let old_exists: bool =
+        sqlx::query_scalar(r"SELECT EXISTS (SELECT 1 FROM recap_jobs WHERE job_id = $1)")
+            .bind(old_job_id)
+            .fetch_one(&pool)
+            .await?;
+    assert!(!old_exists, "old system job must be deleted");
+
+    // Verify preserved_job_id still exists
+    let preserved_exists: bool =
+        sqlx::query_scalar(r"SELECT EXISTS (SELECT 1 FROM recap_jobs WHERE job_id = $1)")
+            .bind(preserved_job_id)
+            .fetch_one(&pool)
+            .await?;
+    assert!(
+        preserved_exists,
+        "job referenced in recap_card_snapshots must be preserved"
+    );
+
+    // Clean up
+    let _ = sqlx::query("DELETE FROM recap_card_snapshots WHERE job_id = $1")
+        .bind(preserved_job_id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .bind(preserved_job_id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .bind(old_job_id)
+        .execute(&pool)
+        .await;
+
+    Ok(())
+}

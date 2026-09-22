@@ -41,6 +41,7 @@ type fakeReadStatePort struct {
 	subscriptions []*domain.FeedSource
 
 	gotUserID     uuid.UUID
+	gotSince      *time.Time
 	gotURL        string
 	gotFeedLinkID uuid.UUID
 	gotFeedIDs    []uuid.UUID
@@ -65,9 +66,10 @@ func (f *fakeReadStatePort) ReadFeedIDs(_ context.Context, userID uuid.UUID, fee
 	return f.readFeedIDs, f.err
 }
 
-func (f *fakeReadStatePort) AllReadFeedIDs(_ context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+func (f *fakeReadStatePort) AllReadFeedIDs(_ context.Context, userID uuid.UUID, since *time.Time) ([]uuid.UUID, error) {
 	f.calls++
 	f.gotUserID = userID
+	f.gotSince = since
 	return f.readFeedIDs, f.err
 }
 
@@ -374,6 +376,94 @@ func TestGetReadFeedIDs_RefusesOversizedBatch(t *testing.T) {
 	h, readState, _ := newBatch4Handler(nil, nil)
 	_, err := h.GetReadFeedIDs(context.Background(),
 		connect.NewRequest(&datahubv1.GetReadFeedIDsRequest{UserId: testUserID, FeedIds: ids}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	assert.Zero(t, readState.calls)
+}
+
+func TestGetAllReadFeedIDs_WithoutSince_PassesNilSince(t *testing.T) {
+	feedID1 := uuid.New()
+	h, readState, _ := newBatch4Handler(&fakeReadStatePort{
+		readFeedIDs: []uuid.UUID{feedID1},
+	}, nil)
+
+	resp, err := h.GetAllReadFeedIDs(context.Background(),
+		connect.NewRequest(&datahubv1.GetAllReadFeedIDsRequest{
+			UserId: testUserID,
+		}))
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, readState.calls)
+	assert.Equal(t, uuid.MustParse(testUserID), readState.gotUserID)
+	assert.Nil(t, readState.gotSince)
+	require.Len(t, resp.Msg.GetReadFeedIds(), 1)
+	assert.Equal(t, feedID1.String(), resp.Msg.GetReadFeedIds()[0])
+}
+
+func TestGetAllReadFeedIDs_WithValidSince_ParsesRFC3339(t *testing.T) {
+	feedID1 := uuid.New()
+	h, readState, _ := newBatch4Handler(&fakeReadStatePort{
+		readFeedIDs: []uuid.UUID{feedID1},
+	}, nil)
+
+	sinceStr := "2026-03-20T10:00:00Z"
+	expectedTime, err := time.Parse(time.RFC3339, sinceStr)
+	require.NoError(t, err)
+
+	resp, err := h.GetAllReadFeedIDs(context.Background(),
+		connect.NewRequest(&datahubv1.GetAllReadFeedIDsRequest{
+			UserId: testUserID,
+			Since:  &sinceStr,
+		}))
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, readState.calls)
+	assert.Equal(t, uuid.MustParse(testUserID), readState.gotUserID)
+	require.NotNil(t, readState.gotSince)
+	assert.True(t, expectedTime.Equal(*readState.gotSince))
+	require.Len(t, resp.Msg.GetReadFeedIds(), 1)
+	assert.Equal(t, feedID1.String(), resp.Msg.GetReadFeedIds()[0])
+}
+
+func TestGetAllReadFeedIDs_WithInvalidSince_ReturnsInvalidArgument(t *testing.T) {
+	h, readState, _ := newBatch4Handler(nil, nil)
+
+	invalidSince := "not-a-valid-timestamp"
+	_, err := h.GetAllReadFeedIDs(context.Background(),
+		connect.NewRequest(&datahubv1.GetAllReadFeedIDsRequest{
+			UserId: testUserID,
+			Since:  &invalidSince,
+		}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	assert.Zero(t, readState.calls)
+}
+
+func TestGetAllReadFeedIDs_InternalError_ReturnsInternal(t *testing.T) {
+	h, readState, _ := newBatch4Handler(&fakeReadStatePort{
+		err: errors.New("underlying db failed"),
+	}, nil)
+
+	_, err := h.GetAllReadFeedIDs(context.Background(),
+		connect.NewRequest(&datahubv1.GetAllReadFeedIDsRequest{
+			UserId: testUserID,
+		}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+	assert.Equal(t, 1, readState.calls)
+}
+
+func TestGetAllReadFeedIDs_WithoutUserID_WithSince_ReturnsInvalidArgument(t *testing.T) {
+	h, readState, _ := newBatch4Handler(nil, nil)
+
+	sinceStr := "2026-08-19T17:00:00Z"
+	_, err := h.GetAllReadFeedIDs(context.Background(),
+		connect.NewRequest(&datahubv1.GetAllReadFeedIDsRequest{
+			Since: &sinceStr,
+		}))
 
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))

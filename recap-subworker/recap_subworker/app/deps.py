@@ -16,9 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..gateway.hdbscan_clusterer import HdbscanClustererGateway
 from ..infra.config import Settings, get_settings
 from ..services.async_jobs import AdminJobService
+from ..services.card_verifier import CardVerifierService
 from ..services.classification import CoarseClassifier
 from ..services.classification_runner import ClassificationRunner
 from ..services.classifier import GenreClassifierService
+from ..services.embed_service import EmbedService
 from ..services.embedder import Embedder
 from ..services.evaluation import EvaluationService
 from ..services.extraction import ContentExtractor
@@ -27,6 +29,7 @@ from ..services.learning_client import LearningClient
 from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
+from ..services.story_clusterer import StoryClustererService
 from ..usecase.submit_run import (
     GetClassificationRunUsecase,
     GetRunUsecase,
@@ -140,9 +143,7 @@ def get_learning_service(
         []
         if should_auto_detect
         else [
-            genre.strip()
-            for genre in settings.learning_cluster_genres.split(",")
-            if genre.strip()
+            genre.strip() for genre in settings.learning_cluster_genres.split(",") if genre.strip()
         ]
     )
     logger.debug(
@@ -203,3 +204,21 @@ def get_evaluation_service_dep(
     container: ServiceContainer = Depends(get_container),
 ) -> EvaluationService:
     return container.evaluation_service
+
+
+def get_embed_service_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> EmbedService:
+    return container.embed_service
+
+
+def get_story_clusterer_service_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> StoryClustererService:
+    return container.story_clusterer_service
+
+
+def get_card_verifier_service_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> CardVerifierService:
+    return container.card_verifier_service

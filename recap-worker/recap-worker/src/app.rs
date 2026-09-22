@@ -226,6 +226,11 @@ impl ComponentRegistry {
     pub fn pki_handle(&self) -> Option<crate::pki::Handle> {
         self.pki.clone()
     }
+
+    #[must_use]
+    pub fn pool(&self) -> &sqlx::PgPool {
+        &self.recap_pool
+    }
 }
 
 async fn build_news_creator_client(
@@ -366,6 +371,8 @@ mod tests {
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
                 ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
                     Some("/tmp/test-token-which-does-not-exist"),

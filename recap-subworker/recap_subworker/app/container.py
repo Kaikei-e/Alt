@@ -24,9 +24,11 @@ from ..gateway.st_embedder import StEmbedderGateway
 from ..infra.config import Settings
 from ..infra.db.session import DatabaseResources, create_database_resources
 from ..services.async_jobs import AdminJobService
+from ..services.card_verifier import DEFAULT_FILLER_PHRASES, CardVerifierService
 from ..services.classification import CoarseClassifier
 from ..services.classification_runner import ClassificationRunner
 from ..services.classifier import GenreClassifierService
+from ..services.embed_service import EmbedService
 from ..services.embedder import Embedder, EmbedderConfig
 from ..services.evaluation import EvaluationService
 from ..services.extraction import ContentExtractor
@@ -35,6 +37,7 @@ from ..services.learning_scheduler import LearningScheduler
 from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
+from ..services.story_clusterer import StoryClustererService
 from ..usecase.cluster_evidence import ClusterEvidenceUsecase
 from ..usecase.manage_run import ManageRunUsecase
 from ..usecase.submit_run import (
@@ -79,6 +82,9 @@ class ServiceContainer:
         self._get_run_usecase: GetRunUsecase | None = None
         self._submit_classification_run_usecase: SubmitClassificationRunUsecase | None = None
         self._get_classification_run_usecase: GetClassificationRunUsecase | None = None
+        self._embed_service: EmbedService | None = None
+        self._story_clusterer_service: StoryClustererService | None = None
+        self._card_verifier_service: CardVerifierService | None = None
 
     # --- Database ---
 
@@ -247,6 +253,35 @@ class ServiceContainer:
         return self._get_classification_run_usecase
 
     # --- Supporting services ---
+
+    @property
+    def embed_service(self) -> EmbedService:
+        if self._embed_service is None:
+            self._embed_service = EmbedService(embedder=self.embedder)
+        return self._embed_service
+
+    @property
+    def story_clusterer_service(self) -> StoryClustererService:
+        if self._story_clusterer_service is None:
+            self._story_clusterer_service = StoryClustererService()
+        return self._story_clusterer_service
+
+    @property
+    def card_verifier_service(self) -> CardVerifierService:
+        if self._card_verifier_service is None:
+            raw_phrases = getattr(self.settings, "filler_phrases", None)
+            if raw_phrases and str(raw_phrases).strip():
+                effective_phrases = [p.strip() for p in str(raw_phrases).split(",") if p.strip()]
+            else:
+                effective_phrases = list(DEFAULT_FILLER_PHRASES)
+            logger.info(
+                "card verifier initialized", effective_filler_phrases_count=len(effective_phrases)
+            )
+            self._card_verifier_service = CardVerifierService(
+                embed_service=self.embed_service,
+                filler_phrases=effective_phrases,
+            )
+        return self._card_verifier_service
 
     @property
     def learning_client(self) -> LearningClient:

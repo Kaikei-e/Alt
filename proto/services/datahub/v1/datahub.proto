@@ -524,6 +524,31 @@ message ListRecapArticlesResponse {
 }
 
 // =============================================================================
+// ListFeedsInWindow — service-to-service paginated feed window fetch
+// =============================================================================
+
+// ListFeedsInWindowRequest is the request for paginated RSS feed items created in a time window
+message ListFeedsInWindowRequest {
+  // Lower bound of the time window (RFC3339)
+  string from = 1;
+  // Upper bound of the time window (RFC3339)
+  string to = 2;
+  // 1-indexed page number (default 1)
+  optional int32 page = 3;
+  // Feed items per page (default server-side)
+  optional int32 page_size = 4;
+}
+
+// ListFeedsInWindowResponse is the paginated response of RSS feed items created in a time window
+message ListFeedsInWindowResponse {
+  repeated Feed feeds = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  bool has_more = 5;
+}
+
+// =============================================================================
 // Absorbed REST surface (ADR-000954 D6)
 //
 // The two /v1/internal REST routes are capabilities of the same owner, reached
@@ -1660,6 +1685,8 @@ message GetReadFeedIDsResponse {
 
 message GetAllReadFeedIDsRequest {
   string user_id = 1;
+  // Optional lower bound of the read timestamp (RFC3339)
+  optional string since = 2;
 }
 
 message GetAllReadFeedIDsResponse {
@@ -2520,6 +2547,10 @@ service DataHubService {
   // Service-to-service only; auth is established at the mTLS transport layer.
   // Origin: services.backend.v1.BackendInternalService/ListRecapArticles
   rpc ListRecapArticles(ListRecapArticlesRequest) returns (ListRecapArticlesResponse);
+
+  // ListFeedsInWindow returns paginated RSS feed items created within a time window.
+  // Service-to-service only; auth is established at the mTLS transport layer.
+  rpc ListFeedsInWindow(ListFeedsInWindowRequest) returns (ListFeedsInWindowResponse);
 
   // ── Absorbed REST surface (ADR-000954 D6) ──
 

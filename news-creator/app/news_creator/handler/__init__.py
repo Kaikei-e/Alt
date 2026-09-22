@@ -3,6 +3,7 @@
 from news_creator.handler.summarize_handler import create_summarize_router
 from news_creator.handler.generate_handler import create_generate_router
 from news_creator.handler.recap_summary_handler import create_recap_summary_router
+from news_creator.handler.recap_card_handler import create_recap_card_router
 from news_creator.handler.expand_query_handler import create_expand_query_router
 from news_creator.handler.health_handler import create_health_router
 
@@ -10,6 +11,7 @@ __all__ = [
     "create_summarize_router",
     "create_generate_router",
     "create_recap_summary_router",
+    "create_recap_card_router",
     "create_expand_query_router",
     "create_health_router",
 ]

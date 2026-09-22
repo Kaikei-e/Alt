@@ -80,7 +80,9 @@ class Settings(BaseSettings):
         # Classification runs are throttled by RunManager. A larger worker pool
         # than the number of background slots only pre-loads duplicate models and
         # increases RSS without improving throughput.
-        self.classification_worker_processes = min(self.classification_worker_processes, self.max_background_runs)
+        self.classification_worker_processes = min(
+            self.classification_worker_processes, self.max_background_runs
+        )
 
         # Parse genre threshold overrides once at startup (fail-fast on bad JSON).
         raw_overrides = self.genre_subworker_threshold_overrides or "{}"
@@ -93,9 +95,7 @@ class Settings(BaseSettings):
         if not isinstance(parsed, dict):
             raise ValueError("genre_subworker_threshold_overrides must be a JSON object")
         try:
-            self.genre_threshold_overrides_parsed = {
-                str(k): float(v) for k, v in parsed.items()
-            }
+            self.genre_threshold_overrides_parsed = {str(k): float(v) for k, v in parsed.items()}
         except (TypeError, ValueError) as exc:
             raise ValueError(
                 f"genre_subworker_threshold_overrides values must be numeric: {exc}"
@@ -291,7 +291,7 @@ class Settings(BaseSettings):
 
         try:
             thresholds_payload = json.loads(thresholds_file.read_text())
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             return self
 
         if not isinstance(thresholds_payload, dict):
@@ -341,7 +341,7 @@ class Settings(BaseSettings):
         meta_path = Path(classifier_path).with_suffix(".meta.json")
         try:
             payload_text = meta_path.read_text()
-        except (FileNotFoundError, IsADirectoryError, PermissionError):
+        except FileNotFoundError, IsADirectoryError, PermissionError:
             # Missing sidecar is the responsibility of
             # GenreClassifierService._load_sidecar_metadata which warns; do
             # not double-fire here.
@@ -962,6 +962,11 @@ class Settings(BaseSettings):
             "RECAP_GENRE_DEDUP_THRESHOLDS", "RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS"
         ),
     )
+    filler_phrases: str | None = Field(
+        default=None,
+        description="Optional comma-separated speculation/filler phrases overriding default list",
+        validation_alias=AliasChoices("RECAP_FILLER_PHRASES", "RECAP_SUBWORKER_FILLER_PHRASES"),
+    )
     classification_backend: Literal["joblib", "learning_machine"] = Field(
         "joblib",
         description="Classification backend: 'joblib' for traditional classifier, 'learning_machine' for student models",
@@ -1034,7 +1039,7 @@ class Settings(BaseSettings):
                 if isinstance(value, (int, float)) and 0.0 <= float(value) <= 1.0:
                     result[str(genre)] = float(value)
             return result
-        except (json.JSONDecodeError, ValueError, TypeError):
+        except json.JSONDecodeError, ValueError, TypeError:
             return {}
 
 

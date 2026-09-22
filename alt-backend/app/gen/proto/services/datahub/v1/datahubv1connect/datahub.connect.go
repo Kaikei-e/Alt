@@ -132,6 +132,9 @@ const (
 	// DataHubServiceListRecapArticlesProcedure is the fully-qualified name of the DataHubService's
 	// ListRecapArticles RPC.
 	DataHubServiceListRecapArticlesProcedure = "/services.datahub.v1.DataHubService/ListRecapArticles"
+	// DataHubServiceListFeedsInWindowProcedure is the fully-qualified name of the DataHubService's
+	// ListFeedsInWindow RPC.
+	DataHubServiceListFeedsInWindowProcedure = "/services.datahub.v1.DataHubService/ListFeedsInWindow"
 	// DataHubServiceGetSystemUserProcedure is the fully-qualified name of the DataHubService's
 	// GetSystemUser RPC.
 	DataHubServiceGetSystemUserProcedure = "/services.datahub.v1.DataHubService/GetSystemUser"
@@ -565,6 +568,9 @@ type DataHubServiceClient interface {
 	// Service-to-service only; auth is established at the mTLS transport layer.
 	// Origin: services.backend.v1.BackendInternalService/ListRecapArticles
 	ListRecapArticles(context.Context, *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error)
+	// ListFeedsInWindow returns paginated RSS feed items created within a time window.
+	// Service-to-service only; auth is established at the mTLS transport layer.
+	ListFeedsInWindow(context.Context, *connect.Request[v1.ListFeedsInWindowRequest]) (*connect.Response[v1.ListFeedsInWindowResponse], error)
 	// GetSystemUser returns the first Kratos identity id.
 	// Origin: GET /v1/internal/system-user (REST). Called by pre-processor.
 	GetSystemUser(context.Context, *connect.Request[v1.GetSystemUserRequest]) (*connect.Response[v1.GetSystemUserResponse], error)
@@ -1216,6 +1222,12 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			httpClient,
 			baseURL+DataHubServiceListRecapArticlesProcedure,
 			connect.WithSchema(dataHubServiceMethods.ByName("ListRecapArticles")),
+			connect.WithClientOptions(opts...),
+		),
+		listFeedsInWindow: connect.NewClient[v1.ListFeedsInWindowRequest, v1.ListFeedsInWindowResponse](
+			httpClient,
+			baseURL+DataHubServiceListFeedsInWindowProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsInWindow")),
 			connect.WithClientOptions(opts...),
 		),
 		getSystemUser: connect.NewClient[v1.GetSystemUserRequest, v1.GetSystemUserResponse](
@@ -1895,6 +1907,7 @@ type dataHubServiceClient struct {
 	fetchTagCloud                     *connect.Client[v1.FetchTagCloudRequest, v1.FetchTagCloudResponse]
 	fetchArticlesByTag                *connect.Client[v1.FetchArticlesByTagRequest, v1.FetchArticlesByTagResponse]
 	listRecapArticles                 *connect.Client[v1.ListRecapArticlesRequest, v1.ListRecapArticlesResponse]
+	listFeedsInWindow                 *connect.Client[v1.ListFeedsInWindowRequest, v1.ListFeedsInWindowResponse]
 	getSystemUser                     *connect.Client[v1.GetSystemUserRequest, v1.GetSystemUserResponse]
 	listRecentArticles                *connect.Client[v1.ListRecentArticlesRequest, v1.ListRecentArticlesResponse]
 	claimOutboxBatch                  *connect.Client[v1.ClaimOutboxBatchRequest, v1.ClaimOutboxBatchResponse]
@@ -2123,6 +2136,11 @@ func (c *dataHubServiceClient) FetchArticlesByTag(ctx context.Context, req *conn
 // ListRecapArticles calls services.datahub.v1.DataHubService.ListRecapArticles.
 func (c *dataHubServiceClient) ListRecapArticles(ctx context.Context, req *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error) {
 	return c.listRecapArticles.CallUnary(ctx, req)
+}
+
+// ListFeedsInWindow calls services.datahub.v1.DataHubService.ListFeedsInWindow.
+func (c *dataHubServiceClient) ListFeedsInWindow(ctx context.Context, req *connect.Request[v1.ListFeedsInWindowRequest]) (*connect.Response[v1.ListFeedsInWindowResponse], error) {
+	return c.listFeedsInWindow.CallUnary(ctx, req)
 }
 
 // GetSystemUser calls services.datahub.v1.DataHubService.GetSystemUser.
@@ -2783,6 +2801,9 @@ type DataHubServiceHandler interface {
 	// Service-to-service only; auth is established at the mTLS transport layer.
 	// Origin: services.backend.v1.BackendInternalService/ListRecapArticles
 	ListRecapArticles(context.Context, *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error)
+	// ListFeedsInWindow returns paginated RSS feed items created within a time window.
+	// Service-to-service only; auth is established at the mTLS transport layer.
+	ListFeedsInWindow(context.Context, *connect.Request[v1.ListFeedsInWindowRequest]) (*connect.Response[v1.ListFeedsInWindowResponse], error)
 	// GetSystemUser returns the first Kratos identity id.
 	// Origin: GET /v1/internal/system-user (REST). Called by pre-processor.
 	GetSystemUser(context.Context, *connect.Request[v1.GetSystemUserRequest]) (*connect.Response[v1.GetSystemUserResponse], error)
@@ -3430,6 +3451,12 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		DataHubServiceListRecapArticlesProcedure,
 		svc.ListRecapArticles,
 		connect.WithSchema(dataHubServiceMethods.ByName("ListRecapArticles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceListFeedsInWindowHandler := connect.NewUnaryHandler(
+		DataHubServiceListFeedsInWindowProcedure,
+		svc.ListFeedsInWindow,
+		connect.WithSchema(dataHubServiceMethods.ByName("ListFeedsInWindow")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataHubServiceGetSystemUserHandler := connect.NewUnaryHandler(
@@ -4130,6 +4157,8 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceFetchArticlesByTagHandler.ServeHTTP(w, r)
 		case DataHubServiceListRecapArticlesProcedure:
 			dataHubServiceListRecapArticlesHandler.ServeHTTP(w, r)
+		case DataHubServiceListFeedsInWindowProcedure:
+			dataHubServiceListFeedsInWindowHandler.ServeHTTP(w, r)
 		case DataHubServiceGetSystemUserProcedure:
 			dataHubServiceGetSystemUserHandler.ServeHTTP(w, r)
 		case DataHubServiceListRecentArticlesProcedure:
@@ -4449,6 +4478,10 @@ func (UnimplementedDataHubServiceHandler) FetchArticlesByTag(context.Context, *c
 
 func (UnimplementedDataHubServiceHandler) ListRecapArticles(context.Context, *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.ListRecapArticles is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) ListFeedsInWindow(context.Context, *connect.Request[v1.ListFeedsInWindowRequest]) (*connect.Response[v1.ListFeedsInWindowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.ListFeedsInWindow is not implemented"))
 }
 
 func (UnimplementedDataHubServiceHandler) GetSystemUser(context.Context, *connect.Request[v1.GetSystemUserRequest]) (*connect.Response[v1.GetSystemUserResponse], error) {

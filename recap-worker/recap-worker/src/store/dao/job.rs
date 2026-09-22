@@ -339,22 +339,23 @@ impl RecapDao {
         Ok(result.rows_affected())
     }
 
+    pub const DELETE_OLD_JOBS_SQL: &'static str = r"
+        DELETE FROM recap_jobs
+        WHERE kicked_at < NOW() - make_interval(days => $1)
+          AND NOT EXISTS (SELECT 1 FROM recap_card_snapshots s WHERE s.job_id = recap_jobs.job_id)
+        ";
+
     pub async fn delete_old_jobs(pool: &PgPool, retention_days: i64) -> Result<u64> {
         // Bug fix (2026-04-13): make_interval(days => $1) requires INT,
         // but the original implementation bound $1 as f64, which Postgres
         // rejects with `function make_interval(days => double precision)
         // does not exist`. Cast safely to i32 (≈ 5.8M years headroom).
         let retention_days_i32 = i32::try_from(retention_days).unwrap_or(i32::MAX);
-        let result = sqlx::query(
-            r"
-            DELETE FROM recap_jobs
-            WHERE kicked_at < NOW() - make_interval(days => $1)
-            ",
-        )
-        .bind(retention_days_i32)
-        .execute(pool)
-        .await
-        .map_err(|e| RecapError::Db(format!("failed to delete old jobs: {e}")))?;
+        let result = sqlx::query(Self::DELETE_OLD_JOBS_SQL)
+            .bind(retention_days_i32)
+            .execute(pool)
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to delete old jobs: {e}")))?;
 
         Ok(result.rows_affected())
     }
@@ -538,5 +539,32 @@ impl RecapDao {
         }
 
         Ok(history)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_delete_old_jobs_sql_excludes_card_snapshots() {
+        let sql = RecapDao::DELETE_OLD_JOBS_SQL;
+        let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        assert!(
+            normalized.contains("DELETE FROM recap_jobs"),
+            "query must target recap_jobs"
+        );
+        assert!(
+            normalized.contains("NOT EXISTS (SELECT 1 FROM recap_card_snapshots")
+                || normalized.contains("NOT EXISTS ( SELECT 1 FROM recap_card_snapshots"),
+            "query must contain NOT EXISTS subquery on recap_card_snapshots"
+        );
+        assert!(
+            normalized.contains("s.job_id = recap_jobs.job_id"),
+            "subquery must correlate on s.job_id = recap_jobs.job_id"
+        );
+        // Note: Live database behavioural coverage is tested in DB-gated integration tests
+        // (test_delete_old_jobs_preserves_card_snapshots in src/store/dao/tests.rs).
     }
 }

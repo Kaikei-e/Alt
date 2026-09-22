@@ -26,7 +26,7 @@ type readStateDriver interface {
 	UpdateFeedStatus(ctx context.Context, feedURL url.URL, userID uuid.UUID) error
 	MarkArticleAsRead(ctx context.Context, articleURL url.URL, userID uuid.UUID) error
 	GetReadFeedIDs(ctx context.Context, userID uuid.UUID, feedIDs []uuid.UUID) (map[uuid.UUID]bool, error)
-	GetAllReadFeedIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]bool, error)
+	GetAllReadFeedIDs(ctx context.Context, userID uuid.UUID, since *time.Time) (map[uuid.UUID]bool, error)
 	GetUserSubscriptions(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
 	FetchSubscriptions(ctx context.Context, userID uuid.UUID) ([]*domain.FeedSource, error)
 	InsertSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error
@@ -85,8 +85,8 @@ func (g *ReadStateGateway) ReadFeedIDs(ctx context.Context, userID uuid.UUID, fe
 	return readIDList(read), nil
 }
 
-func (g *ReadStateGateway) AllReadFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
-	read, err := g.db.GetAllReadFeedIDs(ctx, userID)
+func (g *ReadStateGateway) AllReadFeedIDs(ctx context.Context, userID uuid.UUID, since *time.Time) ([]uuid.UUID, error) {
+	read, err := g.db.GetAllReadFeedIDs(ctx, userID, since)
 	if err != nil {
 		return nil, fmt.Errorf("get all read feed ids for user %s: %w", userID, err)
 	}

@@ -124,3 +124,39 @@ class TestLoadAdminAuthConfig:
         monkeypatch.setenv("ADMIN_TOKEN_FILE", str(tmp_path / "does-not-exist"))
         with pytest.raises(RuntimeError, match="failed to read token file"):
             load_admin_auth_config()
+
+
+def test_create_app_auth_required_for_v1_cards_endpoints(monkeypatch, tmp_path: Path):
+    """Verify that create_app mounts /v1/embed, /v1/cluster-stories, /v1/verify with admin auth."""
+    token_path = tmp_path / "admin_token"
+    token_path.write_text("test-recap-subworker-token-42\n")
+    monkeypatch.delenv("ADMIN_AUTH", raising=False)
+    monkeypatch.setenv("ADMIN_TOKEN_FILE", str(token_path))
+
+    from recap_subworker.app.main import create_app
+
+    app = create_app()
+    with TestClient(app) as client:
+        # 1. /v1/embed without bearer -> 401
+        res_embed = client.post("/v1/embed", json={"texts": ["test text"]})
+        assert res_embed.status_code == 401
+        assert res_embed.headers["www-authenticate"] == "Bearer"
+
+        # 2. /v1/cluster-stories without bearer -> 401
+        res_cluster = client.post("/v1/cluster-stories", json={"items": []})
+        assert res_cluster.status_code == 401
+        assert res_cluster.headers["www-authenticate"] == "Bearer"
+
+        # 3. /v1/verify without bearer -> 401
+        res_verify = client.post(
+            "/v1/verify",
+            json={
+                "job_id": "00000000-0000-0000-0000-000000000001",
+                "card_id": "00000000-0000-0000-0000-000000000002",
+                "language": "ja",
+                "sentences": [],
+                "items": [],
+            },
+        )
+        assert res_verify.status_code == 401
+        assert res_verify.headers["www-authenticate"] == "Bearer"

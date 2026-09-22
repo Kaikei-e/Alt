@@ -8,6 +8,7 @@ pub mod classifier;
 pub(crate) mod clients;
 pub mod config;
 pub(crate) mod error;
+pub mod eval;
 pub mod evaluation;
 // Not part of any bench/replay-bin/integration-test surface (unlike its
 // sibling `pub` modules below) — only consumed internally via

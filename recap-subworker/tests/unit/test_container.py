@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -52,19 +53,49 @@ class TestServiceContainerEvaluationService:
 
         assert first is second
 
-    def test_evaluation_service_uses_settings_derived_weight_paths(self):
+    def test_evaluation_service_uses_settings_derived_weight_paths(self, tmp_path: Path):
+        ja_path = str(tmp_path / "ja.joblib")
+        en_path = str(tmp_path / "en.joblib")
         settings = Settings(
             model_id="fake",
             allow_embedding_drift=True,
-            genre_classifier_model_path_ja="/tmp/ja.joblib",
-            genre_classifier_model_path_en="/tmp/en.joblib",
+            genre_classifier_model_path_ja=ja_path,
+            genre_classifier_model_path_en=en_path,
         )
         container = ServiceContainer(settings)
 
         service = container.evaluation_service
 
-        assert service.weights_ja == "/tmp/ja.joblib"
-        assert service.weights_en == "/tmp/en.joblib"
+        assert service.weights_ja == ja_path
+        assert service.weights_en == en_path
+
+
+class TestServiceContainerNewServices:
+    """Verify embed_service, story_clusterer_service, and card_verifier_service properties."""
+
+    def test_embed_service_is_memoized(self):
+        settings = Settings(model_id="fake", allow_embedding_drift=True)
+        container = ServiceContainer(settings)
+        first = container.embed_service
+        second = container.embed_service
+        assert first is second
+        assert first.embedder is container.embedder
+
+    def test_story_clusterer_service_property(self):
+        settings = Settings(model_id="fake", allow_embedding_drift=True)
+        container = ServiceContainer(settings)
+        svc = container.story_clusterer_service
+        from recap_subworker.services.story_clusterer import StoryClustererService
+
+        assert isinstance(svc, StoryClustererService)
+
+    def test_card_verifier_service_is_memoized(self):
+        settings = Settings(model_id="fake", allow_embedding_drift=True)
+        container = ServiceContainer(settings)
+        first = container.card_verifier_service
+        second = container.card_verifier_service
+        assert first is second
+        assert first.embed_service is container.embed_service
 
 
 class TestServiceContainerShutdown:

@@ -18,6 +18,7 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import Depends, FastAPI
 from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -31,11 +32,16 @@ from .routers import (
     admin,
     classification,
     classification_runs,
+    embed,
     evaluation,
     health,
     preprocessing,
     runs,
+    story_clustering,
+    verify,
 )
+
+logger = structlog.get_logger(__name__)
 
 # 10 MB request body limit
 _MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
@@ -101,6 +107,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # startup here rather than serving /admin/* and /v1/runs either
     # unauthenticated or 500-ing per request (CLAUDE.md rule 9).
     app.state.admin_auth = load_admin_auth_config()
+
+    from ..services.card_verifier import DEFAULT_FILLER_PHRASES
+
+    effective_phrases = (
+        [p.strip() for p in settings.filler_phrases.split(",") if p.strip()]
+        if getattr(settings, "filler_phrases", None)
+        else DEFAULT_FILLER_PHRASES
+    )
+    structlog.get_logger(__name__).info(
+        "effective filler phrases configured at startup",
+        count=len(effective_phrases),
+    )
+
     try:
         yield
     finally:
@@ -151,5 +170,10 @@ def create_app() -> FastAPI:
     app.include_router(classification.router, prefix="/v1")
     app.include_router(preprocessing.router, prefix="/v1")
     app.include_router(classification_runs.router)
+    app.include_router(embed.router, prefix="/v1", dependencies=[Depends(require_admin_token)])
+    app.include_router(
+        story_clustering.router, prefix="/v1", dependencies=[Depends(require_admin_token)]
+    )
+    app.include_router(verify.router, prefix="/v1", dependencies=[Depends(require_admin_token)])
 
     return app

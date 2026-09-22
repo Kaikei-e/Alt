@@ -56,7 +56,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 			value: ApplicationComponents{},
 			absent: []string{
 				// Moved to cmd/datahub with DataHubService (ADR-000954 D6/D7).
-				"KratosClient", "EventPublisher", "RecapArticlesUsecase",
+				"KratosClient", "EventPublisher", "RecapArticlesUsecase", "FeedsInWindowUsecase",
 				"FetchRecentArticlesUsecase", "CreateTagSetVersionUsecase",
 				// Never read by any handler (plan R11): copying them into three
 				// roots would have tripled the dead wiring.
@@ -84,7 +84,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				// answer HTTP, so none of this may be constructed here.
 				"SearchIndexerDriver", "MQHubClient", "EventPublisher", "KratosClient",
 				"CSRFTokenUsecase", "RagConnectClient", "AdminMonitor",
-				"InternalArticleGateway", "RecapArticlesUsecase",
+				"InternalArticleGateway", "RecapArticlesUsecase", "FeedsInWindowUsecase",
 				// ADR-000954 Wave 3 batch 5: the tag cloud was the harvester's
 				// last direct read, so it has no database handle at all. This
 				// is the first of the three binaries to reach Wave 3's exit

@@ -12,7 +12,8 @@ use crate::schema::{news_creator::SUMMARY_RESPONSE_SCHEMA, validate_json};
 
 use super::builder::SummaryRequestBuilder;
 use super::models::{
-    BatchSummaryRequest, BatchSummaryResponse, GenreTieBreakRequest, GenreTieBreakResponse,
+    BatchSummaryRequest, BatchSummaryResponse, CardGenerate422Response, CardGenerateOutcome,
+    CardGenerateRequest, CardGenerateResponse, GenreTieBreakRequest, GenreTieBreakResponse,
     MorningLetterGenerateRequest, MorningLetterGenerateResponse, SummaryRequest, SummaryResponse,
     truncate_error_message,
 };
@@ -357,6 +358,91 @@ impl NewsCreatorClient {
         Ok(ml_response)
     }
 
+    /// カード生成エンドポイント (POST /v1/cards/generate) を呼び出す。
+    ///
+    /// # Arguments
+    /// * `request` - カード生成リクエスト
+    ///
+    /// # Returns
+    /// * `Ok(CardGenerateOutcome::Success(...))` - 200 OK
+    /// * `Ok(CardGenerateOutcome::Rejected(...))` - 422 Unprocessable Entity (呼び出し側でカードを破棄)
+    /// * `Err(RecapError::Summary(...))` - その他のネットワークまたはサーバーエラー
+    pub(crate) async fn generate_card(
+        &self,
+        request: &CardGenerateRequest,
+    ) -> Result<CardGenerateOutcome> {
+        if request.items.is_empty() || request.items.len() > 6 {
+            return Err(RecapError::Summary(format!(
+                "card generation request items length must be between 1 and 6, got {}",
+                request.items.len()
+            )));
+        }
+
+        let url = self.base_url.join("v1/cards/generate").map_err(|e| {
+            RecapError::Summary(format!("failed to build card generation URL: {e}"))
+        })?;
+
+        debug!(
+            job_id = %request.job_id,
+            candidate_id = %request.candidate_id,
+            item_count = request.items.len(),
+            "sending card generation request to news-creator"
+        );
+
+        let response = self
+            .client
+            .post(url)
+            .json(request)
+            .header("X-Job-ID", request.job_id.to_string())
+            .timeout(self.summary_timeout)
+            .send()
+            .await
+            .map_err(|e| RecapError::Summary(format!("card generation request failed: {e}")))?;
+
+        let status = response.status();
+        if status == reqwest::StatusCode::OK {
+            let parsed: CardGenerateResponse = response.json().await.map_err(|e| {
+                RecapError::Summary(format!("failed to deserialize card generate response: {e}"))
+            })?;
+            return Ok(CardGenerateOutcome::Success(parsed));
+        }
+
+        if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY {
+            let is_domain_rejection = response
+                .headers()
+                .get("X-Card-Rejection")
+                .and_then(|v| v.to_str().ok())
+                == Some("1");
+
+            if is_domain_rejection {
+                let parsed: CardGenerate422Response = response.json().await.map_err(|e| {
+                    RecapError::Summary(format!(
+                        "failed to deserialize card generate 422 response: {e}"
+                    ))
+                })?;
+                return Ok(CardGenerateOutcome::Rejected(parsed));
+            }
+
+            let body = response.text().await.unwrap_or_default();
+            return Err(RecapError::SummaryHttpStatus {
+                status: 422,
+                message: format!("card generation request validation failed: {body}"),
+                retry_after_secs: None,
+            });
+        }
+
+        let retry_after_secs = parse_retry_after_secs(&response);
+        let body = response.text().await.unwrap_or_default();
+        let truncated_body = truncate_error_message(&body);
+        Err(RecapError::SummaryHttpStatus {
+            status: status.as_u16(),
+            message: format!(
+                "card generation endpoint returned error status {status}: {truncated_body}"
+            ),
+            retry_after_secs,
+        })
+    }
+
     /// クラスタリングレスポンスから要約リクエストを構築する。
     ///
     /// # Arguments
@@ -522,6 +608,7 @@ mod tests {
 
 #[cfg(test)]
 mod tests_batch {
+    use super::super::models::CardItemInput;
     use super::*;
     use uuid::Uuid;
     use wiremock::matchers::{method, path};
@@ -763,5 +850,194 @@ mod tests_batch {
             other => panic!("expected SummaryHttpStatus, got {other:?}"),
         }
         assert_eq!(error.retry_after(), None);
+    }
+
+    #[tokio::test]
+    async fn generate_card_surfaces_status_and_retry_after_on_429() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/cards/generate"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "30"))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let request = CardGenerateRequest {
+            job_id: Uuid::new_v4(),
+            candidate_id: Uuid::new_v4(),
+            prompt_version: "recap_card.v1".to_string(),
+            items: vec![CardItemInput {
+                n: 1,
+                feed_id: Uuid::new_v4(),
+                title: "Test Article".to_string(),
+                host: "example.com".to_string(),
+                url: "https://example.com/1".to_string(),
+                pub_date: None,
+                lede: "Lede text".to_string(),
+            }],
+            revision_note: None,
+        };
+
+        let error = client
+            .generate_card(&request)
+            .await
+            .expect_err("429 should fail");
+
+        match error {
+            RecapError::SummaryHttpStatus {
+                status,
+                retry_after_secs,
+                ..
+            } => {
+                assert_eq!(status, 429);
+                assert_eq!(retry_after_secs, Some(30));
+            }
+            other => panic!("expected SummaryHttpStatus, got {other:?}"),
+        }
+        assert_eq!(error.retry_after(), Some(Duration::from_secs(30)));
+    }
+
+    #[tokio::test]
+    async fn generate_card_validates_items_length_bounds() {
+        let client = NewsCreatorClient::new_for_test("http://localhost");
+        let empty_request = CardGenerateRequest {
+            job_id: Uuid::new_v4(),
+            candidate_id: Uuid::new_v4(),
+            prompt_version: "recap_card.v1".to_string(),
+            items: vec![],
+            revision_note: None,
+        };
+        let err = client
+            .generate_card(&empty_request)
+            .await
+            .expect_err("empty items should fail client-side validation");
+        assert!(
+            err.to_string()
+                .contains("items length must be between 1 and 6")
+        );
+
+        let too_many_items_request = CardGenerateRequest {
+            job_id: Uuid::new_v4(),
+            candidate_id: Uuid::new_v4(),
+            prompt_version: "recap_card.v1".to_string(),
+            items: (1..=7)
+                .map(|n| CardItemInput {
+                    n,
+                    feed_id: Uuid::new_v4(),
+                    title: format!("Article {n}"),
+                    host: "example.com".to_string(),
+                    url: format!("https://example.com/{n}"),
+                    pub_date: None,
+                    lede: "Lede".to_string(),
+                })
+                .collect(),
+            revision_note: None,
+        };
+        let err2 = client
+            .generate_card(&too_many_items_request)
+            .await
+            .expect_err("7 items should fail client-side validation");
+        assert!(
+            err2.to_string()
+                .contains("items length must be between 1 and 6")
+        );
+    }
+
+    #[tokio::test]
+    async fn generate_card_returns_rejected_outcome_on_domain_422_with_header() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/cards/generate"))
+            .respond_with(
+                ResponseTemplate::new(422)
+                    .insert_header("X-Card-Rejection", "1")
+                    .set_body_json(serde_json::json!({
+                        "reason": "parse_failed",
+                        "attempts": 2,
+                        "raw_text": "【見出し】不整合"
+                    })),
+            )
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let request = CardGenerateRequest {
+            job_id: Uuid::new_v4(),
+            candidate_id: Uuid::new_v4(),
+            prompt_version: "recap_card.v1".to_string(),
+            items: vec![CardItemInput {
+                n: 1,
+                feed_id: Uuid::new_v4(),
+                title: "Test".to_string(),
+                host: "example.com".to_string(),
+                url: "https://example.com/1".to_string(),
+                pub_date: None,
+                lede: "Lede".to_string(),
+            }],
+            revision_note: None,
+        };
+
+        let outcome = client
+            .generate_card(&request)
+            .await
+            .expect("domain rejection should be handled as Ok(CardGenerateOutcome::Rejected)");
+
+        match outcome {
+            CardGenerateOutcome::Rejected(rej) => {
+                assert_eq!(rej.reason, "parse_failed");
+                assert_eq!(rej.attempts, 2);
+                assert_eq!(rej.raw_text, "【見出し】不整合");
+            }
+            CardGenerateOutcome::Success(_) => panic!("expected Rejected outcome"),
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_card_returns_validation_error_on_422_without_rejection_header() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/cards/generate"))
+            .respond_with(
+                ResponseTemplate::new(422).set_body_json(serde_json::json!({
+                    "detail": [{"loc": ["body", "items"], "msg": "field required", "type": "value_error.missing"}]
+                })),
+            )
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let request = CardGenerateRequest {
+            job_id: Uuid::new_v4(),
+            candidate_id: Uuid::new_v4(),
+            prompt_version: "recap_card.v1".to_string(),
+            items: vec![CardItemInput {
+                n: 1,
+                feed_id: Uuid::new_v4(),
+                title: "Test".to_string(),
+                host: "example.com".to_string(),
+                url: "https://example.com/1".to_string(),
+                pub_date: None,
+                lede: "Lede".to_string(),
+            }],
+            revision_note: None,
+        };
+
+        let err = client
+            .generate_card(&request)
+            .await
+            .expect_err("422 without header should fail as request validation error");
+
+        match err {
+            RecapError::SummaryHttpStatus {
+                status,
+                message,
+                retry_after_secs,
+            } => {
+                assert_eq!(status, 422);
+                assert!(message.contains("field required"));
+                assert_eq!(retry_after_secs, None);
+            }
+            other => panic!("expected SummaryHttpStatus, got {other:?}"),
+        }
     }
 }

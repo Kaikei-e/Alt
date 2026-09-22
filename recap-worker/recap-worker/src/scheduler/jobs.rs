@@ -65,9 +65,8 @@ pub(crate) struct JobContext {
     /// Owning user, when the recap is per-user (morning_update / manual
     /// `/v1/generate/recaps/*`). Stays `None` for system batches that don't
     /// produce a single-user knowledge_events row. Persist-stage
-    /// `recap.topic_snapshotted.v1` emit (Knowledge Loop Completion Phase 1
-    /// §2) requires both `user_id` and `tenant_id` to be set; the publish
-    /// helper skips emit when either is `None`.
+    /// `recap.topic_snapshotted.v1` emit requires both `user_id` and
+    /// `tenant_id` to be set; the publish helper skips emit when either is `None`.
     pub(crate) user_id: Option<Uuid>,
     /// Tenant scope for the knowledge_events emit. Resolved alongside
     /// `user_id`; missing tenant means we cannot place the event in the
@@ -499,6 +498,8 @@ impl Scheduler {
     /// 保持期間より古いジョブを削除する。
     ///
     /// CASCADEにより、関連するrecap_job_articles、recap_stage_state等も自動削除される。
+    /// Jobs with a card snapshot (`recap_card_snapshots`) are kept because cards / eval rows
+    /// are INSERT-only golden data whose FKs have no CASCADE.
     pub(crate) async fn cleanup_old_jobs(&self) -> Result<u64> {
         let retention_days = self.config.job_retention_days();
         let deleted_count = self.recap_dao.delete_old_jobs(retention_days).await?;
@@ -722,7 +723,7 @@ mod tests {
         assert_eq!(windowed.window_days(), 3);
     }
 
-    /// Core of Phase 4 (ADR-000709): morning_update Jobs MUST set
+    /// Core of ADR-000709: morning_update Jobs MUST set
     /// `trigger_source = "morning"` so `find_resumable_job` (which filters
     /// `trigger_source = 'system'`) never picks them up as a batch Recap
     /// candidate after a crash.

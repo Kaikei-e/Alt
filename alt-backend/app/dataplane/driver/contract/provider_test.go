@@ -26,9 +26,11 @@
 package contract
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -38,11 +40,15 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/pact-foundation/pact-go/v2/models"
 	"github.com/pact-foundation/pact-go/v2/provider"
 	"github.com/stretchr/testify/require"
 
 	"alt/dataplane/connect/datahubapi"
+	"alt/domain"
+	"alt/orchestrator/usecase/fetch_recent_articles_usecase"
 )
 
 const (
@@ -131,6 +137,36 @@ type listRecapArticlesRequest struct {
 	To   string `json:"to"`
 }
 
+// listFeedsInWindowRequest mirrors the Connect-RPC request body for ListFeedsInWindow.
+type listFeedsInWindowRequest struct {
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Page     *int   `json:"page,omitempty"`
+	PageSize *int   `json:"pageSize,omitempty"`
+}
+
+type feedInWindowResponse struct {
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	WebsiteURL  string  `json:"websiteUrl"`
+	PubDate     string  `json:"pubDate,omitempty"`
+	CreatedAt   string  `json:"createdAt,omitempty"`
+	UpdatedAt   string  `json:"updatedAt,omitempty"`
+	ArticleID   *string `json:"articleId,omitempty"`
+	IsRead      bool    `json:"isRead"`
+	FeedLinkID  *string `json:"feedLinkId,omitempty"`
+	OgImageURL  *string `json:"ogImageUrl,omitempty"`
+}
+
+type feedsInWindowResponse struct {
+	Feeds    []feedInWindowResponse `json:"feeds"`
+	Total    int                    `json:"total"`
+	Page     int                    `json:"page"`
+	PageSize int                    `json:"pageSize"`
+	HasMore  bool                   `json:"hasMore"`
+}
+
 // dataHubProcedure mounts one procedure of services.datahub.v1.DataHubService, the
 // only name the data plane answers to since ADR-000954 Wave 2-C.
 //
@@ -211,6 +247,55 @@ func startStubServer(t *testing.T) int {
 
 	// ---- POST .../ListRecapArticles ----
 	dataHubProcedure(mux, "ListRecapArticles", recapArticlesHandler)
+
+	// Shared handler for the recap-worker paginated feed window fetch.
+	feedsInWindowHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req listFeedsInWindowRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		page := 1
+		if req.Page != nil && *req.Page > 0 {
+			page = *req.Page
+		}
+		pageSize := 500
+		if req.PageSize != nil && *req.PageSize > 0 {
+			pageSize = *req.PageSize
+		}
+
+		feedLinkID := "c3d4e5f6-0001-4000-8000-000000000001"
+		resp := feedsInWindowResponse{
+			Feeds: []feedInWindowResponse{
+				{
+					ID:          "f1e2d3c4-0001-4000-8000-000000000001",
+					Title:       "Example headline",
+					Description: "<p>Example lede.</p>",
+					WebsiteURL:  "https://example.com/post",
+					PubDate:     "2026-03-20T00:00:00Z",
+					CreatedAt:   "2026-03-20T01:00:00Z",
+					UpdatedAt:   "2026-03-20T01:00:00Z",
+					IsRead:      false,
+					FeedLinkID:  &feedLinkID,
+				},
+			},
+			Total:    2064,
+			Page:     page,
+			PageSize: pageSize,
+			HasMore:  page*pageSize < 2064,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}
+
+	// ---- POST .../ListFeedsInWindow ----
+	dataHubProcedure(mux, "ListFeedsInWindow", feedsInWindowHandler)
 
 	// Transitional shims: the broker's DeployedOrReleased selector still
 	// advertises older recap-worker versions whose pact targets either the
@@ -615,16 +700,28 @@ func TestVerifyRecapWorkerContract(t *testing.T) {
 		ProviderBaseURL:    fmt.Sprintf("http://127.0.0.1:%d", port),
 		FilterConsumers:    []string{"recap-worker"},
 		FailIfNoPactsFound: true,
-		StateHandlers: models.StateHandlers{
+		StateHandlers: withStates(models.StateHandlers{
 			"articles exist in the recap window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				// No-op: stub server always returns articles
+				return nil, nil
+			},
+			"feeds exist in the recap window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				// No-op: stub server always returns feeds
+				return nil, nil
+			},
+			"feeds exist in the window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				// No-op: stub server always returns feeds
+				return nil, nil
+			},
+			"feeds exist in window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				// No-op: stub server always returns feeds
 				return nil, nil
 			},
 			"tags exist for the requested articles": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				// No-op: stub server always returns tags for art-001
 				return nil, nil
 			},
-		},
+		}, readStateStates()),
 	}
 
 	if brokerURL != "" {
@@ -1068,7 +1165,7 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub accepts feed og image resolutions",
 			"alt-data-hub accepts feed og image refusals",
 			"alt-data-hub holds feed og images past the retention window",
-		), withStates(backlogStates(), deepHealthStates())), true)
+		), withStates(backlogStates(), withStates(deepHealthStates(), readStateStates()))), true)
 }
 
 // Verified without failIfNoPactsFound, unlike its siblings: services.yaml keeps
@@ -1080,7 +1177,7 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
 	verifyConsumer(t, "alt-harvester", dataHubProviderName,
 		filepath.Join(altBackendPactDir, altHarvesterDataHubPactFile),
-		noopStates(
+		withStates(noopStates(
 			"alt-data-hub has pending outbox events",
 			"alt-data-hub has a claimed outbox event",
 			"alt-data-hub has processed outbox events past retention",
@@ -1102,7 +1199,7 @@ func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
 
 			// The daily-entrance digest the today-entrance job enqueues.
 			"alt-data-hub accepts notification enqueues",
-		), false)
+		), backlogStates()), false)
 }
 
 // TestVerifyRecapWorkerDataHubContract verifies the notification enqueue the
@@ -1114,7 +1211,7 @@ func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
 func TestVerifyRecapWorkerDataHubContract(t *testing.T) {
 	verifyConsumer(t, "recap-worker", dataHubProviderName,
 		filepath.Join(pactDir, recapWorkerDataHubPactFile),
-		noopStates("alt-data-hub accepts notification enqueues"), true)
+		withStates(noopStates("alt-data-hub accepts notification enqueues"), readStateStates()), true)
 }
 
 // mountWave3Procedures adds the capabilities ADR-000954 Wave 3 moved off the
@@ -1832,9 +1929,19 @@ func mountWave3Batch4Procedures(mux *http.ServeMux) {
 	dataHubProcedure(mux, "GetReadFeedIDs", jsonPost(map[string]interface{}{
 		"readFeedIds": []string{stubFeedRow},
 	}))
-	dataHubProcedure(mux, "GetAllReadFeedIDs", jsonPost(map[string]interface{}{
-		"readFeedIds": []string{stubFeedRow},
-	}))
+	pactReadState := &pactReadStatePort{
+		feedIDs: []uuid.UUID{uuid.MustParse(stubFeedRow)},
+	}
+	readStateDHHandler := datahubapi.NewHandler(
+		nil, nil, nil, nil, nil,
+		pactSystemUser{}, pactRecentArticles{},
+		slog.Default(),
+		datahubapi.WithWave3Batch4Capabilities(pactReadState, pactTagReadPort{}),
+	)
+	dataHubProcedure(mux, "GetAllReadFeedIDs", connect.NewUnaryHandler(
+		"/services.datahub.v1.DataHubService/GetAllReadFeedIDs",
+		readStateDHHandler.GetAllReadFeedIDs,
+	).ServeHTTP)
 	dataHubProcedure(mux, "GetUserSubscribedFeedLinkIDs", jsonPost(map[string]interface{}{
 		"feedLinkIds": []string{stubLink},
 	}))
@@ -2249,4 +2356,89 @@ func deepHealthStates() models.StateHandlers {
 		"alt-data-hub data path is degraded":   set(deepHealthWarn),
 		"alt-data-hub database is unavailable": set(deepHealthFail),
 	}
+}
+
+type readStateProviderMode uint32
+
+const (
+	readStateDefault readStateProviderMode = iota
+	readStateForUser
+	readStateSinceTimestamp
+	readStateNone
+)
+
+var readStateMode atomic.Uint32
+
+func readStateStates() models.StateHandlers {
+	set := func(mode readStateProviderMode) models.StateHandler {
+		return func(setUp bool, _ models.ProviderState) (models.ProviderStateResponse, error) {
+			if setUp {
+				readStateMode.Store(uint32(mode))
+			} else {
+				readStateMode.Store(uint32(readStateDefault))
+			}
+			return nil, nil
+		}
+	}
+	return models.StateHandlers{
+		"read feeds exist for the user":                   set(readStateForUser),
+		"read feeds exist for the user since a timestamp": set(readStateSinceTimestamp),
+		"read feeds exist in the period":                  set(readStateSinceTimestamp),
+		"alt-data-hub has read marks for the user":        set(readStateForUser),
+	}
+}
+
+type pactReadStatePort struct {
+	feedIDs []uuid.UUID
+}
+
+func (p *pactReadStatePort) MarkFeedRead(context.Context, string, uuid.UUID) error    { return nil }
+func (p *pactReadStatePort) MarkArticleRead(context.Context, string, uuid.UUID) error { return nil }
+func (p *pactReadStatePort) ReadFeedIDs(context.Context, uuid.UUID, []uuid.UUID) ([]uuid.UUID, error) {
+	return p.feedIDs, nil
+}
+func (p *pactReadStatePort) AllReadFeedIDs(context.Context, uuid.UUID, *time.Time) ([]uuid.UUID, error) {
+	mode := readStateMode.Load()
+	if mode == uint32(readStateNone) {
+		return []uuid.UUID{}, nil
+	}
+	return p.feedIDs, nil
+}
+func (p *pactReadStatePort) SubscribedFeedLinkIDs(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
+func (p *pactReadStatePort) ListSubscriptions(context.Context, uuid.UUID) ([]*domain.FeedSource, error) {
+	return nil, nil
+}
+func (p *pactReadStatePort) Subscribe(context.Context, uuid.UUID, uuid.UUID) error   { return nil }
+func (p *pactReadStatePort) Unsubscribe(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (p *pactReadStatePort) AddFavorite(context.Context, string, uuid.UUID) error    { return nil }
+func (p *pactReadStatePort) RemoveFavorite(context.Context, string, uuid.UUID) error { return nil }
+
+type pactTagReadPort struct{}
+
+func (pactTagReadPort) ArticleTags(context.Context, string) ([]*domain.FeedTag, error) {
+	return nil, nil
+}
+func (pactTagReadPort) FeedTags(context.Context, string, *time.Time, int) ([]*domain.FeedTag, error) {
+	return nil, nil
+}
+func (pactTagReadPort) Cooccurrences(context.Context, []string) ([]*domain.TagCooccurrence, error) {
+	return nil, nil
+}
+func (pactTagReadPort) SearchByPrefix(context.Context, string, int) ([]domain.GlobalTagHit, error) {
+	return nil, nil
+}
+func (pactTagReadPort) ArticleCounts(context.Context, uuid.UUID, time.Time) ([]domain.TagArticleCount, error) {
+	return nil, nil
+}
+
+type pactSystemUser struct{}
+
+func (pactSystemUser) GetFirstIdentityID(context.Context) (string, error) { return "", nil }
+
+type pactRecentArticles struct{}
+
+func (pactRecentArticles) Execute(context.Context, fetch_recent_articles_usecase.FetchRecentArticlesInput) (*fetch_recent_articles_usecase.FetchRecentArticlesOutput, error) {
+	return nil, nil
 }

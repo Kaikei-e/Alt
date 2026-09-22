@@ -86,6 +86,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *datahubdi.DataHubCompon
 		datahubapi.WithKnowledgeEventPort(container.SovereignClient),
 		datahubapi.WithRAGToolPorts(container.FetchTagCloudUsecase, container.FetchArticlesByTagUsecase),
 		datahubapi.WithRecapArticlesUsecase(container.RecapArticlesUsecase),
+		datahubapi.WithFeedsInWindowUsecase(container.FeedsInWindowUsecase),
 		// ADR-000954 Wave 3 batch 1. Unlike the phase options above, every
 		// argument here is required and WithWave3Capabilities panics on a nil
 		// one: these are the only route alt-backend and alt-harvester have to

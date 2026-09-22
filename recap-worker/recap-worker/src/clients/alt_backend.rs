@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
+use uuid::Uuid;
 
 use crate::pipeline::tag_signal::TagSignal;
 
@@ -39,6 +40,51 @@ pub(crate) struct AltBackendArticle {
     pub(crate) lang_hint: Option<String>,
     #[serde(default)]
     pub(crate) tags: Vec<AltBackendTag>,
+}
+
+/// Feed item structure returned from alt-backend ListFeedsInWindow.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AltBackendFeed {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub website_url: String,
+    #[serde(default)]
+    pub pub_date: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub article_id: Option<String>,
+    #[serde(default)]
+    pub is_read: bool,
+    #[serde(default)]
+    pub feed_link_id: Option<String>,
+    #[serde(default)]
+    pub og_image_url: Option<String>,
+}
+
+/// Response shape for ListFeedsInWindow Connect-RPC.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListFeedsInWindowResponse {
+    #[serde(default)]
+    pub has_more: bool,
+    #[serde(default)]
+    pub feeds: Vec<AltBackendFeed>,
+}
+
+/// Request shape for ListFeedsInWindow Connect-RPC.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListFeedsInWindowRequest {
+    from: String,
+    to: String,
+    page: i32,
+    page_size: i32,
 }
 
 /// alt-backendのページング付き応答。
@@ -84,6 +130,29 @@ struct ListRecapArticlesRequest {
 /// 形状は不変で、package / service prefix だけが移る。接続先 URL
 /// (`ALT_BACKEND_MTLS_URL`) は Wave 2-A で alt-data-hub へ付け替え済み。
 const LIST_RECAP_ARTICLES_PATH: &str = "services.datahub.v1.DataHubService/ListRecapArticles";
+
+/// Connect-RPC ListFeedsInWindow RPC path.
+const LIST_FEEDS_IN_WINDOW_PATH: &str = "services.datahub.v1.DataHubService/ListFeedsInWindow";
+
+/// Connect-RPC GetAllReadFeedIDs RPC path.
+const GET_ALL_READ_FEED_IDS_PATH: &str = "services.datahub.v1.DataHubService/GetAllReadFeedIDs";
+
+/// Request shape for GetAllReadFeedIDs Connect-RPC.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GetAllReadFeedIDsRequest {
+    user_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    since: Option<String>,
+}
+
+/// Response shape for GetAllReadFeedIDs Connect-RPC.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetAllReadFeedIDsResponse {
+    #[serde(default)]
+    read_feed_ids: Vec<String>,
+}
 
 /// Connect-RPC BatchGetTagsByArticleIDs RPC path. Replaces the legacy
 /// tag-generator /api/v1/tags/batch surface per ADR-000241 / ADR-000397.
@@ -352,6 +421,141 @@ impl AltBackendClient {
             .await
             .context("failed to deserialize alt-backend articles response")
     }
+
+    /// List feeds in window (Connect-RPC unary, JSON body).
+    pub(crate) async fn list_feeds_in_window(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        page: i32,
+        page_size: i32,
+    ) -> Result<ListFeedsInWindowResponse> {
+        let url = self
+            .base_url
+            .join(LIST_FEEDS_IN_WINDOW_PATH)
+            .context("failed to build list feeds in window Connect-RPC URL")?;
+
+        let body = ListFeedsInWindowRequest {
+            from: from.to_rfc3339(),
+            to: to.to_rfc3339(),
+            page,
+            page_size,
+        };
+
+        let response = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .context("alt-backend list feeds in window request failed")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            anyhow::bail!("alt-backend returned error status {status}: {error_body}");
+        }
+
+        response
+            .json::<ListFeedsInWindowResponse>()
+            .await
+            .context("failed to deserialize alt-backend list feeds in window response")
+    }
+
+    /// Fetch all feeds in window by paginating until has_more is false (page_size 500).
+    pub(crate) async fn fetch_all_feeds_in_window(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<AltBackendFeed>> {
+        let mut all_feeds = Vec::new();
+        let mut current_page = 1;
+
+        loop {
+            debug!(page = current_page, "fetching feeds in window page");
+
+            let response = self
+                .list_feeds_in_window(from, to, current_page, 500)
+                .await?;
+            let feeds_count = response.feeds.len();
+
+            all_feeds.extend(response.feeds);
+
+            debug!(
+                page = current_page,
+                feeds = feeds_count,
+                total = all_feeds.len(),
+                has_more = response.has_more,
+                "fetched feeds in window page"
+            );
+
+            if !response.has_more {
+                break;
+            }
+
+            if current_page >= MAX_ARTICLE_FETCH_PAGES {
+                anyhow::bail!(
+                    "reached max page limit ({}) for fetch_all_feeds_in_window with more items remaining (feeds so far: {})",
+                    MAX_ARTICLE_FETCH_PAGES,
+                    all_feeds.len()
+                );
+            }
+
+            current_page += 1;
+        }
+
+        Ok(all_feeds)
+    }
+
+    /// Fetch all read feed IDs, optionally filtered by `since` timestamp.
+    pub(crate) async fn get_all_read_feed_ids(
+        &self,
+        user_id: Uuid,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Uuid>> {
+        let url = self
+            .base_url
+            .join(GET_ALL_READ_FEED_IDS_PATH)
+            .context("failed to build GetAllReadFeedIDs Connect-RPC URL")?;
+
+        let body = GetAllReadFeedIDsRequest {
+            user_id: user_id.to_string(),
+            since: since.map(|dt| dt.to_rfc3339()),
+        };
+
+        let response = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .context("alt-backend GetAllReadFeedIDs request failed")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "alt-backend GetAllReadFeedIDs returned error status {status}: {error_body}"
+            );
+        }
+
+        let resp = response
+            .json::<GetAllReadFeedIDsResponse>()
+            .await
+            .context("failed to deserialize alt-backend GetAllReadFeedIDs response")?;
+
+        let mut read_uuids = Vec::with_capacity(resp.read_feed_ids.len());
+        for id_str in resp.read_feed_ids {
+            let u = Uuid::parse_str(&id_str).map_err(|e| {
+                anyhow::anyhow!("contract violation: unparseable read feed id '{id_str}': {e}")
+            })?;
+            read_uuids.push(u);
+        }
+
+        Ok(read_uuids)
+    }
 }
 
 #[cfg(test)]
@@ -568,5 +772,214 @@ mod tests {
             .await
             .expect_err("should fail on 500");
         assert!(err.to_string().contains("error status"));
+    }
+
+    #[tokio::test]
+    async fn fetch_all_feeds_in_window_returns_single_page() {
+        let server = MockServer::start().await;
+        let from = Utc::now();
+        let to = Utc::now();
+
+        let body = serde_json::json!({
+            "total": 1,
+            "page": 1,
+            "pageSize": 500,
+            "hasMore": false,
+            "feeds": [
+                {
+                    "id": "feed-001",
+                    "title": "Example headline",
+                    "description": "<p>Example lede.</p>",
+                    "websiteUrl": "https://example.com/post",
+                    "pubDate": "2026-03-20T12:00:00Z",
+                    "createdAt": "2026-03-20T12:05:00Z",
+                    "updatedAt": "2026-03-20T12:05:00Z",
+                    "articleId": "art-001",
+                    "isRead": false,
+                    "feedLinkId": "link-001",
+                    "ogImageUrl": "https://example.com/image.png"
+                }
+            ]
+        });
+
+        Mock::given(method("POST"))
+            .and(path(format!("/{LIST_FEEDS_IN_WINDOW_PATH}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let feeds = client
+            .fetch_all_feeds_in_window(from, to)
+            .await
+            .expect("fetch should succeed");
+
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].id, "feed-001");
+        assert_eq!(feeds[0].title, "Example headline");
+        assert_eq!(feeds[0].website_url, "https://example.com/post");
+    }
+
+    #[tokio::test]
+    async fn fetch_all_feeds_in_window_paginates_multiple_pages() {
+        let server = MockServer::start().await;
+        let from = Utc::now();
+        let to = Utc::now();
+
+        let body1 = serde_json::json!({
+            "total": 2,
+            "page": 1,
+            "pageSize": 500,
+            "hasMore": true,
+            "feeds": [
+                {
+                    "id": "feed-001",
+                    "title": "Headline 1",
+                    "description": "<p>Lede 1</p>",
+                    "websiteUrl": "https://example.com/1",
+                    "isRead": false
+                }
+            ]
+        });
+
+        let body2 = serde_json::json!({
+            "total": 2,
+            "page": 2,
+            "pageSize": 500,
+            "hasMore": false,
+            "feeds": [
+                {
+                    "id": "feed-002",
+                    "title": "Headline 2",
+                    "description": "<p>Lede 2</p>",
+                    "websiteUrl": "https://example.com/2",
+                    "isRead": true
+                }
+            ]
+        });
+
+        let req1 = serde_json::json!({
+            "from": from.to_rfc3339(),
+            "to": to.to_rfc3339(),
+            "page": 1,
+            "pageSize": 500,
+        });
+
+        let req2 = serde_json::json!({
+            "from": from.to_rfc3339(),
+            "to": to.to_rfc3339(),
+            "page": 2,
+            "pageSize": 500,
+        });
+
+        Mock::given(method("POST"))
+            .and(path(format!("/{LIST_FEEDS_IN_WINDOW_PATH}")))
+            .and(body_json(&req1))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body1))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path(format!("/{LIST_FEEDS_IN_WINDOW_PATH}")))
+            .and(body_json(&req2))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body2))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let feeds = client
+            .fetch_all_feeds_in_window(from, to)
+            .await
+            .expect("fetch should succeed");
+
+        assert_eq!(feeds.len(), 2);
+        assert_eq!(feeds[0].id, "feed-001");
+        assert_eq!(feeds[1].id, "feed-002");
+    }
+
+    #[tokio::test]
+    async fn get_all_read_feed_ids_returns_uuids_with_since() {
+        let server = MockServer::start().await;
+        let user_id = Uuid::new_v4();
+        let since = Utc::now();
+
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        let body = serde_json::json!({
+            "readFeedIds": [id1.to_string(), id2.to_string()]
+        });
+
+        let expected_req = serde_json::json!({
+            "userId": user_id.to_string(),
+            "since": since.to_rfc3339()
+        });
+
+        Mock::given(method("POST"))
+            .and(path(format!("/{GET_ALL_READ_FEED_IDS_PATH}")))
+            .and(body_json(&expected_req))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let read_ids = client
+            .get_all_read_feed_ids(user_id, Some(since))
+            .await
+            .expect("fetch should succeed");
+
+        assert_eq!(read_ids.len(), 2);
+        assert_eq!(read_ids[0], id1);
+        assert_eq!(read_ids[1], id2);
+    }
+
+    #[tokio::test]
+    async fn get_all_read_feed_ids_unparseable_uuid_fails_loud() {
+        let server = MockServer::start().await;
+        let user_id = Uuid::new_v4();
+
+        let body = serde_json::json!({
+            "readFeedIds": ["invalid-uuid"]
+        });
+
+        Mock::given(method("POST"))
+            .and(path(format!("/{GET_ALL_READ_FEED_IDS_PATH}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let err = client
+            .get_all_read_feed_ids(user_id, None)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("contract violation: unparseable read feed id")
+        );
+    }
+
+    #[tokio::test]
+    async fn get_all_read_feed_ids_handles_empty_response() {
+        let server = MockServer::start().await;
+        let user_id = Uuid::new_v4();
+
+        let body = serde_json::json!({
+            "readFeedIds": []
+        });
+
+        Mock::given(method("POST"))
+            .and(path(format!("/{GET_ALL_READ_FEED_IDS_PATH}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+
+        let client = AltBackendClient::new(test_config(server.uri())).expect("client should build");
+        let read_ids = client
+            .get_all_read_feed_ids(user_id, None)
+            .await
+            .expect("fetch should succeed");
+
+        assert!(read_ids.is_empty());
     }
 }

@@ -149,6 +149,8 @@ mod tests {
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
                 ("RECAP_KNOWLEDGE_EMIT", Some("false")),
                 ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",

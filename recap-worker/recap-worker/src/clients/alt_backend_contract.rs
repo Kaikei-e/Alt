@@ -135,3 +135,96 @@ async fn contract_alt_backend_batch_get_tags_by_article_ids() {
         .expect("response should carry tags for the requested article id");
     assert!(!signals.is_empty());
 }
+
+/// Paginated feeds in window fetch: POST /services.datahub.v1.DataHubService/ListFeedsInWindow → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_alt_backend_list_feeds_in_window() {
+    let pact = PactBuilder::new("recap-worker", "alt-backend")
+        .interaction("a paginated feeds in window request", "", |mut i| {
+            i.given("feeds exist in the window");
+            i.request.method("POST");
+            i.request
+                .path("/services.datahub.v1.DataHubService/ListFeedsInWindow");
+            i.request.content_type("application/json");
+            i.request.json_body(json_pattern!({
+                "from": like!("2026-09-18T17:00:00Z"),
+                "to": like!("2026-09-21T17:00:00Z"),
+                "page": like!(1i64),
+                "pageSize": like!(500i64),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "feeds": each_like!(json_pattern!({
+                    "id": like!("00000000-0000-0000-0000-000000000001"),
+                    "title": like!("Example headline"),
+                    "description": like!("<p>Example lede.</p>"),
+                    "websiteUrl": like!("https://example.com/post"),
+                    "pubDate": like!("2026-09-20T10:00:00Z"),
+                    "createdAt": like!("2026-09-20T10:05:00Z"),
+                    "updatedAt": like!("2026-09-20T10:05:00Z"),
+                    "isRead": like!(false),
+                    "feedLinkId": like!("00000000-0000-0000-0000-000000000002"),
+                })),
+                "total": like!(1i64),
+                "page": like!(1i64),
+                "pageSize": like!(500i64),
+                "hasMore": like!(false),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let feeds = contract_client(pact.url().to_string())
+        .fetch_all_feeds_in_window(ts("2026-09-18T17:00:00Z"), ts("2026-09-21T17:00:00Z"))
+        .await
+        .expect("fetch_all_feeds_in_window should succeed against the pact mock");
+
+    assert!(!feeds.is_empty());
+    assert_eq!(feeds[0].title, "Example headline");
+    assert_eq!(feeds[0].website_url, "https://example.com/post");
+    assert_eq!(
+        feeds[0].description.as_deref(),
+        Some("<p>Example lede.</p>")
+    );
+}
+
+/// All read feed IDs with optional since: POST /services.datahub.v1.DataHubService/GetAllReadFeedIDs → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_alt_backend_get_all_read_feed_ids() {
+    let pact = PactBuilder::new("recap-worker", "alt-backend")
+        .interaction("a get all read feed ids request with since", "", |mut i| {
+            i.given("read feeds exist in the period");
+            i.request.method("POST");
+            i.request
+                .path("/services.datahub.v1.DataHubService/GetAllReadFeedIDs");
+            i.request.content_type("application/json");
+            i.request.json_body(json_pattern!({
+                "userId": like!("00000000-0000-0000-0000-000000000001"),
+                "since": like!("2026-08-19T17:00:00Z"),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "readFeedIds": each_like!(like!("00000000-0000-0000-0000-000000000001")),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let user_id = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+    let read_ids = contract_client(pact.url().to_string())
+        .get_all_read_feed_ids(user_id, Some(ts("2026-08-19T17:00:00Z")))
+        .await
+        .expect("get_all_read_feed_ids should succeed against the pact mock");
+
+    assert!(!read_ids.is_empty());
+    assert_eq!(
+        read_ids[0],
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap()
+    );
+}

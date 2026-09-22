@@ -1,5 +1,6 @@
 // モジュールの公開と型の再エクスポート
 pub mod article;
+pub mod cards;
 pub mod config;
 pub mod evaluation;
 pub mod genre_learning;
@@ -26,6 +27,12 @@ mod tests;
 pub mod job_status;
 
 // 型の再エクスポート - 新アーキテクチャを優先
+#[allow(unused_imports)]
+pub use cards::{
+    CardsDao, CardsJob, CardsJobSummary, RecapCard, RecapCardCandidate, RecapCardJobStats,
+    RecapCardRating, RecapCardSnapshot, RecapEvalWindow, RecapEvalWindowSummary,
+    RecapStoryJudgment,
+};
 pub use impls::UnifiedDao;
 pub use types::{GenreStatus, JobStatus, PipelineStage, TriggerSource};
 

@@ -129,6 +129,8 @@ mod tests {
                     "RECAP_ADMIN_TOKEN_FILE",
                     Some(token_path.to_str().expect("utf8 path")),
                 ),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",
