@@ -40,6 +40,27 @@ impl UnifiedDao {
     pub fn pool(&self) -> &PgPool {
         &self.pool
     }
+
+    /// Retrieve cached embeddings by model and text hashes.
+    pub async fn get_cached_embeddings(
+        &self,
+        model: &str,
+        text_hashes: &[String],
+    ) -> Result<HashMap<String, Vec<f32>>> {
+        crate::store::dao::cards::CardsDaoOps::get_cached_embeddings(&self.pool, model, text_hashes)
+            .await
+    }
+
+    /// Insert new embeddings into cache idempotently.
+    pub async fn insert_embeddings(
+        &self,
+        model: &str,
+        dim: usize,
+        entries: &[(String, Vec<f32>)],
+    ) -> Result<()> {
+        crate::store::dao::cards::CardsDaoOps::insert_embeddings(&self.pool, model, dim, entries)
+            .await
+    }
 }
 
 // JobDao implementation

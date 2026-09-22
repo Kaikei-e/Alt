@@ -42,6 +42,15 @@ pub struct CardsPipelineResult {
     pub candidates: usize,
     #[serde(default)]
     pub cards_selected: usize,
+    #[serde(default)]
+    pub embed_cache_hits: usize,
+    #[serde(default)]
+    pub embed_cache_misses: usize,
+}
+
+/// Compute cache key hash for an embedding input string (xxh3-64 hex).
+pub fn compute_embedding_text_hash(text: &str) -> String {
+    format!("{:016x}", xxhash_rust::xxh3::xxh3_64(text.as_bytes()))
 }
 
 /// Result returned from running the pipeline in replay mode.
@@ -64,6 +73,19 @@ pub trait CardsPipelineDao: Send + Sync {
     ) -> Result<Option<Uuid>>;
 
     async fn get_latest_completed_cards_job(&self) -> Result<Option<PreviousCardsJob>>;
+
+    async fn get_cached_embeddings(
+        &self,
+        model: &str,
+        text_hashes: &[String],
+    ) -> Result<HashMap<String, Vec<f32>>>;
+
+    async fn insert_embeddings(
+        &self,
+        model: &str,
+        dim: usize,
+        entries: &[(String, Vec<f32>)],
+    ) -> Result<()>;
 
     async fn persist_pipeline_output(
         &self,
@@ -100,6 +122,27 @@ impl CardsPipelineDao for UnifiedDao {
 
     async fn get_latest_completed_cards_job(&self) -> Result<Option<PreviousCardsJob>> {
         crate::store::dao::cards::CardsDaoOps::get_latest_completed_cards_job(self.pool())
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    }
+
+    async fn get_cached_embeddings(
+        &self,
+        model: &str,
+        text_hashes: &[String],
+    ) -> Result<HashMap<String, Vec<f32>>> {
+        self.get_cached_embeddings(model, text_hashes)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    }
+
+    async fn insert_embeddings(
+        &self,
+        model: &str,
+        dim: usize,
+        entries: &[(String, Vec<f32>)],
+    ) -> Result<()> {
+        self.insert_embeddings(model, dim, entries)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
@@ -202,8 +245,9 @@ impl CardsPipelineDao for UnifiedDao {
             INSERT INTO recap_card_job_stats (
                 job_id, items_fetched, items_after_noise, items_after_dedup,
                 clusters, candidates, cards_selected, cards_dropped,
-                embed_ms, cluster_ms, llm_ms, total_ms, params_version, params
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                embed_ms, cluster_ms, llm_ms, total_ms, params_version, params,
+                embed_cache_hits, embed_cache_misses
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             ",
         )
         .bind(stats.job_id)
@@ -220,6 +264,8 @@ impl CardsPipelineDao for UnifiedDao {
         .bind(stats.total_ms)
         .bind(&stats.params_version)
         .bind(sqlx::types::Json(&snapshot.params))
+        .bind(i32::try_from(stats.embed_cache_hits).unwrap_or(i32::MAX))
+        .bind(i32::try_from(stats.embed_cache_misses).unwrap_or(i32::MAX))
         .execute(&mut *tx)
         .await
         .map_err(|e| anyhow::anyhow!("failed to insert recap_card_job_stats: {e}"))?;
@@ -269,6 +315,8 @@ struct StageCounts {
     clusters: usize,
     candidates: usize,
     cards_dropped: serde_json::Value,
+    embed_cache_hits: usize,
+    embed_cache_misses: usize,
 }
 
 struct StageTimings {
@@ -374,6 +422,8 @@ impl CardsPipeline {
             clusters: usize::try_from(stats.clusters).unwrap_or(0),
             candidates: usize::try_from(stats.candidates).unwrap_or(0),
             cards_selected: usize::try_from(stats.cards_selected).unwrap_or(0),
+            embed_cache_hits: stats.embed_cache_hits,
+            embed_cache_misses: stats.embed_cache_misses,
         })
     }
 
@@ -613,21 +663,127 @@ impl CardsPipeline {
         ))
     }
 
+    async fn embed_with_cache(
+        &self,
+        job_id: Uuid,
+        texts: &[String],
+        params: &CardsParams,
+    ) -> Result<(Vec<Vec<f32>>, usize, usize)> {
+        if texts.is_empty() {
+            return Ok((Vec::new(), 0, 0));
+        }
+
+        let text_hashes: Vec<String> = texts
+            .iter()
+            .map(|t| compute_embedding_text_hash(t))
+            .collect();
+
+        let cached = self
+            .dao
+            .get_cached_embeddings(&params.expected_embed_model, &text_hashes)
+            .await
+            .context("failed to query embedding cache")?;
+
+        for (h, vec) in &cached {
+            if vec.len() != params.expected_embed_dim {
+                anyhow::bail!(
+                    "cached embedding dimension mismatch for hash {h}: expected {}, got {}",
+                    params.expected_embed_dim,
+                    vec.len()
+                );
+            }
+        }
+
+        let mut misses_indices = Vec::new();
+        let mut misses_texts = Vec::new();
+        for (i, hash) in text_hashes.iter().enumerate() {
+            if !cached.contains_key(hash) {
+                misses_indices.push(i);
+                misses_texts.push(texts[i].clone());
+            }
+        }
+
+        let hits_count = texts.len() - misses_texts.len();
+        let misses_count = misses_texts.len();
+
+        let new_embeddings = if misses_texts.is_empty() {
+            Vec::new()
+        } else {
+            let embs = self
+                .ml_port
+                .embed(&misses_texts)
+                .await
+                .context("failed to generate ML embeddings for cache misses")?;
+
+            if embs.len() != misses_texts.len() {
+                anyhow::bail!(
+                    "subworker embedding count mismatch for cache misses: expected {}, got {}",
+                    misses_texts.len(),
+                    embs.len()
+                );
+            }
+            embs
+        };
+
+        if !new_embeddings.is_empty() {
+            let mut entries_to_insert = Vec::with_capacity(new_embeddings.len());
+            let mut seen_hashes = std::collections::HashSet::new();
+            for (&idx, emb) in misses_indices.iter().zip(new_embeddings.iter()) {
+                let hash = &text_hashes[idx];
+                if seen_hashes.insert(hash.clone()) {
+                    entries_to_insert.push((hash.clone(), emb.clone()));
+                }
+            }
+            let insert_dim = new_embeddings
+                .first()
+                .map_or(params.expected_embed_dim, Vec::len);
+            self.dao
+                .insert_embeddings(&params.expected_embed_model, insert_dim, &entries_to_insert)
+                .await
+                .context("failed to insert new embeddings into cache")?;
+        }
+
+        let mut final_embeddings = Vec::with_capacity(texts.len());
+        let mut miss_map: HashMap<usize, Vec<f32>> = HashMap::new();
+        for (&idx, emb) in misses_indices.iter().zip(new_embeddings) {
+            miss_map.insert(idx, emb);
+        }
+
+        for (i, hash) in text_hashes.iter().enumerate() {
+            if let Some(emb) = cached.get(hash) {
+                final_embeddings.push(emb.clone());
+            } else if let Some(emb) = miss_map.remove(&i) {
+                final_embeddings.push(emb);
+            } else {
+                anyhow::bail!("internal error: missing embedding for index {i}");
+            }
+        }
+
+        tracing::debug!(
+            job_id = %job_id,
+            total_texts = texts.len(),
+            cache_hits = hits_count,
+            cache_misses = misses_count,
+            "embed_with_cache completed"
+        );
+
+        Ok((final_embeddings, hits_count, misses_count))
+    }
+
     async fn stage_personal_vector(
         &self,
         job_id: Uuid,
         read_items: &[(DateTime<Utc>, String)],
         to: DateTime<Utc>,
-        tau_days: f32,
-    ) -> Result<Option<Vec<f32>>> {
+        params: &CardsParams,
+    ) -> Result<(Option<Vec<f32>>, usize, usize)> {
         if read_items.is_empty() {
-            return Ok(None);
+            return Ok((None, 0, 0));
         }
 
         let texts: Vec<String> = read_items.iter().map(|(_, t)| t.clone()).collect();
-        let embeddings = self
-            .ml_port
-            .embed(&texts)
+        let (embeddings, hits, misses) = self
+            .embed_with_cache(job_id, &texts, params)
             .await
             .context("failed to embed read items for personal vector")?;
 
@@ -642,7 +798,7 @@ impl CardsPipeline {
         for ((pub_date, _), emb) in read_items.iter().zip(embeddings.iter()) {
             let delta_secs = (to - *pub_date).num_seconds().max(0);
             let delta_days = delta_secs as f32 / 86400.0;
-            let w = (-delta_days / tau_days).exp();
+            let w = (-delta_days / params.recency_tau_days).exp();
             total_w += w;
             for k in 0..dim {
                 u[k] += w * emb[k];
@@ -666,10 +822,12 @@ impl CardsPipeline {
         info!(
             job_id = %job_id,
             read_items_count = read_items.len(),
+            embed_cache_hits = hits,
+            embed_cache_misses = misses,
             "computed personal vector"
         );
 
-        Ok(Some(u))
+        Ok((Some(u), hits, misses))
     }
 
     fn stage_normalize_and_noise(
@@ -708,38 +866,28 @@ impl CardsPipeline {
         &self,
         job_id: Uuid,
         deduped: &[NormalizedItem],
-    ) -> Result<(Vec<Vec<f32>>, i64)> {
+        params: &CardsParams,
+    ) -> Result<(Vec<Vec<f32>>, i64, usize, usize)> {
         let embed_start = Instant::now();
         let texts_to_embed: Vec<String> = deduped
             .iter()
             .map(|it| format!("{} — {}", it.title, it.lede))
             .collect();
 
-        let embeddings = if texts_to_embed.is_empty() {
-            Vec::new()
-        } else {
-            self.ml_port
-                .embed(&texts_to_embed)
-                .await
-                .context("failed to generate ML embeddings")?
-        };
+        let (embeddings, hits, misses) = self
+            .embed_with_cache(job_id, &texts_to_embed, params)
+            .await?;
         let embed_ms = i64::try_from(embed_start.elapsed().as_millis()).unwrap_or(i64::MAX);
-
-        if embeddings.len() != deduped.len() {
-            anyhow::bail!(
-                "subworker embedding count mismatch: expected {} embeddings for deduped items, got {}",
-                deduped.len(),
-                embeddings.len()
-            );
-        }
 
         info!(
             job_id = %job_id,
             embeddings_count = embeddings.len(),
+            embed_cache_hits = hits,
+            embed_cache_misses = misses,
             embed_ms,
             "cards embedding complete"
         );
-        Ok((embeddings, embed_ms))
+        Ok((embeddings, embed_ms, hits, misses))
     }
 
     async fn stage_cluster(
@@ -809,6 +957,8 @@ impl CardsPipeline {
             llm_ms: args.timings.llm,
             total_ms: args.timings.total,
             params_version: args.params_version.to_string(),
+            embed_cache_hits: args.counts.embed_cache_hits,
+            embed_cache_misses: args.counts.embed_cache_misses,
             created_at: args.created_at,
         };
 
@@ -1350,7 +1500,8 @@ impl CardsPipeline {
         }
 
         // Stage 5: Embed
-        let (embeddings_exact, embed_ms) = self.stage_embed(job_id, &deduped_exact).await?;
+        let (embeddings_exact, embed_ms, embed_hits, embed_misses) =
+            self.stage_embed(job_id, &deduped_exact, params).await?;
 
         // Stage 5b: Near-duplicate Dedup
         let (deduped, embeddings, near_dup_dropped) = deduplicate_near_duplicates(
@@ -1367,9 +1518,18 @@ impl CardsPipeline {
         );
 
         // Stage 5c: Personal Vector
-        let personal_vector = self
-            .stage_personal_vector(job_id, &read_items, to, params.recency_tau_days)
+        let (personal_vector, pv_hits, pv_misses) = self
+            .stage_personal_vector(job_id, &read_items, to, params)
             .await?;
+
+        let total_cache_hits = embed_hits + pv_hits;
+        let total_cache_misses = embed_misses + pv_misses;
+        info!(
+            job_id = %job_id,
+            embed_cache_hits = total_cache_hits,
+            embed_cache_misses = total_cache_misses,
+            "embedding cache totals"
+        );
 
         // Stage 6: Cluster
         let (cluster_resp, cluster_ms) = self
@@ -1454,6 +1614,8 @@ impl CardsPipeline {
             clusters: cluster_resp.clusters.len(),
             candidates: candidates_count,
             cards_dropped,
+            embed_cache_hits: total_cache_hits,
+            embed_cache_misses: total_cache_misses,
         };
         let timings = StageTimings {
             embed: embed_ms,
@@ -1598,6 +1760,7 @@ mod tests {
 
     type MockJobEntry = (Uuid, Option<String>, u32, String);
     type MockStatusEntry = (Uuid, JobStatus, Option<String>, Option<String>);
+    type MockEmbeddingCache = Mutex<HashMap<String, (String, usize, Vec<f32>)>>;
 
     #[derive(Default)]
     pub struct MockCardsPipelineDao {
@@ -1609,6 +1772,7 @@ mod tests {
         pub windows: Mutex<Vec<RecapEvalWindow>>,
         pub statuses: Mutex<Vec<MockStatusEntry>>,
         pub previous_job: Mutex<Option<PreviousCardsJob>>,
+        pub cache: MockEmbeddingCache,
     }
 
     #[async_trait::async_trait]
@@ -1631,6 +1795,52 @@ mod tests {
 
         async fn get_latest_completed_cards_job(&self) -> Result<Option<PreviousCardsJob>> {
             Ok(self.previous_job.lock().unwrap().clone())
+        }
+
+        async fn get_cached_embeddings(
+            &self,
+            model: &str,
+            text_hashes: &[String],
+        ) -> Result<HashMap<String, Vec<f32>>> {
+            let lock = self.cache.lock().unwrap();
+            let mut map = HashMap::new();
+            for h in text_hashes {
+                if let Some((stored_model, dim, vec)) = lock.get(h) {
+                    if stored_model != model {
+                        anyhow::bail!(
+                            "embedding cache model identity mismatch for hash {h}: expected {model}, got {stored_model}"
+                        );
+                    }
+                    if *dim != vec.len() {
+                        anyhow::bail!(
+                            "cached embedding dimension mismatch for hash {h}: dim {dim} != vec len {}",
+                            vec.len()
+                        );
+                    }
+                    map.insert(h.clone(), vec.clone());
+                }
+            }
+            Ok(map)
+        }
+
+        async fn insert_embeddings(
+            &self,
+            model: &str,
+            dim: usize,
+            entries: &[(String, Vec<f32>)],
+        ) -> Result<()> {
+            let mut lock = self.cache.lock().unwrap();
+            for (h, vec) in entries {
+                if vec.len() != dim {
+                    anyhow::bail!(
+                        "cannot insert embedding for hash {h}: vector length {} != specified dim {dim}",
+                        vec.len()
+                    );
+                }
+                lock.entry(h.clone())
+                    .or_insert_with(|| (model.to_string(), dim, vec.clone()));
+            }
+            Ok(())
         }
 
         async fn persist_pipeline_output(
@@ -2050,7 +2260,9 @@ mod tests {
         let to = DateTime::parse_from_rfc3339("2026-03-21T00:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        let params = CardsParams::default();
+        let params = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap();
 
         let res = pipeline
             .run(job_id, from, to, &params)
@@ -3050,5 +3262,255 @@ mod tests {
         let stats = dao.stats.lock().unwrap().clone();
         assert_eq!(stats.len(), 1);
         assert_eq!(stats[0].params_version, "cards-v0.1+alpha=0.7");
+    }
+
+    #[tokio::test]
+    async fn test_embedding_cache_determinism_first_run_embeds_second_run_cached_and_identical_candidates()
+     {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        let id3 = Uuid::new_v4();
+
+        let feeds = vec![
+            sample_feed(id1, "Article Alpha", "alpha.com", "2026-03-20T10:00:00Z"),
+            sample_feed(id2, "Article Beta", "beta.org", "2026-03-20T11:00:00Z"),
+            sample_feed(id3, "Article Gamma", "gamma.net", "2026-03-20T12:00:00Z"),
+        ];
+
+        let feed_source = Arc::new(FakeFeedSource::new(feeds));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        let tagger = Arc::new(FakeGenreTagger::new());
+        let user_id = Uuid::new_v4();
+
+        let pipeline = CardsPipeline::selection_only(
+            feed_source.clone(),
+            ml_port.clone(),
+            dao.clone(),
+            tagger.clone(),
+        )
+        .with_user_id(user_id);
+
+        let from = Utc::now();
+        let to = Utc::now();
+        let params = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap();
+
+        let job_id1 = Uuid::new_v4();
+        let res1 = pipeline
+            .run(job_id1, from, to, &params)
+            .await
+            .expect("first run succeeds");
+
+        assert_eq!(res1.embed_cache_hits, 0);
+        assert_eq!(res1.embed_cache_misses, 3);
+        assert_eq!(ml_port.embed_calls.lock().unwrap().len(), 1);
+        assert_eq!(ml_port.embed_calls.lock().unwrap()[0].len(), 3);
+
+        // Run 2: same inputs on the same DAO
+        let job_id2 = Uuid::new_v4();
+        let res2 = pipeline
+            .run(job_id2, from, to, &params)
+            .await
+            .expect("second run succeeds");
+
+        assert_eq!(res2.embed_cache_hits, 3);
+        assert_eq!(res2.embed_cache_misses, 0);
+        // ml_port.embed must NOT have been called again!
+        assert_eq!(ml_port.embed_calls.lock().unwrap().len(), 1);
+
+        // Compare candidates from run 1 and run 2: must be identical
+        let all_candidates = dao.candidates.lock().unwrap().clone();
+        let candidates1: Vec<_> = all_candidates
+            .iter()
+            .filter(|c| c.job_id == job_id1)
+            .collect();
+        let candidates2: Vec<_> = all_candidates
+            .iter()
+            .filter(|c| c.job_id == job_id2)
+            .collect();
+
+        assert_eq!(candidates1.len(), candidates2.len());
+        assert!(!candidates1.is_empty());
+        for (c1, c2) in candidates1.iter().zip(candidates2.iter()) {
+            assert_eq!(c1.rank, c2.rank);
+            assert_eq!(c1.cluster_fingerprint, c2.cluster_fingerprint);
+            assert_eq!(c1.size, c2.size);
+            assert_eq!(c1.scores, c2.scores);
+            assert_eq!(c1.items, c2.items);
+            assert_eq!(c1.domains, c2.domains);
+            assert_eq!(c1.centroid, c2.centroid);
+        }
+
+        // Stats row verification
+        let stats = dao.stats.lock().unwrap().clone();
+        let stats1 = stats.iter().find(|s| s.job_id == job_id1).unwrap();
+        let stats2 = stats.iter().find(|s| s.job_id == job_id2).unwrap();
+        assert_eq!(stats1.embed_cache_hits, 0);
+        assert_eq!(stats1.embed_cache_misses, 3);
+        assert_eq!(stats2.embed_cache_hits, 3);
+        assert_eq!(stats2.embed_cache_misses, 0);
+        assert!(stats1.cards_dropped.get("embed_cache_hits").is_none());
+        assert!(stats1.cards_dropped.get("embed_cache_misses").is_none());
+        assert!(stats2.cards_dropped.get("embed_cache_hits").is_none());
+        assert!(stats2.cards_dropped.get("embed_cache_misses").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_embedding_cache_dimension_mismatch_fails_loudly() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "Article Dimension",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        // Pre-populate cache with a 8-dimensional vector
+        let norm_text = "Article Dimension — This is a valid and sufficiently long lede text.";
+        let hash = compute_embedding_text_hash(norm_text);
+        dao.cache.lock().unwrap().insert(
+            hash.clone(),
+            (
+                "bge-m3".to_string(),
+                8,
+                vec![1.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.5, 0.5],
+            ),
+        );
+
+        let pipeline = CardsPipeline::selection_only(
+            feed_source,
+            ml_port,
+            dao.clone(),
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        // Pipeline expects 4-dimensional embeddings
+        let params = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap();
+
+        let res = pipeline
+            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
+            .await;
+        assert!(res.is_err(), "pipeline must fail on dimension mismatch");
+        let err = format!("{:#}", res.unwrap_err());
+        assert!(
+            err.contains("dimension mismatch"),
+            "expected error to mention dimension mismatch, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_embedding_cache_model_mismatch_fails_closed() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(id1, "Article Model", "example.com", "2026-03-20T10:00:00Z");
+
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        // Pre-populate cache with a different model identity
+        let norm_text = "Article Model — This is a valid and sufficiently long lede text.";
+        let hash = compute_embedding_text_hash(norm_text);
+        dao.cache.lock().unwrap().insert(
+            hash.clone(),
+            ("other-model-v1".to_string(), 4, vec![1.0, 0.0, 0.0, 0.0]),
+        );
+
+        let pipeline = CardsPipeline::selection_only(
+            feed_source,
+            ml_port,
+            dao.clone(),
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        // Pipeline expects "bge-m3"
+        let params = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap();
+
+        let res = pipeline
+            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
+            .await;
+        assert!(
+            res.is_err(),
+            "pipeline must fail closed on model identity mismatch"
+        );
+        let err = format!("{:#}", res.unwrap_err());
+        assert!(
+            err.contains("model identity mismatch"),
+            "expected error to mention model identity mismatch, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_embedding_cache_partial_hit_preserves_input_order() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        let id3 = Uuid::new_v4();
+
+        let feeds = vec![
+            sample_feed(id1, "Item First", "first.com", "2026-03-20T10:00:00Z"),
+            sample_feed(
+                id2,
+                "Item Second Cached",
+                "second.com",
+                "2026-03-20T11:00:00Z",
+            ),
+            sample_feed(id3, "Item Third", "third.com", "2026-03-20T12:00:00Z"),
+        ];
+
+        let feed_source = Arc::new(FakeFeedSource::new(feeds));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        // Pre-populate cache for Item Second Cached only
+        let text2 = "Item Second Cached — This is a valid and sufficiently long lede text.";
+        let hash2 = compute_embedding_text_hash(text2);
+        let cached_vec = vec![0.7, 0.7, 0.0, 0.0];
+        dao.cache
+            .lock()
+            .unwrap()
+            .insert(hash2.clone(), ("bge-m3".to_string(), 4, cached_vec.clone()));
+
+        let pipeline = CardsPipeline::selection_only(
+            feed_source,
+            ml_port.clone(),
+            dao.clone(),
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        let params = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap();
+
+        let res = pipeline
+            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params)
+            .await
+            .expect("pipeline succeeds with partial cache hits");
+
+        assert_eq!(res.embed_cache_hits, 1);
+        assert_eq!(res.embed_cache_misses, 2);
+
+        // Only Item First and Item Third should have been sent to ml_port.embed
+        let calls = ml_port.embed_calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].len(), 2);
+        assert!(calls[0][0].starts_with("Item First"));
+        assert!(calls[0][1].starts_with("Item Third"));
+
+        // All 3 items should now be in the cache
+        let cache_lock = dao.cache.lock().unwrap();
+        assert_eq!(cache_lock.len(), 3);
+        assert!(cache_lock.contains_key(&hash2));
     }
 }

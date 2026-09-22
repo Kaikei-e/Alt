@@ -87,10 +87,14 @@ impl FeedSource for FakeFeedSource {
     }
 }
 
+pub type FixedEmbeddingMap = Arc<Mutex<Option<HashMap<String, Vec<f32>>>>>;
+
 #[derive(Clone, Default)]
 pub struct FakeEmbedCluster {
     pub fixed_embeddings: Arc<Mutex<Option<Vec<Vec<f32>>>>>,
+    pub fixed_map: FixedEmbeddingMap,
     pub fixed_cluster_response: Arc<Mutex<Option<ClusterStoriesResponse>>>,
+    pub embed_calls: Arc<Mutex<Vec<Vec<String>>>>,
 }
 
 impl FakeEmbedCluster {
@@ -101,7 +105,21 @@ impl FakeEmbedCluster {
     pub fn with_fixed(embeddings: Vec<Vec<f32>>, response: ClusterStoriesResponse) -> Self {
         Self {
             fixed_embeddings: Arc::new(Mutex::new(Some(embeddings))),
+            fixed_map: Arc::new(Mutex::new(None)),
             fixed_cluster_response: Arc::new(Mutex::new(Some(response))),
+            embed_calls: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn with_fixed_map(
+        map: HashMap<String, Vec<f32>>,
+        response: ClusterStoriesResponse,
+    ) -> Self {
+        Self {
+            fixed_embeddings: Arc::new(Mutex::new(None)),
+            fixed_map: Arc::new(Mutex::new(Some(map))),
+            fixed_cluster_response: Arc::new(Mutex::new(Some(response))),
+            embed_calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -109,16 +127,37 @@ impl FakeEmbedCluster {
 #[async_trait::async_trait]
 impl EmbedCluster for FakeEmbedCluster {
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        self.embed_calls.lock().unwrap().push(texts.to_vec());
+        if let Some(map) = self.fixed_map.lock().unwrap().as_ref() {
+            let mut results = Vec::with_capacity(texts.len());
+            for t in texts {
+                if let Some(v) = map.get(t) {
+                    results.push(v.clone());
+                } else {
+                    let h = xxhash_rust::xxh3::xxh3_64(t.as_bytes());
+                    let mut v = vec![0.0_f32; 4];
+                    let idx = (h as usize) % 4;
+                    v[idx] = 1.0;
+                    let frac = ((h >> 8) & 0xFF) as f32 / 1000.0;
+                    v[(idx + 1) % 4] = frac;
+                    results.push(v);
+                }
+            }
+            return Ok(results);
+        }
         if let Some(embs) = self.fixed_embeddings.lock().unwrap().as_ref() {
             return Ok(embs.clone());
         }
-        // Deterministic pseudo-embeddings distinct per index so they are not dropped as near-duplicates
+        // Deterministic pseudo-embeddings distinct per text hash so they are independent of batch ordering
         Ok(texts
             .iter()
-            .enumerate()
-            .map(|(i, _t)| {
+            .map(|t| {
+                let h = xxhash_rust::xxh3::xxh3_64(t.as_bytes());
                 let mut v = vec![0.0_f32; 4];
-                v[i % 4] = 1.0;
+                let idx = (h as usize) % 4;
+                v[idx] = 1.0;
+                let frac = ((h >> 8) & 0xFF) as f32 / 1000.0;
+                v[(idx + 1) % 4] = frac;
                 v
             })
             .collect())

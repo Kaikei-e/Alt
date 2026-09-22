@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// 1. Snapshot of input state frozen at job execution time (reproject-safe).
@@ -80,6 +81,10 @@ pub struct RecapCardJobStats {
     pub llm_ms: i64,
     pub total_ms: i64,
     pub params_version: String,
+    #[serde(default)]
+    pub embed_cache_hits: usize,
+    #[serde(default)]
+    pub embed_cache_misses: usize,
     pub created_at: DateTime<Utc>,
 }
 
@@ -258,7 +263,8 @@ impl CardsDaoOps {
             r"
             SELECT job_id, items_fetched, items_after_noise, items_after_dedup,
                    clusters, candidates, cards_selected, cards_dropped,
-                   embed_ms, cluster_ms, llm_ms, total_ms, params_version, created_at
+                   embed_ms, cluster_ms, llm_ms, total_ms, params_version,
+                   embed_cache_hits, embed_cache_misses, created_at
             FROM recap_card_job_stats
             WHERE job_id = $1
             ",
@@ -271,6 +277,8 @@ impl CardsDaoOps {
         match row {
             Some(r) => {
                 let cards_dropped: Value = r.try_get::<Json<Value>, _>("cards_dropped")?.0;
+                let embed_cache_hits_i32: i32 = r.try_get("embed_cache_hits")?;
+                let embed_cache_misses_i32: i32 = r.try_get("embed_cache_misses")?;
                 Ok(Some(RecapCardJobStats {
                     job_id: r.try_get("job_id")?,
                     items_fetched: r.try_get("items_fetched")?,
@@ -285,6 +293,8 @@ impl CardsDaoOps {
                     llm_ms: r.try_get("llm_ms")?,
                     total_ms: r.try_get("total_ms")?,
                     params_version: r.try_get("params_version")?,
+                    embed_cache_hits: usize::try_from(embed_cache_hits_i32).unwrap_or(0),
+                    embed_cache_misses: usize::try_from(embed_cache_misses_i32).unwrap_or(0),
                     created_at: r.try_get("created_at")?,
                 }))
             }
@@ -582,6 +592,102 @@ impl CardsDaoOps {
             cards,
         }))
     }
+
+    /// Retrieve cached embeddings by model and text hashes.
+    pub async fn get_cached_embeddings(
+        pool: &PgPool,
+        model: &str,
+        text_hashes: &[String],
+    ) -> Result<HashMap<String, Vec<f32>>> {
+        if text_hashes.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = sqlx::query(
+            r"
+            SELECT text_hash, model, dim, embedding
+            FROM recap_card_embeddings
+            WHERE model = $1 AND text_hash = ANY($2)
+            ",
+        )
+        .bind(model)
+        .bind(text_hashes)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to get cached embeddings: {e}")))?;
+
+        let mut result = HashMap::with_capacity(rows.len());
+        for r in rows {
+            let text_hash: String = r.try_get("text_hash")?;
+            let row_model: String = r.try_get("model")?;
+            if row_model != model {
+                return Err(RecapError::Db(format!(
+                    "embedding cache model identity mismatch for hash {text_hash}: expected {model}, got {row_model}"
+                )));
+            }
+            let dim: i32 = r.try_get("dim")?;
+            let embedding: Vec<f32> = r.try_get("embedding")?;
+            if usize::try_from(dim).ok() != Some(embedding.len()) {
+                return Err(RecapError::Db(format!(
+                    "cached embedding dimension mismatch for hash {text_hash}: dim column {dim} != embedding array length {}",
+                    embedding.len()
+                )));
+            }
+            result.insert(text_hash, embedding);
+        }
+
+        Ok(result)
+    }
+
+    /// Insert new embeddings into cache idempotently (DO NOTHING on conflict).
+    pub async fn insert_embeddings(
+        pool: &PgPool,
+        model: &str,
+        dim: usize,
+        entries: &[(String, Vec<f32>)],
+    ) -> Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        for (hash, vec) in entries {
+            if vec.len() != dim {
+                return Err(RecapError::Db(format!(
+                    "cannot insert embedding for hash {hash}: vector length {} != specified dim {dim}",
+                    vec.len()
+                )));
+            }
+        }
+
+        let mut tx = pool.begin().await.map_err(|e| {
+            RecapError::Db(format!("failed to begin tx for insert_embeddings: {e}"))
+        })?;
+
+        for (hash, vec) in entries {
+            sqlx::query(
+                r"
+                INSERT INTO recap_card_embeddings (text_hash, model, dim, embedding)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (text_hash, model) DO NOTHING
+                ",
+            )
+            .bind(hash)
+            .bind(model)
+            .bind(dim as i32)
+            .bind(vec)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                RecapError::Db(format!("failed to insert embedding for hash {hash}: {e}"))
+            })?;
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| RecapError::Db(format!("failed to commit insert_embeddings tx: {e}")))?;
+
+        Ok(())
+    }
 }
 
 pub(crate) fn parse_previous_card_rows(
@@ -703,5 +809,29 @@ mod tests {
         assert_eq!(cards[0].centroid, vec![0.1, 0.2]);
         assert_eq!(cards[1].id, card3_id);
         assert_eq!(cards[1].centroid, vec![0.3, 0.4]);
+    }
+
+    #[tokio::test]
+    async fn test_cached_embeddings_empty_inputs() {
+        let pool = sqlx::PgPool::connect_lazy("postgres://localhost/dummy").unwrap();
+        let get_res = CardsDaoOps::get_cached_embeddings(&pool, "bge-m3", &[])
+            .await
+            .unwrap();
+        assert!(get_res.is_empty());
+
+        let insert_res = CardsDaoOps::insert_embeddings(&pool, "bge-m3", 4, &[]).await;
+        assert!(insert_res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_insert_embeddings_dimension_mismatch_fails_before_db() {
+        let pool = sqlx::PgPool::connect_lazy("postgres://localhost/dummy").unwrap();
+        let entries = vec![
+            ("hash1".to_string(), vec![0.1, 0.2, 0.3]), // len 3, specified 4
+        ];
+        let res = CardsDaoOps::insert_embeddings(&pool, "bge-m3", 4, &entries).await;
+        assert!(res.is_err());
+        let err = format!("{}", res.unwrap_err());
+        assert!(err.contains("vector length 3 != specified dim 4"));
     }
 }

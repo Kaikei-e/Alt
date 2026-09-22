@@ -770,6 +770,8 @@ mod tests {
             llm_ms: 5000,
             total_ms: 6500,
             params_version: "v1".to_string(),
+            embed_cache_hits: 0,
+            embed_cache_misses: 0,
             created_at: Utc::now(),
         };
 
@@ -825,6 +827,8 @@ mod tests {
             llm_ms: 5000,
             total_ms: 6500,
             params_version: "v1".to_string(),
+            embed_cache_hits: 0,
+            embed_cache_misses: 0,
             created_at: Utc::now(),
         };
 
@@ -870,6 +874,8 @@ mod tests {
             candidates: 15,
             cards_selected: 10,
             cards_dropped: serde_json::json!({"g3_attribution": 2, "g4_filler": 1}),
+            embed_cache_hits: 0,
+            embed_cache_misses: 0,
             embed_ms: 1000,
             cluster_ms: 500,
             llm_ms: 4000,
@@ -887,6 +893,8 @@ mod tests {
             candidates: 8,
             cards_selected: 6,
             cards_dropped: serde_json::json!({"g3_attribution": 3}),
+            embed_cache_hits: 0,
+            embed_cache_misses: 0,
             embed_ms: 800,
             cluster_ms: 400,
             llm_ms: 3000,
@@ -922,6 +930,8 @@ mod tests {
             candidates: 4,
             cards_selected: 2,
             cards_dropped: serde_json::json!({"g3_attribution": 1, "g4_filler": 1}),
+            embed_cache_hits: 0,
+            embed_cache_misses: 0,
             embed_ms: 0,
             cluster_ms: 0,
             llm_ms: 0,

@@ -23,6 +23,8 @@ pub use fakes::{
     FakeCardGenerator, FakeCardVerifier, FakeEmbedCluster, FakeFeedSource, FakeGenreTagger,
 };
 pub use params::{CardsParams, DEFAULT_PARAMS_VERSION};
-pub use pipeline::{CardsPipeline, CardsPipelineDao, CardsPipelineResult, ReplayResult};
+pub use pipeline::{
+    CardsPipeline, CardsPipelineDao, CardsPipelineResult, ReplayResult, compute_embedding_text_hash,
+};
 pub use ports::{CardGenerator, CardVerifier, EmbedCluster, FeedSource, GenreTagger};
 pub use rank::{compute_cluster_fingerprint, rank_candidates};
