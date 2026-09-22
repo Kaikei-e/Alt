@@ -3257,11 +3257,11 @@ mod tests {
         let snapshots = dao.snapshots.lock().unwrap().clone();
         assert_eq!(snapshots.len(), 1);
         assert!((snapshots[0].params["alpha"].as_f64().unwrap() - 0.7).abs() < 1e-4);
-        assert_eq!(snapshots[0].params_version, "cards-v0.1+alpha=0.7");
+        assert_eq!(snapshots[0].params_version, "cards-v0.2+alpha=0.7");
 
         let stats = dao.stats.lock().unwrap().clone();
         assert_eq!(stats.len(), 1);
-        assert_eq!(stats[0].params_version, "cards-v0.1+alpha=0.7");
+        assert_eq!(stats[0].params_version, "cards-v0.2+alpha=0.7");
     }
 
     #[tokio::test]

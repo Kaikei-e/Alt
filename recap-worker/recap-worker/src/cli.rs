@@ -524,8 +524,8 @@ mod tests {
                 .unwrap()
                 .with_timezone(&chrono::Utc)
         );
-        assert_eq!(parsed.params.params_version, "cards-v0.1");
-        assert_eq!(parsed.params_version(), "cards-v0.1");
+        assert_eq!(parsed.params.params_version, "cards-v0.2");
+        assert_eq!(parsed.params_version(), "cards-v0.2");
     }
 
     #[test]
@@ -533,7 +533,7 @@ mod tests {
         let args = vec![
             "--from=2026-09-18T00:00:00Z".to_string(),
             "--to=2026-09-21T00:00:00Z".to_string(),
-            "--params-version=cards-v0.2".to_string(),
+            "--params-version=cards-v0.3".to_string(),
         ];
         let parsed = parse_eval_replay_args(&args).expect("valid args");
         assert_eq!(
@@ -548,8 +548,8 @@ mod tests {
                 .unwrap()
                 .with_timezone(&chrono::Utc)
         );
-        assert_eq!(parsed.params.params_version, "cards-v0.2");
-        assert_eq!(parsed.params_version(), "cards-v0.2");
+        assert_eq!(parsed.params.params_version, "cards-v0.3");
+        assert_eq!(parsed.params_version(), "cards-v0.3");
     }
 
     #[test]
@@ -564,8 +564,8 @@ mod tests {
         ];
         let parsed = parse_eval_replay_args(&args).expect("valid args");
         assert!((parsed.params.alpha - 0.7).abs() < f32::EPSILON);
-        assert_eq!(parsed.params.params_version, "cards-v0.1+alpha=0.7");
-        assert_eq!(parsed.params_version(), "cards-v0.1+alpha=0.7");
+        assert_eq!(parsed.params.params_version, "cards-v0.2+alpha=0.7");
+        assert_eq!(parsed.params_version(), "cards-v0.2+alpha=0.7");
     }
 
     #[test]
@@ -579,7 +579,7 @@ mod tests {
         assert!((parsed.params.theta_novelty - 0.85).abs() < f32::EPSILON);
         assert_eq!(
             parsed.params.params_version,
-            "cards-v0.1+theta_novelty=0.85"
+            "cards-v0.2+theta_novelty=0.85"
         );
     }
 
@@ -588,7 +588,7 @@ mod tests {
         let args = vec![
             "--from=2026-09-18T00:00:00Z".to_string(),
             "--to=2026-09-21T00:00:00Z".to_string(),
-            "--params-version=cards-v0.2".to_string(),
+            "--params-version=cards-v0.3".to_string(),
             "--param".to_string(),
             "alpha=0.7".to_string(),
             "--param=theta_novelty=0.85".to_string(),
@@ -598,7 +598,7 @@ mod tests {
         assert!((parsed.params.theta_novelty - 0.85).abs() < f32::EPSILON);
         assert_eq!(
             parsed.params.params_version,
-            "cards-v0.2+alpha=0.7,theta_novelty=0.85"
+            "cards-v0.3+alpha=0.7,theta_novelty=0.85"
         );
     }
 

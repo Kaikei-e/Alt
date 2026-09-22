@@ -1,4 +1,10 @@
 //! Candidate ranking and candidate DTO formation for CardsPipeline.
+//!
+//! # Corroboration Scoring
+//! `corroboration(C) = Σ_{h ∈ hosts(C)} 1/√N_h + (|hosts(C)| − 1)`
+//! Every additional distinct host adds a full point (+1.0) regardless of its prolificness;
+//! within-host multiplicity still adds nothing.
+//! Expected ordering: multi-host story > rare-host singleton > prolific-host singleton.
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -242,6 +248,7 @@ fn score_cluster(
         .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
         .map(|(g, _)| g);
 
+    let distinct_hosts = cluster_host_counts.len();
     let mut corroboration = 0.0_f64;
     for host in cluster_host_counts.keys() {
         if let Some(&n_d) = ctx.host_counts_in_window.get(host.as_str()) {
@@ -249,6 +256,9 @@ fn score_cluster(
                 corroboration += 1.0 / (n_d as f64).sqrt();
             }
         }
+    }
+    if distinct_hosts > 1 {
+        corroboration += (distinct_hosts - 1) as f64;
     }
 
     let (personal_score, personal_multiplier) = match ctx.personal_vector {
@@ -266,6 +276,7 @@ fn score_cluster(
 
     let scores_json = json!({
         "corroboration": corroboration,
+        "distinct_hosts": distinct_hosts,
         "personal": personal_score,
         "novelty": continuation.novelty_score,
         "total": total,
@@ -500,18 +511,251 @@ mod tests {
         let candidates = rank_candidates(args).unwrap();
 
         assert_eq!(candidates.len(), 2);
-        // Cluster 2 must outrank Cluster 1 because corroboration (1.4142 > 0.0277)
+        // Cluster 2 must outrank Cluster 1 because corroboration (2.4142 > 0.0277)
         assert_eq!(candidates[0].rank, 1);
         assert_eq!(candidates[0].size, 2);
+        assert_eq!(candidates[0].scores["distinct_hosts"], 2);
         let corrob_rank1 = candidates[0].scores["corroboration"].as_f64().unwrap();
-        let expected_corrob_rank1 = 1.0 / (2.0_f64).sqrt() + 1.0 / (2.0_f64).sqrt();
+        let expected_corrob_rank1 = 1.0 / (2.0_f64).sqrt() + 1.0 / (2.0_f64).sqrt() + 1.0;
         assert!((corrob_rank1 - expected_corrob_rank1).abs() < 1e-4);
 
         assert_eq!(candidates[1].rank, 2);
         assert_eq!(candidates[1].size, 10);
+        assert_eq!(candidates[1].scores["distinct_hosts"], 1);
         let corrob_rank2 = candidates[1].scores["corroboration"].as_f64().unwrap();
         let expected_corrob_rank2 = 1.0 / (1300.0_f64).sqrt();
         assert!((corrob_rank2 - expected_corrob_rank2).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_corroboration_two_prolific_hosts_outranks_rare_singleton() {
+        // (a) 2 hosts × 1 item each with N_h = 1300 and 220 outranks a singleton from a host with N_h = 1
+        let job_id = Uuid::new_v4();
+        let mut deduped = Vec::new();
+
+        // Host A has 1300 items in window
+        let mut high_volume_ids = Vec::with_capacity(1300);
+        for _ in 0..1300 {
+            let id = Uuid::new_v4();
+            high_volume_ids.push(id);
+            deduped.push(make_item(id, "prolific-a.com", "2026-03-20T10:00:00Z"));
+        }
+
+        // Host B has 220 items in window
+        let mut medium_volume_ids = Vec::with_capacity(220);
+        for _ in 0..220 {
+            let id = Uuid::new_v4();
+            medium_volume_ids.push(id);
+            deduped.push(make_item(id, "prolific-b.com", "2026-03-20T10:00:00Z"));
+        }
+
+        // Host C has 1 item in window (rare host)
+        let host_c_id = Uuid::new_v4();
+        deduped.push(make_item(host_c_id, "rare-c.com", "2026-03-20T10:00:00Z"));
+
+        // Cluster 1: 2 hosts × 1 item each (from prolific-a and prolific-b)
+        // corroboration = 1/√1300 + 1/√220 + (2 - 1) ≈ 0.0277 + 0.0674 + 1.0 = 1.0951
+        let cluster1_multi_host = ClusterOutput {
+            cluster_id: 1,
+            member_ids: vec![high_volume_ids[0], medium_volume_ids[0]],
+            centroid: vec![0.1],
+        };
+
+        // Cluster 2: singleton from host with N_h = 1
+        // corroboration = 1/√1 + (1 - 1) = 1.0
+        let cluster2_rare_singleton = ClusterOutput {
+            cluster_id: 2,
+            member_ids: vec![host_c_id],
+            centroid: vec![0.2],
+        };
+
+        let clusters = vec![cluster1_multi_host, cluster2_rare_singleton];
+        let now = Utc::now();
+        let args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        let candidates = rank_candidates(args).unwrap();
+
+        assert_eq!(candidates.len(), 2);
+        // Cluster 1 (1.0951) must outrank Cluster 2 (1.0)
+        assert_eq!(candidates[0].rank, 1);
+        assert_eq!(candidates[0].size, 2);
+        assert_eq!(candidates[0].scores["distinct_hosts"], 2);
+        let corrob1 = candidates[0].scores["corroboration"].as_f64().unwrap();
+        let expected1 = 1.0 / (1300.0_f64).sqrt() + 1.0 / (220.0_f64).sqrt() + 1.0;
+        assert!((corrob1 - expected1).abs() < 1e-4);
+
+        assert_eq!(candidates[1].rank, 2);
+        assert_eq!(candidates[1].size, 1);
+        assert_eq!(candidates[1].scores["distinct_hosts"], 1);
+        let corrob2 = candidates[1].scores["corroboration"].as_f64().unwrap();
+        assert!((corrob2 - 1.0).abs() < 1e-4);
+        assert!(
+            corrob1 > corrob2,
+            "two prolific hosts must outrank rare singleton"
+        );
+    }
+
+    #[test]
+    fn test_corroboration_15_items_two_prolific_hosts_outranks_any_singleton() {
+        // (b) 15 items from 2 prolific hosts outrank any singleton
+        let job_id = Uuid::new_v4();
+        let mut deduped = Vec::new();
+
+        // Host A: prolific host (1300 items)
+        let mut high_volume_ids = Vec::with_capacity(1300);
+        for _ in 0..1300 {
+            let id = Uuid::new_v4();
+            high_volume_ids.push(id);
+            deduped.push(make_item(id, "prolific-a.com", "2026-03-20T10:00:00Z"));
+        }
+
+        // Host B: prolific host (1000 items)
+        let mut medium_volume_ids = Vec::with_capacity(1000);
+        for _ in 0..1000 {
+            let id = Uuid::new_v4();
+            medium_volume_ids.push(id);
+            deduped.push(make_item(id, "prolific-b.com", "2026-03-20T10:00:00Z"));
+        }
+
+        // Host C: rarest possible host (1 item) -> singleton has corroboration = 1.0 (theoretical maximum for any singleton)
+        let rare_singleton_id = Uuid::new_v4();
+        deduped.push(make_item(
+            rare_singleton_id,
+            "rare-c.com",
+            "2026-03-20T10:00:00Z",
+        ));
+
+        // Cluster 1: 15 items across 2 prolific hosts (10 from A, 5 from B)
+        // corroboration = 1/√1300 + 1/√1000 + (2 - 1) = 1.0 + >0 > 1.0
+        let mut multi_story_ids = Vec::new();
+        multi_story_ids.extend_from_slice(&high_volume_ids[0..10]);
+        multi_story_ids.extend_from_slice(&medium_volume_ids[0..5]);
+        let cluster1_15_items = ClusterOutput {
+            cluster_id: 1,
+            member_ids: multi_story_ids,
+            centroid: vec![0.1],
+        };
+
+        // Cluster 2: singleton from rare host C (corroboration = 1.0)
+        let cluster2_rare_singleton = ClusterOutput {
+            cluster_id: 2,
+            member_ids: vec![rare_singleton_id],
+            centroid: vec![0.2],
+        };
+
+        // Cluster 3: singleton from prolific host A (corroboration = 1/√1300 ≈ 0.0277)
+        let cluster3_prolific_singleton = ClusterOutput {
+            cluster_id: 3,
+            member_ids: vec![high_volume_ids[10]],
+            centroid: vec![0.3],
+        };
+
+        let clusters = vec![
+            cluster1_15_items,
+            cluster2_rare_singleton,
+            cluster3_prolific_singleton,
+        ];
+        let now = Utc::now();
+        let args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        let candidates = rank_candidates(args).unwrap();
+
+        assert_eq!(candidates.len(), 3);
+        // Expected ordering: multi-host story > rare-host singleton > prolific-host singleton
+        assert_eq!(candidates[0].rank, 1);
+        assert_eq!(candidates[0].size, 15);
+        assert_eq!(candidates[0].scores["distinct_hosts"], 2);
+        let corrob_15 = candidates[0].scores["corroboration"].as_f64().unwrap();
+        assert!(
+            corrob_15 > 1.0,
+            "15 items from 2 prolific hosts has corroboration > 1.0"
+        );
+
+        assert_eq!(candidates[1].rank, 2);
+        assert_eq!(candidates[1].size, 1);
+        assert_eq!(candidates[1].scores["distinct_hosts"], 1);
+        let corrob_rare = candidates[1].scores["corroboration"].as_f64().unwrap();
+        assert!((corrob_rare - 1.0).abs() < 1e-4);
+
+        assert_eq!(candidates[2].rank, 3);
+        assert_eq!(candidates[2].size, 1);
+        assert_eq!(candidates[2].scores["distinct_hosts"], 1);
+        let corrob_prolific = candidates[2].scores["corroboration"].as_f64().unwrap();
+        let expected_prolific = 1.0 / (1300.0_f64).sqrt();
+        assert!((corrob_prolific - expected_prolific).abs() < 1e-4);
+
+        assert!(corrob_15 > corrob_rare);
+        assert!(corrob_rare > corrob_prolific);
+    }
+
+    #[test]
+    fn test_corroboration_dev_to_discount_holds_for_singletons() {
+        // (c) the existing dev.to discount test still holds for singletons
+        let job_id = Uuid::new_v4();
+        let mut deduped = Vec::new();
+
+        // dev.to has 1300 items in window
+        let mut dev_to_ids = Vec::with_capacity(1300);
+        for _ in 0..1300 {
+            let id = Uuid::new_v4();
+            dev_to_ids.push(id);
+            deduped.push(make_item(id, "dev.to", "2026-03-20T10:00:00Z"));
+        }
+
+        // Rare blog has 1 item in window
+        let rare_id = Uuid::new_v4();
+        deduped.push(make_item(
+            rare_id,
+            "independent-blog.org",
+            "2026-03-20T10:00:00Z",
+        ));
+
+        // Cluster 1: singleton from dev.to
+        // corroboration = 1/√1300 ≈ 0.0277, distinct_hosts = 1
+        let cluster1_dev_to_singleton = ClusterOutput {
+            cluster_id: 1,
+            member_ids: vec![dev_to_ids[0]],
+            centroid: vec![0.1],
+        };
+
+        // Cluster 2: singleton from rare blog
+        // corroboration = 1/√1 = 1.0, distinct_hosts = 1
+        let cluster2_rare_singleton = ClusterOutput {
+            cluster_id: 2,
+            member_ids: vec![rare_id],
+            centroid: vec![0.2],
+        };
+
+        // Cluster 3: 5 items, all from dev.to
+        // Within-host multiplicity still adds nothing: corroboration = 1/√1300 + (1 - 1) ≈ 0.0277
+        let cluster3_dev_to_multi = ClusterOutput {
+            cluster_id: 3,
+            member_ids: dev_to_ids[1..6].to_vec(),
+            centroid: vec![0.3],
+        };
+
+        let clusters = vec![
+            cluster1_dev_to_singleton,
+            cluster2_rare_singleton,
+            cluster3_dev_to_multi,
+        ];
+        let now = Utc::now();
+        let args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        let candidates = rank_candidates(args).unwrap();
+
+        assert_eq!(candidates.len(), 3);
+        // Rare singleton outranks dev.to singleton:
+        assert_eq!(candidates[0].rank, 1);
+        assert_eq!(candidates[0].scores["distinct_hosts"], 1);
+        let corrob_rare = candidates[0].scores["corroboration"].as_f64().unwrap();
+        assert!((corrob_rare - 1.0).abs() < 1e-4);
+
+        // Within-host multiplicity adds nothing to corroboration score:
+        let corrob_dev_to_single = candidates[1].scores["corroboration"].as_f64().unwrap();
+        let corrob_dev_to_multi = candidates[2].scores["corroboration"].as_f64().unwrap();
+        let expected_dev_to = 1.0 / (1300.0_f64).sqrt();
+        assert!((corrob_dev_to_single - expected_dev_to).abs() < 1e-4);
+        assert!((corrob_dev_to_multi - expected_dev_to).abs() < 1e-4);
+        assert_eq!(candidates[1].scores["distinct_hosts"], 1);
+        assert_eq!(candidates[2].scores["distinct_hosts"], 1);
     }
 
     #[test]

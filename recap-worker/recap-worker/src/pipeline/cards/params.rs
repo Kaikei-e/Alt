@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
-pub const DEFAULT_PARAMS_VERSION: &str = "cards-v0.1";
-pub const DEFAULT_THRESHOLD: f32 = 0.78;
+pub const DEFAULT_PARAMS_VERSION: &str = "cards-v0.2";
+pub const DEFAULT_THRESHOLD: f32 = 0.65;
 pub const DEFAULT_LINKAGE: &str = "average";
 pub const DEFAULT_TIME_DECAY_PER_DAY: f32 = 0.02;
 pub const DEFAULT_MIN_CLUSTER_SIZE: usize = 1;
@@ -246,7 +246,8 @@ mod tests {
     #[test]
     fn test_default_params_values() {
         let params = CardsParams::default();
-        assert_eq!(params.params_version, "cards-v0.1");
+        assert_eq!(params.params_version, "cards-v0.2");
+        assert_eq!(params.threshold, 0.65);
         assert_eq!(params.alpha, 0.5);
         assert!(params.genre_tagging);
         assert_eq!(params.genre_min_confidence, 0.5);
@@ -263,8 +264,8 @@ mod tests {
             .expect("valid override");
 
         assert_eq!(overridden.alpha, 0.7);
-        assert_eq!(overridden.params_version, "cards-v0.1+alpha=0.7");
-        assert_eq!(overridden.version(), "cards-v0.1+alpha=0.7");
+        assert_eq!(overridden.params_version, "cards-v0.2+alpha=0.7");
+        assert_eq!(overridden.version(), "cards-v0.2+alpha=0.7");
     }
 
     #[test]
@@ -281,7 +282,7 @@ mod tests {
         assert_eq!(params.theta_novelty, 0.85);
         assert_eq!(
             params.params_version,
-            "cards-v0.1+alpha=0.7,theta_novelty=0.85"
+            "cards-v0.2+alpha=0.7,theta_novelty=0.85"
         );
     }
 
@@ -291,12 +292,12 @@ mod tests {
         params
             .apply_override("alpha", &serde_json::json!(0.7))
             .unwrap();
-        assert_eq!(params.params_version, "cards-v0.1+alpha=0.7");
+        assert_eq!(params.params_version, "cards-v0.2+alpha=0.7");
 
         params
-            .apply_override("params_version", &serde_json::json!("cards-v0.2"))
+            .apply_override("params_version", &serde_json::json!("cards-v0.3"))
             .unwrap();
-        assert_eq!(params.params_version, "cards-v0.2+alpha=0.7");
+        assert_eq!(params.params_version, "cards-v0.3+alpha=0.7");
 
         params
             .apply_override("genre_concurrency", &serde_json::json!(16))
@@ -304,7 +305,7 @@ mod tests {
         assert_eq!(params.genre_concurrency, 16);
         assert_eq!(
             params.params_version,
-            "cards-v0.2+alpha=0.7,genre_concurrency=16"
+            "cards-v0.3+alpha=0.7,genre_concurrency=16"
         );
     }
 
