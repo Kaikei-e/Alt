@@ -374,10 +374,9 @@ pub fn build_eval_router(pool: sqlx::PgPool, admin_token: &str) -> Router {
 /// Build Axum router for eval listener with generic EvalDao (used for tests).
 pub(crate) fn build_eval_router_with_dao(dao: Arc<dyn EvalDao>, admin_token: &str) -> Router {
     let state = Arc::new(EvalServerState { dao });
+    let admin_guard = crate::api::auth::AdminAuthGuard::new(Some(admin_token));
 
-    Router::new()
-        .route("/eval", get(serve_eval_page))
-        .route("/eval/", get(serve_eval_page))
+    let protected = Router::new()
         .route("/v1/eval/windows", get(list_windows))
         .route(
             "/v1/eval/windows/{id}/candidates",
@@ -390,9 +389,12 @@ pub(crate) fn build_eval_router_with_dao(dao: Arc<dyn EvalDao>, admin_token: &st
         .route_layer(axum::middleware::from_fn(
             crate::api::auth::require_admin_token,
         ))
-        .layer(axum::Extension(crate::api::auth::AdminAuthGuard::new(
-            Some(admin_token),
-        )))
+        .layer(axum::Extension(admin_guard));
+
+    Router::new()
+        .route("/eval", get(serve_eval_page))
+        .route("/eval/", get(serve_eval_page))
+        .merge(protected)
         .with_state(state)
 }
 
@@ -492,38 +494,121 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_auth_rejection_without_token() {
+    async fn test_serve_eval_page_without_token() {
         let (app, _dao) = setup_test_app();
 
-        let req = Request::builder()
-            .uri("/eval/")
-            .body(Body::empty())
-            .unwrap();
+        for path in ["/eval", "/eval/"] {
+            let req = Request::builder().uri(path).body(Body::empty()).unwrap();
 
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+            let resp = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::OK,
+                "path {path} should return 200 without token"
+            );
+            assert_eq!(
+                resp.headers().get(header::CONTENT_TYPE).unwrap(),
+                "text/html; charset=utf-8"
+            );
+            let body_bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+                .await
+                .unwrap();
+            assert!(String::from_utf8_lossy(&body_bytes).contains("Alt Recap Evaluation"));
+        }
     }
 
     #[tokio::test]
     async fn test_serve_eval_page_with_valid_token() {
         let (app, _dao) = setup_test_app();
 
-        let req = Request::builder()
-            .uri("/eval/")
-            .header(header::AUTHORIZATION, format!("Bearer {TEST_TOKEN}"))
-            .body(Body::empty())
-            .unwrap();
+        for path in ["/eval", "/eval/"] {
+            let req = Request::builder()
+                .uri(path)
+                .header(header::AUTHORIZATION, format!("Bearer {TEST_TOKEN}"))
+                .body(Body::empty())
+                .unwrap();
 
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        assert_eq!(
-            resp.headers().get(header::CONTENT_TYPE).unwrap(),
-            "text/html; charset=utf-8"
-        );
-        let body_bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
-            .await
-            .unwrap();
-        assert!(String::from_utf8_lossy(&body_bytes).contains("Alt Recap Evaluation"));
+            let resp = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::OK,
+                "path {path} should return 200 with token"
+            );
+            assert_eq!(
+                resp.headers().get(header::CONTENT_TYPE).unwrap(),
+                "text/html; charset=utf-8"
+            );
+            let body_bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+                .await
+                .unwrap();
+            assert!(String::from_utf8_lossy(&body_bytes).contains("Alt Recap Evaluation"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_api_routes_require_admin_token() {
+        let (app, _dao) = setup_test_app();
+        let dummy_id = Uuid::new_v4();
+
+        let endpoints = vec![
+            ("GET", "/v1/eval/windows".to_string(), Body::empty()),
+            (
+                "GET",
+                format!("/v1/eval/windows/{dummy_id}/candidates"),
+                Body::empty(),
+            ),
+            (
+                "POST",
+                "/v1/eval/judgments".to_string(),
+                Body::from(
+                    r#"{"window_id":"00000000-0000-0000-0000-000000000000","cluster_fingerprint":"fp","decision":"top"}"#,
+                ),
+            ),
+            ("GET", "/v1/eval/jobs".to_string(), Body::empty()),
+            (
+                "GET",
+                format!("/v1/eval/jobs/{dummy_id}/cards"),
+                Body::empty(),
+            ),
+            (
+                "POST",
+                "/v1/eval/ratings".to_string(),
+                Body::from(r#"{"card_id":"00000000-0000-0000-0000-000000000000","score":2}"#),
+            ),
+        ];
+
+        for (method, uri, body) in endpoints {
+            // 1. Without token -> 401 UNAUTHORIZED
+            let req_no_token = Request::builder()
+                .method(method)
+                .uri(&uri)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(body)
+                .unwrap();
+
+            let resp = app.clone().oneshot(req_no_token).await.unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::UNAUTHORIZED,
+                "{method} {uri} must reject unauthenticated requests"
+            );
+
+            // 2. With invalid token -> 401 UNAUTHORIZED
+            let req_bad_token = Request::builder()
+                .method(method)
+                .uri(&uri)
+                .header(header::AUTHORIZATION, "Bearer invalid-token")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::empty())
+                .unwrap();
+
+            let resp_bad = app.clone().oneshot(req_bad_token).await.unwrap();
+            assert_eq!(
+                resp_bad.status(),
+                StatusCode::UNAUTHORIZED,
+                "{method} {uri} must reject invalid tokens"
+            );
+        }
     }
 
     #[tokio::test]
