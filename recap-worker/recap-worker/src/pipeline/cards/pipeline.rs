@@ -1571,6 +1571,7 @@ impl CardsPipeline {
             theta_novelty: params.theta_novelty,
             aggregator_hosts: &params.aggregator_hosts,
             aggregator_host_weight: params.aggregator_host_weight,
+            max_articles_per_host: params.max_articles_per_host,
             created_at: to,
         };
         let candidates = rank_candidates(rank_args)?;

@@ -1,9 +1,9 @@
 //! Candidate ranking and candidate DTO formation for CardsPipeline.
 //!
 //! # Corroboration Scoring
-//! `corroboration(C) = (|hosts(C)| − 1) + Σ_{h ∈ hosts(C)} w_h · log2(1 + n_{h,C})`
+//! `corroboration(C) = (|hosts(C)| − 1) + Σ_{h ∈ hosts(C)} w_h · log2(1 + min(n_{h,C}, max_articles_per_host))`
 //! Breadth (|hosts| − 1) rewards distinct host coverage; volume rewards member count per host
-//! scaled logarithmically, discounted by `aggregator_host_weight` for aggregator hosts.
+//! capped at `max_articles_per_host` (default 4) scaled logarithmically, discounted by `aggregator_host_weight` for aggregator hosts.
 //! Expected ordering: multi-host story > non-aggregator story/singleton > aggregator singleton (via breadth + aggregator weight).
 
 use anyhow::Result;
@@ -133,6 +133,7 @@ struct ClusterScoreContext<'a> {
     theta_novelty: f32,
     aggregator_hosts: &'a [String],
     aggregator_host_weight: f32,
+    max_articles_per_host: usize,
 }
 
 struct NoveltyContinuation {
@@ -275,7 +276,7 @@ fn score_cluster(
         } else {
             1.0_f64
         };
-        let n_h = *count as f64;
+        let n_h = (*count).min(ctx.max_articles_per_host) as f64;
         volume += w_h * (1.0 + n_h).log2();
     }
 
@@ -375,6 +376,7 @@ pub struct RankCandidatesArgs<'a> {
     pub theta_novelty: f32,
     pub aggregator_hosts: &'a [String],
     pub aggregator_host_weight: f32,
+    pub max_articles_per_host: usize,
 }
 
 impl<'a> RankCandidatesArgs<'a> {
@@ -396,6 +398,7 @@ impl<'a> RankCandidatesArgs<'a> {
             theta_novelty: 0.80,
             aggregator_hosts: &[],
             aggregator_host_weight: 0.5,
+            max_articles_per_host: 4,
         }
     }
 }
@@ -416,6 +419,7 @@ pub fn rank_candidates(args: RankCandidatesArgs<'_>) -> Result<Vec<RecapCardCand
         theta_novelty: args.theta_novelty,
         aggregator_hosts: args.aggregator_hosts,
         aggregator_host_weight: args.aggregator_host_weight,
+        max_articles_per_host: args.max_articles_per_host,
     };
 
     let personal_metrics: Option<Vec<(f64, f64)>> = if let Some(u) = args.personal_vector {
@@ -593,7 +597,7 @@ mod tests {
 
     #[test]
     fn test_corroboration_breadth_dominates_volume() {
-        // (b) breadth still dominates volume: 3 hosts × 1 item (score 2 + 3·log2 2 = 5.0) beats 1 non-aggregator host × 15 items (0 + log2 16 = 4.0)
+        // (b) breadth still dominates volume: 3 hosts × 1 item (score 2 + 3·log2 2 = 5.0) beats 1 non-aggregator host × 15 items (0 + log2 5 ≈ 2.32)
         let job_id = Uuid::new_v4();
         let now = Utc::now();
         let mut deduped = Vec::new();
@@ -641,7 +645,148 @@ mod tests {
         assert_eq!(candidates[1].size, 15);
         assert_eq!(candidates[1].scores["distinct_hosts"], 1);
         let corrob2 = candidates[1].scores["corroboration"].as_f64().unwrap();
-        assert!((corrob2 - 4.0).abs() < 1e-6);
+        assert!((corrob2 - 5.0_f64.log2()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_corroboration_dev_to_mega_cluster_capped_below_two_host_pair() {
+        // (a) a dev.to ×125 single-host cluster scores 0.5·log2 5 and ranks below a 2-host pair of non-aggregator singletons (3.0)
+        let job_id = Uuid::new_v4();
+        let now = Utc::now();
+        let mut deduped = Vec::new();
+
+        // Cluster 1: dev.to x 125
+        let mut dev_to_ids = Vec::with_capacity(125);
+        for _ in 0..125 {
+            let id = Uuid::new_v4();
+            dev_to_ids.push(id);
+            deduped.push(make_item(id, "dev.to", "2026-03-20T10:00:00Z"));
+        }
+        let cluster_dev_to = ClusterOutput {
+            cluster_id: 1,
+            member_ids: dev_to_ids.clone(),
+            centroid: vec![0.1],
+        };
+
+        // Cluster 2: 2-host pair of non-aggregator singletons
+        let id_a = Uuid::new_v4();
+        let id_b = Uuid::new_v4();
+        deduped.push(make_item(id_a, "alpha.org", "2026-03-20T10:00:00Z"));
+        deduped.push(make_item(id_b, "beta.org", "2026-03-20T10:00:00Z"));
+        let cluster_pair = ClusterOutput {
+            cluster_id: 2,
+            member_ids: vec![id_a, id_b],
+            centroid: vec![0.2],
+        };
+
+        let clusters = vec![cluster_dev_to, cluster_pair];
+        let mut args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        let aggregator_hosts = vec!["dev.to".to_string()];
+        args.aggregator_hosts = &aggregator_hosts;
+        args.aggregator_host_weight = 0.5;
+
+        let candidates = rank_candidates(args).unwrap();
+        assert_eq!(candidates.len(), 2);
+        // 2-host pair ranks first:
+        assert_eq!(
+            candidates[0].cluster_fingerprint,
+            compute_cluster_fingerprint(&[id_a, id_b])
+        );
+        assert_eq!(candidates[0].rank, 1);
+        let pair_corrob = candidates[0].scores["corroboration"].as_f64().unwrap();
+        assert!((pair_corrob - 3.0).abs() < 1e-6);
+
+        // dev.to x125 ranks second:
+        assert_eq!(
+            candidates[1].cluster_fingerprint,
+            compute_cluster_fingerprint(&dev_to_ids)
+        );
+        assert_eq!(candidates[1].rank, 2);
+        let dev_to_corrob = candidates[1].scores["corroboration"].as_f64().unwrap();
+        let expected_dev_to = 0.5 * 5.0_f64.log2();
+        assert!((dev_to_corrob - expected_dev_to).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_corroboration_single_host_capped_at_log2_5() {
+        // (b) theguardian ×10 single host scores log2 5 ≈ 2.32
+        let job_id = Uuid::new_v4();
+        let now = Utc::now();
+        let mut deduped = Vec::new();
+        let mut ids = Vec::new();
+        for _ in 0..10 {
+            let id = Uuid::new_v4();
+            ids.push(id);
+            deduped.push(make_item(id, "theguardian.com", "2026-03-20T10:00:00Z"));
+        }
+        let cluster = ClusterOutput {
+            cluster_id: 1,
+            member_ids: ids,
+            centroid: vec![0.1],
+        };
+        let clusters = vec![cluster];
+        let args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        let candidates = rank_candidates(args).unwrap();
+        assert_eq!(candidates.len(), 1);
+        let corrob = candidates[0].scores["corroboration"].as_f64().unwrap();
+        let expected = 5.0_f64.log2();
+        assert!((corrob - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_corroboration_max_articles_per_host_override() {
+        // (c) --param max_articles_per_host=8 raises (b) to log2 9
+        let job_id = Uuid::new_v4();
+        let now = Utc::now();
+        let mut deduped = Vec::new();
+        let mut ids = Vec::new();
+        for _ in 0..10 {
+            let id = Uuid::new_v4();
+            ids.push(id);
+            deduped.push(make_item(id, "theguardian.com", "2026-03-20T10:00:00Z"));
+        }
+        let cluster = ClusterOutput {
+            cluster_id: 1,
+            member_ids: ids,
+            centroid: vec![0.1],
+        };
+        let clusters = vec![cluster];
+        let params = crate::pipeline::cards::CardsParams::default()
+            .with_override("max_articles_per_host", &serde_json::json!(8))
+            .expect("valid max_articles_per_host override");
+        let mut args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        args.max_articles_per_host = params.max_articles_per_host;
+        let candidates = rank_candidates(args).unwrap();
+        assert_eq!(candidates.len(), 1);
+        let corrob = candidates[0].scores["corroboration"].as_f64().unwrap();
+        let expected = 9.0_f64.log2();
+        assert!((corrob - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_corroboration_scores_volume_reflects_cap() {
+        // (f) scores.volume reflects the cap
+        let job_id = Uuid::new_v4();
+        let now = Utc::now();
+        let mut deduped = Vec::new();
+        let mut ids = Vec::new();
+        for _ in 0..10 {
+            let id = Uuid::new_v4();
+            ids.push(id);
+            deduped.push(make_item(id, "theguardian.com", "2026-03-20T10:00:00Z"));
+        }
+        let cluster = ClusterOutput {
+            cluster_id: 1,
+            member_ids: ids,
+            centroid: vec![0.1],
+        };
+        let clusters = vec![cluster];
+        let args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        let candidates = rank_candidates(args).unwrap();
+        assert_eq!(candidates.len(), 1);
+        let volume = candidates[0].scores["volume"].as_f64().unwrap();
+        let expected = 5.0_f64.log2();
+        assert!((volume - expected).abs() < 1e-6);
     }
 
     #[test]
@@ -1382,6 +1527,7 @@ mod tests {
             theta_novelty: 0.8,
             aggregator_hosts: &[],
             aggregator_host_weight: 0.5,
+            max_articles_per_host: 4,
         };
         let res = rank_candidates(args);
         assert!(res.is_err());
@@ -1413,6 +1559,7 @@ mod tests {
             theta_novelty: 0.8,
             aggregator_hosts: &[],
             aggregator_host_weight: 0.5,
+            max_articles_per_host: 4,
         };
         let res = rank_candidates(args).expect("rank_candidates must succeed");
         assert_eq!(res.len(), 1);
@@ -1438,6 +1585,7 @@ mod tests {
             theta_novelty: 0.8,
             aggregator_hosts: &[],
             aggregator_host_weight: 0.5,
+            max_articles_per_host: 4,
         };
         let res = rank_candidates(args);
         assert!(res.is_err(), "expected error on NaN centroid");

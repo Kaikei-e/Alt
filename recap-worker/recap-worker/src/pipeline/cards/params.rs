@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub const DEFAULT_PARAMS_VERSION: &str = "cards-v0.4";
+pub const DEFAULT_PARAMS_VERSION: &str = "cards-v0.5";
 pub const DEFAULT_THRESHOLD: f32 = 0.65;
 pub const DEFAULT_LINKAGE: &str = "average";
 pub const DEFAULT_TIME_DECAY_PER_DAY: f32 = 0.02;
@@ -20,6 +20,7 @@ pub const DEFAULT_GENRE_MIN_CONFIDENCE: f32 = 0.5;
 /// Default concurrency for calling coarse classifier during genre tagging.
 pub const DEFAULT_GENRE_CONCURRENCY: usize = 8;
 pub const DEFAULT_AGGREGATOR_HOST_WEIGHT: f32 = 0.5;
+pub const DEFAULT_MAX_ARTICLES_PER_HOST: usize = 4;
 
 pub fn default_aggregator_hosts() -> Vec<String> {
     vec![
@@ -53,6 +54,7 @@ pub struct CardsParams {
     pub genre_concurrency: usize,
     pub aggregator_hosts: Vec<String>,
     pub aggregator_host_weight: f32,
+    pub max_articles_per_host: usize,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<String, String>,
 }
@@ -78,6 +80,7 @@ impl Default for CardsParams {
             genre_concurrency: DEFAULT_GENRE_CONCURRENCY,
             aggregator_hosts: default_aggregator_hosts(),
             aggregator_host_weight: DEFAULT_AGGREGATOR_HOST_WEIGHT,
+            max_articles_per_host: DEFAULT_MAX_ARTICLES_PER_HOST,
             overrides: BTreeMap::new(),
         }
     }
@@ -278,6 +281,42 @@ impl CardsParams {
                 self.aggregator_hosts = hosts;
                 formatted
             }
+            "max_articles_per_host" => {
+                let v = if let Some(i) = value.as_i64() {
+                    if i < 1 {
+                        anyhow::bail!("invalid max_articles_per_host '{i}': must be >= 1");
+                    }
+                    usize::try_from(i).map_err(|e| {
+                        anyhow::anyhow!("value too large for max_articles_per_host: {e}")
+                    })?
+                } else if let Some(u) = value.as_u64() {
+                    if u < 1 {
+                        anyhow::bail!("invalid max_articles_per_host '{u}': must be >= 1");
+                    }
+                    usize::try_from(u).map_err(|e| {
+                        anyhow::anyhow!("value too large for max_articles_per_host: {e}")
+                    })?
+                } else if let Some(s) = value.as_str() {
+                    if let Ok(i) = s.parse::<i64>() {
+                        if i < 1 {
+                            anyhow::bail!("invalid max_articles_per_host '{s}': must be >= 1");
+                        }
+                        usize::try_from(i).map_err(|e| {
+                            anyhow::anyhow!("value too large for max_articles_per_host: {e}")
+                        })?
+                    } else {
+                        anyhow::bail!(
+                            "invalid max_articles_per_host '{s}': must be an integer >= 1"
+                        );
+                    }
+                } else {
+                    anyhow::bail!(
+                        "invalid max_articles_per_host '{value}': must be an integer >= 1"
+                    );
+                };
+                self.max_articles_per_host = v;
+                v.to_string()
+            }
             "params_version" => {
                 let v = value
                     .as_str()
@@ -331,6 +370,7 @@ mod tests {
         assert!(params.min_cluster_size_by_language.is_empty());
         assert_eq!(params.aggregator_host_weight, 0.5);
         assert_eq!(params.aggregator_hosts, default_aggregator_hosts());
+        assert_eq!(params.max_articles_per_host, 4);
     }
 
     #[test]
@@ -593,5 +633,63 @@ mod tests {
         let msg_inf = err_inf.to_string();
         assert!(msg_inf.contains("aggregator_host_weight"));
         assert!(msg_inf.contains("inf"));
+    }
+
+    #[test]
+    fn test_max_articles_per_host_validation() {
+        let params = CardsParams::default();
+
+        // 4 accepted (default)
+        assert_eq!(params.max_articles_per_host, 4);
+
+        // 8 accepted via override
+        let p8 = params
+            .with_override("max_articles_per_host", &serde_json::json!(8))
+            .expect("8 is accepted");
+        assert_eq!(p8.max_articles_per_host, 8);
+        assert!(p8.params_version.contains("max_articles_per_host=8"));
+
+        let p8_str = params
+            .with_override("max_articles_per_host", &serde_json::json!("8"))
+            .expect("string '8' is accepted");
+        assert_eq!(p8_str.max_articles_per_host, 8);
+
+        // 0 rejected (naming key and value)
+        let err0 = params
+            .with_override("max_articles_per_host", &serde_json::json!(0))
+            .unwrap_err();
+        let msg0 = err0.to_string();
+        assert!(msg0.contains("max_articles_per_host"));
+        assert!(msg0.contains("'0'"));
+
+        let err0_str = params
+            .with_override("max_articles_per_host", &serde_json::json!("0"))
+            .unwrap_err();
+        let msg0_str = err0_str.to_string();
+        assert!(msg0_str.contains("max_articles_per_host"));
+        assert!(msg0_str.contains("'0'"));
+
+        // -1 rejected (naming key and value)
+        let err_neg = params
+            .with_override("max_articles_per_host", &serde_json::json!(-1))
+            .unwrap_err();
+        let msg_neg = err_neg.to_string();
+        assert!(msg_neg.contains("max_articles_per_host"));
+        assert!(msg_neg.contains("-1"));
+
+        let err_neg_str = params
+            .with_override("max_articles_per_host", &serde_json::json!("-1"))
+            .unwrap_err();
+        let msg_neg_str = err_neg_str.to_string();
+        assert!(msg_neg_str.contains("max_articles_per_host"));
+        assert!(msg_neg_str.contains("-1"));
+
+        // abc rejected (naming key and value)
+        let err_abc = params
+            .with_override("max_articles_per_host", &serde_json::json!("abc"))
+            .unwrap_err();
+        let msg_abc = err_abc.to_string();
+        assert!(msg_abc.contains("max_articles_per_host"));
+        assert!(msg_abc.contains("abc"));
     }
 }
