@@ -402,7 +402,10 @@ impl NewsCreatorClient {
         let status = response.status();
         if status == reqwest::StatusCode::OK {
             let parsed: CardGenerateResponse = response.json().await.map_err(|e| {
-                RecapError::Summary(format!("failed to deserialize card generate response: {e}"))
+                RecapError::Summary(format!(
+                    "failed to deserialize card generate response for candidate {}: {e}",
+                    request.candidate_id
+                ))
             })?;
             return Ok(CardGenerateOutcome::Success(parsed));
         }
@@ -954,7 +957,8 @@ mod tests_batch {
                     .set_body_json(serde_json::json!({
                         "reason": "parse_failed",
                         "attempts": 2,
-                        "raw_text": "【見出し】不整合"
+                        "raw_text": "【見出し】不整合",
+                        "detail": "sentence_count"
                     })),
             )
             .mount(&server)
@@ -987,6 +991,7 @@ mod tests_batch {
                 assert_eq!(rej.reason, "parse_failed");
                 assert_eq!(rej.attempts, 2);
                 assert_eq!(rej.raw_text, "【見出し】不整合");
+                assert_eq!(rej.detail.as_deref(), Some("sentence_count"));
             }
             CardGenerateOutcome::Success(_) => panic!("expected Rejected outcome"),
         }
@@ -1038,6 +1043,119 @@ mod tests_batch {
                 assert_eq!(retry_after_secs, None);
             }
             other => panic!("expected SummaryHttpStatus, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_card_returns_success_with_ja_ratio_on_200() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/cards/generate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "card": {
+                    "headline_ja": "テスト見出し",
+                    "what_ja": [{"text": "テスト内容。[1]", "refs": [1]}],
+                    "why_ja": null,
+                    "used_refs": [1]
+                },
+                "generation": {
+                    "model": "gemma",
+                    "prompt_version": "v1",
+                    "cache_hit": false,
+                    "prompt_tokens": 10,
+                    "completion_tokens": 10,
+                    "ms": 100,
+                    "raw_text": "raw"
+                },
+                "ja_ratio": 0.8542
+            })))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let request = CardGenerateRequest {
+            job_id: Uuid::new_v4(),
+            candidate_id: Uuid::new_v4(),
+            prompt_version: "recap_card.v1".to_string(),
+            items: vec![CardItemInput {
+                n: 1,
+                feed_id: Uuid::new_v4(),
+                title: "Test".to_string(),
+                host: "example.com".to_string(),
+                url: "https://example.com/1".to_string(),
+                pub_date: None,
+                lede: "Lede".to_string(),
+            }],
+            revision_note: None,
+        };
+
+        let outcome = client
+            .generate_card(&request)
+            .await
+            .expect("200 with ja_ratio should succeed");
+
+        match outcome {
+            CardGenerateOutcome::Success(resp) => {
+                assert_eq!(resp.card.headline_ja, "テスト見出し");
+                assert!((resp.ja_ratio - 0.8542).abs() < 1e-4);
+            }
+            CardGenerateOutcome::Rejected(_) => panic!("expected Success outcome"),
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_card_fails_deserialization_on_200_without_ja_ratio() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/cards/generate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "card": {
+                    "headline_ja": "テスト見出し",
+                    "what_ja": [{"text": "テスト内容。[1]", "refs": [1]}],
+                    "why_ja": null,
+                    "used_refs": [1]
+                },
+                "generation": {
+                    "model": "gemma",
+                    "prompt_version": "v1",
+                    "cache_hit": false,
+                    "prompt_tokens": 10,
+                    "completion_tokens": 10,
+                    "ms": 100,
+                    "raw_text": "raw"
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let request = CardGenerateRequest {
+            job_id: Uuid::new_v4(),
+            candidate_id: Uuid::new_v4(),
+            prompt_version: "recap_card.v1".to_string(),
+            items: vec![CardItemInput {
+                n: 1,
+                feed_id: Uuid::new_v4(),
+                title: "Test".to_string(),
+                host: "example.com".to_string(),
+                url: "https://example.com/1".to_string(),
+                pub_date: None,
+                lede: "Lede".to_string(),
+            }],
+            revision_note: None,
+        };
+
+        let err = client
+            .generate_card(&request)
+            .await
+            .expect_err("200 without ja_ratio must fail deserialization");
+
+        match err {
+            RecapError::Summary(msg) => {
+                assert!(msg.contains("failed to deserialize card generate response"));
+                assert!(msg.contains(&request.candidate_id.to_string()));
+            }
+            other => panic!("expected RecapError::Summary, got {other:?}"),
         }
     }
 }

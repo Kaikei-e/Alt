@@ -205,6 +205,7 @@ pub struct CardRejectionDto {
     pub attempt: i32,
     pub raw_text: Option<String>,
     pub card: Option<serde_json::Value>,
+    pub detail: Option<String>,
     pub created_at: chrono::DateTime<Utc>,
 }
 
@@ -218,6 +219,7 @@ impl From<RecapCardRejection> for CardRejectionDto {
             attempt: r.attempt,
             raw_text: r.raw_text,
             card: r.card,
+            detail: r.detail,
             created_at: r.created_at,
         }
     }
@@ -1341,6 +1343,7 @@ mod tests {
         assert!(c3["inherited_source"].is_null());
     }
 
+    #[allow(clippy::too_many_lines)]
     #[tokio::test]
     async fn test_get_job_rejections_endpoint_json_shape_and_order() {
         let (app, dao) = setup_test_app();
@@ -1362,6 +1365,7 @@ mod tests {
             attempt: 1,
             raw_text: Some("invalid raw text".to_string()),
             card: None,
+            detail: Some("sentence_count".to_string()),
             created_at: t1,
         };
 
@@ -1378,6 +1382,7 @@ mod tests {
                 "what_ja": "What",
                 "why_ja": null
             })),
+            detail: None,
             created_at: t2,
         };
 
@@ -1390,6 +1395,7 @@ mod tests {
             attempt: 1,
             raw_text: None,
             card: None,
+            detail: None,
             created_at: t2,
         };
 
@@ -1418,6 +1424,7 @@ mod tests {
             "candidate_id",
             "card",
             "created_at",
+            "detail",
             "id",
             "raw_text",
             "reason",
@@ -1443,6 +1450,7 @@ mod tests {
         assert!(rejections[0]["raw_text"].is_null());
         assert!(rejections[0]["card"].is_object());
         assert_eq!(rejections[0]["card"]["headline_ja"], "Headline");
+        assert!(rejections[0]["detail"].is_null());
 
         assert_eq!(rejections[1]["id"], r1.id.to_string());
         assert_eq!(rejections[1]["candidate_id"], c1_id.to_string());
@@ -1451,5 +1459,6 @@ mod tests {
         assert_eq!(rejections[1]["attempt"], 1);
         assert_eq!(rejections[1]["raw_text"], "invalid raw text");
         assert!(rejections[1]["card"].is_null());
+        assert_eq!(rejections[1]["detail"], "sentence_count");
     }
 }

@@ -196,6 +196,7 @@ pub struct RejectionRecord {
     pub attempt: i32,
     pub raw_text: Option<String>,
     pub card: Option<Value>,
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -208,6 +209,7 @@ pub struct RecapCardRejection {
     pub attempt: i32,
     pub raw_text: Option<String>,
     pub card: Option<Value>,
+    pub detail: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -884,8 +886,8 @@ impl CardsDaoOps {
         sqlx::query(
             r"
             INSERT INTO recap_card_rejections (
-                id, job_id, candidate_id, stage, reason, attempt, raw_text, card
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                id, job_id, candidate_id, stage, reason, attempt, raw_text, card, detail
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ",
         )
         .bind(r.id)
@@ -896,6 +898,7 @@ impl CardsDaoOps {
         .bind(r.attempt)
         .bind(r.raw_text.as_deref())
         .bind(r.card.as_ref().map(sqlx::types::Json))
+        .bind(r.detail.as_deref())
         .execute(pool)
         .await
         .map_err(|e| RecapError::Db(format!("failed to insert card rejection: {e}")))?;
@@ -910,7 +913,7 @@ impl CardsDaoOps {
     ) -> Result<Vec<RecapCardRejection>> {
         let rows = sqlx::query(
             r"
-            SELECT id, job_id, candidate_id, stage, reason, attempt, raw_text, card, created_at
+            SELECT id, job_id, candidate_id, stage, reason, attempt, raw_text, card, detail, created_at
             FROM recap_card_rejections
             WHERE job_id = $1
             ORDER BY created_at DESC, id DESC
@@ -933,6 +936,7 @@ impl CardsDaoOps {
                 attempt: r.try_get("attempt")?,
                 raw_text: r.try_get("raw_text")?,
                 card: card.map(|j| j.0),
+                detail: r.try_get("detail")?,
                 created_at: r.try_get("created_at")?,
             });
         }
@@ -1111,6 +1115,7 @@ mod tests {
             attempt: 1,
             raw_text: Some("sample raw output".to_string()),
             card: Some(serde_json::json!({"headline_ja": "テスト"})),
+            detail: Some("sentence_count".to_string()),
         };
 
         let json = serde_json::to_string(&record).expect("serialize rejection record");
@@ -1130,6 +1135,7 @@ mod tests {
             attempt: 1,
             raw_text: Some("sample raw output".to_string()),
             card: Some(serde_json::json!({"headline_ja": "テスト"})),
+            detail: Some("sentence_count".to_string()),
             created_at: Utc::now(),
         };
 
@@ -1144,5 +1150,6 @@ mod tests {
         assert_eq!(rejection.attempt, deserialized.attempt);
         assert_eq!(rejection.raw_text, deserialized.raw_text);
         assert_eq!(rejection.card, deserialized.card);
+        assert_eq!(rejection.detail, deserialized.detail);
     }
 }

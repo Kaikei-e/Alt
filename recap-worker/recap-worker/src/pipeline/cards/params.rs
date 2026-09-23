@@ -21,6 +21,7 @@ pub const DEFAULT_GENRE_MIN_CONFIDENCE: f32 = 0.5;
 pub const DEFAULT_GENRE_CONCURRENCY: usize = 8;
 pub const DEFAULT_AGGREGATOR_HOST_WEIGHT: f32 = 0.5;
 pub const DEFAULT_MAX_ARTICLES_PER_HOST: usize = 4;
+pub const DEFAULT_JA_RATIO_MIN: f32 = 0.6;
 
 pub fn default_aggregator_hosts() -> Vec<String> {
     vec![
@@ -55,6 +56,7 @@ pub struct CardsParams {
     pub aggregator_hosts: Vec<String>,
     pub aggregator_host_weight: f32,
     pub max_articles_per_host: usize,
+    pub ja_ratio_min: f32,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<String, String>,
 }
@@ -81,6 +83,7 @@ impl Default for CardsParams {
             aggregator_hosts: default_aggregator_hosts(),
             aggregator_host_weight: DEFAULT_AGGREGATOR_HOST_WEIGHT,
             max_articles_per_host: DEFAULT_MAX_ARTICLES_PER_HOST,
+            ja_ratio_min: DEFAULT_JA_RATIO_MIN,
             overrides: BTreeMap::new(),
         }
     }
@@ -317,6 +320,16 @@ impl CardsParams {
                 self.max_articles_per_host = v;
                 v.to_string()
             }
+            "ja_ratio_min" => {
+                let v = parse_f32(value, "ja_ratio_min")?;
+                if !v.is_finite() || !(0.0..=1.0).contains(&v) {
+                    anyhow::bail!(
+                        "invalid ja_ratio_min '{v}': must be a finite number between 0.0 and 1.0"
+                    );
+                }
+                self.ja_ratio_min = v;
+                format!("{v}")
+            }
             "params_version" => {
                 let v = value
                     .as_str()
@@ -371,6 +384,7 @@ mod tests {
         assert_eq!(params.aggregator_host_weight, 0.5);
         assert_eq!(params.aggregator_hosts, default_aggregator_hosts());
         assert_eq!(params.max_articles_per_host, 4);
+        assert_eq!(params.ja_ratio_min, 0.6);
     }
 
     #[test]
@@ -691,5 +705,51 @@ mod tests {
         let msg_abc = err_abc.to_string();
         assert!(msg_abc.contains("max_articles_per_host"));
         assert!(msg_abc.contains("abc"));
+    }
+
+    #[test]
+    fn test_ja_ratio_min_validation() {
+        let params = CardsParams::default();
+
+        let overridden = params
+            .with_override("ja_ratio_min", &serde_json::json!(0.75))
+            .expect("valid ja_ratio_min");
+        assert_eq!(overridden.ja_ratio_min, 0.75);
+        assert!(overridden.params_version.contains("ja_ratio_min=0.75"));
+
+        let zero = params
+            .with_override("ja_ratio_min", &serde_json::json!(0.0))
+            .expect("0.0 is valid");
+        assert_eq!(zero.ja_ratio_min, 0.0);
+
+        let one = params
+            .with_override("ja_ratio_min", &serde_json::json!(1.0))
+            .expect("1.0 is valid");
+        assert_eq!(one.ja_ratio_min, 1.0);
+
+        let err_neg = params
+            .with_override("ja_ratio_min", &serde_json::json!(-0.1))
+            .unwrap_err();
+        assert!(err_neg.to_string().contains("invalid ja_ratio_min"));
+
+        let err_large = params
+            .with_override("ja_ratio_min", &serde_json::json!(1.1))
+            .unwrap_err();
+        assert!(err_large.to_string().contains("invalid ja_ratio_min"));
+
+        let err_nan = params
+            .with_override("ja_ratio_min", &serde_json::json!("NaN"))
+            .unwrap_err();
+        assert!(err_nan.to_string().contains("invalid ja_ratio_min"));
+
+        let err_inf = params
+            .with_override("ja_ratio_min", &serde_json::json!("inf"))
+            .unwrap_err();
+        assert!(err_inf.to_string().contains("invalid ja_ratio_min"));
+
+        let err_str = params
+            .with_override("ja_ratio_min", &serde_json::json!("abc"))
+            .unwrap_err();
+        assert!(err_str.to_string().contains("invalid float string"));
     }
 }

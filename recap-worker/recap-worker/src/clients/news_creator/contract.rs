@@ -277,6 +277,7 @@ async fn contract_news_creator_card_generate() {
                     "ms": like!(200i64),
                     "raw_text": like!("【見出し】\nテストヘッドライン\n【何が起きた】\nテストの出来事が発生した。[1]\n【なぜ重要】\nテストの影響が生じる。[1]\n【出典】\n[1]"),
                 }),
+                "ja_ratio": like!(0.83f64),
             }));
             i
         })
@@ -310,6 +311,7 @@ async fn contract_news_creator_card_generate() {
             assert_eq!(parsed.card.headline_ja, "テストヘッドライン");
             assert!(!parsed.card.what_ja.is_empty());
             assert_eq!(parsed.generation.prompt_version, "recap_card.v1");
+            assert!((parsed.ja_ratio - 0.83).abs() < 1e-4);
         }
         CardGenerateOutcome::Rejected(rejected) => {
             panic!("expected Success, got Rejected: {rejected:?}");
@@ -353,6 +355,7 @@ async fn contract_news_creator_card_generate_rejected() {
                     "reason": like!("parse_failed"),
                     "attempts": like!(2i64),
                     "raw_text": like!("【見出し】不正なフォーマット"),
+                    "detail": like!("sentence_count"),
                 }));
                 i
             },
@@ -387,6 +390,7 @@ async fn contract_news_creator_card_generate_rejected() {
             assert_eq!(rejected.reason, "parse_failed");
             assert_eq!(rejected.attempts, 2);
             assert!(!rejected.raw_text.is_empty());
+            assert_eq!(rejected.detail.as_deref(), Some("sentence_count"));
         }
         CardGenerateOutcome::Success(success) => {
             panic!("expected Rejected, got Success: {success:?}");

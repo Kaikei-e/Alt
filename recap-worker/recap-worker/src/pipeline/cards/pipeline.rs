@@ -1144,8 +1144,8 @@ impl CardsPipeline {
             };
 
             let outcome = card_generator.generate_card(&gen_req).await?;
-            let (mut current_card, mut generation_meta) = match outcome {
-                CardGenerateOutcome::Success(resp) => (resp.card, resp.generation),
+            let (mut current_card, mut generation_meta, mut current_ja_ratio) = match outcome {
+                CardGenerateOutcome::Success(resp) => (resp.card, resp.generation, resp.ja_ratio),
                 CardGenerateOutcome::Rejected(resp) => {
                     record_rejection(
                         &*self.dao,
@@ -1158,7 +1158,9 @@ impl CardsPipeline {
                             attempt: resp.attempts as i32,
                             raw_text: Some(resp.raw_text),
                             card: None,
+                            detail: resp.detail,
                         },
+                        None,
                     )
                     .await?;
                     *cards_dropped.entry(resp.reason).or_insert(0) += 1;
@@ -1169,8 +1171,7 @@ impl CardsPipeline {
             let mut regeneration_count = 0;
 
             // Gate G1
-            let mut ja_ratio = calculate_ja_ratio(&full_card_text(&current_card));
-            if ja_ratio < 0.6 {
+            if current_ja_ratio < params.ja_ratio_min {
                 let card_json = serde_json::to_value(&current_card)?;
                 record_rejection(
                     &*self.dao,
@@ -1183,7 +1184,9 @@ impl CardsPipeline {
                         attempt: 1,
                         raw_text: None,
                         card: Some(card_json),
+                        detail: None,
                     },
+                    Some(current_ja_ratio),
                 )
                 .await?;
                 gen_req.revision_note = Some("日本語で書き直す".to_string());
@@ -1193,8 +1196,8 @@ impl CardsPipeline {
                     CardGenerateOutcome::Success(resp) => {
                         current_card = resp.card;
                         generation_meta = resp.generation;
-                        ja_ratio = calculate_ja_ratio(&full_card_text(&current_card));
-                        if ja_ratio < 0.6 {
+                        current_ja_ratio = resp.ja_ratio;
+                        if current_ja_ratio < params.ja_ratio_min {
                             let card_json = serde_json::to_value(&current_card)?;
                             record_rejection(
                                 &*self.dao,
@@ -1207,7 +1210,9 @@ impl CardsPipeline {
                                     attempt: 2,
                                     raw_text: None,
                                     card: Some(card_json),
+                                    detail: None,
                                 },
+                                Some(current_ja_ratio),
                             )
                             .await?;
                             *cards_dropped.entry("g1_language".to_string()).or_insert(0) += 1;
@@ -1226,7 +1231,9 @@ impl CardsPipeline {
                                 attempt: resp.attempts as i32,
                                 raw_text: Some(resp.raw_text),
                                 card: None,
+                                detail: resp.detail,
                             },
+                            None,
                         )
                         .await?;
                         *cards_dropped.entry(resp.reason).or_insert(0) += 1;
@@ -1273,7 +1280,9 @@ impl CardsPipeline {
                         attempt: 1,
                         raw_text: None,
                         card: Some(card_json),
+                        detail: None,
                     },
+                    None,
                 )
                 .await?;
                 gen_req.revision_note = Some(format!("不正な引用: {}", invalid_cites.join(", ")));
@@ -1283,8 +1292,8 @@ impl CardsPipeline {
                     CardGenerateOutcome::Success(resp) => {
                         current_card = resp.card;
                         generation_meta = resp.generation;
-                        ja_ratio = calculate_ja_ratio(&full_card_text(&current_card));
-                        if ja_ratio < 0.6 {
+                        current_ja_ratio = resp.ja_ratio;
+                        if current_ja_ratio < params.ja_ratio_min {
                             let card_json = serde_json::to_value(&current_card)?;
                             record_rejection(
                                 &*self.dao,
@@ -1297,7 +1306,9 @@ impl CardsPipeline {
                                     attempt: 2,
                                     raw_text: None,
                                     card: Some(card_json),
+                                    detail: None,
                                 },
+                                Some(current_ja_ratio),
                             )
                             .await?;
                             *cards_dropped.entry("g1_language".to_string()).or_insert(0) += 1;
@@ -1316,7 +1327,9 @@ impl CardsPipeline {
                                 attempt: resp.attempts as i32,
                                 raw_text: Some(resp.raw_text),
                                 card: None,
+                                detail: resp.detail,
                             },
+                            None,
                         )
                         .await?;
                         *cards_dropped.entry(resp.reason).or_insert(0) += 1;
@@ -1341,7 +1354,9 @@ impl CardsPipeline {
                         attempt: 2,
                         raw_text: None,
                         card: Some(card_json),
+                        detail: None,
                     },
+                    None,
                 )
                 .await?;
                 *cards_dropped.entry("g2_citation".to_string()).or_insert(0) += 1;
@@ -1398,7 +1413,9 @@ impl CardsPipeline {
                         attempt: 1,
                         raw_text: None,
                         card: Some(card_json),
+                        detail: None,
                     },
+                    None,
                 )
                 .await?;
 
@@ -1410,10 +1427,10 @@ impl CardsPipeline {
                     CardGenerateOutcome::Success(resp2) => {
                         current_card = resp2.card;
                         generation_meta = resp2.generation;
+                        current_ja_ratio = resp2.ja_ratio;
 
                         // Recheck G1
-                        ja_ratio = calculate_ja_ratio(&full_card_text(&current_card));
-                        if ja_ratio < 0.6 {
+                        if current_ja_ratio < params.ja_ratio_min {
                             let card_json = serde_json::to_value(&current_card)?;
                             record_rejection(
                                 &*self.dao,
@@ -1426,7 +1443,9 @@ impl CardsPipeline {
                                     attempt: 2,
                                     raw_text: None,
                                     card: Some(card_json),
+                                    detail: None,
                                 },
+                                Some(current_ja_ratio),
                             )
                             .await?;
                             *cards_dropped.entry("g1_language".to_string()).or_insert(0) += 1;
@@ -1450,7 +1469,9 @@ impl CardsPipeline {
                                     attempt: 2,
                                     raw_text: None,
                                     card: Some(card_json),
+                                    detail: None,
                                 },
+                                None,
                             )
                             .await?;
                             *cards_dropped.entry("g2_citation".to_string()).or_insert(0) += 1;
@@ -1479,7 +1500,9 @@ impl CardsPipeline {
                                 attempt: resp2.attempts as i32,
                                 raw_text: Some(resp2.raw_text),
                                 card: None,
+                                detail: resp2.detail,
                             },
+                            None,
                         )
                         .await?;
                         *cards_dropped.entry(resp2.reason).or_insert(0) += 1;
@@ -1543,7 +1566,9 @@ impl CardsPipeline {
                             attempt: 2,
                             raw_text: None,
                             card: Some(card_json),
+                            detail: None,
                         },
+                        None,
                     )
                     .await?;
                     *cards_dropped.entry(reason.to_string()).or_insert(0) += 1;
@@ -1558,7 +1583,7 @@ impl CardsPipeline {
 
             // Gate G5 & gates json
             let gates_json = json!({
-                "g1_ja_ratio": ja_ratio,
+                "g1_ja_ratio": current_ja_ratio,
                 "g2_citations_valid": g2_citations_valid,
                 "regeneration_count": regeneration_count,
                 "deleted_sentence_indices": deleted_sentence_indices,
@@ -1878,70 +1903,18 @@ impl CardsPipeline {
     }
 }
 
-fn is_ja_ratio_stripped_char(c: char) -> bool {
-    c.is_whitespace()
-        || c.is_ascii_digit()
-        || matches!(
-            c,
-            '[' | ']'
-                | '!'
-                | '?'
-                | ','
-                | '.'
-                | '。'
-                | '！'
-                | '？'
-                | ':'
-                | '/'
-                | '-'
-                | '_'
-                | '~'
-                | '#'
-                | '*'
-                | '`'
-                | '\''
-                | '"'
-        )
-}
-
-fn is_japanese_char(c: char) -> bool {
-    matches!(
-        c,
-        '\u{3040}'..='\u{309F}'
-            | '\u{30A0}'..='\u{30FF}'
-            | '\u{4E00}'..='\u{9FFF}'
-            | '\u{3400}'..='\u{4DBF}'
-    )
-}
-
-pub fn calculate_ja_ratio(text: &str) -> f32 {
-    let mut ja_count = 0;
-    let mut substantive_count = 0;
-
-    for c in text.chars() {
-        if is_ja_ratio_stripped_char(c) {
-            continue;
-        }
-        substantive_count += 1;
-        if is_japanese_char(c) {
-            ja_count += 1;
-        }
-    }
-
-    if substantive_count == 0 {
-        0.0
-    } else {
-        ja_count as f32 / substantive_count as f32
-    }
-}
-
-async fn record_rejection(dao: &dyn CardsPipelineDao, rec: RejectionRecord) -> Result<()> {
+async fn record_rejection(
+    dao: &dyn CardsPipelineDao,
+    rec: RejectionRecord,
+    ja_ratio: Option<f32>,
+) -> Result<()> {
     tracing::info!(
         job_id = %rec.job_id,
         candidate_id = %rec.candidate_id,
         stage = %rec.stage,
         reason = %rec.reason,
         attempt = rec.attempt,
+        ja_ratio = ?ja_ratio,
         "card rejection"
     );
     dao.insert_card_rejection(&rec).await
@@ -2014,19 +1987,6 @@ fn filter_valid_citations(card: &mut CardContent, item_count: usize) {
             card.why_ja = None;
         }
     }
-}
-
-fn full_card_text(card: &CardContent) -> String {
-    let mut text = card.headline_ja.clone();
-    for s in &card.what_ja {
-        text.push(' ');
-        text.push_str(&s.text);
-    }
-    if let Some(ref w) = card.why_ja {
-        text.push(' ');
-        text.push_str(&w.text);
-    }
-    text
 }
 
 #[cfg(test)]
@@ -2881,6 +2841,7 @@ mod tests {
                     reason: "gemma_turn_parse_failed".to_string(),
                     attempts: 2,
                     raw_text: "bad response".to_string(),
+                    detail: Some("sentence_count".to_string()),
                 },
             ),
         ]));
@@ -2919,6 +2880,7 @@ mod tests {
         assert_eq!(rejections[0].attempt, 2);
         assert_eq!(rejections[0].raw_text.as_deref(), Some("bad response"));
         assert!(rejections[0].card.is_none());
+        assert_eq!(rejections[0].detail.as_deref(), Some("sentence_count"));
     }
 
     #[tokio::test]
@@ -2941,6 +2903,7 @@ mod tests {
                     reason: "gemma_turn_parse_failed".to_string(),
                     attempts: 2,
                     raw_text: "bad response".to_string(),
+                    detail: None,
                 },
             ),
         ]));
@@ -2982,11 +2945,10 @@ mod tests {
         let ml_port = Arc::new(FakeEmbedCluster::new());
         let dao = Arc::new(MockCardsPipelineDao::default());
 
-        // Card with purely English text (ja_ratio < 0.6)
-        let english_card = CardContent {
-            headline_ja: "English Headline Only".to_string(),
+        let sample_card = CardContent {
+            headline_ja: "主要なテクノロジー動向の進展".to_string(),
             what_ja: vec![CardSentence {
-                text: "Something completely in English happened.[1]".to_string(),
+                text: "主要な出来事が発生した。[1]".to_string(),
                 refs: vec![1],
             }],
             why_ja: None,
@@ -2995,7 +2957,7 @@ mod tests {
 
         let card_gen = Arc::new(FakeCardGenerator::with_responses(vec![
             CardGenerateOutcome::Success(CardGenerateResponse {
-                card: english_card.clone(),
+                card: sample_card.clone(),
                 generation: crate::clients::news_creator::models::CardGenerationMetadata {
                     model: "gemma4-e4b".to_string(),
                     prompt_version: "recap_card.v1".to_string(),
@@ -3005,9 +2967,10 @@ mod tests {
                     ms: 10,
                     raw_text: String::new(),
                 },
+                ja_ratio: 0.4,
             }),
             CardGenerateOutcome::Success(CardGenerateResponse {
-                card: english_card,
+                card: sample_card,
                 generation: crate::clients::news_creator::models::CardGenerationMetadata {
                     model: "gemma4-e4b".to_string(),
                     prompt_version: "recap_card.v1".to_string(),
@@ -3017,6 +2980,7 @@ mod tests {
                     ms: 10,
                     raw_text: String::new(),
                 },
+                ja_ratio: 0.4,
             }),
         ]));
         let card_ver = Arc::new(FakeCardVerifier::new());
@@ -3056,6 +3020,155 @@ mod tests {
         assert_eq!(rejections[1].reason, "g1_language");
         assert_eq!(rejections[1].attempt, 2);
         assert!(rejections[1].card.is_some());
+        assert!(rejections[0].detail.is_none());
+        assert!(rejections[1].detail.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cards_pipeline_gate_g1_regeneration_then_success() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "テックニュース発表",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        let sample_card = CardContent {
+            headline_ja: "主要なテクノロジー動向の進展".to_string(),
+            what_ja: vec![CardSentence {
+                text: "主要な出来事が発生した。[1]".to_string(),
+                refs: vec![1],
+            }],
+            why_ja: None,
+            used_refs: vec![1],
+        };
+
+        let card_gen = Arc::new(FakeCardGenerator::with_responses(vec![
+            CardGenerateOutcome::Success(CardGenerateResponse {
+                card: sample_card.clone(),
+                generation: crate::clients::news_creator::models::CardGenerationMetadata {
+                    model: "gemma4-e4b".to_string(),
+                    prompt_version: "recap_card.v1".to_string(),
+                    cache_hit: false,
+                    prompt_tokens: 10,
+                    completion_tokens: 10,
+                    ms: 10,
+                    raw_text: String::new(),
+                },
+                ja_ratio: 0.4,
+            }),
+            CardGenerateOutcome::Success(CardGenerateResponse {
+                card: sample_card,
+                generation: crate::clients::news_creator::models::CardGenerationMetadata {
+                    model: "gemma4-e4b".to_string(),
+                    prompt_version: "recap_card.v1".to_string(),
+                    cache_hit: false,
+                    prompt_tokens: 10,
+                    completion_tokens: 10,
+                    ms: 10,
+                    raw_text: String::new(),
+                },
+                ja_ratio: 0.85,
+            }),
+        ]));
+        let card_ver = Arc::new(FakeCardVerifier::new());
+
+        let pipeline = CardsPipeline::full(
+            feed_source,
+            ml_port,
+            dao.clone(),
+            card_gen.clone(),
+            card_ver,
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        let res = pipeline
+            .run(
+                Uuid::new_v4(),
+                Utc::now(),
+                Utc::now(),
+                &CardsParams::default(),
+            )
+            .await
+            .expect("pipeline completes");
+
+        assert_eq!(res.cards_selected, 1);
+        let rejections = dao.rejections.lock().unwrap().clone();
+        assert_eq!(rejections.len(), 1);
+        assert_eq!(rejections[0].stage, "gate");
+        assert_eq!(rejections[0].reason, "g1_language");
+        assert_eq!(rejections[0].attempt, 1);
+    }
+
+    #[tokio::test]
+    async fn test_cards_pipeline_gate_g1_exact_threshold_passes() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "テックニュース発表",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        let sample_card = CardContent {
+            headline_ja: "主要なテクノロジー動向の進展".to_string(),
+            what_ja: vec![CardSentence {
+                text: "主要な出来事が発生した。[1]".to_string(),
+                refs: vec![1],
+            }],
+            why_ja: None,
+            used_refs: vec![1],
+        };
+
+        let card_gen = Arc::new(FakeCardGenerator::with_responses(vec![
+            CardGenerateOutcome::Success(CardGenerateResponse {
+                card: sample_card,
+                generation: crate::clients::news_creator::models::CardGenerationMetadata {
+                    model: "gemma4-e4b".to_string(),
+                    prompt_version: "recap_card.v1".to_string(),
+                    cache_hit: false,
+                    prompt_tokens: 10,
+                    completion_tokens: 10,
+                    ms: 10,
+                    raw_text: String::new(),
+                },
+                ja_ratio: 0.6,
+            }),
+        ]));
+        let card_ver = Arc::new(FakeCardVerifier::new());
+
+        let pipeline = CardsPipeline::full(
+            feed_source,
+            ml_port,
+            dao.clone(),
+            card_gen.clone(),
+            card_ver,
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        let res = pipeline
+            .run(
+                Uuid::new_v4(),
+                Utc::now(),
+                Utc::now(),
+                &CardsParams::default(),
+            )
+            .await
+            .expect("pipeline completes");
+
+        assert_eq!(res.cards_selected, 1);
+        let rejections = dao.rejections.lock().unwrap().clone();
+        assert_eq!(rejections.len(), 0);
+        assert_eq!(card_gen.requests.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -3094,6 +3207,7 @@ mod tests {
                     ms: 10,
                     raw_text: String::new(),
                 },
+                ja_ratio: 1.0,
             }),
             CardGenerateOutcome::Success(CardGenerateResponse {
                 card: invalid_card,
@@ -3106,6 +3220,7 @@ mod tests {
                     ms: 10,
                     raw_text: String::new(),
                 },
+                ja_ratio: 1.0,
             }),
         ]));
         let card_ver = Arc::new(FakeCardVerifier::new());
@@ -3154,6 +3269,8 @@ mod tests {
             rej_card1["what_ja"][0]["text"],
             "重大な進展が発生した。[99]"
         );
+        assert!(rejections[0].detail.is_none());
+        assert!(rejections[1].detail.is_none());
     }
 
     #[allow(clippy::too_many_lines)]
@@ -3202,6 +3319,7 @@ mod tests {
                     ms: 10,
                     raw_text: String::new(),
                 },
+                ja_ratio: 1.0,
             }),
             CardGenerateOutcome::Success(CardGenerateResponse {
                 card: regenerated_card,
@@ -3214,6 +3332,7 @@ mod tests {
                     ms: 10,
                     raw_text: String::new(),
                 },
+                ja_ratio: 1.0,
             }),
         ]));
 
@@ -3382,6 +3501,7 @@ mod tests {
                     ms: 10,
                     raw_text: String::new(),
                 },
+                ja_ratio: 1.0,
             }),
             CardGenerateOutcome::Success(CardGenerateResponse {
                 card: second_card,
@@ -3394,6 +3514,7 @@ mod tests {
                     ms: 10,
                     raw_text: String::new(),
                 },
+                ja_ratio: 1.0,
             }),
         ]));
 
@@ -4191,36 +4312,5 @@ mod tests {
             Some(&serde_json::Value::String("full".to_string())),
             "full mode pipeline snapshot must record mode 'full'"
         );
-    }
-
-    #[test]
-    fn test_calculate_ja_ratio_citations_and_product_names_passes() {
-        let text = "Cloudflare WorkersとApple Pencilの連携機能が発表されました。[1] 開発者はエッジ環境で直接操作できます。[2] [3] 新機能により作業効率が向上します。[4] [5]";
-        let ratio = calculate_ja_ratio(text);
-        assert!(
-            ratio >= 0.6,
-            "expected ratio >= 0.6 with product names and citations, got {ratio}"
-        );
-    }
-
-    #[test]
-    fn test_calculate_ja_ratio_mostly_english_fails() {
-        let text = "Cloudflare Workers has released a brand new update for all developers worldwide. 日本語";
-        let ratio = calculate_ja_ratio(text);
-        assert!(
-            ratio < 0.6,
-            "expected ratio < 0.6 for mostly-English card, got {ratio}"
-        );
-    }
-
-    #[test]
-    fn test_calculate_ja_ratio_only_citations_and_punctuation_zero() {
-        let text = "[1] [2] [3] !? ,. 。！？ : / - _ ~ # * ` ' \"";
-        let ratio = calculate_ja_ratio(text);
-        assert!(
-            (ratio - 0.0).abs() < f32::EPSILON,
-            "expected 0.0 for text with only citations and punctuation"
-        );
-        assert!(ratio < 0.6, "expected ratio < 0.6");
     }
 }

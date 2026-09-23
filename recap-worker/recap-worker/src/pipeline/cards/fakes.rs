@@ -345,6 +345,7 @@ impl CardGenerator for FakeCardGenerator {
                 ms: 120,
                 raw_text: "raw text".to_string(),
             },
+            ja_ratio: 1.0,
         }))
     }
 }
