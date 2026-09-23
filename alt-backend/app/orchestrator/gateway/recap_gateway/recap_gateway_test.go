@@ -252,7 +252,9 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 			assert.Equal(t, "/v1/recaps/3days/cards", r.URL.Path)
 			assert.Equal(t, http.MethodGet, r.Method)
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(mockData)
+			if err := json.NewEncoder(w).Encode(mockData); err != nil {
+				t.Fatalf("encode mock data failed: %v", err)
+			}
 		}))
 		defer server.Close()
 
@@ -292,7 +294,9 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/v1/recaps/3days/cards", r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(mockData)
+			if err := json.NewEncoder(w).Encode(mockData); err != nil {
+				t.Fatalf("encode mock data failed: %v", err)
+			}
 		}))
 		defer server.Close()
 
@@ -308,7 +312,9 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 	t.Run("non-200 status error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("internal error"))
+			if _, err := w.Write([]byte("internal error")); err != nil {
+				t.Fatalf("write response failed: %v", err)
+			}
 		}))
 		defer server.Close()
 
