@@ -85,8 +85,11 @@ describe("Topic Cards Page (+page.svelte)", () => {
 			.element(page.getByTestId("recap-cards-error"))
 			.toBeInTheDocument();
 		await expect
-			.element(page.getByText("BFF Connection Failed"))
+			.element(page.getByText("Topic cards could not be loaded. Try again."))
 			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("BFF Connection Failed"))
+			.not.toBeInTheDocument();
 		await expect
 			.element(page.getByRole("button", { name: /retry/i }))
 			.toBeInTheDocument();
