@@ -118,6 +118,7 @@ pub struct FakeEmbedCluster {
     pub fixed_map: FixedEmbeddingMap,
     pub fixed_cluster_response: Arc<Mutex<Option<ClusterStoriesResponse>>>,
     pub embed_calls: Arc<Mutex<Vec<Vec<String>>>>,
+    pub cluster_calls: Arc<Mutex<Vec<ClusterStoriesRequest>>>,
 }
 
 impl FakeEmbedCluster {
@@ -131,6 +132,7 @@ impl FakeEmbedCluster {
             fixed_map: Arc::new(Mutex::new(None)),
             fixed_cluster_response: Arc::new(Mutex::new(Some(response))),
             embed_calls: Arc::new(Mutex::new(Vec::new())),
+            cluster_calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -143,6 +145,7 @@ impl FakeEmbedCluster {
             fixed_map: Arc::new(Mutex::new(Some(map))),
             fixed_cluster_response: Arc::new(Mutex::new(Some(response))),
             embed_calls: Arc::new(Mutex::new(Vec::new())),
+            cluster_calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -187,6 +190,7 @@ impl EmbedCluster for FakeEmbedCluster {
     }
 
     async fn cluster_stories(&self, req: &ClusterStoriesRequest) -> Result<ClusterStoriesResponse> {
+        self.cluster_calls.lock().unwrap().push(req.clone());
         if let Some(resp) = self.fixed_cluster_response.lock().unwrap().as_ref() {
             return Ok(resp.clone());
         }

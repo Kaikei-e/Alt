@@ -7,6 +7,7 @@ use crate::store::dao::cards::{
     RecapCard, RecapCardCandidate, RecapCardJobStats, RecapCardRating, RecapStoryJudgment,
 };
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use uuid::Uuid;
@@ -84,6 +85,8 @@ pub struct QualityMetrics {
 /// Pipeline execution timings and dropped metrics.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PipelineExecutionMetrics {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
     pub items_fetched: i32,
     pub items_after_noise: i32,
     pub items_after_dedup: i32,
@@ -109,6 +112,7 @@ pub struct DropMetrics {
     pub degraded_jobs_count: usize,
     pub total_jobs_count: usize,
     pub degraded_share: f64,
+    pub jobs_without_mode_excluded: usize,
 }
 
 /// Consolidated evaluation report.
@@ -123,8 +127,8 @@ pub struct EvalReport {
     pub inherited_candidates: usize,
     /// Number of judgments that had no matching candidate row.
     pub judgments_without_candidate: usize,
-    /// Number of candidates that had an empty member feed IDs list.
-    pub candidates_without_members: usize,
+    /// Number of judged clusters that had an empty member feed IDs list.
+    pub judged_clusters_without_members: usize,
     pub quality: QualityMetrics,
     pub execution: Option<PipelineExecutionMetrics>,
     pub drop_metrics: Option<DropMetrics>,
@@ -147,7 +151,7 @@ impl EvalReport {
             &self.selection_with_inheritance,
             self.inherited_candidates,
             self.judgments_without_candidate,
-            self.candidates_without_members,
+            self.judged_clusters_without_members,
         );
         format_quality_markdown(&mut out, &self.quality);
         if let Some(exec) = &self.execution {
@@ -167,7 +171,7 @@ fn format_selection_markdown(
     with_inheritance: &SelectionMetrics,
     inherited_candidates: usize,
     judgments_without_candidate: usize,
-    candidates_without_members: usize,
+    judged_clusters_without_members: usize,
 ) {
     let _ = writeln!(out, "## 1. Topic Selection Metrics\n");
     let _ = writeln!(out, "### Direct-Only (No Inheritance)\n");
@@ -198,8 +202,8 @@ fn format_selection_markdown(
     );
     let _ = writeln!(
         out,
-        "- **Candidates without members**: {}",
-        candidates_without_members
+        "- **Judged clusters without members**: {}",
+        judged_clusters_without_members
     );
     let _ = writeln!(
         out,
@@ -270,11 +274,14 @@ fn format_execution_markdown(out: &mut String, exec: &PipelineExecutionMetrics) 
         exec.total_cards_dropped
     );
     let _ = writeln!(out, "- **Drop Rate**: {:.1}%", exec.drop_rate * 100.0);
-    let _ = writeln!(
-        out,
-        "- **Degraded (< 5 cards)**: {}",
-        if exec.is_degraded { "Yes" } else { "No" },
-    );
+    let degraded_label = if exec.mode.as_deref() == Some("selection_only") {
+        "n/a (selection-only)"
+    } else if exec.is_degraded {
+        "Yes"
+    } else {
+        "No"
+    };
+    let _ = writeln!(out, "- **Degraded (< 5 cards)**: {}", degraded_label);
     let _ = writeln!(
         out,
         "- **Timings (ms)**: Total {} ms (Embed: {} ms, Cluster: {} ms, LLM: {} ms)",
@@ -309,10 +316,15 @@ fn format_drop_markdown(out: &mut String, drop: &DropMetrics) {
     );
     let _ = writeln!(
         out,
-        "- **Degraded Jobs (< 5 cards)**: {} / {} ({:.1}%)\n",
+        "- **Degraded Jobs (< 5 cards)**: {} / {} ({:.1}%)",
         drop.degraded_jobs_count,
         drop.total_jobs_count,
         drop.degraded_share * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "- **Jobs without mode (excluded)**: {}\n",
+        drop.jobs_without_mode_excluded
     );
 }
 
@@ -640,6 +652,7 @@ pub fn count_dropped_cards(cards_dropped: &serde_json::Value) -> i32 {
 pub fn compute_drop_metrics(
     job_stats: &[&RecapCardJobStats],
     cards_per_job: &[usize],
+    jobs_without_mode_excluded: usize,
 ) -> DropMetrics {
     let mut total_dropped = 0;
     let mut total_selected = 0;
@@ -669,6 +682,7 @@ pub fn compute_drop_metrics(
         degraded_jobs_count: degraded_jobs,
         total_jobs_count: total_jobs,
         degraded_share,
+        jobs_without_mode_excluded,
     }
 }
 
@@ -676,6 +690,7 @@ pub fn compute_drop_metrics(
 pub fn compute_execution_metrics(
     stats: Option<&RecapCardJobStats>,
     cards: &[RecapCard],
+    mode: Option<&str>,
 ) -> Option<PipelineExecutionMetrics> {
     stats.map(|s| {
         let total_cards_dropped = count_dropped_cards(&s.cards_dropped);
@@ -688,6 +703,7 @@ pub fn compute_execution_metrics(
         let is_degraded = cards.len() < 5;
 
         PipelineExecutionMetrics {
+            mode: mode.map(ToString::to_string),
             items_fetched: s.items_fetched,
             items_after_noise: s.items_after_noise,
             items_after_dedup: s.items_after_dedup,
@@ -719,6 +735,7 @@ pub fn compute_eval_report(
     stats: Option<&RecapCardJobStats>,
     drop_metrics: Option<DropMetrics>,
     k: usize,
+    mode: Option<&str>,
 ) -> EvalReport {
     let selection_direct = compute_selection_metrics(candidates, direct_judgments, k);
     let selection_inherited = compute_selection_metrics_with_inheritance(
@@ -764,15 +781,15 @@ pub fn compute_eval_report(
         .iter()
         .filter(|j| j.candidate_found && j.member_feed_ids.is_empty())
         .count();
-    let candidates_without_members =
+    let judged_clusters_without_members =
         direct_candidates_without_members + other_candidates_without_members;
 
-    if judgments_without_candidate > 0 || candidates_without_members > 0 {
+    if judgments_without_candidate > 0 || judged_clusters_without_members > 0 {
         tracing::warn!(
             window_id = %window_id,
             judgments_without_candidate,
-            candidates_without_members,
-            "eval report contains judgments without candidate or candidates without members"
+            judged_clusters_without_members,
+            "eval report contains judgments without candidate or judged clusters without members"
         );
     }
 
@@ -782,11 +799,107 @@ pub fn compute_eval_report(
         selection_with_inheritance: selection_inherited,
         inherited_candidates,
         judgments_without_candidate,
-        candidates_without_members,
+        judged_clusters_without_members,
         quality: compute_quality_metrics(cards, ratings),
-        execution: compute_execution_metrics(stats, cards),
+        execution: compute_execution_metrics(stats, cards, mode),
         drop_metrics,
     }
+}
+
+pub(crate) fn parse_snapshot_mode(
+    params: &serde_json::Value,
+    window_id: Uuid,
+) -> Result<String, String> {
+    match params.get("mode") {
+        Some(serde_json::Value::String(s)) => match s.as_str() {
+            "selection_only" => Ok("selection_only".to_string()),
+            "full" => Ok("full".to_string()),
+            other => Err(format!(
+                "invalid mode '{other}' in snapshot params for window '{window_id}'"
+            )),
+        },
+        Some(other) if !other.is_null() => Err(format!(
+            "invalid mode '{other}' in snapshot params for window '{window_id}'"
+        )),
+        _ => Err(format!(
+            "mode missing in snapshot params for window '{window_id}'"
+        )),
+    }
+}
+
+async fn aggregate_full_mode_stats(
+    pool: &sqlx::PgPool,
+    window_id: Uuid,
+    jobs: &[crate::store::dao::cards::CardsJobSummary],
+) -> Result<DropMetrics, String> {
+    let job_ids: Vec<Uuid> = jobs.iter().map(|j| j.job_id).collect();
+    let rows = sqlx::query(
+        r"
+        SELECT job_id, params->>'mode' as mode
+        FROM recap_card_snapshots
+        WHERE job_id = ANY($1)
+        ",
+    )
+    .bind(&job_ids)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("failed to fetch snapshot modes: {e}"))?;
+
+    let mut snapshot_modes: HashMap<Uuid, Option<String>> = HashMap::new();
+    for r in rows {
+        let j_id: Uuid = r
+            .try_get("job_id")
+            .map_err(|e| format!("failed to decode snapshot job_id: {e}"))?;
+        let m: Option<String> = r
+            .try_get("mode")
+            .map_err(|e| format!("failed to decode snapshot mode: {e}"))?;
+        snapshot_modes.insert(j_id, m);
+    }
+
+    let mut full_jobs = Vec::new();
+    let mut jobs_without_mode_excluded = 0;
+    for j in jobs {
+        match snapshot_modes.get(&j.job_id) {
+            Some(Some(mode_str)) => match mode_str.as_str() {
+                "full" => full_jobs.push(j),
+                "selection_only" => {}
+                other => {
+                    return Err(format!(
+                        "invalid mode '{other}' in snapshot params for job '{}'",
+                        j.job_id
+                    ));
+                }
+            },
+            Some(None) | None => {
+                jobs_without_mode_excluded += 1;
+            }
+        }
+    }
+
+    if jobs_without_mode_excluded > 0 {
+        tracing::warn!(
+            window_id = %window_id,
+            jobs_without_mode_excluded,
+            "eval report excluded jobs without mode from aggregate drop metrics"
+        );
+    }
+
+    let mut cards_per_job = Vec::with_capacity(full_jobs.len());
+    let mut job_stats_owned = Vec::with_capacity(full_jobs.len());
+    for j in &full_jobs {
+        let s = crate::store::dao::cards::CardsDaoOps::get_job_stats(pool, j.job_id)
+            .await
+            .map_err(|e| format!("failed to fetch job stats for job '{}': {e}", j.job_id))?
+            .ok_or_else(|| format!("job stats missing for full-mode job '{}'", j.job_id))?;
+        job_stats_owned.push(s);
+        cards_per_job.push(usize::try_from(j.card_count.max(0)).unwrap_or(0));
+    }
+    let job_stats_refs: Vec<&RecapCardJobStats> = job_stats_owned.iter().collect();
+    Ok(compute_drop_metrics(
+        &job_stats_refs,
+        &cards_per_job,
+        jobs_without_mode_excluded,
+    ))
 }
 
 /// Fetch data from DB and compute evaluation report for a window, including judgment inheritance across windows in the same date range.
@@ -855,28 +968,39 @@ pub async fn generate_window_report(
         .await
         .map_err(|e| format!("failed to fetch job stats: {e}"))?;
 
-    // Compute aggregate drop metrics across cards jobs in the DB
+    let snap_row = sqlx::query("SELECT params FROM recap_card_snapshots WHERE job_id = $1")
+        .bind(window.snapshot_job_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("failed to fetch snapshot params: {e}"))?;
+
+    let snap_params: serde_json::Value = match snap_row {
+        Some(r) => {
+            r.try_get::<sqlx::types::Json<serde_json::Value>, _>("params")
+                .map_err(|e| format!("failed to decode snapshot params: {e}"))?
+                .0
+        }
+        None => {
+            return Err(format!("snapshot missing for window '{window_id}'"));
+        }
+    };
+
+    let mode = parse_snapshot_mode(&snap_params, window_id)?;
+
+    // Compute aggregate drop metrics across full-mode cards jobs in the DB
     let drop_metrics = match crate::store::dao::cards::CardsDaoOps::list_cards_jobs(pool, 100).await
     {
-        Ok(jobs) if !jobs.is_empty() => {
-            let cards_per_job: Vec<usize> = jobs
-                .iter()
-                .map(|j| usize::try_from(j.card_count.max(0)).unwrap_or(0))
-                .collect();
-            let mut job_stats_owned = Vec::new();
-            for j in &jobs {
-                if let Ok(Some(s)) =
-                    crate::store::dao::cards::CardsDaoOps::get_job_stats(pool, j.job_id).await
-                {
-                    job_stats_owned.push(s);
-                }
+        Ok(jobs) if jobs.is_empty() => {
+            if mode == "full" {
+                stats
+                    .as_ref()
+                    .map(|s| compute_drop_metrics(&[s], &[cards.len()], 0))
+            } else {
+                None
             }
-            let job_stats_refs: Vec<&RecapCardJobStats> = job_stats_owned.iter().collect();
-            Some(compute_drop_metrics(&job_stats_refs, &cards_per_job))
         }
-        _ => stats
-            .as_ref()
-            .map(|s| compute_drop_metrics(&[s], &[cards.len()])),
+        Ok(jobs) => Some(aggregate_full_mode_stats(pool, window_id, &jobs).await?),
+        Err(e) => return Err(format!("failed to list cards jobs: {e}")),
     };
 
     Ok(compute_eval_report(
@@ -889,6 +1013,7 @@ pub async fn generate_window_report(
         stats.as_ref(),
         drop_metrics,
         k,
+        Some(&mode),
     ))
 }
 
@@ -978,6 +1103,7 @@ mod tests {
             None,
             None,
             3,
+            None,
         );
 
         // Top 3 has fp-1 (top), fp-2 (not_top), fp-3 (top)
@@ -1079,6 +1205,7 @@ mod tests {
             None,
             None,
             2,
+            None,
         );
 
         // Only 1 relevant unique cluster in top 2 -> precision@2 = 1 / 2 = 0.5
@@ -1152,6 +1279,7 @@ mod tests {
             Some(&stats),
             None,
             10,
+            None,
         );
 
         assert_eq!(report.quality.total_cards, 3);
@@ -1200,7 +1328,7 @@ mod tests {
             created_at: Utc::now(),
         };
 
-        let drop_metrics = compute_drop_metrics(&[&stats], &[1]);
+        let drop_metrics = compute_drop_metrics(&[&stats], &[1], 0);
         let report = compute_eval_report(
             window_id,
             &[],
@@ -1211,6 +1339,7 @@ mod tests {
             Some(&stats),
             Some(drop_metrics),
             10,
+            None,
         );
 
         // JSON format
@@ -1219,6 +1348,7 @@ mod tests {
         assert!(json_str.contains("\"drop_rate\": 0.5"));
         assert!(json_str.contains("\"is_degraded\": true"));
         assert!(json_str.contains("\"drop_metrics\":"));
+        assert!(json_str.contains("\"jobs_without_mode_excluded\": 0"));
 
         // Markdown format
         let md_str = report.to_markdown();
@@ -1230,6 +1360,7 @@ mod tests {
         assert!(md_str.contains("Degraded (< 5 cards)"));
         assert!(md_str.contains("Yes"));
         assert!(md_str.contains("Aggregate Drop & Degraded Metrics"));
+        assert!(md_str.contains("Jobs without mode (excluded)"));
     }
 
     #[test]
@@ -1273,7 +1404,7 @@ mod tests {
         };
 
         // Job 1 has 7 cards (>= 5, not degraded); Job 2 has 3 cards (< 5, degraded)
-        let drop_metrics = compute_drop_metrics(&[&stats1, &stats2], &[7, 3]);
+        let drop_metrics = compute_drop_metrics(&[&stats1, &stats2], &[7, 3], 2);
 
         // Job 1 dropped 3, Job 2 dropped 3 -> total dropped = 6
         assert_eq!(drop_metrics.total_cards_dropped, 6);
@@ -1285,6 +1416,7 @@ mod tests {
         assert_eq!(drop_metrics.degraded_jobs_count, 1);
         assert_eq!(drop_metrics.total_jobs_count, 2);
         assert_approx_eq(drop_metrics.degraded_share, 0.5);
+        assert_eq!(drop_metrics.jobs_without_mode_excluded, 2);
     }
 
     #[test]
@@ -1308,7 +1440,7 @@ mod tests {
             params_version: "v1".to_string(),
             created_at: Utc::now(),
         };
-        let exec_2_kept = compute_execution_metrics(Some(&stats_2_kept), &[]).unwrap();
+        let exec_2_kept = compute_execution_metrics(Some(&stats_2_kept), &[], None).unwrap();
         assert_approx_eq(exec_2_kept.drop_rate, 0.5);
 
         // 2 dropped / 4 kept -> 0.33
@@ -1316,7 +1448,7 @@ mod tests {
             cards_selected: 4,
             ..stats_2_kept
         };
-        let exec_4_kept = compute_execution_metrics(Some(&stats_4_kept), &[]).unwrap();
+        let exec_4_kept = compute_execution_metrics(Some(&stats_4_kept), &[], None).unwrap();
         assert!((exec_4_kept.drop_rate - (2.0 / 6.0)).abs() < 1e-4);
         assert!((exec_4_kept.drop_rate - 0.3333).abs() < 1e-3);
     }
@@ -1608,12 +1740,13 @@ mod tests {
             None,
             None,
             1,
+            None,
         );
 
         assert_eq!(report.selection_with_inheritance.top_count, 0);
         assert_eq!(report.inherited_candidates, 0);
         // cand_empty has empty members (1) + other_judged has empty members (1) = 2
-        assert_eq!(report.candidates_without_members, 2);
+        assert_eq!(report.judged_clusters_without_members, 2);
     }
 
     #[test]
@@ -1650,6 +1783,7 @@ mod tests {
             None,
             None,
             1,
+            None,
         );
 
         assert_eq!(report.judgments_without_candidate, 2);
@@ -1695,6 +1829,7 @@ mod tests {
             None,
             None,
             2,
+            None,
         );
 
         // Direct-only selection metrics:
@@ -1715,13 +1850,13 @@ mod tests {
 
         assert_eq!(report.inherited_candidates, 1);
         assert_eq!(report.judgments_without_candidate, 0);
-        assert_eq!(report.candidates_without_members, 0);
+        assert_eq!(report.judged_clusters_without_members, 0);
 
         // JSON check
         let json_str = report.to_json().expect("to_json");
         assert!(json_str.contains("\"inherited_candidates\": 1"));
         assert!(json_str.contains("\"judgments_without_candidate\": 0"));
-        assert!(json_str.contains("\"candidates_without_members\": 0"));
+        assert!(json_str.contains("\"judged_clusters_without_members\": 0"));
         assert!(json_str.contains("\"selection_with_inheritance\":"));
 
         // Markdown check
@@ -1730,6 +1865,103 @@ mod tests {
         assert!(md_str.contains("### With Judgment Inheritance"));
         assert!(md_str.contains("- **Inherited candidates**: 1"));
         assert!(md_str.contains("- **Judgments without candidate**: 0"));
-        assert!(md_str.contains("- **Candidates without members**: 0"));
+        assert!(md_str.contains("- **Judged clusters without members**: 0"));
+    }
+
+    #[test]
+    fn test_eval_report_mode_selection_only_degraded_na_and_judged_clusters_label() {
+        let window_id = Uuid::new_v4();
+        let job_id = Uuid::new_v4();
+        let candidate = RecapCardCandidate {
+            id: Uuid::new_v4(),
+            job_id,
+            rank: 1,
+            cluster_fingerprint: "fp1".to_string(),
+            size: 2,
+            domains: serde_json::json!([]),
+            items: serde_json::json!([]),
+            member_feed_ids: vec![Uuid::new_v4()],
+            scores: serde_json::json!({}),
+            centroid: None,
+            created_at: Utc::now(),
+        };
+        let stats = RecapCardJobStats {
+            job_id,
+            items_fetched: 10,
+            items_after_noise: 8,
+            items_after_dedup: 6,
+            clusters: 3,
+            candidates: 1,
+            cards_selected: 0,
+            cards_dropped: serde_json::json!({}),
+            embed_ms: 10,
+            cluster_ms: 10,
+            llm_ms: 0,
+            total_ms: 20,
+            params_version: "cards-v0.3".to_string(),
+            embed_cache_hits: 0,
+            embed_cache_misses: 6,
+            created_at: Utc::now(),
+        };
+        let report = compute_eval_report(
+            window_id,
+            &[candidate],
+            &[],
+            &[],
+            &[],
+            &[],
+            Some(&stats),
+            None,
+            10,
+            Some("selection_only"),
+        );
+
+        assert_eq!(report.judged_clusters_without_members, 0);
+        let json_str = report.to_json().expect("to_json");
+        assert!(json_str.contains("\"judged_clusters_without_members\": 0"));
+        let md_str = report.to_markdown();
+        assert!(md_str.contains("- **Judged clusters without members**: 0"));
+        assert!(md_str.contains("- **Degraded (< 5 cards)**: n/a (selection-only)"));
+    }
+
+    #[test]
+    fn test_parse_snapshot_mode_missing_errors() {
+        let window_id = Uuid::new_v4();
+        let empty_params = serde_json::json!({});
+        let err = parse_snapshot_mode(&empty_params, window_id).unwrap_err();
+        assert_eq!(
+            err,
+            format!("mode missing in snapshot params for window '{window_id}'")
+        );
+
+        let null_mode = serde_json::json!({"mode": null});
+        let err2 = parse_snapshot_mode(&null_mode, window_id).unwrap_err();
+        assert_eq!(
+            err2,
+            format!("mode missing in snapshot params for window '{window_id}'")
+        );
+
+        let blank_mode = serde_json::json!({"mode": ""});
+        let err3 = parse_snapshot_mode(&blank_mode, window_id).unwrap_err();
+        assert_eq!(
+            err3,
+            format!("invalid mode '' in snapshot params for window '{window_id}'")
+        );
+
+        let custom_mode = serde_json::json!({"mode": "custom"});
+        let err4 = parse_snapshot_mode(&custom_mode, window_id).unwrap_err();
+        assert_eq!(
+            err4,
+            format!("invalid mode 'custom' in snapshot params for window '{window_id}'")
+        );
+
+        let valid_selection = serde_json::json!({"mode": "selection_only"});
+        assert_eq!(
+            parse_snapshot_mode(&valid_selection, window_id).unwrap(),
+            "selection_only"
+        );
+
+        let valid_full = serde_json::json!({"mode": "full"});
+        assert_eq!(parse_snapshot_mode(&valid_full, window_id).unwrap(), "full");
     }
 }

@@ -450,6 +450,125 @@ async fn contract_subworker_cluster_stories() {
     assert!(!resp.clusters[0].centroid.is_empty());
 }
 
+fn build_cluster_stories_per_lang_interaction(
+    mut i: pact_consumer::builders::InteractionBuilder,
+    id1: &str,
+) -> pact_consumer::builders::InteractionBuilder {
+    i.given("the story clusterer is ready");
+    i.request.method("POST");
+    i.request.path("/v1/cluster-stories");
+    i.request.content_type("application/json");
+    i.request
+        .header("Authorization", "Bearer test-recap-subworker-token-42");
+    i.request.json_body(json_pattern!({
+        "items": each_like!(json_pattern!({
+            "id": like!(id1),
+            "embedding": each_like!(like!(0.1f64)),
+            "published_at": like!("2026-09-21T00:00:00Z"),
+        }), min = 2),
+        "params": json_pattern!({
+            "threshold": like!(0.78f64),
+            "linkage": like!("average"),
+            "time_decay_per_day": like!(0.02f64),
+            "min_cluster_size": like!(2i64),
+            "min_cluster_size_by_language": json_pattern!({
+                "ja": like!(1i64),
+                "en": like!(2i64),
+            }),
+        }),
+    }));
+    i.response.status(200);
+    i.response.content_type("application/json");
+    i.response.json_body(json_pattern!({
+        "clusters": each_like!(json_pattern!({
+            "cluster_id": like!(0i64),
+            "member_ids": each_like!(like!(id1)),
+            "centroid": each_like!(like!(0.1f64)),
+        })),
+        "params": json_pattern!({
+            "threshold": like!(0.78f64),
+            "linkage": like!("average"),
+            "time_decay_per_day": like!(0.02f64),
+            "min_cluster_size": like!(2i64),
+            "min_cluster_size_by_language": json_pattern!({
+                "ja": like!(1i64),
+                "en": like!(2i64),
+            }),
+        }),
+    }));
+    i
+}
+
+/// Story clustering with per-language min cluster size: POST /v1/cluster-stories → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_subworker_cluster_stories_with_per_language_min_size() {
+    let id1 = "00000000-0000-0000-0000-000000000001";
+    let id2 = "00000000-0000-0000-0000-000000000002";
+    let pact = PactBuilder::new("recap-worker", "recap-subworker")
+        .interaction(
+            "a story clustering request with per-language min cluster size",
+            "",
+            |i| build_cluster_stories_per_lang_interaction(i, id1),
+        )
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = SubworkerCardsClient::new(pact.path("/").as_str())
+        .expect("client creation should succeed")
+        .with_admin_token(Some("test-recap-subworker-token-42".to_string()));
+
+    let mut min_by_lang = std::collections::HashMap::new();
+    min_by_lang.insert("ja".to_string(), 1);
+    min_by_lang.insert("en".to_string(), 2);
+
+    let req = crate::clients::subworker::cards::ClusterStoriesRequest {
+        items: vec![
+            crate::clients::subworker::cards::ClusterStoryItem {
+                id: uuid::Uuid::parse_str(id1).unwrap(),
+                embedding: vec![0.1, 0.2, 0.3, 0.4],
+                published_at: chrono::DateTime::parse_from_rfc3339("2026-09-21T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc),
+                language: None,
+            },
+            crate::clients::subworker::cards::ClusterStoryItem {
+                id: uuid::Uuid::parse_str(id2).unwrap(),
+                embedding: vec![0.1, 0.2, 0.3, 0.4],
+                published_at: chrono::DateTime::parse_from_rfc3339("2026-09-21T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc),
+                language: None,
+            },
+        ],
+        params: crate::clients::subworker::cards::StoryClusterParams {
+            threshold: 0.78,
+            linkage: "average".to_string(),
+            time_decay_per_day: 0.02,
+            min_cluster_size: 2,
+            min_cluster_size_by_language: Some(min_by_lang),
+        },
+    };
+
+    let resp = client
+        .cluster_stories(&req)
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(resp.clusters.len(), 1);
+    assert_eq!(resp.clusters[0].cluster_id, 0);
+    assert!(!resp.clusters[0].member_ids.is_empty());
+    assert!(!resp.clusters[0].centroid.is_empty());
+    assert_eq!(resp.params.min_cluster_size, 2);
+    let resp_min_by_lang = resp
+        .params
+        .min_cluster_size_by_language
+        .as_ref()
+        .expect("min_cluster_size_by_language should be echoed");
+    assert_eq!(resp_min_by_lang.get("ja"), Some(&1));
+    assert_eq!(resp_min_by_lang.get("en"), Some(&2));
+}
+
 /// Card verification: POST /v1/verify → 200 OK
 #[tokio::test]
 #[ignore = "CDC contract test"]

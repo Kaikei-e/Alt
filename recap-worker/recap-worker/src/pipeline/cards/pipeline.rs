@@ -347,6 +347,15 @@ pub enum PipelineMode {
     Full,
 }
 
+impl PipelineMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::SelectionOnly => "selection_only",
+            Self::Full => "full",
+        }
+    }
+}
+
 /// Standalone CardsPipeline runner.
 pub struct CardsPipeline {
     feed_source: Arc<dyn FeedSource>,
@@ -632,6 +641,15 @@ impl CardsPipeline {
                 (None, json!([]), Vec::new(), None)
             };
 
+        let mut snapshot_params_val = serde_json::to_value(params)
+            .context("failed to serialize cards params for snapshot")?;
+        if let Some(obj) = snapshot_params_val.as_object_mut() {
+            obj.insert(
+                "mode".to_string(),
+                serde_json::Value::String(self.mode.as_str().to_string()),
+            );
+        }
+
         let snapshot = RecapCardSnapshot {
             job_id,
             from_ts: from,
@@ -641,8 +659,7 @@ impl CardsPipeline {
             previous_job_id,
             previous_cards: previous_cards_val,
             params_version: params.params_version.clone(),
-            params: serde_json::to_value(params)
-                .context("failed to serialize cards params for snapshot")?,
+            params: snapshot_params_val,
             created_at,
         };
 
@@ -918,7 +935,11 @@ impl CardsPipeline {
                 linkage: params.linkage.clone(),
                 time_decay_per_day: params.time_decay_per_day,
                 min_cluster_size: params.min_cluster_size,
-                min_cluster_size_by_language: Some(params.min_cluster_size_by_language.clone()),
+                min_cluster_size_by_language: if params.min_cluster_size_by_language.is_empty() {
+                    None
+                } else {
+                    Some(params.min_cluster_size_by_language.clone())
+                },
             },
         };
 
@@ -2293,10 +2314,11 @@ mod tests {
         assert_eq!(candidates.len(), 1);
         let c = &candidates[0];
         assert_eq!(c.member_feed_ids, vec![id1]);
-        assert_eq!(c.scores["story_id"], json!(prev_story_id));
         assert_eq!(c.scores["continues_card_id"], json!(prev_card_id));
-        assert!((c.scores["personal"].as_f64().unwrap() - 1.0).abs() < 1e-4);
-        assert!((c.scores["total"].as_f64().unwrap() - 1.5).abs() < 1e-4);
+        assert_eq!(c.scores["story_id"], json!(prev_story_id));
+        assert!((c.scores["personal_cos"].as_f64().unwrap() - 1.0).abs() < 1e-4);
+        assert_eq!(c.scores["personal"], json!(0.0));
+        assert!((c.scores["total"].as_f64().unwrap() - 1.0).abs() < 1e-4);
     }
 
     #[tokio::test]
@@ -3376,11 +3398,49 @@ mod tests {
         let snapshots = dao.snapshots.lock().unwrap().clone();
         assert_eq!(snapshots.len(), 1);
         assert!((snapshots[0].params["alpha"].as_f64().unwrap() - 0.7).abs() < 1e-4);
-        assert_eq!(snapshots[0].params_version, "cards-v0.2+alpha=0.7");
+        assert_eq!(snapshots[0].params["mode"], "selection_only");
+        assert_eq!(snapshots[0].params_version, "cards-v0.3+alpha=0.7");
 
         let stats = dao.stats.lock().unwrap().clone();
         assert_eq!(stats.len(), 1);
-        assert_eq!(stats[0].params_version, "cards-v0.2+alpha=0.7");
+        assert_eq!(stats[0].params_version, "cards-v0.3+alpha=0.7");
+    }
+
+    #[tokio::test]
+    async fn test_cards_pipeline_selection_only_snapshot_records_mode() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "Selection only article",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        let pipeline = CardsPipeline::selection_only(
+            feed_source,
+            ml_port,
+            dao.clone(),
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        pipeline
+            .run(
+                Uuid::new_v4(),
+                Utc::now(),
+                Utc::now(),
+                &CardsParams::default(),
+            )
+            .await
+            .expect("pipeline succeeds");
+
+        let snapshots = dao.snapshots.lock().unwrap().clone();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].params["mode"], "selection_only");
+        assert_eq!(snapshots[0].params_version, "cards-v0.3");
     }
 
     #[tokio::test]
@@ -3631,5 +3691,116 @@ mod tests {
         let cache_lock = dao.cache.lock().unwrap();
         assert_eq!(cache_lock.len(), 3);
         assert!(cache_lock.contains_key(&hash2));
+    }
+
+    #[tokio::test]
+    async fn test_cards_pipeline_cluster_stories_request_min_cluster_size_by_language() {
+        let id1 = Uuid::new_v4();
+        let feeds = vec![sample_feed(
+            id1,
+            "Item Headline",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        )];
+
+        let feed_source = Arc::new(FakeFeedSource::new(feeds.clone()));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+
+        let pipeline = CardsPipeline::selection_only(
+            feed_source.clone(),
+            ml_port.clone(),
+            dao.clone(),
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        // 1. When min_cluster_size_by_language is empty, cluster request has None
+        let params_default = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap();
+        pipeline
+            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params_default)
+            .await
+            .expect("pipeline succeeds");
+
+        let calls = ml_port.cluster_calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1);
+        assert!(
+            calls[0].params.min_cluster_size_by_language.is_none(),
+            "expected None when min_cluster_size_by_language is empty"
+        );
+
+        // 2. When min_cluster_size_by_language is populated, cluster request has Some(map)
+        let params_with_lang = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap()
+            .with_override(
+                "min_cluster_size_by_language",
+                &serde_json::json!({"ja": 1, "en": 2}),
+            )
+            .unwrap();
+
+        pipeline
+            .run(Uuid::new_v4(), Utc::now(), Utc::now(), &params_with_lang)
+            .await
+            .expect("pipeline succeeds");
+
+        let calls = ml_port.cluster_calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 2);
+        let lang_map = calls[1]
+            .params
+            .min_cluster_size_by_language
+            .as_ref()
+            .expect("expected Some map when populated");
+        assert_eq!(lang_map.get("ja"), Some(&1));
+        assert_eq!(lang_map.get("en"), Some(&2));
+    }
+
+    #[tokio::test]
+    async fn test_cards_pipeline_full_mode_snapshot_records_mode_full() {
+        let id1 = Uuid::new_v4();
+        let feeds = vec![sample_feed(
+            id1,
+            "Item Headline",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        )];
+
+        let feed_source = Arc::new(FakeFeedSource::new(feeds));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        let generator = Arc::new(FakeCardGenerator::new());
+        let verifier = Arc::new(FakeCardVerifier::new());
+
+        let pipeline = CardsPipeline::full(
+            feed_source,
+            ml_port,
+            dao.clone(),
+            generator,
+            verifier,
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        let params = CardsParams::default()
+            .with_override("expected_embed_dim", &serde_json::json!(4))
+            .unwrap();
+
+        let job_id = Uuid::new_v4();
+        pipeline
+            .run(job_id, Utc::now(), Utc::now(), &params)
+            .await
+            .expect("full pipeline succeeds");
+
+        let snapshots = dao.snapshots.lock().unwrap().clone();
+        assert_eq!(snapshots.len(), 1);
+        let snap = &snapshots[0];
+        assert_eq!(snap.job_id, job_id);
+        assert_eq!(
+            snap.params.get("mode"),
+            Some(&serde_json::Value::String("full".to_string())),
+            "full mode pipeline snapshot must record mode 'full'"
+        );
     }
 }

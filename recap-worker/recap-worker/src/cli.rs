@@ -483,6 +483,7 @@ pub(crate) fn install_panic_hook() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use recap_worker::pipeline::cards::DEFAULT_PARAMS_VERSION;
 
     #[test]
     fn test_parse_eval_report_args_success() {
@@ -561,8 +562,8 @@ mod tests {
                 .unwrap()
                 .with_timezone(&chrono::Utc)
         );
-        assert_eq!(parsed.params.params_version, "cards-v0.2");
-        assert_eq!(parsed.params_version(), "cards-v0.2");
+        assert_eq!(parsed.params.params_version, DEFAULT_PARAMS_VERSION);
+        assert_eq!(parsed.params_version(), DEFAULT_PARAMS_VERSION);
         assert!(!parsed.generate);
     }
 
@@ -683,8 +684,9 @@ mod tests {
         ];
         let parsed = parse_eval_replay_args(&args).expect("valid args");
         assert!((parsed.params.alpha - 0.7).abs() < f32::EPSILON);
-        assert_eq!(parsed.params.params_version, "cards-v0.2+alpha=0.7");
-        assert_eq!(parsed.params_version(), "cards-v0.2+alpha=0.7");
+        let expected_version = format!("{DEFAULT_PARAMS_VERSION}+alpha=0.7");
+        assert_eq!(parsed.params.params_version, expected_version);
+        assert_eq!(parsed.params_version(), expected_version);
     }
 
     #[test]
@@ -698,7 +700,7 @@ mod tests {
         assert!((parsed.params.theta_novelty - 0.85).abs() < f32::EPSILON);
         assert_eq!(
             parsed.params.params_version,
-            "cards-v0.2+theta_novelty=0.85"
+            format!("{DEFAULT_PARAMS_VERSION}+theta_novelty=0.85")
         );
     }
 

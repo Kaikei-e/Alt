@@ -117,7 +117,6 @@ fn select_diverse_items(member_items: &[&NormalizedItem], sorted_hosts: &[String
 struct ClusterScoreContext<'a> {
     item_by_id: &'a HashMap<Uuid, &'a NormalizedItem>,
     host_counts_in_window: &'a HashMap<&'a str, usize>,
-    personal_vector: Option<&'a [f32]>,
     alpha: f32,
     previous_cards: &'a [PreviousCardSummary],
     previous_job_to: Option<DateTime<Utc>>,
@@ -203,6 +202,7 @@ fn determine_novelty_and_continuation(
 
 fn score_cluster(
     cluster: &ClusterOutput,
+    personal_info: Option<(f64, f64)>,
     ctx: &ClusterScoreContext<'_>,
 ) -> Result<Option<ScoredCluster>> {
     let member_items: Vec<&NormalizedItem> = cluster
@@ -262,12 +262,9 @@ fn score_cluster(
         corroboration += (distinct_hosts - 1) as f64;
     }
 
-    let (personal_score, personal_multiplier) = match ctx.personal_vector {
-        Some(u) if ctx.alpha > 0.0 => {
-            let cos = f64::from(cosine_similarity(u, &cluster.centroid)?);
-            (Some(cos), 1.0 + f64::from(ctx.alpha) * cos)
-        }
-        _ => (None, 1.0),
+    let (personal_score, personal_cos, personal_multiplier) = match personal_info {
+        Some((cos, pct)) => (Some(pct), Some(cos), 1.0 + f64::from(ctx.alpha) * pct),
+        None => (None, None, 1.0),
     };
 
     let total = corroboration * personal_multiplier * continuation.novelty_score;
@@ -279,6 +276,7 @@ fn score_cluster(
         "corroboration": corroboration,
         "distinct_hosts": distinct_hosts,
         "personal": personal_score,
+        "personal_cos": personal_cos,
         "novelty": continuation.novelty_score,
         "total": total,
         "story_id": continuation.story_id,
@@ -390,16 +388,48 @@ pub fn rank_candidates(args: RankCandidatesArgs<'_>) -> Result<Vec<RecapCardCand
     let score_ctx = ClusterScoreContext {
         item_by_id: &item_by_id,
         host_counts_in_window: &host_counts_in_window,
-        personal_vector: args.personal_vector,
         alpha: args.alpha,
         previous_cards: args.previous_cards,
         previous_job_to: args.previous_job_to,
         theta_novelty: args.theta_novelty,
     };
 
+    let personal_metrics: Option<Vec<(f64, f64)>> = if let Some(u) = args.personal_vector {
+        let n = args.clusters.len();
+        let mut raw_cosines = Vec::with_capacity(n);
+        for c in args.clusters {
+            let cos = f64::from(cosine_similarity(u, &c.centroid)?);
+            if !cos.is_finite() {
+                anyhow::bail!(
+                    "cosine similarity between personal vector and cluster {} is not finite: {cos}",
+                    c.cluster_id
+                );
+            }
+            raw_cosines.push(cos);
+        }
+
+        let mut sorted_cosines = raw_cosines.clone();
+        sorted_cosines.sort_by(f64::total_cmp);
+
+        let mut metrics = Vec::with_capacity(n);
+        for &cos in &raw_cosines {
+            let count_strictly_lower = sorted_cosines.partition_point(|x| *x < cos);
+            let percentile = if n <= 1 {
+                0.0
+            } else {
+                count_strictly_lower as f64 / (n - 1) as f64
+            };
+            metrics.push((cos, percentile));
+        }
+        Some(metrics)
+    } else {
+        None
+    };
+
     let mut scored_clusters = Vec::new();
-    for c in args.clusters {
-        if let Some(sc) = score_cluster(c, &score_ctx)? {
+    for (idx, c) in args.clusters.iter().enumerate() {
+        let personal_info = personal_metrics.as_ref().map(|m| m[idx]);
+        if let Some(sc) = score_cluster(c, personal_info, &score_ctx)? {
             scored_clusters.push(sc);
         }
     }
@@ -907,7 +937,152 @@ mod tests {
             candidates[1].cluster_fingerprint,
             compute_cluster_fingerprint(&[id2])
         );
-        assert!(candidates[0].scores["personal"].as_f64().unwrap() > 0.99);
+        assert_eq!(candidates[0].scores["personal"], serde_json::json!(1.0));
+        assert!(candidates[0].scores["personal_cos"].as_f64().unwrap() > 0.99);
+    }
+
+    #[test]
+    fn test_personal_vector_compressed_cosines_reorders_by_percentile() {
+        let job_id = Uuid::new_v4();
+        let now = Utc::now();
+        let feed_c1_x = Uuid::new_v4();
+        let feed_c1_y = Uuid::new_v4();
+        let feed_c2_x = Uuid::new_v4();
+        let feed_c2_y = Uuid::new_v4();
+
+        // Host counts in window:
+        // C1 has hosts with count 100 each -> corroboration = 1/10 + 1/10 + (2-1) = 1.2
+        // C2 has hosts with count 400 each -> corroboration = 1/20 + 1/20 + (2-1) = 1.1
+        let mut deduped = vec![
+            make_item(feed_c1_x, "host-1a.com", "2026-03-20T10:00:00Z"),
+            make_item(feed_c1_y, "host-1b.com", "2026-03-20T10:00:00Z"),
+            make_item(feed_c2_x, "host-2a.com", "2026-03-20T10:00:00Z"),
+            make_item(feed_c2_y, "host-2b.com", "2026-03-20T10:00:00Z"),
+        ];
+        for _ in 0..99 {
+            deduped.push(make_item(
+                Uuid::new_v4(),
+                "host-1a.com",
+                "2026-03-20T09:00:00Z",
+            ));
+            deduped.push(make_item(
+                Uuid::new_v4(),
+                "host-1b.com",
+                "2026-03-20T09:00:00Z",
+            ));
+        }
+        for _ in 0..399 {
+            deduped.push(make_item(
+                Uuid::new_v4(),
+                "host-2a.com",
+                "2026-03-20T09:00:00Z",
+            ));
+            deduped.push(make_item(
+                Uuid::new_v4(),
+                "host-2b.com",
+                "2026-03-20T09:00:00Z",
+            ));
+        }
+
+        // C1 centroid has cos 0.75 with u = [1.0, 0.0]
+        let c1 = ClusterOutput {
+            cluster_id: 1,
+            member_ids: vec![feed_c1_x, feed_c1_y],
+            centroid: vec![0.75, (1.0_f32 - 0.75 * 0.75).sqrt()],
+        };
+
+        // C2 centroid has cos 0.85 with u = [1.0, 0.0]
+        let c2 = ClusterOutput {
+            cluster_id: 2,
+            member_ids: vec![feed_c2_x, feed_c2_y],
+            centroid: vec![0.85, (1.0_f32 - 0.85 * 0.85).sqrt()],
+        };
+
+        let clusters = vec![c1, c2];
+        let personal_vector = vec![1.0, 0.0];
+
+        let mut args = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        args.personal_vector = Some(&personal_vector);
+        args.alpha = 0.5;
+
+        let candidates = rank_candidates(args).unwrap();
+        assert_eq!(candidates.len(), 2);
+
+        // Under raw cosine, C1 would win (1.2 * 1.375 = 1.65 > 1.1 * 1.425 = 1.5675).
+        // Under percentile, C2 wins (1.1 * 1.50 = 1.65 > 1.2 * 1.0 = 1.20) because
+        // multiplier spread (0.50) exceeds corroboration difference (0.10).
+        assert_eq!(
+            candidates[0].cluster_fingerprint,
+            compute_cluster_fingerprint(&[feed_c2_x, feed_c2_y])
+        );
+        assert_eq!(
+            candidates[1].cluster_fingerprint,
+            compute_cluster_fingerprint(&[feed_c1_x, feed_c1_y])
+        );
+
+        // Scores carry both personal percentile and personal_cos
+        assert_eq!(candidates[0].scores["personal"], serde_json::json!(1.0));
+        assert!((candidates[0].scores["personal_cos"].as_f64().unwrap() - 0.85).abs() < 1e-4);
+        assert_eq!(candidates[1].scores["personal"], serde_json::json!(0.0));
+        assert!((candidates[1].scores["personal_cos"].as_f64().unwrap() - 0.75).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_personal_percentile_determinism() {
+        let job_id = Uuid::new_v4();
+        let now = Utc::now();
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        let id3 = Uuid::new_v4();
+
+        let deduped = vec![
+            make_item(id1, "host-a.com", "2026-03-20T10:00:00Z"),
+            make_item(id2, "host-b.com", "2026-03-20T10:00:00Z"),
+            make_item(id3, "host-c.com", "2026-03-20T10:00:00Z"),
+        ];
+
+        let clusters = vec![
+            ClusterOutput {
+                cluster_id: 1,
+                member_ids: vec![id1],
+                centroid: vec![0.72, (1.0_f32 - 0.72 * 0.72).sqrt()],
+            },
+            ClusterOutput {
+                cluster_id: 2,
+                member_ids: vec![id2],
+                centroid: vec![0.88, (1.0_f32 - 0.88 * 0.88).sqrt()],
+            },
+            ClusterOutput {
+                cluster_id: 3,
+                member_ids: vec![id3],
+                centroid: vec![0.80, (1.0_f32 - 0.80 * 0.80).sqrt()],
+            },
+        ];
+
+        let personal_vector = vec![1.0, 0.0];
+
+        let mut args1 = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        args1.personal_vector = Some(&personal_vector);
+        args1.alpha = 0.5;
+
+        let mut args2 = RankCandidatesArgs::new(job_id, now, &clusters, &deduped);
+        args2.personal_vector = Some(&personal_vector);
+        args2.alpha = 0.5;
+
+        let run1 = rank_candidates(args1).unwrap();
+        let run2 = rank_candidates(args2).unwrap();
+
+        assert_eq!(run1.len(), 3);
+        assert_eq!(run2.len(), 3);
+        for i in 0..3 {
+            assert_eq!(run1[i].cluster_fingerprint, run2[i].cluster_fingerprint);
+            assert_eq!(run1[i].scores["personal"], run2[i].scores["personal"]);
+            assert_eq!(
+                run1[i].scores["personal_cos"],
+                run2[i].scores["personal_cos"]
+            );
+            assert_eq!(run1[i].scores["total"], run2[i].scores["total"]);
+        }
     }
 
     #[test]
@@ -1249,5 +1424,32 @@ mod tests {
         let res = rank_candidates(args).expect("rank_candidates must succeed");
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].member_feed_ids, vec![id_min, id_max]);
+    }
+
+    #[test]
+    fn test_rank_candidates_nan_centroid_fails() {
+        let item_id = Uuid::new_v4();
+        let args = RankCandidatesArgs {
+            job_id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            clusters: &[ClusterOutput {
+                cluster_id: 42,
+                member_ids: vec![item_id],
+                centroid: vec![f32::NAN, 0.0],
+            }],
+            deduped_items: &[make_item(item_id, "example.com", "2026-03-20T10:00:00Z")],
+            personal_vector: Some(&[1.0, 0.0]),
+            alpha: 0.5,
+            previous_cards: &[],
+            previous_job_to: None,
+            theta_novelty: 0.8,
+        };
+        let res = rank_candidates(args);
+        assert!(res.is_err(), "expected error on NaN centroid");
+        let err = res.unwrap_err().to_string();
+        assert!(
+            err.contains("cluster 42") && err.contains("not finite"),
+            "expected error to name cluster 42 and not finite, got: {err}"
+        );
     }
 }
