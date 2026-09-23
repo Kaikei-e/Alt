@@ -1,9 +1,9 @@
 //! Cards pipeline parameters and defaults.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub const DEFAULT_PARAMS_VERSION: &str = "cards-v0.3";
+pub const DEFAULT_PARAMS_VERSION: &str = "cards-v0.4";
 pub const DEFAULT_THRESHOLD: f32 = 0.65;
 pub const DEFAULT_LINKAGE: &str = "average";
 pub const DEFAULT_TIME_DECAY_PER_DAY: f32 = 0.02;
@@ -19,6 +19,18 @@ pub const DEFAULT_GENRE_TAGGING: bool = true;
 pub const DEFAULT_GENRE_MIN_CONFIDENCE: f32 = 0.5;
 /// Default concurrency for calling coarse classifier during genre tagging.
 pub const DEFAULT_GENRE_CONCURRENCY: usize = 8;
+pub const DEFAULT_AGGREGATOR_HOST_WEIGHT: f32 = 0.5;
+
+pub fn default_aggregator_hosts() -> Vec<String> {
+    vec![
+        "dev.to".to_string(),
+        "zenn.dev".to_string(),
+        "qiita.com".to_string(),
+        "medium.com".to_string(),
+        "note.com".to_string(),
+        "hatenablog.com".to_string(),
+    ]
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardsParams {
@@ -39,6 +51,8 @@ pub struct CardsParams {
     pub genre_min_confidence: f32,
     /// Concurrency bound for classifying candidate item genres via the subworker.
     pub genre_concurrency: usize,
+    pub aggregator_hosts: Vec<String>,
+    pub aggregator_host_weight: f32,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<String, String>,
 }
@@ -62,6 +76,8 @@ impl Default for CardsParams {
             genre_tagging: DEFAULT_GENRE_TAGGING,
             genre_min_confidence: DEFAULT_GENRE_MIN_CONFIDENCE,
             genre_concurrency: DEFAULT_GENRE_CONCURRENCY,
+            aggregator_hosts: default_aggregator_hosts(),
+            aggregator_host_weight: DEFAULT_AGGREGATOR_HOST_WEIGHT,
             overrides: BTreeMap::new(),
         }
     }
@@ -87,6 +103,54 @@ fn parse_usize(value: &serde_json::Value, name: &str) -> anyhow::Result<usize> {
     } else {
         anyhow::bail!("{name} must be an integer or string")
     }
+}
+
+fn parse_aggregator_hosts(value: &serde_json::Value) -> anyhow::Result<Vec<String>> {
+    let raw_parts: Vec<&str> = if let Some(s) = value.as_str() {
+        s.split(',').collect()
+    } else if let Some(arr) = value.as_array() {
+        let mut parts = Vec::with_capacity(arr.len());
+        for item in arr {
+            let s = item
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("aggregator_hosts entries must be strings"))?;
+            parts.push(s);
+        }
+        parts
+    } else {
+        anyhow::bail!("aggregator_hosts must be a comma-separated string or array of strings");
+    };
+
+    if raw_parts.is_empty() {
+        anyhow::bail!("aggregator_hosts cannot be empty");
+    }
+
+    let mut list = Vec::new();
+    let mut seen = HashSet::new();
+
+    for raw in raw_parts {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            anyhow::bail!("aggregator_hosts entry cannot be empty");
+        }
+        if trimmed.chars().any(char::is_whitespace) {
+            anyhow::bail!("aggregator_hosts entry cannot contain whitespace: '{trimmed}'");
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        let stripped = lower.strip_prefix('.').unwrap_or(&lower);
+        if stripped.is_empty() {
+            anyhow::bail!("aggregator_hosts entry cannot be empty after stripping dot");
+        }
+        if seen.insert(stripped.to_string()) {
+            list.push(stripped.to_string());
+        }
+    }
+
+    if list.is_empty() {
+        anyhow::bail!("aggregator_hosts cannot be empty");
+    }
+
+    Ok(list)
 }
 
 impl CardsParams {
@@ -198,6 +262,22 @@ impl CardsParams {
                 self.min_cluster_size_by_language = map;
                 formatted
             }
+            "aggregator_host_weight" => {
+                let v = parse_f32(value, "aggregator_host_weight")?;
+                if !v.is_finite() || v < 0.0 {
+                    anyhow::bail!(
+                        "invalid aggregator_host_weight '{v}': must be a finite number >= 0"
+                    );
+                }
+                self.aggregator_host_weight = v;
+                format!("{v}")
+            }
+            "aggregator_hosts" => {
+                let hosts = parse_aggregator_hosts(value)?;
+                let formatted = hosts.join(";");
+                self.aggregator_hosts = hosts;
+                formatted
+            }
             "params_version" => {
                 let v = value
                     .as_str()
@@ -242,13 +322,15 @@ mod tests {
     #[test]
     fn test_default_params_values() {
         let params = CardsParams::default();
-        assert_eq!(params.params_version, "cards-v0.3");
+        assert_eq!(params.params_version, DEFAULT_PARAMS_VERSION);
         assert_eq!(params.threshold, 0.65);
         assert_eq!(params.alpha, 0.5);
         assert!(params.genre_tagging);
         assert_eq!(params.genre_min_confidence, 0.5);
         assert_eq!(params.genre_concurrency, 8);
         assert!(params.min_cluster_size_by_language.is_empty());
+        assert_eq!(params.aggregator_host_weight, 0.5);
+        assert_eq!(params.aggregator_hosts, default_aggregator_hosts());
     }
 
     #[test]
@@ -259,8 +341,14 @@ mod tests {
             .expect("valid override");
 
         assert_eq!(overridden.alpha, 0.7);
-        assert_eq!(overridden.params_version, "cards-v0.3+alpha=0.7");
-        assert_eq!(overridden.version(), "cards-v0.3+alpha=0.7");
+        assert_eq!(
+            overridden.params_version,
+            format!("{DEFAULT_PARAMS_VERSION}+alpha=0.7")
+        );
+        assert_eq!(
+            overridden.version(),
+            format!("{DEFAULT_PARAMS_VERSION}+alpha=0.7")
+        );
     }
 
     #[test]
@@ -277,7 +365,7 @@ mod tests {
         assert_eq!(params.theta_novelty, 0.85);
         assert_eq!(
             params.params_version,
-            "cards-v0.3+alpha=0.7,theta_novelty=0.85"
+            format!("{DEFAULT_PARAMS_VERSION}+alpha=0.7,theta_novelty=0.85")
         );
     }
 
@@ -287,12 +375,15 @@ mod tests {
         params
             .apply_override("alpha", &serde_json::json!(0.7))
             .unwrap();
-        assert_eq!(params.params_version, "cards-v0.3+alpha=0.7");
+        assert_eq!(
+            params.params_version,
+            format!("{DEFAULT_PARAMS_VERSION}+alpha=0.7")
+        );
 
         params
-            .apply_override("params_version", &serde_json::json!("cards-v0.4"))
+            .apply_override("params_version", &serde_json::json!("cards-v0.5"))
             .unwrap();
-        assert_eq!(params.params_version, "cards-v0.4+alpha=0.7");
+        assert_eq!(params.params_version, "cards-v0.5+alpha=0.7");
 
         params
             .apply_override("genre_concurrency", &serde_json::json!(16))
@@ -300,7 +391,7 @@ mod tests {
         assert_eq!(params.genre_concurrency, 16);
         assert_eq!(
             params.params_version,
-            "cards-v0.4+alpha=0.7,genre_concurrency=16"
+            "cards-v0.5+alpha=0.7,genre_concurrency=16"
         );
     }
 
@@ -360,5 +451,147 @@ mod tests {
                 .with_override("unknown_key", &serde_json::json!(123))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn test_aggregator_hosts_and_weight_overrides() {
+        let params = CardsParams::default();
+        assert_eq!(params.aggregator_host_weight, 0.5);
+        assert_eq!(
+            params.aggregator_hosts,
+            vec![
+                "dev.to",
+                "zenn.dev",
+                "qiita.com",
+                "medium.com",
+                "note.com",
+                "hatenablog.com"
+            ]
+        );
+
+        // Test aggregator_host_weight override
+        let overridden = params
+            .with_override("aggregator_host_weight", &serde_json::json!(0.25))
+            .expect("valid aggregator_host_weight");
+        assert_eq!(overridden.aggregator_host_weight, 0.25);
+        assert!(
+            overridden
+                .params_version
+                .contains("aggregator_host_weight=0.25")
+        );
+
+        // Test aggregator_hosts override
+        let overridden = params
+            .with_override("aggregator_hosts", &serde_json::json!("dev.to,zenn.dev"))
+            .expect("valid aggregator_hosts");
+        assert_eq!(overridden.aggregator_hosts, vec!["dev.to", "zenn.dev"]);
+        assert!(
+            overridden
+                .params_version
+                .contains("aggregator_hosts=dev.to;zenn.dev")
+        );
+
+        // Case-insensitivity (lower-cased), leading dot stripped, trimming, and deduplication
+        let overridden = params
+            .with_override(
+                "aggregator_hosts",
+                &serde_json::json!(" .DEV.TO, .zenn.dev , dev.to "),
+            )
+            .expect("valid uppercase, dotted, deduped aggregator_hosts");
+        assert_eq!(overridden.aggregator_hosts, vec!["dev.to", "zenn.dev"]);
+        assert!(
+            overridden
+                .params_version
+                .contains("aggregator_hosts=dev.to;zenn.dev")
+        );
+
+        // Internal whitespace rejected
+        assert!(
+            params
+                .with_override("aggregator_hosts", &serde_json::json!("dev .to"))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("aggregator_hosts", &serde_json::json!("dev to"))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("aggregator_hosts", &serde_json::json!("dev\tto"))
+                .is_err()
+        );
+
+        // Empty list entry rejected
+        assert!(
+            params
+                .with_override("aggregator_hosts", &serde_json::json!("dev.to,,zenn.dev"))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("aggregator_hosts", &serde_json::json!("dev.to,"))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("aggregator_hosts", &serde_json::json!(",dev.to"))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("aggregator_hosts", &serde_json::json!(""))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("aggregator_hosts", &serde_json::json!("."))
+                .is_err()
+        );
+        assert!(
+            params
+                .with_override("aggregator_hosts", &serde_json::json!(["dev.to", ""]))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_aggregator_host_weight_validation() {
+        let params = CardsParams::default();
+
+        // 0 accepted (int or float)
+        let p0 = params
+            .with_override("aggregator_host_weight", &serde_json::json!(0))
+            .expect("0 is accepted");
+        assert_eq!(p0.aggregator_host_weight, 0.0);
+
+        let p0_float = params
+            .with_override("aggregator_host_weight", &serde_json::json!(0.0))
+            .expect("0.0 is accepted");
+        assert_eq!(p0_float.aggregator_host_weight, 0.0);
+
+        // -1 rejected
+        let err_neg = params
+            .with_override("aggregator_host_weight", &serde_json::json!(-1))
+            .unwrap_err();
+        let msg_neg = err_neg.to_string();
+        assert!(msg_neg.contains("aggregator_host_weight"));
+        assert!(msg_neg.contains("-1"));
+
+        // NaN rejected
+        let err_nan = params
+            .with_override("aggregator_host_weight", &serde_json::json!("NaN"))
+            .unwrap_err();
+        let msg_nan = err_nan.to_string();
+        assert!(msg_nan.contains("aggregator_host_weight"));
+        assert!(msg_nan.contains("NaN"));
+
+        // inf rejected
+        let err_inf = params
+            .with_override("aggregator_host_weight", &serde_json::json!("inf"))
+            .unwrap_err();
+        let msg_inf = err_inf.to_string();
+        assert!(msg_inf.contains("aggregator_host_weight"));
+        assert!(msg_inf.contains("inf"));
     }
 }

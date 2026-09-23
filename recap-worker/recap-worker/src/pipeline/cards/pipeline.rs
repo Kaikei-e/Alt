@@ -1569,6 +1569,8 @@ impl CardsPipeline {
             previous_job_to: prev_job_to,
             alpha: params.alpha,
             theta_novelty: params.theta_novelty,
+            aggregator_hosts: &params.aggregator_hosts,
+            aggregator_host_weight: params.aggregator_host_weight,
             created_at: to,
         };
         let candidates = rank_candidates(rank_args)?;
@@ -1779,6 +1781,7 @@ mod tests {
     use crate::clients::subworker::cards::{
         ClusterOutput, ClusterStoriesResponse, VerifyCardResponse,
     };
+    use crate::pipeline::cards::DEFAULT_PARAMS_VERSION;
     use crate::pipeline::cards::fakes::{
         FakeCardGenerator, FakeCardVerifier, FakeEmbedCluster, FakeFeedSource, FakeGenreTagger,
     };
@@ -3399,11 +3402,17 @@ mod tests {
         assert_eq!(snapshots.len(), 1);
         assert!((snapshots[0].params["alpha"].as_f64().unwrap() - 0.7).abs() < 1e-4);
         assert_eq!(snapshots[0].params["mode"], "selection_only");
-        assert_eq!(snapshots[0].params_version, "cards-v0.3+alpha=0.7");
+        assert_eq!(
+            snapshots[0].params_version,
+            format!("{DEFAULT_PARAMS_VERSION}+alpha=0.7")
+        );
 
         let stats = dao.stats.lock().unwrap().clone();
         assert_eq!(stats.len(), 1);
-        assert_eq!(stats[0].params_version, "cards-v0.3+alpha=0.7");
+        assert_eq!(
+            stats[0].params_version,
+            format!("{DEFAULT_PARAMS_VERSION}+alpha=0.7")
+        );
     }
 
     #[tokio::test]
@@ -3440,7 +3449,7 @@ mod tests {
         let snapshots = dao.snapshots.lock().unwrap().clone();
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0].params["mode"], "selection_only");
-        assert_eq!(snapshots[0].params_version, "cards-v0.3");
+        assert_eq!(snapshots[0].params_version, DEFAULT_PARAMS_VERSION);
     }
 
     #[tokio::test]
