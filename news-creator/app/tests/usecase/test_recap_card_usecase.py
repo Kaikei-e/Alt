@@ -557,6 +557,18 @@ def test_rendered_prompt_contains_sentence_count_directive():
     )
 
 
+def test_rendered_prompt_contains_headline_no_citation_directive():
+    """Verify prompt explicitly instructs not to add citations to the headline."""
+    config = Mock()
+    llm_provider = Mock()
+    usecase = RecapCardUsecase(
+        config=config, llm_provider=llm_provider, cache=InMemoryCache()
+    )
+    request = make_card_request()
+    prompt = usecase._build_prompt(request)
+    assert "出典番号は見出しに付けない" in prompt
+
+
 def test_build_reminder_per_detail():
     """Verify regeneration reminder includes generic rule block and detail-specific line for all 7 details."""
     config = _make_config()

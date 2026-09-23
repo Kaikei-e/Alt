@@ -611,3 +611,36 @@ Another sentence written purely in Latin script describing events.[1]
     res = parse_card_output(raw_text, valid_refs={1}, source_texts=source_texts)
     assert res.success is False
     assert res.reason == "language"
+
+
+def test_parse_strips_citation_markers_from_headline():
+    raw_text = """【見出し】
+AppleがiPhone 18シリーズを発表：折りたたみモデルや可変絞りカメラ搭載 [1] [3]
+【何が起きた】
+Appleは新製品発表会で次世代スマートフォン「iPhone 18」シリーズを正式に発表した[1]。折りたたみモデルの追加や可変絞りカメラの搭載などハードウェアの刷新が明らかになった[3]。
+【なぜ重要】
+該当なし
+【出典】
+[1] [3]"""
+    result = parse_card_output(raw_text, valid_refs={1, 3})
+    assert result.success is True
+    assert result.card is not None
+    assert (
+        result.card.headline_ja
+        == "AppleがiPhone 18シリーズを発表：折りたたみモデルや可変絞りカメラ搭載"
+    )
+
+
+def test_parse_headline_only_citations_fails_as_missing_tag():
+    raw_text = """【見出し】
+[1] [3]
+【何が起きた】
+Appleは新製品発表会で次世代スマートフォンを発表した[1]。折りたたみモデルが追加された[3]。
+【なぜ重要】
+該当なし
+【出典】
+[1] [3]"""
+    result = parse_card_output(raw_text, valid_refs={1, 3})
+    assert result.success is False
+    assert result.reason == "parse_failed"
+    assert result.detail == "missing_tag"

@@ -262,7 +262,8 @@ def parse_card_output(
             success=False, reason="parse_failed", detail="sources_tag"
         )
 
-    headline = sections["見出し"].strip()
+    headline = normalize_citations(sections["見出し"].strip())
+    headline = re.sub(r"(?:\s*\[\d+\]\s*)+", " ", headline).strip()
     if not headline:
         return CardParseResult(
             success=False, reason="parse_failed", detail="missing_tag"
