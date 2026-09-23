@@ -18,26 +18,33 @@ from ..deps import (
 
 router = APIRouter()
 
+
 class ExtractRequest(BaseModel):
     html: str
     include_comments: bool = False
 
+
 class ExtractResponse(BaseModel):
     text: str
+
 
 class CoarseClassifyRequest(BaseModel):
     text: str
 
+
 class CoarseClassifyResponse(BaseModel):
     scores: dict[str, float]
 
+
 class SubClusterOtherRequest(BaseModel):
     texts: list[str]
+
 
 class SubClusterOtherResponse(BaseModel):
     labels: list[int]
     probabilities: list[float]
     diagnostics: dict[str, Any]
+
 
 @router.post("/extract", response_model=ExtractResponse)
 async def extract_content(
@@ -55,10 +62,11 @@ async def extract_content(
         )
         return ExtractResponse(text=text)
 
+
 @router.post("/classify/coarse", response_model=CoarseClassifyResponse)
 async def classify_coarse(
     request: CoarseClassifyRequest,
-    classifier: CoarseClassifier = Depends(get_coarse_classifier_dep)
+    classifier: CoarseClassifier = Depends(get_coarse_classifier_dep),
 ) -> CoarseClassifyResponse:
     """Predict coarse genre scores."""
     # predict_coarse() does sync embedding generation (sync httpx + retry
@@ -66,6 +74,7 @@ async def classify_coarse(
     # event loop.
     scores = await asyncio.to_thread(classifier.predict_coarse, request.text)
     return CoarseClassifyResponse(scores=scores)
+
 
 @router.post("/cluster/other", response_model=SubClusterOtherResponse)
 async def cluster_other(
@@ -93,6 +102,6 @@ async def cluster_other(
         diagnostics={
             "dbcv": result.dbcv_score,
             "min_cluster_size": result.params.min_cluster_size,
-            "min_samples": result.params.min_samples
-        }
+            "min_samples": result.params.min_samples,
+        },
     )

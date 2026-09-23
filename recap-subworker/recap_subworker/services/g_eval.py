@@ -63,6 +63,7 @@ class GEvalResult:
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
         from typing import Any
+
         result: dict[str, Any] = {
             "coherence": self.coherence,
             "consistency": self.consistency,
@@ -391,9 +392,7 @@ class GEvalEvaluator:
         )
 
         # Evaluate all dimensions concurrently
-        tasks = [
-            self._evaluate_dimension(dim, summary, source) for dim in self.dimensions
-        ]
+        tasks = [self._evaluate_dimension(dim, summary, source) for dim in self.dimensions]
         results = await asyncio.gather(*tasks)
 
         # Build result dict

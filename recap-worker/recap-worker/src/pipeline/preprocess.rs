@@ -352,7 +352,7 @@ fn align_width_accounting(text: &str) -> String {
 ///
 /// # Returns
 /// (`cleaned_text`, `was_html`) のタプル
-fn clean_html(text: &str) -> Result<(String, bool)> {
+pub(crate) fn clean_html(text: &str) -> Result<(String, bool)> {
     if !contains_html_tags(text) {
         return Ok((text.to_string(), false));
     }

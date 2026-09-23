@@ -23,27 +23,23 @@ def _have_uv() -> bool:
 
 @pytest.mark.skipif(not _have_uv(), reason="uv not installed on this machine")
 def test_ruff_passes_on_production_package() -> None:
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         ["uv", "run", "ruff", "check", str(PACKAGE_DIR)],
         check=False,
         capture_output=True,
         text=True,
         cwd=SERVICE_ROOT,
     )
-    assert result.returncode == 0, (
-        "ruff check failed:\n" + result.stdout + "\n" + result.stderr
-    )
+    assert result.returncode == 0, "ruff check failed:\n" + result.stdout + "\n" + result.stderr
 
 
 @pytest.mark.skipif(not _have_uv(), reason="uv not installed on this machine")
 def test_pyrefly_passes_on_project() -> None:
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         ["uv", "run", "pyrefly", "check", "."],
         check=False,
         capture_output=True,
         text=True,
         cwd=SERVICE_ROOT,
     )
-    assert result.returncode == 0, (
-        "pyrefly check failed:\n" + result.stdout + "\n" + result.stderr
-    )
+    assert result.returncode == 0, "pyrefly check failed:\n" + result.stdout + "\n" + result.stderr

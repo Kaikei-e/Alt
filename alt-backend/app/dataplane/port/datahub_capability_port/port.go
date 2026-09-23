@@ -290,7 +290,8 @@ type ReadStatePort interface {
 	// Unread ids are absent rather than returned with a false flag.
 	ReadFeedIDs(ctx context.Context, userID uuid.UUID, feedIDs []uuid.UUID) ([]uuid.UUID, error)
 	// AllReadFeedIDs returns the user's whole read set, capped by the driver.
-	AllReadFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+	// When since is non-nil, only feed IDs read at or after since are returned.
+	AllReadFeedIDs(ctx context.Context, userID uuid.UUID, since *time.Time) ([]uuid.UUID, error)
 	// SubscribedFeedLinkIDs returns the feed links the user follows. Feed
 	// links, not feeds: subscriptions are held against the URL somebody
 	// followed.

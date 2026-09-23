@@ -41,15 +41,15 @@ EXTERNAL_ML_PACKAGES = {
 # Tech-debt whitelist. Each entry MUST be removed when the corresponding
 # migration completes. Grow only with an ADR rationale.
 DOMAIN_WHITELIST: set[Path] = {
-    PACKAGE_ROOT / "domain" / "topics.py",           # c-TF-IDF via sklearn (Phase 3B)
-    PACKAGE_ROOT / "domain" / "selectors.py",        # numpy MMR helper (Phase 3B)
+    PACKAGE_ROOT / "domain" / "topics.py",  # c-TF-IDF via sklearn (Phase 3B)
+    PACKAGE_ROOT / "domain" / "selectors.py",  # numpy MMR helper (Phase 3B)
     PACKAGE_ROOT / "domain" / "classification" / "model.py",  # numpy genre scoring (Phase 3B)
     PACKAGE_ROOT / "domain" / "analysis" / "stats.py",  # scipy / statsmodels (Phase 3B)
 }
 
 PORT_WHITELIST: set[Path] = {
-    PACKAGE_ROOT / "port" / "embedder.py",           # numpy.ndarray type alias
-    PACKAGE_ROOT / "port" / "clusterer.py",          # numpy.ndarray + labels alias
+    PACKAGE_ROOT / "port" / "embedder.py",  # numpy.ndarray type alias
+    PACKAGE_ROOT / "port" / "clusterer.py",  # numpy.ndarray + labels alias
 }
 
 
@@ -79,12 +79,8 @@ def test_usecase_layer_has_no_external_ml_imports() -> None:
         tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
         hits = _external_ml_imports(tree)
         if hits:
-            offenders.append(
-                f"{file_path.relative_to(PACKAGE_ROOT.parent)}: {sorted(hits)}"
-            )
-    assert not offenders, (
-        "usecase/ must not import ML libraries:\n  " + "\n  ".join(offenders)
-    )
+            offenders.append(f"{file_path.relative_to(PACKAGE_ROOT.parent)}: {sorted(hits)}")
+    assert not offenders, "usecase/ must not import ML libraries:\n  " + "\n  ".join(offenders)
 
 
 def test_domain_layer_external_imports_within_whitelist() -> None:
@@ -94,9 +90,7 @@ def test_domain_layer_external_imports_within_whitelist() -> None:
         tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
         hits = _external_ml_imports(tree)
         if hits and file_path not in DOMAIN_WHITELIST:
-            unexpected.append(
-                f"{file_path.relative_to(PACKAGE_ROOT.parent)}: {sorted(hits)}"
-            )
+            unexpected.append(f"{file_path.relative_to(PACKAGE_ROOT.parent)}: {sorted(hits)}")
     assert not unexpected, (
         "New domain/ files must not reach for ML libraries. "
         "If a legacy file was migrated, remove it from DOMAIN_WHITELIST instead:\n  "
@@ -111,12 +105,9 @@ def test_port_layer_external_imports_within_whitelist() -> None:
         tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
         hits = _external_ml_imports(tree)
         if hits and file_path not in PORT_WHITELIST:
-            unexpected.append(
-                f"{file_path.relative_to(PACKAGE_ROOT.parent)}: {sorted(hits)}"
-            )
-    assert not unexpected, (
-        "New port/ files must stay free of ML libraries:\n  "
-        + "\n  ".join(unexpected)
+            unexpected.append(f"{file_path.relative_to(PACKAGE_ROOT.parent)}: {sorted(hits)}")
+    assert not unexpected, "New port/ files must stay free of ML libraries:\n  " + "\n  ".join(
+        unexpected
     )
 
 

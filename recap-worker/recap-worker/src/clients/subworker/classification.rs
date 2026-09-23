@@ -109,10 +109,10 @@ impl SubworkerClient {
     /// Bounded per-call timeout + small retry (`COARSE_CLASSIFY_MAX_ATTEMPTS`):
     /// without the per-request `.timeout()` override this call would inherit
     /// the client-wide `SUBWORKER_TIMEOUT_SECS` (1h), letting a
-    /// slow-but-alive subworker stall the genre stage for up to an hour per
-    /// article. The per-article fallback-to-"other" on error stays at the
-    /// `pipeline::genre` call site — this only bounds how long a single
-    /// call can block before that fallback kicks in.
+    /// slow-but-alive subworker stall classification for up to an hour per
+    /// article. Error handling (e.g. failing the job or falling back) is
+    /// left to the respective caller — this bounds how long a single
+    /// call can block before an error is returned.
     pub(crate) async fn classify_coarse(
         &self,
         text: &str,

@@ -3,6 +3,7 @@ package recap
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -38,6 +39,14 @@ func (m *MockRecapUsecase) GetThreeDayRecap(ctx context.Context) (*domain.RecapS
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*domain.RecapSummary), args.Error(1)
+}
+
+func (m *MockRecapUsecase) GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.RecapCardsResponse), args.Error(1)
 }
 
 func (m *MockRecapUsecase) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {
@@ -406,5 +415,134 @@ func TestHandler_SearchRecapsByTag(t *testing.T) {
 		connectErr, ok := err.(*connect.Error)
 		require.True(t, ok)
 		assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+	})
+}
+
+func TestHandler_GetThreeDayRecapCards(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("unauthenticated - returns CodeUnauthenticated", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+
+		req := connect.NewRequest(&recapv2.GetThreeDayRecapCardsRequest{})
+		_, err := handler.GetThreeDayRecapCards(context.Background(), req)
+
+		require.Error(t, err)
+		connectErr, ok := err.(*connect.Error)
+		require.True(t, ok)
+		assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+	})
+
+	t.Run("success - returns job and cards", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
+
+		continuesCardID := "44444444-4444-4444-4444-444444444444"
+		whyJa := "日本語処理の効率化が期待される。[1]"
+		genre := "Technology"
+		pubDate := "2026-09-22T10:00:00Z"
+
+		cardsResp := &domain.RecapCardsResponse{
+			Job: &domain.RecapCardsJob{
+				JobID:         "11111111-1111-1111-1111-111111111111",
+				KickedAt:      "2026-09-22T17:00:00Z",
+				From:          "2026-09-19T17:00:00Z",
+				To:            "2026-09-22T17:00:00Z",
+				ParamsVersion: "cards-v0.2",
+				CardsSelected: 1,
+				Degraded:      false,
+			},
+			Cards: []*domain.RecapCard{
+				{
+					ID:              "22222222-2222-2222-2222-222222222222",
+					Rank:            1,
+					StoryID:         "33333333-3333-3333-3333-333333333333",
+					ContinuesCardID: &continuesCardID,
+					HeadlineJa:      "新モデル発表",
+					WhatJa:          "推論モデルが公開された。[1]",
+					WhyJa:           &whyJa,
+					Genre:           &genre,
+					Sources: []*domain.RecapCardSource{
+						{
+							N:       1,
+							FeedID:  "55555555-5555-5555-5555-555555555555",
+							URL:     "https://example.com/ai",
+							Host:    "example.com",
+							Title:   "AI News",
+							PubDate: &pubDate,
+						},
+					},
+					CreatedAt: "2026-09-22T17:05:00Z",
+				},
+			},
+		}
+
+		mockUsecase.On("GetThreeDayRecapCards", mock.Anything).Return(cardsResp, nil)
+
+		req := connect.NewRequest(&recapv2.GetThreeDayRecapCardsRequest{})
+		resp, err := handler.GetThreeDayRecapCards(ctx, req)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.NotNil(t, resp.Msg.Job)
+		assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.Msg.Job.JobId)
+		assert.Equal(t, "cards-v0.2", resp.Msg.Job.ParamsVersion)
+		assert.False(t, resp.Msg.Job.Degraded)
+		require.Len(t, resp.Msg.Cards, 1)
+		card := resp.Msg.Cards[0]
+		assert.Equal(t, "22222222-2222-2222-2222-222222222222", card.Id)
+		assert.Equal(t, int32(1), card.Rank)
+		assert.Equal(t, "新モデル発表", card.HeadlineJa)
+		require.NotNil(t, card.ContinuesCardId)
+		assert.Equal(t, continuesCardID, *card.ContinuesCardId)
+		require.NotNil(t, card.WhyJa)
+		assert.Equal(t, whyJa, *card.WhyJa)
+		require.NotNil(t, card.Genre)
+		assert.Equal(t, genre, *card.Genre)
+		require.Len(t, card.Sources, 1)
+		assert.Equal(t, int32(1), card.Sources[0].N)
+		assert.Equal(t, "example.com", card.Sources[0].Host)
+		require.NotNil(t, card.Sources[0].PubDate)
+		assert.Equal(t, pubDate, *card.Sources[0].PubDate)
+
+		mockUsecase.AssertExpectations(t)
+	})
+
+	t.Run("success - empty when no completed cards job exists", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
+
+		emptyResp := &domain.RecapCardsResponse{
+			Job:   nil,
+			Cards: []*domain.RecapCard{},
+		}
+		mockUsecase.On("GetThreeDayRecapCards", mock.Anything).Return(emptyResp, nil)
+
+		req := connect.NewRequest(&recapv2.GetThreeDayRecapCardsRequest{})
+		resp, err := handler.GetThreeDayRecapCards(ctx, req)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Nil(t, resp.Msg.Job)
+		assert.Empty(t, resp.Msg.Cards)
+
+		mockUsecase.AssertExpectations(t)
+	})
+
+	t.Run("upstream error - maps to connect error", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
+
+		mockUsecase.On("GetThreeDayRecapCards", mock.Anything).Return(nil, errors.New("upstream failure"))
+
+		req := connect.NewRequest(&recapv2.GetThreeDayRecapCardsRequest{})
+		_, err := handler.GetThreeDayRecapCards(ctx, req)
+
+		require.Error(t, err)
+		mockUsecase.AssertExpectations(t)
 	})
 }

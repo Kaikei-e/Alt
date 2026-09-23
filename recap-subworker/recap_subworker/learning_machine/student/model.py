@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -16,7 +15,7 @@ class StudentDistilBERT(nn.Module):
             model_name,
             num_labels=num_labels,
             problem_type="single_label_classification",
-            trust_remote_code=True
+            trust_remote_code=True,
         )
 
     def forward(self, input_ids, attention_mask, labels=None):
@@ -34,11 +33,7 @@ class StudentDistilBERT(nn.Module):
     def predict(self, texts: list[str], max_length: int = 256, device="cpu"):
         self.bert.eval()
         inputs = self.tokenizer(
-            texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=max_length
+            texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length
         ).to(device)
 
         with torch.no_grad():

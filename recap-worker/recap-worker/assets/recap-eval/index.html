@@ -1,0 +1,2335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src http://127.0.0.1:* http://localhost:* http://[::1]:*; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
+  <title>Alt Recap Evaluation</title>
+  <style>
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-subtle: #f1f5f9;
+      --surface-hover: #f8fafc;
+      --border: #e2e8f0;
+      --border-dark: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --text-sub: #334155;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-subtle: #eff6ff;
+      --focus-ring: #2563eb;
+
+      --top-color: #166534;
+      --top-bg: #f0fdf4;
+      --top-border: #86efac;
+
+      --not-top-color: #92400e;
+      --not-top-bg: #fffbeb;
+      --not-top-border: #fde68a;
+
+      --noise-color: #991b1b;
+      --noise-bg: #fef2f2;
+      --noise-border: #fca5a5;
+
+      --score-0: #991b1b;
+      --score-1: #92400e;
+      --score-2: #166534;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text);
+      background-color: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .app-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .nav-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--surface-subtle);
+      padding: 3px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .nav-tab {
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+
+    .nav-tab:hover {
+      color: var(--text);
+    }
+
+    .nav-tab.active {
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .header-center {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .timer-badge {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 8px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-sub);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .config-field {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .config-field label {
+      font-weight: 500;
+    }
+
+    .config-field input {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .config-field input:focus {
+      outline: none;
+      border-color: var(--focus-ring);
+    }
+
+    /* Fatigue advisory banner */
+    #fatigue-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #fffbeb;
+      border-bottom: 1px solid #fde68a;
+      color: #92400e;
+      padding: 8px 20px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    #fatigue-banner button {
+      background: none;
+      border: 1px solid #fde68a;
+      border-radius: 3px;
+      color: #92400e;
+      padding: 2px 8px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #fatigue-banner button:hover {
+      background: #fef3c7;
+    }
+
+    /* Main layout */
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .view-container {
+      display: none;
+    }
+    .view-container.active {
+      display: block;
+    }
+
+    /* Subheader & shortcuts bar */
+    .view-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .view-title-group {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .view-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .counter-badge {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 2px 8px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text-sub);
+    }
+
+    .badge-params {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text-sub);
+    }
+
+    .badge-default {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 6px;
+      background: var(--top-bg);
+      color: var(--top-color);
+      border: 1px solid var(--top-border);
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    tr.is-default-window td {
+      background: #fafcff;
+    }
+
+    tr.is-default-window:hover td {
+      background: #f0f7ff;
+    }
+
+    .shortcuts-bar {
+      font-size: 12px;
+      color: var(--text-muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 10px;
+      display: inline-flex;
+      gap: 12px;
+    }
+
+    .kbd {
+      font-family: var(--font-mono);
+      background: var(--surface-subtle);
+      border: 1px solid var(--border-dark);
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-size: 11px;
+      color: var(--text);
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 4px;
+      border: 1px solid var(--border-dark);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:hover:not(:disabled) {
+      background: var(--surface-subtle);
+    }
+
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 1px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+      border-color: var(--primary-hover);
+    }
+
+    .btn-sm {
+      padding: 3px 8px;
+      font-size: 12px;
+    }
+
+    /* Tables (Windows & Jobs lists) */
+    .data-table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: var(--surface-subtle);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: var(--surface-hover);
+    }
+
+    /* Candidate rows */
+    .candidates-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .candidate-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 14px 16px;
+      outline: none;
+      transition: border-color 0.1s ease;
+    }
+
+    .candidate-row:focus-visible,
+    .candidate-row.is-focused {
+      border-color: var(--focus-ring);
+      outline: 2px solid var(--focus-ring);
+    }
+
+    .candidate-row-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .candidate-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .rank-pill {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 6px;
+      background: var(--text);
+      color: #ffffff;
+      border-radius: 3px;
+    }
+
+    .size-pill {
+      font-size: 12px;
+      color: var(--text-muted);
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .scores-strip {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 10px;
+    }
+    .scores-strip strong {
+      color: var(--text-sub);
+    }
+
+    .domain-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .domain-chip {
+      font-size: 12px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      padding: 2px 7px;
+      border-radius: 12px;
+      color: var(--text-sub);
+    }
+
+    .candidate-items-list {
+      list-style: none;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .candidate-item-line {
+      font-size: 13px;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .item-host-tag {
+      font-size: 11px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .candidate-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .decision-buttons {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn-decision {
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 3px;
+      cursor: pointer;
+      border: 1px solid var(--border-dark);
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .btn-decision:hover:not(:disabled) {
+      background: var(--surface-subtle);
+    }
+
+    .btn-decision:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn-decision.active-top {
+      background: var(--top-bg);
+      color: var(--top-color);
+      border-color: var(--top-border);
+    }
+
+    .btn-decision.active-not_top {
+      background: var(--not-top-bg);
+      color: var(--not-top-color);
+      border-color: var(--not-top-border);
+    }
+
+    .btn-decision.active-noise {
+      background: var(--noise-bg);
+      color: var(--noise-color);
+      border-color: var(--noise-border);
+    }
+
+    .status-msg {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .inherited-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--primary-subtle);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: var(--primary);
+      display: inline-flex;
+      align-items: center;
+      margin-left: 6px;
+    }
+
+    /* Cards view */
+    .cards-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .topic-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 18px 20px;
+      outline: none;
+      transition: border-color 0.1s ease;
+    }
+
+    .topic-card:focus-visible,
+    .topic-card.is-focused {
+      border-color: var(--focus-ring);
+      outline: 2px solid var(--focus-ring);
+    }
+
+    .topic-card-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .card-headline-group {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex: 1;
+    }
+
+    .card-headline {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+
+    .card-badges {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .genre-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .continues-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #166534;
+    }
+
+    .card-body-section {
+      margin-bottom: 12px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    .section-content {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .card-sources {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--border);
+    }
+
+    .sources-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+
+    .source-item {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .source-num {
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    /* Rating controls inside card */
+    .card-rating-panel {
+      margin-top: 16px;
+      border-top: 1px solid var(--border);
+      background: #fafafa;
+      padding: 12px 14px;
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .rating-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .rating-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-sub);
+      min-width: 50px;
+    }
+
+    .score-buttons {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn-score {
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 3px;
+      border: 1px solid var(--border-dark);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .btn-score:hover:not(:disabled) {
+      background: var(--surface-subtle);
+    }
+
+    .btn-score:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn-score.selected-0 {
+      background: var(--noise-bg);
+      color: var(--score-0);
+      border-color: var(--noise-border);
+    }
+    .btn-score.selected-1 {
+      background: var(--not-top-bg);
+      color: var(--score-1);
+      border-color: var(--not-top-border);
+    }
+    .btn-score.selected-2 {
+      background: var(--top-bg);
+      color: var(--score-2);
+      border-color: var(--top-border);
+    }
+
+    .flags-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .flag-checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--text-sub);
+      cursor: pointer;
+      user-select: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .flag-checkbox-label input {
+      cursor: pointer;
+    }
+
+    .comment-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .comment-row textarea {
+      flex: 1;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      resize: vertical;
+      min-height: 40px;
+    }
+
+    .comment-row textarea:focus {
+      outline: none;
+      border-color: var(--focus-ring);
+    }
+
+    .save-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .save-status {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .save-status.success {
+      color: var(--top-color);
+      font-weight: 600;
+    }
+    .save-status.error {
+      color: var(--noise-color);
+      font-weight: 600;
+    }
+
+    /* Loading / Empty states */
+    .empty-state {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="header-row">
+      <div class="header-left">
+        <h1 class="app-title">Alt Recap Evaluation</h1>
+        <nav class="nav-tabs" aria-label="Views">
+          <button id="tab-windows" class="nav-tab active" type="button">Windows (Stories)</button>
+          <button id="tab-jobs" class="nav-tab" type="button">Jobs (Cards)</button>
+        </nav>
+      </div>
+
+      <div class="header-center">
+        <span class="timer-badge" id="session-timer" title="Session duration">00:00</span>
+      </div>
+
+      <div class="header-right">
+        <div class="config-field">
+          <label for="base-url-input">API:</label>
+          <input id="base-url-input" type="text" size="22" placeholder="http://127.0.0.1:9006" value="http://127.0.0.1:9006">
+          <span id="base-url-error" style="display:none; color:var(--noise-color); font-size:11px;" title="Must be http:// on 127.0.0.1, localhost, or [::1]">(loopback only)</span>
+        </div>
+        <div class="config-field">
+          <label for="token-input">Token:</label>
+          <input id="token-input" type="password" size="18" placeholder="Bearer token">
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Gentle rater fatigue banner (shown after 45m) -->
+  <div id="fatigue-banner" role="status" aria-live="polite">
+    <span>&#9749; Rater fatigue guidance: You have been evaluating for over 45 minutes. Consider taking a short break to keep judgments accurate.</span>
+    <button id="btn-dismiss-fatigue" type="button">Dismiss</button>
+  </div>
+
+  <main>
+    <!-- View 1: Windows List -->
+    <section id="view-windows-list" class="view-container active">
+      <div class="view-header">
+        <div class="view-title-group">
+          <h2 class="view-title">Evaluation Windows</h2>
+          <span class="counter-badge" id="windows-total-count">0 windows</span>
+        </div>
+        <div>
+          <button class="btn" id="btn-refresh-windows" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="data-table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>From</th>
+              <th>To</th>
+              <th>Version</th>
+              <th>Created</th>
+              <th>Snapshot Job</th>
+              <th>Candidates</th>
+              <th>Judged</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="windows-table-body">
+            <tr><td colspan="8" class="empty-state">Loading windows...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- View 2: Candidates View -->
+    <section id="view-candidates" class="view-container">
+      <div class="view-header">
+        <div class="view-title-group">
+          <button class="btn btn-sm" id="btn-back-to-windows" type="button">&larr; Windows</button>
+          <h2 class="view-title" id="candidates-view-title">Window Candidates</h2>
+          <span class="counter-badge" id="candidates-progress-badge">0 / 0 judged</span>
+        </div>
+        <div class="shortcuts-bar">
+          <span><span class="kbd">j</span> / <span class="kbd">k</span> move</span>
+          <span><span class="kbd">1</span> Top</span>
+          <span><span class="kbd">2</span> Not top</span>
+          <span><span class="kbd">3</span> Noise</span>
+        </div>
+      </div>
+      <div class="candidates-list" id="candidates-container">
+        <div class="empty-state">Loading candidates...</div>
+      </div>
+    </section>
+
+    <!-- View 3: Jobs List -->
+    <section id="view-jobs-list" class="view-container">
+      <div class="view-header">
+        <div class="view-title-group">
+          <h2 class="view-title">Evaluation Jobs</h2>
+          <span class="counter-badge" id="jobs-total-count">0 jobs</span>
+        </div>
+        <div>
+          <button class="btn" id="btn-refresh-jobs" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="data-table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Job ID</th>
+              <th>Kicked At</th>
+              <th>Cards</th>
+              <th>Rated</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="jobs-table-body">
+            <tr><td colspan="5" class="empty-state">Loading jobs...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- View 4: Cards View -->
+    <section id="view-cards" class="view-container">
+      <div class="view-header">
+        <div class="view-title-group">
+          <button class="btn btn-sm" id="btn-back-to-jobs" type="button">&larr; Jobs</button>
+          <h2 class="view-title" id="cards-view-title">Recap Cards</h2>
+          <span class="counter-badge" id="cards-progress-badge">0 / 0 rated</span>
+        </div>
+        <div class="shortcuts-bar">
+          <span><span class="kbd">j</span> / <span class="kbd">k</span> move</span>
+          <span><span class="kbd">0</span> / <span class="kbd">1</span> / <span class="kbd">2</span> rate score</span>
+          <span><span class="kbd">Enter</span> Save (Ctrl+Enter)</span>
+        </div>
+      </div>
+      <div class="cards-list" id="cards-container">
+        <div class="empty-state">Loading cards...</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // --- Storage helpers (always in try/catch) ---
+      function storageGet(key, fallback) {
+        try {
+          const val = localStorage.getItem(key);
+          return val !== null ? val : fallback;
+        } catch (e) {
+          return fallback;
+        }
+      }
+
+      function storageSet(key, val) {
+        try {
+          localStorage.setItem(key, val);
+        } catch (e) {}
+      }
+
+      // --- Base URL Validation & Normalization (loopback only) ---
+      function validateAndNormalizeBaseUrl(raw) {
+        if (!raw || typeof raw !== 'string') return null;
+        const trimmed = raw.trim().replace(/\/+$/, '');
+        try {
+          const u = new URL(trimmed);
+          if (u.protocol !== 'http:') {
+            return null;
+          }
+          const host = u.hostname;
+          if (host !== '127.0.0.1' && host !== 'localhost' && host !== '[::1]' && host !== '::1') {
+            return null;
+          }
+          return trimmed;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // --- Config state ---
+      const baseUrlInput = document.getElementById('base-url-input');
+      const baseUrlErrorEl = document.getElementById('base-url-error');
+      const tokenInput = document.getElementById('token-input');
+
+      const savedBaseUrl = storageGet('alt_recap_eval_base_url', 'http://127.0.0.1:9006');
+      const savedToken = storageGet('alt_recap_eval_token', '');
+
+      baseUrlInput.value = validateAndNormalizeBaseUrl(savedBaseUrl) || 'http://127.0.0.1:9006';
+      tokenInput.value = savedToken;
+
+      function updateBaseUrlValidation() {
+        const validated = validateAndNormalizeBaseUrl(baseUrlInput.value);
+        if (validated) {
+          if (baseUrlErrorEl) baseUrlErrorEl.style.display = 'none';
+          baseUrlInput.style.borderColor = 'var(--border)';
+          storageSet('alt_recap_eval_base_url', validated);
+        } else {
+          if (baseUrlErrorEl) baseUrlErrorEl.style.display = 'inline';
+          baseUrlInput.style.borderColor = 'var(--noise-color)';
+        }
+      }
+
+      baseUrlInput.addEventListener('input', updateBaseUrlValidation);
+
+      tokenInput.addEventListener('input', function () {
+        storageSet('alt_recap_eval_token', this.value.trim());
+      });
+
+      function getBaseUrl() {
+        const validated = validateAndNormalizeBaseUrl(baseUrlInput.value);
+        if (!validated) {
+          throw new Error('Invalid base URL: must be http:// on 127.0.0.1, localhost, or [::1]');
+        }
+        return validated;
+      }
+
+      function getToken() {
+        return (tokenInput.value || '').trim();
+      }
+
+      function setToken(tok) {
+        tokenInput.value = tok;
+        storageSet('alt_recap_eval_token', tok);
+      }
+
+      // --- Session timer & Fatigue guidance ---
+      const sessionTimerEl = document.getElementById('session-timer');
+      const fatigueBannerEl = document.getElementById('fatigue-banner');
+      const btnDismissFatigue = document.getElementById('btn-dismiss-fatigue');
+
+      let sessionStartMs = Date.now();
+      let fatigueDismissed = false;
+
+      btnDismissFatigue.addEventListener('click', function () {
+        fatigueDismissed = true;
+        fatigueBannerEl.style.display = 'none';
+      });
+
+      const fatigueInterval = setInterval(function () {
+        const elapsedSec = Math.floor((Date.now() - sessionStartMs) / 1000);
+        const mm = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+        const ss = String(elapsedSec % 60).padStart(2, '0');
+        sessionTimerEl.textContent = mm + ':' + ss;
+
+        // >= 45 minutes = 2700 seconds
+        if (elapsedSec >= 2700 && !fatigueDismissed) {
+          fatigueBannerEl.style.display = 'flex';
+        }
+      }, 1000);
+
+      window.addEventListener('beforeunload', function () {
+        clearInterval(fatigueInterval);
+      });
+
+      // --- Navigation / View switching ---
+      const tabWindows = document.getElementById('tab-windows');
+      const tabJobs = document.getElementById('tab-jobs');
+
+      const viewWindowsList = document.getElementById('view-windows-list');
+      const viewCandidates = document.getElementById('view-candidates');
+      const viewJobsList = document.getElementById('view-jobs-list');
+      const viewCards = document.getElementById('view-cards');
+
+      let currentView = 'windows-list';
+
+      function showView(viewName) {
+        currentView = viewName;
+        viewWindowsList.classList.remove('active');
+        viewCandidates.classList.remove('active');
+        viewJobsList.classList.remove('active');
+        viewCards.classList.remove('active');
+
+        if (viewName === 'windows-list') {
+          viewWindowsList.classList.add('active');
+          tabWindows.classList.add('active');
+          tabJobs.classList.remove('active');
+        } else if (viewName === 'candidates') {
+          viewCandidates.classList.add('active');
+          tabWindows.classList.add('active');
+          tabJobs.classList.remove('active');
+        } else if (viewName === 'jobs-list') {
+          viewJobsList.classList.add('active');
+          tabJobs.classList.add('active');
+          tabWindows.classList.remove('active');
+        } else if (viewName === 'cards') {
+          viewCards.classList.add('active');
+          tabJobs.classList.add('active');
+          tabWindows.classList.remove('active');
+        }
+      }
+
+      tabWindows.addEventListener('click', function () {
+        showView('windows-list');
+        loadWindows();
+      });
+
+      tabJobs.addEventListener('click', function () {
+        showView('jobs-list');
+        loadJobs();
+      });
+
+      document.getElementById('btn-back-to-windows').addEventListener('click', function () {
+        showView('windows-list');
+        loadWindows();
+      });
+
+      document.getElementById('btn-back-to-jobs').addEventListener('click', function () {
+        showView('jobs-list');
+        loadJobs();
+      });
+
+      // --- Safe URL validation helper ---
+      function getSafeHttpUrl(raw) {
+        if (!raw || typeof raw !== 'string') return null;
+        try {
+          const u = new URL(raw.trim());
+          if (u.protocol === 'http:' || u.protocol === 'https:') {
+            return u.href;
+          }
+        } catch (e) {}
+        return null;
+      }
+
+      // --- API client ---
+      async function apiCall(path, options = {}) {
+        const baseUrl = getBaseUrl();
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(options.headers || {})
+        };
+
+        const token = getToken();
+        if (token) {
+          headers['Authorization'] = 'Bearer ' + token;
+        }
+
+        const url = baseUrl + path;
+        let res;
+        try {
+          res = await fetch(url, { ...options, headers });
+        } catch (err) {
+          if (err && err.name === 'AbortError') throw err;
+          throw new Error('Network error: ' + (err && err.message ? err.message : String(err)));
+        }
+
+        if (res.status === 401) {
+          const prompted = window.prompt('401 Unauthorized: Please enter your Bearer token:', getToken());
+          if (prompted !== null && prompted.trim() !== '') {
+            const cleanToken = prompted.trim();
+            setToken(cleanToken);
+            headers['Authorization'] = 'Bearer ' + cleanToken;
+            let retryRes;
+            try {
+              retryRes = await fetch(url, { ...options, headers });
+            } catch (err) {
+              if (err && err.name === 'AbortError') throw err;
+              throw new Error('Network error on retry: ' + (err && err.message ? err.message : String(err)));
+            }
+            if (!retryRes.ok) {
+              const errTxt = await retryRes.text().catch(() => '');
+              throw new Error('HTTP ' + retryRes.status + ': ' + (errTxt || retryRes.statusText));
+            }
+            if (retryRes.status === 204) return {};
+            const retryContentType = retryRes.headers.get('content-type') || '';
+            if (!retryContentType.includes('application/json')) {
+              return {};
+            }
+            const retryText = await retryRes.text().catch(() => '');
+            if (!retryText.trim()) return {};
+            try {
+              return JSON.parse(retryText);
+            } catch (e) {
+              return {};
+            }
+          }
+          throw new Error('401 Unauthorized: Bearer token required.');
+        }
+
+        if (!res.ok) {
+          const errTxt = await res.text().catch(() => '');
+          throw new Error('HTTP ' + res.status + ': ' + (errTxt || res.statusText));
+        }
+
+        if (res.status === 204) return {};
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          return {};
+        }
+        const text = await res.text().catch(() => '');
+        if (!text.trim()) return {};
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          return {};
+        }
+      }
+
+      // --- View (a): Windows & Candidates ---
+      const windowsTableBody = document.getElementById('windows-table-body');
+      const windowsTotalCount = document.getElementById('windows-total-count');
+      const candidatesContainer = document.getElementById('candidates-container');
+      const candidatesViewTitle = document.getElementById('candidates-view-title');
+      const candidatesProgressBadge = document.getElementById('candidates-progress-badge');
+
+      let currentWindowId = null;
+      let currentCandidates = [];
+      let focusedCandidateIdx = -1;
+      let candidatesRequestGen = 0;
+      let candidatesAbortController = null;
+
+      async function loadWindows() {
+        windowsTableBody.replaceChildren();
+        const trLoading = document.createElement('tr');
+        const tdLoading = document.createElement('td');
+        tdLoading.colSpan = 8;
+        tdLoading.className = 'empty-state';
+        tdLoading.textContent = 'Loading windows...';
+        trLoading.appendChild(tdLoading);
+        windowsTableBody.appendChild(trLoading);
+
+        try {
+          const data = await apiCall('/v1/eval/windows');
+          const windows = (data && data.windows) || [];
+          windowsTotalCount.textContent = windows.length + ' window' + (windows.length === 1 ? '' : 's');
+
+          windowsTableBody.replaceChildren();
+          if (windows.length === 0) {
+            const trEmpty = document.createElement('tr');
+            const tdEmpty = document.createElement('td');
+            tdEmpty.colSpan = 8;
+            tdEmpty.className = 'empty-state';
+            tdEmpty.textContent = 'No evaluation windows found.';
+            trEmpty.appendChild(tdEmpty);
+            windowsTableBody.appendChild(trEmpty);
+            return;
+          }
+
+          // Ensure sorted newest first by creation time
+          windows.sort(function (a, b) {
+            const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return tB - tA;
+          });
+
+          // Mark newest window per date range as default choice
+          const seenDateRanges = new Set();
+
+          windows.forEach(function (win) {
+            const tr = document.createElement('tr');
+            const rangeKey = (win.from_ts || '') + '::' + (win.to_ts || '');
+            const isDefault = !seenDateRanges.has(rangeKey);
+            seenDateRanges.add(rangeKey);
+
+            if (isDefault) {
+              tr.className = 'is-default-window';
+            }
+
+            const tdFrom = document.createElement('td');
+            tdFrom.textContent = win.from_ts || '-';
+            tr.appendChild(tdFrom);
+
+            const tdTo = document.createElement('td');
+            tdTo.textContent = win.to_ts || '-';
+            tr.appendChild(tdTo);
+
+            const tdVersion = document.createElement('td');
+            const spanVer = document.createElement('span');
+            spanVer.className = 'badge-params';
+            spanVer.textContent = win.params_version || '-';
+            tdVersion.appendChild(spanVer);
+
+            if (isDefault) {
+              const spanDef = document.createElement('span');
+              spanDef.className = 'badge-default';
+              spanDef.style.marginLeft = '6px';
+              spanDef.textContent = 'default';
+              tdVersion.appendChild(spanDef);
+            }
+            tr.appendChild(tdVersion);
+
+            const tdCreated = document.createElement('td');
+            tdCreated.style.fontSize = '12px';
+            tdCreated.style.color = 'var(--text-muted)';
+            tdCreated.textContent = win.created_at ? String(win.created_at).replace('T', ' ').substring(0, 19) : '-';
+            if (win.created_at) {
+              tdCreated.title = win.created_at;
+            }
+            tr.appendChild(tdCreated);
+
+            const tdJob = document.createElement('td');
+            tdJob.style.fontFamily = 'var(--font-mono)';
+            tdJob.style.fontSize = '12px';
+            tdJob.textContent = win.snapshot_job_id ? String(win.snapshot_job_id).substring(0, 8) + '...' : '-';
+            if (win.snapshot_job_id) {
+              tdJob.title = win.snapshot_job_id;
+            }
+            tr.appendChild(tdJob);
+
+            const tdCand = document.createElement('td');
+            tdCand.textContent = String(win.candidate_count ?? 0);
+            tr.appendChild(tdCand);
+
+            const tdJudged = document.createElement('td');
+            const cCount = win.candidate_count || 0;
+            const jCount = win.judged_count || 0;
+            const pct = cCount > 0 ? Math.round((jCount / cCount) * 100) : 0;
+            tdJudged.textContent = jCount + ' (' + pct + '%)';
+            tr.appendChild(tdJudged);
+
+            const tdAction = document.createElement('td');
+            const btnOpen = document.createElement('button');
+            btnOpen.className = isDefault ? 'btn btn-sm btn-primary' : 'btn btn-sm';
+            btnOpen.type = 'button';
+            btnOpen.textContent = isDefault ? 'Evaluate (Default)' : 'Evaluate';
+            btnOpen.addEventListener('click', function () {
+              openCandidatesView(win.id, win);
+            });
+            tdAction.appendChild(btnOpen);
+            tr.appendChild(tdAction);
+
+            windowsTableBody.appendChild(tr);
+          });
+        } catch (err) {
+          windowsTableBody.replaceChildren();
+          const trErr = document.createElement('tr');
+          const tdErr = document.createElement('td');
+          tdErr.colSpan = 8;
+          tdErr.className = 'empty-state';
+          tdErr.style.color = 'var(--noise-color)';
+          tdErr.textContent = 'Failed to load windows: ' + err.message;
+          trErr.appendChild(tdErr);
+          windowsTableBody.appendChild(trErr);
+        }
+      }
+
+      document.getElementById('btn-refresh-windows').addEventListener('click', loadWindows);
+
+      async function openCandidatesView(windowId, windowMeta) {
+        if (candidatesAbortController) {
+          candidatesAbortController.abort();
+        }
+        candidatesAbortController = new AbortController();
+        const reqGen = ++candidatesRequestGen;
+
+        showView('candidates');
+        focusedCandidateIdx = -1;
+        currentCandidates = [];
+        currentWindowId = windowId;
+
+        const dateRange = (windowMeta && windowMeta.from_ts && windowMeta.to_ts)
+          ? ' (' + String(windowMeta.from_ts).substring(0, 10) + ' – ' + String(windowMeta.to_ts).substring(0, 10) + ')'
+          : '';
+        const verStr = (windowMeta && windowMeta.params_version) ? ' [' + windowMeta.params_version + ']' : '';
+        candidatesViewTitle.textContent = 'Window ' + (windowId ? String(windowId).substring(0, 8) : '') + dateRange + verStr;
+        candidatesProgressBadge.textContent = 'Loading...';
+
+        candidatesContainer.replaceChildren();
+        const divLoading = document.createElement('div');
+        divLoading.className = 'empty-state';
+        divLoading.textContent = 'Loading candidates...';
+        candidatesContainer.appendChild(divLoading);
+
+        try {
+          const data = await apiCall('/v1/eval/windows/' + encodeURIComponent(windowId) + '/candidates', {
+            signal: candidatesAbortController.signal
+          });
+          if (reqGen !== candidatesRequestGen) return;
+
+          if (data && data.window && data.window.from_ts && data.window.to_ts) {
+            const verStr = (windowMeta && windowMeta.params_version) ? ' [' + windowMeta.params_version + ']' : '';
+            candidatesViewTitle.textContent = 'Window ' + String(windowId).substring(0, 8) + ' (' +
+              String(data.window.from_ts).substring(0, 10) + ' – ' + String(data.window.to_ts).substring(0, 10) + ')' + verStr;
+          }
+
+          const candidates = (data && data.candidates) || [];
+          currentCandidates = candidates;
+          renderCandidates(candidates);
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+          if (reqGen !== candidatesRequestGen) return;
+          currentCandidates = [];
+          candidatesProgressBadge.textContent = '0 / 0 judged';
+          candidatesContainer.replaceChildren();
+          const divErr = document.createElement('div');
+          divErr.className = 'empty-state';
+          divErr.style.color = 'var(--noise-color)';
+          divErr.textContent = 'Failed to load candidates: ' + err.message;
+          candidatesContainer.appendChild(divErr);
+        }
+      }
+
+      function updateCandidatesProgress() {
+        const total = currentCandidates.length;
+        const judged = currentCandidates.filter(function (c) {
+          return c.decision === 'top' || c.decision === 'not_top' || c.decision === 'noise';
+        }).length;
+        const pct = total > 0 ? Math.round((judged / total) * 100) : 0;
+        candidatesProgressBadge.textContent = judged + ' / ' + total + ' judged (' + pct + '%)';
+      }
+
+      function renderCandidates(candidates) {
+        candidatesContainer.replaceChildren();
+        updateCandidatesProgress();
+
+        if (candidates.length === 0) {
+          const divEmpty = document.createElement('div');
+          divEmpty.className = 'empty-state';
+          divEmpty.textContent = 'No candidates in this window.';
+          candidatesContainer.appendChild(divEmpty);
+          return;
+        }
+
+        candidates.forEach(function (cand, idx) {
+          const row = document.createElement('article');
+          row.className = 'candidate-row';
+          row.tabIndex = 0;
+          row.dataset.index = String(idx);
+          row._inFlight = false;
+
+          row.addEventListener('focus', function () {
+            focusedCandidateIdx = idx;
+            highlightFocusedCandidate();
+          });
+
+          row.addEventListener('click', function (e) {
+            if (e.target.closest('a') || e.target.closest('button')) return;
+            focusCandidate(idx);
+          });
+
+          // Row header
+          const header = document.createElement('div');
+          header.className = 'candidate-row-header';
+
+          const meta = document.createElement('div');
+          meta.className = 'candidate-meta';
+
+          const rankPill = document.createElement('span');
+          rankPill.className = 'rank-pill';
+          rankPill.textContent = '#' + (cand.rank ?? (idx + 1));
+          meta.appendChild(rankPill);
+
+          const sizePill = document.createElement('span');
+          sizePill.className = 'size-pill';
+          sizePill.textContent = (cand.size ?? 0) + ' item' + (cand.size === 1 ? '' : 's');
+          meta.appendChild(sizePill);
+
+          header.appendChild(meta);
+
+          // Scores strip
+          if (cand.scores) {
+            const scoresStrip = document.createElement('div');
+            scoresStrip.className = 'scores-strip';
+
+            const sc = cand.scores;
+            const fmt = (val) => (typeof val === 'number' && Number.isFinite(val) ? val.toFixed(2) : '-');
+
+            const sTotal = document.createElement('span');
+            sTotal.textContent = 'total: ';
+            const strTotal = document.createElement('strong');
+            strTotal.textContent = fmt(sc.total);
+            sTotal.appendChild(strTotal);
+            scoresStrip.appendChild(sTotal);
+
+            const sCorrob = document.createElement('span');
+            sCorrob.textContent = 'corrob: ' + fmt(sc.corroboration);
+            scoresStrip.appendChild(sCorrob);
+
+            const sPers = document.createElement('span');
+            sPers.textContent = 'personal: ' + fmt(sc.personal);
+            scoresStrip.appendChild(sPers);
+
+            const sNov = document.createElement('span');
+            sNov.textContent = 'novelty: ' + fmt(sc.novelty);
+            scoresStrip.appendChild(sNov);
+
+            header.appendChild(scoresStrip);
+          }
+
+          row.appendChild(header);
+
+          // Domain chips
+          const domains = Array.isArray(cand.domains) ? cand.domains : [];
+          if (domains.length > 0) {
+            const chipsContainer = document.createElement('div');
+            chipsContainer.className = 'domain-chips';
+            domains.forEach(function (d) {
+              const chip = document.createElement('span');
+              chip.className = 'domain-chip';
+              chip.textContent = (d.host || 'unknown') + (d.count != null ? ' ×' + d.count : '');
+              chipsContainer.appendChild(chip);
+            });
+            row.appendChild(chipsContainer);
+          }
+
+          // Items list (up to 8 items)
+          const items = Array.isArray(cand.items) ? cand.items.slice(0, 8) : [];
+          if (items.length > 0) {
+            const ul = document.createElement('ul');
+            ul.className = 'candidate-items-list';
+
+            items.forEach(function (item) {
+              const li = document.createElement('li');
+              li.className = 'candidate-item-line';
+
+              if (item.host) {
+                const hostTag = document.createElement('span');
+                hostTag.className = 'item-host-tag';
+                hostTag.textContent = '[' + item.host + ']';
+                li.appendChild(hostTag);
+              }
+
+              const safeHref = getSafeHttpUrl(item.url);
+              const linkText = item.title || item.url || '(untitled)';
+              if (safeHref) {
+                const a = document.createElement('a');
+                a.textContent = linkText;
+                a.href = safeHref;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                li.appendChild(a);
+              } else {
+                const span = document.createElement('span');
+                span.style.color = 'var(--text-muted)';
+                span.textContent = linkText + ' (invalid URL)';
+                li.appendChild(span);
+              }
+
+              if (item.pub_date) {
+                const dateSpan = document.createElement('span');
+                dateSpan.className = 'item-host-tag';
+                dateSpan.textContent = String(item.pub_date).substring(0, 10);
+                li.appendChild(dateSpan);
+              }
+
+              ul.appendChild(li);
+            });
+
+            if (typeof cand.size === 'number' && cand.size > items.length) {
+              const moreLi = document.createElement('li');
+              moreLi.className = 'candidate-item-line';
+              moreLi.style.color = 'var(--text-muted)';
+              moreLi.style.fontSize = '12px';
+              moreLi.textContent = '+' + (cand.size - items.length) + ' more items';
+              ul.appendChild(moreLi);
+            }
+
+            row.appendChild(ul);
+          }
+
+          // Candidate Actions (Top / Not top / Noise)
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'candidate-actions';
+
+          const btnGroup = document.createElement('div');
+          btnGroup.className = 'decision-buttons';
+
+          const statusSpan = document.createElement('span');
+          statusSpan.className = 'status-msg';
+
+          const decisions = [
+            { key: 'top', label: '1: Top', classActive: 'active-top' },
+            { key: 'not_top', label: '2: Not top', classActive: 'active-not_top' },
+            { key: 'noise', label: '3: Noise', classActive: 'active-noise' }
+          ];
+
+          decisions.forEach(function (d) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn-decision' + (cand.decision === d.key ? ' ' + d.classActive : '');
+            btn.textContent = d.label;
+            btn.dataset.decisionKey = d.key;
+
+            btn.addEventListener('click', function () {
+              submitJudgment(idx, d.key, row, statusSpan);
+            });
+
+            btnGroup.appendChild(btn);
+          });
+
+          actionsDiv.appendChild(btnGroup);
+          if (cand.decision_source === 'inherited') {
+            const inheritedBadge = document.createElement('span');
+            inheritedBadge.className = 'inherited-badge';
+            inheritedBadge.textContent = 'Inherited';
+            if (cand.inherited_source && cand.inherited_source.window_id) {
+              inheritedBadge.title = 'Inherited from window ' + cand.inherited_source.window_id + ' (cluster ' + cand.inherited_source.cluster_fingerprint.substring(0, 8) + '...)';
+            } else {
+              inheritedBadge.title = 'Inherited judgment';
+            }
+            actionsDiv.appendChild(inheritedBadge);
+          }
+          actionsDiv.appendChild(statusSpan);
+          row.appendChild(actionsDiv);
+
+          candidatesContainer.appendChild(row);
+        });
+
+        if (candidates.length > 0) {
+          focusCandidate(0);
+        }
+      }
+
+      function highlightFocusedCandidate() {
+        const rows = candidatesContainer.querySelectorAll('.candidate-row');
+        rows.forEach(function (r, idx) {
+          if (idx === focusedCandidateIdx) {
+            r.classList.add('is-focused');
+          } else {
+            r.classList.remove('is-focused');
+          }
+        });
+      }
+
+      function focusCandidate(idx) {
+        const rows = candidatesContainer.querySelectorAll('.candidate-row');
+        if (idx >= 0 && idx < rows.length) {
+          focusedCandidateIdx = idx;
+          highlightFocusedCandidate();
+          rows[idx].focus();
+          rows[idx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+
+      async function submitJudgment(candIdx, decision, rowEl, statusEl) {
+        const cand = currentCandidates[candIdx];
+        if (!cand || !currentWindowId) return;
+        if (rowEl._inFlight) return;
+
+        rowEl._inFlight = true;
+        const buttons = rowEl.querySelectorAll('.btn-decision');
+        buttons.forEach(function (b) { b.disabled = true; });
+
+        statusEl.textContent = 'Saving...';
+        statusEl.style.color = 'var(--text-muted)';
+
+        try {
+          await apiCall('/v1/eval/judgments', {
+            method: 'POST',
+            body: JSON.stringify({
+              window_id: currentWindowId,
+              cluster_fingerprint: cand.cluster_fingerprint,
+              decision: decision
+            })
+          });
+
+          cand.decision = decision;
+          cand.decision_source = 'direct';
+          cand.inherited_source = null;
+          statusEl.textContent = 'Saved ✓';
+          statusEl.style.color = 'var(--top-color)';
+
+          const inheritedBadge = rowEl.querySelector('.inherited-badge');
+          if (inheritedBadge) {
+            inheritedBadge.remove();
+          }
+
+          buttons.forEach(function (b) {
+            b.classList.remove('active-top', 'active-not_top', 'active-noise');
+            if (b.dataset.decisionKey === decision) {
+              b.classList.add('active-' + decision);
+            }
+          });
+
+          updateCandidatesProgress();
+        } catch (err) {
+          statusEl.textContent = 'Error: ' + err.message;
+          statusEl.style.color = 'var(--noise-color)';
+        } finally {
+          rowEl._inFlight = false;
+          buttons.forEach(function (b) { b.disabled = false; });
+        }
+      }
+
+      // --- View (b): Jobs & Cards ---
+      const jobsTableBody = document.getElementById('jobs-table-body');
+      const jobsTotalCount = document.getElementById('jobs-total-count');
+      const cardsContainer = document.getElementById('cards-container');
+      const cardsViewTitle = document.getElementById('cards-view-title');
+      const cardsProgressBadge = document.getElementById('cards-progress-badge');
+
+      let currentCards = [];
+      let focusedCardIdx = -1;
+      let cardsRequestGen = 0;
+      let cardsAbortController = null;
+
+      async function loadJobs() {
+        jobsTableBody.replaceChildren();
+        const trLoading = document.createElement('tr');
+        const tdLoading = document.createElement('td');
+        tdLoading.colSpan = 5;
+        tdLoading.className = 'empty-state';
+        tdLoading.textContent = 'Loading jobs...';
+        trLoading.appendChild(tdLoading);
+        jobsTableBody.appendChild(trLoading);
+
+        try {
+          const data = await apiCall('/v1/eval/jobs');
+          const jobs = (data && data.jobs) || [];
+          jobsTotalCount.textContent = jobs.length + ' job' + (jobs.length === 1 ? '' : 's');
+
+          jobsTableBody.replaceChildren();
+          if (jobs.length === 0) {
+            const trEmpty = document.createElement('tr');
+            const tdEmpty = document.createElement('td');
+            tdEmpty.colSpan = 5;
+            tdEmpty.className = 'empty-state';
+            tdEmpty.textContent = 'No evaluation jobs found.';
+            trEmpty.appendChild(tdEmpty);
+            jobsTableBody.appendChild(trEmpty);
+            return;
+          }
+
+          jobs.forEach(function (job) {
+            const tr = document.createElement('tr');
+
+            const tdId = document.createElement('td');
+            tdId.style.fontFamily = 'var(--font-mono)';
+            tdId.style.fontSize = '12px';
+            tdId.textContent = job.job_id ? String(job.job_id).substring(0, 8) + '...' : '-';
+            if (job.job_id) {
+              tdId.title = job.job_id;
+            }
+            tr.appendChild(tdId);
+
+            const tdKicked = document.createElement('td');
+            tdKicked.textContent = job.kicked_at || '-';
+            tr.appendChild(tdKicked);
+
+            const tdCards = document.createElement('td');
+            tdCards.textContent = String(job.card_count ?? 0);
+            tr.appendChild(tdCards);
+
+            const tdRated = document.createElement('td');
+            const cCount = job.card_count || 0;
+            const rCount = job.rated_count || 0;
+            const pct = cCount > 0 ? Math.round((rCount / cCount) * 100) : 0;
+            tdRated.textContent = rCount + ' (' + pct + '%)';
+            tr.appendChild(tdRated);
+
+            const tdAction = document.createElement('td');
+            const btnOpen = document.createElement('button');
+            btnOpen.className = 'btn btn-sm btn-primary';
+            btnOpen.type = 'button';
+            btnOpen.textContent = 'Evaluate Cards';
+            btnOpen.addEventListener('click', function () {
+              openCardsView(job.job_id, job);
+            });
+            tdAction.appendChild(btnOpen);
+            tr.appendChild(tdAction);
+
+            jobsTableBody.appendChild(tr);
+          });
+        } catch (err) {
+          jobsTableBody.replaceChildren();
+          const trErr = document.createElement('tr');
+          const tdErr = document.createElement('td');
+          tdErr.colSpan = 5;
+          tdErr.className = 'empty-state';
+          tdErr.style.color = 'var(--noise-color)';
+          tdErr.textContent = 'Failed to load jobs: ' + err.message;
+          trErr.appendChild(tdErr);
+          jobsTableBody.appendChild(trErr);
+        }
+      }
+
+      document.getElementById('btn-refresh-jobs').addEventListener('click', loadJobs);
+
+      async function openCardsView(jobId, jobMeta) {
+        if (cardsAbortController) {
+          cardsAbortController.abort();
+        }
+        cardsAbortController = new AbortController();
+        const reqGen = ++cardsRequestGen;
+
+        showView('cards');
+        focusedCardIdx = -1;
+        currentCards = [];
+
+        const kickedStr = (jobMeta && jobMeta.kicked_at) ? ' (' + String(jobMeta.kicked_at).substring(0, 16).replace('T', ' ') + ')' : '';
+        cardsViewTitle.textContent = 'Job ' + (jobId ? String(jobId).substring(0, 8) : '') + kickedStr;
+        cardsProgressBadge.textContent = 'Loading...';
+
+        cardsContainer.replaceChildren();
+        const divLoading = document.createElement('div');
+        divLoading.className = 'empty-state';
+        divLoading.textContent = 'Loading cards...';
+        cardsContainer.appendChild(divLoading);
+
+        try {
+          const data = await apiCall('/v1/eval/jobs/' + encodeURIComponent(jobId) + '/cards', {
+            signal: cardsAbortController.signal
+          });
+          if (reqGen !== cardsRequestGen) return;
+
+          const cards = (data && data.cards) || [];
+          currentCards = cards;
+          renderCards(cards);
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+          if (reqGen !== cardsRequestGen) return;
+          currentCards = [];
+          cardsProgressBadge.textContent = '0 / 0 rated';
+          cardsContainer.replaceChildren();
+          const divErr = document.createElement('div');
+          divErr.className = 'empty-state';
+          divErr.style.color = 'var(--noise-color)';
+          divErr.textContent = 'Failed to load cards: ' + err.message;
+          cardsContainer.appendChild(divErr);
+        }
+      }
+
+      function updateCardsProgress() {
+        const total = currentCards.length;
+        const rated = currentCards.filter(function (c) {
+          return c.rating && c.rating.score !== undefined && c.rating.score !== null;
+        }).length;
+        const pct = total > 0 ? Math.round((rated / total) * 100) : 0;
+        cardsProgressBadge.textContent = rated + ' / ' + total + ' rated (' + pct + '%)';
+      }
+
+      const FLAG_OPTIONS = [
+        'hallucination',
+        'wrong_source',
+        'filler',
+        'unnatural_ja',
+        'trivial',
+        'duplicate',
+        'noise'
+      ];
+
+      function renderCards(cards) {
+        cardsContainer.replaceChildren();
+        updateCardsProgress();
+
+        if (cards.length === 0) {
+          const divEmpty = document.createElement('div');
+          divEmpty.className = 'empty-state';
+          divEmpty.textContent = 'No cards found in this job.';
+          cardsContainer.appendChild(divEmpty);
+          return;
+        }
+
+        cards.forEach(function (card, idx) {
+          const cardEl = document.createElement('article');
+          cardEl.className = 'topic-card';
+          cardEl.tabIndex = 0;
+          cardEl.dataset.index = String(idx);
+          cardEl._inFlight = false;
+
+          cardEl.addEventListener('focus', function () {
+            focusedCardIdx = idx;
+            highlightFocusedCard();
+          });
+
+          cardEl.addEventListener('click', function (e) {
+            if (e.target.closest('label') || e.target.closest('input') || e.target.closest('textarea') || e.target.closest('button') || e.target.closest('a')) {
+              return;
+            }
+            focusCard(idx);
+          });
+
+          // Header: rank, headline, genre badge, continues marker
+          const header = document.createElement('div');
+          header.className = 'topic-card-header';
+
+          const headlineGroup = document.createElement('div');
+          headlineGroup.className = 'card-headline-group';
+
+          const rankPill = document.createElement('span');
+          rankPill.className = 'rank-pill';
+          rankPill.textContent = '#' + (card.rank ?? (idx + 1));
+          headlineGroup.appendChild(rankPill);
+
+          const headlineH2 = document.createElement('h3');
+          headlineH2.className = 'card-headline';
+          headlineH2.textContent = card.headline_ja || '(untitled card)';
+          headlineGroup.appendChild(headlineH2);
+
+          header.appendChild(headlineGroup);
+
+          const badgesGroup = document.createElement('div');
+          badgesGroup.className = 'card-badges';
+
+          if (card.genre) {
+            const genreBadge = document.createElement('span');
+            genreBadge.className = 'genre-badge';
+            genreBadge.textContent = card.genre;
+            badgesGroup.appendChild(genreBadge);
+          }
+
+          if (card.continues_card_id) {
+            const contBadge = document.createElement('span');
+            contBadge.className = 'continues-badge';
+            contBadge.textContent = 'Continues';
+            contBadge.title = 'Continues from card ' + card.continues_card_id;
+            badgesGroup.appendChild(contBadge);
+          }
+
+          header.appendChild(badgesGroup);
+          cardEl.appendChild(header);
+
+          // "What happened" section (what_ja)
+          const whatSection = document.createElement('div');
+          whatSection.className = 'card-body-section';
+
+          const whatLabel = document.createElement('div');
+          whatLabel.className = 'section-label';
+          whatLabel.textContent = 'What Happened';
+          whatSection.appendChild(whatLabel);
+
+          const whatP = document.createElement('p');
+          whatP.className = 'section-content';
+          whatP.textContent = card.what_ja || '';
+          whatSection.appendChild(whatP);
+
+          cardEl.appendChild(whatSection);
+
+          // "Why it matters" section (why_ja - ONLY if present and non-empty)
+          if (card.why_ja && card.why_ja.trim() !== '') {
+            const whySection = document.createElement('div');
+            whySection.className = 'card-body-section';
+
+            const whyLabel = document.createElement('div');
+            whyLabel.className = 'section-label';
+            whyLabel.textContent = 'Why It Matters';
+            whySection.appendChild(whyLabel);
+
+            const whyP = document.createElement('p');
+            whyP.className = 'section-content';
+            whyP.textContent = card.why_ja;
+            whySection.appendChild(whyP);
+
+            cardEl.appendChild(whySection);
+          }
+
+          // Numbered sources list
+          const sources = Array.isArray(card.sources) ? card.sources : [];
+          if (sources.length > 0) {
+            const sourcesSection = document.createElement('div');
+            sourcesSection.className = 'card-sources';
+
+            const sourcesLabel = document.createElement('div');
+            sourcesLabel.className = 'section-label';
+            sourcesLabel.textContent = 'Sources (' + sources.length + ')';
+            sourcesSection.appendChild(sourcesLabel);
+
+            const ul = document.createElement('ul');
+            ul.className = 'sources-list';
+
+            sources.forEach(function (s) {
+              const li = document.createElement('li');
+              li.className = 'source-item';
+
+              const numSpan = document.createElement('span');
+              numSpan.className = 'source-num';
+              numSpan.textContent = '[' + (s.n !== undefined ? s.n : '?') + ']';
+              li.appendChild(numSpan);
+
+              const safeHref = getSafeHttpUrl(s.url);
+              const sourceText = s.title || s.url || '(source link)';
+              if (safeHref) {
+                const a = document.createElement('a');
+                a.textContent = sourceText;
+                a.href = safeHref;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                li.appendChild(a);
+              } else {
+                const span = document.createElement('span');
+                span.style.color = 'var(--text-muted)';
+                span.textContent = sourceText + ' (invalid URL)';
+                li.appendChild(span);
+              }
+
+              if (s.host) {
+                const hostSpan = document.createElement('span');
+                hostSpan.className = 'item-host-tag';
+                hostSpan.textContent = '(' + s.host + ')';
+                li.appendChild(hostSpan);
+              }
+
+              if (s.pub_date) {
+                const dateSpan = document.createElement('span');
+                dateSpan.className = 'item-host-tag';
+                dateSpan.textContent = String(s.pub_date).substring(0, 10);
+                li.appendChild(dateSpan);
+              }
+
+              ul.appendChild(li);
+            });
+
+            sourcesSection.appendChild(ul);
+            cardEl.appendChild(sourcesSection);
+          }
+
+          // Rating Panel
+          const ratingPanel = document.createElement('div');
+          ratingPanel.className = 'card-rating-panel';
+
+          const currentRating = card.rating || null;
+          let selectedScore = (currentRating && currentRating.score != null) ? Number(currentRating.score) : null;
+          let selectedFlags = new Set(currentRating && Array.isArray(currentRating.flags) ? currentRating.flags : []);
+
+          const statusSpan = document.createElement('span');
+          statusSpan.className = 'save-status';
+
+          // Score row: 0 / 1 / 2
+          const scoreRow = document.createElement('div');
+          scoreRow.className = 'rating-row';
+
+          const scoreLabel = document.createElement('span');
+          scoreLabel.className = 'rating-label';
+          scoreLabel.textContent = 'Score:';
+          scoreRow.appendChild(scoreLabel);
+
+          const scoreBtnGroup = document.createElement('div');
+          scoreBtnGroup.className = 'score-buttons';
+
+          const scoreOptions = [
+            { val: 0, text: '0: Defective' },
+            { val: 1, text: '1: Acceptable' },
+            { val: 2, text: '2: Good' }
+          ];
+
+          const scoreButtonsMap = {};
+
+          scoreOptions.forEach(function (opt) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn-score' + (selectedScore !== null && Number(selectedScore) === opt.val ? ' selected-' + opt.val : '');
+            btn.textContent = opt.text;
+            btn.dataset.scoreVal = String(opt.val);
+
+            btn.addEventListener('click', function () {
+              setCardScore(opt.val, true);
+            });
+
+            scoreButtonsMap[opt.val] = btn;
+            scoreBtnGroup.appendChild(btn);
+          });
+
+          function setCardScore(val, fromUser) {
+            selectedScore = val;
+            scoreOptions.forEach(function (o) {
+              scoreButtonsMap[o.val].classList.remove('selected-0', 'selected-1', 'selected-2');
+            });
+            if (val !== null && scoreButtonsMap[val]) {
+              scoreButtonsMap[val].classList.add('selected-' + val);
+            }
+            if (fromUser) {
+              statusSpan.textContent = 'Unsaved — press Save (Ctrl+Enter)';
+              statusSpan.className = 'save-status';
+            }
+          }
+
+          cardEl._setScore = setCardScore;
+
+          scoreRow.appendChild(scoreBtnGroup);
+          ratingPanel.appendChild(scoreRow);
+
+          // Flags row
+          const flagsRow = document.createElement('div');
+          flagsRow.className = 'rating-row';
+
+          const flagsLabel = document.createElement('span');
+          flagsLabel.className = 'rating-label';
+          flagsLabel.textContent = 'Flags:';
+          flagsRow.appendChild(flagsLabel);
+
+          const flagsGroup = document.createElement('div');
+          flagsGroup.className = 'flags-group';
+
+          FLAG_OPTIONS.forEach(function (flagKey) {
+            const lbl = document.createElement('label');
+            lbl.className = 'flag-checkbox-label';
+
+            const chk = document.createElement('input');
+            chk.type = 'checkbox';
+            chk.value = flagKey;
+            chk.checked = selectedFlags.has(flagKey);
+
+            chk.addEventListener('change', function () {
+              if (this.checked) {
+                selectedFlags.add(flagKey);
+              } else {
+                selectedFlags.delete(flagKey);
+              }
+              statusSpan.textContent = 'Unsaved — press Save (Ctrl+Enter)';
+              statusSpan.className = 'save-status';
+            });
+
+            lbl.appendChild(chk);
+            lbl.appendChild(document.createTextNode(' ' + flagKey));
+            flagsGroup.appendChild(lbl);
+          });
+
+          flagsRow.appendChild(flagsGroup);
+          ratingPanel.appendChild(flagsRow);
+
+          // Comment row
+          const commentRow = document.createElement('div');
+          commentRow.className = 'comment-row';
+
+          const commentLabel = document.createElement('span');
+          commentLabel.className = 'rating-label';
+          commentLabel.textContent = 'Comment:';
+          commentRow.appendChild(commentLabel);
+
+          const commentArea = document.createElement('textarea');
+          commentArea.rows = 2;
+          commentArea.placeholder = 'Optional comments or rationale...';
+          commentArea.value = currentRating && currentRating.comment ? currentRating.comment : '';
+          commentArea.addEventListener('input', function () {
+            statusSpan.textContent = 'Unsaved — press Save (Ctrl+Enter)';
+            statusSpan.className = 'save-status';
+          });
+          commentRow.appendChild(commentArea);
+
+          ratingPanel.appendChild(commentRow);
+
+          // Save row
+          const saveRow = document.createElement('div');
+          saveRow.className = 'save-row';
+
+          saveRow.appendChild(statusSpan);
+
+          const btnSave = document.createElement('button');
+          btnSave.type = 'button';
+          btnSave.className = 'btn btn-primary btn-sm';
+          btnSave.textContent = 'Save Rating';
+
+          const doSave = async function () {
+            if (cardEl._inFlight) return;
+            if (selectedScore === null) {
+              statusSpan.textContent = 'Please choose score (0, 1, or 2).';
+              statusSpan.className = 'save-status error';
+              return;
+            }
+
+            cardEl._inFlight = true;
+            btnSave.disabled = true;
+            statusSpan.textContent = 'Saving...';
+            statusSpan.className = 'save-status';
+
+            try {
+              const body = {
+                card_id: card.id,
+                score: parseInt(selectedScore, 10),
+                flags: Array.from(selectedFlags),
+                comment: commentArea.value.trim() || null
+              };
+
+              await apiCall('/v1/eval/ratings', {
+                method: 'POST',
+                body: JSON.stringify(body)
+              });
+
+              card.rating = {
+                score: body.score,
+                flags: body.flags,
+                comment: body.comment
+              };
+
+              statusSpan.textContent = 'Saved ✓';
+              statusSpan.className = 'save-status success';
+              updateCardsProgress();
+            } catch (err) {
+              statusSpan.textContent = 'Error: ' + err.message;
+              statusSpan.className = 'save-status error';
+            } finally {
+              cardEl._inFlight = false;
+              btnSave.disabled = false;
+            }
+          };
+
+          cardEl._saveRating = doSave;
+          btnSave.addEventListener('click', doSave);
+
+          saveRow.appendChild(btnSave);
+          ratingPanel.appendChild(saveRow);
+
+          cardEl.appendChild(ratingPanel);
+          cardsContainer.appendChild(cardEl);
+        });
+
+        if (cards.length > 0) {
+          focusCard(0);
+        }
+      }
+
+      function highlightFocusedCard() {
+        const cards = cardsContainer.querySelectorAll('.topic-card');
+        cards.forEach(function (c, idx) {
+          if (idx === focusedCardIdx) {
+            c.classList.add('is-focused');
+          } else {
+            c.classList.remove('is-focused');
+          }
+        });
+      }
+
+      function focusCard(idx) {
+        const cards = cardsContainer.querySelectorAll('.topic-card');
+        if (idx >= 0 && idx < cards.length) {
+          focusedCardIdx = idx;
+          highlightFocusedCard();
+          cards[idx].focus();
+          cards[idx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+
+      // --- Global Keyboard Shortcuts ---
+      window.addEventListener('keydown', function (e) {
+        if (e.repeat) return;
+
+        const activeEl = document.activeElement;
+        const activeTag = activeEl && activeEl.tagName;
+
+        // In cards view: allow Ctrl+Enter / Cmd+Enter even from within comment textarea to save card
+        if (currentView === 'cards' && e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.altKey) {
+          e.preventDefault();
+          const cardEl = (activeEl && activeEl.closest('.topic-card')) ||
+            (focusedCardIdx >= 0 ? cardsContainer.querySelectorAll('.topic-card')[focusedCardIdx] : null);
+          if (cardEl && typeof cardEl._saveRating === 'function') {
+            cardEl._saveRating();
+          }
+          return;
+        }
+
+        // Inside form controls: keep default behavior (e.g. plain Enter creates a newline in textarea)
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') {
+          return;
+        }
+
+        // Keep modifier bail-out for all other keys
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+        // Candidates view shortcuts
+        if (currentView === 'candidates') {
+          if (e.key === 'j') {
+            e.preventDefault();
+            const total = currentCandidates.length;
+            if (total > 0) {
+              const next = (focusedCandidateIdx + 1) % total;
+              focusCandidate(next);
+            }
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            const total = currentCandidates.length;
+            if (total > 0) {
+              const prev = (focusedCandidateIdx - 1 + total) % total;
+              focusCandidate(prev);
+            }
+          } else if (e.key === '1') {
+            e.preventDefault();
+            triggerFocusedCandidateDecision('top');
+          } else if (e.key === '2') {
+            e.preventDefault();
+            triggerFocusedCandidateDecision('not_top');
+          } else if (e.key === '3') {
+            e.preventDefault();
+            triggerFocusedCandidateDecision('noise');
+          }
+        }
+
+        // Cards view shortcuts
+        if (currentView === 'cards') {
+          if (e.key === 'j') {
+            e.preventDefault();
+            const total = currentCards.length;
+            if (total > 0) {
+              const next = (focusedCardIdx + 1) % total;
+              focusCard(next);
+            }
+          } else if (e.key === 'k') {
+            e.preventDefault();
+            const total = currentCards.length;
+            if (total > 0) {
+              const prev = (focusedCardIdx - 1 + total) % total;
+              focusCard(prev);
+            }
+          } else if (e.key === '0' || e.key === '1' || e.key === '2') {
+            e.preventDefault();
+            const scoreVal = parseInt(e.key, 10);
+            const cards = cardsContainer.querySelectorAll('.topic-card');
+            if (focusedCardIdx >= 0 && focusedCardIdx < cards.length) {
+              const cardEl = cards[focusedCardIdx];
+              if (typeof cardEl._setScore === 'function') {
+                cardEl._setScore(scoreVal, true);
+              }
+            }
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const cards = cardsContainer.querySelectorAll('.topic-card');
+            if (focusedCardIdx >= 0 && focusedCardIdx < cards.length) {
+              const cardEl = cards[focusedCardIdx];
+              if (typeof cardEl._saveRating === 'function') {
+                cardEl._saveRating();
+              }
+            }
+          }
+        }
+      });
+
+      function triggerFocusedCandidateDecision(decision) {
+        const rows = candidatesContainer.querySelectorAll('.candidate-row');
+        if (focusedCandidateIdx >= 0 && focusedCandidateIdx < rows.length) {
+          const row = rows[focusedCandidateIdx];
+          const btn = row.querySelector('.btn-decision[data-decision-key="' + decision + '"]');
+          if (btn) btn.click();
+        }
+      }
+
+      // Initial load
+      loadWindows();
+    })();
+  </script>
+</body>
+</html>

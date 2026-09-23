@@ -184,6 +184,8 @@ services:
       - LLM_KEEP_ALIVE_8K=24h
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
+      - RECAP_CARD_MAX_NEW_TOKENS=700
+      - RECAP_CARD_TEMPERATURE=0.2
       # Concurrency: sync with OLLAMA_NUM_PARALLEL in news-creator-backend
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
       # LLM context window size. Must match the num_ctx baked into the

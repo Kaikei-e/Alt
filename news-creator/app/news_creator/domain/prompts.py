@@ -328,3 +328,27 @@ Return ONLY the JSON object. Start with {{ and end with }}.
 <turn|>
 <|turn>model
 """)
+
+
+def wrap_gemma_prompt(
+    user_prompt: str,
+    system_prompt: str = "",
+) -> str:
+    """Wrap system prompt and user prompt in Gemma 4 turn tokens.
+
+    Format follows Gemma 4 wire specification (<|turn>system ... <turn|><|turn>user ... <turn|><|turn>model).
+    If system_prompt is empty, only the user and model turns are generated.
+    """
+    user = user_prompt.strip()
+    sys = system_prompt.strip()
+    if sys:
+        return (
+            "<|turn>system\n"
+            f"{sys}\n"
+            "<turn|>\n"
+            "<|turn>user\n"
+            f"{user}\n"
+            "<turn|>\n"
+            "<|turn>model\n"
+        )
+    return f"<|turn>user\n{user}\n<turn|>\n<|turn>model\n"

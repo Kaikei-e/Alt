@@ -252,6 +252,119 @@ fn duration_until(next: chrono::DateTime<Utc>, now: chrono::DateTime<Utc>) -> Du
     }
 }
 
+/// Trait abstracting cards pipeline execution for scheduled batch jobs.
+#[async_trait::async_trait]
+pub trait CardsJobRunner: Send + Sync {
+    async fn run_cards(
+        &self,
+        job_id: Uuid,
+        from: chrono::DateTime<Utc>,
+        to: chrono::DateTime<Utc>,
+    ) -> anyhow::Result<()>;
+}
+
+#[async_trait::async_trait]
+impl CardsJobRunner for crate::pipeline::cards::CardsPipeline {
+    async fn run_cards(
+        &self,
+        job_id: Uuid,
+        from: chrono::DateTime<Utc>,
+        to: chrono::DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        let params = crate::pipeline::cards::CardsParams::default();
+        self.run(job_id, from, to, &params)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        Ok(())
+    }
+}
+
+pub fn spawn_cards_batch_daemon(
+    runner: std::sync::Arc<dyn CardsJobRunner>,
+    hour: u32,
+    minute: u32,
+    shutdown: CancellationToken,
+) -> JoinHandle<()> {
+    let tz = FixedOffset::east_opt(0).expect("valid UTC offset");
+    let cadence =
+        DailyCadence::new(tz, hour, minute).unwrap_or_else(|e| panic!("cards batch cadence: {e}"));
+    CardsBatchDaemon::new(runner, cadence, shutdown).spawn()
+}
+
+struct CardsBatchDaemon {
+    runner: std::sync::Arc<dyn CardsJobRunner>,
+    cadence: DailyCadence,
+    shutdown: CancellationToken,
+}
+
+impl CardsBatchDaemon {
+    fn new(
+        runner: std::sync::Arc<dyn CardsJobRunner>,
+        cadence: DailyCadence,
+        shutdown: CancellationToken,
+    ) -> Self {
+        Self {
+            runner,
+            cadence,
+            shutdown,
+        }
+    }
+
+    fn spawn(self) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            self.run().await;
+        })
+    }
+
+    pub(crate) async fn run_once(runner: &dyn CardsJobRunner) -> anyhow::Result<Uuid> {
+        let kick_time = Utc::now();
+        let to = kick_time;
+        let from = to - chrono::Duration::days(3);
+        let job_id = Uuid::new_v4();
+
+        info!(
+            %job_id,
+            from = %from.to_rfc3339(),
+            to = %to.to_rfc3339(),
+            "starting automatic cards batch"
+        );
+
+        runner.run_cards(job_id, from, to).await?;
+        Ok(job_id)
+    }
+
+    async fn run(self) {
+        let state = self;
+        loop {
+            if state.shutdown.is_cancelled() {
+                info!("shutdown requested, stopping cards batch daemon");
+                break;
+            }
+
+            let now = Utc::now();
+            let next = state.cadence.next_run_from(now);
+            let wait = duration_until(next, now);
+            info!(
+                next_run_utc = %next.to_rfc3339(),
+                wait_seconds = wait.as_secs(),
+                "scheduled automatic cards recap batch"
+            );
+            tokio::select! {
+                () = sleep(wait) => {}
+                () = state.shutdown.cancelled() => {
+                    info!("shutdown requested during wait, stopping cards batch daemon");
+                    break;
+                }
+            }
+
+            match Self::run_once(state.runner.as_ref()).await {
+                Ok(job_id) => info!(%job_id, "automatic cards batch completed"),
+                Err(err) => error!(error = %err, "automatic cards batch failed"),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +400,74 @@ mod tests {
 
         assert_eq!(ctx.user_id(), None);
         assert_eq!(ctx.tenant_id(), None);
+    }
+
+    type RecordedRun = (Uuid, chrono::DateTime<Utc>, chrono::DateTime<Utc>);
+
+    #[derive(Default)]
+    struct RecordingCardsRunner {
+        runs: std::sync::Mutex<Vec<RecordedRun>>,
+    }
+
+    #[async_trait::async_trait]
+    impl CardsJobRunner for RecordingCardsRunner {
+        async fn run_cards(
+            &self,
+            job_id: Uuid,
+            from: chrono::DateTime<Utc>,
+            to: chrono::DateTime<Utc>,
+        ) -> anyhow::Result<()> {
+            self.runs.lock().unwrap().push((job_id, from, to));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_spawn_cards_batch_daemon_shuts_down() {
+        let runner = std::sync::Arc::new(RecordingCardsRunner::default());
+        let shutdown = CancellationToken::new();
+        shutdown.cancel();
+        let handle = spawn_cards_batch_daemon(runner, 17, 30, shutdown);
+        handle.await.expect("task completes on cancellation");
+    }
+
+    #[tokio::test]
+    async fn test_cards_batch_daemon_window_is_three_days() {
+        let runner = RecordingCardsRunner::default();
+        let before_kick = Utc::now();
+        let job_id = CardsBatchDaemon::run_once(&runner)
+            .await
+            .expect("run_once succeeds");
+        let after_kick = Utc::now();
+
+        let runs = runner.runs.lock().unwrap();
+        assert_eq!(runs.len(), 1);
+        let (run_job_id, from, to) = runs[0];
+        assert_eq!(run_job_id, job_id);
+
+        assert!(
+            to >= before_kick && to <= after_kick,
+            "to must be the kick time"
+        );
+        let diff = to - from;
+        assert_eq!(
+            diff,
+            chrono::Duration::days(3),
+            "from must be exactly to - 3 days"
+        );
+    }
+
+    #[test]
+    fn test_cards_batch_cadence_utc_time() {
+        let tz = FixedOffset::east_opt(0).unwrap();
+        let cadence = DailyCadence::new(tz, 17, 30).expect("valid cadence");
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-22T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let next = cadence.next_run_from(now);
+        let expected = chrono::DateTime::parse_from_rfc3339("2026-09-22T17:30:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(next, expected);
     }
 }

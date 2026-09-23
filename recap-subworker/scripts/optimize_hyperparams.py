@@ -102,12 +102,14 @@ def create_objective(
         )
 
         # Create pipeline
-        pipeline = Pipeline([
-            ("tfidf", tfidf),
-            ("svd", svd),
-            ("scaler", StandardScaler()),
-            ("clf", clf),
-        ])
+        pipeline = Pipeline(
+            [
+                ("tfidf", tfidf),
+                ("svd", svd),
+                ("scaler", StandardScaler()),
+                ("clf", clf),
+            ]
+        )
 
         # Cross-validation
         cv = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
@@ -241,12 +243,14 @@ def validate_train_test_gap(
         n_jobs=-1,
     )
 
-    pipeline = Pipeline([
-        ("tfidf", tfidf),
-        ("svd", svd),
-        ("scaler", StandardScaler()),
-        ("clf", clf),
-    ])
+    pipeline = Pipeline(
+        [
+            ("tfidf", tfidf),
+            ("svd", svd),
+            ("scaler", StandardScaler()),
+            ("clf", clf),
+        ]
+    )
 
     cv = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
 

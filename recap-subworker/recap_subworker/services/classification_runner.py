@@ -274,4 +274,3 @@ class ClassificationRunner:
             self._shutdown_pool_internal()
 
         logger.info("ClassificationRunner shutdown complete")
-

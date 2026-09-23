@@ -89,7 +89,7 @@ def _load_sidecar_metadata(model_path: Path) -> ClassifierMetadata | None:
     meta_path = model_path.with_suffix(".meta.json")
     try:
         payload_text = meta_path.read_text()
-    except (FileNotFoundError, IsADirectoryError, PermissionError):
+    except FileNotFoundError, IsADirectoryError, PermissionError:
         logger.warning(
             "classifier sidecar metadata missing",
             model_path=str(model_path),
@@ -504,7 +504,7 @@ class GenreClassifierService:
                     final_candidates = candidates[:top_k]
                     below_threshold = False
                 else:
-                    # Improved fallback: Use highest scoring genre instead of 'other'
+                    # Fallback: Use highest scoring genre (argmax) when no candidate passes threshold
                     idx = int(np.argmax(probs))
                     top_genre = classes[idx]
                     confidence = float(probs[idx])
@@ -542,7 +542,7 @@ class GenreClassifierService:
                     confidence = top_match["score"]
                     below_threshold = False
                 else:
-                    # Improved fallback: Use highest scoring genre instead of 'other'
+                    # Fallback: Use highest scoring genre (argmax) when no candidate passes threshold
                     # This improves recall while maintaining interpretability
                     idx = int(np.argmax(probs))
                     top_genre = classes[idx]

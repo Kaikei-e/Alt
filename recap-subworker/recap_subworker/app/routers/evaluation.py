@@ -25,7 +25,8 @@ class EvaluateRequest(BaseModel):
     """評価リクエスト。"""
 
     golden_data_path: str | None = Field(
-        None, description="Golden dataset JSONファイルのパス（デフォルト: /app/data/golden_classification.json）"
+        None,
+        description="Golden dataset JSONファイルのパス（デフォルト: /app/data/golden_classification.json）",
     )
     weights_path: str | None = Field(None, description="重みファイルのパス（オプション）")
     use_bootstrap: bool = Field(True, description="Bootstrap法を使用するか")
@@ -234,10 +235,12 @@ async def evaluate_genres(
                             "recall": m["recall"],
                             "f1": m["f1"],
                             "support": m.get("support", m["tp"] + m["fn"]),
-                            "threshold": m.get("threshold", 0.5) # Assuming threshold might be in metrics or default
+                            "threshold": m.get(
+                                "threshold", 0.5
+                            ),  # Assuming threshold might be in metrics or default
                         }
                         for genre, m in results["per_genre_metrics"].items()
-                    }
+                    },
                 }
 
                 # Provide a run_id or job_id if possible.
@@ -250,7 +253,7 @@ async def evaluate_genres(
                 await dao.insert_system_metrics(
                     metric_type="classification",
                     metrics=system_metrics,
-                    job_id=run_id, # reusing run_id as the ID for this record
+                    job_id=run_id,  # reusing run_id as the ID for this record
                 )
             except Exception as e:
                 logger.warning("Failed to save system metrics for dashboard", error=str(e))
@@ -416,4 +419,3 @@ async def evaluate_summary(
         consistency=results.consistency,
         faithfulness=results.faithfulness,
     )
-

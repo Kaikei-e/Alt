@@ -37,8 +37,9 @@ GENRE_DESCRIPTIONS = {
     "ai_research": "AI research papers, algorithms, theoretical AI",
     "ai_policy": "AI regulation, ethics, compliance, safety",
     "games_puzzles": "Video games, gaming industry, puzzles, esports",
-    "other": "Miscellaneous, uncategorized content"
+    "other": "Miscellaneous, uncategorized content",
 }
+
 
 class CoarseClassifier:
     """

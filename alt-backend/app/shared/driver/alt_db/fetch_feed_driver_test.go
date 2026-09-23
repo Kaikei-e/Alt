@@ -122,7 +122,7 @@ func TestAltDBRepository_GetAllReadFeedIDs_QueriesWithoutFeedIDArray(t *testing.
 	feedID1 := uuid.New()
 	feedID2 := uuid.New()
 
-	mock.ExpectQuery("SELECT feed_id FROM read_status").
+	mock.ExpectQuery(`(?s)SELECT feed_id FROM read_status\s+WHERE user_id = \$1 AND is_read = TRUE\s+ORDER BY read_at DESC\s+LIMIT \$2`).
 		WithArgs(userID, 10000).
 		WillReturnRows(
 			pgxmock.NewRows([]string{"feed_id"}).
@@ -130,11 +130,39 @@ func TestAltDBRepository_GetAllReadFeedIDs_QueriesWithoutFeedIDArray(t *testing.
 				AddRow(feedID2),
 		)
 
-	got, err := repo.GetAllReadFeedIDs(context.Background(), userID)
+	got, err := repo.GetAllReadFeedIDs(context.Background(), userID, nil)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	require.True(t, got[feedID1])
 	require.True(t, got[feedID2])
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAltDBRepository_GetAllReadFeedIDs_WithSince(t *testing.T) {
+	var buf bytes.Buffer
+	testLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger.Logger = testLogger
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &FeedRepository{pool: mock}
+	userID := uuid.New()
+	since := time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC)
+	feedID1 := uuid.New()
+
+	mock.ExpectQuery(`(?s)SELECT feed_id FROM read_status\s+WHERE user_id = \$1 AND is_read = TRUE AND read_at >= \(\$2::timestamptz AT TIME ZONE 'UTC'\)\s+ORDER BY read_at DESC\s+LIMIT \$3`).
+		WithArgs(userID, since, 10000).
+		WillReturnRows(
+			pgxmock.NewRows([]string{"feed_id"}).
+				AddRow(feedID1),
+		)
+
+	got, err := repo.GetAllReadFeedIDs(context.Background(), userID, &since)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.True(t, got[feedID1])
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -158,9 +158,7 @@ class AdminJobService:
                 min_support=self._settings.graph_build_min_support,
             )
             windows = [
-                int(w.strip())
-                for w in self._settings.graph_build_windows.split(",")
-                if w.strip()
+                int(w.strip()) for w in self._settings.graph_build_windows.split(",") if w.strip()
             ]
             results: dict[str, int] = {}
             for window_days in windows:
@@ -296,4 +294,3 @@ class AdminJobService:
 
 
 __all__ = ["AdminJobService", "ConcurrentAdminJobError"]
-

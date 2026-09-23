@@ -35,7 +35,7 @@ def test_lifespan_shutdown_disposes_database_engine(app_factory) -> None:
 
     calls: list[str] = []
 
-    async def _fake_shutdown(self) -> None:  # noqa: ANN001
+    async def _fake_shutdown(self) -> None:
         calls.append("shutdown")
 
     with patch.object(ServiceContainer, "shutdown", _fake_shutdown):

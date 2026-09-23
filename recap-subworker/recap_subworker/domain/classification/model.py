@@ -30,7 +30,6 @@ DEFAULT_WEIGHTS_JSON = """{
 }"""
 
 
-
 class GenreClassifier:
     """ジャンル分類器。"""
 
@@ -74,15 +73,11 @@ class GenreClassifier:
 
         self.genres = weights_data["genres"]
         self.feature_dim = weights_data["feature_dim"]
-        self.feature_vocab = (
-            weights_data.get("feature_vocab") or FALLBACK_VOCAB.copy()
-        )
+        self.feature_vocab = weights_data.get("feature_vocab") or FALLBACK_VOCAB.copy()
         self.feature_idf = weights_data.get("feature_idf") or FALLBACK_IDF.copy()
         self.bm25_k1 = weights_data.get("bm25_k1") or FALLBACK_BM25_K1
         self.bm25_b = weights_data.get("bm25_b") or FALLBACK_BM25_B
-        self.average_doc_len = (
-            weights_data.get("average_doc_len") or FALLBACK_AVG_DOC_LEN
-        )
+        self.average_doc_len = weights_data.get("average_doc_len") or FALLBACK_AVG_DOC_LEN
 
         self.tfidf_weight = np.array(weights_data["tfidf_weights"])
         self.embedding_weight = np.array(weights_data["embedding_weights"])
@@ -129,13 +124,9 @@ class GenreClassifier:
             raise ValueError(
                 f"bias length mismatch: expected {len(weights['genres'])} values (one per genre), got {len(weights['bias'])} values"
             )
-        if weights.get("feature_vocab") and len(weights["feature_vocab"]) != weights[
-            "feature_dim"
-        ]:
+        if weights.get("feature_vocab") and len(weights["feature_vocab"]) != weights["feature_dim"]:
             raise ValueError("feature vocab length mismatch")
-        if weights.get("feature_idf") and len(weights["feature_idf"]) != weights[
-            "feature_dim"
-        ]:
+        if weights.get("feature_idf") and len(weights["feature_idf"]) != weights["feature_dim"]:
             raise ValueError("feature idf length mismatch")
 
     def predict(self, features: FeatureVector) -> list[tuple[str, float]]:
@@ -171,4 +162,3 @@ class GenreClassifier:
         # スコア降順でソート
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores
-

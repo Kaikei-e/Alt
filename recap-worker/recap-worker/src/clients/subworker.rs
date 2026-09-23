@@ -3,6 +3,7 @@ use reqwest::{Client, Url};
 use std::time::Duration;
 
 mod admin;
+pub(crate) mod cards;
 mod classification;
 mod clustering;
 pub(crate) mod evaluation;

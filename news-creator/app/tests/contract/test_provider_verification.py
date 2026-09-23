@@ -204,6 +204,59 @@ def _create_provider_app() -> FastAPI:
         ]
         return {"responses": responses, "errors": []}
 
+    # --- Mock recap card handler ---
+    @app.post("/v1/cards/generate")
+    async def _stub_card_generate(payload: dict[str, Any]) -> Any:
+        from fastapi.responses import JSONResponse
+
+        if provider_state["mode"] == "queue_full":
+            return JSONResponse(
+                status_code=429,
+                content={"error": "queue full"},
+                headers={"Retry-After": "30"},
+            )
+        if provider_state["mode"] == "card_generation_rejected":
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "reason": "parse_failed",
+                    "attempts": 2,
+                    "raw_text": "【見出し】不正なフォーマット",
+                    "detail": "missing_tag",
+                },
+                headers={"X-Card-Rejection": "1"},
+            )
+        return {
+            "card": {
+                "headline_ja": "テストヘッドライン",
+                "what_ja": [
+                    {
+                        "text": "テストの出来事が発生した。[1]",
+                        "refs": [1],
+                    },
+                    {
+                        "text": "追加の出来事が発生した。[1]",
+                        "refs": [1],
+                    },
+                ],
+                "why_ja": {
+                    "text": "テストの影響が生じる。[1]",
+                    "refs": [1],
+                },
+                "used_refs": [1],
+            },
+            "generation": {
+                "model": "gemma4-e4b-12k",
+                "prompt_version": payload.get("prompt_version", "recap_card.v1"),
+                "cache_hit": False,
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "ms": 200,
+                "raw_text": "【見出し】\nテストヘッドライン\n【何が起きた】\nテストの出来事が発生した。[1]\n追加の出来事が発生した。[1]\n【なぜ重要】\nテストの影響が生じる。[1]\n【出典】\n[1]",
+            },
+            "ja_ratio": 0.85,
+        }
+
     # --- Mock plan-query handler ---
     import news_creator.handler.plan_query_handler as plan_query_mod
 
@@ -242,10 +295,15 @@ def _create_provider_app() -> FastAPI:
     async def _set_queue_full(_params: dict[str, Any]) -> None:
         provider_state["mode"] = "queue_full"
 
+    async def _set_card_generation_rejected(_params: dict[str, Any]) -> None:
+        provider_state["mode"] = "card_generation_rejected"
+
     registry: StateRegistry = {
         "the LLM model is loaded and ready": _set_default,
         "the LLM model is loaded and ready for chat": _set_default,
         "the LLM model is loaded and ready for query planning": _set_default,
+        "the LLM model is loaded and ready for card generation": _set_default,
+        "card generation fails validation and is rejected": _set_card_generation_rejected,
         "the LLM queue is full": _set_queue_full,
         # acolyte-orchestrator's provider state for /api/v1/summarize replay.
         "news-creator is ready": _set_default,

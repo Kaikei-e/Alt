@@ -34,15 +34,15 @@ logger = logging.getLogger(__name__)
 # startups_innovation, travel_places
 
 LIVEDOOR_MAP = {
-    "dokujo-tsushin": "home_living", # Often relationship/lifestyle
+    "dokujo-tsushin": "home_living",  # Often relationship/lifestyle
     "it-life-hack": "consumer_tech",
     "kaden-channel": "consumer_products",
-    "livedoor-homme": "culture_arts", # Men's lifestyle
+    "livedoor-homme": "culture_arts",  # Men's lifestyle
     "movie-enter": "film_tv",
-    "peachy": "home_living", # Lifestyle
-    "smax": "consumer_tech", # Mobile/Gadgets
+    "peachy": "home_living",  # Lifestyle
+    "smax": "consumer_tech",  # Mobile/Gadgets
     "sports-watch": "sports",
-    "topic-news": "society_demographics" # Soft news/Social processing
+    "topic-news": "society_demographics",  # Soft news/Social processing
 }
 
 import tarfile
@@ -82,7 +82,7 @@ def import_livedoor(output_path: Path):
                 if len(parts) < 3:
                     continue
 
-                cat_name = parts[1] # e.g. dokujo-tsushin
+                cat_name = parts[1]  # e.g. dokujo-tsushin
 
                 my_genre = LIVEDOOR_MAP.get(cat_name)
                 if not my_genre:
@@ -106,16 +106,18 @@ def import_livedoor(output_path: Path):
                             title_line = lines[2]
                             body = "\n".join(lines[3:])
 
-                            articles.append({
-                                "source": "livedoor",
-                                "lang": "ja",
-                                "original_category": cat_name,
-                                "label": my_genre,
-                                "title": title_line,
-                                "content": body,
-                                "url": url_line,
-                                "published_at": time_line
-                            })
+                            articles.append(
+                                {
+                                    "source": "livedoor",
+                                    "lang": "ja",
+                                    "original_category": cat_name,
+                                    "label": my_genre,
+                                    "title": title_line,
+                                    "content": body,
+                                    "url": url_line,
+                                    "published_at": time_line,
+                                }
+                            )
                             mapped += 1
                     except Exception as e:
                         logger.warning(f"Error reading file {member.name}: {e}")
@@ -130,6 +132,7 @@ def import_livedoor(output_path: Path):
     with open(output_path, "a", encoding="utf-8") as f:
         for a in articles:
             f.write(json.dumps(a, ensure_ascii=False) + "\n")
+
 
 def import_ag_news(output_path: Path):
     """Import AG News dataset (English news classification)."""
@@ -150,14 +153,18 @@ def import_ag_news(output_path: Path):
         for item in dataset:
             label_id = item["label"]
             mapped_genre = AG_NEWS_MAP.get(label_id, "society_demographics")
-            articles.append({
-                "source": "ag_news",
-                "lang": "en",
-                "original_label": label_id,
-                "label": mapped_genre,
-                "title": item.get("text", "").split("\n")[0] if "\n" in item.get("text", "") else "",
-                "content": item.get("text", ""),
-            })
+            articles.append(
+                {
+                    "source": "ag_news",
+                    "lang": "en",
+                    "original_label": label_id,
+                    "label": mapped_genre,
+                    "title": item.get("text", "").split("\n")[0]
+                    if "\n" in item.get("text", "")
+                    else "",
+                    "content": item.get("text", ""),
+                }
+            )
 
         logger.info(f"AG News: Mapped {len(articles)} articles")
 
@@ -168,9 +175,12 @@ def import_ag_news(output_path: Path):
     except Exception as e:
         logger.error(f"Failed to import AG News: {e}")
 
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--include_ag_news", action="store_true", help="Include AG News English dataset")
+    parser.add_argument(
+        "--include_ag_news", action="store_true", help="Include AG News English dataset"
+    )
     args = parser.parse_args()
 
     output_path = Path("recap_subworker/learning_machine/data/silver_external.jsonl")
@@ -186,6 +196,7 @@ def main():
         import_ag_news(output_path)
 
     logger.info(f"Saved external data to {output_path}")
+
 
 if __name__ == "__main__":
     main()

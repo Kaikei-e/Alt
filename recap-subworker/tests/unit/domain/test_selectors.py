@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from recap_subworker.domain.selectors import (
     _prune_duplicates_brute,

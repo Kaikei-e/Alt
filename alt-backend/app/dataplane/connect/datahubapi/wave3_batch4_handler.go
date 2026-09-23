@@ -155,7 +155,17 @@ func (h *Handler) GetAllReadFeedIDs(ctx context.Context, req *connect.Request[da
 		return nil, err
 	}
 
-	read, err := h.readState.AllReadFeedIDs(ctx, userID)
+	var since *time.Time
+	if req.Msg.Since != nil {
+		parsed, err := time.Parse(time.RFC3339, *req.Msg.Since)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("since must be RFC3339: %w", err))
+		}
+		utc := parsed.UTC()
+		since = &utc
+	}
+
+	read, err := h.readState.AllReadFeedIDs(ctx, userID, since)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "GetAllReadFeedIDs failed", "error", err, "user_id", userID)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get all read feed ids"))

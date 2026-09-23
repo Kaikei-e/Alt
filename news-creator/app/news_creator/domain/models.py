@@ -1,7 +1,7 @@
 """Domain models for News Creator service."""
 
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
@@ -519,3 +519,142 @@ class MorningLetterResponse(StrictFrozenModel):
     edition_timezone: str
     content: MorningLetterContent
     metadata: RecapSummaryMetadata
+
+
+# ============================================================================
+# Card Generation Models
+# ============================================================================
+
+Card422Reason = Literal["parse_failed", "empty_output", "unknown_ref", "language"]
+CardParseDetail = Literal[
+    "missing_tag",
+    "sources_tag",
+    "headline_too_long",
+    "sentence_count",
+    "missing_citation",
+    "unknown_citation_format",
+    "why_format",
+]
+
+
+class CardItemInput(StrictFrozenModel):
+    """Input item for card generation."""
+
+    n: int = Field(ge=1, description="Sequential reference index (1..6)")
+    feed_id: ApiUUID = Field(description="Feed ID")
+    title: str = Field(min_length=1, description="Article title")
+    host: str = Field(min_length=1, description="Host domain name")
+    url: str = Field(min_length=1, description="Article URL")
+    pub_date: str | None = Field(
+        default=None, description="Publication date RFC3339 or null"
+    )
+    lede: str = Field(default="", description="Article lead paragraph")
+
+
+class CardGenerateRequest(StrictFrozenModel):
+    """Request model for card generation (POST /v1/cards/generate)."""
+
+    job_id: ApiUUID = Field(description="Job ID")
+    candidate_id: ApiUUID = Field(description="Candidate ID")
+    prompt_version: str = Field(
+        default="recap_card.v1", description="Prompt template version"
+    )
+    items: list[CardItemInput] = Field(
+        min_length=1, max_length=6, description="1..6 input items"
+    )
+    revision_note: str | None = Field(
+        default=None, description="Optional revision note for regeneration"
+    )
+
+
+class CardSentence(StrictFrozenModel):
+    """Individual sentence with associated reference citations."""
+
+    text: str = Field(min_length=1, description="Sentence text ending with citations")
+    refs: list[int] = Field(description="Citation reference indices (e.g., [1])")
+
+
+class CardContent(StrictFrozenModel):
+    """Structured topic card content."""
+
+    headline_ja: str = Field(
+        min_length=1, max_length=60, description="Japanese headline <= 60 chars"
+    )
+    what_ja: list[CardSentence] = Field(
+        min_length=2,
+        max_length=3,
+        description="2..3 sentences describing what happened",
+    )
+    why_ja: CardSentence | None = Field(
+        default=None,
+        description="Exactly 1 sentence describing why it matters, or null",
+    )
+    used_refs: list[int] = Field(description="Unique reference indices used in card")
+
+
+class CardGenerationMetadata(StrictFrozenModel):
+    """Execution metadata for card generation."""
+
+    model: str
+    prompt_version: str
+    cache_hit: bool
+    prompt_tokens: int
+    completion_tokens: int
+    ms: int
+    raw_text: str
+
+
+class CardGenerateResponse(StrictFrozenModel):
+    """Response model for card generation (200 OK)."""
+
+    card: CardContent
+    generation: CardGenerationMetadata
+    ja_ratio: float = Field(description="Measured Japanese character ratio (G1 gate)")
+
+
+class CardGenerate422Response(StrictFrozenModel):
+    """Error response model for rejected card generation (422 Unprocessable Entity)."""
+
+    reason: Card422Reason
+    attempts: int
+    raw_text: str
+    detail: CardParseDetail | None = None
+    measured_ratio: float | None = None
+    character_counts: dict[str, int] | None = None
+
+
+class CardGenerationRejectedError(Exception):
+    """Exception raised when card generation fails all validation/parsing attempts."""
+
+    def __init__(
+        self,
+        reason: Card422Reason,
+        attempts: int,
+        raw_text: str,
+        detail: CardParseDetail | None = None,
+        measured_ratio: float | None = None,
+        character_counts: dict[str, int] | None = None,
+    ):
+        super().__init__(
+            f"Card generation rejected: reason={reason}, attempts={attempts}"
+        )
+        self.reason = reason
+        self.attempts = attempts
+        self.raw_text = raw_text
+        self.detail = detail
+        self.measured_ratio = measured_ratio
+        self.character_counts = character_counts
+
+    def to_response_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "reason": self.reason,
+            "attempts": self.attempts,
+            "raw_text": self.raw_text,
+            "detail": self.detail if self.reason == "parse_failed" else None,
+        }
+        if self.reason == "language":
+            if self.measured_ratio is not None:
+                data["measured_ratio"] = self.measured_ratio
+            if self.character_counts is not None:
+                data["character_counts"] = self.character_counts
+        return data

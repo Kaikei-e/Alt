@@ -592,6 +592,45 @@ can-i-deploy が赤くなる。
 consumer を変える。consumer 単独の「契約の書き直し」は、たとえ実装に近づける
 方向の修正であっても安全ではない。
 
+### 独自 gate leg を持たない pacticipant (alt-data-hub) による deployment pointer 固着
+
+**症状**
+
+後続のリリースが gate で次のようなメッセージを出して落ちる:
+
+```
+There is no verified pact between version <new-sha> of <consumer>
+and the version of <provider> currently in production (<stale-sha>)
+```
+
+注意すべきは、このメッセージが「verification が失敗した（failed）」ではなく「verified pact が存在しない（**no verified pact**）」と述べている点である。これは失敗（failure）ではなく**未知（unknown）**であり、`can-i-deploy` は unknown を not deployable として扱う。この差異が、本トラップを section 9（古い **failure** verdict が残っているケース）や section 9.5（`--application-instance` 未指定により deployment 行が固着したケース）と識別する決定的な違いである。
+
+**原因**
+
+`alt-data-hub` は Broker の pacticipant であるが、**独自の gate leg を持たない**。[[000954]] の分割により、その契約検証は同一 SHA における `alt-backend` の pact stage から publish される構成になっている。一方、デプロイ側パイプライン（deploy stage）は、その SHA で gate artifact を生成した pacticipant に対してのみ deployment を記録する。`alt-data-hub` 自体は gate artifact を生成しないため、**`alt-data-hub` 単独をロールするリリースでは、Broker 上の production pointer が決して進まない**。コンテナ実体は新しいイメージへ更新されるが、Broker は永久に古いバージョンを指し続ける。
+
+さらに、リリース対象として明示的に指定しなくても、PKI enrollment parent を網羅するようロール対象（roll set）が自動展開されるため、`alt-data-hub` が名前を挙げられずにロールされることがある。その結果、コンテナと Broker の乖離が静かに進行する。サービス自体は新ビルドで動いているのに、Broker は旧バージョンを返答し続ける状態に陥る。
+
+**復旧**
+
+まず稼働中のコンテナのイメージタグを確認し、コンテナが実際にリリース対象のビルドで動いていることを確認した上で、手動で deployment を記録する:
+
+```bash
+export PACT_BROKER_USERNAME=pact
+export PACT_BROKER_PASSWORD=$(cat secrets/pact_broker_basic_auth_password.txt)
+pact-broker-cli record-deployment \
+  --pacticipant alt-data-hub \
+  --version <release-sha> \
+  --environment production \
+  --broker-base-url http://localhost:9292
+```
+
+明確にしておくべき点として、**これは force-override ではない**。すでに現実に起きている事実を Broker に記録する操作であるため、section 9 の Secondary 経路と異なり、override audit trail への証跡記録は不要である。ただし、**事前のイメージタグ確認は必須**である。まだ起きていないデプロイを Broker に記録してしまうことは、まさに本節（section 9.6）が「やってはいけないこと」として警告している重大な失敗モードである。
+
+**予防**
+
+リリース完了後は、ポインタが進むべき pacticipant と実際に稼働しているコンテナを照合・確認する習慣をつけることが望ましい。独自の gate leg を持たない pacticipant は自身で deployment を記録することが決してないため、その検証結果を publish する pacticipant と同一の dispatch でロールするか、あるいはロール後に手動で `record-deployment` を実行する必要がある。
+
 ### 実例 (2026-09-21)
 
 1 リリースで 4 つの provider の inbound 認証 / テナント分離を同時に強化した結果、

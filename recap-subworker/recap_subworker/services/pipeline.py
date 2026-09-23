@@ -79,7 +79,7 @@ def normalize_text(text: str, enable_sudachi: bool = False) -> str:
     # Step 2: Replace URLs and emails with placeholders
     normalized = _URL_PATTERN.sub(
         lambda m: "<URL>" if "://" in m.group(0) or m.group(0).startswith("www.") else "<EMAIL>",
-        normalized
+        normalized,
     )
 
     # Step 3: Reduce excessive punctuation repetition (e.g., "。。。" -> "。")
@@ -93,6 +93,7 @@ def normalize_text(text: str, enable_sudachi: bool = False) -> str:
     if enable_sudachi:
         try:
             from .classifier import SudachiTokenizer
+
             tokenizer = SudachiTokenizer(mode="C")
             # Tokenize and rejoin with spaces (surface form normalization)
             tokens = tokenizer.tokenize(normalized)
@@ -120,7 +121,11 @@ class EvidencePipeline:
     """Top-level orchestrator for the recap evidence workflow."""
 
     def __init__(
-        self, *, settings: Settings, embedder: EmbedderPort, process_pool: ProcessPoolExecutor | None
+        self,
+        *,
+        settings: Settings,
+        embedder: EmbedderPort,
+        process_pool: ProcessPoolExecutor | None,
     ) -> None:
         self.settings = settings
         self.embedder = embedder
@@ -216,7 +221,7 @@ class EvidencePipeline:
                 # Small: No dim reduction (implicit if n_neighbors=None?), min_cluster_size 3-5
                 # The prompt said "No dim reduction". optimize_clustering with umap_n_neighbors_range=None uses default [None] -> No UMAP.
                 mcs_range = [3, 4, 5]
-                ms_range = [1, 2, 3] # Heuristic
+                ms_range = [1, 2, 3]  # Heuristic
                 umap_range = None
             elif count < 50:
                 # Medium: n_neighbors 15-30, min_cluster_size 5-10
@@ -333,11 +338,11 @@ class EvidencePipeline:
 
         # Perform Ward hierarchical clustering
         # Ward method minimizes within-cluster variance increase
-        Z = linkage(centroid_matrix, method='ward')
+        Z = linkage(centroid_matrix, method="ward")
 
         # Cut tree to get max_clusters clusters
         # fcluster returns cluster assignments (1-indexed)
-        cluster_assignments = fcluster(Z, t=max_clusters, criterion='maxclust')
+        cluster_assignments = fcluster(Z, t=max_clusters, criterion="maxclust")
 
         # Map cluster assignments back to original labels
         # Create mapping: original_label -> new_label
@@ -360,7 +365,9 @@ class EvidencePipeline:
         batches = math.ceil(len(examples) / max(1, self.settings.batch_size))
         processed = self.embedder.warmup(examples)
         return WarmupResponse(
-            warmed=processed > 0, batches=batches, backend=self.embedder.config.backend  # pyrefly: ignore[missing-attribute]
+            warmed=processed > 0,
+            batches=batches,
+            backend=self.embedder.config.backend,  # pyrefly: ignore[missing-attribute]
         )
 
     def _extract_sentences(self, request: EvidenceRequest) -> list[SentenceRecord]:
@@ -421,8 +428,7 @@ class EvidencePipeline:
     def _split_paragraph(self, paragraph: str) -> list[str]:
         # Apply text normalization before sentence splitting
         normalized = normalize_text(
-            paragraph,
-            enable_sudachi=self.settings.enable_sudachi_preprocessing
+            paragraph, enable_sudachi=self.settings.enable_sudachi_preprocessing
         )
         stripped = normalized.strip()
         if not stripped:
@@ -578,7 +584,9 @@ class EvidencePipeline:
         budget_tokens = 0
         used_articles: set[str] = set()
         all_rep_indices: list[int] = []
-        for cluster_offset, (cluster_id, indices) in enumerate(zip(unique_labels, cluster_indices, strict=False)):
+        for cluster_offset, (cluster_id, indices) in enumerate(
+            zip(unique_labels, cluster_indices, strict=False)
+        ):
             cluster_embeddings = embeddings[indices]
 
             # Calculate avg_sim first, then derive adaptive lambda
@@ -667,7 +675,7 @@ class EvidencePipeline:
         sentences: Sequence[SentenceRecord],
         embeddings: np.ndarray,
         rep_indices: list[int],
-        mmr_lambda: float
+        mmr_lambda: float,
     ) -> list[RepresentativeSentence]:
         """Select top sentences across all clusters for a genre-level summary."""
         if not rep_indices:
@@ -681,9 +689,7 @@ class EvidencePipeline:
 
         # Apply MMR on the pool of representatives with adaptive lambda
         selected_local_indices = selectors.mmr_select(
-            rep_embeddings,
-            k=self.settings.max_genre_sentences,
-            lambda_param=lambda_genre
+            rep_embeddings, k=self.settings.max_genre_sentences, lambda_param=lambda_genre
         )
 
         highlights: list[RepresentativeSentence] = []
@@ -697,7 +703,7 @@ class EvidencePipeline:
                 RepresentativeSentence(
                     text=sentence.text,
                     lang=sentence.lang,
-                    embedding_ref=None, # Not inside a cluster
+                    embedding_ref=None,  # Not inside a cluster
                     reasons=["genre-highlight", "mmr-diversity"],
                     source=RepresentativeSource(
                         source_id=sentence.article_id,
@@ -707,7 +713,6 @@ class EvidencePipeline:
                 )
             )
         return highlights
-
 
     def _dedup_preserve_order(self, values: list[str]) -> list[str]:
         seen: set[str] = set()

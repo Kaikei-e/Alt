@@ -40,6 +40,7 @@ func (h *Handler) getRecapUsecase() RecapUsecaseInterface {
 type RecapUsecaseInterface interface {
 	GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error)
+	GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error)
 	GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error)
 	SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error)
 	SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error)
@@ -175,6 +176,88 @@ func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayReca
 		TotalArticles: safeconv.Int32(recap.TotalArticles),
 		Genres:        genres,
 	}
+}
+
+// GetThreeDayRecapCards returns 3-day topic recap cards (authentication required).
+func (h *Handler) GetThreeDayRecapCards(
+	ctx context.Context,
+	_ *connect.Request[recapv2.GetThreeDayRecapCardsRequest],
+) (*connect.Response[recapv2.GetThreeDayRecapCardsResponse], error) {
+	// Authentication check
+	userCtx, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	h.logger.InfoContext(ctx, "GetThreeDayRecapCards called", "user_id", userCtx.UserID)
+
+	// Call usecase
+	cardsResp, err := h.getRecapUsecase().GetThreeDayRecapCards(ctx)
+	if err != nil {
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetThreeDayRecapCards")
+	}
+
+	// Convert domain to proto
+	resp := domainToProtoThreeDaysCards(cardsResp)
+	return connect.NewResponse(resp), nil
+}
+
+// domainToProtoThreeDaysCards converts domain.RecapCardsResponse to proto response.
+func domainToProtoThreeDaysCards(resp *domain.RecapCardsResponse) *recapv2.GetThreeDayRecapCardsResponse {
+	if resp == nil {
+		return &recapv2.GetThreeDayRecapCardsResponse{
+			Cards: []*recapv2.RecapCard{},
+		}
+	}
+
+	protoResp := &recapv2.GetThreeDayRecapCardsResponse{
+		Cards: make([]*recapv2.RecapCard, 0, len(resp.Cards)),
+	}
+
+	if resp.Job != nil {
+		protoResp.Job = &recapv2.RecapCardsJob{
+			JobId:         resp.Job.JobID,
+			KickedAt:      resp.Job.KickedAt,
+			From:          resp.Job.From,
+			To:            resp.Job.To,
+			ParamsVersion: resp.Job.ParamsVersion,
+			CardsSelected: safeconv.Int32(resp.Job.CardsSelected),
+			Degraded:      resp.Job.Degraded,
+		}
+	}
+
+	for _, c := range resp.Cards {
+		if c == nil {
+			continue
+		}
+		card := &recapv2.RecapCard{
+			Id:              c.ID,
+			Rank:            safeconv.Int32(c.Rank),
+			StoryId:         c.StoryID,
+			ContinuesCardId: c.ContinuesCardID,
+			HeadlineJa:      c.HeadlineJa,
+			WhatJa:          c.WhatJa,
+			WhyJa:           c.WhyJa,
+			Genre:           c.Genre,
+			CreatedAt:       c.CreatedAt,
+			Sources:         make([]*recapv2.RecapCardSource, 0, len(c.Sources)),
+		}
+		for _, s := range c.Sources {
+			if s == nil {
+				continue
+			}
+			card.Sources = append(card.Sources, &recapv2.RecapCardSource{
+				N:       safeconv.Int32(s.N),
+				FeedId:  s.FeedID,
+				Url:     s.URL,
+				Host:    s.Host,
+				Title:   s.Title,
+				PubDate: s.PubDate,
+			})
+		}
+		protoResp.Cards = append(protoResp.Cards, card)
+	}
+
+	return protoResp
 }
 
 // domainToProto converts domain.RecapSummary to proto response.

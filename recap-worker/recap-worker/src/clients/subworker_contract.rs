@@ -9,6 +9,8 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 
+use super::subworker::cards::SubworkerCardsClient;
+
 #[derive(Debug, Deserialize)]
 struct ClassificationJobResponse {
     run_id: i64,
@@ -319,4 +321,353 @@ async fn contract_subworker_clustering_poll_succeeded() {
     let parsed: ClusterRunResponse = resp.json().await.expect("should parse response");
     assert_eq!(parsed.status, "succeeded");
     assert_eq!(parsed.run_id, 42);
+}
+
+/// Text embedding: POST /v1/embed → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_subworker_embed() {
+    let pact = PactBuilder::new("recap-worker", "recap-subworker")
+        .interaction("an embedding request", "", |mut i| {
+            i.given("the embedder is ready");
+            i.request.method("POST");
+            i.request.path("/v1/embed");
+            i.request.content_type("application/json");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.json_body(json_pattern!({
+                "texts": each_like!(like!("Example headline")),
+                "normalize": like!(true),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "model": like!("bge-m3"),
+                "dim": like!(1024i64),
+                "embeddings": each_like!(each_like!(like!(0.1f64))),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = SubworkerCardsClient::new(pact.path("/").as_str())
+        .expect("client creation should succeed")
+        .with_admin_token(Some("test-recap-subworker-token-42".to_string()));
+
+    let resp = client
+        .embed(&["Example headline".to_string()], true)
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(resp.model, "bge-m3");
+    assert_eq!(resp.dim, 1024);
+    assert_eq!(resp.embeddings.len(), 1);
+    assert!(!resp.embeddings[0].is_empty());
+}
+
+/// Story clustering: POST /v1/cluster-stories → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_subworker_cluster_stories() {
+    let id1 = "00000000-0000-0000-0000-000000000001";
+    let id2 = "00000000-0000-0000-0000-000000000002";
+    let pact = PactBuilder::new("recap-worker", "recap-subworker")
+        .interaction("a story clustering request", "", |mut i| {
+            i.given("the story clusterer is ready");
+            i.request.method("POST");
+            i.request.path("/v1/cluster-stories");
+            i.request.content_type("application/json");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.json_body(json_pattern!({
+                "items": each_like!(json_pattern!({
+                    "id": like!(id1),
+                    "embedding": each_like!(like!(0.1f64)),
+                    "published_at": like!("2026-09-21T00:00:00Z"),
+                }), min = 2),
+                "params": json_pattern!({
+                    "threshold": like!(0.78f64),
+                    "linkage": like!("average"),
+                    "time_decay_per_day": like!(0.02f64),
+                    "min_cluster_size": like!(1i64),
+                }),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "clusters": each_like!(json_pattern!({
+                    "cluster_id": like!(0i64),
+                    "member_ids": each_like!(like!(id1)),
+                    "centroid": each_like!(like!(0.1f64)),
+                })),
+                "params": json_pattern!({
+                    "threshold": like!(0.78f64),
+                    "linkage": like!("average"),
+                    "time_decay_per_day": like!(0.02f64),
+                    "min_cluster_size": like!(1i64),
+                }),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = SubworkerCardsClient::new(pact.path("/").as_str())
+        .expect("client creation should succeed")
+        .with_admin_token(Some("test-recap-subworker-token-42".to_string()));
+
+    let req = crate::clients::subworker::cards::ClusterStoriesRequest {
+        items: vec![
+            crate::clients::subworker::cards::ClusterStoryItem {
+                id: uuid::Uuid::parse_str(id1).unwrap(),
+                embedding: vec![0.1, 0.2, 0.3, 0.4],
+                published_at: chrono::DateTime::parse_from_rfc3339("2026-09-21T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc),
+                language: None,
+            },
+            crate::clients::subworker::cards::ClusterStoryItem {
+                id: uuid::Uuid::parse_str(id2).unwrap(),
+                embedding: vec![0.1, 0.2, 0.3, 0.4],
+                published_at: chrono::DateTime::parse_from_rfc3339("2026-09-21T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc),
+                language: None,
+            },
+        ],
+        params: crate::clients::subworker::cards::StoryClusterParams::default(),
+    };
+
+    let resp = client
+        .cluster_stories(&req)
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(resp.clusters.len(), 1);
+    assert_eq!(resp.clusters[0].cluster_id, 0);
+    assert!(!resp.clusters[0].member_ids.is_empty());
+    assert!(!resp.clusters[0].centroid.is_empty());
+}
+
+fn build_cluster_stories_per_lang_interaction(
+    mut i: pact_consumer::builders::InteractionBuilder,
+    id1: &str,
+) -> pact_consumer::builders::InteractionBuilder {
+    i.given("the story clusterer is ready");
+    i.request.method("POST");
+    i.request.path("/v1/cluster-stories");
+    i.request.content_type("application/json");
+    i.request
+        .header("Authorization", "Bearer test-recap-subworker-token-42");
+    i.request.json_body(json_pattern!({
+        "items": each_like!(json_pattern!({
+            "id": like!(id1),
+            "embedding": each_like!(like!(0.1f64)),
+            "published_at": like!("2026-09-21T00:00:00Z"),
+        }), min = 2),
+        "params": json_pattern!({
+            "threshold": like!(0.78f64),
+            "linkage": like!("average"),
+            "time_decay_per_day": like!(0.02f64),
+            "min_cluster_size": like!(2i64),
+            "min_cluster_size_by_language": json_pattern!({
+                "ja": like!(1i64),
+                "en": like!(2i64),
+            }),
+        }),
+    }));
+    i.response.status(200);
+    i.response.content_type("application/json");
+    i.response.json_body(json_pattern!({
+        "clusters": each_like!(json_pattern!({
+            "cluster_id": like!(0i64),
+            "member_ids": each_like!(like!(id1)),
+            "centroid": each_like!(like!(0.1f64)),
+        })),
+        "params": json_pattern!({
+            "threshold": like!(0.78f64),
+            "linkage": like!("average"),
+            "time_decay_per_day": like!(0.02f64),
+            "min_cluster_size": like!(2i64),
+            "min_cluster_size_by_language": json_pattern!({
+                "ja": like!(1i64),
+                "en": like!(2i64),
+            }),
+        }),
+    }));
+    i
+}
+
+/// Story clustering with per-language min cluster size: POST /v1/cluster-stories → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_subworker_cluster_stories_with_per_language_min_size() {
+    let id1 = "00000000-0000-0000-0000-000000000001";
+    let id2 = "00000000-0000-0000-0000-000000000002";
+    let pact = PactBuilder::new("recap-worker", "recap-subworker")
+        .interaction(
+            "a story clustering request with per-language min cluster size",
+            "",
+            |i| build_cluster_stories_per_lang_interaction(i, id1),
+        )
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = SubworkerCardsClient::new(pact.path("/").as_str())
+        .expect("client creation should succeed")
+        .with_admin_token(Some("test-recap-subworker-token-42".to_string()));
+
+    let mut min_by_lang = std::collections::HashMap::new();
+    min_by_lang.insert("ja".to_string(), 1);
+    min_by_lang.insert("en".to_string(), 2);
+
+    let req = crate::clients::subworker::cards::ClusterStoriesRequest {
+        items: vec![
+            crate::clients::subworker::cards::ClusterStoryItem {
+                id: uuid::Uuid::parse_str(id1).unwrap(),
+                embedding: vec![0.1, 0.2, 0.3, 0.4],
+                published_at: chrono::DateTime::parse_from_rfc3339("2026-09-21T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc),
+                language: None,
+            },
+            crate::clients::subworker::cards::ClusterStoryItem {
+                id: uuid::Uuid::parse_str(id2).unwrap(),
+                embedding: vec![0.1, 0.2, 0.3, 0.4],
+                published_at: chrono::DateTime::parse_from_rfc3339("2026-09-21T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc),
+                language: None,
+            },
+        ],
+        params: crate::clients::subworker::cards::StoryClusterParams {
+            threshold: 0.78,
+            linkage: "average".to_string(),
+            time_decay_per_day: 0.02,
+            min_cluster_size: 2,
+            min_cluster_size_by_language: Some(min_by_lang),
+        },
+    };
+
+    let resp = client
+        .cluster_stories(&req)
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(resp.clusters.len(), 1);
+    assert_eq!(resp.clusters[0].cluster_id, 0);
+    assert!(!resp.clusters[0].member_ids.is_empty());
+    assert!(!resp.clusters[0].centroid.is_empty());
+    assert_eq!(resp.params.min_cluster_size, 2);
+    let resp_min_by_lang = resp
+        .params
+        .min_cluster_size_by_language
+        .as_ref()
+        .expect("min_cluster_size_by_language should be echoed");
+    assert_eq!(resp_min_by_lang.get("ja"), Some(&1));
+    assert_eq!(resp_min_by_lang.get("en"), Some(&2));
+}
+
+/// Card verification: POST /v1/verify → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+async fn contract_subworker_verify_card() {
+    let job_id = "00000000-0000-0000-0000-000000000001";
+    let card_id = "00000000-0000-0000-0000-000000000002";
+    let pact = PactBuilder::new("recap-worker", "recap-subworker")
+        .interaction("a card verification request", "", |mut i| {
+            i.given("the card verifier is ready");
+            i.request.method("POST");
+            i.request.path("/v1/verify");
+            i.request.content_type("application/json");
+            i.request
+                .header("Authorization", "Bearer test-recap-subworker-token-42");
+            i.request.json_body(json_pattern!({
+                "job_id": like!(job_id),
+                "card_id": like!(card_id),
+                "language": like!("ja"),
+                "sentences": each_like!(json_pattern!({
+                    "idx": like!(0i64),
+                    "kind": like!("what"),
+                    "text": like!("新しいAIモデルが発表された。"),
+                    "refs": each_like!(like!(1i64)),
+                })),
+                "items": each_like!(json_pattern!({
+                    "n": like!(1i64),
+                    "title": like!("新しいAIモデルの発表"),
+                    "lede": like!("大手企業が新しいAIモデルを正式に発表した。"),
+                })),
+                "thresholds": json_pattern!({
+                    "attribution_cos": like!(0.55f64),
+                }),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "sentences": each_like!(json_pattern!({
+                    "idx": like!(0i64),
+                    "attribution": json_pattern!({
+                        "max_cos": like!(0.85f64),
+                        "best_n": like!(1i64),
+                        "pass": like!(true),
+                    }),
+                    "filler": json_pattern!({
+                        "matched": json_pattern!([]),
+                        "pass": like!(true),
+                    }),
+                    "specificity": json_pattern!({
+                        "proper_nouns": like!(1i64),
+                        "numbers": like!(0i64),
+                        "tokens": like!(5i64),
+                        "density": like!(0.2f64),
+                    }),
+                })),
+                "why_hint_present": like!(true),
+                "embedding": json_pattern!({
+                    "model": like!("bge-m3"),
+                    "identity": like!("bge-m3"),
+                }),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = SubworkerCardsClient::new(pact.path("/").as_str())
+        .expect("client creation should succeed")
+        .with_admin_token(Some("test-recap-subworker-token-42".to_string()));
+
+    let req = crate::clients::subworker::cards::VerifyCardRequest {
+        job_id: uuid::Uuid::parse_str(job_id).unwrap(),
+        card_id: uuid::Uuid::parse_str(card_id).unwrap(),
+        language: "ja".to_string(),
+        sentences: vec![crate::clients::subworker::cards::VerifySentenceInput {
+            idx: 0,
+            kind: "what".to_string(),
+            text: "新しいAIモデルが発表された。".to_string(),
+            refs: vec![1],
+        }],
+        items: vec![crate::clients::subworker::cards::VerifyItemInput {
+            n: 1,
+            title: "新しいAIモデルの発表".to_string(),
+            lede: "大手企業が新しいAIモデルを正式に発表した。".to_string(),
+        }],
+        thresholds: crate::clients::subworker::cards::VerifyThresholds {
+            attribution_cos: 0.55,
+        },
+    };
+
+    let resp = client
+        .verify_card(&req)
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(resp.sentences.len(), 1);
+    assert_eq!(resp.sentences[0].idx, 0);
+    assert!(resp.sentences[0].attribution.pass);
+    assert!(resp.sentences[0].filler.pass);
+    assert!(resp.sentences[0].specificity.density >= 0.0);
+    assert!(resp.why_hint_present);
+    assert_eq!(resp.embedding.model, "bge-m3");
 }

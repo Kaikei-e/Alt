@@ -60,6 +60,6 @@ def test_no_forbidden_module_globals() -> None:
         violations = assigned & FORBIDDEN_NAMES
         for name in violations:
             offenders.append(f"{file_path.relative_to(PACKAGE_ROOT.parent)}: {name}")
-    assert not offenders, (
-        "Forbidden module-level globals detected:\n  " + "\n  ".join(sorted(offenders))
+    assert not offenders, "Forbidden module-level globals detected:\n  " + "\n  ".join(
+        sorted(offenders)
     )

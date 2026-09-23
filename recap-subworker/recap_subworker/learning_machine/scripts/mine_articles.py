@@ -23,6 +23,7 @@ from recap_subworker.infra.config import Settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 async def fetch_articles(db_url: str, limit: int, days: int) -> list[dict[str, Any]]:
     """Fetch raw articles from recap-db."""
     engine = create_async_engine(db_url)
@@ -55,28 +56,33 @@ async def fetch_articles(db_url: str, limit: int, days: int) -> list[dict[str, A
         import trafilatura
 
         for row in result:
-             text_content = ""
-             if row.fulltext_html:
-                 # Fast extraction from HTML string
-                 text_content = trafilatura.extract(row.fulltext_html) or ""
+            text_content = ""
+            if row.fulltext_html:
+                # Fast extraction from HTML string
+                text_content = trafilatura.extract(row.fulltext_html) or ""
 
-             if not text_content:
-                 # Fallback: maybe it's already text or failed
-                 text_content = row.fulltext_html if row.fulltext_html and "<" not in row.fulltext_html else ""
+            if not text_content:
+                # Fallback: maybe it's already text or failed
+                text_content = (
+                    row.fulltext_html if row.fulltext_html and "<" not in row.fulltext_html else ""
+                )
 
-             if not text_content.strip():
-                 continue
+            if not text_content.strip():
+                continue
 
-             articles.append({
-                 "id": row.article_id,
-                 "title": row.title,
-                 "content": text_content,
-                 "published_at": str(row.published_at),
-                 "url": row.url
-             })
+            articles.append(
+                {
+                    "id": row.article_id,
+                    "title": row.title,
+                    "content": text_content,
+                    "published_at": str(row.published_at),
+                    "url": row.url,
+                }
+            )
 
     await engine.dispose()
     return articles
+
 
 def get_db_url_with_password(settings: Settings) -> str:
     """Resolve DB URL with password from secrets if needed."""
@@ -101,11 +107,11 @@ def get_db_url_with_password(settings: Settings) -> str:
                 password = f.read().strip()
 
             u = urlparse(db_url)
-            if '@' in u.netloc:
-                user_pass, host_port = u.netloc.rsplit('@', 1)
+            if "@" in u.netloc:
+                user_pass, host_port = u.netloc.rsplit("@", 1)
                 # Naive replacement, assuming standard format
-                if ':' in user_pass:
-                    user, _ = user_pass.split(':', 1)
+                if ":" in user_pass:
+                    user, _ = user_pass.split(":", 1)
                     new_user_pass = f"{user}:{password}"
                 else:
                     new_user_pass = f"{user_pass}:{password}"
@@ -117,6 +123,7 @@ def get_db_url_with_password(settings: Settings) -> str:
             logger.warning(f"Failed to read password secret: {e}")
 
     return db_url
+
 
 async def main():
     parser = argparse.ArgumentParser(description="Mine articles from recap-db")
@@ -139,6 +146,7 @@ async def main():
             f.write(json.dumps(article, ensure_ascii=False) + "\n")
 
     logger.info(f"Saved to {output_path}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

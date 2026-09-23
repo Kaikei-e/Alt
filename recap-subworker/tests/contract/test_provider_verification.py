@@ -35,6 +35,7 @@ import uvicorn
 from fastapi import Depends, FastAPI
 from pact import Verifier
 from pydantic import BaseModel
+from starlette.testclient import TestClient
 
 from recap_subworker.app import deps
 from recap_subworker.app.infra.admin_auth import (
@@ -42,10 +43,18 @@ from recap_subworker.app.infra.admin_auth import (
     get_admin_auth_config,
     require_admin_token,
 )
+from recap_subworker.app.routers.embed import router as embed_router
 from recap_subworker.app.routers.runs import router as runs_router
+from recap_subworker.app.routers.story_clustering import router as story_clustering_router
+from recap_subworker.app.routers.verify import router as verify_router
 from recap_subworker.db.dao import RunRecord
+from recap_subworker.port.embedder import EmbedderPort
+from recap_subworker.services.card_verifier import CardVerifierService
+from recap_subworker.services.embed_service import EmbedService
 from recap_subworker.services.run_manager import RunSubmission
+from recap_subworker.services.story_clusterer import StoryClustererService
 from recap_subworker.usecase.submit_run import GetRunUsecase, SubmitRunUsecase
+from tests.conftest import HashEmbedder
 
 from ._pact_state import StateRegistry, dispatch
 
@@ -161,7 +170,7 @@ class _FakeRunReader:
         )
 
 
-def _create_provider_app() -> FastAPI:
+def _create_provider_app(embedder: EmbedderPort | None = None) -> FastAPI:
     """Create a FastAPI app with mocked dependencies for provider verification.
 
     Registers lightweight stub endpoints for:
@@ -170,16 +179,28 @@ def _create_provider_app() -> FastAPI:
     - POST /v1/classify/coarse        (coarse classification request)
     - POST /v1/clustering/{run_id}    (legacy-compat stub, see below)
 
-    and mounts the *real* application router for:
+    and mounts the *real* application routers for:
     - POST /v1/runs                   (clustering run submission)
     - GET  /v1/runs/{run_id}          (clustering run poll)
-    with its usecase dependencies overridden by in-memory fakes and the
+    - POST /v1/embed                  (text embedding generation)
+    - POST /v1/cluster-stories        (agglomerative story clustering)
+    - POST /v1/verify                 (card sentence verification)
+    with usecase/service dependencies overridden by in-memory fakes and the
     same require_admin_token guard create_app() wires in production, so
     verification also exercises the Authorization header the consumer
-    pact now records.
+    pact now records. An injectable fake embedder can be supplied to verify
+    contracts across different embedding dimensions.
     """
     app = FastAPI()
     app.include_router(runs_router, dependencies=[Depends(require_admin_token)])
+    app.include_router(embed_router, prefix="/v1", dependencies=[Depends(require_admin_token)])
+    app.include_router(
+        story_clustering_router,
+        prefix="/v1",
+        dependencies=[Depends(require_admin_token)],
+    )
+    app.include_router(verify_router, prefix="/v1", dependencies=[Depends(require_admin_token)])
+
     app.dependency_overrides[deps.get_submit_run_usecase_dep] = lambda: SubmitRunUsecase(
         submitter=_FakeRunSubmitter(),
     )
@@ -188,6 +209,15 @@ def _create_provider_app() -> FastAPI:
     )
     app.dependency_overrides[get_admin_auth_config] = lambda: AdminAuthConfig(
         token=_PROVIDER_ADMIN_TOKEN
+    )
+
+    fake_embedder = embedder or HashEmbedder(dim=1024)
+    embed_svc = EmbedService(embedder=fake_embedder)
+    app.dependency_overrides[deps.get_embedder_dep] = lambda: fake_embedder
+    app.dependency_overrides[deps.get_embed_service_dep] = lambda: embed_svc
+    app.dependency_overrides[deps.get_story_clusterer_service_dep] = StoryClustererService
+    app.dependency_overrides[deps.get_card_verifier_service_dep] = lambda: CardVerifierService(
+        embed_service=embed_svc
     )
 
     # Track provider state to switch mock behavior
@@ -273,6 +303,14 @@ def _create_provider_app() -> FastAPI:
         "clustering run 42 has succeeded": _set_state,
         # Legacy-compat: see execute_clustering_legacy_compat above.
         "classified articles are ready for clustering": _set_state,
+        # Topic card embedding and clustering provider states:
+        "the embedder model is loaded": _set_state,
+        "the embedder is ready": _set_state,
+        "the story clusterer is ready": _set_state,
+        "ready to cluster stories": _set_state,
+        # Topic card verification provider states:
+        "the card verifier is ready": _set_state,
+        "ready to verify cards": _set_state,
     }
 
     @app.post("/_pact/provider-states")
@@ -397,3 +435,155 @@ def test_verify_recap_worker_contract(provider_url: tuple[str, int]):
     )
 
     verifier.verify()
+
+
+def test_provider_app_embed_injectable_fake_embedder():
+    """Verify that a custom fake embedder can be injected into the provider test app."""
+    auth_headers = {"Authorization": f"Bearer {_PROVIDER_ADMIN_TOKEN}"}
+
+    # 1. Default fake embedder emits 1024-dim vectors
+    default_app = _create_provider_app()
+    client = TestClient(default_app)
+    res_default = client.post(
+        "/v1/embed",
+        json={"texts": ["Example headline 1"], "normalize": True},
+        headers=auth_headers,
+    )
+    assert res_default.status_code == 200
+    assert res_default.json()["dim"] == 1024
+
+    # 2. Injected custom fake embedder emits 512-dim vectors
+    custom_app = _create_provider_app(embedder=HashEmbedder(dim=512))
+    custom_client = TestClient(custom_app)
+    res_custom = custom_client.post(
+        "/v1/embed",
+        json={"texts": ["Example headline 1"], "normalize": True},
+        headers=auth_headers,
+    )
+    assert res_custom.status_code == 200
+    assert res_custom.json()["dim"] == 512
+
+
+def test_provider_app_cluster_stories_endpoint():
+    """Verify provider test app hosts /v1/cluster-stories successfully."""
+    app = _create_provider_app()
+    client = TestClient(app)
+    response = client.post(
+        "/v1/cluster-stories",
+        json={
+            "items": [
+                {
+                    "id": "11111111-1111-1111-1111-111111111111",
+                    "embedding": [1.0, 0.0],
+                    "published_at": "2026-09-21T00:00:00Z",
+                }
+            ],
+            "params": {"threshold": 0.78},
+        },
+        headers={"Authorization": f"Bearer {_PROVIDER_ADMIN_TOKEN}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["clusters"]) == 1
+    assert data["clusters"][0]["member_ids"] == ["11111111-1111-1111-1111-111111111111"]
+
+
+def test_provider_app_verify_endpoint():
+    """Verify provider test app hosts /v1/verify successfully."""
+    app = _create_provider_app()
+    client = TestClient(app)
+    response = client.post(
+        "/v1/verify",
+        json={
+            "job_id": "00000000-0000-0000-0000-000000000001",
+            "card_id": "00000000-0000-0000-0000-000000000002",
+            "language": "ja",
+            "sentences": [
+                {
+                    "idx": 0,
+                    "kind": "what",
+                    "text": "新しいAIモデルが発表された。",
+                    "refs": [1],
+                }
+            ],
+            "items": [
+                {
+                    "n": 1,
+                    "title": "AIモデルの発表",
+                    "lede": "新モデルが本日正式に発表された。",
+                }
+            ],
+            "thresholds": {"attribution_cos": 0.55},
+        },
+        headers={"Authorization": f"Bearer {_PROVIDER_ADMIN_TOKEN}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["sentences"]) == 1
+    assert data["sentences"][0]["idx"] == 0
+    assert "attribution" in data["sentences"][0]
+    assert "pass" in data["sentences"][0]["attribution"]
+    assert "filler" in data["sentences"][0]
+    assert "pass" in data["sentences"][0]["filler"]
+    assert "specificity" in data["sentences"][0]
+    assert "why_hint_present" in data
+    assert "embedding" in data
+    assert data["embedding"]["model"] == "hash-fake"
+
+
+def test_provider_app_endpoints_reject_unauthenticated():
+    """Verify that embed, cluster-stories, and verify reject unauthenticated requests."""
+    app = _create_provider_app()
+    client = TestClient(app)
+
+    # 1. /v1/embed
+    res_embed = client.post(
+        "/v1/embed",
+        json={"texts": ["Example"], "normalize": True},
+    )
+    assert res_embed.status_code == 401
+
+    # 2. /v1/cluster-stories
+    res_cluster = client.post(
+        "/v1/cluster-stories",
+        json={
+            "items": [
+                {
+                    "id": "11111111-1111-1111-1111-111111111111",
+                    "embedding": [1.0, 0.0],
+                    "published_at": "2026-09-21T00:00:00Z",
+                }
+            ],
+        },
+    )
+    assert res_cluster.status_code == 401
+
+    # 3. /v1/verify
+    res_verify = client.post(
+        "/v1/verify",
+        json={
+            "job_id": "00000000-0000-0000-0000-000000000001",
+            "card_id": "00000000-0000-0000-0000-000000000002",
+            "language": "ja",
+            "sentences": [],
+            "items": [],
+        },
+    )
+    assert res_verify.status_code == 401
+
+
+def test_provider_states_card_pipeline_states_registered():
+    """Verify that provider states endpoint accepts embedding, clustering, and verification states."""
+    app = _create_provider_app()
+    client = TestClient(app)
+    for state in [
+        "the embedder is ready",
+        "the embedder model is loaded",
+        "the story clusterer is ready",
+        "ready to cluster stories",
+        "the card verifier is ready",
+        "ready to verify cards",
+    ]:
+        res = client.post("/_pact/provider-states", json={"state": state, "action": "setup"})
+        assert res.status_code == 200
+        assert res.json() == {"status": "ok"}

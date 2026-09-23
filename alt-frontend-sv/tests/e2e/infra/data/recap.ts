@@ -145,3 +145,66 @@ export const AUGUR_CONNECT_MESSAGES = [
 	},
 	{ result: {} },
 ];
+
+export const CONNECT_RECAP_CARDS_RESPONSE = {
+	job: {
+		jobId: "11111111-2222-3333-4444-555555555555",
+		kickedAt: "2026-09-22T17:00:00Z",
+		from: "2026-09-19T17:00:00Z",
+		to: "2026-09-22T17:00:00Z",
+		paramsVersion: "cards-v0.2",
+		cardsSelected: 2,
+		degraded: false,
+	},
+	cards: [
+		{
+			id: "22222222-3333-4444-5555-666666666666",
+			rank: 1,
+			storyId: "33333333-4444-5555-6666-777777777777",
+			headlineJa: "大規模推論モデルの新たな展開",
+			whatJa:
+				"最新の推論モデルが公開された。[1]ベンチマークで高い性能を示した。[2]",
+			whyJa: "日本語処理の効率化が期待される。[1]",
+			genre: "technology",
+			sources: [
+				{
+					n: 1,
+					feedId: "44444444-5555-6666-7777-888888888888",
+					url: "https://example.com/ai-news",
+					host: "example.com",
+					title: "新モデル発表のニュース",
+					pubDate: "2026-09-22T10:00:00Z",
+				},
+				{
+					n: 2,
+					feedId: "55555555-6666-7777-8888-999999999999",
+					url: "https://example.jp/benchmark",
+					host: "example.jp",
+					title: "ベンチマーク結果の詳細",
+					pubDate: "2026-09-22T11:00:00Z",
+				},
+			],
+			createdAt: "2026-09-22T17:05:00Z",
+		},
+		{
+			id: "66666666-7777-8888-9999-000000000000",
+			rank: 2,
+			storyId: "77777777-8888-9999-0000-111111111111",
+			continuesCardId: "22222222-3333-4444-5555-666666666666",
+			headlineJa: "Web標準仕様の更新動向",
+			whatJa: "新たなWeb API策定に向けた合意が発表された。[1]",
+			genre: "web",
+			sources: [
+				{
+					n: 1,
+					feedId: "88888888-9999-0000-1111-222222222222",
+					url: "https://example.com/web-standards",
+					host: "example.com",
+					title: "新仕様ドラフト公開",
+					pubDate: "2026-09-22T12:00:00Z",
+				},
+			],
+			createdAt: "2026-09-22T17:06:00Z",
+		},
+	],
+};

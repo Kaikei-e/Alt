@@ -42,7 +42,7 @@ func TestDataHubComponents_OmitsWhatItsBinaryDoesNotBuild(t *testing.T) {
 	}
 	present := []string{
 		"AltDBRepository", "KratosClient", "EventPublisher",
-		"InternalArticleGateway", "RecapArticlesUsecase",
+		"InternalArticleGateway", "RecapArticlesUsecase", "FeedsInWindowUsecase",
 		"FetchRecentArticlesUsecase", "CreateSummaryVersionUsecase",
 		"CreateTagSetVersionUsecase", "SovereignClient",
 		"FetchTagCloudUsecase", "FetchArticlesByTagUsecase",

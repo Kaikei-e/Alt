@@ -27,7 +27,7 @@ def parse_logs(log_file_path: str) -> pd.DataFrame:
     timestamp_pattern = r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"
 
     try:
-        with Path(log_file_path).open(encoding='utf-8') as f:
+        with Path(log_file_path).open(encoding="utf-8") as f:
             for line in f:
                 # Extract timestamp
                 timestamp = None
@@ -38,16 +38,21 @@ def parse_logs(log_file_path: str) -> pd.DataFrame:
                 # Check for errors
                 for error_type, pattern in error_patterns.items():
                     if re.search(pattern, line):
-                        data.append({
-                            "timestamp": timestamp if timestamp else datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "error_type": error_type,
-                            "raw_line": line.strip()[:200] # truncate
-                        })
+                        data.append(
+                            {
+                                "timestamp": timestamp
+                                if timestamp
+                                else datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "error_type": error_type,
+                                "raw_line": line.strip()[:200],  # truncate
+                            }
+                        )
     except FileNotFoundError:
         print(f"Log file not found: {log_file_path}")
         return pd.DataFrame()
 
     return pd.DataFrame(data)
+
 
 def save_to_db(df: pd.DataFrame, db_path: str = "recap_logs.db"):
     if df.empty:
@@ -58,20 +63,24 @@ def save_to_db(df: pd.DataFrame, db_path: str = "recap_logs.db"):
     conn.close()
     print(f"Saved {len(df)} error records to {db_path}")
 
+
 def main():
     parser = argparse.ArgumentParser(description="Analyze recap logs for errors.")
     parser.add_argument("log_file", help="Path to the log file")
-    parser.add_argument("--db-path", default="recap_logs.db", help="Path to SQLite DB for dashboard")
+    parser.add_argument(
+        "--db-path", default="recap_logs.db", help="Path to SQLite DB for dashboard"
+    )
 
     args = parser.parse_args()
 
     df = parse_logs(args.log_file)
     if not df.empty:
         print(f"Found {len(df)} errors.")
-        print(df['error_type'].value_counts())
+        print(df["error_type"].value_counts())
         save_to_db(df, args.db_path)
     else:
         print("No errors found or empty file.")
+
 
 if __name__ == "__main__":
     main()

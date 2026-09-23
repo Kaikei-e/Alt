@@ -1,7 +1,5 @@
 """Tests for classification_device separation configuration."""
 
-import pytest
-
 from recap_subworker.infra.config import Settings
 
 

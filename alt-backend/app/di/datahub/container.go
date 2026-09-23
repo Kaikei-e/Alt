@@ -21,6 +21,7 @@ import (
 	"alt/config"
 	"alt/dataplane/driver/kratos_client"
 	"alt/dataplane/gateway/datahub_capability_gateway"
+	"alt/dataplane/gateway/feeds_in_window_gateway"
 	"alt/dataplane/gateway/fetch_articles_by_tag_gateway"
 	"alt/dataplane/gateway/fetch_recent_articles_gateway"
 	"alt/dataplane/gateway/fetch_tag_cloud_gateway"
@@ -28,6 +29,7 @@ import (
 	"alt/dataplane/gateway/recap_articles_gateway"
 	"alt/dataplane/port/datahub_capability_port"
 	"alt/dataplane/usecase/create_tag_set_version_usecase"
+	"alt/dataplane/usecase/feeds_in_window_usecase"
 	"alt/dataplane/usecase/outbox_usecase"
 	"alt/dataplane/usecase/push_delivery_usecase"
 	"alt/dataplane/usecase/recap_articles_usecase"
@@ -83,6 +85,7 @@ type DataHubComponents struct {
 
 	// Recap / recent article reads
 	RecapArticlesUsecase       *recap_articles_usecase.RecapArticlesUsecase
+	FeedsInWindowUsecase       *feeds_in_window_usecase.FeedsInWindowUsecase
 	FetchRecentArticlesUsecase *fetch_recent_articles_usecase.FetchRecentArticlesUsecase
 
 	// ADR-000954 Wave 3 batch 1 (catalog §2.A / §2.D / §2.E / §2.L / §2.O).
@@ -230,6 +233,12 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		MaxPageSize:     cfg.Recap.MaxPageSize,
 		MaxRangeDays:    cfg.Recap.MaxRangeDays,
 	})
+	feedsInWindowGw := feeds_in_window_gateway.NewGateway(altDB)
+	feedsInWindowUC := feeds_in_window_usecase.NewFeedsInWindowUsecase(feedsInWindowGw, feeds_in_window_usecase.Config{
+		DefaultPageSize: cfg.Recap.DefaultPageSize,
+		MaxPageSize:     cfg.Recap.MaxPageSize,
+		MaxRangeDays:    cfg.Recap.MaxRangeDays,
+	})
 
 	// Recent articles for rag-orchestrator's temporal topics.
 	fetchRecentArticlesGw := fetch_recent_articles_gateway.NewFetchRecentArticlesGateway(pool)
@@ -328,6 +337,7 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		FetchTagCloudUsecase:        fetchTagCloudUC,
 		FetchArticlesByTagUsecase:   fetchArticlesByTagUC,
 		RecapArticlesUsecase:        recapArticlesUC,
+		FeedsInWindowUsecase:        feedsInWindowUC,
 		FetchRecentArticlesUsecase:  fetchRecentArticlesUC,
 
 		OutboxUsecase:          outboxUC,

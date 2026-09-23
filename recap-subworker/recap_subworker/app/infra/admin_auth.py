@@ -1,8 +1,8 @@
-"""Bearer-token guard for `/admin/*` and `/v1/runs`.
+"""Bearer-token guard for `/admin/*`, `/v1/runs`, `/v1/embed`, `/v1/cluster-stories`, and `/v1/verify`.
 
-recap-worker is the only caller of these routes (admin job triggers, the
-clustering run submit/poll surface), and it is updated in the same slice to
-send `Authorization: Bearer <token>` from the same `recap_admin_token`
+recap-worker is the only caller of these routes (admin job triggers, clustering,
+embedding, and verification endpoints), and it is updated to send
+`Authorization: Bearer <token>` from the same `recap_admin_token`
 secret this service reads via `ADMIN_TOKEN_FILE`.
 
 Deliberately independent of `infra.config.Settings`: that module's fields
@@ -38,7 +38,8 @@ class AdminAuthConfig:
 def load_admin_auth_config() -> AdminAuthConfig:
     """Resolve the admin-token guard from `ADMIN_AUTH` / `ADMIN_TOKEN_FILE`.
 
-    `ADMIN_AUTH=disabled` is the only way to leave `/admin/*` and `/v1/runs`
+    `ADMIN_AUTH=disabled` is the only way to leave protected routes
+    (`/admin/*`, `/v1/runs`, `/v1/embed`, `/v1/cluster-stories`, `/v1/verify`)
     unauthenticated; an unset var is treated as enabled, so a deployment
     that forgets to mount `ADMIN_TOKEN_FILE` fails startup instead of
     silently serving those routes unauthenticated (CLAUDE.md rule 9).
@@ -47,7 +48,7 @@ def load_admin_auth_config() -> AdminAuthConfig:
     if auth_mode == "disabled":
         logger.warning(
             "recap_admin_auth_disabled",
-            detail="ADMIN_AUTH=disabled was set explicitly; /admin/* and /v1/runs accept unauthenticated requests",
+            detail="ADMIN_AUTH=disabled was set explicitly; protected endpoints accept unauthenticated requests",
         )
         return AdminAuthConfig(token=None)
 
@@ -84,7 +85,10 @@ async def require_admin_token(
     authorization: str | None = Header(default=None),
     auth_config: AdminAuthConfig = Depends(get_admin_auth_config),
 ) -> None:
-    """Router-level dependency guarding `/admin/*` and `/v1/runs`.
+    """Router-level dependency guarding protected routes.
+
+    Guards `/admin/*`, `/v1/runs`, `/v1/embed`, `/v1/cluster-stories`, and
+    `/v1/verify`.
 
     Missing/malformed `Authorization` header and a present-but-wrong token
     both -> 401 with `WWW-Authenticate: Bearer` and the same detail, so a

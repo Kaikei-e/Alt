@@ -99,9 +99,7 @@ class TestOllamaRemoteEmbedder:
 
             # Each short text is embedded with one API call
             mock_response1 = Mock()
-            mock_response1.json.return_value = {
-                "embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
-            }
+            mock_response1.json.return_value = {"embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]}
             mock_response1.raise_for_status = Mock()
 
             mock_client.post.return_value = mock_response1
@@ -136,9 +134,7 @@ class TestOllamaRemoteEmbedder:
 
             # Outer encode() uses batch_size=2 → two API calls: [s1,s2] then [s3]
             mock_response1 = Mock()
-            mock_response1.json.return_value = {
-                "embeddings": [[0.1, 0.2], [0.3, 0.4]]
-            }
+            mock_response1.json.return_value = {"embeddings": [[0.1, 0.2], [0.3, 0.4]]}
             mock_response1.raise_for_status = Mock()
 
             mock_response2 = Mock()

@@ -254,3 +254,177 @@ pub(crate) struct MorningLetterResponseMetadata {
     #[serde(default)]
     pub(crate) processing_time_ms: Option<u64>,
 }
+
+// ============================================================================
+// Card Generation Models
+// ============================================================================
+
+fn default_prompt_version() -> String {
+    "recap_card.v1".to_string()
+}
+
+/// カード生成リクエストの入力アイテム。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardItemInput {
+    pub(crate) n: usize,
+    pub(crate) feed_id: Uuid,
+    pub(crate) title: String,
+    pub(crate) host: String,
+    pub(crate) url: String,
+    #[serde(default)]
+    pub(crate) pub_date: Option<String>,
+    pub(crate) lede: String,
+}
+
+/// カード生成リクエスト (POST /v1/cards/generate)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardGenerateRequest {
+    pub(crate) job_id: Uuid,
+    pub(crate) candidate_id: Uuid,
+    #[serde(default = "default_prompt_version")]
+    pub(crate) prompt_version: String,
+    pub(crate) items: Vec<CardItemInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) revision_note: Option<String>,
+}
+
+/// カード本文の各文および引用番号。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardSentence {
+    pub(crate) text: String,
+    pub(crate) refs: Vec<usize>,
+}
+
+/// カード本文。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardContent {
+    pub(crate) headline_ja: String,
+    pub(crate) what_ja: Vec<CardSentence>,
+    #[serde(default)]
+    pub(crate) why_ja: Option<CardSentence>,
+    pub(crate) used_refs: Vec<usize>,
+}
+
+/// カード生成メタデータ。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardGenerationMetadata {
+    pub(crate) model: String,
+    pub(crate) prompt_version: String,
+    pub(crate) cache_hit: bool,
+    pub(crate) prompt_tokens: usize,
+    pub(crate) completion_tokens: usize,
+    pub(crate) ms: u64,
+    pub(crate) raw_text: String,
+}
+
+/// カード生成成功レスポンス (200 OK)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardGenerateResponse {
+    pub(crate) card: CardContent,
+    pub(crate) generation: CardGenerationMetadata,
+    pub(crate) ja_ratio: f32,
+}
+
+/// カード生成失敗レスポンス (422 Unprocessable Entity)。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CardGenerate422Response {
+    pub(crate) reason: String,
+    pub(crate) attempts: usize,
+    pub(crate) raw_text: String,
+    #[serde(default)]
+    pub(crate) detail: Option<String>,
+}
+
+/// カード生成呼び出し結果。
+#[derive(Debug, Clone)]
+pub(crate) enum CardGenerateOutcome {
+    Success(CardGenerateResponse),
+    Rejected(CardGenerate422Response),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_card_generate_response_deserialization_requires_ja_ratio() {
+        let json_with_ja_ratio = serde_json::json!({
+            "card": {
+                "headline_ja": "見出し",
+                "what_ja": [{"text": "内容。[1]", "refs": [1]}],
+                "why_ja": null,
+                "used_refs": [1]
+            },
+            "generation": {
+                "model": "gemma",
+                "prompt_version": "v1",
+                "cache_hit": false,
+                "prompt_tokens": 10,
+                "completion_tokens": 10,
+                "ms": 100,
+                "raw_text": "raw"
+            },
+            "ja_ratio": 0.8321
+        });
+
+        let resp: CardGenerateResponse =
+            serde_json::from_value(json_with_ja_ratio).expect("must deserialize with ja_ratio");
+        assert!((resp.ja_ratio - 0.8321).abs() < 1e-4);
+
+        let json_without_ja_ratio = serde_json::json!({
+            "card": {
+                "headline_ja": "見出し",
+                "what_ja": [{"text": "内容。[1]", "refs": [1]}],
+                "why_ja": null,
+                "used_refs": [1]
+            },
+            "generation": {
+                "model": "gemma",
+                "prompt_version": "v1",
+                "cache_hit": false,
+                "prompt_tokens": 10,
+                "completion_tokens": 10,
+                "ms": 100,
+                "raw_text": "raw"
+            }
+        });
+
+        let err = serde_json::from_value::<CardGenerateResponse>(json_without_ja_ratio);
+        assert!(
+            err.is_err(),
+            "200 response without ja_ratio must fail deserialization"
+        );
+    }
+
+    #[test]
+    fn test_card_generate_422_response_deserialization_detail() {
+        let json_with_detail = serde_json::json!({
+            "reason": "parse_failed",
+            "attempts": 2,
+            "raw_text": "bad output",
+            "detail": "sentence_count"
+        });
+        let resp: CardGenerate422Response =
+            serde_json::from_value(json_with_detail).expect("deserialize with detail");
+        assert_eq!(resp.detail.as_deref(), Some("sentence_count"));
+
+        let json_null_detail = serde_json::json!({
+            "reason": "language",
+            "attempts": 1,
+            "raw_text": "bad language",
+            "detail": null
+        });
+        let resp_null: CardGenerate422Response =
+            serde_json::from_value(json_null_detail).expect("deserialize with null detail");
+        assert_eq!(resp_null.detail, None);
+
+        let json_no_detail = serde_json::json!({
+            "reason": "parse_failed",
+            "attempts": 2,
+            "raw_text": "bad output"
+        });
+        let resp_no: CardGenerate422Response =
+            serde_json::from_value(json_no_detail).expect("deserialize without detail");
+        assert_eq!(resp_no.detail, None);
+    }
+}

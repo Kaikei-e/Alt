@@ -7,6 +7,8 @@ from dataclasses import replace
 from uuid import uuid4
 
 import pytest
+
+from recap_subworker.db.dao import RunRecord
 from recap_subworker.domain.models import (
     ClassificationJobPayload,
     ClusterDocument,
@@ -31,7 +33,6 @@ from recap_subworker.services.run_manager import (
     RunSubmission,
     _hash_payload,
 )
-from recap_subworker.db.dao import RunRecord
 
 
 class DummySessionContext:
@@ -136,10 +137,11 @@ class ClassificationRunnerStub:
 
 @pytest.fixture
 def payload() -> ClusterJobPayload:
-    params = ClusterJobParams(max_sentences_total=2000, umap_n_components=25, hdbscan_min_cluster_size=5, mmr_lambda=0.35)
+    params = ClusterJobParams(
+        max_sentences_total=2000, umap_n_components=25, hdbscan_min_cluster_size=5, mmr_lambda=0.35
+    )
     docs = [
-        ClusterDocument(article_id=f"art-{i}", title="T", paragraphs=["x" * 35])
-        for i in range(10)
+        ClusterDocument(article_id=f"art-{i}", title="T", paragraphs=["x" * 35]) for i in range(10)
     ]
     return ClusterJobPayload(params=params, documents=docs)
 
@@ -158,7 +160,13 @@ def make_manager(
     def dao_factory(session):
         return dao
 
-    return RunManager(settings or Settings(), session_factory, dao_factory, pipeline=pipeline, pipeline_runner=pipeline_runner)  # pyrefly: ignore[bad-argument-type]
+    return RunManager(
+        settings or Settings(),
+        session_factory,
+        dao_factory,  # pyrefly: ignore[bad-argument-type]
+        pipeline=pipeline,
+        pipeline_runner=pipeline_runner,
+    )
 
 
 @pytest.mark.asyncio
@@ -236,7 +244,9 @@ async def test_create_run_retries_failed_idempotent(payload):
         scheduled["run_id"] = record.run_id
 
     manager._schedule_background = recorder  # type: ignore[attr-defined]
-    submission = RunSubmission(job_id=existing.job_id, genre="ai", payload=payload, idempotency_key="k")
+    submission = RunSubmission(
+        job_id=existing.job_id, genre="ai", payload=payload, idempotency_key="k"
+    )
 
     record = await manager.create_run(submission)
 
@@ -261,7 +271,9 @@ async def test_create_run_detects_idempotency_mismatch(payload):
         error_message=None,
     )
     manager = make_manager(dao, session)
-    submission = RunSubmission(job_id=dao.idempotent_record.job_id, genre="ai", payload=payload, idempotency_key="k")
+    submission = RunSubmission(
+        job_id=dao.idempotent_record.job_id, genre="ai", payload=payload, idempotency_key="k"
+    )
 
     with pytest.raises(IdempotencyMismatchError):
         await manager.create_run(submission)

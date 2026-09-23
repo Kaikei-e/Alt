@@ -144,6 +144,104 @@ fn spawn_mtls_listener(
     })))
 }
 
+fn maybe_spawn_batch_daemons(
+    registry: &ComponentRegistry,
+    knowledge_owner: Option<recap_worker::config::KnowledgeOwnerIds>,
+    shutdown_token: CancellationToken,
+) {
+    let default_genres = registry.config().recap_genres().to_vec();
+    if default_genres.is_empty() {
+        warn!("skipping automatic batch daemon because no default genres are configured");
+    } else {
+        let recap_window = registry.config().recap_3days_window_days();
+        let _batch_daemon = spawn_jst_batch_daemon(
+            registry.scheduler().clone(),
+            default_genres,
+            recap_window,
+            knowledge_owner,
+            shutdown_token.clone(),
+        );
+    }
+
+    let morning_daemon_enabled = std::env::var("MORNING_DAEMON_ENABLED")
+        .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
+    if morning_daemon_enabled {
+        info!("MORNING_DAEMON_ENABLED=true — starting morning editorial projector daemon");
+        let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(
+            registry.scheduler().clone(),
+            knowledge_owner,
+            shutdown_token,
+        );
+    } else {
+        info!("morning daemon disabled (set MORNING_DAEMON_ENABLED=true to enable)");
+    }
+}
+
+async fn maybe_spawn_cards_batch_daemon(
+    config: &recap_worker::config::Config,
+    pool: &sqlx::PgPool,
+    shutdown_token: CancellationToken,
+) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
+    match config.cards_job() {
+        recap_worker::config::CardsJobConfig::Enabled {
+            utc_hour,
+            utc_minute,
+            user_id,
+        } => {
+            info!(utc_hour, utc_minute, %user_id, "cards_job_enabled");
+            let default_params = recap_worker::pipeline::cards::CardsParams::default();
+            let pipeline =
+                recap_worker::eval::build_production_cards_pipeline(pool, config, &default_params)
+                    .await
+                    .context("failed to build cards pipeline for daemon")?
+                    .with_user_id(*user_id);
+
+            Ok(Some(
+                recap_worker::scheduler::daemon::spawn_cards_batch_daemon(
+                    std::sync::Arc::new(pipeline),
+                    *utc_hour,
+                    *utc_minute,
+                    shutdown_token,
+                ),
+            ))
+        }
+        recap_worker::config::CardsJobConfig::Disabled => {
+            info!("cards_job_disabled");
+            Ok(None)
+        }
+    }
+}
+
+async fn maybe_spawn_eval_listener(
+    config: &recap_worker::config::Config,
+    pool: sqlx::PgPool,
+    shutdown_token: CancellationToken,
+) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
+    if let recap_worker::config::EvalListenerConfig::Enabled {
+        listen_addr,
+        admin_token,
+    } = config.eval_listener()
+    {
+        info!(%listen_addr, "eval_listener_enabled");
+        let eval_router = recap_worker::eval::server::build_eval_router(pool, admin_token.as_str());
+        let eval_listener = TcpListener::bind(*listen_addr)
+            .await
+            .with_context(|| format!("failed to bind eval listener on {listen_addr}"))?;
+        let eval_shutdown = shutdown_token.clone();
+        Ok(Some(tokio::spawn(async move {
+            if let Err(e) = axum::serve(eval_listener, eval_router)
+                .with_graceful_shutdown(async move { eval_shutdown.cancelled().await })
+                .await
+            {
+                error!(error = %e, "eval listener exited with error");
+            }
+        })))
+    } else {
+        info!("eval_listener_disabled");
+        Ok(None)
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Install rustls default crypto provider (required by rustls 0.23 when
@@ -156,6 +254,9 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(code);
     }
     if let Some(code) = cli::try_warmup(&args).await {
+        std::process::exit(code);
+    }
+    if let Some(code) = cli::try_eval(&args).await {
         std::process::exit(code);
     }
 
@@ -178,63 +279,28 @@ async fn main() -> anyhow::Result<()> {
 
     let scheduler = registry.scheduler().clone();
     let telemetry = registry.telemetry().clone();
-    let default_genres = registry.config().recap_genres().to_vec();
-    // Knowledge-loop owner for the persist-stage recap.topic_snapshotted.v1
-    // emit. Resolved once from env; threaded into every JobContext both
-    // daemons build. `None` only ever means RECAP_KNOWLEDGE_EMIT=false —
-    // config validation refuses a half-wired emit at startup.
     let knowledge_owner = registry.config().knowledge_owner();
 
-    // Coordinates graceful shutdown across every long-running consumer:
-    // both HTTP listeners, the batch/morning daemons, and (via
-    // `scheduler.shutdown()` below) the classification job queue's worker
-    // tasks. One SIGTERM/SIGINT cancels all of them.
     let shutdown_token = CancellationToken::new();
     spawn_shutdown_signal_task(shutdown_token.clone());
 
-    if default_genres.is_empty() {
-        warn!("skipping automatic batch daemon because no default genres are configured");
-    } else {
-        let recap_window = registry.config().recap_3days_window_days();
-        let _batch_daemon = spawn_jst_batch_daemon(
-            scheduler.clone(),
-            default_genres,
-            recap_window,
-            knowledge_owner,
-            shutdown_token.clone(),
-        );
-    }
-    // Morning Letter daemon: gated by MORNING_DAEMON_ENABLED env flag.
-    // Default is "false" to preserve current behaviour; set to "true" to
-    // re-enable the editorial projector tick.
-    let morning_daemon_enabled = std::env::var("MORNING_DAEMON_ENABLED")
-        .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
-    if morning_daemon_enabled {
-        info!("MORNING_DAEMON_ENABLED=true — starting morning editorial projector daemon");
-        let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(
-            scheduler.clone(),
-            knowledge_owner,
-            shutdown_token.clone(),
-        );
-    } else {
-        info!("morning daemon disabled (set MORNING_DAEMON_ENABLED=true to enable)");
-    }
+    maybe_spawn_batch_daemons(&registry, knowledge_owner, shutdown_token.clone());
 
-    // Carries completed-recap notifications from recap-db's notification_outbox
-    // to alt-data-hub. Without it the outbox accumulates rows nobody forwards,
-    // so the handle is awaited at shutdown rather than dropped: an aborted
-    // forward would leave a claimed row waiting out its whole lease.
     let notification_relay_task = registry.spawn_notification_relay(shutdown_token.clone());
-
     let pki = registry.pki_handle();
+    let pool = registry.pool().clone();
+
+    let _cards_daemon =
+        maybe_spawn_cards_batch_daemon(registry.config().as_ref(), &pool, shutdown_token.clone())
+            .await?;
+
     let router = build_router(registry);
 
-    // When MTLS_ENFORCE=true, bind the axum router to a rustls-backed
-    // listener on :9443 (MTLS_PORT overrides) that requires a client cert
-    // signed by the alt-CA. The existing plaintext listener stays up so
-    // dev/test stacks without step-ca keep working.
     let mtls_handle = axum_server::Handle::new();
     let mtls_listener_task = spawn_mtls_listener(router.clone(), mtls_handle.clone())?;
+
+    let eval_listener_task =
+        maybe_spawn_eval_listener(&config, pool, shutdown_token.clone()).await?;
 
     let listener = TcpListener::bind(bind_addr)
         .await
@@ -260,6 +326,9 @@ async fn main() -> anyhow::Result<()> {
     shutdown_token.cancel();
     mtls_handle.graceful_shutdown(Some(Duration::from_secs(10)));
     if let Some(task) = mtls_listener_task {
+        let _ = task.await;
+    }
+    if let Some(task) = eval_listener_task {
         let _ = task.await;
     }
     if let Some(task) = notification_relay_task {

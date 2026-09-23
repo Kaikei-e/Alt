@@ -9,7 +9,6 @@ from recap_subworker.domain.models import (
     ClusterDocument,
     ClusterJobParams,
     ClusterJobPayload,
-    EvidenceConstraints,
     EvidenceRequest,
 )
 

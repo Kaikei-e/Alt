@@ -27,9 +27,9 @@ def detect_language_simple(text: str, min_chars: int = 50) -> str:
 
     # Check for Japanese characters (Hiragana, Katakana, Kanji)
     has_japanese = any(
-        "\u3040" <= char <= "\u309F" or  # Hiragana
-        "\u30A0" <= char <= "\u30FF" or  # Katakana
-        "\u4E00" <= char <= "\u9FAF"     # CJK Unified Ideographs
+        "\u3040" <= char <= "\u309f"  # Hiragana
+        or "\u30a0" <= char <= "\u30ff"  # Katakana
+        or "\u4e00" <= char <= "\u9faf"  # CJK Unified Ideographs
         for char in text
     )
 
@@ -37,9 +37,24 @@ def detect_language_simple(text: str, min_chars: int = 50) -> str:
     has_english = any(char.isascii() and char.isalpha() for char in text)
 
     # Count ratio of Japanese vs English characters
-    jp_chars = sum(1 for char in text if "\u3040" <= char <= "\u309F" or "\u30A0" <= char <= "\u30FF" or "\u4E00" <= char <= "\u9FAF")
+    jp_chars = sum(
+        1
+        for char in text
+        if "\u3040" <= char <= "\u309f"
+        or "\u30a0" <= char <= "\u30ff"
+        or "\u4e00" <= char <= "\u9faf"
+    )
     en_chars = sum(1 for char in text if char.isascii() and char.isalpha())
-    total_chars = len([c for c in text if c.isalnum() or "\u3040" <= c <= "\u309F" or "\u30A0" <= c <= "\u30FF" or "\u4E00" <= c <= "\u9FAF"])
+    total_chars = len(
+        [
+            c
+            for c in text
+            if c.isalnum()
+            or "\u3040" <= c <= "\u309f"
+            or "\u30a0" <= c <= "\u30ff"
+            or "\u4e00" <= c <= "\u9faf"
+        ]
+    )
 
     if total_chars == 0:
         return "unknown"
@@ -79,7 +94,9 @@ class LearningMachineStudentClassifier:
             taxonomy_path: Path to genres.yaml taxonomy file
             device: Device to run inference on ("cpu" or "cuda")
         """
-        self.device = torch.device(device if torch.cuda.is_available() and device == "cuda" else "cpu")
+        self.device = torch.device(
+            device if torch.cuda.is_available() and device == "cuda" else "cpu"
+        )
         logger.info("Initializing LearningMachineStudentClassifier", device=str(self.device))
 
         # Load taxonomy
@@ -106,7 +123,9 @@ class LearningMachineStudentClassifier:
             ja_path = Path(student_ja_dir)
             if ja_path.exists():
                 try:
-                    self.model_ja = StudentDistilBERT.from_pretrained(str(ja_path), num_labels=self.num_labels)
+                    self.model_ja = StudentDistilBERT.from_pretrained(
+                        str(ja_path), num_labels=self.num_labels
+                    )
                     self.model_ja.to(self.device)
                     self.model_ja.eval()
                     logger.info(f"Loaded Japanese model from {student_ja_dir}")
@@ -119,7 +138,9 @@ class LearningMachineStudentClassifier:
             en_path = Path(student_en_dir)
             if en_path.exists():
                 try:
-                    self.model_en = StudentDistilBERT.from_pretrained(str(en_path), num_labels=self.num_labels)
+                    self.model_en = StudentDistilBERT.from_pretrained(
+                        str(en_path), num_labels=self.num_labels
+                    )
                     self.model_en.to(self.device)
                     self.model_en.eval()
                     logger.info(f"Loaded English model from {student_en_dir}")
@@ -180,13 +201,17 @@ class LearningMachineStudentClassifier:
 
         # Japanese predictions
         if ja_texts and self.model_ja:
-            ja_results = self._predict_with_model(self.model_ja, ja_texts, multi_label, top_k, threshold_overrides)
+            ja_results = self._predict_with_model(
+                self.model_ja, ja_texts, multi_label, top_k, threshold_overrides
+            )
             for idx, result in zip(ja_indices, ja_results, strict=False):
                 results[idx] = result
 
         # English predictions
         if en_texts and self.model_en:
-            en_results = self._predict_with_model(self.model_en, en_texts, multi_label, top_k, threshold_overrides)
+            en_results = self._predict_with_model(
+                self.model_en, en_texts, multi_label, top_k, threshold_overrides
+            )
             for idx, result in zip(en_indices, en_results, strict=False):
                 results[idx] = result
 
@@ -194,7 +219,9 @@ class LearningMachineStudentClassifier:
         if unknown_texts:
             fallback_model = self.model_ja if self.model_ja else self.model_en
             if fallback_model:
-                fallback_results = self._predict_with_model(fallback_model, unknown_texts, multi_label, top_k, threshold_overrides)
+                fallback_results = self._predict_with_model(
+                    fallback_model, unknown_texts, multi_label, top_k, threshold_overrides
+                )
                 for idx, result in zip(unknown_indices, fallback_results, strict=False):
                     results[idx] = result
             else:
@@ -244,31 +271,39 @@ class LearningMachineStudentClassifier:
             for idx in top_indices:
                 genre = self.id2label[idx]
                 score = float(prob_dist[idx])
-                threshold = (threshold_overrides.get(genre, default_threshold)
-                            if threshold_overrides is not None else default_threshold)
+                threshold = (
+                    threshold_overrides.get(genre, default_threshold)
+                    if threshold_overrides is not None
+                    else default_threshold
+                )
 
                 if multi_label and score >= threshold:
-                    candidates.append({
-                        "genre": genre,
-                        "score": score,
-                        "confidence": score,
-                    })
+                    candidates.append(
+                        {
+                            "genre": genre,
+                            "score": score,
+                            "confidence": score,
+                        }
+                    )
 
             # If not multi_label or no candidates above threshold, use top prediction
             if not multi_label or not candidates:
-                candidates = [{
-                    "genre": top_genre,
-                    "score": top_confidence,
-                    "confidence": top_confidence,
-                }]
+                candidates = [
+                    {
+                        "genre": top_genre,
+                        "score": top_confidence,
+                        "confidence": top_confidence,
+                    }
+                ]
 
-            results.append({
-                "top_genre": top_genre,
-                "confidence": top_confidence,
-                "scores": scores,
-                "candidates": candidates[:top_k],
-                "below_threshold": top_confidence < default_threshold,
-            })
+            results.append(
+                {
+                    "top_genre": top_genre,
+                    "confidence": top_confidence,
+                    "scores": scores,
+                    "candidates": candidates[:top_k],
+                    "below_threshold": top_confidence < default_threshold,
+                }
+            )
 
         return results
-

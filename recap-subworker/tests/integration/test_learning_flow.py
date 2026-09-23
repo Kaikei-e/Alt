@@ -43,8 +43,8 @@ async def test_learning_endpoint_conflict_when_already_running(client):
         async def enqueue_learning_job(self):
             raise ConcurrentAdminJobError("learning job already running")
 
-    client.app.dependency_overrides[app_deps.get_admin_job_service_dep] = (
-        lambda: _ConflictingAdminJobService()
+    client.app.dependency_overrides[app_deps.get_admin_job_service_dep] = lambda: (
+        _ConflictingAdminJobService()
     )
     try:
         response = client.post("/admin/learning")
@@ -85,9 +85,7 @@ async def test_learning_scheduler_integration():
     session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
     session_ctx.__aexit__ = AsyncMock(return_value=False)
     mock_session_factory = MagicMock(return_value=session_ctx)
-    scheduler._db_resources = MagicMock(
-        session_factory=mock_session_factory, aclose=AsyncMock()
-    )
+    scheduler._db_resources = MagicMock(session_factory=mock_session_factory, aclose=AsyncMock())
 
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -106,4 +104,3 @@ async def test_learning_scheduler_integration():
     mock_session.execute.assert_awaited()
     mock_client.send_learning_payload.assert_awaited()
     mock_client.close.assert_awaited()
-

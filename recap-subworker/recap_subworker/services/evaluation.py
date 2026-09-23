@@ -415,7 +415,9 @@ class EvaluationService:
         if use_cross_validation and n_folds > 1:
             try:
                 logger.info("Starting Cross-Validation", n_folds=n_folds)
-                cv_metrics = self._run_cross_validation(X, y_true_labels, classifier, n_folds=n_folds)
+                cv_metrics = self._run_cross_validation(
+                    X, y_true_labels, classifier, n_folds=n_folds
+                )
                 results.update(cv_metrics)
             except Exception:
                 logger.exception("Cross-validation failed")

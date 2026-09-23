@@ -1,5 +1,6 @@
 pub(crate) mod admin;
 pub(crate) mod auth;
+pub mod cards;
 pub(crate) mod dashboard;
 pub(crate) mod evaluation;
 pub(crate) mod fetch;
@@ -43,6 +44,7 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/v1/recaps/7days", get(fetch::get_7days_recap))
         .route("/v1/generate/recaps/3days", post(generate::trigger_3days))
         .route("/v1/recaps/3days", get(fetch::get_3days_recap))
+        .route("/v1/recaps/3days/cards", get(cards::get_3days_cards))
         .route("/v1/recaps/search", get(fetch::search_recaps))
         .route(
             "/v1/recaps/genres/indexable",
@@ -129,6 +131,8 @@ mod tests {
                     "RECAP_ADMIN_TOKEN_FILE",
                     Some(token_path.to_str().expect("utf8 path")),
                 ),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",

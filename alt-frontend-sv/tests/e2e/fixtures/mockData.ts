@@ -523,6 +523,7 @@ export const CONNECT_RPC_PATHS = {
 	// Recap service
 	getSevenDayRecap: "**/alt.recap.v2.RecapService/GetSevenDayRecap",
 	getThreeDayRecap: "**/alt.recap.v2.RecapService/GetThreeDayRecap",
+	getThreeDayRecapCards: "**/alt.recap.v2.RecapService/GetThreeDayRecapCards",
 };
 
 // Connect-RPC Article Content response

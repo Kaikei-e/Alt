@@ -45,12 +45,8 @@ def _setup_cuda_library_path():
     # 4. ldconfigで検出されたCUDAライブラリのパスを確認
     try:
         import subprocess
-        result = subprocess.run(
-            ["ldconfig", "-p"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+
+        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             for line in result.stdout.split("\n"):
                 if "cuda" in line.lower() and "=>" in line:
@@ -72,6 +68,7 @@ def _setup_cuda_library_path():
         current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
         updated_ld_path = ":".join(new_paths + ([current_ld_path] if current_ld_path else []))
         os.environ["LD_LIBRARY_PATH"] = updated_ld_path
+
 
 _setup_cuda_library_path()
 
@@ -95,6 +92,7 @@ from recap_subworker.learning_machine.teacher.model import TeacherBERT
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def load_genres(path: Path) -> list[str]:
     # Try different structures if needed
     with open(path) as f:
@@ -110,6 +108,7 @@ def load_genres(path: Path) -> list[str]:
             data = json.load(f)
             return data.get("genres", [])
 
+
 def load_jsonl(path: Path) -> list[dict]:
     data = []
     with open(path, encoding="utf-8") as f:
@@ -118,20 +117,50 @@ def load_jsonl(path: Path) -> list[dict]:
                 data.append(json.loads(line))
     return data
 
+
 def main():
     parser = argparse.ArgumentParser()
     # Default values optimized from Experiment 5 (Best: Val F1=0.9094)
     parser.add_argument("--epochs", type=int, default=7)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=1.5e-5)
-    parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay for AdamW optimizer")
-    parser.add_argument("--warmup_steps", type=int, default=150, help="Number of warmup steps for learning rate scheduler")
-    parser.add_argument("--max_length", type=int, default=256, help="Maximum sequence length for tokenization")
-    parser.add_argument("--output_dir", type=str, default=None, help="Output directory (default: artifacts/teacher/v0_{language})")
-    parser.add_argument("--gold_path", type=str, default="recap_subworker/learning_machine/data/gold_seed.jsonl")
-    parser.add_argument("--use_external", action="store_true", help="Use silver_external.jsonl if available")
-    parser.add_argument("--language", type=str, choices=["ja", "en"], default="ja", help="Language filter for training data")
-    parser.add_argument("--model_name", type=str, default=None, help="Base model name (default: Japanese BERT for ja, bert-base-uncased for en)")
+    parser.add_argument(
+        "--weight_decay", type=float, default=0.01, help="Weight decay for AdamW optimizer"
+    )
+    parser.add_argument(
+        "--warmup_steps",
+        type=int,
+        default=150,
+        help="Number of warmup steps for learning rate scheduler",
+    )
+    parser.add_argument(
+        "--max_length", type=int, default=256, help="Maximum sequence length for tokenization"
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Output directory (default: artifacts/teacher/v0_{language})",
+    )
+    parser.add_argument(
+        "--gold_path", type=str, default="recap_subworker/learning_machine/data/gold_seed.jsonl"
+    )
+    parser.add_argument(
+        "--use_external", action="store_true", help="Use silver_external.jsonl if available"
+    )
+    parser.add_argument(
+        "--language",
+        type=str,
+        choices=["ja", "en"],
+        default="ja",
+        help="Language filter for training data",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=None,
+        help="Base model name (default: Japanese BERT for ja, bert-base-uncased for en)",
+    )
     args = parser.parse_args()
 
     # GPU確認と詳細ログ
@@ -146,9 +175,7 @@ def main():
         )
     else:
         device = torch.device("cpu")
-        logger.warning(
-            f"CUDA not available, using CPU. Training will be slow! Device: {device}"
-        )
+        logger.warning(f"CUDA not available, using CPU. Training will be slow! Device: {device}")
 
     # 1. Load Taxonomy
     # Assuming standard path
@@ -181,7 +208,9 @@ def main():
     # Filter by language
     gold_data = [item for item in gold_data if item.get("lang") == args.language]
     silver_data = [item for item in silver_data if item.get("lang") == args.language]
-    logger.info(f"After language filter ({args.language}): Gold={len(gold_data)}, Silver={len(silver_data)}")
+    logger.info(
+        f"After language filter ({args.language}): Gold={len(gold_data)}, Silver={len(silver_data)}"
+    )
 
     # Combine
     all_items = []
@@ -207,7 +236,7 @@ def main():
     # Process Silver
     for item in silver_data:
         text = item.get("content") or item.get("text")
-        label_str = item.get("label") # external data has single 'label' field
+        label_str = item.get("label")  # external data has single 'label' field
         if label_str in label2id:
             # Lower weight for Silver data (0.2 based on request to lower it 0.1~0.3)
             all_items.append({"text": text, "label": label2id[label_str], "weight": 0.2})
@@ -222,7 +251,12 @@ def main():
 
     # Stratified Split - include weights
     train_texts, val_texts, train_labels, val_labels, train_weights, val_weights = train_test_split(
-        texts, labels, weights, test_size=0.2, random_state=42, stratify=labels if len(texts) > num_labels * 5 else None
+        texts,
+        labels,
+        weights,
+        test_size=0.2,
+        random_state=42,
+        stratify=labels if len(texts) > num_labels * 5 else None,
     )
 
     logger.info(f"Train: {len(train_texts)}, Val: {len(val_texts)}")
@@ -241,19 +275,33 @@ def main():
     teacher = TeacherBERT(model_name, num_labels, label2id)
     teacher.to(device)
 
-    train_dataset = TextClassificationDataset(train_texts, train_labels, teacher.tokenizer, weights=train_weights, max_length=args.max_length)
-    val_dataset = TextClassificationDataset(val_texts, val_labels, teacher.tokenizer, weights=val_weights, max_length=args.max_length)
+    train_dataset = TextClassificationDataset(
+        train_texts,
+        train_labels,
+        teacher.tokenizer,
+        weights=train_weights,
+        max_length=args.max_length,
+    )
+    val_dataset = TextClassificationDataset(
+        val_texts, val_labels, teacher.tokenizer, weights=val_weights, max_length=args.max_length
+    )
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
     optimizer = AdamW(teacher.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     total_steps = len(train_loader) * args.epochs
-    warmup_steps = args.warmup_steps if args.warmup_steps > 0 else max(0, int(total_steps * 0.1))  # Default to 10% if not specified
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
-    logger.info(f"Optimizer: lr={args.lr}, weight_decay={args.weight_decay}, warmup_steps={warmup_steps}, total_steps={total_steps}")
+    warmup_steps = (
+        args.warmup_steps if args.warmup_steps > 0 else max(0, int(total_steps * 0.1))
+    )  # Default to 10% if not specified
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
+    )
+    logger.info(
+        f"Optimizer: lr={args.lr}, weight_decay={args.weight_decay}, warmup_steps={warmup_steps}, total_steps={total_steps}"
+    )
 
-    loss_fn = nn.CrossEntropyLoss(reduction='none')
+    loss_fn = nn.CrossEntropyLoss(reduction="none")
 
     best_f1 = 0.0
     if args.output_dir:
@@ -276,9 +324,9 @@ def main():
         for batch_idx, batch in enumerate(train_loader):
             optimizer.zero_grad()
 
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            lbl = batch['labels'].to(device)
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            lbl = batch["labels"].to(device)
 
             # 最初のバッチでGPU使用を確認
             if epoch == 0 and batch_idx == 0 and torch.cuda.is_available():
@@ -296,7 +344,7 @@ def main():
             logits = outputs.logits
             per_sample_loss = loss_fn(logits, lbl)
             # batch['weights'] might need to be moved to device
-            sample_weights = batch['weights'].to(device)
+            sample_weights = batch["weights"].to(device)
             weighted_loss = (per_sample_loss * sample_weights).mean()
 
             weighted_loss.backward()
@@ -323,9 +371,9 @@ def main():
         true_lbls = []
         val_loss = 0
         for batch in val_loader:
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            lbl = batch['labels'].to(device)
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            lbl = batch["labels"].to(device)
 
             with torch.no_grad():
                 outputs = teacher(input_ids, attention_mask, labels=lbl)
@@ -340,7 +388,9 @@ def main():
         avg_val_loss = val_loss / len(val_loader)
         val_f1 = f1_score(true_lbls, preds, average="macro")
 
-        logger.info(f"Epoch {epoch+1}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Macro F1: {val_f1:.4f}")
+        logger.info(
+            f"Epoch {epoch + 1}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Macro F1: {val_f1:.4f}"
+        )
 
         if val_f1 > best_f1:
             best_f1 = val_f1
@@ -348,6 +398,7 @@ def main():
             logger.info("New best model saved.")
 
     logger.info(f"Training completed. Best Val F1: {best_f1:.4f}")
+
 
 if __name__ == "__main__":
     main()

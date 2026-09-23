@@ -61,7 +61,9 @@ class AdminJobManager:
                 job.result = await job._fn()
                 job.status = "succeeded"
             except Exception as exc:  # pragma: no cover - runtime safety
-                self._log.error("admin_job.failed", job_id=str(job.job_id), kind=job.kind, error=str(exc))
+                self._log.error(
+                    "admin_job.failed", job_id=str(job.job_id), kind=job.kind, error=str(exc)
+                )
                 job.status = "failed"
                 job.error = str(exc)
             finally:
@@ -84,5 +86,7 @@ class AdminJobManager:
 
     def list(self, limit: int = 50) -> list[dict]:
         # Return recent jobs sorted by created_at desc
-        return [j.to_dict() for j in sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)[:limit]]
-
+        return [
+            j.to_dict()
+            for j in sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)[:limit]
+        ]

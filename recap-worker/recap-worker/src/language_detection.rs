@@ -88,6 +88,17 @@ pub fn detect_lang(text: &str) -> (ClassificationLanguage, f64) {
     (classification_lang, confidence)
 }
 
+/// CardsPipeline 用の言語判定（"ja", "en", "other" を返す）。
+#[must_use]
+pub fn detect_text_language(text: &str) -> &'static str {
+    let (lang, _) = detect_lang(text);
+    match lang {
+        ClassificationLanguage::Japanese => "ja",
+        ClassificationLanguage::English => "en",
+        ClassificationLanguage::Unknown => "other",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

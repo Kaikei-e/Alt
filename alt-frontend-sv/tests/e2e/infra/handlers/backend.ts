@@ -36,6 +36,7 @@ import {
 import {
 	AUGUR_CONNECT_MESSAGES,
 	AUGUR_SSE_CHUNKS,
+	CONNECT_RECAP_CARDS_RESPONSE,
 	CONNECT_RECAP_RESPONSE,
 	RECAP_RESPONSE,
 } from "../data/recap";
@@ -450,6 +451,14 @@ export function createBackendServer(): http.Server {
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify(CONNECT_RECAP_RESPONSE));
+			return;
+		}
+
+		// GetThreeDayRecapCards (Connect-RPC)
+		if (path === "/alt.recap.v2.RecapService/GetThreeDayRecapCards") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(CONNECT_RECAP_CARDS_RESPONSE));
 			return;
 		}
 

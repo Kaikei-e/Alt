@@ -177,12 +177,17 @@ export {
 	createRecapClient,
 	getSevenDayRecap,
 	getThreeDayRecap,
+	getThreeDayRecapCards,
+	type RecapCard,
+	type RecapCardSource,
+	type RecapCardsJob,
 	type RecapGenreWithReferences,
 	type RecapReference,
 	type RecapSearchResultItem,
 	type RecapSummaryWithReferences,
 	searchRecaps,
 	searchRecapsByTag,
+	type ThreeDayRecapCardsResponse,
 } from "./recap";
 // RSSService client (Phase 5)
 export {

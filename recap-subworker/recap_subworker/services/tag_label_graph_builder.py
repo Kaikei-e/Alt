@@ -98,9 +98,7 @@ class TagLabelGraphBuilder:
         )
         return count
 
-    async def _fetch_learning_rows(
-        self, days: int
-    ) -> list[dict[str, Any]]:
+    async def _fetch_learning_rows(self, days: int) -> list[dict[str, Any]]:
         """Fetch genre learning results with tag profiles.
 
         Note: Uses published_at (not updated_at) to align with recap-worker's
@@ -121,13 +119,9 @@ class TagLabelGraphBuilder:
         result = await self.session.execute(query, {"days": days})
         return [dict(row._mapping) for row in result.all()]
 
-    def _aggregate_edges(
-        self, rows: Sequence[dict[str, Any]]
-    ) -> list[EdgePayload]:
+    def _aggregate_edges(self, rows: Sequence[dict[str, Any]]) -> list[EdgePayload]:
         """Aggregate tag-genre co-occurrences into weighted edges."""
-        stats: dict[tuple[str, str], _EdgeAccumulator] = defaultdict(
-            _EdgeAccumulator
-        )
+        stats: dict[tuple[str, str], _EdgeAccumulator] = defaultdict(_EdgeAccumulator)
 
         for row in rows:
             genre = (row.get("genre") or "other").strip().lower()
@@ -244,4 +238,3 @@ class TagLabelGraphBuilder:
 
         await self.session.commit()
         return len(edges)
-

@@ -60,6 +60,27 @@ pub enum ClassificationEvalConfig {
     },
 }
 
+/// Configuration for the evaluation HTTP listener.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvalListenerConfig {
+    Disabled,
+    Enabled {
+        listen_addr: SocketAddr,
+        admin_token: String,
+    },
+}
+
+/// Configuration for the scheduled cards daily batch job.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CardsJobConfig {
+    Disabled,
+    Enabled {
+        utc_hour: u32,
+        utc_minute: u32,
+        user_id: uuid::Uuid,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     http_bind: SocketAddr,
@@ -126,6 +147,9 @@ pub struct Config {
     knowledge_emit: KnowledgeEmit,
     max_degraded_genre_ratio: f64,
     admin_auth: AdminAuth,
+    eval_listener: EvalListenerConfig,
+    cards_job: CardsJobConfig,
+    cards_user_id: Option<uuid::Uuid>,
 }
 
 /// Resolved knowledge-loop owner ids sourced from
@@ -353,6 +377,8 @@ impl Config {
         // succeed with a handful of stored genres (CLAUDE.md rule 8).
         let max_degraded_genre_ratio = parse_f64("RECAP_MAX_DEGRADED_GENRE_RATIO", 0.5)?;
         let admin_auth = load_admin_auth()?;
+        let eval_listener = load_eval_listener(&admin_auth)?;
+        let (cards_job, cards_user_id) = load_cards_job()?;
 
         Ok(Self::from_components(
             basic,
@@ -375,6 +401,9 @@ impl Config {
             knowledge_emit,
             max_degraded_genre_ratio,
             admin_auth,
+            eval_listener,
+            cards_job,
+            cards_user_id,
         ))
     }
 
@@ -400,6 +429,9 @@ impl Config {
         knowledge_emit: KnowledgeEmit,
         max_degraded_genre_ratio: f64,
         admin_auth: AdminAuth,
+        eval_listener: EvalListenerConfig,
+        cards_job: CardsJobConfig,
+        cards_user_id: Option<uuid::Uuid>,
     ) -> Self {
         Self {
             http_bind: basic.http_bind,
@@ -466,6 +498,9 @@ impl Config {
             knowledge_emit,
             max_degraded_genre_ratio,
             admin_auth,
+            eval_listener,
+            cards_job,
+            cards_user_id,
         }
     }
 
@@ -879,6 +914,36 @@ impl Config {
     pub fn admin_auth_token(&self) -> Option<&str> {
         self.admin_auth.token()
     }
+
+    /// Evaluation HTTP listener configuration.
+    #[must_use]
+    pub fn eval_listener(&self) -> &EvalListenerConfig {
+        &self.eval_listener
+    }
+
+    /// Returns true if the evaluation HTTP listener is enabled.
+    #[must_use]
+    pub fn eval_listener_enabled(&self) -> bool {
+        matches!(self.eval_listener, EvalListenerConfig::Enabled { .. })
+    }
+
+    /// Scheduled cards batch job configuration.
+    #[must_use]
+    pub fn cards_job(&self) -> &CardsJobConfig {
+        &self.cards_job
+    }
+
+    /// Returns true if the scheduled cards batch job is enabled.
+    #[must_use]
+    pub fn cards_job_enabled(&self) -> bool {
+        matches!(self.cards_job, CardsJobConfig::Enabled { .. })
+    }
+
+    /// User ID scoped for cards batch job and evaluation replay.
+    #[must_use]
+    pub fn cards_user_id(&self) -> Option<uuid::Uuid> {
+        self.cards_user_id
+    }
 }
 
 fn load_basic_config() -> Result<BasicConfig, ConfigError> {
@@ -1230,15 +1295,7 @@ fn load_knowledge_emit() -> Result<KnowledgeEmit, ConfigError> {
 /// unauthenticated; an unset var is treated as "enabled", so a deployment
 /// that forgets to mount `RECAP_ADMIN_TOKEN_FILE` fails startup instead of
 /// silently serving those routes unauthenticated (CLAUDE.md rule 9).
-fn load_admin_auth() -> Result<AdminAuth, ConfigError> {
-    let auth_mode = env_var_optional("RECAP_ADMIN_AUTH").map(|s| s.trim().to_lowercase());
-    if auth_mode.as_deref() == Some("disabled") {
-        tracing::warn!(
-            "recap_admin_auth_disabled: RECAP_ADMIN_AUTH=disabled was set explicitly; /admin/jobs/retry, /admin/genre-learning and the recap-subworker admin/runs client accept unauthenticated requests"
-        );
-        return Ok(AdminAuth::Disabled);
-    }
-
+fn read_admin_token() -> Result<String, ConfigError> {
     let token_file = env_var_optional("RECAP_ADMIN_TOKEN_FILE")
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -1271,8 +1328,129 @@ fn load_admin_auth() -> Result<AdminAuth, ConfigError> {
             ),
         ));
     }
+    Ok(trimmed)
+}
+
+fn load_admin_auth() -> Result<AdminAuth, ConfigError> {
+    let auth_mode = env_var_optional("RECAP_ADMIN_AUTH").map(|s| s.trim().to_lowercase());
+    if auth_mode.as_deref() == Some("disabled") {
+        tracing::warn!(
+            "recap_admin_auth_disabled: RECAP_ADMIN_AUTH=disabled was set explicitly; /admin/jobs/retry, /admin/genre-learning and the recap-subworker admin/runs client accept unauthenticated requests"
+        );
+        return Ok(AdminAuth::Disabled);
+    }
+
+    let trimmed = read_admin_token()?;
     tracing::info!("recap_admin_auth_enabled");
     Ok(AdminAuth::Enabled { token: trimmed })
+}
+
+/// Resolve the eval HTTP listener config from env.
+///
+/// `RECAP_EVAL_LISTENER` is required and must be strictly "enabled" or "disabled".
+/// When enabled, admin auth is mandatory.
+fn load_eval_listener(admin_auth: &AdminAuth) -> Result<EvalListenerConfig, ConfigError> {
+    let mode_str = env_var("RECAP_EVAL_LISTENER")?;
+    let mode = mode_str.trim().to_lowercase();
+    match mode.as_str() {
+        "disabled" => Ok(EvalListenerConfig::Disabled),
+        "enabled" => {
+            let listen_addr = parse_socket_addr("RECAP_EVAL_LISTEN_ADDR", "0.0.0.0:9006")?;
+
+            let admin_token = match admin_auth.token() {
+                Some(t) => t.to_string(),
+                None => read_admin_token()?,
+            };
+
+            Ok(EvalListenerConfig::Enabled {
+                listen_addr,
+                admin_token,
+            })
+        }
+        _ => Err(invalid_config(
+            "RECAP_EVAL_LISTENER",
+            format!("must be 'enabled' or 'disabled', got '{mode_str}'"),
+        )),
+    }
+}
+
+/// Resolve the scheduled topic cards daily job config from env.
+///
+/// REQUIRED explicit configuration: `RECAP_CARDS_JOB=enabled|disabled` (Critical Rule 9).
+/// Any other value or unset => startup error.
+/// When enabled, `RECAP_CARDS_USER_ID` is REQUIRED (non-empty valid UUID).
+/// When disabled, `RECAP_CARDS_USER_ID` is optionally read for eval replay.
+fn load_cards_job() -> Result<(CardsJobConfig, Option<uuid::Uuid>), ConfigError> {
+    let mode_str = env_var("RECAP_CARDS_JOB")?;
+    let mode = mode_str.trim().to_ascii_lowercase();
+    match mode.as_str() {
+        "disabled" => {
+            let user_id = match env_var_optional("RECAP_CARDS_USER_ID") {
+                Some(raw) if !raw.trim().is_empty() => {
+                    let parsed = uuid::Uuid::parse_str(raw.trim()).map_err(|e| {
+                        invalid_config(
+                            "RECAP_CARDS_USER_ID",
+                            format!("must be a valid UUID, got '{raw}': {e}"),
+                        )
+                    })?;
+                    Some(parsed)
+                }
+                _ => None,
+            };
+            Ok((CardsJobConfig::Disabled, user_id))
+        }
+        "enabled" => {
+            let user_id_raw = env_var("RECAP_CARDS_USER_ID")?;
+            if user_id_raw.trim().is_empty() {
+                return Err(ConfigError::Missing("RECAP_CARDS_USER_ID"));
+            }
+            let user_id = uuid::Uuid::parse_str(user_id_raw.trim()).map_err(|e| {
+                invalid_config(
+                    "RECAP_CARDS_USER_ID",
+                    format!("must be a valid UUID, got '{user_id_raw}': {e}"),
+                )
+            })?;
+
+            let time_str =
+                env_var_optional("RECAP_CARDS_JOB_UTC_TIME").unwrap_or_else(|| "17:30".to_string());
+            let (utc_hour, utc_minute) = parse_utc_time("RECAP_CARDS_JOB_UTC_TIME", &time_str)?;
+            Ok((
+                CardsJobConfig::Enabled {
+                    utc_hour,
+                    utc_minute,
+                    user_id,
+                },
+                Some(user_id),
+            ))
+        }
+        _ => Err(invalid_config(
+            "RECAP_CARDS_JOB",
+            format!("must be 'enabled' or 'disabled', got '{mode_str}'"),
+        )),
+    }
+}
+
+fn parse_utc_time(name: &'static str, raw: &str) -> Result<(u32, u32), ConfigError> {
+    let parts: Vec<&str> = raw.trim().split(':').collect();
+    if parts.len() != 2 {
+        return Err(invalid_config(
+            name,
+            format!("invalid UTC time format '{raw}', expected HH:MM"),
+        ));
+    }
+    let hour: u32 = parts[0]
+        .parse()
+        .map_err(|e| invalid_config(name, format!("invalid hour in '{raw}': {e}")))?;
+    let minute: u32 = parts[1]
+        .parse()
+        .map_err(|e| invalid_config(name, format!("invalid minute in '{raw}': {e}")))?;
+    if hour > 23 || minute > 59 {
+        return Err(invalid_config(
+            name,
+            format!("time '{raw}' out of range, hour must be 0-23 and minute 0-59"),
+        ));
+    }
+    Ok((hour, minute))
 }
 
 /// Resolve the knowledge-loop owner from the two owner env vars.
@@ -1327,9 +1505,13 @@ fn env_var(name: &'static str) -> Result<String, ConfigError> {
     // Check for _FILE suffix
     let file_var = format!("{}_FILE", name);
     if let Ok(path) = env::var(&file_var) {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            return Ok(content.trim().to_string());
-        }
+        let content = std::fs::read_to_string(&path).map_err(|err| {
+            invalid_config(
+                name,
+                format!("failed to read file '{path}' specified by {file_var}: {err}"),
+            )
+        })?;
+        return Ok(content.trim().to_string());
     }
     env::var(name).map_err(|_| ConfigError::Missing(name))
 }
@@ -1512,6 +1694,13 @@ mod tests {
             // case override this entry.
             ("RECAP_ADMIN_AUTH", Some("disabled")),
             ("RECAP_ADMIN_TOKEN_FILE", None),
+            // Explicit disabled, not a reset: RECAP_EVAL_LISTENER is required
+            // to be strictly "enabled" or "disabled", so every fixture must state its intent.
+            ("RECAP_EVAL_LISTENER", Some("disabled")),
+            ("RECAP_EVAL_LISTEN_ADDR", None),
+            ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_CARDS_JOB_UTC_TIME", None),
+            ("RECAP_CARDS_USER_ID", None),
         ]
     }
 
@@ -2431,6 +2620,400 @@ mod tests {
         temp_env::with_vars(vars, || {
             let result = Config::from_env();
             assert!(result.is_err(), "unreadable token file must fail startup");
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_eval_listener_absent() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_EVAL_LISTENER")
+            .collect();
+        vars.push(("RECAP_EVAL_LISTENER", None));
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                res.is_err(),
+                "RECAP_EVAL_LISTENER is required and must fail when absent"
+            );
+            assert!(matches!(
+                res.unwrap_err(),
+                ConfigError::Missing("RECAP_EVAL_LISTENER")
+            ));
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_eval_listener_invalid() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_EVAL_LISTENER")
+            .collect();
+        vars.push(("RECAP_EVAL_LISTENER", Some("invalid_mode")));
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                res.is_err(),
+                "RECAP_EVAL_LISTENER must fail when not 'enabled' or 'disabled'"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_succeeds_when_eval_listener_disabled() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_EVAL_LISTENER")
+            .collect();
+        vars.push(("RECAP_EVAL_LISTENER", Some("disabled")));
+        temp_env::with_vars(vars, || {
+            let config =
+                Config::from_env().expect("config should load with eval_listener disabled");
+            assert!(!config.eval_listener_enabled());
+            assert_eq!(config.eval_listener(), &EvalListenerConfig::Disabled);
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_eval_listener_enabled_without_admin_token() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_EVAL_LISTENER")
+            .collect();
+        vars.extend([
+            ("RECAP_EVAL_LISTENER", Some("enabled")),
+            ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("RECAP_ADMIN_TOKEN_FILE", None),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                res.is_err(),
+                "eval listener enabled without admin token must fail"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_succeeds_when_eval_listener_enabled_with_valid_files() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let token_path = temp_dir.path().join("admin_token.txt");
+        std::fs::write(&token_path, "test-recap-admin-token-1234567890").expect("write token");
+        let token_path_str = token_path.to_str().unwrap().to_string();
+
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_EVAL_LISTENER")
+            .collect();
+        vars.extend([
+            ("RECAP_EVAL_LISTENER", Some("enabled")),
+            ("RECAP_EVAL_LISTEN_ADDR", Some("127.0.0.1:9008")),
+            ("RECAP_ADMIN_AUTH", None),
+            ("RECAP_ADMIN_TOKEN_FILE", Some(token_path_str.as_str())),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
+            assert!(config.eval_listener_enabled());
+            match config.eval_listener() {
+                EvalListenerConfig::Enabled {
+                    listen_addr,
+                    admin_token,
+                } => {
+                    assert_eq!(
+                        *listen_addr,
+                        "127.0.0.1:9008".parse::<SocketAddr>().unwrap()
+                    );
+                    assert_eq!(admin_token, "test-recap-admin-token-1234567890");
+                }
+                EvalListenerConfig::Disabled => panic!("expected EvalListenerConfig::Enabled"),
+            }
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_cards_job_absent() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_JOB")
+            .collect();
+        vars.push(("RECAP_CARDS_JOB", None));
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                res.is_err(),
+                "RECAP_CARDS_JOB is required and must fail when absent"
+            );
+            assert!(matches!(
+                res.unwrap_err(),
+                ConfigError::Missing("RECAP_CARDS_JOB")
+            ));
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_cards_job_invalid() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_JOB")
+            .collect();
+        vars.push(("RECAP_CARDS_JOB", Some("invalid_mode")));
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                res.is_err(),
+                "RECAP_CARDS_JOB must fail when not 'enabled' or 'disabled'"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_succeeds_when_cards_job_disabled() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_JOB")
+            .collect();
+        vars.push(("RECAP_CARDS_JOB", Some("disabled")));
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load with cards_job disabled");
+            assert!(!config.cards_job_enabled());
+            assert_eq!(config.cards_job(), &CardsJobConfig::Disabled);
+        });
+    }
+
+    #[test]
+    fn from_env_succeeds_when_cards_job_enabled_default_time() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let user_id_str = "11111111-1111-1111-1111-111111111111";
+        let expected_user_id = uuid::Uuid::parse_str(user_id_str).unwrap();
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| {
+                *name != "RECAP_CARDS_JOB"
+                    && *name != "RECAP_CARDS_JOB_UTC_TIME"
+                    && *name != "RECAP_CARDS_USER_ID"
+            })
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("enabled")),
+            ("RECAP_CARDS_JOB_UTC_TIME", None),
+            ("RECAP_CARDS_USER_ID", Some(user_id_str)),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load with cards_job enabled");
+            assert!(config.cards_job_enabled());
+            assert_eq!(
+                config.cards_job(),
+                &CardsJobConfig::Enabled {
+                    utc_hour: 17,
+                    utc_minute: 30,
+                    user_id: expected_user_id,
+                }
+            );
+            assert_eq!(config.cards_user_id(), Some(expected_user_id));
+        });
+    }
+
+    #[test]
+    fn from_env_succeeds_when_cards_job_enabled_custom_time() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let user_id_str = "11111111-1111-1111-1111-111111111111";
+        let expected_user_id = uuid::Uuid::parse_str(user_id_str).unwrap();
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| {
+                *name != "RECAP_CARDS_JOB"
+                    && *name != "RECAP_CARDS_JOB_UTC_TIME"
+                    && *name != "RECAP_CARDS_USER_ID"
+            })
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("enabled")),
+            ("RECAP_CARDS_JOB_UTC_TIME", Some("04:15")),
+            ("RECAP_CARDS_USER_ID", Some(user_id_str)),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load with cards_job enabled");
+            assert!(config.cards_job_enabled());
+            assert_eq!(
+                config.cards_job(),
+                &CardsJobConfig::Enabled {
+                    utc_hour: 4,
+                    utc_minute: 15,
+                    user_id: expected_user_id,
+                }
+            );
+            assert_eq!(config.cards_user_id(), Some(expected_user_id));
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_cards_job_enabled_invalid_time() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| {
+                *name != "RECAP_CARDS_JOB"
+                    && *name != "RECAP_CARDS_JOB_UTC_TIME"
+                    && *name != "RECAP_CARDS_USER_ID"
+            })
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("enabled")),
+            ("RECAP_CARDS_JOB_UTC_TIME", Some("25:00")),
+            (
+                "RECAP_CARDS_USER_ID",
+                Some("11111111-1111-1111-1111-111111111111"),
+            ),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(res.is_err(), "invalid UTC time must fail config loading");
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_cards_job_enabled_without_user_id() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_JOB" && *name != "RECAP_CARDS_USER_ID")
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("enabled")),
+            ("RECAP_CARDS_USER_ID", None),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                matches!(res, Err(ConfigError::Missing("RECAP_CARDS_USER_ID"))),
+                "RECAP_CARDS_JOB=enabled requires RECAP_CARDS_USER_ID"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_cards_job_enabled_empty_user_id() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_JOB" && *name != "RECAP_CARDS_USER_ID")
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("enabled")),
+            ("RECAP_CARDS_USER_ID", Some("   ")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                matches!(res, Err(ConfigError::Missing("RECAP_CARDS_USER_ID"))),
+                "RECAP_CARDS_JOB=enabled with empty user_id must fail as missing"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_cards_job_enabled_invalid_user_id() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_JOB" && *name != "RECAP_CARDS_USER_ID")
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("enabled")),
+            ("RECAP_CARDS_USER_ID", Some("not-a-valid-uuid")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                matches!(
+                    res,
+                    Err(ConfigError::Invalid {
+                        name: "RECAP_CARDS_USER_ID",
+                        ..
+                    })
+                ),
+                "invalid RECAP_CARDS_USER_ID must fail"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_succeeds_when_cards_job_disabled_with_valid_user_id() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let user_id_str = "22222222-2222-2222-2222-222222222222";
+        let expected_user_id = uuid::Uuid::parse_str(user_id_str).unwrap();
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_JOB" && *name != "RECAP_CARDS_USER_ID")
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_CARDS_USER_ID", Some(user_id_str)),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config loads");
+            assert_eq!(config.cards_job(), &CardsJobConfig::Disabled);
+            assert_eq!(config.cards_user_id(), Some(expected_user_id));
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_cards_job_disabled_with_invalid_user_id() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_CARDS_JOB" && *name != "RECAP_CARDS_USER_ID")
+            .collect();
+        vars.extend([
+            ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_CARDS_USER_ID", Some("not-a-valid-uuid")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(
+                matches!(
+                    res,
+                    Err(ConfigError::Invalid {
+                        name: "RECAP_CARDS_USER_ID",
+                        ..
+                    })
+                ),
+                "invalid RECAP_CARDS_USER_ID must fail even when cards_job is disabled"
+            );
+        });
+    }
+
+    #[test]
+    fn from_env_fails_loudly_when_file_path_unreadable() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let mut vars: Vec<_> = required_base();
+        vars.push((
+            "NEWS_CREATOR_BASE_URL_FILE",
+            Some("/tmp/definitely-non-existent-secret-file-xyz"),
+        ));
+        temp_env::with_vars(vars, || {
+            let res = Config::from_env();
+            assert!(res.is_err(), "unreadable _FILE must fail config loading");
+            let err = res.unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ConfigError::Invalid {
+                        name: "NEWS_CREATOR_BASE_URL",
+                        ..
+                    }
+                ),
+                "expected ConfigError::Invalid for NEWS_CREATOR_BASE_URL, got {err:?}"
+            );
         });
     }
 }

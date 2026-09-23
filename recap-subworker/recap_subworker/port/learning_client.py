@@ -9,9 +9,7 @@ from typing import Any, Protocol, runtime_checkable
 class LearningClientPort(Protocol):
     """Port for sending genre learning payloads to recap-worker."""
 
-    async def send_learning_payload(
-        self, payload: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def send_learning_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Send a learning payload and return the response.
 
         Args:

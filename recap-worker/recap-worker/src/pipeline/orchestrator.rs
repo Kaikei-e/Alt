@@ -624,6 +624,8 @@ mod new_tests {
             ("ALT_BACKEND_BASE_URL", Some("https://alt-backend:9443")),
             ("RECAP_KNOWLEDGE_EMIT", Some("false")),
             ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("RECAP_EVAL_LISTENER", Some("disabled")),
+            ("RECAP_CARDS_JOB", Some("disabled")),
             ("MTLS_ENFORCE", Some("true")),
             ("MTLS_CERT_FILE", None),
             ("MTLS_KEY_FILE", None),

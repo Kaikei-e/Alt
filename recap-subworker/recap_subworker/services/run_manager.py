@@ -110,7 +110,8 @@ class RunManager:
         dao_factory: DaoFactory = SubworkerDAO,
         pipeline: EvidencePipeline | None = None,
         pipeline_runner: PipelineTaskRunner | None = None,
-        classifier: ClassifierPort | None = None,  # GenreClassifierService (deprecated, use classification_runner)
+        classifier: ClassifierPort
+        | None = None,  # GenreClassifierService (deprecated, use classification_runner)
         classification_runner: ClassificationRunnerPort | None = None,
     ) -> None:
         self.settings = settings
@@ -402,7 +403,6 @@ class RunManager:
             # For other exceptions, re-raise to be handled by the caller
             raise
 
-
     @staticmethod
     def _fallback_classification_run_record(
         run_id: int,
@@ -421,9 +421,7 @@ class RunManager:
             error_message=None,
         )
 
-    async def create_classification_run(
-        self, submission: ClassificationRunSubmission
-    ) -> RunRecord:
+    async def create_classification_run(self, submission: ClassificationRunSubmission) -> RunRecord:
         """Insert a new classification run or reuse an existing idempotent run."""
 
         await self._sweep_orphaned_runs()
@@ -464,9 +462,8 @@ class RunManager:
 
             # Allow concurrent runs if they have different idempotency keys
             # This enables parallel processing of chunks from the same job
-            if (
-                not submission.idempotency_key
-                and await dao.has_running_run(submission.job_id, "classification")
+            if not submission.idempotency_key and await dao.has_running_run(
+                submission.job_id, "classification"
             ):
                 # If no idempotency key provided, check for any running run (backward compatibility)
                 raise ConcurrentRunError(
@@ -601,14 +598,18 @@ class RunManager:
             LOGGER.info(
                 "classification.run.executing",
                 run_id=run_id,
-                text_count=len(classification_payload.texts)
+                text_count=len(classification_payload.texts),
             )
             # Use ClassificationRunner if available (spawn-based process pool), otherwise fall back to direct classifier
             if self._classification_runner is not None:
-                results = await self._classification_runner.predict_batch(classification_payload.texts)
+                results = await self._classification_runner.predict_batch(
+                    classification_payload.texts
+                )
             else:
                 # Fallback to direct classifier (for backward compatibility)
-                assert self._classifier is not None, "Either classification_runner or classifier must be set"
+                assert self._classifier is not None, (
+                    "Either classification_runner or classifier must be set"
+                )
                 classifier = self._classifier
                 loop = asyncio.get_running_loop()
                 results = await loop.run_in_executor(
@@ -863,9 +864,7 @@ class RunManager:
             )
         return entries
 
-    def _compute_cluster_statistics(
-        self, response: EvidenceResponse
-    ) -> dict[str, Any] | None:
+    def _compute_cluster_statistics(self, response: EvidenceResponse) -> dict[str, Any] | None:
         """Compute run-level statistics from cluster avg_sim values.
 
         Collects avg_sim from all clusters, filters out None values, and computes:

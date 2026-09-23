@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -16,7 +15,7 @@ class TeacherBERT(nn.Module):
         self.bert = AutoModelForSequenceClassification.from_pretrained(
             model_name,
             num_labels=num_labels,
-            problem_type="single_label_classification" # Or "multi_label_classification"
+            problem_type="single_label_classification",  # Or "multi_label_classification"
         )
 
     def forward(self, input_ids, attention_mask, labels=None):
@@ -35,11 +34,7 @@ class TeacherBERT(nn.Module):
     def predict(self, texts: list[str], max_length: int = 256, device="cpu"):
         self.eval()
         inputs = self.tokenizer(
-            texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=max_length
+            texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length
         ).to(device)
 
         with torch.no_grad():

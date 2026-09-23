@@ -25,6 +25,7 @@ import pandas as pd
 # Japanese tokenizer
 try:
     from sudachipy import Dictionary, SplitMode
+
     SUDACHI_AVAILABLE = True
 except ImportError:
     SUDACHI_AVAILABLE = False
@@ -33,6 +34,7 @@ except ImportError:
 try:
     import nltk
     from nltk.corpus import wordnet
+
     try:
         wordnet.synsets("test")
     except LookupError:
@@ -101,8 +103,7 @@ class JapaneseAugmenter:
 
         # Get content words (skip particles, punctuation)
         content_indices = [
-            i for i, t in enumerate(tokens)
-            if len(t) > 1 and not re.match(r"^[、。！？\s]+$", t)
+            i for i, t in enumerate(tokens) if len(t) > 1 and not re.match(r"^[、。！？\s]+$", t)
         ]
 
         if not content_indices:
@@ -111,7 +112,7 @@ class JapaneseAugmenter:
         random.shuffle(content_indices)
         replacements = 0
 
-        for idx in content_indices[:n * 2]:  # Try more indices in case no synonyms
+        for idx in content_indices[: n * 2]:  # Try more indices in case no synonyms
             if replacements >= n:
                 break
             word = tokens[idx]
@@ -204,10 +205,7 @@ class EnglishAugmenter:
             return text
 
         # Get content word indices (skip short words, punctuation)
-        content_indices = [
-            i for i, t in enumerate(tokens)
-            if len(t) > 3 and t.isalpha()
-        ]
+        content_indices = [i for i, t in enumerate(tokens) if len(t) > 3 and t.isalpha()]
 
         if not content_indices:
             return text
@@ -215,7 +213,7 @@ class EnglishAugmenter:
         random.shuffle(content_indices)
         replacements = 0
 
-        for idx in content_indices[:n * 2]:
+        for idx in content_indices[: n * 2]:
             if replacements >= n:
                 break
             word = tokens[idx]
@@ -472,12 +470,14 @@ def main():
             for aug_text in aug_texts:
                 if generated >= samples_needed:
                     break
-                augmented_rows.append({
-                    "content": aug_text,
-                    "genre": genre,
-                    "augmentation_method": "eda",
-                    "source_genre": genre,
-                })
+                augmented_rows.append(
+                    {
+                        "content": aug_text,
+                        "genre": genre,
+                        "augmentation_method": "eda",
+                        "source_genre": genre,
+                    }
+                )
                 generated += 1
 
         print(f"  Generated {generated} augmented samples")

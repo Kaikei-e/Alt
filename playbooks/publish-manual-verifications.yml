@@ -66,7 +66,10 @@
     # var at template time so changes to -e flow through without edits
     # here.
     bridge_registry:
-      # recap-worker ← 3 consumers, Rust hand-rolled HTTP replay
+      # recap-worker ← 4 consumers, Rust hand-rolled HTTP replay
+      - provider: recap-worker
+        consumer: alt-backend
+        implementation: rust-stub-replay
       - provider: recap-worker
         consumer: rag-orchestrator
         implementation: rust-stub-replay

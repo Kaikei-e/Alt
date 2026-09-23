@@ -34,6 +34,7 @@ from news_creator.services.event_loop_lag_probe import run_event_loop_lag_probe
 from news_creator.services.model_warmup import ModelWarmupService
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
+from news_creator.usecase.recap_card_usecase import RecapCardUsecase
 from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
 from news_creator.usecase.plan_query_usecase import PlanQueryUsecase
 from news_creator.usecase.rerank_usecase import RerankUsecase
@@ -41,6 +42,7 @@ from news_creator.handler import (
     create_summarize_router,
     create_generate_router,
     create_recap_summary_router,
+    create_recap_card_router,
     create_expand_query_router,
     create_health_router,
 )
@@ -160,6 +162,11 @@ class DependencyContainer:
             llm_provider=self.llm_provider,
             cache=self.cache_gateway,
         )
+        self.recap_card_usecase = RecapCardUsecase(
+            config=self.config,
+            llm_provider=self.llm_provider,
+            cache=self.cache_gateway,
+        )
         self.expand_query_usecase = ExpandQueryUsecase(
             config=self.config,
             llm_provider=self.llm_provider,
@@ -251,6 +258,9 @@ app.include_router(
 app.include_router(create_generate_router(container.llm_provider), tags=["generation"])
 app.include_router(
     create_recap_summary_router(container.recap_summary_usecase), tags=["recap-summary"]
+)
+app.include_router(
+    create_recap_card_router(container.recap_card_usecase), tags=["recap-cards"]
 )
 app.include_router(
     create_expand_query_router(container.expand_query_usecase), tags=["query-expansion"]

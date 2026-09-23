@@ -42,9 +42,7 @@ class RunRepositoryPort(Protocol):
         """Mark a run as successful with response data."""
         ...
 
-    async def mark_run_failure(
-        self, run_id: int, status: str, error_message: str
-    ) -> None:
+    async def mark_run_failure(self, run_id: int, status: str, error_message: str) -> None:
         """Mark a run as failed."""
         ...
 
@@ -52,15 +50,11 @@ class RunRepositoryPort(Protocol):
         """Mark every run still flagged 'running' as failed and return the count."""
         ...
 
-    async def insert_clusters(
-        self, run_id: int, clusters: list[PersistedCluster]
-    ) -> None:
+    async def insert_clusters(self, run_id: int, clusters: list[PersistedCluster]) -> None:
         """Persist cluster results for a run."""
         ...
 
-    async def upsert_diagnostics(
-        self, run_id: int, entries: list[DiagnosticEntry]
-    ) -> None:
+    async def upsert_diagnostics(self, run_id: int, entries: list[DiagnosticEntry]) -> None:
         """Upsert diagnostic entries for a run."""
         ...
 

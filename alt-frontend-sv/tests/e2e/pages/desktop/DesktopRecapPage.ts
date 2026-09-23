@@ -8,6 +8,7 @@ import { BasePage } from "../BasePage";
 export class DesktopRecapPage extends BasePage {
 	// Page header
 	readonly pageTitle: Locator;
+	readonly topicCardsLink: Locator;
 
 	// Loading and states
 	readonly loadingSpinner: Locator;
@@ -25,6 +26,7 @@ export class DesktopRecapPage extends BasePage {
 
 		// Page elements - PageHeader has static title "Recap"
 		this.pageTitle = page.getByRole("heading", { name: /Recap/i });
+		this.topicCardsLink = page.getByRole("link", { name: "Topic cards" });
 		this.loadingSpinner = page.locator(".animate-spin").first();
 		this.emptyState = page.getByText("No recap data available");
 		this.errorMessage = page.getByText(/No recap data available yet/i);

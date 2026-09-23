@@ -1,9 +1,9 @@
 """Tests for LearningMachineStudentClassifier below_threshold flag."""
 
-import pytest
-import numpy as np
-import torch
 from unittest.mock import MagicMock, patch
+
+import pytest
+import torch
 
 
 @pytest.fixture
@@ -20,11 +20,7 @@ def taxonomy_file(tmp_path):
     """Create a temporary taxonomy file."""
     taxonomy = tmp_path / "genres.yaml"
     taxonomy.write_text(
-        "genres:\n"
-        "  - ai_data\n"
-        "  - cybersecurity\n"
-        "  - diplomacy_security\n"
-        "  - tech_industry\n"
+        "genres:\n  - ai_data\n  - cybersecurity\n  - diplomacy_security\n  - tech_industry\n"
     )
     return str(taxonomy)
 
@@ -32,25 +28,19 @@ def taxonomy_file(tmp_path):
 class TestBelowThresholdFlag:
     """Tests for the below_threshold flag in _predict_with_model output."""
 
-    def test_below_threshold_true_when_confidence_low(
-        self, mock_student_model, taxonomy_file
-    ):
+    def test_below_threshold_true_when_confidence_low(self, mock_student_model, taxonomy_file):
         """When top confidence < default_threshold (0.3), below_threshold should be True."""
         # Simulate low confidence: all scores near uniform
         probs = torch.tensor([[0.10, 0.08, 0.07, 0.05]])
         logits = torch.tensor([[0.0, 0.0, 0.0, 0.0]])
         mock_student_model.predict = MagicMock(return_value=(probs, logits))
 
-        with patch(
-            "recap_subworker.services.learning_machine_classifier.StudentDistilBERT"
-        ):
+        with patch("recap_subworker.services.learning_machine_classifier.StudentDistilBERT"):
             from recap_subworker.services.learning_machine_classifier import (
                 LearningMachineStudentClassifier,
             )
 
-            classifier = LearningMachineStudentClassifier.__new__(
-                LearningMachineStudentClassifier
-            )
+            classifier = LearningMachineStudentClassifier.__new__(LearningMachineStudentClassifier)
             classifier.device = torch.device("cpu")
             classifier.genres = ["ai_data", "cybersecurity", "diplomacy_security", "tech_industry"]
             classifier.id2label = {i: g for i, g in enumerate(classifier.genres)}
@@ -69,25 +59,19 @@ class TestBelowThresholdFlag:
         assert result["below_threshold"] is True
         assert result["confidence"] < 0.3
 
-    def test_below_threshold_false_when_confidence_high(
-        self, mock_student_model, taxonomy_file
-    ):
+    def test_below_threshold_false_when_confidence_high(self, mock_student_model, taxonomy_file):
         """When top confidence >= default_threshold (0.3), below_threshold should be False."""
         # Simulate high confidence: one dominant class
         probs = torch.tensor([[0.85, 0.05, 0.05, 0.05]])
         logits = torch.tensor([[0.0, 0.0, 0.0, 0.0]])
         mock_student_model.predict = MagicMock(return_value=(probs, logits))
 
-        with patch(
-            "recap_subworker.services.learning_machine_classifier.StudentDistilBERT"
-        ):
+        with patch("recap_subworker.services.learning_machine_classifier.StudentDistilBERT"):
             from recap_subworker.services.learning_machine_classifier import (
                 LearningMachineStudentClassifier,
             )
 
-            classifier = LearningMachineStudentClassifier.__new__(
-                LearningMachineStudentClassifier
-            )
+            classifier = LearningMachineStudentClassifier.__new__(LearningMachineStudentClassifier)
             classifier.device = torch.device("cpu")
             classifier.genres = ["ai_data", "cybersecurity", "diplomacy_security", "tech_industry"]
             classifier.id2label = {i: g for i, g in enumerate(classifier.genres)}
@@ -112,16 +96,12 @@ class TestBelowThresholdFlag:
         logits = torch.tensor([[0.0, 0.0, 0.0, 0.0]])
         mock_student_model.predict = MagicMock(return_value=(probs, logits))
 
-        with patch(
-            "recap_subworker.services.learning_machine_classifier.StudentDistilBERT"
-        ):
+        with patch("recap_subworker.services.learning_machine_classifier.StudentDistilBERT"):
             from recap_subworker.services.learning_machine_classifier import (
                 LearningMachineStudentClassifier,
             )
 
-            classifier = LearningMachineStudentClassifier.__new__(
-                LearningMachineStudentClassifier
-            )
+            classifier = LearningMachineStudentClassifier.__new__(LearningMachineStudentClassifier)
             classifier.device = torch.device("cpu")
             classifier.genres = ["ai_data", "cybersecurity", "diplomacy_security", "tech_industry"]
             classifier.id2label = {i: g for i, g in enumerate(classifier.genres)}
