@@ -26,7 +26,7 @@ use crate::clients::subworker::cards::{
 };
 use crate::store::dao::cards::{
     PreviousCardSummary, PreviousCardsJob, RecapCard, RecapCardCandidate, RecapCardJobStats,
-    RecapCardSnapshot, RecapEvalWindow,
+    RecapCardSnapshot, RecapEvalWindow, RejectionRecord,
 };
 use crate::store::dao::impls::UnifiedDao;
 use crate::store::dao::traits::JobDao;
@@ -103,6 +103,8 @@ pub trait CardsPipelineDao: Send + Sync {
         last_stage: Option<&str>,
         reason: Option<&str>,
     ) -> Result<()>;
+
+    async fn insert_card_rejection(&self, rejection: &RejectionRecord) -> Result<()>;
 }
 
 #[allow(clippy::too_many_lines)]
@@ -304,6 +306,12 @@ impl CardsPipelineDao for UnifiedDao {
         reason: Option<&str>,
     ) -> Result<()> {
         JobDao::update_job_status_with_history(self, job_id, status, last_stage, reason)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    }
+
+    async fn insert_card_rejection(&self, rejection: &RejectionRecord) -> Result<()> {
+        crate::store::dao::cards::insert_card_rejection(self.pool(), rejection)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
@@ -1139,6 +1147,20 @@ impl CardsPipeline {
             let (mut current_card, mut generation_meta) = match outcome {
                 CardGenerateOutcome::Success(resp) => (resp.card, resp.generation),
                 CardGenerateOutcome::Rejected(resp) => {
+                    record_rejection(
+                        &*self.dao,
+                        RejectionRecord {
+                            id: Uuid::new_v4(),
+                            job_id,
+                            candidate_id: candidate.id,
+                            stage: "generate".to_string(),
+                            reason: resp.reason.clone(),
+                            attempt: resp.attempts as i32,
+                            raw_text: Some(resp.raw_text),
+                            card: None,
+                        },
+                    )
+                    .await?;
                     *cards_dropped.entry(resp.reason).or_insert(0) += 1;
                     continue;
                 }
@@ -1149,6 +1171,21 @@ impl CardsPipeline {
             // Gate G1
             let mut ja_ratio = calculate_ja_ratio(&full_card_text(&current_card));
             if ja_ratio < 0.6 {
+                let card_json = serde_json::to_value(&current_card)?;
+                record_rejection(
+                    &*self.dao,
+                    RejectionRecord {
+                        id: Uuid::new_v4(),
+                        job_id,
+                        candidate_id: candidate.id,
+                        stage: "gate".to_string(),
+                        reason: "g1_language".to_string(),
+                        attempt: 1,
+                        raw_text: None,
+                        card: Some(card_json),
+                    },
+                )
+                .await?;
                 gen_req.revision_note = Some("日本語で書き直す".to_string());
                 let outcome = card_generator.generate_card(&gen_req).await?;
                 regeneration_count += 1;
@@ -1158,11 +1195,40 @@ impl CardsPipeline {
                         generation_meta = resp.generation;
                         ja_ratio = calculate_ja_ratio(&full_card_text(&current_card));
                         if ja_ratio < 0.6 {
+                            let card_json = serde_json::to_value(&current_card)?;
+                            record_rejection(
+                                &*self.dao,
+                                RejectionRecord {
+                                    id: Uuid::new_v4(),
+                                    job_id,
+                                    candidate_id: candidate.id,
+                                    stage: "gate".to_string(),
+                                    reason: "g1_language".to_string(),
+                                    attempt: 2,
+                                    raw_text: None,
+                                    card: Some(card_json),
+                                },
+                            )
+                            .await?;
                             *cards_dropped.entry("g1_language".to_string()).or_insert(0) += 1;
                             continue;
                         }
                     }
                     CardGenerateOutcome::Rejected(resp) => {
+                        record_rejection(
+                            &*self.dao,
+                            RejectionRecord {
+                                id: Uuid::new_v4(),
+                                job_id,
+                                candidate_id: candidate.id,
+                                stage: "generate".to_string(),
+                                reason: resp.reason.clone(),
+                                attempt: resp.attempts as i32,
+                                raw_text: Some(resp.raw_text),
+                                card: None,
+                            },
+                        )
+                        .await?;
                         *cards_dropped.entry(resp.reason).or_insert(0) += 1;
                         continue;
                     }
@@ -1195,6 +1261,21 @@ impl CardsPipeline {
             }
 
             if !invalid_cites.is_empty() {
+                let card_json = serde_json::to_value(&current_card)?;
+                record_rejection(
+                    &*self.dao,
+                    RejectionRecord {
+                        id: Uuid::new_v4(),
+                        job_id,
+                        candidate_id: candidate.id,
+                        stage: "gate".to_string(),
+                        reason: "g2_citation".to_string(),
+                        attempt: 1,
+                        raw_text: None,
+                        card: Some(card_json),
+                    },
+                )
+                .await?;
                 gen_req.revision_note = Some(format!("不正な引用: {}", invalid_cites.join(", ")));
                 let outcome = card_generator.generate_card(&gen_req).await?;
                 regeneration_count += 1;
@@ -1204,11 +1285,40 @@ impl CardsPipeline {
                         generation_meta = resp.generation;
                         ja_ratio = calculate_ja_ratio(&full_card_text(&current_card));
                         if ja_ratio < 0.6 {
+                            let card_json = serde_json::to_value(&current_card)?;
+                            record_rejection(
+                                &*self.dao,
+                                RejectionRecord {
+                                    id: Uuid::new_v4(),
+                                    job_id,
+                                    candidate_id: candidate.id,
+                                    stage: "gate".to_string(),
+                                    reason: "g1_language".to_string(),
+                                    attempt: 2,
+                                    raw_text: None,
+                                    card: Some(card_json),
+                                },
+                            )
+                            .await?;
                             *cards_dropped.entry("g1_language".to_string()).or_insert(0) += 1;
                             continue;
                         }
                     }
                     CardGenerateOutcome::Rejected(resp) => {
+                        record_rejection(
+                            &*self.dao,
+                            RejectionRecord {
+                                id: Uuid::new_v4(),
+                                job_id,
+                                candidate_id: candidate.id,
+                                stage: "generate".to_string(),
+                                reason: resp.reason.clone(),
+                                attempt: resp.attempts as i32,
+                                raw_text: Some(resp.raw_text),
+                                card: None,
+                            },
+                        )
+                        .await?;
                         *cards_dropped.entry(resp.reason).or_insert(0) += 1;
                         continue;
                     }
@@ -1216,8 +1326,24 @@ impl CardsPipeline {
             }
 
             let mut g2_citations_valid = validate_citations(&current_card, card_items.len());
+            let received_for_filter = current_card.clone();
             filter_valid_citations(&mut current_card, card_items.len());
             if current_card.what_ja.is_empty() {
+                let card_json = serde_json::to_value(&received_for_filter)?;
+                record_rejection(
+                    &*self.dao,
+                    RejectionRecord {
+                        id: Uuid::new_v4(),
+                        job_id,
+                        candidate_id: candidate.id,
+                        stage: "gate".to_string(),
+                        reason: "g2_citation".to_string(),
+                        attempt: 2,
+                        raw_text: None,
+                        card: Some(card_json),
+                    },
+                )
+                .await?;
                 *cards_dropped.entry("g2_citation".to_string()).or_insert(0) += 1;
                 continue;
             }
@@ -1255,6 +1381,27 @@ impl CardsPipeline {
             }
 
             if !failing_indices.is_empty() {
+                let reason = if verify_resp.sentences.iter().any(|s| !s.attribution.pass) {
+                    "g3_attribution"
+                } else {
+                    "g4_filler"
+                };
+                let card_json = serde_json::to_value(&current_card)?;
+                record_rejection(
+                    &*self.dao,
+                    RejectionRecord {
+                        id: Uuid::new_v4(),
+                        job_id,
+                        candidate_id: candidate.id,
+                        stage: "gate".to_string(),
+                        reason: reason.to_string(),
+                        attempt: 1,
+                        raw_text: None,
+                        card: Some(card_json),
+                    },
+                )
+                .await?;
+
                 // Regenerate ONCE with revision_note naming failing sentences
                 gen_req.revision_note = Some(failure_notes.join("; "));
                 let outcome2 = card_generator.generate_card(&gen_req).await?;
@@ -1267,14 +1414,45 @@ impl CardsPipeline {
                         // Recheck G1
                         ja_ratio = calculate_ja_ratio(&full_card_text(&current_card));
                         if ja_ratio < 0.6 {
+                            let card_json = serde_json::to_value(&current_card)?;
+                            record_rejection(
+                                &*self.dao,
+                                RejectionRecord {
+                                    id: Uuid::new_v4(),
+                                    job_id,
+                                    candidate_id: candidate.id,
+                                    stage: "gate".to_string(),
+                                    reason: "g1_language".to_string(),
+                                    attempt: 2,
+                                    raw_text: None,
+                                    card: Some(card_json),
+                                },
+                            )
+                            .await?;
                             *cards_dropped.entry("g1_language".to_string()).or_insert(0) += 1;
                             continue;
                         }
 
                         // Recheck G2
                         g2_citations_valid = validate_citations(&current_card, card_items.len());
+                        let received_for_recheck_filter = current_card.clone();
                         filter_valid_citations(&mut current_card, card_items.len());
                         if current_card.what_ja.is_empty() {
+                            let card_json = serde_json::to_value(&received_for_recheck_filter)?;
+                            record_rejection(
+                                &*self.dao,
+                                RejectionRecord {
+                                    id: Uuid::new_v4(),
+                                    job_id,
+                                    candidate_id: candidate.id,
+                                    stage: "gate".to_string(),
+                                    reason: "g2_citation".to_string(),
+                                    attempt: 2,
+                                    raw_text: None,
+                                    card: Some(card_json),
+                                },
+                            )
+                            .await?;
                             *cards_dropped.entry("g2_citation".to_string()).or_insert(0) += 1;
                             continue;
                         }
@@ -1290,6 +1468,20 @@ impl CardsPipeline {
                         verify_resp = card_verifier.verify_card(&verify_req).await?;
                     }
                     CardGenerateOutcome::Rejected(resp2) => {
+                        record_rejection(
+                            &*self.dao,
+                            RejectionRecord {
+                                id: Uuid::new_v4(),
+                                job_id,
+                                candidate_id: candidate.id,
+                                stage: "generate".to_string(),
+                                reason: resp2.reason.clone(),
+                                attempt: resp2.attempts as i32,
+                                raw_text: Some(resp2.raw_text),
+                                card: None,
+                            },
+                        )
+                        .await?;
                         *cards_dropped.entry(resp2.reason).or_insert(0) += 1;
                         continue;
                     }
@@ -1314,6 +1506,7 @@ impl CardsPipeline {
             }
 
             if !bad_indices.is_empty() {
+                let received_before_deletion = current_card.clone();
                 let mut new_what = Vec::new();
                 for (i, s) in current_card.what_ja.into_iter().enumerate() {
                     if bad_indices.contains(&i) {
@@ -1338,6 +1531,21 @@ impl CardsPipeline {
                     } else {
                         "g4_filler"
                     };
+                    let card_json = serde_json::to_value(&received_before_deletion)?;
+                    record_rejection(
+                        &*self.dao,
+                        RejectionRecord {
+                            id: Uuid::new_v4(),
+                            job_id,
+                            candidate_id: candidate.id,
+                            stage: "gate".to_string(),
+                            reason: reason.to_string(),
+                            attempt: 2,
+                            raw_text: None,
+                            card: Some(card_json),
+                        },
+                    )
+                    .await?;
                     *cards_dropped.entry(reason.to_string()).or_insert(0) += 1;
                     continue;
                 }
@@ -1670,26 +1878,73 @@ impl CardsPipeline {
     }
 }
 
+fn is_ja_ratio_stripped_char(c: char) -> bool {
+    c.is_whitespace()
+        || c.is_ascii_digit()
+        || matches!(
+            c,
+            '[' | ']'
+                | '!'
+                | '?'
+                | ','
+                | '.'
+                | '。'
+                | '！'
+                | '？'
+                | ':'
+                | '/'
+                | '-'
+                | '_'
+                | '~'
+                | '#'
+                | '*'
+                | '`'
+                | '\''
+                | '"'
+        )
+}
+
+fn is_japanese_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{3040}'..='\u{309F}'
+            | '\u{30A0}'..='\u{30FF}'
+            | '\u{4E00}'..='\u{9FFF}'
+            | '\u{3400}'..='\u{4DBF}'
+    )
+}
+
 pub fn calculate_ja_ratio(text: &str) -> f32 {
     let mut ja_count = 0;
-    let mut total = 0;
+    let mut substantive_count = 0;
 
     for c in text.chars() {
-        if c.is_whitespace() {
+        if is_ja_ratio_stripped_char(c) {
             continue;
         }
-        total += 1;
-        if matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}' | '\u{4E00}'..='\u{9FAF}')
-        {
+        substantive_count += 1;
+        if is_japanese_char(c) {
             ja_count += 1;
         }
     }
 
-    if total == 0 {
+    if substantive_count == 0 {
         0.0
     } else {
-        ja_count as f32 / total as f32
+        ja_count as f32 / substantive_count as f32
     }
+}
+
+async fn record_rejection(dao: &dyn CardsPipelineDao, rec: RejectionRecord) -> Result<()> {
+    tracing::info!(
+        job_id = %rec.job_id,
+        candidate_id = %rec.candidate_id,
+        stage = %rec.stage,
+        reason = %rec.reason,
+        attempt = rec.attempt,
+        "card rejection"
+    );
+    dao.insert_card_rejection(&rec).await
 }
 
 fn build_verify_request(
@@ -1803,6 +2058,8 @@ mod tests {
         pub statuses: Mutex<Vec<MockStatusEntry>>,
         pub previous_job: Mutex<Option<PreviousCardsJob>>,
         pub cache: MockEmbeddingCache,
+        pub rejections: Mutex<Vec<RejectionRecord>>,
+        pub fail_insert_rejection: Mutex<bool>,
     }
 
     #[async_trait::async_trait]
@@ -1904,6 +2161,14 @@ mod tests {
                 last_stage.map(String::from),
                 reason.map(String::from),
             ));
+            Ok(())
+        }
+
+        async fn insert_card_rejection(&self, rejection: &RejectionRecord) -> Result<()> {
+            if *self.fail_insert_rejection.lock().unwrap() {
+                anyhow::bail!("simulated card rejection insertion failure");
+            }
+            self.rejections.lock().unwrap().push(rejection.clone());
             Ok(())
         }
     }
@@ -2645,6 +2910,63 @@ mod tests {
         assert_eq!(stats.len(), 1);
         assert_eq!(stats[0].cards_selected, 0);
         assert_eq!(stats[0].cards_dropped["gemma_turn_parse_failed"], 1);
+
+        let rejections = dao.rejections.lock().unwrap().clone();
+        assert_eq!(rejections.len(), 1);
+        assert_eq!(rejections[0].job_id, job_id);
+        assert_eq!(rejections[0].stage, "generate");
+        assert_eq!(rejections[0].reason, "gemma_turn_parse_failed");
+        assert_eq!(rejections[0].attempt, 2);
+        assert_eq!(rejections[0].raw_text.as_deref(), Some("bad response"));
+        assert!(rejections[0].card.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cards_pipeline_rejection_insert_failure_fails_pipeline() {
+        let id1 = Uuid::new_v4();
+        let feed = sample_feed(
+            id1,
+            "テックニュース発表",
+            "example.com",
+            "2026-03-20T10:00:00Z",
+        );
+        let feed_source = Arc::new(FakeFeedSource::new(vec![feed]));
+        let ml_port = Arc::new(FakeEmbedCluster::new());
+        let dao = Arc::new(MockCardsPipelineDao::default());
+        *dao.fail_insert_rejection.lock().unwrap() = true;
+
+        let card_gen = Arc::new(FakeCardGenerator::with_responses(vec![
+            CardGenerateOutcome::Rejected(
+                crate::clients::news_creator::models::CardGenerate422Response {
+                    reason: "gemma_turn_parse_failed".to_string(),
+                    attempts: 2,
+                    raw_text: "bad response".to_string(),
+                },
+            ),
+        ]));
+        let card_ver = Arc::new(FakeCardVerifier::new());
+
+        let pipeline = CardsPipeline::full(
+            feed_source,
+            ml_port,
+            dao.clone(),
+            card_gen,
+            card_ver,
+            Arc::new(FakeGenreTagger::new()),
+        )
+        .with_user_id(Uuid::new_v4());
+
+        let job_id = Uuid::new_v4();
+        let res = pipeline
+            .run(job_id, Utc::now(), Utc::now(), &CardsParams::default())
+            .await;
+
+        assert!(res.is_err());
+        assert!(
+            res.unwrap_err()
+                .to_string()
+                .contains("simulated card rejection insertion failure")
+        );
     }
 
     #[tokio::test]
@@ -2723,6 +3045,17 @@ mod tests {
         let stats = dao.stats.lock().unwrap().clone();
         assert_eq!(stats[0].cards_dropped["g1_language"], 1);
         assert_eq!(card_gen.requests.lock().unwrap().len(), 2);
+
+        let rejections = dao.rejections.lock().unwrap().clone();
+        assert_eq!(rejections.len(), 2);
+        assert_eq!(rejections[0].stage, "gate");
+        assert_eq!(rejections[0].reason, "g1_language");
+        assert_eq!(rejections[0].attempt, 1);
+        assert!(rejections[0].card.is_some());
+        assert_eq!(rejections[1].stage, "gate");
+        assert_eq!(rejections[1].reason, "g1_language");
+        assert_eq!(rejections[1].attempt, 2);
+        assert!(rejections[1].card.is_some());
     }
 
     #[tokio::test]
@@ -2801,6 +3134,26 @@ mod tests {
         let stats = dao.stats.lock().unwrap().clone();
         assert_eq!(stats[0].cards_dropped["g2_citation"], 1);
         assert_eq!(card_gen.requests.lock().unwrap().len(), 2);
+
+        let rejections = dao.rejections.lock().unwrap().clone();
+        assert_eq!(rejections.len(), 2);
+        assert_eq!(rejections[0].stage, "gate");
+        assert_eq!(rejections[0].reason, "g2_citation");
+        assert_eq!(rejections[0].attempt, 1);
+        let rej_card0 = rejections[0].card.as_ref().expect("card must be present");
+        assert_eq!(
+            rej_card0["what_ja"][0]["text"],
+            "重大な進展が発生した。[99]"
+        );
+
+        assert_eq!(rejections[1].stage, "gate");
+        assert_eq!(rejections[1].reason, "g2_citation");
+        assert_eq!(rejections[1].attempt, 2);
+        let rej_card1 = rejections[1].card.as_ref().expect("card must be present");
+        assert_eq!(
+            rej_card1["what_ja"][0]["text"],
+            "重大な進展が発生した。[99]"
+        );
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2957,6 +3310,17 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .contains("帰属類似度不足")
+        );
+
+        let rejections = dao.rejections.lock().unwrap().clone();
+        assert_eq!(rejections.len(), 1);
+        assert_eq!(rejections[0].stage, "gate");
+        assert_eq!(rejections[0].reason, "g3_attribution");
+        assert_eq!(rejections[0].attempt, 1);
+        let rej_card = rejections[0].card.as_ref().expect("card must be present");
+        assert_eq!(
+            rej_card["what_ja"][0]["text"],
+            "初期の文ですが類似度が低い。[1]"
         );
     }
 
@@ -3131,6 +3495,21 @@ mod tests {
 
         let ver_requests = card_ver.requests.lock().unwrap().clone();
         assert_eq!(ver_requests.len(), 2);
+
+        let rejections = dao.rejections.lock().unwrap().clone();
+        assert_eq!(rejections.len(), 1);
+        assert_eq!(rejections[0].stage, "gate");
+        assert_eq!(rejections[0].reason, "g4_filler");
+        assert_eq!(rejections[0].attempt, 1);
+        let rej_card = rejections[0].card.as_ref().expect("card must be present");
+        assert_eq!(
+            rej_card["what_ja"][0]["text"],
+            "主要なテクノロジー動向の進展が確認された。[1]"
+        );
+        assert_eq!(
+            rej_card["what_ja"][1]["text"],
+            "今後の動向に影響を与えると思われる。[1]"
+        );
     }
 
     #[tokio::test]
@@ -3812,5 +4191,36 @@ mod tests {
             Some(&serde_json::Value::String("full".to_string())),
             "full mode pipeline snapshot must record mode 'full'"
         );
+    }
+
+    #[test]
+    fn test_calculate_ja_ratio_citations_and_product_names_passes() {
+        let text = "Cloudflare WorkersとApple Pencilの連携機能が発表されました。[1] 開発者はエッジ環境で直接操作できます。[2] [3] 新機能により作業効率が向上します。[4] [5]";
+        let ratio = calculate_ja_ratio(text);
+        assert!(
+            ratio >= 0.6,
+            "expected ratio >= 0.6 with product names and citations, got {ratio}"
+        );
+    }
+
+    #[test]
+    fn test_calculate_ja_ratio_mostly_english_fails() {
+        let text = "Cloudflare Workers has released a brand new update for all developers worldwide. 日本語";
+        let ratio = calculate_ja_ratio(text);
+        assert!(
+            ratio < 0.6,
+            "expected ratio < 0.6 for mostly-English card, got {ratio}"
+        );
+    }
+
+    #[test]
+    fn test_calculate_ja_ratio_only_citations_and_punctuation_zero() {
+        let text = "[1] [2] [3] !? ,. 。！？ : / - _ ~ # * ` ' \"";
+        let ratio = calculate_ja_ratio(text);
+        assert!(
+            (ratio - 0.0).abs() < f32::EPSILON,
+            "expected 0.0 for text with only citations and punctuation"
+        );
+        assert!(ratio < 0.6, "expected ratio < 0.6");
     }
 }

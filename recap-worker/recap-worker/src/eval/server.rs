@@ -11,8 +11,8 @@
 
 use crate::error::Result;
 use crate::store::dao::cards::{
-    CardsDaoOps, CardsJobSummary, RecapCard, RecapCardCandidate, RecapCardRating, RecapEvalWindow,
-    RecapEvalWindowSummary, RecapStoryJudgment,
+    CardsDaoOps, CardsJobSummary, RecapCard, RecapCardCandidate, RecapCardRating,
+    RecapCardRejection, RecapEvalWindow, RecapEvalWindowSummary, RecapStoryJudgment,
 };
 use axum::{
     Json, Router,
@@ -41,6 +41,7 @@ pub(crate) trait EvalDao: Send + Sync {
     async fn get_cards_for_job(&self, job_id: Uuid) -> Result<Vec<RecapCard>>;
     async fn latest_rating_per_card(&self, job_id: Uuid) -> Result<Vec<RecapCardRating>>;
     async fn insert_card_rating(&self, rating: &RecapCardRating) -> Result<()>;
+    async fn get_rejections_for_job(&self, job_id: Uuid) -> Result<Vec<RecapCardRejection>>;
     async fn latest_judgments_for_date_range(
         &self,
         from_ts: chrono::DateTime<chrono::Utc>,
@@ -91,6 +92,9 @@ impl EvalDao for sqlx::PgPool {
     }
     async fn insert_card_rating(&self, rating: &RecapCardRating) -> Result<()> {
         CardsDaoOps::insert_card_rating(self, rating).await
+    }
+    async fn get_rejections_for_job(&self, job_id: Uuid) -> Result<Vec<RecapCardRejection>> {
+        CardsDaoOps::get_rejections_for_job(self, job_id).await
     }
     async fn latest_judgments_for_date_range(
         &self,
@@ -190,6 +194,33 @@ pub struct CardItemDto {
 #[derive(Debug, Serialize)]
 pub struct JobCardsResponse {
     pub cards: Vec<CardItemDto>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CardRejectionDto {
+    pub id: Uuid,
+    pub candidate_id: Uuid,
+    pub stage: String,
+    pub reason: String,
+    pub attempt: i32,
+    pub raw_text: Option<String>,
+    pub card: Option<serde_json::Value>,
+    pub created_at: chrono::DateTime<Utc>,
+}
+
+impl From<RecapCardRejection> for CardRejectionDto {
+    fn from(r: RecapCardRejection) -> Self {
+        Self {
+            id: r.id,
+            candidate_id: r.candidate_id,
+            stage: r.stage,
+            reason: r.reason,
+            attempt: r.attempt,
+            raw_text: r.raw_text,
+            card: r.card,
+            created_at: r.created_at,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -438,6 +469,21 @@ async fn create_rating(
     Ok((StatusCode::CREATED, Json(rating)))
 }
 
+/// GET /v1/eval/jobs/{job_id}/rejections
+async fn get_job_rejections(
+    State(state): State<Arc<EvalServerState>>,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<Vec<CardRejectionDto>>, (StatusCode, String)> {
+    let rejections = state
+        .dao
+        .get_rejections_for_job(job_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let dtos = rejections.into_iter().map(CardRejectionDto::from).collect();
+    Ok(Json(dtos))
+}
+
 /// Build Axum router for eval listener with database pool.
 pub fn build_eval_router(pool: sqlx::PgPool, admin_token: &str) -> Router {
     build_eval_router_with_dao(Arc::new(pool), admin_token)
@@ -457,6 +503,7 @@ pub(crate) fn build_eval_router_with_dao(dao: Arc<dyn EvalDao>, admin_token: &st
         .route("/v1/eval/judgments", post(create_judgment))
         .route("/v1/eval/jobs", get(list_jobs))
         .route("/v1/eval/jobs/{job_id}/cards", get(get_job_cards))
+        .route("/v1/eval/jobs/{job_id}/rejections", get(get_job_rejections))
         .route("/v1/eval/ratings", post(create_rating))
         .route_layer(axum::middleware::from_fn(
             crate::api::auth::require_admin_token,
@@ -487,6 +534,7 @@ mod tests {
         jobs: Mutex<Vec<CardsJobSummary>>,
         cards: Mutex<Vec<RecapCard>>,
         ratings: Mutex<Vec<RecapCardRating>>,
+        rejections: Mutex<Vec<RecapCardRejection>>,
     }
 
     #[async_trait::async_trait]
@@ -628,6 +676,21 @@ mod tests {
             self.ratings.lock().unwrap().push(rating.clone());
             Ok(())
         }
+
+        async fn get_rejections_for_job(&self, job_id: Uuid) -> Result<Vec<RecapCardRejection>> {
+            let rejections = self.rejections.lock().unwrap();
+            let mut list: Vec<RecapCardRejection> = rejections
+                .iter()
+                .filter(|r| r.job_id == job_id)
+                .cloned()
+                .collect();
+            list.sort_by(|a, b| {
+                b.created_at
+                    .cmp(&a.created_at)
+                    .then_with(|| b.id.cmp(&a.id))
+            });
+            Ok(list)
+        }
     }
 
     const TEST_TOKEN: &str = "test-token-12345678901234567890";
@@ -714,6 +777,11 @@ mod tests {
             (
                 "GET",
                 format!("/v1/eval/jobs/{dummy_id}/cards"),
+                Body::empty(),
+            ),
+            (
+                "GET",
+                format!("/v1/eval/jobs/{dummy_id}/rejections"),
                 Body::empty(),
             ),
             (
@@ -1271,5 +1339,117 @@ mod tests {
         assert!(c3["decision"].is_null());
         assert!(c3["decision_source"].is_null());
         assert!(c3["inherited_source"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_get_job_rejections_endpoint_json_shape_and_order() {
+        let (app, dao) = setup_test_app();
+
+        let job_id = Uuid::new_v4();
+        let other_job_id = Uuid::new_v4();
+        let c1_id = Uuid::new_v4();
+        let c2_id = Uuid::new_v4();
+
+        let t1 = Utc::now() - chrono::Duration::seconds(60);
+        let t2 = Utc::now();
+
+        let r1 = RecapCardRejection {
+            id: Uuid::new_v4(),
+            job_id,
+            candidate_id: c1_id,
+            stage: "generate".to_string(),
+            reason: "gemma_turn_parse_failed".to_string(),
+            attempt: 1,
+            raw_text: Some("invalid raw text".to_string()),
+            card: None,
+            created_at: t1,
+        };
+
+        let r2 = RecapCardRejection {
+            id: Uuid::new_v4(),
+            job_id,
+            candidate_id: c2_id,
+            stage: "gate".to_string(),
+            reason: "g1_language".to_string(),
+            attempt: 2,
+            raw_text: None,
+            card: Some(serde_json::json!({
+                "headline_ja": "Headline",
+                "what_ja": "What",
+                "why_ja": null
+            })),
+            created_at: t2,
+        };
+
+        let r_other = RecapCardRejection {
+            id: Uuid::new_v4(),
+            job_id: other_job_id,
+            candidate_id: Uuid::new_v4(),
+            stage: "gate".to_string(),
+            reason: "g2_citations".to_string(),
+            attempt: 1,
+            raw_text: None,
+            card: None,
+            created_at: t2,
+        };
+
+        dao.rejections
+            .lock()
+            .unwrap()
+            .extend(vec![r1.clone(), r2.clone(), r_other]);
+
+        let req = Request::builder()
+            .uri(format!("/v1/eval/jobs/{job_id}/rejections"))
+            .header(header::AUTHORIZATION, format!("Bearer {TEST_TOKEN}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body_bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let val: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        let rejections = val.as_array().expect("response should be a JSON array");
+        assert_eq!(rejections.len(), 2, "only rejections for job_id returned");
+
+        let expected_keys = vec![
+            "attempt",
+            "candidate_id",
+            "card",
+            "created_at",
+            "id",
+            "raw_text",
+            "reason",
+            "stage",
+        ];
+
+        for rej in rejections {
+            let obj = rej.as_object().unwrap();
+            let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+            keys.sort_unstable();
+            assert_eq!(
+                keys, expected_keys,
+                "JSON object must have EXACTLY the expected contract keys"
+            );
+        }
+
+        // Must be newest first: r2 (created at t2) before r1 (created at t1)
+        assert_eq!(rejections[0]["id"], r2.id.to_string());
+        assert_eq!(rejections[0]["candidate_id"], c2_id.to_string());
+        assert_eq!(rejections[0]["stage"], "gate");
+        assert_eq!(rejections[0]["reason"], "g1_language");
+        assert_eq!(rejections[0]["attempt"], 2);
+        assert!(rejections[0]["raw_text"].is_null());
+        assert!(rejections[0]["card"].is_object());
+        assert_eq!(rejections[0]["card"]["headline_ja"], "Headline");
+
+        assert_eq!(rejections[1]["id"], r1.id.to_string());
+        assert_eq!(rejections[1]["candidate_id"], c1_id.to_string());
+        assert_eq!(rejections[1]["stage"], "generate");
+        assert_eq!(rejections[1]["reason"], "gemma_turn_parse_failed");
+        assert_eq!(rejections[1]["attempt"], 1);
+        assert_eq!(rejections[1]["raw_text"], "invalid raw text");
+        assert!(rejections[1]["card"].is_null());
     }
 }

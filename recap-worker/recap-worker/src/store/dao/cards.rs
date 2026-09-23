@@ -185,6 +185,32 @@ pub fn is_valid_score(score: i16) -> bool {
     (0..=2).contains(&score)
 }
 
+/// 8. Topic card rejections for tracking failed generations and gate drops.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RejectionRecord {
+    pub id: Uuid,
+    pub job_id: Uuid,
+    pub candidate_id: Uuid,
+    pub stage: String,
+    pub reason: String,
+    pub attempt: i32,
+    pub raw_text: Option<String>,
+    pub card: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecapCardRejection {
+    pub id: Uuid,
+    pub job_id: Uuid,
+    pub candidate_id: Uuid,
+    pub stage: String,
+    pub reason: String,
+    pub attempt: i32,
+    pub raw_text: Option<String>,
+    pub card: Option<Value>,
+    pub created_at: DateTime<Utc>,
+}
+
 pub struct CardsDaoOps;
 
 impl CardsDaoOps {
@@ -852,6 +878,71 @@ impl CardsDaoOps {
 
         Ok(())
     }
+
+    /// Insert a card rejection (failed generation or gate drop) into recap_card_rejections.
+    pub async fn insert_card_rejection(pool: &PgPool, r: &RejectionRecord) -> Result<()> {
+        sqlx::query(
+            r"
+            INSERT INTO recap_card_rejections (
+                id, job_id, candidate_id, stage, reason, attempt, raw_text, card
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ",
+        )
+        .bind(r.id)
+        .bind(r.job_id)
+        .bind(r.candidate_id)
+        .bind(&r.stage)
+        .bind(&r.reason)
+        .bind(r.attempt)
+        .bind(r.raw_text.as_deref())
+        .bind(r.card.as_ref().map(sqlx::types::Json))
+        .execute(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to insert card rejection: {e}")))?;
+
+        Ok(())
+    }
+
+    /// Retrieve all card rejections for a given job, newest first.
+    pub async fn get_rejections_for_job(
+        pool: &PgPool,
+        job_id: Uuid,
+    ) -> Result<Vec<RecapCardRejection>> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, job_id, candidate_id, stage, reason, attempt, raw_text, card, created_at
+            FROM recap_card_rejections
+            WHERE job_id = $1
+            ORDER BY created_at DESC, id DESC
+            ",
+        )
+        .bind(job_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to get rejections for job: {e}")))?;
+
+        let mut res = Vec::with_capacity(rows.len());
+        for r in rows {
+            let card: Option<Json<Value>> = r.try_get("card")?;
+            res.push(RecapCardRejection {
+                id: r.try_get("id")?,
+                job_id: r.try_get("job_id")?,
+                candidate_id: r.try_get("candidate_id")?,
+                stage: r.try_get("stage")?,
+                reason: r.try_get("reason")?,
+                attempt: r.try_get("attempt")?,
+                raw_text: r.try_get("raw_text")?,
+                card: card.map(|j| j.0),
+                created_at: r.try_get("created_at")?,
+            });
+        }
+        Ok(res)
+    }
+}
+
+/// Standalone DAO insert helper for card rejections.
+pub async fn insert_card_rejection(pool: &PgPool, r: &RejectionRecord) -> Result<()> {
+    CardsDaoOps::insert_card_rejection(pool, r).await
 }
 
 pub(crate) fn parse_previous_card_rows(
@@ -1007,5 +1098,51 @@ mod tests {
         assert!(res.is_err());
         let err = format!("{}", res.unwrap_err());
         assert!(err.contains("vector length 3 != specified dim 4"));
+    }
+
+    #[test]
+    fn test_rejection_record_serialization_roundtrip() {
+        let record = RejectionRecord {
+            id: Uuid::new_v4(),
+            job_id: Uuid::new_v4(),
+            candidate_id: Uuid::new_v4(),
+            stage: "generate".to_string(),
+            reason: "gemma_turn_parse_failed".to_string(),
+            attempt: 1,
+            raw_text: Some("sample raw output".to_string()),
+            card: Some(serde_json::json!({"headline_ja": "テスト"})),
+        };
+
+        let json = serde_json::to_string(&record).expect("serialize rejection record");
+        let deserialized: RejectionRecord =
+            serde_json::from_str(&json).expect("deserialize rejection record");
+        assert_eq!(record, deserialized);
+    }
+
+    #[test]
+    fn test_card_rejection_serialization_roundtrip() {
+        let rejection = RecapCardRejection {
+            id: Uuid::new_v4(),
+            job_id: Uuid::new_v4(),
+            candidate_id: Uuid::new_v4(),
+            stage: "generate".to_string(),
+            reason: "gemma_turn_parse_failed".to_string(),
+            attempt: 1,
+            raw_text: Some("sample raw output".to_string()),
+            card: Some(serde_json::json!({"headline_ja": "テスト"})),
+            created_at: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&rejection).expect("serialize rejection");
+        let deserialized: RecapCardRejection =
+            serde_json::from_str(&json).expect("deserialize rejection");
+        assert_eq!(rejection.id, deserialized.id);
+        assert_eq!(rejection.job_id, deserialized.job_id);
+        assert_eq!(rejection.candidate_id, deserialized.candidate_id);
+        assert_eq!(rejection.stage, deserialized.stage);
+        assert_eq!(rejection.reason, deserialized.reason);
+        assert_eq!(rejection.attempt, deserialized.attempt);
+        assert_eq!(rejection.raw_text, deserialized.raw_text);
+        assert_eq!(rejection.card, deserialized.card);
     }
 }
