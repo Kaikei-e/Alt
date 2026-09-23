@@ -1,0 +1,5 @@
+interface:
+  display_name: "Alt Clean Architecture"
+  short_description: "Clean Architecture layer rules and boundary placement for Alt services"
+policy:
+  allow_implicit_invocation: true
