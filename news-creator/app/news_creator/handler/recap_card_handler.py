@@ -94,6 +94,8 @@ def create_recap_card_router(usecase: RecapCardUsecase) -> APIRouter:
             }
             if exc.reason == "language" and exc.measured_ratio is not None:
                 extra["measured_ratio"] = exc.measured_ratio
+            if exc.detail is not None:
+                extra["detail"] = exc.detail
 
             logger.warning(
                 "Card generation rejected",

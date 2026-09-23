@@ -69,6 +69,7 @@ def test_recap_card_handler_success_200():
             ms=300,
             raw_text="raw output",
         ),
+        ja_ratio=0.85,
     )
     usecase.generate_card.return_value = response
 
@@ -81,6 +82,7 @@ def test_recap_card_handler_success_200():
 
     assert resp.status_code == 200
     data = resp.json()
+    assert data["ja_ratio"] == 0.85
     assert data["card"]["headline_ja"] == "ソラリス社、分散ログ基盤の次期版を公開"
     assert len(data["card"]["what_ja"]) == 2
     assert data["card"]["why_ja"]["text"] == "サーバ費用が年間25%削減される。[1]"
@@ -96,6 +98,7 @@ def test_recap_card_handler_rejected_422():
         reason="parse_failed",
         attempts=2,
         raw_text="不正なタグ出力",
+        detail="missing_tag",
     )
 
     app = FastAPI()
@@ -111,6 +114,7 @@ def test_recap_card_handler_rejected_422():
     assert data["reason"] == "parse_failed"
     assert data["attempts"] == 2
     assert data["raw_text"] == "不正なタグ出力"
+    assert data["detail"] == "missing_tag"
 
 
 def test_recap_card_handler_unknown_ref_422():
@@ -198,10 +202,11 @@ def test_recap_card_handler_language_rejection_422_includes_ratio_and_counts():
         "substantive": 100,
         "total": 120,
     }
+    assert data["detail"] is None
 
 
 def test_recap_card_handler_structured_logging_on_rejection(caplog):
-    """Verify structured log has raw_text_len, measured_ratio for language, and never raw_text."""
+    """Verify structured log has raw_text_len, measured_ratio for language, detail for parse_failed, and never raw_text."""
     import logging
 
     usecase = AsyncMock()
@@ -210,11 +215,12 @@ def test_recap_card_handler_structured_logging_on_rejection(caplog):
     client = TestClient(app)
     payload = _build_card_request_payload()
 
-    # 1. Parse failed rejection: logs raw_text_len, never raw_text
+    # 1. Parse failed rejection: logs raw_text_len, detail, never raw_text
     usecase.generate_card.side_effect = CardGenerationRejectedError(
         reason="parse_failed",
         attempts=2,
         raw_text="SECRET_RAW_TEXT_PARSE_FAILED",
+        detail="missing_tag",
     )
     with caplog.at_level(logging.WARNING):
         caplog.clear()
@@ -231,6 +237,7 @@ def test_recap_card_handler_structured_logging_on_rejection(caplog):
         )
         assert getattr(record, "reason", None) == "parse_failed"
         assert getattr(record, "attempts", None) == 2
+        assert getattr(record, "detail", None) == "missing_tag"
         # Never log raw_text itself in extra
         assert not hasattr(record, "raw_text")
         assert "SECRET_RAW_TEXT_PARSE_FAILED" not in record.getMessage()

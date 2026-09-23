@@ -222,6 +222,7 @@ def _create_provider_app() -> FastAPI:
                     "reason": "parse_failed",
                     "attempts": 2,
                     "raw_text": "【見出し】不正なフォーマット",
+                    "detail": "missing_tag",
                 },
                 headers={"X-Card-Rejection": "1"},
             )
@@ -253,6 +254,7 @@ def _create_provider_app() -> FastAPI:
                 "ms": 200,
                 "raw_text": "【見出し】\nテストヘッドライン\n【何が起きた】\nテストの出来事が発生した。[1]\n追加の出来事が発生した。[1]\n【なぜ重要】\nテストの影響が生じる。[1]\n【出典】\n[1]",
             },
+            "ja_ratio": 0.85,
         }
 
     # --- Mock plan-query handler ---

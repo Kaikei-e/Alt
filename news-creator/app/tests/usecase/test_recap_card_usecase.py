@@ -118,6 +118,8 @@ async def test_generate_card_happy_path():
     assert response.card.used_refs == [1, 2]
     assert response.generation.cache_hit is False
     assert response.generation.model == "gemma4-e4b-12k"
+    assert isinstance(response.ja_ratio, float)
+    assert response.ja_ratio >= 0.6
     assert llm_provider.generate.call_count == 1
 
 
@@ -482,6 +484,21 @@ def test_rendered_prompt_contains_japanese_and_no_code_fence_directives():
     assert "コードフェンス" in prompt
 
 
+def test_rendered_prompt_contains_citation_format_directive():
+    """Verify prompt explicitly requires space-separated citations at sentence ends."""
+    config = Mock()
+    llm_provider = Mock()
+    usecase = RecapCardUsecase(
+        config=config, llm_provider=llm_provider, cache=InMemoryCache()
+    )
+    request = make_card_request()
+    prompt = usecase._build_prompt(request)
+    assert (
+        "出典番号は文末に [1] [2] の形で、複数のときは半角スペース区切り ([1] [2]) で並べ、・ および , や [1, 2] は使わないこと"
+        in prompt
+    )
+
+
 @pytest.mark.asyncio
 async def test_generate_card_language_fail_twice_raises_rejected_with_ratio_and_counts():
     """Verify that when card generation fails language check twice, rejection error carries ratio and counts."""
@@ -523,3 +540,145 @@ This is the second English sentence without Japanese chars.[1]
     assert "substantive" in exc_info.value.character_counts
     assert "total" in exc_info.value.character_counts
     assert llm_provider.generate.call_count == 2
+
+
+def test_rendered_prompt_contains_sentence_count_directive():
+    """Verify prompt explicitly requires 2-3 sentences and multiple citations per sentence for 4+ sources."""
+    config = Mock()
+    llm_provider = Mock()
+    usecase = RecapCardUsecase(
+        config=config, llm_provider=llm_provider, cache=InMemoryCache()
+    )
+    request = make_card_request()
+    prompt = usecase._build_prompt(request)
+    assert (
+        "【何が起きた】は 2〜3 文。出典が 4 件以上でも文を増やさず、1 文に複数の出典番号を付けること"
+        in prompt
+    )
+
+
+def test_build_reminder_per_detail():
+    """Verify regeneration reminder includes generic rule block and detail-specific line for all 7 details."""
+    config = _make_config()
+    usecase = RecapCardUsecase(
+        config=config, llm_provider=Mock(), cache=InMemoryCache()
+    )
+    valid_refs = {1, 2}
+
+    def _assert_generic_block(rem: str) -> None:
+        assert "入力に存在する出典番号 [1, 2] 以外を使用しないこと" in rem
+        assert (
+            "すべての入力アイテムが英語であっても要約カードは必ず自然な日本語で作成すること"
+            in rem
+        )
+        assert "【見出し】は60文字以内の日本語であること" in rem
+        assert (
+            "【何が起きた】は2〜3文で、各文末に必ず入力にある出典番号 [n] を付けること"
+            in rem
+        )
+        assert "【なぜ重要】は影響・結果の客観的事実がある時だけ1文" in rem
+
+    # 1. sentence_count
+    rem_sc = usecase._build_reminder("parse_failed", "sentence_count", valid_refs)
+    _assert_generic_block(rem_sc)
+    assert "2〜3 文にまとめること" in rem_sc
+    assert "1 文に複数の番号を [1] [2] のように付けてよい" in rem_sc
+
+    # 2. headline_too_long
+    rem_hl = usecase._build_reminder("parse_failed", "headline_too_long", valid_refs)
+    _assert_generic_block(rem_hl)
+    assert "60文字を超えてはならない" in rem_hl
+
+    # 3. missing_citation
+    rem_mc = usecase._build_reminder("parse_failed", "missing_citation", valid_refs)
+    _assert_generic_block(rem_mc)
+    assert "出典番号は文末に [1] [2] の形で" in rem_mc
+
+    # 4. unknown_citation_format
+    rem_uc = usecase._build_reminder(
+        "parse_failed", "unknown_citation_format", valid_refs
+    )
+    _assert_generic_block(rem_uc)
+    assert "出典番号は文末に [1] [2] の形で" in rem_uc
+
+    # 5. sources_tag
+    rem_st = usecase._build_reminder("parse_failed", "sources_tag", valid_refs)
+    _assert_generic_block(rem_st)
+    assert "【出典】タグを省略せず" in rem_st
+
+    # 6. why_format
+    rem_wf = usecase._build_reminder("parse_failed", "why_format", valid_refs)
+    _assert_generic_block(rem_wf)
+    assert "【なぜ重要】は影響・結果の客観的事実がある時だけ1文" in rem_wf
+
+    # 7. missing_tag
+    rem_mt = usecase._build_reminder("parse_failed", "missing_tag", valid_refs)
+    _assert_generic_block(rem_mt)
+    assert (
+        "【見出し】【何が起きた】【なぜ重要】【出典】の各セクションタグを必ず含めること"
+        in rem_mt
+    )
+
+    # language (no detail)
+    rem_lang = usecase._build_reminder("language", None, valid_refs)
+    _assert_generic_block(rem_lang)
+    assert "理由「language」で契約を満たしませんでした" in rem_lang
+
+
+@pytest.mark.asyncio
+async def test_generate_card_raises_runtime_error_if_measured_ratio_missing():
+    """Verify RuntimeError is raised when parser succeeds but measured_ratio is None."""
+    from unittest.mock import patch
+    from news_creator.domain.models import CardContent
+    from news_creator.usecase.recap_card_parser import CardParseResult
+
+    config = _make_config()
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=VALID_CARD_OUTPUT,
+        model="gemma4-e4b-12k",
+    )
+    usecase = RecapCardUsecase(
+        config=config,
+        llm_provider=llm_provider,
+        cache=InMemoryCache(),
+    )
+    request = make_card_request()
+
+    mock_result = CardParseResult(
+        success=True,
+        card=Mock(spec=CardContent),
+        measured_ratio=None,
+    )
+    with patch(
+        "news_creator.usecase.recap_card_usecase.parse_card_output",
+        return_value=mock_result,
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match="Parser succeeded but measured_ratio is None",
+        ):
+            await usecase.generate_card(request)
+
+
+@pytest.mark.asyncio
+async def test_generate_card_rejection_carries_detail():
+    """Verify CardGenerationRejectedError carries detail field from parser."""
+    config = _make_config()
+    llm_provider = AsyncMock()
+    bad_output = "不正出力"
+    llm_provider.generate.side_effect = [
+        LLMGenerateResponse(response=bad_output, model="gemma4-e4b-12k"),
+        LLMGenerateResponse(response=bad_output, model="gemma4-e4b-12k"),
+    ]
+    usecase = RecapCardUsecase(
+        config=config,
+        llm_provider=llm_provider,
+        cache=InMemoryCache(),
+    )
+    request = make_card_request()
+    with pytest.raises(CardGenerationRejectedError) as exc_info:
+        await usecase.generate_card(request)
+
+    assert exc_info.value.reason == "parse_failed"
+    assert exc_info.value.detail == "missing_tag"

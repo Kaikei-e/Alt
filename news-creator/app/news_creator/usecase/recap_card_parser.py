@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from news_creator.domain.models import (
     Card422Reason,
     CardContent,
+    CardParseDetail,
     CardSentence,
 )
 from news_creator.domain.prompt_boundary import _strip_hidden
@@ -28,6 +29,7 @@ class CardParseResult:
     success: bool
     card: CardContent | None = None
     reason: Card422Reason | None = None
+    detail: CardParseDetail | None = None
     measured_ratio: float | None = None
     character_counts: dict[str, int] | None = None
 
@@ -56,6 +58,18 @@ def clean_raw_output(text: str) -> str:
     cleaned = re.sub(r"\n?\s*```\s*$", "", cleaned)
 
     return cleaned.strip()
+
+
+def normalize_citations(text: str) -> str:
+    """Normalize citation formats like [1, 2], [1]・[2], [1]および[2] to [1] [2]."""
+
+    def _expand_bracket_commas(match: re.Match[str]) -> str:
+        digits = re.findall(r"\d+", match.group(0))
+        return " ".join(f"[{d}]" for d in digits)
+
+    text = re.sub(r"\[\d+(?:\s*[,、]\s*\d+)+\]", _expand_bracket_commas, text)
+    text = re.sub(r"(?<=\])\s*(?:・|および|、|,)\s*(?=\[\d+\])", " ", text)
+    return text
 
 
 def split_sentences(text: str) -> list[str]:
@@ -111,7 +125,8 @@ def split_sentences(text: str) -> list[str]:
                     if i < n and line[i] in ("。", "！", "？", "!", "?"):
                         i += 1
                     if i >= n or (
-                        i < n and line[i] not in ("。", "！", "？", "!", "?", "[")
+                        i < n
+                        and line[i] not in ("。", "！", "？", "!", "?", "[", "、", ",")
                     ):
                         sent = line[start:i].strip()
                         if sent:
@@ -151,8 +166,42 @@ def extract_sections(text: str) -> dict[str, str]:
     return sections
 
 
+LATIN_RUN_PATTERN = (
+    r"(?<![A-Za-z0-9])[A-Za-z0-9]+(?:[ \-\.]+[A-Za-z0-9]+)*(?![A-Za-z0-9])"
+)
+LATIN_RUN_RE = re.compile(LATIN_RUN_PATTERN)
+
+
+def strip_source_latin_runs(text: str, source_texts: list[str]) -> str:
+    """Strip Latin-script runs that are exact members of the allowed <= 4 token source runs."""
+    if not source_texts or not text:
+        return text
+
+    allowed_runs: set[str] = set()
+    for src in source_texts:
+        for m in LATIN_RUN_RE.finditer(src):
+            run = m.group(0)
+            if any("a" <= c <= "z" or "A" <= c <= "Z" for c in run):
+                tokens = run.split()
+                if len(tokens) <= 4:
+                    allowed_runs.add(run.lower())
+
+    if not allowed_runs:
+        return text
+
+    def _replace_run(match: re.Match[str]) -> str:
+        run = match.group(0)
+        if run.lower() in allowed_runs:
+            return ""
+        return run
+
+    return LATIN_RUN_RE.sub(_replace_run, text)
+
+
 def measure_japanese_ratio(
-    text: str, threshold: float = 0.6
+    text: str,
+    threshold: float = 0.6,
+    source_texts: list[str] | None = None,
 ) -> tuple[bool, float, dict[str, int]]:
     """
     Measure Japanese character ratio and character counts (G1 gate).
@@ -160,8 +209,13 @@ def measure_japanese_ratio(
     Returns:
         (is_sufficient, measured_ratio, character_counts)
     """
-    substantive = re.sub(r"[\s0-9\[\]!?,.。！？:/\-_~#*`'\"]", "", text)
     total_chars = len(text)
+    stripped_text = (
+        strip_source_latin_runs(text, source_texts) if source_texts else text
+    )
+    stripped_chars = total_chars - len(stripped_text)
+
+    substantive = re.sub(r"[\s0-9\[\]!?,.。！？:/\-_~#*`'\"]", "", stripped_text)
     substantive_chars = len(substantive)
     ja_chars = len(JAPANESE_CHAR_RE.findall(substantive))
     raw_ratio = (ja_chars / substantive_chars) if substantive_chars > 0 else 0.0
@@ -170,6 +224,7 @@ def measure_japanese_ratio(
         "japanese": ja_chars,
         "substantive": substantive_chars,
         "total": total_chars,
+        "stripped": stripped_chars,
     }
     return sufficient, round(raw_ratio, 4), character_counts
 
@@ -178,6 +233,7 @@ def parse_card_output(
     raw_text: str,
     valid_refs: set[int],
     ja_ratio_threshold: float = 0.6,
+    source_texts: list[str] | None = None,
 ) -> CardParseResult:
     """
     Parse LLM raw output into structured CardContent.
@@ -186,6 +242,7 @@ def parse_card_output(
         raw_text: Raw LLM response string
         valid_refs: Set of valid reference numbers (from input items)
         ja_ratio_threshold: Minimum Japanese character ratio (default 0.6)
+        source_texts: Optional source texts (titles/ledes) used to filter known Latin proper nouns
 
     Returns:
         CardParseResult with either CardContent or 422 failure reason
@@ -196,32 +253,46 @@ def parse_card_output(
 
     sections = extract_sections(cleaned)
     if "見出し" not in sections or "何が起きた" not in sections:
-        return CardParseResult(success=False, reason="parse_failed")
+        return CardParseResult(
+            success=False, reason="parse_failed", detail="missing_tag"
+        )
+
+    if "出典" in sections and not sections["出典"].strip():
+        return CardParseResult(
+            success=False, reason="parse_failed", detail="sources_tag"
+        )
 
     headline = sections["見出し"].strip()
-    # Headline must be non-empty and <= 40 chars
-    if not headline or len(headline) > 40:
-        return CardParseResult(success=False, reason="parse_failed")
+    if not headline:
+        return CardParseResult(
+            success=False, reason="parse_failed", detail="missing_tag"
+        )
+    if len(headline) > 60:
+        return CardParseResult(
+            success=False, reason="parse_failed", detail="headline_too_long"
+        )
 
-    # Split what_ja into sentences
-    what_raw = sections["何が起きた"].strip()
+    what_raw = normalize_citations(sections["何が起きた"].strip())
     what_sentences_text = split_sentences(what_raw)
     if len(what_sentences_text) < 2 or len(what_sentences_text) > 3:
-        return CardParseResult(success=False, reason="parse_failed")
+        return CardParseResult(
+            success=False, reason="parse_failed", detail="sentence_count"
+        )
 
     what_ja: list[CardSentence] = []
     all_refs: set[int] = set()
 
     for sent_text in what_sentences_text:
-        # Each sentence must end with [n]
-        if not ENDS_WITH_REF_RE.search(sent_text):
-            return CardParseResult(success=False, reason="parse_failed")
-
         refs = [int(m) for m in REF_EXTRACTION_RE.findall(sent_text)]
         if not refs:
-            return CardParseResult(success=False, reason="parse_failed")
+            return CardParseResult(
+                success=False, reason="parse_failed", detail="missing_citation"
+            )
+        if not ENDS_WITH_REF_RE.search(sent_text):
+            return CardParseResult(
+                success=False, reason="parse_failed", detail="unknown_citation_format"
+            )
 
-        # Every ref must exist in valid_refs
         for r in refs:
             if r not in valid_refs:
                 return CardParseResult(success=False, reason="unknown_ref")
@@ -229,22 +300,23 @@ def parse_card_output(
 
         what_ja.append(CardSentence(text=sent_text, refs=refs))
 
-    # Parse why_ja (optional, or '該当なし')
     why_ja: CardSentence | None = None
     why_raw = sections.get("なぜ重要", "").strip()
 
     if why_raw and not why_raw.startswith("該当なし"):
+        why_raw = normalize_citations(why_raw)
         why_sentences_text = split_sentences(why_raw)
         if len(why_sentences_text) != 1:
-            return CardParseResult(success=False, reason="parse_failed")
+            return CardParseResult(
+                success=False, reason="parse_failed", detail="why_format"
+            )
 
         why_text = why_sentences_text[0]
-        if not ENDS_WITH_REF_RE.search(why_text):
-            return CardParseResult(success=False, reason="parse_failed")
-
         why_refs = [int(m) for m in REF_EXTRACTION_RE.findall(why_text)]
-        if not why_refs:
-            return CardParseResult(success=False, reason="parse_failed")
+        if not why_refs or not ENDS_WITH_REF_RE.search(why_text):
+            return CardParseResult(
+                success=False, reason="parse_failed", detail="why_format"
+            )
 
         for r in why_refs:
             if r not in valid_refs:
@@ -253,13 +325,12 @@ def parse_card_output(
 
         why_ja = CardSentence(text=why_text, refs=why_refs)
 
-    # G1 Language gate: Japanese character ratio must be >= threshold
     full_card_text = headline + " " + " ".join(s.text for s in what_ja)
     if why_ja:
         full_card_text += " " + why_ja.text
 
     ja_sufficient, ja_ratio, char_counts = measure_japanese_ratio(
-        full_card_text, ja_ratio_threshold
+        full_card_text, ja_ratio_threshold, source_texts=source_texts
     )
     if not ja_sufficient:
         return CardParseResult(
@@ -278,4 +349,9 @@ def parse_card_output(
         used_refs=used_refs,
     )
 
-    return CardParseResult(success=True, card=card_content)
+    return CardParseResult(
+        success=True,
+        card=card_content,
+        measured_ratio=ja_ratio,
+        character_counts=char_counts,
+    )

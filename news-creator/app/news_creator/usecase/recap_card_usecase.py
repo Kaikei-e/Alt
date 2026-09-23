@@ -12,10 +12,12 @@ from jinja2 import Template
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import (
+    Card422Reason,
     CardGenerateRequest,
     CardGenerateResponse,
     CardGenerationMetadata,
     CardGenerationRejectedError,
+    CardParseDetail,
     LLMGenerateResponse,
 )
 from news_creator.domain.prompt_boundary import (
@@ -112,6 +114,7 @@ class RecapCardUsecase:
                     ms=base_response.generation.ms,
                     raw_text=base_response.generation.raw_text,
                 ),
+                ja_ratio=base_response.ja_ratio,
             )
         except Exception as exc:
             logger.warning(
@@ -223,8 +226,56 @@ class RecapCardUsecase:
                 "completion_tokens": completion_tokens,
             },
         )
-
         return raw_text, model_name, prompt_tokens, completion_tokens, ms
+
+    def _build_reminder(
+        self,
+        reason: Card422Reason | None,
+        detail: CardParseDetail | None,
+        valid_refs: set[int],
+    ) -> str:
+        """Build targeted regeneration reminder based on parse failure detail."""
+        base_reminder = (
+            f"前回の出力は理由「{detail or reason}」で契約を満たしませんでした。\n"
+            "以下の規則を必ず完全に守って出力してください:\n"
+            "- 【見出し】は60文字以内の日本語であること\n"
+            "- 【何が起きた】は2〜3文で、各文末に必ず入力にある出典番号 [n] を付けること\n"
+            "- 【なぜ重要】は影響・結果の客観的事実がある時だけ1文（末尾に [n]）で記述し、無ければ「該当なし」とだけ書くこと\n"
+            f"- 入力に存在する出典番号 {sorted(list(valid_refs))} 以外を使用しないこと\n"
+            "- すべての入力アイテムが英語であっても要約カードは必ず自然な日本語で作成すること（製品名やサービス名などの固有名詞のみアルファベット表記を維持可）"
+        )
+        if detail == "sentence_count":
+            return (
+                base_reminder
+                + "\n- 【何が起きた】は 2〜3 文にまとめること。出典が多い場合は 1 文に複数の番号を [1] [2] のように付けてよい"
+            )
+        if detail == "headline_too_long":
+            return (
+                base_reminder
+                + "\n- 【見出し】は60文字以内の日本語であること。60文字を超えてはならない。"
+            )
+        if detail in ("missing_citation", "unknown_citation_format"):
+            return (
+                base_reminder
+                + "\n- 出典番号は文末に [1] [2] の形で、複数のときは半角スペース区切り ([1] [2]) で並べ、・ および , や [1, 2] は使わないこと"
+            )
+        if detail == "sources_tag":
+            return (
+                base_reminder
+                + "\n- 【出典】タグを省略せず、使用した出典番号を [1] [2] のように必ず記載すること"
+            )
+        if detail == "why_format":
+            return (
+                base_reminder
+                + "\n- 【なぜ重要】は影響・結果の客観的事実がある時だけ1文（末尾に [n]）で記述し、無ければ「該当なし」とだけ書くこと"
+            )
+        if detail == "missing_tag":
+            return (
+                base_reminder
+                + "\n- 【見出し】【何が起きた】【なぜ重要】【出典】の各セクションタグを必ず含めること"
+            )
+
+        return base_reminder
 
     async def generate_card(self, request: CardGenerateRequest) -> CardGenerateResponse:
         """
@@ -245,6 +296,9 @@ class RecapCardUsecase:
 
         valid_refs = {item.n for item in request.items}
         ja_threshold = self.config.llm.recap_ja_ratio_threshold
+        source_texts = [
+            text for item in request.items for text in (item.title, item.lede) if text
+        ]
 
         # --- Attempt 1 ---
         prompt_1 = self._build_prompt(request)
@@ -256,9 +310,12 @@ class RecapCardUsecase:
             raw_text=raw_text_1,
             valid_refs=valid_refs,
             ja_ratio_threshold=ja_threshold,
+            source_texts=source_texts,
         )
 
         if parse_result_1.success and parse_result_1.card is not None:
+            if parse_result_1.measured_ratio is None:
+                raise RuntimeError("Parser succeeded but measured_ratio is None")
             response = CardGenerateResponse(
                 card=parse_result_1.card,
                 generation=CardGenerationMetadata(
@@ -270,6 +327,7 @@ class RecapCardUsecase:
                     ms=ms_1,
                     raw_text=raw_text_1,
                 ),
+                ja_ratio=parse_result_1.measured_ratio,
             )
             await self._save_to_cache(cache_key, response)
             return response
@@ -281,6 +339,8 @@ class RecapCardUsecase:
             "job_id": str(request.job_id),
             "candidate_id": str(request.candidate_id),
         }
+        if parse_result_1.detail is not None:
+            extra_1["detail"] = parse_result_1.detail
         if (
             parse_result_1.reason == "language"
             and parse_result_1.measured_ratio is not None
@@ -292,14 +352,10 @@ class RecapCardUsecase:
             extra=extra_1,
         )
 
-        reminder = (
-            f"前回の出力は理由「{parse_result_1.reason}」で契約を満たしませんでした。\n"
-            "以下の規則を必ず完全に守って出力してください:\n"
-            "- 【見出し】は40文字以内の日本語であること\n"
-            "- 【何が起きた】は2〜3文で、各文末に必ず入力にある出典番号 [n] を付けること\n"
-            "- 【なぜ重要】は影響・結果の客観的事実がある時だけ1文（末尾に [n]）で記述し、無ければ「該当なし」とだけ書くこと\n"
-            f"- 入力に存在する出典番号 {sorted(list(valid_refs))} 以外を使用しないこと\n"
-            "- すべての入力アイテムが英語であっても要約カードは必ず自然な日本語で作成すること（製品名やサービス名などの固有名詞のみアルファベット表記を維持可）"
+        reminder = self._build_reminder(
+            parse_result_1.reason,
+            parse_result_1.detail,
+            valid_refs,
         )
 
         prompt_2 = self._build_prompt(request, reminder=reminder)
@@ -311,9 +367,12 @@ class RecapCardUsecase:
             raw_text=raw_text_2,
             valid_refs=valid_refs,
             ja_ratio_threshold=ja_threshold,
+            source_texts=source_texts,
         )
 
         if parse_result_2.success and parse_result_2.card is not None:
+            if parse_result_2.measured_ratio is None:
+                raise RuntimeError("Parser succeeded but measured_ratio is None")
             response = CardGenerateResponse(
                 card=parse_result_2.card,
                 generation=CardGenerationMetadata(
@@ -325,25 +384,34 @@ class RecapCardUsecase:
                     ms=ms_1 + ms_2,
                     raw_text=raw_text_2,
                 ),
+                ja_ratio=parse_result_2.measured_ratio,
             )
             await self._save_to_cache(cache_key, response)
             return response
 
         # Rejection after 2 attempts
         reason = parse_result_2.reason or "parse_failed"
+        extra_2: dict[str, Any] = {
+            "reason": reason,
+            "attempts": 2,
+            "raw_text_len": len(raw_text_2),
+            "job_id": str(request.job_id),
+            "candidate_id": str(request.candidate_id),
+        }
+        if parse_result_2.detail is not None:
+            extra_2["detail"] = parse_result_2.detail
+        if reason == "language" and parse_result_2.measured_ratio is not None:
+            extra_2["measured_ratio"] = parse_result_2.measured_ratio
+
         logger.error(
             "Card generation failed after regeneration attempt",
-            extra={
-                "reason": reason,
-                "attempts": 2,
-                "job_id": str(request.job_id),
-                "candidate_id": str(request.candidate_id),
-            },
+            extra=extra_2,
         )
         raise CardGenerationRejectedError(
             reason=reason,
             attempts=2,
             raw_text=raw_text_2,
+            detail=parse_result_2.detail,
             measured_ratio=parse_result_2.measured_ratio,
             character_counts=parse_result_2.character_counts,
         )

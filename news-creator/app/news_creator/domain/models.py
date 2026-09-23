@@ -526,6 +526,15 @@ class MorningLetterResponse(StrictFrozenModel):
 # ============================================================================
 
 Card422Reason = Literal["parse_failed", "empty_output", "unknown_ref", "language"]
+CardParseDetail = Literal[
+    "missing_tag",
+    "sources_tag",
+    "headline_too_long",
+    "sentence_count",
+    "missing_citation",
+    "unknown_citation_format",
+    "why_format",
+]
 
 
 class CardItemInput(StrictFrozenModel):
@@ -569,7 +578,7 @@ class CardContent(StrictFrozenModel):
     """Structured topic card content."""
 
     headline_ja: str = Field(
-        min_length=1, max_length=40, description="Japanese headline <= 40 chars"
+        min_length=1, max_length=60, description="Japanese headline <= 60 chars"
     )
     what_ja: list[CardSentence] = Field(
         min_length=2,
@@ -600,6 +609,7 @@ class CardGenerateResponse(StrictFrozenModel):
 
     card: CardContent
     generation: CardGenerationMetadata
+    ja_ratio: float = Field(description="Measured Japanese character ratio (G1 gate)")
 
 
 class CardGenerate422Response(StrictFrozenModel):
@@ -608,6 +618,7 @@ class CardGenerate422Response(StrictFrozenModel):
     reason: Card422Reason
     attempts: int
     raw_text: str
+    detail: CardParseDetail | None = None
     measured_ratio: float | None = None
     character_counts: dict[str, int] | None = None
 
@@ -620,6 +631,7 @@ class CardGenerationRejectedError(Exception):
         reason: Card422Reason,
         attempts: int,
         raw_text: str,
+        detail: CardParseDetail | None = None,
         measured_ratio: float | None = None,
         character_counts: dict[str, int] | None = None,
     ):
@@ -629,6 +641,7 @@ class CardGenerationRejectedError(Exception):
         self.reason = reason
         self.attempts = attempts
         self.raw_text = raw_text
+        self.detail = detail
         self.measured_ratio = measured_ratio
         self.character_counts = character_counts
 
@@ -637,6 +650,7 @@ class CardGenerationRejectedError(Exception):
             "reason": self.reason,
             "attempts": self.attempts,
             "raw_text": self.raw_text,
+            "detail": self.detail if self.reason == "parse_failed" else None,
         }
         if self.reason == "language":
             if self.measured_ratio is not None:

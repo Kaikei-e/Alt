@@ -97,12 +97,14 @@ def test_parse_missing_tag():
     result = parse_card_output(raw_text, valid_refs={1})
     assert result.success is False
     assert result.reason == "parse_failed"
+    assert result.detail == "missing_tag"
 
 
 def test_parse_empty_output():
     result = parse_card_output("   \n\t  ", valid_refs={1})
     assert result.success is False
     assert result.reason == "empty_output"
+    assert result.detail is None
 
 
 def test_parse_unknown_ref():
@@ -120,6 +122,7 @@ def test_parse_unknown_ref():
     result = parse_card_output(raw_text, valid_refs={1, 2})
     assert result.success is False
     assert result.reason == "unknown_ref"
+    assert result.detail is None
 
 
 def test_parse_sentence_count_bounds():
@@ -135,6 +138,7 @@ def test_parse_sentence_count_bounds():
     result_1 = parse_card_output(raw_text_1_sentence, valid_refs={1})
     assert result_1.success is False
     assert result_1.reason == "parse_failed"
+    assert result_1.detail == "sentence_count"
 
     # 4 sentences in what_ja (> 3)
     raw_text_4_sentences = """
@@ -151,6 +155,7 @@ def test_parse_sentence_count_bounds():
     result = parse_card_output(raw_text_4_sentences, valid_refs={1})
     assert result.success is False
     assert result.reason == "parse_failed"
+    assert result.detail == "sentence_count"
 
     # 2 sentences in why_ja (> 1)
     raw_text_2_why = """
@@ -166,6 +171,7 @@ def test_parse_sentence_count_bounds():
     result2 = parse_card_output(raw_text_2_why, valid_refs={1})
     assert result2.success is False
     assert result2.reason == "parse_failed"
+    assert result2.detail == "why_format"
 
 
 def test_parse_sentence_missing_ref():
@@ -181,6 +187,7 @@ def test_parse_sentence_missing_ref():
     result = parse_card_output(raw_text, valid_refs={1})
     assert result.success is False
     assert result.reason == "parse_failed"
+    assert result.detail == "missing_citation"
 
 
 def test_parse_language_gate():
@@ -199,7 +206,24 @@ This is the second English sentence without Japanese chars.[1]
 
 
 def test_parse_headline_bounds():
-    long_headline = "あ" * 41
+    # 60 chars is the max allowed length
+    valid_headline = "あ" * 60
+    raw_text_valid = f"""
+【見出し】
+{valid_headline}
+【何が起きた】
+一文目です。[1]
+二文目です。[1]
+【なぜ重要】
+該当なし
+"""
+    result_valid = parse_card_output(raw_text_valid, valid_refs={1})
+    assert result_valid.success is True
+    assert result_valid.card is not None
+    assert len(result_valid.card.headline_ja) == 60
+
+    # 61 chars exceeds the limit
+    long_headline = "あ" * 61
     raw_text = f"""
 【見出し】
 {long_headline}
@@ -212,6 +236,7 @@ def test_parse_headline_bounds():
     result = parse_card_output(raw_text, valid_refs={1})
     assert result.success is False
     assert result.reason == "parse_failed"
+    assert result.detail == "headline_too_long"
 
 
 def test_parse_strips_thinking_blocks_and_turn_tokens():
@@ -401,5 +426,188 @@ LayerX TechHarmony architecture was showcased today.[1]
     assert "japanese" in result.character_counts
     assert "substantive" in result.character_counts
     assert "total" in result.character_counts
+    assert "stripped" in result.character_counts
     assert result.character_counts["japanese"] >= 0
     assert result.character_counts["total"] > 0
+
+
+def test_parse_four_sentences_rejected():
+    raw_text = """【見出し】
+DroidKaigi 2026への各企業の参加と活動報告
+【何が起きた】
+STORESはスポンサーとしてDroidKaigi 2026に現地で参加した[1]。エブリーはゴールドスポンサーとしてブースを出展し、イベントの様子を紹介した[2]。TVerはブースで技術展示を行った[3]。TRUSTDOCKもDroidKaigi 2026への参加レポートを公開した[4]。
+【なぜ重要】
+該当なし
+【出典】
+[1] [2] [3] [4]"""
+    result = parse_card_output(raw_text, valid_refs={1, 2, 3, 4})
+    assert result.success is False
+    assert result.reason == "parse_failed"
+    assert result.detail == "sentence_count"
+
+
+def test_parse_bullet_separator():
+    raw_text = """【見出し】
+Logitechが開発者向けAI操作キーパッドMX Keypadを発売
+【何が起きた】
+Logitechは、コーディングやAIワークフロー向けのアクセサリ「MX Keypad」を発表した[1]・[2]。この製品は9つのカスタマイズ可能なキーとタッチスクリーンを搭載し、価格は99.99ドルである[1]・[2]。
+【なぜ重要】
+該当なし
+【出典】
+[1] [2]"""
+    result = parse_card_output(raw_text, valid_refs={1, 2})
+    assert result.success is True
+    assert result.card is not None
+
+
+def test_parse_long_headline_with_latin_names():
+    raw_text = """【見出し】
+Tschabalala Selfの「Lady in Blue」がトラファルガー広場の第四台座に登場
+【何が起きた】
+Tschabalala Selfによる青い女性像である「Lady in Blue」がロンドンのトラファルガー広場にある第四の台座に設置された[1] [2]。この作品は現代のロンドンを歩く若い有色人種の女性に敬意を表したブロンズ彫刻である[1]。
+【なぜ重要】
+該当なし
+【出典】
+[1] [2]"""
+    result = parse_card_output(raw_text, valid_refs={1, 2})
+    assert result.success is True
+    assert result.card is not None
+
+
+def test_parse_bracket_comma_and_oyobi():
+    raw_text = """【見出し】
+Apple、新型AirPods 5を発表しノイズキャンセリングを強化
+【何が起きた】
+AppleはiPhone発表イベントで次世代の完全ワイヤレスイヤホン「AirPods 5」を発表した[2]および[6]。この新モデルは業界最高クラスのアクティブノイズキャンセリング（ANC）を搭載していると謳われている[2, 6]。また、AirPods 5は現在Amazonなどで予約可能になっている[3]。
+【なぜ重要】
+新型のApple Watch Ultra 4やSeries 12などと共に、一部製品で割引価格での購入が可能である[1] [4]。
+【出典】
+[1] [2] [3] [4] [6]"""
+    result = parse_card_output(raw_text, valid_refs={1, 2, 3, 4, 5, 6})
+    assert result.success is True
+    assert result.card is not None
+
+
+def test_parse_citation_then_touten():
+    raw_text = """【見出し】
+Go Conference 2026の開催概要と参加レポート
+【何が起きた】
+Go Conference 2026は2026年9月11日に中野セントラルパークカンファレンスで開催された[4]、登壇者がいる[2]。クロージング発表によると、会場とオンラインを合わせて700人超の参加者があった[3]。プロポーザルには約175件応募があり、採択率は15.9倍であったことが示されている[3]。
+【なぜ重要】
+該当なし
+【出典】
+[2] [3] [4]"""
+    result = parse_card_output(raw_text, valid_refs={1, 2, 3, 4})
+    assert result.success is True
+    assert result.card is not None
+
+
+def test_parse_unknown_citation_format_detail():
+    raw_text = """【見出し】
+引用形式不正テスト
+【何が起きた】
+一文目です。[1]
+二文目は[1]、新機能が追加されたと発表された。
+【なぜ重要】
+該当なし
+【出典】
+[1]"""
+    result = parse_card_output(raw_text, valid_refs={1})
+    assert result.success is False
+    assert result.reason == "parse_failed"
+    assert result.detail == "unknown_citation_format"
+
+
+def test_parse_sources_tag_detail():
+    raw_text = """【見出し】
+出典タグ空テスト
+【何が起きた】
+一文目です。[1]
+二文目です。[1]
+【なぜ重要】
+該当なし
+【出典】
+"""
+    result = parse_card_output(raw_text, valid_refs={1})
+    assert result.success is False
+    assert result.reason == "parse_failed"
+    assert result.detail == "sources_tag"
+
+
+def test_strip_source_latin_runs_preserves_ten_token_lede_with_commas_and_strips_brand():
+    from news_creator.usecase.recap_card_parser import strip_source_latin_runs
+
+    ten_token_lede = "According to recent industry reports, major tech companies announced significant updates yesterday."
+    source_texts = [
+        ten_token_lede,
+        "Samsung Galaxy Z Fold8: next-generation foldable device.",
+    ]
+    # The 10-token lede sentence copied verbatim with commas is not stripped even partially
+    assert strip_source_latin_runs(ten_token_lede, source_texts) == ten_token_lede
+
+    # Samsung Galaxy Z Fold8 is an allowed run (<= 4 tokens) and is stripped
+    brand_text = "Samsung Galaxy Z Fold8"
+    assert strip_source_latin_runs(brand_text, source_texts) == ""
+
+
+def test_strip_source_latin_runs_adjacent_to_kana():
+    from news_creator.usecase.recap_card_parser import strip_source_latin_runs
+
+    source_texts = [
+        "iPhone Duo: specifications and features.",
+        "Node.js: modern JavaScript runtime.",
+    ]
+    # iPhone Duo and Node.js immediately adjacent to Japanese kana
+    card_snippet = "iPhone DuoとNode.jsの連携"
+    assert strip_source_latin_runs(card_snippet, source_texts) == "との連携"
+
+
+def test_parse_latin_names_in_source_stripped_before_language_check():
+    """Verify Latin product names occurring in source items are stripped before measuring Japanese ratio."""
+    raw_text = """【見出し】
+iPhone DuoとSamsung Galaxy Z Fold8の比較検証
+【何が起きた】
+「iPhone Duo」が公式に発表され、そのハードウェア仕様が同サイズのSamsung Galaxy Z Fold8と比較されている[1] [2]。本体サイズはiPhone Duoの方が薄型だが、重量はGalaxyの方が軽い設計となっている[1]。また、両機種ともに独自の折りたたみヒンジ技術を採用している[2]。
+【なぜ重要】
+該当なし
+【出典】
+[1] [2]"""
+    source_texts = [
+        "iPhone Duo, Samsung Galaxy Z Fold8, Galaxy: official hardware comparison.",
+        "Hardware specs: iPhone Duo is thinner, Galaxy is lighter with folding hinge.",
+    ]
+    # Without source_texts, the card fails language gate because Latin names drag ratio under 0.6
+    res_without_source = parse_card_output(raw_text, valid_refs={1, 2})
+    assert res_without_source.success is False
+    assert res_without_source.reason == "language"
+
+    # With source_texts, the Latin names from source are stripped before ratio check and it passes
+    res_with_source = parse_card_output(
+        raw_text, valid_refs={1, 2}, source_texts=source_texts
+    )
+    assert res_with_source.success is True
+    assert res_with_source.card is not None
+    assert (
+        res_with_source.card.headline_ja
+        == "iPhone DuoとSamsung Galaxy Z Fold8の比較検証"
+    )
+
+
+def test_parse_unrelated_latin_prose_still_fails_language_check_with_sources():
+    """Verify unrelated Latin prose still fails language check even when source items are provided."""
+    raw_text = """【見出し】
+Tech News Weekly Update
+【何が起きた】
+This is completely unrelated English prose that was generated by the LLM.[1]
+Another sentence written purely in Latin script describing events.[1]
+【なぜ重要】
+該当なし
+【出典】
+[1]"""
+    source_texts = [
+        "Tech News Weekly Update",
+        "Some Japanese source text or unrelated content.",
+    ]
+    res = parse_card_output(raw_text, valid_refs={1}, source_texts=source_texts)
+    assert res.success is False
+    assert res.reason == "language"
