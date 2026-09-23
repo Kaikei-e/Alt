@@ -19,6 +19,7 @@ import { DesktopFavoritesPage } from "../pages/desktop/DesktopFavoritesPage";
 import { DesktopFeedsPage } from "../pages/desktop/DesktopFeedsPage";
 import { DesktopJobStatusPage } from "../pages/desktop/DesktopJobStatusPage";
 import { DesktopMorningLetterPage } from "../pages/desktop/DesktopMorningLetterPage";
+import { DesktopRecapCardsPage } from "../pages/desktop/DesktopRecapCardsPage";
 import { DesktopRecapPage } from "../pages/desktop/DesktopRecapPage";
 import { DesktopSearchPage } from "../pages/desktop/DesktopSearchPage";
 import { DesktopSettingsPage } from "../pages/desktop/DesktopSettingsPage";
@@ -35,6 +36,7 @@ import { MobileFeedsPage } from "../pages/mobile/MobileFeedsPage";
 import { MobileJobStatusPage } from "../pages/mobile/MobileJobStatusPage";
 import { MobileManagePage } from "../pages/mobile/MobileManagePage";
 import { MobileMorningLetterPage } from "../pages/mobile/MobileMorningLetterPage";
+import { MobileRecapCardsPage } from "../pages/mobile/MobileRecapCardsPage";
 import { MobileRecapPage } from "../pages/mobile/MobileRecapPage";
 import { MobileSearchPage } from "../pages/mobile/MobileSearchPage";
 import { MobileStatsPage } from "../pages/mobile/MobileStatsPage";
@@ -51,6 +53,7 @@ type PomFixtures = {
 	// Desktop
 	desktopFeedsPage: DesktopFeedsPage;
 	desktopRecapPage: DesktopRecapPage;
+	desktopRecapCardsPage: DesktopRecapCardsPage;
 	desktopSearchPage: DesktopSearchPage;
 	desktopSettingsPage: DesktopSettingsPage;
 	desktopAugurPage: DesktopAugurPage;
@@ -67,6 +70,7 @@ type PomFixtures = {
 	mobileFeedsPage: MobileFeedsPage;
 	mobileSwipePage: MobileSwipePage;
 	mobileRecapPage: MobileRecapPage;
+	mobileRecapCardsPage: MobileRecapCardsPage;
 	mobileStatsPage: MobileStatsPage;
 	mobileSearchPage: MobileSearchPage;
 	mobileManagePage: MobileManagePage;
@@ -96,6 +100,9 @@ export const test = base.extend<PomFixtures>({
 	},
 	desktopRecapPage: async ({ page }, use) => {
 		await use(new DesktopRecapPage(page));
+	},
+	desktopRecapCardsPage: async ({ page }, use) => {
+		await use(new DesktopRecapCardsPage(page));
 	},
 	desktopSearchPage: async ({ page }, use) => {
 		await use(new DesktopSearchPage(page));
@@ -142,6 +149,9 @@ export const test = base.extend<PomFixtures>({
 	},
 	mobileRecapPage: async ({ page }, use) => {
 		await use(new MobileRecapPage(page));
+	},
+	mobileRecapCardsPage: async ({ page }, use) => {
+		await use(new MobileRecapCardsPage(page));
 	},
 	mobileStatsPage: async ({ page }, use) => {
 		await use(new MobileStatsPage(page));

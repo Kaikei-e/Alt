@@ -319,6 +319,12 @@ onMount(() => {
 		<!-- Normal recap view -->
 		<PageHeader title="Recap" description="News summary by genre">
 			{#snippet actions()}
+				<a
+					href="/recap/cards"
+					class="px-3 py-1.5 text-sm font-medium rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] border border-[var(--border-color)] transition-colors mr-2"
+				>
+					Topic cards
+				</a>
 				<div class="flex items-center gap-1 bg-[var(--surface-bg)] rounded-lg p-1 border border-[var(--border-color)]">
 					<button
 						class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors {selectedWindow === 3
@@ -383,6 +389,14 @@ onMount(() => {
 {:else}
 	<!-- Mobile -->
 	<div class="relative" style="background: var(--app-bg);">
+		<div class="flex justify-end px-5 py-2.5 border-b border-[var(--surface-border)]">
+			<a
+				href="/recap/cards"
+				class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface-bg)] border border-[var(--surface-border)]"
+			>
+				Topic cards
+			</a>
+		</div>
 		{#if isLoading}
 			<div
 				class="p-5 max-w-2xl mx-auto"

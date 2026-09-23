@@ -10,6 +10,7 @@ export class Mobile3DayRecapPage extends BasePage {
 	readonly errorMessage: Locator;
 	readonly retryButton: Locator;
 	readonly emptyState: Locator;
+	readonly topicCardsLink: Locator;
 
 	constructor(page: Page) {
 		super(page);
@@ -18,6 +19,7 @@ export class Mobile3DayRecapPage extends BasePage {
 		this.errorMessage = page.getByText("Error loading recap");
 		this.retryButton = page.getByRole("button", { name: /retry/i });
 		this.emptyState = page.getByText("No Recap Yet");
+		this.topicCardsLink = page.getByRole("link", { name: "Topic cards" });
 	}
 
 	get url(): string {

@@ -9,6 +9,7 @@ import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 import {
 	type GetSevenDayRecapResponse,
+	type GetThreeDayRecapCardsResponse,
 	type GetThreeDayRecapResponse,
 	type RecapSearchResultItem as ProtoRecapSearchResultItem,
 	RecapService,
@@ -256,4 +257,93 @@ export async function searchRecapsByTag(
 			bullets: [...item.bullets],
 		}),
 	);
+}
+
+// =============================================================================
+// Three-Day Topic Cards
+// =============================================================================
+
+export interface RecapCardSource {
+	n: number;
+	feedId: string;
+	url: string;
+	host: string;
+	title: string;
+	pubDate?: string | null;
+}
+
+export interface RecapCard {
+	id: string;
+	rank: number;
+	storyId: string;
+	continuesCardId?: string | null;
+	headlineJa: string;
+	whatJa: string;
+	whyJa?: string | null;
+	genre?: string | null;
+	sources: RecapCardSource[];
+	createdAt: string;
+}
+
+export interface RecapCardsJob {
+	jobId: string;
+	kickedAt: string;
+	from: string;
+	to: string;
+	paramsVersion: string;
+	cardsSelected: number;
+	degraded: boolean;
+}
+
+export interface ThreeDayRecapCardsResponse {
+	job: RecapCardsJob | null;
+	cards: RecapCard[];
+}
+
+/**
+ * Gets 3-day topic recap cards via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use (must include auth)
+ * @returns 3-day topic cards with job metadata
+ */
+export async function getThreeDayRecapCards(
+	transport: Transport,
+): Promise<ThreeDayRecapCardsResponse> {
+	const client = createRecapClient(transport);
+	const response = (await client.getThreeDayRecapCards(
+		{},
+	)) as GetThreeDayRecapCardsResponse;
+
+	return {
+		job: response.job
+			? {
+					jobId: response.job.jobId,
+					kickedAt: response.job.kickedAt,
+					from: response.job.from,
+					to: response.job.to,
+					paramsVersion: response.job.paramsVersion,
+					cardsSelected: response.job.cardsSelected,
+					degraded: response.job.degraded,
+				}
+			: null,
+		cards: response.cards.map((c) => ({
+			id: c.id,
+			rank: c.rank,
+			storyId: c.storyId,
+			continuesCardId: c.continuesCardId || undefined,
+			headlineJa: c.headlineJa,
+			whatJa: c.whatJa,
+			whyJa: c.whyJa || undefined,
+			genre: c.genre || undefined,
+			createdAt: c.createdAt,
+			sources: c.sources.map((s) => ({
+				n: s.n,
+				feedId: s.feedId,
+				url: s.url,
+				host: s.host,
+				title: s.title,
+				pubDate: s.pubDate || undefined,
+			})),
+		})),
+	};
 }

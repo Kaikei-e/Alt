@@ -22,6 +22,19 @@ export {
 	type PulseTopic,
 	resetPulseCounter,
 } from "./pulseFactory";
+// Topic Cards factories
+export {
+	buildMockDegradedRecapCardsResponse,
+	buildMockEmptyRecapCardsResponse,
+	buildMockRecapCard,
+	buildMockRecapCardSource,
+	buildMockRecapCardsJob,
+	buildMockRecapCardsResponse,
+	type MockRecapCard,
+	type MockRecapCardSource,
+	type MockRecapCardsJob,
+	type MockRecapCardsResponse,
+} from "./recapCardsFactory";
 // Recap & Augur factories
 export {
 	buildAugurStreamMessages,
