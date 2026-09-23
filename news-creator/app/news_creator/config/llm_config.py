@@ -59,8 +59,8 @@ class LLMConfig:
     recap_summary_temperature: float = 0.0
     recap_ja_ratio_threshold: float = 0.6
     recap_summary_repair_attempts: int = 2
-    # Recap card settings
-    recap_card_num_predict: int = 700
+    # Recap card settings: max new tokens budget passed to Ollama num_predict
+    recap_card_max_new_tokens: int = 700
     recap_card_temperature: float = 0.2
 
     def get_options(self) -> dict:
@@ -131,7 +131,7 @@ class LLMConfig:
             recap_summary_temperature=_get_float("RECAP_SUMMARY_TEMPERATURE", 0.0),
             recap_ja_ratio_threshold=_get_float("RECAP_JA_RATIO_THRESHOLD", 0.6),
             recap_summary_repair_attempts=_get_int("RECAP_SUMMARY_REPAIR_ATTEMPTS", 2),
-            recap_card_num_predict=_get_int("RECAP_CARD_NUM_PREDICT", 700),
+            recap_card_max_new_tokens=_get_int("RECAP_CARD_MAX_NEW_TOKENS", 700),
             recap_card_temperature=_get_float("RECAP_CARD_TEMPERATURE", 0.2),
         )
 

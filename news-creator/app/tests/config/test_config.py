@@ -114,6 +114,24 @@ def test_recap_summary_num_predict_env_override(monkeypatch):
     assert config.recap_summary_num_predict == 3000
 
 
+def test_recap_card_max_new_tokens_default(monkeypatch):
+    """recap_card_max_new_tokens should default to 700."""
+    monkeypatch.delenv("RECAP_CARD_MAX_NEW_TOKENS", raising=False)
+
+    config = NewsCreatorConfig()
+
+    assert config.llm.recap_card_max_new_tokens == 700
+
+
+def test_recap_card_max_new_tokens_env_override(monkeypatch):
+    """RECAP_CARD_MAX_NEW_TOKENS env should override the default."""
+    monkeypatch.setenv("RECAP_CARD_MAX_NEW_TOKENS", "850")
+
+    config = NewsCreatorConfig()
+
+    assert config.llm.recap_card_max_new_tokens == 850
+
+
 def test_concurrency_defaults_to_one_when_envs_missing(monkeypatch):
     """When concurrency envs are missing, default to 1 via OLLAMA_NUM_PARALLEL."""
     # Ensure no concurrency envs are set

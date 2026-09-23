@@ -100,7 +100,7 @@ class NewsCreatorConfig:
                 "scheduling_guaranteed_be_ratio": self.scheduling.guaranteed_be_ratio,
                 "scheduling_rt_mode": self.scheduling.rt_mode,
                 "event_loop_lag_warn_ms": self.event_loop_lag_warn_ms,
-                "recap_card_num_predict": self.llm.recap_card_num_predict,
+                "recap_card_max_new_tokens": self.llm.recap_card_max_new_tokens,
                 "recap_card_temperature": self.llm.recap_card_temperature,
             },
         )

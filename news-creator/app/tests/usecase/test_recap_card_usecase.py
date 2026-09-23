@@ -83,7 +83,7 @@ def _make_config():
     config = Mock()
     config.model_name = "gemma4-e4b-12k"
     config.llm = Mock()
-    config.llm.recap_card_num_predict = 700
+    config.llm.recap_card_max_new_tokens = 700
     config.llm.recap_card_temperature = 0.2
     config.llm.model_name = "gemma4-e4b-12k"
     config.llm.recap_ja_ratio_threshold = 0.6

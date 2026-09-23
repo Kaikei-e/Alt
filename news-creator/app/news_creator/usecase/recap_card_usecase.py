@@ -193,10 +193,10 @@ class RecapCardUsecase:
         llm_response = await self.llm_provider.generate(
             prompt=prompt,
             model=model,
-            num_predict=self.config.llm.recap_card_num_predict,
+            num_predict=self.config.llm.recap_card_max_new_tokens,
             options={
                 "temperature": self.config.llm.recap_card_temperature,
-                "num_predict": self.config.llm.recap_card_num_predict,
+                "num_predict": self.config.llm.recap_card_max_new_tokens,
             },
             priority="low",
         )
