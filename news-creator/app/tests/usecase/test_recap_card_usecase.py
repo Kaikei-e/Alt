@@ -156,7 +156,60 @@ async def test_generate_card_parse_fail_then_regenerate_success():
     # Verify second call had reminder
     second_call_prompt = llm_provider.generate.call_args_list[1].kwargs["prompt"]
     assert "再生成の厳格な指示" in second_call_prompt
+    assert "自然な日本語" in second_call_prompt
+    assert "固有名詞" in second_call_prompt
     assert response.card.headline_ja == "ソラリス社、分散ログ基盤の次期版を公開"
+
+
+@pytest.mark.asyncio
+async def test_generate_card_attempt_1_failure_logs_raw_text_len_and_measured_ratio(
+    caplog,
+):
+    """Verify attempt 1 failure log includes raw_text_len and measured_ratio for language."""
+    import logging
+
+    config = _make_config()
+
+    llm_provider = AsyncMock()
+    english_output = """
+【見出し】
+English Only Headline For Test
+【何が起きた】
+This is the first English sentence without Japanese chars.[1]
+This is the second English sentence without Japanese chars.[1]
+【なぜ重要】
+該当なし
+【出典】
+[1]
+"""
+    llm_provider.generate.side_effect = [
+        LLMGenerateResponse(response=english_output, model="gemma4-e4b-12k"),
+        LLMGenerateResponse(response=VALID_CARD_OUTPUT, model="gemma4-e4b-12k"),
+    ]
+
+    usecase = RecapCardUsecase(
+        config=config,
+        llm_provider=llm_provider,
+        cache=InMemoryCache(),
+    )
+
+    request = make_card_request()
+    with caplog.at_level(logging.WARNING):
+        caplog.clear()
+        response = await usecase.generate_card(request)
+
+    assert response.card.headline_ja == "ソラリス社、分散ログ基盤の次期版を公開"
+    repaired_records = [
+        r
+        for r in caplog.records
+        if "Card parsing failed on attempt 1" in r.getMessage()
+    ]
+    assert len(repaired_records) == 1
+    record = repaired_records[0]
+    assert getattr(record, "raw_text_len", None) == len(english_output)
+    assert getattr(record, "reason", None) == "language"
+    assert getattr(record, "measured_ratio", None) is not None
+    assert getattr(record, "measured_ratio", None) < 0.6
 
 
 @pytest.mark.asyncio
@@ -408,3 +461,65 @@ def test_cache_key_differs_for_different_revision_notes():
 
     assert key_none != key_note1
     assert key_note1 != key_note2
+
+
+def test_rendered_prompt_contains_japanese_and_no_code_fence_directives():
+    """Verify prompt explicitly requires natural Japanese for English sources, limits Latin to proper nouns, and forbids code fences."""
+    config = Mock()
+    llm_provider = Mock()
+    usecase = RecapCardUsecase(
+        config=config, llm_provider=llm_provider, cache=InMemoryCache()
+    )
+    request = make_card_request()
+    prompt = usecase._build_prompt(request)
+
+    # 1. Natural Japanese even when every source is English
+    assert "自然な日本語" in prompt
+    assert "英語" in prompt
+    # 2. Only product names and proper nouns may stay in Latin script
+    assert "固有名詞" in prompt
+    # 3. Output must not be wrapped in code fences
+    assert "コードフェンス" in prompt
+
+
+@pytest.mark.asyncio
+async def test_generate_card_language_fail_twice_raises_rejected_with_ratio_and_counts():
+    """Verify that when card generation fails language check twice, rejection error carries ratio and counts."""
+    config = _make_config()
+
+    llm_provider = AsyncMock()
+    english_output = """
+【見出し】
+English Only Headline For Test
+【何が起きた】
+This is the first English sentence without Japanese chars.[1]
+This is the second English sentence without Japanese chars.[1]
+【なぜ重要】
+該当なし
+【出典】
+[1]
+"""
+    llm_provider.generate.side_effect = [
+        LLMGenerateResponse(response=english_output, model="gemma4-e4b-12k"),
+        LLMGenerateResponse(response=english_output, model="gemma4-e4b-12k"),
+    ]
+
+    usecase = RecapCardUsecase(
+        config=config,
+        llm_provider=llm_provider,
+        cache=InMemoryCache(),
+    )
+
+    request = make_card_request()
+    with pytest.raises(CardGenerationRejectedError) as exc_info:
+        await usecase.generate_card(request)
+
+    assert exc_info.value.attempts == 2
+    assert exc_info.value.reason == "language"
+    assert exc_info.value.measured_ratio is not None
+    assert exc_info.value.measured_ratio < 0.6
+    assert exc_info.value.character_counts is not None
+    assert "japanese" in exc_info.value.character_counts
+    assert "substantive" in exc_info.value.character_counts
+    assert "total" in exc_info.value.character_counts
+    assert llm_provider.generate.call_count == 2

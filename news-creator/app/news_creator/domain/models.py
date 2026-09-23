@@ -608,22 +608,39 @@ class CardGenerate422Response(StrictFrozenModel):
     reason: Card422Reason
     attempts: int
     raw_text: str
+    measured_ratio: float | None = None
+    character_counts: dict[str, int] | None = None
 
 
 class CardGenerationRejectedError(Exception):
     """Exception raised when card generation fails all validation/parsing attempts."""
 
-    def __init__(self, reason: Card422Reason, attempts: int, raw_text: str):
+    def __init__(
+        self,
+        reason: Card422Reason,
+        attempts: int,
+        raw_text: str,
+        measured_ratio: float | None = None,
+        character_counts: dict[str, int] | None = None,
+    ):
         super().__init__(
             f"Card generation rejected: reason={reason}, attempts={attempts}"
         )
         self.reason = reason
         self.attempts = attempts
         self.raw_text = raw_text
+        self.measured_ratio = measured_ratio
+        self.character_counts = character_counts
 
     def to_response_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "reason": self.reason,
             "attempts": self.attempts,
             "raw_text": self.raw_text,
         }
+        if self.reason == "language":
+            if self.measured_ratio is not None:
+                data["measured_ratio"] = self.measured_ratio
+            if self.character_counts is not None:
+                data["character_counts"] = self.character_counts
+        return data

@@ -166,3 +166,96 @@ def test_recap_card_handler_request_validation_failure_422_without_rejection_hea
     data = resp.json()
     assert "detail" in data
     usecase.generate_card.assert_not_called()
+
+
+def test_recap_card_handler_language_rejection_422_includes_ratio_and_counts():
+    """Verify 422 language rejection includes measured_ratio and character_counts next to raw_text."""
+    usecase = AsyncMock()
+    usecase.generate_card.side_effect = CardGenerationRejectedError(
+        reason="language",
+        attempts=2,
+        raw_text="English headline here",
+        measured_ratio=0.42,
+        character_counts={"japanese": 42, "substantive": 100, "total": 120},
+    )
+
+    app = FastAPI()
+    app.include_router(create_recap_card_router(usecase))
+    client = TestClient(app)
+
+    payload = _build_card_request_payload()
+    resp = client.post("/v1/cards/generate", json=payload)
+
+    assert resp.status_code == 422
+    assert resp.headers.get("X-Card-Rejection") == "1"
+    data = resp.json()
+    assert data["reason"] == "language"
+    assert data["attempts"] == 2
+    assert data["raw_text"] == "English headline here"
+    assert data["measured_ratio"] == 0.42
+    assert data["character_counts"] == {
+        "japanese": 42,
+        "substantive": 100,
+        "total": 120,
+    }
+
+
+def test_recap_card_handler_structured_logging_on_rejection(caplog):
+    """Verify structured log has raw_text_len, measured_ratio for language, and never raw_text."""
+    import logging
+
+    usecase = AsyncMock()
+    app = FastAPI()
+    app.include_router(create_recap_card_router(usecase))
+    client = TestClient(app)
+    payload = _build_card_request_payload()
+
+    # 1. Parse failed rejection: logs raw_text_len, never raw_text
+    usecase.generate_card.side_effect = CardGenerationRejectedError(
+        reason="parse_failed",
+        attempts=2,
+        raw_text="SECRET_RAW_TEXT_PARSE_FAILED",
+    )
+    with caplog.at_level(logging.WARNING):
+        caplog.clear()
+        resp = client.post("/v1/cards/generate", json=payload)
+        assert resp.status_code == 422
+
+        rejection_records = [
+            r for r in caplog.records if r.getMessage() == "Card generation rejected"
+        ]
+        assert len(rejection_records) == 1
+        record = rejection_records[0]
+        assert getattr(record, "raw_text_len", None) == len(
+            "SECRET_RAW_TEXT_PARSE_FAILED"
+        )
+        assert getattr(record, "reason", None) == "parse_failed"
+        assert getattr(record, "attempts", None) == 2
+        # Never log raw_text itself in extra
+        assert not hasattr(record, "raw_text")
+        assert "SECRET_RAW_TEXT_PARSE_FAILED" not in record.getMessage()
+
+    # 2. Language rejection: logs raw_text_len and measured_ratio
+    usecase.generate_card.side_effect = CardGenerationRejectedError(
+        reason="language",
+        attempts=2,
+        raw_text="SECRET_RAW_TEXT_LANGUAGE",
+        measured_ratio=0.35,
+        character_counts={"japanese": 7, "substantive": 20, "total": 25},
+    )
+    with caplog.at_level(logging.WARNING):
+        caplog.clear()
+        resp = client.post("/v1/cards/generate", json=payload)
+        assert resp.status_code == 422
+
+        rejection_records = [
+            r for r in caplog.records if r.getMessage() == "Card generation rejected"
+        ]
+        assert len(rejection_records) == 1
+        record = rejection_records[0]
+        assert getattr(record, "raw_text_len", None) == len("SECRET_RAW_TEXT_LANGUAGE")
+        assert getattr(record, "reason", None) == "language"
+        assert getattr(record, "measured_ratio", None) == 0.35
+        # Never log raw_text itself in extra
+        assert not hasattr(record, "raw_text")
+        assert "SECRET_RAW_TEXT_LANGUAGE" not in record.getMessage()

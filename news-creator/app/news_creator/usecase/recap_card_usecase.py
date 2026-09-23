@@ -7,6 +7,7 @@ import json
 import logging
 import time
 from pathlib import Path
+from typing import Any
 from jinja2 import Template
 
 from news_creator.config.config import NewsCreatorConfig
@@ -274,13 +275,21 @@ class RecapCardUsecase:
             return response
 
         # --- Attempt 2 (regenerate exactly once) ---
+        extra_1: dict[str, Any] = {
+            "reason": parse_result_1.reason,
+            "raw_text_len": len(raw_text_1),
+            "job_id": str(request.job_id),
+            "candidate_id": str(request.candidate_id),
+        }
+        if (
+            parse_result_1.reason == "language"
+            and parse_result_1.measured_ratio is not None
+        ):
+            extra_1["measured_ratio"] = parse_result_1.measured_ratio
+
         logger.warning(
             "Card parsing failed on attempt 1, regenerating with strict reminder",
-            extra={
-                "reason": parse_result_1.reason,
-                "job_id": str(request.job_id),
-                "candidate_id": str(request.candidate_id),
-            },
+            extra=extra_1,
         )
 
         reminder = (
@@ -290,7 +299,7 @@ class RecapCardUsecase:
             "- 【何が起きた】は2〜3文で、各文末に必ず入力にある出典番号 [n] を付けること\n"
             "- 【なぜ重要】は影響・結果の客観的事実がある時だけ1文（末尾に [n]）で記述し、無ければ「該当なし」とだけ書くこと\n"
             f"- 入力に存在する出典番号 {sorted(list(valid_refs))} 以外を使用しないこと\n"
-            "- 出力は日本語のみとすること"
+            "- すべての入力アイテムが英語であっても要約カードは必ず自然な日本語で作成すること（製品名やサービス名などの固有名詞のみアルファベット表記を維持可）"
         )
 
         prompt_2 = self._build_prompt(request, reminder=reminder)
@@ -335,4 +344,6 @@ class RecapCardUsecase:
             reason=reason,
             attempts=2,
             raw_text=raw_text_2,
+            measured_ratio=parse_result_2.measured_ratio,
+            character_counts=parse_result_2.character_counts,
         )

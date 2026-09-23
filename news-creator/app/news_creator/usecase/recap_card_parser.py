@@ -28,10 +28,12 @@ class CardParseResult:
     success: bool
     card: CardContent | None = None
     reason: Card422Reason | None = None
+    measured_ratio: float | None = None
+    character_counts: dict[str, int] | None = None
 
 
 def clean_raw_output(text: str) -> str:
-    """Strip thinking blocks, invisible characters, and control tokens from LLM output."""
+    """Strip thinking blocks, invisible characters, control tokens, code fences, and normalize brackets."""
     if not text:
         return ""
 
@@ -44,6 +46,15 @@ def clean_raw_output(text: str) -> str:
 
     # Neutralize turn/control tokens using canonical domain helper
     cleaned, _ = neutralize_control_tokens(cleaned)
+
+    # Normalize full-width brackets ［1］ to [1]
+    cleaned = cleaned.replace("［", "[").replace("］", "]")
+
+    # Strip leading/trailing code fences (e.g. ```markdown ... ```) and surrounding whitespace
+    cleaned = cleaned.strip()
+    cleaned = re.sub(r"^```[a-zA-Z0-9_\-]*\s*\n?", "", cleaned)
+    cleaned = re.sub(r"\n?\s*```\s*$", "", cleaned)
+
     return cleaned.strip()
 
 
@@ -64,14 +75,14 @@ def split_sentences(text: str) -> list[str]:
             if line[i] in ("。", "！", "？", "!", "?"):
                 i += 1
                 # Consume any trailing whitespace
-                while i < n and line[i] == " ":
+                while i < n and line[i] in (" ", "\u3000", "\t"):
                     i += 1
                 # Consume any trailing [digits] citation tags
                 while i < n and line[i] == "[":
                     close_idx = line.find("]", i)
                     if close_idx != -1 and line[i + 1 : close_idx].isdigit():
                         i = close_idx + 1
-                        while i < n and line[i] == " ":
+                        while i < n and line[i] in (" ", "\u3000", "\t"):
                             i += 1
                     else:
                         break
@@ -87,13 +98,13 @@ def split_sentences(text: str) -> list[str]:
                 close_idx = line.find("]", i)
                 if close_idx != -1 and line[i + 1 : close_idx].isdigit():
                     i = close_idx + 1
-                    while i < n and line[i] == " ":
+                    while i < n and line[i] in (" ", "\u3000", "\t"):
                         i += 1
                     while i < n and line[i] == "[":
                         c2 = line.find("]", i)
                         if c2 != -1 and line[i + 1 : c2].isdigit():
                             i = c2 + 1
-                            while i < n and line[i] == " ":
+                            while i < n and line[i] in (" ", "\u3000", "\t"):
                                 i += 1
                         else:
                             break
@@ -140,13 +151,27 @@ def extract_sections(text: str) -> dict[str, str]:
     return sections
 
 
-def is_japanese_ratio_sufficient(text: str, threshold: float = 0.6) -> bool:
-    """Check whether text meets the minimum Japanese character ratio (G1 gate)."""
+def measure_japanese_ratio(
+    text: str, threshold: float = 0.6
+) -> tuple[bool, float, dict[str, int]]:
+    """
+    Measure Japanese character ratio and character counts (G1 gate).
+
+    Returns:
+        (is_sufficient, measured_ratio, character_counts)
+    """
     substantive = re.sub(r"[\s0-9\[\]!?,.。！？:/\-_~#*`'\"]", "", text)
-    if not substantive:
-        return False
+    total_chars = len(text)
+    substantive_chars = len(substantive)
     ja_chars = len(JAPANESE_CHAR_RE.findall(substantive))
-    return (ja_chars / len(substantive)) >= threshold
+    raw_ratio = (ja_chars / substantive_chars) if substantive_chars > 0 else 0.0
+    sufficient = raw_ratio >= threshold if substantive_chars > 0 else False
+    character_counts = {
+        "japanese": ja_chars,
+        "substantive": substantive_chars,
+        "total": total_chars,
+    }
+    return sufficient, round(raw_ratio, 4), character_counts
 
 
 def parse_card_output(
@@ -233,8 +258,16 @@ def parse_card_output(
     if why_ja:
         full_card_text += " " + why_ja.text
 
-    if not is_japanese_ratio_sufficient(full_card_text, ja_ratio_threshold):
-        return CardParseResult(success=False, reason="language")
+    ja_sufficient, ja_ratio, char_counts = measure_japanese_ratio(
+        full_card_text, ja_ratio_threshold
+    )
+    if not ja_sufficient:
+        return CardParseResult(
+            success=False,
+            reason="language",
+            measured_ratio=ja_ratio,
+            character_counts=char_counts,
+        )
 
     used_refs = sorted(list(all_refs))
 

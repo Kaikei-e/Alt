@@ -1,4 +1,4 @@
-"""Tests for recap card output tag parser."""
+import pytest
 
 from news_creator.usecase.recap_card_parser import (
     CardParseResult,
@@ -282,3 +282,124 @@ def test_clean_raw_output_strips_hidden_and_bidi_characters():
     assert "\ufeff" not in result.card.headline_ja
     assert "\u202e" not in result.card.headline_ja
     assert "\u200b" not in result.card.what_ja[0].text
+
+
+@pytest.mark.parametrize(
+    "raw_text",
+    [
+        # Leading ```markdown and trailing fence
+        """```markdown
+【見出し】
+コードフェンス付き出力テスト
+【何が起きた】
+LLMがコードフェンスで囲んで出力した場合でも正常にパースされる。[1]
+二文目も正常に認識される。[1]
+【なぜ重要】
+運用の効率化に大きく寄与する。[1]
+```""",
+        # Leading ```text and trailing fence
+        """```text
+【見出し】
+コードフェンス付き出力テスト
+【何が起きた】
+LLMがコードフェンスで囲んで出力した場合でも正常にパースされる。[1]
+二文目も正常に認識される。[1]
+【なぜ重要】
+運用の効率化に大きく寄与する。[1]
+```""",
+        # Fence without a trailing newline after opening fence
+        "```【見出し】\nコードフェンス付き出力テスト\n【何が起きた】\nLLMがコードフェンスで囲んで出力した場合でも正常にパースされる。[1]\n二文目も正常に認識される。[1]\n【なぜ重要】\n運用の効率化に大きく寄与する。[1]\n```",
+        # Trailing fence alone without leading fence
+        """【見出し】
+コードフェンス付き出力テスト
+【何が起きた】
+LLMがコードフェンスで囲んで出力した場合でも正常にパースされる。[1]
+二文目も正常に認識される。[1]
+【なぜ重要】
+運用の効率化に大きく寄与する。[1]
+```""",
+    ],
+)
+def test_parse_strips_markdown_code_fences(raw_text: str):
+    """Verify parser strips leading/trailing markdown code fences with/without lang tags."""
+    result = parse_card_output(raw_text, valid_refs={1})
+    assert result.success is True
+    assert result.card is not None
+    assert result.card.headline_ja == "コードフェンス付き出力テスト"
+    assert len(result.card.what_ja) == 2
+    assert result.card.why_ja is not None
+    assert result.card.why_ja.refs == [1]
+
+
+def test_parse_accepts_citations_before_or_after_punctuation():
+    """Verify citations placed either before or after terminal punctuation are accepted."""
+    raw_text = """
+【見出し】
+文末引用位置の柔軟性テスト
+【何が起きた】
+第一文は句点の後に引用を配置した。[1]
+第二文は句点の前に引用を配置した[1]。
+第三文は句点の前に複数引用を配置した[1]　[2]。
+【なぜ重要】
+影響の記述でも句点の前に引用を配置できる[1]。
+【出典】
+[1] [2]
+"""
+    result = parse_card_output(raw_text, valid_refs={1, 2})
+    assert result.success is True
+    assert result.card is not None
+    assert len(result.card.what_ja) == 3
+    assert result.card.what_ja[0].refs == [1]
+    assert result.card.what_ja[1].refs == [1]
+    assert result.card.what_ja[2].refs == [1, 2]
+    assert result.card.why_ja is not None
+    assert result.card.why_ja.refs == [1]
+
+
+def test_parse_normalizes_full_width_brackets():
+    """Verify full-width brackets ［1］ are normalized to [1] and accepted."""
+    raw_text = """
+【見出し】
+全角ブラケット正規化テスト
+【何が起きた】
+全角ブラケットで引用番号が出力された。［1］
+二文目の全角ブラケットも正規化される［1］。
+【なぜ重要】
+該当なし
+【出典】
+［1］
+"""
+    result = parse_card_output(raw_text, valid_refs={1})
+    assert result.success is True
+    assert result.card is not None
+    assert result.card.headline_ja == "全角ブラケット正規化テスト"
+    assert result.card.what_ja[0].refs == [1]
+    assert result.card.what_ja[1].refs == [1]
+    assert result.card.used_refs == [1]
+
+
+def test_parse_language_gate_records_ratio_and_counts():
+    """Verify language gate rejection records measured_ratio and character_counts."""
+    raw_text = """
+【見出し】
+Snowflake Tokyo 2026 LayerX発表
+【何が起きた】
+Snowflake World Tour Tokyo 2026 is an enterprise event.[1]
+LayerX TechHarmony architecture was showcased today.[1]
+【なぜ重要】
+該当なし
+【出典】
+[1]
+"""
+    result = parse_card_output(raw_text, valid_refs={1})
+    assert result.success is False
+    assert result.reason == "language"
+    assert result.measured_ratio is not None
+    assert isinstance(result.measured_ratio, float)
+    assert result.measured_ratio < 0.6
+    assert result.character_counts is not None
+    assert "japanese" in result.character_counts
+    assert "substantive" in result.character_counts
+    assert "total" in result.character_counts
+    assert result.character_counts["japanese"] >= 0
+    assert result.character_counts["total"] > 0

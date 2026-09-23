@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -84,14 +85,19 @@ def create_recap_card_router(usecase: RecapCardUsecase) -> APIRouter:
             )
 
         except CardGenerationRejectedError as exc:
+            extra: dict[str, Any] = {
+                "reason": exc.reason,
+                "attempts": exc.attempts,
+                "raw_text_len": len(exc.raw_text),
+                "job_id": str(request.job_id),
+                "candidate_id": str(request.candidate_id),
+            }
+            if exc.reason == "language" and exc.measured_ratio is not None:
+                extra["measured_ratio"] = exc.measured_ratio
+
             logger.warning(
                 "Card generation rejected",
-                extra={
-                    "reason": exc.reason,
-                    "attempts": exc.attempts,
-                    "job_id": str(request.job_id),
-                    "candidate_id": str(request.candidate_id),
-                },
+                extra=extra,
             )
             return JSONResponse(
                 status_code=422,
