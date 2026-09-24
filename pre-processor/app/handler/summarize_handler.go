@@ -12,7 +12,6 @@ import (
 	summarizeuc "pre-processor/usecase/summarize"
 	apperrors "pre-processor/utils/errors"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 )
 
@@ -363,7 +362,7 @@ func (h *SummarizeHandler) HandleSummarizeStatus(c echo.Context) error {
 	// of retrying.
 	job, err := h.jobRepo.GetJob(ctx, jobID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, domain.ErrJobNotFound) {
 			return apperrors.NewNotFoundContextError(
 				domain.ErrJobNotFound.Error(),
 				"handler", "SummarizeHandler", "HandleSummarizeStatus",

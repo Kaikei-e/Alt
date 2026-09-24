@@ -9,7 +9,6 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
-	"github.com/jackc/pgx/v5"
 
 	"pre-processor/domain"
 	preprocessorv2 "pre-processor/gen/proto/services/preprocessor/v2"
@@ -250,7 +249,7 @@ func (h *Handler) GetSummarizeStatus(
 	// not be reported as "job not found".
 	job, err := h.jobRepo.GetJob(ctx, jobID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, domain.ErrJobNotFound) {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("job not found"))
 		}
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get summarization job: %w", err))

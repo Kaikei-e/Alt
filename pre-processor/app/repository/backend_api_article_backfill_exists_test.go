@@ -1,4 +1,4 @@
-package backend_api
+package repository
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pre-processor/domain"
+	backend_api "pre-processor/driver/backend_api"
 	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
 )
@@ -77,7 +78,7 @@ func (f *fakeDataHub) snapshot() (feedLookups, created []string, checks []*datah
 	return f.getFeedIDURLs, f.createdURLs, f.existsChecks
 }
 
-func newBackfillTestRepo(t *testing.T, fake *fakeDataHub) *ArticleRepository {
+func newBackfillTestRepo(t *testing.T, fake *fakeDataHub) *articleRepository {
 	t.Helper()
 
 	path, handler := datahubv1connect.NewDataHubServiceHandler(fake)
@@ -87,7 +88,7 @@ func newBackfillTestRepo(t *testing.T, fake *fakeDataHub) *ArticleRepository {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	return NewArticleRepository(NewClient(srv.URL, "", srv.Client()), nil)
+	return NewArticleRepository(backend_api.NewClient(srv.URL, "", srv.Client()), nil)
 }
 
 // TestUpsertArticlesWithFeedID_SkipsArticleAlreadyStoredUnderItsFeed pins the

@@ -1,4 +1,4 @@
-package backend_api
+package repository
 
 import (
 	"context"

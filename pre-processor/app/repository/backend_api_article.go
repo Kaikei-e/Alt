@@ -1,4 +1,4 @@
-package backend_api
+package repository
 
 import (
 	"context"
@@ -14,24 +14,25 @@ import (
 
 	"pre-processor/domain"
 	"pre-processor/driver"
+	backend_api "pre-processor/driver/backend_api"
 	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 	"pre-processor/utils"
 )
 
-// ArticleRepository implements repository.ArticleRepository using the backend API.
-type ArticleRepository struct {
-	client *Client
+// articleRepository implements ArticleRepository using the backend API.
+type articleRepository struct {
+	client *backend_api.Client
 	dbPool *pgxpool.Pool
 }
 
 // NewArticleRepository creates a new API-backed article repository.
 // dbPool is used for operations that require direct DB access (e.g. FetchInoreaderArticles).
-func NewArticleRepository(client *Client, dbPool *pgxpool.Pool) *ArticleRepository {
-	return &ArticleRepository{client: client, dbPool: dbPool}
+func NewArticleRepository(client *backend_api.Client, dbPool *pgxpool.Pool) *articleRepository {
+	return &articleRepository{client: client, dbPool: dbPool}
 }
 
 // Create creates a new article via the backend API.
-func (r *ArticleRepository) Create(ctx context.Context, article *domain.Article) error {
+func (r *articleRepository) Create(ctx context.Context, article *domain.Article) error {
 	// First resolve feed_id from feed_url if needed
 	feedID := article.FeedID
 	if feedID == "" && article.FeedURL != "" {
@@ -70,9 +71,9 @@ func (r *ArticleRepository) Create(ctx context.Context, article *domain.Article)
 	}
 
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	resp, err := r.client.client.CreateArticle(ctx, req)
+	resp, err := r.client.DataHub().CreateArticle(ctx, req)
 	if err != nil {
 		return fmt.Errorf("CreateArticle: %w", err)
 	}
@@ -82,7 +83,7 @@ func (r *ArticleRepository) Create(ctx context.Context, article *domain.Article)
 }
 
 // CheckExists checks if articles exist for the given URLs.
-func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (bool, error) {
+func (r *articleRepository) CheckExists(ctx context.Context, urls []string) (bool, error) {
 	// For the API, we need a feed_id. Get it from the URL domain.
 	// Since we don't have feed_id here, we check each URL individually.
 	for _, u := range urls {
@@ -111,9 +112,9 @@ func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (boo
 			FeedId: feedID,
 		}
 		req := connect.NewRequest(protoReq)
-		r.client.addAuth(req)
+		r.client.AddAuth(req)
 
-		resp, err := r.client.client.CheckArticleExists(ctx, req)
+		resp, err := r.client.DataHub().CheckArticleExists(ctx, req)
 		if err != nil {
 			return false, fmt.Errorf("CheckArticleExists for %s: %w", u, err)
 		}
@@ -131,7 +132,7 @@ func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (boo
 // is the only form alt-data-hub can answer for an article URL: GetFeedID
 // matches feed_links.url, so looking a feed up from an article URL always
 // comes back NotFound and the check degrades to a silent "nothing exists".
-func (r *ArticleRepository) CheckExistsWithFeedID(ctx context.Context, feedID string, urls []string) (bool, error) {
+func (r *articleRepository) CheckExistsWithFeedID(ctx context.Context, feedID string, urls []string) (bool, error) {
 	if feedID == "" {
 		return false, fmt.Errorf("CheckExistsWithFeedID: feedID is required")
 	}
@@ -142,9 +143,9 @@ func (r *ArticleRepository) CheckExistsWithFeedID(ctx context.Context, feedID st
 			FeedId: feedID,
 		}
 		req := connect.NewRequest(protoReq)
-		r.client.addAuth(req)
+		r.client.AddAuth(req)
 
-		resp, err := r.client.client.CheckArticleExists(ctx, req)
+		resp, err := r.client.DataHub().CheckArticleExists(ctx, req)
 		if err != nil {
 			return false, fmt.Errorf("CheckArticleExists for %s: %w", u, err)
 		}
@@ -156,7 +157,7 @@ func (r *ArticleRepository) CheckExistsWithFeedID(ctx context.Context, feedID st
 }
 
 // FindForSummarization finds articles that need summarization via the backend API.
-func (r *ArticleRepository) FindForSummarization(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
+func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
 	protoReq := &datahubv1.ListUnsummarizedArticlesRequest{
 		Limit: int32(min(limit, math.MaxInt32)), // #nosec G115 -- clamped to int32 range
 	}
@@ -168,9 +169,9 @@ func (r *ArticleRepository) FindForSummarization(ctx context.Context, cursor *do
 	}
 
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	resp, err := r.client.client.ListUnsummarizedArticles(ctx, req)
+	resp, err := r.client.DataHub().ListUnsummarizedArticles(ctx, req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ListUnsummarizedArticles: %w", err)
 	}
@@ -204,12 +205,12 @@ func (r *ArticleRepository) FindForSummarization(ctx context.Context, cursor *do
 }
 
 // HasUnsummarizedArticles checks if there are articles without summaries via the backend API.
-func (r *ArticleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
+func (r *articleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
 	protoReq := &datahubv1.HasUnsummarizedArticlesRequest{}
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	resp, err := r.client.client.HasUnsummarizedArticles(ctx, req)
+	resp, err := r.client.DataHub().HasUnsummarizedArticles(ctx, req)
 	if err != nil {
 		return false, fmt.Errorf("HasUnsummarizedArticles: %w", err)
 	}
@@ -218,12 +219,12 @@ func (r *ArticleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, 
 }
 
 // FindByID finds an article by its ID.
-func (r *ArticleRepository) FindByID(ctx context.Context, articleID string) (*domain.Article, error) {
+func (r *articleRepository) FindByID(ctx context.Context, articleID string) (*domain.Article, error) {
 	protoReq := &datahubv1.GetArticleContentRequest{ArticleId: articleID}
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	resp, err := r.client.client.GetArticleContent(ctx, req)
+	resp, err := r.client.DataHub().GetArticleContent(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("GetArticleContent: %w", err)
 	}
@@ -239,15 +240,31 @@ func (r *ArticleRepository) FindByID(ctx context.Context, articleID string) (*do
 
 // FetchInoreaderArticles fetches articles from the pre-processor's own inoreader_articles table.
 // This requires direct DB access since the data lives in the sidecar DB, not the backend API.
-func (r *ArticleRepository) FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*domain.Article, error) {
-	return driver.GetInoreaderArticles(ctx, r.dbPool, since)
+func (r *articleRepository) FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*domain.Article, error) {
+	rows, err := driver.GetInoreaderArticles(ctx, r.dbPool, since)
+	if err != nil {
+		return nil, err
+	}
+	articles := make([]*domain.Article, 0, len(rows))
+	for _, row := range rows {
+		articles = append(articles, &domain.Article{
+			InoreaderID: row.ID,
+			URL:         row.ArticleURL,
+			Title:       row.Title,
+			Content:     row.Content,
+			PublishedAt: row.PublishedAt,
+			CreatedAt:   row.FetchedAt,
+			FeedURL:     row.FeedURL,
+		})
+	}
+	return articles, nil
 }
 
 // FetchInoreaderArticlesForEmptyFeeds fetches inoreader articles for backfill.
 // In API mode (split-DB), queries inoreader tables from pre-processor-db and
 // resolves empty feedIDs via backend API using push-down anti-join.
 // Only articles for feeds with zero existing articles are returned.
-func (r *ArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, time.Time, error) {
+func (r *articleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, time.Time, error) {
 	// Get inoreader articles with feed_urls (pre-processor-db only)
 	candidates, err := driver.GetInoreaderArticlesForBackfill(ctx, r.dbPool, fetchedAfter, limit)
 	if err != nil {
@@ -260,34 +277,42 @@ func (r *ArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Cont
 
 	// Candidates come back ordered by fetched_at ASC, so the last one marks how
 	// far this scan got — including the rows the empty-feed filter below drops.
-	scannedThrough := candidates[len(candidates)-1].CreatedAt
+	scannedThrough := candidates[len(candidates)-1].FetchedAt
 
 	// feed_url → feedID (empty feed) cache
 	emptyFeedCache := make(map[string]string) // feedURL → feedID ("" = no empty feed)
 
 	var result []*domain.Article
-	for _, article := range candidates {
-		if article.FeedURL == "" {
+	for _, candidate := range candidates {
+		if candidate.FeedURL == "" {
 			continue
 		}
 
-		feedID, cached := emptyFeedCache[article.FeedURL]
+		feedID, cached := emptyFeedCache[candidate.FeedURL]
 		if !cached {
-			feedID, err = r.getEmptyFeedID(ctx, article.FeedURL)
+			feedID, err = r.getEmptyFeedID(ctx, candidate.FeedURL)
 			if err != nil {
 				slog.WarnContext(ctx, "failed to get empty feed ID, skipping",
-					"feedURL", article.FeedURL, "error", err)
-				emptyFeedCache[article.FeedURL] = ""
+					"feedURL", candidate.FeedURL, "error", err)
+				emptyFeedCache[candidate.FeedURL] = ""
 				continue
 			}
-			emptyFeedCache[article.FeedURL] = feedID
+			emptyFeedCache[candidate.FeedURL] = feedID
 		}
 		if feedID == "" {
 			continue // no empty feed → skip
 		}
 
-		article.FeedID = feedID
-		result = append(result, article)
+		result = append(result, &domain.Article{
+			InoreaderID: candidate.ID,
+			URL:         candidate.ArticleURL,
+			Title:       candidate.Title,
+			Content:     candidate.Content,
+			PublishedAt: candidate.PublishedAt,
+			CreatedAt:   candidate.FetchedAt,
+			FeedURL:     candidate.FeedURL,
+			FeedID:      feedID,
+		})
 	}
 
 	return result, scannedThrough, nil
@@ -296,7 +321,7 @@ func (r *ArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Cont
 // UpsertArticles batch upserts articles, discarding the report of what it
 // refused. Callers that track a fetched_at watermark must use
 // UpsertArticlesReportingSkipped instead.
-func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*domain.Article) error {
+func (r *articleRepository) UpsertArticles(ctx context.Context, articles []*domain.Article) error {
 	_, err := r.UpsertArticlesReportingSkipped(ctx, articles)
 	return err
 }
@@ -317,7 +342,7 @@ func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*doma
 // The cache also remembers misses ("" sentinel) so a single unregistered feed
 // no longer produces N "feed not found" log lines — one warn per feed per
 // batch is enough to drive operator action.
-func (r *ArticleRepository) UpsertArticlesReportingSkipped(ctx context.Context, articles []*domain.Article) ([]*domain.Article, error) {
+func (r *articleRepository) UpsertArticlesReportingSkipped(ctx context.Context, articles []*domain.Article) ([]*domain.Article, error) {
 	if len(articles) == 0 {
 		return nil, nil
 	}
@@ -387,7 +412,7 @@ func (r *ArticleRepository) UpsertArticlesReportingSkipped(ctx context.Context, 
 // UpsertArticlesWithFeedID batch inserts articles that already have FeedID resolved.
 // Skips articles that already exist (DO NOTHING semantics) to avoid overwriting
 // full-text articles with Inoreader RSS summaries.
-func (r *ArticleRepository) UpsertArticlesWithFeedID(ctx context.Context, articles []*domain.Article) error {
+func (r *articleRepository) UpsertArticlesWithFeedID(ctx context.Context, articles []*domain.Article) error {
 	if len(articles) == 0 {
 		return nil
 	}
@@ -424,24 +449,24 @@ func (r *ArticleRepository) UpsertArticlesWithFeedID(ctx context.Context, articl
 	return nil
 }
 
-func (r *ArticleRepository) getEmptyFeedID(ctx context.Context, feedURL string) (string, error) {
+func (r *articleRepository) getEmptyFeedID(ctx context.Context, feedURL string) (string, error) {
 	protoReq := &datahubv1.GetEmptyFeedIDRequest{FeedUrl: feedURL}
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	resp, err := r.client.client.GetEmptyFeedID(ctx, req)
+	resp, err := r.client.DataHub().GetEmptyFeedID(ctx, req)
 	if err != nil {
 		return "", err
 	}
 	return resp.Msg.FeedId, nil
 }
 
-func (r *ArticleRepository) getFeedID(ctx context.Context, feedURL string) (string, error) {
+func (r *articleRepository) getFeedID(ctx context.Context, feedURL string) (string, error) {
 	protoReq := &datahubv1.GetFeedIDRequest{FeedUrl: feedURL}
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	resp, err := r.client.client.GetFeedID(ctx, req)
+	resp, err := r.client.DataHub().GetFeedID(ctx, req)
 	if err != nil {
 		return "", err
 	}

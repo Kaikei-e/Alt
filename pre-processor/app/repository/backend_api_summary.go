@@ -1,4 +1,4 @@
-package backend_api
+package repository
 
 import (
 	"context"
@@ -8,23 +8,23 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
-
 	"pre-processor/domain"
+	backend_api "pre-processor/driver/backend_api"
+	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 )
 
-// SummaryRepository implements repository.SummaryRepository using the backend API.
-type SummaryRepository struct {
-	client *Client
+// summaryRepository implements SummaryRepository using the backend API.
+type summaryRepository struct {
+	client *backend_api.Client
 }
 
 // NewSummaryRepository creates a new API-backed summary repository.
-func NewSummaryRepository(client *Client) *SummaryRepository {
-	return &SummaryRepository{client: client}
+func NewSummaryRepository(client *backend_api.Client) *summaryRepository {
+	return &summaryRepository{client: client}
 }
 
 // Create creates a new article summary via the backend API.
-func (r *SummaryRepository) Create(ctx context.Context, summary *domain.ArticleSummary) error {
+func (r *summaryRepository) Create(ctx context.Context, summary *domain.ArticleSummary) error {
 	if summary == nil {
 		return fmt.Errorf("summary cannot be nil")
 	}
@@ -40,9 +40,9 @@ func (r *SummaryRepository) Create(ctx context.Context, summary *domain.ArticleS
 	}
 
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	_, err := r.client.client.SaveArticleSummary(ctx, req)
+	_, err := r.client.DataHub().SaveArticleSummary(ctx, req)
 	if err != nil {
 		return fmt.Errorf("SaveArticleSummary: %w", err)
 	}
@@ -51,7 +51,7 @@ func (r *SummaryRepository) Create(ctx context.Context, summary *domain.ArticleS
 }
 
 // FindArticlesWithSummaries finds articles with summaries for quality checking via the backend API.
-func (r *SummaryRepository) FindArticlesWithSummaries(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.ArticleWithSummary, *domain.Cursor, error) {
+func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.ArticleWithSummary, *domain.Cursor, error) {
 	protoReq := &datahubv1.FindArticlesWithSummariesRequest{
 		Limit: int32(min(limit, math.MaxInt32)), // #nosec G115 -- clamped to int32 range
 	}
@@ -64,9 +64,9 @@ func (r *SummaryRepository) FindArticlesWithSummaries(ctx context.Context, curso
 	}
 
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	resp, err := r.client.client.FindArticlesWithSummaries(ctx, req)
+	resp, err := r.client.DataHub().FindArticlesWithSummaries(ctx, req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("FindArticlesWithSummaries: %w", err)
 	}
@@ -100,7 +100,7 @@ func (r *SummaryRepository) FindArticlesWithSummaries(ctx context.Context, curso
 }
 
 // Delete deletes an article summary by article ID via the backend API.
-func (r *SummaryRepository) Delete(ctx context.Context, articleID string) error {
+func (r *summaryRepository) Delete(ctx context.Context, articleID string) error {
 	if articleID == "" {
 		return fmt.Errorf("article ID cannot be empty")
 	}
@@ -110,9 +110,9 @@ func (r *SummaryRepository) Delete(ctx context.Context, articleID string) error 
 	}
 
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	_, err := r.client.client.DeleteArticleSummary(ctx, req)
+	_, err := r.client.DataHub().DeleteArticleSummary(ctx, req)
 	if err != nil {
 		return fmt.Errorf("DeleteArticleSummary: %w", err)
 	}
@@ -121,7 +121,7 @@ func (r *SummaryRepository) Delete(ctx context.Context, articleID string) error 
 }
 
 // Exists checks if an article summary exists via the backend API.
-func (r *SummaryRepository) Exists(ctx context.Context, articleID string) (bool, error) {
+func (r *summaryRepository) Exists(ctx context.Context, articleID string) (bool, error) {
 	if articleID == "" {
 		return false, fmt.Errorf("article ID cannot be empty")
 	}
@@ -131,9 +131,9 @@ func (r *SummaryRepository) Exists(ctx context.Context, articleID string) (bool,
 	}
 
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	resp, err := r.client.client.CheckArticleSummaryExists(ctx, req)
+	resp, err := r.client.DataHub().CheckArticleSummaryExists(ctx, req)
 	if err != nil {
 		return false, fmt.Errorf("CheckArticleSummaryExists: %w", err)
 	}

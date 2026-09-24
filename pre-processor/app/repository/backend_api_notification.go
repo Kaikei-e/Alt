@@ -1,4 +1,4 @@
-package backend_api
+package repository
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"pre-processor/domain"
+	backend_api "pre-processor/driver/backend_api"
 	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 )
 
@@ -19,12 +20,12 @@ import (
 // repositories: alt-data-hub is one peer with one identity, and a second
 // client would be a second set of TLS material and timeouts to keep in sync.
 type NotificationForwarder struct {
-	client *Client
+	client *backend_api.Client
 }
 
 // NewNotificationForwarder creates a forwarder over an existing alt-data-hub
 // client.
-func NewNotificationForwarder(client *Client) *NotificationForwarder {
+func NewNotificationForwarder(client *backend_api.Client) *NotificationForwarder {
 	return &NotificationForwarder{client: client}
 }
 
@@ -46,9 +47,9 @@ func (f *NotificationForwarder) EnqueueNotification(ctx context.Context, row dom
 	}
 
 	req := connect.NewRequest(protoReq)
-	f.client.addAuth(req)
+	f.client.AddAuth(req)
 
-	if _, err := f.client.client.EnqueueNotification(ctx, req); err != nil {
+	if _, err := f.client.DataHub().EnqueueNotification(ctx, req); err != nil {
 		return fmt.Errorf("EnqueueNotification: %w", err)
 	}
 	return nil

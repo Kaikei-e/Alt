@@ -12,7 +12,6 @@ import (
 	"unicode/utf8"
 
 	"pre-processor/config"
-	"pre-processor/domain"
 )
 
 // TestContentLengthMeasurement verifies that we use rune count (character count)
@@ -38,7 +37,7 @@ func TestArticleSummarizerAPIClient_Returns429(t *testing.T) {
 			},
 		}
 
-		article := &domain.Article{
+		article := ArticlePayload{
 			ID:      "test-article-429",
 			Content: strings.Repeat("Test content for summarization. ", 10),
 		}
@@ -48,7 +47,7 @@ func TestArticleSummarizerAPIClient_Returns429(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !errors.Is(err, domain.ErrServiceOverloaded) {
+		if !errors.Is(err, ErrServiceOverloaded) {
 			t.Errorf("expected ErrServiceOverloaded, got: %v", err)
 		}
 	})
@@ -81,7 +80,7 @@ func TestArticleSummarizerAPIClient_UpstreamBusyClassification(t *testing.T) {
 				},
 			}
 
-			article := &domain.Article{
+			article := ArticlePayload{
 				ID:      "test-article-busy",
 				Content: strings.Repeat("Test content for summarization. ", 10),
 			}
@@ -90,7 +89,7 @@ func TestArticleSummarizerAPIClient_UpstreamBusyClassification(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
-			if !errors.Is(err, domain.ErrUpstreamBusy) {
+			if !errors.Is(err, ErrUpstreamBusy) {
 				t.Errorf("expected ErrUpstreamBusy, got: %v", err)
 			}
 		})
@@ -117,7 +116,7 @@ func TestTitleFallback(t *testing.T) {
 		}
 
 		// Short content (35 chars) but title >= 100 chars
-		article := &domain.Article{
+		article := ArticlePayload{
 			ID:      "test-title-fallback",
 			Title:   strings.Repeat("A very long article title about AI. ", 5), // 175 chars
 			Content: "Short content",
@@ -146,14 +145,14 @@ func TestTitleFallback(t *testing.T) {
 		}
 
 		// Both content and title are too short
-		article := &domain.Article{
+		article := ArticlePayload{
 			ID:      "test-short-everything",
 			Title:   "Short title",
 			Content: "Short content",
 		}
 
 		_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
-		if !errors.Is(err, domain.ErrContentTooShort) {
+		if !errors.Is(err, ErrContentTooShort) {
 			t.Errorf("expected ErrContentTooShort, got: %v", err)
 		}
 	})
@@ -168,12 +167,12 @@ func TestArticleSummarizerAPIClient_BadRequestMapping(t *testing.T) {
 		{
 			name:         "content too short detail maps to ErrContentTooShort",
 			body:         `{"detail":"Content is too short for summarization. Content length: 10, minimum: 100"}`,
-			wantSentinel: domain.ErrContentTooShort,
+			wantSentinel: ErrContentTooShort,
 		},
 		{
 			name:         "generic 400 does not map to ErrContentTooShort",
 			body:         `{"detail":"invalid payload: missing article_id"}`,
-			wantSentinel: domain.ErrInvalidRequest,
+			wantSentinel: ErrInvalidRequest,
 		},
 	}
 
@@ -193,7 +192,7 @@ func TestArticleSummarizerAPIClient_BadRequestMapping(t *testing.T) {
 					Timeout: 5 * 1_000_000_000,
 				},
 			}
-			article := &domain.Article{
+			article := ArticlePayload{
 				ID:      "test-article-400",
 				Content: strings.Repeat("Test content for summarization. ", 10),
 			}

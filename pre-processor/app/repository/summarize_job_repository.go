@@ -324,7 +324,7 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*dom
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			r.logger.WarnContext(ctx, "summarization job not found", "job_id", jobID)
-			return nil, fmt.Errorf("summarization job not found: %w", err)
+			return nil, fmt.Errorf("%w: %w", domain.ErrJobNotFound, err)
 		}
 		r.logger.ErrorContext(ctx, "failed to get summarization job", "error", err, "job_id", jobID)
 		return nil, fmt.Errorf("failed to get summarization job: %w", err)

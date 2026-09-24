@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"pre-processor/config"
-	"pre-processor/domain"
 	"pre-processor/utils"
 	"pre-processor/utils/html_parser"
 )
@@ -61,13 +60,22 @@ type SummarizeResponse struct {
 	TotalDurationMs  *float64 `json:"total_duration_ms,omitempty"`
 }
 
-// ErrContentTooShort is an alias for domain.ErrContentTooShort for backward compatibility
-// Deprecated: Use domain.ErrContentTooShort directly
-var ErrContentTooShort = domain.ErrContentTooShort
+// ArticlePayload contains the article data needed for summarization.
+type ArticlePayload struct {
+	ID      string
+	Title   string
+	Content string
+}
 
-// ErrContentTooLong is an alias for domain.ErrContentTooLong for backward compatibility
-// Deprecated: Use domain.ErrContentTooLong directly
-var ErrContentTooLong = domain.ErrContentTooLong
+// Driver sentinel errors for summarizer API interactions.
+var (
+	ErrContentTooShort       = errors.New("content too short")
+	ErrContentTooLong        = errors.New("content too long")
+	ErrServiceOverloaded     = errors.New("service overloaded")
+	ErrContentNotProcessable = errors.New("content not processable")
+	ErrUpstreamBusy          = errors.New("upstream busy")
+	ErrInvalidRequest        = errors.New("invalid request")
+)
 
 // minContentRunes / maxContentRunes bound the extracted article content sent
 // to news-creator. Both bounds use rune (character) counts — not byte counts
@@ -86,7 +94,7 @@ const (
 // extracted upstream) and validates its length. logContext names the calling
 // path ("sending to news-creator" / "streaming summary") for log messages.
 // Shared by the blocking and streaming summarizer clients below.
-func prepareSummarizeContent(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, logContext string) (string, error) {
+func prepareSummarizeContent(ctx context.Context, article ArticlePayload, cfg *config.Config, logger *slog.Logger, logContext string) (string, error) {
 	originalLength := len(article.Content)
 	logger.InfoContext(ctx, "extracting text from content before "+logContext+" (Zero Trust validation)",
 		"article_id", article.ID,
@@ -155,11 +163,11 @@ func isContentTooShortResponse(body string) bool {
 }
 
 // classifyBusyOrErrorStatus maps a non-200 news-creator response to a
-// sentinel domain error for the codes that mean "upstream busy, retry
+// sentinel driver error for the codes that mean "upstream busy, retry
 // later" (429/422/502/503/504), or nil when the caller must classify the
 // status itself (e.g. 400, or the final fallback error). Shared by the
 // blocking and streaming summarizer clients below.
-func classifyBusyOrErrorStatus(resp *http.Response, body string, article *domain.Article, logger *slog.Logger, streaming bool) error {
+func classifyBusyOrErrorStatus(resp *http.Response, body string, article ArticlePayload, logger *slog.Logger, streaming bool) error {
 	suffix := ""
 	if streaming {
 		suffix = " (streaming)"
@@ -169,21 +177,21 @@ func classifyBusyOrErrorStatus(resp *http.Response, body string, article *domain
 		retryAfter := resp.Header.Get("Retry-After")
 		logger.Warn("news-creator queue full"+suffix+", backing off",
 			"article_id", article.ID, "retry_after", retryAfter)
-		return domain.ErrServiceOverloaded
+		return ErrServiceOverloaded
 	case http.StatusUnprocessableEntity:
 		logger.Warn("news-creator returned 422"+suffix+": content not processable by model",
 			"article_id", article.ID, "body", body)
-		return domain.ErrContentNotProcessable
+		return ErrContentNotProcessable
 	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		logger.Warn("news-creator returned busy status"+suffix+", treating as upstream busy",
 			"article_id", article.ID, "status_code", resp.StatusCode)
-		return fmt.Errorf("upstream busy (status %d): %w", resp.StatusCode, domain.ErrUpstreamBusy)
+		return fmt.Errorf("upstream busy (status %d): %w", resp.StatusCode, ErrUpstreamBusy)
 	default:
 		return nil
 	}
 }
 
-func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, priority string) (*SummarizedContent, error) {
+func ArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg *config.Config, logger *slog.Logger, priority string) (*SummarizedContent, error) {
 	extractedContent, err := prepareSummarizeContent(ctx, article, cfg, logger, "sending to news-creator")
 	if err != nil {
 		return nil, err
@@ -240,7 +248,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to send request", "error", err, "api_url", apiURL)
 		if isTransportBusyError(err) {
-			return nil, fmt.Errorf("send request: %w", errors.Join(domain.ErrUpstreamBusy, err))
+			return nil, fmt.Errorf("send request: %w", errors.Join(ErrUpstreamBusy, err))
 		}
 		return nil, fmt.Errorf("send request: %w", err)
 	}
@@ -265,7 +273,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 				logger.InfoContext(ctx, "Mapping 400 Bad Request to ErrContentTooShort", "article_id", article.ID)
 				return nil, ErrContentTooShort
 			}
-			return nil, fmt.Errorf("API request failed with status: %s, body: %s: %w", resp.Status, bodyStr, domain.ErrInvalidRequest)
+			return nil, fmt.Errorf("API request failed with status: %s, body: %s: %w", resp.Status, bodyStr, ErrInvalidRequest)
 		}
 
 		return nil, fmt.Errorf("API request failed with status: %s", resp.Status)
@@ -310,7 +318,7 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 }
 
 // StreamArticleSummarizerAPIClient streams the summary generation from news-creator
-func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cfg *config.Config, logger *slog.Logger, priority string) (io.ReadCloser, error) {
+func StreamArticleSummarizerAPIClient(ctx context.Context, article ArticlePayload, cfg *config.Config, logger *slog.Logger, priority string) (io.ReadCloser, error) {
 	extractedContent, err := prepareSummarizeContent(ctx, article, cfg, logger, "streaming summary")
 	if err != nil {
 		return nil, err
