@@ -19,7 +19,6 @@ import (
 	datahubv1 "search-indexer/gen/proto/services/datahub/v1"
 	"search-indexer/gen/proto/services/datahub/v1/datahubv1connect"
 
-	"search-indexer/domain"
 	"search-indexer/driver"
 )
 
@@ -196,7 +195,7 @@ func (c *Client) GetArticleByID(ctx context.Context, articleID string) (*driver.
 		// only place the batch indexer's skip-and-continue sentinel can be
 		// produced.
 		if connect.CodeOf(err) == connect.CodeNotFound {
-			return nil, fmt.Errorf("GetArticleByID %s: %w", articleID, domain.ErrArticleNotFound)
+			return nil, fmt.Errorf("GetArticleByID %s: %w", articleID, driver.ErrNotFound)
 		}
 		return nil, fmt.Errorf("GetArticleByID: %w", err)
 	}

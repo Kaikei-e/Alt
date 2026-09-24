@@ -1,6 +1,12 @@
 package driver
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrNotFound indicates that the requested entity was not found in the external system.
+var ErrNotFound = errors.New("not found")
 
 // ArticleWithTags represents an article with its tags from the database
 type ArticleWithTags struct {
