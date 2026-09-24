@@ -7,36 +7,49 @@ import (
 
 	"connectrpc.com/connect"
 
-	"alt/domain"
 	searchv2 "alt/gen/proto/services/search/v2"
 	"alt/gen/proto/services/search/v2/searchv2connect"
-	"alt/orchestrator/port/search_indexer_port"
 	"alt/utils/safeconv"
 )
 
-// ConnectSearchIndexerDriver implements SearchIndexerPort using Connect-RPC.
-type ConnectSearchIndexerDriver struct {
+// ArticleHit represents a raw search hit from search-indexer.
+type ArticleHit struct {
+	ID      string
+	Title   string
+	Content string
+	Tags    []string
+}
+
+// RecapHit represents a raw recap search result from search-indexer.
+type RecapHit struct {
+	JobID      string
+	ExecutedAt string
+	WindowDays int
+	Genre      string
+	Summary    string
+	TopTerms   []string
+	Tags       []string
+	Bullets    []string
+}
+
+// Client provides Connect-RPC client for search-indexer.
+type Client struct {
 	client searchv2connect.SearchServiceClient
 }
 
-// NewConnectSearchIndexerDriver creates a new Connect-RPC client for search-indexer.
-// Authentication is established at the TLS transport layer (mTLS); the caller
-// identity travels via the verified client certificate, not an application-
-// level header. The `serviceSecret` argument is ignored and retained only for
-// signature compatibility with DI call sites.
-// The client uses Connect-RPC's JSON codec so contract and audit tooling can
-// read the wire format directly.
-func NewConnectSearchIndexerDriver(baseURL, _ string) search_indexer_port.SearchIndexerPort {
+// NewClient creates a new Connect-RPC client for search-indexer.
+// Auth is mTLS at the transport layer, and WithProtoJSON is used so contract tooling can read the wire format.
+func NewClient(baseURL string) *Client {
 	client := searchv2connect.NewSearchServiceClient(
 		http.DefaultClient,
 		baseURL,
 		connect.WithProtoJSON(),
 	)
-	return &ConnectSearchIndexerDriver{client: client}
+	return &Client{client: client}
 }
 
 // SearchArticles searches for articles matching the query via Connect-RPC.
-func (d *ConnectSearchIndexerDriver) SearchArticles(ctx context.Context, query string, userID string) ([]domain.SearchIndexerArticleHit, error) {
+func (d *Client) SearchArticles(ctx context.Context, query string, userID string) ([]ArticleHit, error) {
 	resp, err := d.client.SearchArticles(ctx, connect.NewRequest(&searchv2.SearchArticlesRequest{
 		Query:  query,
 		UserId: userID,
@@ -46,10 +59,9 @@ func (d *ConnectSearchIndexerDriver) SearchArticles(ctx context.Context, query s
 		return nil, err
 	}
 
-	// Convert to domain model
-	hits := make([]domain.SearchIndexerArticleHit, len(resp.Msg.Hits))
+	hits := make([]ArticleHit, len(resp.Msg.Hits))
 	for i, hit := range resp.Msg.Hits {
-		hits[i] = domain.SearchIndexerArticleHit{
+		hits[i] = ArticleHit{
 			ID:      hit.Id,
 			Title:   hit.Title,
 			Content: hit.Content,
@@ -61,7 +73,7 @@ func (d *ConnectSearchIndexerDriver) SearchArticles(ctx context.Context, query s
 }
 
 // SearchArticlesWithPagination searches for articles with pagination support via Connect-RPC.
-func (d *ConnectSearchIndexerDriver) SearchArticlesWithPagination(ctx context.Context, query string, userID string, offset int, limit int) ([]domain.SearchIndexerArticleHit, int64, error) {
+func (d *Client) SearchArticlesWithPagination(ctx context.Context, query string, userID string, offset int, limit int) ([]ArticleHit, int64, error) {
 	resp, err := d.client.SearchArticles(ctx, connect.NewRequest(&searchv2.SearchArticlesRequest{
 		Query:  query,
 		UserId: userID,
@@ -72,10 +84,9 @@ func (d *ConnectSearchIndexerDriver) SearchArticlesWithPagination(ctx context.Co
 		return nil, 0, err
 	}
 
-	// Convert to domain model
-	hits := make([]domain.SearchIndexerArticleHit, len(resp.Msg.Hits))
+	hits := make([]ArticleHit, len(resp.Msg.Hits))
 	for i, hit := range resp.Msg.Hits {
-		hits[i] = domain.SearchIndexerArticleHit{
+		hits[i] = ArticleHit{
 			ID:      hit.Id,
 			Title:   hit.Title,
 			Content: hit.Content,
@@ -87,7 +98,7 @@ func (d *ConnectSearchIndexerDriver) SearchArticlesWithPagination(ctx context.Co
 }
 
 // SearchRecapsByTag searches recap genres by tag name via search-indexer's Meilisearch.
-func (d *ConnectSearchIndexerDriver) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+func (d *Client) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]RecapHit, error) {
 	resp, err := d.client.SearchRecaps(ctx, connect.NewRequest(&searchv2.SearchRecapsRequest{
 		TagName: tagName,
 		Limit:   safeconv.Int32(limit),
@@ -96,9 +107,9 @@ func (d *ConnectSearchIndexerDriver) SearchRecapsByTag(ctx context.Context, tagN
 		return nil, err
 	}
 
-	results := make([]*domain.RecapSearchResult, len(resp.Msg.Hits))
+	results := make([]RecapHit, len(resp.Msg.Hits))
 	for i, hit := range resp.Msg.Hits {
-		results[i] = &domain.RecapSearchResult{
+		results[i] = RecapHit{
 			JobID:      hit.JobId,
 			ExecutedAt: hit.ExecutedAt,
 			WindowDays: int(hit.WindowDays),
@@ -114,7 +125,7 @@ func (d *ConnectSearchIndexerDriver) SearchRecapsByTag(ctx context.Context, tagN
 }
 
 // SearchRecapsByQuery searches recap genres by free-text query via search-indexer's Meilisearch.
-func (d *ConnectSearchIndexerDriver) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, int64, error) {
+func (d *Client) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]RecapHit, int64, error) {
 	q := &query
 	resp, err := d.client.SearchRecaps(ctx, connect.NewRequest(&searchv2.SearchRecapsRequest{
 		Query: q,
@@ -124,9 +135,9 @@ func (d *ConnectSearchIndexerDriver) SearchRecapsByQuery(ctx context.Context, qu
 		return nil, 0, err
 	}
 
-	results := make([]*domain.RecapSearchResult, len(resp.Msg.Hits))
+	results := make([]RecapHit, len(resp.Msg.Hits))
 	for i, hit := range resp.Msg.Hits {
-		results[i] = &domain.RecapSearchResult{
+		results[i] = RecapHit{
 			JobID:      hit.JobId,
 			ExecutedAt: hit.ExecutedAt,
 			WindowDays: int(hit.WindowDays),

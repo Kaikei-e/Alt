@@ -215,7 +215,8 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		metricsSnapshot = knowledgeHomeMetrics.Snapshot
 	}
 	metricsGw := knowledge_metrics_gateway.NewGateway(metricsSnapshot)
-	metricsUC := knowledge_metrics_usecase.NewUsecase(metricsGw, healthChecker)
+	healthGw := knowledge_metrics_gateway.NewServiceHealthGateway(healthChecker)
+	metricsUC := knowledge_metrics_usecase.NewUsecase(metricsGw, healthGw)
 
 	return &KnowledgeModule{
 		GetKnowledgeHomeUsecase:          getKnowledgeHomeUC,

@@ -72,9 +72,8 @@ func TestSearchIndexerSearchArticlesContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			driver := search_indexer_connect.NewConnectSearchIndexerDriver(
+			driver := search_indexer_connect.NewClient(
 				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
-				"test-service-token",
 			)
 			hits, err := driver.SearchArticles(context.Background(), "LLM", "user-1")
 			if err != nil {
@@ -125,9 +124,8 @@ func TestSearchIndexerSearchRecapsByTagContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			driver := search_indexer_connect.NewConnectSearchIndexerDriver(
+			driver := search_indexer_connect.NewClient(
 				fmt.Sprintf("http://%s:%d", config.Host, config.Port),
-				"test-service-token",
 			)
 			results, err := driver.SearchRecapsByTag(context.Background(), "technology", 10)
 			if err != nil {

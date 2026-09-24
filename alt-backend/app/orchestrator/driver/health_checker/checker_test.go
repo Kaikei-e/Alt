@@ -1,7 +1,6 @@
 package health_checker
 
 import (
-	"alt/domain"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +27,7 @@ func TestCheckHealth(t *testing.T) {
 		require.Len(t, results, 1)
 
 		assert.Equal(t, "test-service", results[0].ServiceName)
-		assert.Equal(t, domain.ServiceHealthy, results[0].Status)
+		assert.Equal(t, StatusHealthy, results[0].Status)
 		assert.Greater(t, results[0].LatencyMs, int64(-1))
 		assert.Empty(t, results[0].ErrorMessage)
 	})
@@ -47,7 +46,7 @@ func TestCheckHealth(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, results, 1)
 
-		assert.Equal(t, domain.ServiceUnhealthy, results[0].Status)
+		assert.Equal(t, StatusUnhealthy, results[0].Status)
 		assert.Contains(t, results[0].ErrorMessage, "503")
 	})
 
@@ -60,7 +59,7 @@ func TestCheckHealth(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, results, 1)
 
-		assert.Equal(t, domain.ServiceUnhealthy, results[0].Status)
+		assert.Equal(t, StatusUnhealthy, results[0].Status)
 		assert.NotEmpty(t, results[0].ErrorMessage)
 	})
 
@@ -85,7 +84,7 @@ func TestCheckHealth(t *testing.T) {
 		require.Len(t, results, 2)
 
 		// Results are ordered by input order
-		assert.Equal(t, domain.ServiceHealthy, results[0].Status)
-		assert.Equal(t, domain.ServiceUnhealthy, results[1].Status)
+		assert.Equal(t, StatusHealthy, results[0].Status)
+		assert.Equal(t, StatusUnhealthy, results[1].Status)
 	})
 }

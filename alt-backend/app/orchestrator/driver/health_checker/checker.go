@@ -1,7 +1,6 @@
 package health_checker
 
 import (
-	"alt/domain"
 	"context"
 	"fmt"
 	"net/http"
@@ -9,10 +8,29 @@ import (
 	"time"
 )
 
+// ServiceStatus represents the health status of a service at driver level.
+type ServiceStatus string
+
+const (
+	StatusHealthy   ServiceStatus = "healthy"
+	StatusUnhealthy ServiceStatus = "unhealthy"
+	StatusUnknown   ServiceStatus = "unknown"
+)
+
 // ServiceEndpoint defines a service to health-check.
 type ServiceEndpoint struct {
 	Name     string
 	Endpoint string
+}
+
+// Result holds the health check outcome for a service.
+type Result struct {
+	ServiceName  string
+	Endpoint     string
+	CheckedAt    time.Time
+	LatencyMs    int64
+	Status       ServiceStatus
+	ErrorMessage string
 }
 
 // Checker performs concurrent health checks on downstream services.
@@ -32,8 +50,8 @@ func NewChecker(endpoints []ServiceEndpoint) *Checker {
 }
 
 // CheckHealth calls /health on all configured endpoints concurrently.
-func (c *Checker) CheckHealth(ctx context.Context) ([]domain.ServiceHealthStatus, error) {
-	results := make([]domain.ServiceHealthStatus, len(c.endpoints))
+func (c *Checker) CheckHealth(ctx context.Context) ([]Result, error) {
+	results := make([]Result, len(c.endpoints))
 	var wg sync.WaitGroup
 	wg.Add(len(c.endpoints))
 
@@ -48,9 +66,9 @@ func (c *Checker) CheckHealth(ctx context.Context) ([]domain.ServiceHealthStatus
 	return results, nil
 }
 
-func (c *Checker) checkOne(ctx context.Context, ep ServiceEndpoint) domain.ServiceHealthStatus {
+func (c *Checker) checkOne(ctx context.Context, ep ServiceEndpoint) Result {
 	start := time.Now()
-	result := domain.ServiceHealthStatus{
+	result := Result{
 		ServiceName: ep.Name,
 		Endpoint:    ep.Endpoint,
 		CheckedAt:   start,
@@ -58,7 +76,7 @@ func (c *Checker) checkOne(ctx context.Context, ep ServiceEndpoint) domain.Servi
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ep.Endpoint, nil)
 	if err != nil {
-		result.Status = domain.ServiceUnknown
+		result.Status = StatusUnknown
 		result.ErrorMessage = fmt.Sprintf("bad request: %v", err)
 		return result
 	}
@@ -67,16 +85,18 @@ func (c *Checker) checkOne(ctx context.Context, ep ServiceEndpoint) domain.Servi
 	result.LatencyMs = time.Since(start).Milliseconds()
 
 	if err != nil {
-		result.Status = domain.ServiceUnhealthy
+		result.Status = StatusUnhealthy
 		result.ErrorMessage = err.Error()
 		return result
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		result.Status = domain.ServiceHealthy
+		result.Status = StatusHealthy
 	} else {
-		result.Status = domain.ServiceUnhealthy
+		result.Status = StatusUnhealthy
 		result.ErrorMessage = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	}
 	return result

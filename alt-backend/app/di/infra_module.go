@@ -7,6 +7,7 @@ import (
 	"alt/orchestrator/driver/search_indexer_connect"
 	"alt/orchestrator/gateway/config_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
+	"alt/orchestrator/gateway/search_indexer_gateway"
 	"alt/orchestrator/port/push_port"
 	"alt/orchestrator/port/search_indexer_port"
 	"alt/shared/driver/mqhub_connect"
@@ -154,8 +155,9 @@ func newInfraModule(cfg *config.Config) *InfraModule {
 	mqhubClient := mqhub_connect.NewClient(cfg.MQHub.ConnectURL, cfg.MQHub.Enabled)
 	LogMQHubWiringState("alt-backend", cfg.MQHub.Enabled, cfg.MQHub.ConnectURL)
 
-	// Search indexer driver (shared between article search and feed search)
-	searchIndexerDriver := search_indexer_connect.NewConnectSearchIndexerDriver(cfg.SearchIndexer.ConnectURL, "")
+	// Search indexer driver and gateway (shared between article search and feed search)
+	searchIndexerClient := search_indexer_connect.NewClient(cfg.SearchIndexer.ConnectURL)
+	searchIndexerGw := search_indexer_gateway.NewSearchIndexerGateway(searchIndexerClient)
 
 	// alt-data-hub client. Not optional and not lazily built: three of the
 	// domain modules below take a gateway from it, and a failure to construct
@@ -168,7 +170,7 @@ func newInfraModule(cfg *config.Config) *InfraModule {
 		RateLimiterCoordinator: rateLimiterCoordinator,
 		HTTPClient:             httpClient,
 		MQHubClient:            mqhubClient,
-		SearchIndexerDriver:    searchIndexerDriver,
+		SearchIndexerDriver:    searchIndexerGw,
 		RobotsTxtGateway:       robotsTxtGw,
 
 		DataHubClient:          dataHubClient,
