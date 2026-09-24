@@ -6,8 +6,8 @@ import time
 from datetime import datetime, timezone, timedelta
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import ConversationMessage, LLMGenerateResponse
-from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)

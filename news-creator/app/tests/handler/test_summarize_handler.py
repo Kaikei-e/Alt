@@ -6,8 +6,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 
+from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import SummaryMetadata
-from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 
 
 def _make_client(mock_usecase):

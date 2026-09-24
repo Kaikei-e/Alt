@@ -269,7 +269,9 @@ app.include_router(
     create_plan_query_router(container.plan_query_usecase), tags=["query-planning"]
 )
 app.include_router(create_rerank_router(container.rerank_usecase), tags=["reranking"])
-app.include_router(create_chat_router(container.ollama_gateway), tags=["chat-proxy"])
+app.include_router(
+    create_chat_router(container.ollama_gateway, container.config), tags=["chat-proxy"]
+)
 app.include_router(create_health_router(container.llm_provider), tags=["health"])
 app.include_router(
     create_morning_letter_router(container.morning_letter_usecase),

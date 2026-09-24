@@ -14,10 +14,8 @@ from news_creator.driver.ollama_stream_driver import (
     _RUNNER_STARTUP_PARAMS,
     OllamaStreamDriver,
 )
-from news_creator.gateway.hybrid_priority_semaphore import (
-    HybridPrioritySemaphore,
-    PreemptedException,
-)
+from news_creator.domain.errors import PreemptedException
+from news_creator.gateway.hybrid_priority_semaphore import HybridPrioritySemaphore
 from news_creator.gateway.model_router import ModelRouter
 from news_creator.gateway.oom_detector import OOMDetector
 from news_creator.port.llm_provider_port import LLMProviderPort

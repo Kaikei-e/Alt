@@ -14,8 +14,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
-from news_creator.gateway.ollama_gateway import OllamaGateway
+from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.errors import QueueFullError
+from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.context_logger import (
     clear_context,
     set_ai_pipeline,
@@ -48,7 +49,9 @@ class ChatRequest(BaseModel):
     options: dict[str, Any] | None = None
 
 
-def create_chat_router(gateway: OllamaGateway) -> APIRouter:
+def create_chat_router(
+    gateway: LLMProviderPort, config: NewsCreatorConfig
+) -> APIRouter:
     """Create chat proxy router with dependency injection."""
     router = APIRouter()
 
@@ -59,11 +62,11 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
         set_processing_stage("handler")
 
         if (
-            gateway.config.model_routing_enabled
+            config.model_routing_enabled
             and request.model
             and not (
-                gateway.config.is_base_model_name(request.model)
-                or gateway.config.is_bucket_model_name(request.model)
+                config.is_base_model_name(request.model)
+                or config.is_bucket_model_name(request.model)
             )
         ):
             logger.warning(

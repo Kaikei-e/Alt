@@ -859,7 +859,7 @@ async def test_slow_generation_warning_skipped_for_short_eval_count(
 @pytest.mark.asyncio
 async def test_generate_propagates_queue_full_error(mock_config, mock_driver):
     """Test that QueueFullError from semaphore propagates through generate()."""
-    from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+    from news_creator.domain.errors import QueueFullError
 
     mock_config.ollama_request_concurrency = 1
     mock_config.max_queue_depth = 1
@@ -1139,7 +1139,7 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
         cancel_event.set()
 
         # The generation should be interrupted with PreemptedException
-        from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+        from news_creator.domain.errors import PreemptedException
 
         with pytest.raises(PreemptedException, match="preempted during generation"):
             await asyncio.wait_for(gen_task, timeout=2.0)

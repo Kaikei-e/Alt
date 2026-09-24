@@ -40,7 +40,7 @@ from news_creator.domain.models import (
     Reference,
     RepresentativeSentence,
 )
-from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+from news_creator.domain.errors import PreemptedException
 from news_creator.port.cache_port import CachePort
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.usecase.prompt_builder import PromptBuilderFactory

@@ -123,7 +123,7 @@ async def test_expand_query_queue_full_propagates_unwrapped():
     handler surface it as 502, masking expected backpressure as an upstream
     error instead of "retry after backoff".
     """
-    from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+    from news_creator.domain.errors import QueueFullError
 
     config = Mock()
     llm_provider = AsyncMock()

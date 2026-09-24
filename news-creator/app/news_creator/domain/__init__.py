@@ -1,5 +1,9 @@
 """Domain models and business logic for News Creator service."""
 
+from news_creator.domain.errors import (
+    PreemptedException,
+    QueueFullError,
+)
 from news_creator.domain.models import (
     SummarizeRequest,
     SummarizeResponse,
@@ -8,7 +12,6 @@ from news_creator.domain.models import (
     GeneratedContent,
     LLMGenerateResponse,
 )
-
 from news_creator.domain.prompt_boundary import (
     DEFAULT_DELIMITER_TAG,
     DELIMITER_INSTRUCTION,
@@ -47,4 +50,6 @@ __all__ = [
     "StreamingOutputGuard",
     "guard_output_markdown",
     "sanitize_output_markdown",
+    "PreemptedException",
+    "QueueFullError",
 ]
