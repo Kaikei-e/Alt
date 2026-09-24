@@ -604,7 +604,7 @@ func TestStreamChat_SkipsEmit_WhenContinuingExistingConversation(t *testing.T) {
 
 // TestStreamChat_IncrementsEmitterFailureMetric_OnEmitError pins the
 // review's item #4 fix: the warn-and-continue path around
-// EmitAugurConversationLinked must call sovereign_client.IncEmitterFailure so
+// EmitAugurConversationLinked must call metrics.IncEmitterFailure so
 // the "emit failure" Prometheus counter is not permanently zero.
 func TestStreamChat_IncrementsEmitterFailureMetric_OnEmitError(t *testing.T) {
 	before := emitterFailureCount(t, "augur.conversation_linked.v1")

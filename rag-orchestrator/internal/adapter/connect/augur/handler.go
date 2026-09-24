@@ -15,7 +15,6 @@ import (
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 
-	"rag-orchestrator/internal/adapter/sovereign_client"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/infra/metrics"
 	"rag-orchestrator/internal/usecase"
@@ -53,7 +52,7 @@ const tenantIDHeader = "X-Alt-Tenant-Id"
 
 // augurConversationLinkedEventType is the canonical wire event_type
 // (canonical contract §6.4.1) used both as the AppendKnowledgeEvent
-// event_type and as the sovereign_client.IncEmitterFailure label.
+// event_type and as the metrics.IncEmitterFailure label.
 const augurConversationLinkedEventType = "augur.conversation_linked.v1"
 
 // sanitizeUTF8 removes invalid UTF-8 sequences from a string.
@@ -432,7 +431,7 @@ func (h *Handler) persistAssistantTurn(
 // preconditions for a *meaningful* event aren't met — tenant unknown or no
 // article in scope — since those aren't emit attempts, just turns this
 // event type doesn't apply to. Only an actual EmitAugurConversationLinked
-// call that fails bumps sovereign_client.IncEmitterFailure, per the port's
+// call that fails bumps metrics.IncEmitterFailure, per the port's
 // warn-and-continue contract.
 func (h *Handler) emitConversationLinked(
 	ctx context.Context,
@@ -481,7 +480,7 @@ func (h *Handler) emitConversationLinked(
 			slog.String("entry_key", input.EntryKey),
 			slog.String("lens_mode_id", input.LensModeID),
 			slog.Int64("linked_at", input.LinkedAt))
-		sovereign_client.IncEmitterFailure(augurConversationLinkedEventType)
+		metrics.IncEmitterFailure(augurConversationLinkedEventType)
 	}
 }
 
