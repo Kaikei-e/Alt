@@ -5,9 +5,9 @@ import type {
   NetworkConfig,
   RetryConfig,
   SecretData,
-  SecretManager,
   TokenResponse,
 } from "../../../src/domain/types.ts";
+import type { SecretManager } from "../../../src/port/secret_manager.ts";
 import type { TokenClient } from "../../../src/port/token_client.ts";
 import type { HttpClient } from "../../../src/port/http_client.ts";
 

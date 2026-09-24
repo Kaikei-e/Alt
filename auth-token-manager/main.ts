@@ -12,6 +12,7 @@ import { RefreshTokenUsecase } from "./src/usecase/refresh_token.ts";
 import { HealthCheckUsecase } from "./src/usecase/health_check.ts";
 import { MonitorTokenUsecase } from "./src/usecase/monitor_token.ts";
 import { AuthorizeUsecase } from "./src/usecase/authorize.ts";
+import { GetTokenUsecase } from "./src/usecase/get_token.ts";
 import { OAuthServer } from "./src/handler/oauth_server.ts";
 import { DaemonLoop } from "./src/handler/daemon.ts";
 import { CliHandler } from "./src/handler/cli.ts";
@@ -52,13 +53,15 @@ async function main() {
       credentials,
     );
 
+    const getTokenUsecase = new GetTokenUsecase(secretManager);
+
     // Handler layer
     const oauthServer = new OAuthServer(
       authorizeUsecase,
-      secretManager,
+      getTokenUsecase,
       credentials,
     );
-    const daemon = new DaemonLoop(refreshUsecase, secretManager, oauthServer);
+    const daemon = new DaemonLoop(refreshUsecase, getTokenUsecase, oauthServer);
     const cli = new CliHandler(
       refreshUsecase,
       healthUsecase,

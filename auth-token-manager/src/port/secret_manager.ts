@@ -1,4 +1,10 @@
 /**
  * SecretManager port - interface for token storage operations
  */
-export type { SecretManager } from "../domain/types.ts";
+import type { SecretData, TokenResponse } from "../domain/types.ts";
+
+export interface SecretManager {
+  updateTokenSecret(tokens: TokenResponse): Promise<void>;
+  getTokenSecret(): Promise<SecretData | null>;
+  checkSecretExists(): Promise<boolean>;
+}

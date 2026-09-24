@@ -4,7 +4,7 @@
  */
 
 import type { AuthorizeUsecase } from "../usecase/authorize.ts";
-import type { SecretManager } from "../port/secret_manager.ts";
+import type { GetTokenUsecase } from "../usecase/get_token.ts";
 import type { InoreaderCredentials } from "../domain/types.ts";
 import { logger } from "../infra/logger.ts";
 import { config } from "../infra/config.ts";
@@ -90,9 +90,15 @@ export class OAuthServer {
 
   constructor(
     private authorizeUsecase: AuthorizeUsecase,
-    private secretManager: SecretManager,
+    private getTokenUsecase: GetTokenUsecase,
     private credentials: InoreaderCredentials,
-  ) {}
+  ) {
+    if (!authorizeUsecase || !getTokenUsecase || !credentials) {
+      throw new Error(
+        "OAuthServer: all dependencies (authorizeUsecase, getTokenUsecase, credentials) are required and must be wired at composition root",
+      );
+    }
+  }
 
   start(signal?: AbortSignal): void {
     const redirectUrl = new URL(this.credentials.redirect_uri);
@@ -370,9 +376,9 @@ export class OAuthServer {
     }
 
     try {
-      const tokenData = await this.secretManager.getTokenSecret();
+      const publicTokenData = await this.getTokenUsecase.getPublicToken();
 
-      if (!tokenData) {
+      if (!publicTokenData) {
         return new Response(
           JSON.stringify({ error: "No token data found" }),
           {
@@ -382,9 +388,6 @@ export class OAuthServer {
         );
       }
 
-      // Only access_token/expires_at are needed by consumers; refresh_token
-      // never needs to leave this service over the network.
-      const { refresh_token: _refresh_token, ...publicTokenData } = tokenData;
       return new Response(JSON.stringify(publicTokenData), {
         status: 200,
         headers: { "Content-Type": "application/json" },

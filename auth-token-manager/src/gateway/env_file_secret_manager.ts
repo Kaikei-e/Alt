@@ -5,9 +5,9 @@
 import {
   INOREADER_OAUTH_SCOPE,
   type SecretData,
-  type SecretManager,
   type TokenResponse,
 } from "../domain/types.ts";
+import type { SecretManager } from "../port/secret_manager.ts";
 import { logger } from "../infra/logger.ts";
 
 export class EnvFileSecretManager implements SecretManager {

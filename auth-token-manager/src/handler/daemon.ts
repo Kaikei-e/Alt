@@ -4,7 +4,7 @@
  */
 
 import type { RefreshTokenUsecase } from "../usecase/refresh_token.ts";
-import type { SecretManager } from "../port/secret_manager.ts";
+import type { GetTokenUsecase } from "../usecase/get_token.ts";
 import type { OAuthServer } from "./oauth_server.ts";
 import { logger } from "../infra/logger.ts";
 
@@ -28,9 +28,15 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 export class DaemonLoop {
   constructor(
     private refreshUsecase: RefreshTokenUsecase,
-    private secretManager: SecretManager,
+    private getTokenUsecase: GetTokenUsecase,
     private oauthServer: OAuthServer,
-  ) {}
+  ) {
+    if (!refreshUsecase || !getTokenUsecase || !oauthServer) {
+      throw new Error(
+        "DaemonLoop: all dependencies (refreshUsecase, getTokenUsecase, oauthServer) are required and must be wired at composition root",
+      );
+    }
+  }
 
   async start(): Promise<void> {
     logger.info("Starting auth-token-manager in DAEMON mode");
@@ -78,7 +84,7 @@ export class DaemonLoop {
 
   private async checkAndRefreshToken(): Promise<void> {
     try {
-      const tokenData = await this.secretManager.getTokenSecret();
+      const tokenData = await this.getTokenUsecase.execute();
 
       if (!tokenData || !tokenData.refresh_token) {
         logger.warn(
