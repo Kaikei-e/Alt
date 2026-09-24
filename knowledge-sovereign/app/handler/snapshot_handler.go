@@ -65,7 +65,9 @@ func (h *SnapshotHandler) handleCreateSnapshot(w http.ResponseWriter, r *http.Re
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(snapshot)
+	if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+		slog.WarnContext(ctx, "failed to write create-snapshot response", "error", err)
+	}
 }
 
 // snapshotListResponse wraps the snapshot list per altctl's
@@ -100,7 +102,9 @@ func (h *SnapshotHandler) handleGetLatestSnapshot(w http.ResponseWriter, r *http
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(snapshot)
+	if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+		slog.WarnContext(ctx, "failed to write latest snapshot response", "error", err)
+	}
 }
 
 // CreateSnapshot exports all projection tables and records the snapshot.

@@ -7,7 +7,6 @@ package knowledge_trail_projector
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -25,9 +24,7 @@ const (
 	defaultMaxTick   = 4
 
 	// trailProjectionVersion stamps every projected row. Bumped to 2 when the
-	// act-outcome side table joined the projection (D22): a full reproject with
-	// checkpoint reset backfills historical outcomes — see
-	// docs/runbooks/knowledge-trail-reproject.md.
+	// act-outcome side table joined the projection (D22; docs/runbooks/knowledge-trail-reproject.md).
 	trailProjectionVersion = 2
 
 	// eventTrailActOutcome is the current dwell-outcome vocabulary (D16).
@@ -98,14 +95,14 @@ func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 	return &Projector{repo: repo, logger: logger, cfg: cfg}
 }
 
-// RunBatch drains up to MaxBatchesPerTick batches from the event log, folding
-// each act event into a footprint and advancing the checkpoint.
+// RunBatch processes the next batch of knowledge events, updates footprints,
+// and advances the checkpoint. It returns nil when the event stream is caught up.
 //
-// A batch only ever covers the contiguous run of sequences following the
-// checkpoint: event_seq is taken at INSERT and not at COMMIT, so the query can
-// return 101 while 100 is still uncommitted, and advancing to the maximum
-// would drop 100 forever (see usecase/projection_gap). The tick stops at the
-// first hole and the next one re-reads it.
+// knowledge_events.event_seq is taken at INSERT, not COMMIT. Gaps in the sequence
+// space stop the batch at the last contiguous event so out-of-order commits cannot
+// leave holes behind an advanced checkpoint. When a hole persists past the
+// abandonment window, the projector skips it so an abandoned sequence number
+// cannot stall projection indefinitely.
 //
 // The checkpoint is advanced with a compare-and-set against the state read at
 // the start of the batch. If another writer moved it in the meantime the
@@ -236,169 +233,4 @@ func (p *Projector) mayAbandonHole(ctx context.Context, hole projection_gap.Hole
 		slog.Int64("gap_seq", hole.First),
 		slog.Int64("gap_through", hole.Last))
 	return true, nil
-}
-
-// foldBranch folds a trail.branch_proposed.v1 event into the branch read model.
-// A branch missing the four-tuple is rejected loudly and never surfaced (Rule 4
-// — untyped branches are the Loop decorated-feed failure). Malformed payloads
-// are skipped without failing the batch (the event stays in the log).
-func (p *Projector) foldBranch(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
-	if evt.UserID == nil {
-		p.logger.WarnContext(ctx, "trail projector: rejecting branch_proposed with no user_id",
-			slog.String("event_id", evt.EventID.String()))
-		return nil
-	}
-	var payload trail_planner.BranchProposedPayload
-	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
-		p.logger.WarnContext(ctx, "trail projector: unparseable branch_proposed payload",
-			slog.String("event_id", evt.EventID.String()))
-		return nil
-	}
-	if !payload.Valid() {
-		p.logger.WarnContext(ctx, "trail projector: rejecting untyped branch_proposed",
-			slog.String("branch_key", payload.BranchKey))
-		return nil
-	}
-	refs := make([]sovereign_db.TrailEvidenceRef, len(payload.EvidenceRefs))
-	for i, r := range payload.EvidenceRefs {
-		refs[i] = sovereign_db.TrailEvidenceRef{RefID: r.RefID, Label: r.Label, Kind: r.Kind}
-	}
-	b := sovereign_db.TrailBranch{
-		BranchKey:     payload.BranchKey,
-		AnchorItemKey: payload.AnchorItemKey,
-		RelationKind:  payload.RelationKind,
-		Why:           payload.Why,
-		EvidenceRefs:  refs,
-		Confidence:    payload.Confidence,
-		TargetItemKey: payload.TargetItemKey,
-		TargetTitle:   payload.TargetTitle,
-	}
-	return p.repo.UpsertTrailBranch(ctx, *evt.UserID, evt.TenantID, b, evt.OccurredAt, trailProjectionVersion)
-}
-
-// foldBranchResolved transitions a branch's state from a branch_resolved event.
-// An invalid resolution is rejected loudly (never silently mis-folded).
-func (p *Projector) foldBranchResolved(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
-	if evt.UserID == nil {
-		p.logger.WarnContext(ctx, "trail projector: rejecting branch_resolved with no user_id",
-			slog.String("event_id", evt.EventID.String()))
-		return nil
-	}
-	var payload trail_planner.BranchResolvedPayload
-	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
-		p.logger.WarnContext(ctx, "trail projector: unparseable branch_resolved payload",
-			slog.String("event_id", evt.EventID.String()))
-		return nil
-	}
-	if payload.BranchKey == "" || !trail_planner.ValidResolution(payload.Resolution) {
-		p.logger.WarnContext(ctx, "trail projector: rejecting invalid branch_resolved",
-			slog.String("branch_key", payload.BranchKey),
-			slog.String("resolution", payload.Resolution))
-		return nil
-	}
-	if err := p.repo.SetTrailBranchState(ctx, *evt.UserID, payload.BranchKey, payload.Resolution); err != nil {
-		return err
-	}
-	// Wave 10 branch KPI: resolution + whether a dismiss reason (D28(d)) was
-	// supplied. The measured outcome is taken→engaged dwell, not CTR — see
-	// foldActOutcome — but resolution/reason presence is the raw signal the
-	// ClickHouse pipeline (rask) aggregates for it.
-	p.logger.InfoContext(ctx, "trail.branch_resolved",
-		slog.String("resolution", payload.Resolution),
-		slog.Bool("has_reason", payload.DismissReason != ""))
-	return nil
-}
-
-// foldActOutcome folds a dwell outcome into the act-outcomes side table. An
-// outcome never adds a row to the spine (D20) — it only feeds path wear.
-// trail.act_outcome.v1 carries the raw dwell; historical
-// knowledge_loop.act_outcome.v1 keeps its era's classified label verbatim.
-// Malformed payloads are skipped without failing the batch (the event stays in
-// the log).
-func (p *Projector) foldActOutcome(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
-	if evt.UserID == nil {
-		p.logger.WarnContext(ctx, "trail projector: rejecting act_outcome with no user_id",
-			slog.String("event_id", evt.EventID.String()))
-		return nil
-	}
-	var payload struct {
-		BranchKey string `json:"branch_key"`
-		ItemKey   string `json:"item_key"`
-		EntryKey  string `json:"entry_key"`
-		DwellMs   *int64 `json:"dwell_ms"`
-		Outcome   string `json:"outcome"`
-	}
-	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
-		p.logger.WarnContext(ctx, "trail projector: unparseable act_outcome payload",
-			slog.String("event_id", evt.EventID.String()))
-		return nil
-	}
-	key := evt.DedupeKey
-	if key == "" {
-		key = evt.EventID.String()
-	}
-	o := sovereign_db.TrailActOutcome{
-		UserID:          *evt.UserID,
-		TenantID:        evt.TenantID,
-		OutcomeKey:      key,
-		SourceEventType: evt.EventType,
-		OccurredAt:      evt.OccurredAt,
-	}
-	switch evt.EventType {
-	case eventTrailActOutcome:
-		if payload.BranchKey == "" || payload.ItemKey == "" || payload.DwellMs == nil || *payload.DwellMs < 0 {
-			p.logger.WarnContext(ctx, "trail projector: rejecting incomplete trail act_outcome",
-				slog.String("event_id", evt.EventID.String()))
-			return nil
-		}
-		o.BranchKey = payload.BranchKey
-		o.ItemKey = payload.ItemKey
-		o.DwellMs = payload.DwellMs
-		// Wave 10 branch KPI: raw dwell + whether it crosses the engaged
-		// threshold (taken→engaged dwell, not CTR — D28(c)). Reuses the same
-		// read-time constant the wear derivation uses, never a duplicated
-		// literal.
-		p.logger.InfoContext(ctx, "trail.act_outcome.observed",
-			slog.Int64("dwell_ms", *payload.DwellMs),
-			slog.Bool("engaged", *payload.DwellMs >= sovereign_db.EngagedDwellMs))
-	default: // eventLegacyActOutcome
-		itemKey := payload.EntryKey
-		if itemKey == "" {
-			itemKey = payload.ItemKey
-		}
-		if itemKey == "" {
-			itemKey = evt.AggregateID
-		}
-		if itemKey == "" || payload.Outcome == "" {
-			p.logger.WarnContext(ctx, "trail projector: rejecting incomplete legacy act_outcome",
-				slog.String("event_id", evt.EventID.String()))
-			return nil
-		}
-		o.ItemKey = itemKey
-		o.LegacyOutcome = payload.Outcome
-	}
-	return p.repo.InsertTrailActOutcome(ctx, o, trailProjectionVersion)
-}
-
-// footprintFromEvent derives a footprint from an act event. Returns ok=false for
-// non-act events (which still advance the checkpoint) and for system events with
-// no user_id.
-func footprintFromEvent(evt sovereign_db.KnowledgeEvent) (sovereign_db.TrailFootprint, bool) {
-	verb, ok := verbByEventType[evt.EventType]
-	if !ok || evt.UserID == nil || evt.AggregateID == "" {
-		return sovereign_db.TrailFootprint{}, false
-	}
-	key := evt.DedupeKey
-	if key == "" {
-		key = evt.EventID.String()
-	}
-	return sovereign_db.TrailFootprint{
-		UserID:          *evt.UserID,
-		TenantID:        evt.TenantID,
-		FootprintKey:    key,
-		Verb:            verb,
-		ItemKey:         evt.AggregateID,
-		SourceEventType: evt.EventType,
-		OccurredAt:      evt.OccurredAt,
-	}, true
 }

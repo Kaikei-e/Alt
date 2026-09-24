@@ -58,28 +58,50 @@ func TestProjectionRebuild_IsBehindTheAdminToken(t *testing.T) {
 
 // A handler nobody registers is the same defect the partition maintainer had:
 // green unit tests over an operation no operator can ever invoke. Assert
-// against main.go's AST that the rebuild routes are actually mounted on the
+// against main_server.go and main.go AST that the rebuild routes are actually mounted on the
 // metrics mux.
 func TestMain_WiresProjectionRebuildIntoAdminSurface(t *testing.T) {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "main.go", nil, 0)
+	mainFile, err := parser.ParseFile(fset, "main.go", nil, 0)
 	if err != nil {
 		t.Fatalf("parse main.go: %v", err)
 	}
 
-	var mainFunc *ast.FuncDecl
-	for _, decl := range file.Decls {
+	var mainCallsServers bool
+	for _, decl := range mainFile.Decls {
 		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == "main" && fn.Recv == nil {
-			mainFunc = fn
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok {
+					if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "startServers" {
+						mainCallsServers = true
+					}
+				}
+				return true
+			})
+		}
+	}
+	if !mainCallsServers {
+		t.Error("func main does not call startServers — servers are never launched")
+	}
+
+	file, err := parser.ParseFile(fset, "main_server.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse main_server.go: %v", err)
+	}
+
+	var targetFunc *ast.FuncDecl
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == "buildMetricsMux" && fn.Recv == nil {
+			targetFunc = fn
 			break
 		}
 	}
-	if mainFunc == nil {
-		t.Fatal("main.go has no func main")
+	if targetFunc == nil {
+		t.Fatal("main_server.go has no func buildMetricsMux")
 	}
 
 	var constructs, registers bool
-	ast.Inspect(mainFunc.Body, func(n ast.Node) bool {
+	ast.Inspect(targetFunc.Body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
@@ -102,9 +124,9 @@ func TestMain_WiresProjectionRebuildIntoAdminSurface(t *testing.T) {
 	})
 
 	if !constructs {
-		t.Error("main() must construct handler.NewProjectionRebuildHandler")
+		t.Error("buildMetricsMux must construct handler.NewProjectionRebuildHandler")
 	}
 	if !registers {
-		t.Error("main() must call projectionRebuildHandler.RegisterRoutes(metricsMux) — an unregistered rebuild handler is unreachable")
+		t.Error("buildMetricsMux must call projectionRebuildHandler.RegisterRoutes(metricsMux) — an unregistered rebuild handler is unreachable")
 	}
 }
