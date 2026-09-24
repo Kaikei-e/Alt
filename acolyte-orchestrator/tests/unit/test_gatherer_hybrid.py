@@ -9,11 +9,10 @@ from datetime import datetime
 from unittest.mock import AsyncMock
 from uuid import UUID
 
-import httpx
 import pytest
 
 from acolyte.domain.fusion import RRFFusion, ScoredHit
-from acolyte.port.evidence_provider import ArticleHit
+from acolyte.port.evidence_provider import ArticleHit, EvidenceProviderError
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
 from tests.conftest import TEST_USER_ID
 
@@ -132,7 +131,7 @@ async def test_variant_failure_degrades_to_primary() -> None:
         call_count += 1
         if call_count == 1:
             return [_article_hit("a1", score=0.9)]
-        raise httpx.ConnectError("Variant search failed")  # noqa: TRY003 — simulating a real httpx exception
+        raise EvidenceProviderError
 
     evidence.search_articles = AsyncMock(side_effect=mock_search)
 

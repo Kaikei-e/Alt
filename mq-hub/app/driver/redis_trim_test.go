@@ -8,12 +8,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"mq-hub/domain"
 )
 
 func TestRedisDriverTrimMaxLenApprox(t *testing.T) {
-	const stream = domain.StreamKeyArticles
+	const stream = "alt:events:articles"
 
 	newDriver := func(t *testing.T) *RedisDriver {
 		t.Helper()
@@ -28,16 +26,16 @@ func TestRedisDriverTrimMaxLenApprox(t *testing.T) {
 		t.Helper()
 		for i := range n {
 			err := d.client.XAdd(context.Background(), &redis.XAddArgs{
-				Stream: stream.String(),
+				Stream: stream,
 				Values: map[string]any{"i": strconv.Itoa(i)},
 			}).Err()
 			require.NoError(t, err)
 		}
 	}
 
-	xlen := func(t *testing.T, d *RedisDriver, key domain.StreamKey) int64 {
+	xlen := func(t *testing.T, d *RedisDriver, key string) int64 {
 		t.Helper()
-		length, err := d.client.XLen(context.Background(), key.String()).Result()
+		length, err := d.client.XLen(context.Background(), key).Result()
 		require.NoError(t, err)
 		return length
 	}
@@ -69,7 +67,7 @@ func TestRedisDriverTrimMaxLenApprox(t *testing.T) {
 	t.Run("a missing stream is not an error", func(t *testing.T) {
 		d := newDriver(t)
 
-		deleted, err := d.TrimMaxLenApprox(context.Background(), domain.StreamKeyIndex, 100)
+		deleted, err := d.TrimMaxLenApprox(context.Background(), "alt:events:index", 100)
 
 		require.NoError(t, err)
 		assert.Zero(t, deleted)

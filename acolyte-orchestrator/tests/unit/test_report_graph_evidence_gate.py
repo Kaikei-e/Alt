@@ -19,12 +19,11 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-import httpx
 import pytest
 
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.gateway.memory_content_store import MemoryContentStore
-from acolyte.port.evidence_provider import ArticleHit, RecapHit
+from acolyte.port.evidence_provider import ArticleHit, EvidenceProviderError, RecapHit
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.report_graph import (
     NO_CONTENT_FAILURE_CODE,
@@ -179,7 +178,7 @@ class FakeLLM:
 
 
 class AllSearchesFailEvidence:
-    """Every search call raises httpx.HTTPError — mirrors run 0c835c9f."""
+    """Every search call raises EvidenceProviderError — mirrors run 0c835c9f."""
 
     async def search_articles(
         self,
@@ -190,7 +189,7 @@ class AllSearchesFailEvidence:
         published_after: datetime | None = None,
         published_before: datetime | None = None,
     ) -> list[ArticleHit]:
-        raise httpx.HTTPError("simulated upstream failure")  # noqa: TRY003 — test fake, message is the assertion fixture
+        raise EvidenceProviderError
 
     async def fetch_article_metadata(self, article_ids: list[str]) -> list:
         return []
@@ -199,7 +198,7 @@ class AllSearchesFailEvidence:
         return ""
 
     async def search_recaps(self, query: str, *, limit: int = 10) -> list[RecapHit]:
-        raise httpx.HTTPError("simulated upstream failure")  # noqa: TRY003 — test fake, message is the assertion fixture
+        raise EvidenceProviderError
 
 
 class ZeroHitEvidence:

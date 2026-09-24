@@ -10,7 +10,7 @@ from news_creator.domain.models import (
     RecapSummaryRequest,
     RecapSummaryResponse,
 )
-from news_creator.gateway.hybrid_priority_semaphore import (
+from news_creator.domain.errors import (
     PreemptedException,
     QueueFullError,
 )

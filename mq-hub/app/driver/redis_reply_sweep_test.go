@@ -8,8 +8,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"mq-hub/domain"
 )
 
 // TestRedisDriverScanReplyStreamsWithoutTTL locks in the safety-net sweep that
@@ -50,7 +48,7 @@ func TestRedisDriverScanReplyStreamsWithoutTTL(t *testing.T) {
 		keys, err := d.ScanReplyStreamsWithoutTTL(context.Background(), prefix)
 
 		require.NoError(t, err)
-		assert.Equal(t, []domain.StreamKey{domain.StreamKey(prefix + "corr-leaked")}, keys)
+		assert.Equal(t, []string{prefix + "corr-leaked"}, keys)
 	})
 
 	t.Run("skips reply streams that already have a TTL", func(t *testing.T) {
@@ -66,13 +64,13 @@ func TestRedisDriverScanReplyStreamsWithoutTTL(t *testing.T) {
 
 	t.Run("ignores keys outside the reply-stream prefix", func(t *testing.T) {
 		d := newDriver(t)
-		xadd(t, d, domain.StreamKeyArticles.String()) // a real, permanent stream
+		xadd(t, d, "alt:events:articles") // a real, permanent stream
 		xadd(t, d, prefix+"corr-leaked")
 
 		keys, err := d.ScanReplyStreamsWithoutTTL(context.Background(), prefix)
 
 		require.NoError(t, err)
-		assert.Equal(t, []domain.StreamKey{domain.StreamKey(prefix + "corr-leaked")}, keys)
+		assert.Equal(t, []string{prefix + "corr-leaked"}, keys)
 	})
 
 	t.Run("returns nothing when there are no reply streams", func(t *testing.T) {

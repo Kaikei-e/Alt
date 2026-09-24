@@ -1,4 +1,4 @@
-package backend_api
+package repository
 
 import (
 	"context"
@@ -8,23 +8,23 @@ import (
 
 	"connectrpc.com/connect"
 
-	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
-
 	"pre-processor/domain"
+	backend_api "pre-processor/driver/backend_api"
+	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 )
 
-// FeedRepository implements repository.FeedRepository using the backend API.
-type FeedRepository struct {
-	client *Client
+// feedRepository implements FeedRepository using the backend API.
+type feedRepository struct {
+	client *backend_api.Client
 }
 
 // NewFeedRepository creates a new API-backed feed repository.
-func NewFeedRepository(client *Client) *FeedRepository {
-	return &FeedRepository{client: client}
+func NewFeedRepository(client *backend_api.Client) *feedRepository {
+	return &feedRepository{client: client}
 }
 
 // GetUnprocessedFeeds gets unprocessed feeds using cursor-based pagination.
-func (r *FeedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain.Cursor, limit int) ([]*url.URL, *domain.Cursor, error) {
+func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain.Cursor, limit int) ([]*url.URL, *domain.Cursor, error) {
 	var cursorStr string
 	if cursor != nil {
 		cursorStr = cursor.LastID
@@ -36,9 +36,9 @@ func (r *FeedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain
 	}
 
 	req := connect.NewRequest(protoReq)
-	r.client.addAuth(req)
+	r.client.AddAuth(req)
 
-	resp, err := r.client.client.ListFeedURLs(ctx, req)
+	resp, err := r.client.DataHub().ListFeedURLs(ctx, req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ListFeedURLs: %w", err)
 	}
@@ -64,7 +64,7 @@ func (r *FeedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain
 
 // GetProcessingStats returns feed processing statistics.
 // Not fully available via API - returns basic stats.
-func (r *FeedRepository) GetProcessingStats(ctx context.Context) (*domain.ProcessingStatistics, error) {
+func (r *feedRepository) GetProcessingStats(ctx context.Context) (*domain.ProcessingStatistics, error) {
 	// Count total feeds by iterating through all pages
 	total := 0
 	cursor := ""
@@ -74,9 +74,9 @@ func (r *FeedRepository) GetProcessingStats(ctx context.Context) (*domain.Proces
 			Limit:  500,
 		}
 		req := connect.NewRequest(protoReq)
-		r.client.addAuth(req)
+		r.client.AddAuth(req)
 
-		resp, err := r.client.client.ListFeedURLs(ctx, req)
+		resp, err := r.client.DataHub().ListFeedURLs(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("ListFeedURLs: %w", err)
 		}

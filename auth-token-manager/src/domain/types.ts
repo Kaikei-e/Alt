@@ -52,12 +52,6 @@ export interface SecretData {
   scope?: string;
 }
 
-export interface SecretManager {
-  updateTokenSecret(tokens: TokenResponse): Promise<void>;
-  getTokenSecret(): Promise<SecretData | null>;
-  checkSecretExists(): Promise<boolean>;
-}
-
 export interface LoggerConfig {
   level: string;
   include_timestamp: boolean;

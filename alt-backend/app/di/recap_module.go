@@ -28,8 +28,9 @@ func newRecapModule(infra *InfraModule) *RecapModule {
 	recapUC := recap_usecase.NewRecapUsecase(recapGw)
 
 	// Dashboard recap jobs
-	recapJobDriver := recap_job_driver.NewRecapJobGateway(cfg.Recap.WorkerURL)
-	getRecapJobsUC := dashboard_usecase.NewGetRecapJobsUsecase(recapJobDriver)
+	recapJobDriver := recap_job_driver.NewDriver(cfg.Recap.WorkerURL)
+	recapJobGw := recap_gateway.NewRecapJobGateway(recapJobDriver)
+	getRecapJobsUC := dashboard_usecase.NewGetRecapJobsUsecase(recapJobGw)
 
 	// Dashboard metrics
 	dashboardGw := dashboard_gateway.NewDashboardGateway()

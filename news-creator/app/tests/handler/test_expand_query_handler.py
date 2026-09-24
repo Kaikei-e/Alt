@@ -148,7 +148,7 @@ def test_expand_query_handler_runtime_error():
 
 def test_expand_query_handler_queue_full_returns_429():
     """Queue saturation is expected backpressure; must surface as 429, not 502/500."""
-    from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+    from news_creator.domain.errors import QueueFullError
 
     usecase = AsyncMock()
     usecase.expand_query.side_effect = QueueFullError("Queue depth 10 >= max 10")

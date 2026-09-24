@@ -17,6 +17,7 @@ import acolyte.gateway.search_indexer_gw as gw_mod
 from acolyte.config.settings import Settings
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
+from acolyte.port.evidence_provider import EvidenceProviderError, EvidenceStatusError
 from tests.conftest import TEST_USER_ID
 
 
@@ -228,3 +229,32 @@ async def test_stub_methods_emit_warning_once(
     assert warn.call_count == 2
     event_methods = {c.kwargs.get("method") for c in warn.call_args_list}
     assert event_methods == {"search_recaps", "fetch_article_metadata"}
+
+
+@pytest.mark.asyncio
+async def test_search_articles_raises_evidence_status_error(
+    settings: Settings, content_store: MemoryContentStore
+) -> None:
+    transport = httpx.MockTransport(lambda req: httpx.Response(502, text="Bad Gateway"))
+    async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
+        gw = SearchIndexerGateway(client, settings, content_store)
+        with pytest.raises(EvidenceStatusError) as exc_info:
+            await gw.search_articles("query", user_id=TEST_USER_ID)
+
+    assert exc_info.value.status_code == 502
+    assert "Bad Gateway" in exc_info.value.response_text
+
+
+@pytest.mark.asyncio
+async def test_search_articles_raises_evidence_provider_error_on_connection_failure(
+    settings: Settings, content_store: MemoryContentStore
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        err = httpx.ConnectError("connection refused")
+        raise err
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
+        gw = SearchIndexerGateway(client, settings, content_store)
+        with pytest.raises(EvidenceProviderError, match="request failed"):
+            await gw.search_articles("query", user_id=TEST_USER_ID)

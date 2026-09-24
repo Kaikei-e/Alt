@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"connectrpc.com/connect"
 
+	"knowledge-sovereign/driver/sovereign_db"
 	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
-	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
+	sovereignv1connect "knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 )
 
 // Mutation type constants matching alt-backend's knowledge_sovereign_port.
@@ -48,12 +50,22 @@ type MutationRepository interface {
 	PatchKnowledgeHomeItemURL(ctx context.Context, payload json.RawMessage) error
 }
 
+// ProjectorWatcher defines the notification waiting operations required by WatchProjectorEvents.
+type ProjectorWatcher interface {
+	WaitForNotification(ctx context.Context, timeout time.Duration) (payload string, isTimeout bool, err error)
+	Close(ctx context.Context) error
+}
+
+// ProjectorWatcherOpener is a factory function for creating ProjectorWatcher instances.
+type ProjectorWatcherOpener func(ctx context.Context, databaseURL string) (ProjectorWatcher, error)
+
 // SovereignHandler implements the Connect-RPC KnowledgeSovereignService.
 type SovereignHandler struct {
 	sovereignv1connect.UnimplementedKnowledgeSovereignServiceHandler
-	repo        MutationRepository
-	readDB      ReadDB
-	databaseURL string // for LISTEN/NOTIFY connections
+	repo          MutationRepository
+	readDB        ReadDB
+	databaseURL   string // for LISTEN/NOTIFY connections
+	watcherOpener ProjectorWatcherOpener
 }
 
 // ReadDB defines all read/write operations beyond generic mutations.
@@ -65,7 +77,13 @@ type ReadDB interface {
 
 // NewSovereignHandler creates a new sovereign handler.
 func NewSovereignHandler(repo ReadDB, opts ...Option) *SovereignHandler {
-	h := &SovereignHandler{repo: repo, readDB: repo}
+	h := &SovereignHandler{
+		repo:   repo,
+		readDB: repo,
+		watcherOpener: func(ctx context.Context, databaseURL string) (ProjectorWatcher, error) {
+			return sovereign_db.OpenProjectorEventWatcher(ctx, databaseURL)
+		},
+	}
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -78,6 +96,11 @@ type Option func(*SovereignHandler)
 // WithDatabaseURL sets the database URL for LISTEN/NOTIFY connections.
 func WithDatabaseURL(url string) Option {
 	return func(h *SovereignHandler) { h.databaseURL = url }
+}
+
+// WithProjectorWatcherOpener sets a custom ProjectorWatcherOpener.
+func WithProjectorWatcherOpener(opener ProjectorWatcherOpener) Option {
+	return func(h *SovereignHandler) { h.watcherOpener = opener }
 }
 
 // ApplyProjectionMutation dispatches a projection mutation to the repository.

@@ -4,8 +4,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
+from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import ExpandQueryRequest, ExpandQueryResponse
-from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
 from news_creator.utils.context_logger import (
     set_ai_pipeline,

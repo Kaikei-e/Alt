@@ -1,4 +1,4 @@
-package backend_api
+package repository
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"pre-processor/domain"
+	backend_api "pre-processor/driver/backend_api"
 	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
 )
@@ -60,13 +61,13 @@ func (m *mockDataHubClient) GetEmptyFeedID(ctx context.Context, req *connect.Req
 	return connect.NewResponse(&datahubv1.GetEmptyFeedIDResponse{}), nil
 }
 
-func newTestRepo(mock *mockDataHubClient) *ArticleRepository {
-	client := &Client{client: mock}
+func newTestRepo(mock *mockDataHubClient) *articleRepository {
+	client := backend_api.NewClientWithService(mock)
 	return NewArticleRepository(client, nil)
 }
 
 func TestFetchInoreaderArticles_NilDBPool(t *testing.T) {
-	client := &Client{} // dummy client, not used for this method
+	client := backend_api.NewClientWithService(nil)
 	repo := NewArticleRepository(client, nil)
 
 	_, err := repo.FetchInoreaderArticles(context.Background(), time.Now().Add(-1*time.Hour))
@@ -81,7 +82,7 @@ func TestFetchInoreaderArticles_NilDBPool(t *testing.T) {
 }
 
 func TestFetchInoreaderArticles_DBPoolFieldIsSet(t *testing.T) {
-	client := &Client{}
+	client := backend_api.NewClientWithService(nil)
 	repo := NewArticleRepository(client, nil)
 
 	// Verify the struct stores the dbPool (nil in this case)

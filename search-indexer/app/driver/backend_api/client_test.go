@@ -11,9 +11,10 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"search-indexer/domain"
 	datahubv1 "search-indexer/gen/proto/services/datahub/v1"
 	"search-indexer/gen/proto/services/datahub/v1/datahubv1connect"
+
+	"search-indexer/driver"
 )
 
 // TestToDriverArticle_PublishedAt covers the mapping that decides what
@@ -141,7 +142,7 @@ func newDataHubTestServer(t *testing.T, code connect.Code) *Client {
 // TestClient_GetArticleByID_NotFoundIsSentinel pins the only signal the batch
 // indexer can act on. alt-data-hub reports a missing row as a Connect
 // NotFound error, never as an empty response, so the driver must translate
-// that code into domain.ErrArticleNotFound -- otherwise
+// that code into driver.ErrNotFound -- otherwise
 // ExecuteBatchArticles's skip branch is unreachable and one deleted article
 // drags every healthy article in the same batch to the DLQ.
 func TestClient_GetArticleByID_NotFoundIsSentinel(t *testing.T) {
@@ -154,8 +155,8 @@ func TestClient_GetArticleByID_NotFoundIsSentinel(t *testing.T) {
 	if article != nil {
 		t.Fatalf("GetArticleByID() article = %+v, want nil", article)
 	}
-	if !errors.Is(err, domain.ErrArticleNotFound) {
-		t.Fatalf("GetArticleByID() error = %v, want errors.Is(err, domain.ErrArticleNotFound)", err)
+	if !errors.Is(err, driver.ErrNotFound) {
+		t.Fatalf("GetArticleByID() error = %v, want errors.Is(err, driver.ErrNotFound)", err)
 	}
 }
 
@@ -172,7 +173,7 @@ func TestClient_GetArticleByID_OtherCodesAreNotSentinel(t *testing.T) {
 	if err == nil {
 		t.Fatal("GetArticleByID() error = nil, want an error")
 	}
-	if errors.Is(err, domain.ErrArticleNotFound) {
-		t.Fatalf("GetArticleByID() error = %v, must not be ErrArticleNotFound for a non-NotFound failure", err)
+	if errors.Is(err, driver.ErrNotFound) {
+		t.Fatalf("GetArticleByID() error = %v, must not be ErrNotFound for a non-NotFound failure", err)
 	}
 }

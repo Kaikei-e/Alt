@@ -1,11 +1,8 @@
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import { assertEquals } from "@std/testing/asserts";
 import { MonitorTokenUsecase } from "../../../src/usecase/monitor_token.ts";
-import type {
-  SecretData,
-  SecretManager,
-  TokenResponse,
-} from "../../../src/domain/types.ts";
+import type { SecretData, TokenResponse } from "../../../src/domain/types.ts";
+import type { SecretManager } from "../../../src/port/secret_manager.ts";
 
 function createMockSecretManager(
   tokenData: SecretData | null = null,

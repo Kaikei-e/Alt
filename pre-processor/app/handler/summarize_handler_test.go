@@ -17,7 +17,6 @@ import (
 	apperrors "pre-processor/utils/errors"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -498,7 +497,7 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 // TestSummarizeHandler_HandleSummarizeStatus tests the job-status polling
 // endpoint, including the not-found vs. transient-DB-error distinction that
 // callers rely on to decide whether to keep polling (see the comment on
-// HandleSummarizeStatus about pgx.ErrNoRows).
+// HandleSummarizeStatus about domain.ErrJobNotFound).
 func TestSummarizeHandler_HandleSummarizeStatus(t *testing.T) {
 	fixedJobID := uuid.New()
 	summary := "the summary text"
@@ -565,7 +564,7 @@ func TestSummarizeHandler_HandleSummarizeStatus(t *testing.T) {
 		"should return 404 when job genuinely does not exist": {
 			jobIDParam: "missing-job",
 			setupMock: func(j *mocks.MockSummarizeJobRepository) {
-				j.EXPECT().GetJob(gomock.Any(), "missing-job").Return(nil, pgx.ErrNoRows)
+				j.EXPECT().GetJob(gomock.Any(), "missing-job").Return(nil, domain.ErrJobNotFound)
 			},
 			expectedCode: http.StatusNotFound,
 			wantErr:      true,

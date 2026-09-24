@@ -4,8 +4,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 
+from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import LLMGenerateResponse
-from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.handler.generate_handler import create_generate_router
 from news_creator.port.llm_provider_port import LLMProviderPort
 

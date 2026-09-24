@@ -19,8 +19,8 @@ from recap_evaluator.evaluator.readability import ReadabilityEvaluator
 from recap_evaluator.evaluator.redundancy import RedundancyEvaluator
 from recap_evaluator.evaluator.rouge import ROUGEEvaluator
 from recap_evaluator.evaluator.source_grounding import SourceGroundingEvaluator
-from recap_evaluator.gateway.ollama_gateway import OllamaGateway
 from recap_evaluator.port.database_port import DatabasePort
+from recap_evaluator.port.llm_port import LLMPort
 
 logger = structlog.get_logger()
 
@@ -39,7 +39,7 @@ class SummaryEvaluator:
 
     def __init__(
         self,
-        ollama: OllamaGateway,
+        ollama: LLMPort,
         db: DatabasePort,
         settings: Settings,
         thresholds: AlertThresholds,

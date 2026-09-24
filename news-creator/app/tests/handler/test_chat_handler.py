@@ -9,9 +9,12 @@ from fastapi.testclient import TestClient
 from news_creator.handler.chat_handler import create_chat_router
 
 
-def make_app(gateway: MagicMock) -> FastAPI:
+def make_app(gateway: MagicMock, config: MagicMock | None = None) -> FastAPI:
+    if config is None:
+        config = MagicMock()
+        config.model_routing_enabled = False
     app = FastAPI()
-    app.include_router(create_chat_router(gateway))
+    app.include_router(create_chat_router(gateway, config))
     return app
 
 
@@ -99,7 +102,7 @@ class TestChatEndpointStreaming:
         assert call_payload["think"] is False
 
     def test_streaming_chat_queue_full_returns_429(self):
-        from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+        from news_creator.domain.errors import QueueFullError
 
         gateway = AsyncMock()
         gateway.chat_stream.side_effect = QueueFullError("queue full")
@@ -167,6 +170,25 @@ class TestChatEndpointValidation:
             json={"model": "test", "messages": []},
         )
         assert resp.status_code == 422
+
+    def test_unknown_model_rejected_when_routing_enabled(self):
+        """When model routing is enabled, unknown models must be rejected with 400."""
+        gateway = AsyncMock()
+        config = MagicMock()
+        config.model_routing_enabled = True
+        config.is_base_model_name.return_value = False
+        config.is_bucket_model_name.return_value = False
+
+        client = TestClient(make_app(gateway, config))
+        resp = client.post(
+            "/api/chat",
+            json={
+                "model": "unsupported-model-v1",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Unknown model"
 
     def test_non_streaming_calls_chat_generate(self):
         """Non-streaming chat routes to gateway.chat_generate()."""
@@ -245,7 +267,7 @@ class TestChatEndpointValidation:
 
     def test_non_streaming_queue_full_returns_429(self):
         """Non-streaming chat returns 429 when queue is full."""
-        from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+        from news_creator.domain.errors import QueueFullError
 
         gateway = AsyncMock()
         gateway.chat_generate.side_effect = QueueFullError("queue full")

@@ -160,7 +160,7 @@ func buildNotificationRelay(
 
 	return service.NewNotificationRelay(
 		repository.NewNotificationOutboxRepository(ppDBPool, log),
-		backend_api.NewNotificationForwarder(client),
+		repository.NewNotificationForwarder(client),
 		relayMetrics,
 		name,
 		log,
@@ -208,8 +208,8 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		"mtls_enforce", os.Getenv("MTLS_ENFORCE") == "true",
 	)
 	client := backend_api.NewClient(backendAPIURL, "", backendHTTPClient)
-	articleRepo := backend_api.NewArticleRepository(client, ppDBPool)
-	summaryRepo := backend_api.NewSummaryRepository(client)
+	articleRepo := repository.NewArticleRepository(client, ppDBPool)
+	summaryRepo := repository.NewSummaryRepository(client)
 
 	// GetSystemUserID (repository.ExternalAPIRepository) must reach
 	// alt-data-hub over the same mTLS-configured client and resolved URL as

@@ -7,8 +7,8 @@ from contextlib import aclosing
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import SummarizeRequest, SummarizeResponse
-from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.utils.context_logger import (
     set_article_id,

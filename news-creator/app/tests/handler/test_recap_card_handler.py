@@ -13,7 +13,7 @@ from news_creator.domain.models import (
     CardGenerationRejectedError,
     CardSentence,
 )
-from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+from news_creator.domain.errors import QueueFullError
 from news_creator.handler.recap_card_handler import create_recap_card_router
 
 

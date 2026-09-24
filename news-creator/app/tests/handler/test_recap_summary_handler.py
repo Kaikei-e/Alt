@@ -93,7 +93,7 @@ def test_recap_summary_handler_queue_full_returns_429():
     it must surface as HTTP 429 with Retry-After, mirroring /api/v1/summarize and
     /api/chat, never fall through to the generic 500 branch.
     """
-    from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+    from news_creator.domain.errors import QueueFullError
 
     usecase = AsyncMock()
     usecase.generate_summary.side_effect = QueueFullError("Queue depth 10 >= max 10")
@@ -120,7 +120,7 @@ def test_recap_summary_handler_preempted_returns_502():
     retry.' That mistranslation is what produced the May 3 2026 17:20-17:36
     error storm.
     """
-    from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+    from news_creator.domain.errors import PreemptedException
 
     usecase = AsyncMock()
     secret = "request preempted during generation at slot 3"

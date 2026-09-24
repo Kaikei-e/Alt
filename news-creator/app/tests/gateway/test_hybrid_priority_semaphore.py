@@ -503,7 +503,7 @@ class TestPreemption:
     @pytest.fixture
     def preempted_exception(self):
         """Import PreemptedException for testing."""
-        from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+        from news_creator.domain.errors import PreemptedException
 
         return PreemptedException
 
@@ -1109,7 +1109,7 @@ class TestQueueDepthLimit:
     @pytest.fixture
     def queue_full_error(self):
         """Import QueueFullError for testing."""
-        from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+        from news_creator.domain.errors import QueueFullError
 
         return QueueFullError
 

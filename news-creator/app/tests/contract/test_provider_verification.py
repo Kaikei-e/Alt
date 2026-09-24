@@ -21,7 +21,7 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 import uvicorn
@@ -94,7 +94,7 @@ def _create_provider_app() -> FastAPI:
 
     async def _dynamic_generate_summary(*args: Any, **kwargs: Any):
         if provider_state["mode"] == "queue_full":
-            from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+            from news_creator.domain.errors import QueueFullError
 
             raise QueueFullError("Queue depth 20 >= max 20")
         return (
@@ -144,7 +144,9 @@ def _create_provider_app() -> FastAPI:
         return_value=_mock_chat_stream_iter(payload={})
     )
 
-    chat_router = chat_mod.create_chat_router(mock_ollama_gateway)
+    mock_config = MagicMock()
+    mock_config.model_routing_enabled = False
+    chat_router = chat_mod.create_chat_router(mock_ollama_gateway, mock_config)
     app.include_router(chat_router)
 
     # --- Mock recap summary handler ---

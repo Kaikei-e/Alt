@@ -132,6 +132,20 @@ class LLMProviderPort(ABC):
         """
         raise NotImplementedError  # pragma: no cover
 
+    async def chat_stream(
+        self,
+        payload: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Streaming /api/chat call through the priority semaphore.
+
+        Args:
+            payload: Ollama chat request payload
+
+        Yields:
+            Response chunk dicts from Ollama stream
+        """
+        raise NotImplementedError  # pragma: no cover
+
     @abstractmethod
     async def initialize(self) -> None:
         """Initialize the LLM provider (e.g., create client session)."""

@@ -7,7 +7,7 @@ import json
 import pytest
 from pydantic import BaseModel
 
-from acolyte.port.llm_provider import LLMResponse
+from acolyte.port.llm_provider import LLMProviderError, LLMResponse, LLMTimeoutError
 from acolyte.usecase.graph.llm_parse import generate_validated
 
 
@@ -129,6 +129,26 @@ async def test_generate_exception_exhausted_uses_fallback() -> None:
     fallback = SampleOutput(reasoning="fallback", sections=[])
     result = await generate_validated(AlwaysErrorLLM(), "prompt", SampleOutput, retries=1, fallback=fallback)
     assert result.reasoning == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_generate_llm_provider_error_retries_and_succeeds() -> None:
+    valid = json.dumps({"reasoning": "recovered from provider error", "sections": []})
+    llm = ErrorThenSuccessLLM(LLMProviderError("upstream 500 error"), valid)
+    result = await generate_validated(llm, "prompt", SampleOutput, retries=1)
+    assert result.reasoning == "recovered from provider error"
+    assert llm._call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_llm_timeout_error_exhausted_uses_fallback() -> None:
+    class AlwaysTimeoutLLM:
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+            raise LLMTimeoutError
+
+    fallback = SampleOutput(reasoning="timeout fallback", sections=[])
+    result = await generate_validated(AlwaysTimeoutLLM(), "prompt", SampleOutput, retries=1, fallback=fallback)
+    assert result.reasoning == "timeout fallback"
 
 
 # --- Truncation detection tests ---

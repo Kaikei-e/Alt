@@ -44,6 +44,16 @@ func NewClient(baseURL, _ string, httpClient *http.Client) *Client {
 	return &Client{client: c}
 }
 
-func (c *Client) addAuth(_ connect.AnyRequest) {
-	// No-op: authentication is handled by the TLS transport layer (mTLS).
+// NewClientWithService creates a Client wrapping an existing DataHubServiceClient (useful for testing).
+func NewClientWithService(service datahubv1connect.DataHubServiceClient) *Client {
+	return &Client{client: service}
+}
+
+// DataHub returns the underlying DataHubServiceClient.
+func (c *Client) DataHub() datahubv1connect.DataHubServiceClient {
+	return c.client
+}
+
+// AddAuth is a no-op because authentication is handled by the TLS transport layer (mTLS).
+func (c *Client) AddAuth(_ connect.AnyRequest) {
 }

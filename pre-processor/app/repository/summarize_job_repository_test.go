@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"pre-processor/domain"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -263,6 +265,22 @@ func TestSummarizeJobRepository_GetJob(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "job ID cannot be empty")
 		assert.Nil(t, job)
+	})
+
+	t.Run("should map pgx.ErrNoRows to domain.ErrJobNotFound", func(t *testing.T) {
+		repo, mock := newMockJobRepo(t)
+		jobID := "missing-job-id"
+
+		mock.ExpectQuery(`SELECT id, job_id, article_id, status, summary, error_message`).
+			WithArgs(jobID).
+			WillReturnError(pgx.ErrNoRows)
+
+		job, err := repo.GetJob(context.Background(), jobID)
+
+		assert.Error(t, err)
+		assert.Nil(t, job)
+		assert.True(t, errors.Is(err, domain.ErrJobNotFound), "expected err to satisfy errors.Is(err, domain.ErrJobNotFound), got: %v", err)
+		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
 

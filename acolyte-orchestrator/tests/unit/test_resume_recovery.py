@@ -24,7 +24,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
-import httpx
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from structlog.testing import capture_logs
@@ -35,7 +34,7 @@ from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.memory_job_gw import MemoryJobGateway
 from acolyte.gateway.memory_report_gw import MemoryReportGateway
 from acolyte.handler.connect_service import AcolyteConnectService
-from acolyte.port.evidence_provider import ArticleHit, RecapHit
+from acolyte.port.evidence_provider import ArticleHit, EvidenceProviderError, RecapHit
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.report_graph import build_report_graph
 from scripts.resume_run import _build_pipeline_deps
@@ -71,7 +70,7 @@ class RecoveringEvidence:
 
     async def search_articles(self, query: str, **kwargs: object) -> list[ArticleHit]:
         if not self.recovered:
-            raise httpx.HTTPError("simulated upstream failure")  # noqa: TRY003 — test fake, message is the assertion fixture
+            raise EvidenceProviderError
         return [ArticleHit(article_id="art-1", title="Article One", score=1.0, language="en")]
 
     async def fetch_article_metadata(self, article_ids: list[str]) -> list:
@@ -82,7 +81,7 @@ class RecoveringEvidence:
 
     async def search_recaps(self, query: str, *, limit: int = 10) -> list[RecapHit]:
         if not self.recovered:
-            raise httpx.HTTPError("simulated upstream failure")  # noqa: TRY003 — test fake, message is the assertion fixture
+            raise EvidenceProviderError
         return []
 
 

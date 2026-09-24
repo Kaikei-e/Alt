@@ -1,28 +1,30 @@
 import { afterAll, afterEach, beforeAll, describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/testing/asserts";
+import { assertEquals, assertThrows } from "@std/testing/asserts";
 import { OAuthServer } from "../../../src/handler/oauth_server.ts";
 import { AuthorizeUsecase } from "../../../src/usecase/authorize.ts";
+import { GetTokenUsecase } from "../../../src/usecase/get_token.ts";
 import type {
+  InoreaderCredentials,
   SecretData,
-  SecretManager,
   TokenResponse,
 } from "../../../src/domain/types.ts";
+import type { SecretManager } from "../../../src/port/secret_manager.ts";
 import type { TokenClient } from "../../../src/port/token_client.ts";
 
 class StubTokenClient implements TokenClient {
-  async refreshToken(_refreshToken: string): Promise<TokenResponse> {
-    return {
+  refreshToken(_refreshToken: string): Promise<TokenResponse> {
+    return Promise.resolve({
       access_token: "stub",
       refresh_token: "stub",
       expires_at: new Date(),
-    };
+    });
   }
-  async exchangeCode(_code: string): Promise<TokenResponse> {
-    return {
+  exchangeCode(_code: string): Promise<TokenResponse> {
+    return Promise.resolve({
       access_token: "stub",
       refresh_token: "stub",
       expires_at: new Date(),
-    };
+    });
   }
 }
 
@@ -33,12 +35,14 @@ class StubSecretManager implements SecretManager {
     this.data = data;
   }
 
-  async updateTokenSecret(_tokens: TokenResponse): Promise<void> {}
-  async getTokenSecret(): Promise<SecretData | null> {
-    return this.data;
+  updateTokenSecret(_tokens: TokenResponse): Promise<void> {
+    return Promise.resolve();
   }
-  async checkSecretExists(): Promise<boolean> {
-    return this.data !== null;
+  getTokenSecret(): Promise<SecretData | null> {
+    return Promise.resolve(this.data);
+  }
+  checkSecretExists(): Promise<boolean> {
+    return Promise.resolve(this.data !== null);
   }
 }
 
@@ -67,9 +71,10 @@ describe("OAuthServer /api/token", {
       secretManager,
       credentials,
     );
+    const getTokenUsecase = new GetTokenUsecase(secretManager);
     const server = new OAuthServer(
       authorizeUsecase,
-      secretManager,
+      getTokenUsecase,
       credentials,
     );
 
@@ -281,5 +286,52 @@ describe("OAuthServer /api/token", {
       Deno.env.delete("INTERNAL_AUTH_TOKEN_FILE");
       await Deno.remove(tmpFile);
     }
+  });
+
+  describe("constructor validation", () => {
+    const credentials = {
+      client_id: "test-client-id",
+      client_secret: "test-client-secret",
+      redirect_uri: `http://localhost:${TEST_PORT}/callback`,
+    };
+
+    it("should throw when authorizeUsecase is missing", () => {
+      assertThrows(
+        () =>
+          new OAuthServer(
+            null as unknown as AuthorizeUsecase,
+            {} as GetTokenUsecase,
+            credentials,
+          ),
+        Error,
+        "OAuthServer: all dependencies",
+      );
+    });
+
+    it("should throw when getTokenUsecase is missing", () => {
+      assertThrows(
+        () =>
+          new OAuthServer(
+            {} as AuthorizeUsecase,
+            null as unknown as GetTokenUsecase,
+            credentials,
+          ),
+        Error,
+        "OAuthServer: all dependencies",
+      );
+    });
+
+    it("should throw when credentials are missing", () => {
+      assertThrows(
+        () =>
+          new OAuthServer(
+            {} as AuthorizeUsecase,
+            {} as GetTokenUsecase,
+            null as unknown as InoreaderCredentials,
+          ),
+        Error,
+        "OAuthServer: all dependencies",
+      );
+    });
   });
 });

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"search-indexer/domain"
 	"search-indexer/driver"
@@ -141,6 +142,9 @@ func (g *ArticleRepositoryGateway) GetLatestCreatedAt(ctx context.Context) (*tim
 func (g *ArticleRepositoryGateway) GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error) {
 	driverArticle, err := g.driver.GetArticleByID(ctx, articleID)
 	if err != nil {
+		if errors.Is(err, driver.ErrNotFound) {
+			return nil, fmt.Errorf("GetArticleByID %s: %w", articleID, domain.ErrArticleNotFound)
+		}
 		return nil, &domain.RepositoryError{
 			Op:  "GetArticleByID",
 			Err: err,
@@ -148,7 +152,7 @@ func (g *ArticleRepositoryGateway) GetArticleByID(ctx context.Context, articleID
 	}
 
 	if driverArticle == nil {
-		return nil, domain.ErrArticleNotFound
+		return nil, fmt.Errorf("GetArticleByID %s: %w", articleID, domain.ErrArticleNotFound)
 	}
 
 	return g.convertToDomain(driverArticle)

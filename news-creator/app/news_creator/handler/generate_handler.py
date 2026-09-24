@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Any
 
+from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import GenerateRequest, LLMGenerateResponse
-from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)

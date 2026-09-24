@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"search-indexer/domain"
 	"search-indexer/driver"
 	"testing"
@@ -315,5 +316,19 @@ func TestArticleRepositoryGateway_GetArticleByID_DriverError(t *testing.T) {
 	var repoErr *domain.RepositoryError
 	if !errors.As(err, &repoErr) {
 		t.Fatalf("GetArticleByID() error = %v, want *domain.RepositoryError", err)
+	}
+}
+
+func TestArticleRepositoryGateway_GetArticleByID_DriverErrNotFound(t *testing.T) {
+	driverMock := &mockArticleDriver{err: fmt.Errorf("driver: %w", driver.ErrNotFound)}
+	gw := NewArticleRepositoryGateway(driverMock)
+
+	article, err := gw.GetArticleByID(context.Background(), "missing-id")
+
+	if article != nil {
+		t.Errorf("GetArticleByID() article = %v, want nil", article)
+	}
+	if !errors.Is(err, domain.ErrArticleNotFound) {
+		t.Fatalf("GetArticleByID() error = %v, want errors.Is(err, domain.ErrArticleNotFound)", err)
 	}
 }

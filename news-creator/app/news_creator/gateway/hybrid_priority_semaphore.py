@@ -21,19 +21,9 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from news_creator.domain.errors import QueueFullError
+
 logger = logging.getLogger(__name__)
-
-
-class PreemptedException(Exception):
-    """Raised when a BE request is preempted for RT priority."""
-
-    pass
-
-
-class QueueFullError(Exception):
-    """Raised when the queue depth limit is exceeded."""
-
-    pass
 
 
 @dataclass

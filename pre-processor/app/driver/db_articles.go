@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"pre-processor/domain"
-
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // GetInoreaderArticles fetches articles from inoreader_articles table
-func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time) ([]*domain.Article, error) {
+func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time) ([]*InoreaderArticleRow, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database connection is nil")
 	}
@@ -39,29 +37,22 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 	}
 	defer rows.Close()
 
-	var articles []*domain.Article
+	var articles []*InoreaderArticleRow
 	for rows.Next() {
-		var a domain.Article
-		var feedURL string
-		var publishedAt time.Time
-		var fetchedAt time.Time
+		var a InoreaderArticleRow
 
 		err := rows.Scan(
-			&a.InoreaderID, // temporarily store inoreader PK in InoreaderID
-			&a.URL,
+			&a.ID,
+			&a.ArticleURL,
 			&a.Title,
 			&a.Content,
-			&publishedAt,
-			&feedURL,
-			&fetchedAt,
+			&a.PublishedAt,
+			&a.FeedURL,
+			&a.FetchedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan inoreader article: %w", err)
 		}
-
-		a.PublishedAt = publishedAt
-		a.CreatedAt = fetchedAt // Use fetched_at as CreatedAt for now
-		a.FeedURL = feedURL     // Set FeedURL for later FeedID resolution
 
 		articles = append(articles, &a)
 	}
@@ -76,7 +67,7 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 // for cross-DB backfill scenarios. Only queries inoreader_* tables (pre-processor-db).
 // FeedID resolution is deferred to the caller (via backend API).
 // Uses fetchedAfter as a cursor to avoid re-processing the same articles.
-func GetInoreaderArticlesForBackfill(ctx context.Context, db *pgxpool.Pool, fetchedAfter time.Time, limit int) ([]*domain.Article, error) {
+func GetInoreaderArticlesForBackfill(ctx context.Context, db *pgxpool.Pool, fetchedAfter time.Time, limit int) ([]*InoreaderArticleRow, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database connection is nil")
 	}
@@ -105,29 +96,22 @@ func GetInoreaderArticlesForBackfill(ctx context.Context, db *pgxpool.Pool, fetc
 	}
 	defer rows.Close()
 
-	var articles []*domain.Article
+	var articles []*InoreaderArticleRow
 	for rows.Next() {
-		var a domain.Article
-		var publishedAt time.Time
-		var fetchedAt time.Time
-		var feedURL string
+		var a InoreaderArticleRow
 
 		err := rows.Scan(
-			&a.InoreaderID,
-			&a.URL,
+			&a.ID,
+			&a.ArticleURL,
 			&a.Title,
 			&a.Content,
-			&publishedAt,
-			&feedURL,
-			&fetchedAt,
+			&a.PublishedAt,
+			&a.FeedURL,
+			&a.FetchedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan inoreader article for backfill: %w", err)
 		}
-
-		a.PublishedAt = publishedAt
-		a.CreatedAt = fetchedAt
-		a.FeedURL = feedURL
 
 		articles = append(articles, &a)
 	}

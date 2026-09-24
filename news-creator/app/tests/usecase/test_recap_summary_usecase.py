@@ -3090,7 +3090,7 @@ async def test_recap_uses_recap_summary_num_predict():
 async def test_chunk_summary_retries_on_preemption(monkeypatch):
     from contextlib import asynccontextmanager
 
-    from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+    from news_creator.domain.errors import PreemptedException
 
     # Skip the actual sleep so the test runs instantly.
     import asyncio as _asyncio
