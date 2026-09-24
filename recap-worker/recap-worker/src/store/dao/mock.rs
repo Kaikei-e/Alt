@@ -84,6 +84,8 @@ pub(crate) struct MockRecapDao {
     find_most_recent_failed_job_result: Arc<Mutex<Option<Result<Option<ResumableJob>>>>>,
     /// `mark_abandoned_jobs` 呼び出し引数 (`keep_job_id`) の記録。
     mark_abandoned_jobs_calls: Arc<Mutex<Vec<Option<Uuid>>>>,
+    /// `find_running_cards_job` の応答。
+    running_cards_job: Arc<Mutex<Option<Uuid>>>,
 }
 
 #[cfg(test)]
@@ -158,6 +160,14 @@ impl MockRecapDao {
             .expect("find_most_recent_failed_job_result mutex poisoned") = Some(result);
     }
 
+    /// テスト用に `find_running_cards_job` の応答をセットする。
+    pub(crate) fn set_running_cards_job(&self, job_id: Option<Uuid>) {
+        *self
+            .running_cards_job
+            .lock()
+            .expect("running_cards_job mutex poisoned") = job_id;
+    }
+
     /// 記録された `mark_abandoned_jobs` 呼び出し（`keep_job_id` 引数）のスナップショットを取得する。
     #[allow(dead_code)]
     pub(crate) fn mark_abandoned_jobs_calls(&self) -> Vec<Option<Uuid>> {
@@ -224,6 +234,13 @@ impl RecapDao for MockRecapDao {
             .expect("mark_abandoned_jobs_calls mutex poisoned")
             .push(keep_job_id);
         Ok(0)
+    }
+
+    async fn find_running_cards_job(&self) -> Result<Option<Uuid>> {
+        Ok(*self
+            .running_cards_job
+            .lock()
+            .expect("running_cards_job mutex poisoned"))
     }
 
     async fn update_job_status(
@@ -754,5 +771,19 @@ impl RecapDao for MockRecapDao {
         _target_date: chrono::NaiveDate,
     ) -> Result<i64> {
         Ok(1) // Return mock generation ID
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_mock_recap_dao_running_cards_job() {
+        let dao = MockRecapDao::new();
+        assert_eq!(dao.find_running_cards_job().await.unwrap(), None);
+        let job_id = Uuid::new_v4();
+        dao.set_running_cards_job(Some(job_id));
+        assert_eq!(dao.find_running_cards_job().await.unwrap(), Some(job_id));
     }
 }

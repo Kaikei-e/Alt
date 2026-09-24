@@ -38,6 +38,9 @@ pub struct ComponentRegistry {
     notification_relay: Option<Arc<NotificationRelay>>,
     /// `None` when `PKI_ENROLLMENT=disabled` (sidecar still owns cert files).
     pki: Option<crate::pki::Handle>,
+    cards_runner: Option<Arc<dyn crate::pipeline::cards::CardsJobRunner>>,
+    // recap-worker runs as a single instance, so an in-process guard is sufficient to prevent overlapping runs.
+    cards_run_in_flight: Arc<std::sync::Mutex<Option<uuid::Uuid>>>,
 }
 
 impl AppState {
@@ -73,6 +76,14 @@ impl AppState {
 
     pub(crate) fn pool(&self) -> &sqlx::PgPool {
         &self.registry.recap_pool
+    }
+
+    pub(crate) fn cards_runner(&self) -> Arc<dyn crate::pipeline::cards::CardsJobRunner> {
+        self.registry.cards_runner()
+    }
+
+    pub(crate) fn cards_run_in_flight(&self) -> Arc<std::sync::Mutex<Option<uuid::Uuid>>> {
+        self.registry.cards_run_in_flight()
     }
 }
 
@@ -177,6 +188,9 @@ impl ComponentRegistry {
             telemetry.metrics_arc(),
         )?;
 
+        let cards_runner = build_cards_runner(&config, &recap_pool).await?;
+        let cards_run_in_flight = Arc::new(std::sync::Mutex::new(None));
+
         Ok(Self {
             config,
             telemetry,
@@ -187,6 +201,8 @@ impl ComponentRegistry {
             recap_pool,
             notification_relay,
             pki,
+            cards_runner,
+            cards_run_in_flight,
         })
     }
 
@@ -230,6 +246,55 @@ impl ComponentRegistry {
     #[must_use]
     pub fn pool(&self) -> &sqlx::PgPool {
         &self.recap_pool
+    }
+
+    #[must_use]
+    pub fn cards_runner(&self) -> Arc<dyn crate::pipeline::cards::CardsJobRunner> {
+        Arc::clone(
+            self.cards_runner
+                .as_ref()
+                .expect("cards_runner unwired in ComponentRegistry"),
+        )
+    }
+
+    #[must_use]
+    pub fn cards_run_in_flight(&self) -> Arc<std::sync::Mutex<Option<uuid::Uuid>>> {
+        Arc::clone(&self.cards_run_in_flight)
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_cards_runner(
+        mut self,
+        runner: Arc<dyn crate::pipeline::cards::CardsJobRunner>,
+    ) -> Self {
+        self.cards_runner = Some(runner);
+        self
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_recap_dao(mut self, dao: Arc<dyn RecapDao>) -> Self {
+        self.recap_dao = dao;
+        self
+    }
+}
+
+async fn build_cards_runner(
+    config: &Config,
+    pool: &sqlx::PgPool,
+) -> Result<Option<Arc<dyn crate::pipeline::cards::CardsJobRunner>>> {
+    match config.cards_user_id() {
+        Some(user_id) => {
+            let default_params = crate::pipeline::cards::CardsParams::default();
+            let pipeline =
+                crate::eval::build_production_cards_pipeline(pool, config, &default_params)
+                    .await
+                    .context("failed to build cards pipeline")?
+                    .with_user_id(user_id);
+            Ok(Some(Arc::new(pipeline)))
+        }
+        None => Ok(None),
     }
 }
 

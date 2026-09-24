@@ -378,7 +378,8 @@ impl Config {
         let max_degraded_genre_ratio = parse_f64("RECAP_MAX_DEGRADED_GENRE_RATIO", 0.5)?;
         let admin_auth = load_admin_auth()?;
         let eval_listener = load_eval_listener(&admin_auth)?;
-        let (cards_job, cards_user_id) = load_cards_job()?;
+        let cards_user_id = load_cards_user_id()?;
+        let cards_job = load_cards_job(cards_user_id)?;
 
         Ok(Self::from_components(
             basic,
@@ -1374,54 +1375,46 @@ fn load_eval_listener(admin_auth: &AdminAuth) -> Result<EvalListenerConfig, Conf
     }
 }
 
+/// Resolve optional cards user ID from env (`RECAP_CARDS_USER_ID`).
+///
+/// Readable independently of `RECAP_CARDS_JOB`: when set, enables the manual
+/// topic cards trigger and evaluation replay. If empty/unset => None. If non-empty
+/// but not a valid UUID => fail startup.
+fn load_cards_user_id() -> Result<Option<uuid::Uuid>, ConfigError> {
+    match env_var_optional("RECAP_CARDS_USER_ID") {
+        Some(raw) if !raw.trim().is_empty() => {
+            let parsed = uuid::Uuid::parse_str(raw.trim()).map_err(|e| {
+                invalid_config(
+                    "RECAP_CARDS_USER_ID",
+                    format!("must be a valid UUID, got '{raw}': {e}"),
+                )
+            })?;
+            Ok(Some(parsed))
+        }
+        _ => Ok(None),
+    }
+}
+
 /// Resolve the scheduled topic cards daily job config from env.
 ///
 /// REQUIRED explicit configuration: `RECAP_CARDS_JOB=enabled|disabled` (Critical Rule 9).
 /// Any other value or unset => startup error.
 /// When enabled, `RECAP_CARDS_USER_ID` is REQUIRED (non-empty valid UUID).
-/// When disabled, `RECAP_CARDS_USER_ID` is optionally read for eval replay.
-fn load_cards_job() -> Result<(CardsJobConfig, Option<uuid::Uuid>), ConfigError> {
+fn load_cards_job(cards_user_id: Option<uuid::Uuid>) -> Result<CardsJobConfig, ConfigError> {
     let mode_str = env_var("RECAP_CARDS_JOB")?;
     let mode = mode_str.trim().to_ascii_lowercase();
     match mode.as_str() {
-        "disabled" => {
-            let user_id = match env_var_optional("RECAP_CARDS_USER_ID") {
-                Some(raw) if !raw.trim().is_empty() => {
-                    let parsed = uuid::Uuid::parse_str(raw.trim()).map_err(|e| {
-                        invalid_config(
-                            "RECAP_CARDS_USER_ID",
-                            format!("must be a valid UUID, got '{raw}': {e}"),
-                        )
-                    })?;
-                    Some(parsed)
-                }
-                _ => None,
-            };
-            Ok((CardsJobConfig::Disabled, user_id))
-        }
+        "disabled" => Ok(CardsJobConfig::Disabled),
         "enabled" => {
-            let user_id_raw = env_var("RECAP_CARDS_USER_ID")?;
-            if user_id_raw.trim().is_empty() {
-                return Err(ConfigError::Missing("RECAP_CARDS_USER_ID"));
-            }
-            let user_id = uuid::Uuid::parse_str(user_id_raw.trim()).map_err(|e| {
-                invalid_config(
-                    "RECAP_CARDS_USER_ID",
-                    format!("must be a valid UUID, got '{user_id_raw}': {e}"),
-                )
-            })?;
-
+            let user_id = cards_user_id.ok_or(ConfigError::Missing("RECAP_CARDS_USER_ID"))?;
             let time_str =
                 env_var_optional("RECAP_CARDS_JOB_UTC_TIME").unwrap_or_else(|| "17:30".to_string());
             let (utc_hour, utc_minute) = parse_utc_time("RECAP_CARDS_JOB_UTC_TIME", &time_str)?;
-            Ok((
-                CardsJobConfig::Enabled {
-                    utc_hour,
-                    utc_minute,
-                    user_id,
-                },
-                Some(user_id),
-            ))
+            Ok(CardsJobConfig::Enabled {
+                utc_hour,
+                utc_minute,
+                user_id,
+            })
         }
         _ => Err(invalid_config(
             "RECAP_CARDS_JOB",

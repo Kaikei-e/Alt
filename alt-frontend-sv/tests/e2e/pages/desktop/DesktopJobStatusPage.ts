@@ -18,6 +18,7 @@ export class DesktopJobStatusPage extends BasePage {
 	readonly jobList: Locator;
 
 	readonly startJobButton: Locator;
+	readonly generateTopicCardsButton: Locator;
 	readonly refreshButton: Locator;
 	readonly autoRefreshButton: Locator;
 
@@ -45,6 +46,9 @@ export class DesktopJobStatusPage extends BasePage {
 		this.jobList = page.locator('[data-role="recent-jobs"]');
 
 		this.startJobButton = page.locator('[data-role="start-job"]');
+		this.generateTopicCardsButton = page.locator(
+			'[data-role="generate-topic-cards"]',
+		);
 		this.refreshButton = page.locator('[data-role="refresh"]');
 		this.autoRefreshButton = page.locator('[data-role="auto-refresh"]');
 
@@ -87,5 +91,9 @@ export class DesktopJobStatusPage extends BasePage {
 		if (active === "true") {
 			await this.autoRefreshButton.click();
 		}
+	}
+
+	async clickGenerateTopicCards(): Promise<void> {
+		await this.generateTopicCardsButton.click();
 	}
 }

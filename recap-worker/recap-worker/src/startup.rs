@@ -78,6 +78,26 @@ where
     StartupGuard { finished }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardsTriggerPosture {
+    Enabled(uuid::Uuid),
+    Disabled,
+}
+
+/// Emit the startup log line for the cards manual trigger.
+///
+/// Logged next to the `cards_job_enabled/disabled` line so operators can
+/// determine whether manual card generation can be triggered over HTTP.
+pub fn log_cards_trigger_status(user_id: Option<uuid::Uuid>) -> CardsTriggerPosture {
+    if let Some(user_id) = user_id {
+        tracing::info!(%user_id, "cards_trigger_enabled");
+        CardsTriggerPosture::Enabled(user_id)
+    } else {
+        tracing::info!("cards_trigger_disabled");
+        CardsTriggerPosture::Disabled
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::watch_startup;
@@ -87,6 +107,19 @@ mod tests {
 
     const DEADLINE: Duration = Duration::from_millis(50);
     const SETTLE: Duration = Duration::from_millis(600);
+
+    #[test]
+    fn test_log_cards_trigger_status() {
+        let user_id = uuid::Uuid::new_v4();
+        assert_eq!(
+            super::log_cards_trigger_status(Some(user_id)),
+            super::CardsTriggerPosture::Enabled(user_id)
+        );
+        assert_eq!(
+            super::log_cards_trigger_status(None),
+            super::CardsTriggerPosture::Disabled
+        );
+    }
 
     #[test]
     fn fires_when_startup_never_completes() {

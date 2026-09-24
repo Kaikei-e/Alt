@@ -1989,6 +1989,22 @@ fn filter_valid_citations(card: &mut CardContent, item_count: usize) {
     }
 }
 
+#[async_trait::async_trait]
+impl super::ports::CardsJobRunner for CardsPipeline {
+    async fn run_cards(
+        &self,
+        job_id: Uuid,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        let params = CardsParams::default();
+        self.run(job_id, from, to, &params)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

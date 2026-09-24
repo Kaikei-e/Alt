@@ -64,3 +64,9 @@ pub trait CardGenerator: Send + Sync {
 pub trait CardVerifier: Send + Sync {
     async fn verify_card(&self, req: &VerifyCardRequest) -> Result<VerifyCardResponse>;
 }
+
+/// Trait abstracting cards pipeline execution for scheduled batch jobs and manual triggers.
+#[async_trait::async_trait]
+pub trait CardsJobRunner: Send + Sync {
+    async fn run_cards(&self, job_id: Uuid, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<()>;
+}
