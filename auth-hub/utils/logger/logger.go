@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/trace"
@@ -70,15 +71,15 @@ func (h *OTelHandler) Enabled(_ context.Context, level slog.Level) bool {
 func (h *OTelHandler) Handle(ctx context.Context, r slog.Record) error {
 	rec := log.Record{}
 	rec.SetTimestamp(r.Time)
-	rec.SetBody(log.StringValue(r.Message))
+	rec.SetBody(attribute.StringValue(r.Message))
 	rec.SetSeverity(slogLevelToOTel(r.Level))
 	rec.SetSeverityText(r.Level.String())
 
 	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
 		sc := span.SpanContext()
 		rec.AddAttributes(
-			log.String("trace_id", sc.TraceID().String()),
-			log.String("span_id", sc.SpanID().String()),
+			attribute.String("trace_id", sc.TraceID().String()),
+			attribute.String("span_id", sc.SpanID().String()),
 		)
 	}
 
@@ -125,7 +126,7 @@ func slogLevelToOTel(level slog.Level) log.Severity {
 	}
 }
 
-func slogAttrToOTel(groups []string, a slog.Attr) log.KeyValue {
+func slogAttrToOTel(groups []string, a slog.Attr) attribute.KeyValue {
 	key := a.Key
 	for _, g := range groups {
 		key = g + "." + key
@@ -133,15 +134,15 @@ func slogAttrToOTel(groups []string, a slog.Attr) log.KeyValue {
 
 	switch a.Value.Kind() {
 	case slog.KindString:
-		return log.String(key, a.Value.String())
+		return attribute.String(key, a.Value.String())
 	case slog.KindInt64:
-		return log.Int64(key, a.Value.Int64())
+		return attribute.Int64(key, a.Value.Int64())
 	case slog.KindFloat64:
-		return log.Float64(key, a.Value.Float64())
+		return attribute.Float64(key, a.Value.Float64())
 	case slog.KindBool:
-		return log.Bool(key, a.Value.Bool())
+		return attribute.Bool(key, a.Value.Bool())
 	default:
-		return log.String(key, a.Value.String())
+		return attribute.String(key, a.Value.String())
 	}
 }
 
