@@ -107,6 +107,10 @@ impl JobDao for UnifiedDao {
         crate::store::dao::job::RecapDao::mark_abandoned_jobs(&self.pool, keep_job_id).await
     }
 
+    async fn find_running_cards_job(&self) -> Result<Option<Uuid>> {
+        crate::store::dao::job::RecapDao::find_running_cards_job(&self.pool).await
+    }
+
     async fn update_job_status(
         &self,
         job_id: Uuid,

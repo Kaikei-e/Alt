@@ -252,32 +252,7 @@ fn duration_until(next: chrono::DateTime<Utc>, now: chrono::DateTime<Utc>) -> Du
     }
 }
 
-/// Trait abstracting cards pipeline execution for scheduled batch jobs.
-#[async_trait::async_trait]
-pub trait CardsJobRunner: Send + Sync {
-    async fn run_cards(
-        &self,
-        job_id: Uuid,
-        from: chrono::DateTime<Utc>,
-        to: chrono::DateTime<Utc>,
-    ) -> anyhow::Result<()>;
-}
-
-#[async_trait::async_trait]
-impl CardsJobRunner for crate::pipeline::cards::CardsPipeline {
-    async fn run_cards(
-        &self,
-        job_id: Uuid,
-        from: chrono::DateTime<Utc>,
-        to: chrono::DateTime<Utc>,
-    ) -> anyhow::Result<()> {
-        let params = crate::pipeline::cards::CardsParams::default();
-        self.run(job_id, from, to, &params)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        Ok(())
-    }
-}
+pub use crate::pipeline::cards::CardsJobRunner;
 
 pub fn spawn_cards_batch_daemon(
     runner: std::sync::Arc<dyn CardsJobRunner>,

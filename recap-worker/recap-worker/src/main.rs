@@ -177,11 +177,12 @@ fn maybe_spawn_batch_daemons(
     }
 }
 
-async fn maybe_spawn_cards_batch_daemon(
+fn maybe_spawn_cards_batch_daemon(
     config: &recap_worker::config::Config,
-    pool: &sqlx::PgPool,
+    registry: &ComponentRegistry,
     shutdown_token: CancellationToken,
-) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
+) -> Option<tokio::task::JoinHandle<()>> {
+    recap_worker::startup::log_cards_trigger_status(config.cards_user_id());
     match config.cards_job() {
         recap_worker::config::CardsJobConfig::Enabled {
             utc_hour,
@@ -189,25 +190,16 @@ async fn maybe_spawn_cards_batch_daemon(
             user_id,
         } => {
             info!(utc_hour, utc_minute, %user_id, "cards_job_enabled");
-            let default_params = recap_worker::pipeline::cards::CardsParams::default();
-            let pipeline =
-                recap_worker::eval::build_production_cards_pipeline(pool, config, &default_params)
-                    .await
-                    .context("failed to build cards pipeline for daemon")?
-                    .with_user_id(*user_id);
-
-            Ok(Some(
-                recap_worker::scheduler::daemon::spawn_cards_batch_daemon(
-                    std::sync::Arc::new(pipeline),
-                    *utc_hour,
-                    *utc_minute,
-                    shutdown_token,
-                ),
+            Some(recap_worker::scheduler::daemon::spawn_cards_batch_daemon(
+                registry.cards_runner(),
+                *utc_hour,
+                *utc_minute,
+                shutdown_token,
             ))
         }
         recap_worker::config::CardsJobConfig::Disabled => {
             info!("cards_job_disabled");
-            Ok(None)
+            None
         }
     }
 }
@@ -290,9 +282,11 @@ async fn main() -> anyhow::Result<()> {
     let pki = registry.pki_handle();
     let pool = registry.pool().clone();
 
-    let _cards_daemon =
-        maybe_spawn_cards_batch_daemon(registry.config().as_ref(), &pool, shutdown_token.clone())
-            .await?;
+    let _cards_daemon = maybe_spawn_cards_batch_daemon(
+        registry.config().as_ref(),
+        &registry,
+        shutdown_token.clone(),
+    );
 
     let router = build_router(registry);
 

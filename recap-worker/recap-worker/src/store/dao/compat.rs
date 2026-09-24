@@ -85,6 +85,8 @@ pub trait RecapDao: Send + Sync {
 
     async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64>;
 
+    async fn find_running_cards_job(&self) -> Result<Option<Uuid>>;
+
     async fn update_job_status(
         &self,
         job_id: Uuid,
@@ -432,6 +434,10 @@ where
 
     async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64> {
         JobDao::mark_abandoned_jobs(self, keep_job_id).await
+    }
+
+    async fn find_running_cards_job(&self) -> Result<Option<Uuid>> {
+        JobDao::find_running_cards_job(self).await
     }
 
     async fn update_job_status(

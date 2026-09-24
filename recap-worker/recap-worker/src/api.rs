@@ -43,6 +43,10 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/v1/generate/recaps/7days", post(generate::trigger_7days))
         .route("/v1/recaps/7days", get(fetch::get_7days_recap))
         .route("/v1/generate/recaps/3days", post(generate::trigger_3days))
+        .route(
+            "/v1/generate/recaps/3days/cards",
+            post(generate::trigger_3days_cards),
+        )
         .route("/v1/recaps/3days", get(fetch::get_3days_recap))
         .route("/v1/recaps/3days/cards", get(cards::get_3days_cards))
         .route("/v1/recaps/search", get(fetch::search_recaps))
@@ -111,7 +115,9 @@ mod tests {
     // concurrent test's env mutation must not leak in.
     #[allow(clippy::await_holding_lock)]
     async fn admin_routes_require_bearer_while_health_and_metrics_do_not() {
-        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let token_path = temp_dir.path().join("admin_token");
         std::fs::write(&token_path, "test-router-admin-token-1234567890\n").expect("write token");

@@ -412,3 +412,39 @@ impl CardVerifier for FakeCardVerifier {
         })
     }
 }
+
+pub type CardRunInvocation = (Uuid, DateTime<Utc>, DateTime<Utc>);
+
+#[derive(Clone, Default)]
+pub struct FakeCardsJobRunner {
+    pub runs: Arc<Mutex<Vec<CardRunInvocation>>>,
+    pub should_fail: Arc<Mutex<bool>>,
+}
+
+impl FakeCardsJobRunner {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_failure() -> Self {
+        Self {
+            runs: Arc::new(Mutex::new(Vec::new())),
+            should_fail: Arc::new(Mutex::new(true)),
+        }
+    }
+
+    pub fn invocations(&self) -> Vec<CardRunInvocation> {
+        self.runs.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl super::ports::CardsJobRunner for FakeCardsJobRunner {
+    async fn run_cards(&self, job_id: Uuid, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<()> {
+        self.runs.lock().unwrap().push((job_id, from, to));
+        if *self.should_fail.lock().unwrap() {
+            anyhow::bail!("fake runner failure");
+        }
+        Ok(())
+    }
+}

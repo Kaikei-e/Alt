@@ -195,6 +195,23 @@ impl RecapDao {
         }
     }
 
+    /// Check if a cards job (`trigger_source = 'cards'` and `status = 'running'`) is currently running.
+    pub async fn find_running_cards_job(pool: &PgPool) -> Result<Option<Uuid>> {
+        let row = sqlx::query(
+            r"
+            SELECT job_id
+            FROM recap_jobs
+            WHERE status = 'running' AND trigger_source = 'cards'
+            LIMIT 1
+            ",
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to query running cards job: {e}")))?;
+
+        Ok(row.map(|r| r.get("job_id")))
+    }
+
     /// ジョブのステータスと最終ステージを更新する。
     ///
     /// # Warning
