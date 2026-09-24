@@ -192,6 +192,7 @@ fn maybe_spawn_cards_batch_daemon(
             info!(utc_hour, utc_minute, %user_id, "cards_job_enabled");
             Some(recap_worker::scheduler::daemon::spawn_cards_batch_daemon(
                 registry.cards_runner(),
+                registry.cards_run_in_flight(),
                 *utc_hour,
                 *utc_minute,
                 shutdown_token,

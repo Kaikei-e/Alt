@@ -413,12 +413,16 @@ impl CardVerifier for FakeCardVerifier {
     }
 }
 
-pub type CardRunInvocation = (Uuid, DateTime<Utc>, DateTime<Utc>);
+pub type CardRunInvocation = (Uuid, DateTime<Utc>, DateTime<Utc>, &'static str);
 
 #[derive(Clone, Default)]
 pub struct FakeCardsJobRunner {
     pub runs: Arc<Mutex<Vec<CardRunInvocation>>>,
     pub should_fail: Arc<Mutex<bool>>,
+    pub notify_on_start: Arc<tokio::sync::Notify>,
+    pub notify_on_finish: Arc<tokio::sync::Notify>,
+    pub pause_signal: Arc<tokio::sync::Notify>,
+    pub hold: Arc<Mutex<bool>>,
 }
 
 impl FakeCardsJobRunner {
@@ -430,7 +434,19 @@ impl FakeCardsJobRunner {
         Self {
             runs: Arc::new(Mutex::new(Vec::new())),
             should_fail: Arc::new(Mutex::new(true)),
+            notify_on_start: Arc::new(tokio::sync::Notify::new()),
+            notify_on_finish: Arc::new(tokio::sync::Notify::new()),
+            pause_signal: Arc::new(tokio::sync::Notify::new()),
+            hold: Arc::new(Mutex::new(false)),
         }
+    }
+
+    pub fn set_hold(&self, hold: bool) {
+        *self.hold.lock().unwrap() = hold;
+    }
+
+    pub fn release(&self) {
+        self.pause_signal.notify_waiters();
     }
 
     pub fn invocations(&self) -> Vec<CardRunInvocation> {
@@ -441,10 +457,20 @@ impl FakeCardsJobRunner {
 #[async_trait::async_trait]
 impl super::ports::CardsJobRunner for FakeCardsJobRunner {
     async fn run_cards(&self, job_id: Uuid, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<()> {
-        self.runs.lock().unwrap().push((job_id, from, to));
-        if *self.should_fail.lock().unwrap() {
-            anyhow::bail!("fake runner failure");
+        self.runs.lock().unwrap().push((job_id, from, to, "cards"));
+        self.notify_on_start.notify_waiters();
+
+        if *self.hold.lock().unwrap() {
+            self.pause_signal.notified().await;
         }
-        Ok(())
+
+        let res = if *self.should_fail.lock().unwrap() {
+            anyhow::bail!("fake runner failure");
+        } else {
+            Ok(())
+        };
+
+        self.notify_on_finish.notify_waiters();
+        res
     }
 }

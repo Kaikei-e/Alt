@@ -256,6 +256,7 @@ pub use crate::pipeline::cards::CardsJobRunner;
 
 pub fn spawn_cards_batch_daemon(
     runner: std::sync::Arc<dyn CardsJobRunner>,
+    in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
     hour: u32,
     minute: u32,
     shutdown: CancellationToken,
@@ -263,11 +264,12 @@ pub fn spawn_cards_batch_daemon(
     let tz = FixedOffset::east_opt(0).expect("valid UTC offset");
     let cadence =
         DailyCadence::new(tz, hour, minute).unwrap_or_else(|e| panic!("cards batch cadence: {e}"));
-    CardsBatchDaemon::new(runner, cadence, shutdown).spawn()
+    CardsBatchDaemon::new(runner, in_flight, cadence, shutdown).spawn()
 }
 
 struct CardsBatchDaemon {
     runner: std::sync::Arc<dyn CardsJobRunner>,
+    in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
     cadence: DailyCadence,
     shutdown: CancellationToken,
 }
@@ -275,11 +277,13 @@ struct CardsBatchDaemon {
 impl CardsBatchDaemon {
     fn new(
         runner: std::sync::Arc<dyn CardsJobRunner>,
+        in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
         cadence: DailyCadence,
         shutdown: CancellationToken,
     ) -> Self {
         Self {
             runner,
+            in_flight,
             cadence,
             shutdown,
         }
@@ -291,11 +295,40 @@ impl CardsBatchDaemon {
         })
     }
 
-    pub(crate) async fn run_once(runner: &dyn CardsJobRunner) -> anyhow::Result<Uuid> {
+    pub(crate) async fn run_once(
+        runner: &dyn CardsJobRunner,
+        in_flight: &std::sync::Mutex<Option<Uuid>>,
+    ) -> anyhow::Result<Option<Uuid>> {
+        let job_id = Uuid::new_v4();
+
+        {
+            let mut lock = in_flight
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(running_id) = *lock {
+                warn!(
+                    running_job_id = %running_id,
+                    "scheduled cards batch skipped: another cards run is in flight"
+                );
+                return Ok(None);
+            }
+            *lock = Some(job_id);
+        }
+
+        struct InFlightGuard<'a>(&'a std::sync::Mutex<Option<Uuid>>);
+        impl Drop for InFlightGuard<'_> {
+            fn drop(&mut self) {
+                *self
+                    .0
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            }
+        }
+        let _guard = InFlightGuard(in_flight);
+
         let kick_time = Utc::now();
         let to = kick_time;
         let from = to - chrono::Duration::days(3);
-        let job_id = Uuid::new_v4();
 
         info!(
             %job_id,
@@ -305,7 +338,7 @@ impl CardsBatchDaemon {
         );
 
         runner.run_cards(job_id, from, to).await?;
-        Ok(job_id)
+        Ok(Some(job_id))
     }
 
     async fn run(self) {
@@ -332,8 +365,9 @@ impl CardsBatchDaemon {
                 }
             }
 
-            match Self::run_once(state.runner.as_ref()).await {
-                Ok(job_id) => info!(%job_id, "automatic cards batch completed"),
+            match Self::run_once(state.runner.as_ref(), &state.in_flight).await {
+                Ok(Some(job_id)) => info!(%job_id, "automatic cards batch completed"),
+                Ok(None) => {}
                 Err(err) => error!(error = %err, "automatic cards batch failed"),
             }
         }
@@ -400,19 +434,22 @@ mod tests {
     #[tokio::test]
     async fn test_spawn_cards_batch_daemon_shuts_down() {
         let runner = std::sync::Arc::new(RecordingCardsRunner::default());
+        let in_flight = std::sync::Arc::new(std::sync::Mutex::new(None));
         let shutdown = CancellationToken::new();
         shutdown.cancel();
-        let handle = spawn_cards_batch_daemon(runner, 17, 30, shutdown);
+        let handle = spawn_cards_batch_daemon(runner, in_flight, 17, 30, shutdown);
         handle.await.expect("task completes on cancellation");
     }
 
     #[tokio::test]
     async fn test_cards_batch_daemon_window_is_three_days() {
         let runner = RecordingCardsRunner::default();
+        let in_flight = std::sync::Mutex::new(None);
         let before_kick = Utc::now();
-        let job_id = CardsBatchDaemon::run_once(&runner)
+        let job_id = CardsBatchDaemon::run_once(&runner, &in_flight)
             .await
-            .expect("run_once succeeds");
+            .expect("run_once succeeds")
+            .expect("run executed");
         let after_kick = Utc::now();
 
         let runs = runner.runs.lock().unwrap();
@@ -430,6 +467,21 @@ mod tests {
             chrono::Duration::days(3),
             "from must be exactly to - 3 days"
         );
+    }
+
+    #[tokio::test]
+    async fn test_cards_batch_daemon_skips_when_in_flight() {
+        let runner = RecordingCardsRunner::default();
+        let existing_job_id = Uuid::new_v4();
+        let in_flight = std::sync::Mutex::new(Some(existing_job_id));
+
+        let res = CardsBatchDaemon::run_once(&runner, &in_flight)
+            .await
+            .expect("run_once succeeds");
+        assert_eq!(res, None, "must return None and skip when in-flight");
+
+        let runs = runner.runs.lock().unwrap();
+        assert!(runs.is_empty(), "runner must not be invoked when in-flight");
     }
 
     #[test]

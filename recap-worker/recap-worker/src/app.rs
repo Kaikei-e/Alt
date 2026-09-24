@@ -39,6 +39,8 @@ pub struct ComponentRegistry {
     /// `None` when `PKI_ENROLLMENT=disabled` (sidecar still owns cert files).
     pki: Option<crate::pki::Handle>,
     cards_runner: Option<Arc<dyn crate::pipeline::cards::CardsJobRunner>>,
+    // recap-worker runs as a single instance, so an in-process guard is sufficient to prevent overlapping runs.
+    cards_run_in_flight: Arc<std::sync::Mutex<Option<uuid::Uuid>>>,
 }
 
 impl AppState {
@@ -78,6 +80,10 @@ impl AppState {
 
     pub(crate) fn cards_runner(&self) -> Arc<dyn crate::pipeline::cards::CardsJobRunner> {
         self.registry.cards_runner()
+    }
+
+    pub(crate) fn cards_run_in_flight(&self) -> Arc<std::sync::Mutex<Option<uuid::Uuid>>> {
+        self.registry.cards_run_in_flight()
     }
 }
 
@@ -183,6 +189,7 @@ impl ComponentRegistry {
         )?;
 
         let cards_runner = build_cards_runner(&config, &recap_pool).await?;
+        let cards_run_in_flight = Arc::new(std::sync::Mutex::new(None));
 
         Ok(Self {
             config,
@@ -195,6 +202,7 @@ impl ComponentRegistry {
             notification_relay,
             pki,
             cards_runner,
+            cards_run_in_flight,
         })
     }
 
@@ -247,6 +255,11 @@ impl ComponentRegistry {
                 .as_ref()
                 .expect("cards_runner unwired in ComponentRegistry"),
         )
+    }
+
+    #[must_use]
+    pub fn cards_run_in_flight(&self) -> Arc<std::sync::Mutex<Option<uuid::Uuid>>> {
+        Arc::clone(&self.cards_run_in_flight)
     }
 
     #[cfg(test)]

@@ -161,7 +161,6 @@ impl MockRecapDao {
     }
 
     /// テスト用に `find_running_cards_job` の応答をセットする。
-    #[allow(dead_code)]
     pub(crate) fn set_running_cards_job(&self, job_id: Option<Uuid>) {
         *self
             .running_cards_job
@@ -772,5 +771,19 @@ impl RecapDao for MockRecapDao {
         _target_date: chrono::NaiveDate,
     ) -> Result<i64> {
         Ok(1) // Return mock generation ID
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_mock_recap_dao_running_cards_job() {
+        let dao = MockRecapDao::new();
+        assert_eq!(dao.find_running_cards_job().await.unwrap(), None);
+        let job_id = Uuid::new_v4();
+        dao.set_running_cards_job(Some(job_id));
+        assert_eq!(dao.find_running_cards_job().await.unwrap(), Some(job_id));
     }
 }
