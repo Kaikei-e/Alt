@@ -15,39 +15,44 @@ The **7-Day Recap Pipeline** is a distributed system that collects and analyzes 
 
 ### High-Level Architecture
 
-The system consists mainly of three microservices and a database cluster.
+The system consists mainly of three microservices (`recap-worker`, `recap-subworker`, `news-creator`) and the `recap-db` database cluster.
 
 ```mermaid
 flowchart TD
     subgraph DataSources ["Data Sources"]
-        AltBackend["AltBackend API"]
-        TagGen["Tag Generator"]
+        DataHub["alt-data-hub"]
     end
 
     subgraph Orchestrator ["Orchestrator (Rust)"]
         RecapWorker["recap-worker"]
-        Scheduler["Job Scheduler"]
+        Scheduler["Scheduler (02:00 JST)"]
+        ManualTrigger["Manual Trigger (POST /v1/generate/recaps/7days)"]
     end
 
     subgraph ComputeAI ["Compute & AI"]
         Subworker["recap-subworker (Python/ML)"]
         NewsCreator["news-creator (Python/LLM)"]
+        TagGen["tag-generator"]
     end
 
     subgraph Storage ["Storage"]
-        DB[("PostgreSQL")]
+        DB[("recap-db (PostgreSQL)")]
     end
 
-    Scheduler -->|Trigger| RecapWorker
-    RecapWorker -->|Fetch Articles| AltBackend
-    RecapWorker -->|Fetch Tags| TagGen
-    RecapWorker -->|1. Preprocess & Hash Dedup| RecapWorker
-    RecapWorker -->|2. Clustering Request| Subworker
-    Subworker -->|3. Cluster & Semantic Dedup| Subworker
-    Subworker -->|4. Cluster Evidence| DB
-    RecapWorker -->|5. Generate Summary Request| NewsCreator
-    NewsCreator -->|6. Summary Result| RecapWorker
-    RecapWorker -->|7. Persist| DB
+    KnowledgeSovereign["knowledge-sovereign"]
+
+    Scheduler -->|"Trigger (3-day run)"| RecapWorker
+    ManualTrigger -->|"Trigger (7-day run)"| RecapWorker
+    RecapWorker -->|"Fetch Articles & Tags"| DataHub
+    RecapWorker -->|"1. Preprocess & Hash Dedup"| RecapWorker
+    RecapWorker -->|"2. Clustering Request"| Subworker
+    Subworker -->|"3. Cluster & Semantic Dedup"| Subworker
+    Subworker -->|"4. Cluster Evidence"| DB
+    RecapWorker -->|"5. Generate Summary Request"| NewsCreator
+    NewsCreator -->|"6. Summary Result"| RecapWorker
+    RecapWorker -->|"Extract summary tags"| TagGen
+    RecapWorker -->|"7. Persist"| DB
+    RecapWorker -->|"Topic snapshot event"| KnowledgeSovereign
 ```
 
 ---

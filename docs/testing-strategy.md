@@ -10,7 +10,7 @@
                ┌┴───────────┴┐
                │  Component   │  Vitest + Browser (Svelte)
               ┌┴─────────────┴┐
-              │    Unit        │  Vitest (TS) / go test (Go) / uv run pytest (Py)
+              │    Unit        │  Vitest (TS) / go test (Go) / uv run pytest (Py) / cargo test (Rust)
               └───────────────┘
 ```
 
@@ -36,7 +36,7 @@ block-beta
     columns 3
     b1["対象: ランタイム契約"]
     b2["検知: レスポンス形式・ステータス"]
-    b3["CI: pact-cdc-go / python"]
+    b3["CI: pact-cdc-go / pact-cdc-rust / pact-cdc-python-consumer<br/>pact-verify-go / pact-verify-python / pact-publish-and-verify"]
   end
 ```
 
@@ -54,16 +54,25 @@ graph LR
 
   subgraph Backend
     AB["alt-backend"]
+    AHARV["alt-harvester"]
+    DH["alt-data-hub"]
+  end
+
+  subgraph Sovereign
+    KS["knowledge-sovereign"]
   end
 
   subgraph Workers
     PP["pre-processor"]
     RO["rag-orchestrator"]
     RW["recap-worker"]
+    RS["recap-subworker"]
+    RE["recap-evaluator"]
   end
 
   subgraph AI
     NC["news-creator"]
+    AO["acolyte-orchestrator"]
   end
 
   subgraph Queue
@@ -72,44 +81,70 @@ graph LR
     TG["tag-generator"]
   end
 
-  subgraph Auth
-    AH["auth-hub"]
-    KR["kratos"]
+  subgraph CLI
+    CTL["altctl"]
   end
 
   FE_SV -->|"Connect-RPC (JSON)<br/>Proto Conformance"| BF
   BF -->|"Connect-RPC (h2c)<br/>✅ Pact CDC"| AB
-  AH -->|"HTTP/REST<br/>✅ Pact CDC"| KR
-  AB -->|"Connect-RPC (Proto)<br/>✅ Buf + Pact"| PP
+
+  AB -->|"Connect-RPC<br/>✅ Buf + Pact"| PP
+  AB -->|"Connect-RPC<br/>✅ Pact CDC"| SI
+  AB -->|"HTTP/REST<br/>✅ Pact CDC"| RW
+  AB -->|"HTTP/REST<br/>✅ Pact CDC"| RO
+  AB -->|"Connect-RPC<br/>✅ Pact CDC"| DH
+  AHARV -->|"Connect-RPC<br/>✅ Pact CDC"| DH
+  AB -->|"Connect-RPC<br/>✅ Pact CDC"| KS
+
   PP -->|"HTTP/REST<br/>✅ Pact CDC"| NC
-  RO -->|"HTTP/REST /api/chat<br/>✅ Pact CDC"| NC
-  RW -->|"HTTP/REST<br/>✅ Pact CDC"| NC
-  RW -->|"HTTP/REST<br/>✅ Pact CDC"| RS["recap-subworker"]
-  RW -->|"HTTP/REST<br/>✅ Pact CDC"| AB
-  RW -->|"HTTP/REST<br/>✅ Pact CDC"| TG
-  SI -->|"Connect-RPC<br/>✅ Pact CDC"| AB
-  SI -->|"HTTP/REST<br/>✅ Pact CDC"| RW
-  RE["recap-evaluator"] -->|"HTTP/REST<br/>✅ Pact CDC"| RW
+  PP -->|"Connect-RPC<br/>✅ Pact CDC<br/>(pact provider name: alt-backend [legacy])"| DH
   PP -.->|"Redis Streams<br/>✅ Pact Message"| MQ
-  MQ -.->|"Redis Streams<br/>✅ Pact Message"| SI
-  MQ -.->|"Redis Streams<br/>✅ Pact Message"| TG
+
+  RO -->|"HTTP/REST<br/>✅ Pact CDC"| NC
+  RO -->|"HTTP/REST<br/>✅ Pact CDC"| SI
+  RO -->|"HTTP/REST<br/>✅ Pact CDC"| RW
+  RO -->|"Connect-RPC<br/>✅ Pact CDC"| DH
+  RO -->|"Connect-RPC<br/>✅ Pact CDC"| KS
+
+  RW -->|"HTTP/REST<br/>✅ Pact CDC"| NC
+  RW -->|"HTTP/REST<br/>✅ Pact CDC"| RS
+  RW -->|"HTTP/REST<br/>✅ Pact CDC"| TG
+  RW -->|"Connect-RPC<br/>✅ Pact CDC<br/>(pacts: recap-worker-alt-data-hub &<br/>recap-worker-alt-backend [legacy])"| DH
+  RW -->|"Connect-RPC<br/>✅ Pact CDC"| KS
+
+  SI -->|"Connect-RPC<br/>✅ Pact CDC<br/>(pact provider name: alt-backend [legacy])"| DH
+  SI -->|"HTTP/REST<br/>✅ Pact CDC"| RW
+  SI -.->|"Redis Streams<br/>✅ Pact Message"| MQ
+
+  TG -.->|"Redis Streams<br/>✅ Pact Message"| MQ
+  TG -->|"Connect-RPC<br/>✅ Pact CDC<br/>(pact provider name: alt-backend [legacy])"| DH
+
+  RE -->|"HTTP/REST<br/>✅ Pact CDC"| RW
+
+  AO -->|"HTTP/REST<br/>✅ Pact CDC"| NC
+  AO -->|"HTTP/REST<br/>✅ Pact CDC"| SI
+
+  CTL -->|"HTTP/REST<br/>✅ Pact CDC"| KS
 
   style AB fill:#c8e6c9
+  style AHARV fill:#c8e6c9
+  style DH fill:#c8e6c9
+  style KS fill:#c8e6c9
   style PP fill:#c8e6c9
   style RO fill:#c8e6c9
-  style NC fill:#c8e6c9
   style RW fill:#c8e6c9
+  style RS fill:#c8e6c9
+  style RE fill:#c8e6c9
+  style NC fill:#c8e6c9
+  style AO fill:#c8e6c9
   style MQ fill:#c8e6c9
   style SI fill:#c8e6c9
   style TG fill:#c8e6c9
-  style RS fill:#c8e6c9
-  style RE fill:#c8e6c9
   style BF fill:#c8e6c9
-  style AH fill:#c8e6c9
-  style TS fill:#c8e6c9
+  style CTL fill:#c8e6c9
 ```
 
-**凡例:** ✅ Pact CDC 導入済み / 緑: テスト済み
+**凡例:** 矢印: Consumer → Provider（Message Pact はストリーム購読側 → mq-hub）/ ✅ Pact CDC 導入済み / 緑: テスト済み
 
 ### Layer 1: Buf スキーマ検証
 
@@ -255,27 +290,59 @@ cd alt-frontend-sv && bun test src/test/contracts/
 
 ```mermaid
 graph TD
-  trigger["push / PR to main<br/>(proto/ or */contract/ 変更)"]
-  trigger --> buf["buf-lint-breaking<br/>Buf lint + breaking"]
+  trigger["push / PR to main (対象 24 パス変更)<br/>/ workflow_dispatch (手動実行)"]
+  trigger --> buf["buf-lint-breaking<br/>Buf lint + breaking<br/>+ protovis allowlists"]
   trigger --> fe["contract-conformance<br/>FE Proto Conformance<br/>(bun test)"]
-  trigger --> go1["pact-cdc-go<br/>alt-backend, pre-processor,<br/>rag-orchestrator, search-indexer,<br/>mq-hub (matrix)"]
-  trigger --> rust["pact-cdc-rust<br/>recap-worker<br/>(4 providers)"]
-  trigger --> pyc["pact-cdc-python-consumer<br/>recap-evaluator"]
-  go1 --> py["pact-cdc-python<br/>news-creator + recap-subworker<br/>+ tag-generator Provider 検証"]
+  trigger --> go_c["pact-cdc-go<br/>Consumer Tests (Go matrix):<br/>alt-backend/app, pre-processor/app,<br/>rag-orchestrator, search-indexer/app,<br/>mq-hub/app, alt-butterfly-facade, altctl"]
+  trigger --> rust_c["pact-cdc-rust<br/>Consumer Tests (Rust):<br/>recap-worker"]
+  trigger --> py_c["pact-cdc-python-consumer<br/>Consumer Tests (Python):<br/>recap-evaluator,<br/>acolyte-orchestrator"]
+
+  go_c --> go_v["pact-verify-go<br/>Provider Verify (Go):<br/>alt-backend, knowledge-sovereign,<br/>search-indexer, mq-hub"]
+  rust_c --> go_v
+  py_c --> go_v
+
+  go_c --> py_v["pact-verify-python<br/>Provider Verify (Python matrix):<br/>news-creator/app, recap-subworker,<br/>tag-generator/app"]
+  rust_c --> py_v
+  py_c --> py_v
+
+  go_v --> agg["pact-publish-and-verify<br/>Aggregator (required check)"]
+  py_v --> agg
 
   style buf fill:#e3f2fd
   style fe fill:#e3f2fd
-  style go1 fill:#c8e6c9
-  style rust fill:#ffccbc
-  style pyc fill:#fff9c4
-  style py fill:#fff9c4
+  style go_c fill:#c8e6c9
+  style rust_c fill:#ffccbc
+  style py_c fill:#fff9c4
+  style go_v fill:#c8e6c9
+  style py_v fill:#fff9c4
+  style agg fill:#ede7f6
 ```
 
 **トリガー条件:** push/PR to main で以下のパスが変更された場合:
 - `.github/workflows/proto-contract.yaml`
 - `proto/**`
-- `*/contract/**` (全 CDC テストディレクトリ)
+- `alt-frontend-sv/src/lib/gen/**`
+- `alt-butterfly-facade/internal/server/allowlist_gen.go`
 - `alt-frontend-sv/src/test/contracts/**`
+- `alt-backend/app/orchestrator/driver/preprocessor_connect/contract/**`
+- `alt-backend/app/dataplane/driver/contract/**`
+- `alt-backend/app/shared/gateway/datahub_gateway/contract/**`
+- `alt-backend/app/shared/driver/sovereign_client/contract/**`
+- `pre-processor/app/driver/contract/**`
+- `rag-orchestrator/internal/adapter/contract/**`
+- `search-indexer/app/driver/contract/**`
+- `mq-hub/app/driver/contract/**`
+- `knowledge-sovereign/app/driver/contract/**`
+- `news-creator/app/tests/contract/**`
+- `recap-subworker/tests/contract/**`
+- `tag-generator/app/tests/contract/**`
+- `recap-evaluator/tests/contract/**`
+- `recap-worker/recap-worker/src/clients/*contract*`
+- `recap-worker/recap-worker/src/clients/**/contract.rs`
+- `alt-butterfly-facade/internal/handler/contract/**`
+- `acolyte-orchestrator/tests/contract/**`
+- `scripts/pact-check.sh`
+- `scripts/tests/**`
 
 **FFI ライブラリのインストール:** `$HOME/.pact/lib/` にダウンロードし、`LD_LIBRARY_PATH` + `CGO_LDFLAGS` で参照。sudo 不要。
 
@@ -289,34 +356,30 @@ graph TD
 
 ```mermaid
 flowchart TD
-  start(["変更開始"]) --> check{"サービス境界を<br/>跨ぐ変更?"}
-  check -->|No| red
+  start(["変更開始"]) --> scope{"変更スコープの判定"}
+  scope -->|"内部リファクタ<br/>(UI・境界変更なし)"| p2["Phase 2: RED<br/>Unit failing test (stub)"]
+  scope -->|"ユーザ旅程 /<br/>サービス間フロー"| p0["Phase 0: E2E first<br/>Playwright (Browser / API)"]
 
-  check -->|Yes| p0["Phase 0: CONTRACT CHECK"]
-  p0 --> proto{"Proto 変更?"}
-  proto -->|Yes| buf["buf lint + buf breaking"]
-  proto -->|No| api{"HTTP API 変更?"}
-  api -->|Yes| pact_c["Pact Consumer テスト先行"]
-  api -->|No| llm{"LLM options 変更?"}
-  llm -->|Yes| options["options 一致検証"]
-  buf --> red
-  pact_c --> red
-  options --> red
-  llm -->|No| red
+  p0 --> bound{"サービス境界を<br/>跨ぐ変更?"}
+  bound -->|No| p2
+  bound -->|Yes| p1["Phase 1: CDC contract check<br/>（非排他チェックリスト・該当全項目を実施）<br/>• Proto: buf lint + buf breaking<br/>• Pact: Consumer 先行 → Provider 検証<br/>• LLM: options / 必須ヘッダー / mTLS 整合性確認"]
 
-  red["Phase 1: RED<br/>failing test"]
-  red --> green["Phase 2: GREEN<br/>minimal implementation"]
-  green --> refactor["Phase 3: REFACTOR"]
-  refactor --> regression{"Phase 0 で<br/>境界変更あり?"}
-  regression -->|Yes| cdc_check["Contract Regression Check<br/>CDC テスト再実行"]
-  regression -->|No| done(["完了"])
-  cdc_check --> done
+  p1 -->|"通常フロー"| p2
+  p1 -.->|"Provider 要件厳格化時<br/>(新必須ヘッダー / 認証 / mTLS 昇格)"| p1b["Phase 1b: Provider adds a requirement<br/>全 Consumer の Pact 網羅確認・更新<br/>+ Provider 検証 union 実行"]
+  p1b -.-> p2
 
-  style p0 fill:#e8eaf6
-  style red fill:#ffcdd2
-  style green fill:#c8e6c9
-  style refactor fill:#fff9c4
-  style cdc_check fill:#e8eaf6
+  p2 --> p3["Phase 3: GREEN<br/>minimal implementation + DI 配線"]
+  p3 --> p4["Phase 4: REFACTOR<br/>リファクタ + 境界変更時は CDC 再実行"]
+  p4 --> p5["Phase 5: Local CI parity<br/>format / lint / type / security sweep<br/>(+ pact-check.sh)"]
+  p5 --> done(["完了"])
+
+  style p0 fill:#e1f5fe
+  style p1 fill:#e8eaf6
+  style p1b fill:#ede7f6
+  style p2 fill:#ffcdd2
+  style p3 fill:#c8e6c9
+  style p4 fill:#fff9c4
+  style p5 fill:#ede7f6
 ```
 
 ### サービス境界チェックリスト

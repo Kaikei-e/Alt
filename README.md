@@ -75,9 +75,9 @@ Alt is structured as a six-layer microservice catalog running in Docker Compose:
 ```mermaid
 flowchart TB
     subgraph EdgeLayer["1. Edge & Identity Boundary"]
-        plecto-proxy[plecto-proxy<br/>Reverse Proxy]
-        auth-hub[auth-hub<br/>Go 1.26+]
-        kratos[Ory Kratos<br/>v1.3.0]
+        plecto-proxy["plecto-proxy<br/>Reverse Proxy"]
+        auth-hub["auth-hub<br/>(Go 1.26+)"]
+        kratos["Ory Kratos<br/>v1.3.0"]
     end
 
     subgraph PresentationLayer["2. Product Surface"]
@@ -87,6 +87,9 @@ flowchart TB
 
     subgraph CoreLayer["3. Core Platform"]
         alt-backend["alt-backend<br/>(Go 1.26+ / Echo)"]
+        alt-data-hub["alt-data-hub<br/>(Go 1.26+ / Data Plane)"]
+        alt-harvester["alt-harvester<br/>(Go 1.26+ / Jobs)"]
+        alt-notifier["alt-notifier<br/>(Go 1.26+ / Web Push)"]
         knowledge-sovereign["knowledge-sovereign<br/>(Go 1.26+)"]
         mq-hub["mq-hub<br/>(Go 1.26+)"]
     end
@@ -120,6 +123,7 @@ flowchart TB
         rag-db[(RAG pgvector)]
         acolyte-db[(Acolyte DB)]
         pre-processor-db[(Pre-processor DB)]
+        knowledge-sovereign-db[(Sovereign DB)]
         meilisearch[(Meilisearch)]
         clickhouse[(ClickHouse)]
         redis-streams[(Redis Streams)]
@@ -132,30 +136,35 @@ flowchart TB
     alt-frontend-sv --> alt-butterfly-facade --> alt-backend
 
     %% Core Data & Event dispatching
-    alt-backend --> db & mq-hub & auth-hub
+    alt-backend --> mq-hub & auth-hub & knowledge-sovereign
+    alt-backend & alt-harvester & alt-notifier --> alt-data-hub
+    alt-data-hub --> db
+    knowledge-sovereign --> knowledge-sovereign-db
     mq-hub --> redis-streams
     redis-streams --> pre-processor & tag-generator & search-indexer
 
     %% Pipeline connections
-    pre-processor --> pre-processor-db & alt-backend & redis-cache
-    search-indexer --> alt-backend & meilisearch
-    tag-generator --> alt-backend
+    pre-processor --> pre-processor-db & alt-data-hub & news-creator
+    pre-processor-sidecar --> pre-processor-db
+    search-indexer --> alt-data-hub & meilisearch
+    tag-generator --> alt-data-hub
     news-creator --> redis-cache
     
     %% Advanced intelligence connections
     alt-butterfly-facade -->|"Connect-RPC"| acolyte-orchestrator
-    acolyte-orchestrator --> acolyte-db & search-indexer & news-creator
+    acolyte-orchestrator --> acolyte-db & search-indexer & news-creator & alt-data-hub
     alt-backend --> rag-orchestrator --> rag-db & search-indexer
+    rag-orchestrator --> news-creator & alt-data-hub
 
     %% Recap batch execution
-    recap-worker --> recap-db & recap-subworker & news-creator
+    recap-worker --> recap-db & recap-subworker & news-creator & knowledge-sovereign & alt-data-hub
     recap-subworker & recap-evaluator & dashboard-streamlit --> recap-db
 
     %% Telemetry loops
     rask-log-forwarder --> rask-log-aggregator --> clickhouse
 ```
 
-Six layers: **Edge & Auth** (plecto-proxy, auth-hub, Kratos) · **Product Surface** (SvelteKit frontend, BFF) · **Core Platform** (alt-backend, mq-hub, knowledge-sovereign) · **Ingestion & Enrichment** (pre-processor, news-creator, tag-generator, search-indexer) · **Intelligence** (rag-orchestrator, acolyte-orchestrator, recap-worker) · **Observability & Data** (PostgreSQL x7, Meilisearch, ClickHouse, Redis x2, Grafana, Prometheus)
+Six layers: **Edge & Auth** (plecto-proxy, auth-hub, Kratos) · **Product Surface** (SvelteKit frontend, BFF) · **Core Platform** (alt-backend, alt-data-hub, alt-harvester, alt-notifier, mq-hub, knowledge-sovereign) · **Ingestion & Enrichment** (pre-processor, news-creator, tag-generator, search-indexer) · **Intelligence** (rag-orchestrator, acolyte-orchestrator, recap-worker) · **Observability & Data** (PostgreSQL x7, Meilisearch, ClickHouse, Redis x2, Grafana, Prometheus)
 
 Services communicate via REST, Connect-RPC (Protobuf), and Redis Streams. For the full service reference with ports, health endpoints, and dependency graph, see [`docs/services/MICROSERVICES.md`](./docs/services/MICROSERVICES.md).
 

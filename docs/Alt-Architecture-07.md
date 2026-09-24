@@ -169,92 +169,157 @@ Dependency order is enforced by `skaffold/skaffold.yaml` `requires` chain. Profi
 
 
 ## 10. Mermaid Network Diagram
-Derived from NetworkPolicies and namespaces across Layers 01, 05, 06, and 07.
+Derived from Docker Compose network topologies, service definitions, published port mappings, and upstream service addresses across the Compose stacks (`compose/compose.yaml` and included `compose/*.yaml`).
 
 ```mermaid
 flowchart LR
-  %% Namespaces as subgraphs
-  subgraph N1["alt-apps"]
-    AF["alt-frontend<br/>:9000/https"]
-    AB["alt-backend<br/>:9000"]
-    EP["envoy-proxy<br/>:8080,8081,8082<br/>8085,9901"]
+  %% External Client / User & External Destinations
+  subgraph EXT_CLIENT_ZONE["External Traffic / Ingress & Egress"]
+    EXT_USER["Client / Web Browser"]
+    EXT_NET["External Internet<br/>(RSS Feeds, Inoreader, Web Push)"]
   end
 
-  subgraph N2["alt-auth"]
-    KR["kratos<br/>:4433"]
-    AS["auth-service<br/>:8080"]
-    APG["auth-postgres<br/>:5432"]
-  end
+  %% Compose Network: alt-network (bridge)
+  subgraph N_ALT["alt-network (Bridge)"]
+    %% Edge & Frontend
+    PPX["plecto-proxy<br/>:80, :8443 (Edge Proxy)"]
+    AF["alt-frontend-sv<br/>:4173 (SvelteKit Client)"]
+    BFF["alt-butterfly-facade<br/>:9250 (Connect BFF)"]
 
-  subgraph N3["alt-database"]
-    PG["postgres<br/>:5432"]
-  end
+    %% Core Services & Auth
+    AB["alt-backend<br/>:9000 REST, :9101 Connect, :9102 Op"]
+    ADH["alt-data-hub<br/>:9443 mTLS (Data Plane Owner)"]
+    AH["auth-hub<br/>:8888, :9443 mTLS"]
+    KR["kratos<br/>:4433 Public"]
 
-  subgraph N4["alt-search"]
+    %% Data, PKI & Messaging
+    PG["PostgreSQL 17 & PgBouncer<br/>:6432 (App & Kratos Pools)"]
+    MQ["redis-streams & mq-hub<br/>:6379, :9500"]
+    KS["knowledge-sovereign<br/>:9500 (Durable State)"]
     MS["meilisearch<br/>:7700"]
+    CA["step-ca<br/>:9000 (PKI Authority)"]
+
+    %% Ingestion & Workers
+    HARV["alt-harvester<br/>(Scheduled Ingestion)"]
+    NOTIF["alt-notifier<br/>(Web Push Dispatcher)"]
+    PPS["pre-processor-sidecar<br/>(Inoreader Sync)"]
+    ATM["auth-token-manager<br/>:9201 (OAuth Tokens)"]
+    PP["pre-processor<br/>:9200 REST, :9202 Connect"]
+    TG["tag-generator<br/>:9400, :9443 mTLS"]
+    SI["search-indexer<br/>:9300, :9443 mTLS"]
+
+    %% AI Pipeline
+    NC["news-creator<br/>:11434 HTTP, :9443 mTLS"]
+    NCB["news-creator-backend<br/>:11435 (Ollama Runner)"]
+
+    %% Observability & Telemetry
+    RLA["rask-log-aggregator<br/>:9600, :4318 OTLP"]
+    CH["clickhouse<br/>:8123, :9000 (Log Store)"]
+    RLF["rask-log-forwarders<br/>(Log Forwarders & cAdvisor)"]
+    PROM["prometheus<br/>:9090"]
   end
 
-  subgraph N5["alt-processing"]
-    PP["pre-processor<br/>:9200"]
-    PPS["pre-processor-sidecar<br/>(CronJob)"]
-    SI["search-indexer<br/>:9300"]
-    TG["tag-generator<br/>:9400"]
-    NC["news-creator<br/>:11434"]
-    ATM["auth-token-manager"]
+  %% Compose Network: kratos-admin (internal)
+  subgraph N_KRATOS_ADMIN["kratos-admin (Internal Bridge)"]
+    KRADM["kratos-admin endpoint<br/>:4434 (Admin API)"]
   end
 
-  %% Primary allowed flows per NetworkPolicy
-  AF -->|4433| KR
-  AB -->|4433| KR
-  AB -->|8080| AS
+  %% Compose Network: logging-docker-proxy (internal)
+  subgraph N_LOGGING["logging-docker-proxy (Internal Bridge)"]
+    DSP_RO["docker-socket-proxy-ro<br/>:2375 (RO Docker API)"]
+  end
 
-  AS -->|5432| APG
+  %% Compose Network: backup-docker-proxy (internal)
+  subgraph N_BACKUP["backup-docker-proxy (Internal Bridge, Profile: backup)"]
+    DSP_BK["docker-socket-proxy<br/>:2375 (Scoped Docker API)"]
+    RESTIC["restic-backup<br/>(Restic Backup Engine)"]
+  end
 
-  PP -->|5432| PG
-  PP -->|11434| NC
-  PP -->|8085| EP
+  %% Ingress flows
+  EXT_USER -->|"80 → 8443"| PPX
+  PPX -->|"4173"| AF
+  PPX -->|"4433"| KR
+  PPX -->|"9000"| AB
 
-  TG -->|5432| PG
+  %% Web & BFF flows
+  AF -->|"9250"| BFF
+  AF -->|"4433"| KR
+  AF -->|"8888"| AH
+  AF -->|"9501"| KS
+  BFF -->|"9000 REST"| AB
+  BFF -->|"9101 Connect"| AB
+  BFF -->|"9102 Op Connect"| AB
+  BFF -->|"8888"| AH
 
-  SI -->|5432| PG
-  SI -->|7700| MS
+  %% Core Backend & Auth flows
+  AB -->|"8888"| AH
+  AB -->|"9443 mTLS"| ADH
+  AB -->|"9500"| KS
+  AB -->|"9500"| MQ
+  ADH -->|"6432"| PG
+  ADH -->|"8888"| AH
+  ADH -->|"9500"| KS
+  ADH -->|"9500"| MQ
+  KR -->|"6432"| PG
+  AH -->|"4433"| KR
 
-  NC -->|8080| AS
-  NC -->|8080| AB
-  NC -->|5432| PG
-  NC -->|8082 HTTPS| EP
+  %% Cross-network: kratos-admin membership & flows
+  KR -.->|"serves on kratos-admin"| KRADM
+  AH -.->|"4434 (kratos-admin net)"| KRADM
 
-  PPS -->|8081| EP
-  ATM -->|8081| EP
+  %% Ingestion & Workers flows
+  HARV -->|"9443 mTLS"| ADH
+  HARV -->|"9500"| KS
+  HARV -->|"9500"| MQ
+  NOTIF -->|"9443 mTLS"| ADH
+  PP -->|"9443 mTLS"| ADH
+  PP -->|"9102"| AB
+  PP -->|"6379"| MQ
+  PP -->|"11434"| NC
+  NC -->|"11435"| NCB
+  SI -->|"9443 mTLS"| ADH
+  SI -->|"7700"| MS
+  SI -->|"6379"| MQ
+  TG -->|"9443 mTLS"| ADH
+  TG -->|"6379"| MQ
 
-  %% Cross-namespace allowances (dotted lines)
-  AB -.->|ingress| PP
-  AF -.->|ingress| SI
-  PP -.->|ingress| NC
+  %% Logging & Observability flows
+  RLF -->|"9600"| RLA
+  RLA -->|"8123"| CH
+  PROM -.->|"scrape :9110 ops ports"| AB
 
-  %% External Internet access
-  EP -.->|External<br/>Internet| EXT[Internet]
+  %% Cross-network: logging-docker-proxy & backup-docker-proxy
+  RLF -.->|"2375 (logging net)"| DSP_RO
+  RESTIC -.->|"2375 (backup net)"| DSP_BK
+
+  %% Outbound Internet Egress (Direct Egress, no Envoy)
+  HARV -->|"HTTP/HTTPS fetch"| EXT_NET
+  AB -->|"HTTP/HTTPS check"| EXT_NET
+  NOTIF -->|"HTTPS Web Push"| EXT_NET
+  PPS -.->|"HTTPS Inoreader Sync (dormant)"| EXT_NET
+  ATM -->|"HTTPS OAuth Refresh"| EXT_NET
 
   %% Styling
-  classDef appNamespace fill:#e1f5fe
-  classDef authNamespace fill:#f3e5f5
-  classDef dataNamespace fill:#e8f5e8
-  classDef searchNamespace fill:#fff3e0
-  classDef processingNamespace fill:#fce4ec
-  classDef external fill:#ffebee
+  classDef extZone fill:#eceff1,stroke:#90a4ae
+  classDef appNet fill:#e1f5fe,stroke:#0288d1
+  classDef adminNet fill:#f3e5f5,stroke:#7b1fa2
+  classDef logNet fill:#fff3e0,stroke:#f57c00
+  classDef backupNet fill:#efebe9,stroke:#5d4037
 
-  class N1 appNamespace
-  class N2 authNamespace
-  class N3 dataNamespace
-  class N4 searchNamespace
-  class N5 processingNamespace
-  class EXT external
+  class EXT_CLIENT_ZONE extZone
+  class N_ALT appNet
+  class N_KRATOS_ADMIN adminNet
+  class N_LOGGING logNet
+  class N_BACKUP backupNet
 ```
 
 Notes:
-- Linkerd control-plane ports are permitted by dedicated policies and omitted for brevity on the diagram.
-- DNS egress (53/TCP,UDP) is allowed in all namespaces via base policies.
-- External Internet access is forced through `envoy-proxy` (proxy-enforcement policies).
+- Networks: The stack runs on four Docker Compose bridge networks. `alt-network` is a named bridge network interconnecting application services, storage, and telemetry. Three internal-only bridge networks enforce isolation: `kratos-admin` isolates the Ory Kratos administrative endpoint (`:4434`) so only `auth-hub` can access it; `logging-docker-proxy` restricts read-only Docker socket API access (`:2375`) to log forwarders and cAdvisor; `backup-docker-proxy` restricts scoped Docker socket API access (`:2375`) to `restic-backup` under the `backup` Compose profile.
+- Collapsed and Omitted Services: To maintain readability, dedicated service databases (`db`, `kratos-db`, `pre-processor-db`, `knowledge-sovereign-db`, `rag-db`, `recap-db`, `acolyte-db`, `pact-db`), connection poolers (`pgbouncer`, `pgbouncer-kratos`), and migration jobs are collapsed into their respective owners or summarized under the PostgreSQL node. Peripheral workloads that all sit on `alt-network` (`rag-orchestrator`, `recap-worker`, `recap-subworker`, `recap-evaluator`, `dashboard`, `acolyte-orchestrator`, `knowledge-embedder-local`, `rerank-local`, and `redis-cache`) as well as auxiliary testing/metrics tools (`pact-broker`, `grafana`, `alertmanager`) are omitted. All 16 per-service `rask-log-forwarder` containers are collapsed into a single forwarder block.
+- Metrics Scraping: Prometheus scrapes every service's `:9110` ops port plus `mq-hub:9500` and `knowledge-sovereign:9501` (`observability/prometheus/prometheus.yml`); this is illustrated by a representative scrape edge to `alt-backend`.
+- Backup Mechanism: `restic-backup` runs `pg_dump` via `docker exec` through the scoped Docker socket proxy (`docker-socket-proxy:2375`), so no direct network path to PostgreSQL exists.
+- In-Process mTLS and Zero Trust: Linkerd service mesh has been removed. Inter-service confidentiality and authentication are provided via in-process mTLS. Services automatically enroll with `step-ca` (:9000) at startup (without sidecars); `alt-data-hub` (:9443) acts as the central mTLS data plane gatekeeper for application state.
+- Outbound Internet Access: The legacy Envoy egress proxy has been eliminated. External internet egress is conducted directly over HTTPS/HTTP by dedicated fetcher and dispatcher services (`alt-harvester` for RSS feeds and OGP images, `alt-backend` for feed validation and archiving, `pre-processor-sidecar` for Inoreader sync which is dormant by default with `INOREADER_SYNC=disabled`, `auth-token-manager` for Inoreader OAuth token lifecycle, and `alt-notifier` for Web Push delivery).
 
 
 ## 11. Ports and Endpoints Reference
