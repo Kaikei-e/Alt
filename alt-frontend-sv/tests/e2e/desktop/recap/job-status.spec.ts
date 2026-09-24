@@ -283,6 +283,88 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 			timeout: 5000,
 		});
 	});
+
+	test("shows success feedback after starting topic cards job", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
+		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
+			fulfillJson(route, JOB_PROGRESS_RESPONSE),
+		);
+
+		await page.route(JOB_DASHBOARD_PATHS.trigger3DaysCardsJob, (route) =>
+			fulfillJson(route, {
+				job_id: "cards-job-123",
+				genres: [],
+				status: "running",
+			}),
+		);
+
+		await page.goto("./recap/job-status");
+
+		await expect(desktopJobStatusPage.generateTopicCardsButton).toBeEnabled();
+		await desktopJobStatusPage.clickGenerateTopicCards();
+
+		await expect(page.getByText("Topic cards job started")).toBeVisible({
+			timeout: 5000,
+		});
+	});
+
+	test("shows already running error when cards job returns 409", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
+		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
+			fulfillJson(route, JOB_PROGRESS_RESPONSE),
+		);
+
+		await page.route(JOB_DASHBOARD_PATHS.trigger3DaysCardsJob, (route) =>
+			route.fulfill({
+				status: 409,
+				contentType: "application/json",
+				body: JSON.stringify({ error: "Cards job already running" }),
+			}),
+		);
+
+		await page.goto("./recap/job-status");
+
+		await expect(desktopJobStatusPage.generateTopicCardsButton).toBeEnabled();
+		await desktopJobStatusPage.clickGenerateTopicCards();
+
+		await expect(
+			page.getByText("A topic cards job is already running."),
+		).toBeVisible({
+			timeout: 5000,
+		});
+	});
+
+	test("shows not configured error when cards job returns 503", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
+		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
+			fulfillJson(route, JOB_PROGRESS_RESPONSE),
+		);
+
+		await page.route(JOB_DASHBOARD_PATHS.trigger3DaysCardsJob, (route) =>
+			route.fulfill({
+				status: 503,
+				contentType: "application/json",
+				body: JSON.stringify({ error: "Cards user not configured" }),
+			}),
+		);
+
+		await page.goto("./recap/job-status");
+
+		await expect(desktopJobStatusPage.generateTopicCardsButton).toBeEnabled();
+		await desktopJobStatusPage.clickGenerateTopicCards();
+
+		await expect(
+			page.getByText("Topic cards are not configured on the server."),
+		).toBeVisible({
+			timeout: 5000,
+		});
+	});
 });
 
 test.describe("Desktop Job Status - Accessibility", () => {

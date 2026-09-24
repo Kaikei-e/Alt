@@ -23,6 +23,7 @@ export class MobileJobStatusPage extends BasePage {
 	readonly controlBar: Locator;
 	readonly refreshButton: Locator;
 	readonly startJobButton: Locator;
+	readonly generateTopicCardsButton: Locator;
 
 	readonly timeWindow24h: Locator;
 	readonly timeWindow7d: Locator;
@@ -55,6 +56,9 @@ export class MobileJobStatusPage extends BasePage {
 		this.startJobButton = this.controlBar.getByRole("button", {
 			name: /start new recap job/i,
 		});
+		this.generateTopicCardsButton = this.controlBar.getByRole("button", {
+			name: /generate topic cards/i,
+		});
 
 		this.timeWindow24h = page.locator('[data-testid="time-window-24h"]');
 		this.timeWindow7d = page.locator('[data-testid="time-window-7d"]');
@@ -85,5 +89,9 @@ export class MobileJobStatusPage extends BasePage {
 
 	async toggleActiveJobPanel(): Promise<void> {
 		await this.collapseToggle.click();
+	}
+
+	async clickGenerateTopicCards(): Promise<void> {
+		await this.generateTopicCardsButton.click();
 	}
 }

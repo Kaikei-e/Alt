@@ -995,6 +995,7 @@ export const JOB_DASHBOARD_PATHS = {
 	jobProgress: "**/api/v1/dashboard/job-progress*",
 	jobStats: "**/api/v1/dashboard/job-stats",
 	triggerJob: "**/api/v1/generate/recaps/7days",
+	trigger3DaysCardsJob: "**/api/v1/generate/recaps/3days/cards",
 };
 
 // =============================================================================

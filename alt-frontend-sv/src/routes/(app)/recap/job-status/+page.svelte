@@ -1,6 +1,6 @@
 <script lang="ts">
 import { onDestroy, onMount } from "svelte";
-import { triggerRecapJob } from "$lib/api/client/dashboard";
+import { triggerRecapCardsJob, triggerRecapJob } from "$lib/api/client/dashboard";
 import {
 	ActiveJobCard,
 	JobHistoryTable,
@@ -34,6 +34,7 @@ const jobProgress = useJobProgress({
 });
 
 let triggering = $state(false);
+let triggeringCards = $state(false);
 let triggerError = $state<string | null>(null);
 let triggerSuccess = $state<string | null>(null);
 let justStartedJobId = $state<string | null>(null);
@@ -81,7 +82,7 @@ async function handleRefresh() {
 }
 
 async function handleTriggerJob() {
-	if (triggering || justStartedJobId) return;
+	if (triggering || triggeringCards || justStartedJobId) return;
 
 	triggering = true;
 	triggerError = null;
@@ -116,6 +117,48 @@ async function handleTriggerJob() {
 	}
 }
 
+function mapCardsTriggerError(e: unknown): string {
+	if (e && typeof e === "object" && "status" in e) {
+		if (e.status === 409) return "A topic cards job is already running.";
+		if (e.status === 503) return "Topic cards are not configured on the server.";
+	}
+	return "Could not start the topic cards job.";
+}
+
+async function handleTriggerCardsJob() {
+	if (triggering || triggeringCards || justStartedJobId) return;
+
+	triggeringCards = true;
+	triggerError = null;
+	triggerSuccess = null;
+
+	try {
+		const result = await triggerRecapCardsJob(fetch);
+		justStartedJobId = result.job_id;
+		triggerSuccess = "Topic cards job started";
+
+		scheduleTriggerTimer(async () => {
+			await jobProgress.refresh();
+			if (jobProgress.data?.active_job) {
+				justStartedJobId = null;
+			}
+		}, 1000);
+
+		scheduleTriggerTimer(() => {
+			justStartedJobId = null;
+		}, 10000);
+
+		scheduleTriggerTimer(() => {
+			triggerSuccess = null;
+		}, 5000);
+	} catch (e) {
+		triggerError = mapCardsTriggerError(e);
+		justStartedJobId = null;
+	} finally {
+		triggeringCards = false;
+	}
+}
+
 function handleJobSelect(job: RecentJobSummary) {
 	selectedJob = job;
 	detailSheetOpen = true;
@@ -146,6 +189,14 @@ const runningJobTooltip = $derived.by(() => {
 	if (justStartedJobId) return "Job is starting…";
 	const activeJob = jobProgress.data?.active_job;
 	if (!activeJob) return "Start a new recap job";
+	const source = activeJob.trigger_source === "user" ? "user" : "system";
+	return `A ${source} job is already running`;
+});
+
+const runningCardsJobTooltip = $derived.by(() => {
+	if (justStartedJobId) return "Job is starting…";
+	const activeJob = jobProgress.data?.active_job;
+	if (!activeJob) return "Generate topic cards";
 	const source = activeJob.trigger_source === "user" ? "user" : "system";
 	return `A ${source} job is already running`;
 });
@@ -204,11 +255,21 @@ const windowLabel = $derived(jobProgress.currentWindow.toUpperCase());
 					type="button"
 					class="action-button action-button--primary"
 					onclick={handleTriggerJob}
-					disabled={triggering || hasRunningJob || justStartedJobId !== null}
+					disabled={triggering || triggeringCards || hasRunningJob || justStartedJobId !== null}
 					title={runningJobTooltip}
 					data-role="start-job"
 				>
 					{triggering ? "Starting…" : "Start job"}
+				</button>
+				<button
+					type="button"
+					class="action-button"
+					onclick={handleTriggerCardsJob}
+					disabled={triggering || triggeringCards || hasRunningJob || justStartedJobId !== null}
+					title={runningCardsJobTooltip}
+					data-role="generate-topic-cards"
+				>
+					{triggeringCards ? "Starting…" : "Generate topic cards"}
 				</button>
 			</div>
 		</section>
@@ -325,14 +386,14 @@ const windowLabel = $derived(jobProgress.currentWindow.toUpperCase());
 			/>
 
 			{#if triggerSuccess}
-				<p class="banner banner--success mobile-banner">
+				<p class="banner banner--success mobile-banner" data-role="trigger-success">
 					<span class="glyph" aria-hidden="true">✓</span>
 					{triggerSuccess}
 				</p>
 			{/if}
 
 			{#if triggerError}
-				<p class="banner banner--error mobile-banner">
+				<p class="banner banner--error mobile-banner" data-role="trigger-error">
 					<span class="glyph" aria-hidden="true">✗</span>
 					{triggerError}
 				</p>
@@ -357,8 +418,10 @@ const windowLabel = $derived(jobProgress.currentWindow.toUpperCase());
 		<MobileControlBar
 			onRefresh={handleRefresh}
 			onTriggerJob={handleTriggerJob}
+			onTriggerCardsJob={handleTriggerCardsJob}
 			loading={jobProgress.loading}
 			triggering={triggering}
+			triggeringCards={triggeringCards}
 			hasRunningJob={hasRunningJob}
 			justStartedJobId={justStartedJobId}
 		/>

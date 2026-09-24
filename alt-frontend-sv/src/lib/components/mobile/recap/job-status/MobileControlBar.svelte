@@ -2,8 +2,10 @@
 interface Props {
 	onRefresh: () => void;
 	onTriggerJob: () => void;
+	onTriggerCardsJob?: () => void;
 	loading: boolean;
 	triggering: boolean;
+	triggeringCards?: boolean;
 	hasRunningJob: boolean;
 	justStartedJobId: string | null;
 }
@@ -11,20 +13,32 @@ interface Props {
 let {
 	onRefresh,
 	onTriggerJob,
+	onTriggerCardsJob,
 	loading,
 	triggering,
+	triggeringCards = false,
 	hasRunningJob,
 	justStartedJobId,
 }: Props = $props();
 
 const isStartDisabled = $derived(
-	triggering || hasRunningJob || justStartedJobId !== null,
+	triggering || triggeringCards || hasRunningJob || justStartedJobId !== null,
+);
+
+const isCardsDisabled = $derived(
+	triggering || triggeringCards || hasRunningJob || justStartedJobId !== null,
 );
 
 const startButtonTooltip = $derived.by(() => {
 	if (justStartedJobId) return "Job is starting…";
 	if (hasRunningJob) return "A job is already running";
 	return "Start a new recap job";
+});
+
+const cardsButtonTooltip = $derived.by(() => {
+	if (justStartedJobId) return "Job is starting…";
+	if (hasRunningJob) return "A job is already running";
+	return "Generate three-day topic cards";
 });
 </script>
 
@@ -55,6 +69,20 @@ const startButtonTooltip = $derived.by(() => {
 	>
 		{triggering ? "Starting…" : "Start job"}
 	</button>
+
+	{#if onTriggerCardsJob}
+		<button
+			type="button"
+			class="bar-button"
+			onclick={onTriggerCardsJob}
+			disabled={isCardsDisabled}
+			title={cardsButtonTooltip}
+			aria-label="Generate topic cards"
+			data-role="generate-topic-cards"
+		>
+			{triggeringCards ? "Starting…" : "Topic cards"}
+		</button>
+	{/if}
 </div>
 
 <style>

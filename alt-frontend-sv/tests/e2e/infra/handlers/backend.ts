@@ -175,6 +175,21 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
+		if (
+			path === "/api/v1/generate/recaps/3days/cards" ||
+			path === "/v1/generate/recaps/3days/cards"
+		) {
+			res.writeHead(202, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					job_id: "mock-cards-job-123",
+					genres: [],
+					status: "running",
+				}),
+			);
+			return;
+		}
+
 		// Job progress dashboard (handles both /api/v1 and /v1 paths for recap-worker)
 		if (
 			path === "/api/v1/dashboard/job-progress" ||

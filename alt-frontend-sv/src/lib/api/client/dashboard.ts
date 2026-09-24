@@ -200,6 +200,43 @@ export async function triggerRecapJob(
 	return res.json();
 }
 
+export async function triggerRecapCardsJob(
+	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): Promise<TriggerJobResponse> {
+	const endpoint = `${base}/api/v1/generate/recaps/3days/cards`;
+	const csrfToken = await getClientCSRFToken();
+	const res = await fetch(endpoint, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+		},
+		body: JSON.stringify({}),
+	});
+	if (!res.ok) {
+		const rawText = await res.text().catch(() => "");
+		let errorMessage = rawText;
+		try {
+			const parsed = JSON.parse(rawText);
+			if (
+				parsed &&
+				typeof parsed === "object" &&
+				typeof parsed.error === "string"
+			) {
+				errorMessage = parsed.error;
+			}
+		} catch {
+			// empty
+		}
+		const err = new Error(
+			errorMessage || `Failed to trigger job: ${res.status}`,
+		);
+		(err as { status?: number }).status = res.status;
+		throw err;
+	}
+	return res.json();
+}
+
 export async function trigger3DaysRecapJob(
 	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 	genres?: string[],
