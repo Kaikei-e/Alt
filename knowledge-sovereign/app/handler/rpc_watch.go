@@ -2,22 +2,15 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
-	"time"
 
 	"connectrpc.com/connect"
-	"github.com/jackc/pgx/v5"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"knowledge-sovereign/driver/sovereign_db"
 	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
-)
-
-const (
-	watchChannel           = "knowledge_projector"
-	watchHeartbeatInterval = 3 * time.Second
 )
 
 // WatchProjectorEvents implements server-streaming RPC.
@@ -31,24 +24,21 @@ func (h *SovereignHandler) WatchProjectorEvents(
 		return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("database URL not configured for LISTEN"))
 	}
 
-	conn, err := pgx.Connect(ctx, h.databaseURL)
+	watcher, err := h.watcherOpener(ctx, h.databaseURL)
 	if err != nil {
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("connect for LISTEN: %w", err))
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("open projector watcher: %w", err))
 	}
-	defer conn.Close(context.Background())
-
-	if _, err := conn.Exec(ctx, "LISTEN "+watchChannel); err != nil {
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("LISTEN %s: %w", watchChannel, err))
-	}
+	defer func() {
+		if closeErr := watcher.Close(context.Background()); closeErr != nil {
+			slog.Warn("WatchProjectorEvents: close watcher failed", "error", closeErr)
+		}
+	}()
 
 	slog.Info("WatchProjectorEvents: client connected",
 		"projector_name", req.Msg.ProjectorName)
 
 	for {
-		waitCtx, cancel := context.WithTimeout(ctx, watchHeartbeatInterval)
-		notification, err := conn.WaitForNotification(waitCtx)
-		cancel()
-
+		payload, isTimeout, err := watcher.WaitForNotification(ctx, sovereign_db.WatchHeartbeatInterval)
 		if ctx.Err() != nil {
 			slog.Info("WatchProjectorEvents: client disconnected",
 				"projector_name", req.Msg.ProjectorName)
@@ -56,9 +46,10 @@ func (h *SovereignHandler) WatchProjectorEvents(
 		}
 
 		if err != nil {
-			if !errors.Is(err, context.DeadlineExceeded) {
-				return fmt.Errorf("WaitForNotification: %w", err)
-			}
+			return fmt.Errorf("WaitForNotification: %w", err)
+		}
+
+		if isTimeout {
 			// Timeout — send heartbeat
 			if err := stream.Send(&sovereignv1.WatchProjectorEventsResponse{
 				LatestEventSeq: 0,
@@ -71,8 +62,8 @@ func (h *SovereignHandler) WatchProjectorEvents(
 
 		// Parse event_seq from notification payload
 		var eventSeq int64
-		if notification.Payload != "" {
-			eventSeq, _ = strconv.ParseInt(notification.Payload, 10, 64)
+		if payload != "" {
+			eventSeq, _ = strconv.ParseInt(payload, 10, 64)
 		}
 
 		if err := stream.Send(&sovereignv1.WatchProjectorEventsResponse{
