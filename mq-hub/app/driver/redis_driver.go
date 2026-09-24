@@ -3,18 +3,63 @@ package driver
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-
-	"mq-hub/domain"
 )
 
-// RedisDriver implements StreamPort using Redis Streams.
+// StreamMessage represents a raw message entry stored in or read from Redis Streams.
+type StreamMessage struct {
+	ID        string
+	EventID   string
+	EventType string
+	Source    string
+	CreatedAt string
+	Payload   string
+	Metadata  string
+}
+
+// StreamInfo holds information about a Redis stream.
+type StreamInfo struct {
+	Length         int64
+	RadixTreeKeys  int64
+	RadixTreeNodes int64
+	FirstEntryID   string
+	LastEntryID    string
+	Groups         []ConsumerGroupInfo
+}
+
+// ConsumerGroupInfo holds information about a consumer group.
+type ConsumerGroupInfo struct {
+	Name            string
+	Consumers       int64
+	Pending         int64
+	LastDeliveredID string
+}
+
+// PublishFailure records a failed publication in a batch.
+type PublishFailure struct {
+	Index int
+	Err   error
+}
+
+// PartialPublishError is returned when one or more messages fail to publish in a batch.
+type PartialPublishError struct {
+	TotalMessages int
+	Failures      []PublishFailure
+}
+
+func (e *PartialPublishError) Error() string {
+	return fmt.Sprintf("partial publish: %d of %d messages failed", len(e.Failures), e.TotalMessages)
+}
+
+// ErrReplyTimeout is returned when waiting for a reply message times out.
+var ErrReplyTimeout = errors.New("timeout waiting for reply message")
+
+// RedisDriver handles Redis Streams I/O.
 type RedisDriver struct {
 	client       *redis.Client
 	streamMaxLen int64
@@ -93,19 +138,16 @@ func (d *RedisDriver) Close() error {
 	return d.client.Close()
 }
 
-// Publish publishes an event to a stream and returns the message ID.
-func (d *RedisDriver) Publish(ctx context.Context, stream domain.StreamKey, event *domain.Event) (string, error) {
-	if event == nil {
-		return "", errors.New("event is nil")
+// Publish publishes a message to a stream and returns the message ID.
+func (d *RedisDriver) Publish(ctx context.Context, stream string, msg *StreamMessage) (string, error) {
+	if msg == nil {
+		return "", errors.New("message is nil")
 	}
 
-	values, err := d.eventToValues(event)
-	if err != nil {
-		return "", err
-	}
+	values := d.messageToValues(msg)
 
 	args := &redis.XAddArgs{
-		Stream: stream.String(),
+		Stream: stream,
 		Values: values,
 	}
 	if d.streamMaxLen > 0 {
@@ -120,40 +162,37 @@ func (d *RedisDriver) Publish(ctx context.Context, stream domain.StreamKey, even
 
 	result, err := d.client.XAdd(ctx, args).Result()
 	if err != nil {
-		return "", fmt.Errorf("xadd %s: %w", stream.String(), err)
+		return "", fmt.Errorf("xadd %s: %w", stream, err)
 	}
 
 	return result, nil
 }
 
-// PublishBatch publishes multiple events to a stream and returns message IDs.
-// The returned slice always has one entry per input event so callers can
-// correlate messageIDs[i] with events[i]; entries for events that failed to
-// publish are left as "". If any event failed, the returned error is a
-// *domain.PartialPublishError identifying exactly which indices failed, so
+// PublishBatch publishes multiple messages to a stream and returns message IDs.
+// The returned slice always has one entry per input message so callers can
+// correlate messageIDs[i] with msgs[i]; entries for messages that failed to
+// publish are left as "". If any message failed, the returned error is a
+// *PartialPublishError identifying exactly which indices failed, so
 // callers can retry only those instead of re-publishing the whole batch
-// (which would duplicate the events that already succeeded).
-func (d *RedisDriver) PublishBatch(ctx context.Context, stream domain.StreamKey, events []*domain.Event) ([]string, error) {
-	if len(events) == 0 {
+// (which would duplicate the messages that already succeeded).
+func (d *RedisDriver) PublishBatch(ctx context.Context, stream string, msgs []*StreamMessage) ([]string, error) {
+	if len(msgs) == 0 {
 		return []string{}, nil
 	}
 
-	messageIDs := make([]string, len(events))
-	cmds := make([]*redis.StringCmd, len(events))
+	messageIDs := make([]string, len(msgs))
+	cmds := make([]*redis.StringCmd, len(msgs))
 
 	// Use pipeline for efficient batch publishing
 	pipe := d.client.Pipeline()
 
-	for i, event := range events {
-		if event == nil {
-			return nil, fmt.Errorf("publish batch to %s: event at index %d is nil", stream.String(), i)
+	for i, msg := range msgs {
+		if msg == nil {
+			return nil, fmt.Errorf("publish batch to %s: message at index %d is nil", stream, i)
 		}
-		values, err := d.eventToValues(event)
-		if err != nil {
-			return nil, fmt.Errorf("publish batch to %s: event at index %d: %w", stream.String(), i, err)
-		}
+		values := d.messageToValues(msg)
 		args := &redis.XAddArgs{
-			Stream: stream.String(),
+			Stream: stream,
 			Values: values,
 		}
 		if d.streamMaxLen > 0 {
@@ -172,53 +211,53 @@ func (d *RedisDriver) PublishBatch(ctx context.Context, stream domain.StreamKey,
 	// cmd.Err() to know which events actually landed.
 	_, execErr := pipe.Exec(ctx)
 
-	var failures []domain.PublishFailure
+	var failures []PublishFailure
 	for i, cmd := range cmds {
 		if err := cmd.Err(); err != nil {
-			failures = append(failures, domain.PublishFailure{Index: i, Err: err})
+			failures = append(failures, PublishFailure{Index: i, Err: err})
 			continue
 		}
 		messageIDs[i] = cmd.Val()
 	}
 
 	if len(failures) > 0 {
-		return messageIDs, &domain.PartialPublishError{TotalEvents: len(events), Failures: failures}
+		return messageIDs, &PartialPublishError{TotalMessages: len(msgs), Failures: failures}
 	}
 	if execErr != nil {
-		return messageIDs, fmt.Errorf("publish batch to %s: %w", stream.String(), execErr)
+		return messageIDs, fmt.Errorf("publish batch to %s: %w", stream, execErr)
 	}
 
 	return messageIDs, nil
 }
 
 // CreateConsumerGroup creates a consumer group for a stream.
-func (d *RedisDriver) CreateConsumerGroup(ctx context.Context, stream domain.StreamKey, group domain.ConsumerGroup, startID string) error {
-	err := d.client.XGroupCreateMkStream(ctx, stream.String(), group.String(), startID).Err()
+func (d *RedisDriver) CreateConsumerGroup(ctx context.Context, stream string, group string, startID string) error {
+	err := d.client.XGroupCreateMkStream(ctx, stream, group, startID).Err()
 	if err != nil {
 		if isBusyGroupErr(err) {
 			return nil
 		}
-		return fmt.Errorf("create consumer group %s on %s: %w", group.String(), stream.String(), err)
+		return fmt.Errorf("create consumer group %s on %s: %w", group, stream, err)
 	}
 	return nil
 }
 
 // GetStreamInfo returns information about a stream.
-func (d *RedisDriver) GetStreamInfo(ctx context.Context, stream domain.StreamKey) (*domain.StreamInfo, error) {
-	info, err := d.client.XInfoStream(ctx, stream.String()).Result()
+func (d *RedisDriver) GetStreamInfo(ctx context.Context, stream string) (*StreamInfo, error) {
+	info, err := d.client.XInfoStream(ctx, stream).Result()
 	if err != nil {
-		return nil, fmt.Errorf("xinfo stream %s: %w", stream.String(), err)
+		return nil, fmt.Errorf("xinfo stream %s: %w", stream, err)
 	}
 
 	// Get consumer group info
-	groups, err := d.client.XInfoGroups(ctx, stream.String()).Result()
+	groups, err := d.client.XInfoGroups(ctx, stream).Result()
 	if err != nil && !isNoSuchKeyErr(err) {
-		return nil, fmt.Errorf("xinfo groups %s: %w", stream.String(), err)
+		return nil, fmt.Errorf("xinfo groups %s: %w", stream, err)
 	}
 
-	groupInfos := make([]domain.ConsumerGroupInfo, 0, len(groups))
+	groupInfos := make([]ConsumerGroupInfo, 0, len(groups))
 	for _, g := range groups {
-		groupInfos = append(groupInfos, domain.ConsumerGroupInfo{
+		groupInfos = append(groupInfos, ConsumerGroupInfo{
 			Name:            g.Name,
 			Consumers:       g.Consumers,
 			Pending:         g.Pending,
@@ -236,7 +275,7 @@ func (d *RedisDriver) GetStreamInfo(ctx context.Context, stream domain.StreamKey
 		lastEntryID = info.LastEntry.ID
 	}
 
-	return &domain.StreamInfo{
+	return &StreamInfo{
 		Length:         info.Length,
 		RadixTreeKeys:  info.RadixTreeKeys,
 		RadixTreeNodes: info.RadixTreeNodes,
@@ -251,28 +290,24 @@ func (d *RedisDriver) Ping(ctx context.Context) error {
 	return d.client.Ping(ctx).Err()
 }
 
-// eventToValues converts an Event to a map for XADD.
-func (d *RedisDriver) eventToValues(event *domain.Event) (map[string]interface{}, error) {
+// messageToValues converts a StreamMessage to a map for XADD.
+func (d *RedisDriver) messageToValues(msg *StreamMessage) map[string]interface{} {
 	values := map[string]interface{}{
-		"event_id":   event.EventID,
-		"event_type": string(event.EventType),
-		"source":     event.Source,
-		"created_at": event.CreatedAt.Format("2006-01-02T15:04:05.000Z07:00"),
+		"event_id":   msg.EventID,
+		"event_type": msg.EventType,
+		"source":     msg.Source,
+		"created_at": msg.CreatedAt,
 	}
 
-	if len(event.Payload) > 0 {
-		values["payload"] = string(event.Payload)
+	if msg.Payload != "" {
+		values["payload"] = msg.Payload
 	}
 
-	if len(event.Metadata) > 0 {
-		metadataJSON, err := json.Marshal(event.Metadata)
-		if err != nil {
-			return nil, fmt.Errorf("marshal event metadata: %w", err)
-		}
-		values["metadata"] = string(metadataJSON)
+	if msg.Metadata != "" {
+		values["metadata"] = msg.Metadata
 	}
 
-	return values, nil
+	return values
 }
 
 // isBusyGroupErr reports whether err is Redis BUSYGROUP (group already exists).
@@ -299,17 +334,16 @@ func isNoSuchKeyErr(err error) bool {
 
 // SubscribeWithTimeout waits for a message on a reply stream with timeout.
 // Uses XREAD with blocking to wait for messages.
-func (d *RedisDriver) SubscribeWithTimeout(ctx context.Context, stream domain.StreamKey, timeout time.Duration) (*domain.Event, error) {
-	// Use XREAD with block timeout to wait for messages
+func (d *RedisDriver) SubscribeWithTimeout(ctx context.Context, stream string, timeout time.Duration) (*StreamMessage, error) {
 	streams, err := d.client.XRead(ctx, &redis.XReadArgs{
-		Streams: []string{stream.String(), "0"},
+		Streams: []string{stream, "0"},
 		Count:   1,
 		Block:   timeout,
 	}).Result()
 
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return nil, domain.ErrReplyTimeout
+			return nil, ErrReplyTimeout
 		}
 		return nil, err
 	}
@@ -319,18 +353,18 @@ func (d *RedisDriver) SubscribeWithTimeout(ctx context.Context, stream domain.St
 	}
 
 	msg := streams[0].Messages[0]
-	return d.parseEventFromMessage(msg), nil
+	return d.parseMessage(msg), nil
 }
 
 // DeleteStream removes a stream (used for cleanup of temporary reply streams).
-func (d *RedisDriver) DeleteStream(ctx context.Context, stream domain.StreamKey) error {
-	return d.client.Del(ctx, stream.String()).Err()
+func (d *RedisDriver) DeleteStream(ctx context.Context, stream string) error {
+	return d.client.Del(ctx, stream).Err()
 }
 
 // Expire sets a TTL on a stream key. It is a no-op (no error) if the key
 // does not exist yet.
-func (d *RedisDriver) Expire(ctx context.Context, stream domain.StreamKey, ttl time.Duration) error {
-	return d.client.Expire(ctx, stream.String(), ttl).Err()
+func (d *RedisDriver) Expire(ctx context.Context, stream string, ttl time.Duration) error {
+	return d.client.Expire(ctx, stream, ttl).Err()
 }
 
 // replyStreamScanCount bounds how many keys each SCAN cursor step asks Redis to
@@ -347,10 +381,10 @@ const replyStreamScanCount = 100
 // already deleted it, leaving a TTL-less key that the length-cap trim pass never
 // touches (that pass only covers the fixed AllStreamKeys()). This scan finds
 // exactly those keys so the sweep can re-apply a bounded TTL.
-func (d *RedisDriver) ScanReplyStreamsWithoutTTL(ctx context.Context, prefix string) ([]domain.StreamKey, error) {
+func (d *RedisDriver) ScanReplyStreamsWithoutTTL(ctx context.Context, prefix string) ([]string, error) {
 	match := prefix + "*"
 	var (
-		leaked []domain.StreamKey
+		leaked []string
 		cursor uint64
 	)
 	for {
@@ -367,7 +401,7 @@ func (d *RedisDriver) ScanReplyStreamsWithoutTTL(ctx context.Context, prefix str
 			// -1ns and -2 (key missing) to -2ns. Only the no-expiry case needs
 			// a safety-net TTL applied.
 			if ttl == -1*time.Nanosecond {
-				leaked = append(leaked, domain.StreamKey(key))
+				leaked = append(leaked, key)
 			}
 		}
 		cursor = next
@@ -378,35 +412,17 @@ func (d *RedisDriver) ScanReplyStreamsWithoutTTL(ctx context.Context, prefix str
 	return leaked, nil
 }
 
-// parseEventFromMessage converts a Redis stream message to a domain Event.
-func (d *RedisDriver) parseEventFromMessage(msg redis.XMessage) *domain.Event {
-	event := &domain.Event{
-		EventID:  getStringValue(msg.Values, "event_id"),
-		Source:   getStringValue(msg.Values, "source"),
-		Metadata: make(map[string]string),
+// parseMessage converts a Redis stream message to a StreamMessage.
+func (d *RedisDriver) parseMessage(msg redis.XMessage) *StreamMessage {
+	return &StreamMessage{
+		ID:        msg.ID,
+		EventID:   getStringValue(msg.Values, "event_id"),
+		EventType: getStringValue(msg.Values, "event_type"),
+		Source:    getStringValue(msg.Values, "source"),
+		CreatedAt: getStringValue(msg.Values, "created_at"),
+		Payload:   getStringValue(msg.Values, "payload"),
+		Metadata:  getStringValue(msg.Values, "metadata"),
 	}
-
-	if eventType := getStringValue(msg.Values, "event_type"); eventType != "" {
-		event.EventType = domain.EventType(eventType)
-	}
-
-	if createdAtStr := getStringValue(msg.Values, "created_at"); createdAtStr != "" {
-		if t, err := time.Parse("2006-01-02T15:04:05.000Z07:00", createdAtStr); err == nil {
-			event.CreatedAt = t
-		} else if t, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
-			event.CreatedAt = t
-		}
-	}
-
-	if payload := getStringValue(msg.Values, "payload"); payload != "" {
-		event.Payload = []byte(payload)
-	}
-
-	if metadataStr := getStringValue(msg.Values, "metadata"); metadataStr != "" {
-		_ = json.Unmarshal([]byte(metadataStr), &event.Metadata)
-	}
-
-	return event
 }
 
 // TrimMaxLenApprox trims stream to approximately maxLen entries, ignoring
@@ -419,10 +435,10 @@ func (d *RedisDriver) parseEventFromMessage(msg redis.XMessage) *domain.Event {
 // LIMIT is left unset so Redis applies its default effort cap. The caller runs
 // this on a timer, so converging over a few bounded passes is preferable to one
 // unbounded pass blocking a single-threaded server.
-func (d *RedisDriver) TrimMaxLenApprox(ctx context.Context, stream domain.StreamKey, maxLen int64) (int64, error) {
-	deleted, err := d.client.XTrimMaxLenApprox(ctx, stream.String(), maxLen, 0).Result()
+func (d *RedisDriver) TrimMaxLenApprox(ctx context.Context, stream string, maxLen int64) (int64, error) {
+	deleted, err := d.client.XTrimMaxLenApprox(ctx, stream, maxLen, 0).Result()
 	if err != nil {
-		return 0, fmt.Errorf("xtrim %s maxlen ~ %d: %w", stream.String(), maxLen, err)
+		return 0, fmt.Errorf("xtrim %s maxlen ~ %d: %w", stream, maxLen, err)
 	}
 	return deleted, nil
 }

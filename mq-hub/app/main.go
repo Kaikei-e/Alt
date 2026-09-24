@@ -70,22 +70,22 @@ func run() error {
 		return fmt.Errorf("ping Redis: %w", err)
 	}
 
+	// Initialize gateway
+	streamGateway := gateway.NewStreamGateway(redisDriver)
+
 	// Trimming carried on XADD cannot run once Redis is at maxmemory, because
 	// XADD itself is rejected — so the streams this service owns had no way back
 	// under their cap without an operator. This pass uses XTRIM, which is not
 	// denyoom, and runs on its own timer.
 	trimCtx, stopTrim := context.WithCancel(ctx)
 	defer stopTrim()
-	startStreamTrimLoop(trimCtx, redisDriver, cfg)
+	startStreamTrimLoop(trimCtx, streamGateway, cfg)
 
 	// Temporary request-reply streams are deleted by GenerateTagsForArticle, but
 	// a worker's late reply can XADD-recreate one without a TTL, and the trim
 	// loop above only covers the fixed AllStreamKeys(). This sweep re-applies a
 	// bounded TTL to any such leaked key so it cannot live forever.
-	startReplyStreamSweepLoop(trimCtx, redisDriver, cfg)
-
-	// Initialize gateway
-	streamGateway := gateway.NewStreamGateway(redisDriver)
+	startReplyStreamSweepLoop(trimCtx, streamGateway, cfg)
 
 	// Initialize usecases with batch size limit
 	publishUsecase := usecase.NewPublishUsecaseWithOptions(streamGateway, &usecase.PublishUsecaseOptions{
