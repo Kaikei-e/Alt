@@ -11,13 +11,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import structlog
 
-from acolyte.port.llm_provider import LLMMode, LLMResponse
+from acolyte.port.llm_provider import (
+    LLMMode,
+    LLMProviderError,
+    LLMResponse,
+    LLMStatusError,
+    LLMTimeoutError,
+)
 
 if TYPE_CHECKING:
-    import httpx
-
     from acolyte.config.settings import Settings
 
 logger = structlog.get_logger(__name__)
@@ -119,8 +124,16 @@ class VllmGateway:
             structured=use_structured,
         )
 
-        resp = await self._client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
+        try:
+            resp = await self._client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError(exc) from exc
+        except httpx.HTTPStatusError as exc:
+            raise LLMStatusError(exc.response.status_code, exc.response.text) from exc
+        except httpx.HTTPError as exc:
+            raise LLMProviderError(exc) from exc
+
         data = resp.json()
 
         text = _extract_message_content(data)

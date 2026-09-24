@@ -17,13 +17,12 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-import httpx
 import structlog
 
 from acolyte.domain.fusion import RRFFusion, ScoredHit
 from acolyte.domain.query_facet import WEAK_FACET_THRESHOLD
 from acolyte.domain.query_variant import generate_query_variants
-from acolyte.port.evidence_provider import ArticleHit
+from acolyte.port.evidence_provider import ArticleHit, EvidenceProviderError, EvidenceStatusError
 
 if TYPE_CHECKING:
     from acolyte.domain.fusion import FusionStrategy
@@ -179,7 +178,7 @@ class GathererNode:
         recap_map: dict[str, dict] = {}
         try:
             recaps = await self._evidence.search_recaps(topic, limit=10)
-        except httpx.HTTPError as exc:
+        except EvidenceProviderError as exc:
             logger.warning("Gatherer: recap search failed", error=str(exc))
             recaps = []
 
@@ -299,17 +298,17 @@ class GathererNode:
                         ]
                         ranked_lists.append(scored)
                         total_hits += len(articles)
-                    except httpx.HTTPStatusError as exc:
+                    except EvidenceStatusError as exc:
                         failed += 1
                         logger.exception(
                             "gatherer_variant_search_rejected",
                             query=effective_query,
                             source=source_label,
-                            status_code=exc.response.status_code,
-                            response=exc.response.text,
+                            status_code=exc.status_code,
+                            response=exc.response_text,
                             error=str(exc),
                         )
-                    except httpx.HTTPError as exc:
+                    except EvidenceProviderError as exc:
                         failed += 1
                         logger.warning(
                             "Gatherer: variant search failed",
@@ -370,17 +369,17 @@ class GathererNode:
                 articles = await self._search_articles_bounded(
                     query, limit=5, published_after=published_after, user_id=user_id
                 )
-            except httpx.HTTPStatusError as exc:
+            except EvidenceStatusError as exc:
                 failed += 1
                 logger.exception(
                     "gatherer_article_search_rejected",
                     query=query,
-                    status_code=exc.response.status_code,
-                    response=exc.response.text,
+                    status_code=exc.status_code,
+                    response=exc.response_text,
                     error=str(exc),
                 )
                 articles = []
-            except httpx.HTTPError as exc:
+            except EvidenceProviderError as exc:
                 failed += 1
                 logger.warning("Gatherer: article search failed", query=query, error=str(exc))
                 articles = []

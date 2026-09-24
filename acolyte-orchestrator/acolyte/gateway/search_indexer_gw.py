@@ -15,14 +15,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+import httpx
 import structlog
 
-from acolyte.port.evidence_provider import ArticleHit, ArticleMetadata, RecapHit
+from acolyte.port.evidence_provider import (
+    ArticleHit,
+    ArticleMetadata,
+    EvidenceProviderError,
+    EvidenceStatusError,
+    RecapHit,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
-
-    import httpx
 
     from acolyte.config.settings import Settings
     from acolyte.port.content_store import ContentStorePort
@@ -82,11 +87,17 @@ class SearchIndexerGateway:
         if published_before is not None:
             params["published_before"] = published_before.isoformat()
 
-        resp = await self._client.get(
-            f"{self._base_url}/v1/search",
-            params=params,
-        )
-        resp.raise_for_status()
+        try:
+            resp = await self._client.get(
+                f"{self._base_url}/v1/search",
+                params=params,
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise EvidenceStatusError(exc.response.status_code, exc.response.text) from exc
+        except httpx.HTTPError as exc:
+            raise EvidenceProviderError(exc) from exc
+
         data = resp.json()
 
         hits = []

@@ -11,7 +11,7 @@ import pytest
 
 from acolyte.config.settings import Settings
 from acolyte.gateway.vllm_gw import VllmGateway
-from acolyte.port.llm_provider import LLMMode
+from acolyte.port.llm_provider import LLMMode, LLMProviderError
 
 
 def _make_settings(**overrides: Any) -> Settings:  # noqa: ANN401 — heterogeneous Settings field overrides
@@ -328,14 +328,14 @@ async def test_explicit_model_overrides_default() -> None:
 
 @pytest.mark.asyncio
 async def test_http_error_raises() -> None:
-    """HTTP errors must propagate as httpx.HTTPStatusError."""
+    """HTTP errors must propagate as LLMProviderError."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"error": "internal server error"})
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
 
-    with pytest.raises(httpx.HTTPStatusError, match="500"):
+    with pytest.raises(LLMProviderError, match="500"):
         await gw.generate("test")
 
 

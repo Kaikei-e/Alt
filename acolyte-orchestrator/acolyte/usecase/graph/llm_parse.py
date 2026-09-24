@@ -15,9 +15,10 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-import httpx
 import structlog
 from pydantic import TypeAdapter, ValidationError
+
+from acolyte.port.llm_provider import LLMProviderError
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -92,7 +93,7 @@ async def generate_validated[T: "BaseModel"](
                     max_attempts=1 + retries,
                     error=str(exc),
                 )
-        except (ValidationError, TimeoutError, httpx.HTTPError) as exc:
+        except (ValidationError, TimeoutError, LLMProviderError) as exc:
             last_error = exc
             logger.warning(
                 "LLM output validation failed",

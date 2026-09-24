@@ -11,13 +11,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import structlog
 
-from acolyte.port.llm_provider import LLMMode, LLMResponse
+from acolyte.port.llm_provider import (
+    LLMMode,
+    LLMProviderError,
+    LLMResponse,
+    LLMStatusError,
+    LLMTimeoutError,
+)
 
 if TYPE_CHECKING:
-    import httpx
-
     from acolyte.config.settings import Settings
 
 logger = structlog.get_logger(__name__)
@@ -102,26 +107,33 @@ class OllamaGateway:
 
         resolved_model = model or self._default_model
 
-        # system_prompt callers get a [system, user] chat, regardless of mode.
-        if system_prompt is not None:
-            resolved_think = think if think is not None else False
-            return await self._generate_chat_with_system(
-                system_prompt, prompt, resolved_model, options, think=resolved_think
-            )
+        try:
+            # system_prompt callers get a [system, user] chat, regardless of mode.
+            if system_prompt is not None:
+                resolved_think = think if think is not None else False
+                return await self._generate_chat_with_system(
+                    system_prompt, prompt, resolved_model, options, think=resolved_think
+                )
 
-        # Endpoint routing: mode-based when set, schema-based otherwise
-        if mode == LLMMode.STRUCTURED:
-            if output_schema:
+            # Endpoint routing: mode-based when set, schema-based otherwise
+            if mode == LLMMode.STRUCTURED:
+                if output_schema:
+                    return await self._generate_structured(prompt, resolved_model, options, output_schema)
+                # XML DSL nodes: /api/chat without format, think=false (#14793)
+                return await self._generate_chat_freetext(prompt, resolved_model, options, think=False)
+            if mode == LLMMode.LONGFORM:
+                # Writer: /api/chat without format, think controlled by setting (#14793)
+                return await self._generate_chat_freetext(prompt, resolved_model, options, think=self._longform_think)
+            # Fallback: schema-based routing (backward compat)
+            if output_schema is not None:
                 return await self._generate_structured(prompt, resolved_model, options, output_schema)
-            # XML DSL nodes: /api/chat without format, think=false (#14793)
-            return await self._generate_chat_freetext(prompt, resolved_model, options, think=False)
-        if mode == LLMMode.LONGFORM:
-            # Writer: /api/chat without format, think controlled by setting (#14793)
-            return await self._generate_chat_freetext(prompt, resolved_model, options, think=self._longform_think)
-        # Fallback: schema-based routing (backward compat)
-        if output_schema is not None:
-            return await self._generate_structured(prompt, resolved_model, options, output_schema)
-        return await self._generate_freetext(prompt, resolved_model, options, think=think)
+            return await self._generate_freetext(prompt, resolved_model, options, think=think)
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError(exc) from exc
+        except httpx.HTTPStatusError as exc:
+            raise LLMStatusError(exc.response.status_code, exc.response.text) from exc
+        except httpx.HTTPError as exc:
+            raise LLMProviderError(exc) from exc
 
     async def _generate_chat_with_system(
         self,

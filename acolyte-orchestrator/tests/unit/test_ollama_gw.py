@@ -11,7 +11,7 @@ import pytest
 
 from acolyte.config.settings import Settings
 from acolyte.gateway.ollama_gw import OllamaGateway
-from acolyte.port.llm_provider import LLMMode
+from acolyte.port.llm_provider import LLMMode, LLMProviderError, LLMTimeoutError
 
 
 def _make_settings(**overrides: Any) -> Settings:  # noqa: ANN401 — heterogeneous Settings field overrides
@@ -493,3 +493,28 @@ async def test_longform_mode_num_predict_from_settings() -> None:
 
     body = json.loads(captured_requests[0].content)
     assert body["options"]["num_predict"] == 6000
+
+
+@pytest.mark.asyncio
+async def test_ollama_http_status_error_raises_llm_provider_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "internal error"})
+
+    client = _mock_transport(handler)
+    gw = OllamaGateway(client, _make_settings())
+
+    with pytest.raises(LLMProviderError, match="500"):
+        await gw.generate("test")
+
+
+@pytest.mark.asyncio
+async def test_ollama_timeout_raises_llm_timeout_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        err = httpx.ReadTimeout("read timed out")
+        raise err
+
+    client = _mock_transport(handler)
+    gw = OllamaGateway(client, _make_settings())
+
+    with pytest.raises(LLMTimeoutError, match="timed out"):
+        await gw.generate("test")
