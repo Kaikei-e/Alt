@@ -4,6 +4,7 @@ import (
 	"alt/config"
 	"alt/di"
 	middleware_custom "alt/middleware"
+	"alt/orchestrator/rest/resterr"
 	dashboard_usecase "alt/orchestrator/usecase/dashboard"
 	"alt/utils/logger"
 	"net/http"
@@ -53,7 +54,7 @@ func clampWindowSeconds(value, def, ceiling int64) int64 {
 // Access requires a valid JWT (RequireAuth) AND the admin role (RequireAdmin).
 // Dashboard data includes operational logs and metrics and must not be exposed
 // to regular users or unauthenticated traffic.
-func registerDashboardRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+func registerDashboardRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg config.AuthConfig) {
 	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
 	dashboard := v1.Group("/dashboard", authMiddleware.RequireAuth(), authMiddleware.RequireAdmin())
 	dashboard.GET("/metrics", handleGetMetrics(container.DashboardMetricsUsecase))
@@ -73,7 +74,7 @@ func handleGetMetrics(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.H
 
 		data, err := usecase.GetMetrics(c.Request().Context(), metricType, windowSeconds, limit)
 		if err != nil {
-			return HandleError(c, err, "GetMetrics")
+			return resterr.HandleError(c, err, "GetMetrics")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")
@@ -90,7 +91,7 @@ func handleGetOverview(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.
 
 		data, err := usecase.GetOverview(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
-			return HandleError(c, err, "GetOverview")
+			return resterr.HandleError(c, err, "GetOverview")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")
@@ -108,7 +109,7 @@ func handleGetLogs(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.Hand
 
 		data, err := usecase.GetLogs(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
-			return HandleError(c, err, "GetLogs")
+			return resterr.HandleError(c, err, "GetLogs")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")
@@ -125,7 +126,7 @@ func handleGetJobs(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.Hand
 
 		data, err := usecase.GetJobs(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
-			return HandleError(c, err, "GetJobs")
+			return resterr.HandleError(c, err, "GetJobs")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")
@@ -142,7 +143,7 @@ func handleGetRecapJobs(usecase dashboard_usecase.GetRecapJobsUsecase) echo.Hand
 
 		jobs, err := usecase.Execute(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
-			return HandleError(c, err, "GetRecapJobs")
+			return resterr.HandleError(c, err, "GetRecapJobs")
 		}
 
 		c.Response().Header().Set("Content-Type", "application/json")

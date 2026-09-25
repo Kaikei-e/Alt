@@ -34,8 +34,48 @@ func (u *Usecase) GetSLOStatus(ctx context.Context) (*domain.SLOStatus, error) {
 	}
 
 	// SLI-B: Freshness (from DB via port)
-	freshnessSLI := u.computeFreshnessSLI(ctx)
+	lag, err := u.lagPort.GetProjectionLag(ctx)
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "failed to get projection lag for freshness SLI", "error", err)
+	}
+	freshnessSLI := computeFreshnessSLIResult(lag, err)
 
+	status.SLIs = buildDefaultSLIs(freshnessSLI)
+	status.OverallHealth = computeOverallHealth(status.SLIs)
+	return status, nil
+}
+
+// computeFreshnessSLIResult evaluates projection lag duration against freshness target (pure function).
+func computeFreshnessSLIResult(lag time.Duration, err error) domain.SLIResult {
+	sli := domain.SLIResult{
+		Name:        domain.SLIFreshness,
+		TargetValue: freshnessTargetSeconds,
+		Unit:        "seconds",
+	}
+
+	if err != nil {
+		sli.CurrentValue = -1
+		sli.Status = domain.SLIStatusBreached
+		sli.ErrorBudgetConsumedPct = 100.0
+		return sli
+	}
+
+	lagSeconds := lag.Seconds()
+	sli.CurrentValue = lagSeconds
+
+	if lagSeconds <= freshnessTargetSeconds {
+		sli.Status = domain.SLIStatusMeeting
+		sli.ErrorBudgetConsumedPct = (lagSeconds / freshnessTargetSeconds) * 100.0
+	} else {
+		sli.Status = domain.SLIStatusBurning
+		sli.ErrorBudgetConsumedPct = 100.0
+	}
+
+	return sli
+}
+
+// buildDefaultSLIs combines placeholder SLIs with live freshness SLI.
+func buildDefaultSLIs(freshnessSLI domain.SLIResult) []domain.SLIResult {
 	// Placeholder SLIs for metrics not yet wired to Prometheus
 	availabilitySLI := domain.SLIResult{
 		Name:                   domain.SLIAvailability,
@@ -73,51 +113,17 @@ func (u *Usecase) GetSLOStatus(ctx context.Context) (*domain.SLOStatus, error) {
 		ErrorBudgetConsumedPct: 0.0,
 	}
 
-	status.SLIs = []domain.SLIResult{
+	return []domain.SLIResult{
 		availabilitySLI,
 		freshnessSLI,
 		actionDurabilitySLI,
 		streamContinuitySLI,
 		correctnessProxySLI,
 	}
-
-	status.OverallHealth = u.computeOverallHealth(status.SLIs)
-	return status, nil
-}
-
-// computeFreshnessSLI reads projection lag and converts it into an SLI result.
-func (u *Usecase) computeFreshnessSLI(ctx context.Context) domain.SLIResult {
-	sli := domain.SLIResult{
-		Name:        domain.SLIFreshness,
-		TargetValue: freshnessTargetSeconds,
-		Unit:        "seconds",
-	}
-
-	lag, err := u.lagPort.GetProjectionLag(ctx)
-	if err != nil {
-		logger.Logger.ErrorContext(ctx, "failed to get projection lag for freshness SLI", "error", err)
-		sli.CurrentValue = -1
-		sli.Status = domain.SLIStatusBreached
-		sli.ErrorBudgetConsumedPct = 100.0
-		return sli
-	}
-
-	lagSeconds := lag.Seconds()
-	sli.CurrentValue = lagSeconds
-
-	if lagSeconds <= freshnessTargetSeconds {
-		sli.Status = domain.SLIStatusMeeting
-		sli.ErrorBudgetConsumedPct = (lagSeconds / freshnessTargetSeconds) * 100.0
-	} else {
-		sli.Status = domain.SLIStatusBurning
-		sli.ErrorBudgetConsumedPct = 100.0
-	}
-
-	return sli
 }
 
 // computeOverallHealth determines the overall health from all SLIs.
-func (u *Usecase) computeOverallHealth(slis []domain.SLIResult) string {
+func computeOverallHealth(slis []domain.SLIResult) string {
 	hasBreached := false
 	hasBurning := false
 

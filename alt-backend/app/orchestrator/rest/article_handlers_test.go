@@ -3,7 +3,6 @@ package rest
 import (
 	"alt/di"
 	"alt/domain"
-	"alt/mocks"
 	"alt/orchestrator/gateway/fetch_article_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
 	"alt/orchestrator/usecase/fetch_article_usecase"
@@ -27,7 +26,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/mock/gomock"
 )
 
 // stubArticleRepository stands in for the repository fetch_article_usecase
@@ -110,14 +108,9 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 	// Inject Gateway with deps (injecting mockHttpClient allows intercepting fetch article request)
 	fetchGw := fetch_article_gateway.NewFetchArticleGatewayWithDeps(nil, mockHttpClient, ssrfValidator)
 
-	// Mock RAG Integration
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
-
 	// Create real Usecase composed of mocks/stubs
-	// Note: NewArticleUsecase expects (FetchArticlePort, RobotsTxtPort, ArticleRepository, RagIntegrationPort)
-	articleUsecase := fetch_article_usecase.NewArticleUsecase(fetchGw, gw, repo, mockRag)
+	// Note: NewArticleUsecase expects (FetchArticlePort, RobotsTxtPort, ArticleRepository)
+	articleUsecase := fetch_article_usecase.NewArticleUsecase(fetchGw, gw, repo)
 
 	// Partial container with only needed components. There is no repository
 	// field to populate any more: the handler reaches its data through the
@@ -237,19 +230,12 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		// lives, in the driver test and in the pact; here the article simply
 		// comes back with an id.
 
-		// RAG upsert is async (goroutine); use AnyTimes to avoid race with ctrl.Finish
-		mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-
 		handler := handleFetchArticle(container)
 		err := handler(c)
 
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "Content") // Extracted text
-
-		// Allow the async RAG goroutine to complete before the gomock
-		// controller finishes.
-		time.Sleep(50 * time.Millisecond)
 		assert.Empty(t, repo.declinedSaved, "an allowed fetch must not record a decline")
 	})
 }

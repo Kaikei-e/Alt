@@ -150,6 +150,15 @@ func TestNewConfig_SovereignEventAuth(t *testing.T) {
 			wantErr:   false,
 			wantToken: "",
 		},
+		{
+			name: "when SOVEREIGN_URL is empty unreadable token file is ignored",
+			envVars: map[string]string{
+				"SOVEREIGN_URL":              "",
+				"SOVEREIGN_EVENT_TOKEN_FILE": missingTokenFile,
+			},
+			wantErr:   false,
+			wantToken: "",
+		},
 	}
 
 	for _, tt := range tests {

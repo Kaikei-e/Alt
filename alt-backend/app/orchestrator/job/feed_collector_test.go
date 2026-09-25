@@ -372,7 +372,7 @@ func containsSuspiciousContent(title, description string) bool {
 		strings.Contains(titleLower, "not found")
 }
 
-func TestIsPersistentError(t *testing.T) {
+func TestIsPersistentFeedError(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
@@ -422,8 +422,8 @@ func TestIsPersistentError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isPersistentError(tt.err); got != tt.want {
-				t.Errorf("isPersistentError() = %v, want %v", got, tt.want)
+			if got := isPersistentFeedError(tt.err); got != tt.want {
+				t.Errorf("isPersistentFeedError() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -659,8 +659,6 @@ func errorWithMessage(msg string) error {
 }
 
 func TestValidateFeedURL(t *testing.T) {
-	ctx := context.Background()
-
 	tests := []struct {
 		name    string
 		url     url.URL
@@ -699,7 +697,7 @@ func TestValidateFeedURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateFeedURL(ctx, tt.url)
+			err := validateFeedURL(tt.url)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("validateFeedURL() expected error, got nil")

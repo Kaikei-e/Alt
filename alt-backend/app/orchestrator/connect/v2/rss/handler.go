@@ -22,7 +22,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/utils/safeconv"
-	"alt/utils/url_validator"
+	"alt/utils/security"
 )
 
 // Handler implements the RSSService Connect-RPC service.
@@ -68,7 +68,7 @@ func (h *Handler) RegisterRSSFeed(
 	}
 
 	// Check for allowed URLs (SSRF protection)
-	if err := url_validator.IsAllowedURL(parsedURL); err != nil {
+	if err := security.NewURLSecurityValidator().ValidateParsedRSSURL(parsedURL); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("URL not allowed: %w", err))
 	}
@@ -147,7 +147,7 @@ func (h *Handler) DeleteRSSFeedLink(
 	}
 
 	// Call usecase
-	if err := h.container.DeleteFeedLinkUsecase.Execute(ctx, userCtx.UserID, linkID); err != nil {
+	if err := h.container.UnsubscribeUsecase.Execute(ctx, userCtx.UserID, linkID); err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "DeleteRSSFeedLink")
 	}
 

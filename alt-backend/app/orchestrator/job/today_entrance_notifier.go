@@ -108,6 +108,35 @@ func todayEntranceNotificationJob(
 	return n.run
 }
 
+// Checks whether the given timestamp falls inside the target UTC hour.
+func isTodayEntranceTriggerHour(t time.Time, triggerHourUTC int) bool {
+	return t.UTC().Hour() == triggerHourUTC
+}
+
+// Builds notification enqueue request payload and deduplication key.
+func buildTodayEntranceEnqueue(userID uuid.UUID, count int, now time.Time, ttl time.Duration) (domain.NotificationEnqueue, error) {
+	payload, err := json.Marshal(todayEntrancePayload{
+		Kind:  domain.NotificationKindTodayEntranceReady,
+		URL:   todayEntranceNavigate,
+		Count: count,
+	})
+	if err != nil {
+		return domain.NotificationEnqueue{}, fmt.Errorf("marshal today entrance payload for %s: %w", userID, err)
+	}
+
+	return domain.NotificationEnqueue{
+		// Derived from the business fact — this user's entrance for this UTC
+		// day — so every tick inside the window produces the same key and the
+		// provider collapses them into one delivery per device.
+		DedupeKey:  fmt.Sprintf("digest:%s:%s", userID, now.UTC().Format(time.DateOnly)),
+		UserID:     userID.String(),
+		Kind:       domain.NotificationKindTodayEntranceReady,
+		Payload:    payload,
+		OccurredAt: now,
+		ExpiresAt:  now.Add(ttl),
+	}, nil
+}
+
 // run notifies every user whose entrance has something in it, once, if this
 // tick falls in the trigger hour.
 //
@@ -118,7 +147,7 @@ func todayEntranceNotificationJob(
 // later firings create nothing.
 func (n *todayEntranceNotifier) run(ctx context.Context) error {
 	now := n.clock().UTC()
-	if now.Hour() != todayEntranceTriggerHourUTC {
+	if !isTodayEntranceTriggerHour(now, todayEntranceTriggerHourUTC) {
 		return nil
 	}
 
@@ -169,26 +198,12 @@ func (n *todayEntranceNotifier) run(ctx context.Context) error {
 }
 
 func (n *todayEntranceNotifier) enqueue(ctx context.Context, userID uuid.UUID, count int, now time.Time) (int, error) {
-	payload, err := json.Marshal(todayEntrancePayload{
-		Kind:  domain.NotificationKindTodayEntranceReady,
-		URL:   todayEntranceNavigate,
-		Count: count,
-	})
+	req, err := buildTodayEntranceEnqueue(userID, count, now, todayEntranceTTL)
 	if err != nil {
-		return 0, fmt.Errorf("marshal today entrance payload for %s: %w", userID, err)
+		return 0, err
 	}
 
-	delivered, superseded, err := n.notifications.Enqueue(ctx, domain.NotificationEnqueue{
-		// Derived from the business fact — this user's entrance for this UTC
-		// day — so every tick inside the window produces the same key and the
-		// provider collapses them into one delivery per device.
-		DedupeKey:  fmt.Sprintf("digest:%s:%s", userID, now.Format(time.DateOnly)),
-		UserID:     userID.String(),
-		Kind:       domain.NotificationKindTodayEntranceReady,
-		Payload:    payload,
-		OccurredAt: now,
-		ExpiresAt:  now.Add(todayEntranceTTL),
-	})
+	delivered, superseded, err := n.notifications.Enqueue(ctx, req)
 	if err != nil {
 		return 0, fmt.Errorf("enqueue today entrance notification for %s: %w", userID, err)
 	}

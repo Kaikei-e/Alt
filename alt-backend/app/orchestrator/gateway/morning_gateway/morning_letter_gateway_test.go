@@ -166,3 +166,44 @@ func (s stubArticleBatchReader) FetchArticlesByIDs(_ context.Context, _ []uuid.U
 func strPtr(s string) *string {
 	return &s
 }
+
+func TestExtractSourceArticleIDs(t *testing.T) {
+	id1 := uuid.New()
+	id2 := uuid.New()
+	sources := []MorningLetterSourceAPI{
+		{ArticleID: id1.String()},
+		{ArticleID: "invalid-uuid"},
+		{ArticleID: id2.String()},
+	}
+
+	ids := extractSourceArticleIDs(sources)
+	assert.Equal(t, []uuid.UUID{id1, id2}, ids)
+}
+
+func TestMapSourcesToDomain(t *testing.T) {
+	id1 := uuid.New()
+	id2 := uuid.New()
+	feedID1 := uuid.New()
+	sources := []MorningLetterSourceAPI{
+		{LetterID: "let-1", SectionKey: "sec-1", ArticleID: id1.String(), SourceType: "article", Position: 1},
+		{LetterID: "let-1", SectionKey: "sec-1", ArticleID: id2.String(), SourceType: "article", Position: 2},
+		{LetterID: "let-1", SectionKey: "sec-1", ArticleID: "invalid", SourceType: "article", Position: 3},
+	}
+	feedMap := map[uuid.UUID]uuid.UUID{
+		id1: feedID1,
+	}
+
+	mapped, dropped := mapSourcesToDomain(sources, feedMap)
+	require.Len(t, mapped, 1)
+	assert.Equal(t, id1, mapped[0].ArticleID)
+	assert.Equal(t, feedID1, mapped[0].FeedID)
+	assert.Equal(t, "let-1", mapped[0].LetterID)
+	require.Len(t, dropped, 1)
+	assert.Equal(t, id2.String(), dropped[0].ArticleID)
+}
+
+func TestBuildRegeneratePayload(t *testing.T) {
+	b, err := buildRegeneratePayload("Asia/Tokyo")
+	require.NoError(t, err)
+	assert.Contains(t, string(b), `"edition_timezone":"Asia/Tokyo"`)
+}

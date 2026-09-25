@@ -53,15 +53,15 @@ type UserContext struct {
 // JWTAuthMiddleware validates JWT tokens for backend authentication
 type JWTAuthMiddleware struct {
 	logger   *slog.Logger
-	config   *config.Config
+	config   config.AuthConfig
 	secret   []byte
 	issuer   string
 	audience string
 }
 
 // NewJWTAuthMiddleware creates a new JWT authentication middleware
-func NewJWTAuthMiddleware(logger *slog.Logger, cfg *config.Config) *JWTAuthMiddleware {
-	secret := []byte(cfg.Auth.BackendTokenSecret)
+func NewJWTAuthMiddleware(logger *slog.Logger, cfg config.AuthConfig) *JWTAuthMiddleware {
+	secret := []byte(cfg.BackendTokenSecret)
 	if len(secret) == 0 {
 		if logger != nil {
 			logger.Warn("BACKEND_TOKEN_SECRET not set, JWT auth will deny all requests")
@@ -72,8 +72,8 @@ func NewJWTAuthMiddleware(logger *slog.Logger, cfg *config.Config) *JWTAuthMiddl
 		logger:   logger,
 		config:   cfg,
 		secret:   secret,
-		issuer:   cfg.Auth.BackendTokenIssuer,
-		audience: cfg.Auth.BackendTokenAudience,
+		issuer:   cfg.BackendTokenIssuer,
+		audience: cfg.BackendTokenAudience,
 	}
 }
 

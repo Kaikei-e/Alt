@@ -189,3 +189,29 @@ func (passthroughValidator) CanonicalRequestURL(_ context.Context, u *url.URL) (
 func newTestGateway(client *http.Client) *Gateway {
 	return NewGateway(nil, client, passthroughValidator{})
 }
+
+func TestMapHTTPStatusToRefusal(t *testing.T) {
+	refusal, ok := mapHTTPStatusToRefusal(http.StatusOK)
+	assert.True(t, ok)
+	assert.Empty(t, refusal)
+
+	refusal, ok = mapHTTPStatusToRefusal(http.StatusForbidden)
+	assert.False(t, ok)
+	assert.Equal(t, domain.OgImageRefusedForbidden, refusal)
+
+	refusal, ok = mapHTTPStatusToRefusal(http.StatusNotFound)
+	assert.False(t, ok)
+	assert.Equal(t, domain.OgImageRefusedNotFound, refusal)
+
+	refusal, ok = mapHTTPStatusToRefusal(http.StatusInternalServerError)
+	assert.False(t, ok)
+	assert.Equal(t, domain.OgImageFetchError, refusal)
+}
+
+func TestParseRobotsGroup(t *testing.T) {
+	robotsTxt := "User-agent: *\nDisallow: /admin\nUser-agent: AltBot\nDisallow: /private\n"
+	group := parseRobotsGroup(robotsTxt, "AltBot")
+	require.NotNil(t, group)
+	assert.False(t, group.Test("/private"))
+	assert.True(t, group.Test("/public"))
+}

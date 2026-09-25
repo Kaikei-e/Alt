@@ -74,3 +74,43 @@ func TestSearchIndexerGateway_RecapsMapping(t *testing.T) {
 		t.Errorf("unexpected recap mapping: %+v", results[0])
 	}
 }
+
+func TestMapArticleHitsToDomain(t *testing.T) {
+	hits := []search_indexer_connect.ArticleHit{
+		{
+			ID:      "art-1",
+			Title:   "Title 1",
+			Content: "Content 1",
+			Tags:    []string{"t1"},
+		},
+	}
+	res := mapArticleHitsToDomain(hits)
+	if len(res) != 1 {
+		t.Fatalf("expected 1 hit, got %d", len(res))
+	}
+	if res[0].ID != "art-1" || res[0].Title != "Title 1" || res[0].Content != "Content 1" {
+		t.Errorf("unexpected mapped hit: %+v", res[0])
+	}
+}
+
+func TestMapRecapHitsToDomain(t *testing.T) {
+	hits := []search_indexer_connect.RecapHit{
+		{
+			JobID:      "job-1",
+			ExecutedAt: "2026-09-24T00:00:00Z",
+			WindowDays: 7,
+			Genre:      "tech",
+			Summary:    "summary",
+			TopTerms:   []string{"term1"},
+			Tags:       []string{"t1"},
+			Bullets:    []string{"b1"},
+		},
+	}
+	res := mapRecapHitsToDomain(hits)
+	if len(res) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(res))
+	}
+	if res[0].JobID != "job-1" || res[0].Genre != "tech" || res[0].Summary != "summary" {
+		t.Errorf("unexpected mapped recap: %+v", res[0])
+	}
+}

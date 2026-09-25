@@ -3,7 +3,6 @@ package knowledge_backfill_usecase
 import (
 	"alt/domain"
 	"alt/orchestrator/port/knowledge_backfill_port"
-	"alt/shared/port/knowledge_event_port"
 	"context"
 	"errors"
 	"fmt"
@@ -34,7 +33,6 @@ type Usecase struct {
 	updatePort knowledge_backfill_port.UpdateBackfillJobPort
 	listPort   knowledge_backfill_port.ListBackfillJobsPort
 	countPort  knowledge_backfill_port.CountBackfillArticlesPort
-	eventPort  knowledge_event_port.AppendKnowledgeEventPort
 }
 
 // NewUsecase creates a new backfill usecase.
@@ -44,7 +42,6 @@ func NewUsecase(
 	updatePort knowledge_backfill_port.UpdateBackfillJobPort,
 	listPort knowledge_backfill_port.ListBackfillJobsPort,
 	countPort knowledge_backfill_port.CountBackfillArticlesPort,
-	eventPort knowledge_event_port.AppendKnowledgeEventPort,
 ) *Usecase {
 	return &Usecase{
 		createPort: createPort,
@@ -52,7 +49,6 @@ func NewUsecase(
 		updatePort: updatePort,
 		listPort:   listPort,
 		countPort:  countPort,
-		eventPort:  eventPort,
 	}
 }
 
@@ -102,7 +98,7 @@ func (u *Usecase) PauseBackfill(ctx context.Context, jobID uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("pause backfill: %w", err)
 	}
-	if job.Status != domain.BackfillStatusRunning {
+	if !canPause(job.Status) {
 		return fmt.Errorf("cannot pause job in status %q", job.Status)
 	}
 
@@ -119,7 +115,7 @@ func (u *Usecase) ResumeBackfill(ctx context.Context, jobID uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("resume backfill: %w", err)
 	}
-	if job.Status != domain.BackfillStatusPaused {
+	if !canResume(job.Status) {
 		return fmt.Errorf("cannot resume job in status %q", job.Status)
 	}
 
@@ -128,6 +124,16 @@ func (u *Usecase) ResumeBackfill(ctx context.Context, jobID uuid.UUID) error {
 		return fmt.Errorf("resume backfill update: %w", err)
 	}
 	return nil
+}
+
+// canPause reports whether a job in the given status can transition to paused.
+func canPause(status string) bool {
+	return status == domain.BackfillStatusRunning
+}
+
+// canResume reports whether a job in the given status can transition to running.
+func canResume(status string) bool {
+	return status == domain.BackfillStatusPaused
 }
 
 // GetBackfillStatus returns the current status of a backfill job.

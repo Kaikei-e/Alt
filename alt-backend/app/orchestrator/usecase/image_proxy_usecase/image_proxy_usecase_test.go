@@ -2,7 +2,6 @@ package image_proxy_usecase
 
 import (
 	"alt/domain"
-	"alt/utils/rate_limiter"
 	"context"
 	"fmt"
 	"net/url"
@@ -69,6 +68,30 @@ type mockDynamicDomainPort struct {
 
 func (m *mockDynamicDomainPort) IsAllowedImageDomain(ctx context.Context, hostname string) (bool, error) {
 	return m.allowed, m.err
+}
+
+type mockRateLimiterPort struct {
+	waitForURLCalled bool
+	lastURL          string
+	err              error
+}
+
+func (m *mockRateLimiterPort) WaitForHost(ctx context.Context, host string) error {
+	return m.err
+}
+
+func (m *mockRateLimiterPort) WaitForURL(ctx context.Context, url string) error {
+	m.waitForURLCalled = true
+	m.lastURL = url
+	return m.err
+}
+
+func (m *mockRateLimiterPort) GetRemainingRequests(host string) int {
+	return 1
+}
+
+func (m *mockRateLimiterPort) GetNextAvailableTime(host string) time.Time {
+	return time.Now()
 }
 
 // --- Tests ---
@@ -213,7 +236,7 @@ func TestProxyImage_WithRateLimiter(t *testing.T) {
 		ExpiresAt:   time.Now().Add(12 * time.Hour),
 	}
 
-	rl := rate_limiter.NewHostRateLimiter(100 * time.Millisecond)
+	rl := &mockRateLimiterPort{}
 
 	uc := NewImageProxyUsecase(
 		&mockImageFetchPort{result: &domain.ImageFetchResult{
@@ -234,6 +257,12 @@ func TestProxyImage_WithRateLimiter(t *testing.T) {
 	}
 	if string(result.Data) != "processed-webp" {
 		t.Error("expected processed data")
+	}
+	if !rl.waitForURLCalled {
+		t.Error("expected WaitForURL to be called")
+	}
+	if rl.lastURL != "https://example.com/img.jpg" {
+		t.Errorf("expected url https://example.com/img.jpg, got %s", rl.lastURL)
 	}
 }
 
@@ -262,5 +291,73 @@ func TestBatchGenerateProxyURLs(t *testing.T) {
 	}
 	if _, ok := result["article-2"]; ok {
 		t.Error("article-2 should not be in results (empty URL)")
+	}
+}
+
+func TestParseProxyURLPath(t *testing.T) {
+	tests := []struct {
+		name        string
+		proxyURL    string
+		wantSig     string
+		wantEncoded string
+		wantOK      bool
+	}{
+		{
+			name:        "valid proxy URL",
+			proxyURL:    "/v1/images/proxy/test-sig/aHR0cHM6Ly9leGFtcGxlLmNvbQ==",
+			wantSig:     "test-sig",
+			wantEncoded: "aHR0cHM6Ly9leGFtcGxlLmNvbQ==",
+			wantOK:      true,
+		},
+		{
+			name:        "valid proxy URL with slash in encoded part",
+			proxyURL:    "/v1/images/proxy/sig123/sub/path/data",
+			wantSig:     "sig123",
+			wantEncoded: "sub/path/data",
+			wantOK:      true,
+		},
+		{
+			name:        "missing prefix",
+			proxyURL:    "/api/proxy/sig123/encoded",
+			wantSig:     "",
+			wantEncoded: "",
+			wantOK:      false,
+		},
+		{
+			name:        "empty string",
+			proxyURL:    "",
+			wantSig:     "",
+			wantEncoded: "",
+			wantOK:      false,
+		},
+		{
+			name:        "prefix only without slash separator",
+			proxyURL:    "/v1/images/proxy/",
+			wantSig:     "",
+			wantEncoded: "",
+			wantOK:      false,
+		},
+		{
+			name:        "prefix with sig but no slash separator",
+			proxyURL:    "/v1/images/proxy/onlysig",
+			wantSig:     "",
+			wantEncoded: "",
+			wantOK:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotSig, gotEncoded, gotOK := parseProxyURLPath(tt.proxyURL)
+			if gotOK != tt.wantOK {
+				t.Fatalf("parseProxyURLPath(%q) ok = %v, want %v", tt.proxyURL, gotOK, tt.wantOK)
+			}
+			if gotSig != tt.wantSig {
+				t.Errorf("parseProxyURLPath(%q) sig = %q, want %q", tt.proxyURL, gotSig, tt.wantSig)
+			}
+			if gotEncoded != tt.wantEncoded {
+				t.Errorf("parseProxyURLPath(%q) encoded = %q, want %q", tt.proxyURL, gotEncoded, tt.wantEncoded)
+			}
+		})
 	}
 }

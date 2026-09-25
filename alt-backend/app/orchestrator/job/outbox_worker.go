@@ -9,12 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
-	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -57,131 +53,13 @@ const outboxClaimBatchSize = 10
 // exactly how the budget went stale the first time (see maxOutboxUpsertAttempts).
 const outboxWorkerTickInterval = 5 * time.Second
 
-// maxOutboxUpsertAttempts bounds how many times a row is released back to
-// PENDING before it is given up as terminally FAILED. Both of the row's side
-// effects draw on it — a transient RAG upsert failure (see
-// rag_integration_port.ErrRagUpsertTransient) and a failed ArticleCreated
-// append — because what it rations is claim slots, and a row occupies one
-// whichever leg sent it back. Delivering one of them refreshes it (see
-// markRagUpserted): the two legs talk to two different services, and a budget
-// sized to outlast one service's redeploy is not a budget they can split.
-//
-// There is no attempt_count column on outbox_events, so this count lives in
-// process memory (outboxRetryTracker) and resets on every harvester restart.
-// The budget is sized in ticks of outboxWorkerTickInterval:
-// (attempts-1) * outboxWorkerTickInterval is the minimum downtime a row
-// survives before going terminal. A first cut at 3 attempts covered only
-// ~10s of a 5s-interval job — far short of a real redeploy (observed 20-60s)
-// — and reproduced the exact incident this fix exists to prevent for any
-// outage longer than a few seconds. 24 attempts covers >=115s, comfortably
-// above the observed 60s ceiling with margin for tick jitter under batch
-// backlog.
-//
-// This is still bounded, not unbounded: a sustained outage (rag-orchestrator
-// crash-looping, a multi-day incident) exhausts it exactly like the old
-// budget did and frees the row instead of occupying the front of the
-// oldest-first claim query forever. Recovering that case is an operational
-// decision (re-queue the FAILED rows), not something this worker should do
-// unbounded and unattended.
-const maxOutboxUpsertAttempts = 24
-
-// outboxRetryTracker counts consecutive delivery failures per outbox row,
-// across worker ticks, in process memory only. It also remembers which rows
-// already got their RAG upsert in, so a row released for the sake of its
-// second side effect does not pay for the first one twice.
-type outboxRetryTracker struct {
-	mu          sync.Mutex
-	attempts    map[string]int
-	ragUpserted map[string]bool
-}
-
-func newOutboxRetryTracker() *outboxRetryTracker {
-	return &outboxRetryTracker{
-		attempts:    make(map[string]int),
-		ragUpserted: make(map[string]bool),
-	}
-}
-
-// recordFailure increments and returns the attempt count for id.
-func (t *outboxRetryTracker) recordFailure(id string) int {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.attempts[id]++
-	return t.attempts[id]
-}
-
-// markRagUpserted records that id's article reached the RAG index, and returns
-// the attempt budget to full.
-//
-// Reaching the index is progress, and the budget is sized to outlast one
-// downstream service being redeployed (see maxOutboxUpsertAttempts). The row's
-// two legs talk to two different services, so carrying a budget spent on a
-// rag-orchestrator outage over to the ArticleCreated leg hands that leg a
-// window far shorter than the one it was sized for — at worst a single attempt
-// — and ends the row FAILED on the tick both side effects were finally making
-// progress. ragUpserted deliberately survives: the upsert must not be re-run.
-func (t *outboxRetryTracker) markRagUpserted(id string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.ragUpserted[id] = true
-	delete(t.attempts, id)
-}
-
-// ragUpsertDone reports whether this process already delivered id's article to
-// the RAG index. Only ever false-negative: a restart forgets, and the row is
-// upserted again — which is safe, the upsert is idempotent on article_id, and
-// costs one embedding run rather than a missed one.
-func (t *outboxRetryTracker) ragUpsertDone(id string) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.ragUpserted[id]
-}
-
-// clear forgets id. Called once a row reaches a terminal status (PROCESSED or
-// FAILED) so a long-running harvester process does not grow these maps by one
-// entry per outbox row for the life of the process.
-func (t *outboxRetryTracker) clear(id string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.attempts, id)
-	delete(t.ragUpserted, id)
-}
-
-// These OTel counters are this file's fix for a specific gap: before this
-// change nothing surfaced a stalled outbox — 5xx failures were marked FAILED
-// with no metric, no alert and no health degradation, and the only way to
-// notice was to query outbox_events directly. A sustained non-zero rate on
-// the failed counter (reason "retries_exhausted" in particular) is the
-// signal an alert should watch.
-var (
-	outboxMeterOnce            sync.Once
-	outboxProcessedCounter     metric.Int64Counter
-	outboxRetriedCounter       metric.Int64Counter
-	outboxFailedCounter        metric.Int64Counter
-	outboxReleaseFailedCounter metric.Int64Counter
-)
-
-func initOutboxMetrics() {
-	outboxMeterOnce.Do(func() {
-		meter := otel.Meter("alt-harvester.outbox-worker")
-		outboxProcessedCounter, _ = meter.Int64Counter("alt_harvester_outbox_events_processed_total",
-			metric.WithDescription("ARTICLE_UPSERT outbox events successfully delivered to RAG and knowledge-sovereign ArticleCreated"))
-		outboxRetriedCounter, _ = meter.Int64Counter("alt_harvester_outbox_events_retried_total",
-			metric.WithDescription("Outbox events released back to PENDING after a transient RAG upsert or ArticleCreated append failure"))
-		outboxFailedCounter, _ = meter.Int64Counter("alt_harvester_outbox_events_failed_total",
-			metric.WithDescription("Outbox events marked terminally FAILED, labeled by reason"))
-		outboxReleaseFailedCounter, _ = meter.Int64Counter("alt_harvester_outbox_events_release_failed_total",
-			metric.WithDescription("Outbox events where the release-to-PENDING RPC itself failed after a transient upsert failure, leaving the row stuck PROCESSING — invisible to both the PENDING claim query and a FAILED-status audit"))
-	})
-}
-
 // OutboxWorkerJob returns a function suitable for the JobScheduler that
 // processes pending outbox events.
 //
 // repo is required. A nil one would make every tick claim nothing, which is
 // indistinguishable from a drained outbox in the logs — the worker would look
 // healthy while no article ever reached rag-orchestrator (CLAUDE.md rule 8).
-func OutboxWorkerJob(repo outboxRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) func(ctx context.Context) error {
+func OutboxWorkerJob(repo outboxRepository, ragIntegration rag_integration_port.ArticleUpsertPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) func(ctx context.Context) error {
 	if repo == nil {
 		panic("outbox-worker: outbox repository is nil — must be wired unconditionally at composition root (see .claude/rules/di-wiring.md)")
 	}
@@ -195,7 +73,7 @@ func OutboxWorkerJob(repo outboxRepository, ragIntegration rag_integration_port.
 	}
 }
 
-func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort, retries *outboxRetryTracker) error {
+func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegration rag_integration_port.ArticleUpsertPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort, retries *outboxRetryTracker) error {
 	initOutboxMetrics()
 
 	events, err := repo.ClaimBatch(ctx, outboxClaimBatchSize)
@@ -224,22 +102,21 @@ func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegrat
 		}
 
 		if event.EventType == "ARTICLE_UPSERT" {
-			var upsertInput rag_integration_port.UpsertArticleInput
-			if err := json.Unmarshal(event.Payload, &upsertInput); err != nil {
+			upsertInput, err := parseArticleUpsertPayload(event.Payload)
+			if err != nil {
+				if errors.Is(err, errMissingUserID) {
+					logger.Logger.ErrorContext(ctx, "ARTICLE_UPSERT outbox event missing owner user_id",
+						"event_id", event.ID, "article_id", upsertInput.ArticleID)
+					markProcessed(ctx, repo, event.ID, domain.OutboxFailed, "missing owner user_id")
+					outboxFailedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "missing_user_id")))
+					continue
+				}
 				// A malformed payload will never unmarshal differently on
 				// retry — this is genuinely terminal, unlike the RAG call
 				// below.
 				logger.Logger.ErrorContext(ctx, "Failed to unmarshal outbox event payload", "event_id", event.ID, "error", err)
 				markProcessed(ctx, repo, event.ID, domain.OutboxFailed, err.Error())
 				outboxFailedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "unmarshal_error")))
-				continue
-			}
-
-			if strings.TrimSpace(upsertInput.UserID) == "" {
-				logger.Logger.ErrorContext(ctx, "ARTICLE_UPSERT outbox event missing owner user_id",
-					"event_id", event.ID, "article_id", upsertInput.ArticleID)
-				markProcessed(ctx, repo, event.ID, domain.OutboxFailed, "missing owner user_id")
-				outboxFailedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "missing_user_id")))
 				continue
 			}
 
@@ -314,7 +191,7 @@ func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegrat
 func handleUpsertFailure(ctx context.Context, repo outboxRepository, retries *outboxRetryTracker, eventID string, err error) {
 	if errors.Is(err, rag_integration_port.ErrRagUpsertTransient) {
 		attempt := retries.recordFailure(eventID)
-		if attempt < maxOutboxUpsertAttempts {
+		if !isRetryBudgetExhausted(attempt, maxOutboxUpsertAttempts) {
 			logger.Logger.WarnContext(ctx, "Transient RAG upsert failure, releasing outbox event for retry",
 				"event_id", eventID, "attempt", attempt, "max_attempts", maxOutboxUpsertAttempts, "error", err)
 			if releaseForRetry(ctx, repo, eventID) {
@@ -358,7 +235,7 @@ func handleUpsertFailure(ctx context.Context, repo outboxRepository, retries *ou
 // waits behind it", for as long as knowledge-sovereign is down.
 func handleArticleCreatedFailure(ctx context.Context, repo outboxRepository, retries *outboxRetryTracker, eventID string, err error) {
 	attempt := retries.recordFailure(eventID)
-	if attempt < maxOutboxUpsertAttempts {
+	if !isRetryBudgetExhausted(attempt, maxOutboxUpsertAttempts) {
 		logger.Logger.WarnContext(ctx, "ArticleCreated emit failed after RAG success; releasing outbox event for retry",
 			"event_id", eventID, "attempt", attempt, "max_attempts", maxOutboxUpsertAttempts, "error", err)
 		if releaseForRetry(ctx, repo, eventID) {
@@ -405,91 +282,48 @@ func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.Appe
 		panic("outbox_worker: knowledge_event_port.AppendKnowledgeEventPort is nil — the Knowledge Home ArticleCreated producer must be wired at composition root (see .claude/rules/di-wiring.md)")
 	}
 
-	var p struct {
+	var probe struct {
 		ArticleID string `json:"article_id"`
-		URL       string `json:"url"`
-		Title     string `json:"title"`
-		UserID    string `json:"user_id"`
-		// UpdatedAt is stamped once at outbox-enqueue time (save_article_driver.go),
-		// i.e. when the article-upsert fact actually occurred. Reused below as
-		// PublishedAt instead of re-stamping wall-clock time here: this handler
-		// can run at an arbitrary, possibly much later time (worker poll delay,
-		// crash-and-reprocess), so reading time.Now() here would make the same
-		// event replay to a different PublishedAt each time it's processed.
 		UpdatedAt string `json:"updated_at"`
 	}
-	if err := json.Unmarshal(payload, &p); err != nil {
-		logger.Logger.ErrorContext(ctx, "failed to unmarshal outbox payload for knowledge event", "error", err)
-		return fmt.Errorf("unmarshal outbox payload for knowledge event: %w", err)
-	}
-
-	userID, err := uuid.Parse(p.UserID)
-	if err != nil {
-		logger.Logger.WarnContext(ctx, "invalid user_id for knowledge event, skipping", "user_id", p.UserID)
-		// Invalid user_id is a permanent payload defect: skipping (nil error)
-		// lets the caller ACK rather than retry forever on the same bad row.
-		return nil
-	}
-
-	publishedAt := p.UpdatedAt
-	if publishedAt == "" {
+	if err := json.Unmarshal(payload, &probe); err == nil && probe.UpdatedAt == "" {
 		// Only reachable for outbox rows enqueued before this field existed.
 		logger.Logger.WarnContext(ctx, "outbox payload missing updated_at, falling back to processing-time wall clock",
-			"article_id", p.ArticleID)
-		publishedAt = time.Now().Format(time.RFC3339)
+			"article_id", probe.ArticleID)
 	}
 
-	// occurred_at is the article-upsert fact's own timestamp, minted once at
-	// outbox-enqueue time (same source as published_at above). Re-stamping
-	// time.Now() here made the same event replay to a different occurred_at on
-	// every reprocess (worker poll delay, crash-and-reprocess), breaking the
-	// reproject-safe / no-business-fact-time.Now() invariant. Deriving it from
-	// updated_at keeps the append idempotent under the article-scoped dedupe_key.
-	occurredAt, occurredErr := time.Parse(time.RFC3339, publishedAt)
-	if occurredErr != nil {
-		// publishedAt is always RFC3339 (p.UpdatedAt from save_article_driver, or
-		// the wall-clock fallback above), so this is defensive. Surface it as a
-		// retryable failure rather than fabricating a fresh occurred_at.
-		logger.Logger.ErrorContext(ctx, "outbox payload updated_at not RFC3339, withholding knowledge event",
-			"article_id", p.ArticleID, "updated_at", publishedAt, "error", occurredErr)
-		return fmt.Errorf("parse outbox updated_at for occurred_at: %w", occurredErr)
-	}
-
-	// Marshal through the canonical domain.ArticleCreatedPayload struct so
-	// the wire key for the article URL is locked to "url" — using a raw
-	// map[string]any literal here historically wrote the legacy "link" key
-	// which silently broke the projector (PM-2026-041). The shared struct
-	// is the single source of truth for this wire schema.
-	eventPayload, err := json.Marshal(domain.ArticleCreatedPayload{
-		ArticleID:   p.ArticleID,
-		Title:       p.Title,
-		PublishedAt: publishedAt,
-		TenantID:    p.UserID,
-		URL:         p.URL,
-	})
+	kevent, err := buildArticleCreatedKnowledgeEvent(payload, time.Now())
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "failed to marshal knowledge ArticleCreated payload, skipping",
-			"article_id", p.ArticleID, "error", err)
-		return fmt.Errorf("marshal knowledge ArticleCreated payload: %w", err)
+		if errors.Is(err, errSkipInvalidUserID) {
+			userID := ""
+			var target *errInvalidUserID
+			if errors.As(err, &target) {
+				userID = target.userID
+			}
+			logger.Logger.WarnContext(ctx, "invalid user_id for knowledge event, skipping", "user_id", userID)
+			// Invalid user_id is a permanent payload defect: skipping (nil error)
+			// lets the caller ACK rather than retry forever on the same bad row.
+			return nil
+		}
+		var updatedErr *errInvalidUpdatedAt
+		if errors.As(err, &updatedErr) {
+			logger.Logger.ErrorContext(ctx, "outbox payload updated_at not RFC3339, withholding knowledge event",
+				"article_id", updatedErr.articleID, "updated_at", updatedErr.updatedAt, "error", updatedErr.err)
+			return err
+		}
+		var marshalErr *errMarshalKnowledgePayload
+		if errors.As(err, &marshalErr) {
+			logger.Logger.ErrorContext(ctx, "failed to marshal knowledge ArticleCreated payload, skipping",
+				"article_id", marshalErr.articleID, "error", marshalErr.err)
+			return err
+		}
+		logger.Logger.ErrorContext(ctx, "failed to unmarshal outbox payload for knowledge event", "error", err)
+		return err
 	}
 
-	kevent := domain.KnowledgeEvent{
-		EventID:       uuid.New(),
-		OccurredAt:    occurredAt,
-		TenantID:      userID,
-		UserID:        &userID,
-		ActorType:     domain.ActorService,
-		ActorID:       "outbox-worker",
-		EventType:     domain.EventArticleCreated,
-		AggregateType: domain.AggregateArticle,
-		AggregateID:   p.ArticleID,
-		DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleCreated, p.ArticleID),
-		Payload:       eventPayload,
-	}
-
-	if _, err := port.AppendKnowledgeEvent(ctx, kevent); err != nil {
+	if _, err := port.AppendKnowledgeEvent(ctx, *kevent); err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to append knowledge ArticleCreated event",
-			"article_id", p.ArticleID, "error", err)
+			"article_id", kevent.AggregateID, "error", err)
 		return fmt.Errorf("append knowledge ArticleCreated event: %w", err)
 	}
 	return nil

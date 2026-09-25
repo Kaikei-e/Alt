@@ -22,8 +22,22 @@ import (
 // In-process the driver could read the context itself; across a Connect call
 // it cannot, because the peer certificate says "alt-backend" and nothing about
 // whose article this is.
+// articleDataHubClient isolates the data-hub RPCs called by article gateways.
+type articleDataHubClient interface {
+	ArchiveArticle(context.Context, *connect.Request[datahubv1.ArchiveArticleRequest]) (*connect.Response[datahubv1.ArchiveArticleResponse], error)
+	GetArticleByURL(context.Context, *connect.Request[datahubv1.GetArticleByURLRequest]) (*connect.Response[datahubv1.GetArticleByURLResponse], error)
+	BatchGetArticlesByURLs(context.Context, *connect.Request[datahubv1.BatchGetArticlesByURLsRequest]) (*connect.Response[datahubv1.BatchGetArticlesByURLsResponse], error)
+	SaveArticleSummary(context.Context, *connect.Request[datahubv1.SaveArticleSummaryRequest]) (*connect.Response[datahubv1.SaveArticleSummaryResponse], error)
+	GetArticleContentByID(context.Context, *connect.Request[datahubv1.GetArticleContentByIDRequest]) (*connect.Response[datahubv1.GetArticleContentByIDResponse], error)
+	ListArticlesCursor(context.Context, *connect.Request[datahubv1.ListArticlesCursorRequest]) (*connect.Response[datahubv1.ListArticlesCursorResponse], error)
+	ListArticleIDsCursor(context.Context, *connect.Request[datahubv1.ListArticleIDsCursorRequest]) (*connect.Response[datahubv1.ListArticleIDsCursorResponse], error)
+	BatchGetArticlesByIDs(context.Context, *connect.Request[datahubv1.BatchGetArticlesByIDsRequest]) (*connect.Response[datahubv1.BatchGetArticlesByIDsResponse], error)
+	GetLatestArticleByFeedID(context.Context, *connect.Request[datahubv1.GetLatestArticleByFeedIDRequest]) (*connect.Response[datahubv1.GetLatestArticleByFeedIDResponse], error)
+	LookupArticleURL(context.Context, *connect.Request[datahubv1.LookupArticleURLRequest]) (*connect.Response[datahubv1.LookupArticleURLResponse], error)
+}
+
 type ArticleStoreGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client articleDataHubClient
 }
 
 func NewArticleStoreGateway(client datahubv1connect.DataHubServiceClient) *ArticleStoreGateway {
@@ -143,7 +157,7 @@ func (g *ArticleStoreGateway) FetchArticleByID(ctx context.Context, articleID st
 
 // ArticleCursorGateway is the per-user article timeline (catalog §2.C W3-C4).
 type ArticleCursorGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client articleDataHubClient
 }
 
 func NewArticleCursorGateway(client datahubv1connect.DataHubServiceClient) *ArticleCursorGateway {
@@ -214,7 +228,7 @@ func (g *ArticleCursorGateway) FetchArticleIDsWithCursor(ctx context.Context, cu
 // ArticleBatchGateway hydrates article ids into full articles
 // (catalog §2.C W3-C5).
 type ArticleBatchGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client articleDataHubClient
 }
 
 func NewArticleBatchGateway(client datahubv1connect.DataHubServiceClient) *ArticleBatchGateway {
@@ -257,7 +271,7 @@ func (g *ArticleBatchGateway) FetchArticlesByIDs(ctx context.Context, articleIDs
 // LatestArticleGateway is the newest-article-per-feed read
 // (catalog §2.C W3-C7).
 type LatestArticleGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client articleDataHubClient
 }
 
 func NewLatestArticleGateway(client datahubv1connect.DataHubServiceClient) *LatestArticleGateway {
@@ -282,7 +296,7 @@ func (g *LatestArticleGateway) FetchLatestArticleByFeedID(ctx context.Context, f
 // ArticleURLLookupGateway resolves an article's source URL within one tenant
 // (catalog §2.C W3-C8).
 type ArticleURLLookupGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client articleDataHubClient
 }
 
 func NewArticleURLLookupGateway(client datahubv1connect.DataHubServiceClient) *ArticleURLLookupGateway {

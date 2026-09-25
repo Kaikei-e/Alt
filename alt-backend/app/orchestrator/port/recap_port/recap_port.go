@@ -11,6 +11,4 @@ type RecapPort interface {
 	GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error)
 	GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error)
-	SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error)
-	SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error)
 }

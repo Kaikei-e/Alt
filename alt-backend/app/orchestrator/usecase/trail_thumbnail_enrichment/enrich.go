@@ -25,6 +25,22 @@ const articleItemKeyPrefix = "article:"
 // failure all degrade to an empty ThumbnailURL rather than failing the
 // caller — the frontend falls back to a text-only card.
 func Enrich(ctx context.Context, port trail_thumbnail_port.GetOgImageURLsPort, episodes []domain.TrailEpisode) []domain.TrailEpisode {
+	articleIDByEpisode, ids := extractEpisodeArticleIDs(episodes)
+	if len(ids) == 0 {
+		return episodes
+	}
+
+	urls, err := port.GetOgImageURLsByArticleIDs(ctx, ids)
+	if err != nil {
+		slog.WarnContext(ctx, "trail episode thumbnail lookup failed, degrading to text", "error", err)
+		return episodes
+	}
+
+	return applyThumbnails(episodes, articleIDByEpisode, urls)
+}
+
+// extractEpisodeArticleIDs maps episode indices to article IDs for valid article footprints.
+func extractEpisodeArticleIDs(episodes []domain.TrailEpisode) (map[int]string, []string) {
 	articleIDByEpisode := make(map[int]string, len(episodes))
 	var ids []string
 	for i, ep := range episodes {
@@ -38,16 +54,11 @@ func Enrich(ctx context.Context, port trail_thumbnail_port.GetOgImageURLsPort, e
 		articleIDByEpisode[i] = articleID
 		ids = append(ids, articleID)
 	}
-	if len(ids) == 0 {
-		return episodes
-	}
+	return articleIDByEpisode, ids
+}
 
-	urls, err := port.GetOgImageURLsByArticleIDs(ctx, ids)
-	if err != nil {
-		slog.WarnContext(ctx, "trail episode thumbnail lookup failed, degrading to text", "error", err)
-		return episodes
-	}
-
+// applyThumbnails sets the thumbnail URL on each episode from the resolved URLs map.
+func applyThumbnails(episodes []domain.TrailEpisode, articleIDByEpisode map[int]string, urls map[string]string) []domain.TrailEpisode {
 	for i, articleID := range articleIDByEpisode {
 		episodes[i].ThumbnailURL = urls[articleID]
 	}

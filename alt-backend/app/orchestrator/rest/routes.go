@@ -122,18 +122,18 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	registerSecurityRoutes(e, container)
 	rest_feeds.RegisterFeedRoutes(v1, container, cfg)
 	// Register morning updates route
-	registerMorningRoutes(v1, container, cfg)
-	registerArticleRoutes(v1, container, cfg)
-	fetchArticleRoutes(v1, container, cfg)
-	registerImageRoutes(v1, container, cfg)
+	registerMorningRoutes(v1, container, cfg.Auth)
+	registerArticleRoutes(v1, container, cfg.Auth)
+	fetchArticleRoutes(v1, container, cfg.Auth)
+	registerImageRoutes(v1, container, cfg.Auth)
 	registerImageProxyRoutes(v1, container, cfg)
 	// SSE feed stats (/v1/sse/feeds/stats) は H-001 で削除し、Connect-RPC
 	// `StreamFeedStats` (port 9101) に一本化された。
 	// /v1/recap/articles も Connect-RPC
 	// `services.datahub.v1.DataHubService/ListRecapArticles` に移行済。
-	registerScrapingDomainRoutes(v1, container, cfg)
-	registerDashboardRoutes(v1, container, cfg)
-	RegisterAugurRoutes(e, v1, container, cfg)
+	registerScrapingDomainRoutes(v1, container, cfg.Auth)
+	registerDashboardRoutes(v1, container, cfg.Auth)
+	RegisterAugurRoutes(e, v1, container, cfg.Auth)
 	// /v1/internal/* is deliberately absent here — and no longer exists at all.
 	// It moved to cmd/datahub with the split, and ADR-000954 D6 then folded its
 	// two routes into services.datahub.v1.DataHubService, so there is no handler

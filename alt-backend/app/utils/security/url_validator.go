@@ -28,21 +28,6 @@ func (v *URLSecurityValidator) RequireHTTPS(require bool) {
 	v.requireHTTPS = require
 }
 
-// metadataHosts enumerates known cloud metadata hostnames. Exact-match lookup
-// (M-004) avoids the substring false positives of strings.Contains.
-var metadataHosts = map[string]struct{}{
-	"169.254.169.254":          {},
-	"metadata.google.internal": {},
-	"100.100.100.200":          {},
-	"192.0.0.192":              {},
-}
-
-// IsMetadataHost reports whether hostname matches a known cloud metadata endpoint.
-func IsMetadataHost(hostname string) bool {
-	_, isMetadata := metadataHosts[strings.ToLower(hostname)]
-	return isMetadata
-}
-
 // ValidateParsedRSSURL performs security validation on a parsed RSS URL
 func (v *URLSecurityValidator) ValidateParsedRSSURL(parsedURL *url.URL) error {
 	if parsedURL == nil {
@@ -141,7 +126,7 @@ func (v *URLSecurityValidator) IsAllowedDomain(domain string) bool {
 	if domain == "localhost" {
 		return false
 	}
-	if _, isMetadata := metadataHosts[strings.ToLower(domain)]; isMetadata {
+	if IsMetadataHost(domain) {
 		return false
 	}
 	if v.isPrivateNetwork(domain) {

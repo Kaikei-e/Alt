@@ -259,142 +259,143 @@ func TestImageFetchGateway_FetchImage_IntegerOverflow(t *testing.T) {
 	}
 }
 
-// TestValidateImageURLWithTestOverride_SecurityEnhancements tests new security features
-func TestValidateImageURLWithTestOverride_SecurityEnhancements(t *testing.T) {
+// TestImageFetchGateway_ProductionSSRFValidation verifies that the production FetchImage
+// path rejects metadata endpoints, internal domains, non-standard ports, and malformed URLs,
+// asserts specific error rejections, and verifies allowed ports on the production path.
+func TestImageFetchGateway_ProductionSSRFValidation(t *testing.T) {
+	gateway := NewImageFetchGateway(&http.Client{Timeout: 10 * time.Second})
+	gateway.httpClient.Transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("fake-image-data")),
+			Header:     make(http.Header),
+		}
+		resp.Header.Set("Content-Type", "image/jpeg")
+		resp.Header.Set("Content-Length", "15")
+		return resp, nil
+	})
+
 	tests := []struct {
-		name                  string
-		inputURL              string
-		allowTestingLocalhost bool
-		wantErr               bool
-		expectedErrMessage    string
+		name               string
+		inputURL           string
+		wantErr            bool
+		expectedErrMessage string
 	}{
 		// Test URL encoding attack prevention
 		{
-			name:                  "URL encoding path traversal attack",
-			inputURL:              "https://example.com/%2e%2e/admin",
-			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "path traversal patterns not allowed",
+			name:               "URL encoding path traversal attack",
+			inputURL:           "https://example.com/%2e%2e/admin",
+			wantErr:            true,
+			expectedErrMessage: "path traversal patterns not allowed",
 		},
 		{
-			name:                  "URL encoded slash in path (legitimate CDN pattern)",
-			inputURL:              "https://example.com/test%2fpath",
-			allowTestingLocalhost: false,
-			wantErr:               false,
-		},
-		{
-			name:                  "empty host validation",
-			inputURL:              "https:///path",
-			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "empty host not allowed",
+			name:               "empty host validation",
+			inputURL:           "https:///path",
+			wantErr:            true,
+			expectedErrMessage: "empty host not allowed",
 		},
 		// Test enhanced metadata endpoint blocking
 		{
-			name:                  "AWS metadata with port",
-			inputURL:              "http://169.254.169.254:80/latest/meta-data/",
-			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "access to metadata endpoint not allowed",
+			name:               "AWS metadata with port",
+			inputURL:           "http://169.254.169.254:80/latest/meta-data/",
+			wantErr:            true,
+			expectedErrMessage: "access to metadata endpoint not allowed",
 		},
 		{
-			name:                  "Alibaba Cloud metadata",
-			inputURL:              "http://100.100.100.200/latest/meta-data/",
-			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "access to metadata endpoint not allowed",
+			name:               "Alibaba Cloud metadata",
+			inputURL:           "http://100.100.100.200/latest/meta-data/",
+			wantErr:            true,
+			expectedErrMessage: "access to metadata endpoint not allowed",
 		},
 		// Test enhanced internal domain blocking
 		{
-			name:                  "intranet domain",
-			inputURL:              "https://service.intranet/image.jpg",
-			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "access to internal domains not allowed",
+			name:               "intranet domain",
+			inputURL:           "https://service.intranet/image.jpg",
+			wantErr:            true,
+			expectedErrMessage: "access to internal domains not allowed",
 		},
 		{
-			name:                  "test domain",
-			inputURL:              "https://service.test/image.jpg",
-			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "access to internal domains not allowed",
+			name:               "test domain",
+			inputURL:           "https://service.test/image.jpg",
+			wantErr:            true,
+			expectedErrMessage: "access to internal domains not allowed",
 		},
 		{
-			name:                  "localhost domain",
-			inputURL:              "https://service.localhost/image.jpg",
-			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "access to internal domains not allowed",
+			name:               "localhost domain",
+			inputURL:           "https://service.localhost/image.jpg",
+			wantErr:            true,
+			expectedErrMessage: "access to internal domains not allowed",
 		},
 		// Test non-standard port blocking
 		{
-			name:                  "non-standard port 3000",
-			inputURL:              "https://example.com:3000/image.jpg",
-			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "non-standard port not allowed: 3000",
+			name:               "non-standard port 3000",
+			inputURL:           "https://example.com:3000/image.jpg",
+			wantErr:            true,
+			expectedErrMessage: "non-standard port not allowed: 3000",
 		},
 		{
-			name:                  "non-standard port 9000",
-			inputURL:              "https://example.com:9000/image.jpg",
-			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "non-standard port not allowed: 9000",
-		},
-		// Test allowed ports
-		{
-			name:                  "allowed port 443",
-			inputURL:              "https://example.com:443/image.jpg",
-			allowTestingLocalhost: false,
-			wantErr:               false,
+			name:               "non-standard port 9000",
+			inputURL:           "https://example.com:9000/image.jpg",
+			wantErr:            true,
+			expectedErrMessage: "non-standard port not allowed: 9000",
 		},
 		{
-			name:                  "allowed port 80",
-			inputURL:              "http://example.com:80/image.jpg",
-			allowTestingLocalhost: false,
-			wantErr:               false,
+			name:               "non-standard port 8080",
+			inputURL:           "https://example.com:8080/image.jpg",
+			wantErr:            true,
+			expectedErrMessage: "non-standard port not allowed: 8080",
 		},
 		{
-			name:                  "allowed port 8080",
-			inputURL:              "https://example.com:8080/image.jpg",
-			allowTestingLocalhost: false,
-			wantErr:               false,
+			name:               "non-standard port 8443",
+			inputURL:           "https://example.com:8443/image.jpg",
+			wantErr:            true,
+			expectedErrMessage: "non-standard port not allowed: 8443",
+		},
+		// Test allowed ports exercising the production path (80 and 443)
+		{
+			name:     "allowed port 443",
+			inputURL: "https://example.com:443/image.jpg",
+			wantErr:  false,
 		},
 		{
-			name:                  "allowed port 8443",
-			inputURL:              "https://example.com:8443/image.jpg",
-			allowTestingLocalhost: false,
-			wantErr:               false,
+			name:     "allowed port 80",
+			inputURL: "http://example.com:80/image.jpg",
+			wantErr:  false,
+		},
+		{
+			name:     "allowed port 443 public IP",
+			inputURL: "https://93.184.216.34:443/image.jpg",
+			wantErr:  false,
+		},
+		{
+			name:     "allowed port 80 public IP",
+			inputURL: "http://93.184.216.34:80/image.jpg",
+			wantErr:  false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			u, err := url.Parse(tt.inputURL)
-			require.NoError(t, err, "Failed to parse test URL")
+			require.NoError(t, err)
 
-			err = validateImageURLWithTestOverride(u, tt.allowTestingLocalhost)
-
+			got, err := gateway.FetchImage(context.Background(), u, domain.NewImageFetchOptions())
 			if tt.wantErr {
 				assert.Error(t, err)
+				assert.Nil(t, got)
 				if tt.expectedErrMessage != "" && err != nil {
-					if strings.Contains(err.Error(), tt.expectedErrMessage) {
-						return
-					}
-					// DNS resolution may be unavailable in isolated test environments
-					if strings.Contains(tt.inputURL, "example.com") &&
-						strings.Contains(err.Error(), "access to private networks not allowed") {
-						t.Skip("Skipping due to DNS resolution failure in test environment")
-					}
 					assert.Contains(t, err.Error(), tt.expectedErrMessage)
 				}
 			} else {
 				if err != nil &&
 					strings.Contains(tt.inputURL, "example.com") &&
-					strings.Contains(err.Error(), "access to private networks not allowed") {
+					(strings.Contains(err.Error(), "DNS resolution failed") ||
+						strings.Contains(err.Error(), "no such host") ||
+						strings.Contains(err.Error(), "access to private networks not allowed")) {
 					t.Skip("Skipping due to DNS resolution failure in test environment")
 				}
 				assert.NoError(t, err)
+				assert.NotNil(t, got)
 			}
 		})
 	}
@@ -421,77 +422,6 @@ func TestNewImageFetchGateway_RedirectDisabled(t *testing.T) {
 	// Verify the gateway was created correctly
 	assert.NotNil(t, gateway)
 	assert.NotNil(t, gateway.httpClient)
-}
-
-// TestIsPrivateIP_EnhancedValidation tests enhanced private IP detection
-func TestIsPrivateIP_EnhancedValidation(t *testing.T) {
-	tests := []struct {
-		name     string
-		hostname string
-		expected bool
-	}{
-		// IPv4 private ranges
-		{
-			name:     "10.0.0.1 private",
-			hostname: "10.0.0.1",
-			expected: true,
-		},
-		{
-			name:     "172.16.0.1 private",
-			hostname: "172.16.0.1",
-			expected: true,
-		},
-		{
-			name:     "192.168.1.1 private",
-			hostname: "192.168.1.1",
-			expected: true,
-		},
-		{
-			name:     "127.0.0.1 loopback",
-			hostname: "127.0.0.1",
-			expected: true,
-		},
-		// Public IPv4 addresses
-		{
-			name:     "8.8.8.8 public",
-			hostname: "8.8.8.8",
-			expected: false,
-		},
-		{
-			name:     "1.1.1.1 public",
-			hostname: "1.1.1.1",
-			expected: false,
-		},
-		// IPv6 addresses
-		{
-			name:     "::1 loopback",
-			hostname: "::1",
-			expected: true,
-		},
-		{
-			name:     "fc00:: unique local",
-			hostname: "fc00::1",
-			expected: true,
-		},
-		{
-			name:     "2001:db8:: public",
-			hostname: "2001:db8::1",
-			expected: false,
-		},
-		// Edge cases
-		{
-			name:     "invalid hostname",
-			hostname: "invalid-hostname-that-wont-resolve",
-			expected: true, // Should return true on resolution failure
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := isPrivateIP(tt.hostname)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 // TestImageFetchGateway_DNSRebindingAttacks verifies that the gateway's SSRF

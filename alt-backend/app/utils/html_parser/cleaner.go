@@ -1,29 +1,16 @@
 package html_parser
 
 import (
-	"alt/domain"
 	"alt/utils/constants"
 	"encoding/json"
 	"strings"
 
 	"codeberg.org/readeck/go-readability/v2"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/microcosm-cc/bluemonday"
 )
 
 // MinArticleLength is re-exported for backward compatibility
 const MinArticleLength = constants.MinArticleLength
-
-// SanitizeHTML strips unsafe tags and scripts but preserves structural HTML using bluemonday.
-func SanitizeHTML(raw string) string {
-	p := bluemonday.UGCPolicy()
-	// Allow common structural elements that might contain content
-	p.AllowElements("article", "section", "div", "p", "span", "br", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code", "b", "strong", "i", "em", "u", "a", "img")
-	p.AllowAttrs("href").OnElements("a")
-	p.AllowAttrs("src", "alt", "title").OnElements("img")
-
-	return p.Sanitize(raw)
-}
 
 // ExtractArticleText converts raw article HTML into plain text paragraphs.
 // It uses multiple extraction strategies in order of priority:
@@ -257,211 +244,11 @@ func extractParagraphs(html string) string {
 	return strings.Join(paragraphs, "\n\n")
 }
 
-// Clean search results using goquery for better HTML handling
-func CleanSearchResultsWithGoquery(feeds []*domain.FeedItem) []*domain.FeedItem {
-	for _, feed := range feeds {
-		// Clean description using goquery
-		feed.Description = cleanHTMLWithGoquery(feed.Description)
-	}
-	return feeds
-}
-
-// Use goquery to clean HTML content intelligently
-func cleanHTMLWithGoquery(raw string) string {
-	// Handle empty content
-	if strings.TrimSpace(raw) == "" {
-		return ""
-	}
-
-	// If no HTML tags, just clean and truncate
-	if !strings.Contains(raw, "<") {
-		return truncateText(strings.TrimSpace(raw))
-	}
-
-	// Parse HTML with goquery
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(raw))
-	if err != nil {
-		// Fallback to basic tag stripping
-		return truncateText(strings.TrimSpace(StripTags(raw)))
-	}
-
-	// Remove script, style, and other non-content elements
-	doc.Find("script, style, nav, header, footer, aside").Remove()
-
-	// Extract text content with intelligent spacing
-	var textParts []string
-
-	// Get main content from paragraphs first
-	doc.Find("p").Each(func(i int, s *goquery.Selection) {
-		text := strings.TrimSpace(s.Text())
-		if text != "" {
-			textParts = append(textParts, text)
-		}
-	})
-
-	// If no paragraphs found, get content from other elements
-	if len(textParts) == 0 {
-		doc.Find("div, article, section, span").Each(func(i int, s *goquery.Selection) {
-			text := strings.TrimSpace(s.Text())
-			if text != "" && len(text) > 10 { // Only meaningful content
-				textParts = append(textParts, text)
-			}
-		})
-	}
-
-	// If still no content, get all text
-	if len(textParts) == 0 {
-		text := strings.TrimSpace(doc.Text())
-		if text != "" {
-			textParts = append(textParts, text)
-		}
-	}
-
-	// Join content with proper spacing
-	result := strings.Join(textParts, " ")
-
-	// Clean up whitespace
-	result = normalizeWhitespace(result)
-
-	return truncateText(result)
-}
-
 // Normalize whitespace and remove extra spaces
 func normalizeWhitespace(s string) string {
 	// Replace multiple whitespace with single space
 	fields := strings.Fields(s)
 	return strings.Join(fields, " ")
-}
-
-// Truncate text to reasonable length for search results
-func truncateText(s string) string {
-	if len(s) <= constants.MaxSearchResultLength {
-		return s
-	}
-
-	// Try to break at word boundary
-	if idx := strings.LastIndex(s[:constants.MaxSearchResultLength], " "); idx > constants.MaxSearchResultLength-50 {
-		return s[:idx] + "..."
-	}
-
-	return s[:constants.MaxSearchResultLength] + "..."
-}
-
-// ExtractArticleHTML extracts main article content and returns sanitized HTML.
-// Unlike ExtractArticleText which returns plain text, this preserves structural HTML
-// (headers, lists, code blocks, images, links) while removing unsafe elements.
-// It uses go-readability for content extraction and bluemonday for sanitization.
-func ExtractArticleHTML(raw string) string {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return ""
-	}
-
-	// Short-circuit if the payload is already plain text (no HTML tags).
-	if !strings.Contains(trimmed, "<") {
-		if len(trimmed) < MinArticleLength {
-			return ""
-		}
-		return trimmed
-	}
-
-	// Pre-process: Remove non-content elements before go-readability
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(trimmed))
-	if err == nil {
-		// Remove navigation, header, footer, aside
-		doc.Find("head, script, style, noscript, title, aside, nav, header, footer").Remove()
-
-		// Remove media and embedded content (ads, tracking, etc.)
-		doc.Find("iframe, embed, object, video, audio, canvas, svg, math, form").Remove()
-
-		// Remove social media elements
-		doc.Find("[class*='social'], [class*='share'], [class*='twitter'], [class*='facebook'], [class*='instagram'], [class*='linkedin']").Remove()
-		doc.Find("[id*='social'], [id*='share'], [id*='twitter'], [id*='facebook']").Remove()
-
-		// Remove comment sections
-		doc.Find("[class*='comment'], [id*='comment'], [class*='discussion'], [id*='discussion']").Remove()
-
-		// Remove common non-content containers (menus, sidebars)
-		doc.Find("[class*='menu'], [id*='menu'], [class*='sidebar'], [id*='sidebar'], [class*='widget'], [id*='widget']").Remove()
-		doc.Find("[role='navigation'], [role='banner'], [role='contentinfo']").Remove()
-
-		cleanedHTML, _ := doc.Html()
-		if cleanedHTML != "" {
-			trimmed = cleanedHTML
-		}
-	}
-
-	// Use go-readability to extract main content
-	article, err := readability.FromReader(strings.NewReader(trimmed), nil)
-	if err == nil {
-		var htmlBuf strings.Builder
-		if err := article.RenderHTML(&htmlBuf); err == nil {
-			html := strings.TrimSpace(htmlBuf.String())
-			if html != "" {
-				sanitized := sanitizeArticleHTML(html)
-				if len(strings.TrimSpace(StripTags(sanitized))) >= MinArticleLength {
-					return sanitized
-				}
-			}
-		}
-	}
-
-	// Fallback: Sanitize the original HTML directly
-	sanitized := sanitizeArticleHTML(trimmed)
-	if len(strings.TrimSpace(StripTags(sanitized))) < MinArticleLength {
-		return ""
-	}
-	return sanitized
-}
-
-// sanitizeArticleHTML sanitizes HTML using bluemonday while preserving rich content.
-// It allows structural elements, text formatting, links, images, and tables
-// while removing scripts, event handlers, and other potentially dangerous content.
-func sanitizeArticleHTML(raw string) string {
-	p := bluemonday.NewPolicy()
-
-	// Structural elements
-	p.AllowElements("article", "section", "div", "p", "span", "br")
-
-	// Headers
-	p.AllowElements("h1", "h2", "h3", "h4", "h5", "h6")
-
-	// Lists
-	p.AllowElements("ul", "ol", "li")
-
-	// Quotes and code
-	p.AllowElements("blockquote", "pre", "code")
-
-	// Text formatting
-	p.AllowElements("b", "strong", "i", "em", "u", "s", "del", "ins", "mark", "sub", "sup")
-
-	// Links - allow http/https URLs and relative URLs
-	p.AllowStandardURLs()
-	p.AllowRelativeURLs(true)
-	p.AllowAttrs("href").OnElements("a")
-	p.RequireNoFollowOnLinks(false)
-	p.RequireNoReferrerOnLinks(false)
-
-	// NOTE: img tags are intentionally NOT allowed
-	// - Alt doesn't fetch/display images anyway
-	// - img tags are a major XSS vector (onerror, onload events)
-
-	// Tables
-	p.AllowElements("table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col")
-
-	// Horizontal rule
-	p.AllowElements("hr")
-
-	// Figure and figcaption for images with captions
-	p.AllowElements("figure", "figcaption")
-
-	// Definition lists
-	p.AllowElements("dl", "dt", "dd")
-
-	// Only allow safe URL schemes (http, https, mailto) - blocks javascript: and data:
-	p.AllowURLSchemes("http", "https", "mailto")
-
-	return p.Sanitize(raw)
 }
 
 // ExtractTitle extracts the article title from HTML content.

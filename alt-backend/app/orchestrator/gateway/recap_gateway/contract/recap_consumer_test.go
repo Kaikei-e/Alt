@@ -90,7 +90,7 @@ func TestGetThreeDayRecapCardsContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			gw := recap_gateway.NewRecapGatewayWithConfig(nil, fmt.Sprintf("http://%s:%d", config.Host, config.Port), nil)
+			gw := recap_gateway.NewRecapGatewayWithConfig(nil, fmt.Sprintf("http://%s:%d", config.Host, config.Port))
 			result, err := gw.GetThreeDayRecapCards(context.Background())
 			if err != nil {
 				return fmt.Errorf("GetThreeDayRecapCards failed: %w", err)
@@ -128,7 +128,7 @@ func TestGetThreeDayRecapCardsMissContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			gw := recap_gateway.NewRecapGatewayWithConfig(nil, fmt.Sprintf("http://%s:%d", config.Host, config.Port), nil)
+			gw := recap_gateway.NewRecapGatewayWithConfig(nil, fmt.Sprintf("http://%s:%d", config.Host, config.Port))
 			result, err := gw.GetThreeDayRecapCards(context.Background())
 			if err != nil {
 				return fmt.Errorf("GetThreeDayRecapCards failed: %w", err)
@@ -187,7 +187,7 @@ func TestGetThreeDayRecapCardsNoGenreNoWhyContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			gw := recap_gateway.NewRecapGatewayWithConfig(nil, fmt.Sprintf("http://%s:%d", config.Host, config.Port), nil)
+			gw := recap_gateway.NewRecapGatewayWithConfig(nil, fmt.Sprintf("http://%s:%d", config.Host, config.Port))
 			result, err := gw.GetThreeDayRecapCards(context.Background())
 			if err != nil {
 				return fmt.Errorf("GetThreeDayRecapCards failed: %w", err)

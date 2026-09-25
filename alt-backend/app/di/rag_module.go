@@ -8,7 +8,6 @@ import (
 	"alt/orchestrator/gateway/rag_gateway"
 	"alt/orchestrator/gateway/user_feed_gateway"
 	"alt/orchestrator/port/morning_letter_port"
-	"alt/orchestrator/port/rag_integration_port"
 	"alt/orchestrator/usecase/answer_chat_usecase"
 	"alt/orchestrator/usecase/morning_usecase"
 	"alt/orchestrator/usecase/retrieve_context_usecase"
@@ -22,7 +21,7 @@ import (
 // RAGModule holds all RAG-domain components.
 type RAGModule struct {
 	// Adapter (shared across article and RAG modules)
-	RagAdapter rag_integration_port.RagIntegrationPort
+	RagAdapter *augur_adapter.AugurAdapter
 
 	// Usecases
 	RetrieveContextUsecase retrieve_context_usecase.RetrieveContextUsecase

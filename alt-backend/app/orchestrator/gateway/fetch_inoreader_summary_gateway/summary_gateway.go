@@ -53,27 +53,7 @@ func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls
 	}
 
 	// Normalize URLs for matching: include both original and normalized URLs
-	allURLs := make(map[string]bool)
-	originalToNormalized := make(map[string]string)
-
-	for _, rawURL := range urls {
-		allURLs[rawURL] = true
-		normalized, err := utils.NormalizeURL(rawURL)
-		if err != nil {
-			logger.Logger.WarnContext(ctx, "Failed to normalize URL, using original", "url", rawURL, "error", err)
-			normalized = rawURL
-		}
-		originalToNormalized[rawURL] = normalized
-		if normalized != rawURL {
-			allURLs[normalized] = true
-		}
-	}
-
-	// Convert map to slice for query
-	allURLsSlice := make([]string, 0, len(allURLs))
-	for url := range allURLs {
-		allURLsSlice = append(allURLsSlice, url)
-	}
+	allURLsSlice, originalToNormalized := buildNormalizedURLList(ctx, urls)
 
 	logger.Logger.InfoContext(ctx, "Gateway: normalized URLs for matching",
 		"original_count", len(urls),
@@ -87,6 +67,43 @@ func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls
 	}
 
 	// Filter results by normalizing database URLs and comparing with requested URLs
+	domainSummaries := filterAndMapInoreaderSummaries(ctx, modelSummaries, urls, originalToNormalized)
+
+	logger.Logger.InfoContext(ctx, "Gateway: successfully converted summaries",
+		"matched_count", len(domainSummaries),
+		"requested_count", len(urls))
+
+	return domainSummaries, nil
+}
+
+func buildNormalizedURLList(ctx context.Context, urls []string) ([]string, map[string]string) {
+	allURLs := make(map[string]bool)
+	originalToNormalized := make(map[string]string)
+
+	for _, rawURL := range urls {
+		allURLs[rawURL] = true
+		normalized, err := utils.NormalizeURL(rawURL)
+		if err != nil {
+			logger.Logger.WarnContext(ctx, "Failed to normalize URL, using original", "url", rawURL, "error", err)
+			normalized = rawURL
+		}
+		originalToNormalized[rawURL] = normalized
+		// Add normalized URL to search list if different
+		if normalized != rawURL {
+			allURLs[normalized] = true
+		}
+	}
+
+	// Convert map to slice for query
+	allURLsSlice := make([]string, 0, len(allURLs))
+	for url := range allURLs {
+		allURLsSlice = append(allURLsSlice, url)
+	}
+
+	return allURLsSlice, originalToNormalized
+}
+
+func filterAndMapInoreaderSummaries(ctx context.Context, modelSummaries []*models.InoreaderSummary, urls []string, originalToNormalized map[string]string) []*domain.InoreaderSummary {
 	domainSummaries := make([]*domain.InoreaderSummary, 0, len(modelSummaries))
 	for _, modelSummary := range modelSummaries {
 		// Normalize database URL
@@ -121,10 +138,5 @@ func (g *inoreaderSummaryGateway) FetchSummariesByURLs(ctx context.Context, urls
 			domainSummaries = append(domainSummaries, domainSummary)
 		}
 	}
-
-	logger.Logger.InfoContext(ctx, "Gateway: successfully converted summaries",
-		"matched_count", len(domainSummaries),
-		"requested_count", len(urls))
-
-	return domainSummaries, nil
+	return domainSummaries
 }

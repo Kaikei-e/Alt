@@ -76,7 +76,7 @@ func newCreateArticleHandler(
 ) *datahubapi.Handler {
 	return datahubapi.NewHandler(nil, nil, nil, nil, nil,
 		unusedSystemUser{}, unusedRecentArticles{}, nil,
-		datahubapi.WithPhase2Ports(nil, writer, nil, nil, nil, nil),
+		datahubapi.WithArticleIngestionPorts(nil, writer, nil, nil, nil, nil),
 		datahubapi.WithKnowledgeEventPort(appender),
 		datahubapi.WithEventPublisher(event_publisher_gateway.NewEventPublisherGateway(
 			mqhub_connect.NewClient("", false), nil)),

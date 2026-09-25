@@ -114,7 +114,7 @@ func TestScrapingDomainUsecase_RefreshRobotsTxt_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDomainPort := mocks.NewMockScrapingDomainPort(ctrl)
-	mockRobotsTxtPort := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRobotsTxtPort := mocks.NewMockRobotsTxtFetcherPort(ctrl)
 	usecase := NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort)
 
 	domainID := uuid.New()
@@ -181,7 +181,7 @@ func TestScrapingDomainUsecase_RefreshRobotsTxt_DomainNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDomainPort := mocks.NewMockScrapingDomainPort(ctrl)
-	mockRobotsTxtPort := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRobotsTxtPort := mocks.NewMockRobotsTxtFetcherPort(ctrl)
 	usecase := NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort)
 
 	domainID := uuid.New()
@@ -206,7 +206,7 @@ func TestScrapingDomainUsecase_RefreshAllRobotsTxt_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDomainPort := mocks.NewMockScrapingDomainPort(ctrl)
-	mockRobotsTxtPort := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRobotsTxtPort := mocks.NewMockRobotsTxtFetcherPort(ctrl)
 	usecase := NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort)
 
 	domainID1 := uuid.New()
@@ -320,7 +320,7 @@ func TestScrapingDomainUsecase_RefreshAllRobotsTxt_PartialFailure(t *testing.T) 
 	defer ctrl.Finish()
 
 	mockDomainPort := mocks.NewMockScrapingDomainPort(ctrl)
-	mockRobotsTxtPort := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRobotsTxtPort := mocks.NewMockRobotsTxtFetcherPort(ctrl)
 	usecase := NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort)
 
 	domainID1 := uuid.New()
@@ -407,7 +407,7 @@ func TestScrapingDomainUsecase_EnsureDomainsFromFeedLinks_NoRepository(t *testin
 	defer ctrl.Finish()
 
 	mockDomainPort := mocks.NewMockScrapingDomainPort(ctrl)
-	mockRobotsTxtPort := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRobotsTxtPort := mocks.NewMockRobotsTxtFetcherPort(ctrl)
 	usecase := NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort) // Without feed link domain port
 
 	ctx := context.Background()

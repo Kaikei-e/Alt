@@ -1,11 +1,14 @@
 package track_home_seen_usecase
 
 import (
-	"alt/domain"
-	"alt/utils/logger"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
+	"time"
+
+	"alt/domain"
+	"alt/utils/logger"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -153,4 +156,68 @@ func TestTrackHomeSeenUsecase_Execute_ReturnsAppendFailures(t *testing.T) {
 		assert.Contains(t, err.Error(), "article:2")
 		assert.Len(t, port.appendedEvents, 2)
 	})
+}
+
+func TestBuildSeenDedupeKey(t *testing.T) {
+	uid := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	t1 := time.Date(2026, 9, 25, 10, 2, 30, 0, time.UTC)
+	t2 := time.Date(2026, 9, 25, 10, 4, 59, 0, time.UTC)
+	t3 := time.Date(2026, 9, 25, 10, 5, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		userID  uuid.UUID
+		itemKey string
+		now     time.Time
+		wantKey string
+	}{
+		{
+			name:    "bucket at 10:00",
+			userID:  uid,
+			itemKey: "article:100",
+			now:     t1,
+			wantKey: "00000000-0000-0000-0000-000000000001:article:100:seen:2026-09-25T10:00:00Z",
+		},
+		{
+			name:    "same 5-min bucket at 10:04",
+			userID:  uid,
+			itemKey: "article:100",
+			now:     t2,
+			wantKey: "00000000-0000-0000-0000-000000000001:article:100:seen:2026-09-25T10:00:00Z",
+		},
+		{
+			name:    "next bucket at 10:05",
+			userID:  uid,
+			itemKey: "article:100",
+			now:     t3,
+			wantKey: "00000000-0000-0000-0000-000000000001:article:100:seen:2026-09-25T10:05:00Z",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildSeenDedupeKey(tt.userID, tt.itemKey, tt.now)
+			assert.Equal(t, tt.wantKey, got)
+		})
+	}
+}
+
+func TestBuildSeenPayload(t *testing.T) {
+	tests := []struct {
+		name      string
+		sessionID string
+	}{
+		{name: "empty session", sessionID: ""},
+		{name: "with session", sessionID: "sess-abc"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := buildSeenPayload(tt.sessionID)
+			var parsed map[string]string
+			err := json.Unmarshal(payload, &parsed)
+			require.NoError(t, err)
+			assert.Equal(t, tt.sessionID, parsed["exposure_session_id"])
+		})
+	}
 }

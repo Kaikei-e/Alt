@@ -76,27 +76,6 @@ func NewAltDBRepositoryWithPool(pool *pgxpool.Pool) *AltDBRepository {
 	return NewAltDBRepository(pool)
 }
 
-// NewAltDBRepositoryForTest creates an AltDBRepository with nil pool but non-nil domain
-// repositories. Used in tests that need a valid struct to test error paths.
-func NewAltDBRepositoryForTest() *AltDBRepository {
-	return &AltDBRepository{
-		FeedRepository:         &FeedRepository{},
-		ArticleRepository:      &ArticleRepository{},
-		TagRepository:          &TagRepository{},
-		ScrapingRepository:     &ScrapingRepository{},
-		ImageRepository:        &ImageRepository{},
-		RecapRepository:        &RecapRepository{},
-		SubscriptionRepository: &SubscriptionRepository{},
-		InternalRepository:     &InternalRepository{},
-		SummaryRepository:      &SummaryRepository{},
-		KnowledgeRepository:    &KnowledgeRepository{},
-		OutboxRepository:       &OutboxRepository{},
-		DashboardRepository:    &DashboardRepository{},
-		TenantRepository:       &TenantRepository{},
-		PushRepository:         &PushRepository{},
-	}
-}
-
 // GetPool returns the underlying PgxIface
 func (r *AltDBRepository) GetPool() PgxIface {
 	return r.pool

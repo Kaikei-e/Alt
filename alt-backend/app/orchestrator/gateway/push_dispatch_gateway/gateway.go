@@ -131,11 +131,16 @@ func (s *Sender) Send(ctx context.Context, req push_dispatch_port.SendRequest) (
 
 	// The result is returned even alongside an error, so the Gone and Retryable
 	// decisions survive a transport failure rather than being lost to `err`.
+	return mapSendResultToOutcome(result), err
+}
+
+// mapSendResultToOutcome maps driver Send result to port SendOutcome.
+func mapSendResultToOutcome(result webpush.SendResult) push_dispatch_port.SendOutcome {
 	return push_dispatch_port.SendOutcome{
 		StatusCode:  result.StatusCode,
 		Gone:        result.Gone,
 		Retryable:   result.Retryable,
 		RetryAfter:  result.RetryAfter,
 		BodyExcerpt: result.BodyExcerpt,
-	}, err
+	}
 }

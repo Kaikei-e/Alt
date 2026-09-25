@@ -55,18 +55,34 @@ func (g *TrendingTagsGateway) GetTrendingTags(ctx context.Context, userID uuid.U
 }
 
 func (g *TrendingTagsGateway) compute(ctx context.Context, userID uuid.UUID) ([]knowledge_home_port.TrendingTag, error) {
-	now := time.Now()
+	recentSince, baselineSince := calculateTrendingWindows(time.Now())
 
-	recentCounts, err := g.fetchPort.FetchTagArticleCounts(ctx, userID, now.Add(-7*24*time.Hour))
+	recentCounts, err := g.fetchPort.FetchTagArticleCounts(ctx, userID, recentSince)
 	if err != nil {
 		return nil, err
 	}
 
-	baselineCounts, err := g.fetchPort.FetchTagArticleCounts(ctx, userID, now.Add(-30*24*time.Hour))
+	baselineCounts, err := g.fetchPort.FetchTagArticleCounts(ctx, userID, baselineSince)
 	if err != nil {
 		return nil, err
 	}
 
+	return filterAndSortTrendingTags(recentCounts, baselineCounts), nil
+}
+
+func calculateTrendingWindows(now time.Time) (recentSince, baselineSince time.Time) {
+	return now.Add(-7 * 24 * time.Hour), now.Add(-30 * 24 * time.Hour)
+}
+
+func calculateSurgeRatio(recentCount int, baselineTotal int) float64 {
+	weeklyAvg := float64(baselineTotal) / baselineWeeks
+	if weeklyAvg > 0 {
+		return float64(recentCount) / weeklyAvg
+	}
+	return float64(recentCount)
+}
+
+func filterAndSortTrendingTags(recentCounts, baselineCounts []knowledge_home_port.TagArticleCount) []knowledge_home_port.TrendingTag {
 	baselineMap := make(map[string]int, len(baselineCounts))
 	for _, b := range baselineCounts {
 		baselineMap[b.TagName] = b.ArticleCount
@@ -78,16 +94,7 @@ func (g *TrendingTagsGateway) compute(ctx context.Context, userID uuid.UUID) ([]
 			continue
 		}
 
-		baselineTotal := baselineMap[r.TagName]
-		weeklyAvg := float64(baselineTotal) / baselineWeeks
-
-		var surgeRatio float64
-		if weeklyAvg > 0 {
-			surgeRatio = float64(r.ArticleCount) / weeklyAvg
-		} else {
-			surgeRatio = float64(r.ArticleCount)
-		}
-
+		surgeRatio := calculateSurgeRatio(r.ArticleCount, baselineMap[r.TagName])
 		if surgeRatio >= minSurgeRatio {
 			trending = append(trending, knowledge_home_port.TrendingTag{
 				TagName:     r.TagName,
@@ -105,7 +112,7 @@ func (g *TrendingTagsGateway) compute(ctx context.Context, userID uuid.UUID) ([]
 		trending = trending[:maxTrendingTags]
 	}
 
-	return trending, nil
+	return trending
 }
 
 func (g *TrendingTagsGateway) getCached(userID uuid.UUID) []knowledge_home_port.TrendingTag {

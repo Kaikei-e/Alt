@@ -20,8 +20,14 @@ import (
 // callers outside cmd/datahub — an unused direct call still fails that check,
 // and leaving it would mean the eventual feature is built against a driver
 // that is about to be deleted.
+// autoFulltextDataHubClient isolates the data-hub RPCs called by AutoFulltextGateway.
+type autoFulltextDataHubClient interface {
+	ListSubscribedUserIDsByFeedLinkID(context.Context, *connect.Request[datahubv1.ListSubscribedUserIDsByFeedLinkIDRequest]) (*connect.Response[datahubv1.ListSubscribedUserIDsByFeedLinkIDResponse], error)
+	CheckArticleExistsByURLForUser(context.Context, *connect.Request[datahubv1.CheckArticleExistsByURLForUserRequest]) (*connect.Response[datahubv1.CheckArticleExistsByURLForUserResponse], error)
+}
+
 type AutoFulltextGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client autoFulltextDataHubClient
 }
 
 func NewAutoFulltextGateway(client datahubv1connect.DataHubServiceClient) *AutoFulltextGateway {

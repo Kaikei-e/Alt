@@ -26,14 +26,28 @@ func NewAppendKnowledgeEventUsecase(
 
 // Execute appends a knowledge event.
 func (u *AppendKnowledgeEventUsecase) Execute(ctx context.Context, event domain.KnowledgeEvent) error {
+	normalized, err := normalizeEvent(event, time.Now())
+	if err != nil {
+		return err
+	}
+
+	_, err = u.eventPort.AppendKnowledgeEvent(ctx, normalized)
+	if err != nil {
+		return fmt.Errorf("append knowledge event: %w", err)
+	}
+	return nil
+}
+
+// normalizeEvent validates and defaults an event's ID, timestamp, and dedupe key.
+func normalizeEvent(event domain.KnowledgeEvent, now time.Time) (domain.KnowledgeEvent, error) {
 	if event.EventType == "" {
-		return errors.New("event_type is required")
+		return domain.KnowledgeEvent{}, errors.New("event_type is required")
 	}
 	if event.AggregateType == "" {
-		return errors.New("aggregate_type is required")
+		return domain.KnowledgeEvent{}, errors.New("aggregate_type is required")
 	}
 	if event.AggregateID == "" {
-		return errors.New("aggregate_id is required")
+		return domain.KnowledgeEvent{}, errors.New("aggregate_id is required")
 	}
 
 	// Generate ID and timestamp if not set
@@ -41,7 +55,7 @@ func (u *AppendKnowledgeEventUsecase) Execute(ctx context.Context, event domain.
 		event.EventID = uuid.New()
 	}
 	if event.OccurredAt.IsZero() {
-		event.OccurredAt = time.Now()
+		event.OccurredAt = now
 	}
 	if event.DedupeKey == "" {
 		event.DedupeKey = event.EventType + ":" + event.AggregateID + ":" + event.EventID.String()
@@ -50,15 +64,11 @@ func (u *AppendKnowledgeEventUsecase) Execute(ctx context.Context, event domain.
 	// Validate ReasonMerged payload has required fields
 	if event.EventType == domain.EventReasonMerged {
 		if err := validateReasonMergedPayload(event.Payload); err != nil {
-			return err
+			return domain.KnowledgeEvent{}, err
 		}
 	}
 
-	_, err := u.eventPort.AppendKnowledgeEvent(ctx, event)
-	if err != nil {
-		return fmt.Errorf("append knowledge event: %w", err)
-	}
-	return nil
+	return event, nil
 }
 
 // reasonMergedPayload mirrors the projector's expected shape.

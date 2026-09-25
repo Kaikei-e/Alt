@@ -86,6 +86,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		CreateSummaryVersion:     container.CreateSummaryVersionUsecase,
 		ResolveOgImages:          container.ResolveOgImagesUsecase,
 		ImageProxy:               container.ImageProxyUsecase,
+		ResolveArticle:           container.ResolveArticleUsecase,
 	}, cfg, logger)
 	feedPath, feedServiceHandler := feedsv2connect.NewFeedServiceHandler(feedHandler, opts)
 	mux.Handle(feedPath, feedServiceHandler)

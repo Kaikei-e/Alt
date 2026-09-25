@@ -193,3 +193,57 @@ func TestDynamicDomainGateway_CachesResult(t *testing.T) {
 		t.Fatalf("cached call failed: allowed=%v, err=%v", allowed, err)
 	}
 }
+
+func TestIsStaticAllowedDomain(t *testing.T) {
+	assert := func(host string, want bool) {
+		t.Helper()
+		if got := isStaticAllowedDomain(host); got != want {
+			t.Errorf("isStaticAllowedDomain(%q) = %v, want %v", host, got, want)
+		}
+	}
+
+	assert("img.youtube.com", true)
+	assert("d123.cloudfront.net", true)
+	assert("sub.cloudinary.com", true)
+	assert("random.org", false)
+	assert("evil.com", false)
+}
+
+func TestMatchesSubscriptionDomain(t *testing.T) {
+	subDomains := map[string]bool{
+		"example.com": true,
+		"wired.co.uk": true,
+	}
+
+	if !matchesSubscriptionDomain("example.com", subDomains) {
+		t.Error("expected exact match")
+	}
+	if !matchesSubscriptionDomain("media.example.com", subDomains) {
+		t.Error("expected subdomain match")
+	}
+	if !matchesSubscriptionDomain("cdn.sub.wired.co.uk", subDomains) {
+		t.Error("expected multi-level subdomain match")
+	}
+	if matchesSubscriptionDomain("notexample.com", subDomains) {
+		t.Error("expected false for unrelated domain")
+	}
+}
+
+func TestBuildDomainSet(t *testing.T) {
+	feeds := []domain.FeedLinkDomain{
+		{Domain: "www.wired.com"},
+		{Domain: "blog.bbc.co.uk"},
+	}
+
+	set := buildDomainSet(feeds)
+	if !set["www.wired.com"] || !set["wired.com"] {
+		t.Errorf("expected wired.com and www.wired.com in set: %+v", set)
+	}
+	if !set["blog.bbc.co.uk"] || !set["bbc.co.uk"] {
+		t.Errorf("expected bbc.co.uk and blog.bbc.co.uk in set: %+v", set)
+	}
+	// "com" or "co.uk" (single label or TLD without 2+ dots/labels)
+	if set["com"] {
+		t.Error("set must not contain single label TLD 'com'")
+	}
+}

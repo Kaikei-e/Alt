@@ -2,6 +2,8 @@ package validation
 
 import (
 	"context"
+	"errors"
+	"net"
 	"testing"
 )
 
@@ -261,5 +263,67 @@ func TestFeedDetailValidator_Validate(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFeedRegistrationValidator_InjectedResolver(t *testing.T) {
+	ctx := context.Background()
+
+	// Test injected resolver returning private IP (blocked)
+	validatorBlocked := &FeedRegistrationValidator{
+		Resolver: func(host string) ([]net.IP, error) {
+			return []net.IP{net.ParseIP("192.168.1.50")}, nil
+		},
+	}
+	resultBlocked := validatorBlocked.Validate(ctx, map[string]interface{}{
+		"url": "https://custom-feed-domain.com/rss",
+	})
+	if resultBlocked.Valid {
+		t.Fatalf("expected private IP from resolver to be blocked")
+	}
+
+	// Test injected resolver returning public IP (allowed)
+	validatorAllowed := &FeedRegistrationValidator{
+		Resolver: func(host string) ([]net.IP, error) {
+			return []net.IP{net.ParseIP("93.184.216.34")}, nil
+		},
+	}
+	resultAllowed := validatorAllowed.Validate(ctx, map[string]interface{}{
+		"url": "https://custom-feed-domain.com/rss",
+	})
+	if !resultAllowed.Valid {
+		t.Fatalf("expected public IP from resolver to be allowed, got errors: %+v", resultAllowed.Errors)
+	}
+
+	// Test injected resolver failing on non-common TLD (blocked)
+	validatorUncommonTLD := &FeedRegistrationValidator{
+		Resolver: func(host string) ([]net.IP, error) {
+			return nil, errors.New("dns failure")
+		},
+	}
+	resultUncommon := validatorUncommonTLD.Validate(ctx, map[string]interface{}{
+		"url": "https://custom-feed-domain.xyz/rss",
+	})
+	if resultUncommon.Valid {
+		t.Fatalf("expected DNS failure on uncommon TLD to be blocked")
+	}
+}
+
+func TestFeedRegistrationValidator_ConsolidatedMetadata(t *testing.T) {
+	ctx := context.Background()
+	validator := &FeedRegistrationValidator{}
+
+	metadataURLs := []string{
+		"http://169.254.169.254/feed.xml",
+		"http://metadata.google.internal/feed.xml",
+		"http://100.100.100.200/feed.xml",
+		"http://192.0.0.192/feed.xml",
+	}
+
+	for _, u := range metadataURLs {
+		result := validator.Validate(ctx, map[string]interface{}{"url": u})
+		if result.Valid {
+			t.Errorf("expected metadata URL %s to be blocked", u)
+		}
 	}
 }

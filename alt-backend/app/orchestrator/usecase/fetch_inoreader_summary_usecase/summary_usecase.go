@@ -17,13 +17,15 @@ type FetchInoreaderSummaryUsecase interface {
 }
 
 type fetchInoreaderSummaryUsecase struct {
-	port fetch_inoreader_summary_port.FetchInoreaderSummaryPort
+	port     fetch_inoreader_summary_port.FetchInoreaderSummaryPort
+	lookupIP func(host string) ([]net.IP, error)
 }
 
 // NewFetchInoreaderSummaryUsecase creates a new usecase instance
 func NewFetchInoreaderSummaryUsecase(port fetch_inoreader_summary_port.FetchInoreaderSummaryPort) FetchInoreaderSummaryUsecase {
 	return &fetchInoreaderSummaryUsecase{
-		port: port,
+		port:     port,
+		lookupIP: net.LookupIP,
 	}
 }
 
@@ -52,7 +54,7 @@ func (u *fetchInoreaderSummaryUsecase) Execute(ctx context.Context, urls []strin
 	}
 
 	// Remove duplicates while preserving order
-	uniqueURLs := u.removeDuplicateURLs(urls)
+	uniqueURLs := removeDuplicateURLs(urls)
 
 	logger.Logger.InfoContext(ctx, "URLs processed",
 		"original_count", len(urls),
@@ -123,14 +125,19 @@ func (u *fetchInoreaderSummaryUsecase) isAllowedURL(parsedURL *url.URL) error {
 
 // isPrivateIP checks if hostname resolves to private IP addresses
 func (u *fetchInoreaderSummaryUsecase) isPrivateIP(hostname string) bool {
+	return isPrivateHost(hostname, u.lookupIP)
+}
+
+// isPrivateHost checks if hostname resolves to private IP addresses
+func isPrivateHost(hostname string, lookup func(host string) ([]net.IP, error)) bool {
 	// Try to parse as IP first
 	ip := net.ParseIP(hostname)
 	if ip != nil {
-		return u.isPrivateIPAddress(ip)
+		return isPrivateIPAddress(ip)
 	}
 
 	// If it's a hostname, resolve it to IPs
-	ips, err := net.LookupIP(hostname)
+	ips, err := lookup(hostname)
 	if err != nil {
 		// Block on resolution failure as a security measure
 		return true
@@ -138,7 +145,7 @@ func (u *fetchInoreaderSummaryUsecase) isPrivateIP(hostname string) bool {
 
 	// Check if any resolved IP is private
 	for _, ip := range ips {
-		if u.isPrivateIPAddress(ip) {
+		if isPrivateIPAddress(ip) {
 			return true
 		}
 	}
@@ -147,7 +154,7 @@ func (u *fetchInoreaderSummaryUsecase) isPrivateIP(hostname string) bool {
 }
 
 // isPrivateIPAddress checks if an IP address is private
-func (u *fetchInoreaderSummaryUsecase) isPrivateIPAddress(ip net.IP) bool {
+func isPrivateIPAddress(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true
 	}
@@ -180,7 +187,7 @@ func (u *fetchInoreaderSummaryUsecase) isPrivateIPAddress(ip net.IP) bool {
 }
 
 // removeDuplicateURLs removes duplicate URLs while preserving order
-func (u *fetchInoreaderSummaryUsecase) removeDuplicateURLs(urls []string) []string {
+func removeDuplicateURLs(urls []string) []string {
 	seen := make(map[string]bool)
 	unique := make([]string, 0, len(urls))
 

@@ -124,3 +124,124 @@ func TestExecute_RejectsDismissReasonOutsideAllowlist(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrInvalidRequest)
 }
+
+func TestValidateResolveRequest(t *testing.T) {
+	tests := []struct {
+		name               string
+		branchKey          string
+		resolution         string
+		clientResolutionID string
+		dismissReason      string
+		wantErr            bool
+	}{
+		{
+			name:               "valid taken",
+			branchKey:          "b1",
+			resolution:         "taken",
+			clientResolutionID: goodUUIDv7,
+			dismissReason:      "",
+			wantErr:            false,
+		},
+		{
+			name:               "valid dismissed with reason",
+			branchKey:          "b1",
+			resolution:         "dismissed",
+			clientResolutionID: goodUUIDv7,
+			dismissReason:      "already_known",
+			wantErr:            false,
+		},
+		{
+			name:               "empty branchKey",
+			branchKey:          "",
+			resolution:         "taken",
+			clientResolutionID: goodUUIDv7,
+			dismissReason:      "",
+			wantErr:            true,
+		},
+		{
+			name:               "invalid resolution",
+			branchKey:          "b1",
+			resolution:         "skipped",
+			clientResolutionID: goodUUIDv7,
+			dismissReason:      "",
+			wantErr:            true,
+		},
+		{
+			name:               "invalid uuidv7",
+			branchKey:          "b1",
+			resolution:         "taken",
+			clientResolutionID: "not-a-uuid",
+			dismissReason:      "",
+			wantErr:            true,
+		},
+		{
+			name:               "taken with dismiss reason",
+			branchKey:          "b1",
+			resolution:         "taken",
+			clientResolutionID: goodUUIDv7,
+			dismissReason:      "wrong_relation",
+			wantErr:            true,
+		},
+		{
+			name:               "dismissed with unknown reason",
+			branchKey:          "b1",
+			resolution:         "dismissed",
+			clientResolutionID: goodUUIDv7,
+			dismissReason:      "bogus",
+			wantErr:            true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateResolveRequest(tt.branchKey, tt.resolution, tt.clientResolutionID, tt.dismissReason)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestBuildResolveBranchPayload(t *testing.T) {
+	tests := []struct {
+		name          string
+		branchKey     string
+		resolution    string
+		dismissReason string
+		wantReason    bool
+	}{
+		{
+			name:          "without reason",
+			branchKey:     "b1",
+			resolution:    "taken",
+			dismissReason: "",
+			wantReason:    false,
+		},
+		{
+			name:          "with reason",
+			branchKey:     "b2",
+			resolution:    "dismissed",
+			dismissReason: "not_following_topic",
+			wantReason:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := buildResolveBranchPayload(tt.branchKey, tt.resolution, tt.dismissReason)
+			var parsed map[string]string
+			err := json.Unmarshal(payload, &parsed)
+			require.NoError(t, err)
+			assert.Equal(t, tt.branchKey, parsed["branch_key"])
+			assert.Equal(t, tt.resolution, parsed["resolution"])
+			if tt.wantReason {
+				assert.Equal(t, tt.dismissReason, parsed["dismiss_reason"])
+			} else {
+				_, has := parsed["dismiss_reason"]
+				assert.False(t, has)
+			}
+		})
+	}
+}

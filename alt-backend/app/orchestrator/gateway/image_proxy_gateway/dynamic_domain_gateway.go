@@ -62,49 +62,18 @@ func NewDynamicDomainGateway(lister DomainLister) *DynamicDomainGateway {
 func (g *DynamicDomainGateway) IsAllowedImageDomain(ctx context.Context, hostname string) (bool, error) {
 	hostname = strings.ToLower(hostname)
 
-	// Check static CDN domains first (no cache needed)
-	for _, cdn := range majorCDNDomains {
-		if hostname == cdn {
-			return true, nil
-		}
-	}
-
-	// Check CDN suffixes (match exact or as subdomain)
-	for _, suffix := range majorCDNSuffixes {
-		if hostname == suffix || strings.HasSuffix(hostname, "."+suffix) {
-			return true, nil
-		}
+	// Check static CDN domains and suffixes
+	if isStaticAllowedDomain(hostname) {
+		return true, nil
 	}
 
 	// Check subscription domains (cached) — exact match and subdomain match.
-	// Image CDN subdomains (e.g. media2.dev.to) should be allowed when the
-	// parent domain (dev.to) is a subscribed feed source.
 	subscriptionDomains, err := g.getSubscriptionDomains(ctx)
 	if err != nil {
 		return false, err
 	}
 
-	if subscriptionDomains[hostname] {
-		return true, nil
-	}
-
-	// Subdomain match: walk up the hostname (media2.dev.to → dev.to)
-	for h := hostname; ; {
-		dot := strings.Index(h, ".")
-		if dot < 0 {
-			break
-		}
-		parent := h[dot+1:]
-		if parent == "" {
-			break
-		}
-		if subscriptionDomains[parent] {
-			return true, nil
-		}
-		h = parent
-	}
-
-	return false, nil
+	return matchesSubscriptionDomain(hostname, subscriptionDomains), nil
 }
 
 // getSubscriptionDomains returns cached subscription domains, refreshing if expired.
@@ -135,6 +104,52 @@ func (g *DynamicDomainGateway) getSubscriptionDomains(ctx context.Context) (map[
 		return nil, err
 	}
 
+	domainSet := buildDomainSet(feedDomains)
+	g.cachedDomains = domainSet
+	g.cacheExpiry = time.Now().Add(domainCacheTTL)
+	return domainSet, nil
+}
+
+// isStaticAllowedDomain checks whether the hostname matches static CDN domains or CDN suffixes.
+func isStaticAllowedDomain(hostname string) bool {
+	for _, cdn := range majorCDNDomains {
+		if hostname == cdn {
+			return true
+		}
+	}
+	for _, suffix := range majorCDNSuffixes {
+		if hostname == suffix || strings.HasSuffix(hostname, "."+suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesSubscriptionDomain checks if hostname or any parent domain is present in subscription domains.
+func matchesSubscriptionDomain(hostname string, subscriptionDomains map[string]bool) bool {
+	if subscriptionDomains[hostname] {
+		return true
+	}
+
+	for h := hostname; ; {
+		dot := strings.Index(h, ".")
+		if dot < 0 {
+			break
+		}
+		parent := h[dot+1:]
+		if parent == "" {
+			break
+		}
+		if subscriptionDomains[parent] {
+			return true
+		}
+		h = parent
+	}
+	return false
+}
+
+// buildDomainSet indexes feed link domains and their multi-label parents into an allowlist set.
+func buildDomainSet(feedDomains []domain.FeedLinkDomain) map[string]bool {
 	domainSet := make(map[string]bool, len(feedDomains)*2)
 	for _, d := range feedDomains {
 		domain := strings.ToLower(d.Domain)
@@ -157,8 +172,5 @@ func (g *DynamicDomainGateway) getSubscriptionDomains(ctx context.Context) (map[
 			h = parent
 		}
 	}
-
-	g.cachedDomains = domainSet
-	g.cacheExpiry = time.Now().Add(domainCacheTTL)
-	return domainSet, nil
+	return domainSet
 }

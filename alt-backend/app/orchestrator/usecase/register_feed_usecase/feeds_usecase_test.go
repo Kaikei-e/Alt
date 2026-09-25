@@ -38,6 +38,14 @@ func mockRegisterFeedResults(ids ...string) []register_feed_port.RegisterFeedRes
 	return results
 }
 
+type stubURLValidator struct {
+	err error
+}
+
+func (s *stubURLValidator) ValidateRSSURL(rawURL string) error {
+	return s.err
+}
+
 // TestRegisterFeedPath_HasNoEventPublisherDependency pins the decision that feed
 // registration publishes no article events. This path inserts feeds rows; the
 // only identifier it can produce is a feeds.id. ArticleCreated / ArticleUpdated
@@ -179,7 +187,9 @@ func TestRegisterFeedUsecase_Execute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.mockSetup()
-			r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, nil)
+			r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
+				URLValidator: &stubURLValidator{},
+			})
 			err := r.Execute(tt.ctx, tt.link)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RegisterFeedUsecase.Execute() error = %v, wantErr %v", err, tt.wantErr)
@@ -206,7 +216,9 @@ func TestRegisterFeedUsecase_UsesResolvedFeedLink(t *testing.T) {
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/feed.xml").Return(nil).Times(1)
 	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 
-	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, nil)
+	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
+		URLValidator: &stubURLValidator{},
+	})
 	err := r.Execute(context.Background(), "https://example.com/rss")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -230,7 +242,9 @@ func TestRegisterFeedUsecase_SingleFetchOnly(t *testing.T) {
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 
-	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, nil)
+	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
+		URLValidator: &stubURLValidator{},
+	})
 	err := r.Execute(context.Background(), "https://example.com/rss")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -286,6 +300,7 @@ func TestRegisterFeedUsecase_AutoSubscribe_Success(t *testing.T) {
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
 		FeedLinkIDResolver: mockResolver,
 		SubscriptionPort:   mockSubscriptionPort,
+		URLValidator:       &stubURLValidator{},
 	})
 
 	err := r.Execute(ctx, "https://example.com/rss/news")
@@ -321,6 +336,7 @@ func TestRegisterFeedUsecase_AutoSubscribe_NoUserContext(t *testing.T) {
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
 		FeedLinkIDResolver: mockResolver,
 		SubscriptionPort:   mockSubscriptionPort,
+		URLValidator:       &stubURLValidator{},
 	})
 
 	// No user context in background context
@@ -368,6 +384,7 @@ func TestRegisterFeedUsecase_AutoSubscribe_SubscribeError(t *testing.T) {
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
 		FeedLinkIDResolver: mockResolver,
 		SubscriptionPort:   mockSubscriptionPort,
+		URLValidator:       &stubURLValidator{},
 	})
 
 	err := r.Execute(ctx, "https://example.com/rss/news")
@@ -396,6 +413,7 @@ func TestRegisterFeedUsecase_InitializesAvailabilityOnSuccessfulRegistration(t *
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
 		FeedLinkAvailability: mockAvailabilityPort,
+		URLValidator:         &stubURLValidator{},
 	})
 
 	err := r.Execute(context.Background(), "https://example.com/rss/news")
@@ -423,6 +441,7 @@ func TestRegisterFeedUsecase_FailsWhenAvailabilityInitializationFails(t *testing
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
 		FeedLinkAvailability: mockAvailabilityPort,
+		URLValidator:         &stubURLValidator{},
 	})
 
 	err := r.Execute(context.Background(), "https://example.com/rss/news")
@@ -452,7 +471,9 @@ func TestRegisterFeedUsecase_SelfLinkValidation_PrivateSelfLinkKeepsOriginalURL(
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), originalLink).Return(nil).Times(1)
 	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1"), nil).Times(1)
 
-	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, nil)
+	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
+		URLValidator: &stubURLValidator{err: errors.New("private IP not allowed")},
+	})
 
 	err := r.Execute(context.Background(), originalLink)
 	require.NoError(t, err, "validation failure of rel=self must not fail the whole feed fetch")
@@ -478,8 +499,20 @@ func TestRegisterFeedUsecase_SelfLinkValidation_ValidSelfLinkPersisted(t *testin
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), validSelfLink).Return(nil).Times(1)
 	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1"), nil).Times(1)
 
-	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, nil)
+	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort, &RegisterFeedsOpts{
+		URLValidator: &stubURLValidator{err: nil},
+	})
 
 	err := r.Execute(context.Background(), originalLink)
 	require.NoError(t, err)
+}
+
+func TestNewRegisterFeedsUsecase_PanicsOnNilURLValidator(t *testing.T) {
+	require.Panics(t, func() {
+		NewRegisterFeedsUsecase(nil, nil, nil, nil)
+	}, "must panic when opts is nil")
+
+	require.Panics(t, func() {
+		NewRegisterFeedsUsecase(nil, nil, nil, &RegisterFeedsOpts{URLValidator: nil})
+	}, "must panic when opts.URLValidator is nil")
 }

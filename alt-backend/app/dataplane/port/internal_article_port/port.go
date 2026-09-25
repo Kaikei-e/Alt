@@ -51,7 +51,7 @@ type GetArticleByIDPort interface {
 	GetArticleByID(ctx context.Context, articleID string) (*ArticleWithTags, error)
 }
 
-// ── Phase 2: Article write operations (for pre-processor) ──
+// ── Article write operations (for pre-processor) ──
 
 // ArticleContent represents article content for summarization.
 type ArticleContent struct {
@@ -112,7 +112,7 @@ type GetArticleContentPort interface {
 	GetArticleContent(ctx context.Context, articleID string) (*ArticleContent, error)
 }
 
-// ── Phase 4: Summary quality operations (for pre-processor quality checker) ──
+// ── Summary quality operations (for pre-processor quality checker) ──
 
 // ArticleWithSummaryResult represents an article with its summary for quality checking.
 type ArticleWithSummaryResult struct {

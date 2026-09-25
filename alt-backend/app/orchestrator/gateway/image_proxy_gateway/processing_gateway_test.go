@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestProcessingGateway_ProcessImage_JPEG(t *testing.T) {
@@ -177,4 +178,54 @@ func createTestImage(width, height int) *image.RGBA {
 		}
 	}
 	return img
+}
+
+func TestCalculateTargetDimensions(t *testing.T) {
+	// Downscaling preserving aspect ratio
+	w, h := calculateTargetDimensions(800, 400, 600)
+	if w != 600 || h != 300 {
+		t.Errorf("expected 600x300, got %dx%d", w, h)
+	}
+
+	// No upscaling
+	w, h = calculateTargetDimensions(400, 200, 600)
+	if w != 400 || h != 200 {
+		t.Errorf("expected 400x200, got %dx%d", w, h)
+	}
+
+	// Exact match
+	w, h = calculateTargetDimensions(600, 300, 600)
+	if w != 600 || h != 300 {
+		t.Errorf("expected 600x300, got %dx%d", w, h)
+	}
+}
+
+func TestGenerateETag(t *testing.T) {
+	data := []byte("image-data-sample")
+	etag1 := generateETag(data)
+	etag2 := generateETag(data)
+	if etag1 == "" || etag1 != etag2 {
+		t.Errorf("expected deterministic non-empty etag, got %q and %q", etag1, etag2)
+	}
+
+	etagDifferent := generateETag([]byte("other-data"))
+	if etag1 == etagDifferent {
+		t.Errorf("expected distinct etags for distinct data")
+	}
+}
+
+func TestBuildImageProxyResult(t *testing.T) {
+	data := []byte("sample-jpeg-bytes")
+	now := time.Now()
+	res := buildImageProxyResult(data, 200, 100, now)
+
+	if res.Width != 200 || res.Height != 100 || res.ContentType != "image/jpeg" {
+		t.Errorf("unexpected image proxy result: %+v", res)
+	}
+	if res.SizeBytes != len(data) || res.ExpiresAt != now {
+		t.Errorf("unexpected size or expiry in result: %+v", res)
+	}
+	if res.ETag != generateETag(data) {
+		t.Errorf("etag mismatch in result: %s vs %s", res.ETag, generateETag(data))
+	}
 }

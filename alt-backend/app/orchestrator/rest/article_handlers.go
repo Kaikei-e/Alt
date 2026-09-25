@@ -5,14 +5,10 @@ import (
 	"alt/di"
 	"alt/domain"
 	middleware_custom "alt/middleware"
-	"alt/orchestrator/usecase/archive_article_usecase"
-	"alt/utils/html_parser"
+	"alt/orchestrator/rest/resterr"
 	"alt/utils/logger"
-	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +24,7 @@ import (
 // Clamping to 100 turned the documented maximum page size into an opaque 500.
 const maxArticlesPageSize = 99
 
-func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg config.AuthConfig) {
 	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())
 	articles.GET("/fetch/content", handleFetchArticle(container))
@@ -38,127 +34,31 @@ func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	articles.POST("/archive", handleArchiveArticle(container))
 }
 
-func handleArchiveArticle(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		var payload ArchiveArticleRequest
-		if err := c.Bind(&payload); err != nil {
-			return HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
-		}
-
-		if strings.TrimSpace(payload.FeedURL) == "" {
-			return HandleValidationError(c, "Article URL is required", "feed_url", payload.FeedURL)
-		}
-
-		articleURL, err := url.Parse(payload.FeedURL)
-		if err != nil {
-			return HandleValidationError(c, "Invalid article URL", "feed_url", payload.FeedURL)
-		}
-
-		if err := IsAllowedURL(articleURL); err != nil {
-			return HandleValidationError(c, "Article URL not allowed", "feed_url", payload.FeedURL)
-		}
-
-		input := archive_article_usecase.ArchiveArticleInput{
-			URL:   articleURL.String(),
-			Title: payload.Title,
-		}
-
-		if err := container.ArchiveArticleUsecase.Execute(c.Request().Context(), input); err != nil {
-			return HandleError(c, fmt.Errorf("archive article failed for %q: %w", articleURL.String(), err), "archive_article")
-		}
-
-		c.Response().Header().Set("Cache-Control", "no-cache")
-		return c.JSON(http.StatusOK, map[string]string{"message": "article archived"})
+// parseArticleLimit parses and clamps page limit for article pagination.
+func parseArticleLimit(limitStr string) (int, error) {
+	if limitStr == "" {
+		return 20, nil
 	}
+	parsedLimit, err := strconv.Atoi(limitStr)
+	if err != nil || parsedLimit <= 0 {
+		return 0, fmt.Errorf("invalid limit parameter: %s", limitStr)
+	}
+	if parsedLimit > maxArticlesPageSize {
+		return maxArticlesPageSize, nil
+	}
+	return parsedLimit, nil
 }
 
-func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		ctx := c.Request().Context()
-		targetURL := c.QueryParam("url")
-		parsedURL, err := validateFetchRequest(c, targetURL)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-		}
-
-		user, err := domain.GetUserFromContext(ctx)
-		if err != nil {
-			logger.Logger.WarnContext(ctx, "No user context for fetch article, proceeding as anonymous", "error", err)
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
-		}
-
-		// Call the usecase
-		content, articleID, _, err := container.ArticleUsecase.FetchCompliantArticle(ctx, parsedURL, *user)
-		if err != nil {
-			var complianceErr *domain.ComplianceError
-			if errors.As(err, &complianceErr) {
-				return c.JSON(complianceErr.Code, map[string]string{"error": complianceErr.Message})
-			}
-
-			if errors.Is(err, context.DeadlineExceeded) {
-				return c.JSON(http.StatusGatewayTimeout, map[string]string{"error": "Request timeout"})
-			}
-			logger.Logger.ErrorContext(ctx, "Failed to fetch compliant article", "error", err, "url", targetURL)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch article"})
-		}
-
-		return returnArticleResponse(c, parsedURL, content, articleID)
+// parseArticleCursor parses RFC3339 cursor for article pagination.
+func parseArticleCursor(cursorStr string) (*time.Time, error) {
+	if cursorStr == "" {
+		return nil, nil
 	}
-}
-
-func validateFetchRequest(c echo.Context, targetURL string) (*url.URL, error) {
-	if targetURL == "" {
-		return nil, fmt.Errorf("url parameter is required")
-	}
-
-	parsedURL, err := url.Parse(targetURL)
+	parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid URL")
+		return nil, err
 	}
-
-	if err := IsAllowedURL(parsedURL); err != nil {
-		return nil, fmt.Errorf("invalid URL scheme or private IP blocked")
-	}
-
-	return parsedURL, nil
-}
-
-func returnArticleResponse(c echo.Context, articleURL *url.URL, content string, articleID string) error {
-	escapedContent := html_parser.StripTags(content)
-	return c.JSON(http.StatusOK, map[string]string{
-		"url":        articleURL.String(),
-		"content":    escapedContent,
-		"article_id": articleID,
-	})
-}
-
-func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
-	articles := v1.Group("/articles", authMiddleware.RequireAuth())
-	articles.GET("/search", handleSearchArticles(container))
-}
-
-func handleSearchArticles(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		ctx := c.Request().Context()
-		_, err := domain.GetUserFromContext(ctx)
-		if err != nil {
-			logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
-		}
-
-		query := c.QueryParam("q")
-		if query == "" {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "search query must not be empty"})
-		}
-
-		results, err := container.ArticleSearchUsecase.Execute(ctx, query)
-		if err != nil {
-			return HandleError(c, err, "search_articles")
-		}
-
-		return c.JSON(http.StatusOK, results)
-	}
+	return &parsedCursor, nil
 }
 
 func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.HandlerFunc {
@@ -170,30 +70,21 @@ func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.Handler
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
 		}
 
-		limit := 20
-		if limitStr := c.QueryParam("limit"); limitStr != "" {
-			parsedLimit, err := strconv.Atoi(limitStr)
-			if err != nil || parsedLimit <= 0 {
-				return HandleValidationError(c, "Invalid limit parameter", "limit", limitStr)
-			}
-			limit = parsedLimit
-			if limit > maxArticlesPageSize {
-				limit = maxArticlesPageSize
-			}
+		limitStr := c.QueryParam("limit")
+		limit, err := parseArticleLimit(limitStr)
+		if err != nil {
+			return resterr.HandleValidationError(c, "Invalid limit parameter", "limit", limitStr)
 		}
 
-		var cursor *time.Time
-		if cursorStr := c.QueryParam("cursor"); cursorStr != "" {
-			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
-			if err != nil {
-				return HandleValidationError(c, "Invalid cursor format (expected RFC3339)", "cursor", cursorStr)
-			}
-			cursor = &parsedCursor
+		cursorStr := c.QueryParam("cursor")
+		cursor, err := parseArticleCursor(cursorStr)
+		if err != nil {
+			return resterr.HandleValidationError(c, "Invalid cursor format (expected RFC3339)", "cursor", cursorStr)
 		}
 
 		articles, err := container.FetchArticlesCursorUsecase.Execute(ctx, cursor, limit+1)
 		if err != nil {
-			return HandleError(c, err, "fetch_articles_cursor")
+			return resterr.HandleError(c, err, "fetch_articles_cursor")
 		}
 
 		hasMore := len(articles) > limit
@@ -263,28 +154,19 @@ func handleFetchArticlesByTag(container *di.ApplicationComponents) echo.HandlerF
 
 		// Require at least one of tag_name or tag_id
 		if strings.TrimSpace(tagName) == "" && strings.TrimSpace(tagID) == "" {
-			return HandleValidationError(c, "tag_name or tag_id is required", "tag_name", tagName)
+			return resterr.HandleValidationError(c, "tag_name or tag_id is required", "tag_name", tagName)
 		}
 
-		limit := 20
-		if limitStr := c.QueryParam("limit"); limitStr != "" {
-			parsedLimit, err := strconv.Atoi(limitStr)
-			if err != nil || parsedLimit <= 0 {
-				return HandleValidationError(c, "Invalid limit parameter", "limit", limitStr)
-			}
-			limit = parsedLimit
-			if limit > maxArticlesPageSize {
-				limit = maxArticlesPageSize
-			}
+		limitStr := c.QueryParam("limit")
+		limit, err := parseArticleLimit(limitStr)
+		if err != nil {
+			return resterr.HandleValidationError(c, "Invalid limit parameter", "limit", limitStr)
 		}
 
-		var cursor *time.Time
-		if cursorStr := c.QueryParam("cursor"); cursorStr != "" {
-			parsedCursor, err := time.Parse(time.RFC3339, cursorStr)
-			if err != nil {
-				return HandleValidationError(c, "Invalid cursor format (expected RFC3339)", "cursor", cursorStr)
-			}
-			cursor = &parsedCursor
+		cursorStr := c.QueryParam("cursor")
+		cursor, err := parseArticleCursor(cursorStr)
+		if err != nil {
+			return resterr.HandleValidationError(c, "Invalid cursor format (expected RFC3339)", "cursor", cursorStr)
 		}
 
 		// Fetch limit+1 to determine if there are more results
@@ -296,7 +178,7 @@ func handleFetchArticlesByTag(container *di.ApplicationComponents) echo.HandlerF
 			articles, err = container.FetchArticlesByTagUsecase.Execute(ctx, tagID, cursor, limit+1)
 		}
 		if err != nil {
-			return HandleError(c, err, "fetch_articles_by_tag")
+			return resterr.HandleError(c, err, "fetch_articles_by_tag")
 		}
 
 		hasMore := len(articles) > limit
@@ -359,12 +241,12 @@ func handleFetchArticleTags(container *di.ApplicationComponents) echo.HandlerFun
 
 		articleID := c.Param("id")
 		if strings.TrimSpace(articleID) == "" {
-			return HandleValidationError(c, "article id is required", "id", articleID)
+			return resterr.HandleValidationError(c, "article id is required", "id", articleID)
 		}
 
 		tags, err := container.FetchArticleTagsUsecase.Execute(ctx, articleID)
 		if err != nil {
-			return HandleError(c, err, "fetch_article_tags")
+			return resterr.HandleError(c, err, "fetch_article_tags")
 		}
 
 		tagResponses := make([]ArticleTagResponse, len(tags))

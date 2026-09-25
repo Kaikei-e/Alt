@@ -93,6 +93,11 @@ func (u *Usecase) verifyProjection(ctx context.Context, projectionVersion string
 		return 0, details
 	}
 
+	return analyzeProjectionDiff(diff)
+}
+
+// analyzeProjectionDiff evaluates drift thresholds between projection versions and returns mismatch count and details JSON.
+func analyzeProjectionDiff(diff *domain.ReprojectDiffSummary) (int, json.RawMessage) {
 	mismatchCount := 0
 	var mismatches []map[string]any
 

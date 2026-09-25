@@ -1,6 +1,7 @@
 package security
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -226,4 +227,71 @@ func TestURLSecurityValidator_IsAllowedDomain(t *testing.T) {
 			assert.Equal(t, tt.expected, result, "Domain %s should be %v", tt.domain, tt.expected)
 		})
 	}
+}
+
+func TestURLSecurityValidator_ValidateParsedRSSURL(t *testing.T) {
+	v := NewURLSecurityValidator()
+
+	t.Run("nil URL returns error", func(t *testing.T) {
+		err := v.ValidateParsedRSSURL(nil)
+		assert.EqualError(t, err, "nil URL")
+	})
+
+	t.Run("rejects userinfo", func(t *testing.T) {
+		u, err := url.Parse("http://admin:secret@example.com/feed.xml")
+		assert.NoError(t, err)
+		err = v.ValidateParsedRSSURL(u)
+		assert.EqualError(t, err, "userinfo not allowed in URL")
+	})
+
+	t.Run("port restrictions", func(t *testing.T) {
+		// Disallowed ports
+		for _, raw := range []string{
+			"http://example.com:8080/feed.xml",
+			"http://example.com:22/feed.xml",
+			"https://example.com:8443/feed.xml",
+		} {
+			u, err := url.Parse(raw)
+			assert.NoError(t, err)
+			err = v.ValidateParsedRSSURL(u)
+			assert.EqualError(t, err, "port not allowed")
+		}
+
+		// Allowed ports (empty, 80, 443) for public domain (mock via allowlist to avoid external DNS)
+		t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
+		for _, raw := range []string{
+			"http://example.com/feed.xml",
+			"http://example.com:80/feed.xml",
+			"https://example.com:443/feed.xml",
+		} {
+			u, err := url.Parse(raw)
+			assert.NoError(t, err)
+			assert.NoError(t, v.ValidateParsedRSSURL(u))
+		}
+	})
+
+	t.Run("bare IP literals blocked", func(t *testing.T) {
+		for _, raw := range []string{
+			"http://0.0.0.0/feed.xml",
+			"http://0.0.0.1/feed.xml",
+			"http://[::]/feed.xml",
+			"http://100.64.0.1/feed.xml",
+			"http://100.64.0.1:80/feed.xml",
+			"http://224.0.0.1/feed.xml",
+			"http://240.0.0.1/feed.xml",
+			"http://255.255.255.255/feed.xml",
+			"http://198.18.0.1/feed.xml",
+		} {
+			u, err := url.Parse(raw)
+			assert.NoError(t, err)
+			assert.Error(t, v.ValidateParsedRSSURL(u))
+		}
+	})
+
+	t.Run("disallowed scheme gopher", func(t *testing.T) {
+		u, err := url.Parse("gopher://example.com")
+		assert.NoError(t, err)
+		err = v.ValidateParsedRSSURL(u)
+		assert.EqualError(t, err, "only HTTP and HTTPS schemes allowed")
+	})
 }

@@ -108,3 +108,58 @@ func TestGetHealth(t *testing.T) {
 		assert.WithinDuration(t, time.Now(), health.LastUpdated, 2*time.Second)
 	})
 }
+
+func TestResolveLastUpdated(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-10 * time.Minute)
+
+	tests := []struct {
+		name      string
+		updatedAt *time.Time
+		fallback  time.Time
+		expected  time.Time
+	}{
+		{
+			name:      "uses non-nil updatedAt",
+			updatedAt: &past,
+			fallback:  now,
+			expected:  past,
+		},
+		{
+			name:      "falls back to now when nil",
+			updatedAt: nil,
+			fallback:  now,
+			expected:  now,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveLastUpdated(tt.updatedAt, tt.fallback)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestBuildHealthStatus(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	jobs := []domain.KnowledgeBackfillJob{
+		{Status: domain.BackfillStatusCompleted, ProcessedEvents: 100},
+	}
+
+	t.Run("builds status with active version", func(t *testing.T) {
+		res := buildHealthStatus(3, 42, jobs, now)
+		assert.Equal(t, 3, res.ActiveVersion)
+		assert.Equal(t, int64(42), res.CheckpointSeq)
+		assert.Equal(t, jobs, res.BackfillJobs)
+		assert.Equal(t, now, res.LastUpdated)
+	})
+
+	t.Run("builds status with zero version", func(t *testing.T) {
+		res := buildHealthStatus(0, 15, nil, now)
+		assert.Equal(t, 0, res.ActiveVersion)
+		assert.Equal(t, int64(15), res.CheckpointSeq)
+		assert.Nil(t, res.BackfillJobs)
+		assert.Equal(t, now, res.LastUpdated)
+	})
+}

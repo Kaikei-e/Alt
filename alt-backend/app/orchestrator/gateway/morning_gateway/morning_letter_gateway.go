@@ -166,12 +166,7 @@ func (g *MorningLetterGateway) GetLetterSources(ctx context.Context, letterID st
 	}
 
 	// Collect article IDs to fetch feed_id from DB
-	articleIDs := make([]uuid.UUID, 0, len(apiSources))
-	for _, s := range apiSources {
-		if id, err := uuid.Parse(s.ArticleID); err == nil {
-			articleIDs = append(articleIDs, id)
-		}
-	}
+	articleIDs := extractSourceArticleIDs(apiSources)
 
 	// Fetch articles to get feed_id mapping
 	feedIDMap := make(map[uuid.UUID]uuid.UUID)
@@ -187,26 +182,10 @@ func (g *MorningLetterGateway) GetLetterSources(ctx context.Context, letterID st
 	}
 
 	// Map to domain, dropping sources with unknown articles
-	result := make([]*domain.MorningLetterSourceEntry, 0, len(apiSources))
-	for _, s := range apiSources {
-		articleID, err := uuid.Parse(s.ArticleID)
-		if err != nil {
-			continue
-		}
-		feedID, ok := feedIDMap[articleID]
-		if !ok {
-			logger.Logger.WarnContext(ctx, "Article not found for morning letter source, dropping",
-				"article_id", s.ArticleID, "letter_id", s.LetterID, "section_key", s.SectionKey)
-			continue
-		}
-		result = append(result, &domain.MorningLetterSourceEntry{
-			LetterID:   s.LetterID,
-			SectionKey: s.SectionKey,
-			ArticleID:  articleID,
-			SourceType: s.SourceType,
-			Position:   s.Position,
-			FeedID:     feedID,
-		})
+	result, dropped := mapSourcesToDomain(apiSources, feedIDMap)
+	for _, s := range dropped {
+		logger.Logger.WarnContext(ctx, "Article not found for morning letter source, dropping",
+			"article_id", s.ArticleID, "letter_id", s.LetterID, "section_key", s.SectionKey)
 	}
 
 	return result, nil
@@ -274,8 +253,7 @@ func mapAPIToDomain(api *MorningLetterAPIResponse) *domain.MorningLetterDocument
 // RegenerateLatest POSTs to recap-worker to trigger on-demand projection.
 func (g *MorningLetterGateway) RegenerateLatest(ctx context.Context, editionTimezone string) (*domain.MorningLetterDocument, error) {
 	url := fmt.Sprintf("%s/v1/morning/letters/regenerate", g.recapWorkerURL)
-	payload := RegenerateLatestRequestAPI{EditionTimezone: editionTimezone}
-	bodyBytes, err := json.Marshal(payload)
+	bodyBytes, err := buildRegeneratePayload(editionTimezone)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal regenerate payload: %w", err)
 	}
@@ -301,4 +279,44 @@ func (g *MorningLetterGateway) RegenerateLatest(ctx context.Context, editionTime
 		return nil, fmt.Errorf("failed to decode regenerate response: %w", err)
 	}
 	return mapAPIToDomain(&apiResp), nil
+}
+
+func extractSourceArticleIDs(apiSources []MorningLetterSourceAPI) []uuid.UUID {
+	articleIDs := make([]uuid.UUID, 0, len(apiSources))
+	for _, s := range apiSources {
+		if id, err := uuid.Parse(s.ArticleID); err == nil {
+			articleIDs = append(articleIDs, id)
+		}
+	}
+	return articleIDs
+}
+
+func mapSourcesToDomain(apiSources []MorningLetterSourceAPI, feedIDMap map[uuid.UUID]uuid.UUID) ([]*domain.MorningLetterSourceEntry, []MorningLetterSourceAPI) {
+	result := make([]*domain.MorningLetterSourceEntry, 0, len(apiSources))
+	var dropped []MorningLetterSourceAPI
+	for _, s := range apiSources {
+		articleID, err := uuid.Parse(s.ArticleID)
+		if err != nil {
+			continue
+		}
+		feedID, ok := feedIDMap[articleID]
+		if !ok {
+			dropped = append(dropped, s)
+			continue
+		}
+		result = append(result, &domain.MorningLetterSourceEntry{
+			LetterID:   s.LetterID,
+			SectionKey: s.SectionKey,
+			ArticleID:  articleID,
+			SourceType: s.SourceType,
+			Position:   s.Position,
+			FeedID:     feedID,
+		})
+	}
+	return result, dropped
+}
+
+func buildRegeneratePayload(editionTimezone string) ([]byte, error) {
+	payload := RegenerateLatestRequestAPI{EditionTimezone: editionTimezone}
+	return json.Marshal(payload)
 }

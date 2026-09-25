@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"alt/domain"
@@ -104,4 +105,29 @@ func TestGetArticleSourceURL_TenantScopeIsolation(t *testing.T) {
 	userB := uuid.New()
 	_, _ = uc.Execute(context.Background(), articleID, userB)
 	require.Equal(t, userB, stub.gotUserID)
+}
+
+func TestValidateArticleID(t *testing.T) {
+	tests := []struct {
+		name      string
+		articleID string
+		wantErr   bool
+	}{
+		{name: "valid uuid", articleID: uuid.New().String(), wantErr: false},
+		{name: "empty string", articleID: "", wantErr: true},
+		{name: "invalid characters", articleID: "not-a-uuid", wantErr: true},
+		{name: "partial uuid", articleID: "12345678-1234", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateArticleID(tt.articleID)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.ErrorIs(t, err, ErrInvalidArgument)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }

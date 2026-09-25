@@ -19,8 +19,20 @@ import (
 // The scraping itself stays in alt-harvester — it is an external HTTP fetch,
 // which ADR-000954 D4 keeps on the calling side. Only the reads and the
 // retention delete cross this boundary.
+// ogImageDataHubClient isolates the data-hub RPCs called by OgImageGateway.
+type ogImageDataHubClient interface {
+	SaveArticleHead(context.Context, *connect.Request[datahubv1.SaveArticleHeadRequest]) (*connect.Response[datahubv1.SaveArticleHeadResponse], error)
+	GetArticleHead(context.Context, *connect.Request[datahubv1.GetArticleHeadRequest]) (*connect.Response[datahubv1.GetArticleHeadResponse], error)
+	BatchGetOgImageURLs(context.Context, *connect.Request[datahubv1.BatchGetOgImageURLsRequest]) (*connect.Response[datahubv1.BatchGetOgImageURLsResponse], error)
+	GetFeedOgImageTargets(context.Context, *connect.Request[datahubv1.GetFeedOgImageTargetsRequest]) (*connect.Response[datahubv1.GetFeedOgImageTargetsResponse], error)
+	SaveFeedOgImage(context.Context, *connect.Request[datahubv1.SaveFeedOgImageRequest]) (*connect.Response[datahubv1.SaveFeedOgImageResponse], error)
+	PurgeExpiredFeedOgImages(context.Context, *connect.Request[datahubv1.PurgeExpiredFeedOgImagesRequest]) (*connect.Response[datahubv1.PurgeExpiredFeedOgImagesResponse], error)
+	ListUnwarmedOgImageURLs(context.Context, *connect.Request[datahubv1.ListUnwarmedOgImageURLsRequest]) (*connect.Response[datahubv1.ListUnwarmedOgImageURLsResponse], error)
+	PurgeExpiredArticleHeads(context.Context, *connect.Request[datahubv1.PurgeExpiredArticleHeadsRequest]) (*connect.Response[datahubv1.PurgeExpiredArticleHeadsResponse], error)
+}
+
 type OgImageGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client ogImageDataHubClient
 }
 
 func NewOgImageGateway(client datahubv1connect.DataHubServiceClient) *OgImageGateway {

@@ -10,6 +10,7 @@ import (
 	"alt/config"
 	"alt/di"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
+	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/shared/gateway/datahub_gateway"
 )
 
@@ -54,7 +55,10 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 	cfg := &config.Config{}
 	cfg.WebPush.PublicKey = "a-vapid-public-key-value"
 
-	return &di.ApplicationComponents{Infra: &di.InfraModule{PushSubscriptionGateway: pushGateway}},
+	return &di.ApplicationComponents{
+			Infra:                 &di.InfraModule{PushSubscriptionGateway: pushGateway},
+			ResolveArticleUsecase: resolve_article_usecase.New(nil, nil), // satisfies the feeds handler fail-loud wiring check
+		},
 		cfg,
 		slog.New(slog.NewTextHandler(io_Discard{}, nil))
 }

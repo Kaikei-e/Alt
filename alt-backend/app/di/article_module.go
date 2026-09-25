@@ -14,7 +14,6 @@ import (
 	"alt/orchestrator/gateway/latest_article_gateway"
 	"alt/orchestrator/gateway/preprocessor_summarize_gateway"
 	"alt/orchestrator/gateway/scraping_policy_gateway"
-	"alt/orchestrator/port/rag_integration_port"
 	"alt/orchestrator/usecase/archive_article_usecase"
 	"alt/orchestrator/usecase/fetch_article_summaries_usecase"
 	"alt/orchestrator/usecase/fetch_article_summary_usecase"
@@ -133,7 +132,7 @@ func logArticlePrefetchWiring(wiring articles.ArticlePrefetchWiring) {
 		"note", "warms take a host's turn from the same limiter and namespace as interactive fetches, and give it up after slot_wait rather than queueing for it")
 }
 
-func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integration_port.RagIntegrationPort) *ArticleModule {
+func newArticleModule(infra *InfraModule, feed *FeedModule) *ArticleModule {
 	// No alt_db handle. The two that were left here through batch 5 — the Tag
 	// Trail's paged read and RecallRailUsecase's article fallback — became
 	// procedures of their own in ADR-000954 Wave 3 batch 6, which is what let
@@ -161,7 +160,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	// three gateways stay separate.
 	articleRepoGw := article_repository_gateway.New(infra.ArticleStoreGateway, infra.OgImageGateway, infra.DeclinedDomainGateway)
 	fetchArticleUC := fetch_article_usecase.NewArticleUsecaseWithScrapingPolicy(
-		fetchArticleGw, infra.RobotsTxtGateway, articleRepoGw, ragAdapter, scrapingPolicyGw,
+		fetchArticleGw, infra.RobotsTxtGateway, articleRepoGw, scrapingPolicyGw,
 	)
 
 	// The third fetch class: article-content prefetch. Same repository, robots
@@ -195,7 +194,7 @@ func newArticleModule(infra *InfraModule, feed *FeedModule, ragAdapter rag_integ
 	if prefetchWiring.Enabled {
 		prefetchArticleUC = fetch_article_usecase.NewArticleUsecaseWithScrapingPolicy(
 			fetch_article_gateway.NewPrefetchFetchArticleGateway(),
-			infra.RobotsTxtGateway, articleRepoGw, ragAdapter, scrapingPolicyGw,
+			infra.RobotsTxtGateway, articleRepoGw, scrapingPolicyGw,
 		)
 	}
 

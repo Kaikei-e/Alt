@@ -15,6 +15,7 @@ import (
 	"alt/domain"
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
 	"alt/orchestrator/usecase/cached_feed_list_usecase"
+	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/utils/logger"
 )
 
@@ -114,6 +115,7 @@ func TestGetUnreadFeeds_CursorRoundTripKeepsSubSecondPrecision(t *testing.T) {
 
 	handler := NewHandler(FeedHandlerDeps{
 		CachedFeedList: cached_feed_list_usecase.NewCachedFeedListUsecase(nil, port, nil),
+		ResolveArticle: resolve_article_usecase.New(nil, nil),
 	}, &config.Config{}, slog.Default())
 	ctx := createAuthContext()
 

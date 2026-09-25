@@ -5,6 +5,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	middleware_custom "alt/middleware"
+	"alt/orchestrator/rest/resterr"
 	"alt/utils/logger"
 	"fmt"
 	"net/http"
@@ -46,7 +47,7 @@ type UpdateScrapingDomainRequest struct {
 // matching every other admin route group (see registerDashboardRoutes). These
 // endpoints control scraping consent policy (robots.txt compliance, ML
 // training opt-in) and must never be reachable anonymously.
-func registerScrapingDomainRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+func registerScrapingDomainRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg config.AuthConfig) {
 	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
 	admin := v1.Group("/admin", authMiddleware.RequireAuth(), authMiddleware.RequireAdmin())
 	scrapingDomains := admin.Group("/scraping-domains")
@@ -71,7 +72,7 @@ func handleListScrapingDomains(container *di.ApplicationComponents) echo.Handler
 
 		domains, err := container.ScrapingDomainUsecase.ListScrapingDomains(ctx, offset, limit)
 		if err != nil {
-			return HandleError(c, fmt.Errorf("failed to list scraping domains: %w", err), "list_scraping_domains")
+			return resterr.HandleError(c, fmt.Errorf("failed to list scraping domains: %w", err), "list_scraping_domains")
 		}
 
 		// Convert to response format
@@ -92,12 +93,12 @@ func handleGetScrapingDomain(container *di.ApplicationComponents) echo.HandlerFu
 		idStr := c.Param("id")
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			return HandleValidationError(c, "Invalid domain ID", "id", idStr)
+			return resterr.HandleValidationError(c, "Invalid domain ID", "id", idStr)
 		}
 
 		domain, err := container.ScrapingDomainUsecase.GetScrapingDomain(ctx, id)
 		if err != nil {
-			return HandleError(c, fmt.Errorf("failed to get scraping domain: %w", err), "get_scraping_domain")
+			return resterr.HandleError(c, fmt.Errorf("failed to get scraping domain: %w", err), "get_scraping_domain")
 		}
 
 		if domain == nil {
@@ -116,12 +117,12 @@ func handleUpdateScrapingDomainPolicy(container *di.ApplicationComponents) echo.
 		idStr := c.Param("id")
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			return HandleValidationError(c, "Invalid domain ID", "id", idStr)
+			return resterr.HandleValidationError(c, "Invalid domain ID", "id", idStr)
 		}
 
 		var req UpdateScrapingDomainRequest
 		if err := c.Bind(&req); err != nil {
-			return HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
+			return resterr.HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
 		}
 
 		update := &domain.ScrapingPolicyUpdate{
@@ -132,7 +133,7 @@ func handleUpdateScrapingDomainPolicy(container *di.ApplicationComponents) echo.
 		}
 
 		if err := container.ScrapingDomainUsecase.UpdateScrapingDomainPolicy(ctx, id, update); err != nil {
-			return HandleError(c, fmt.Errorf("failed to update scraping domain policy: %w", err), "update_scraping_domain_policy")
+			return resterr.HandleError(c, fmt.Errorf("failed to update scraping domain policy: %w", err), "update_scraping_domain_policy")
 		}
 
 		return c.JSON(http.StatusOK, map[string]string{"message": "scraping domain policy updated"})
@@ -147,11 +148,11 @@ func handleRefreshRobotsTxt(container *di.ApplicationComponents) echo.HandlerFun
 		idStr := c.Param("id")
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			return HandleValidationError(c, "Invalid domain ID", "id", idStr)
+			return resterr.HandleValidationError(c, "Invalid domain ID", "id", idStr)
 		}
 
 		if err := container.ScrapingDomainUsecase.RefreshRobotsTxt(ctx, id); err != nil {
-			return HandleError(c, fmt.Errorf("failed to refresh robots.txt: %w", err), "refresh_robots_txt")
+			return resterr.HandleError(c, fmt.Errorf("failed to refresh robots.txt: %w", err), "refresh_robots_txt")
 		}
 
 		return c.JSON(http.StatusOK, map[string]string{"message": "robots.txt refreshed"})

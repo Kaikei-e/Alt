@@ -46,10 +46,11 @@ func loadStruct(v reflect.Value) error {
 
 		// Get value from environment, use default if not set
 		// First check for _FILE suffix (Docker Secrets support)
+		// SOVEREIGN_EVENT_TOKEN_FILE is gated on SOVEREIGN_URL != "" in validateSovereignConfig.
 		envFileTag := envTag + "_FILE"
 		fileValue := os.Getenv(envFileTag)
 		var value string
-		if fileValue != "" {
+		if fileValue != "" && envFileTag != "SOVEREIGN_EVENT_TOKEN_FILE" {
 			// Path comes from a trusted env var (Docker Secrets pattern:
 			// *_FILE injects operator-controlled paths, never user input).
 			content, err := os.ReadFile(filepath.Clean(fileValue)) //#nosec G304,G703 -- path is operator-supplied via *_FILE env var (Docker Secrets)

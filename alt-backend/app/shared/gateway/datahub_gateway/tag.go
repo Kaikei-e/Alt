@@ -29,8 +29,21 @@ import (
 // the retry around it, and the singleflight that keeps two concurrent readers
 // of the same article from asking twice. Those are calls to another service and
 // orchestration around them (ADR-000954 D4).
+// tagDataHubClient isolates the data-hub RPCs called by TagGateway.
+type tagDataHubClient interface {
+	GetArticleTags(context.Context, *connect.Request[datahubv1.GetArticleTagsRequest]) (*connect.Response[datahubv1.GetArticleTagsResponse], error)
+	GetFeedTags(context.Context, *connect.Request[datahubv1.GetFeedTagsRequest]) (*connect.Response[datahubv1.GetFeedTagsResponse], error)
+	UpsertArticleTags(context.Context, *connect.Request[datahubv1.UpsertArticleTagsRequest]) (*connect.Response[datahubv1.UpsertArticleTagsResponse], error)
+	FetchTagCloud(context.Context, *connect.Request[datahubv1.FetchTagCloudRequest]) (*connect.Response[datahubv1.FetchTagCloudResponse], error)
+	GetTagCooccurrences(context.Context, *connect.Request[datahubv1.GetTagCooccurrencesRequest]) (*connect.Response[datahubv1.GetTagCooccurrencesResponse], error)
+	SearchTagsByPrefix(context.Context, *connect.Request[datahubv1.SearchTagsByPrefixRequest]) (*connect.Response[datahubv1.SearchTagsByPrefixResponse], error)
+	GetTagArticleCounts(context.Context, *connect.Request[datahubv1.GetTagArticleCountsRequest]) (*connect.Response[datahubv1.GetTagArticleCountsResponse], error)
+	ListArticlesByTagID(context.Context, *connect.Request[datahubv1.ListArticlesByTagIDRequest]) (*connect.Response[datahubv1.ListArticlesByTagIDResponse], error)
+	ListArticlesByTagName(context.Context, *connect.Request[datahubv1.ListArticlesByTagNameRequest]) (*connect.Response[datahubv1.ListArticlesByTagNameResponse], error)
+}
+
 type TagGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client tagDataHubClient
 }
 
 func NewTagGateway(client datahubv1connect.DataHubServiceClient) *TagGateway {

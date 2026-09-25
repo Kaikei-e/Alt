@@ -80,3 +80,40 @@ func TestGetArticleGroups(t *testing.T) {
 	assert.Equal(t, articleID, groups[0].ArticleID)
 	assert.Equal(t, "Test Title", groups[0].Article.Title)
 }
+
+func TestBuildMorningUpdatesURL(t *testing.T) {
+	since := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
+	u := buildMorningUpdatesURL("http://recap-worker:9005", since)
+	assert.Contains(t, u, "http://recap-worker:9005/v1/morning/updates?since=2026-09-25T00%3A00%3A00Z")
+}
+
+func TestExtractArticleIDs(t *testing.T) {
+	id1 := uuid.New()
+	id2 := uuid.New()
+	resps := []MorningArticleGroupResponse{
+		{ArticleID: id1},
+		{ArticleID: id2},
+	}
+	ids := extractArticleIDs(resps)
+	assert.Equal(t, []uuid.UUID{id1, id2}, ids)
+}
+
+func TestMapArticleGroupToDomain(t *testing.T) {
+	id1 := uuid.New()
+	gid := uuid.New()
+	now := time.Now().UTC()
+	resp := MorningArticleGroupResponse{
+		GroupID:   gid,
+		ArticleID: id1,
+		IsPrimary: true,
+		CreatedAt: now,
+	}
+	article := &domain.Article{ID: id1, Title: "Art 1"}
+
+	group := mapArticleGroupToDomain(resp, article)
+	assert.Equal(t, id1, group.ArticleID)
+	assert.Equal(t, gid, group.GroupID)
+	assert.True(t, group.IsPrimary)
+	assert.Equal(t, now, group.CreatedAt)
+	assert.Equal(t, article, group.Article)
+}

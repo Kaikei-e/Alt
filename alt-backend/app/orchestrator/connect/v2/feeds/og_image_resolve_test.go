@@ -16,6 +16,7 @@ import (
 	"alt/domain"
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
 	"alt/orchestrator/usecase/og_image_resolve_usecase"
+	"alt/orchestrator/usecase/resolve_article_usecase"
 )
 
 // This file is the producer half of the `ResolveOgImages` wire contract: it
@@ -68,7 +69,10 @@ func (resolveFakeMinter) WarmCache(_ context.Context, _ string)   {}
 
 func resolveTestHandler(uc *og_image_resolve_usecase.Usecase) *Handler {
 	return NewHandler(
-		FeedHandlerDeps{ResolveOgImages: uc},
+		FeedHandlerDeps{
+			ResolveOgImages: uc,
+			ResolveArticle:  resolve_article_usecase.New(nil, nil),
+		},
 		&config.Config{},
 		slog.Default(),
 	)
@@ -171,7 +175,9 @@ func TestResolveOgImages_EmptyRequest(t *testing.T) {
 // empty response with an empty unresolved list is exactly the shape a client
 // reads as "every card is blank forever".
 func TestResolveOgImages_UnwiredResolverIsUnimplemented(t *testing.T) {
-	h := NewHandler(FeedHandlerDeps{}, &config.Config{}, slog.Default())
+	h := NewHandler(FeedHandlerDeps{
+		ResolveArticle: resolve_article_usecase.New(nil, nil),
+	}, &config.Config{}, slog.Default())
 
 	_, err := h.ResolveOgImages(authedContext(), connect.NewRequest(&feedsv2.ResolveOgImagesRequest{
 		FeedIds: []string{"f1"},

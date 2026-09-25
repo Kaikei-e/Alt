@@ -15,7 +15,7 @@ func TestRecapSearchGateway_SearchRecapsForGlobal(t *testing.T) {
 	logger.InitLogger()
 	ctrl := gomock.NewController(t)
 
-	mockSearchIndexer := mocks.NewMockSearchIndexerPort(ctrl)
+	mockSearchIndexer := mocks.NewMockRecapSearchPort(ctrl)
 
 	gw := NewRecapSearchGateway(mockSearchIndexer)
 
@@ -64,7 +64,7 @@ func TestRecapSearchGateway_EmptyResults(t *testing.T) {
 	logger.InitLogger()
 	ctrl := gomock.NewController(t)
 
-	mockSearchIndexer := mocks.NewMockSearchIndexerPort(ctrl)
+	mockSearchIndexer := mocks.NewMockRecapSearchPort(ctrl)
 
 	gw := NewRecapSearchGateway(mockSearchIndexer)
 
@@ -86,7 +86,7 @@ func TestRecapSearchGateway_SearchError(t *testing.T) {
 	logger.InitLogger()
 	ctrl := gomock.NewController(t)
 
-	mockSearchIndexer := mocks.NewMockSearchIndexerPort(ctrl)
+	mockSearchIndexer := mocks.NewMockRecapSearchPort(ctrl)
 
 	gw := NewRecapSearchGateway(mockSearchIndexer)
 
@@ -97,5 +97,27 @@ func TestRecapSearchGateway_SearchError(t *testing.T) {
 	_, err := gw.SearchRecapsForGlobal(context.Background(), "tech", 3)
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestMapRecapResultsToGlobalHits(t *testing.T) {
+	results := []*domain.RecapSearchResult{
+		{
+			JobID:      "job-1",
+			ExecutedAt: "2026-09-25T00:00:00Z",
+			WindowDays: 7,
+			Genre:      "tech",
+			Summary:    "weekly recap",
+			TopTerms:   []string{"ai"},
+			Tags:       []string{"tech"},
+		},
+	}
+
+	hits := mapRecapResultsToGlobalHits(results)
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 hit, got %d", len(hits))
+	}
+	if hits[0].ID != "job-1__tech" || hits[0].JobID != "job-1" || hits[0].Genre != "tech" {
+		t.Errorf("unexpected recap hit: %+v", hits[0])
 	}
 }

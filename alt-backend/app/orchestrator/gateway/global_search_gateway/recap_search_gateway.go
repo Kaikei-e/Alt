@@ -9,12 +9,12 @@ import (
 
 // RecapSearchGateway implements global_search_port.SearchRecapsPort.
 type RecapSearchGateway struct {
-	searchIndexer search_indexer_port.SearchIndexerPort
+	searchIndexer search_indexer_port.RecapSearchPort
 	logger        *slog.Logger
 }
 
 // NewRecapSearchGateway creates a new RecapSearchGateway.
-func NewRecapSearchGateway(searchIndexer search_indexer_port.SearchIndexerPort) *RecapSearchGateway {
+func NewRecapSearchGateway(searchIndexer search_indexer_port.RecapSearchPort) *RecapSearchGateway {
 	return &RecapSearchGateway{
 		searchIndexer: searchIndexer,
 		logger:        slog.Default(),
@@ -29,6 +29,16 @@ func (g *RecapSearchGateway) SearchRecapsForGlobal(ctx context.Context, query st
 		return nil, err
 	}
 
+	hits := mapRecapResultsToGlobalHits(results)
+
+	return &domain.RecapSearchSection{
+		Hits:           hits,
+		EstimatedTotal: totalCount,
+		HasMore:        totalCount > int64(limit),
+	}, nil
+}
+
+func mapRecapResultsToGlobalHits(results []*domain.RecapSearchResult) []domain.GlobalRecapHit {
 	hits := make([]domain.GlobalRecapHit, len(results))
 	for i, r := range results {
 		hits[i] = domain.GlobalRecapHit{
@@ -42,10 +52,5 @@ func (g *RecapSearchGateway) SearchRecapsForGlobal(ctx context.Context, query st
 			ExecutedAt: r.ExecutedAt,
 		}
 	}
-
-	return &domain.RecapSearchSection{
-		Hits:           hits,
-		EstimatedTotal: totalCount,
-		HasMore:        totalCount > int64(limit),
-	}, nil
+	return hits
 }

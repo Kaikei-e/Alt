@@ -543,3 +543,52 @@ func TestRollbackReproject(t *testing.T) {
 		assert.Contains(t, err.Error(), "cannot rollback")
 	})
 }
+
+func TestParseVersionNumber(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    int
+		wantErr bool
+	}{
+		{name: "prefixed lowercase v", input: "v2", want: 2, wantErr: false},
+		{name: "prefixed uppercase V", input: "V3", want: 3, wantErr: false},
+		{name: "plain number", input: "10", want: 10, wantErr: false},
+		{name: "whitespace padded fails", input: "  v5  ", want: 0, wantErr: true},
+		{name: "empty string", input: "", want: 0, wantErr: true},
+		{name: "non numeric", input: "latest", want: 0, wantErr: true},
+		{name: "just v", input: "v", want: 0, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseVersionNumber(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestExtractCheckpointSeq(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload json.RawMessage
+		want    int64
+	}{
+		{name: "empty payload", payload: nil, want: 0},
+		{name: "empty json", payload: json.RawMessage(`{}`), want: 0},
+		{name: "valid checkpoint", payload: json.RawMessage(`{"last_event_seq": 12345}`), want: 12345},
+		{name: "invalid json", payload: json.RawMessage(`invalid`), want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractCheckpointSeq(tt.payload)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

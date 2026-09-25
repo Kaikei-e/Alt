@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"os"
 	"strings"
 	"time"
 )
@@ -21,35 +23,27 @@ func validateConfig(config *Config) error {
 	if err := validateServerConfig(&config.Server); err != nil {
 		return fmt.Errorf("server config validation failed: %w", err)
 	}
-
 	if err := validateDatabaseConfig(&config.Database); err != nil {
 		return fmt.Errorf("database config validation failed: %w", err)
 	}
-
 	if err := validateRateLimitConfig(&config.RateLimit); err != nil {
 		return fmt.Errorf("rate limit config validation failed: %w", err)
 	}
-
 	if err := validateCacheConfig(&config.Cache); err != nil {
 		return fmt.Errorf("cache config validation failed: %w", err)
 	}
-
 	if err := validateLoggingConfig(&config.Logging); err != nil {
 		return fmt.Errorf("logging config validation failed: %w", err)
 	}
-
 	if err := validateHTTPConfig(&config.HTTP); err != nil {
 		return fmt.Errorf("HTTP config validation failed: %w", err)
 	}
-
 	if err := validateRecapConfig(&config.Recap); err != nil {
 		return fmt.Errorf("recap config validation failed: %w", err)
 	}
-
 	if err := validateKnowledgeHomeConfig(&config.KnowledgeHome); err != nil {
 		return fmt.Errorf("knowledge home config validation failed: %w", err)
 	}
-
 	return nil
 }
 
@@ -66,15 +60,12 @@ func validateServerConfig(config *ServerConfig) error {
 	if config.ReadTimeout <= 0 {
 		return fmt.Errorf("timeout values must be positive, got ReadTimeout: %v", config.ReadTimeout)
 	}
-
 	if config.WriteTimeout <= 0 {
 		return fmt.Errorf("timeout values must be positive, got WriteTimeout: %v", config.WriteTimeout)
 	}
-
 	if config.IdleTimeout <= 0 {
 		return fmt.Errorf("timeout values must be positive, got IdleTimeout: %v", config.IdleTimeout)
 	}
-
 	return nil
 }
 
@@ -83,12 +74,10 @@ func validateDatabaseConfig(config *DatabaseConfig) error {
 	if config.MaxConnections < 1 {
 		return fmt.Errorf("max connections must be at least 1, got %d", config.MaxConnections)
 	}
-
 	// Validate connection timeout
 	if config.ConnectionTimeout <= 0 {
 		return fmt.Errorf("connection timeout must be positive, got %v", config.ConnectionTimeout)
 	}
-
 	return nil
 }
 
@@ -145,11 +134,9 @@ func validateCacheConfig(config *CacheConfig) error {
 	if config.FeedCacheExpiry <= 0 {
 		return fmt.Errorf("feed cache expiry must be positive, got %v", config.FeedCacheExpiry)
 	}
-
 	if config.SearchCacheExpiry <= 0 {
 		return fmt.Errorf("search cache expiry must be positive, got %v", config.SearchCacheExpiry)
 	}
-
 	return nil
 }
 
@@ -196,19 +183,15 @@ func validateHTTPConfig(config *HTTPConfig) error {
 	if config.ClientTimeout <= 0 {
 		return fmt.Errorf("client timeout must be positive, got %v", config.ClientTimeout)
 	}
-
 	if config.DialTimeout <= 0 {
 		return fmt.Errorf("dial timeout must be positive, got %v", config.DialTimeout)
 	}
-
 	if config.TLSHandshakeTimeout <= 0 {
 		return fmt.Errorf("TLS handshake timeout must be positive, got %v", config.TLSHandshakeTimeout)
 	}
-
 	if config.IdleConnTimeout <= 0 {
 		return fmt.Errorf("idle connection timeout must be positive, got %v", config.IdleConnTimeout)
 	}
-
 	return nil
 }
 
@@ -222,23 +205,19 @@ func validateDOSProtectionConfig(config *DOSProtectionConfig) error {
 	if config.RateLimit <= 0 {
 		return fmt.Errorf("rate limit must be greater than 0, got %d", config.RateLimit)
 	}
-
 	// Validate burst limit
 	if config.BurstLimit <= 0 {
 		return fmt.Errorf("burst limit must be greater than 0, got %d", config.BurstLimit)
 	}
-
 	// Validate that burst limit is >= rate limit
 	if config.BurstLimit < config.RateLimit {
 		return fmt.Errorf("burst limit must be >= rate limit, got burst: %d, rate: %d",
 			config.BurstLimit, config.RateLimit)
 	}
-
 	// Validate window size
 	if config.WindowSize <= 0 {
 		return fmt.Errorf("window size must be positive, got %v", config.WindowSize)
 	}
-
 	// Validate block duration
 	if config.BlockDuration <= 0 {
 		return fmt.Errorf("block duration must be positive, got %v", config.BlockDuration)
@@ -309,17 +288,14 @@ func validateCircuitBreakerConfig(config *CircuitBreakerConfig) error {
 	if config.FailureThreshold <= 0 {
 		return fmt.Errorf("failure threshold must be greater than 0, got %d", config.FailureThreshold)
 	}
-
 	// Validate timeout duration
 	if config.TimeoutDuration <= 0 {
 		return fmt.Errorf("timeout duration must be positive, got %v", config.TimeoutDuration)
 	}
-
 	// Validate recovery timeout
 	if config.RecoveryTimeout <= 0 {
 		return fmt.Errorf("recovery timeout must be positive, got %v", config.RecoveryTimeout)
 	}
-
 	// Validate that recovery timeout is reasonable compared to timeout duration
 	if config.RecoveryTimeout < config.TimeoutDuration {
 		return fmt.Errorf("recovery timeout should be >= timeout duration, got recovery: %v, timeout: %v",
@@ -349,5 +325,51 @@ func validateAuthConfig(config *AuthConfig, env string) error {
 		return fmt.Errorf("BACKEND_TOKEN_SECRET is too short (minimum 16 characters)")
 	}
 
+	return nil
+}
+
+func validatePort(name string, port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("%s must be between 1 and 65535, got %d", name, port)
+	}
+	return nil
+}
+
+// validateHostPort rejects anything net/http could not bind. An empty host is
+// allowed — that is the "every interface in this netns" shorthand compose uses
+// — but an empty port is not, because http.Server would then pick an ephemeral
+// one and nothing would ever reach the listener.
+func validateHostPort(name, addr string) error {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("%s=%q is not a valid host:port: %w", name, addr, err)
+	}
+	if strings.TrimSpace(port) == "" {
+		return fmt.Errorf("%s=%q has no port", name, addr)
+	}
+	return nil
+}
+
+func requiredEnv(name string) (string, error) {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return "", fmt.Errorf("%s is required and must not be empty", name)
+	}
+	return v, nil
+}
+
+func requireAll(binary string, required []struct {
+	env   string
+	value string
+}) error {
+	var missing []string
+	for _, r := range required {
+		if strings.TrimSpace(r.value) == "" {
+			missing = append(missing, r.env)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%s config: required values are unset: %s", binary, strings.Join(missing, ", "))
+	}
 	return nil
 }

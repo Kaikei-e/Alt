@@ -128,3 +128,90 @@ func TestAppendKnowledgeEventUsecase_WrapsPortError(t *testing.T) {
 	assert.ErrorIs(t, err, portErr)
 	assert.Contains(t, err.Error(), "append knowledge event")
 }
+
+func TestNormalizeEvent(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		event   domain.KnowledgeEvent
+		now     time.Time
+		wantErr bool
+		verify  func(t *testing.T, evt domain.KnowledgeEvent)
+	}{
+		{
+			name: "missing event_type",
+			event: domain.KnowledgeEvent{
+				AggregateType: "agg",
+				AggregateID:   "1",
+			},
+			now:     now,
+			wantErr: true,
+		},
+		{
+			name: "missing aggregate_type",
+			event: domain.KnowledgeEvent{
+				EventType:   "evt",
+				AggregateID: "1",
+			},
+			now:     now,
+			wantErr: true,
+		},
+		{
+			name: "missing aggregate_id",
+			event: domain.KnowledgeEvent{
+				EventType:     "evt",
+				AggregateType: "agg",
+			},
+			now:     now,
+			wantErr: true,
+		},
+		{
+			name: "defaults ID, timestamp, dedupe key",
+			event: domain.KnowledgeEvent{
+				EventType:     "custom.event",
+				AggregateType: "item",
+				AggregateID:   "item-123",
+			},
+			now:     now,
+			wantErr: false,
+			verify: func(t *testing.T, evt domain.KnowledgeEvent) {
+				assert.NotEqual(t, uuid.Nil, evt.EventID)
+				assert.Equal(t, now, evt.OccurredAt)
+				assert.Equal(t, "custom.event:item-123:"+evt.EventID.String(), evt.DedupeKey)
+			},
+		},
+		{
+			name: "preserves explicitly set fields",
+			event: domain.KnowledgeEvent{
+				EventID:       uuid.MustParse("00000000-0000-0000-0000-000000000099"),
+				OccurredAt:    now.Add(-time.Hour),
+				EventType:     "custom.event",
+				AggregateType: "item",
+				AggregateID:   "item-123",
+				DedupeKey:     "custom-dedupe",
+			},
+			now:     now,
+			wantErr: false,
+			verify: func(t *testing.T, evt domain.KnowledgeEvent) {
+				assert.Equal(t, uuid.MustParse("00000000-0000-0000-0000-000000000099"), evt.EventID)
+				assert.Equal(t, now.Add(-time.Hour), evt.OccurredAt)
+				assert.Equal(t, "custom-dedupe", evt.DedupeKey)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeEvent(tt.event, tt.now)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				if tt.verify != nil {
+					tt.verify(t, got)
+				}
+			}
+		})
+	}
+}

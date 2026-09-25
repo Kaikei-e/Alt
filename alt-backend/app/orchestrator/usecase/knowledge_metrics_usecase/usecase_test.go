@@ -147,3 +147,65 @@ func TestGetSystemMetrics(t *testing.T) {
 		assert.Nil(t, result)
 	})
 }
+
+func TestComputeDerivedRates(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  *domain.SystemMetrics
+		verify func(t *testing.T, m *domain.SystemMetrics)
+	}{
+		{
+			name: "zero counters produce expected base percentages",
+			input: &domain.SystemMetrics{
+				Handler:     domain.HandlerMetrics{PagesServed: 0, PagesDegraded: 0},
+				Tracking:    domain.TrackingMetrics{ItemsExposed: 0},
+				Stream:      domain.StreamMetrics{ConnectionsTotal: 0},
+				Correctness: domain.CorrectnessMetrics{RequestsTotal: 0},
+				Sovereign:   domain.SovereignMetrics{MutationsApplied: 0, MutationsErrors: 0},
+			},
+			verify: func(t *testing.T, m *domain.SystemMetrics) {
+				assert.Equal(t, 0.0, m.Handler.DegradedRatePct)
+				assert.Equal(t, 0.0, m.Tracking.OpenRatePct)
+				assert.Equal(t, 0.0, m.Stream.DisconnectRatePct)
+				assert.Equal(t, 100.0, m.Correctness.CorrectnessScorePct)
+				assert.Equal(t, 0.0, m.Sovereign.ErrorRatePct)
+			},
+		},
+		{
+			name: "calculates rates correctly from counters",
+			input: &domain.SystemMetrics{
+				Handler: domain.HandlerMetrics{PagesServed: 200, PagesDegraded: 10},
+				Tracking: domain.TrackingMetrics{
+					ItemsExposed:   100,
+					ItemsOpened:    25,
+					ItemsDismissed: 5,
+				},
+				Stream: domain.StreamMetrics{ConnectionsTotal: 50, DisconnectsTotal: 5},
+				Correctness: domain.CorrectnessMetrics{
+					RequestsTotal:  1000,
+					EmptyResponses: 10,
+					MalformedWhy:   10,
+				},
+				Sovereign: domain.SovereignMetrics{
+					MutationsApplied: 95,
+					MutationsErrors:  5,
+				},
+			},
+			verify: func(t *testing.T, m *domain.SystemMetrics) {
+				assert.InDelta(t, 5.0, m.Handler.DegradedRatePct, 0.001)
+				assert.InDelta(t, 25.0, m.Tracking.OpenRatePct, 0.001)
+				assert.InDelta(t, 5.0, m.Tracking.DismissRatePct, 0.001)
+				assert.InDelta(t, 10.0, m.Stream.DisconnectRatePct, 0.001)
+				assert.InDelta(t, 98.0, m.Correctness.CorrectnessScorePct, 0.001)
+				assert.InDelta(t, 5.0, m.Sovereign.ErrorRatePct, 0.001)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			computeDerivedRates(tt.input)
+			tt.verify(t, tt.input)
+		})
+	}
+}

@@ -56,33 +56,12 @@ func NewResolveTrailBranchUsecase(appendPort knowledge_event_port.AppendKnowledg
 // "dismissed" and non-empty, and it must be one of validDismissReasons.
 func (u *ResolveTrailBranchUsecase) Execute(ctx context.Context, userID, tenantID uuid.UUID, branchKey, resolution, clientResolutionID, dismissReason string) error {
 	branchKey = strings.TrimSpace(branchKey)
-	if branchKey == "" {
-		return fmt.Errorf("%w: branch_key required", ErrInvalidRequest)
-	}
-	if resolution != "taken" && resolution != "dismissed" {
-		return fmt.Errorf("%w: resolution must be taken or dismissed", ErrInvalidRequest)
-	}
-	if !uuidv7Re.MatchString(strings.ToLower(strings.TrimSpace(clientResolutionID))) {
-		return fmt.Errorf("%w: client_resolution_id must be UUIDv7", ErrInvalidRequest)
-	}
 	dismissReason = strings.TrimSpace(dismissReason)
-	if dismissReason != "" {
-		if resolution != "dismissed" {
-			return fmt.Errorf("%w: dismiss_reason only applies to a dismissed resolution", ErrInvalidRequest)
-		}
-		if !validDismissReasons[dismissReason] {
-			return fmt.Errorf("%w: dismiss_reason %q is not recognized", ErrInvalidRequest, dismissReason)
-		}
+	if err := validateResolveRequest(branchKey, resolution, clientResolutionID, dismissReason); err != nil {
+		return err
 	}
 
-	payloadMap := map[string]string{
-		"branch_key": branchKey,
-		"resolution": resolution,
-	}
-	if dismissReason != "" {
-		payloadMap["dismiss_reason"] = dismissReason
-	}
-	payload, _ := json.Marshal(payloadMap)
+	payload := buildResolveBranchPayload(branchKey, resolution, dismissReason)
 	uid := userID
 	evt := domain.KnowledgeEvent{
 		EventID:       uuid.New(),
@@ -101,4 +80,39 @@ func (u *ResolveTrailBranchUsecase) Execute(ctx context.Context, userID, tenantI
 		return fmt.Errorf("resolve trail branch: %w", err)
 	}
 	return nil
+}
+
+// validateResolveRequest validates input parameters for branch resolution.
+func validateResolveRequest(branchKey, resolution, clientResolutionID, dismissReason string) error {
+	if branchKey == "" {
+		return fmt.Errorf("%w: branch_key required", ErrInvalidRequest)
+	}
+	if resolution != "taken" && resolution != "dismissed" {
+		return fmt.Errorf("%w: resolution must be taken or dismissed", ErrInvalidRequest)
+	}
+	if !uuidv7Re.MatchString(strings.ToLower(strings.TrimSpace(clientResolutionID))) {
+		return fmt.Errorf("%w: client_resolution_id must be UUIDv7", ErrInvalidRequest)
+	}
+	if dismissReason != "" {
+		if resolution != "dismissed" {
+			return fmt.Errorf("%w: dismiss_reason only applies to a dismissed resolution", ErrInvalidRequest)
+		}
+		if !validDismissReasons[dismissReason] {
+			return fmt.Errorf("%w: dismiss_reason %q is not recognized", ErrInvalidRequest, dismissReason)
+		}
+	}
+	return nil
+}
+
+// buildResolveBranchPayload creates the JSON payload for branch resolution event.
+func buildResolveBranchPayload(branchKey, resolution, dismissReason string) []byte {
+	payloadMap := map[string]string{
+		"branch_key": branchKey,
+		"resolution": resolution,
+	}
+	if dismissReason != "" {
+		payloadMap["dismiss_reason"] = dismissReason
+	}
+	payload, _ := json.Marshal(payloadMap)
+	return payload
 }

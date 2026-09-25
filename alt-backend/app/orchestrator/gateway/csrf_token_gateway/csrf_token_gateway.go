@@ -65,7 +65,7 @@ func (g *CSRFTokenGateway) ValidateToken(ctx context.Context, token string) (boo
 	}
 
 	// Check if token is expired
-	if time.Now().After(expiration) {
+	if isTokenExpired(expiration, time.Now()) {
 		// Token is expired, delete it
 		_ = g.driver.DeleteToken(ctx, token) // Ignore deletion errors
 		return false, nil
@@ -92,6 +92,22 @@ func (g *CSRFTokenGateway) InvalidateToken(ctx context.Context, token string) er
 // GenerateHMACToken generates a CSRF token from session ID using HMAC-SHA256
 // This is a public method to allow testing and reuse across the application
 func (g *CSRFTokenGateway) GenerateHMACToken(sessionID string, secret string) string {
+	return generateHMACToken(sessionID, secret)
+}
+
+// ValidateHMACToken validates a CSRF token using HMAC-SHA256 with session ID
+// Uses constant-time comparison to prevent timing attacks
+func (g *CSRFTokenGateway) ValidateHMACToken(ctx context.Context, token string, sessionID string, secret string) (bool, error) {
+	return validateHMACToken(token, sessionID, secret), nil
+}
+
+// isTokenExpired checks whether expiration is before the reference time.
+func isTokenExpired(expiration, now time.Time) bool {
+	return now.After(expiration)
+}
+
+// generateHMACToken generates a CSRF token from session ID using HMAC-SHA256.
+func generateHMACToken(sessionID string, secret string) string {
 	if sessionID == "" || secret == "" {
 		return ""
 	}
@@ -104,21 +120,20 @@ func (g *CSRFTokenGateway) GenerateHMACToken(sessionID string, secret string) st
 	return base64.URLEncoding.EncodeToString(hash)
 }
 
-// ValidateHMACToken validates a CSRF token using HMAC-SHA256 with session ID
-// Uses constant-time comparison to prevent timing attacks
-func (g *CSRFTokenGateway) ValidateHMACToken(ctx context.Context, token string, sessionID string, secret string) (bool, error) {
+// validateHMACToken validates a CSRF token using HMAC-SHA256 with session ID.
+func validateHMACToken(token string, sessionID string, secret string) bool {
 	// Reject empty inputs
 	if sessionID == "" || token == "" {
-		return false, nil
+		return false
 	}
 
 	// Generate expected token from session ID
-	expectedToken := g.GenerateHMACToken(sessionID, secret)
+	expectedToken := generateHMACToken(sessionID, secret)
 	if expectedToken == "" {
-		return false, nil
+		return false
 	}
 
 	// Use constant-time comparison to prevent timing attacks
 	// hmac.Equal uses crypto/subtle.ConstantTimeCompare internally
-	return hmac.Equal([]byte(token), []byte(expectedToken)), nil
+	return hmac.Equal([]byte(token), []byte(expectedToken))
 }

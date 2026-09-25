@@ -24,8 +24,23 @@ import (
 // Nothing here logs the endpoint. It is a capability URL — whoever holds it
 // can push to that device — and the errors below name the operation rather
 // than the row.
+// pushDataHubClient isolates the data-hub RPCs called by push gateways.
+type pushDataHubClient interface {
+	UpsertPushSubscription(context.Context, *connect.Request[datahubv1.UpsertPushSubscriptionRequest]) (*connect.Response[datahubv1.UpsertPushSubscriptionResponse], error)
+	GetPushSubscription(context.Context, *connect.Request[datahubv1.GetPushSubscriptionRequest]) (*connect.Response[datahubv1.GetPushSubscriptionResponse], error)
+	UpdatePushSubscriptionPreferences(context.Context, *connect.Request[datahubv1.UpdatePushSubscriptionPreferencesRequest]) (*connect.Response[datahubv1.UpdatePushSubscriptionPreferencesResponse], error)
+	DeletePushSubscription(context.Context, *connect.Request[datahubv1.DeletePushSubscriptionRequest]) (*connect.Response[datahubv1.DeletePushSubscriptionResponse], error)
+	ListPushSubscriptionsForUser(context.Context, *connect.Request[datahubv1.ListPushSubscriptionsForUserRequest]) (*connect.Response[datahubv1.ListPushSubscriptionsForUserResponse], error)
+	EnqueueNotification(context.Context, *connect.Request[datahubv1.EnqueueNotificationRequest]) (*connect.Response[datahubv1.EnqueueNotificationResponse], error)
+	ClaimNotificationBatch(context.Context, *connect.Request[datahubv1.ClaimNotificationBatchRequest]) (*connect.Response[datahubv1.ClaimNotificationBatchResponse], error)
+	MarkNotificationSent(context.Context, *connect.Request[datahubv1.MarkNotificationSentRequest]) (*connect.Response[datahubv1.MarkNotificationSentResponse], error)
+	ReleaseNotification(context.Context, *connect.Request[datahubv1.ReleaseNotificationRequest]) (*connect.Response[datahubv1.ReleaseNotificationResponse], error)
+	MarkNotificationDead(context.Context, *connect.Request[datahubv1.MarkNotificationDeadRequest]) (*connect.Response[datahubv1.MarkNotificationDeadResponse], error)
+	GetNotificationBacklogAge(context.Context, *connect.Request[datahubv1.GetNotificationBacklogAgeRequest]) (*connect.Response[datahubv1.GetNotificationBacklogAgeResponse], error)
+}
+
 type PushSubscriptionGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client pushDataHubClient
 }
 
 func NewPushSubscriptionGateway(client datahubv1connect.DataHubServiceClient) *PushSubscriptionGateway {
@@ -139,7 +154,7 @@ func (g *PushSubscriptionGateway) ListForUser(ctx context.Context, userID string
 // no branch that could no-op, so nothing can report this capability as enabled
 // while it is absent.
 type PushDeliveryGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client pushDataHubClient
 }
 
 func NewPushDeliveryGateway(client datahubv1connect.DataHubServiceClient) *PushDeliveryGateway {

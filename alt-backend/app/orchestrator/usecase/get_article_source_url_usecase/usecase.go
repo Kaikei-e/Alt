@@ -57,8 +57,8 @@ func (u *GetArticleSourceURLUsecase) Execute(
 	articleID string,
 	userID uuid.UUID,
 ) (domain.ArticleSource, error) {
-	if _, err := uuid.Parse(articleID); err != nil {
-		return domain.ArticleSource{}, fmt.Errorf("%w: malformed article_id", ErrInvalidArgument)
+	if err := validateArticleID(articleID); err != nil {
+		return domain.ArticleSource{}, err
 	}
 	source, err := u.lookupPort.LookupArticleSource(ctx, articleID, userID)
 	if err != nil {
@@ -68,4 +68,12 @@ func (u *GetArticleSourceURLUsecase) Execute(
 		return domain.ArticleSource{}, ErrNotFound
 	}
 	return source, nil
+}
+
+// validateArticleID validates that articleID is a valid UUID string.
+func validateArticleID(articleID string) error {
+	if _, err := uuid.Parse(articleID); err != nil {
+		return fmt.Errorf("%w: malformed article_id", ErrInvalidArgument)
+	}
+	return nil
 }

@@ -7,7 +7,6 @@ import (
 	"alt/orchestrator/port/subscription_port"
 	"alt/orchestrator/port/validate_fetch_rss_port"
 	"alt/utils/logger"
-	"alt/utils/security"
 	"context"
 	"errors"
 
@@ -24,6 +23,11 @@ type FeedPageInvalidator interface {
 	InvalidateFeedPage(ctx context.Context, feedLinkID uuid.UUID) error
 }
 
+// URLSecurityValidator validates URLs for RSS feed registration.
+type URLSecurityValidator interface {
+	ValidateRSSURL(rawURL string) error
+}
+
 // RegisterFeedsOpts holds optional dependencies for RegisterFeedsUsecase.
 //
 // No event publisher belongs here. Registration writes feeds rows, so the only
@@ -35,6 +39,7 @@ type RegisterFeedsOpts struct {
 	FeedLinkAvailability feed_link_availability_port.FeedLinkAvailabilityPort
 	FeedPageInvalidator  FeedPageInvalidator
 	SubscriptionPort     subscription_port.SubscriptionPort
+	URLValidator         URLSecurityValidator
 }
 
 type RegisterFeedsUsecase struct {
@@ -45,7 +50,7 @@ type RegisterFeedsUsecase struct {
 	subscriptionPort     subscription_port.SubscriptionPort
 	availabilityPort     feed_link_availability_port.FeedLinkAvailabilityPort
 	feedPageInvalidator  FeedPageInvalidator
-	urlValidator         *security.URLSecurityValidator
+	urlValidator         URLSecurityValidator
 }
 
 func NewRegisterFeedsUsecase(
@@ -54,19 +59,19 @@ func NewRegisterFeedsUsecase(
 	registerFeedsGateway register_feed_port.RegisterFeedsPort,
 	opts *RegisterFeedsOpts,
 ) *RegisterFeedsUsecase {
-	uc := &RegisterFeedsUsecase{
+	if opts == nil || opts.URLValidator == nil {
+		panic("register_feed_usecase: urlValidator must not be nil")
+	}
+	return &RegisterFeedsUsecase{
 		validateAndFetchPort: validateAndFetchPort,
 		registerFeedLinkPort: registerFeedLinkPort,
 		registerFeedsGateway: registerFeedsGateway,
-		urlValidator:         security.NewURLSecurityValidator(),
+		feedLinkIDResolver:   opts.FeedLinkIDResolver,
+		availabilityPort:     opts.FeedLinkAvailability,
+		feedPageInvalidator:  opts.FeedPageInvalidator,
+		subscriptionPort:     opts.SubscriptionPort,
+		urlValidator:         opts.URLValidator,
 	}
-	if opts != nil {
-		uc.feedLinkIDResolver = opts.FeedLinkIDResolver
-		uc.availabilityPort = opts.FeedLinkAvailability
-		uc.feedPageInvalidator = opts.FeedPageInvalidator
-		uc.subscriptionPort = opts.SubscriptionPort
-	}
-	return uc
 }
 
 func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {

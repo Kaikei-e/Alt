@@ -22,12 +22,11 @@ func fieldNames(t *testing.T, v any) map[string]bool {
 }
 
 // This is cmd/datahub's half of di/container_split_test.go's table, and it
-// lives here rather than there because this root is a package of its own since
-// ADR-000954 Wave 3 batch 6. It imports alt/di for the shared wiring-state
-// loggers, so a test inside alt/di cannot reach it without an import cycle —
-// and the reason for the split is exactly that: alt_db must be linked into
-// this binary and no other, which is a property of packages rather than of
-// fields.
+// lives here rather than there because this root is a package of its own.
+// It imports alt/di for the shared wiring-state loggers, so a test inside
+// alt/di cannot reach it without an import cycle — and the reason for the
+// split is exactly that: alt_db must be linked into this binary and no other,
+// which is a property of packages rather than of fields.
 //
 // The same rule as the other two roots applies to what it must not build. A
 // present-but-nil field is the ADR-000928 shape; an absent field is a compile
@@ -42,11 +41,12 @@ func TestDataHubComponents_OmitsWhatItsBinaryDoesNotBuild(t *testing.T) {
 	}
 	present := []string{
 		"AltDBRepository", "KratosClient", "EventPublisher",
-		"InternalArticleGateway", "RecapArticlesUsecase", "FeedsInWindowUsecase",
+		"ArticleCatalogGateway", "FeedCatalogGateway", "TagCatalogGateway",
+		"RecapArticlesUsecase", "FeedsInWindowUsecase",
 		"FetchRecentArticlesUsecase", "CreateSummaryVersionUsecase",
 		"CreateTagSetVersionUsecase", "SovereignClient",
 		"FetchTagCloudUsecase", "FetchArticlesByTagUsecase",
-		// ADR-000954 Wave 3 batch 6. Asserted positively rather than left
+		// Asserted positively rather than left
 		// implicit: these two are what alt-backend gave up its pool for, so a
 		// root that stopped building them would take the Tag Trail and the
 		// recall rail's fallback down with no other implementation anywhere.

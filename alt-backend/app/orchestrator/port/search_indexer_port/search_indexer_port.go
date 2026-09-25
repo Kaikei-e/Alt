@@ -5,9 +5,14 @@ import (
 	"context"
 )
 
-type SearchIndexerPort interface {
+// ArticleSearchPort defines article search operations against the search indexer.
+type ArticleSearchPort interface {
 	SearchArticles(ctx context.Context, query string, userID string) ([]domain.SearchIndexerArticleHit, error)
 	SearchArticlesWithPagination(ctx context.Context, query string, userID string, offset int, limit int) ([]domain.SearchIndexerArticleHit, int64, error)
+}
+
+// RecapSearchPort defines recap search operations against the search indexer.
+type RecapSearchPort interface {
 	SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error)
 	SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, int64, error)
 }

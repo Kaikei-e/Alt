@@ -17,8 +17,8 @@ import (
 // WithPushCapabilities wires Web Push storage: the per-device subscription
 // table and the dispatcher's delivery queue.
 //
-// Both arguments are required and a nil one panics, like the Wave 3 options
-// above and unlike the WithPhaseN ones. A nil subscription port would make
+// Both arguments are required and a nil one panics, like the required capability options
+// above and unlike the optional ones. A nil subscription port would make
 // RegisterSubscription answer Unimplemented — the same answer a retired
 // procedure gives — so a user would grant notification permission, see the
 // toggle fail, and no log anywhere would say the storage was never wired. A

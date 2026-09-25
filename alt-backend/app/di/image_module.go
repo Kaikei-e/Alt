@@ -4,6 +4,7 @@ import (
 	"alt/orchestrator/gateway/image_fetch_gateway"
 	"alt/orchestrator/gateway/image_proxy_gateway"
 	"alt/orchestrator/gateway/og_resolve_gateway"
+	"alt/orchestrator/gateway/rate_limiter_gateway"
 	"alt/orchestrator/usecase/image_fetch_usecase"
 	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/orchestrator/usecase/og_image_resolve_usecase"
@@ -59,13 +60,14 @@ func newImageModule(infra *InfraModule) *ImageModule {
 		imageProxyCacheGw := infra.ImageProxyCacheGateway
 		imageProxyProcessingGw := image_proxy_gateway.NewProcessingGateway()
 		imageProxyDynamicDomainGw := image_proxy_gateway.NewDynamicDomainGateway(infra.FeedLinkGateway)
+		imageProxyRateLimiterGw := rate_limiter_gateway.NewRateLimiterGateway(imageProxyRateLimiter)
 		imageProxyUsecaseInstance = image_proxy_usecase.NewImageProxyUsecase(
 			imageFetchGw,
 			imageProxyProcessingGw,
 			imageProxyCacheGw,
 			imageProxySigner,
 			imageProxyDynamicDomainGw,
-			imageProxyRateLimiter,
+			imageProxyRateLimiterGw,
 			cfg.ImageProxy.MaxWidth,
 			cfg.ImageProxy.WebPQuality,
 			cfg.ImageProxy.CacheTTLMin,

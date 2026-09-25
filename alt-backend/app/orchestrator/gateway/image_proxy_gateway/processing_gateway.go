@@ -96,11 +96,8 @@ func (g *ProcessingGateway) ProcessImage(ctx context.Context, data []byte, conte
 
 	// Resize only if wider than maxWidth (never upscale)
 	resized := img
-	newWidth := origWidth
-	newHeight := origHeight
-	if origWidth > maxWidth {
-		newWidth = maxWidth
-		newHeight = origHeight * maxWidth / origWidth
+	newWidth, newHeight := calculateTargetDimensions(origWidth, origHeight, maxWidth)
+	if newWidth != origWidth || newHeight != origHeight {
 		dst := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
 		draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
 		resized = dst
@@ -119,17 +116,33 @@ func (g *ProcessingGateway) ProcessImage(ctx context.Context, data []byte, conte
 		return nil, fmt.Errorf("processed image exceeds size limit: %d > %d", len(encoded), domain.ImageProxyMaxSize)
 	}
 
-	// Generate ETag from content hash
-	hash := sha256.Sum256(encoded)
-	etag := hex.EncodeToString(hash[:16])
+	return buildImageProxyResult(encoded, newWidth, newHeight, time.Now().Add(domain.ImageProxyCacheTTL)), nil
+}
 
+// calculateTargetDimensions computes width and height constrained to maxWidth while preserving aspect ratio.
+func calculateTargetDimensions(origWidth, origHeight, maxWidth int) (int, int) {
+	if origWidth > maxWidth {
+		return maxWidth, origHeight * maxWidth / origWidth
+	}
+	return origWidth, origHeight
+}
+
+// generateETag derives an ETag from a SHA-256 hash prefix of the image data.
+func generateETag(data []byte) string {
+	// Generate ETag from content hash
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:16])
+}
+
+// buildImageProxyResult constructs a domain result struct.
+func buildImageProxyResult(data []byte, width, height int, expiresAt time.Time) *domain.ImageProxyResult {
 	return &domain.ImageProxyResult{
-		Data:        encoded,
+		Data:        data,
 		ContentType: "image/jpeg",
-		Width:       newWidth,
-		Height:      newHeight,
-		SizeBytes:   len(encoded),
-		ETag:        etag,
-		ExpiresAt:   time.Now().Add(domain.ImageProxyCacheTTL),
-	}, nil
+		Width:       width,
+		Height:      height,
+		SizeBytes:   len(data),
+		ETag:        generateETag(data),
+		ExpiresAt:   expiresAt,
+	}
 }

@@ -1,7 +1,7 @@
 package create_tag_set_version_usecase
 
 import (
-	"alt/dataplane/port/tag_set_version_port"
+	"alt/dataplane/port/datahub_capability_port"
 	"alt/domain"
 	"alt/shared/port/knowledge_event_port"
 	"alt/utils/logger"
@@ -16,16 +16,16 @@ import (
 
 // CreateTagSetVersionUsecase creates a new tag set version and emits an event.
 type CreateTagSetVersionUsecase struct {
-	tagSetPort         tag_set_version_port.CreateTagSetVersionPort
+	tagSetPort         datahub_capability_port.CreateTagSetVersionPort
 	eventPort          knowledge_event_port.AppendKnowledgeEventPort
-	markSupersededPort tag_set_version_port.MarkTagSetVersionSupersededPort
+	markSupersededPort datahub_capability_port.MarkTagSetVersionSupersededPort
 }
 
 // NewCreateTagSetVersionUsecase creates a new CreateTagSetVersionUsecase.
 func NewCreateTagSetVersionUsecase(
-	tagSetPort tag_set_version_port.CreateTagSetVersionPort,
+	tagSetPort datahub_capability_port.CreateTagSetVersionPort,
 	eventPort knowledge_event_port.AppendKnowledgeEventPort,
-	markSupersededPort tag_set_version_port.MarkTagSetVersionSupersededPort,
+	markSupersededPort datahub_capability_port.MarkTagSetVersionSupersededPort,
 ) *CreateTagSetVersionUsecase {
 	// All three ports are required and wired unconditionally at composition root
 	// (di/datahub/container.go, di/knowledge_module.go). A nil is a DI wiring bug,

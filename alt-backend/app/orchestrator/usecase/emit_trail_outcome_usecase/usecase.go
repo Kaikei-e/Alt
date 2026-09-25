@@ -44,26 +44,13 @@ func NewEmitTrailOutcomeUsecase(appendPort knowledge_event_port.AppendKnowledgeE
 // retries append nothing new (D19 — no client-minted id needed).
 func (u *EmitTrailOutcomeUsecase) Execute(ctx context.Context, userID, tenantID uuid.UUID, branchKey, itemKey string, dwellMs int64) error {
 	branchKey = strings.TrimSpace(branchKey)
-	if branchKey == "" {
-		return fmt.Errorf("%w: branch_key required", ErrInvalidRequest)
-	}
 	itemKey = strings.TrimSpace(itemKey)
-	if itemKey == "" {
-		return fmt.Errorf("%w: item_key required", ErrInvalidRequest)
-	}
-	if dwellMs < 0 {
-		return fmt.Errorf("%w: dwell_ms must be non-negative", ErrInvalidRequest)
-	}
-	// A forgotten overnight tab must not mint absurd business facts.
-	if dwellMs > MaxDwellMs {
-		dwellMs = MaxDwellMs
+	if err := validateEmitRequest(branchKey, itemKey, dwellMs); err != nil {
+		return err
 	}
 
-	payload, _ := json.Marshal(map[string]any{
-		"branch_key": branchKey,
-		"item_key":   itemKey,
-		"dwell_ms":   dwellMs,
-	})
+	dwellMs = clampDwellMs(dwellMs)
+	payload := buildOutcomePayload(branchKey, itemKey, dwellMs)
 	uid := userID
 	evt := domain.KnowledgeEvent{
 		EventID:       uuid.New(),
@@ -82,4 +69,37 @@ func (u *EmitTrailOutcomeUsecase) Execute(ctx context.Context, userID, tenantID 
 		return fmt.Errorf("emit trail outcome: %w", err)
 	}
 	return nil
+}
+
+// validateEmitRequest validates branch key, item key, and dwell time.
+func validateEmitRequest(branchKey, itemKey string, dwellMs int64) error {
+	if branchKey == "" {
+		return fmt.Errorf("%w: branch_key required", ErrInvalidRequest)
+	}
+	if itemKey == "" {
+		return fmt.Errorf("%w: item_key required", ErrInvalidRequest)
+	}
+	if dwellMs < 0 {
+		return fmt.Errorf("%w: dwell_ms must be non-negative", ErrInvalidRequest)
+	}
+	return nil
+}
+
+// clampDwellMs caps recorded dwell time to MaxDwellMs.
+// A forgotten overnight tab must not mint absurd business facts.
+func clampDwellMs(dwellMs int64) int64 {
+	if dwellMs > MaxDwellMs {
+		return MaxDwellMs
+	}
+	return dwellMs
+}
+
+// buildOutcomePayload formats the event payload for trail outcome.
+func buildOutcomePayload(branchKey, itemKey string, dwellMs int64) []byte {
+	payload, _ := json.Marshal(map[string]any{
+		"branch_key": branchKey,
+		"item_key":   itemKey,
+		"dwell_ms":   dwellMs,
+	})
+	return payload
 }

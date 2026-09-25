@@ -56,6 +56,7 @@ import (
 	"alt/orchestrator/usecase/register_favorite_feed_usecase"
 	"alt/orchestrator/usecase/register_feed_usecase"
 	"alt/orchestrator/usecase/remove_favorite_feed_usecase"
+	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/orchestrator/usecase/resolve_trail_branch_usecase"
 	"alt/orchestrator/usecase/retrieve_context_usecase"
 	"alt/orchestrator/usecase/scraping_domain_usecase"
@@ -99,13 +100,13 @@ type ApplicationComponents struct {
 	// These allow existing handler code to continue working unchanged.
 	// They will be removed in a future phase when handlers access modules directly.
 
-	// There is no AltDBRepository field and no InternalArticleGateway. Both
-	// went with the database pool in ADR-000954 Wave 3 batch 6: cmd/backend
+	// There is no AltDBRepository field and no catalog gateways. They
+	// went with the database pool: cmd/backend
 	// reaches alt_db only through alt-data-hub now, and a handler that reaches
 	// for a repository here fails to compile rather than dereferencing a nil.
 
 	// Ports
-	RagIntegration   rag_integration_port.RagIntegrationPort
+	RagIntegration   rag_integration_port.ArticleUpsertPort
 	RagConnectClient *rag_connect_gateway.Client
 	StreamChatPort   morning_letter_port.StreamChatPort
 
@@ -113,7 +114,6 @@ type ApplicationComponents struct {
 	FetchSingleFeedUsecase              *fetch_feed_usecase.FetchSingleFeedUsecase
 	FetchFeedsListUsecase               *fetch_feed_usecase.FetchFeedsListUsecase
 	FetchFeedsListCursorUsecase         *fetch_feed_usecase.FetchFeedsListCursorUsecase
-	FetchUnreadFeedsListCursorUsecase   *fetch_feed_usecase.FetchUnreadFeedsListCursorUsecase
 	CachedFeedListUsecase               *cached_feed_list_usecase.CachedFeedListUsecase
 	FetchReadFeedsListCursorUsecase     *fetch_feed_usecase.FetchReadFeedsListCursorUsecase
 	FetchFavoriteFeedsListCursorUsecase *fetch_feed_usecase.FetchFavoriteFeedsListCursorUsecase
@@ -122,7 +122,6 @@ type ApplicationComponents struct {
 	RemoveFavoriteFeedUsecase           *remove_favorite_feed_usecase.RemoveFavoriteFeedUsecase
 	ListFeedLinksUsecase                *feed_link_usecase.ListFeedLinksUsecase
 	ListFeedLinksWithHealthUsecase      *feed_link_usecase.ListFeedLinksWithHealthUsecase
-	DeleteFeedLinkUsecase               *feed_link_usecase.DeleteFeedLinkUsecase
 	FeedsReadingStatusUsecase           *reading_status.FeedsReadingStatusUsecase
 	ArticlesReadingStatusUsecase        *reading_status.ArticlesReadingStatusUsecase
 	FeedsSummaryUsecase                 *fetch_feed_details_usecase.FeedsSummaryUsecase
@@ -151,6 +150,7 @@ type ApplicationComponents struct {
 	RetrieveContextUsecase              retrieve_context_usecase.RetrieveContextUsecase
 	AnswerChatUsecase                   answer_chat_usecase.AnswerChatUsecase
 	FetchRandomSubscriptionUsecase      *fetch_random_subscription_usecase.FetchRandomSubscriptionUsecase
+	ResolveArticleUsecase               resolve_article_usecase.ResolveArticleUsecase
 	FetchArticlesByTagUsecase           *fetch_articles_by_tag_usecase.FetchArticlesByTagUsecase
 	FetchArticleTagsUsecase             *fetch_article_tags_usecase.FetchArticleTagsUsecase
 	GetRecapJobsUsecase                 dashboard_usecase.GetRecapJobsUsecase

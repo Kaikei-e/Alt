@@ -5,11 +5,9 @@ import (
 	"alt/domain"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/driver/search_indexer_connect"
-	"alt/orchestrator/gateway/config_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
 	"alt/orchestrator/gateway/search_indexer_gateway"
 	"alt/orchestrator/port/push_port"
-	"alt/orchestrator/port/search_indexer_port"
 	"alt/shared/driver/mqhub_connect"
 	"alt/shared/gateway/datahub_gateway"
 	"alt/utils"
@@ -46,7 +44,7 @@ type InfraModule struct {
 	// alt-data-hub. That is Wave 3's exit condition, and it is asserted rather
 	// than merely achieved: cmd/backend's dependency graph contains neither
 	// alt_db nor pgx (see import_boundary_test.go).
-	SearchIndexerDriver search_indexer_port.SearchIndexerPort
+	SearchIndexerDriver *search_indexer_gateway.SearchIndexerGateway
 	RobotsTxtGateway    *robots_txt_gateway.RobotsTxtGateway
 
 	// alt-data-hub client and the capability gateways built on it
@@ -133,8 +131,7 @@ type InfraModule struct {
 func newInfraModule(cfg *config.Config) *InfraModule {
 	// Rate limiter configuration is read through the config gateway; the port
 	// itself has no consumer beyond this function, so it stays a local.
-	configPort := config_gateway.NewConfigGateway(cfg)
-	rateLimitConfig := configPort.GetRateLimitConfig()
+
 	// The interval is a promise to the publisher's server, not to this
 	// process. cmd/backend fetches the same hosts cmd/harvester's hourly
 	// collector and og-image backfill fetch, so the two coordinate through a
@@ -142,7 +139,7 @@ func newInfraModule(cfg *config.Config) *InfraModule {
 	// one is not (ADR-000954 review, weakness 5).
 	rateLimiterCoordinator := NewHostRateLimiterCoordinator("alt-backend", cfg.RateLimit.CoordinationRedisURL, cfg.RateLimit.CoordinationRedisPassword)
 	hostRateLimiter := rateLimiterCoordinator.Limiter(
-		rate_limiter.NamespaceExternalAPI, rateLimitConfig.ExternalAPIInterval, rateLimitConfig.ExternalAPIBurst)
+		rate_limiter.NamespaceExternalAPI, cfg.RateLimit.ExternalAPIInterval, cfg.RateLimit.ExternalAPIBurst)
 
 	// HTTP client
 	httpClient := utils.NewHTTPClientFactory().CreateHTTPClient()

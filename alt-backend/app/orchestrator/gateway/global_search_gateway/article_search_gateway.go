@@ -12,14 +12,14 @@ import (
 
 // ArticleSearchGateway implements global_search_port.SearchArticlesPort.
 type ArticleSearchGateway struct {
-	searchIndexer search_indexer_port.SearchIndexerPort
+	searchIndexer search_indexer_port.ArticleSearchPort
 	urlPort       feed_url_link_port.FeedURLLinkPort
 	logger        *slog.Logger
 }
 
 // NewArticleSearchGateway creates a new ArticleSearchGateway.
 func NewArticleSearchGateway(
-	searchIndexer search_indexer_port.SearchIndexerPort,
+	searchIndexer search_indexer_port.ArticleSearchPort,
 	urlPort feed_url_link_port.FeedURLLinkPort,
 ) *ArticleSearchGateway {
 	return &ArticleSearchGateway{
@@ -46,10 +46,7 @@ func (g *ArticleSearchGateway) SearchArticlesForGlobal(ctx context.Context, quer
 	}
 
 	// Extract article IDs for URL enrichment
-	articleIDs := make([]string, len(hits))
-	for i, hit := range hits {
-		articleIDs[i] = hit.ID
-	}
+	articleIDs := extractArticleIDsFromHits(hits)
 
 	// Get feed URLs for the articles
 	feedURLs, err := g.urlPort.GetFeedURLsByArticleIDs(ctx, articleIDs)
@@ -58,26 +55,10 @@ func (g *ArticleSearchGateway) SearchArticlesForGlobal(ctx context.Context, quer
 		feedURLs = nil
 	}
 
-	urlMap := make(map[string]string)
-	for _, feedURL := range feedURLs {
-		urlMap[feedURL.ArticleID] = feedURL.URL
-	}
+	urlMap := buildURLMap(feedURLs)
 
 	// Convert to GlobalArticleHit
-	queryLower := strings.ToLower(query)
-	articleHits := make([]domain.GlobalArticleHit, len(hits))
-	for i, hit := range hits {
-		matchedFields := detectMatchedFields(hit, queryLower)
-
-		articleHits[i] = domain.GlobalArticleHit{
-			ID:            hit.ID,
-			Title:         sanitizeUTF8(hit.Title),
-			Snippet:       truncateSnippet(hit.Content, 200),
-			Link:          urlMap[hit.ID],
-			Tags:          hit.Tags,
-			MatchedFields: matchedFields,
-		}
-	}
+	articleHits := mapHitsToGlobalArticleHits(hits, urlMap, query)
 
 	return &domain.ArticleSearchSection{
 		Hits:           articleHits,
@@ -133,4 +114,38 @@ func truncateSnippet(content string, maxRunes int) string {
 		truncated = truncated[:lastSpace]
 	}
 	return truncated + "..."
+}
+
+func extractArticleIDsFromHits(hits []domain.SearchIndexerArticleHit) []string {
+	articleIDs := make([]string, len(hits))
+	for i, hit := range hits {
+		articleIDs[i] = hit.ID
+	}
+	return articleIDs
+}
+
+func buildURLMap(feedURLs []domain.FeedAndArticle) map[string]string {
+	urlMap := make(map[string]string, len(feedURLs))
+	for _, feedURL := range feedURLs {
+		urlMap[feedURL.ArticleID] = feedURL.URL
+	}
+	return urlMap
+}
+
+func mapHitsToGlobalArticleHits(hits []domain.SearchIndexerArticleHit, urlMap map[string]string, query string) []domain.GlobalArticleHit {
+	queryLower := strings.ToLower(query)
+	articleHits := make([]domain.GlobalArticleHit, len(hits))
+	for i, hit := range hits {
+		matchedFields := detectMatchedFields(hit, queryLower)
+
+		articleHits[i] = domain.GlobalArticleHit{
+			ID:            hit.ID,
+			Title:         sanitizeUTF8(hit.Title),
+			Snippet:       truncateSnippet(hit.Content, 200),
+			Link:          urlMap[hit.ID],
+			Tags:          hit.Tags,
+			MatchedFields: matchedFields,
+		}
+	}
+	return articleHits
 }

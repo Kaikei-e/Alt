@@ -6,6 +6,7 @@ import (
 	"alt/domain"
 	"alt/utils/errors"
 	"alt/utils/logger"
+	"alt/utils/security"
 	"net/http"
 	"net/url"
 	"time"
@@ -36,7 +37,7 @@ func RestHandleFetchInoreaderSummary(container *di.ApplicationComponents) echo.H
 				return HandleValidationError(c, "Invalid URL format", "feed_urls", feedURL)
 			}
 
-			if err := IsAllowedURL(parsedURL); err != nil {
+			if err := security.NewURLSecurityValidator().ValidateParsedRSSURL(parsedURL); err != nil {
 				securityErr := errors.NewValidationContextError(
 					"URL not allowed for security reasons",
 					"rest",
@@ -134,7 +135,7 @@ func RestHandleFetchArticleSummary(container *di.ApplicationComponents, cfg *con
 				return HandleValidationError(c, "Invalid URL format", "feed_urls", feedURL)
 			}
 
-			if err := IsAllowedURL(parsedURL); err != nil {
+			if err := security.NewURLSecurityValidator().ValidateParsedRSSURL(parsedURL); err != nil {
 				securityErr := errors.NewValidationContextError(
 					"URL not allowed for security reasons",
 					"rest",

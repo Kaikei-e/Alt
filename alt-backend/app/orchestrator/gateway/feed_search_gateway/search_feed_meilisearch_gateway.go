@@ -9,10 +9,10 @@ import (
 )
 
 type SearchFeedMeilisearchGateway struct {
-	searchIndexerPort search_indexer_port.SearchIndexerPort
+	searchIndexerPort search_indexer_port.ArticleSearchPort
 }
 
-func NewSearchFeedMeilisearchGateway(searchIndexerPort search_indexer_port.SearchIndexerPort) *SearchFeedMeilisearchGateway {
+func NewSearchFeedMeilisearchGateway(searchIndexerPort search_indexer_port.ArticleSearchPort) *SearchFeedMeilisearchGateway {
 	return &SearchFeedMeilisearchGateway{
 		searchIndexerPort: searchIndexerPort,
 	}
@@ -45,15 +45,7 @@ func (g *SearchFeedMeilisearchGateway) SearchFeeds(ctx context.Context, query st
 		"user_id", user.UserID,
 		"hits_count", len(hits))
 
-	results := make([]domain.SearchArticleHit, len(hits))
-	for i, hit := range hits {
-		results[i] = domain.SearchArticleHit{
-			ID:      hit.ID,
-			Title:   hit.Title,
-			Content: hit.Content,
-			Tags:    hit.Tags,
-		}
-	}
+	results := mapIndexerHitsToArticleHits(hits)
 
 	return results, nil
 }
@@ -85,15 +77,7 @@ func (g *SearchFeedMeilisearchGateway) SearchFeedsWithPagination(ctx context.Con
 	// Use estimated total from Meilisearch for proper pagination
 	totalCount := int(estimatedTotal)
 
-	results := make([]domain.SearchArticleHit, len(hits))
-	for i, hit := range hits {
-		results[i] = domain.SearchArticleHit{
-			ID:      hit.ID,
-			Title:   hit.Title,
-			Content: hit.Content,
-			Tags:    hit.Tags,
-		}
-	}
+	results := mapIndexerHitsToArticleHits(hits)
 
 	logger.GlobalContext.WithContext(ctx).InfoContext(ctx, "search-indexer search with pagination completed",
 		"query", query,
@@ -104,4 +88,13 @@ func (g *SearchFeedMeilisearchGateway) SearchFeedsWithPagination(ctx context.Con
 		"returned_count", len(results))
 
 	return results, totalCount, nil
+}
+
+// mapIndexerHitsToArticleHits maps search indexer hits to domain article hits.
+func mapIndexerHitsToArticleHits(hits []domain.SearchIndexerArticleHit) []domain.SearchArticleHit {
+	results := make([]domain.SearchArticleHit, len(hits))
+	for i, hit := range hits {
+		results[i] = domain.SearchArticleHit(hit)
+	}
+	return results
 }

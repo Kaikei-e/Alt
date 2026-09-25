@@ -24,8 +24,8 @@ func newRecapModule(infra *InfraModule) *RecapModule {
 	cfg := infra.Config
 
 	// Recap 7-day summary
-	recapGw := recap_gateway.NewRecapGateway(infra.SearchIndexerDriver)
-	recapUC := recap_usecase.NewRecapUsecase(recapGw)
+	recapGw := recap_gateway.NewRecapGateway()
+	recapUC := recap_usecase.NewRecapUsecase(recapGw, infra.SearchIndexerDriver)
 
 	// Dashboard recap jobs
 	recapJobDriver := recap_job_driver.NewDriver(cfg.Recap.WorkerURL)

@@ -21,8 +21,23 @@ import (
 // RegisterFeedLinkBulk, which is named for the port it satisfies rather than
 // for a driver method: there was never a bulk driver, only a loop in
 // opml_gateway, and the loop is what this replaces.
+// feedLinkDataHubClient isolates the data-hub RPCs called by FeedLinkGateway and FeedLinkAvailabilityGateway.
+type feedLinkDataHubClient interface {
+	RegisterFeedLink(context.Context, *connect.Request[datahubv1.RegisterFeedLinkRequest]) (*connect.Response[datahubv1.RegisterFeedLinkResponse], error)
+	BulkRegisterFeedLinks(context.Context, *connect.Request[datahubv1.BulkRegisterFeedLinksRequest]) (*connect.Response[datahubv1.BulkRegisterFeedLinksResponse], error)
+	ResolveFeedLinkIDByURL(context.Context, *connect.Request[datahubv1.ResolveFeedLinkIDByURLRequest]) (*connect.Response[datahubv1.ResolveFeedLinkIDByURLResponse], error)
+	ListFeedLinks(context.Context, *connect.Request[datahubv1.ListFeedLinksRequest]) (*connect.Response[datahubv1.ListFeedLinksResponse], error)
+	ListFeedLinksWithHealth(context.Context, *connect.Request[datahubv1.ListFeedLinksWithHealthRequest]) (*connect.Response[datahubv1.ListFeedLinksWithHealthResponse], error)
+	DeleteFeedLink(context.Context, *connect.Request[datahubv1.DeleteFeedLinkRequest]) (*connect.Response[datahubv1.DeleteFeedLinkResponse], error)
+	ListFeedLinkDomains(context.Context, *connect.Request[datahubv1.ListFeedLinkDomainsRequest]) (*connect.Response[datahubv1.ListFeedLinkDomainsResponse], error)
+	ListRSSFeedURLs(context.Context, *connect.Request[datahubv1.ListRSSFeedURLsRequest]) (*connect.Response[datahubv1.ListRSSFeedURLsResponse], error)
+	ListFeedLinksForExport(context.Context, *connect.Request[datahubv1.ListFeedLinksForExportRequest]) (*connect.Response[datahubv1.ListFeedLinksForExportResponse], error)
+	RecordFeedLinkFailure(context.Context, *connect.Request[datahubv1.RecordFeedLinkFailureRequest]) (*connect.Response[datahubv1.RecordFeedLinkFailureResponse], error)
+	ResetFeedLinkFailures(context.Context, *connect.Request[datahubv1.ResetFeedLinkFailuresRequest]) (*connect.Response[datahubv1.ResetFeedLinkFailuresResponse], error)
+}
+
 type FeedLinkGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client feedLinkDataHubClient
 }
 
 func NewFeedLinkGateway(client datahubv1connect.DataHubServiceClient) *FeedLinkGateway {
@@ -209,7 +224,7 @@ func (g *FeedLinkGateway) FetchFeedLinksForExport(ctx context.Context) ([]*domai
 // provider's transaction (catalog §4-4). Keeping the split methods available
 // here would leave the racy sequence one autocomplete away.
 type FeedLinkAvailabilityGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client feedLinkDataHubClient
 	// disableAfterFailures is how many consecutive failures the operator will
 	// tolerate. It lives on this side because it is policy, not an invariant:
 	// the provider applies whatever number it is handed, atomically.

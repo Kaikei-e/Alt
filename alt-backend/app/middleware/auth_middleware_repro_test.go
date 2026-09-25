@@ -42,12 +42,10 @@ func TestAuthMiddleware_Bypass(t *testing.T) {
 	// Setup
 	e := echo.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	cfg := &config.Config{
-		Auth: config.AuthConfig{
-			BackendTokenSecret:   reproTestSecret,
-			BackendTokenIssuer:   "auth-hub",
-			BackendTokenAudience: "alt-backend",
-		},
+	cfg := config.AuthConfig{
+		BackendTokenSecret:   reproTestSecret,
+		BackendTokenIssuer:   "auth-hub",
+		BackendTokenAudience: "alt-backend",
 	}
 	authMiddleware := middleware.NewAuthMiddleware(logger, cfg)
 

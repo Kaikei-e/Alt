@@ -5,6 +5,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	middleware_custom "alt/middleware"
+	"alt/orchestrator/rest/resterr"
 	"alt/utils/logger"
 	"net/http"
 
@@ -12,7 +13,7 @@ import (
 )
 
 // registerMorningRoutes registers the morning letter routes.
-func registerMorningRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+func registerMorningRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg config.AuthConfig) {
 	// 認証ミドルウェアの初期化
 	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
 
@@ -34,7 +35,7 @@ func handleMorningUpdates(container *di.ApplicationComponents) echo.HandlerFunc 
 		// Call usecase
 		updates, err := container.MorningUsecase.GetOvernightUpdates(ctx, user.UserID.String())
 		if err != nil {
-			return HandleError(c, err, "morning_updates")
+			return resterr.HandleError(c, err, "morning_updates")
 		}
 		return c.JSON(http.StatusOK, updates)
 	}

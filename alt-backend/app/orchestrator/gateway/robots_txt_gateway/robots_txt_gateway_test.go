@@ -124,8 +124,9 @@ func TestRobotsTxtGateway_FetchRobotsTxt_InvalidDomain(t *testing.T) {
 }
 
 func TestRobotsTxtGateway_ImplementsPort(t *testing.T) {
-	// Verify that RobotsTxtGateway implements RobotsTxtPort interface
-	var _ robots_txt_port.RobotsTxtPort = (*RobotsTxtGateway)(nil)
+	// Verify that RobotsTxtGateway implements RobotsTxtFetcherPort and RobotsTxtPolicyPort interfaces
+	var _ robots_txt_port.RobotsTxtFetcherPort = (*RobotsTxtGateway)(nil)
+	var _ robots_txt_port.RobotsTxtPolicyPort = (*RobotsTxtGateway)(nil)
 }
 
 // roundTripperFunc is a helper to stub http.RoundTripper
@@ -162,4 +163,45 @@ func TestRobotsTxtGateway_ReusesFactoryTransportAndGuardedDialer(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "destination not allowed", "must be blocked by factory's guarded dialer")
 	assert.NotContains(t, err.Error(), "10.0.0.1", "must not leak private IP")
+}
+
+func TestBuildRobotsTxt(t *testing.T) {
+	now := time.Now()
+	content := "User-agent: *\nDisallow: /admin/\nCrawl-delay: 3"
+	res := buildRobotsTxt("https://example.com/robots.txt", content, 200, now)
+
+	assert.Equal(t, "https://example.com/robots.txt", res.URL)
+	assert.Equal(t, content, res.Content)
+	assert.Equal(t, 200, res.StatusCode)
+	assert.Equal(t, now, res.FetchedAt)
+	assert.Equal(t, 3, res.CrawlDelay)
+	assert.Contains(t, res.DisallowPaths, "/admin/")
+
+	res404 := buildRobotsTxt("https://example.com/robots.txt", "", 404, now)
+	assert.Equal(t, 404, res404.StatusCode)
+	assert.Empty(t, res404.DisallowPaths)
+}
+
+func TestParseRobotsTxt(t *testing.T) {
+	content := `User-agent: *
+Disallow: /secret/
+Crawl-delay: 5
+
+User-agent: Alt-RSS
+Disallow: /api/
+Crawl-delay: 15
+`
+	res := parseRobotsTxt(content)
+	assert.Equal(t, 15, res.CrawlDelay)
+	assert.Contains(t, res.DisallowPaths, "/secret/")
+	assert.Contains(t, res.DisallowPaths, "/api/")
+}
+
+func TestEvaluateRobotsAccess(t *testing.T) {
+	content := "User-agent: *\nDisallow: /admin/"
+	assert.True(t, evaluateRobotsAccess(404, "", "/admin/", "Alt-Agent"))
+	assert.True(t, evaluateRobotsAccess(500, "", "/admin/", "Alt-Agent"))
+	assert.False(t, evaluateRobotsAccess(200, content, "/admin/", "Alt-Agent"))
+	assert.True(t, evaluateRobotsAccess(200, content, "/public/", "Alt-Agent"))
+	assert.True(t, evaluateRobotsAccess(200, "invalid robots content", "/admin/", "Alt-Agent"))
 }

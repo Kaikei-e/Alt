@@ -2,12 +2,8 @@ package rest_feeds
 
 import (
 	"alt/domain"
-	"alt/utils/errors"
-	"alt/utils/logger"
-	"alt/utils/url_validator"
+	"alt/orchestrator/rest/resterr"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -18,92 +14,12 @@ import (
 // IMPORTANT: This function ensures internal error details are NEVER exposed to clients.
 // All error messages are sanitized using SafeMessage() before being returned.
 func HandleError(c echo.Context, err error, operation string) error {
-	// Enrich error with REST layer context
-	var enrichedErr *errors.AppContextError
-
-	// Check if it's already an AppContextError and enrich it with REST context
-	if appContextErr, ok := err.(*errors.AppContextError); ok {
-		enrichedErr = errors.EnrichWithContext(
-			appContextErr,
-			"rest_feeds",
-			"RESTHandler",
-			operation,
-			map[string]interface{}{
-				"path":        c.Request().URL.Path,
-				"method":      c.Request().Method,
-				"remote_addr": c.Request().RemoteAddr,
-				"user_agent":  c.Request().UserAgent(),
-				"request_id":  c.Response().Header().Get("X-Request-ID"),
-			},
-		)
-	} else if appErr, ok := err.(*errors.AppError); ok {
-		// Handle legacy AppError by converting to AppContextError
-		enrichedErr = errors.NewAppContextError(
-			string(appErr.Code),
-			appErr.Message,
-			"rest_feeds",
-			"RESTHandler",
-			operation,
-			appErr.Cause,
-			map[string]interface{}{
-				"path":           c.Request().URL.Path,
-				"method":         c.Request().Method,
-				"remote_addr":    c.Request().RemoteAddr,
-				"user_agent":     c.Request().UserAgent(),
-				"request_id":     c.Response().Header().Get("X-Request-ID"),
-				"legacy_context": appErr.Context,
-			},
-		)
-	} else {
-		// Handle unknown errors
-		enrichedErr = errors.NewUnknownContextError(
-			"internal server error",
-			"rest_feeds",
-			"RESTHandler",
-			operation,
-			err,
-			map[string]interface{}{
-				"path":        c.Request().URL.Path,
-				"method":      c.Request().Method,
-				"remote_addr": c.Request().RemoteAddr,
-				"user_agent":  c.Request().UserAgent(),
-				"request_id":  c.Response().Header().Get("X-Request-ID"),
-			},
-		)
-	}
-
-	// Log the full error details (internal only - never sent to client)
-	ctx := c.Request().Context()
-	logger.Logger.ErrorContext(ctx,
-		"REST API Error",
-		"error_id", enrichedErr.ErrorID,
-		"error", enrichedErr.Error(),
-		"code", enrichedErr.Code,
-		"operation", operation,
-		"path", c.Request().URL.Path,
-	)
-
-	// Return secure JSON response (SafeMessage() ensures no internal details leak)
-	return c.JSON(enrichedErr.HTTPStatusCode(), enrichedErr.ToSecureHTTPResponse())
+	return resterr.HandleFeedError(c, err, operation)
 }
 
 // HandleValidationError handles validation errors
 func HandleValidationError(c echo.Context, message string, field string, value interface{}) error {
-	ctx := c.Request().Context()
-	logger.Logger.WarnContext(ctx, "Validation error", "message", message, "field", field, "value", value)
-	return c.JSON(http.StatusBadRequest, map[string]interface{}{
-		"error": message,
-		"field": field,
-		"value": value,
-		"code":  "VALIDATION_ERROR",
-	})
-}
-
-// IsAllowedURL checks if the URL is allowed (not private IP)
-// IsAllowedURL checks if the URL is allowed (not private IP).
-// Deprecated: Use utils/url_validator.IsAllowedURL directly.
-func IsAllowedURL(u *url.URL) error {
-	return url_validator.IsAllowedURL(u)
+	return resterr.HandleValidationError(c, message, field, value)
 }
 
 // OptimizeFeedsResponse transforms domain feeds into a client-optimized structure

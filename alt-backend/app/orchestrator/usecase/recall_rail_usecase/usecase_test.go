@@ -25,12 +25,6 @@ func (m *mockCandidatePort) GetRecallCandidates(_ context.Context, _ uuid.UUID, 
 	return m.candidates, m.err
 }
 
-type mockFeatureFlag struct {
-	enabled bool
-}
-
-func (m *mockFeatureFlag) IsEnabled(_ string, _ uuid.UUID) bool { return m.enabled }
-
 type mockFallbackPort struct {
 	articles map[string]fallbackArticle
 	calls    []string
@@ -74,7 +68,7 @@ func TestExecute_FallbackEnrichesNilItems(t *testing.T) {
 		},
 	}
 
-	uc := NewRecallRailUsecase(candidatePort, &mockFeatureFlag{enabled: true}, fallback)
+	uc := NewRecallRailUsecase(candidatePort, fallback)
 	candidates, err := uc.Execute(context.Background(), uuid.New(), 5)
 	require.NoError(t, err)
 	require.Len(t, candidates, 1)
@@ -99,7 +93,7 @@ func TestExecute_FallbackSkipsNonArticleKeys(t *testing.T) {
 	}
 	fallback := &mockFallbackPort{articles: map[string]fallbackArticle{}}
 
-	uc := NewRecallRailUsecase(candidatePort, &mockFeatureFlag{enabled: true}, fallback)
+	uc := NewRecallRailUsecase(candidatePort, fallback)
 	candidates, err := uc.Execute(context.Background(), uuid.New(), 5)
 	require.NoError(t, err)
 	require.Len(t, candidates, 2)
@@ -117,7 +111,7 @@ func TestExecute_FallbackGracefulOnArticleNotFound(t *testing.T) {
 	}
 	fallback := &mockFallbackPort{articles: map[string]fallbackArticle{}} // empty — article not found
 
-	uc := NewRecallRailUsecase(candidatePort, &mockFeatureFlag{enabled: true}, fallback)
+	uc := NewRecallRailUsecase(candidatePort, fallback)
 	candidates, err := uc.Execute(context.Background(), uuid.New(), 5)
 	require.NoError(t, err)
 	require.Len(t, candidates, 1)
@@ -132,7 +126,7 @@ func TestExecute_FallbackPortNil(t *testing.T) {
 		},
 	}
 
-	uc := NewRecallRailUsecase(candidatePort, &mockFeatureFlag{enabled: true}, nil)
+	uc := NewRecallRailUsecase(candidatePort, nil)
 	candidates, err := uc.Execute(context.Background(), uuid.New(), 5)
 	require.NoError(t, err)
 	require.Len(t, candidates, 1)
@@ -152,7 +146,7 @@ func TestExecute_NoFallbackWhenItemPresent(t *testing.T) {
 	}
 	fallback := &mockFallbackPort{articles: map[string]fallbackArticle{}}
 
-	uc := NewRecallRailUsecase(candidatePort, &mockFeatureFlag{enabled: true}, fallback)
+	uc := NewRecallRailUsecase(candidatePort, fallback)
 	candidates, err := uc.Execute(context.Background(), uuid.New(), 5)
 	require.NoError(t, err)
 	require.Len(t, candidates, 1)

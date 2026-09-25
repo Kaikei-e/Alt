@@ -435,3 +435,42 @@ func TestFetchArticleTags_ConcurrentSameArticle_SingleGeneration(t *testing.T) {
 		t.Errorf("expected GenerateTagsForArticle to be called exactly 1 time, got %d", calls)
 	}
 }
+
+func TestMapGeneratedTagsToDomain(t *testing.T) {
+	now := time.Now()
+	items := []mqhub_connect.GeneratedTag{
+		{ID: "t1", Name: "tag1", Confidence: 0.95},
+	}
+	tags := mapGeneratedTagsToDomain(items, now)
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(tags))
+	}
+	if tags[0].ID != "t1" || tags[0].TagName != "tag1" || float32(tags[0].Confidence) != 0.95 || !tags[0].CreatedAt.Equal(now) {
+		t.Errorf("unexpected mapped tag: %+v", tags[0])
+	}
+}
+
+func TestMapTagsToUpsertItems(t *testing.T) {
+	items := []mqhub_connect.GeneratedTag{
+		{ID: "t1", Name: "tag1", Confidence: 0.95},
+	}
+	upserts := mapTagsToUpsertItems(items)
+	if len(upserts) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(upserts))
+	}
+	if upserts[0].Name != "tag1" || upserts[0].Confidence != 0.95 {
+		t.Errorf("unexpected upsert item: %+v", upserts[0])
+	}
+}
+
+func TestBuildGenerateTagsRequest(t *testing.T) {
+	article := &domain.ArticleContent{
+		Title:   "Test Title",
+		Content: "Test Content",
+		FeedID:  "feed-1",
+	}
+	req := buildGenerateTagsRequest("art-1", article, 5000)
+	if req.ArticleID != "art-1" || req.Title != "Test Title" || req.Content != "Test Content" || req.FeedID != "feed-1" || req.TimeoutMs != 5000 {
+		t.Errorf("unexpected generated request: %+v", req)
+	}
+}

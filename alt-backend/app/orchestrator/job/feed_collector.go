@@ -59,7 +59,7 @@ func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_l
 
 // validateFeedURL performs basic scheme/host validation on a feed URL.
 // Network reachability is verified by gofeed.ParseURL (GET request) in the collection loop.
-func validateFeedURL(_ context.Context, feedURL url.URL) error {
+func validateFeedURL(feedURL url.URL) error {
 	if feedURL.Scheme != "http" && feedURL.Scheme != "https" {
 		return fmt.Errorf("invalid URL scheme: %s (must be http or https)", feedURL.Scheme)
 	}
@@ -86,7 +86,7 @@ func CollectMultipleFeeds(ctx context.Context, feedLinks []domain.FeedLink, rate
 		}
 
 		// First validate the URL
-		if err := validateFeedURL(ctx, *feedURL); err != nil {
+		if err := validateFeedURL(*feedURL); err != nil {
 			logger.Logger.ErrorContext(ctx, "Feed URL validation failed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
 			handleFeedError(ctx, *feedURL, err, rateLimiter, availabilityRepo)
@@ -163,7 +163,7 @@ func handleFeedError(ctx context.Context, feedURL url.URL, err error, rateLimite
 			logger.Logger.WarnContext(ctx, "Rate limited by target site, backing off",
 				"url", feedURL.String())
 		}
-	} else if isPersistentError(err) && availabilityRepo != nil {
+	} else if isPersistentFeedError(err) && availabilityRepo != nil {
 		// One call, not two. The count-and-decide used to happen here — read
 		// the incremented failure count back, compare it to
 		// maxConsecutiveFailures, then issue a disable — and two ticks racing
@@ -185,9 +185,9 @@ func handleFeedError(ctx context.Context, feedURL url.URL, err error, rateLimite
 	}
 }
 
-// isPersistentError returns true for errors that indicate persistent issues with the feed.
+// isPersistentFeedError returns true for errors that indicate persistent issues with the feed.
 // Note: 403 is included because fetchWithRetryOn403 exhausts retries before this is called.
-func isPersistentError(err error) bool {
+func isPersistentFeedError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -276,12 +276,19 @@ func fetchWithRetryOn403(ctx context.Context, fetchFn func() (*rssFeed.Feed, err
 //
 // With no limiter wired there is no turn to wait for, so the ladder carries
 // CLAUDE.md rule 2's floor by itself.
-func backoffFor403Retry(rateLimiter *rate_limiter.HostRateLimiter, feedURL string, attempt int) time.Duration {
+func calculate403Backoff(attempt int, retryAfter time.Duration, hasLimiter bool) time.Duration {
 	step := time.Duration(1 << uint(attempt-1))
-	if rateLimiter == nil {
+	if !hasLimiter {
 		return step * unlimitedRetryInterval
 	}
-	return min(step*base403RetryBackoff, rateLimiter.RetryAfterFor(feedURL))
+	return min(step*base403RetryBackoff, retryAfter)
+}
+
+func backoffFor403Retry(rateLimiter *rate_limiter.HostRateLimiter, feedURL string, attempt int) time.Duration {
+	if rateLimiter == nil {
+		return calculate403Backoff(attempt, 0, false)
+	}
+	return calculate403Backoff(attempt, rateLimiter.RetryAfterFor(feedURL), true)
 }
 
 // is429Error returns true if the error indicates rate limiting by the target site.

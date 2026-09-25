@@ -174,7 +174,7 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 				mockValidateFetch,
 				mockRegisterFeedLinkGateway,
 				mockRegisterFeedsGateway,
-				nil,
+				&RegisterFeedsOpts{URLValidator: &stubURLValidator{}},
 			)
 
 			err := usecase.Execute(ctx, tt.rssURL)
@@ -236,7 +236,7 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 			mockValidateFetch,
 			mockRegisterFeedLinkGateway,
 			mockRegisterFeedsGateway,
-			nil,
+			&RegisterFeedsOpts{URLValidator: &stubURLValidator{}},
 		)
 
 		err := usecase.Execute(ctx, rssURL)
@@ -269,7 +269,7 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 			mockValidateFetch,
 			mockRegisterFeedLinkGateway,
 			mockRegisterFeedsGateway,
-			nil,
+			&RegisterFeedsOpts{URLValidator: &stubURLValidator{}},
 		)
 
 		err := usecase.Execute(ctx, rssURL)

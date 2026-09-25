@@ -32,7 +32,7 @@ func (u *Usecase) GetSystemMetrics(ctx context.Context) (*domain.SystemMetrics, 
 	}
 
 	// Compute derived rates
-	u.computeRates(metrics)
+	computeDerivedRates(metrics)
 
 	// Merge service health (best-effort: if health check fails, return metrics without health)
 	health, err := u.healthPort.CheckHealth(ctx)
@@ -43,8 +43,8 @@ func (u *Usecase) GetSystemMetrics(ctx context.Context) (*domain.SystemMetrics, 
 	return metrics, nil
 }
 
-// computeRates fills in percentage fields from raw counters.
-func (u *Usecase) computeRates(m *domain.SystemMetrics) {
+// computeDerivedRates fills in percentage fields from raw counters.
+func computeDerivedRates(m *domain.SystemMetrics) {
 	// Handler degraded rate
 	if m.Handler.PagesServed > 0 {
 		m.Handler.DegradedRatePct = float64(m.Handler.PagesDegraded) / float64(m.Handler.PagesServed) * 100

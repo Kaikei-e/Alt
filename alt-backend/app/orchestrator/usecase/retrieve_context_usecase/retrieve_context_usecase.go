@@ -14,12 +14,12 @@ type RetrieveContextUsecase interface {
 
 type retrieveContextUsecase struct {
 	searchFeedPort     feed_search_port.SearchFeedPort
-	ragIntegrationPort rag_integration_port.RagIntegrationPort
+	ragIntegrationPort rag_integration_port.RagRetrievalPort
 }
 
 func NewRetrieveContextUsecase(
 	searchFeedPort feed_search_port.SearchFeedPort,
-	ragIntegrationPort rag_integration_port.RagIntegrationPort,
+	ragIntegrationPort rag_integration_port.RagRetrievalPort,
 ) RetrieveContextUsecase {
 	return &retrieveContextUsecase{
 		searchFeedPort:     searchFeedPort,

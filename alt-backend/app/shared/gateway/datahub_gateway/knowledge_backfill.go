@@ -22,8 +22,16 @@ import (
 // talking to another service is the caller's business under ADR-000954 D4 —
 // routing them through the data hub would make it the hub for everything
 // rather than the owner of one database.
+// knowledgeBackfillDataHubClient isolates the data-hub RPCs called by KnowledgeBackfillGateway.
+type knowledgeBackfillDataHubClient interface {
+	CountBackfillArticles(context.Context, *connect.Request[datahubv1.CountBackfillArticlesRequest]) (*connect.Response[datahubv1.CountBackfillArticlesResponse], error)
+	ListBackfillArticles(context.Context, *connect.Request[datahubv1.ListBackfillArticlesRequest]) (*connect.Response[datahubv1.ListBackfillArticlesResponse], error)
+	CountBackfillSummaryTitles(context.Context, *connect.Request[datahubv1.CountBackfillSummaryTitlesRequest]) (*connect.Response[datahubv1.CountBackfillSummaryTitlesResponse], error)
+	ListBackfillSummaryTitles(context.Context, *connect.Request[datahubv1.ListBackfillSummaryTitlesRequest]) (*connect.Response[datahubv1.ListBackfillSummaryTitlesResponse], error)
+}
+
 type KnowledgeBackfillGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client knowledgeBackfillDataHubClient
 }
 
 func NewKnowledgeBackfillGateway(client datahubv1connect.DataHubServiceClient) *KnowledgeBackfillGateway {

@@ -1,20 +1,25 @@
 package utils
 
 import (
-	"alt/config"
 	"alt/utils/security"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
 )
+
+// HTTPConfig holds outbound HTTP transport timeouts.
+type HTTPConfig struct {
+	ClientTimeout       time.Duration
+	DialTimeout         time.Duration
+	TLSHandshakeTimeout time.Duration
+	IdleConnTimeout     time.Duration
+}
 
 // ProxyStrategy defines the proxy strategy for HTTP clients
 type ProxyStrategy string
@@ -101,151 +106,9 @@ func (f *HTTPClientFactory) CreateHTTPClient() *http.Client {
 	}
 }
 
-// createEnvoyProxyClient creates an HTTP client that routes through Envoy proxy
-func (f *HTTPClientFactory) createEnvoyProxyClient() *http.Client {
-	baseTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false,
-			MinVersion:         tls.VersionTLS12,
-		},
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		MaxIdleConns:        100,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 30 * time.Second,
-	}
-
-	// Wrap with Envoy proxy transport
-	envoyTransport := &EnvoyProxyTransport{
-		Transport:    baseTransport,
-		EnvoyBaseURL: f.envoyBaseURL,
-	}
-
-	return &http.Client{
-		Transport: envoyTransport,
-		Timeout:   60 * time.Second,
-	}
-}
-
-// EnvoyProxyTransport implements RoundTripper to transform requests for Envoy Dynamic Forward Proxy
-type EnvoyProxyTransport struct {
-	Transport    http.RoundTripper
-	EnvoyBaseURL string
-}
-
-// RoundTrip transforms requests to route through Envoy Dynamic Forward Proxy
-func (t *EnvoyProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Clone the request to avoid modifying the original
-	clonedReq := req.Clone(req.Context())
-
-	// Extract original URL components
-	originalHost := req.URL.Host
-	originalScheme := req.URL.Scheme
-	originalPath := req.URL.Path
-	if req.URL.RawQuery != "" {
-		originalPath += "?" + req.URL.RawQuery
-	}
-
-	// Parse Envoy base URL
-	envoyURL, err := url.Parse(t.EnvoyBaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse Envoy base URL: %w", err)
-	}
-
-	// Transform URL to Envoy Dynamic Forward Proxy format
-	// Original: https://example.com/rss.xml
-	// Transformed: http://envoy-proxy:8080/proxy/https://example.com/rss.xml
-	clonedReq.URL.Scheme = envoyURL.Scheme
-	clonedReq.URL.Host = envoyURL.Host
-	clonedReq.URL.Path = "/proxy/" + originalScheme + "://" + originalHost + originalPath
-
-	// Add required X-Target-Domain header for Envoy Dynamic Forward Proxy
-	clonedReq.Header.Set("X-Target-Domain", originalHost)
-
-	slog.InfoContext(req.Context(), "Envoy proxy request transformation",
-		"original_url", req.URL.String(),
-		"transformed_url", clonedReq.URL.String(),
-		"target_domain", originalHost)
-
-	// Execute the transformed request
-	return t.Transport.RoundTrip(clonedReq)
-}
-
-// createSidecarProxyClient creates an HTTP client that routes through sidecar proxy
-func (f *HTTPClientFactory) createSidecarProxyClient() *http.Client {
-	baseTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false,
-			MinVersion:         tls.VersionTLS12,
-		},
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		MaxIdleConns:        100,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 30 * time.Second,
-	}
-
-	// Wrap with Sidecar proxy transport
-	sidecarTransport := &SidecarProxyTransport{
-		Transport:       baseTransport,
-		SidecarProxyURL: f.sidecarProxyURL,
-	}
-
-	return &http.Client{
-		Transport: sidecarTransport,
-		Timeout:   60 * time.Second,
-	}
-}
-
-// SidecarProxyTransport implements RoundTripper to route requests through the sidecar proxy
-type SidecarProxyTransport struct {
-	Transport       http.RoundTripper
-	SidecarProxyURL string
-}
-
-// RoundTrip transforms requests to route through the sidecar proxy at localhost:8085
-func (t *SidecarProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Clone the request to avoid modifying the original
-	clonedReq := req.Clone(req.Context())
-
-	// Extract original URL components
-	originalURL := req.URL.String()
-
-	// Parse sidecar proxy URL
-	sidecarURL, err := url.Parse(t.SidecarProxyURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse sidecar proxy URL: %w", err)
-	}
-
-	// Transform URL to sidecar proxy format
-	// Original: https://example.com/rss.xml
-	// Transformed: http://localhost:8085/proxy/https://example.com/rss.xml
-	clonedReq.URL.Scheme = sidecarURL.Scheme
-	clonedReq.URL.Host = sidecarURL.Host
-	clonedReq.URL.Path = "/proxy/" + originalURL
-
-	// Preserve original Host header for the target
-	clonedReq.Header.Set("X-Original-Host", req.Host)
-
-	// Add trace header for debugging
-	clonedReq.Header.Set("X-Proxy-Via", "sidecar-proxy")
-
-	slog.InfoContext(req.Context(), "Sidecar proxy request transformation",
-		"original_url", originalURL,
-		"transformed_url", clonedReq.URL.String(),
-		"sidecar_proxy", t.SidecarProxyURL)
-
-	// Execute the transformed request
-	return t.Transport.RoundTrip(clonedReq)
-}
-
 // createSecureDirectClient creates a secure HTTP client with SSRF protection
 func (f *HTTPClientFactory) createSecureDirectClient() *http.Client {
-	cfg := &config.HTTPConfig{
+	cfg := &HTTPConfig{
 		ClientTimeout:       30 * time.Second,
 		DialTimeout:         10 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
@@ -265,12 +128,12 @@ func SecureHTTPClient() *http.Client {
 }
 
 // SecureHTTPClientWithConfig creates an HTTP client with SSRF protection using provided configuration
-func SecureHTTPClientWithConfig(cfg *config.HTTPConfig) *http.Client {
+func SecureHTTPClientWithConfig(cfg *HTTPConfig) *http.Client {
 	return SecureHTTPClientWithConfigAndResolver(cfg, net.DefaultResolver)
 }
 
 // SecureHTTPClientWithConfigAndResolver creates an HTTP client with SSRF protection and an injectable resolver.
-func SecureHTTPClientWithConfigAndResolver(cfg *config.HTTPConfig, resolver IPResolver) *http.Client {
+func SecureHTTPClientWithConfigAndResolver(cfg *HTTPConfig, resolver IPResolver) *http.Client {
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
@@ -316,7 +179,7 @@ func SecureHTTPClientWithConfigAndResolver(cfg *config.HTTPConfig, resolver IPRe
 				}
 
 				for _, a := range addrs {
-					if security.IsPrivateIPAddress(a.IP) || isMetadataIP(a.IP) {
+					if security.IsPrivateIPAddress(a.IP) || IsMetadataIP(a.IP) {
 						return nil, ErrDestinationNotAllowed
 					}
 				}
@@ -404,8 +267,11 @@ func isBlockedPort(port string) bool {
 	return blockedPorts[port]
 }
 
-// isMetadataIP checks if an IP is a known cloud metadata endpoint
-func isMetadataIP(ip net.IP) bool {
+// IsMetadataIP checks if an IP is a known cloud metadata endpoint
+func IsMetadataIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
 	metadataIPs := []string{
 		"169.254.169.254", // AWS/Azure/GCP
 		"100.100.100.200", // Alibaba Cloud
@@ -426,8 +292,7 @@ func isPrivateDomainOrLiteral(hostname string) bool {
 	if hostnameLC == "localhost" || strings.HasPrefix(hostnameLC, "127.") {
 		return true
 	}
-	if hostnameLC == "169.254.169.254" || hostnameLC == "metadata.google.internal" ||
-		hostnameLC == "100.100.100.200" || hostnameLC == "192.0.0.192" {
+	if security.IsMetadataHost(hostnameLC) {
 		return true
 	}
 	internalDomains := []string{".local", ".internal", ".corp", ".lan", ".localhost"}

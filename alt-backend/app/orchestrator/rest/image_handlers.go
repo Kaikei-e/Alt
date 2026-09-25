@@ -5,7 +5,9 @@ import (
 	"alt/di"
 	"alt/domain"
 	middleware_custom "alt/middleware"
+	"alt/orchestrator/rest/resterr"
 	"alt/utils/logger"
+	"alt/utils/security"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,7 +16,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func registerImageRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+func registerImageRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg config.AuthConfig) {
 	// 認証ミドルウェアの初期化
 	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
 
@@ -27,23 +29,23 @@ func handleImageFetch(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var req ImageFetchRequest
 		if err := c.Bind(&req); err != nil {
-			return HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
+			return resterr.HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
 		}
 
 		// Basic validation
 		if req.URL == "" {
-			return HandleValidationError(c, "URL is required", "url", req.URL)
+			return resterr.HandleValidationError(c, "URL is required", "url", req.URL)
 		}
 
 		// Parse and validate URL
 		parsedURL, err := url.Parse(req.URL)
 		if err != nil {
-			return HandleValidationError(c, "Invalid URL format", "url", req.URL)
+			return resterr.HandleValidationError(c, "Invalid URL format", "url", req.URL)
 		}
 
 		// Apply SSRF protection
-		if err := IsAllowedURL(parsedURL); err != nil {
-			return HandleValidationError(c, fmt.Sprintf("URL not allowed: %v", err), "url", req.URL)
+		if err := security.NewURLSecurityValidator().ValidateParsedRSSURL(parsedURL); err != nil {
+			return resterr.HandleValidationError(c, fmt.Sprintf("URL not allowed: %v", err), "url", req.URL)
 		}
 
 		// Convert options from schema to domain
@@ -58,7 +60,7 @@ func handleImageFetch(container *di.ApplicationComponents) echo.HandlerFunc {
 		// Execute usecase
 		result, err := container.ImageFetchUsecase.Execute(c.Request().Context(), req.URL, options)
 		if err != nil {
-			return HandleError(c, err, "image_fetch")
+			return resterr.HandleError(c, err, "image_fetch")
 		}
 
 		// Return the image data directly with proper content type and COEP compliance

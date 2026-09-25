@@ -21,8 +21,16 @@ import (
 // the status update, inside one transaction on the provider. Splitting it
 // would put a network round trip inside the lock window and let two harvesters
 // take the same event.
+// outboxDataHubClient isolates the data-hub RPCs called by OutboxGateway.
+type outboxDataHubClient interface {
+	ClaimOutboxBatch(context.Context, *connect.Request[datahubv1.ClaimOutboxBatchRequest]) (*connect.Response[datahubv1.ClaimOutboxBatchResponse], error)
+	MarkOutboxProcessed(context.Context, *connect.Request[datahubv1.MarkOutboxProcessedRequest]) (*connect.Response[datahubv1.MarkOutboxProcessedResponse], error)
+	ReleaseOutboxEvent(context.Context, *connect.Request[datahubv1.ReleaseOutboxEventRequest]) (*connect.Response[datahubv1.ReleaseOutboxEventResponse], error)
+	PruneOutboxEvents(context.Context, *connect.Request[datahubv1.PruneOutboxEventsRequest]) (*connect.Response[datahubv1.PruneOutboxEventsResponse], error)
+}
+
 type OutboxGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client outboxDataHubClient
 }
 
 // NewOutboxGateway wires the gateway to the shared DataHubService client.

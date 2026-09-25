@@ -76,15 +76,15 @@ func (u *morningLetterUsecase) RegenerateLatest(
 	}
 
 	u.regenMu.Lock()
-	last, ok := u.regenLast[userID]
+	last := u.regenLast[userID]
 	now := time.Now()
-	if ok && now.Sub(last) < regenerateCooldown {
+	if inCooldown, remaining := checkCooldown(last, now, regenerateCooldown); inCooldown {
 		u.regenMu.Unlock()
 		doc, err := u.repo.GetLatestLetter(ctx)
 		if err != nil {
 			return nil, false, 0, fmt.Errorf("rate-limited and failed to load cached letter: %w", err)
 		}
-		return doc, false, regenerateCooldown - now.Sub(last), nil
+		return doc, false, remaining, nil
 	}
 	u.regenLast[userID] = now
 	u.regenMu.Unlock()

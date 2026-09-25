@@ -36,13 +36,19 @@ func NewGetKnowledgeTrailUsecase(trailPort knowledge_trail_port.GetTrailPort, th
 // Execute returns one page of the user's footprint spine, optionally filtered
 // to a theme lens (filterTags).
 func (u *GetKnowledgeTrailUsecase) Execute(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) (*Result, error) {
-	if limit <= 0 || limit > 100 {
-		limit = defaultLimit
-	}
-	footprints, branches, episodes, nextCursor, hasMore, err := u.trailPort.GetTrailFootprints(ctx, userID, cursor, limit, filterTags)
+	effectiveLimit := clampTrailLimit(limit)
+	footprints, branches, episodes, nextCursor, hasMore, err := u.trailPort.GetTrailFootprints(ctx, userID, cursor, effectiveLimit, filterTags)
 	if err != nil {
 		return nil, err
 	}
 	episodes = trail_thumbnail_enrichment.Enrich(ctx, u.thumbnailPort, episodes)
 	return &Result{Footprints: footprints, Branches: branches, Episodes: episodes, NextCursor: nextCursor, HasMore: hasMore}, nil
+}
+
+// clampTrailLimit ensures limit falls within [1, 100], defaulting to defaultLimit when out of range.
+func clampTrailLimit(limit int) int {
+	if limit <= 0 || limit > 100 {
+		return defaultLimit
+	}
+	return limit
 }

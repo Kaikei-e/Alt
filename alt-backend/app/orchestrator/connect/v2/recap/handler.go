@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"time"
 
 	"connectrpc.com/connect"
 
@@ -16,27 +15,16 @@ import (
 	"alt/connect/v2/middleware"
 	"alt/domain"
 	recapinternal "alt/internal/recap"
-	recap_usecase "alt/orchestrator/usecase/recap_usecase"
-	"alt/utils/safeconv"
 )
 
 // Handler implements the RecapService Connect-RPC service.
 type Handler struct {
-	recapUsecase          *recap_usecase.RecapUsecase
-	recapUsecaseInterface RecapUsecaseInterface
-	clusterDraftLoader    *recapinternal.ClusterDraftLoader
-	logger                *slog.Logger
+	recapUsecase       RecapUsecaseInterface
+	clusterDraftLoader *recapinternal.ClusterDraftLoader
+	logger             *slog.Logger
 }
 
-// getRecapUsecase returns the usecase interface, preferring interface if set
-func (h *Handler) getRecapUsecase() RecapUsecaseInterface {
-	if h.recapUsecaseInterface != nil {
-		return h.recapUsecaseInterface
-	}
-	return h.recapUsecase
-}
-
-// RecapUsecaseInterface defines the interface for recap usecase (for testing)
+// RecapUsecaseInterface defines the interface for recap usecase.
 type RecapUsecaseInterface interface {
 	GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error)
@@ -48,7 +36,7 @@ type RecapUsecaseInterface interface {
 
 // NewHandler creates a new Recap service handler.
 func NewHandler(
-	recapUsecase *recap_usecase.RecapUsecase,
+	recapUsecase RecapUsecaseInterface,
 	clusterDraftLoader *recapinternal.ClusterDraftLoader,
 	logger *slog.Logger,
 ) *Handler {
@@ -59,39 +47,21 @@ func NewHandler(
 	}
 }
 
-// NewHandlerWithUsecase creates a new Recap service handler with interface (for testing)
-func NewHandlerWithUsecase(
-	recapUsecase RecapUsecaseInterface,
-	clusterDraftLoader *recapinternal.ClusterDraftLoader,
-	logger *slog.Logger,
-) *Handler {
-	// For testing, we use interface, but Handler stores concrete type
-	// We'll modify Handler to use interface
-	return &Handler{
-		recapUsecaseInterface: recapUsecase,
-		clusterDraftLoader:    clusterDraftLoader,
-		logger:                logger,
-	}
-}
-
 // Verify interface implementation at compile time.
 var _ recapv2connect.RecapServiceHandler = (*Handler)(nil)
 
-// GetSevenDayRecap returns 7-day recap summary (authentication required).
-// Replaces GET /api/v1/recap/7days
+// GetSevenDayRecap returns 7-day recap summary.
 func (h *Handler) GetSevenDayRecap(
 	ctx context.Context,
 	req *connect.Request[recapv2.GetSevenDayRecapRequest],
 ) (*connect.Response[recapv2.GetSevenDayRecapResponse], error) {
-	// Authentication check
 	userCtx, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	h.logger.InfoContext(ctx, "GetSevenDayRecap called", "user_id", userCtx.UserID)
 
-	// Call usecase
-	recap, err := h.getRecapUsecase().GetSevenDayRecap(ctx)
+	recap, err := h.recapUsecase.GetSevenDayRecap(ctx)
 	if err != nil {
 		if errors.Is(err, domain.ErrRecapNotFound) {
 			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "No 7-day recap available yet", "GetSevenDayRecap")
@@ -99,10 +69,8 @@ func (h *Handler) GetSevenDayRecap(
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetSevenDayRecap")
 	}
 
-	// Convert domain to proto
 	resp := domainToProto(recap)
 
-	// Attach cluster draft if requested
 	if req.Msg.GenreDraftId != nil && *req.Msg.GenreDraftId != "" && h.clusterDraftLoader != nil {
 		draft, err := h.clusterDraftLoader.LoadDraft(*req.Msg.GenreDraftId)
 		if err != nil {
@@ -115,20 +83,18 @@ func (h *Handler) GetSevenDayRecap(
 	return connect.NewResponse(resp), nil
 }
 
-// GetThreeDayRecap returns 3-day recap summary (authentication required).
+// GetThreeDayRecap returns 3-day recap summary.
 func (h *Handler) GetThreeDayRecap(
 	ctx context.Context,
 	req *connect.Request[recapv2.GetThreeDayRecapRequest],
 ) (*connect.Response[recapv2.GetThreeDayRecapResponse], error) {
-	// Authentication check
 	userCtx, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	h.logger.InfoContext(ctx, "GetThreeDayRecap called", "user_id", userCtx.UserID)
 
-	// Call usecase
-	recap, err := h.getRecapUsecase().GetThreeDayRecap(ctx)
+	recap, err := h.recapUsecase.GetThreeDayRecap(ctx)
 	if err != nil {
 		if errors.Is(err, domain.ErrRecapNotFound) {
 			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "No 3-day recap available yet", "GetThreeDayRecap")
@@ -136,10 +102,8 @@ func (h *Handler) GetThreeDayRecap(
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetThreeDayRecap")
 	}
 
-	// Convert domain to proto
 	resp := domainToProtoThreeDays(recap)
 
-	// Attach cluster draft if requested
 	if req.Msg.GenreDraftId != nil && *req.Msg.GenreDraftId != "" && h.clusterDraftLoader != nil {
 		draft, err := h.clusterDraftLoader.LoadDraft(*req.Msg.GenreDraftId)
 		if err != nil {
@@ -152,251 +116,43 @@ func (h *Handler) GetThreeDayRecap(
 	return connect.NewResponse(resp), nil
 }
 
-// domainToProtoThreeDays converts domain.RecapSummary to 3-day proto response.
-func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayRecapResponse {
-	genres := make([]*recapv2.RecapGenre, len(recap.Genres))
-	for i, g := range recap.Genres {
-		genres[i] = &recapv2.RecapGenre{
-			Genre:         g.Genre,
-			Summary:       g.Summary,
-			TopTerms:      g.TopTerms,
-			ArticleCount:  safeconv.Int32(g.ArticleCount),
-			ClusterCount:  safeconv.Int32(g.ClusterCount),
-			EvidenceLinks: evidenceLinksToProto(g.EvidenceLinks),
-			Bullets:       g.Bullets,
-			References:    referencesToProto(g.References),
-		}
-	}
-
-	return &recapv2.GetThreeDayRecapResponse{
-		JobId:         recap.JobID,
-		ExecutedAt:    recap.ExecutedAt.Format(time.RFC3339),
-		WindowStart:   recap.WindowStart.Format(time.RFC3339),
-		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
-		TotalArticles: safeconv.Int32(recap.TotalArticles),
-		Genres:        genres,
-	}
-}
-
-// GetThreeDayRecapCards returns 3-day topic recap cards (authentication required).
+// GetThreeDayRecapCards returns 3-day topic recap cards.
 func (h *Handler) GetThreeDayRecapCards(
 	ctx context.Context,
 	_ *connect.Request[recapv2.GetThreeDayRecapCardsRequest],
 ) (*connect.Response[recapv2.GetThreeDayRecapCardsResponse], error) {
-	// Authentication check
 	userCtx, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	h.logger.InfoContext(ctx, "GetThreeDayRecapCards called", "user_id", userCtx.UserID)
 
-	// Call usecase
-	cardsResp, err := h.getRecapUsecase().GetThreeDayRecapCards(ctx)
+	cardsResp, err := h.recapUsecase.GetThreeDayRecapCards(ctx)
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetThreeDayRecapCards")
 	}
 
-	// Convert domain to proto
 	resp := domainToProtoThreeDaysCards(cardsResp)
 	return connect.NewResponse(resp), nil
 }
 
-// domainToProtoThreeDaysCards converts domain.RecapCardsResponse to proto response.
-func domainToProtoThreeDaysCards(resp *domain.RecapCardsResponse) *recapv2.GetThreeDayRecapCardsResponse {
-	if resp == nil {
-		return &recapv2.GetThreeDayRecapCardsResponse{
-			Cards: []*recapv2.RecapCard{},
-		}
-	}
-
-	protoResp := &recapv2.GetThreeDayRecapCardsResponse{
-		Cards: make([]*recapv2.RecapCard, 0, len(resp.Cards)),
-	}
-
-	if resp.Job != nil {
-		protoResp.Job = &recapv2.RecapCardsJob{
-			JobId:         resp.Job.JobID,
-			KickedAt:      resp.Job.KickedAt,
-			From:          resp.Job.From,
-			To:            resp.Job.To,
-			ParamsVersion: resp.Job.ParamsVersion,
-			CardsSelected: safeconv.Int32(resp.Job.CardsSelected),
-			Degraded:      resp.Job.Degraded,
-		}
-	}
-
-	for _, c := range resp.Cards {
-		if c == nil {
-			continue
-		}
-		card := &recapv2.RecapCard{
-			Id:              c.ID,
-			Rank:            safeconv.Int32(c.Rank),
-			StoryId:         c.StoryID,
-			ContinuesCardId: c.ContinuesCardID,
-			HeadlineJa:      c.HeadlineJa,
-			WhatJa:          c.WhatJa,
-			WhyJa:           c.WhyJa,
-			Genre:           c.Genre,
-			CreatedAt:       c.CreatedAt,
-			Sources:         make([]*recapv2.RecapCardSource, 0, len(c.Sources)),
-		}
-		for _, s := range c.Sources {
-			if s == nil {
-				continue
-			}
-			card.Sources = append(card.Sources, &recapv2.RecapCardSource{
-				N:       safeconv.Int32(s.N),
-				FeedId:  s.FeedID,
-				Url:     s.URL,
-				Host:    s.Host,
-				Title:   s.Title,
-				PubDate: s.PubDate,
-			})
-		}
-		protoResp.Cards = append(protoResp.Cards, card)
-	}
-
-	return protoResp
-}
-
-// domainToProto converts domain.RecapSummary to proto response.
-func domainToProto(recap *domain.RecapSummary) *recapv2.GetSevenDayRecapResponse {
-	genres := make([]*recapv2.RecapGenre, len(recap.Genres))
-	for i, g := range recap.Genres {
-		genres[i] = &recapv2.RecapGenre{
-			Genre:         g.Genre,
-			Summary:       g.Summary,
-			TopTerms:      g.TopTerms,
-			ArticleCount:  safeconv.Int32(g.ArticleCount),
-			ClusterCount:  safeconv.Int32(g.ClusterCount),
-			EvidenceLinks: evidenceLinksToProto(g.EvidenceLinks),
-			Bullets:       g.Bullets,
-			References:    referencesToProto(g.References),
-		}
-	}
-
-	return &recapv2.GetSevenDayRecapResponse{
-		JobId:         recap.JobID,
-		ExecutedAt:    recap.ExecutedAt.Format(time.RFC3339),
-		WindowStart:   recap.WindowStart.Format(time.RFC3339),
-		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
-		TotalArticles: safeconv.Int32(recap.TotalArticles),
-		Genres:        genres,
-	}
-}
-
-// evidenceLinksToProto converts domain evidence links to proto.
-func evidenceLinksToProto(links []domain.EvidenceLink) []*recapv2.EvidenceLink {
-	result := make([]*recapv2.EvidenceLink, len(links))
-	for i, l := range links {
-		result[i] = &recapv2.EvidenceLink{
-			ArticleId:   l.ArticleID,
-			Title:       l.Title,
-			SourceUrl:   l.SourceURL,
-			PublishedAt: l.PublishedAt,
-			Lang:        l.Lang,
-		}
-	}
-	return result
-}
-
-// referencesToProto converts domain references to proto.
-func referencesToProto(refs []domain.Reference) []*recapv2.Reference {
-	result := make([]*recapv2.Reference, len(refs))
-	for i, r := range refs {
-		result[i] = &recapv2.Reference{
-			Id:     safeconv.Int32(r.ID),
-			Url:    r.URL,
-			Domain: r.Domain,
-		}
-		if r.ArticleID != nil {
-			result[i].ArticleId = r.ArticleID
-		}
-	}
-	return result
-}
-
-// clusterDraftToProto converts domain ClusterDraft to proto.
-func clusterDraftToProto(draft *domain.ClusterDraft) *recapv2.ClusterDraft {
-	genres := make([]*recapv2.ClusterGenre, len(draft.Genres))
-	for i, g := range draft.Genres {
-		genres[i] = &recapv2.ClusterGenre{
-			Genre:        g.Genre,
-			SampleSize:   safeconv.Int32(g.SampleSize),
-			ClusterCount: safeconv.Int32(g.ClusterCount),
-			Clusters:     clusterSegmentsToProto(g.Clusters),
-		}
-	}
-
-	return &recapv2.ClusterDraft{
-		DraftId:      draft.ID,
-		Description:  draft.Description,
-		Source:       draft.Source,
-		GeneratedAt:  draft.GeneratedAt.Format(time.RFC3339),
-		TotalEntries: safeconv.Int32(draft.TotalEntries),
-		Genres:       genres,
-	}
-}
-
-// clusterSegmentsToProto converts domain ClusterSegments to proto.
-func clusterSegmentsToProto(segments []domain.ClusterSegment) []*recapv2.ClusterSegment {
-	result := make([]*recapv2.ClusterSegment, len(segments))
-	for i, s := range segments {
-		result[i] = &recapv2.ClusterSegment{
-			ClusterId:                s.ClusterID,
-			Label:                    s.Label,
-			Count:                    safeconv.Int32(s.Count),
-			MarginMean:               s.MarginMean,
-			MarginStd:                s.MarginStd,
-			TopBoostMean:             s.TopBoostMean,
-			GraphBoostAvailableRatio: s.GraphBoostAvailableRatio,
-			TagCountMean:             s.TagCountMean,
-			TagEntropyMean:           s.TagEntropyMean,
-			TopTags:                  s.TopTags,
-			RepresentativeArticles:   clusterArticlesToProto(s.RepresentativeArticles),
-		}
-	}
-	return result
-}
-
-// clusterArticlesToProto converts domain ClusterArticles to proto.
-func clusterArticlesToProto(articles []domain.ClusterArticle) []*recapv2.ClusterArticle {
-	result := make([]*recapv2.ClusterArticle, len(articles))
-	for i, a := range articles {
-		result[i] = &recapv2.ClusterArticle{
-			ArticleId:      a.ArticleID,
-			Margin:         a.Margin,
-			TopBoost:       a.TopBoost,
-			Strategy:       a.Strategy,
-			TagCount:       safeconv.Int32(a.TagCount),
-			CandidateCount: safeconv.Int32(a.CandidateCount),
-			TopTags:        a.TopTags,
-		}
-	}
-	return result
-}
-
-// GetEveningPulse returns Evening Pulse data (authentication required).
+// GetEveningPulse returns Evening Pulse data.
 func (h *Handler) GetEveningPulse(
 	ctx context.Context,
 	req *connect.Request[recapv2.GetEveningPulseRequest],
 ) (*connect.Response[recapv2.GetEveningPulseResponse], error) {
-	// Authentication check
 	userCtx, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	h.logger.InfoContext(ctx, "GetEveningPulse called", "user_id", userCtx.UserID)
 
-	// Extract date parameter
 	date := ""
 	if req.Msg.Date != nil {
 		date = *req.Msg.Date
 	}
 
-	// Call usecase
-	pulse, err := h.getRecapUsecase().GetEveningPulse(ctx, date)
+	pulse, err := h.recapUsecase.GetEveningPulse(ctx, date)
 	if err != nil {
 		if errors.Is(err, domain.ErrEveningPulseNotFound) {
 			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "Evening Pulse not available", "GetEveningPulse")
@@ -404,127 +160,15 @@ func (h *Handler) GetEveningPulse(
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetEveningPulse")
 	}
 
-	// Convert domain to proto
 	resp := eveningPulseDomainToProto(pulse)
 	return connect.NewResponse(resp), nil
 }
 
-// eveningPulseDomainToProto converts domain.EveningPulse to proto response.
-func eveningPulseDomainToProto(pulse *domain.EveningPulse) *recapv2.GetEveningPulseResponse {
-	topics := make([]*recapv2.PulseTopic, len(pulse.Topics))
-	for i, t := range pulse.Topics {
-		topics[i] = &recapv2.PulseTopic{
-			ClusterId:              t.ClusterID,
-			Role:                   topicRoleToProto(t.Role),
-			Title:                  t.Title,
-			Rationale:              rationaleToProto(t.Rationale),
-			ArticleCount:           safeconv.Int32(t.ArticleCount),
-			SourceCount:            safeconv.Int32(t.SourceCount),
-			TimeAgo:                t.TimeAgo,
-			ArticleIds:             t.ArticleIDs,
-			RepresentativeArticles: representativeArticlesToProto(t.RepresentativeArticles),
-			TopEntities:            t.TopEntities,
-			SourceNames:            t.SourceNames,
-		}
-		if t.Tier1Count != nil {
-			tier1 := safeconv.Int32(*t.Tier1Count)
-			topics[i].Tier1Count = &tier1
-		}
-		if t.TrendMultiplier != nil {
-			topics[i].TrendMultiplier = t.TrendMultiplier
-		}
-		if t.Genre != nil {
-			topics[i].Genre = t.Genre
-		}
-	}
-
-	resp := &recapv2.GetEveningPulseResponse{
-		JobId:       pulse.JobID,
-		Date:        pulse.Date,
-		GeneratedAt: pulse.GeneratedAt.Format(time.RFC3339),
-		Status:      pulseStatusToProto(pulse.Status),
-		Topics:      topics,
-	}
-
-	if pulse.QuietDay != nil {
-		resp.QuietDay = quietDayToProto(pulse.QuietDay)
-	}
-
-	return resp
-}
-
-func topicRoleToProto(role domain.TopicRole) recapv2.TopicRole {
-	switch role {
-	case domain.TopicRoleNeedToKnow:
-		return recapv2.TopicRole_TOPIC_ROLE_NEED_TO_KNOW
-	case domain.TopicRoleTrend:
-		return recapv2.TopicRole_TOPIC_ROLE_TREND
-	case domain.TopicRoleSerendipity:
-		return recapv2.TopicRole_TOPIC_ROLE_SERENDIPITY
-	default:
-		return recapv2.TopicRole_TOPIC_ROLE_UNSPECIFIED
-	}
-}
-
-func pulseStatusToProto(status domain.PulseStatus) recapv2.PulseStatus {
-	switch status {
-	case domain.PulseStatusNormal:
-		return recapv2.PulseStatus_PULSE_STATUS_NORMAL
-	case domain.PulseStatusPartial:
-		return recapv2.PulseStatus_PULSE_STATUS_PARTIAL
-	case domain.PulseStatusQuietDay:
-		return recapv2.PulseStatus_PULSE_STATUS_QUIET_DAY
-	case domain.PulseStatusError:
-		return recapv2.PulseStatus_PULSE_STATUS_ERROR
-	default:
-		return recapv2.PulseStatus_PULSE_STATUS_UNSPECIFIED
-	}
-}
-
-func confidenceToProto(conf domain.Confidence) recapv2.Confidence {
-	switch conf {
-	case domain.ConfidenceHigh:
-		return recapv2.Confidence_CONFIDENCE_HIGH
-	case domain.ConfidenceMedium:
-		return recapv2.Confidence_CONFIDENCE_MEDIUM
-	case domain.ConfidenceLow:
-		return recapv2.Confidence_CONFIDENCE_LOW
-	default:
-		return recapv2.Confidence_CONFIDENCE_UNSPECIFIED
-	}
-}
-
-func rationaleToProto(r domain.PulseRationale) *recapv2.PulseRationale {
-	return &recapv2.PulseRationale{
-		Text:       r.Text,
-		Confidence: confidenceToProto(r.Confidence),
-	}
-}
-
-// representativeArticlesToProto converts domain representative articles to proto.
-func representativeArticlesToProto(articles []domain.RepresentativeArticle) []*recapv2.RepresentativeArticle {
-	if articles == nil {
-		return nil
-	}
-	result := make([]*recapv2.RepresentativeArticle, len(articles))
-	for i, a := range articles {
-		result[i] = &recapv2.RepresentativeArticle{
-			ArticleId:   a.ArticleID,
-			Title:       a.Title,
-			SourceUrl:   a.SourceURL,
-			SourceName:  a.SourceName,
-			PublishedAt: a.PublishedAt,
-		}
-	}
-	return result
-}
-
-// SearchRecapsByTag searches across all completed recaps for genres matching a tag or free-text query.
+// SearchRecapsByTag searches across completed recaps for genres matching a tag or query.
 func (h *Handler) SearchRecapsByTag(
 	ctx context.Context,
 	req *connect.Request[recapv2.SearchRecapsByTagRequest],
 ) (*connect.Response[recapv2.SearchRecapsByTagResponse], error) {
-	// Authentication check
 	userCtx, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
@@ -544,13 +188,10 @@ func (h *Handler) SearchRecapsByTag(
 	}
 
 	var results []*domain.RecapSearchResult
-
 	if query != "" {
-		// Free-text query takes precedence over tag_name
-		results, err = h.getRecapUsecase().SearchRecapsByQuery(ctx, query, limit)
+		results, err = h.recapUsecase.SearchRecapsByQuery(ctx, query, limit)
 	} else if tagName != "" {
-		// Fall back to tag-based search
-		results, err = h.getRecapUsecase().SearchRecapsByTag(ctx, tagName, limit)
+		results, err = h.recapUsecase.SearchRecapsByTag(ctx, tagName, limit)
 	} else {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("at least one of query or tag_name is required"))
 	}
@@ -559,36 +200,7 @@ func (h *Handler) SearchRecapsByTag(
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "SearchRecapsByTag")
 	}
 
-	protoResults := make([]*recapv2.RecapSearchResultItem, len(results))
-	for i, r := range results {
-		protoResults[i] = &recapv2.RecapSearchResultItem{
-			JobId:      r.JobID,
-			ExecutedAt: r.ExecutedAt,
-			WindowDays: safeconv.Int32(r.WindowDays),
-			Genre:      r.Genre,
-			Summary:    r.Summary,
-			TopTerms:   r.TopTerms,
-			Bullets:    r.Bullets,
-		}
-	}
-
 	return connect.NewResponse(&recapv2.SearchRecapsByTagResponse{
-		Results: protoResults,
+		Results: recapSearchResultsToProto(results),
 	}), nil
-}
-
-func quietDayToProto(qd *domain.QuietDayInfo) *recapv2.QuietDayInfo {
-	highlights := make([]*recapv2.WeeklyHighlight, len(qd.WeeklyHighlights))
-	for i, h := range qd.WeeklyHighlights {
-		highlights[i] = &recapv2.WeeklyHighlight{
-			Id:    h.ID,
-			Title: h.Title,
-			Date:  h.Date,
-			Role:  h.Role,
-		}
-	}
-	return &recapv2.QuietDayInfo{
-		Message:          qd.Message,
-		WeeklyHighlights: highlights,
-	}
 }
