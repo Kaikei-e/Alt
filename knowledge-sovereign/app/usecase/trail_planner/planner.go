@@ -11,7 +11,6 @@ package trail_planner
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -22,76 +21,16 @@ import (
 	"knowledge-sovereign/driver/sovereign_db"
 )
 
-// EventTrailBranchProposed is the system-only branch proposal event type.
-const EventTrailBranchProposed = "trail.branch_proposed.v1"
-
-// EventTrailBranchResolved is the user-action event recording how a branch was
-// resolved (taken or dismissed).
-const EventTrailBranchResolved = "trail.branch_resolved.v1"
-
-// BranchResolvedPayload is the trail.branch_resolved.v1 event body.
-// DismissReason is the optional one-tap scrutability signal (D28(d)): a
-// non-empty value only ever accompanies resolution=="dismissed". It is not
-// new event vocabulary — the payload shape absorbs it — and the projector
-// folds the event the same way regardless of whether it is present; planner
-// calibration off this field is explicitly out of scope (D21).
-type BranchResolvedPayload struct {
-	BranchKey     string `json:"branch_key"`
-	Resolution    string `json:"resolution"` // "taken" | "dismissed"
-	DismissReason string `json:"dismiss_reason,omitempty"`
-}
-
-// ValidResolution reports whether r is an accepted branch resolution.
-func ValidResolution(r string) bool {
-	return r == "taken" || r == "dismissed"
-}
-
-const plannerVersion = "v1"
-
-// EvidenceRef mirrors the read-model evidence shape.
-type EvidenceRef struct {
-	RefID string `json:"ref_id"`
-	Label string `json:"label"`
-	Kind  string `json:"kind"`
-}
-
-// BranchProposedPayload is the trail.branch_proposed.v1 event body. The
-// four-tuple is mandatory; Valid() is the contract gate the planner and the
-// projector both apply.
-type BranchProposedPayload struct {
-	BranchKey      string        `json:"branch_key"`
-	AnchorItemKey  string        `json:"anchor_item_key"`
-	RelationKind   string        `json:"relation_kind"`
-	Why            string        `json:"why"`
-	EvidenceRefs   []EvidenceRef `json:"evidence_refs"`
-	Confidence     string        `json:"confidence"`
-	TargetItemKey  string        `json:"target_item_key"`
-	TargetTitle    string        `json:"target_title"`
-	PlannerVersion string        `json:"planner_version"`
-}
-
-// Valid reports whether the branch carries the full four-tuple. A branch that is
-// not Valid must never be surfaced.
-func (p BranchProposedPayload) Valid() bool {
-	return p.RelationKind != "" && p.Why != "" && len(p.EvidenceRefs) > 0 && p.Confidence != ""
-}
-
 // Repository is the narrow surface the planner needs.
 type Repository interface {
 	ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error)
-	// GetLatestFootprintAnchor yields only anchors a why can truthfully name
-	// (§C4); ok=false means the spine holds no such act.
 	GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (sovereign_db.FootprintAnchor, bool, error)
-	// GetItemTitle resolves the anchor's display title (D28 — anchored why):
-	// a branch's why must reference it, so an unresolvable title suppresses
-	// emission rather than falling back to a generic why.
 	GetItemTitle(ctx context.Context, userID uuid.UUID, itemKey string) (string, bool, error)
 	DeriveTrailClusterCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.TrailClusterCandidate, error)
-	// DeriveTrailContinuationCandidates finds a thread the user already
-	// engaged that has gone quiet without going deep (Wave 11, D27) — the
-	// self-referential raw material for a Continuation branch.
 	DeriveTrailContinuationCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.TrailContinuationCandidate, error)
-	// AppendKnowledgeEventIfNew reports whether the event was actually
+	// AppendKnowledgeEventIfNew appends an event only if its dedupe_key has
+	// not been seen yet, returning (event_seq, true, nil) when fresh and (0,
+	// false, nil) on duplicate. The bool return tells the caller whether it
 	// appended. The planner may only claim a proposal the log accepted, so
 	// the seq-only form (whose 0 means either "rejected" or "you did not
 	// look") is deliberately not in this surface.
@@ -102,7 +41,7 @@ type Repository interface {
 type Config struct {
 	MaxBranchesPerUser int
 	// Clock is injected so the emitted occurred_at is testable and the planner
-	// holds no time.Now literal. Production wires time.Now.
+	// holds no wall clock literal. Production wires wall clock.
 	Clock func() time.Time
 }
 
@@ -130,7 +69,7 @@ func NewPlanner(repo Repository, logger *slog.Logger, cfg Config) *Planner {
 // branch_proposed event per fresh candidate (idempotent via dedupe_key).
 func (p *Planner) RunBatch(ctx context.Context) error {
 	// Rule 8: a planner reached with no repository is a wiring bug — fail loud,
-	// never silently no-op. This is business code, not a defensive nil-guard.
+	// never silently no-op.
 	if p.repo == nil {
 		panic("trail_planner: repository not wired")
 	}
@@ -262,31 +201,6 @@ func (p *Planner) planContinuationBranch(ctx context.Context, userID, tenantID u
 	return p.emitBranch(ctx, userID, tenantID, payload)
 }
 
-// anchorRef is the resolved spine anchor a branch's why points back to: the
-// item it forks from, the title that names it, and the verb phrase that makes
-// the claim true.
-type anchorRef struct {
-	itemKey   string
-	title     string
-	whyPhrase string
-}
-
-// whyPhraseByVerb renders each engagement verb as the subject-verb half of an
-// anchored why. It is deliberately total over sovereign_db.EngagementVerbs and
-// empty of everything else: a verb with no entry is a verb the why cannot
-// truthfully name, and the caller suppresses the branch instead of borrowing
-// another verb's claim (§C4).
-var whyPhraseByVerb = map[string]string{
-	"read":     "you read",
-	"asked":    "you asked about",
-	"listened": "you listened to",
-}
-
-func whyPhraseForVerb(verb string) (string, bool) {
-	phrase, ok := whyPhraseByVerb[verb]
-	return phrase, ok
-}
-
 // emitBranch appends a validated branch_proposed event and logs its relation
 // kind (Wave 11 observability — makes the type distribution across Cluster /
 // Continuation / future kinds measurable). A branch that fails Valid() is
@@ -298,23 +212,9 @@ func (p *Planner) emitBranch(ctx context.Context, userID, tenantID uuid.UUID, pa
 			slog.String("branch_key", payload.BranchKey))
 		return nil
 	}
-	body, err := json.Marshal(payload)
+	evt, err := buildBranchProposedEvent(userID, tenantID, payload, p.cfg.Clock())
 	if err != nil {
-		return fmt.Errorf("trail_planner marshal: %w", err)
-	}
-	uid := userID
-	evt := sovereign_db.KnowledgeEvent{
-		EventID:       uuid.New(),
-		OccurredAt:    p.cfg.Clock(),
-		TenantID:      tenantID,
-		UserID:        &uid,
-		ActorType:     "system",
-		ActorID:       "trail-planner",
-		EventType:     EventTrailBranchProposed,
-		AggregateType: "trail_branch",
-		AggregateID:   payload.BranchKey,
-		DedupeKey:     EventTrailBranchProposed + ":" + payload.BranchKey,
-		Payload:       body,
+		return err
 	}
 	seq, appended, err := p.repo.AppendKnowledgeEventIfNew(ctx, evt)
 	if err != nil {
@@ -336,57 +236,4 @@ func (p *Planner) emitBranch(ctx context.Context, userID, tenantID uuid.UUID, pa
 		slog.String("branch_key", payload.BranchKey),
 		slog.Int64("event_seq", seq))
 	return nil
-}
-
-// buildClusterBranch turns a Cluster candidate into a fully-populated branch:
-// a new item that situates into a topic the user already follows. The
-// four-tuple is always set, and the why is anchored (D28(a)): it names the
-// anchor item's title in quotes, phrased from the act that actually happened,
-// never a generic "a topic you follow" claim with no concrete reference back
-// to what the user did.
-func buildClusterBranch(userID uuid.UUID, anchor anchorRef, c sovereign_db.TrailClusterCandidate) BranchProposedPayload {
-	refs := make([]EvidenceRef, 0, len(c.SharedTags)+1)
-	for _, tag := range c.SharedTags {
-		refs = append(refs, EvidenceRef{RefID: tag, Label: tag, Kind: "tag"})
-	}
-	refs = append(refs, EvidenceRef{RefID: c.TargetItemKey, Label: c.TargetTitle, Kind: "article"})
-
-	confidence := "plausible"
-	if len(c.SharedTags) >= 2 {
-		confidence = "corroborated"
-	}
-
-	return BranchProposedPayload{
-		BranchKey:      "cluster:" + userID.String() + ":" + c.TargetItemKey,
-		AnchorItemKey:  anchor.itemKey,
-		RelationKind:   "cluster",
-		Why:            fmt.Sprintf("Because %s %q — joins %s", anchor.whyPhrase, anchor.title, strings.Join(c.SharedTags, ", ")),
-		EvidenceRefs:   refs,
-		Confidence:     confidence,
-		TargetItemKey:  c.TargetItemKey,
-		TargetTitle:    c.TargetTitle,
-		PlannerVersion: plannerVersion,
-	}
-}
-
-// buildContinuationBranch turns a Continuation candidate into a fully-
-// populated, self-referential branch (D27, Wave 11): the target IS the
-// anchor — past engagement with the SAME item is what makes it continuation
-// material, not a new item situating into a followed topic (contrast
-// buildClusterBranch). The why is anchored on the candidate's own title,
-// quoted, per the same D28(a) contract.
-func buildContinuationBranch(userID uuid.UUID, whyPhrase string, c sovereign_db.TrailContinuationCandidate) BranchProposedPayload {
-	return BranchProposedPayload{
-		BranchKey:     "continuation:" + userID.String() + ":" + c.TargetItemKey,
-		AnchorItemKey: c.TargetItemKey,
-		RelationKind:  "continuation",
-		Why:           fmt.Sprintf("Because %s %q and the thread went quiet — pick it back up.", whyPhrase, c.TargetTitle),
-		EvidenceRefs: []EvidenceRef{
-			{RefID: c.TargetItemKey, Label: c.TargetTitle, Kind: "article"},
-		},
-		Confidence:     "plausible",
-		TargetItemKey:  c.TargetItemKey,
-		TargetTitle:    c.TargetTitle,
-		PlannerVersion: plannerVersion,
-	}
 }

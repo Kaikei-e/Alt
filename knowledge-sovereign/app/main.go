@@ -2,29 +2,18 @@ package main
 
 import (
 	"context"
-	"crypto/subtle"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"knowledge-sovereign/config"
 	"knowledge-sovereign/driver/sovereign_db"
-	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"knowledge-sovereign/handler"
-	"knowledge-sovereign/usecase/knowledge_home_projector"
-	"knowledge-sovereign/usecase/knowledge_trail_projector"
-	"knowledge-sovereign/usecase/partition_maintainer"
-	"knowledge-sovereign/usecase/projection_health"
-	"knowledge-sovereign/usecase/trail_planner"
 )
 
 func main() {
@@ -40,7 +29,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Database connection
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("database connection failed", "error", err)
@@ -54,213 +42,22 @@ func main() {
 	}
 	slog.Info("database connected")
 
-	// Initialize layers
 	repo := sovereign_db.NewRepository(pool)
 	sovereignHandler := handler.NewSovereignHandler(repo, handler.WithDatabaseURL(cfg.DatabaseURL))
 
-	snapshotHandler := handler.NewSnapshotHandler(repo, cfg.SnapshotDir, cfg.BuildRef, cfg.SchemaVersion)
-	retentionHandler := handler.NewRetentionHandler(repo, cfg.ArchiveDir)
-	storageHandler := handler.NewStorageHandler(repo)
-	// Projection rebuild: truncate an allowlisted read-model set and reset its
-	// projector checkpoint in one transaction, so the in-process projectors
-	// below re-fold the event log from the beginning. Codifies the procedure
-	// that lived as raw SQL in docs/runbooks/knowledge-trail-reproject.md,
-	// including the PM-2026-010 invariant that the two steps are inseparable.
-	projectionRebuildHandler := handler.NewProjectionRebuildHandler(repo)
-
-	// Metrics / health server
-	metricsMux := http.NewServeMux()
-	metricsMux.HandleFunc("/health", handler.HealthHandler)
-	metricsMux.Handle("/health/deep", handler.NewDeepHealthHandler(repo))
-	// Prometheus scrape endpoint. Default registry collectors include
-	// process / Go runtime metrics out of the box; projection_health gauges
-	// and projector counters register with the same default registry via promauto.
-	metricsMux.Handle("/metrics", promhttp.Handler())
-	snapshotHandler.RegisterRoutes(metricsMux)
-	retentionHandler.RegisterRoutes(metricsMux)
-	storageHandler.RegisterRoutes(metricsMux)
-	projectionRebuildHandler.RegisterRoutes(metricsMux)
-
-	if cfg.AdminAuthEnabled {
-		slog.Info("admin_auth_enabled")
-	} else {
-		slog.Warn("admin_auth_disabled: ADMIN_AUTH=disabled was set explicitly; /admin/* endpoints on the metrics port accept unauthenticated requests")
-	}
-
-	metricsServer := &http.Server{
-		Addr:              cfg.MetricsAddr,
-		Handler:           requireAdminToken(cfg.AdminToken, cfg.AdminAuthEnabled, metricsMux),
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20,
-	}
-
-	go func() {
-		slog.Info("metrics server starting", "addr", cfg.MetricsAddr)
-		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("metrics server failed", "error", err)
-			os.Exit(1)
-		}
-	}()
-
-	// Main RPC server with Connect-RPC handlers
-	mainMux := http.NewServeMux()
-	mainMux.HandleFunc("/health", handler.HealthHandler)
-
-	if cfg.EventAuthEnabled {
-		slog.Info("event_auth_enabled")
-	} else {
-		slog.Warn("event_auth_disabled: EVENT_AUTH=disabled was set explicitly; event listener accepts unauthenticated RPCs")
-	}
-
-	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(
-		sovereignHandler,
-		connect.WithInterceptors(handler.NewEventAuthInterceptor(cfg.EventToken, cfg.EventAuthEnabled)),
-	)
-	mainMux.Handle(path, rpcHandler)
-
-	// WriteTimeout is intentionally unset: WatchProjectorEvents is a
-	// long-lived server-streaming RPC on this mux, and a finite write
-	// deadline would sever it mid-stream. ReadHeaderTimeout/ReadTimeout/
-	// IdleTimeout still guard against slowloris-style connection abuse.
-	mainServer := &http.Server{
-		Addr:              cfg.ListenAddr,
-		Handler:           mainMux,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20,
-	}
-
-	go func() {
-		slog.Info("rpc server starting", "addr", cfg.ListenAddr)
-		if err := mainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("rpc server failed", "error", err)
-			os.Exit(1)
-		}
-	}()
+	servers := startServers(cfg, repo, sovereignHandler)
 
 	var wg sync.WaitGroup
-
-	// Monthly partition maintenance for the append-only event tables. The
-	// migrations created a fixed six months each and nothing renewed them, so
-	// everything past 2026-05-01 fell into the DEFAULT partition; this creates
-	// the current month plus a lookahead, idempotently and under an advisory
-	// lock so every replica can run it. Rule 8: log the wiring state loudly —
-	// a generator with no caller is precisely how this went unnoticed.
-	partitionMaintainer := partition_maintainer.New(repo, slog.Default(), partition_maintainer.Config{})
-	slog.Info("partition.maintainer.wiring", "enabled", true, "repository_wired", repo != nil)
-	startPartitionMaintainer(ctx, &wg, partitionMaintainer, partition_maintainer.DefaultTickInterval)
-
-	// Knowledge Trail spine projector. Folds the append-only event log into
-	// knowledge_trail_footprints in-process. Reproject-safe and idempotent, so a
-	// short tick over a quiet log is cheap.
-	trailProjector := knowledge_trail_projector.NewProjector(repo, slog.Default(),
-		knowledge_trail_projector.Config{
-			BatchSize:         cfg.TrailProjectorBatchSize,
-			MaxBatchesPerTick: cfg.TrailProjectorMaxBatches,
-		})
-	trailTick := time.NewTicker(cfg.ProjectorTickInterval)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer trailTick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-trailTick.C:
-				if err := trailProjector.RunBatch(ctx); err != nil {
-					slog.Error("knowledge_trail_projector batch failed", "error", err)
-				}
-			}
-		}
-	}()
-
-	// Knowledge Home projector. Folds the same append-only event log into the
-	// Knowledge Home read models (knowledge_home_items, today_digest_view,
-	// recall_candidate_view) in-process. Reproject-safe and idempotent, same
-	// shape as knowledge_trail_projector above; shares its tick interval since
-	// both drain the same event log on the same cadence. Rule 8: surface the
-	// wiring state loudly at startup so a missing projector is not
-	// indistinguishable from an intentionally-disabled one (PM-2026-045 /
-	// ADR-000928).
-	homeProjector := knowledge_home_projector.NewProjector(repo, slog.Default(),
-		knowledge_home_projector.Config{
-			BatchSize:         cfg.HomeProjectorBatchSize,
-			MaxBatchesPerTick: cfg.HomeProjectorMaxBatches,
-		})
-	slog.Info("home.projector.wiring", "enabled", true, "repository_wired", repo != nil)
-	homeTick := time.NewTicker(cfg.ProjectorTickInterval)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer homeTick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-homeTick.C:
-				if err := homeProjector.RunBatch(ctx); err != nil {
-					slog.Error("knowledge_home_projector batch failed", "error", err)
-				}
-			}
-		}
-	}()
-
-	// Knowledge Trail branch producer (trail_planner). Rule 8: surface the wiring
-	// state loudly at startup so a missing producer is visible immediately, not
-	// as a silent absence of branches weeks later (PM-2026-045 / ADR-000928).
-	// NewPlanner always returns non-nil; the real wiring signal is whether the
-	// repository dependency was supplied.
-	branchPlanner := trail_planner.NewPlanner(repo, slog.Default(), trail_planner.Config{
-		MaxBranchesPerUser: cfg.TrailMaxBranchesPerUser,
-		Clock:              time.Now,
-	})
-	slog.Info("trail.branch_producer.wiring", "enabled", true, "repository_wired", repo != nil)
-	branchTick := time.NewTicker(cfg.BranchPlannerTickInterval)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer branchTick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-branchTick.C:
-				if err := branchPlanner.RunBatch(ctx); err != nil {
-					slog.Error("trail_planner batch failed", "error", err)
-				}
-			}
-		}
-	}()
-
-	// Producer-liveness gauges sampled on a slow tick.
-	healthExporter := projection_health.New(repo, slog.Default())
-	healthTick := time.NewTicker(cfg.ProjectionHealthTickInterval)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer healthTick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-healthTick.C:
-				if err := healthExporter.RunOnce(ctx); err != nil {
-					slog.Error("projection_health exporter failed", "error", err)
-				}
-			}
-		}
-	}()
+	startWorkers(ctx, &wg, repo, cfg)
 
 	slog.Info("knowledge-sovereign started",
 		"listen", cfg.ListenAddr,
 		"metrics", cfg.MetricsAddr)
 
-	// Graceful shutdown
+	waitForShutdown(ctx, cancel, &wg, servers)
+}
+
+func waitForShutdown(ctx context.Context, cancel context.CancelFunc, wg *sync.WaitGroup, servers *serverGroup) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	select {
@@ -272,85 +69,9 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 
-	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-		slog.Error("metrics server shutdown failed", "error", err)
-	}
-	if err := mainServer.Shutdown(shutdownCtx); err != nil {
-		slog.Error("rpc server shutdown failed", "error", err)
-	}
+	servers.shutdown(shutdownCtx)
 
 	cancel()
 	wg.Wait()
 	slog.Info("shutdown complete")
-}
-
-// partitionRunner is the ensure-step surface main wires. Kept as an interface
-// so the startup wiring itself is exercisable without a database.
-type partitionRunner interface {
-	RunOnce(ctx context.Context) error
-}
-
-// startPartitionMaintainer runs the partition ensure-step once at startup and
-// then on a slow tick. The startup run matters: the tick is hours long, and a
-// replica booting into a month with no partition would otherwise keep writing
-// into the DEFAULT partition until the first tick.
-//
-// It returns immediately: the startup ensure runs inside the goroutine, ahead
-// of the ticker loop, never on the caller's. This is the only unbounded DB call
-// on main()'s startup path, and it issues DDL that takes ACCESS EXCLUSIVE on
-// the hot append table. Run inline it would sequence both projectors, the
-// branch planner, the projection_health exporter and signal.Notify behind a
-// lock wait, leaving a service that answers /health 200 on both ports with no
-// projection running and no graceful shutdown — the silent-degradation shape
-// rule 8 exists to prevent (ADR-000928 / PM-2026-045).
-//
-// A failure is logged, never fatal — the default partition still accepts the
-// writes, so a crashloop would cost more than the degraded pruning does.
-func startPartitionMaintainer(ctx context.Context, wg *sync.WaitGroup, runner partitionRunner, interval time.Duration) {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := runner.RunOnce(ctx); err != nil {
-			slog.Error("partition_maintainer startup ensure failed", "error", err)
-		}
-
-		tick := time.NewTicker(interval)
-		defer tick.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-tick.C:
-				if err := runner.RunOnce(ctx); err != nil {
-					slog.Error("partition_maintainer batch failed", "error", err)
-				}
-			}
-		}
-	}()
-}
-
-// requireAdminToken wraps next so that /admin/* and /health/deep requests
-// must carry "Authorization: Bearer <token>" matching the configured admin
-// token. Cheap /health stays unauthenticated so compose probes keep working.
-// Pass-through happens only when enabled is false, which config.Load grants
-// solely for an explicit ADMIN_AUTH=disabled. An empty token with the gate on
-// denies every request rather than opening the surface.
-func requireAdminToken(token string, enabled bool, next http.Handler) http.Handler {
-	if !enabled {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/admin/") && r.URL.Path != "/health/deep" {
-			next.ServeHTTP(w, r)
-			return
-		}
-		const prefix = "Bearer "
-		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, prefix) ||
-			subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth, prefix)), []byte(token)) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

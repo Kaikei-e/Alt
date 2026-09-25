@@ -1,20 +1,15 @@
 package handler
 
 import (
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
 	"knowledge-sovereign/driver/sovereign_db"
 )
 
@@ -107,7 +102,9 @@ func (h *RetentionHandler) handleRunRetention(w http.ResponseWriter, r *http.Req
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		slog.WarnContext(ctx, "failed to write retention run response", "error", err)
+	}
 }
 
 // retentionStatusResponse wraps the retention log list per altctl's
@@ -169,16 +166,7 @@ func (h *RetentionHandler) handleEligiblePartitions(w http.ResponseWriter, r *ht
 			return
 		}
 		eligible := h.policy.PartitionsEligibleForArchive(tableName, parts, now)
-		for _, part := range eligible {
-			rows = append(rows, eligiblePartitionRow{
-				TableName:     tableName,
-				PartitionName: part.Name,
-				RangeStart:    part.RangeStart.Format(time.RFC3339),
-				RangeEnd:      part.RangeEnd.Format(time.RFC3339),
-				RowCount:      part.RowCount,
-				SizeBytes:     part.SizeBytes,
-			})
-		}
+		rows = append(rows, buildEligiblePartitionRows(tableName, eligible)...)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -226,10 +214,10 @@ func (h *RetentionHandler) RunRetention(ctx context.Context, dryRun bool) (reten
 			}
 
 			// Export partition to JSONL.gz
-			archivePath, rowCount, checksum, err := h.exportPartition(ctx, part.Name)
+			archivePath, rowCount, checksum, err := h.exportPartition(ctx, part.Name, time.Now())
 			if err != nil {
 				action.Status = "failed"
-				h.logAction(ctx, action, dryRun, err)
+				h.logAction(ctx, action, dryRun, err, time.Now())
 				resp.Actions = append(resp.Actions, action)
 				return resp, fmt.Errorf("export %s: %w", part.Name, err)
 			}
@@ -238,7 +226,7 @@ func (h *RetentionHandler) RunRetention(ctx context.Context, dryRun bool) (reten
 			action.Path = archivePath
 			action.Checksum = checksum
 			action.Status = "exported"
-			h.logAction(ctx, action, dryRun, nil)
+			h.logAction(ctx, action, dryRun, nil, time.Now())
 			resp.Actions = append(resp.Actions, action)
 		}
 	}
@@ -246,61 +234,8 @@ func (h *RetentionHandler) RunRetention(ctx context.Context, dryRun bool) (reten
 	return resp, nil
 }
 
-// exportPartition exports a partition table to a gzipped JSONL file.
-func (h *RetentionHandler) exportPartition(ctx context.Context, partitionName string) (string, int64, string, error) {
-	if err := os.MkdirAll(h.archiveDir, 0o755); err != nil {
-		return "", 0, "", fmt.Errorf("create archive dir: %w", err)
-	}
-
-	filePath := filepath.Join(h.archiveDir, fmt.Sprintf("%s_%s.jsonl.gz",
-		partitionName, time.Now().Format("20060102")))
-
-	f, err := os.Create(filePath)
-	if err != nil {
-		return "", 0, "", fmt.Errorf("create file: %w", err)
-	}
-	defer f.Close()
-
-	hasher := sha256.New()
-	gzWriter := gzip.NewWriter(io.MultiWriter(f, hasher))
-
-	rowCount, err := h.repo.ExportTableToWriter(ctx, partitionName, gzWriter)
-	if err != nil {
-		gzWriter.Close()
-		os.Remove(filePath)
-		return "", 0, "", fmt.Errorf("export: %w", err)
-	}
-
-	if err := gzWriter.Close(); err != nil {
-		return "", 0, "", fmt.Errorf("close gzip: %w", err)
-	}
-
-	checksum := fmt.Sprintf("sha256:%x", hasher.Sum(nil))
-
-	slog.InfoContext(ctx, "partition exported",
-		"partition", partitionName, "rows", rowCount,
-		"checksum", checksum, "path", filePath)
-
-	return filePath, rowCount, checksum, nil
-}
-
-func (h *RetentionHandler) logAction(ctx context.Context, action retentionAction, dryRun bool, err error) {
-	entry := sovereign_db.RetentionLogEntry{
-		LogID:           uuid.New(),
-		RunAt:           time.Now(),
-		Action:          action.Action,
-		TargetTable:     action.Table,
-		TargetPartition: action.Partition,
-		RowsAffected:    action.Rows,
-		ArchivePath:     action.Path,
-		Checksum:        action.Checksum,
-		DryRun:          dryRun,
-		Status:          action.Status,
-	}
-	if err != nil {
-		entry.Status = "failed"
-		entry.ErrorMessage = err.Error()
-	}
+func (h *RetentionHandler) logAction(ctx context.Context, action retentionAction, dryRun bool, err error, refTime time.Time) {
+	entry := buildRetentionLogEntry(action, dryRun, err, refTime)
 	if logErr := h.repo.InsertRetentionLog(ctx, entry); logErr != nil {
 		slog.ErrorContext(ctx, "failed to log retention action", "error", logErr)
 	}

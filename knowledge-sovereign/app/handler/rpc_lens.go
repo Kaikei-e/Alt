@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"knowledge-sovereign/driver/sovereign_db"
@@ -285,4 +286,63 @@ func lensVersionToProto(v sovereign_db.KnowledgeLensVersion) *sovereignv1.LensVe
 		pb.SupersededBy = v.SupersededBy.String()
 	}
 	return pb
+}
+
+func (h *SovereignHandler) AreArticlesVisibleInLens(
+	ctx context.Context,
+	req *connect.Request[sovereignv1.AreArticlesVisibleInLensRequest],
+) (*connect.Response[sovereignv1.AreArticlesVisibleInLensResponse], error) {
+	msg := req.Msg
+	if msg.TenantId == "" || msg.UserId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("tenant_id and user_id are required"))
+	}
+	tenantID, err := uuid.Parse(msg.TenantId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid tenant_id: %w", err))
+	}
+	userID, err := uuid.Parse(msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid user_id: %w", err))
+	}
+
+	articleIDs := make([]uuid.UUID, 0, len(msg.ArticleIds))
+	for _, idStr := range msg.ArticleIds {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid article_id %q: %w", idStr, err))
+		}
+		articleIDs = append(articleIDs, id)
+	}
+
+	filter := validateAndBuildLensFilter(msg.Filter)
+
+	visibleMap, err := h.readDB.AreArticlesVisibleInLens(ctx, tenantID, userID, articleIDs, filter)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("AreArticlesVisibleInLens: %w", err))
+	}
+	out := make(map[string]bool, len(visibleMap))
+	for id, v := range visibleMap {
+		out[id.String()] = v
+	}
+	return connect.NewResponse(&sovereignv1.AreArticlesVisibleInLensResponse{Visibility: out}), nil
+}
+
+// validateAndBuildLensFilter converts proto LensFilter to domain LensFilter.
+func validateAndBuildLensFilter(pb *sovereignv1.LensFilter) *sovereign_db.LensFilter {
+	if pb == nil {
+		return nil
+	}
+	return &sovereign_db.LensFilter{
+		QueryText:    pb.QueryText,
+		TagNames:     pb.TagIds,
+		SourceIDs:    pb.SourceIds,
+		TimeWindow:   pb.TimeWindow,
+		IncludeRecap: pb.IncludeRecap,
+		IncludePulse: pb.IncludePulse,
+		SortMode:     pb.SortMode,
+	}
 }

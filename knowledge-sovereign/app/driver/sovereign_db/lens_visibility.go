@@ -37,22 +37,22 @@ func (r *Repository) AreArticlesVisibleInLens(ctx context.Context, tenantID, use
 
 	if filter != nil {
 		if filter.QueryText != "" {
-			query.WriteString(fmt.Sprintf(` AND (
+			fmt.Fprintf(&query, ` AND (
 				khi.title ILIKE $%d
 				OR COALESCE(khi.summary_excerpt, '') ILIKE $%d
 				OR EXISTS (
 					SELECT 1 FROM jsonb_array_elements_text(khi.tags_json) AS tag_name
 					WHERE tag_name ILIKE $%d
 				)
-			)`, argPos, argPos, argPos))
+			)`, argPos, argPos, argPos)
 			args = append(args, "%"+filter.QueryText+"%")
 			argPos++
 		}
 		if len(filter.TagNames) > 0 {
-			query.WriteString(fmt.Sprintf(` AND EXISTS (
+			fmt.Fprintf(&query, ` AND EXISTS (
 				SELECT 1 FROM jsonb_array_elements_text(khi.tags_json) AS tag_name
 				WHERE tag_name = ANY($%d)
-			)`, argPos))
+			)`, argPos)
 			args = append(args, filter.TagNames)
 			argPos++
 		}
@@ -61,9 +61,8 @@ func (r *Repository) AreArticlesVisibleInLens(ctx context.Context, tenantID, use
 			if err != nil {
 				return nil, fmt.Errorf("AreArticlesVisibleInLens: %w", err)
 			}
-			query.WriteString(fmt.Sprintf(` AND khi.published_at >= $%d`, argPos))
+			fmt.Fprintf(&query, ` AND khi.published_at >= $%d`, argPos)
 			args = append(args, cutoff)
-			argPos++
 		}
 	}
 

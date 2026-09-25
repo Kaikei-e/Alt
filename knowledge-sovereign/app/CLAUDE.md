@@ -13,7 +13,7 @@ go test ./...
 go build ./...
 
 # Run locally (host port and user per compose/sovereign.yaml)
-DATABASE_URL=postgres://sovereign:password@localhost:5438/knowledge_sovereign go run main.go
+DATABASE_URL=postgres://sovereign:password@localhost:5438/knowledge_sovereign go run .
 ```
 
 ## Clean Architecture

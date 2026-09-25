@@ -3,14 +3,11 @@ package sovereign_db
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // EngagedDwellMs is the raw-dwell threshold at or above which a walked branch
@@ -21,15 +18,6 @@ import (
 // so the projector's branch-KPI logging (Wave 10) references the same
 // constant rather than duplicating the literal.
 const EngagedDwellMs = int64(30_000)
-
-// continuationStaleAfter is the minimum quiet period before an engaged-but-
-// not-deep thread qualifies for a Continuation candidate (D27/D28, Wave 11):
-// a thread gone quiet, not one the user is still actively reading.
-const continuationStaleAfter = 3 * 24 * time.Hour
-
-// continuationExpireAfter is the outer bound past which a quiet thread reads
-// as gone cold rather than merely quiet, and Continuation stops proposing it.
-const continuationExpireAfter = 21 * 24 * time.Hour
 
 // EngagementVerbs are the footprint verbs a branch's why can truthfully name —
 // "Because you read / listened to / asked about this" (core-concept §C4,
@@ -89,21 +77,15 @@ ON CONFLICT (user_id, footprint_key) DO UPDATE SET
 	return nil
 }
 
-// GetTrailFootprints returns the user's footprint spine in reverse-chronological
-// order. Display fields are LEFT JOINed from knowledge_home_items by item_key —
-// a read-time enrichment, never a projection-time cross-model read. Path wear is
-// derived per item over ALL the user's footprints (CTE), so it is stable across
-// pages. filterTags applies the theme lens (item must carry one of the tags).
-func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]TrailFootprint, string, bool, error) {
-	fetchLimit := limit + 1
-	args := []any{userID, EngagedDwellMs}
+func buildTrailFootprintsFilter(cursor string, filterTags []string, baseArgPos int) (string, []any, int, error) {
 	var where strings.Builder
 	where.WriteString(`WHERE TRUE`)
-	argPos := 3
+	argPos := baseArgPos
+	var args []any
 	if cursor != "" {
 		occurredAt, footprintKey, err := decodeTrailCursor(cursor)
 		if err != nil {
-			return nil, "", false, fmt.Errorf("GetTrailFootprints: invalid cursor: %w", err)
+			return "", nil, baseArgPos, fmt.Errorf("invalid cursor: %w", err)
 		}
 		fmt.Fprintf(&where, ` AND (f.occurred_at, f.footprint_key) < ($%d, $%d)`, argPos, argPos+1)
 		args = append(args, occurredAt, footprintKey)
@@ -117,6 +99,38 @@ func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, c
 		args = append(args, filterTags)
 		argPos++
 	}
+	return where.String(), args, argPos, nil
+}
+
+func scanTrailFootprintRow(scanner rowScanner, userID uuid.UUID) (TrailFootprint, error) {
+	fp := TrailFootprint{UserID: userID}
+	var tagsJSON []byte
+	if err := scanner.Scan(
+		&fp.TenantID, &fp.FootprintKey, &fp.Verb, &fp.ItemKey,
+		&fp.Note, &fp.SourceEventType, &fp.OccurredAt,
+		&fp.FirstOccurredAt, &fp.ContactCount,
+		&fp.Title, &fp.Excerpt, &tagsJSON, &fp.Wear,
+	); err != nil {
+		return TrailFootprint{}, err
+	}
+	unmarshalJSONWarn(tagsJSON, &fp.Tags, "tags_json")
+	return fp, nil
+}
+
+// GetTrailFootprints returns the user's footprint spine in reverse-chronological
+// order. Display fields are LEFT JOINed from knowledge_home_items by item_key —
+// a read-time enrichment, never a projection-time cross-model read. Path wear is
+// derived per item over ALL the user's footprints (CTE), so it is stable across
+// pages. filterTags applies the theme lens (item must carry one of the tags).
+func (r *Repository) GetTrailFootprints(ctx context.Context, userID uuid.UUID, cursor string, limit int, filterTags []string) ([]TrailFootprint, string, bool, error) {
+	fetchLimit := limit + 1
+	whereClause, filterArgs, argPos, err := buildTrailFootprintsFilter(cursor, filterTags, 3)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("GetTrailFootprints: %w", err)
+	}
+	args := make([]any, 0, 2+len(filterArgs)+1)
+	args = append(args, userID, EngagedDwellMs)
+	args = append(args, filterArgs...)
 
 	// item_wear aggregates over the whole spine so the wear band does not change
 	// as the user pages. has_ask or a deep revisit count reads as "deep".
@@ -178,7 +192,7 @@ LEFT JOIN knowledge_home_items khi
   AND khi.projection_version = `+activeProjectionVersionSQL+`
 %s
 ORDER BY f.occurred_at DESC, f.footprint_key DESC
-LIMIT $%d`, where.String(), argPos)
+LIMIT $%d`, whereClause, argPos)
 	args = append(args, fetchLimit)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -189,17 +203,10 @@ LIMIT $%d`, where.String(), argPos)
 
 	var footprints []TrailFootprint
 	for rows.Next() {
-		fp := TrailFootprint{UserID: userID}
-		var tagsJSON []byte
-		if err := rows.Scan(
-			&fp.TenantID, &fp.FootprintKey, &fp.Verb, &fp.ItemKey,
-			&fp.Note, &fp.SourceEventType, &fp.OccurredAt,
-			&fp.FirstOccurredAt, &fp.ContactCount,
-			&fp.Title, &fp.Excerpt, &tagsJSON, &fp.Wear,
-		); err != nil {
+		fp, err := scanTrailFootprintRow(rows, userID)
+		if err != nil {
 			return nil, "", false, fmt.Errorf("GetTrailFootprints scan: %w", err)
 		}
-		unmarshalJSONWarn(tagsJSON, &fp.Tags, "tags_json")
 		footprints = append(footprints, fp)
 	}
 	if err := rows.Err(); err != nil {
@@ -216,361 +223,6 @@ LIMIT $%d`, where.String(), argPos)
 		nextCursor = encodeTrailCursor(last.OccurredAt, last.FootprintKey)
 	}
 	return footprints, nextCursor, hasMore, nil
-}
-
-// TrailEvidenceRef is one piece of evidence backing a branch.
-type TrailEvidenceRef struct {
-	RefID string `json:"ref_id"`
-	Label string `json:"label"`
-	Kind  string `json:"kind"`
-}
-
-// TrailBranch is the read-model view of a system-proposed branch.
-type TrailBranch struct {
-	BranchKey     string
-	AnchorItemKey string
-	RelationKind  string
-	Why           string
-	EvidenceRefs  []TrailEvidenceRef
-	Confidence    string
-	TargetItemKey string
-	TargetTitle   string
-}
-
-// TrailClusterCandidate is a new item that shares tags with the user's followed
-// topics and that the user has not yet engaged — the raw material for a Cluster
-// branch.
-type TrailClusterCandidate struct {
-	TargetItemKey string
-	TargetTitle   string
-	SharedTags    []string
-}
-
-// TrailContinuationCandidate is a thread the user already engaged (self-
-// referential — D27, Wave 11) that has gone quiet without going deep: the raw
-// material for a Continuation branch ("pick this thread back up"). Contrast
-// TrailClusterCandidate, which situates a NEW item into a followed topic.
-type TrailContinuationCandidate struct {
-	TargetItemKey string
-	TargetTitle   string
-	LastContactAt time.Time
-	// Verb is the engagement verb of the latest qualifying contact, so the
-	// branch's why names the act that actually happened (§C4).
-	Verb string
-}
-
-// FootprintAnchor is the spine point a branch forks from: the item the why
-// names, the tenant that owns it, and the verb that makes the why true.
-type FootprintAnchor struct {
-	ItemKey  string
-	TenantID uuid.UUID
-	Verb     string
-}
-
-// UpsertTrailBranch folds a branch_proposed event into the read model. It never
-// downgrades a resolved branch back to open (Wave 5 sets state separately), and
-// re-projection of the same event reproduces the same row.
-func (r *Repository) UpsertTrailBranch(ctx context.Context, userID, tenantID uuid.UUID, b TrailBranch, createdAt time.Time, projectionVersion int) error {
-	refs, err := json.Marshal(b.EvidenceRefs)
-	if err != nil {
-		return fmt.Errorf("UpsertTrailBranch marshal: %w", err)
-	}
-	const q = `
-INSERT INTO knowledge_trail_branches
-  (user_id, tenant_id, branch_key, anchor_item_key, relation_kind, why,
-   evidence_refs_json, confidence, target_item_key, target_title, state,
-   created_at, projection_version)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11, $12)
-ON CONFLICT (user_id, branch_key) DO UPDATE SET
-  anchor_item_key = EXCLUDED.anchor_item_key,
-  relation_kind = EXCLUDED.relation_kind,
-  why = EXCLUDED.why,
-  evidence_refs_json = EXCLUDED.evidence_refs_json,
-  confidence = EXCLUDED.confidence,
-  target_item_key = EXCLUDED.target_item_key,
-  target_title = EXCLUDED.target_title,
-  created_at = EXCLUDED.created_at,
-  projection_version = EXCLUDED.projection_version`
-	if _, err := r.pool.Exec(ctx, q,
-		userID, tenantID, b.BranchKey, b.AnchorItemKey, b.RelationKind, b.Why,
-		refs, b.Confidence, b.TargetItemKey, b.TargetTitle, createdAt, projectionVersion,
-	); err != nil {
-		return fmt.Errorf("UpsertTrailBranch: %w", err)
-	}
-	return nil
-}
-
-// SetTrailBranchState transitions a branch to a resolved state (taken/dismissed),
-// folded from trail.branch_resolved.v1. A missing row (orphaned resolution) is a
-// no-op rather than a fabricated row; on a full replay the proposed event always
-// precedes the resolved one in seq order so the row is present.
-func (r *Repository) SetTrailBranchState(ctx context.Context, userID uuid.UUID, branchKey, state string) error {
-	const q = `UPDATE knowledge_trail_branches SET state = $3
-		WHERE user_id = $1 AND branch_key = $2`
-	if _, err := r.pool.Exec(ctx, q, userID, branchKey, state); err != nil {
-		return fmt.Errorf("SetTrailBranchState: %w", err)
-	}
-	return nil
-}
-
-// GetOpenTrailBranches returns the user's open branches, newest first.
-func (r *Repository) GetOpenTrailBranches(ctx context.Context, userID uuid.UUID) ([]TrailBranch, error) {
-	// target_title carries a read-time display fallback for branches whose stored
-	// title is empty (title-less targets already in the log, before the planner
-	// title gate): live home title → excerpt snippet → source host → item key.
-	q := `
-SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_json,
-       b.confidence, b.target_item_key,
-       COALESCE(NULLIF(b.target_title, ''),
-                NULLIF(khi.title, ''),
-                NULLIF(left(khi.summary_excerpt, 80), ''),
-                NULLIF(split_part(split_part(khi.url, '://', 2), '/', 1), ''),
-                b.target_item_key)
-FROM knowledge_trail_branches b
-LEFT JOIN knowledge_home_items khi
-  ON khi.user_id = b.user_id
-  AND khi.item_key = b.target_item_key
-  AND khi.projection_version = ` + activeProjectionVersionSQL + `
-WHERE b.user_id = $1 AND b.state = 'open'
-ORDER BY b.created_at DESC, b.branch_key DESC`
-	rows, err := r.pool.Query(ctx, q, userID)
-	if err != nil {
-		return nil, fmt.Errorf("GetOpenTrailBranches: %w", err)
-	}
-	defer rows.Close()
-
-	var branches []TrailBranch
-	for rows.Next() {
-		var b TrailBranch
-		var refsJSON []byte
-		if err := rows.Scan(&b.BranchKey, &b.AnchorItemKey, &b.RelationKind, &b.Why,
-			&refsJSON, &b.Confidence, &b.TargetItemKey, &b.TargetTitle); err != nil {
-			return nil, fmt.Errorf("GetOpenTrailBranches scan: %w", err)
-		}
-		unmarshalJSONWarn(refsJSON, &b.EvidenceRefs, "evidence_refs_json")
-		branches = append(branches, b)
-	}
-	return branches, rows.Err()
-}
-
-// GetOpenTrailBranchesForAnchor returns the user's open branches anchored on
-// one item, newest first, capped at limit (Wave 10, D26 — the patch-exit
-// surface is a handful, not an inbox). Mirrors GetOpenTrailBranches with an
-// anchor filter and a server-side cap.
-func (r *Repository) GetOpenTrailBranchesForAnchor(ctx context.Context, userID uuid.UUID, anchorItemKey string, limit int) ([]TrailBranch, error) {
-	q := `
-SELECT b.branch_key, b.anchor_item_key, b.relation_kind, b.why, b.evidence_refs_json,
-       b.confidence, b.target_item_key,
-       COALESCE(NULLIF(b.target_title, ''),
-                NULLIF(khi.title, ''),
-                NULLIF(left(khi.summary_excerpt, 80), ''),
-                NULLIF(split_part(split_part(khi.url, '://', 2), '/', 1), ''),
-                b.target_item_key)
-FROM knowledge_trail_branches b
-LEFT JOIN knowledge_home_items khi
-  ON khi.user_id = b.user_id
-  AND khi.item_key = b.target_item_key
-  AND khi.projection_version = ` + activeProjectionVersionSQL + `
-WHERE b.user_id = $1 AND b.anchor_item_key = $2 AND b.state = 'open'
-ORDER BY b.created_at DESC, b.branch_key DESC
-LIMIT $3`
-	rows, err := r.pool.Query(ctx, q, userID, anchorItemKey, limit)
-	if err != nil {
-		return nil, fmt.Errorf("GetOpenTrailBranchesForAnchor: %w", err)
-	}
-	defer rows.Close()
-
-	var branches []TrailBranch
-	for rows.Next() {
-		var b TrailBranch
-		var refsJSON []byte
-		if err := rows.Scan(&b.BranchKey, &b.AnchorItemKey, &b.RelationKind, &b.Why,
-			&refsJSON, &b.Confidence, &b.TargetItemKey, &b.TargetTitle); err != nil {
-			return nil, fmt.Errorf("GetOpenTrailBranchesForAnchor scan: %w", err)
-		}
-		unmarshalJSONWarn(refsJSON, &b.EvidenceRefs, "evidence_refs_json")
-		branches = append(branches, b)
-	}
-	return branches, rows.Err()
-}
-
-// GetItemTitle resolves one item's live display title (D28 — anchored why):
-// the trail planner uses it to name the anchor a branch's why must reference.
-// ok=false means the title is absent or blank — the caller must not fabricate
-// a why around an item it cannot name.
-func (r *Repository) GetItemTitle(ctx context.Context, userID uuid.UUID, itemKey string) (title string, ok bool, err error) {
-	const q = `SELECT title FROM knowledge_home_items
-		WHERE user_id = $1 AND item_key = $2 AND projection_version = ` + activeProjectionVersionSQL
-	row := r.pool.QueryRow(ctx, q, userID, itemKey)
-	if scanErr := row.Scan(&title); scanErr != nil {
-		if errors.Is(scanErr, pgx.ErrNoRows) {
-			return "", false, nil
-		}
-		return "", false, fmt.Errorf("GetItemTitle: %w", scanErr)
-	}
-	return title, strings.TrimSpace(title) != "", nil
-}
-
-// GetLatestFootprintAnchor returns the user's most recent footprint that can
-// anchor a branch — the spine point a freshly proposed branch forks from. Only
-// EngagementVerbs qualify: the why must name the act that happened, and a
-// dismissal cannot back "Because you read this" (core-concept §C4). The verb
-// travels with the anchor so the caller phrases the why from it rather than
-// assuming a read. ok=false means the spine holds nothing that can truthfully
-// anchor a why — the caller must suppress, never invent one.
-func (r *Repository) GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (FootprintAnchor, bool, error) {
-	const q = `SELECT item_key, tenant_id, verb FROM knowledge_trail_footprints
-		WHERE user_id = $1 AND verb = ANY($2::text[])
-		ORDER BY occurred_at DESC, footprint_key DESC LIMIT 1`
-	var a FootprintAnchor
-	row := r.pool.QueryRow(ctx, q, userID, EngagementVerbs)
-	if scanErr := row.Scan(&a.ItemKey, &a.TenantID, &a.Verb); scanErr != nil {
-		if errors.Is(scanErr, pgx.ErrNoRows) {
-			return FootprintAnchor{}, false, nil
-		}
-		return FootprintAnchor{}, false, fmt.Errorf("GetLatestFootprintAnchor: %w", scanErr)
-	}
-	return a, true, nil
-}
-
-// DeriveTrailClusterCandidates finds articles that share a tag with the user's
-// engaged items but that the user has not footprinted — Cluster branch material.
-// Ranked by tag-overlap. Producer-side derivation (the planner reads current
-// state to decide what to emit); the projector that folds the resulting event
-// stays payload-only.
-func (r *Repository) DeriveTrailClusterCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]TrailClusterCandidate, error) {
-	q := `
-WITH active_version AS (
-  SELECT ` + activeProjectionVersionSQL + ` AS v
-),
-user_tags AS (
-  SELECT DISTINCT lower(t.tag) AS tag
-  FROM knowledge_trail_footprints f
-  JOIN knowledge_home_items khi
-    ON khi.user_id = f.user_id AND khi.item_key = f.item_key
-   AND khi.projection_version = (SELECT v FROM active_version)
-  CROSS JOIN LATERAL jsonb_array_elements_text(khi.tags_json) AS t(tag)
-  WHERE f.user_id = $1
-),
-footprinted AS (
-  SELECT DISTINCT item_key FROM knowledge_trail_footprints WHERE user_id = $1
-)
-SELECT khi.item_key, khi.title,
-       array_agg(DISTINCT it.tag) AS shared_tags
-FROM knowledge_home_items khi
-CROSS JOIN LATERAL jsonb_array_elements_text(khi.tags_json) AS it(tag)
-WHERE khi.user_id = $1
-  AND khi.item_type = 'article'
-  AND khi.dismissed_at IS NULL
-  AND khi.projection_version = (SELECT v FROM active_version)
-  AND coalesce(khi.title, '') <> ''
-  AND khi.item_key NOT IN (SELECT item_key FROM footprinted)
-  AND lower(it.tag) IN (SELECT tag FROM user_tags)
-GROUP BY khi.item_key, khi.title
-ORDER BY count(DISTINCT lower(it.tag)) DESC, khi.item_key
-LIMIT $2`
-	rows, err := r.pool.Query(ctx, q, userID, limit)
-	if err != nil {
-		return nil, fmt.Errorf("DeriveTrailClusterCandidates: %w", err)
-	}
-	defer rows.Close()
-
-	var out []TrailClusterCandidate
-	for rows.Next() {
-		var c TrailClusterCandidate
-		if err := rows.Scan(&c.TargetItemKey, &c.TargetTitle, &c.SharedTags); err != nil {
-			return nil, fmt.Errorf("DeriveTrailClusterCandidates scan: %w", err)
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
-}
-
-// DeriveTrailContinuationCandidates finds a thread the user already engaged
-// that has gone quiet without going deep (Wave 11, D27/D28) — self-referential
-// raw material for a Continuation branch: the target IS the anchor, because
-// past engagement with the SAME item is what qualifies it, not tag overlap
-// with a new item (contrast DeriveTrailClusterCandidates).
-//
-// Contact means engagement (EngagementVerbs) — a dismissal is the opposite of
-// wanting a thread back, so it neither counts as a contact nor sets the quiet
-// clock, and an item the user dismissed from Home is never proposed at all
-// (the dismissed_at gate the sibling cluster query has always had).
-//
-// "Not deep" is a simplified, faithful read of the wear CASE in
-// GetTrailFootprints: 1-3 raw contacts, no 'asked' verb, no engaged
-// act-outcome. The last contact must sit strictly between
-// continuationExpireAfter and continuationStaleAfter ago — a thread gone
-// quiet, not one still being read or one gone cold. Items that already carry
-// a continuation branch (open or resolved) are excluded so a taken or
-// dismissed proposal is never re-proposed. Ordered most-recent-contact first;
-// producer-side derivation (the planner reads current state to decide what to
-// emit — the projector folding the resulting event stays payload-only).
-func (r *Repository) DeriveTrailContinuationCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]TrailContinuationCandidate, error) {
-	now := time.Now()
-	staleCutoff := now.Add(-continuationStaleAfter)
-	expireCutoff := now.Add(-continuationExpireAfter)
-
-	q := `
-WITH active_version AS (
-  SELECT ` + activeProjectionVersionSQL + ` AS v
-),
-item_contacts AS (
-  SELECT item_key,
-         count(*) AS contact_count,
-         bool_or(verb = 'asked') AS has_ask,
-         max(occurred_at) AS last_contact_at,
-         (array_agg(verb ORDER BY occurred_at DESC, footprint_key DESC))[1] AS last_verb
-  FROM knowledge_trail_footprints
-  WHERE user_id = $1
-    AND verb = ANY($2::text[])
-  GROUP BY item_key
-),
-item_engagement AS (
-  SELECT item_key, TRUE AS engaged
-  FROM knowledge_trail_act_outcomes
-  WHERE user_id = $1
-    AND ((dwell_ms IS NOT NULL AND dwell_ms >= $3)
-         OR legacy_outcome IN ('engaged', 'deep_engagement'))
-  GROUP BY item_key
-)
-SELECT ic.item_key, khi.title, ic.last_contact_at, ic.last_verb
-FROM item_contacts ic
-JOIN knowledge_home_items khi
-  ON khi.user_id = $1
- AND khi.item_key = ic.item_key
- AND khi.projection_version = (SELECT v FROM active_version)
- AND khi.dismissed_at IS NULL
-LEFT JOIN item_engagement ie ON ie.item_key = ic.item_key
-WHERE ic.contact_count BETWEEN 1 AND 3
-  AND NOT ic.has_ask
-  AND NOT COALESCE(ie.engaged, FALSE)
-  AND ic.last_contact_at <= $4
-  AND ic.last_contact_at >= $5
-  AND coalesce(khi.title, '') <> ''
-  AND NOT EXISTS (
-    SELECT 1 FROM knowledge_trail_branches btb
-    WHERE btb.user_id = $1
-      AND btb.relation_kind = 'continuation'
-      AND btb.target_item_key = ic.item_key
-  )
-ORDER BY ic.last_contact_at DESC
-LIMIT $6`
-	rows, err := r.pool.Query(ctx, q, userID, EngagementVerbs, EngagedDwellMs, staleCutoff, expireCutoff, limit)
-	if err != nil {
-		return nil, fmt.Errorf("DeriveTrailContinuationCandidates: %w", err)
-	}
-	defer rows.Close()
-
-	var out []TrailContinuationCandidate
-	for rows.Next() {
-		var c TrailContinuationCandidate
-		if err := rows.Scan(&c.TargetItemKey, &c.TargetTitle, &c.LastContactAt, &c.Verb); err != nil {
-			return nil, fmt.Errorf("DeriveTrailContinuationCandidates scan: %w", err)
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
 }
 
 func encodeTrailCursor(occurredAt time.Time, footprintKey string) string {

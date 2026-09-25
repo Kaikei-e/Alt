@@ -157,29 +157,51 @@ func TestStartPartitionMaintainer_EnsuresOnTick(t *testing.T) {
 
 // The defect this whole file exists for: GeneratePartitionDDL sat in the driver
 // with callers only in its own test file, so no partition was ever created
-// after the migrations ran out at 2026-05-01. Assert against main.go's AST that
+// after the migrations ran out at 2026-05-01. Assert against main_workers.go and main.go AST that
 // the ensure-step has a real production caller — a passing unit test on an
 // unwired helper is exactly what hid this for three months.
 func TestMain_WiresPartitionMaintainerIntoStartup(t *testing.T) {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "main.go", nil, 0)
+	mainFile, err := parser.ParseFile(fset, "main.go", nil, 0)
 	if err != nil {
 		t.Fatalf("parse main.go: %v", err)
 	}
 
-	var mainFunc *ast.FuncDecl
-	for _, decl := range file.Decls {
+	var mainCallsWorkers bool
+	for _, decl := range mainFile.Decls {
 		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == "main" && fn.Recv == nil {
-			mainFunc = fn
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok {
+					if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "startWorkers" {
+						mainCallsWorkers = true
+					}
+				}
+				return true
+			})
+		}
+	}
+	if !mainCallsWorkers {
+		t.Error("func main does not call startWorkers — the background workers are never launched")
+	}
+
+	workersFile, err := parser.ParseFile(fset, "main_workers.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse main_workers.go: %v", err)
+	}
+
+	var workersFunc *ast.FuncDecl
+	for _, decl := range workersFile.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == "startWorkers" && fn.Recv == nil {
+			workersFunc = fn
 			break
 		}
 	}
-	if mainFunc == nil {
-		t.Fatal("main.go has no func main")
+	if workersFunc == nil {
+		t.Fatal("main_workers.go has no func startWorkers")
 	}
 
 	var startsMaintainer, constructsMaintainer bool
-	ast.Inspect(mainFunc.Body, func(n ast.Node) bool {
+	ast.Inspect(workersFunc.Body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
@@ -198,9 +220,9 @@ func TestMain_WiresPartitionMaintainerIntoStartup(t *testing.T) {
 	})
 
 	if !constructsMaintainer {
-		t.Error("func main does not construct partition_maintainer.New — the ensure-step has no production caller")
+		t.Error("func startWorkers does not construct partition_maintainer.New — the ensure-step has no production caller")
 	}
 	if !startsMaintainer {
-		t.Error("func main does not call startPartitionMaintainer — the ensure-step never runs")
+		t.Error("func startWorkers does not call startPartitionMaintainer — the ensure-step never runs")
 	}
 }
