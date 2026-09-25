@@ -2,6 +2,7 @@ package robots_txt_gateway
 
 import (
 	"alt/domain"
+	"alt/orchestrator/port/robots_txt_port"
 	"alt/utils/security"
 	"context"
 	"fmt"
@@ -15,11 +16,16 @@ import (
 )
 
 // RobotsTxtGateway handles fetching and parsing robots.txt files
-// Implements robots_txt_port.RobotsTxtPort
+// Implements robots_txt_port.RobotsTxtFetcherPort and robots_txt_port.RobotsTxtPolicyPort
 type RobotsTxtGateway struct {
 	httpClient    *http.Client
 	ssrfValidator *security.SSRFValidator
 }
+
+var (
+	_ robots_txt_port.RobotsTxtFetcherPort = (*RobotsTxtGateway)(nil)
+	_ robots_txt_port.RobotsTxtPolicyPort  = (*RobotsTxtGateway)(nil)
+)
 
 // NewRobotsTxtGateway creates a new RobotsTxtGateway
 func NewRobotsTxtGateway(httpClient *http.Client) *RobotsTxtGateway {
@@ -94,22 +100,7 @@ func (g *RobotsTxtGateway) FetchRobotsTxt(ctx context.Context, domainName, schem
 	}
 
 	content := string(body)
-	robotsTxt := &domain.RobotsTxt{
-		URL:           robotsURL,
-		Content:       content,
-		FetchedAt:     time.Now(),
-		StatusCode:    resp.StatusCode,
-		DisallowPaths: []string{},
-	}
-
-	// Parse robots.txt content
-	if resp.StatusCode == 200 {
-		parsed := g.parseRobotsTxt(content)
-		robotsTxt.CrawlDelay = parsed.CrawlDelay
-		robotsTxt.DisallowPaths = parsed.DisallowPaths
-	}
-
-	return robotsTxt, nil
+	return buildRobotsTxt(robotsURL, content, resp.StatusCode, time.Now()), nil
 }
 
 // parseResult holds parsed robots.txt information
@@ -118,8 +109,8 @@ type parseResult struct {
 	DisallowPaths []string
 }
 
-// parseRobotsTxt parses robots.txt content and extracts relevant information
-func (g *RobotsTxtGateway) parseRobotsTxt(content string) *parseResult {
+// parseRobotsTxt parses robots.txt content and extracts relevant information.
+func parseRobotsTxt(content string) *parseResult {
 	result := &parseResult{
 		CrawlDelay:    0,
 		DisallowPaths: []string{},
@@ -216,23 +207,48 @@ func (g *RobotsTxtGateway) IsPathAllowed(ctx context.Context, targetURL *url.URL
 		return true, nil
 	}
 
-	if robots.StatusCode >= 400 && robots.StatusCode < 500 {
-		// 4xx implies no robots.txt, so everything is allowed
-		return true, nil
+	return evaluateRobotsAccess(robots.StatusCode, robots.Content, targetURL.Path, userAgent), nil
+}
+
+// buildRobotsTxt builds a domain.RobotsTxt instance from fetched content and status.
+func buildRobotsTxt(robotsURL, content string, statusCode int, fetchedAt time.Time) *domain.RobotsTxt {
+	robotsTxt := &domain.RobotsTxt{
+		URL:           robotsURL,
+		Content:       content,
+		FetchedAt:     fetchedAt,
+		StatusCode:    statusCode,
+		DisallowPaths: []string{},
 	}
 
-	if robots.StatusCode >= 500 {
+	// Parse robots.txt content
+	if statusCode == 200 {
+		parsed := parseRobotsTxt(content)
+		robotsTxt.CrawlDelay = parsed.CrawlDelay
+		robotsTxt.DisallowPaths = parsed.DisallowPaths
+	}
+
+	return robotsTxt
+}
+
+// evaluateRobotsAccess evaluates whether access is allowed based on robots status and content.
+func evaluateRobotsAccess(statusCode int, content, path, userAgent string) bool {
+	if statusCode >= 400 && statusCode < 500 {
+		// 4xx implies no robots.txt, so everything is allowed
+		return true
+	}
+
+	if statusCode >= 500 {
 		// 5xx implies server error, usually full allowance is assumed after retries,
 		// but strictly speaking validation fails. Here we allow to avoid blocking on server fluff.
-		return true, nil
+		return true
 	}
 
 	// Use temoto/robotstxt to parse
-	data, err := robotstxt.FromBytes([]byte(robots.Content))
+	data, err := robotstxt.FromBytes([]byte(content))
 	if err != nil {
 		// If parsing fails, maybe content is malformed. Assume Allowed.
-		return true, nil
+		return true
 	}
 
-	return data.TestAgent(targetURL.Path, userAgent), nil
+	return data.TestAgent(path, userAgent)
 }

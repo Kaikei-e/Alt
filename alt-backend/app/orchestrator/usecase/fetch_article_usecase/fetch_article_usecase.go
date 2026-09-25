@@ -3,7 +3,6 @@ package fetch_article_usecase
 import (
 	"alt/domain"
 	"alt/orchestrator/port/fetch_article_port"
-	"alt/orchestrator/port/rag_integration_port"
 	"alt/orchestrator/port/robots_txt_port"
 	"alt/orchestrator/port/scraping_policy_port"
 	"alt/utils/html_parser"
@@ -21,7 +20,6 @@ import (
 
 // ArticleUsecase defines the business logic for fetching articles
 type ArticleUsecase interface {
-	Execute(ctx context.Context, articleURL string) (*string, error)
 	FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (content string, articleID string, ogImageURL string, err error)
 	FetchCompliantArticleWithRefresh(ctx context.Context, articleURL *url.URL, userContext domain.UserContext, forceRefresh bool) (content string, articleID string, ogImageURL string, err error)
 }
@@ -55,11 +53,25 @@ const defaultExternalFetchTimeout = 8 * time.Second
 // reports a crawl-delay miss without saying how much of it is left.
 const defaultCrawlDelayRetryAfter = 10 * time.Second
 
+// minCachedContentLength is the byte floor for treating saved article content
+// as a valid cache hit. Saved content shorter than this is presumed to be an
+// extractor error, an empty body, or a placeholder, so we re-fetch.
+// NOT the Inoreader Tier1 (500+ byte) ingestion criterion — that gate lives
+// upstream in pre-processor and does not belong on this read path.
+const minCachedContentLength = 100
+
+// shouldUseCachedArticle checks whether the cached article content meets the minimum length floor.
+func shouldUseCachedArticle(existingArticle *domain.ArticleContent) bool {
+	if existingArticle == nil {
+		return false
+	}
+	return len(strings.TrimSpace(existingArticle.Content)) >= minCachedContentLength
+}
+
 type ArticleUsecaseImpl struct {
 	articleFetcher       fetch_article_port.FetchArticlePort
-	robotsTxt            robots_txt_port.RobotsTxtPort
+	robotsTxt            robots_txt_port.RobotsTxtPolicyPort
 	repo                 ArticleRepository
-	ragIntegration       rag_integration_port.RagIntegrationPort
 	scrapingPolicyPort   scraping_policy_port.ScrapingPolicyPort // optional, nil = fallback to robotsTxt
 	fetchGroup           singleflight.Group                      // deduplicates concurrent fetches for the same URL
 	externalFetchTimeout time.Duration                           // zero = defaultExternalFetchTimeout
@@ -67,15 +79,13 @@ type ArticleUsecaseImpl struct {
 
 func NewArticleUsecase(
 	articleFetcher fetch_article_port.FetchArticlePort,
-	robotsTxt robots_txt_port.RobotsTxtPort,
+	robotsTxt robots_txt_port.RobotsTxtPolicyPort,
 	repo ArticleRepository,
-	ragIntegration rag_integration_port.RagIntegrationPort,
 ) ArticleUsecase {
 	return &ArticleUsecaseImpl{
 		articleFetcher:       articleFetcher,
 		robotsTxt:            robotsTxt,
 		repo:                 repo,
-		ragIntegration:       ragIntegration,
 		externalFetchTimeout: defaultExternalFetchTimeout,
 	}
 }
@@ -85,35 +95,17 @@ func NewArticleUsecase(
 // providing cached robots.txt checks and crawl-delay enforcement.
 func NewArticleUsecaseWithScrapingPolicy(
 	articleFetcher fetch_article_port.FetchArticlePort,
-	robotsTxt robots_txt_port.RobotsTxtPort,
+	robotsTxt robots_txt_port.RobotsTxtPolicyPort,
 	repo ArticleRepository,
-	ragIntegration rag_integration_port.RagIntegrationPort,
 	scrapingPolicyPort scraping_policy_port.ScrapingPolicyPort,
 ) ArticleUsecase {
 	return &ArticleUsecaseImpl{
 		articleFetcher:       articleFetcher,
 		robotsTxt:            robotsTxt,
 		repo:                 repo,
-		ragIntegration:       ragIntegration,
 		scrapingPolicyPort:   scrapingPolicyPort,
 		externalFetchTimeout: defaultExternalFetchTimeout,
 	}
-}
-
-// Execute is the legacy method (keeping for backward compatibility if used elsewhere)
-func (u *ArticleUsecaseImpl) Execute(ctx context.Context, articleURL string) (*string, error) {
-	content, err := u.articleFetcher.FetchArticleContents(ctx, articleURL)
-	if err != nil {
-		return nil, err
-	}
-	if content == nil || strings.TrimSpace(*content) == "" {
-		return nil, errors.New("fetched article content is empty")
-	}
-	textOnly := html_parser.ExtractArticleText(*content)
-	if strings.TrimSpace(textOnly) == "" {
-		return nil, errors.New("extracted article text is empty")
-	}
-	return &textOnly, nil
 }
 
 func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetURL *url.URL, userContext domain.UserContext) (content string, articleID string, ogImageURL string, err error) {
@@ -124,13 +116,6 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 	urlStr := targetURL.String()
 	domainStr := targetURL.Hostname()
 
-	// minCachedContentLength is the byte floor for treating saved article content
-	// as a valid cache hit. Saved content shorter than this is presumed to be an
-	// extractor error, an empty body, or a placeholder, so we re-fetch.
-	// NOT the Inoreader Tier1 (500+ byte) ingestion criterion — that gate lives
-	// upstream in pre-processor and does not belong on this read path.
-	const minCachedContentLength = 100
-
 	// 1. Check if article already exists in DB (skip when force refresh)
 	if !forceRefresh {
 		existingArticle, err := u.repo.FetchArticleByURL(ctx, urlStr)
@@ -140,7 +125,7 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 			return "", "", "", fmt.Errorf("failed to check existing article: %w", err)
 		}
 
-		if existingArticle != nil && len(strings.TrimSpace(existingArticle.Content)) >= minCachedContentLength {
+		if shouldUseCachedArticle(existingArticle) {
 			logger.Logger.InfoContext(ctx, "Article found in database", "url", urlStr, "id", existingArticle.ID)
 			// Try to retrieve cached og:image (lightweight query, no head_html)
 			cachedOgImage, ogErr := u.repo.FetchOgImageURLByArticleID(ctx, existingArticle.ID)

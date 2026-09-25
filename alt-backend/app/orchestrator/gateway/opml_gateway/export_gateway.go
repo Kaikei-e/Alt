@@ -38,6 +38,10 @@ func (g *ExportGateway) FetchFeedLinksForExport(ctx context.Context) ([]*domain.
 	// The hostname fallback stays here. An empty title means no feed has ever
 	// been collected for the link, and what to show instead is a rendering
 	// decision — the data plane reports the fact and nothing more.
+	return fillMissingExportTitles(links), nil
+}
+
+func fillMissingExportTitles(links []*domain.FeedLinkForExport) []*domain.FeedLinkForExport {
 	for _, link := range links {
 		if link.Title != "" {
 			continue
@@ -46,5 +50,5 @@ func (g *ExportGateway) FetchFeedLinksForExport(ctx context.Context) ([]*domain.
 			link.Title = parsed.Host
 		}
 	}
-	return links, nil
+	return links
 }

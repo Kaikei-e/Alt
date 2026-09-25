@@ -14,8 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"alt/config"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -482,7 +480,7 @@ func TestSecureHTTPClient_ConnectFailure_WrapsErrorWithoutLeakingIP(t *testing.T
 	})
 
 	// Use short dial timeout
-	cfg := &config.HTTPConfig{
+	cfg := &HTTPConfig{
 		ClientTimeout: 200 * time.Millisecond,
 		DialTimeout:   50 * time.Millisecond,
 	}
@@ -531,7 +529,7 @@ func TestSecureHTTPClient_PartialDeadline_TriesNextAddressOnFirstUnreachable(t *
 	// Total client timeout 600ms, DialTimeout 600ms.
 	// Without deadline splitting, unreachable IP consumes all 600ms and working IP is never reached.
 	// With deadline splitting, unreachable IP gets 300ms, fails, and working IP connects within the remaining 300ms.
-	cfg := &config.HTTPConfig{
+	cfg := &HTTPConfig{
 		ClientTimeout: 600 * time.Millisecond,
 		DialTimeout:   600 * time.Millisecond,
 	}
@@ -546,4 +544,30 @@ func TestSecureHTTPClient_PartialDeadline_TriesNextAddressOnFirstUnreachable(t *
 		assert.NoError(t, resp.Body.Close())
 	}()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestIsMetadataIP(t *testing.T) {
+	tests := []struct {
+		name     string
+		ip       string
+		expected bool
+	}{
+		{"nil ip", "", false},
+		{"aws metadata", "169.254.169.254", true},
+		{"alibaba metadata", "100.100.100.200", true},
+		{"oracle metadata", "192.0.0.192", true},
+		{"private ip", "192.168.1.1", false},
+		{"public ip", "8.8.8.8", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ip net.IP
+			if tt.ip != "" {
+				ip = net.ParseIP(tt.ip)
+				require.NotNil(t, ip)
+			}
+			assert.Equal(t, tt.expected, IsMetadataIP(ip))
+		})
+	}
 }

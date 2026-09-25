@@ -91,3 +91,23 @@ func TestExecute_PropagatesPortError(t *testing.T) {
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidRequest)
 }
+
+func TestClampBranchLimit(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "negative limit", limit: -1, want: defaultLimit},
+		{name: "zero limit", limit: 0, want: defaultLimit},
+		{name: "within range", limit: 3, want: 3},
+		{name: "exact max limit", limit: 5, want: 5},
+		{name: "above max limit", limit: 10, want: maxLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, clampBranchLimit(tt.limit))
+		})
+	}
+}

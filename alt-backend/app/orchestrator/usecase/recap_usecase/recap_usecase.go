@@ -5,15 +5,18 @@ import (
 
 	"alt/domain"
 	"alt/orchestrator/port/recap_port"
+	"alt/orchestrator/port/search_indexer_port"
 )
 
 type RecapUsecase struct {
-	recapPort recap_port.RecapPort
+	recapPort   recap_port.RecapPort
+	recapSearch search_indexer_port.RecapSearchPort
 }
 
-func NewRecapUsecase(recapPort recap_port.RecapPort) *RecapUsecase {
+func NewRecapUsecase(recapPort recap_port.RecapPort, recapSearch search_indexer_port.RecapSearchPort) *RecapUsecase {
 	return &RecapUsecase{
-		recapPort: recapPort,
+		recapPort:   recapPort,
+		recapSearch: recapSearch,
 	}
 }
 
@@ -34,9 +37,10 @@ func (u *RecapUsecase) GetEveningPulse(ctx context.Context, date string) (*domai
 }
 
 func (u *RecapUsecase) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
-	return u.recapPort.SearchRecapsByTag(ctx, tagName, limit)
+	return u.recapSearch.SearchRecapsByTag(ctx, tagName, limit)
 }
 
 func (u *RecapUsecase) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error) {
-	return u.recapPort.SearchRecapsByQuery(ctx, query, limit)
+	results, _, err := u.recapSearch.SearchRecapsByQuery(ctx, query, limit)
+	return results, err
 }

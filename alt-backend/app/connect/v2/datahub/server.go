@@ -31,10 +31,10 @@ import (
 // SetupConnectHandlers registers the service-to-service API cmd/datahub serves
 // behind mutual TLS: services.datahub.v1.DataHubService, and nothing else.
 //
-// Through Wave 2 this mux carried a second mount,
+// During the migration this mux carried a second mount,
 // services.backend.v1.BackendInternalService, so that peers migrated one PR at
 // a time to ADR-000954 D7's namespace and the ones that had not moved yet kept
-// working. Wave 2-C removed it once all five consumers were across. What is
+// working. That legacy mount was removed once all five consumers were across. What is
 // left is one name for one surface — a call on the retired path now finds
 // nothing here, which is what makes "the data plane has a single door" a
 // property of the code rather than of the deployment.
@@ -69,81 +69,83 @@ func SetupConnectHandlers(mux *http.ServeMux, container *datahubdi.DataHubCompon
 		panic("datahub: DataHubComponents.SovereignClient is nil — DataHubService.CreateArticle has nowhere to append ArticleCreated")
 	}
 
-	gw := container.InternalArticleGateway
+	articleGw := container.ArticleCatalogGateway
+	feedGw := container.FeedCatalogGateway
+	tagGw := container.TagCatalogGateway
 	datahubHandler := datahubapi.NewHandler(
-		gw, gw, gw, gw, gw,
+		articleGw, articleGw, articleGw, articleGw, articleGw,
 		container.KratosClient,
 		container.FetchRecentArticlesUsecase,
 		logger,
-		datahubapi.WithPhase2Ports(gw, gw, gw, gw, gw, gw),
-		datahubapi.WithPhase3Ports(gw, gw, gw),
-		datahubapi.WithBatchGetTagsPort(gw),
-		datahubapi.WithPhase4Ports(gw, gw, gw),
-		datahubapi.WithSummarizationPorts(gw, gw),
-		datahubapi.WithBackfillPorts(gw),
+		datahubapi.WithArticleIngestionPorts(articleGw, articleGw, articleGw, articleGw, feedGw, feedGw),
+		datahubapi.WithTagCatalogPorts(tagGw, tagGw, tagGw),
+		datahubapi.WithBatchGetTagsPort(tagGw),
+		datahubapi.WithSummaryQualityPorts(articleGw, articleGw, articleGw),
+		datahubapi.WithSummarizationPorts(articleGw, articleGw),
+		datahubapi.WithBackfillPorts(feedGw),
 		datahubapi.WithEventPublisher(container.EventPublisher),
 		datahubapi.WithKnowledgeVersionUsecases(container.CreateSummaryVersionUsecase, container.CreateTagSetVersionUsecase),
 		datahubapi.WithKnowledgeEventPort(container.SovereignClient),
 		datahubapi.WithRAGToolPorts(container.FetchTagCloudUsecase, container.FetchArticlesByTagUsecase),
 		datahubapi.WithRecapArticlesUsecase(container.RecapArticlesUsecase),
 		datahubapi.WithFeedsInWindowUsecase(container.FeedsInWindowUsecase),
-		// ADR-000954 Wave 3 batch 1. Unlike the phase options above, every
-		// argument here is required and WithWave3Capabilities panics on a nil
+		// Media and cache capabilities. Unlike the optional options above, every
+		// argument here is required and WithMediaCapabilities panics on a nil
 		// one: these are the only route alt-backend and alt-harvester have to
 		// the outbox, article_heads, the image cache and the scraping policy.
-		datahubapi.WithWave3Capabilities(
+		datahubapi.WithMediaCapabilities(
 			container.OutboxUsecase,
 			container.OgImageGateway,
 			container.ImageProxyCacheGateway,
 			container.ScrapingPolicyGateway,
 			container.AutoFulltextGateway,
 		),
-		// ADR-000954 Wave 3 batch 2, same rule: after this batch alt-backend
+		// Article capabilities, same rule: after this wiring alt-backend
 		// has no database pool for articles, so a nil here would make every
 		// article surface answer Unimplemented.
-		datahubapi.WithWave3Batch2Capabilities(
+		datahubapi.WithArticleCapabilities(
 			container.ArticleWriteGateway,
 			container.ArticleReadGateway,
 			container.KnowledgeBackfillGateway,
 		),
-		// ADR-000954 Wave 3 batch 3, same rule once more: feed_links,
+		// Feed and feed-link capabilities, same rule once more: feed_links,
 		// feed_link_availability and feeds. A nil feed port would leave every
 		// user looking at an empty feed list, and a nil availability port
 		// would leave alt-harvester polling dead feeds forever — both while
 		// the process reported healthy.
-		datahubapi.WithWave3Batch3Capabilities(
+		datahubapi.WithFeedCapabilities(
 			container.FeedLinkGateway,
 			container.FeedLinkAvailabilityGateway,
 			container.FeedGateway,
 		),
-		// ADR-000954 Wave 3 batch 4, same rule again: read_status,
+		// Read-state and tag-read capabilities, same rule again: read_status,
 		// user_feed_subscriptions, favorite_feeds and the tag tables. A nil
 		// read-state port would make every read mark and every star vanish
 		// without an error anyone could see, and a nil tag port would make
 		// every article look untagged — which the on-the-fly path reads as
 		// "generate some" and would turn into an mq-hub request per view.
-		datahubapi.WithWave3Batch4Capabilities(
+		datahubapi.WithReadStateAndTagCapabilities(
 			container.ReadStateGateway,
 			container.TagReadGateway,
 		),
-		// ADR-000954 Wave 3 batch 5, and the rule holds to the end:
+		// Versioned artifact and stats capabilities, and the rule holds to the end:
 		// summary_versions, tag_set_versions and every dashboard count. A nil
-		// version port is the worst of the five batches, because the knowledge
+		// version port is the worst of the capability groups, because the knowledge
 		// events describing those versions are appended by the caller either
 		// way — sovereign would fill with references to versions that were
 		// never written, and nothing would look wrong until a replay.
-		datahubapi.WithWave3Batch5Capabilities(
+		datahubapi.WithVersionAndStatsCapabilities(
 			container.SummaryVersionCapabilityGateway,
 			container.TagSetVersionCapabilityGateway,
 			container.StatsGateway,
 		),
-		// ADR-000954 Wave 3 batch 6, and the last application of the rule:
+		// Tag Trail and article reference capabilities, and the last application of the rule:
 		// the Tag Trail's paged reads and the recall rail's article fallback.
-		// These two are the quietest failures of the six batches — an unwired
+		// These two are the quietest failures of the capability groups — an unwired
 		// Tag Trail renders "no articles" and an unwired fallback drops
 		// exactly the items it exists to rescue, both with a 200 — which is
 		// why they refuse nil at construction like the rest.
-		datahubapi.WithWave3Batch6Capabilities(
+		datahubapi.WithTagTrailCapabilities(
 			container.TagTrailGateway,
 			container.ArticleRefGateway,
 		),

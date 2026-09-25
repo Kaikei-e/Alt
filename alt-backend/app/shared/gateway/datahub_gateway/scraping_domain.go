@@ -20,8 +20,19 @@ import (
 // stays there (ADR-000954 D4) — parses it, and writes the result through
 // Save/UpdatePolicy. alt-backend reads the same rows on the article fetch path
 // to decide whether it may retrieve a body at all.
+// scrapingDomainDataHubClient isolates the data-hub RPCs called by ScrapingDomainGateway and DeclinedDomainGateway.
+type scrapingDomainDataHubClient interface {
+	GetScrapingDomainByDomain(context.Context, *connect.Request[datahubv1.GetScrapingDomainByDomainRequest]) (*connect.Response[datahubv1.GetScrapingDomainByDomainResponse], error)
+	GetScrapingDomainByID(context.Context, *connect.Request[datahubv1.GetScrapingDomainByIDRequest]) (*connect.Response[datahubv1.GetScrapingDomainByIDResponse], error)
+	SaveScrapingDomain(context.Context, *connect.Request[datahubv1.SaveScrapingDomainRequest]) (*connect.Response[datahubv1.SaveScrapingDomainResponse], error)
+	ListScrapingDomains(context.Context, *connect.Request[datahubv1.ListScrapingDomainsRequest]) (*connect.Response[datahubv1.ListScrapingDomainsResponse], error)
+	UpdateScrapingDomainPolicy(context.Context, *connect.Request[datahubv1.UpdateScrapingDomainPolicyRequest]) (*connect.Response[datahubv1.UpdateScrapingDomainPolicyResponse], error)
+	SaveDeclinedDomain(context.Context, *connect.Request[datahubv1.SaveDeclinedDomainRequest]) (*connect.Response[datahubv1.SaveDeclinedDomainResponse], error)
+	IsDomainDeclined(context.Context, *connect.Request[datahubv1.IsDomainDeclinedRequest]) (*connect.Response[datahubv1.IsDomainDeclinedResponse], error)
+}
+
 type ScrapingDomainGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client scrapingDomainDataHubClient
 }
 
 func NewScrapingDomainGateway(client datahubv1connect.DataHubServiceClient) *ScrapingDomainGateway {
@@ -140,7 +151,7 @@ func (g *ScrapingDomainGateway) UpdatePolicy(ctx context.Context, id uuid.UUID, 
 // about a different table: scraping_domains is what the publisher permits,
 // declined_domains is what this user asked us not to do.
 type DeclinedDomainGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client scrapingDomainDataHubClient
 }
 
 func NewDeclinedDomainGateway(client datahubv1connect.DataHubServiceClient) *DeclinedDomainGateway {

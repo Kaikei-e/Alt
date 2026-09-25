@@ -160,15 +160,7 @@ func (g *FetchArticleTagsGateway) generateAndPersistTags(ctx context.Context, ar
 
 	// 5. Convert generated tags to domain tags
 	now := time.Now()
-	domainTags := make([]*domain.FeedTag, len(resp.Tags))
-	for i, tag := range resp.Tags {
-		domainTags[i] = &domain.FeedTag{
-			ID:         tag.ID,
-			TagName:    tag.Name,
-			Confidence: float64(tag.Confidence),
-			CreatedAt:  now,
-		}
-	}
+	domainTags := mapGeneratedTagsToDomain(resp.Tags, now)
 
 	logger.Logger.InfoContext(ctx, "generated tags on-the-fly successfully",
 		"articleID", articleID,
@@ -177,13 +169,7 @@ func (g *FetchArticleTagsGateway) generateAndPersistTags(ctx context.Context, ar
 
 	// 6. Persist generated tags to DB (fail-open: return tags even if upsert fails)
 	if article.FeedID != "" {
-		upsertItems := make([]domain.TagUpsert, len(resp.Tags))
-		for i, tag := range resp.Tags {
-			upsertItems[i] = domain.TagUpsert{
-				Name:       tag.Name,
-				Confidence: tag.Confidence,
-			}
-		}
+		upsertItems := mapTagsToUpsertItems(resp.Tags)
 
 		_, upsertErr := g.db.UpsertArticleTags(ctx, articleID, article.FeedID, upsertItems)
 		if upsertErr != nil {
@@ -207,13 +193,7 @@ func (g *FetchArticleTagsGateway) generateTagsWithRetry(
 	articleID string,
 	article *domain.ArticleContent,
 ) (*mqhub_connect.GenerateTagsResponse, error) {
-	req := mqhub_connect.GenerateTagsRequest{
-		ArticleID: articleID,
-		Title:     article.Title,
-		Content:   article.Content,
-		FeedID:    article.FeedID,
-		TimeoutMs: g.config.TagGenerationTimeoutMs,
-	}
+	req := buildGenerateTagsRequest(articleID, article, g.config.TagGenerationTimeoutMs)
 
 	maxAttempts := 1 + g.config.MaxRetries
 	var lastErr error
@@ -246,4 +226,38 @@ func (g *FetchArticleTagsGateway) generateTagsWithRetry(
 	}
 
 	return nil, lastErr
+}
+
+func mapGeneratedTagsToDomain(tags []mqhub_connect.GeneratedTag, createdAt time.Time) []*domain.FeedTag {
+	domainTags := make([]*domain.FeedTag, len(tags))
+	for i, tag := range tags {
+		domainTags[i] = &domain.FeedTag{
+			ID:         tag.ID,
+			TagName:    tag.Name,
+			Confidence: float64(tag.Confidence),
+			CreatedAt:  createdAt,
+		}
+	}
+	return domainTags
+}
+
+func mapTagsToUpsertItems(tags []mqhub_connect.GeneratedTag) []domain.TagUpsert {
+	upsertItems := make([]domain.TagUpsert, len(tags))
+	for i, tag := range tags {
+		upsertItems[i] = domain.TagUpsert{
+			Name:       tag.Name,
+			Confidence: tag.Confidence,
+		}
+	}
+	return upsertItems
+}
+
+func buildGenerateTagsRequest(articleID string, article *domain.ArticleContent, timeoutMs int32) mqhub_connect.GenerateTagsRequest {
+	return mqhub_connect.GenerateTagsRequest{
+		ArticleID: articleID,
+		Title:     article.Title,
+		Content:   article.Content,
+		FeedID:    article.FeedID,
+		TimeoutMs: timeoutMs,
+	}
 }

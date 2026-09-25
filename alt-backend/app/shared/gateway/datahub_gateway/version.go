@@ -30,8 +30,19 @@ import (
 // service and stay with the caller (ADR-000954 D4). The order between them is
 // the caller's too, which is why this gateway offers no combined procedure that
 // would make that order invisible.
+// versionDataHubClient isolates the data-hub RPCs called by VersionGateway.
+type versionDataHubClient interface {
+	CreateSummaryVersion(context.Context, *connect.Request[datahubv1.CreateSummaryVersionRequest]) (*connect.Response[datahubv1.CreateSummaryVersionResponse], error)
+	MarkSummaryVersionSuperseded(context.Context, *connect.Request[datahubv1.MarkSummaryVersionSupersededRequest]) (*connect.Response[datahubv1.MarkSummaryVersionSupersededResponse], error)
+	GetSummaryVersionByID(context.Context, *connect.Request[datahubv1.GetSummaryVersionByIDRequest]) (*connect.Response[datahubv1.GetSummaryVersionByIDResponse], error)
+	GetLatestSummaryVersion(context.Context, *connect.Request[datahubv1.GetLatestSummaryVersionRequest]) (*connect.Response[datahubv1.GetLatestSummaryVersionResponse], error)
+	CreateTagSetVersion(context.Context, *connect.Request[datahubv1.CreateTagSetVersionRequest]) (*connect.Response[datahubv1.CreateTagSetVersionResponse], error)
+	MarkTagSetVersionSuperseded(context.Context, *connect.Request[datahubv1.MarkTagSetVersionSupersededRequest]) (*connect.Response[datahubv1.MarkTagSetVersionSupersededResponse], error)
+	GetTagSetVersionByID(context.Context, *connect.Request[datahubv1.GetTagSetVersionByIDRequest]) (*connect.Response[datahubv1.GetTagSetVersionByIDResponse], error)
+}
+
 type VersionGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client versionDataHubClient
 }
 
 func NewVersionGateway(client datahubv1connect.DataHubServiceClient) *VersionGateway {

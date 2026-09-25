@@ -573,3 +573,123 @@ func TestGetKnowledgeHomeUsecase_Execute_ReturnsCancellationErrors(t *testing.T)
 		require.Nil(t, result)
 	})
 }
+
+func TestComputeServiceQuality(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	staleTime := now.Add(-16 * time.Minute)
+	freshTime := now.Add(-5 * time.Minute)
+
+	tests := []struct {
+		name     string
+		itemsErr error
+		result   *Result
+		now      time.Time
+		want     string
+	}{
+		{
+			name:     "items error gives fallback",
+			itemsErr: errors.New("items db down"),
+			result:   &Result{},
+			now:      now,
+			want:     ServiceQualityFallback,
+		},
+		{
+			name:     "stale projection gives degraded",
+			itemsErr: nil,
+			result: &Result{
+				Digest: domain.TodayDigest{LastProjectedAt: &staleTime},
+			},
+			now:  now,
+			want: ServiceQualityDegraded,
+		},
+		{
+			name:     "degraded flag gives degraded",
+			itemsErr: nil,
+			result: &Result{
+				Degraded: true,
+				Digest:   domain.TodayDigest{LastProjectedAt: &freshTime},
+			},
+			now:  now,
+			want: ServiceQualityDegraded,
+		},
+		{
+			name:     "healthy response gives full",
+			itemsErr: nil,
+			result: &Result{
+				Degraded: false,
+				Digest:   domain.TodayDigest{LastProjectedAt: &freshTime},
+			},
+			now:  now,
+			want: ServiceQualityFull,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := computeServiceQuality(tt.itemsErr, tt.result, tt.now)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestEnrichItemsWithTagHotspots(t *testing.T) {
+	trending := []knowledge_home_port.TrendingTag{
+		{TagName: "golang", RecentCount: 10},
+		{TagName: "rust", RecentCount: 8},
+	}
+
+	tests := []struct {
+		name     string
+		items    []domain.KnowledgeHomeItem
+		trending []knowledge_home_port.TrendingTag
+		verify   func(t *testing.T, enriched []domain.KnowledgeHomeItem)
+	}{
+		{
+			name:     "empty trending returns original",
+			items:    []domain.KnowledgeHomeItem{{ItemKey: "1", Tags: []string{"golang"}}},
+			trending: nil,
+			verify: func(t *testing.T, enriched []domain.KnowledgeHomeItem) {
+				assert.Empty(t, enriched[0].WhyReasons)
+			},
+		},
+		{
+			name:     "adds tag hotspot to matching tag",
+			items:    []domain.KnowledgeHomeItem{{ItemKey: "1", Tags: []string{"golang"}}},
+			trending: trending,
+			verify: func(t *testing.T, enriched []domain.KnowledgeHomeItem) {
+				require.Len(t, enriched[0].WhyReasons, 1)
+				assert.Equal(t, domain.WhyTagHotspot, enriched[0].WhyReasons[0].Code)
+				assert.Equal(t, "golang", enriched[0].WhyReasons[0].Tag)
+			},
+		},
+		{
+			name: "does not duplicate tag hotspot",
+			items: []domain.KnowledgeHomeItem{{
+				ItemKey: "1",
+				Tags:    []string{"golang"},
+				WhyReasons: []domain.WhyReason{
+					{Code: domain.WhyTagHotspot, Tag: "golang"},
+				},
+			}},
+			trending: trending,
+			verify: func(t *testing.T, enriched []domain.KnowledgeHomeItem) {
+				assert.Len(t, enriched[0].WhyReasons, 1)
+			},
+		},
+		{
+			name:     "no matching tags leaves reasons unchanged",
+			items:    []domain.KnowledgeHomeItem{{ItemKey: "1", Tags: []string{"python"}}},
+			trending: trending,
+			verify: func(t *testing.T, enriched []domain.KnowledgeHomeItem) {
+				assert.Empty(t, enriched[0].WhyReasons)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := enrichItemsWithTagHotspots(tt.items, tt.trending)
+			tt.verify(t, res)
+		})
+	}
+}

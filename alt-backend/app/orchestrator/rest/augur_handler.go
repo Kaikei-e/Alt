@@ -6,6 +6,7 @@ import (
 	"alt/domain"
 	middleware_custom "alt/middleware"
 	"alt/orchestrator/port/rag_integration_port"
+	"alt/orchestrator/rest/resterr"
 	"alt/orchestrator/usecase/answer_chat_usecase"
 	"alt/orchestrator/usecase/retrieve_context_usecase"
 	"alt/utils/logger"
@@ -43,7 +44,7 @@ func (h *AugurHandler) RetrieveContext(c echo.Context) error {
 
 	contexts, err := h.retrieveContextUsecase.Execute(c.Request().Context(), query, user.UserID.String())
 	if err != nil {
-		return HandleError(c, err, "RetrieveContext")
+		return resterr.HandleError(c, err, "RetrieveContext")
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -61,21 +62,23 @@ type AnswerRequest struct {
 	Stream   bool          `json:"stream"`
 }
 
+// extractLastUserQuery scans messages in reverse order to find the last user message.
+func extractLastUserQuery(messages []ChatMessage) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			return messages[i].Content
+		}
+	}
+	return ""
+}
+
 func (h *AugurHandler) Answer(c echo.Context) error {
 	var req AnswerRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	// Extract last user message as query
-	var query string
-	for i := len(req.Messages) - 1; i >= 0; i-- {
-		if req.Messages[i].Role == "user" {
-			query = req.Messages[i].Content
-			break
-		}
-	}
-
+	query := extractLastUserQuery(req.Messages)
 	if query == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "no user message found"})
 	}
@@ -87,7 +90,7 @@ func (h *AugurHandler) Answer(c echo.Context) error {
 
 	answerChan, err := h.answerChatUsecase.Execute(c.Request().Context(), input)
 	if err != nil {
-		return HandleError(c, err, "Answer")
+		return resterr.HandleError(c, err, "Answer")
 	}
 
 	if req.Stream {
@@ -256,7 +259,7 @@ func splitLines(s string) []string {
 // JWT exactly like every other /v1 group in routes.go — before this guard they
 // were the only user-facing routes reachable anonymously from the compose
 // network or 127.0.0.1:9000.
-func RegisterAugurRoutes(e *echo.Echo, g *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+func RegisterAugurRoutes(e *echo.Echo, g *echo.Group, container *di.ApplicationComponents, cfg config.AuthConfig) {
 	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
 
 	handler := NewAugurHandler(container.RetrieveContextUsecase, container.AnswerChatUsecase)

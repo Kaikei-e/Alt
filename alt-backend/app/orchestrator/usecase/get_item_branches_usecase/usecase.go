@@ -44,15 +44,21 @@ func (u *GetItemBranchesUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 	if itemKey == "" {
 		return nil, fmt.Errorf("%w: item_key required", ErrInvalidRequest)
 	}
-	if limit <= 0 {
-		limit = defaultLimit
-	}
-	if limit > maxLimit {
-		limit = maxLimit
-	}
+	limit = clampBranchLimit(limit)
 	branches, err := u.port.GetTrailBranchesForAnchor(ctx, userID, itemKey, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get item branches: %w", err)
 	}
 	return branches, nil
+}
+
+// clampBranchLimit clamps limit to [defaultLimit, maxLimit] range.
+func clampBranchLimit(limit int) int {
+	if limit <= 0 {
+		return defaultLimit
+	}
+	if limit > maxLimit {
+		return maxLimit
+	}
+	return limit
 }

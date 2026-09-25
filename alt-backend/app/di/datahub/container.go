@@ -1,12 +1,12 @@
 // Package datahub is cmd/datahub's composition root.
 //
-// It is a package of its own, separate from alt/di, since ADR-000954 Wave 3
-// batch 6 — and the reason is the same one that split the binaries. This is
+// It is a package of its own, separate from alt/di, under ADR-000954
+// — and the reason is the same one that split the binaries. This is
 // the only root that constructs an *alt_db.AltDBRepository, and Go's unit of
 // linkage is the package: leaving it in alt/di would have put
 // alt/shared/driver/alt_db in the dependency graph of cmd/backend and
-// cmd/harvester too, since both import alt/di for their own roots. Wave 3's
-// exit condition is that those two binaries *cannot* reach the database, and
+// cmd/harvester too, since both import alt/di for their own roots. The architectural
+// requirement is that those two binaries *cannot* reach the database, and
 // with one shared di package that could only ever have been a convention.
 //
 // It imports alt/di rather than duplicating it: the wiring-state loggers and
@@ -71,8 +71,10 @@ type DataHubComponents struct {
 	// Knowledge event sink for versioned artifacts.
 	SovereignClient *sovereign_client.Client
 
-	// The single gateway instance behind every DataHubService port.
-	InternalArticleGateway *internal_article_gateway.Gateway
+	// Specific gateways behind DataHubService ports.
+	ArticleCatalogGateway *internal_article_gateway.ArticleCatalogGateway
+	FeedCatalogGateway    *internal_article_gateway.FeedCatalogGateway
+	TagCatalogGateway     *internal_article_gateway.TagCatalogGateway
 
 	// Versioned artifacts (append-first: summaries and tag sets are versioned,
 	// never overwritten).
@@ -88,22 +90,22 @@ type DataHubComponents struct {
 	FeedsInWindowUsecase       *feeds_in_window_usecase.FeedsInWindowUsecase
 	FetchRecentArticlesUsecase *fetch_recent_articles_usecase.FetchRecentArticlesUsecase
 
-	// ADR-000954 Wave 3 batch 1 (catalog §2.A / §2.D / §2.E / §2.L / §2.O).
+	// Media and cache capabilities (catalog §2.A / §2.D / §2.E / §2.L / §2.O).
 	//
 	// The outbox gets a usecase because it has a state machine to enforce;
 	// the other four are reads and single-statement writes whose invariants
 	// are already in the SQL, so they go straight from handler to gateway the
-	// way the phase 1-4 ports do.
+	// way the catalog ports do.
 	OutboxUsecase          *outbox_usecase.OutboxUsecase
 	OgImageGateway         datahub_capability_port.OgImagePort
 	ImageProxyCacheGateway datahub_capability_port.ImageProxyCachePort
 	ScrapingPolicyGateway  datahub_capability_port.ScrapingPolicyPort
 	AutoFulltextGateway    datahub_capability_port.AutoFulltextPort
 
-	// ADR-000954 Wave 3 batch 2 (catalog §2.B / §2.C / §2.N).
+	// Article capabilities (catalog §2.B / §2.C / §2.N).
 	//
 	// The article write gets no usecase even though it is the heaviest
-	// transaction in the batch: the articles upsert and the outbox insert are
+	// transaction in the set: the articles upsert and the outbox insert are
 	// already one statement pair inside one driver method, so a usecase would
 	// only forward. What made the outbox need one was a state machine spread
 	// across several driver calls; this has none.
@@ -111,17 +113,17 @@ type DataHubComponents struct {
 	ArticleReadGateway       datahub_capability_port.ArticleReadPort
 	KnowledgeBackfillGateway datahub_capability_port.KnowledgeBackfillPort
 
-	// ADR-000954 Wave 3 batch 3 (catalog §2.F / §2.G / §2.H).
+	// Feed and feed-link capabilities (catalog §2.F / §2.G / §2.H).
 	//
-	// The availability gateway is where the batch's one merged capability
-	// lands: RecordFeedLinkFailure holds the increment and the auto-disable in
+	// The availability gateway is where the merged capability lands:
+	// RecordFeedLinkFailure holds the increment and the auto-disable in
 	// one transaction, which is exactly the read-modify-write the collector
 	// used to run across a process boundary (catalog §4-4).
 	FeedLinkGateway             datahub_capability_port.FeedLinkPort
 	FeedLinkAvailabilityGateway datahub_capability_port.FeedLinkAvailabilityPort
 	FeedGateway                 datahub_capability_port.FeedPort
 
-	// ADR-000954 Wave 3 batch 4 (catalog §2.I / §2.J).
+	// Read-state and tag-read capabilities (catalog §2.I / §2.J).
 	//
 	// Neither gets a usecase. The read-state writes each hold their invariant
 	// in one statement or one driver transaction, and the tag reads have none
@@ -130,7 +132,7 @@ type DataHubComponents struct {
 	ReadStateGateway datahub_capability_port.ReadStatePort
 	TagReadGateway   datahub_capability_port.TagReadPort
 
-	// ADR-000954 Wave 3 batch 5 (catalog §2.K / §2.M).
+	// Versioned artifact and stats capabilities (catalog §2.K / §2.M).
 	//
 	// The version gateways are where this binary's reason for existing is most
 	// visible: MarkSuperseded holds a per-article pg_advisory_xact_lock across
@@ -141,9 +143,9 @@ type DataHubComponents struct {
 	TagSetVersionCapabilityGateway  datahub_capability_port.TagSetVersionPort
 	StatsGateway                    datahub_capability_port.StatsPort
 
-	// ADR-000954 Wave 3 batch 6 (catalog §2.J / §2.C) — the last two.
+	// Tag Trail and article reference capabilities (catalog §2.J / §2.C) — the last two.
 	//
-	// TagTrailGateway is the paged Tag Trail read whose Wave 2 wire shape
+	// TagTrailGateway is the paged Tag Trail read whose earlier wire shape
 	// could not express the caller's cursor, and ArticleRefGateway is the
 	// recall rail's projection fallback. Neither gets a usecase: one is a
 	// query and the other is a single row, and there is no state machine
@@ -198,9 +200,10 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	}
 	sovereignCli := sovereign_client.NewClient(cfg.Sovereign.URL, sovereignEnabled, sovereign_client.WithEventToken(cfg.Sovereign.EventToken))
 
-	// One gateway instance satisfies every required and optional port of
-	// datahubapi.NewHandler.
-	internalArticleGw := internal_article_gateway.NewGateway(altDB)
+	// Specific gateways satisfying DataHubService ports.
+	articleCatalogGw := internal_article_gateway.NewArticleCatalogGateway(altDB)
+	feedCatalogGw := internal_article_gateway.NewFeedCatalogGateway(altDB)
+	tagCatalogGw := internal_article_gateway.NewTagCatalogGateway(altDB)
 
 	// Versioned artifacts.
 	//
@@ -209,7 +212,7 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	// object per table, so a version written through the RPC and one written
 	// through the chained usecase take the identical path, advisory lock
 	// included — and the capability port names its methods after the artifact
-	// precisely so that summary_version_port and tag_set_version_port are
+	// precisely so that summary_version_port and datahub_capability_port.TagSetVersionPort are
 	// satisfied by the same type, with no adapter in between.
 	summaryVersionGw := datahub_capability_gateway.NewSummaryVersionGateway(altDB)
 	tagSetVersionGw := datahub_capability_gateway.NewTagSetVersionGateway(altDB)
@@ -244,7 +247,7 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	fetchRecentArticlesGw := fetch_recent_articles_gateway.NewFetchRecentArticlesGateway(pool)
 	fetchRecentArticlesUC := fetch_recent_articles_usecase.NewFetchRecentArticlesUsecase(fetchRecentArticlesGw)
 
-	// ADR-000954 Wave 3 batch 1 capabilities. Built unconditionally: with the
+	// Media and cache capabilities. Built unconditionally: with the
 	// callers' own database pools gone, these are the only route alt-backend
 	// and alt-harvester have to these tables, so there is no configuration
 	// under which leaving one unwired is a valid deployment.
@@ -253,65 +256,65 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 	imageProxyCacheGw := datahub_capability_gateway.NewImageProxyCacheGateway(altDB)
 	scrapingPolicyGw := datahub_capability_gateway.NewScrapingPolicyGateway(altDB)
 	autoFulltextGw := datahub_capability_gateway.NewAutoFulltextGateway(altDB)
-	slog.Info("datahub.wave3_capabilities_enabled",
+	slog.Info("datahub.capabilities_enabled",
 		"groups", "outbox,og_image,image_proxy_cache,scraping_policy,auto_fulltext",
 		"procedures", 23,
 		"adr", "ADR-000954 Wave 3 batch 1")
 
-	// ADR-000954 Wave 3 batch 2 capabilities. Same reasoning: after this batch
+	// Article capabilities. Same reasoning: after this wiring
 	// alt-backend has no database pool for articles, so there is no deployment
 	// in which leaving one of these unwired is valid.
 	articleWriteGw := datahub_capability_gateway.NewArticleWriteGateway(altDB)
 	articleReadGw := datahub_capability_gateway.NewArticleReadGateway(altDB)
 	knowledgeBackfillGw := datahub_capability_gateway.NewKnowledgeBackfillGateway(altDB)
-	slog.Info("datahub.wave3_capabilities_enabled",
+	slog.Info("datahub.capabilities_enabled",
 		"groups", "article_write,article_read,knowledge_backfill",
 		"procedures", 13,
 		"adr", "ADR-000954 Wave 3 batch 2")
 
-	// ADR-000954 Wave 3 batch 3 capabilities. Same reasoning again: after this
-	// batch neither alt-backend nor alt-harvester has a pool for feed_links,
+	// Feed and feed-link capabilities. Same reasoning again: after this
+	// wiring neither alt-backend nor alt-harvester has a pool for feed_links,
 	// feed_link_availability or feeds.
 	feedLinkGw := datahub_capability_gateway.NewFeedLinkGateway(altDB)
 	feedLinkAvailabilityGw := datahub_capability_gateway.NewFeedLinkAvailabilityGateway(altDB)
 	feedGw := datahub_capability_gateway.NewFeedGateway(altDB)
-	slog.Info("datahub.wave3_capabilities_enabled",
+	slog.Info("datahub.capabilities_enabled",
 		"groups", "feed_link,feed_link_availability,feed",
 		"procedures", 24,
 		"adr", "ADR-000954 Wave 3 batch 3")
 
-	// ADR-000954 Wave 3 batch 4 capabilities. Same reasoning once more: after
-	// this batch alt-backend has no pool for read_status,
+	// Read-state and tag-read capabilities. Same reasoning once more: after
+	// this wiring alt-backend has no pool for read_status,
 	// user_feed_subscriptions, favorite_feeds or the tag tables.
 	readStateGw := datahub_capability_gateway.NewReadStateGateway(altDB)
 	tagReadGw := datahub_capability_gateway.NewTagReadGateway(altDB)
-	slog.Info("datahub.wave3_capabilities_enabled",
+	slog.Info("datahub.capabilities_enabled",
 		"groups", "read_state,tag_read",
 		"procedures", 15,
 		"adr", "ADR-000954 Wave 3 batch 4")
 
-	// ADR-000954 Wave 3 batch 5 capabilities. Same reasoning to the end: after
-	// this batch alt-backend has no pool for summary_versions,
+	// Versioned artifact and stats capabilities. Same reasoning to the end: after
+	// this wiring alt-backend has no pool for summary_versions,
 	// tag_set_versions or any of the dashboard counts.
 	statsGw := datahub_capability_gateway.NewStatsGateway(altDB)
-	slog.Info("datahub.wave3_capabilities_enabled",
+	slog.Info("datahub.capabilities_enabled",
 		"groups", "summary_version,tag_set_version,stats",
 		"procedures", 14,
 		"adr", "ADR-000954 Wave 3 batch 5")
 
-	// ADR-000954 Wave 3 batch 6 capabilities — the two that close the wave.
+	// Tag Trail and article reference capabilities — the two that close the data plane.
 	// After these, alt-backend opens no database pool at all, so "leaving one
 	// unwired" is not a degraded deployment but a missing feature that still
 	// answers 200.
 	tagTrailGw := datahub_capability_gateway.NewTagTrailGateway(altDB)
 	articleRefGw := datahub_capability_gateway.NewArticleRefGateway(altDB)
-	slog.Info("datahub.wave3_capabilities_enabled",
+	slog.Info("datahub.capabilities_enabled",
 		"groups", "tag_trail,article_ref",
 		"procedures", 3,
 		"adr", "ADR-000954 Wave 3 batch 6")
 
-	// Web Push storage. Built unconditionally for the same reason the Wave 3
-	// batches are: alt-backend has no database pool, so this is the only route
+	// Web Push storage. Built unconditionally for the same reason the capability
+	// options are: alt-backend has no database pool, so this is the only route
 	// alt.push.v1.PushService has to a subscription, and there is no
 	// configuration under which leaving it unwired is a valid deployment. The
 	// feature flag for Web Push lives in front of the browser-facing service,
@@ -331,7 +334,9 @@ func NewDataHubComponents(pool *pgxpool.Pool, cfg *config.Config) *DataHubCompon
 		MQHubClient:                 mqhubClient,
 		EventPublisher:              eventPublisher,
 		SovereignClient:             sovereignCli,
-		InternalArticleGateway:      internalArticleGw,
+		ArticleCatalogGateway:       articleCatalogGw,
+		FeedCatalogGateway:          feedCatalogGw,
+		TagCatalogGateway:           tagCatalogGw,
 		CreateSummaryVersionUsecase: createSummaryVersionUC,
 		CreateTagSetVersionUsecase:  createTagSetVersionUC,
 		FetchTagCloudUsecase:        fetchTagCloudUC,

@@ -186,3 +186,25 @@ func TestExecute_NoEpisodesSkipsThumbnailLookupEntirely(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, thumbs.calls)
 }
+
+func TestClampTrailLimit(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    int
+		expected int
+	}{
+		{"negative limit", -5, defaultLimit},
+		{"zero limit", 0, defaultLimit},
+		{"valid limit 1", 1, 1},
+		{"valid limit 50", 50, 50},
+		{"valid limit 100", 100, 100},
+		{"exceeding limit 101", 101, defaultLimit},
+		{"large limit", 1000, defaultLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, clampTrailLimit(tt.input))
+		})
+	}
+}

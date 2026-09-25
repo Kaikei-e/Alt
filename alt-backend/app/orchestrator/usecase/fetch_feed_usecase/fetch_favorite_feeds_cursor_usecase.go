@@ -5,7 +5,6 @@ import (
 	"alt/orchestrator/port/fetch_feed_port"
 	"alt/utils/logger"
 	"context"
-	"errors"
 	"time"
 )
 
@@ -18,13 +17,9 @@ func NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_por
 }
 
 func (u *FetchFavoriteFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
-	if limit <= 0 {
-		logger.Logger.ErrorContext(ctx, "invalid limit: must be greater than 0", "limit", limit)
-		return nil, errors.New("limit must be greater than 0")
-	}
-	if limit > 100 {
-		logger.Logger.ErrorContext(ctx, "invalid limit: cannot exceed 100", "limit", limit)
-		return nil, errors.New("limit cannot exceed 100")
+	if err := validateCursorLimit(limit); err != nil {
+		logger.Logger.ErrorContext(ctx, "invalid limit: "+err.Error(), "limit", limit)
+		return nil, err
 	}
 
 	logger.Logger.InfoContext(ctx, "fetching favorite feeds with cursor", "cursor", cursor, "limit", limit)

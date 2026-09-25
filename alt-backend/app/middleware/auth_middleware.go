@@ -37,11 +37,11 @@ var (
 type AuthMiddleware struct {
 	logger        *slog.Logger
 	jwtMiddleware *JWTAuthMiddleware
-	config        *config.Config
+	config        config.AuthConfig
 }
 
 // NewAuthMiddleware constructs an AuthMiddleware instance.
-func NewAuthMiddleware(logger *slog.Logger, cfg *config.Config) *AuthMiddleware {
+func NewAuthMiddleware(logger *slog.Logger, cfg config.AuthConfig) *AuthMiddleware {
 	return &AuthMiddleware{
 		logger:        logger,
 		jwtMiddleware: NewJWTAuthMiddleware(logger, cfg),

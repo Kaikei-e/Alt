@@ -110,7 +110,7 @@ func stripCore(r io.Reader) string {
 	for {
 		switch tt := z.Next(); tt {
 		case html.ErrorToken:
-			return normalizeWS(b.String())
+			return normalizeWhitespace(b.String())
 
 		case html.StartTagToken:
 			name, _ := z.TagName()
@@ -140,10 +140,4 @@ func skipTag(name []byte) bool {
 	default:
 		return false
 	}
-}
-
-// 長い改行・タブ・連続空白を単一スペースにまとめる
-func normalizeWS(s string) string {
-	// strings.Fields は空白類文字をまとめて扱い便利
-	return strings.Join(strings.Fields(s), " ")
 }

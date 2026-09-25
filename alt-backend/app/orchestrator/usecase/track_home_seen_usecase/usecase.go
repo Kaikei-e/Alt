@@ -43,19 +43,15 @@ func (u *TrackHomeSeenUsecase) Execute(ctx context.Context, userID uuid.UUID, te
 	}
 
 	now := time.Now()
-	// 5-minute bucket for deduplication
-	bucket := now.Truncate(5 * time.Minute).Format(time.RFC3339)
 
 	// Impression events have no outbox and no DLQ, so a dropped append is lost
 	// for good. Every item is still attempted, but the failures travel back to
 	// the caller so the RPC fails and the persisted/failed counters stay honest.
 	var failures []error
 
+	payload := buildSeenPayload(exposureSessionID)
 	for _, itemKey := range itemKeys {
-		dedupeKey := fmt.Sprintf("%s:%s:seen:%s", userID, itemKey, bucket)
-		payload, _ := json.Marshal(map[string]string{
-			"exposure_session_id": exposureSessionID,
-		})
+		dedupeKey := buildSeenDedupeKey(userID, itemKey, now)
 
 		event := domain.KnowledgeUserEvent{
 			UserEventID: uuid.New(),
@@ -76,4 +72,18 @@ func (u *TrackHomeSeenUsecase) Execute(ctx context.Context, userID uuid.UUID, te
 	}
 
 	return errors.Join(failures...)
+}
+
+// buildSeenDedupeKey constructs a 5-minute bucketed deduplication key for seen items.
+func buildSeenDedupeKey(userID uuid.UUID, itemKey string, now time.Time) string {
+	bucket := now.Truncate(5 * time.Minute).Format(time.RFC3339)
+	return fmt.Sprintf("%s:%s:seen:%s", userID, itemKey, bucket)
+}
+
+// buildSeenPayload creates the JSON payload for home items seen event.
+func buildSeenPayload(exposureSessionID string) []byte {
+	payload, _ := json.Marshal(map[string]string{
+		"exposure_session_id": exposureSessionID,
+	})
+	return payload
 }

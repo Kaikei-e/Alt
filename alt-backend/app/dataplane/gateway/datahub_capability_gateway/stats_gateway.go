@@ -93,6 +93,18 @@ func (g *StatsGateway) TrendStats(ctx context.Context, userID uuid.UUID, window 
 		return nil, fmt.Errorf("get trend stats for user %s window %s: %w", userID, window, err)
 	}
 
+	return trendSeriesFromDriver(stats), nil
+}
+
+func (g *StatsGateway) UserFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	ids, err := g.db.FetchUserFeedIDsForUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list user feed ids for user %s: %w", userID, err)
+	}
+	return ids, nil
+}
+
+func trendSeriesFromDriver(stats *alt_db.TrendStats) *datahub_capability_port.TrendSeries {
 	points := make([]datahub_capability_port.TrendPoint, 0, len(stats.Rows))
 	for _, row := range stats.Rows {
 		points = append(points, datahub_capability_port.TrendPoint{
@@ -102,13 +114,5 @@ func (g *StatsGateway) TrendStats(ctx context.Context, userID uuid.UUID, window 
 			FeedActivity: row.FeedActivity,
 		})
 	}
-	return &datahub_capability_port.TrendSeries{Points: points, Granularity: stats.Granularity}, nil
-}
-
-func (g *StatsGateway) UserFeedIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
-	ids, err := g.db.FetchUserFeedIDsForUser(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("list user feed ids for user %s: %w", userID, err)
-	}
-	return ids, nil
+	return &datahub_capability_port.TrendSeries{Points: points, Granularity: stats.Granularity}
 }

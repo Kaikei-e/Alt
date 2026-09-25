@@ -5,6 +5,9 @@ import (
 	"alt/mocks"
 	"alt/utils/logger"
 	"context"
+	"errors"
+	"net"
+	"net/url"
 	"testing"
 	"time"
 
@@ -82,7 +85,6 @@ func TestFetchInoreaderSummaryUsecase_Execute_Success(t *testing.T) {
 					Times(1)
 			}
 
-			// Create usecase - this should fail since we haven't implemented it yet
 			usecase := NewFetchInoreaderSummaryUsecase(mockPort)
 
 			// Execute
@@ -192,7 +194,190 @@ func TestFetchInoreaderSummaryUsecase_Execute_PortError(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-// Helper function
 func stringPtr(s string) *string {
 	return &s
+}
+
+func TestRemoveDuplicateURLs(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "empty input",
+			input:    []string{},
+			expected: []string{},
+		},
+		{
+			name:     "no duplicates",
+			input:    []string{"https://a.com", "https://b.com"},
+			expected: []string{"https://a.com", "https://b.com"},
+		},
+		{
+			name:     "with duplicates preserves first occurrence order",
+			input:    []string{"https://a.com", "https://b.com", "https://a.com", "https://c.com", "https://b.com"},
+			expected: []string{"https://a.com", "https://b.com", "https://c.com"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := removeDuplicateURLs(tt.input)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestIsPrivateIPAddress(t *testing.T) {
+	tests := []struct {
+		name     string
+		ip       string
+		expected bool
+	}{
+		{name: "loopback v4", ip: "127.0.0.1", expected: true},
+		{name: "loopback v6", ip: "::1", expected: true},
+		{name: "10.0.0.1", ip: "10.0.0.1", expected: true},
+		{name: "172.16.0.1", ip: "172.16.0.1", expected: true},
+		{name: "172.31.255.255", ip: "172.31.255.255", expected: true},
+		{name: "172.32.0.1 (public)", ip: "172.32.0.1", expected: false},
+		{name: "192.168.1.100", ip: "192.168.1.100", expected: true},
+		{name: "public 8.8.8.8", ip: "8.8.8.8", expected: false},
+		{name: "ipv6 unique local fc00", ip: "fc00::1", expected: true},
+		{name: "ipv6 unique local fd00", ip: "fd12:3456::1", expected: true},
+		{name: "ipv6 public", ip: "2607:f8b0:4005:805::200e", expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed := net.ParseIP(tt.ip)
+			assert.NotNil(t, parsed)
+			assert.Equal(t, tt.expected, isPrivateIPAddress(parsed))
+		})
+	}
+}
+
+func TestIsPrivateHost(t *testing.T) {
+	tests := []struct {
+		name       string
+		hostname   string
+		lookupFunc func(host string) ([]net.IP, error)
+		expected   bool
+	}{
+		{
+			name:     "literal private IP",
+			hostname: "10.0.0.1",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				t.Fatal("lookup should not be called for IP literal")
+				return nil, nil
+			},
+			expected: true,
+		},
+		{
+			name:     "literal public IP",
+			hostname: "93.184.216.34",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				t.Fatal("lookup should not be called for IP literal")
+				return nil, nil
+			},
+			expected: false,
+		},
+		{
+			name:     "hostname resolving to private IP",
+			hostname: "internal.service",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				return []net.IP{net.ParseIP("192.168.1.1")}, nil
+			},
+			expected: true,
+		},
+		{
+			name:     "hostname resolving to public IP",
+			hostname: "example.com",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				return []net.IP{net.ParseIP("93.184.216.34")}, nil
+			},
+			expected: false,
+		},
+		{
+			name:     "hostname resolution error",
+			hostname: "invalid.domain",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				return nil, errors.New("no such host")
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isPrivateHost(tt.hostname, tt.lookupFunc)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestFetchInoreaderSummaryUsecase_PinnedURLValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		rawURL     string
+		lookupFunc func(host string) ([]net.IP, error)
+		wantMsg    string
+	}{
+		{
+			name:   `"localhost" (lookup returns 127.0.0.1) -> access to private networks not allowed`,
+			rawURL: "http://localhost/article1",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				return []net.IP{net.ParseIP("127.0.0.1")}, nil
+			},
+			wantMsg: "access to private networks not allowed",
+		},
+		{
+			name:   `"169.254.169.254" -> access to private networks not allowed`,
+			rawURL: "http://169.254.169.254/article1",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				return nil, errors.New("lookup should not be called for literal IP")
+			},
+			wantMsg: "access to private networks not allowed",
+		},
+		{
+			name:   `"foo.internal" with lookup returning a public IP -> access to internal domains not allowed`,
+			rawURL: "http://foo.internal/article1",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				return []net.IP{net.ParseIP("93.184.216.34")}, nil
+			},
+			wantMsg: "access to internal domains not allowed",
+		},
+		{
+			name:   `lookup error -> access to private networks not allowed`,
+			rawURL: "http://unknown-host.example.com/article1",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				return nil, errors.New("dns lookup failed")
+			},
+			wantMsg: "access to private networks not allowed",
+		},
+		{
+			name:   `invalid scheme -> only HTTP and HTTPS schemes allowed`,
+			rawURL: "ftp://example.com/article1",
+			lookupFunc: func(host string) ([]net.IP, error) {
+				return []net.IP{net.ParseIP("93.184.216.34")}, nil
+			},
+			wantMsg: "only HTTP and HTTPS schemes allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uc := &fetchInoreaderSummaryUsecase{
+				port:     nil,
+				lookupIP: tt.lookupFunc,
+			}
+
+			parsed, err := url.Parse(tt.rawURL)
+			assert.NoError(t, err)
+
+			err = uc.isAllowedURL(parsed)
+			assert.Error(t, err)
+			assert.Equal(t, tt.wantMsg, err.Error())
+		})
+	}
 }

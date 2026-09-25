@@ -60,9 +60,7 @@ type MorningArticleGroupResponse struct {
 
 func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time.Time) ([]*domain.MorningArticleGroup, error) {
 	// 1. Fetch groups from recap-worker
-	query := url.Values{}
-	query.Set("since", since.Format(time.RFC3339))
-	requestURL := fmt.Sprintf("%s/v1/morning/updates?%s", g.recapWorkerURL, query.Encode())
+	requestURL := buildMorningUpdatesURL(g.recapWorkerURL, since)
 	logger.Logger.InfoContext(ctx, "Fetching morning updates from recap-worker", "url", requestURL, "since", since)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
@@ -104,11 +102,7 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 	}
 
 	// 2. Collect Article IDs
-	articleIDs := make([]uuid.UUID, 0, len(groupResps))
-	for _, gr := range groupResps {
-		articleIDs = append(articleIDs, gr.ArticleID)
-	}
-
+	articleIDs := extractArticleIDs(groupResps)
 	if len(articleIDs) == 0 {
 		logger.Logger.InfoContext(ctx, "No article IDs to fetch from database")
 		return []*domain.MorningArticleGroup{}, nil
@@ -124,7 +118,7 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 	}
 
 	// Create a map for quick lookup
-	articleMap := make(map[uuid.UUID]*domain.Article)
+	articleMap := make(map[uuid.UUID]*domain.Article, len(articles))
 	for _, article := range articles {
 		articleMap[article.ID] = article
 	}
@@ -140,13 +134,7 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 			continue // Article might have been deleted or not found
 		}
 
-		result = append(result, &domain.MorningArticleGroup{
-			GroupID:   gr.GroupID,
-			ArticleID: gr.ArticleID,
-			IsPrimary: gr.IsPrimary,
-			CreatedAt: gr.CreatedAt,
-			Article:   article,
-		})
+		result = append(result, mapArticleGroupToDomain(gr, article))
 	}
 
 	if missingArticles > 0 {
@@ -155,4 +143,28 @@ func (g *MorningGateway) GetMorningArticleGroups(ctx context.Context, since time
 
 	logger.Logger.InfoContext(ctx, "Successfully fetched morning article groups", "result_count", len(result), "total_groups", len(groupResps))
 	return result, nil
+}
+
+func buildMorningUpdatesURL(baseURL string, since time.Time) string {
+	query := url.Values{}
+	query.Set("since", since.Format(time.RFC3339))
+	return fmt.Sprintf("%s/v1/morning/updates?%s", baseURL, query.Encode())
+}
+
+func extractArticleIDs(groupResps []MorningArticleGroupResponse) []uuid.UUID {
+	articleIDs := make([]uuid.UUID, 0, len(groupResps))
+	for _, gr := range groupResps {
+		articleIDs = append(articleIDs, gr.ArticleID)
+	}
+	return articleIDs
+}
+
+func mapArticleGroupToDomain(gr MorningArticleGroupResponse, article *domain.Article) *domain.MorningArticleGroup {
+	return &domain.MorningArticleGroup{
+		GroupID:   gr.GroupID,
+		ArticleID: gr.ArticleID,
+		IsPrimary: gr.IsPrimary,
+		CreatedAt: gr.CreatedAt,
+		Article:   article,
+	}
 }

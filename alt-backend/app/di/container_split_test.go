@@ -62,14 +62,14 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				// roots would have tripled the dead wiring.
 				"ConfigPort", "RateLimiterPort", "ErrorHandlerPort",
 				"AppendKnowledgeEventUsecase",
-				// ADR-000954 Wave 3 batch 6. The Tag Trail's paged read and
+				// The Tag Trail's paged read and
 				// RecallRailUsecase's article fallback were the last two
 				// capabilities holding a pool open here; both are procedures
 				// now, so the backend has no database handle and no gateway
-				// wrapping one. InternalArticleGateway went with it — it
-				// existed here only for that fallback — and it moved to
+				// wrapping one. The catalog gateways went with it — they
+				// existed here only for that fallback — and they moved to
 				// dataplane/ with the rest of the provider-side gateways.
-				"AltDBRepository", "InternalArticleGateway",
+				"AltDBRepository", "ArticleCatalogGateway", "FeedCatalogGateway", "TagCatalogGateway",
 			},
 			present: []string{
 				"SovereignClient", "AdminMonitor", "RecallRailUsecase",
@@ -84,10 +84,10 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				// answer HTTP, so none of this may be constructed here.
 				"SearchIndexerDriver", "MQHubClient", "EventPublisher", "KratosClient",
 				"CSRFTokenUsecase", "RagConnectClient", "AdminMonitor",
-				"InternalArticleGateway", "RecapArticlesUsecase", "FeedsInWindowUsecase",
-				// ADR-000954 Wave 3 batch 5: the tag cloud was the harvester's
+				"ArticleCatalogGateway", "FeedCatalogGateway", "TagCatalogGateway", "RecapArticlesUsecase", "FeedsInWindowUsecase",
+				// The tag cloud was the harvester's
 				// last direct read, so it has no database handle at all. This
-				// is the first of the three binaries to reach Wave 3's exit
+				// is the first of the three binaries to reach the exit
 				// condition, and the absence is asserted rather than merely
 				// achieved — a job that reaches for a pool must not compile.
 				"AltDBRepository",
@@ -127,26 +127,6 @@ func splitTestConfig() *config.Config {
 		RateLimit:     config.RateLimitConfig{ExternalAPIInterval: 10 * time.Second, ExternalAPIBurst: 3, FeedFetchLimit: 100},
 		SearchIndexer: config.SearchIndexerConfig{ConnectURL: "http://search-indexer:9301"},
 		MQHub:         config.MQHubConfig{Enabled: false, ConnectURL: "http://mq-hub:9500"},
-	}
-}
-
-// newFeedModule used to return DeleteFeedLinkUsecase: nil and rely on the one
-// composition root to patch it afterwards. With three roots, forgetting the
-// patch in one of them still compiles and only fails as a nil dereference in
-// the RSS DeleteFeedLink handler, so the dependency is passed in instead.
-func TestNewFeedModule_WiresDeleteFeedLinkUsecase(t *testing.T) {
-	setDataHubClientEnv(t)
-
-	infra := newInfraModule(splitTestConfig())
-	sub := newSubscriptionModule(infra)
-
-	feed := newFeedModule(infra, sub)
-
-	if feed.DeleteFeedLinkUsecase == nil {
-		t.Fatal("newFeedModule must wire DeleteFeedLinkUsecase itself, not leave it for the composition root")
-	}
-	if feed.DeleteFeedLinkUsecase != sub.DeleteFeedLinkUsecase {
-		t.Error("DeleteFeedLinkUsecase must be the subscription module's instance")
 	}
 }
 

@@ -66,14 +66,7 @@ func (h *Handler) StreamChat(
 	}
 
 	// Validate request has user message
-	var query string
-	for i := len(req.Msg.Messages) - 1; i >= 0; i-- {
-		if req.Msg.Messages[i].Role == "user" {
-			query = req.Msg.Messages[i].Content
-			break
-		}
-	}
-
+	query := extractLastUserQuery(req.Msg.Messages)
 	if query == "" {
 		h.logger.WarnContext(ctx, "no user message found in request")
 		return connect.NewError(connect.CodeInvalidArgument, nil)
@@ -266,4 +259,14 @@ func (h *Handler) DeleteConversation(
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "DeleteConversation")
 	}
 	return resp, nil
+}
+
+// extractLastUserQuery scans messages in reverse order to find the last user message.
+func extractLastUserQuery(messages []*augurv2.ChatMessage) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			return messages[i].Content
+		}
+	}
+	return ""
 }

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// ErrRagUpsertTransient marks a RagIntegrationPort.UpsertArticle failure as
+// ErrRagUpsertTransient marks an ArticleUpsertPort.UpsertArticle failure as
 // transient — a transport error reaching rag-orchestrator, or a 5xx it
 // returned — as opposed to a permanent rejection (a malformed payload, a
 // 4xx). Implementations wrap it into the returned error with fmt.Errorf's
@@ -49,9 +49,18 @@ type UpsertArticleInput struct {
 	UserID      string     `json:"user_id"`
 }
 
-type RagIntegrationPort interface {
-	RetrieveContext(ctx context.Context, query string, candidateIDs []string, userID string) ([]RagContext, error)
+// ArticleUpsertPort defines the capability to upsert articles into the RAG index.
+type ArticleUpsertPort interface {
 	UpsertArticle(ctx context.Context, input UpsertArticleInput) error
+}
+
+// RagRetrievalPort defines the capability to retrieve context from RAG.
+type RagRetrievalPort interface {
+	RetrieveContext(ctx context.Context, query string, candidateIDs []string, userID string) ([]RagContext, error)
+}
+
+// RagAnswerPort defines the capability to request an answer from RAG.
+type RagAnswerPort interface {
 	Answer(ctx context.Context, input AnswerInput) (<-chan string, error)
 }
 

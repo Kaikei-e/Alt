@@ -21,7 +21,7 @@ func TestDailyScrapingPolicyJobRunner_InitialRun(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDomainPort := mocks.NewMockScrapingDomainPort(ctrl)
-	mockRobotsTxtPort := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRobotsTxtPort := mocks.NewMockRobotsTxtFetcherPort(ctrl)
 	usecase := scraping_domain_usecase.NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort)
 
 	// Mock empty list to simulate no domains
@@ -66,7 +66,7 @@ func TestDailyScrapingPolicyJobRunner_ContextCancellation(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockDomainPort := mocks.NewMockScrapingDomainPort(ctrl)
-	mockRobotsTxtPort := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRobotsTxtPort := mocks.NewMockRobotsTxtFetcherPort(ctrl)
 	usecase := scraping_domain_usecase.NewScrapingDomainUsecaseWithRobotsTxt(mockDomainPort, mockRobotsTxtPort)
 
 	// Mock empty list

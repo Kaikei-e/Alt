@@ -193,3 +193,76 @@ func TestListProjectionAudits(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestAnalyzeProjectionDiff(t *testing.T) {
+	tests := []struct {
+		name              string
+		diff              *domain.ReprojectDiffSummary
+		wantMismatchCount int
+	}{
+		{
+			name: "within thresholds gives 0 mismatches",
+			diff: &domain.ReprojectDiffSummary{
+				FromItemCount:  100,
+				ToItemCount:    102, // 2% drift <= 5%
+				FromAvgScore:   0.80,
+				ToAvgScore:     0.82, // 2.5% drift <= 10%
+				FromEmptyCount: 5,
+				ToEmptyCount:   5, // empty rate same
+			},
+			wantMismatchCount: 0,
+		},
+		{
+			name: "item count drift exceeds 5%",
+			diff: &domain.ReprojectDiffSummary{
+				FromItemCount: 100,
+				ToItemCount:   110, // 10% drift > 5%
+				FromAvgScore:  0.80,
+				ToAvgScore:    0.80,
+			},
+			wantMismatchCount: 1,
+		},
+		{
+			name: "score drift exceeds 10%",
+			diff: &domain.ReprojectDiffSummary{
+				FromItemCount: 100,
+				ToItemCount:   100,
+				FromAvgScore:  0.80,
+				ToAvgScore:    0.65, // > 10% drift
+			},
+			wantMismatchCount: 1,
+		},
+		{
+			name: "empty summary rate drift exceeds 5%",
+			diff: &domain.ReprojectDiffSummary{
+				FromItemCount:  100,
+				ToItemCount:    100,
+				FromAvgScore:   0.80,
+				ToAvgScore:     0.80,
+				FromEmptyCount: 0,
+				ToEmptyCount:   10, // 10% vs 0% -> 10% > 5%
+			},
+			wantMismatchCount: 1,
+		},
+		{
+			name: "all drifts triggered",
+			diff: &domain.ReprojectDiffSummary{
+				FromItemCount:  100,
+				ToItemCount:    150, // drift > 5%
+				FromAvgScore:   0.80,
+				ToAvgScore:     0.50, // drift > 10%
+				FromEmptyCount: 0,
+				ToEmptyCount:   20, // drift > 5%
+			},
+			wantMismatchCount: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			count, details := analyzeProjectionDiff(tt.diff)
+			assert.Equal(t, tt.wantMismatchCount, count)
+			assert.NotEmpty(t, details)
+		})
+	}
+}

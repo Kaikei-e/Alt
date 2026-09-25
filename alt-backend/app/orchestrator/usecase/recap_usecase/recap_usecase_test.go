@@ -50,7 +50,11 @@ func (m *MockRecapPort) GetEveningPulse(ctx context.Context, date string) (*doma
 	return args.Get(0).(*domain.EveningPulse), args.Error(1)
 }
 
-func (m *MockRecapPort) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+type MockRecapSearchPort struct {
+	mock.Mock
+}
+
+func (m *MockRecapSearchPort) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
 	args := m.Called(ctx, tagName, limit)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -58,12 +62,12 @@ func (m *MockRecapPort) SearchRecapsByTag(ctx context.Context, tagName string, l
 	return args.Get(0).([]*domain.RecapSearchResult), args.Error(1)
 }
 
-func (m *MockRecapPort) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error) {
+func (m *MockRecapSearchPort) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, int64, error) {
 	args := m.Called(ctx, query, limit)
 	if args.Get(0) == nil {
-		return nil, args.Error(1)
+		return nil, 0, args.Error(2)
 	}
-	return args.Get(0).([]*domain.RecapSearchResult), args.Error(1)
+	return args.Get(0).([]*domain.RecapSearchResult), args.Get(1).(int64), args.Error(2)
 }
 
 func TestRecapUsecase_GetEveningPulse(t *testing.T) {
@@ -85,7 +89,7 @@ func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 
 		mockPort.On("GetEveningPulse", mock.Anything, "2026-01-31").Return(expectedPulse, nil)
 
-		uc := NewRecapUsecase(mockPort)
+		uc := NewRecapUsecase(mockPort, nil)
 		result, err := uc.GetEveningPulse(context.Background(), "2026-01-31")
 
 		require.NoError(t, err)
@@ -103,7 +107,7 @@ func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 
 		mockPort.On("GetEveningPulse", mock.Anything, "").Return(expectedPulse, nil)
 
-		uc := NewRecapUsecase(mockPort)
+		uc := NewRecapUsecase(mockPort, nil)
 		result, err := uc.GetEveningPulse(context.Background(), "")
 
 		require.NoError(t, err)
@@ -116,7 +120,7 @@ func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 		mockPort.On("GetEveningPulse", mock.Anything, "2026-01-31").
 			Return(nil, domain.ErrEveningPulseNotFound)
 
-		uc := NewRecapUsecase(mockPort)
+		uc := NewRecapUsecase(mockPort, nil)
 		_, err := uc.GetEveningPulse(context.Background(), "2026-01-31")
 
 		assert.ErrorIs(t, err, domain.ErrEveningPulseNotFound)
@@ -129,7 +133,7 @@ func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 		mockPort.On("GetEveningPulse", mock.Anything, "2026-01-31").
 			Return(nil, expectedErr)
 
-		uc := NewRecapUsecase(mockPort)
+		uc := NewRecapUsecase(mockPort, nil)
 		_, err := uc.GetEveningPulse(context.Background(), "2026-01-31")
 
 		assert.ErrorIs(t, err, expectedErr)
@@ -153,7 +157,7 @@ func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 
 		mockPort.On("GetEveningPulse", mock.Anything, "2026-01-31").Return(expectedPulse, nil)
 
-		uc := NewRecapUsecase(mockPort)
+		uc := NewRecapUsecase(mockPort, nil)
 		result, err := uc.GetEveningPulse(context.Background(), "2026-01-31")
 
 		require.NoError(t, err)
@@ -191,7 +195,7 @@ func TestRecapUsecase_GetThreeDayRecapCards(t *testing.T) {
 
 		mockPort.On("GetThreeDayRecapCards", mock.Anything).Return(expected, nil)
 
-		uc := NewRecapUsecase(mockPort)
+		uc := NewRecapUsecase(mockPort, nil)
 		result, err := uc.GetThreeDayRecapCards(context.Background())
 
 		require.NoError(t, err)
@@ -208,7 +212,7 @@ func TestRecapUsecase_GetThreeDayRecapCards(t *testing.T) {
 
 		mockPort.On("GetThreeDayRecapCards", mock.Anything).Return(expected, nil)
 
-		uc := NewRecapUsecase(mockPort)
+		uc := NewRecapUsecase(mockPort, nil)
 		result, err := uc.GetThreeDayRecapCards(context.Background())
 
 		require.NoError(t, err)
@@ -221,12 +225,46 @@ func TestRecapUsecase_GetThreeDayRecapCards(t *testing.T) {
 		mockPort := new(MockRecapPort)
 		mockPort.On("GetThreeDayRecapCards", mock.Anything).Return(nil, errors.New("upstream failure"))
 
-		uc := NewRecapUsecase(mockPort)
+		uc := NewRecapUsecase(mockPort, nil)
 		result, err := uc.GetThreeDayRecapCards(context.Background())
 
 		require.Error(t, err)
 		assert.Nil(t, result)
 		assert.Equal(t, "upstream failure", err.Error())
 		mockPort.AssertExpectations(t)
+	})
+}
+
+func TestRecapUsecase_SearchRecapsByTag(t *testing.T) {
+	t.Run("success - delegates to recapSearch", func(t *testing.T) {
+		mockSearch := new(MockRecapSearchPort)
+		expected := []*domain.RecapSearchResult{
+			{Genre: "Technology", Summary: "Tech news summary"},
+		}
+		mockSearch.On("SearchRecapsByTag", mock.Anything, "tech", 10).Return(expected, nil)
+
+		uc := NewRecapUsecase(nil, mockSearch)
+		result, err := uc.SearchRecapsByTag(context.Background(), "tech", 10)
+
+		require.NoError(t, err)
+		assert.Equal(t, expected, result)
+		mockSearch.AssertExpectations(t)
+	})
+}
+
+func TestRecapUsecase_SearchRecapsByQuery(t *testing.T) {
+	t.Run("success - delegates to recapSearch", func(t *testing.T) {
+		mockSearch := new(MockRecapSearchPort)
+		expected := []*domain.RecapSearchResult{
+			{Genre: "AI", Summary: "AI summary"},
+		}
+		mockSearch.On("SearchRecapsByQuery", mock.Anything, "ai", 5).Return(expected, int64(1), nil)
+
+		uc := NewRecapUsecase(nil, mockSearch)
+		result, err := uc.SearchRecapsByQuery(context.Background(), "ai", 5)
+
+		require.NoError(t, err)
+		assert.Equal(t, expected, result)
+		mockSearch.AssertExpectations(t)
 	})
 }

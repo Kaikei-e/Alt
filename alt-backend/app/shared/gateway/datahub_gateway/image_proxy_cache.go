@@ -17,8 +17,16 @@ import (
 // Fetching, resizing and re-encoding the image stay on the calling side —
 // they are an outbound HTTP call and a CPU-bound transform, neither of which
 // ADR-000954 D4 moves. What crosses is the row.
+// imageProxyCacheDataHubClient isolates the data-hub RPCs called by ImageProxyCacheGateway.
+type imageProxyCacheDataHubClient interface {
+	GetImageProxyCache(context.Context, *connect.Request[datahubv1.GetImageProxyCacheRequest]) (*connect.Response[datahubv1.GetImageProxyCacheResponse], error)
+	PutImageProxyCache(context.Context, *connect.Request[datahubv1.PutImageProxyCacheRequest]) (*connect.Response[datahubv1.PutImageProxyCacheResponse], error)
+	EvictExpiredImageProxyCache(context.Context, *connect.Request[datahubv1.EvictExpiredImageProxyCacheRequest]) (*connect.Response[datahubv1.EvictExpiredImageProxyCacheResponse], error)
+	PurgeImageProxyCacheOlderThan(context.Context, *connect.Request[datahubv1.PurgeImageProxyCacheOlderThanRequest]) (*connect.Response[datahubv1.PurgeImageProxyCacheOlderThanResponse], error)
+}
+
 type ImageProxyCacheGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client imageProxyCacheDataHubClient
 }
 
 func NewImageProxyCacheGateway(client datahubv1connect.DataHubServiceClient) *ImageProxyCacheGateway {

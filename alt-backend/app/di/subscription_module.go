@@ -6,7 +6,6 @@ import (
 	"alt/orchestrator/gateway/opml_gateway"
 	"alt/orchestrator/port/subscription_port"
 	"alt/orchestrator/usecase/csrf_token_usecase"
-	"alt/orchestrator/usecase/feed_link_usecase"
 	"alt/orchestrator/usecase/opml_usecase"
 	"alt/orchestrator/usecase/subscription_usecase"
 )
@@ -17,7 +16,6 @@ type SubscriptionModule struct {
 	ListSubscriptionsUsecase *subscription_usecase.ListSubscriptionsUsecase
 	SubscribeUsecase         *subscription_usecase.SubscribeUsecase
 	UnsubscribeUsecase       *subscription_usecase.UnsubscribeUsecase
-	DeleteFeedLinkUsecase    *feed_link_usecase.DeleteFeedLinkUsecase
 
 	// OPML usecases
 	ExportOPMLUsecase *opml_usecase.ExportOPMLUsecase
@@ -39,7 +37,6 @@ func newSubscriptionModule(infra *InfraModule) *SubscriptionModule {
 	listSubscriptionsUC := subscription_usecase.NewListSubscriptionsUsecase(subscriptionGw)
 	subscribeUC := subscription_usecase.NewSubscribeUsecase(subscriptionGw)
 	unsubscribeUC := subscription_usecase.NewUnsubscribeUsecase(subscriptionGw)
-	deleteFeedLinkUC := feed_link_usecase.NewDeleteFeedLinkUsecase(subscriptionGw)
 
 	// OPML
 	// OPML export used to build its SQL in the gateway and issue it through
@@ -59,7 +56,6 @@ func newSubscriptionModule(infra *InfraModule) *SubscriptionModule {
 		ListSubscriptionsUsecase: listSubscriptionsUC,
 		SubscribeUsecase:         subscribeUC,
 		UnsubscribeUsecase:       unsubscribeUC,
-		DeleteFeedLinkUsecase:    deleteFeedLinkUC,
 		ExportOPMLUsecase:        exportOPMLUC,
 		ImportOPMLUsecase:        importOPMLUC,
 		CSRFTokenUsecase:         csrfTokenUC,

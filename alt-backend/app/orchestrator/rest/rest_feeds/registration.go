@@ -5,6 +5,7 @@ import (
 	"alt/domain"
 	"alt/utils/errors"
 	"alt/utils/logger"
+	"alt/utils/security"
 	"net/http"
 	"net/url"
 	"strings"
@@ -33,7 +34,7 @@ func RestHandleRegisterRSSFeed(container *di.ApplicationComponents) echo.Handler
 		}
 
 		// Apply SSRF protection
-		err = IsAllowedURL(parsedURL)
+		err = security.NewURLSecurityValidator().ValidateParsedRSSURL(parsedURL)
 		if err != nil {
 			securityErr := errors.NewValidationContextError(
 				"URL not allowed for security reasons",
@@ -112,7 +113,7 @@ func RestHandleDeleteRSSFeedLink(container *di.ApplicationComponents) echo.Handl
 			return HandleError(c, err, "delete_feed_link")
 		}
 
-		if err := container.DeleteFeedLinkUsecase.Execute(ctx, userCtx.UserID, linkID); err != nil {
+		if err := container.UnsubscribeUsecase.Execute(ctx, userCtx.UserID, linkID); err != nil {
 			return HandleError(c, err, "delete_feed_link")
 		}
 

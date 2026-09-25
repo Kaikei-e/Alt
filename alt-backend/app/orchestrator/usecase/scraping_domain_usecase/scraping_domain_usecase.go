@@ -16,7 +16,7 @@ import (
 // ScrapingDomainUsecase handles scraping domain business logic
 type ScrapingDomainUsecase struct {
 	scrapingDomainPort scraping_domain_port.ScrapingDomainPort
-	robotsTxtPort      robots_txt_port.RobotsTxtPort
+	robotsTxtPort      robots_txt_port.RobotsTxtFetcherPort
 	feedLinkDomainPort feed_link_domain_port.FeedLinkDomainPort
 }
 
@@ -28,7 +28,7 @@ func NewScrapingDomainUsecase(scrapingDomainPort scraping_domain_port.ScrapingDo
 }
 
 // NewScrapingDomainUsecaseWithRobotsTxt creates a new ScrapingDomainUsecase with robots.txt port
-func NewScrapingDomainUsecaseWithRobotsTxt(scrapingDomainPort scraping_domain_port.ScrapingDomainPort, robotsTxtPort robots_txt_port.RobotsTxtPort) *ScrapingDomainUsecase {
+func NewScrapingDomainUsecaseWithRobotsTxt(scrapingDomainPort scraping_domain_port.ScrapingDomainPort, robotsTxtPort robots_txt_port.RobotsTxtFetcherPort) *ScrapingDomainUsecase {
 	return &ScrapingDomainUsecase{
 		scrapingDomainPort: scrapingDomainPort,
 		robotsTxtPort:      robotsTxtPort,
@@ -36,7 +36,7 @@ func NewScrapingDomainUsecaseWithRobotsTxt(scrapingDomainPort scraping_domain_po
 }
 
 // NewScrapingDomainUsecaseWithFeedLinkDomain creates a new ScrapingDomainUsecase with feed link domain port
-func NewScrapingDomainUsecaseWithFeedLinkDomain(scrapingDomainPort scraping_domain_port.ScrapingDomainPort, robotsTxtPort robots_txt_port.RobotsTxtPort, feedLinkDomainPort feed_link_domain_port.FeedLinkDomainPort) *ScrapingDomainUsecase {
+func NewScrapingDomainUsecaseWithFeedLinkDomain(scrapingDomainPort scraping_domain_port.ScrapingDomainPort, robotsTxtPort robots_txt_port.RobotsTxtFetcherPort, feedLinkDomainPort feed_link_domain_port.FeedLinkDomainPort) *ScrapingDomainUsecase {
 	return &ScrapingDomainUsecase{
 		scrapingDomainPort: scrapingDomainPort,
 		robotsTxtPort:      robotsTxtPort,

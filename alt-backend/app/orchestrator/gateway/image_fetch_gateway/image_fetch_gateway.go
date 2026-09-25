@@ -9,10 +9,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -25,11 +23,7 @@ import (
 // cannot decode (br/zstd/deflate/etc.), and passing those bytes to the image
 // decoder would fail opaquely.
 func validateResponseEncoding(resp *http.Response) error {
-	enc := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
-	if enc == "" || enc == "identity" {
-		return nil
-	}
-	return fmt.Errorf("unhandled response Content-Encoding %q: body is still compressed and cannot be decoded safely", enc)
+	return checkContentEncoding(resp.Header.Get("Content-Encoding"))
 }
 
 // allowedProxyHosts defines known safe proxy hosts that may be used for image fetching.
@@ -84,95 +78,6 @@ func NewImageFetchGateway(httpClient *http.Client) *ImageFetchGateway {
 	}
 
 	return gateway
-}
-
-// validateImageURLWithTestOverride allows bypassing localhost restrictions for testing
-// Enhanced with additional SSRF protection measures
-func validateImageURLWithTestOverride(u *url.URL, allowTestingLocalhost bool) error {
-	// Only allow HTTPS and HTTP
-	if u.Scheme != "https" && u.Scheme != "http" {
-		return fmt.Errorf("only HTTP and HTTPS schemes allowed")
-	}
-
-	// Validate URL format and prevent malformed URLs
-	if u.Host == "" {
-		return fmt.Errorf("empty host not allowed")
-	}
-
-	// Check for dangerous path patterns that could indicate path traversal attacks
-	if strings.Contains(u.Path, "..") || strings.Contains(u.Path, "/.") {
-		return fmt.Errorf("path traversal patterns not allowed")
-	}
-
-	// Check for URL encoding attacks by examining the raw URL.
-	// Only block control characters and backslash encoding — encoded dots (%2e) and
-	// slashes (%2f) are NOT blocked because CDN URLs legitimately use them, and path
-	// traversal via %2e%2e is already caught by the decoded-path ".." check above.
-	rawURL := u.String()
-	if strings.Contains(rawURL, "%5c") || strings.Contains(rawURL, "%5C") ||
-		strings.Contains(rawURL, "%00") ||
-		strings.Contains(rawURL, "%0a") || strings.Contains(rawURL, "%0A") ||
-		strings.Contains(rawURL, "%0d") || strings.Contains(rawURL, "%0D") {
-		return fmt.Errorf("URL encoding attacks not allowed")
-	}
-
-	// Check hostname and perform security checks
-	hostname := strings.ToLower(u.Hostname())
-	isTestingLocalhost := allowTestingLocalhost && (hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127."))
-
-	// Enhanced: Block cloud metadata endpoints (security priority over domain allowlist)
-	metadataEndpoints := []string{
-		"169.254.169.254",          // AWS/Azure metadata
-		"metadata.google.internal", // GCP metadata
-		"100.100.100.200",          // Alibaba Cloud
-		"169.254.169.254:80",       // Explicit port
-		"169.254.169.254:8080",     // Alternative ports
-	}
-	for _, endpoint := range metadataEndpoints {
-		if hostname == endpoint || strings.HasPrefix(hostname, endpoint+":") {
-			return fmt.Errorf("access to metadata endpoint not allowed")
-		}
-	}
-
-	// Enhanced: Block internal domains (security priority over domain allowlist)
-	internalDomains := []string{".local", ".internal", ".corp", ".lan", ".intranet", ".test", ".localhost"}
-	for _, domainSuffix := range internalDomains {
-		if strings.HasSuffix(hostname, domainSuffix) {
-			return fmt.Errorf("access to internal domains not allowed")
-		}
-	}
-
-	// Block private networks (except localhost for testing when allowed)
-	if !isTestingLocalhost && isPrivateIP(u.Hostname()) {
-		return fmt.Errorf("access to private networks not allowed")
-	}
-
-	// Block localhost variations (unless testing is allowed)
-	if !isTestingLocalhost && (hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127.")) {
-		return fmt.Errorf("access to localhost not allowed")
-	}
-
-	// Check domain whitelist (after security checks)
-	if !domain.IsAllowedImageDomain(hostname) && !isTestingLocalhost {
-		return fmt.Errorf("domain not in whitelist")
-	}
-
-	// Block URLs with non-standard ports that could be used for port scanning
-	if u.Port() != "" {
-		port := u.Port()
-		allowedPorts := map[string]bool{"80": true, "443": true, "8080": true, "8443": true}
-		if !allowedPorts[port] {
-			return fmt.Errorf("non-standard port not allowed: %s", port)
-		}
-	}
-
-	return nil
-}
-
-// isPrivateIP checks if the hostname resolves to private IP addresses
-// This function delegates to security.IsPrivateHost for centralized IP validation
-func isPrivateIP(hostname string) bool {
-	return security.IsPrivateHost(hostname)
 }
 
 // FetchImage fetches an image from external URL through HTTP client
@@ -394,43 +299,34 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 		)
 	}
 
-	// Validate content type
+	// Validate content type and content length headers
 	contentType := resp.Header.Get("Content-Type")
-	if !domain.IsValidImageContentType(contentType) {
+	contentLengthHeader := resp.Header.Get("Content-Length")
+	contentLength, err := validateImageHeaders(contentType, contentLengthHeader, options.MaxSize)
+	if err != nil {
+		if err == errInvalidContentType {
+			return nil, errors.NewValidationContextError(
+				"response is not an image",
+				"gateway",
+				"ImageFetchGateway",
+				"validate_content_type",
+				map[string]interface{}{
+					"url":          imageURL.String(),
+					"content_type": contentType,
+				},
+			)
+		}
 		return nil, errors.NewValidationContextError(
-			"response is not an image",
+			"image too large",
 			"gateway",
 			"ImageFetchGateway",
-			"validate_content_type",
+			"validate_size",
 			map[string]interface{}{
-				"url":          imageURL.String(),
-				"content_type": contentType,
+				"url":            imageURL.String(),
+				"content_length": contentLength,
+				"max_size":       options.MaxSize,
 			},
 		)
-	}
-
-	// Check content length if available
-	contentLengthHeader := resp.Header.Get("Content-Length")
-	if contentLengthHeader != "" {
-		if contentLength, err := strconv.ParseInt(contentLengthHeader, 10, 64); err == nil {
-			// Safe comparison with bounds checking to prevent integer overflow
-			maxSizeInt64 := int64(options.MaxSize)
-
-			// Check if content length exceeds int32 bounds or the configured max size
-			if contentLength > math.MaxInt32 || contentLength > maxSizeInt64 {
-				return nil, errors.NewValidationContextError(
-					"image too large",
-					"gateway",
-					"ImageFetchGateway",
-					"validate_size",
-					map[string]interface{}{
-						"url":            imageURL.String(),
-						"content_length": contentLength,
-						"max_size":       options.MaxSize,
-					},
-				)
-			}
-		}
 	}
 
 	// Read the response body with size limit
@@ -465,13 +361,5 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 	}
 
 	// Create and return the result
-	result := &domain.ImageFetchResult{
-		URL:         imageURL.String(),
-		ContentType: contentType,
-		Data:        imageData,
-		Size:        len(imageData),
-		FetchedAt:   time.Now(),
-	}
-
-	return result, nil
+	return buildImageFetchResult(imageURL.String(), contentType, imageData, time.Now()), nil
 }

@@ -10,10 +10,10 @@ type AnswerChatUsecase interface {
 }
 
 type answerChatUsecase struct {
-	ragIntegration rag_integration_port.RagIntegrationPort
+	ragIntegration rag_integration_port.RagAnswerPort
 }
 
-func NewAnswerChatUsecase(ragIntegration rag_integration_port.RagIntegrationPort) AnswerChatUsecase {
+func NewAnswerChatUsecase(ragIntegration rag_integration_port.RagAnswerPort) AnswerChatUsecase {
 	return &answerChatUsecase{
 		ragIntegration: ragIntegration,
 	}

@@ -110,3 +110,112 @@ func TestGetSLOStatus(t *testing.T) {
 		assert.True(t, sliNames[domain.SLICorrectnessProxy], "correctness_proxy SLI should be present")
 	})
 }
+
+func TestComputeFreshnessSLIResult(t *testing.T) {
+	tests := []struct {
+		name                string
+		lag                 time.Duration
+		err                 error
+		expectedStatus      string
+		expectedCurrentVal  float64
+		expectedConsumedPct float64
+	}{
+		{
+			name:                "port error results in breached status",
+			lag:                 0,
+			err:                 assert.AnError,
+			expectedStatus:      domain.SLIStatusBreached,
+			expectedCurrentVal:  -1,
+			expectedConsumedPct: 100.0,
+		},
+		{
+			name:                "lag within target meets SLO",
+			lag:                 150 * time.Second,
+			err:                 nil,
+			expectedStatus:      domain.SLIStatusMeeting,
+			expectedCurrentVal:  150.0,
+			expectedConsumedPct: 50.0,
+		},
+		{
+			name:                "lag exactly at target meets SLO",
+			lag:                 300 * time.Second,
+			err:                 nil,
+			expectedStatus:      domain.SLIStatusMeeting,
+			expectedCurrentVal:  300.0,
+			expectedConsumedPct: 100.0,
+		},
+		{
+			name:                "lag exceeding target burns budget",
+			lag:                 450 * time.Second,
+			err:                 nil,
+			expectedStatus:      domain.SLIStatusBurning,
+			expectedCurrentVal:  450.0,
+			expectedConsumedPct: 100.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := computeFreshnessSLIResult(tt.lag, tt.err)
+			assert.Equal(t, domain.SLIFreshness, res.Name)
+			assert.Equal(t, tt.expectedStatus, res.Status)
+			assert.Equal(t, tt.expectedCurrentVal, res.CurrentValue)
+			assert.Equal(t, tt.expectedConsumedPct, res.ErrorBudgetConsumedPct)
+		})
+	}
+}
+
+func TestComputeOverallHealth(t *testing.T) {
+	tests := []struct {
+		name     string
+		slis     []domain.SLIResult
+		expected string
+	}{
+		{
+			name: "all meeting yields healthy",
+			slis: []domain.SLIResult{
+				{Status: domain.SLIStatusMeeting},
+				{Status: domain.SLIStatusMeeting},
+			},
+			expected: domain.SLOHealthHealthy,
+		},
+		{
+			name: "any burning yields at risk",
+			slis: []domain.SLIResult{
+				{Status: domain.SLIStatusMeeting},
+				{Status: domain.SLIStatusBurning},
+			},
+			expected: domain.SLOHealthAtRisk,
+		},
+		{
+			name: "any breached yields breaching even if burning exists",
+			slis: []domain.SLIResult{
+				{Status: domain.SLIStatusMeeting},
+				{Status: domain.SLIStatusBurning},
+				{Status: domain.SLIStatusBreached},
+			},
+			expected: domain.SLOHealthBreaching,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			health := computeOverallHealth(tt.slis)
+			assert.Equal(t, tt.expected, health)
+		})
+	}
+}
+
+func TestBuildDefaultSLIs(t *testing.T) {
+	freshness := domain.SLIResult{
+		Name:   domain.SLIFreshness,
+		Status: domain.SLIStatusMeeting,
+	}
+	slis := buildDefaultSLIs(freshness)
+	require.Len(t, slis, 5)
+	assert.Equal(t, domain.SLIAvailability, slis[0].Name)
+	assert.Equal(t, domain.SLIFreshness, slis[1].Name)
+	assert.Equal(t, domain.SLIActionDurability, slis[2].Name)
+	assert.Equal(t, domain.SLIStreamContinuity, slis[3].Name)
+	assert.Equal(t, domain.SLICorrectnessProxy, slis[4].Name)
+}

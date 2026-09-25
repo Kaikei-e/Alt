@@ -57,21 +57,7 @@ func (r *ScrapingRepository) GetScrapingDomainByDomain(ctx context.Context, doma
 		LIMIT 1
 	`
 
-	var sd domain.ScrapingDomain
-	var robotsTxtURL, robotsTxtContent sql.NullString
-	var robotsTxtFetchedAt sql.NullTime
-	var robotsTxtLastStatus sql.NullInt32
-	var robotsCrawlDelaySec sql.NullInt32
-	var robotsDisallowPaths StringArray
-
-	err := r.pool.QueryRow(ctx, query, domainName).Scan(
-		&sd.ID, &sd.Domain, &sd.Scheme,
-		&sd.AllowFetchBody, &sd.AllowMLTraining, &sd.AllowCacheDays,
-		&sd.ForceRespectRobots, &robotsTxtURL, &robotsTxtContent,
-		&robotsTxtFetchedAt, &robotsTxtLastStatus, &robotsCrawlDelaySec,
-		&robotsDisallowPaths, &sd.CreatedAt, &sd.UpdatedAt,
-	)
-
+	sd, err := scanScrapingDomain(r.pool.QueryRow(ctx, query, domainName))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -80,31 +66,7 @@ func (r *ScrapingRepository) GetScrapingDomainByDomain(ctx context.Context, doma
 		return nil, errors.New("error fetching scraping domain")
 	}
 
-	// Convert nullable fields
-	if robotsTxtURL.Valid {
-		sd.RobotsTxtURL = &robotsTxtURL.String
-	}
-	if robotsTxtContent.Valid {
-		sd.RobotsTxtContent = &robotsTxtContent.String
-	}
-	if robotsTxtFetchedAt.Valid {
-		sd.RobotsTxtFetchedAt = &robotsTxtFetchedAt.Time
-	}
-	if robotsTxtLastStatus.Valid {
-		status := int(robotsTxtLastStatus.Int32)
-		sd.RobotsTxtLastStatus = &status
-	}
-	if robotsCrawlDelaySec.Valid {
-		delay := int(robotsCrawlDelaySec.Int32)
-		sd.RobotsCrawlDelaySec = &delay
-	}
-	if robotsDisallowPaths != nil {
-		sd.RobotsDisallowPaths = []string(robotsDisallowPaths)
-	} else {
-		sd.RobotsDisallowPaths = []string{}
-	}
-
-	return &sd, nil
+	return sd, nil
 }
 
 // GetScrapingDomainByID fetches a scraping domain by ID
@@ -119,21 +81,7 @@ func (r *ScrapingRepository) GetScrapingDomainByID(ctx context.Context, id uuid.
 		LIMIT 1
 	`
 
-	var sd domain.ScrapingDomain
-	var robotsTxtURL, robotsTxtContent sql.NullString
-	var robotsTxtFetchedAt sql.NullTime
-	var robotsTxtLastStatus sql.NullInt32
-	var robotsCrawlDelaySec sql.NullInt32
-	var robotsDisallowPaths StringArray
-
-	err := r.pool.QueryRow(ctx, query, id).Scan(
-		&sd.ID, &sd.Domain, &sd.Scheme,
-		&sd.AllowFetchBody, &sd.AllowMLTraining, &sd.AllowCacheDays,
-		&sd.ForceRespectRobots, &robotsTxtURL, &robotsTxtContent,
-		&robotsTxtFetchedAt, &robotsTxtLastStatus, &robotsCrawlDelaySec,
-		&robotsDisallowPaths, &sd.CreatedAt, &sd.UpdatedAt,
-	)
-
+	sd, err := scanScrapingDomain(r.pool.QueryRow(ctx, query, id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -142,31 +90,7 @@ func (r *ScrapingRepository) GetScrapingDomainByID(ctx context.Context, id uuid.
 		return nil, errors.New("error fetching scraping domain")
 	}
 
-	// Convert nullable fields
-	if robotsTxtURL.Valid {
-		sd.RobotsTxtURL = &robotsTxtURL.String
-	}
-	if robotsTxtContent.Valid {
-		sd.RobotsTxtContent = &robotsTxtContent.String
-	}
-	if robotsTxtFetchedAt.Valid {
-		sd.RobotsTxtFetchedAt = &robotsTxtFetchedAt.Time
-	}
-	if robotsTxtLastStatus.Valid {
-		status := int(robotsTxtLastStatus.Int32)
-		sd.RobotsTxtLastStatus = &status
-	}
-	if robotsCrawlDelaySec.Valid {
-		delay := int(robotsCrawlDelaySec.Int32)
-		sd.RobotsCrawlDelaySec = &delay
-	}
-	if robotsDisallowPaths != nil {
-		sd.RobotsDisallowPaths = []string(robotsDisallowPaths)
-	} else {
-		sd.RobotsDisallowPaths = []string{}
-	}
-
-	return &sd, nil
+	return sd, nil
 }
 
 // SaveScrapingDomain saves or updates a scraping domain
@@ -256,50 +180,13 @@ func (r *ScrapingRepository) ListScrapingDomains(ctx context.Context, offset, li
 
 	domains := make([]*domain.ScrapingDomain, 0)
 	for rows.Next() {
-		var sd domain.ScrapingDomain
-		var robotsTxtURL, robotsTxtContent sql.NullString
-		var robotsTxtFetchedAt sql.NullTime
-		var robotsTxtLastStatus sql.NullInt32
-		var robotsCrawlDelaySec sql.NullInt32
-		var robotsDisallowPaths StringArray
-
-		err := rows.Scan(
-			&sd.ID, &sd.Domain, &sd.Scheme,
-			&sd.AllowFetchBody, &sd.AllowMLTraining, &sd.AllowCacheDays,
-			&sd.ForceRespectRobots, &robotsTxtURL, &robotsTxtContent,
-			&robotsTxtFetchedAt, &robotsTxtLastStatus, &robotsCrawlDelaySec,
-			&robotsDisallowPaths, &sd.CreatedAt, &sd.UpdatedAt,
-		)
+		sd, err := scanScrapingDomain(rows)
 		if err != nil {
 			logger.SafeErrorContext(ctx, "Error scanning scraping domain", "error", err)
 			return nil, errors.New("error scanning scraping domains")
 		}
 
-		// Convert nullable fields
-		if robotsTxtURL.Valid {
-			sd.RobotsTxtURL = &robotsTxtURL.String
-		}
-		if robotsTxtContent.Valid {
-			sd.RobotsTxtContent = &robotsTxtContent.String
-		}
-		if robotsTxtFetchedAt.Valid {
-			sd.RobotsTxtFetchedAt = &robotsTxtFetchedAt.Time
-		}
-		if robotsTxtLastStatus.Valid {
-			status := int(robotsTxtLastStatus.Int32)
-			sd.RobotsTxtLastStatus = &status
-		}
-		if robotsCrawlDelaySec.Valid {
-			delay := int(robotsCrawlDelaySec.Int32)
-			sd.RobotsCrawlDelaySec = &delay
-		}
-		if robotsDisallowPaths != nil {
-			sd.RobotsDisallowPaths = []string(robotsDisallowPaths)
-		} else {
-			sd.RobotsDisallowPaths = []string{}
-		}
-
-		domains = append(domains, &sd)
+		domains = append(domains, sd)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -343,4 +230,49 @@ func (r *ScrapingRepository) UpdateScrapingDomainPolicy(ctx context.Context, id 
 
 	logger.SafeInfoContext(ctx, "Scraping domain policy updated", "id", id)
 	return nil
+}
+
+func scanScrapingDomain(row rowScanner) (*domain.ScrapingDomain, error) {
+	var sd domain.ScrapingDomain
+	var robotsTxtURL, robotsTxtContent sql.NullString
+	var robotsTxtFetchedAt sql.NullTime
+	var robotsTxtLastStatus sql.NullInt32
+	var robotsCrawlDelaySec sql.NullInt32
+	var robotsDisallowPaths StringArray
+
+	err := row.Scan(
+		&sd.ID, &sd.Domain, &sd.Scheme,
+		&sd.AllowFetchBody, &sd.AllowMLTraining, &sd.AllowCacheDays,
+		&sd.ForceRespectRobots, &robotsTxtURL, &robotsTxtContent,
+		&robotsTxtFetchedAt, &robotsTxtLastStatus, &robotsCrawlDelaySec,
+		&robotsDisallowPaths, &sd.CreatedAt, &sd.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if robotsTxtURL.Valid {
+		sd.RobotsTxtURL = &robotsTxtURL.String
+	}
+	if robotsTxtContent.Valid {
+		sd.RobotsTxtContent = &robotsTxtContent.String
+	}
+	if robotsTxtFetchedAt.Valid {
+		sd.RobotsTxtFetchedAt = &robotsTxtFetchedAt.Time
+	}
+	if robotsTxtLastStatus.Valid {
+		status := int(robotsTxtLastStatus.Int32)
+		sd.RobotsTxtLastStatus = &status
+	}
+	if robotsCrawlDelaySec.Valid {
+		delay := int(robotsCrawlDelaySec.Int32)
+		sd.RobotsCrawlDelaySec = &delay
+	}
+	if robotsDisallowPaths != nil {
+		sd.RobotsDisallowPaths = []string(robotsDisallowPaths)
+	} else {
+		sd.RobotsDisallowPaths = []string{}
+	}
+
+	return &sd, nil
 }

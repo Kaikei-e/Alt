@@ -395,3 +395,55 @@ func TestRetrieveContext_Authenticated_ForwardsUserID(t *testing.T) {
 	require.Len(t, resp.Msg.Contexts, 1)
 	assert.Equal(t, "relevant knowledge", resp.Msg.Contexts[0].Title)
 }
+
+func TestExtractLastUserQuery(t *testing.T) {
+	tests := []struct {
+		name     string
+		messages []*augurv2.ChatMessage
+		want     string
+	}{
+		{
+			name:     "empty slice",
+			messages: nil,
+			want:     "",
+		},
+		{
+			name: "no user message",
+			messages: []*augurv2.ChatMessage{
+				{Role: "system", Content: "you are a bot"},
+				{Role: "assistant", Content: "hello"},
+			},
+			want: "",
+		},
+		{
+			name: "single user message",
+			messages: []*augurv2.ChatMessage{
+				{Role: "user", Content: "find articles about Go"},
+			},
+			want: "find articles about Go",
+		},
+		{
+			name: "multiple user messages returns last",
+			messages: []*augurv2.ChatMessage{
+				{Role: "user", Content: "first question"},
+				{Role: "assistant", Content: "first answer"},
+				{Role: "user", Content: "second question"},
+			},
+			want: "second question",
+		},
+		{
+			name: "user message with empty content",
+			messages: []*augurv2.ChatMessage{
+				{Role: "user", Content: ""},
+			},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractLastUserQuery(tt.messages)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

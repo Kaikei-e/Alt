@@ -52,13 +52,13 @@ type Result struct {
 // it searches the existing article index, then narrows the user's episode
 // spine to episodes containing a hit.
 type SearchTrailUsecase struct {
-	searchPort    search_indexer_port.SearchIndexerPort
+	searchPort    search_indexer_port.ArticleSearchPort
 	trailPort     search_trail_port.SearchTrailPort
 	thumbnailPort trail_thumbnail_port.GetOgImageURLsPort
 }
 
 func NewSearchTrailUsecase(
-	searchPort search_indexer_port.SearchIndexerPort,
+	searchPort search_indexer_port.ArticleSearchPort,
 	trailPort search_trail_port.SearchTrailPort,
 	thumbnailPort trail_thumbnail_port.GetOgImageURLsPort,
 ) *SearchTrailUsecase {
@@ -71,9 +71,7 @@ func (u *SearchTrailUsecase) Execute(ctx context.Context, userID uuid.UUID, quer
 	if strings.TrimSpace(query) == "" {
 		return nil, fmt.Errorf("%w: query must not be empty", ErrInvalidRequest)
 	}
-	if limit <= 0 || limit > maxLimit {
-		limit = defaultLimit
-	}
+	limit = clampLimit(limit)
 
 	hits, err := u.searchPort.SearchArticles(ctx, query, userID.String())
 	if err != nil {
@@ -83,10 +81,7 @@ func (u *SearchTrailUsecase) Execute(ctx context.Context, userID uuid.UUID, quer
 		return &Result{}, nil
 	}
 
-	itemKeys := make([]string, len(hits))
-	for i, h := range hits {
-		itemKeys[i] = articleItemKeyPrefix + h.ID
-	}
+	itemKeys := hitsToItemKeys(hits)
 
 	episodes, err := u.trailPort.SearchTrailFootprints(ctx, userID, itemKeys, sovereignSearchWindow)
 	if err != nil {
@@ -99,6 +94,23 @@ func (u *SearchTrailUsecase) Execute(ctx context.Context, userID uuid.UUID, quer
 	episodes = trail_thumbnail_enrichment.Enrich(ctx, u.thumbnailPort, episodes)
 
 	return &Result{Episodes: episodes, MatchedItemKeys: matchedItemKeys(itemKeys, episodes)}, nil
+}
+
+// clampLimit ensures requested limit stays within [1, maxLimit], defaulting otherwise.
+func clampLimit(limit int) int {
+	if limit <= 0 || limit > maxLimit {
+		return defaultLimit
+	}
+	return limit
+}
+
+// hitsToItemKeys maps search hits to trail article item keys.
+func hitsToItemKeys(hits []domain.SearchIndexerArticleHit) []string {
+	itemKeys := make([]string, len(hits))
+	for i, h := range hits {
+		itemKeys[i] = articleItemKeyPrefix + h.ID
+	}
+	return itemKeys
 }
 
 // matchedItemKeys is the subset of searched itemKeys that actually appear

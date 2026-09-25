@@ -84,7 +84,7 @@ func TestSearchFeedMeilisearchGateway_SearchFeeds(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockDriver := mocks.NewMockSearchIndexerPort(ctrl)
+			mockDriver := mocks.NewMockArticleSearchPort(ctrl)
 
 			userID := uuid.New()
 			ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
@@ -151,7 +151,7 @@ func TestSearchFeedMeilisearchGateway_SearchFeeds_EmptyQuery(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Hour),
 	})
 
-	mockDriver := mocks.NewMockSearchIndexerPort(ctrl)
+	mockDriver := mocks.NewMockArticleSearchPort(ctrl)
 	mockDriver.EXPECT().SearchArticles(ctx, "", userID.String()).Return([]domain.SearchIndexerArticleHit{}, nil)
 
 	gateway := NewSearchFeedMeilisearchGateway(mockDriver)
@@ -240,7 +240,7 @@ func TestSearchFeedMeilisearchGateway_SearchFeedsWithPagination(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockDriver := mocks.NewMockSearchIndexerPort(ctrl)
+			mockDriver := mocks.NewMockArticleSearchPort(ctrl)
 
 			userID := uuid.New()
 			ctx := domain.SetUserContext(context.Background(), &domain.UserContext{
@@ -276,5 +276,38 @@ func TestSearchFeedMeilisearchGateway_SearchFeedsWithPagination(t *testing.T) {
 				t.Fatalf("Expected total count %d, got %d", tt.expectedTotalCount, totalCount)
 			}
 		})
+	}
+}
+
+func TestMapIndexerHitsToArticleHits(t *testing.T) {
+	hits := []domain.SearchIndexerArticleHit{
+		{
+			ID:      "id-1",
+			Title:   "Title 1",
+			Content: "Content 1",
+			Tags:    []string{"tag-a", "tag-b"},
+		},
+		{
+			ID:      "id-2",
+			Title:   "Title 2",
+			Content: "Content 2",
+			Tags:    []string{},
+		},
+	}
+
+	results := mapIndexerHitsToArticleHits(hits)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	if results[0].ID != "id-1" || results[0].Title != "Title 1" || results[0].Content != "Content 1" {
+		t.Errorf("unexpected results[0]: %+v", results[0])
+	}
+	if len(results[0].Tags) != 2 || results[0].Tags[0] != "tag-a" || results[0].Tags[1] != "tag-b" {
+		t.Errorf("unexpected tags in results[0]: %v", results[0].Tags)
+	}
+
+	if results[1].ID != "id-2" || results[1].Title != "Title 2" || results[1].Content != "Content 2" {
+		t.Errorf("unexpected results[1]: %+v", results[1])
 	}
 }

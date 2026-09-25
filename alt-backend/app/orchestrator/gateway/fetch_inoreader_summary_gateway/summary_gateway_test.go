@@ -154,7 +154,38 @@ func TestInoreaderSummaryGateway_FetchSummariesByURLs_DatabaseError(t *testing.T
 	assert.Nil(t, result)
 }
 
-// Helper function
 func stringPtr(s string) *string {
 	return &s
+}
+
+func TestBuildNormalizedURLList(t *testing.T) {
+	urls := []string{"https://example.com/article1", "https://example.com/article1"}
+	slice, normMap := buildNormalizedURLList(context.Background(), urls)
+
+	assert.Contains(t, slice, "https://example.com/article1")
+	assert.Equal(t, "https://example.com/article1", normMap["https://example.com/article1"])
+}
+
+func TestFilterAndMapInoreaderSummaries(t *testing.T) {
+	modelSummaries := []*models.InoreaderSummary{
+		{
+			ArticleURL:  "https://example.com/article1",
+			Title:       "Title 1",
+			InoreaderID: "id1",
+		},
+		{
+			ArticleURL:  "https://example.com/article2",
+			Title:       "Title 2",
+			InoreaderID: "id2",
+		},
+	}
+	urls := []string{"https://example.com/article1"}
+	origToNorm := map[string]string{
+		"https://example.com/article1": "https://example.com/article1",
+	}
+
+	result := filterAndMapInoreaderSummaries(context.Background(), modelSummaries, urls, origToNorm)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "https://example.com/article1", result[0].ArticleURL)
+	assert.Equal(t, "Title 1", result[0].Title)
 }

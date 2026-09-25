@@ -165,30 +165,9 @@ func isContextCancellation(err error) bool {
 // was emitted, while the payload's `original_occurred_at` records the
 // fact-time when the article was first observed.
 func (u *Usecase) appendCorrective(ctx context.Context, articleID uuid.UUID, url string, originalCreatedAt time.Time, userID uuid.UUID) (bool, error) {
-	originalOccurredAt := ""
-	if !originalCreatedAt.IsZero() {
-		originalOccurredAt = originalCreatedAt.UTC().Format(time.RFC3339)
-	}
-	payload, err := json.Marshal(domain.ArticleUrlBackfilledPayload{
-		ArticleID:          articleID.String(),
-		URL:                url,
-		OriginalOccurredAt: originalOccurredAt,
-	})
+	event, err := buildCorrectiveEvent(articleID, url, originalCreatedAt, time.Now(), userID)
 	if err != nil {
-		return false, fmt.Errorf("marshal payload: %w", err)
-	}
-	event := domain.KnowledgeEvent{
-		EventID:       uuid.New(),
-		OccurredAt:    time.Now(),
-		TenantID:      userID,
-		UserID:        &userID,
-		ActorType:     domain.ActorService,
-		ActorID:       "knowledge-url-backfill",
-		EventType:     domain.EventArticleUrlBackfilled,
-		AggregateType: domain.AggregateArticle,
-		AggregateID:   articleID.String(),
-		DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleUrlBackfill, articleID.String()),
-		Payload:       payload,
+		return false, err
 	}
 	eventSeq, err := u.eventPort.AppendKnowledgeEvent(ctx, event)
 	if err != nil {
@@ -199,6 +178,36 @@ func (u *Usecase) appendCorrective(ctx context.Context, articleID uuid.UUID, url
 	// no new event row was written. Treat as idempotent skip — the
 	// projector still has the prior corrective patch applied.
 	return eventSeq != 0, nil
+}
+
+// buildCorrectiveEvent constructs an ArticleUrlBackfilled event with multi-temporal timestamps (pure function).
+func buildCorrectiveEvent(articleID uuid.UUID, url string, originalCreatedAt, now time.Time, userID uuid.UUID) (domain.KnowledgeEvent, error) {
+	originalOccurredAt := ""
+	if !originalCreatedAt.IsZero() {
+		originalOccurredAt = originalCreatedAt.UTC().Format(time.RFC3339)
+	}
+	payload, err := json.Marshal(domain.ArticleUrlBackfilledPayload{
+		ArticleID:          articleID.String(),
+		URL:                url,
+		OriginalOccurredAt: originalOccurredAt,
+	})
+	if err != nil {
+		return domain.KnowledgeEvent{}, fmt.Errorf("marshal payload: %w", err)
+	}
+	event := domain.KnowledgeEvent{
+		EventID:       uuid.New(),
+		OccurredAt:    now,
+		TenantID:      userID,
+		UserID:        &userID,
+		ActorType:     domain.ActorService,
+		ActorID:       "knowledge-url-backfill",
+		EventType:     domain.EventArticleUrlBackfilled,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   articleID.String(),
+		DedupeKey:     fmt.Sprintf(domain.DedupeKeyArticleUrlBackfill, articleID.String()),
+		Payload:       payload,
+	}
+	return event, nil
 }
 
 // isHTTPURL allowlist mirrors alt-backend/app/job/knowledge_projector.go

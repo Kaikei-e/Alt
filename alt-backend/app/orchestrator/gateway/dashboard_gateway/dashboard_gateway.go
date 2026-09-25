@@ -36,24 +36,12 @@ func NewDashboardGateway() *DashboardGateway {
 
 // GetMetrics fetches system metrics from recap-worker
 func (g *DashboardGateway) GetMetrics(ctx context.Context, metricType string, windowSeconds, limit int64) ([]byte, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/v1/dashboard/metrics", g.recapWorkerURL))
+	reqURL, err := buildDashboardQueryURL(g.recapWorkerURL, "/v1/dashboard/metrics", metricType, windowSeconds, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL: %w", err)
+		return nil, err
 	}
 
-	q := u.Query()
-	if metricType != "" {
-		q.Set("type", metricType)
-	}
-	if windowSeconds > 0 {
-		q.Set("window", strconv.FormatInt(windowSeconds, 10))
-	}
-	if limit > 0 {
-		q.Set("limit", strconv.FormatInt(limit, 10))
-	}
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -74,8 +62,8 @@ func (g *DashboardGateway) GetMetrics(ctx context.Context, metricType string, wi
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
+	if err := checkDashboardStatus(resp.StatusCode, body); err != nil {
+		return nil, err
 	}
 
 	return body, nil
@@ -83,21 +71,12 @@ func (g *DashboardGateway) GetMetrics(ctx context.Context, metricType string, wi
 
 // GetOverview fetches recent activity from recap-worker
 func (g *DashboardGateway) GetOverview(ctx context.Context, windowSeconds, limit int64) ([]byte, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/v1/dashboard/overview", g.recapWorkerURL))
+	reqURL, err := buildDashboardQueryURL(g.recapWorkerURL, "/v1/dashboard/overview", "", windowSeconds, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL: %w", err)
+		return nil, err
 	}
 
-	q := u.Query()
-	if windowSeconds > 0 {
-		q.Set("window", strconv.FormatInt(windowSeconds, 10))
-	}
-	if limit > 0 {
-		q.Set("limit", strconv.FormatInt(limit, 10))
-	}
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -118,8 +97,8 @@ func (g *DashboardGateway) GetOverview(ctx context.Context, windowSeconds, limit
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
+	if err := checkDashboardStatus(resp.StatusCode, body); err != nil {
+		return nil, err
 	}
 
 	return body, nil
@@ -127,21 +106,12 @@ func (g *DashboardGateway) GetOverview(ctx context.Context, windowSeconds, limit
 
 // GetLogs fetches error logs from recap-worker
 func (g *DashboardGateway) GetLogs(ctx context.Context, windowSeconds, limit int64) ([]byte, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/v1/dashboard/logs", g.recapWorkerURL))
+	reqURL, err := buildDashboardQueryURL(g.recapWorkerURL, "/v1/dashboard/logs", "", windowSeconds, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL: %w", err)
+		return nil, err
 	}
 
-	q := u.Query()
-	if windowSeconds > 0 {
-		q.Set("window", strconv.FormatInt(windowSeconds, 10))
-	}
-	if limit > 0 {
-		q.Set("limit", strconv.FormatInt(limit, 10))
-	}
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -162,8 +132,8 @@ func (g *DashboardGateway) GetLogs(ctx context.Context, windowSeconds, limit int
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
+	if err := checkDashboardStatus(resp.StatusCode, body); err != nil {
+		return nil, err
 	}
 
 	return body, nil
@@ -171,21 +141,12 @@ func (g *DashboardGateway) GetLogs(ctx context.Context, windowSeconds, limit int
 
 // GetJobs fetches admin jobs from recap-worker
 func (g *DashboardGateway) GetJobs(ctx context.Context, windowSeconds, limit int64) ([]byte, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/v1/dashboard/jobs", g.recapWorkerURL))
+	reqURL, err := buildDashboardQueryURL(g.recapWorkerURL, "/v1/dashboard/jobs", "", windowSeconds, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL: %w", err)
+		return nil, err
 	}
 
-	q := u.Query()
-	if windowSeconds > 0 {
-		q.Set("window", strconv.FormatInt(windowSeconds, 10))
-	}
-	if limit > 0 {
-		q.Set("limit", strconv.FormatInt(limit, 10))
-	}
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -206,9 +167,37 @@ func (g *DashboardGateway) GetJobs(ctx context.Context, windowSeconds, limit int
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("recap-worker returned status %d: %s", resp.StatusCode, string(body))
+	if err := checkDashboardStatus(resp.StatusCode, body); err != nil {
+		return nil, err
 	}
 
 	return body, nil
+}
+
+func buildDashboardQueryURL(baseURL, path, metricType string, windowSeconds, limit int64) (string, error) {
+	u, err := url.Parse(fmt.Sprintf("%s%s", baseURL, path))
+	if err != nil {
+		return "", fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	q := u.Query()
+	if metricType != "" {
+		q.Set("type", metricType)
+	}
+	if windowSeconds > 0 {
+		q.Set("window", strconv.FormatInt(windowSeconds, 10))
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.FormatInt(limit, 10))
+	}
+	u.RawQuery = q.Encode()
+
+	return u.String(), nil
+}
+
+func checkDashboardStatus(statusCode int, body []byte) error {
+	if statusCode != http.StatusOK {
+		return fmt.Errorf("recap-worker returned status %d: %s", statusCode, string(body))
+	}
+	return nil
 }

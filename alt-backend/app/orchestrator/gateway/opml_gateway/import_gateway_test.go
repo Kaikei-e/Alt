@@ -122,3 +122,53 @@ func TestImportGateway_RejectsDisallowedURLsAndContinues(t *testing.T) {
 	require.Len(t, store.gotURLs, 1, "only valid URL must reach the store")
 	assert.Equal(t, "https://example.com/valid.xml", store.gotURLs[0])
 }
+
+func TestFilterAndSanitizeImportURLs(t *testing.T) {
+	urls := []string{
+		"  ",
+		"https://example.com/feed?utm_source=test",
+		"https://example.com/feed?utm_medium=email",
+	}
+
+	accepted, result := filterAndSanitizeImportURLs(context.Background(), urls)
+	assert.Equal(t, 3, result.Total)
+	assert.Equal(t, 1, result.Failed)
+	assert.Equal(t, 1, result.Skipped)
+	require.Len(t, accepted, 1)
+	assert.Equal(t, "https://example.com/feed", accepted[0])
+}
+
+func TestMergeImportResults(t *testing.T) {
+	initial := &domain.OPMLImportResult{
+		Total:      3,
+		Failed:     1,
+		Skipped:    1,
+		FailedURLs: []string{"bad"},
+	}
+	registered := &domain.OPMLImportResult{
+		Imported:   1,
+		Skipped:    0,
+		Failed:     0,
+		FailedURLs: nil,
+	}
+
+	merged := mergeImportResults(initial, registered)
+	assert.Equal(t, 3, merged.Total)
+	assert.Equal(t, 1, merged.Imported)
+	assert.Equal(t, 1, merged.Failed)
+	assert.Equal(t, 1, merged.Skipped)
+	assert.Equal(t, []string{"bad"}, merged.FailedURLs)
+}
+
+func TestFillMissingExportTitles(t *testing.T) {
+	links := []*domain.FeedLinkForExport{
+		{URL: "https://example.com/rss", Title: ""},
+		{URL: "https://example.org/rss", Title: "Custom Title"},
+		{URL: "not-a-url", Title: ""},
+	}
+
+	res := fillMissingExportTitles(links)
+	assert.Equal(t, "example.com", res[0].Title)
+	assert.Equal(t, "Custom Title", res[1].Title)
+	assert.Equal(t, "", res[2].Title)
+}

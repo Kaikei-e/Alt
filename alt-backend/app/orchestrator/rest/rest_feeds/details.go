@@ -4,6 +4,7 @@ import (
 	"alt/config"
 	"alt/di"
 	"alt/utils/logger"
+	"alt/utils/security"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -29,7 +30,7 @@ func RestHandleFetchFeedDetails(container *di.ApplicationComponents) echo.Handle
 			return HandleValidationError(c, "Invalid URL format", "feed_url", payload.FeedURL)
 		}
 
-		err = IsAllowedURL(feedURLParsed)
+		err = security.NewURLSecurityValidator().ValidateParsedRSSURL(feedURLParsed)
 		if err != nil {
 			return HandleValidationError(c, "URL not allowed for security reasons", "feed_url", payload.FeedURL)
 		}
@@ -191,7 +192,7 @@ func RestHandleFetchFeedTags(container *di.ApplicationComponents) echo.HandlerFu
 		}
 
 		// Apply URL security validation (same as other endpoints)
-		err = IsAllowedURL(parsedArticleURL)
+		err = security.NewURLSecurityValidator().ValidateParsedRSSURL(parsedArticleURL)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Article URL not allowed", "error", err, "article_url", req.FeedURL)
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Article URL not allowed for security reasons"})

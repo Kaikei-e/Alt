@@ -3,12 +3,13 @@ package image_proxy_usecase
 import (
 	"alt/domain"
 	"alt/orchestrator/port/image_proxy_port"
+	"alt/orchestrator/port/rate_limiter_port"
 	"alt/utils/image_proxy"
 	"alt/utils/logger"
-	"alt/utils/rate_limiter"
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	image_fetch_port "alt/orchestrator/port/image_fetch_port"
@@ -21,7 +22,7 @@ type ImageProxyUsecase struct {
 	cache          image_proxy_port.ImageProxyCachePort
 	signer         image_proxy_port.ImageProxySignerPort
 	dynamicDomain  image_proxy_port.DynamicDomainPort
-	rateLimiter    *rate_limiter.HostRateLimiter
+	rateLimiter    rate_limiter_port.RateLimiterPort
 	maxWidth       int
 	webpQuality    int
 	cacheTTL       time.Duration
@@ -34,7 +35,7 @@ func NewImageProxyUsecase(
 	cache image_proxy_port.ImageProxyCachePort,
 	signer image_proxy_port.ImageProxySignerPort,
 	dynamicDomain image_proxy_port.DynamicDomainPort,
-	rateLimiter *rate_limiter.HostRateLimiter,
+	rateLimiter rate_limiter_port.RateLimiterPort,
 	maxWidth int,
 	webpQuality int,
 	cacheTTLMinutes int,
@@ -99,7 +100,7 @@ func (u *ImageProxyUsecase) ProxyImage(ctx context.Context, sig, encodedURL stri
 
 	// 4. Rate limit
 	if u.rateLimiter != nil {
-		if err := u.rateLimiter.WaitForHost(ctx, originalURL); err != nil {
+		if err := u.rateLimiter.WaitForURL(ctx, originalURL); err != nil {
 			return nil, fmt.Errorf("rate limit: %w", err)
 		}
 	}
@@ -174,14 +175,23 @@ func (u *ImageProxyUsecase) WarmCache(ctx context.Context, imageURL string) {
 
 	// Extract sig and encodedURL from the proxy URL path
 	// Format: /v1/images/proxy/{sig}/{encodedURL}
-	const prefix = "/v1/images/proxy/"
-	rest := proxyURL[len(prefix):]
-	for i, c := range rest {
-		if c == '/' {
-			sig := rest[:i]
-			encoded := rest[i+1:]
-			_, _ = u.ProxyImage(ctx, sig, encoded)
-			return
-		}
+	sig, encoded, ok := parseProxyURLPath(proxyURL)
+	if !ok {
+		return
 	}
+	_, _ = u.ProxyImage(ctx, sig, encoded)
+}
+
+// parseProxyURLPath extracts the signature and encoded URL from a proxy URL path.
+func parseProxyURLPath(proxyURL string) (sig, encoded string, ok bool) {
+	const prefix = "/v1/images/proxy/"
+	if !strings.HasPrefix(proxyURL, prefix) {
+		return "", "", false
+	}
+	rest := proxyURL[len(prefix):]
+	idx := strings.IndexByte(rest, '/')
+	if idx < 0 {
+		return "", "", false
+	}
+	return rest[:idx], rest[idx+1:], true
 }

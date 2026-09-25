@@ -2,7 +2,6 @@ package recall_rail_usecase
 
 import (
 	"alt/domain"
-	"alt/orchestrator/port/feature_flag_port"
 	"alt/orchestrator/port/recall_candidate_port"
 	"context"
 	"log/slog"
@@ -13,18 +12,15 @@ import (
 
 type RecallRailUsecase struct {
 	candidatePort recall_candidate_port.GetRecallCandidatesPort
-	featureFlag   feature_flag_port.FeatureFlagPort
 	fallbackPort  recall_candidate_port.ArticleFallbackPort
 }
 
 func NewRecallRailUsecase(
 	candidatePort recall_candidate_port.GetRecallCandidatesPort,
-	featureFlag feature_flag_port.FeatureFlagPort,
 	fallbackPort recall_candidate_port.ArticleFallbackPort,
 ) *RecallRailUsecase {
 	return &RecallRailUsecase{
 		candidatePort: candidatePort,
-		featureFlag:   featureFlag,
 		fallbackPort:  fallbackPort,
 	}
 }

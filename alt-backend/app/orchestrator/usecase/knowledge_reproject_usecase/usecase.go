@@ -140,7 +140,7 @@ func (u *Usecase) StartReproject(ctx context.Context, mode, fromVersion, toVersi
 
 	// Ensure target version exists in knowledge_projection_versions
 	if u.createVersionPort != nil {
-		targetVersionNum, parseErr := strconv.Atoi(strings.TrimPrefix(strings.ToLower(toVersion), "v"))
+		targetVersionNum, parseErr := parseVersionNumber(toVersion)
 		if parseErr == nil {
 			_ = u.createVersionPort.CreateVersion(ctx, domain.KnowledgeProjectionVersion{
 				Version:     targetVersionNum,
@@ -234,7 +234,7 @@ func (u *Usecase) SwapReproject(ctx context.Context, runID uuid.UUID) error {
 		return fmt.Errorf("cannot swap dry_run reproject run %s: dry_run mode does not project events; use mode=full|user_subset|time_range", run.ReprojectRunID)
 	}
 
-	version, err := strconv.Atoi(strings.TrimPrefix(strings.ToLower(run.ToVersion), "v"))
+	version, err := parseVersionNumber(run.ToVersion)
 	if err != nil {
 		return fmt.Errorf("parse version for activation %q: %w", run.ToVersion, err)
 	}
@@ -268,6 +268,11 @@ func (u *Usecase) SwapReproject(ctx context.Context, runID uuid.UUID) error {
 	return nil
 }
 
+// parseVersionNumber extracts the integer projection version from version strings like "v2" or "2".
+func parseVersionNumber(v string) (int, error) {
+	return strconv.Atoi(strings.TrimPrefix(strings.ToLower(v), "v"))
+}
+
 // extractCheckpointSeq parses last_event_seq from a reproject run's checkpoint payload.
 func extractCheckpointSeq(payload json.RawMessage) int64 {
 	if len(payload) == 0 {
@@ -295,7 +300,7 @@ func (u *Usecase) RollbackReproject(ctx context.Context, runID uuid.UUID) error 
 	}
 
 	// Revert to the previous version
-	fromVersion, err := strconv.Atoi(strings.TrimPrefix(strings.ToLower(run.FromVersion), "v"))
+	fromVersion, err := parseVersionNumber(run.FromVersion)
 	if err != nil {
 		return fmt.Errorf("parse from_version for rollback %q: %w", run.FromVersion, err)
 	}

@@ -46,42 +46,59 @@ func NewUsecase(
 
 // GetHealth aggregates projection health data.
 func (u *Usecase) GetHealth(ctx context.Context) (*HealthStatus, error) {
-	health := &HealthStatus{}
-
-	// Get active version (best-effort)
+	var activeVersion int
 	version, err := u.versionPort.GetActiveVersion(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to get active version", "error", err)
 	} else if version != nil {
-		health.ActiveVersion = version.Version
+		activeVersion = version.Version
 	}
 
-	// Get checkpoint (best-effort)
+	var checkpointSeq int64
 	seq, err := u.checkpointPort.GetProjectionCheckpoint(ctx, projectorName)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to get projection checkpoint", "error", err)
 	} else {
-		health.CheckpointSeq = seq
+		checkpointSeq = seq
 	}
 
-	// Get backfill jobs (best-effort)
+	var backfillJobs []domain.KnowledgeBackfillJob
 	jobs, err := u.backfillPort.ListBackfillJobs(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to list backfill jobs", "error", err)
 	} else {
-		health.BackfillJobs = jobs
+		backfillJobs = jobs
 	}
 
 	// Use actual checkpoint updated_at instead of request time
+	var updatedAt *time.Time
 	if u.freshnessPort != nil {
-		updatedAt, err := u.freshnessPort.GetProjectionFreshness(ctx, projectorName)
+		freshness, err := u.freshnessPort.GetProjectionFreshness(ctx, projectorName)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "failed to get projection freshness", "error", err)
-		} else if updatedAt != nil {
-			health.LastUpdated = *updatedAt
-			return health, nil
+		} else {
+			updatedAt = freshness
 		}
 	}
-	health.LastUpdated = time.Now()
-	return health, nil
+
+	lastUpdated := resolveLastUpdated(updatedAt, time.Now())
+	return buildHealthStatus(activeVersion, checkpointSeq, backfillJobs, lastUpdated), nil
+}
+
+// resolveLastUpdated returns the checkpoint timestamp if available, or the fallback time.
+func resolveLastUpdated(updatedAt *time.Time, now time.Time) time.Time {
+	if updatedAt != nil {
+		return *updatedAt
+	}
+	return now
+}
+
+// buildHealthStatus constructs the aggregated health status struct.
+func buildHealthStatus(activeVersion int, seq int64, jobs []domain.KnowledgeBackfillJob, lastUpdated time.Time) *HealthStatus {
+	return &HealthStatus{
+		ActiveVersion: activeVersion,
+		CheckpointSeq: seq,
+		BackfillJobs:  jobs,
+		LastUpdated:   lastUpdated,
+	}
 }

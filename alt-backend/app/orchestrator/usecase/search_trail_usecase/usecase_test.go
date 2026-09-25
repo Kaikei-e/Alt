@@ -31,14 +31,6 @@ func (f *fakeSearchPort) SearchArticlesWithPagination(_ context.Context, _ strin
 	return nil, 0, nil
 }
 
-func (f *fakeSearchPort) SearchRecapsByTag(_ context.Context, _ string, _ int) ([]*domain.RecapSearchResult, error) {
-	return nil, nil
-}
-
-func (f *fakeSearchPort) SearchRecapsByQuery(_ context.Context, _ string, _ int) ([]*domain.RecapSearchResult, int64, error) {
-	return nil, 0, nil
-}
-
 type fakeSearchTrailPort struct {
 	episodes    []domain.TrailEpisode
 	err         error
@@ -203,4 +195,85 @@ func TestExecute_EnrichesEpisodeThumbnailFromRepresentativeArticle(t *testing.T)
 	require.Len(t, res.Episodes, 1)
 	assert.Equal(t, "https://example.com/a.png", res.Episodes[0].ThumbnailURL)
 	assert.Equal(t, 1, thumbs.calls)
+}
+
+func TestClampLimit(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "negative limit", limit: -1, want: defaultLimit},
+		{name: "zero limit", limit: 0, want: defaultLimit},
+		{name: "exceeds max limit", limit: 101, want: defaultLimit},
+		{name: "valid limit", limit: 50, want: 50},
+		{name: "exact max limit", limit: 100, want: 100},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, clampLimit(tt.limit))
+		})
+	}
+}
+
+func TestHitsToItemKeys(t *testing.T) {
+	tests := []struct {
+		name string
+		hits []domain.SearchIndexerArticleHit
+		want []string
+	}{
+		{
+			name: "empty hits",
+			hits: nil,
+			want: []string{},
+		},
+		{
+			name: "converts hits to prefixed item keys",
+			hits: []domain.SearchIndexerArticleHit{{ID: "1"}, {ID: "2"}},
+			want: []string{"article:1", "article:2"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hitsToItemKeys(tt.hits)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMatchedItemKeys(t *testing.T) {
+	episodes := []domain.TrailEpisode{
+		{
+			Footprints: []domain.TrailFootprint{
+				{ItemKey: "article:1"},
+				{ItemKey: "article:2"},
+			},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		itemKeys []string
+		want     []string
+	}{
+		{
+			name:     "matches present keys in searched order",
+			itemKeys: []string{"article:2", "article:3", "article:1"},
+			want:     []string{"article:2", "article:1"},
+		},
+		{
+			name:     "no matching keys",
+			itemKeys: []string{"article:999"},
+			want:     []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchedItemKeys(tt.itemKeys, episodes)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

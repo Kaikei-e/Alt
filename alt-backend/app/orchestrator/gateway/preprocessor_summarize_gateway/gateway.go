@@ -35,8 +35,16 @@ func (g *Gateway) QueueSummarize(ctx context.Context, articleID, title string) (
 
 func (g *Gateway) GetSummarizeStatus(ctx context.Context, jobID string) (*preprocessor_summarize_port.SummarizeStatus, error) {
 	status, err := g.client.GetSummarizeStatus(ctx, jobID)
-	if err != nil || status == nil {
+	if err != nil {
 		return nil, err
+	}
+	return mapClientStatusToPortStatus(status), nil
+}
+
+// mapClientStatusToPortStatus maps driver-layer status to port-layer status.
+func mapClientStatusToPortStatus(status *preprocessor_client.SummarizeStatus) *preprocessor_summarize_port.SummarizeStatus {
+	if status == nil {
+		return nil
 	}
 	return &preprocessor_summarize_port.SummarizeStatus{
 		JobID:        status.JobID,
@@ -44,5 +52,5 @@ func (g *Gateway) GetSummarizeStatus(ctx context.Context, jobID string) (*prepro
 		Summary:      status.Summary,
 		ErrorMessage: status.ErrorMessage,
 		ArticleID:    status.ArticleID,
-	}, nil
+	}
 }

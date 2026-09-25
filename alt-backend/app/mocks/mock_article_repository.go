@@ -42,21 +42,6 @@ func (m *MockArticleUsecase) EXPECT() *MockArticleUsecaseMockRecorder {
 	return m.recorder
 }
 
-// Execute mocks base method.
-func (m *MockArticleUsecase) Execute(ctx context.Context, articleURL string) (*string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Execute", ctx, articleURL)
-	ret0, _ := ret[0].(*string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Execute indicates an expected call of Execute.
-func (mr *MockArticleUsecaseMockRecorder) Execute(ctx, articleURL any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockArticleUsecase)(nil).Execute), ctx, articleURL)
-}
-
 // FetchCompliantArticle mocks base method.
 func (m *MockArticleUsecase) FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (string, string, string, error) {
 	m.ctrl.T.Helper()

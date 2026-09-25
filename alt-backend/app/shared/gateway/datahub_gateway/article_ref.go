@@ -23,8 +23,13 @@ import (
 // that only makes sense during projection lag.
 //
 // This was the last read alt-backend performed against its own database pool.
+// articleRefDataHubClient isolates the data-hub RPCs called by ArticleRefGateway.
+type articleRefDataHubClient interface {
+	GetArticleTitleAndLink(context.Context, *connect.Request[datahubv1.GetArticleTitleAndLinkRequest]) (*connect.Response[datahubv1.GetArticleTitleAndLinkResponse], error)
+}
+
 type ArticleRefGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client articleRefDataHubClient
 }
 
 func NewArticleRefGateway(client datahubv1connect.DataHubServiceClient) *ArticleRefGateway {

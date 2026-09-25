@@ -27,8 +27,22 @@ import (
 // orchestration and belongs to the caller (ADR-000954 D4), and moving it
 // across the boundary would make one process's staleness another process's
 // problem.
+// readStateDataHubClient isolates the data-hub RPCs called by ReadStateGateway.
+type readStateDataHubClient interface {
+	MarkFeedRead(context.Context, *connect.Request[datahubv1.MarkFeedReadRequest]) (*connect.Response[datahubv1.MarkFeedReadResponse], error)
+	MarkArticleRead(context.Context, *connect.Request[datahubv1.MarkArticleReadRequest]) (*connect.Response[datahubv1.MarkArticleReadResponse], error)
+	GetReadFeedIDs(context.Context, *connect.Request[datahubv1.GetReadFeedIDsRequest]) (*connect.Response[datahubv1.GetReadFeedIDsResponse], error)
+	GetAllReadFeedIDs(context.Context, *connect.Request[datahubv1.GetAllReadFeedIDsRequest]) (*connect.Response[datahubv1.GetAllReadFeedIDsResponse], error)
+	GetUserSubscribedFeedLinkIDs(context.Context, *connect.Request[datahubv1.GetUserSubscribedFeedLinkIDsRequest]) (*connect.Response[datahubv1.GetUserSubscribedFeedLinkIDsResponse], error)
+	ListSubscriptions(context.Context, *connect.Request[datahubv1.ListSubscriptionsRequest]) (*connect.Response[datahubv1.ListSubscriptionsResponse], error)
+	Subscribe(context.Context, *connect.Request[datahubv1.SubscribeRequest]) (*connect.Response[datahubv1.SubscribeResponse], error)
+	Unsubscribe(context.Context, *connect.Request[datahubv1.UnsubscribeRequest]) (*connect.Response[datahubv1.UnsubscribeResponse], error)
+	AddFavoriteFeed(context.Context, *connect.Request[datahubv1.AddFavoriteFeedRequest]) (*connect.Response[datahubv1.AddFavoriteFeedResponse], error)
+	RemoveFavoriteFeed(context.Context, *connect.Request[datahubv1.RemoveFavoriteFeedRequest]) (*connect.Response[datahubv1.RemoveFavoriteFeedResponse], error)
+}
+
 type ReadStateGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client readStateDataHubClient
 }
 
 func NewReadStateGateway(client datahubv1connect.DataHubServiceClient) *ReadStateGateway {

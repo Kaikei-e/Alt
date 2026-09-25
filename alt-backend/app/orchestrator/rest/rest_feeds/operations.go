@@ -4,6 +4,7 @@ import (
 	"alt/di"
 	"alt/utils/errors"
 	"alt/utils/logger"
+	"alt/utils/security"
 	"net/http"
 	"net/url"
 	"strings"
@@ -57,7 +58,7 @@ func RestHandleRegisterFavoriteFeed(container *di.ApplicationComponents) echo.Ha
 			return HandleValidationError(c, "Invalid URL format", "url", payload.URL)
 		}
 
-		if err = IsAllowedURL(parsedURL); err != nil {
+		if err = security.NewURLSecurityValidator().ValidateParsedRSSURL(parsedURL); err != nil {
 			securityErr := errors.NewValidationContextError(
 				"URL not allowed for security reasons",
 				"rest",

@@ -48,13 +48,11 @@ func issueTestJWTWithTenant(t *testing.T, userID, email, role, sid, tenantID str
 	return signed
 }
 
-func testAuthConfig() *config.Config {
-	return &config.Config{
-		Auth: config.AuthConfig{
-			BackendTokenSecret:   testBackendTokenSecret,
-			BackendTokenIssuer:   "auth-hub",
-			BackendTokenAudience: "alt-backend",
-		},
+func testAuthConfig() config.AuthConfig {
+	return config.AuthConfig{
+		BackendTokenSecret:   testBackendTokenSecret,
+		BackendTokenIssuer:   "auth-hub",
+		BackendTokenAudience: "alt-backend",
 	}
 }
 

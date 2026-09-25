@@ -11,16 +11,14 @@ import (
 
 	"alt/domain"
 	"alt/orchestrator/port/recap_port"
-	"alt/orchestrator/port/search_indexer_port"
 )
 
 type RecapGateway struct {
 	httpClient     *http.Client
 	recapWorkerURL string
-	searchIndexer  search_indexer_port.SearchIndexerPort
 }
 
-func NewRecapGateway(searchIndexer search_indexer_port.SearchIndexerPort) recap_port.RecapPort {
+func NewRecapGateway() recap_port.RecapPort {
 	recapWorkerURL := os.Getenv("RECAP_WORKER_URL")
 	if recapWorkerURL == "" {
 		recapWorkerURL = "http://recap-worker:9005" //#nosec G101 -- service-discovery default, not a credential
@@ -31,12 +29,11 @@ func NewRecapGateway(searchIndexer search_indexer_port.SearchIndexerPort) recap_
 			Timeout: 30 * time.Second,
 		},
 		recapWorkerURL: recapWorkerURL,
-		searchIndexer:  searchIndexer,
 	}
 }
 
 // NewRecapGatewayWithConfig creates a RecapGateway with custom client and URL (for testing and contract tests).
-func NewRecapGatewayWithConfig(httpClient *http.Client, recapWorkerURL string, searchIndexer search_indexer_port.SearchIndexerPort) *RecapGateway {
+func NewRecapGatewayWithConfig(httpClient *http.Client, recapWorkerURL string) *RecapGateway {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
@@ -46,7 +43,6 @@ func NewRecapGatewayWithConfig(httpClient *http.Client, recapWorkerURL string, s
 	return &RecapGateway{
 		httpClient:     httpClient,
 		recapWorkerURL: recapWorkerURL,
-		searchIndexer:  searchIndexer,
 	}
 }
 
@@ -126,17 +122,6 @@ func (g *RecapGateway) getRecapByWindow(ctx context.Context, windowDays int) (*d
 	return &recapSummary, nil
 }
 
-// SearchRecapsByTag searches recaps by tag name via search-indexer (Meilisearch).
-func (g *RecapGateway) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
-	return g.searchIndexer.SearchRecapsByTag(ctx, tagName, limit)
-}
-
-// SearchRecapsByQuery searches recaps by free-text query via search-indexer (Meilisearch).
-func (g *RecapGateway) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error) {
-	results, _, err := g.searchIndexer.SearchRecapsByQuery(ctx, query, limit)
-	return results, err
-}
-
 // GetEveningPulse fetches Evening Pulse data from recap-worker
 func (g *RecapGateway) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {
 	url := fmt.Sprintf("%s/v1/pulse/latest", g.recapWorkerURL)
@@ -173,7 +158,7 @@ func (g *RecapGateway) GetEveningPulse(ctx context.Context, date string) (*domai
 		return nil, fmt.Errorf("failed to decode evening pulse response: %w", err)
 	}
 
-	return pulseResponse.toDomain()
+	return mapEveningPulseResponseToDomain(&pulseResponse)
 }
 
 // eveningPulseResponse represents the JSON response from recap-worker
@@ -228,7 +213,7 @@ type weeklyHighlightResponse struct {
 	Role  string `json:"role"`
 }
 
-func (r *eveningPulseResponse) toDomain() (*domain.EveningPulse, error) {
+func mapEveningPulseResponseToDomain(r *eveningPulseResponse) (*domain.EveningPulse, error) {
 	generatedAt, err := time.Parse(time.RFC3339, r.GeneratedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse generated_at: %w", err)

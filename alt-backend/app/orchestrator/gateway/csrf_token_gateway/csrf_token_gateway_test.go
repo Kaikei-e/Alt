@@ -568,3 +568,24 @@ func medianDuration(durations []time.Duration) time.Duration {
 	slices.Sort(sorted)
 	return sorted[len(sorted)/2]
 }
+
+func TestIsTokenExpired(t *testing.T) {
+	now := time.Now()
+	assert.True(t, isTokenExpired(now.Add(-time.Second), now))
+	assert.False(t, isTokenExpired(now.Add(time.Second), now))
+}
+
+func TestGenerateAndValidateHMACToken_Pure(t *testing.T) {
+	sessionID := "session-xyz"
+	secret := "super-secret-key"
+
+	token := generateHMACToken(sessionID, secret)
+	assert.NotEmpty(t, token)
+	assert.True(t, validateHMACToken(token, sessionID, secret))
+	assert.False(t, validateHMACToken(token, "other-session", secret))
+	assert.False(t, validateHMACToken(token, sessionID, "wrong-secret"))
+	assert.False(t, validateHMACToken("", sessionID, secret))
+	assert.False(t, validateHMACToken(token, "", secret))
+	assert.Empty(t, generateHMACToken("", secret))
+	assert.Empty(t, generateHMACToken(sessionID, ""))
+}

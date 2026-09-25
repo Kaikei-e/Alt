@@ -10,12 +10,11 @@ import (
 	"connectrpc.com/connect"
 
 	datahubv1 "alt/gen/proto/services/datahub/v1"
-	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/driver/models"
 )
 
 type fakeRegisterFeedsClient struct {
-	datahubv1connect.DataHubServiceClient
+	feedDataHubClient
 	calls  [][]*datahubv1.FeedRegistration
 	failOn int
 }
@@ -60,7 +59,7 @@ func TestRegisterMultipleFeedsWithState_ChunksLargePolls(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := &fakeRegisterFeedsClient{}
-			g := NewFeedGateway(client)
+			g := &FeedGateway{client: client}
 
 			results, err := g.RegisterMultipleFeedsWithState(context.Background(), makeFeeds(tt.total))
 			if err != nil {
@@ -88,7 +87,7 @@ func TestRegisterMultipleFeedsWithState_ChunksLargePolls(t *testing.T) {
 
 func TestRegisterMultipleFeedsWithState_ChunkErrorPropagates(t *testing.T) {
 	client := &fakeRegisterFeedsClient{failOn: 2}
-	g := NewFeedGateway(client)
+	g := &FeedGateway{client: client}
 
 	_, err := g.RegisterMultipleFeedsWithState(context.Background(), makeFeeds(2760))
 	if err == nil {

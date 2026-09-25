@@ -135,7 +135,6 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		sovereignCli,
 		sovereignCli,
 		knowledgeBackfillGw, // ListBackfillArticlesPort (articles table in alt-db)
-		sovereignCli,
 	)
 	knowledgeURLBackfillUC := knowledge_url_backfill_usecase.NewUsecase(
 		knowledgeBackfillGw, // same articles source as TriggerBackfill
@@ -192,7 +191,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	// since ADR-000954 Wave 3 batch 6 (catalog §2.C). It was the last read
 	// cmd/backend performed against its own pool, which is why this line used
 	// to reach into the article module for a gateway wrapping alt_db.
-	recallRailUC := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, featureFlagGw, infra.ArticleRefGateway)
+	recallRailUC := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, infra.ArticleRefGateway)
 	recallSnoozeUC := recall_snooze_usecase.NewRecallSnoozeUsecase(sovereignCli, sovereignCli)
 	recallDismissUC := recall_dismiss_usecase.NewRecallDismissUsecase(sovereignCli, sovereignCli)
 	createLensUC := create_lens_usecase.NewCreateLensUsecase(sovereignCli, sovereignCli)

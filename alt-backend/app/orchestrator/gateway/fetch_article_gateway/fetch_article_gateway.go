@@ -73,6 +73,18 @@ func isUpstreamUnreachable(err error) bool {
 // via io.LimitReader (ADR-000702).
 const maxArticleBodyBytes = 10 * 1024 * 1024
 
+// validateArticleResponseHeaders validates the HTTP status code and declared Content-Length.
+func validateArticleResponseHeaders(statusCode int, contentLength int64, rawURL string) error {
+	if statusCode < 200 || statusCode >= 300 {
+		return &domain.ExternalHTTPError{StatusCode: statusCode, URL: rawURL}
+	}
+	// Reject bodies that already advertise more than the ceiling before reading them.
+	if contentLength > maxArticleBodyBytes {
+		return fmt.Errorf("response body exceeds %d bytes for %q: content length %d", maxArticleBodyBytes, rawURL, contentLength)
+	}
+	return nil
+}
+
 // prefetchFetchConcurrency sizes the prefetch gateway's own concurrency
 // semaphore to match the handler's warm pool (maxConcurrentContentWarms), so a
 // warm never queues here.
@@ -279,14 +291,9 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 		}
 	}()
 
-	// Validate HTTP status
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &domain.ExternalHTTPError{StatusCode: resp.StatusCode, URL: parsedURL.String()}
-	}
-
-	// Reject bodies that already advertise more than the ceiling before reading them.
-	if resp.ContentLength > maxArticleBodyBytes {
-		return nil, fmt.Errorf("response body exceeds %d bytes for %q: content length %d", maxArticleBodyBytes, parsedURL.String(), resp.ContentLength)
+	// Validate HTTP status and declared content length
+	if err := validateArticleResponseHeaders(resp.StatusCode, resp.ContentLength, parsedURL.String()); err != nil {
+		return nil, err
 	}
 
 	// Bound the body before decoding: the transport hands us a decompressed stream,

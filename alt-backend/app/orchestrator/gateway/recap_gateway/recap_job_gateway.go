@@ -27,6 +27,11 @@ func (g *RecapJobGateway) GetRecapJobs(ctx context.Context, windowSeconds int64,
 		return nil, err
 	}
 
+	return mapRecapJobDTOsToDomain(dtos), nil
+}
+
+// mapRecapJobDTOsToDomain converts driver DTOs to domain models.
+func mapRecapJobDTOsToDomain(dtos []recap_job_driver.JobDTO) []domain.RecapJob {
 	jobs := make([]domain.RecapJob, len(dtos))
 	for i, d := range dtos {
 		jobs[i] = domain.RecapJob{
@@ -37,6 +42,5 @@ func (g *RecapJobGateway) GetRecapJobs(ctx context.Context, windowSeconds int64,
 			UpdatedAt: d.UpdatedAt,
 		}
 	}
-
-	return jobs, nil
+	return jobs
 }

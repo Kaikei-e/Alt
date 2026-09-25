@@ -35,27 +35,8 @@ func NewFetchRecentArticlesUsecase(gateway fetch_recent_articles_port.FetchRecen
 
 // Execute fetches recent articles within the specified time window
 func (u *FetchRecentArticlesUsecase) Execute(ctx context.Context, input FetchRecentArticlesInput) (*FetchRecentArticlesOutput, error) {
-	// Validate and set defaults
-	withinHours := input.WithinHours
-	if withinHours <= 0 {
-		withinHours = 24
-	}
-	if withinHours > 168 { // Max 7 days
-		withinHours = 168
-	}
-
-	// limit=0 means no limit (time constraint only for RAG use case)
-	// negative limit defaults to 100
-	limit := input.Limit
-	if limit < 0 {
-		limit = 100
-	}
-	if limit > 500 && limit != 0 {
-		limit = 500
-	}
-
 	now := time.Now()
-	since := now.Add(-time.Duration(withinHours) * time.Hour)
+	since, withinHours, limit := computeRecentWindow(input.WithinHours, input.Limit, now)
 
 	logger.Logger.InfoContext(ctx, "fetching recent articles",
 		"within_hours", withinHours,
@@ -76,4 +57,27 @@ func (u *FetchRecentArticlesUsecase) Execute(ctx context.Context, input FetchRec
 		Until:    now,
 		Count:    len(articles),
 	}, nil
+}
+
+// computeRecentWindow validates bounds and calculates the start time for the recent articles query.
+func computeRecentWindow(withinHours, limit int, now time.Time) (time.Time, int, int) {
+	// Validate and set defaults
+	if withinHours <= 0 {
+		withinHours = 24
+	}
+	if withinHours > 168 { // Max 7 days
+		withinHours = 168
+	}
+
+	// limit=0 means no limit (time constraint only for RAG use case)
+	// negative limit defaults to 100
+	if limit < 0 {
+		limit = 100
+	}
+	if limit > 500 && limit != 0 {
+		limit = 500
+	}
+
+	since := now.Add(-time.Duration(withinHours) * time.Hour)
+	return since, withinHours, limit
 }

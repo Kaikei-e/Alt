@@ -1,30 +1,17 @@
 package alt_db
 
 import (
-	"alt/utils/logger"
 	"context"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 const insertOutboxQuery = `
 	INSERT INTO outbox_events (event_type, payload)
 	VALUES ($1, $2)
 `
-
-// SaveOutboxEventWithTx inserts an event into the outbox table using a provided transaction.
-func (r *OutboxRepository) SaveOutboxEventWithTx(ctx context.Context, tx pgx.Tx, eventType string, payload []byte) error {
-	if _, err := tx.Exec(ctx, insertOutboxQuery, eventType, string(payload)); err != nil {
-		err = fmt.Errorf("failed to insert outbox event: %w", err)
-		// We can't log article_id easily here without parsing payload, so general error log
-		logger.SafeErrorContext(ctx, "failed to save outbox event", "event_type", eventType, "error", err)
-		return err
-	}
-	return nil
-}
 
 // OutboxEvent represents a row in the outbox_events table.
 type OutboxEvent struct {

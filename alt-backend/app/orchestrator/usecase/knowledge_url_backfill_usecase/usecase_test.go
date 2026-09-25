@@ -1,12 +1,14 @@
 package knowledge_url_backfill_usecase
 
 import (
-	"alt/domain"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	"alt/domain"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -318,4 +320,66 @@ func (c *cancelOnNthCall) AppendKnowledgeEvent(ctx context.Context, ev domain.Kn
 		return 0, context.Canceled
 	}
 	return c.mockEventPort.AppendKnowledgeEvent(ctx, ev)
+}
+
+func TestBuildCorrectiveEvent(t *testing.T) {
+	artID := uuid.New()
+	userID := uuid.New()
+	createdAt := time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name              string
+		originalCreatedAt time.Time
+		wantOccurredAt    string
+	}{
+		{
+			name:              "with original created at",
+			originalCreatedAt: createdAt,
+			wantOccurredAt:    "2026-09-20T10:00:00Z",
+		},
+		{
+			name:              "zero original created at",
+			originalCreatedAt: time.Time{},
+			wantOccurredAt:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ev, err := buildCorrectiveEvent(artID, "https://example.com/art", tt.originalCreatedAt, now, userID)
+			require.NoError(t, err)
+			assert.Equal(t, domain.EventArticleUrlBackfilled, ev.EventType)
+			assert.Equal(t, artID.String(), ev.AggregateID)
+			assert.Equal(t, now, ev.OccurredAt)
+
+			var payload domain.ArticleUrlBackfilledPayload
+			err = json.Unmarshal(ev.Payload, &payload)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantOccurredAt, payload.OriginalOccurredAt)
+			assert.Equal(t, "https://example.com/art", payload.URL)
+		})
+	}
+}
+
+func TestIsHTTPURL(t *testing.T) {
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{url: "http://example.com", want: true},
+		{url: "https://example.com/path", want: true},
+		{url: "HTTP://EXAMPLE.COM", want: true},
+		{url: "javascript:alert(1)", want: false},
+		{url: "ftp://files.example.com", want: false},
+		{url: "", want: false},
+		{url: "   ", want: false},
+		{url: "https://", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.url, func(t *testing.T) {
+			assert.Equal(t, tt.want, isHTTPURL(tt.url))
+		})
+	}
 }

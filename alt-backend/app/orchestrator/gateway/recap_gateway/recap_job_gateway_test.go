@@ -44,3 +44,24 @@ func TestRecapJobGateway_GetRecapJobs(t *testing.T) {
 	require.NotNil(t, jobs[0].LastStage)
 	assert.Equal(t, "clustering", *jobs[0].LastStage)
 }
+
+func TestMapRecapJobDTOsToDomain(t *testing.T) {
+	now := time.Now()
+	stage := "summarization"
+	dtos := []recap_job_driver.JobDTO{
+		{
+			JobID:     "j1",
+			Status:    "running",
+			LastStage: &stage,
+			KickedAt:  now,
+			UpdatedAt: now,
+		},
+	}
+
+	jobs := mapRecapJobDTOsToDomain(dtos)
+	require.Len(t, jobs, 1)
+	assert.Equal(t, "j1", jobs[0].JobID)
+	assert.Equal(t, "running", jobs[0].Status)
+	assert.Equal(t, &stage, jobs[0].LastStage)
+	assert.Equal(t, now, jobs[0].KickedAt)
+}

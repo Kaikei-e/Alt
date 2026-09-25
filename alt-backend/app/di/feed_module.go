@@ -34,7 +34,11 @@ import (
 	"alt/orchestrator/usecase/scraping_domain_usecase"
 	"alt/orchestrator/usecase/search_feed_usecase"
 
+	"alt/orchestrator/gateway/article_content_extractor_gateway"
 	"alt/orchestrator/gateway/feed_link_domain_gateway"
+	"alt/orchestrator/usecase/resolve_article_usecase"
+	"alt/utils/security"
+	"log/slog"
 )
 
 // FeedModule holds all feed-domain components.
@@ -43,7 +47,6 @@ type FeedModule struct {
 	FetchSingleFeedUsecase              *fetch_feed_usecase.FetchSingleFeedUsecase
 	FetchFeedsListUsecase               *fetch_feed_usecase.FetchFeedsListUsecase
 	FetchFeedsListCursorUsecase         *fetch_feed_usecase.FetchFeedsListCursorUsecase
-	FetchUnreadFeedsListCursorUsecase   *fetch_feed_usecase.FetchUnreadFeedsListCursorUsecase
 	FetchReadFeedsListCursorUsecase     *fetch_feed_usecase.FetchReadFeedsListCursorUsecase
 	FetchFavoriteFeedsListCursorUsecase *fetch_feed_usecase.FetchFavoriteFeedsListCursorUsecase
 	CachedFeedListUsecase               *cached_feed_list_usecase.CachedFeedListUsecase
@@ -52,7 +55,6 @@ type FeedModule struct {
 	RemoveFavoriteFeedUsecase           *remove_favorite_feed_usecase.RemoveFavoriteFeedUsecase
 	ListFeedLinksUsecase                *feed_link_usecase.ListFeedLinksUsecase
 	ListFeedLinksWithHealthUsecase      *feed_link_usecase.ListFeedLinksWithHealthUsecase
-	DeleteFeedLinkUsecase               *feed_link_usecase.DeleteFeedLinkUsecase
 	FeedsReadingStatusUsecase           *reading_status.FeedsReadingStatusUsecase
 	ArticlesReadingStatusUsecase        *reading_status.ArticlesReadingStatusUsecase
 	FeedsSummaryUsecase                 *fetch_feed_details_usecase.FeedsSummaryUsecase
@@ -68,6 +70,7 @@ type FeedModule struct {
 	FetchInoreaderSummaryUsecase        fetch_inoreader_summary_usecase.FetchInoreaderSummaryUsecase
 	FetchRandomSubscriptionUsecase      *fetch_random_subscription_usecase.FetchRandomSubscriptionUsecase
 	ScrapingDomainUsecase               *scraping_domain_usecase.ScrapingDomainUsecase
+	ResolveArticleUsecase               resolve_article_usecase.ResolveArticleUsecase
 
 	// Gateways exposed for cross-module wiring
 	FeedPageCacheGateway         *feed_page_cache_gateway.Gateway
@@ -76,7 +79,7 @@ type FeedModule struct {
 	ScrapingDomainGateway        scraping_domain_port.ScrapingDomainPort
 }
 
-func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
+func newFeedModule(infra *InfraModule, sub *SubscriptionModule, logger *slog.Logger) *FeedModule {
 	// Every table this module touches is alt-data-hub's: the feed tables moved
 	// in ADR-000954 Wave 3 batch 3 (catalog §2.F / §2.G / §2.H), the
 	// read/subscription state and the tag reads in batch 4, and the dashboard
@@ -94,7 +97,6 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	fetchSingleFeedUC := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGw)
 	fetchFeedsListUC := fetch_feed_usecase.NewFetchFeedsListUsecase(fetchFeedsListGw)
 	fetchFeedsListCursorUC := fetch_feed_usecase.NewFetchFeedsListCursorUsecase(fetchFeedsListGw)
-	fetchUnreadFeedsListCursorUC := fetch_feed_usecase.NewFetchUnreadFeedsListCursorUsecase(fetchFeedsListGw)
 	cachedFeedListUC := cached_feed_list_usecase.NewCachedFeedListUsecase(fetchFeedsListGw, fetchFeedsListGw, fetchFeedsListGw)
 	fetchReadFeedsListCursorUC := fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(fetchFeedsListGw)
 	fetchFavoriteFeedsListCursorUC := fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGw)
@@ -109,6 +111,7 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 		FeedLinkAvailability: infra.FeedLinkAvailabilityGateway,
 		FeedPageInvalidator:  feedPageCacheGw,
 		SubscriptionPort:     sub.SubscriptionGateway,
+		URLValidator:         security.NewURLSecurityValidator(),
 	})
 	registerFavoriteFeedUC := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(registerFavoriteFeedGw)
 	removeFavoriteFeedUC := remove_favorite_feed_usecase.NewRemoveFavoriteFeedUsecase(registerFavoriteFeedGw)
@@ -178,11 +181,14 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	feedLinkDomainGw := feed_link_domain_gateway.NewFeedLinkDomainGateway(feedLinkGw)
 	scrapingDomainUC := scraping_domain_usecase.NewScrapingDomainUsecaseWithFeedLinkDomain(scrapingDomainGw, infra.RobotsTxtGateway, feedLinkDomainGw)
 
+	// Article resolver for user-requested summarization stream
+	articleContentExtractorGw := article_content_extractor_gateway.New(logger)
+	resolveArticleUC := resolve_article_usecase.New(infra.ArticleStoreGateway, articleContentExtractorGw)
+
 	return &FeedModule{
 		FetchSingleFeedUsecase:              fetchSingleFeedUC,
 		FetchFeedsListUsecase:               fetchFeedsListUC,
 		FetchFeedsListCursorUsecase:         fetchFeedsListCursorUC,
-		FetchUnreadFeedsListCursorUsecase:   fetchUnreadFeedsListCursorUC,
 		FetchReadFeedsListCursorUsecase:     fetchReadFeedsListCursorUC,
 		FetchFavoriteFeedsListCursorUsecase: fetchFavoriteFeedsListCursorUC,
 		CachedFeedListUsecase:               cachedFeedListUC,
@@ -191,27 +197,22 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 		RemoveFavoriteFeedUsecase:           removeFavoriteFeedUC,
 		ListFeedLinksUsecase:                listFeedLinksUC,
 		ListFeedLinksWithHealthUsecase:      listFeedLinksWithHealthUC,
-		// Taken straight from the subscription module rather than patched in
-		// by the composition root afterwards. The old "return nil, the root
-		// fills it in" shape compiled fine if a root forgot the assignment and
-		// only surfaced as a nil dereference inside the RSS DeleteFeedLink
-		// handler — and there are three roots now (CLAUDE.md rule 8).
-		DeleteFeedLinkUsecase:            sub.DeleteFeedLinkUsecase,
-		FeedsReadingStatusUsecase:        feedsReadingStatusUC,
-		ArticlesReadingStatusUsecase:     articlesReadingStatusUC,
-		FeedsSummaryUsecase:              feedsSummaryUC,
-		FeedAmountUsecase:                feedsCountUC,
-		UnsummarizedArticlesCountUsecase: unsummarizedUC,
-		SummarizedArticlesCountUsecase:   summarizedUC,
-		TotalArticlesCountUsecase:        totalUC,
-		TodayUnreadArticlesCountUsecase:  todayUnreadUC,
-		TrendStatsUsecase:                trendStatsUC,
-		FeedSearchUsecase:                feedSearchUC,
-		FetchFeedTagsUsecase:             fetchFeedTagsUC,
-		FetchFeedTagsByIDUsecase:         fetchFeedTagsByIDUC,
-		FetchInoreaderSummaryUsecase:     fetchInoreaderSummaryUC,
-		FetchRandomSubscriptionUsecase:   fetchRandomSubscriptionUC,
-		ScrapingDomainUsecase:            scrapingDomainUC,
+		FeedsReadingStatusUsecase:           feedsReadingStatusUC,
+		ArticlesReadingStatusUsecase:        articlesReadingStatusUC,
+		FeedsSummaryUsecase:                 feedsSummaryUC,
+		FeedAmountUsecase:                   feedsCountUC,
+		UnsummarizedArticlesCountUsecase:    unsummarizedUC,
+		SummarizedArticlesCountUsecase:      summarizedUC,
+		TotalArticlesCountUsecase:           totalUC,
+		TodayUnreadArticlesCountUsecase:     todayUnreadUC,
+		TrendStatsUsecase:                   trendStatsUC,
+		FeedSearchUsecase:                   feedSearchUC,
+		FetchFeedTagsUsecase:                fetchFeedTagsUC,
+		FetchFeedTagsByIDUsecase:            fetchFeedTagsByIDUC,
+		FetchInoreaderSummaryUsecase:        fetchInoreaderSummaryUC,
+		FetchRandomSubscriptionUsecase:      fetchRandomSubscriptionUC,
+		ScrapingDomainUsecase:               scrapingDomainUC,
+		ResolveArticleUsecase:               resolveArticleUC,
 
 		FeedPageCacheGateway:         feedPageCacheGw,
 		FetchFeedsListGateway:        fetchFeedsListGw,

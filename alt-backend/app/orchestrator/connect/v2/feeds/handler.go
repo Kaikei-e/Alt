@@ -16,6 +16,7 @@ import (
 	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/orchestrator/usecase/og_image_resolve_usecase"
 	"alt/orchestrator/usecase/reading_status"
+	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/orchestrator/usecase/search_feed_usecase"
 	"alt/orchestrator/usecase/subscription_usecase"
 	"alt/shared/usecase/create_summary_version_usecase"
@@ -54,6 +55,7 @@ type FeedHandlerDeps struct {
 	// Handler → Driver hop while it is a field here, and after batch 5 there is
 	// no database on this side to hop to.
 	ArticleStore         ArticleStore
+	ResolveArticle       resolve_article_usecase.ResolveArticleUsecase
 	SummaryStore         SummaryStore
 	FeedTagStore         FeedTagStore
 	PreProcessorClient   *preprocessor_connect.ConnectPreProcessorClient
@@ -116,6 +118,9 @@ type Handler struct {
 
 // NewHandler creates a new Feed service handler.
 func NewHandler(deps FeedHandlerDeps, cfg *config.Config, logger *slog.Logger) *Handler {
+	if deps.ResolveArticle == nil {
+		panic("feeds handler: ResolveArticle usecase is required (see .claude/rules/di-wiring.md)")
+	}
 	return &Handler{
 		deps:   deps,
 		logger: logger,

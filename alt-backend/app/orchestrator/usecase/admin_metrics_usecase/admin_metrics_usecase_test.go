@@ -128,3 +128,50 @@ func TestCatalog_Delegates(t *testing.T) {
 		t.Fatalf("want 1 catalog entry, got %d", len(cat))
 	}
 }
+
+func TestResolveKeys(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []domain.MetricKey
+		expected []domain.MetricKey
+	}{
+		{
+			name:     "empty returns default keys",
+			input:    nil,
+			expected: defaultKeys(),
+		},
+		{
+			name:     "non-empty returns provided keys",
+			input:    []domain.MetricKey{domain.MetricAvailability},
+			expected: []domain.MetricKey{domain.MetricAvailability},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveKeys(tt.input)
+			if len(got) != len(tt.expected) {
+				t.Fatalf("expected %d keys, got %d", len(tt.expected), len(got))
+			}
+			for i := range got {
+				if got[i] != tt.expected[i] {
+					t.Errorf("at index %d, expected %v, got %v", i, tt.expected[i], got[i])
+				}
+			}
+		})
+	}
+}
+
+func TestFallbackSnapshot(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	snap := fallbackSnapshot(now)
+	if snap == nil {
+		t.Fatal("expected non-nil snapshot")
+	}
+	if !snap.Time.Equal(now) {
+		t.Errorf("expected time %v, got %v", now, snap.Time)
+	}
+	if snap.Metrics == nil || len(snap.Metrics) != 0 {
+		t.Errorf("expected empty non-nil metrics map, got %v", snap.Metrics)
+	}
+}

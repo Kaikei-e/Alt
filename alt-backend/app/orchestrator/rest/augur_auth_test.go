@@ -53,7 +53,7 @@ func TestRegisterAugurRoutes_RequiresAuth(t *testing.T) {
 			e := echo.New()
 			e.Use(echomiddleware.Recover())
 			v1 := e.Group("/v1")
-			RegisterAugurRoutes(e, v1, &di.ApplicationComponents{}, &config.Config{})
+			RegisterAugurRoutes(e, v1, &di.ApplicationComponents{}, config.AuthConfig{})
 
 			req := httptest.NewRequest(tt.method, tt.target, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)

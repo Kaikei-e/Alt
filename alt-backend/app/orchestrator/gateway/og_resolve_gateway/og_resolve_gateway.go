@@ -151,15 +151,12 @@ func (g *Gateway) robotsGroup(ctx context.Context, target *url.URL) (*robotstxt.
 		return nil, err
 	}
 
-	var group *robotstxt.Group
 	// 4xx means "no robots.txt" and is permission to proceed; 5xx is the host
 	// failing rather than answering, and rawGet already surfaced that as an
 	// error. Anything else we parse.
+	var group *robotstxt.Group
 	if status == http.StatusOK {
-		parsedRobots, parseErr := robotstxt.FromBytes([]byte(body))
-		if parseErr == nil {
-			group = parsedRobots.FindGroup(userAgent)
-		}
+		group = parseRobotsGroup(body, userAgent)
 	}
 
 	g.mu.Lock()
@@ -176,15 +173,31 @@ func (g *Gateway) get(ctx context.Context, target *url.URL, referer string) (str
 		return "", domain.OgImageFetchError, nil
 	}
 
+	refusal, ok := mapHTTPStatusToRefusal(status)
+	if !ok {
+		return "", refusal, nil
+	}
+	return body, "", nil
+}
+
+func parseRobotsGroup(robotsBody, agent string) *robotstxt.Group {
+	parsedRobots, parseErr := robotstxt.FromBytes([]byte(robotsBody))
+	if parseErr != nil {
+		return nil
+	}
+	return parsedRobots.FindGroup(agent)
+}
+
+func mapHTTPStatusToRefusal(status int) (domain.OgImageRefusal, bool) {
 	switch status {
 	case http.StatusOK:
-		return body, "", nil
+		return "", true
 	case http.StatusForbidden, http.StatusUnauthorized:
-		return "", domain.OgImageRefusedForbidden, nil
+		return domain.OgImageRefusedForbidden, false
 	case http.StatusNotFound, http.StatusGone:
-		return "", domain.OgImageRefusedNotFound, nil
+		return domain.OgImageRefusedNotFound, false
 	default:
-		return "", domain.OgImageFetchError, nil
+		return domain.OgImageFetchError, false
 	}
 }
 

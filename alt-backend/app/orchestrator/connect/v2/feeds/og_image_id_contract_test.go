@@ -16,6 +16,7 @@ import (
 	"alt/domain"
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
 	"alt/orchestrator/usecase/og_image_resolve_usecase"
+	"alt/orchestrator/usecase/resolve_article_usecase"
 )
 
 // This file pins one thing, and it is the thing PR #232 shipped broken: the
@@ -104,11 +105,14 @@ func newFeedsTableStore(targets ...domain.FeedOgImageTarget) *feedsTableStore {
 // feeds.id, so the assertion below is about the identifier and nothing else.
 func resolveHandlerOver(store *feedsTableStore, pages map[string]string) *Handler {
 	return NewHandler(
-		FeedHandlerDeps{ResolveOgImages: og_image_resolve_usecase.NewUsecase(
-			store,
-			&resolveFakeFetcher{byURL: pages},
-			resolveFakeMinter{},
-		)},
+		FeedHandlerDeps{
+			ResolveOgImages: og_image_resolve_usecase.NewUsecase(
+				store,
+				&resolveFakeFetcher{byURL: pages},
+				resolveFakeMinter{},
+			),
+			ResolveArticle: resolve_article_usecase.New(nil, nil),
+		},
 		&config.Config{},
 		slog.Default(),
 	)

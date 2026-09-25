@@ -38,6 +38,11 @@ func (g *TrendStatsGateway) Execute(ctx context.Context, window string) (*trend_
 		return nil, err
 	}
 
+	return mapTrendSeriesToResponse(series, window), nil
+}
+
+// mapTrendSeriesToResponse maps datahub trend series to port response.
+func mapTrendSeriesToResponse(series *datahub_gateway.TrendSeries, window string) *trend_stats_port.TrendDataResponse {
 	points := make([]trend_stats_port.TrendDataPoint, 0, len(series.Points))
 	for _, p := range series.Points {
 		points = append(points, trend_stats_port.TrendDataPoint{
@@ -52,5 +57,5 @@ func (g *TrendStatsGateway) Execute(ctx context.Context, window string) (*trend_
 		DataPoints:  points,
 		Granularity: series.Granularity,
 		Window:      window,
-	}, nil
+	}
 }

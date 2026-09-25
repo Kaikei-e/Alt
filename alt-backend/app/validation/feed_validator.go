@@ -8,12 +8,20 @@ import (
 	"strings"
 )
 
-type FeedRegistrationValidator struct{}
+// IPResolver defines the lookup signature for resolving hostnames to IP addresses.
+type IPResolver func(host string) ([]net.IP, error)
 
+// FeedRegistrationValidator validates feed registration requests with syntactic and SSRF checks.
+type FeedRegistrationValidator struct {
+	// Resolver allows injecting a custom DNS resolver for testing and network decoupling.
+	Resolver IPResolver
+}
+
+// Validate checks feed registration payloads for structure, syntax, and SSRF threats.
 func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interface{}) ValidationResult {
 	result := ValidationResult{Valid: true}
 
-	// Check if input is a map (JSON object)
+	// Ensure the request payload is a JSON object map.
 	inputMap, ok := value.(map[string]interface{})
 	if !ok {
 		result.Valid = false
@@ -24,7 +32,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		return result
 	}
 
-	// Check if URL field exists
+	// Ensure the URL field is present in the payload.
 	urlField, exists := inputMap["url"]
 	if !exists {
 		result.Valid = false
@@ -35,7 +43,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		return result
 	}
 
-	// Check if URL is a string
+	// Ensure the URL field is a string.
 	urlStr, ok := urlField.(string)
 	if !ok {
 		result.Valid = false
@@ -46,7 +54,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		return result
 	}
 
-	// Validate URL using FeedURLValidator
+	// Validate syntactic URL format using FeedURLValidator.
 	urlValidator := &FeedURLValidator{}
 	urlResult := urlValidator.Validate(ctx, urlStr)
 	if !urlResult.Valid {
@@ -55,10 +63,9 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		return result
 	}
 
-	// Additional SSRF protection checks
+	// Parse URL for domain and SSRF policy inspection.
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		// This should not happen as FeedURLValidator already checked it
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
 			Field:   "url",
@@ -68,12 +75,13 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		return result
 	}
 
-	// Check for localhost
+	// Allow explicitly configured operator feed hosts.
 	hostname := strings.ToLower(parsedURL.Hostname())
 	if security.IsFeedHostAllowed(hostname) {
 		return result
 	}
 
+	// Block loopback and localhost hostnames.
 	if hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127.") {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
@@ -84,8 +92,8 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		return result
 	}
 
-	// Check for metadata endpoints
-	if hostname == "169.254.169.254" || hostname == "metadata.google.internal" {
+	// Block cloud metadata hostnames using consolidated definitions.
+	if security.IsMetadataHost(hostname) {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
 			Field:   "url",
@@ -95,7 +103,7 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		return result
 	}
 
-	// Check for internal domain suffixes
+	// Block restricted internal domain suffixes.
 	if strings.HasSuffix(hostname, ".local") || strings.HasSuffix(hostname, ".internal") ||
 		strings.HasSuffix(hostname, ".corp") || strings.HasSuffix(hostname, ".lan") {
 		result.Valid = false
@@ -107,8 +115,34 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 		return result
 	}
 
-	// Check for private IP addresses (including 0.0.0.0)
-	if hostname == "0.0.0.0" || isPrivateIPAddress(hostname) {
+	// Block unspecified host 0.0.0.0.
+	if hostname == "0.0.0.0" {
+		result.Valid = false
+		result.Errors = append(result.Errors, ValidationError{
+			Field:   "url",
+			Message: "Access to private networks not allowed for security reasons",
+			Value:   urlStr,
+		})
+		return result
+	}
+
+	// Block private IP literals directly without performing DNS resolution.
+	ip := net.ParseIP(hostname)
+	if ip != nil {
+		if security.IsPrivateIPAddress(ip) {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Field:   "url",
+				Message: "Access to private networks not allowed for security reasons",
+				Value:   urlStr,
+			})
+			return result
+		}
+		return result
+	}
+
+	// Resolve hostname to check for private network targets.
+	if v.isPrivateHost(hostname) {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
 			Field:   "url",
@@ -121,12 +155,51 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 	return result
 }
 
+// isPrivateHost resolves a hostname via the injected or default resolver and checks for private IPs.
+func (v *FeedRegistrationValidator) isPrivateHost(hostname string) bool {
+	resolver := v.Resolver
+	if resolver == nil {
+		resolver = net.LookupIP
+	}
+	return resolveAndCheckPrivate(hostname, resolver)
+}
+
+// resolveAndCheckPrivate performs DNS lookup using the given resolver and checks against private IP ranges.
+func resolveAndCheckPrivate(hostname string, resolver IPResolver) bool {
+	commonTLDs := []string{".com", ".org", ".net", ".edu", ".gov", ".mil", ".int"}
+	isCommonTLD := false
+	for _, tld := range commonTLDs {
+		if strings.HasSuffix(strings.ToLower(hostname), tld) {
+			isCommonTLD = true
+			break
+		}
+	}
+
+	ips, err := resolver(hostname)
+	if err != nil {
+		// Reject uncommon TLDs on DNS failure while allowing common TLDs to handle transient DNS issues.
+		if !isCommonTLD {
+			return true
+		}
+		return false
+	}
+
+	for _, resolvedIP := range ips {
+		if security.IsPrivateIPAddress(resolvedIP) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// FeedDetailValidator validates detail request objects for feeds.
 type FeedDetailValidator struct{}
 
+// Validate verifies that feed detail payload contains a valid HTTP or HTTPS feed URL.
 func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) ValidationResult {
 	result := ValidationResult{Valid: true}
 
-	// Check if input is a map (JSON object)
 	inputMap, ok := value.(map[string]interface{})
 	if !ok {
 		result.Valid = false
@@ -137,7 +210,6 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		return result
 	}
 
-	// Check if feed_url field exists
 	feedURLField, exists := inputMap["feed_url"]
 	if !exists {
 		result.Valid = false
@@ -148,7 +220,6 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		return result
 	}
 
-	// Check if feed_url is a string
 	feedURLStr, ok := feedURLField.(string)
 	if !ok {
 		result.Valid = false
@@ -159,7 +230,6 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		return result
 	}
 
-	// Check if feed_url is empty
 	if strings.TrimSpace(feedURLStr) == "" {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
@@ -170,7 +240,6 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 		return result
 	}
 
-	// Validate feed URL format
 	parsedURL, err := url.Parse(feedURLStr)
 	if err != nil || parsedURL.Scheme == "" {
 		result.Valid = false
@@ -193,77 +262,4 @@ func (v *FeedDetailValidator) Validate(ctx context.Context, value interface{}) V
 	}
 
 	return result
-}
-
-// Helper function to check if hostname resolves to private IP
-func isPrivateIPAddress(hostname string) bool {
-	// Try to parse as IP first
-	ip := net.ParseIP(hostname)
-	if ip != nil {
-		return isPrivateIP(ip)
-	}
-
-	// For hostnames with common TLDs, don't block on DNS resolution failure
-	// Only block if we can resolve and it resolves to private IPs
-	commonTLDs := []string{".com", ".org", ".net", ".edu", ".gov", ".mil", ".int"}
-	isCommonTLD := false
-	for _, tld := range commonTLDs {
-		if strings.HasSuffix(strings.ToLower(hostname), tld) {
-			isCommonTLD = true
-			break
-		}
-	}
-
-	// If it's a hostname, try to resolve it to IPs
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		// Only block on resolution failure for uncommon TLDs or suspicious domains
-		if !isCommonTLD {
-			return true
-		}
-		// For common TLDs, allow through (might be DNS issue or non-existent but not malicious)
-		return false
-	}
-
-	// Check if any resolved IP is private
-	for _, ip := range ips {
-		if isPrivateIP(ip) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func isPrivateIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	// Check for private IPv4 ranges
-	ipv4 := ip.To4()
-	if ipv4 != nil {
-		// 10.0.0.0/8
-		if ipv4[0] == 10 {
-			return true
-		}
-		// 172.16.0.0/12
-		if ipv4[0] == 172 && ipv4[1] >= 16 && ipv4[1] <= 31 {
-			return true
-		}
-		// 192.168.0.0/16
-		if ipv4[0] == 192 && ipv4[1] == 168 {
-			return true
-		}
-	}
-
-	// Check for private IPv6 ranges
-	if ip.To16() != nil && ip.To4() == nil {
-		// Check for unique local addresses (fc00::/7)
-		if ip[0] == 0xfc || ip[0] == 0xfd {
-			return true
-		}
-	}
-
-	return false
 }

@@ -82,14 +82,12 @@ func TestGetFeedIDByArticleURL_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &FeedRepository{pool: mock}
-
 	// The query should look up feeds.id by feeds.link (article URL, not RSS URL)
 	mock.ExpectQuery(`SELECT id FROM feeds WHERE website_url = \$1`).
 		WithArgs("https://dev.to/some-article").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("feed-uuid-1"))
 
-	feedID, err := repo.GetFeedIDByArticleURL(context.Background(), "https://dev.to/some-article")
+	feedID, err := getFeedIDByArticleURL(context.Background(), mock, "https://dev.to/some-article")
 	require.NoError(t, err)
 	assert.Equal(t, "feed-uuid-1", feedID)
 
@@ -101,22 +99,18 @@ func TestGetFeedIDByArticleURL_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &FeedRepository{pool: mock}
-
 	mock.ExpectQuery(`SELECT id FROM feeds WHERE website_url = \$1`).
 		WithArgs("https://nonexistent.com/article").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}))
 
-	_, err = repo.GetFeedIDByArticleURL(context.Background(), "https://nonexistent.com/article")
+	_, err = getFeedIDByArticleURL(context.Background(), mock, "https://nonexistent.com/article")
 	require.Error(t, err)
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestGetFeedIDByArticleURL_NilPool(t *testing.T) {
-	repo := &FeedRepository{pool: nil}
-
-	_, err := repo.GetFeedIDByArticleURL(context.Background(), "https://example.com/article")
+	_, err := getFeedIDByArticleURL(context.Background(), nil, "https://example.com/article")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "database connection not available")
 }

@@ -44,8 +44,7 @@ func components() *datahubdi.DataHubComponents {
 		// and a disabled client rejects appends loudly instead of no-op'ing.
 		SovereignClient: sovereign_client.NewClient("", false),
 
-		// The ADR-000954 Wave 3 capabilities are required for the same reason
-		// and by the same rule: WithWave3Capabilities panics on a nil one,
+		// The required capabilities panic on a nil one,
 		// because alt-backend and alt-harvester have no other route to these
 		// tables once their own pools are gone.
 		OutboxUsecase:          outbox_usecase.NewOutboxUsecase(datahub_capability_gateway.NewOutboxGateway(nil)),
@@ -54,26 +53,26 @@ func components() *datahubdi.DataHubComponents {
 		ScrapingPolicyGateway:  datahub_capability_gateway.NewScrapingPolicyGateway(nil),
 		AutoFulltextGateway:    datahub_capability_gateway.NewAutoFulltextGateway(nil),
 
-		// Wave 3 batch 2, same rule.
+		// Article capabilities, same rule.
 		ArticleWriteGateway:      datahub_capability_gateway.NewArticleWriteGateway(nil),
 		ArticleReadGateway:       datahub_capability_gateway.NewArticleReadGateway(nil),
 		KnowledgeBackfillGateway: datahub_capability_gateway.NewKnowledgeBackfillGateway(nil),
 
-		// Wave 3 batch 3, same rule.
+		// Feed capabilities, same rule.
 		FeedLinkGateway:             datahub_capability_gateway.NewFeedLinkGateway(nil),
 		FeedLinkAvailabilityGateway: datahub_capability_gateway.NewFeedLinkAvailabilityGateway(nil),
 		FeedGateway:                 datahub_capability_gateway.NewFeedGateway(nil),
 
-		// Wave 3 batch 4, same rule.
+		// Read-state and tag-read capabilities, same rule.
 		ReadStateGateway: datahub_capability_gateway.NewReadStateGateway(nil),
 		TagReadGateway:   datahub_capability_gateway.NewTagReadGateway(nil),
 
-		// Wave 3 batch 5, same rule.
+		// Versioned artifact and stats capabilities, same rule.
 		SummaryVersionCapabilityGateway: datahub_capability_gateway.NewSummaryVersionGateway(nil),
 		TagSetVersionCapabilityGateway:  datahub_capability_gateway.NewTagSetVersionGateway(nil),
 		StatsGateway:                    datahub_capability_gateway.NewStatsGateway(nil),
 
-		// Wave 3 batch 6, same rule, and these two are the last: after them
+		// Tag Trail and article reference capabilities, same rule, and these two are the last: after them
 		// alt-backend has no pool at all, so an unwired one here is the only
 		// thing standing between the Tag Trail / recall rail and nothing.
 		TagTrailGateway:   datahub_capability_gateway.NewTagTrailGateway(nil),

@@ -14,6 +14,7 @@ import (
 	"alt/orchestrator/gateway/image_fetch_gateway"
 	"alt/orchestrator/gateway/image_proxy_gateway"
 	"alt/orchestrator/gateway/rag_gateway"
+	"alt/orchestrator/gateway/rate_limiter_gateway"
 	"alt/orchestrator/gateway/robots_txt_gateway"
 	"alt/orchestrator/port/rag_integration_port"
 	"alt/orchestrator/usecase/image_proxy_usecase"
@@ -81,7 +82,7 @@ type HarvesterComponents struct {
 	FetchTagCloudUsecase *fetch_tag_cloud_usecase.FetchTagCloudUsecase
 
 	// outbox-worker
-	RagIntegration  rag_integration_port.RagIntegrationPort
+	RagIntegration  rag_integration_port.ArticleUpsertPort
 	SovereignClient *sovereign_client.Client
 
 	// today-entrance-notifier. The daily trigger is written to push_deliveries
@@ -247,7 +248,7 @@ func newHarvesterImageProxyUsecase(
 		// CDNs cmd/backend's proxy serves from, so the two processes coordinate
 		// with each other — but at 1s, and never against the 5s+ feed slots for
 		// the same host (rate_limiter.NamespaceImageProxy).
-		coordinator.Limiter(rate_limiter.NamespaceImageProxy, imageProxyRateLimitInterval, 1),
+		rate_limiter_gateway.NewRateLimiterGateway(coordinator.Limiter(rate_limiter.NamespaceImageProxy, imageProxyRateLimitInterval, 1)),
 		cfg.ImageProxy.MaxWidth,
 		cfg.ImageProxy.WebPQuality,
 		cfg.ImageProxy.CacheTTLMin,

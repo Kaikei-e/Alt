@@ -63,20 +63,6 @@ func (m *mockCountBackfillArticlesPort) CountBackfillArticles(_ context.Context)
 	return m.count, m.err
 }
 
-// mockAppendKnowledgeEventPort implements knowledge_event_port.AppendKnowledgeEventPort.
-type mockAppendKnowledgeEventPort struct {
-	events []domain.KnowledgeEvent
-	err    error
-}
-
-func (m *mockAppendKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) (int64, error) {
-	m.events = append(m.events, event)
-	if m.err != nil {
-		return 0, m.err
-	}
-	return int64(len(m.events)), nil
-}
-
 // The backfill job that drained these rows was deleted alongside the reproject
 // one (ADR-000944, 2026-07-15) and, like it, was never given a new owner. A job
 // row recorded now is a request nothing will pick up, and Pause/Resume would
@@ -86,7 +72,7 @@ func TestStartBackfill_RefusesWhenNoExecutorIsWired(t *testing.T) {
 
 	createPort := &mockCreateBackfillJobPort{}
 	countPort := &mockCountBackfillArticlesPort{count: 42}
-	uc := NewUsecase(createPort, nil, nil, nil, countPort, nil)
+	uc := NewUsecase(createPort, nil, nil, nil, countPort)
 
 	_, err := uc.StartBackfill(context.Background(), 1)
 
@@ -101,7 +87,7 @@ func TestStartBackfill(t *testing.T) {
 	t.Run("creates pending job", func(t *testing.T) {
 		createPort := &mockCreateBackfillJobPort{}
 		countPort := &mockCountBackfillArticlesPort{count: 42}
-		uc := NewUsecase(createPort, nil, nil, nil, countPort, nil).WithExecutor("test-executor")
+		uc := NewUsecase(createPort, nil, nil, nil, countPort).WithExecutor("test-executor")
 
 		job, err := uc.StartBackfill(context.Background(), 1)
 		require.NoError(t, err)
@@ -115,7 +101,7 @@ func TestStartBackfill(t *testing.T) {
 	t.Run("returns error when create fails", func(t *testing.T) {
 		createPort := &mockCreateBackfillJobPort{err: assert.AnError}
 		countPort := &mockCountBackfillArticlesPort{count: 1}
-		uc := NewUsecase(createPort, nil, nil, nil, countPort, nil).WithExecutor("test-executor")
+		uc := NewUsecase(createPort, nil, nil, nil, countPort).WithExecutor("test-executor")
 
 		_, err := uc.StartBackfill(context.Background(), 1)
 		require.Error(t, err)
@@ -124,7 +110,7 @@ func TestStartBackfill(t *testing.T) {
 	t.Run("returns error when count fails", func(t *testing.T) {
 		createPort := &mockCreateBackfillJobPort{}
 		countPort := &mockCountBackfillArticlesPort{err: assert.AnError}
-		uc := NewUsecase(createPort, nil, nil, nil, countPort, nil).WithExecutor("test-executor")
+		uc := NewUsecase(createPort, nil, nil, nil, countPort).WithExecutor("test-executor")
 
 		_, err := uc.StartBackfill(context.Background(), 1)
 		require.Error(t, err)
@@ -144,7 +130,7 @@ func TestPauseBackfill(t *testing.T) {
 			},
 		}
 		updatePort := &mockUpdateBackfillJobPort{}
-		uc := NewUsecase(nil, getPort, updatePort, nil, nil, nil)
+		uc := NewUsecase(nil, getPort, updatePort, nil, nil)
 
 		err := uc.PauseBackfill(context.Background(), jobID)
 		require.NoError(t, err)
@@ -160,7 +146,7 @@ func TestPauseBackfill(t *testing.T) {
 				Status: domain.BackfillStatusCompleted,
 			},
 		}
-		uc := NewUsecase(nil, getPort, nil, nil, nil, nil)
+		uc := NewUsecase(nil, getPort, nil, nil, nil)
 
 		err := uc.PauseBackfill(context.Background(), jobID)
 		require.Error(t, err)
@@ -180,7 +166,7 @@ func TestResumeBackfill(t *testing.T) {
 			},
 		}
 		updatePort := &mockUpdateBackfillJobPort{}
-		uc := NewUsecase(nil, getPort, updatePort, nil, nil, nil)
+		uc := NewUsecase(nil, getPort, updatePort, nil, nil)
 
 		err := uc.ResumeBackfill(context.Background(), jobID)
 		require.NoError(t, err)
@@ -196,7 +182,7 @@ func TestResumeBackfill(t *testing.T) {
 				Status: domain.BackfillStatusRunning,
 			},
 		}
-		uc := NewUsecase(nil, getPort, nil, nil, nil, nil)
+		uc := NewUsecase(nil, getPort, nil, nil, nil)
 
 		err := uc.ResumeBackfill(context.Background(), jobID)
 		require.Error(t, err)
@@ -219,7 +205,7 @@ func TestGetBackfillStatus(t *testing.T) {
 				CreatedAt:       now,
 			},
 		}
-		uc := NewUsecase(nil, getPort, nil, nil, nil, nil)
+		uc := NewUsecase(nil, getPort, nil, nil, nil)
 
 		job, err := uc.GetBackfillStatus(context.Background(), jobID)
 		require.NoError(t, err)
@@ -229,9 +215,50 @@ func TestGetBackfillStatus(t *testing.T) {
 
 	t.Run("returns error when not found", func(t *testing.T) {
 		getPort := &mockGetBackfillJobPort{err: assert.AnError}
-		uc := NewUsecase(nil, getPort, nil, nil, nil, nil)
+		uc := NewUsecase(nil, getPort, nil, nil, nil)
 
 		_, err := uc.GetBackfillStatus(context.Background(), uuid.New())
 		require.Error(t, err)
 	})
+}
+
+func TestCanPauseAndResume(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     string
+		wantPause  bool
+		wantResume bool
+	}{
+		{
+			name:       "running job",
+			status:     domain.BackfillStatusRunning,
+			wantPause:  true,
+			wantResume: false,
+		},
+		{
+			name:       "paused job",
+			status:     domain.BackfillStatusPaused,
+			wantPause:  false,
+			wantResume: true,
+		},
+		{
+			name:       "pending job",
+			status:     domain.BackfillStatusPending,
+			wantPause:  false,
+			wantResume: false,
+		},
+		{
+			name:       "completed job",
+			status:     domain.BackfillStatusCompleted,
+			wantPause:  false,
+			wantResume: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.wantPause, canPause(tt.status))
+			assert.Equal(t, tt.wantResume, canResume(tt.status))
+		})
+	}
 }

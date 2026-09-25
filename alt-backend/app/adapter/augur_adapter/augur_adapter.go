@@ -47,7 +47,13 @@ type AugurAdapter struct {
 	upsertTimeout time.Duration
 }
 
-func NewAugurAdapter(client RagClientInterface) rag_integration_port.RagIntegrationPort {
+var (
+	_ rag_integration_port.ArticleUpsertPort = (*AugurAdapter)(nil)
+	_ rag_integration_port.RagRetrievalPort  = (*AugurAdapter)(nil)
+	_ rag_integration_port.RagAnswerPort     = (*AugurAdapter)(nil)
+)
+
+func NewAugurAdapter(client RagClientInterface) *AugurAdapter {
 	return &AugurAdapter{
 		client:        client,
 		upsertTimeout: upsertArticleTimeout,

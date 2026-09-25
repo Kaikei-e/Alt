@@ -139,7 +139,7 @@ type prefetchHarness struct {
 }
 
 // prefetchTestHosts are the hosts these tests use. They are declared to
-// FEED_ALLOWED_HOSTS so url_validator answers from the allowlist instead of
+// FEED_ALLOWED_HOSTS so URLSecurityValidator answers from the allowlist instead of
 // resolving them: a unit test that needs DNS is a unit test that fails in a
 // sandbox, and the behaviour under test is the ordering of the gates, not the
 // resolver.

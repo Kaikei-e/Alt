@@ -15,7 +15,7 @@ func TestArticleSearchGateway_SearchArticlesForGlobal(t *testing.T) {
 	logger.InitLogger()
 	ctrl := gomock.NewController(t)
 
-	mockSearchIndexer := mocks.NewMockSearchIndexerPort(ctrl)
+	mockSearchIndexer := mocks.NewMockArticleSearchPort(ctrl)
 	mockURLPort := mocks.NewMockFeedURLLinkPort(ctrl)
 
 	gw := NewArticleSearchGateway(mockSearchIndexer, mockURLPort)
@@ -70,7 +70,7 @@ func TestArticleSearchGateway_EmptyResults(t *testing.T) {
 	logger.InitLogger()
 	ctrl := gomock.NewController(t)
 
-	mockSearchIndexer := mocks.NewMockSearchIndexerPort(ctrl)
+	mockSearchIndexer := mocks.NewMockArticleSearchPort(ctrl)
 	mockURLPort := mocks.NewMockFeedURLLinkPort(ctrl)
 
 	gw := NewArticleSearchGateway(mockSearchIndexer, mockURLPort)
@@ -96,7 +96,7 @@ func TestArticleSearchGateway_SearchError(t *testing.T) {
 	logger.InitLogger()
 	ctrl := gomock.NewController(t)
 
-	mockSearchIndexer := mocks.NewMockSearchIndexerPort(ctrl)
+	mockSearchIndexer := mocks.NewMockArticleSearchPort(ctrl)
 	mockURLPort := mocks.NewMockFeedURLLinkPort(ctrl)
 
 	gw := NewArticleSearchGateway(mockSearchIndexer, mockURLPort)
@@ -115,7 +115,7 @@ func TestArticleSearchGateway_URLEnrichmentFailure(t *testing.T) {
 	logger.InitLogger()
 	ctrl := gomock.NewController(t)
 
-	mockSearchIndexer := mocks.NewMockSearchIndexerPort(ctrl)
+	mockSearchIndexer := mocks.NewMockArticleSearchPort(ctrl)
 	mockURLPort := mocks.NewMockFeedURLLinkPort(ctrl)
 
 	gw := NewArticleSearchGateway(mockSearchIndexer, mockURLPort)
@@ -152,4 +152,35 @@ func containsStr(slice []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func TestArticleSearchGatewayPureHelpers(t *testing.T) {
+	hits := []domain.SearchIndexerArticleHit{
+		{ID: "art-1", Title: "Title 1", Content: "Content 1", Tags: []string{"tag1"}},
+		{ID: "art-2", Title: "Title 2", Content: "Content 2", Tags: []string{"tag2"}},
+	}
+
+	ids := extractArticleIDsFromHits(hits)
+	if len(ids) != 2 || ids[0] != "art-1" || ids[1] != "art-2" {
+		t.Errorf("unexpected extracted IDs: %+v", ids)
+	}
+
+	feedURLs := []domain.FeedAndArticle{
+		{ArticleID: "art-1", URL: "https://example.com/art1"},
+	}
+	urlMap := buildURLMap(feedURLs)
+	if urlMap["art-1"] != "https://example.com/art1" {
+		t.Errorf("unexpected urlMap: %+v", urlMap)
+	}
+
+	globalHits := mapHitsToGlobalArticleHits(hits, urlMap, "Title 1")
+	if len(globalHits) != 2 {
+		t.Fatalf("expected 2 hits, got %d", len(globalHits))
+	}
+	if globalHits[0].Link != "https://example.com/art1" || globalHits[0].Title != "Title 1" {
+		t.Errorf("unexpected global hit 0: %+v", globalHits[0])
+	}
+	if !containsStr(globalHits[0].MatchedFields, "title") {
+		t.Errorf("expected title to match")
+	}
 }

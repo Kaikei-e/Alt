@@ -5,7 +5,6 @@ import (
 	"alt/orchestrator/port/fetch_feed_port"
 	"alt/utils/logger"
 	"context"
-	"errors"
 	"time"
 )
 
@@ -19,13 +18,9 @@ func NewFetchReadFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_port.Re
 
 func (u *FetchReadFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
 	// ビジネスルール検証
-	if limit <= 0 {
-		logger.Logger.ErrorContext(ctx, "invalid limit: must be greater than 0", "limit", limit)
-		return nil, errors.New("limit must be greater than 0")
-	}
-	if limit > 100 {
-		logger.Logger.ErrorContext(ctx, "invalid limit: cannot exceed 100", "limit", limit)
-		return nil, errors.New("limit cannot exceed 100")
+	if err := validateCursorLimit(limit); err != nil {
+		logger.Logger.ErrorContext(ctx, "invalid limit: "+err.Error(), "limit", limit)
+		return nil, err
 	}
 
 	logger.Logger.InfoContext(ctx, "fetching read feeds with cursor", "cursor", cursor, "limit", limit)

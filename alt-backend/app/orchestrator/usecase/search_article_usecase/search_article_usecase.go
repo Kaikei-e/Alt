@@ -9,11 +9,11 @@ import (
 )
 
 type SearchArticleUsecase struct {
-	searchIndexerPort search_indexer_port.SearchIndexerPort
+	searchIndexerPort search_indexer_port.ArticleSearchPort
 	logger            *slog.Logger
 }
 
-func NewSearchArticleUsecase(searchIndexerPort search_indexer_port.SearchIndexerPort) *SearchArticleUsecase {
+func NewSearchArticleUsecase(searchIndexerPort search_indexer_port.ArticleSearchPort) *SearchArticleUsecase {
 	return &SearchArticleUsecase{
 		searchIndexerPort: searchIndexerPort,
 		logger:            slog.Default(),

@@ -126,7 +126,7 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 	u.enrichDigest(ctx, result, userID, date)
 
 	// Compute 3-tier service quality
-	result.ServiceQuality = computeServiceQuality(itemsErr, result)
+	result.ServiceQuality = computeServiceQuality(itemsErr, result, time.Now())
 
 	return result, nil
 }
@@ -142,8 +142,13 @@ func (u *GetKnowledgeHomeUsecase) enrichTagHotspots(ctx context.Context, result 
 		logger.Logger.WarnContext(ctx, "failed to get trending tags for enrichment", "error", err)
 		return
 	}
-	if len(trendingTags) == 0 {
-		return
+	result.Items = enrichItemsWithTagHotspots(result.Items, trendingTags)
+}
+
+// enrichItemsWithTagHotspots adds tag_hotspot WhyReasons to items matching trending tags.
+func enrichItemsWithTagHotspots(items []domain.KnowledgeHomeItem, trendingTags []knowledge_home_port.TrendingTag) []domain.KnowledgeHomeItem {
+	if len(trendingTags) == 0 || len(items) == 0 {
+		return items
 	}
 
 	trendingSet := make(map[string]bool, len(trendingTags))
@@ -151,14 +156,13 @@ func (u *GetKnowledgeHomeUsecase) enrichTagHotspots(ctx context.Context, result 
 		trendingSet[t.TagName] = true
 	}
 
-	for i := range result.Items {
-		item := &result.Items[i]
-		if hasWhyCode(item.WhyReasons, domain.WhyTagHotspot) {
+	for i := range items {
+		if hasWhyCode(items[i].WhyReasons, domain.WhyTagHotspot) {
 			continue
 		}
-		for _, tag := range item.Tags {
+		for _, tag := range items[i].Tags {
 			if trendingSet[tag] {
-				item.WhyReasons = append(item.WhyReasons, domain.WhyReason{
+				items[i].WhyReasons = append(items[i].WhyReasons, domain.WhyReason{
 					Code: domain.WhyTagHotspot,
 					Tag:  tag,
 				})
@@ -166,6 +170,7 @@ func (u *GetKnowledgeHomeUsecase) enrichTagHotspots(ctx context.Context, result 
 			}
 		}
 	}
+	return items
 }
 
 func hasWhyCode(reasons []domain.WhyReason, code string) bool {
@@ -181,13 +186,13 @@ func hasWhyCode(reasons []domain.WhyReason, code string) bool {
 //   - full: all read sources succeeded
 //   - degraded: partial failure or stale projection, but the page can still render normally
 //   - fallback: one of the read sections had to be dropped, but we still have a usable partial response
-func computeServiceQuality(itemsErr error, result *Result) string {
+func computeServiceQuality(itemsErr error, result *Result, now time.Time) string {
 	if itemsErr != nil {
 		return ServiceQualityFallback
 	}
 	// Projection staleness downgrades quality, but is not itself a fallback response.
 	if result.Digest.LastProjectedAt != nil {
-		age := time.Since(*result.Digest.LastProjectedAt)
+		age := now.Sub(*result.Digest.LastProjectedAt)
 		if age > degradedStalenessThreshold {
 			return ServiceQualityDegraded
 		}

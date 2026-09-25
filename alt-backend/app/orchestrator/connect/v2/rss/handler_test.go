@@ -17,8 +17,8 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/mocks"
-	"alt/orchestrator/usecase/feed_link_usecase"
 	"alt/orchestrator/usecase/register_favorite_feed_usecase"
+	"alt/orchestrator/usecase/subscription_usecase"
 )
 
 func createAuthContext() context.Context {
@@ -490,9 +490,9 @@ func TestDeleteRSSFeedLink_Success(t *testing.T) {
 	mockPort := mocks.NewMockSubscriptionPort(ctrl)
 	mockPort.EXPECT().Unsubscribe(gomock.Any(), userCtx.UserID, feedLinkID).Return(nil)
 
-	usecase := feed_link_usecase.NewDeleteFeedLinkUsecase(mockPort)
+	usecase := subscription_usecase.NewUnsubscribeUsecase(mockPort)
 	container := &di.ApplicationComponents{
-		DeleteFeedLinkUsecase: usecase,
+		UnsubscribeUsecase: usecase,
 	}
 	h := newTestHandler(t, container)
 

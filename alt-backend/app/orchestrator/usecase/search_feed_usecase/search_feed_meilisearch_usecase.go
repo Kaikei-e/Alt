@@ -9,45 +9,25 @@ import (
 	"log/slog"
 )
 
-type SearchFeedByTitleUsecase struct {
-	searchByTitlePort feed_search_port.SearchByTitlePort
-	logger            *slog.Logger
+// convertHitsToFeedItems maps search article hits to domain FeedItems using the resolved URL map.
+func convertHitsToFeedItems(hits []domain.SearchArticleHit, urlMap map[string]string) []*domain.FeedItem {
+	feedItems := make([]*domain.FeedItem, len(hits))
+	for i, hit := range hits {
+		feedItems[i] = &domain.FeedItem{
+			Title:       hit.Title,
+			Description: hit.Content,
+			Link:        urlMap[hit.ID],
+			ArticleID:   hit.ID,
+		}
+	}
+	return feedItems
 }
 
-func NewSearchFeedByTitleUsecase(searchByTitlePort feed_search_port.SearchByTitlePort) *SearchFeedByTitleUsecase {
-	return &SearchFeedByTitleUsecase{
-		searchByTitlePort: searchByTitlePort,
-		logger:            slog.Default(),
-	}
-}
+const maxSearchResults = 200
 
-func (u *SearchFeedByTitleUsecase) Execute(ctx context.Context, query string) ([]*domain.FeedItem, error) {
-	// contextからuser取得
-	user, err := domain.GetUserFromContext(ctx)
-	if err != nil {
-		u.logger.Error("user context not found", "error", err)
-		return nil, err
-	}
-
-	u.logger.Info("executing feed search by title",
-		"query", query,
-		"user_id", user.UserID)
-
-	feeds, err := u.searchByTitlePort.SearchFeedsByTitle(ctx, query, user.UserID.String())
-	if err != nil {
-		u.logger.Error("failed to search feeds by title",
-			"error", err,
-			"query", query,
-			"user_id", user.UserID)
-		return nil, err
-	}
-
-	u.logger.Info("feed search by title completed",
-		"query", query,
-		"user_id", user.UserID,
-		"results_count", len(feeds))
-
-	return feeds, nil
+// hasMoreSearchResults determines if additional search results exist within the maximum page budget.
+func hasMoreSearchResults(returnedCount, limit, offset int) bool {
+	return returnedCount >= limit && offset+returnedCount < maxSearchResults
 }
 
 type SearchFeedMeilisearchUsecase struct {
@@ -62,6 +42,26 @@ func NewSearchFeedMeilisearchUsecase(searchPort feed_search_port.SearchFeedPort,
 		urlPort:    urlPort,
 		logger:     slog.Default(),
 	}
+}
+
+func (u *SearchFeedMeilisearchUsecase) resolveFeedItems(ctx context.Context, searchHits []domain.SearchArticleHit) ([]*domain.FeedItem, error) {
+	articleIDs := make([]string, len(searchHits))
+	for i, hit := range searchHits {
+		articleIDs[i] = hit.ID
+	}
+
+	feedURLs, err := u.urlPort.GetFeedURLsByArticleIDs(ctx, articleIDs)
+	if err != nil {
+		u.logger.Error("failed to get feed URLs", "error", err, "article_ids", articleIDs)
+		return nil, err
+	}
+
+	urlMap := make(map[string]string, len(feedURLs))
+	for _, feedURL := range feedURLs {
+		urlMap[feedURL.ArticleID] = feedURL.URL
+	}
+
+	return convertHitsToFeedItems(searchHits, urlMap), nil
 }
 
 func (u *SearchFeedMeilisearchUsecase) Execute(ctx context.Context, query string) ([]*domain.FeedItem, error) {
@@ -79,34 +79,9 @@ func (u *SearchFeedMeilisearchUsecase) Execute(ctx context.Context, query string
 		return []*domain.FeedItem{}, nil
 	}
 
-	// Extract article IDs for URL lookup
-	articleIDs := make([]string, len(searchHits))
-	for i, hit := range searchHits {
-		articleIDs[i] = hit.ID
-	}
-
-	// Get feed URLs for the articles
-	feedURLs, err := u.urlPort.GetFeedURLsByArticleIDs(ctx, articleIDs)
+	feedItems, err := u.resolveFeedItems(ctx, searchHits)
 	if err != nil {
-		u.logger.Error("failed to get feed URLs", "error", err, "article_ids", articleIDs)
 		return nil, err
-	}
-
-	// Create URL map for quick lookup
-	urlMap := make(map[string]string)
-	for _, feedURL := range feedURLs {
-		urlMap[feedURL.ArticleID] = feedURL.URL
-	}
-
-	// Convert search hits to feed items
-	feedItems := make([]*domain.FeedItem, len(searchHits))
-	for i, hit := range searchHits {
-		feedItems[i] = &domain.FeedItem{
-			Title:       hit.Title,
-			Description: hit.Content,
-			Link:        urlMap[hit.ID], // Will be empty string if not found
-			ArticleID:   hit.ID,         // Preserve article ID for unique identification
-		}
 	}
 
 	u.logger.Info("feed search via meilisearch completed",
@@ -150,34 +125,9 @@ func (u *SearchFeedMeilisearchUsecase) ExecuteWithPagination(ctx context.Context
 		return []*domain.FeedItem{}, false, nil
 	}
 
-	// Extract article IDs for URL lookup
-	articleIDs := make([]string, len(searchHits))
-	for i, hit := range searchHits {
-		articleIDs[i] = hit.ID
-	}
-
-	// Get feed URLs for the articles
-	feedURLs, err := u.urlPort.GetFeedURLsByArticleIDs(ctx, articleIDs)
+	feedItems, err := u.resolveFeedItems(ctx, searchHits)
 	if err != nil {
-		u.logger.Error("failed to get feed URLs", "error", err, "article_ids", articleIDs)
 		return nil, false, err
-	}
-
-	// Create URL map for quick lookup
-	urlMap := make(map[string]string)
-	for _, feedURL := range feedURLs {
-		urlMap[feedURL.ArticleID] = feedURL.URL
-	}
-
-	// Convert search hits to feed items
-	feedItems := make([]*domain.FeedItem, len(searchHits))
-	for i, hit := range searchHits {
-		feedItems[i] = &domain.FeedItem{
-			Title:       hit.Title,
-			Description: hit.Content,
-			Link:        urlMap[hit.ID], // Will be empty string if not found
-			ArticleID:   hit.ID,         // Preserve article ID for unique identification
-		}
 	}
 
 	// Determine if there are more results.
@@ -185,8 +135,7 @@ func (u *SearchFeedMeilisearchUsecase) ExecuteWithPagination(ctx context.Context
 	// and is an unreliable estimate in offset/limit mode. Instead, use two deterministic checks:
 	// 1. If fewer results than requested were returned, there are no more results.
 	// 2. Cap total searchable results to avoid infinite scrolling.
-	const maxSearchResults = 200
-	hasMore := len(feedItems) >= limit && offset+len(feedItems) < maxSearchResults
+	hasMore := hasMoreSearchResults(len(feedItems), limit, offset)
 
 	u.logger.Info("feed search via meilisearch with pagination completed",
 		"query", query,

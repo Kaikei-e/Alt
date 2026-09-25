@@ -13,12 +13,16 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFetchArticleGateway_SSRF_Blocked(t *testing.T) {
@@ -520,4 +524,59 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+func TestIsUpstreamUnreachable(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{"nil error", nil, false},
+		{"context deadline exceeded", context.DeadlineExceeded, true},
+		{"context canceled", context.Canceled, true},
+		{"os deadline exceeded", os.ErrDeadlineExceeded, true},
+		{"dns error", &net.DNSError{Err: "no such host"}, true},
+		{"econnrefused", syscall.ECONNREFUSED, true},
+		{"econnreset", syscall.ECONNRESET, true},
+		{"ehostunreach", syscall.EHOSTUNREACH, true},
+		{"enetunreach", syscall.ENETUNREACH, true},
+		{"etimedout", syscall.ETIMEDOUT, true},
+		{"epipe", syscall.EPIPE, true},
+		{"wrapped econnrefused", fmt.Errorf("dial: %w", syscall.ECONNREFUSED), true},
+		{"generic error", errors.New("something broke"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isUpstreamUnreachable(tt.err))
+		})
+	}
+}
+
+func TestValidateArticleResponseHeaders(t *testing.T) {
+	t.Run("status 200 within limit returns nil", func(t *testing.T) {
+		err := validateArticleResponseHeaders(http.StatusOK, 1024, "https://example.com/art")
+		assert.NoError(t, err)
+	})
+
+	t.Run("status 204 within limit returns nil", func(t *testing.T) {
+		err := validateArticleResponseHeaders(http.StatusNoContent, 0, "https://example.com/art")
+		assert.NoError(t, err)
+	})
+
+	t.Run("non-2xx status returns ExternalHTTPError", func(t *testing.T) {
+		err := validateArticleResponseHeaders(http.StatusNotFound, 100, "https://example.com/art")
+		require.Error(t, err)
+		var httpErr *domain.ExternalHTTPError
+		require.True(t, errors.As(err, &httpErr))
+		assert.Equal(t, http.StatusNotFound, httpErr.StatusCode)
+		assert.Equal(t, "https://example.com/art", httpErr.URL)
+	})
+
+	t.Run("content length exceeds ceiling returns error", func(t *testing.T) {
+		err := validateArticleResponseHeaders(http.StatusOK, maxArticleBodyBytes+1, "https://example.com/art")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds")
+	})
 }

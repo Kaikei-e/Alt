@@ -184,11 +184,6 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 	dedupeKey := buildDedupeKey(userID, actionType, itemKey, metadataJSON, now)
 
 	// Record user event
-	payload, _ := json.Marshal(map[string]string{
-		"action_type":   actionType,
-		"metadata_json": metadataJSON,
-	})
-
 	userEvent := domain.KnowledgeUserEvent{
 		UserEventID: uuid.New(),
 		OccurredAt:  now,
@@ -196,7 +191,7 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		TenantID:    tenantID,
 		EventType:   actionType,
 		ItemKey:     itemKey,
-		Payload:     payload,
+		Payload:     buildUserActionPayload(actionType, metadataJSON),
 		DedupeKey:   dedupeKey,
 	}
 
@@ -214,56 +209,8 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 	// we log article_id + error (URL body intentionally NOT logged — see
 	// security audit Low #6) and proceed with an empty URL so legacy /
 	// missing rows degrade gracefully.
-	knowledgePayloadFields := map[string]string{
-		"action_type": actionType,
-		"item_key":    itemKey,
-		"user_id":     userID.String(),
-		"tenant_id":   tenantID.String(),
-		"opened_at":   now.Format(time.RFC3339),
-	}
-	if u.articleURLLookupPort != nil && strings.HasPrefix(itemKey, articleItemKeyPrefix) {
-		articleID := strings.TrimPrefix(itemKey, articleItemKeyPrefix)
-		if _, parseErr := uuid.Parse(articleID); parseErr != nil {
-			logger.Logger.WarnContext(ctx, "skipping article URL lookup: malformed article id",
-				"article_id", articleID)
-		} else {
-			// Plan: Knowledge Loop 体験回復 — Pillar 2C. Retry transient lookup
-			// failures up to 3 times with a 100ms backoff. The append below
-			// stays unconditional (append-first invariant): if every retry
-			// fails, the event is still appended without a `url` key, and the
-			// long-term self-heal lives in the ArticleUrlBackfilled corrective
-			// projector path. Suppressing the append on lookup failure would
-			// silently drop user actions from the event log — explicitly
-			// rejected by immutable-design-guard.
-			const maxAttempts = 3
-			const backoff = 100 * time.Millisecond
-			var foundURL string
-			for attempt := 1; attempt <= maxAttempts; attempt++ {
-				source, lookupErr := u.articleURLLookupPort.LookupArticleSource(ctx, articleID, userID)
-				if lookupErr == nil {
-					foundURL = source.URL
-					break
-				}
-				if attempt == maxAttempts {
-					logger.Logger.WarnContext(ctx, "lookup_article_url failed after retries",
-						"article_id", articleID, "attempts", maxAttempts, "error", lookupErr)
-					break
-				}
-				select {
-				case <-ctx.Done():
-					logger.Logger.WarnContext(ctx, "lookup_article_url cancelled mid-retry",
-						"article_id", articleID, "attempt", attempt)
-					attempt = maxAttempts // exit loop without further sleep
-				case <-time.After(backoff):
-					// next attempt
-				}
-			}
-			if foundURL != "" {
-				knowledgePayloadFields["url"] = foundURL
-			}
-		}
-	}
-	knowledgePayload, _ := json.Marshal(knowledgePayloadFields)
+	foundURL := resolveArticleSourceURL(ctx, u.articleURLLookupPort, itemKey, userID)
+	knowledgePayload := buildKnowledgePayload(actionType, itemKey, userID, tenantID, now, foundURL)
 
 	knowledgeEvent := domain.KnowledgeEvent{
 		EventID:       uuid.New(),
@@ -294,42 +241,11 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 	}
 
 	if actionType == "dismiss" && u.dismissPort != nil {
-		projectionVersion := 1
-		if u.activeVersionPort != nil {
-			v, err := u.activeVersionPort.GetActiveVersion(ctx)
-			if err != nil {
-				logger.Logger.WarnContext(ctx, "failed to resolve active projection version for dismiss write-through",
-					"error", err, "item_key", itemKey)
-			} else if v != nil {
-				projectionVersion = v.Version
-			}
-		}
-
-		if err := u.dismissPort.DismissKnowledgeHomeItem(ctx, userID, itemKey, projectionVersion, now); err != nil {
-			if errors.Is(err, knowledge_home_port.ErrDismissTargetNotFound) {
-				logger.Logger.WarnContext(ctx, "dismiss write-through skipped because read model target was not found",
-					"item_key", itemKey, "projection_version", projectionVersion)
-			} else {
-				logger.Logger.ErrorContext(ctx, "failed to dismiss read model synchronously",
-					"error", err, "item_key", itemKey, "projection_version", projectionVersion)
-			}
-		}
+		u.dismissReadModel(ctx, userID, itemKey, now)
 	}
 
 	// Append recall signal for eligible action types (non-fatal)
 	if signalType, ok := actionToSignalType[actionType]; ok && u.recallSignalPort != nil {
-		signalPayload := map[string]any{"source": "home_action", "action_type": actionType}
-		if metadataJSON != "" {
-			var meta map[string]any
-			if err := json.Unmarshal([]byte(metadataJSON), &meta); err == nil {
-				if q, ok := meta["query"].(string); ok && q != "" {
-					signalPayload["search_query"] = q
-				}
-				if t, ok := meta["tag"].(string); ok && t != "" {
-					signalPayload["tag"] = t
-				}
-			}
-		}
 		signal := domain.RecallSignal{
 			SignalID:       uuid.New(),
 			UserID:         userID,
@@ -337,7 +253,7 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 			SignalType:     signalType,
 			SignalStrength: 1.0,
 			OccurredAt:     now,
-			Payload:        signalPayload,
+			Payload:        buildRecallSignalPayload(actionType, metadataJSON),
 		}
 		if err := u.recallSignalPort.AppendRecallSignal(ctx, signal); err != nil {
 			slog.ErrorContext(ctx, "failed to append recall signal",
@@ -346,4 +262,111 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 	}
 
 	return nil
+}
+
+// buildUserActionPayload creates the JSON payload for KnowledgeUserEvent.
+func buildUserActionPayload(actionType, metadataJSON string) []byte {
+	payload, _ := json.Marshal(map[string]string{
+		"action_type":   actionType,
+		"metadata_json": metadataJSON,
+	})
+	return payload
+}
+
+// buildKnowledgePayload creates the JSON payload for KnowledgeEvent.
+func buildKnowledgePayload(actionType, itemKey string, userID, tenantID uuid.UUID, openedAt time.Time, foundURL string) []byte {
+	fields := map[string]string{
+		"action_type": actionType,
+		"item_key":    itemKey,
+		"user_id":     userID.String(),
+		"tenant_id":   tenantID.String(),
+		"opened_at":   openedAt.Format(time.RFC3339),
+	}
+	if foundURL != "" {
+		fields["url"] = foundURL
+	}
+	payload, _ := json.Marshal(fields)
+	return payload
+}
+
+// buildRecallSignalPayload builds the map payload for RecallSignal.
+func buildRecallSignalPayload(actionType, metadataJSON string) map[string]any {
+	signalPayload := map[string]any{"source": "home_action", "action_type": actionType}
+	if metadataJSON != "" {
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(metadataJSON), &meta); err == nil {
+			if q, ok := meta["query"].(string); ok && q != "" {
+				signalPayload["search_query"] = q
+			}
+			if t, ok := meta["tag"].(string); ok && t != "" {
+				signalPayload["tag"] = t
+			}
+		}
+	}
+	return signalPayload
+}
+
+// resolveArticleSourceURL retrieves article source URL with transient retries for article-anchored items.
+func resolveArticleSourceURL(ctx context.Context, port article_url_lookup_port.ArticleURLLookupPort, itemKey string, userID uuid.UUID) string {
+	if port == nil || !strings.HasPrefix(itemKey, articleItemKeyPrefix) {
+		return ""
+	}
+	articleID := strings.TrimPrefix(itemKey, articleItemKeyPrefix)
+	if _, parseErr := uuid.Parse(articleID); parseErr != nil {
+		logger.Logger.WarnContext(ctx, "skipping article URL lookup: malformed article id", "article_id", articleID)
+		return ""
+	}
+
+	// Plan: Knowledge Loop 体験回復 — Pillar 2C. Retry transient lookup
+	// failures up to 3 times with a 100ms backoff. The append below
+	// stays unconditional (append-first invariant): if every retry
+	// fails, the event is still appended without a `url` key, and the
+	// long-term self-heal lives in the ArticleUrlBackfilled corrective
+	// projector path. Suppressing the append on lookup failure would
+	// silently drop user actions from the event log — explicitly
+	// rejected by immutable-design-guard.
+	const maxAttempts = 3
+	const backoff = 100 * time.Millisecond
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		source, lookupErr := port.LookupArticleSource(ctx, articleID, userID)
+		if lookupErr == nil {
+			return source.URL
+		}
+		if attempt == maxAttempts {
+			logger.Logger.WarnContext(ctx, "lookup_article_url failed after retries",
+				"article_id", articleID, "attempts", maxAttempts, "error", lookupErr)
+			break
+		}
+		select {
+		case <-ctx.Done():
+			logger.Logger.WarnContext(ctx, "lookup_article_url cancelled mid-retry",
+				"article_id", articleID, "attempt", attempt)
+			return ""
+		case <-time.After(backoff):
+		}
+	}
+	return ""
+}
+
+func (u *TrackHomeActionUsecase) dismissReadModel(ctx context.Context, userID uuid.UUID, itemKey string, now time.Time) {
+	projectionVersion := 1
+	if u.activeVersionPort != nil {
+		v, err := u.activeVersionPort.GetActiveVersion(ctx)
+		if err != nil {
+			logger.Logger.WarnContext(ctx, "failed to resolve active projection version for dismiss write-through",
+				"error", err, "item_key", itemKey)
+		} else if v != nil {
+			projectionVersion = v.Version
+		}
+	}
+
+	if err := u.dismissPort.DismissKnowledgeHomeItem(ctx, userID, itemKey, projectionVersion, now); err != nil {
+		if errors.Is(err, knowledge_home_port.ErrDismissTargetNotFound) {
+			logger.Logger.WarnContext(ctx, "dismiss write-through skipped because read model target was not found",
+				"item_key", itemKey, "projection_version", projectionVersion)
+		} else {
+			logger.Logger.ErrorContext(ctx, "failed to dismiss read model synchronously",
+				"error", err, "item_key", itemKey, "projection_version", projectionVersion)
+		}
+	}
 }

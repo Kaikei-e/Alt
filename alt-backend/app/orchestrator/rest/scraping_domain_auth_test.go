@@ -26,7 +26,7 @@ func TestRegisterScrapingDomainRoutes_RequiresAuth(t *testing.T) {
 	e := echo.New()
 	e.Use(echomiddleware.Recover())
 	v1 := e.Group("/v1")
-	registerScrapingDomainRoutes(v1, &di.ApplicationComponents{}, &config.Config{})
+	registerScrapingDomainRoutes(v1, &di.ApplicationComponents{}, config.AuthConfig{})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin/scraping-domains", nil)
 	rec := httptest.NewRecorder()

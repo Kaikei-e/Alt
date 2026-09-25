@@ -130,3 +130,43 @@ func TestGetTrendingTags_CacheHit(t *testing.T) {
 	// the second call doesn't error. Full cache behavior tested via TTL.
 	assert.Equal(t, 1, callCount)
 }
+
+func TestCalculateTrendingWindows(t *testing.T) {
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	recent, baseline := calculateTrendingWindows(now)
+
+	assert.Equal(t, now.Add(-7*24*time.Hour), recent)
+	assert.Equal(t, now.Add(-30*24*time.Hour), baseline)
+}
+
+func TestCalculateSurgeRatio(t *testing.T) {
+	t.Run("zero baseline returns recentCount as float", func(t *testing.T) {
+		ratio := calculateSurgeRatio(5, 0)
+		assert.Equal(t, 5.0, ratio)
+	})
+
+	t.Run("positive baseline calculates ratio relative to weekly average", func(t *testing.T) {
+		ratio := calculateSurgeRatio(10, 20)
+		assert.Equal(t, 2.0, ratio)
+	})
+}
+
+func TestFilterAndSortTrendingTags(t *testing.T) {
+	recent := []knowledge_home_port.TagArticleCount{
+		{TagName: "low_count", ArticleCount: 2},
+		{TagName: "no_surge", ArticleCount: 4},
+		{TagName: "high_surge", ArticleCount: 10},
+		{TagName: "medium_surge", ArticleCount: 6},
+	}
+	baseline := []knowledge_home_port.TagArticleCount{
+		{TagName: "low_count", ArticleCount: 4},
+		{TagName: "no_surge", ArticleCount: 20},
+		{TagName: "high_surge", ArticleCount: 12},
+		{TagName: "medium_surge", ArticleCount: 12},
+	}
+
+	result := filterAndSortTrendingTags(recent, baseline)
+	assert.Len(t, result, 2)
+	assert.Equal(t, "high_surge", result[0].TagName)
+	assert.Equal(t, "medium_surge", result[1].TagName)
+}

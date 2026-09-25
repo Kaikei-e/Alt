@@ -50,8 +50,19 @@ type TrendSeries struct {
 // layer must do that the drivers did not: alt-data-hub sees a peer certificate
 // naming alt-backend, so a user read from the context on the far side would be
 // the service account and every dashboard would show identical numbers.
+// statsDataHubClient isolates the data-hub RPCs called by StatsGateway.
+type statsDataHubClient interface {
+	GetFeedAmount(context.Context, *connect.Request[datahubv1.GetFeedAmountRequest]) (*connect.Response[datahubv1.GetFeedAmountResponse], error)
+	GetTotalArticlesCount(context.Context, *connect.Request[datahubv1.GetTotalArticlesCountRequest]) (*connect.Response[datahubv1.GetTotalArticlesCountResponse], error)
+	GetSummarizedArticlesCount(context.Context, *connect.Request[datahubv1.GetSummarizedArticlesCountRequest]) (*connect.Response[datahubv1.GetSummarizedArticlesCountResponse], error)
+	GetUnsummarizedArticlesCount(context.Context, *connect.Request[datahubv1.GetUnsummarizedArticlesCountRequest]) (*connect.Response[datahubv1.GetUnsummarizedArticlesCountResponse], error)
+	GetTodayUnreadArticlesCount(context.Context, *connect.Request[datahubv1.GetTodayUnreadArticlesCountRequest]) (*connect.Response[datahubv1.GetTodayUnreadArticlesCountResponse], error)
+	GetTrendStats(context.Context, *connect.Request[datahubv1.GetTrendStatsRequest]) (*connect.Response[datahubv1.GetTrendStatsResponse], error)
+	ListUserFeedIDs(context.Context, *connect.Request[datahubv1.ListUserFeedIDsRequest]) (*connect.Response[datahubv1.ListUserFeedIDsResponse], error)
+}
+
 type StatsGateway struct {
-	client datahubv1connect.DataHubServiceClient
+	client statsDataHubClient
 }
 
 func NewStatsGateway(client datahubv1connect.DataHubServiceClient) *StatsGateway {

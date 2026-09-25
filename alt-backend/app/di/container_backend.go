@@ -30,8 +30,8 @@ import (
 // dependency graph contains neither alt/shared/driver/alt_db nor pgx — see
 // di/import_boundary_test.go.
 //
-// InternalArticleGateway is gone with the pool. It was the one internal-looking
-// component the backend kept, for RecallRailUsecase's article fallback, and
+// The catalog gateways are gone with the pool. They were the internal-looking
+// components the backend kept, for RecallRailUsecase's article fallback, and
 // that read is now a procedure (catalog §2.C).
 func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 	// 1. Infrastructure (shared deps)
@@ -40,17 +40,16 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 	// 2. Subscription module (needed by feed module for auto-subscribe)
 	sub := newSubscriptionModule(infra)
 
-	// 3. Feed module (depends on subscription module for auto-subscribe and
-	//    for DeleteFeedLinkUsecase)
-	feed := newFeedModule(infra, sub)
+	// 3. Feed module (depends on subscription module for auto-subscribe)
+	feed := newFeedModule(infra, sub, slog.Default())
 
-	// 4. RAG module (needed by article module for ragAdapter)
+	// 4. RAG module (depends on feed)
 	rag := newRAGModule(infra, feed)
 
-	// 5. Article module (depends on feed + rag adapter)
-	article := newArticleModule(infra, feed, rag.RagAdapter)
+	// 5. Article module (depends on feed)
+	article := newArticleModule(infra, feed)
 
-	// 6. Knowledge module (depends on article for InternalArticleGateway)
+	// 6. Knowledge module (depends on article module)
 	knowledge := newKnowledgeModule(infra, article)
 
 	// 7. Image module
@@ -88,7 +87,6 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 		FetchSingleFeedUsecase:              feed.FetchSingleFeedUsecase,
 		FetchFeedsListUsecase:               feed.FetchFeedsListUsecase,
 		FetchFeedsListCursorUsecase:         feed.FetchFeedsListCursorUsecase,
-		FetchUnreadFeedsListCursorUsecase:   feed.FetchUnreadFeedsListCursorUsecase,
 		CachedFeedListUsecase:               feed.CachedFeedListUsecase,
 		FetchReadFeedsListCursorUsecase:     feed.FetchReadFeedsListCursorUsecase,
 		FetchFavoriteFeedsListCursorUsecase: feed.FetchFavoriteFeedsListCursorUsecase,
@@ -97,7 +95,6 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 		RemoveFavoriteFeedUsecase:           feed.RemoveFavoriteFeedUsecase,
 		ListFeedLinksUsecase:                feed.ListFeedLinksUsecase,
 		ListFeedLinksWithHealthUsecase:      feed.ListFeedLinksWithHealthUsecase,
-		DeleteFeedLinkUsecase:               feed.DeleteFeedLinkUsecase,
 		FeedsReadingStatusUsecase:           feed.FeedsReadingStatusUsecase,
 		ArticlesReadingStatusUsecase:        feed.ArticlesReadingStatusUsecase,
 		FeedsSummaryUsecase:                 feed.FeedsSummaryUsecase,
@@ -113,6 +110,7 @@ func NewBackendComponents(cfg *config.Config) *ApplicationComponents {
 		FetchInoreaderSummaryUsecase:        feed.FetchInoreaderSummaryUsecase,
 		FetchRandomSubscriptionUsecase:      feed.FetchRandomSubscriptionUsecase,
 		ScrapingDomainUsecase:               feed.ScrapingDomainUsecase,
+		ResolveArticleUsecase:               feed.ResolveArticleUsecase,
 
 		// Article usecases
 		ArticleUsecase:             article.ArticleUsecase,

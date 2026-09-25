@@ -4,7 +4,7 @@ import (
 	"alt/domain"
 	"alt/utils"
 	"alt/utils/logger"
-	"alt/utils/url_validator"
+	"alt/utils/security"
 	"context"
 	"net/url"
 	"strings"
@@ -40,6 +40,21 @@ func NewImportGateway(store FeedLinkBulkStore) *ImportGateway {
 // rejected before the data plane ever saw them — which is why the counts are
 // merged rather than taken wholesale from the response.
 func (g *ImportGateway) RegisterFeedLinkBulk(ctx context.Context, urls []string) (*domain.OPMLImportResult, error) {
+	accepted, result := filterAndSanitizeImportURLs(ctx, urls)
+	if len(accepted) == 0 {
+		return result, nil
+	}
+
+	registered, err := g.store.RegisterFeedLinkBulk(ctx, accepted)
+	if err != nil {
+		logger.Logger.WarnContext(ctx, "OPML import: bulk registration failed", "url_count", len(accepted), "error", err)
+		return nil, err
+	}
+
+	return mergeImportResults(result, registered), nil
+}
+
+func filterAndSanitizeImportURLs(ctx context.Context, urls []string) ([]string, *domain.OPMLImportResult) {
 	result := &domain.OPMLImportResult{
 		Total: len(urls),
 	}
@@ -62,7 +77,7 @@ func (g *ImportGateway) RegisterFeedLinkBulk(ctx context.Context, urls []string)
 			result.FailedURLs = append(result.FailedURLs, trimmed)
 			continue
 		}
-		if err := url_validator.IsAllowedURL(parsedURL); err != nil {
+		if err := security.NewURLSecurityValidator().ValidateParsedRSSURL(parsedURL); err != nil {
 			logger.Logger.WarnContext(ctx, "OPML import: URL not allowed", "url", trimmed, "reason", err.Error())
 			result.Failed++
 			result.FailedURLs = append(result.FailedURLs, trimmed)
@@ -84,19 +99,13 @@ func (g *ImportGateway) RegisterFeedLinkBulk(ctx context.Context, urls []string)
 		accepted = append(accepted, sanitized)
 	}
 
-	if len(accepted) == 0 {
-		return result, nil
-	}
+	return accepted, result
+}
 
-	registered, err := g.store.RegisterFeedLinkBulk(ctx, accepted)
-	if err != nil {
-		logger.Logger.WarnContext(ctx, "OPML import: bulk registration failed", "url_count", len(accepted), "error", err)
-		return nil, err
-	}
-
-	result.Imported = registered.Imported
-	result.Skipped += registered.Skipped
-	result.Failed += registered.Failed
-	result.FailedURLs = append(result.FailedURLs, registered.FailedURLs...)
-	return result, nil
+func mergeImportResults(initial, registered *domain.OPMLImportResult) *domain.OPMLImportResult {
+	initial.Imported = registered.Imported
+	initial.Skipped += registered.Skipped
+	initial.Failed += registered.Failed
+	initial.FailedURLs = append(initial.FailedURLs, registered.FailedURLs...)
+	return initial
 }

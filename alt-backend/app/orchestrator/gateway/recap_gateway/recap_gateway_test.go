@@ -344,5 +344,136 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 
 // newRecapGatewayWithURL creates a RecapGateway with a custom URL for testing
 func newRecapGatewayWithURL(url string) *RecapGateway {
-	return NewRecapGatewayWithConfig(nil, url, nil)
+	return NewRecapGatewayWithConfig(nil, url)
+}
+
+func TestParsePulseStatus(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected domain.PulseStatus
+	}{
+		{"normal", domain.PulseStatusNormal},
+		{"partial", domain.PulseStatusPartial},
+		{"quiet_day", domain.PulseStatusQuietDay},
+		{"error", domain.PulseStatusError},
+		{"unknown", domain.PulseStatusError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.expected, parsePulseStatus(tt.input))
+		})
+	}
+}
+
+func TestParseTopicRole(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected domain.TopicRole
+	}{
+		{"need_to_know", domain.TopicRoleNeedToKnow},
+		{"trend", domain.TopicRoleTrend},
+		{"serendipity", domain.TopicRoleSerendipity},
+		{"other", domain.TopicRoleNeedToKnow},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.expected, parseTopicRole(tt.input))
+		})
+	}
+}
+
+func TestParseConfidence(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected domain.Confidence
+	}{
+		{"high", domain.ConfidenceHigh},
+		{"medium", domain.ConfidenceMedium},
+		{"low", domain.ConfidenceLow},
+		{"other", domain.ConfidenceMedium},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.expected, parseConfidence(tt.input))
+		})
+	}
+}
+
+func TestMapEveningPulseResponseToDomain(t *testing.T) {
+	t.Run("valid mapping with topics and quiet day", func(t *testing.T) {
+		tier1 := 3
+		trend := 2.5
+		genre := "Tech"
+		resp := &eveningPulseResponse{
+			JobID:       "job-1",
+			Date:        "2026-09-25",
+			GeneratedAt: "2026-09-25T08:00:00Z",
+			Status:      "normal",
+			Topics: []pulseTopicResponse{
+				{
+					ClusterID: 10,
+					Role:      "trend",
+					Title:     "Topic 10",
+					Rationale: rationaleResponse{
+						Text:       "High surge",
+						Confidence: "high",
+					},
+					ArticleCount:    10,
+					SourceCount:     5,
+					Tier1Count:      &tier1,
+					TimeAgo:         "1h ago",
+					TrendMultiplier: &trend,
+					Genre:           &genre,
+					ArticleIDs:      []string{"a1"},
+					RepresentativeArticles: []representativeArticleResponse{
+						{
+							ArticleID:   "a1",
+							Title:       "Art 1",
+							SourceURL:   "https://example.com/1",
+							SourceName:  "Src 1",
+							PublishedAt: "2026-09-25T07:00:00Z",
+						},
+					},
+					TopEntities: []string{"AI"},
+					SourceNames: []string{"Src 1"},
+				},
+			},
+			QuietDay: &quietDayResponse{
+				Message: "All quiet",
+				WeeklyHighlights: []weeklyHighlightResponse{
+					{
+						ID:    "h1",
+						Title: "Highlight 1",
+						Date:  "2026-09-24",
+						Role:  "need_to_know",
+					},
+				},
+			},
+		}
+
+		result, err := mapEveningPulseResponseToDomain(resp)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, "job-1", result.JobID)
+		assert.Equal(t, "2026-09-25", result.Date)
+		assert.Equal(t, domain.PulseStatusNormal, result.Status)
+		require.Len(t, result.Topics, 1)
+		assert.Equal(t, int64(10), result.Topics[0].ClusterID)
+		assert.Equal(t, domain.TopicRoleTrend, result.Topics[0].Role)
+		assert.Equal(t, domain.ConfidenceHigh, result.Topics[0].Rationale.Confidence)
+		require.Len(t, result.Topics[0].RepresentativeArticles, 1)
+		assert.Equal(t, "a1", result.Topics[0].RepresentativeArticles[0].ArticleID)
+		require.NotNil(t, result.QuietDay)
+		assert.Equal(t, "All quiet", result.QuietDay.Message)
+		require.Len(t, result.QuietDay.WeeklyHighlights, 1)
+		assert.Equal(t, "h1", result.QuietDay.WeeklyHighlights[0].ID)
+	})
+
+	t.Run("invalid generated_at error", func(t *testing.T) {
+		resp := &eveningPulseResponse{
+			GeneratedAt: "not-a-valid-date",
+		}
+		_, err := mapEveningPulseResponseToDomain(resp)
+		require.Error(t, err)
+	})
 }
