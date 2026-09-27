@@ -53,11 +53,18 @@ docdag context 000929 --depth 2 --budget 1500
 # 現行契約の一覧（status: accepted かつ inbound supersedes 無し）
 docdag query --binding --fields id,title,status,path
 
-# この ADR に依存している側 = 変更が波及する先
+# この ADR が前提にしている側 = 何の上に成り立っているか（既定 --descendants。
+# depends-on / supersedes を辿る。以前は grep で「前提」「踏まえて」を探すしかなかった）
+docdag query 000929 --fields id,title
+
+# この ADR に依存している側 = 変更が波及する先（depends-on の inbound も拾う）
 docdag query 000929 --ancestors --fields id,title
 
-docdag resolve 000929   # → 000940 （葉 = 現行後継を確認）
-docdag validate         # status / stub / cycle / dangling
+docdag resolve 000929   # → 000940 （葉 = 現行後継を確認。後継が proposed など
+                        #   non-binding ならそこで止まり、stderr に
+                        #   note: X supersedes Y but is proposed; not yet binding
+                        #   （JSON なら pending 配列）。まだ確定していないと扱う）
+docdag validate         # status / stub / cycle（supersedes+depends-on の和集合も）/ dangling
 ```
 
 キーワードや影響サービスで**入口の ADR を探す**ときだけテキスト検索を使う:

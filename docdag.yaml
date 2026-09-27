@@ -6,7 +6,8 @@ id_width: 6
 filename: "{id}.md"
 
 # Report a cycle that only the union of the acyclic edge types closes,
-# not just one that closes within a single edge type.
+# not just one that closes within a single edge type. supersedes and
+# depends-on are both declared on the newer ADR and point at older ones.
 acyclic_union: true
 
 # The reference layer (wikilinks) is unvalidated by default. Alt links ADRs
@@ -21,7 +22,36 @@ references:
   # Frontmatter is scanned as well: `related:` lists carry [[000NNN]] wikilinks.
   scan: [body, frontmatter]
 
-# A file named like an ADR but carrying no frontmatter is a broken record,
-# not a document to skip silently.
+# Every ADR body carries the four core headings of docs/ADR/template.md as H2,
+# in template order. The spelling is the template's; historic variants
+# (背景, 意思決定, RESULTS, ...) were normalized, so no `|` alternatives are needed.
+sections:
+  required: ["Status", "Context", "Decision", "Consequences"]
+  level: 2
+  ordered: true
+
+# Strict: every finding that defaults to warn is raised to error, so a record
+# that is not a well-formed node of the graph never lands.
 structural:
   missing_frontmatter: error
+  unstructured_supersedes: error
+  unmanaged_file: error
+
+# The adr preset's two rules, restated so that superseded_orphan is an error:
+# `superseded` is the projection of an inbound supersedes edge, and a decision
+# taken back without a successor is `withdrawn`, not `superseded`.
+rules:
+  - name: status_drift
+    severity: error
+    when:
+      inbound: supersedes
+      attr:
+        status: { not: superseded }
+    message: "has inbound supersedes but status is not superseded"
+  - name: superseded_orphan
+    severity: error
+    when:
+      not_inbound: supersedes
+      attr:
+        status: { eq: superseded }
+    message: "status is superseded but no document supersedes it"
