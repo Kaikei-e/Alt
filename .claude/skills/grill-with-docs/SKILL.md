@@ -39,9 +39,16 @@ Alt has no root `CONTEXT.md` and no glossary file — the documented model is th
 | Operational constraints | `docs/runbooks/` |
 
 `docdag resolve <id>` returns the current successor of an ADR, so you challenge the live decision
-rather than a superseded one. `docdag context <id>` goes further: it prints that decision, what it
-resolves to, and its neighbourhood over typed edges, each entry quoting the opening of its own
-`Decision` section — one command in place of a fan-out of file reads.
+rather than a superseded one — but it stops at a successor that is not yet binding (e.g.
+`status: proposed`), reporting it as `note: X supersedes Y but is proposed; not yet binding` on
+stderr (or a `pending` array in JSON) instead of silently walking past it; treat that successor as
+not yet decided. `docdag context <id>` goes further: it prints that decision, what it resolves to,
+and its neighbourhood over typed edges — both `supersedes` and `depends-on` — each entry quoting the
+opening of its own `Decision` section — one command in place of a fan-out of file reads. `depends-on`
+edges mean "what does this decision rest on" is answered by `docdag query <id>` (the default,
+forward direction, now traversing `depends-on` as well as `supersedes`), not by grepping for "builds
+on" or "presupposes" in prose; `docdag query <id> --ancestors` gives the reverse — what depends on or
+supersedes this decision, i.e. where a challenge to it would ripple.
 
 ## During the session
 

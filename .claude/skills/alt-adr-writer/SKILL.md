@@ -1,6 +1,6 @@
 ---
 name: alt-adr-writer
-description: Alt の Architecture Decision Record を日本語で `docs/ADR/NNNNNN.md` に書き起こす。6 桁の番号採番、frontmatter（title/date/status/tags/affected_services/aliases/supersedes）、Context・Decision・Consequences の書き分け、`[[000NNN]]` wikilink、OSS 公開向けの情報衛生を扱う。ユーザが「ADR書いて」「ADRにまとめて」「ADRに記録して」「実装が終わったのでドキュメントに」と言ったとき、または設計判断を伴う変更が一段落したときに使う。障害の事後分析には postmortem-writer を使う（ADR = 決定の記録、postmortem = 障害の記録）。
+description: Alt の Architecture Decision Record を日本語で `docs/ADR/NNNNNN.md` に書き起こす。6 桁の番号採番、frontmatter（title/date/status/tags/affected_services/aliases/supersedes/depends-on）、Context・Decision・Consequences の書き分け、`[[000NNN]]` wikilink、OSS 公開向けの情報衛生を扱う。ユーザが「ADR書いて」「ADRにまとめて」「ADRに記録して」「実装が終わったのでドキュメントに」と言ったとき、または設計判断を伴う変更が一段落したときに使う。障害の事後分析には postmortem-writer を使う（ADR = 決定の記録、postmortem = 障害の記録）。
 allowed-tools: Bash, Read, Glob, Grep, Edit, Write
 argument-hint: "[決定の対象] [--only-docs]"
 ---
@@ -33,7 +33,13 @@ ADR は「動いた状態」を固定する記録なので、先に最低限の�
 
 ```bash
 docdag new "<ADR タイトル>" --dry-run --format json
-# → {"schema_version":1,"id":"000983","path":"docs/ADR/000983.md","exists":false,"rewrites":[]}
+# → {
+#     "schema_version": 1,
+#     "id": "000991",
+#     "path": "docs/ADR/000991.md",
+#     "exists": false,
+#     "rewrites": []
+#   }
 ```
 
 `--dry-run` は次の空き番号を計算するだけで何も書かない。返ってきた `id` / `path` をそのまま使う
@@ -51,17 +57,20 @@ Write する（勝手に増減しない）。**`docdag new` に実際にファ�
 |---|---|
 | `title` | 動詞始まりの行動指向の一文。ADR 番号は含めない |
 | `date` | `YYYY-MM-DD`（当日） |
-| `status` | 原則 `accepted`。新 ADR 自身を `superseded` にしない（置換される側の status はグラフ投影）。**取り下げ（後継 ADR を書かずに撤回）は `withdrawn`** — `superseded` にすると誰も置換していないので `superseded_orphan` 警告が永久に残る |
+| `status` | 原則 `accepted`。新 ADR 自身を `superseded` にしない（置換される側の status はグラフ投影）。**取り下げ（後継 ADR を書かずに撤回）は `withdrawn`** — `superseded` にすると誰も置換していないので `superseded_orphan` エラーが永久に残る（このリポジトリでは error） |
 | `tags` | §2.4 の許可タグから最大 5 個 |
 | `affected_services` | サービス名と変更概要を 1 行/件。バッククォートや `: ` を含む項目はシングルクォートで囲む（厳密 YAML） |
 | `aliases` | `ADR-NNN` と `ADR-000NNN` の 2 形式を必ず両方入れる（Obsidian のリンク解決用） |
-| `supersedes` | 本 ADR が既存 ADR を**完全置換**する場合のみ、旧 ADR 番号（6 桁）を列挙。置き換えないならキーごと省略する（空の `supersedes: -` stub は dangling 判定を汚す）。新 ADR 側にだけ書き、逆辺は DocDag が算出する |
+| `supersedes` | 本 ADR が既存 ADR の決定を**完全置換**する場合のみ、旧 ADR 番号（6 桁）を列挙。置き換えないならキーごと省略する（空の `supersedes: -` stub は `empty_edge` エラー）。新 ADR 側にだけ書き、逆辺は DocDag が算出する |
+| `depends-on` | 本 ADR の決定が既存 ADR の決定を**前提にする・拡張する・部分的に修正する**場合に、旧 ADR 番号（6 桁）を列挙。本文で「〜を前提に」と書いた ADR は必ずここにも列挙する（本文と frontmatter の食い違いは書き手の責任で防ぐ）。単なる言及・背景・対比・却下した代替案は `[[000NNN]]` wikilink のみでよい。省略可、空の `depends-on: -` stub は `empty_edge` エラー |
 
 ### 2.3 本文ルール
 
 - **日本語で書く。** サービス名 / コマンド / ライブラリ名 / ファイルパスは英語のまま
-- **セクション順は `template.md` を尊重する**（Context / Decision / Consequences (Pros, Cons/Tradeoffs) /
-  Related ADRs が基本）
+- **`## Status` → `## Context` → `## Decision` → `## Consequences` の4見出しは `docdag.yaml` の
+  `sections:` で強制されている**（`missing_section` / `section_order` エラー）。改名・翻訳・
+  順序変更・省略はしない。Consequences 配下の Pros / Cons/Tradeoffs、Related ADRs 等その他の
+  見出しは任意で、`template.md` の並びを尊重する
 - **Context**: なぜこの決定が必要だったかを定量/定性の根拠とともに。障害や計測結果は数値を残す
 - **Decision**: 採用案に加え、**検討した代替案と却下理由**を書く。後から読む人に最も価値があるのはここ
 - **Consequences**: Pros と Cons/Tradeoffs を分けて列挙。未解決の負債は Cons に書く
@@ -98,12 +107,18 @@ docdag validate --touching docs/ADR/NNNNNN.md
 
 `--touching` はコーパス全体を検査したうえで、そのファイルと、そこから典型 edge 1 ホップで
 つながる文書に関する findings だけを表示する。終了コードはコーパス全体で判定されるので、
-絞り込んでも壊れたリポジトリが緑になることはない。検出されるのは循環・dangling 参照・
-`empty_edge`（`supersedes:` と書いて中身が空）・status ドリフト・本文の壊れた `[[000NNN]]` リンク。
-非ゼロ終了なら frontmatter を直す。
+絞り込んでも壊れたリポジトリが緑になることはない。検出されるのは循環（`supersedes` と
+`depends-on` の和集合をまたぐ循環も含む）・dangling 参照・`empty_edge`（`supersedes:` /
+`depends-on:` と書いて中身が空）・status ドリフト・`missing_section` / `section_order`（4見出し
+の欠落・順序違い）・`unmanaged_file`（`docs/ADR/` 直下の野良 Markdown）・`superseded_orphan`
+（誰も置き換えていない文書の `status: superseded`）・本文の壊れた `[[000NNN]]` リンク。この
+リポジトリでは上記すべて warning ではなく error。非ゼロ終了なら frontmatter を直す。
 
 DocDag プラグインの `PostToolUse` フックが入っていれば、`docs/ADR/` 配下への Write のたびに
-同じチェックが自動で走り、壊したのがその文書だったときだけ報告してくる。手で回すのはその保険。
+同じチェックが自動で走る。fail-closed 設計なので、docdag が想定外の終了コードを返すと
+フック自体が exit 2 で失敗し docdag の stderr をそのまま転送する（`jq` / `docdag` が見つからな
+い場合だけ、enforcement が OFF である旨の非ブロッキングな notice を stderr に出して exit 0）。
+手で回す `docdag validate --touching` はその保険で、フックが無い・OFF のときも自分で確認する。
 
 置き換え対象の旧 ADR の `status` は同じ commit で `superseded` に揃える（status 投影の例外）。
 

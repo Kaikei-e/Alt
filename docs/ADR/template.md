@@ -9,12 +9,18 @@ affected_services:
 aliases:
   - ADR-NNNN
   - ADR-000NNN
-# supersedes:  # 既存 ADR を完全置換するときだけキーを追加（例: - "000940"）
+# supersedes:  # 既存 ADR の決定を完全置換するときだけキーを追加（例: - "000940"）
 #   - "000NNN"  # 空の `-` stub は禁止。置き換えないならキーごと省略
+# depends-on:  # 既存 ADR の決定を前提にする・拡張する・部分的に修正するときだけキーを追加（例: - "000929"）
+#   - "000NNN"  # 空の `-` stub は禁止。前提にしないならキーごと省略
 ---
 # ADR-000NNN: タイトル（動詞始まりの行動指向で記述）
 
 <!-- 例: ADR-0033: singleflightパターンによるフィード登録の重複リクエスト排除 -->
+
+<!-- 以下の4つの H2 見出し（Status / Context / Decision / Consequences）は
+     docdag.yaml の `sections:` で必須・この順序を強制されている。
+     改名・翻訳・順序変更をしないこと（missing_section / section_order エラー）。 -->
 
 ## Status
 
