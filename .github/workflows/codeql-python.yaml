@@ -10,6 +10,7 @@ on:
       - "monitors/utilizer/**"
       - "news-creator/**"
       - "dashboard/**"
+      - "tts-speaker/**"
   pull_request:
     branches: [main, master]
     paths:
@@ -18,6 +19,7 @@ on:
       - "monitors/utilizer/**"
       - "news-creator/**"
       - "dashboard/**"
+      - "tts-speaker/**"
 
 permissions:
   actions: read

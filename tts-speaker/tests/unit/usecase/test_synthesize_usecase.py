@@ -1,11 +1,16 @@
 """Unit tests for SynthesizeUsecase."""
 
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 import pytest
 
-from tts_speaker.domain.errors import EmptyTextError, TextTooLongError, UpstreamUnavailableError
+from tts_speaker.domain.errors import (
+    EmptyTextError,
+    SynthesisBusyError,
+    TextTooLongError,
+    UpstreamUnavailableError,
+)
 from tts_speaker.port.speech_synthesizer_port import SpeechSynthesizerPort
 from tts_speaker.usecase.synthesize_usecase import SynthesisResult, SynthesizeUsecase
 
@@ -16,12 +21,16 @@ async def test_empty_text_raises_error(mock_synthesizer: AsyncMock) -> None:
         max_chunk_chars=100,
         max_text_chars=5000,
         chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
     )
     with pytest.raises(EmptyTextError):
         await usecase.execute("")
 
     with pytest.raises(EmptyTextError):
         await usecase.execute("   \n\t  ")
+
+    with pytest.raises(EmptyTextError):
+        await usecase.execute("。。。\n！？")
 
 
 async def test_text_too_long_raises_error(mock_synthesizer: AsyncMock) -> None:
@@ -30,6 +39,7 @@ async def test_text_too_long_raises_error(mock_synthesizer: AsyncMock) -> None:
         max_chunk_chars=100,
         max_text_chars=10,
         chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
     )
     with pytest.raises(TextTooLongError):
         await usecase.execute("This is longer than 10 characters")
@@ -42,13 +52,14 @@ async def test_successful_synthesis_single_chunk(mock_synthesizer: AsyncMock, sa
         max_chunk_chars=100,
         max_text_chars=5000,
         chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
     )
     result = await usecase.execute("こんにちは", speed=1.2)
     assert isinstance(result, SynthesisResult)
     assert result.chunk_count == 1
     assert result.duration_seconds > 0
     assert result.wav == sample_wav_bytes
-    mock_synthesizer.synthesize_chunk.assert_called_once()
+    mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=1.2)
 
 
 async def test_successful_synthesis_multiple_chunks_in_order(
@@ -60,13 +71,33 @@ async def test_successful_synthesis_multiple_chunks_in_order(
         max_chunk_chars=10,
         max_text_chars=5000,
         chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
     )
-    # Long text that splits into multiple chunks
     text = "吾輩は猫である。名前はまだ無い。"
-    result = await usecase.execute(text, speed=1.0)
+    speed = 1.3
+    result = await usecase.execute(text, speed=speed)
     assert isinstance(result, SynthesisResult)
-    assert result.chunk_count >= 2
-    assert mock_synthesizer.synthesize_chunk.call_count == result.chunk_count
+    assert result.chunk_count == 2
+    assert mock_synthesizer.synthesize_chunk.call_args_list == [
+        call("吾輩は猫である。", speed=speed),
+        call("名前はまだ無い。", speed=speed),
+    ]
+
+
+async def test_lock_wait_timeout_raises_synthesis_busy_error(mock_synthesizer: AsyncMock) -> None:
+    usecase = SynthesizeUsecase(
+        synthesizer=mock_synthesizer,
+        max_chunk_chars=100,
+        max_text_chars=5000,
+        chunk_gap_ms=200,
+        queue_timeout_seconds=0.01,
+    )
+    await usecase._lock.acquire()
+    try:
+        with pytest.raises(SynthesisBusyError):
+            await usecase.execute("こんにちは")
+    finally:
+        usecase._lock.release()
 
 
 async def test_port_error_propagates(mock_synthesizer: AsyncMock) -> None:
@@ -76,6 +107,7 @@ async def test_port_error_propagates(mock_synthesizer: AsyncMock) -> None:
         max_chunk_chars=100,
         max_text_chars=5000,
         chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
     )
     with pytest.raises(UpstreamUnavailableError, match="upstream down"):
         await usecase.execute("こんにちは")
@@ -99,6 +131,7 @@ async def test_concurrent_requests_do_not_interleave(sample_wav_bytes: bytes) ->
         max_chunk_chars=10,
         max_text_chars=5000,
         chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
     )
 
     # Each text has 2 sentences that split into separate chunks

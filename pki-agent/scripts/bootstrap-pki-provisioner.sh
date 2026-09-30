@@ -50,6 +50,7 @@ SUBJECTS=(
   recap-subworker
   news-creator
   rag-orchestrator
+  tts-speaker
   localhost
 )
 

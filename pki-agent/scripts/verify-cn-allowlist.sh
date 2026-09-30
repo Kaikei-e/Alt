@@ -38,6 +38,7 @@ EXPECTED_CNS=(
   recap-subworker
   news-creator
   rag-orchestrator
+  tts-speaker
   localhost
 )
 

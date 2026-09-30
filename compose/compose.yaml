@@ -22,4 +22,5 @@ include:
   - rag.yaml
   - recap.yaml
   - sovereign.yaml
+  - tts.yaml
   - workers.yaml

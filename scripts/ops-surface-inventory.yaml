@@ -94,6 +94,9 @@ units:
   grafana:
     class: platform
     kind: platform
+  irodori-tts:
+    class: ephemeral
+    kind: ephemeral
   k6:
     class: ephemeral
     kind: ephemeral
@@ -250,3 +253,6 @@ units:
   tag-generator-logs:
     class: accidental
     kind: sidecar-logs
+  tts-speaker:
+    class: ephemeral
+    kind: ephemeral

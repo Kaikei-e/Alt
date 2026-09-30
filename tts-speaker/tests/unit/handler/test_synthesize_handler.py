@@ -1,18 +1,21 @@
 """Unit tests for synthesize handler."""
 
+import logging
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 
+from tts_speaker.app import create_app
 from tts_speaker.domain.errors import (
     AudioFormatError,
     EmptyTextError,
+    SynthesisBusyError,
     TextTooLongError,
     UpstreamAuthError,
     UpstreamRejectedError,
     UpstreamUnavailableError,
 )
-from tts_speaker.main import create_app
 from tts_speaker.usecase.synthesize_usecase import SynthesisResult, SynthesizeUsecase
 
 
@@ -132,6 +135,20 @@ def test_upstream_unavailable_maps_to_503() -> None:
     assert "detail" in response.json()
 
 
+def test_synthesis_busy_error_maps_to_503(caplog: pytest.LogCaptureFixture) -> None:
+    mock_usecase = AsyncMock(spec=SynthesizeUsecase)
+    mock_usecase.execute.side_effect = SynthesisBusyError("Queue wait exceeded deadline")
+
+    app = create_app(usecase=mock_usecase)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    with caplog.at_level(logging.WARNING):
+        response = client.post("/v1/synthesize", json={"text": "テスト"})
+    assert response.status_code == 503
+    assert "detail" in response.json()
+    assert any(record.levelname == "WARNING" and "busy" in record.message.lower() for record in caplog.records)
+
+
 def test_upstream_auth_error_maps_to_502() -> None:
     mock_usecase = AsyncMock(spec=SynthesizeUsecase)
     mock_usecase.execute.side_effect = UpstreamAuthError("Unauthorized upstream")
@@ -156,16 +173,18 @@ def test_upstream_rejected_error_maps_to_502() -> None:
     assert "detail" in response.json()
 
 
-def test_audio_format_error_maps_to_502() -> None:
+def test_audio_format_error_maps_to_502(caplog: pytest.LogCaptureFixture) -> None:
     mock_usecase = AsyncMock(spec=SynthesizeUsecase)
     mock_usecase.execute.side_effect = AudioFormatError("Invalid WAV format")
 
     app = create_app(usecase=mock_usecase)
     client = TestClient(app, raise_server_exceptions=False)
 
-    response = client.post("/v1/synthesize", json={"text": "テスト"})
+    with caplog.at_level(logging.WARNING):
+        response = client.post("/v1/synthesize", json={"text": "テスト"})
     assert response.status_code == 502
     assert "detail" in response.json()
+    assert any(record.levelname == "WARNING" and "audio format" in record.message.lower() for record in caplog.records)
 
 
 def test_error_body_does_not_leak_secrets_or_urls() -> None:

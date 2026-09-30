@@ -13,6 +13,7 @@ def test_valid_settings_with_defaults(dummy_api_key_file: Path) -> None:
         irodori_base_url="http://localhost:8000",
         irodori_api_key_file=dummy_api_key_file,
         tts_voice_id="speaker_01",
+        peer_identity_strict=False,
     )
     assert str(settings.irodori_base_url).rstrip("/") == "http://localhost:8000"
     assert settings.irodori_api_key.get_secret_value() == "test-secret-key-12345"
@@ -21,12 +22,13 @@ def test_valid_settings_with_defaults(dummy_api_key_file: Path) -> None:
     assert settings.irodori_max_attempts == 3
     assert settings.irodori_retry_backoff_seconds == 1.0
     assert settings.tts_voice_id == "speaker_01"
+    assert settings.peer_identity_strict is False
     assert settings.tts_max_chunk_chars == 100
     assert settings.tts_max_text_chars == 5000
     assert settings.tts_chunk_gap_ms == 200
-    assert settings.host == "0.0.0.0"
-    assert settings.port == 9700
     assert settings.log_level == "INFO"
+    assert settings.tts_queue_timeout_seconds == 600.0
+    assert "irodori_api_key" not in settings.model_dump()
 
 
 def test_missing_irodori_base_url(dummy_api_key_file: Path) -> None:
@@ -34,6 +36,7 @@ def test_missing_irodori_base_url(dummy_api_key_file: Path) -> None:
         Settings(
             irodori_api_key_file=dummy_api_key_file,
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
         )
 
 
@@ -43,6 +46,7 @@ def test_invalid_irodori_base_url(dummy_api_key_file: Path) -> None:
             irodori_base_url="not-a-valid-http-url",
             irodori_api_key_file=dummy_api_key_file,
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
         )
 
 
@@ -51,6 +55,7 @@ def test_missing_api_key_file() -> None:
         Settings(
             irodori_base_url="http://localhost:8000",
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
         )
 
 
@@ -60,6 +65,7 @@ def test_nonexistent_api_key_file(tmp_path: Path) -> None:
             irodori_base_url="http://localhost:8000",
             irodori_api_key_file=tmp_path / "does_not_exist.txt",
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
         )
 
 
@@ -69,6 +75,7 @@ def test_empty_api_key_file(empty_api_key_file: Path) -> None:
             irodori_base_url="http://localhost:8000",
             irodori_api_key_file=empty_api_key_file,
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
         )
 
 
@@ -79,6 +86,7 @@ def test_invalid_timeout(dummy_api_key_file: Path, timeout: float) -> None:
             irodori_base_url="http://localhost:8000",
             irodori_api_key_file=dummy_api_key_file,
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
             irodori_request_timeout_seconds=timeout,
         )
 
@@ -90,6 +98,7 @@ def test_invalid_max_attempts(dummy_api_key_file: Path, attempts: int) -> None:
             irodori_base_url="http://localhost:8000",
             irodori_api_key_file=dummy_api_key_file,
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
             irodori_max_attempts=attempts,
         )
 
@@ -100,6 +109,7 @@ def test_invalid_retry_backoff(dummy_api_key_file: Path) -> None:
             irodori_base_url="http://localhost:8000",
             irodori_api_key_file=dummy_api_key_file,
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
             irodori_retry_backoff_seconds=-0.1,
         )
 
@@ -111,6 +121,7 @@ def test_disallowed_voice_ids(dummy_api_key_file: Path, disallowed_voice: str) -
             irodori_base_url="http://localhost:8000",
             irodori_api_key_file=dummy_api_key_file,
             tts_voice_id=disallowed_voice,
+            peer_identity_strict=False,
         )
 
 
@@ -121,6 +132,7 @@ def test_invalid_max_chunk_chars(dummy_api_key_file: Path, chunk_chars: int) -> 
             irodori_base_url="http://localhost:8000",
             irodori_api_key_file=dummy_api_key_file,
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
             tts_max_chunk_chars=chunk_chars,
         )
 
@@ -132,6 +144,7 @@ def test_invalid_max_text_chars(dummy_api_key_file: Path, text_chars: int) -> No
             irodori_base_url="http://localhost:8000",
             irodori_api_key_file=dummy_api_key_file,
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
             tts_max_text_chars=text_chars,
         )
 
@@ -143,7 +156,29 @@ def test_invalid_chunk_gap_ms(dummy_api_key_file: Path, gap_ms: int) -> None:
             irodori_base_url="http://localhost:8000",
             irodori_api_key_file=dummy_api_key_file,
             tts_voice_id="speaker_01",
+            peer_identity_strict=False,
             tts_chunk_gap_ms=gap_ms,
+        )
+
+
+def test_missing_peer_identity_strict(dummy_api_key_file: Path) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(
+            irodori_base_url="http://localhost:8000",
+            irodori_api_key_file=dummy_api_key_file,
+            tts_voice_id="speaker_01",
+        )
+    assert "peer_identity_strict" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("invalid_val", ["not-a-bool", "2", "maybe"])
+def test_invalid_peer_identity_strict(dummy_api_key_file: Path, invalid_val: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            irodori_base_url="http://localhost:8000",
+            irodori_api_key_file=dummy_api_key_file,
+            tts_voice_id="speaker_01",
+            peer_identity_strict=invalid_val,  # type: ignore[arg-type]
         )
 
 
@@ -151,9 +186,64 @@ def test_env_loading(dummy_api_key_file: Path, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("IRODORI_BASE_URL", "http://env-host:9000")
     monkeypatch.setenv("IRODORI_API_KEY_FILE", str(dummy_api_key_file))
     monkeypatch.setenv("TTS_VOICE_ID", "env_voice")
-    monkeypatch.setenv("PORT", "9750")
+    monkeypatch.setenv("PEER_IDENTITY_STRICT", "true")
 
     settings = Settings()
     assert str(settings.irodori_base_url).rstrip("/") == "http://env-host:9000"
     assert settings.tts_voice_id == "env_voice"
-    assert settings.port == 9750
+    assert settings.peer_identity_strict is True
+
+
+def test_voice_id_is_stripped(dummy_api_key_file: Path) -> None:
+    settings = Settings(
+        irodori_base_url="http://localhost:8000",
+        irodori_api_key_file=dummy_api_key_file,
+        tts_voice_id="  speaker_01  ",
+        peer_identity_strict=False,
+    )
+    assert settings.tts_voice_id == "speaker_01"
+
+
+def test_api_key_not_settable_from_env(dummy_api_key_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IRODORI_API_KEY", "injected_hack_key")
+    settings = Settings(
+        irodori_base_url="http://localhost:8000",
+        irodori_api_key_file=dummy_api_key_file,
+        tts_voice_id="speaker_01",
+        peer_identity_strict=False,
+    )
+    assert settings.irodori_api_key.get_secret_value() == "test-secret-key-12345"
+
+
+def test_api_key_property_is_read_only(dummy_api_key_file: Path) -> None:
+    settings = Settings(
+        irodori_base_url="http://localhost:8000",
+        irodori_api_key_file=dummy_api_key_file,
+        tts_voice_id="speaker_01",
+        peer_identity_strict=False,
+    )
+    with pytest.raises(AttributeError):
+        settings.irodori_api_key = "new-key"  # type: ignore[misc]
+
+
+def test_invalid_log_level(dummy_api_key_file: Path) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            irodori_base_url="http://localhost:8000",
+            irodori_api_key_file=dummy_api_key_file,
+            tts_voice_id="speaker_01",
+            peer_identity_strict=False,
+            log_level="VERBOSE",  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("timeout", [0.0, -1.0])
+def test_invalid_queue_timeout(dummy_api_key_file: Path, timeout: float) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            irodori_base_url="http://localhost:8000",
+            irodori_api_key_file=dummy_api_key_file,
+            tts_voice_id="speaker_01",
+            peer_identity_strict=False,
+            tts_queue_timeout_seconds=timeout,
+        )

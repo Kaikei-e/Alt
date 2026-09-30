@@ -14,4 +14,5 @@ class IrodoriHttpDriver:
 
     async def post_speech(self, payload: dict[str, Any]) -> httpx.Response:
         """POST /v1/audio/speech with Bearer authentication."""
-        raise NotImplementedError
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        return await self._client.post("/v1/audio/speech", json=payload, headers=headers)

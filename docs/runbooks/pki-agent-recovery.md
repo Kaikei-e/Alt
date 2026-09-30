@@ -22,22 +22,23 @@ affected_services:
   - news-creator
   - rag-orchestrator
   - acolyte-orchestrator
+  - tts-speaker
 ---
 # pki-agent / mTLS cert 期限切れ緊急対応
 
-[[000747]] で導入された mTLS leaf ライフサイクルの障害時 runbook。現行契約は [[000978]]（14 親 in-process、workload sidecar 0）。
-Workload は 14 本すべて in-process（pki-agent sidecar fleet は 0）。本番で
+[[000747]] で導入された mTLS leaf ライフサイクルの障害時 runbook。現行契約は [[000978]]（Wave 4 の 14 親に tts-speaker が加わり 15 親 in-process、workload sidecar 0）。
+Workload は 15 本すべて in-process（pki-agent sidecar fleet は 0）。本番で
 「BFF ログに `certificate has expired`」や「Knowledge Home が空」が出たときの
 手順を上から順に実行する。
 
 ## Provisioner 構成 (in-process fleet, 0 workload sidecars)
 
-Workload PKI は **14 本すべて in-process**。pki-agent の workload sidecar
+Workload PKI は **15 本すべて in-process**。pki-agent の workload sidecar
 fleet は **0**。共有 `pki-agent` provisioner は使わない。
 
 | Provisioner | 用途 | 使用者 |
 |---|---|---|
-| `pki-agent-<subject>` | 平常運用。14 parent の in-process enrollment | 下記 14 subject |
+| `pki-agent-<subject>` | 平常運用。15 parent の in-process enrollment | 下記 15 subject |
 | `bootstrap` | **緊急時フォールバックのみ** (provisioner が壊れたとき) | 本 runbook Step 3 の手動発行 |
 
 `step_ca_root_password` は step-ca / bootstrap 専用。workload 親プロセスには
@@ -45,7 +46,7 @@ fleet は **0**。共有 `pki-agent` provisioner は使わない。
 
 ### Operator-created secret files (do not commit)
 
-Cutover **前**にホストへ 14 ファイルを作る。中身は repo に置かない。
+Cutover **前**にホストへ 15 ファイルを作る。中身は repo に置かない。
 `compose/base.yaml` の `file:` は欠落で fail-fast する。
 
 | Host file | In-container secret | Parent |
@@ -64,22 +65,23 @@ Cutover **前**にホストへ 14 ファイルを作る。中身は repo に置�
 | `secrets/pki-agent-acolyte-orchestrator-jwk.txt` | `/run/secrets/pki-agent-acolyte-orchestrator-jwk` | acolyte-orchestrator |
 | `secrets/pki-agent-recap-subworker-jwk.txt` | `/run/secrets/pki-agent-recap-subworker-jwk` | recap-subworker |
 | `secrets/pki-agent-news-creator-jwk.txt` | `/run/secrets/pki-agent-news-creator-jwk` | news-creator |
+| `secrets/pki-agent-tts-speaker-jwk.txt` | `/run/secrets/pki-agent-tts-speaker-jwk` | tts-speaker |
 
 Mode `0400`. Bootstrap 順:
 
 1. step-ca が healthy
 2. `bash pki-agent/scripts/bootstrap-pki-provisioner.sh`（冪等。SUBJECTS ごとに subject-scoped JWK provisioner を足し、欠落している `secrets/pki-agent-<subject>-jwk.txt` を作る）
 3. `bash pki-agent/scripts/verify-cn-allowlist.sh`
-4. **新イメージ + 14 JWK ファイル + 14 provisioner を compose より先に**用意する。旧 sidecar compose のまま新イメージを載せても `PKI_ENROLLMENT` 未設定なら disabled で待つが、最終 compose は sidecar が無い
+4. **新イメージ + 15 JWK ファイル + 15 provisioner を compose より先に**用意する。旧 sidecar compose のまま新イメージを載せても `PKI_ENROLLMENT` 未設定なら disabled で待つが、最終 compose は sidecar が無い
 
 ### Rolling compatibility — old images + new compose is unsafe
 
-新 compose は 14 本すべての pki-agent sidecar を消して親に enroll させる。
+新 compose は 15 本すべての pki-agent sidecar を消して親に enroll させる。
 in-process PKI を持たない **old image** はその env を無視し、sidecar も
 いないので cert writer がゼロになる。平文に落とす経路は無い。この組み合わせは
 unsafe。
 
-**Deploy order:** new images + 14 JWK files + subject-scoped provisioners **before** compose.
+**Deploy order:** new images + 15 JWK files + subject-scoped provisioners **before** compose.
 
 **Rollback stop:** restore sidecars/compose **before** old images。イメージを先に戻すと、新 compose のまま old binary が走り enroll しない。
 sidecar と in-process 親を同じ cert volume に同時に載せない（dual writer）。
@@ -132,6 +134,7 @@ docker compose -f compose/compose.yaml -p alt up -d --no-deps "${PKI_SIDECARS[@]
 | `news-creator` | Wave 4 in-process mTLS; chown uid `1000` |
 | `rag-orchestrator` | |
 | `acolyte-orchestrator` | Wave 4 in-process mTLS (:9443 in the parent); chown uid `1000` |
+| `tts-speaker` | Wave 4 in-process mTLS (:9443 in the parent); chown uid `1000` |
 
 これ以外の CN は `step ca certificate` 段階で `not allowed` と拒否される。
 正本は `pki-agent/scripts/bootstrap-pki-provisioner.sh` の `SUBJECTS`
@@ -156,7 +159,7 @@ bash pki-agent/scripts/verify-cn-allowlist.sh
 
 ### Operator maps (copy into the shell first)
 
-正本は compose の 14 cert volume と各親 `pre_start` の runtime UID
+正本は compose の 15 cert volume と各親 `pre_start` の runtime UID
 （Go distroless `65532` / Python appuser `1000` / recap `999`）。
 以降の Step はこれらの配列がカレントシェルにある前提。0400 の key は
 この UID の所有者でなければ親が読めない。
@@ -166,7 +169,7 @@ SUBJECTS=(
   alt-backend alt-harvester alt-data-hub alt-notifier
   alt-butterfly-facade auth-hub pre-processor search-indexer
   tag-generator recap-worker recap-subworker news-creator
-  rag-orchestrator acolyte-orchestrator
+  rag-orchestrator acolyte-orchestrator tts-speaker
 )
 
 # docker volume 名 = compose project `alt` + compose volume
@@ -185,6 +188,7 @@ declare -A CERT_VOLUME=(
   [news-creator]=alt_news_creator_certs
   [rag-orchestrator]=alt_rag_orchestrator_certs
   [acolyte-orchestrator]=alt_acolyte_orchestrator_certs
+  [tts-speaker]=alt_tts_speaker_certs
 )
 
 declare -A CERT_UID=(
@@ -202,6 +206,7 @@ declare -A CERT_UID=(
   [news-creator]=1000
   [rag-orchestrator]=65532
   [acolyte-orchestrator]=1000
+  [tts-speaker]=1000
 )
 ```
 
@@ -275,7 +280,7 @@ retire_alt_pki_agent_leftovers() {
 |---|---|
 | BFF 経由の任意 RPC が `tls: failed to verify certificate: x509: certificate has expired` | `docker logs alt-<subject>-1`（親の in-process enrollment） |
 | leftover pki-agent が up / `PkiAgentFleetIncomplete` | `docker ps` + `label=com.docker.compose.project=alt` かつ service `pki-agent-*` — fleet は 0 が正常。Prometheus の pki-agent scrape には頼らない（`:9510` job は無い） |
-| Prometheus `PkiEnrollmentCertExpirySoon` / `PkiEnrollmentWorkloadMetricsAbsent` | 14 親の ops `:9110`: `docker logs alt-<subject>-1` |
+| Prometheus `PkiEnrollmentCertExpirySoon` / `PkiEnrollmentWorkloadMetricsAbsent` | 15 親の ops `:9110`: `docker logs alt-<subject>-1` |
 | Prometheus `PkiEnrollmentRenewalFailing` | step-ca が健全か、subject-scoped JWK provisioner 衝突か |
 
 ## Step 1: ステート把握
@@ -291,7 +296,7 @@ docker run --rm --network alt_alt-network busybox:1.37 \
   | python3 -c "import json,sys;d=json.load(sys.stdin);[print(r['metric']['subject'], round(float(r['value'][1])/3600,2),'h') for r in d['data']['result']]"
 ```
 
-残時間が負値または極端に小さい `subject` が復旧対象。14 本すべて
+残時間が負値または極端に小さい `subject` が復旧対象。15 本すべて
 sidecar ではなく親の ops `:9110` の `pki_enrollment_*`。
 
 ## Step 2: 親プロセスの enrollment ログで原因特定
@@ -355,7 +360,7 @@ docker logs alt-<subject>-1 --tail 20
 `pki_enrollment_enabled` と `pki_enrollment_healthy 1` を確認できれば復旧。
 pki-agent sidecar を再宣言して dual writer にしない。
 
-## Step 5: 全 14 subject で健全性確認
+## Step 5: 全 15 subject で健全性確認
 
 Workload sidecar fleet は 0。ops `:9110` のみ。
 
@@ -383,12 +388,12 @@ done
 #    compose up --remove-orphans では順序が保証されない。
 retire_alt_pki_agent_leftovers
 
-# 1. 期限切れを全 volume から削除 (CERT_VOLUME は compose 14 本の正本)
+# 1. 期限切れを全 volume から削除 (CERT_VOLUME は compose 15 本の正本)
 for v in "${CERT_VOLUME[@]}"; do
   docker run --rm -v "$v:/c" alpine rm -f /c/svc-cert.pem /c/svc-key.pem
 done
 
-# 2. 14 親を force-recreate（workload sidecar は 0。dual writer 禁止）
+# 2. 15 親を force-recreate（workload sidecar は 0。dual writer 禁止）
 docker compose -f compose/compose.yaml -p alt up -d --force-recreate \
   "${SUBJECTS[@]}"
 
@@ -399,7 +404,7 @@ docker compose -f compose/compose.yaml -p alt restart alt-data-hub
 docker compose -f compose/compose.yaml -p alt restart \
   alt-backend alt-harvester alt-notifier alt-butterfly-facade auth-hub \
   pre-processor search-indexer tag-generator recap-worker recap-subworker \
-  news-creator rag-orchestrator acolyte-orchestrator
+  news-creator rag-orchestrator acolyte-orchestrator tts-speaker
 
 # 4. 検証: BFF から cert expired エラーが消えたか
 docker logs alt-alt-butterfly-facade-1 --since 1m 2>&1 | grep -c "certificate has expired"
@@ -414,7 +419,7 @@ docker logs alt-alt-data-hub-1 --since 1m 2>&1 | grep -ci "tls\|certificate"
 
 - **`--force-recreate` a parent does not require a pki-agent cascade.** Inbound TLS now terminates in the parent. Workload sidecars must be 0. A leftover `pki-agent-*` on the same cert volume is a dual writer, not a live cert-only netns topology. `scripts/cascade-pki-sidecars.sh` is a retired tombstone — do not invoke it.
 - **`up --remove-orphans` を leftover 掃除だと思わない**: orphan 削除と親 recreate が同一コマンドだと dual-writer 窓が残る。親を enable / recreate する前に `retire_alt_pki_agent_leftovers`（project=`alt` のコンテナを service ラベル付きで列挙し、`pki-agent-*` だけ stop+rm、docker ps 0 件）を走らせる。`matching pki-agent=0` は fresh install ではない（見えるアンカーがあれば steady no-op。コンテナが 0 件なら Docker context / rootless を疑う。本当に空のホストだけ `ALT_ACK_FRESH_INSTALL=1`）。Prometheus の pki-agent scrape には頼らない。rollback restore の後に sweep しない。
-- **chown uid の取り違え**: `CERT_UID` を使う。recap-worker / recap-subworker は `999`、Python appuser 系 (tag-generator, acolyte-orchestrator, news-creator) は `1000`、Go distroless 系は `65532`。blanket `65532` のままだと 0400 の key を uid 999/1000 の親が読めない（各親の `pre_start` chown）
+- **chown uid の取り違え**: `CERT_UID` を使う。recap-worker / recap-subworker は `999`、Python appuser 系 (tag-generator, acolyte-orchestrator, news-creator, tts-speaker) は `1000`、Go distroless 系は `65532`。blanket `65532` のままだと 0400 の key を uid 999/1000 の親が読めない（各親の `pre_start` chown）
 - **step-ca の provisioner password ファイル**: `secrets/step_ca_root_password.txt` は
   Git に追跡されていない (secrets/.gitignore で守られている)。復旧直後の host で
   見つからない場合は 1Password / secrets backup から復元

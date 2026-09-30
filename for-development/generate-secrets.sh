@@ -23,6 +23,7 @@ SECRETS=(
     "service_secret.txt"
     "hugging_face_token.txt"
     "internal_auth_token.txt"
+    "irodori_api_key.txt"
 )
 
 echo "Generating development secrets in $SECRETS_DIR..."

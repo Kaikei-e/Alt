@@ -32,3 +32,7 @@ class UpstreamRejectedError(TTSError):
 
 class AudioFormatError(TTSError):
     """Raised when audio format is invalid or parts cannot be concatenated."""
+
+
+class SynthesisBusyError(TTSError):
+    """Raised when queue lock wait exceeds deadline."""

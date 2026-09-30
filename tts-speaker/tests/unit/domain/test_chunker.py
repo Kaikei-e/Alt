@@ -1,6 +1,6 @@
-"""Unit tests for chunker."""
-
 import re
+
+import pytest
 
 from tts_speaker.domain.chunker import split_into_chunks
 
@@ -12,12 +12,9 @@ def test_empty_text() -> None:
 
 def test_short_sentences_packed_greedily() -> None:
     text = "吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。"
-    # Each sentence is short (< 30 chars). With max_chars=50, consecutive sentences are packed.
+    # Each sentence is short (< 30 chars). Total length 34 <= 50, packed into one chunk.
     chunks = split_into_chunks(text, max_chars=50)
-    assert len(chunks) >= 1
-    for chunk in chunks:
-        assert len(chunk) <= 50
-        assert len(chunk) > 0
+    assert chunks == [text]
 
 
 def test_sentence_split_punctuation() -> None:
@@ -29,25 +26,41 @@ def test_sentence_split_punctuation() -> None:
 
 
 def test_join_ascii_alphanumeric_with_space() -> None:
-    # When both neighbors are ASCII alphanumeric, join with single space
+    # When both neighbors are ASCII and non-whitespace, join with single space
     text = "Part A!\nPart B!"
     # With max_chars=50, both should pack into one chunk
     chunks = split_into_chunks(text, max_chars=50)
-    assert len(chunks) == 1
-    # Check that punctuation is kept, newlines dropped
-    assert "Part A!" in chunks[0]
-    assert "Part B!" in chunks[0]
+    assert chunks == ["Part A! Part B!"]
 
 
 def test_long_sentence_split_by_comma() -> None:
-    # A single long sentence without sentence-ending punctuation, but with commas
+    # A single sentence split by comma where max_chars equals len(clause2)
     clause1 = "これは非常に長い文章の前半部分であって、"
     clause2 = "読点によって適切に分割されるべき後半部分です。"
     long_sentence = clause1 + clause2
-    chunks = split_into_chunks(long_sentence, max_chars=len(clause1) + 2)
+    chunks = split_into_chunks(long_sentence, max_chars=len(clause2))
     assert len(chunks) == 2
     assert chunks[0] == clause1
     assert chunks[1] == clause2
+
+
+def test_comma_clause_longer_than_max_is_hard_split() -> None:
+    clause1 = "あ" * 30 + "、"
+    clause2 = "い" * 10
+    long_sentence = clause1 + clause2
+    chunks = split_into_chunks(long_sentence, max_chars=20)
+    assert len(chunks) == 3
+    assert chunks[0] == "あ" * 20
+    assert chunks[1] == "あ" * 10 + "、"
+    assert chunks[2] == "い" * 10
+    for c in chunks:
+        assert len(c) <= 20
+
+
+def test_chunks_without_alphanumeric_dropped() -> None:
+    assert split_into_chunks("。。。\n！？\n...", max_chars=50) == []
+    chunks = split_into_chunks("こんにちは。\n。。。\n世界！", max_chars=50)
+    assert chunks == ["こんにちは。世界！"]
 
 
 def test_hard_split_without_punctuation() -> None:
@@ -90,5 +103,23 @@ def test_invariants_realistic_text() -> None:
 
     # Invariant 3 & 4: order preserved and content preserved without whitespace
     cleaned_original = re.sub(r"\s+", "", text)
+    cleaned_chunks = re.sub(r"\s+", "", "".join(chunks))
+    assert cleaned_chunks == cleaned_original
+
+
+@pytest.mark.parametrize("max_chars", [20, 22, 50, 100, 200])
+def test_invariants_mixed_text(max_chars: int) -> None:
+    mixed_text = (
+        "これはテスト文章です、カンマで区切られています。"
+        "Part A! Part B! Here is an over-long clause without punctuation: "
+        + ("あ" * 150)
+        + "、そして最後に普通の文です。1,000円の買い物。"
+    )
+    chunks = split_into_chunks(mixed_text, max_chars=max_chars)
+    assert len(chunks) > 0
+    for chunk in chunks:
+        assert len(chunk) > 0
+        assert len(chunk) <= max_chars
+    cleaned_original = re.sub(r"\s+", "", mixed_text)
     cleaned_chunks = re.sub(r"\s+", "", "".join(chunks))
     assert cleaned_chunks == cleaned_original

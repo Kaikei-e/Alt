@@ -10,7 +10,7 @@ Must chown emergency leaves to the parent runtime UID, wipe every compose
 cert volume, and probe :9110 from a toolbox on the Compose network
 (parent images are distroless and have no wget).
 
-Does not start Docker. Compose is the source of truth for the 14 volumes
+Does not start Docker. Compose is the source of truth for the 15 volumes
 and the 65532/1000/999 ownership map.
 
 Run:
@@ -309,13 +309,13 @@ check(
     str(RUNBOOK),
 )
 check(
-    "compose declares exactly 14 cert volumes",
-    len(cert_volumes) == 14,
+    "compose declares exactly 15 cert volumes",
+    len(cert_volumes) == 15,
     f"got {sorted(cert_volumes)}",
 )
 check(
-    "compose has exactly 14 in-process PKI parents",
-    len(parents) == 14,
+    "compose has exactly 15 in-process PKI parents",
+    len(parents) == 15,
     f"got {sorted(parents)}",
 )
 check(
@@ -328,7 +328,7 @@ check(
 cert_uid = assoc.get("CERT_UID", {})
 cert_volume = assoc.get("CERT_VOLUME", {})
 check(
-    "runbook CERT_UID maps all 14 parents to compose pre_start UIDs",
+    "runbook CERT_UID maps all 15 parents to compose pre_start UIDs",
     cert_uid == {name: uid for name, (_, uid) in parents.items()},
     f"runbook={dict(sorted(cert_uid.items()))} compose={ {n: u for n, (_, u) in sorted(parents.items())} }",
 )
@@ -336,7 +336,7 @@ expected_docker_vols = {
     name: f"{COMPOSE_PROJECT}_{volume}" for name, (volume, _) in parents.items()
 }
 check(
-    "runbook CERT_VOLUME maps all 14 parents to compose docker volume names",
+    "runbook CERT_VOLUME maps all 15 parents to compose docker volume names",
     cert_volume == expected_docker_vols,
     f"runbook={dict(sorted(cert_volume.items()))} compose={dict(sorted(expected_docker_vols.items()))}",
 )
@@ -500,7 +500,7 @@ for block in probe_blocks:
     if re.search(r"http://\$\{?s\}?:9110", block):
         loop_subjects.update(parents)
 check(
-    "toolbox probe hits all 14 parent :9110 endpoints via Compose DNS",
+    "toolbox probe hits all 15 parent :9110 endpoints via Compose DNS",
     toolbox_probe and set(parents) <= loop_subjects,
     f"probe_ok={toolbox_probe} missing={sorted(set(parents) - loop_subjects)}",
 )

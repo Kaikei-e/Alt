@@ -81,6 +81,7 @@ jobs:
             "rask-log-forwarder"
             "pki-agent"
             "dashboard"
+            "tts-speaker"
           )
 
           # Build inputs per service. BUILD_DIR doubles as the
@@ -114,6 +115,7 @@ jobs:
             ["rask-log-forwarder"]="rask-log-forwarder"
             ["pki-agent"]="pki-agent"
             ["dashboard"]="dashboard"
+            ["tts-speaker"]="tts-speaker"
           )
           declare -A BUILD_DOCKERFILE=(
             ["alt-backend"]="alt-backend/Dockerfile.backend"
@@ -140,6 +142,7 @@ jobs:
             ["rask-log-forwarder"]=""
             ["pki-agent"]=""
             ["dashboard"]=""
+            ["tts-speaker"]=""
           )
           declare -A BUILD_BINARY=(
             ["alt-backend"]="backend"
@@ -166,6 +169,7 @@ jobs:
             ["rask-log-forwarder"]=""
             ["pki-agent"]=""
             ["dashboard"]=""
+            ["tts-speaker"]=""
           )
           # <<<SERVICES-REGISTRY-END>>>
 
@@ -353,7 +357,7 @@ jobs:
           context: ./${{ matrix.dir }}
           file: ${{ steps.dockerfile.outputs.path }}
           push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator","recap-worker"]'), matrix.service) }}
+          load: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator","recap-worker","tts-speaker"]'), matrix.service) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Stable build identifier. alt-frontend-sv pins SvelteKit's app
@@ -383,7 +387,7 @@ jobs:
           cache-to: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('type=registry,ref=ghcr.io/{0}/alt-{1}:buildcache,mode=max', steps.repo.outputs.owner, matrix.service) || '' }}
 
       - name: Enforce image-size budget and smoke-check core imports
-        if: contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator","recap-worker"]'), matrix.service) && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: contains(fromJSON('["recap-subworker","news-creator","recap-evaluator","tag-generator","recap-worker","tts-speaker"]'), matrix.service) && github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           # The tags output rather than fromJSON(meta.outputs.json): a job that
           # fails before Docker meta runs leaves json empty, and fromJSON('')
@@ -400,6 +404,7 @@ jobs:
             recap-evaluator)  MAX_MB=2500 ;;
             tag-generator)    MAX_MB=2900 ;;
             recap-worker)     MAX_MB=2900 ;;
+            tts-speaker)      MAX_MB=350 ;;
           esac
           SIZE_BYTES=$(docker image inspect "$IMAGE_TAG" --format '{{.Size}}')
           SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
@@ -470,6 +475,13 @@ jobs:
               echo "$LDD_OUT" | grep -q libgomp         || { echo "::error::libgomp missing"; exit 1; }
               echo "smoke OK recap-worker"
             '
+          elif [ "$SERVICE" = "tts-speaker" ]; then
+            docker run $RUN_OPTS "$IMAGE_TAG" python -c "
+          import sys, importlib
+          import fastapi, uvicorn, pydantic, httpx, cryptography, jwcrypto, prometheus_client  # noqa: F401
+          import tts_speaker, tts_speaker.app  # noqa: F401
+          print('smoke OK tts-speaker')
+          "
           else
             docker run $RUN_OPTS "$IMAGE_TAG" python -c "
           import sys, importlib

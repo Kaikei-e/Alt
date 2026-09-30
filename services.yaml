@@ -151,3 +151,5 @@ services:
     kind: runtime
   - name: dashboard
     kind: runtime
+  - name: tts-speaker
+    kind: runtime

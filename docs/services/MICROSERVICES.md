@@ -80,13 +80,18 @@ mTLS `:9443`（`MTLS_PORT`）と ops `:9110`（`OPS_LISTEN`）を持つが、ど
 | knowledge-embedder-local | Ollama（`knowledge-embedder/`） | 11437 → 11434 | rag.yaml | `/api/tags` | NVIDIA |
 | knowledge-augur | Ollama 0.32.14 | 11435 → 11434 | compose.augur.yaml | `/api/tags` | AMD / Vulkan（`/dev/kfd`, `/dev/dri`） |
 | knowledge-embedder | Ollama 0.32.14 | 11436 → 11434 | compose.augur.yaml | - | AMD / Vulkan |
+| irodori-tts | Python 3.10 / CUDA（`irodori-tts/Dockerfile`、Irodori-TTS-Server） | 127.0.0.1:8088 | tts.yaml（profile `tts`） | `/health`（`runtime.loaded` を見る） | NVIDIA |
+| tts-speaker | Python 3.14 (FastAPI) | なし | tts.yaml（profile `tts`） | `/health`（mTLS `:9443`） | なし |
 
 `news-creator`（FastAPI）と `news-creator-backend`（Ollama ランナー）は別コンテナで、
 GPU を持つのは後者だけ。deployed default は `LLM_MODEL=gemma4-e4b-12k` /
 `MODEL_ROUTING_ENABLED=false`。`rerank-local` は `RERANK_MODEL` 既定
 `cl-nagoya/ruri-v3-reranker-310m`、`knowledge-embedder-local` は
 `EMBEDDING_MODELS=bge-m3`。GPU 逼迫時の evict を避けるため embedding 用インスタンスを
-生成用と分離してある。
+生成用と分離してある。`tts-speaker` と `irodori-tts` は日本語読み上げのスタックで、`tts`
+profile を付けたときだけ起動する（既定の `up` とデプロイでは起動しない）。BFF にはまだ接続して
+いない。採用の経緯と受け入れ条件は [[000991]]。
+
 
 `compose.augur.yaml` は **include チェーンの外にある standalone overlay** で、
 独自の `augur-network` にしか繋がらない。したがって rag-orchestrator から
@@ -278,6 +283,7 @@ forwarder は 16 本ちょうどで、これが accidental OSU cap そのもの�
 | pact.yaml | pact-db, pact-broker | - |
 | perf.yaml | alt-perf, k6 | `perf` |
 | backup.yaml | docker-socket-proxy, restic-backup | `backup` |
+| tts.yaml | irodori-tts, tts-speaker | `tts` |
 | compose.augur.yaml | knowledge-augur, knowledge-augur-volume-init, knowledge-embedder, knowledge-embedder-volume-init | include されない standalone overlay |
 
 `compose/dev.yaml` / `compose/frontend-dev.yaml` / `compose/compose.dev.yaml` /
@@ -763,6 +769,8 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 | altctl | [docs/altctl.md](./altctl.md) |
 | alt-perf | [docs/alt-perf.md](./alt-perf.md) |
 | metrics | [docs/metrics.md](./metrics.md) |
+| tts-speaker | [tts-speaker/CLAUDE.md](../../tts-speaker/CLAUDE.md)（docs/services 側のページはまだない） |
+| irodori-tts | [[000991]]（docs/services 側のページはまだない） |
 | sidecar-proxy | [docs/sidecar-proxy.md](./sidecar-proxy.md)（compose ワークロードではない） |
 
 `plecto-proxy` / `alt-notifier` / `rerank-local` / `knowledge-embedder-local` /
@@ -780,7 +788,7 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 - Event-driven via Redis Streams + mq-hub
 - **alt-data-hub is the sole data owner for alt-db** ([[000241]] の原則を [[000954]] がプロセス境界として物理化)。alt-backend / alt-harvester / alt-notifier を含む全 consumer は `services.datahub.v1.DataHubService`（Connect-RPC、mTLS `:9443`）経由でのみ alt-db に触れる。`DATAHUB_ALLOWED_PEERS` の既定値が許す peer は alt-backend / alt-harvester / alt-notifier / pre-processor / search-indexer / tag-generator / recap-worker / rag-orchestrator / acolyte-orchestrator の 9 主体で、peer CN を fail-closed に検証する
 - **alt-db 以外の DB は各サービス直結**。recap-db は recap-worker / recap-subworker / dashboard / recap-evaluator、rag-db は rag-orchestrator、acolyte-db は acolyte-orchestrator、kratos-db は kratos（pgbouncer-kratos 経由）、knowledge-sovereign-db は knowledge-sovereign、pre-processor-db は pre-processor / pre-processor-sidecar が持つ
-- GPU requirements: news-creator-backend, knowledge-embedder-local, recap-subworker（NVIDIA）。dashboard は `utility` capability で GPU を予約するが監視用途。rerank-local は CPU。knowledge-augur / knowledge-embedder は standalone overlay 側で AMD / Vulkan
+- GPU requirements: news-creator-backend, knowledge-embedder-local, recap-subworker, irodori-tts（NVIDIA, profile `tts`）。dashboard は `utility` capability で GPU を予約するが監視用途。rerank-local は CPU。knowledge-augur / knowledge-embedder は standalone overlay 側で AMD / Vulkan
 - Log aggregation: rask-log-forwarder (16x) → rask-log-aggregator → ClickHouse (`rask_logs`)
 - Metrics: prometheus → alertmanager / grafana。4 バイナリはそれぞれ独立した scrape job
 - **mTLS leaf ライフサイクル**: 14 親が in-process enrollment を所有する。pki-agent は compose ワークロードではない（[[000978]]）。ホスト cutover の前提は 14 JWK ファイル + subject-scoped provisioner + 新イメージ（runbook [[pki-agent-recovery]]）。本カタログはデプロイ済みを主張しない

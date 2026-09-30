@@ -1,6 +1,8 @@
-"""CLI entrypoint for tts-speaker."""
+"""python -m tts_speaker — production listener."""
 
-from tts_speaker.main import run
+# Settings must fail before step-ca enrollment
+import tts_speaker.main  # noqa: F401
+from tts_speaker.infra.inbound_server import main
 
 if __name__ == "__main__":
-    run()
+    main()

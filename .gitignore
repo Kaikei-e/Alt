@@ -172,6 +172,7 @@ coverage.out
 # ============================================
 **/benchmark_results*.json
 news-creator/app/benchmark_*/
+irodori-tts/bench/results/
 
 # ============================================
 # Misc
