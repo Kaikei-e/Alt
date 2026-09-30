@@ -3,10 +3,24 @@
 ボールトルートは `docs/` ディレクトリ。ADR/ と services/ はシンボリックリンクなしで直接アクセスできる。
 
 ## 構造
-- `ADR/` — Architecture Decision Records（直接アクセス）
-- `services/` — マイクロサービスドキュメント（直接アクセス）
-- `daily/` — デイリーノート（YYYY-MM-DD.md）
-- `blog/`, `perf/`, `proposals/`, `review/`, `runbooks/` — その他ドキュメント
+- `ADR/` — Architecture Decision Records
+- `wiki/` — ナビゲーション層（gitignored、`wiki/HOME.md` が起点）
+- `services/` — マイクロサービス仕様・レジストリ（`MICROSERVICES.md` + サービス個別文書）
+- `runbooks/` — 運用手順書・ランブック（`runbooks/README.md` インデックス）
+- `postmortems/` — 障害振り返り・ポストモーテム（`postmortems/README.md` インデックス）
+- `review/` — レビュー・監査記録（gitignored、`review/README.md` インデックス）
+- `plan/` — 設計計画・正準契約書（gitignored、Trail / Home / active plans）
+- `case-studies/` — ケーススタディ・設計進化の記録
+- `perf/` — 性能測定・負荷試験ドキュメント
+- `features/` — 機能仕様・アーキテクチャドキュメント
+- `evaluations/` — 評価・検証ドキュメント
+- `best_practices/` — 設計原則・プラクティス集
+- `glossary/` — 用語集
+- `images/` — 構成図・スクリーンショット等の静的画像
+- `blog/` — ブログ下書き（gitignored）
+- `daily/` — デイリーノート（gitignored、YYYY-MM-DD.md）
+- `proposals/` — 提案書（コードから参照される歴史的記録）
+- `testing-strategy.md` — テスト戦略ドキュメント（ルート直下保持）
 
 ## ルール
 - frontmatter必須: title, date, tags
@@ -37,11 +51,13 @@
 | Knowledge Trail | [[knowledge-trail-core-concept]], [[knowledge-trail-implementation-plan]], [[wiki/architecture/knowledge-trail]] |
 | Knowledge Home（今日の入口） | [[knowledge-home-value-position-plan]], [[wiki/architecture/immutable-data-model]] |
 | イミュータブルデータモデル | [[wiki/architecture/immutable-data-model]], Trail §C |
-| Projector / Reproject | [[wiki/services/knowledge-sovereign]], runbooks の reproject 系 |
-| 是正・未達事項（historical audit） | [[knowledge-home-phase0-4-audit-2026-03-18]], [[knowledge-home-phase1-5-remediation-directives-2026-03-18]] |
+| Projector / Reproject | [[services/knowledge-sovereign]], runbooks の reproject 系 |
+| 是正・未達事項（historical audit） | [[review/knowledge-home-phase0-4-audit-2026-03-18]], [[review/knowledge-home-phase1-5-remediation-directives-2026-03-18]] |
 | Knowledge Loop（historical） | [[wiki/architecture/knowledge-loop]], [[000940]] — 現行契約として開かない |
-| Acolyte 全般 | [[acolyte/README]], [[acolyte-design-evolution]], ADR 000653-000700 |
-| Acolyte パイプライン | [[acolyte/data-flow]], [[acolyte-checkpoint-resume]] |
+| Acolyte 全般 | [[features/acolyte/README]], [[case-studies/acolyte-design-evolution]], ADR 000653-000700 |
+| Acolyte パイプライン | [[features/acolyte/data-flow]], [[runbooks/acolyte-checkpoint-resume]] |
 | Acolyte 運用 | runbooks/acolyte-*.md |
-| 運用手順 | runbooks/ 配下 |
-| 直近の作業文脈 | daily/ の最新エントリ |
+| 障害分析・ポストモーテム | [[postmortems/README]] |
+| レビュー・監査記録 | [[review/README]]（gitignored） |
+| 運用手順 | [[runbooks/README]] |
+| 直近の作業文脈 | daily/ の最新エントリ（gitignored） |

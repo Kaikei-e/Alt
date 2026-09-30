@@ -113,11 +113,10 @@ docker run --rm --network alt_alt-network \
 
 ## Critical rules
 
-1. **TDD first** — failing test before implementation. `go test ./... -race`.
-2. **Never reuse keys** — each Issue() call generates a fresh keypair via step-cli.
-3. **No renew-after-expiry** — re-enroll with a fresh OTT instead. See security audit F-005.
-4. **Atomic writes only** — tmpfile in same dir + rename. chown/chmod before rename.
-5. **Provisioner scope** — each CERT_SUBJECT has its own JWK (`pki-agent-<subject>`) and password file. Authority-level CN allowlist still applies. Do not ship the shared root/JWK password into a workload.
+1. **Never reuse keys** — each Issue() call generates a fresh keypair via step-cli.
+2. **No renew-after-expiry** — re-enroll with a fresh OTT instead. See security audit F-005.
+3. **Atomic writes only** — tmpfile in same dir + rename. chown/chmod before rename.
+4. **Provisioner scope** — each CERT_SUBJECT has its own JWK (`pki-agent-<subject>`) and password file. Authority-level CN allowlist still applies. Do not ship the shared root/JWK password into a workload.
 
 ## Prometheus metrics
 

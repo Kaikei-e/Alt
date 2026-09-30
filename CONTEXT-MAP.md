@@ -28,7 +28,7 @@ Alt は 20+ microservices の monorepo。各 bounded context の正準語 (ubiqu
 ## Relationships
 
 - **Resource Efficiency は全 context に対し cross-cutting**: 各 context が吐く観測信号
-  (OTEL ログ・Prometheus metrics・nginx access log・`docker stats`) を消費し、それらのランタイム footprint を
+  (OTEL ログ・Prometheus metrics・plecto-proxy access log・`docker stats`) を消費し、それらのランタイム footprint を
   制約する。ドメイン語彙は共有しない (Knowledge Trail の footprint と Resource Efficiency の measurement は別物)。
 - **Knowledge Trail は旧 Knowledge Loop を置換** (2026-06-10)。イベント基盤・relation 語彙・evidence 供給機構を継承。
 - **Knowledge Home と Knowledge Trail は別系統**: Home は Loop 以前から続く独立のダッシュボード型サーフェスで、

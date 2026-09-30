@@ -1,4 +1,5 @@
 # 記事HTML→テキスト移行スクリプト
+> Historical record — one-time migration. Not maintained.
 
 既存の`articles`テーブルに保存されているHTMLデータを、テキスト抽出済みデータに移行する高効率スクリプトです。
 

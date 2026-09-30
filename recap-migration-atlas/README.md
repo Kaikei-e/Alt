@@ -1,6 +1,6 @@
 # Recap Database Atlas Migrations
 
-このディレクトリは Recap Worker が利用する `recap-db` 用の Atlas マイグレーションを管理します。既存の `migrations-atlas/` と同様に Docker コンテナ経由でマイグレーションを実行する前提です。
+このディレクトリは Recap Worker が利用する `recap-db` 用の Atlas マイグレーションを管理します。Docker Compose (`compose/recap.yaml`) または Docker コンテナ経由でマイグレーションを実行します。
 
 ## 構成
 
@@ -12,9 +12,21 @@ recap-migration-atlas/
 
 ## 使い方
 
+### Docker Compose 経由
+
+```bash
+# マイグレーション適用
+docker compose -f compose/compose.yaml -p alt run --rm recap-db-migrator apply
+
+# ステータス確認
+docker compose -f compose/compose.yaml -p alt run --rm recap-db-migrator status
+```
+
+### 直接コンテナ実行
+
 1. Atlas 用の環境変数を設定します（例）:
    ```bash
-   export DATABASE_URL="postgres://recap_user:recap_db_pass_DO_NOT_USE_THIS@recap-db:5432/recap"
+   export DATABASE_URL="postgres://user:password@recap-db:5432/recap"
    export ATLAS_REVISIONS_SCHEMA=public
    ```
 

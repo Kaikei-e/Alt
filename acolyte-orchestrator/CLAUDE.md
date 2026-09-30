@@ -56,12 +56,11 @@ Connect-RPC (AcolyteConnectService) → Usecase → Port ← Gateway → Driver
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **No updated_at**: Use integer version_no + change_items for versioning
-3. **JSONB for auxiliary only**: Citations, tool traces — NOT core queryable fields
-4. **Job queue via FOR UPDATE SKIP LOCKED**: No polling-based race
-5. **Evidence hydrate**: Fetch metadata first, body only for top-N
-6. **news-creator as inference plane**: Route LLM calls through news-creator semaphore
+1. **No updated_at**: Use integer version_no + change_items for versioning
+2. **JSONB for auxiliary only**: Citations, tool traces — NOT core queryable fields
+3. **Job queue via FOR UPDATE SKIP LOCKED**: No polling-based race
+4. **Evidence hydrate**: Fetch metadata first, body only for top-N
+5. **news-creator as inference plane**: Route LLM calls through news-creator semaphore
 
 ## Proto Code Generation
 

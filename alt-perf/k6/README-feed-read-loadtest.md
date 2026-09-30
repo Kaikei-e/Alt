@@ -25,7 +25,6 @@ Connect-RPC (v2) の読み取り系 API に対して 3000VU の同時閲覧負�
 ## 認証
 
 Connect-RPC (port 9101) は JWT 認証 (`X-Alt-Backend-Token`) を使用する。
-REST (port 9000) の `X-Alt-Shared-Secret` とは**異なる認証方式**。
 
 | 項目 | 値 | 備考 |
 |------|-----|------|

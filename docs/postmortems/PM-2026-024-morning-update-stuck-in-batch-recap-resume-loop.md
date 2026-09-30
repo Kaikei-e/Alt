@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: morning_update Job が batch Recap の boot-time resume loop に閉じ込められ長時間 zombie 化"
+date: 2026-04-13
+tags:
+  - postmortem
+  - recap-worker
+  - morning-update
+  - zombie-job
+---
+
 # ポストモーテム: morning_update Job が batch Recap の boot-time resume loop に閉じ込められ長時間 zombie 化
 
 ## メタデータ

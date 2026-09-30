@@ -1,4 +1,11 @@
+---
+title: 7日間Recapジョブ評価レポート
+status: historical
+---
+
 # 7日間Recapジョブ評価レポート
+
+> Historical record — 7-day recap auto-batch was retired. Not a current contract.
 
 本ドキュメントは、Alt RSSリーダープラットフォームにおける7日間振り返り (Recap) 機能の評価結果をまとめたものです。
 

@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: news-creator の `/health` 契約変更で pre-processor の health gate が開かず、自動要約が 11 日間停止した障害"
+date: 2026-08-18
+tags:
+  - postmortem
+  - pre-processor
+  - news-creator
+  - contract-break
+---
+
 # ポストモーテム: news-creator の `/health` 契約変更で pre-processor の health gate が開かず、自動要約が 11 日間停止した障害
 
 ## メタデータ

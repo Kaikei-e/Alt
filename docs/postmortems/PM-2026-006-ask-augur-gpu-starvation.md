@@ -1,3 +1,13 @@
+---
+title: "PM-2026-006: Ask Augur チャットストリームの GPU スロット飢餓によるタイムアウト"
+date: 2026-03-25
+tags:
+  - postmortem
+  - rag-orchestrator
+  - ask-augur
+  - gpu
+---
+
 # PM-2026-006: Ask Augur チャットストリームの GPU スロット飢餓によるタイムアウト
 
 ## メタデータ

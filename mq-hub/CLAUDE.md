@@ -49,12 +49,11 @@ the stream's per-entry byte size has not actually shrunk — treat that as an op
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Event Validation**: Always validate before publishing
-3. **Idempotency**: Design for at-least-once delivery — dedupe key in the same transaction as the business write; absolute upserts, no additive merges
-4. **mq-hub itself never calls `XREADGROUP`**: it only publishes (`XAdd`), creates consumer groups (`XGroupCreateMkStream`), runs the periodic `XTrim` backstop, and `XRead`s its own private reply streams for `GenerateTagsForArticle`. The ACK-after-durable-write / XAUTOCLAIM-reclaim-loop rules in `.claude/rules/event-stream-consumer.md` bind the downstream consumers (pre-processor, search-indexer, tag-generator), not this service — read them before touching those services, not as a description of mq-hub's own runtime behavior
-5. **Stream retention has two independent backstops**: `STREAM_MAX_LEN` trims on every `XAdd`; `STREAM_HARD_MAX_LEN` + `STREAM_TRIM_INTERVAL_SECONDS` run a periodic `XTRIM` that keeps working even once Redis is at `maxmemory` and `XAdd` (and its trim) is rejected outright
-6. **Graceful Shutdown**: stop the HTTP server, then cancel the trim/sweep loops, with a bounded deadline
-7. **HTTP server timeouts**: set `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout`/`IdleTimeout` explicitly
+1. **Event Validation**: Always validate before publishing
+2. **Idempotency**: Design for at-least-once delivery — dedupe key in the same transaction as the business write; absolute upserts, no additive merges
+3. **mq-hub itself never calls `XREADGROUP`**: it only publishes (`XAdd`), creates consumer groups (`XGroupCreateMkStream`), runs the periodic `XTrim` backstop, and `XRead`s its own private reply streams for `GenerateTagsForArticle`. The ACK-after-durable-write / XAUTOCLAIM-reclaim-loop rules in `.claude/rules/event-stream-consumer.md` bind the downstream consumers (pre-processor, search-indexer, tag-generator), not this service — read them before touching those services, not as a description of mq-hub's own runtime behavior
+4. **Stream retention has two independent backstops**: `STREAM_MAX_LEN` trims on every `XAdd`; `STREAM_HARD_MAX_LEN` + `STREAM_TRIM_INTERVAL_SECONDS` run a periodic `XTRIM` that keeps working even once Redis is at `maxmemory` and `XAdd` (and its trim) is rejected outright
+5. **Graceful Shutdown**: stop the HTTP server, then cancel the trim/sweep loops, with a bounded deadline
+6. **HTTP server timeouts**: set `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout`/`IdleTimeout` explicitly
 
 Full checklist: `docs/best_practices/go.md` §8

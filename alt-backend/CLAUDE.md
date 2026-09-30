@@ -13,7 +13,7 @@
 
 | compose service | エントリポイント | 責務 | リスナー |
 |---|---|---|---|
-| `alt-backend` | `cmd/backend` | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102` / ops `:9110` |
+| `alt-backend` | `cmd/backend` | ユーザ向け API。BFF が叩く面 | REST `:9000` / Connect `:9101` / オペレータ `:9102`（admin Connect 2 サービス、loopback）/ ops `:9110` |
 | `alt-harvester` | `cmd/harvester` | `orchestrator/job/` の定期ジョブ（`orchestrator/job/registry.go` 参照） | ops `:9110` のみ（業務リスナーなし） |
 | `alt-notifier` | `cmd/notifier` | Web Push 配信専用ディスパッチャ（`push_deliveries` をドレインして各デバイスへ送信）。ADR-000954 の3分割そのものではなく後日追加された4本目 | ops `:9110` のみ（業務リスナーなし） |
 | `alt-data-hub` | `cmd/datahub` | **alt-db の唯一のオーナー**。`services.datahub.v1.DataHubService` を serve | mTLS `:9443` + ops `:9110`。**publish ゼロ** |
@@ -61,17 +61,20 @@ go test ./...
 # Coverage
 go test -race -cover ./...
 
-# Mocks
-make generate-mocks
-
 # Build all four
 go build ./cmd/...
 
 # Run one
 go run ./cmd/backend      # or ./cmd/harvester, ./cmd/notifier, ./cmd/datahub
 
+# From repository root:
+cd ../..
+
 # Container build (BINARY は必須)
 docker build --build-arg BINARY=backend -f alt-backend/Dockerfile.backend -t alt-backend:dev alt-backend
+
+# Mocks
+make generate-mocks
 ```
 
 ## TDD Workflow

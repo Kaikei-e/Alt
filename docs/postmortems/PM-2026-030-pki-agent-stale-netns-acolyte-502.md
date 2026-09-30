@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: pki-agent sidecar の netns 幽霊化による AcolyteService/ListReports 502"
+date: 2026-04-17
+tags:
+  - postmortem
+  - pki-agent
+  - docker-compose
+  - netns-orphan
+---
+
 # ポストモーテム: pki-agent sidecar の netns 幽霊化による AcolyteService/ListReports 502
 
 ## メタデータ

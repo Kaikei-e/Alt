@@ -1,6 +1,8 @@
 # alt-frontend-sv
 
-SvelteKit frontend for the Alt platform, serving desktop and mobile experiences under the `/sv` base path.
+SvelteKit frontend for the Alt platform, serving desktop and mobile experiences at the root `/` path.
+
+Reference architecture, state management, and configuration are documented in [docs/services/alt-frontend-sv.md](../docs/services/alt-frontend-sv.md).
 
 ## Tech Stack
 
@@ -30,7 +32,7 @@ bun run build
 bun run check
 
 # Run tests
-bun test              # Unit tests
+bun run test          # Unit tests (vitest — do not use bare `bun test`)
 bun run test:e2e      # E2E tests (requires stack running)
 
 # Lint and format
@@ -38,63 +40,35 @@ bun run lint
 bun run format
 ```
 
-## Architecture
-
-### Routes Structure
+## Routes Structure
 
 ```
 src/routes/
 ├── +page.svelte           # Landing page
+├── (app)/                 # Authenticated application routes
+│   ├── home/              # Knowledge home
+│   ├── feeds/             # Feeds view
+│   ├── articles/          # Articles view
+│   ├── knowledge/         # Knowledge trail
+│   ├── dashboard/         # Dashboard
+│   └── settings/          # User settings
 ├── login/                 # Authentication
-├── register/
-├── sv/
-│   ├── home/              # Desktop dashboard
-│   ├── mobile/            # Mobile feed reader
-│   └── dashboard/         # System administration
+├── register/              # Registration
+├── auth/                  # Auth callbacks
+├── eval-dashboard/        # Evaluation dashboard
 └── api/                   # SvelteKit API endpoints
 ```
 
-### State Management
-
-Uses **Svelte 5 Runes** exclusively:
-- `$state()` for reactive state
-- `$derived()` for computed values
-- `$effect()` for side effects
-- `$props()` for component props
-
-### API Integration
-
-1. Frontend sends requests with session cookie
-2. `api.ts` exchanges cookie for JWT via auth-hub
-3. Requests include `X-Alt-Backend-Token` header
-4. Backend validates JWT and processes request
-
-```mermaid
-flowchart LR
-    Browser --> SvelteKit[alt-frontend-sv :4173]
-    SvelteKit --> AuthHub[auth-hub :8888]
-    AuthHub --> SvelteKit
-    SvelteKit --> Backend[alt-backend :9101]
-```
-
-## Configuration
-
-| Variable | Purpose |
-|----------|---------|
-| `BACKEND_BASE_URL` | Backend URL for SSR (e.g., `http://alt-backend:9000`) |
-| `BACKEND_CONNECT_URL` | Connect-RPC URL (e.g., `http://alt-backend:9101`) |
-| `AUTH_HUB_INTERNAL_URL` | Token exchange URL (e.g., `http://auth-hub:8888`) |
-| `KRATOS_INTERNAL_URL` | Kratos URL for session validation |
-| `KRATOS_PUBLIC_URL` | Public Kratos URL for redirects |
-
 ## Development Notes
 
-- **Base Path**: App runs under `/sv`. All links must account for this.
+- **Base Path**: App runs at `/`.
+- **Testing**: Use `bun run test` (vitest), never bare `bun test`.
 - **Runes Only**: Do not use legacy `export let` or `$:` syntax.
 - **TailwindCSS v4**: CSS-first configuration in `src/app.css`.
-- **SSR vs CSR**: Data loading in `+page.server.ts` (SSR), client interactions via `api.ts`.
+- **TypeScript**: Pinned to TypeScript 6; do not upgrade to TS 7 (see `CLAUDE.md`).
 
 ## Related Documentation
 
+- [Workflow Guidelines](./CLAUDE.md)
 - [Architecture Details](../docs/services/alt-frontend-sv.md)
 - [Project CLAUDE.md](../CLAUDE.md)

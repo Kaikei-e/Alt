@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: pre-processor の要約リトライストームと false-negative な dead_letter"
+date: 2026-04-15
+tags:
+  - postmortem
+  - pre-processor
+  - news-creator
+  - retry-storm
+---
+
 # ポストモーテム: pre-processor の要約リトライストームと false-negative な dead_letter
 
 ## メタデータ

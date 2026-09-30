@@ -1,3 +1,13 @@
+---
+title: "PM-2026-005: 分散 BE リモートの GPU 未使用および設定変更時のコールドスタート TTFT 劣化"
+date: 2026-03-25
+tags:
+  - postmortem
+  - news-creator
+  - ollama
+  - gpu
+---
+
 # PM-2026-005: 分散 BE リモートの GPU 未使用および設定変更時のコールドスタート TTFT 劣化
 
 ## メタデータ

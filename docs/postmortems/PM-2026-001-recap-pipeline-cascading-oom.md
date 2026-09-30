@@ -1,3 +1,13 @@
+---
+title: "PM-2026-001: recap パイプライン連鎖 OOM 障害"
+date: 2026-03-23
+tags:
+  - postmortem
+  - recap-worker
+  - recap-subworker
+  - oom
+---
+
 # PM-2026-001: recap パイプライン連鎖 OOM 障害
 
 ## メタデータ

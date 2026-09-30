@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: /admin/knowledge-home の Start Reproject が JSONB NOT NULL constraint で永続 502 だった潜伏バグ"
+date: 2026-04-27
+tags:
+  - postmortem
+  - alt-backend
+  - knowledge-sovereign
+  - jsonb
+---
+
 # ポストモーテム: /admin/knowledge-home の Start Reproject が JSONB NOT NULL constraint で永続 502 だった潜伏バグ
 
 ## メタデータ

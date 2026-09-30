@@ -1,3 +1,13 @@
+---
+title: "PM-2026-004: StreamSummarize の HTTP 524 タイムアウトおよびストリーミング未表示"
+date: 2026-03-24
+tags:
+  - postmortem
+  - stream-summarize
+  - connect-rpc
+  - timeout
+---
+
 # PM-2026-004: StreamSummarize の HTTP 524 タイムアウトおよびストリーミング未表示
 
 ## メタデータ

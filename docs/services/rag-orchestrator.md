@@ -6,6 +6,12 @@ _Last reviewed: September 5, 2026_
 
 The `rag-orchestrator` is a Go 1.26+ service responsible for managing the RAG (Retrieval Augmented Generation) pipeline. It handles article indexing, vector embedding, context retrieval, answer generation using an LLM, agentic tool-calling, conversation persistence, and morning-letter topic extraction. The service exposes both a REST API (Echo) and a Connect-RPC API for streaming. Generation is served by `news-creator` (its FastAPI priority-queue proxy on :11434, which fronts `news-creator-backend`'s Ollama on :11435) by default (see [[000951]] / [[000987]]); `knowledge-augur` is a separate, non-default Ollama host (see `docs/services/knowledge-augur.md`).
 
+### Design Principles & Invariants
+- **Local Inference Topology ([[000951]])**: RAG inference is kept local and role-segregated: `knowledge-embedder-local` (bge-m3, 1024-dim) and `rerank-local` (ruri-v3 ONNX) run in dedicated containers to prevent VRAM thrashing against the primary generation runtime.
+- **Eval-First Calibration**: Retrieval recall/MRR and generation faithfulness are benchmarked against synthetic golden sets (`cmd/eval`) before production parameter or model adjustments.
+- **Tool-Use Across Existing Services**: Instead of duplicate storage or logic, the orchestrator leverages existing microservice endpoints as agentic tools (e.g. `search-indexer` for BM25 retrieval, `alt-data-hub` for article data).
+- **alt-data-hub as Sole DB Route ([[000954]])**: Article and feed reads route via mTLS Connect-RPC to `alt-data-hub` (`services.datahub.v1.DataHubService`); direct connections or legacy `ALT_BACKEND_URL` endpoints are deprecated.
+
 ## Directory Structure
 
 ```
@@ -396,7 +402,7 @@ Defines the core entities and interfaces:
     - `connect/morning_letter/handler.go`: MorningLetterService -- streaming morning letter with time-bounded article fetching from alt-backend.
 - **AltDB / DataHub Client**: `altdb/article_client.go`, `articles_by_tag_client.go`, `tag_cloud_client.go`, `recap_search_client.go` fetch data from alt-backend's article store via `altdb/datahub_client.go`, an mTLS client to alt-data-hub's `services.datahub.v1.DataHubService` ([[000954]]) — there is no plaintext route to `alt_db`.
 - **Search Client**: `search_indexer_client.go` queries `search-indexer` for candidate articles.
-- **Sovereign Client**: `sovereign_client/` emits `augur.conversation_linked.v1` into knowledge-sovereign's append-only event log when `RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=true` (see `docs/wiki/services/knowledge-sovereign.md`).
+- **Sovereign Client**: `sovereign_client/` emits `augur.conversation_linked.v1` into knowledge-sovereign's append-only event log when `RAG_ORCHESTRATOR_KNOWLEDGE_EVENT_EMIT=true` (see `docs/services/knowledge-sovereign.md`).
 - **Tools**: `tools/` implements the agentic tool set the query planner can dispatch to (article lookup, tag search, tag-cloud explore, related articles, recap search, date-range filter, summarize-for-context).
 - **Eino**: `eino/` adapts `LLMClient` and the tool set to the Eino `ChatModelAgent` interface for the agentic tool-calling path.
 

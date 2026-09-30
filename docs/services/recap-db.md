@@ -2,7 +2,16 @@
 
 _Last reviewed: September 5, 2026_
 
-**Location:** `recap-db`, `recap-migration-atlas`
+**Location:** `recap-db`, `recap-migration-atlas`  
+**Port:** 5435 (host `127.0.0.1:5435:5432`)  
+**Volume:** `recap_db_data:/var/lib/postgresql`  
+**Secrets:** `recap_db_password`  
+
+## Anchor Concept & Invariants
+`recap-db` is the dedicated PostgreSQL 18 database owning state machine and idempotency rows for the Recap pipeline (`recap-worker` as data owner, `dashboard` as read-only consumer).
+- **`recap_jobs` lifecycle**: Status transitions follow `pending` → `running` → `completed` | `failed` | `morning_completed`. There is explicitly no `morning_failed` status (failed morning jobs remain `failed`). Breaking the `morning_completed` lifecycle ([[000897]]) leaks rows in `pending`, corrupting dashboard queue metrics and triggering redundant re-enqueues.
+- **Atlas Migration Exclusivity**: Migrations must be executed via `recap-migration-atlas` (Atlas). Manual schema changes drift constraint checks (such as `chk_status_history_status`), causing worker crashes on PG constraint violations when writing new status entries.
+- **3-Day Active Window**: Automated recap batches operate strictly on 3-day windows (`window_days=3`); the 7-day automated batch was retired in 2026-04.
 
 This document outlines the schema for the `recap_db` PostgreSQL database, which stores data related to the Recap Worker's processing of RSS feed articles.
 

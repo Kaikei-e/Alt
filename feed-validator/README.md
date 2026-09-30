@@ -1,4 +1,5 @@
 # Feed Validator
+> Historical record — compose does not build or run this service. Not maintained.
 
 F# 10 学習プロジェクト - RSS/Atom/JSON Feed 検証サービス
 
@@ -8,7 +9,6 @@ F# 10 学習プロジェクト - RSS/Atom/JSON Feed 検証サービス
 |----------|------|
 | [ROADMAP.md](./ROADMAP.md) | 学習ロードマップ（Phase 1〜8） |
 | [CLAUDE.md](./CLAUDE.md) | サービス仕様・API・アーキテクチャ |
-| [FSHARP_REFERENCE.md](./FSHARP_REFERENCE.md) | F# クイックリファレンス |
 
 ## サンプルファイル
 
@@ -53,7 +53,7 @@ dotnet fsi
 
 1. **ROADMAP.md** の Phase 1 から順に進める
 2. 各 Phase の「確認課題」をクリアしてから次へ
-3. 詰まったら **FSHARP_REFERENCE.md** を参照
+3. 詰まったら公式ドキュメントや参考資料を参照
 4. **samples/** のファイルでテスト
 
 ## 学習ポイント

@@ -47,11 +47,11 @@ graph LR
   subgraph "Write Path"
     PP["pre-processor"] -->|SaveArticleSummary| AB["alt-backend"]
     TG["tag-generator"] -->|SaveArticleTags| AB
-    AB -->|AppendEvent<br/>via Connect-RPC| KS["knowledge-<br/>sovereign"]
+    AB -->|AppendKnowledgeEvent<br/>via Connect-RPC| KS["knowledge-<br/>sovereign"]
   end
 
-  subgraph "Projection Path"
-    AB -- "KnowledgeProjector<br/>RecallProjector" --> KS
+  subgraph "Projection Path (knowledge-sovereign)"
+    KS -->|Fold events in-process| DB[("sovereign-db<br/>PostgreSQL")]
   end
 
   subgraph "Read Path"
@@ -60,13 +60,13 @@ graph LR
     AB -->|Query projections<br/>via Connect-RPC| KS
   end
 
-  KS --- DB[("sovereign-db<br/>PostgreSQL")]
+  KS --- DB
 ```
 
 | Service | Responsibility |
 |---------|---------------|
-| **alt-backend** | Hosts Connect-RPC handlers (public + admin), usecases, projectors, backfill job. Orchestrates reads and writes. |
-| **knowledge-sovereign** | Owns the database. Exposes mutation and query RPCs. Enforces idempotency via `dedupe_key`. |
+| **alt-backend** | Hosts Connect-RPC handlers (public + admin) and usecases. Orchestrates reads and writes via Connect-RPC to knowledge-sovereign; reaches core data via alt-data-hub (ADR 000954). |
+| **knowledge-sovereign** | Owns the database, event log, and projectors (ADR 000944). Exposes query and mutation RPCs. Enforces idempotency via `dedupe_key`. |
 | **pre-processor** | Generates article summaries. Calls `SaveArticleSummary` on alt-backend. |
 | **tag-generator** | Generates article tags. Calls `SaveArticleTags` on alt-backend. |
 | **alt-frontend-sv** | SvelteKit frontend. Reads Knowledge Home via BFF. Never connects to alt-backend directly. |
@@ -78,11 +78,11 @@ Knowledge Home follows Alt's standard Clean Architecture pattern:
 
 ```mermaid
 graph TB
-  H["<b>Handler</b><br/><code>connect/v2/knowledge_home/handler.go</code><br/><code>connect/v2/knowledge_home_admin/handler.go</code>"]
-  U["<b>Usecase</b><br/><code>usecase/get_knowledge_home_usecase/</code><br/><code>usecase/track_home_action_usecase/</code><br/><code>usecase/recall_rail_usecase/</code><br/><code>usecase/create_lens_usecase/</code>"]
-  P["<b>Port</b><br/><code>port/knowledge_home_port/</code><br/><code>port/today_digest_port/</code><br/><code>port/recall_candidate_port/</code><br/><code>port/knowledge_event_port/</code>"]
-  G["<b>Gateway</b><br/><code>gateway/knowledge_backfill_gateway/</code>"]
-  D["<b>Driver</b><br/><code>driver/sovereign_client/client.go</code><br/><code>driver/sovereign_client/write_ports.go</code>"]
+  H["<b>Handler</b><br/><code>orchestrator/connect/v2/knowledge_home/handler.go</code><br/><code>orchestrator/connect/v2/knowledge_home_admin/handler.go</code>"]
+  U["<b>Usecase</b><br/><code>orchestrator/usecase/get_knowledge_home_usecase/</code><br/><code>orchestrator/usecase/track_home_action_usecase/</code><br/><code>orchestrator/usecase/recall_rail_usecase/</code><br/><code>orchestrator/usecase/create_lens_usecase/</code>"]
+  P["<b>Port</b><br/><code>orchestrator/port/knowledge_home_port/</code><br/><code>orchestrator/port/today_digest_port/</code><br/><code>orchestrator/port/recall_candidate_port/</code><br/><code>shared/port/knowledge_event_port/</code>"]
+  G["<b>Gateway</b><br/><code>orchestrator/gateway/knowledge_backfill_gateway/</code>"]
+  D["<b>Driver</b><br/><code>shared/driver/sovereign_client/client.go</code><br/><code>shared/driver/sovereign_client/write_ports.go</code>"]
 
   H --> U --> P --> G --> D
   D -->|"Connect-RPC"| KS["knowledge-sovereign"]
@@ -114,9 +114,9 @@ A PostgreSQL trigger (`trg_knowledge_events_notify`) fires on each INSERT into `
 
 | Table | Purpose | PK | Rebuilt By |
 |-------|---------|-----|------------|
-| `knowledge_home_items` | Home feed items with score, summary, tags, why, link | `(user_id, item_key, projection_version)` | KnowledgeProjector |
-| `today_digest_view` | Daily aggregation: counts, top tags, availability | `(user_id, digest_date)` | KnowledgeProjector |
-| `recall_candidate_view` | Recall rail candidates with score, reasons, and soft-delete via `dismissed_at` | `(user_id, item_key)` | KnowledgeProjector + RecallProjector |
+| `knowledge_home_items` | Home feed items with score, summary, tags, why, url | `(user_id, item_key, projection_version)` | Knowledge Home Projector (in knowledge-sovereign, ADR 000944) |
+| `today_digest_view` | Daily aggregation: counts, top tags, availability | `(user_id, digest_date)` | Knowledge Home Projector (in knowledge-sovereign, ADR 000944) |
+| `recall_candidate_view` | Recall rail candidates with score, reasons, and soft-delete via `dismissed_at` | `(user_id, item_key)` | Knowledge Home Projector (in knowledge-sovereign, ADR 000944) |
 | `recall_signals` | Raw interaction signals for recall scoring | `signal_id` | User actions |
 
 ### Lens & Curation
@@ -153,6 +153,7 @@ Knowledge Sovereign is an independent Go microservice that acts as the single ow
 
 **Key files:**
 - Service entry: `knowledge-sovereign/app/main.go`
+- Workers & Projectors: `knowledge-sovereign/app/main_workers.go`, `knowledge-sovereign/app/usecase/knowledge_home_projector/`
 - RPC handlers: `knowledge-sovereign/app/handler/sovereign_handler.go`, `rpc_projections.go`, `rpc_infra.go`, `rpc_lens.go`, `rpc_watch.go`
-- Migrations: `knowledge-sovereign/migrations/` (5 migrations)
-- Client in alt-backend: `alt-backend/app/driver/sovereign_client/` (`client.go`, `read_client.go`, `write_ports.go`, `watch_client.go`, `signal_client.go`, `backfill_client.go`, `lens_client.go`, `reproject_client.go`)
+- Migrations: `knowledge-sovereign/migrations/`
+- Client in alt-backend: `alt-backend/app/shared/driver/sovereign_client/`

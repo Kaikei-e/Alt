@@ -14,21 +14,9 @@ Runbook for rebuilding Knowledge Home projections using the `altctl home reproje
 
 Related: [[000421]], [[000429]], [[knowledge-home-projection-recovery]]
 
-> **`altctl home reproject start` currently fails immediately, for every
-> `--mode`.** `alt-backend/app/orchestrator/usecase/knowledge_reproject_usecase`
-> requires an executor to be wired (`WithExecutor`) before `StartReproject`
-> will do anything; ADR-000421 assigned that job to a scheduler in this
-> service, and ADR-000944 deleted the job while moving the projectors to
-> `knowledge-sovereign` without naming a replacement
-> (`alt-backend/app/di/knowledge_module.go`: "the capability has been absent
-> since 2026-07-15"). The call returns `no reproject executor is wired: a
-> run would stay pending forever` (`ErrNoReprojectExecutor`) before it even
-> validates `--mode`. `altctl home backfill trigger` is in the same state
-> (`ErrNoBackfillExecutor`, same file). Until an executor is rebuilt and
-> wired, use [[knowledge-home-projection-recovery]]'s admin rebuild endpoint
-> (preferred) or its direct-SQL fallback procedure for any rebuild that this
-> runbook would otherwise cover. The procedure below is preserved for when
-> the executor is rewired.
+> **Warning: `altctl home reproject start` returns `ErrNoReprojectExecutor` for every `--mode`.**
+> `alt-backend/app/orchestrator/usecase/knowledge_reproject_usecase` requires an executor to be wired (`WithExecutor`) before `StartReproject` can advance runs. ADR-000421 assigned that job to a scheduler in alt-backend, and ADR-000944 removed the job when moving projectors to `knowledge-sovereign` without naming a replacement (`alt-backend/app/di/knowledge_module.go`). The endpoint returns `FailedPrecondition` with `no reproject executor is wired: a run would stay pending forever` (`ErrNoReprojectExecutor`) before validating `--mode`. `altctl home backfill trigger` is in the same state (`ErrNoBackfillExecutor`).
+> **For Knowledge Home projection rebuilds, use [[knowledge-home-projection-recovery]]** (the knowledge-sovereign admin rebuild endpoint or direct-SQL fallback). The procedure below is preserved for when an executor is wired.
 
 ## When to Reproject
 
@@ -60,7 +48,7 @@ Related: [[000421]], [[000429]], [[knowledge-home-projection-recovery]]
   `invalid reproject mode %q`. The two sets intersect only at `dry_run` --
   and `SwapReproject` explicitly refuses to swap a `dry_run` run ("dry_run
   mode does not project events; use mode=full|user_subset|time_range"). In
-  practice this means no non-dry_run reproject can currently be completed
+  practice this means no non-dry_run reproject can be completed
   through `altctl`, independently of the missing-executor problem described
   above.
 - Do not swap if the diff contains unexplained removals, malformed `why_json`, or large `summary_state` regressions.
@@ -72,7 +60,7 @@ Related: [[000421]], [[000429]], [[knowledge-home-projection-recovery]]
 ### Step 1: Dry Run
 
 Run a dry-run reproject to validate the request without affecting production.
-`dry_run` is the only mode `altctl` and alt-backend both currently accept
+`dry_run` is the only mode `altctl` and alt-backend both accept
 (see Safety Constraints above) -- it does not populate anything `compare`
 or `swap` can act on, so it is a validation step, not the start of the
 runbook's later stages:
@@ -137,8 +125,8 @@ This performs:
 After the swap, monitor the Knowledge Home SLO dashboard for 30 minutes:
 
 - `alt_home_empty_responses_total` rate should not spike.
-- `alt_home_malformed_why_total` rate should remain near zero. **Not currently a live signal** -- the counter is declared but nothing in alt-backend increments it, so it always reads zero regardless of what happened.
-- `alt_home_projector_lag_seconds` should stabilize below 60. **Not currently a live signal** -- `RecordProjectorLag` has no call site either, so this series is absent from `/metrics`. Check freshness instead via `altctl home slo` (`GetSLOStatus`, backed by `knowledge_projection_checkpoints`).
+- `alt_home_malformed_why_total` rate should remain near zero. **Not a live signal** -- the counter is declared but nothing in alt-backend increments it, so it always reads zero.
+- `alt_home_projector_lag_seconds` should stabilize below 60. **Not a live signal** -- `RecordProjectorLag` has no call site either, so this series is absent from `/metrics`. Check freshness instead via `altctl home slo` (`GetSLOStatus`, backed by `knowledge_projection_checkpoints`).
 - `alt_home_degraded_responses_total` should not increase.
 - `alt_home_request_duration_seconds` should remain within the normal p95 band for `knowledge_home_get_latency`.
 - `alt_home_stream_connections_total` should not show an abnormal reconnect surge if stream clients are active.

@@ -1,4 +1,5 @@
 # F# Feed Validator 学習ロードマップ
+> Historical record — compose does not build or run this service. Not maintained.
 
 ## 概要
 

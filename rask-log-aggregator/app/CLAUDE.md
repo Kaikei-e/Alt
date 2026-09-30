@@ -29,8 +29,7 @@ cargo run --release
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Rust 2024 Edition**: Use `async fn` in traits directly (no `async_trait`)
-3. **No `static mut`**: Use `OnceCell` or `Mutex` instead
-4. **Edition Hygiene**: `lib.rs` enforces `#![deny(warnings)]`, `#![deny(rust_2018_idioms)]`, `#![deny(rust_2024_compatibility)]`, `#![warn(clippy::pedantic)]`
-5. **Zero-Copy**: Prefer `bytes::Bytes` over owned allocations
+1. **Rust 2024 Edition**: Use `async fn` in traits directly (no `async_trait`)
+2. **No `static mut`**: Use `OnceCell` or `Mutex` instead
+3. **Edition Hygiene**: `lib.rs` enforces `#![deny(warnings)]`, `#![deny(rust_2018_idioms)]`, `#![deny(rust_2024_compatibility)]`, `#![warn(clippy::pedantic)]`
+4. **Zero-Copy**: Prefer `bytes::Bytes` over owned allocations

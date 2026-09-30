@@ -1,4 +1,5 @@
 # Feed Validator Service
+> Historical record — compose does not build or run this service. Not maintained.
 
 F# 10 **学習プロジェクト**（`README.md` / `ROADMAP.md` 参照）。将来的に RSS/Atom/JSON Feed
 検証・正規化サービスとして実装することを目標にした設計仕様であり、以下の Domain/Usecase/

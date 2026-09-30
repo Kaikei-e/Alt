@@ -6,6 +6,8 @@ _Last reviewed: September 5, 2026_
 
 ## Purpose
 - Orchestrates Inoreader ingestion for the pre-processor by pairing a scheduler loop with a resilient OAuth2 token system (`cmd/main.go`, `service/simple_token_service.go`).
+- Executes the **Tier1 classification** (`domain.ClassifyTier1`: 500+ characters, excluding non-article URL patterns, placeholders, truncation markers, and image-dominant content) before persisting articles; the core `pre-processor` service contains no Tier1 logic.
+- Persists Tier1 articles directly into the `inoreader_articles` table of `pre-processor-db` (bypassing alt-backend / alt-data-hub).
 - Bridges a token repository (file-backed in the shipped Compose config; the code also supports a Kubernetes Secret) with `auth-token-manager` so Inoreader calls stay within quota while rotating tokens safely (`service/token_management_service.go`, `repository`).
 - Provides HTTP hooks (`/admin/oauth2/*`, `/admin/trigger/*`, `/admin/health`) for observability, manual fetch/sync runs, and token status without restarting the process (`handler/admin_api_handler.go`, `handler/health_handler.go`, `cmd/main.go`).
 
@@ -165,7 +167,7 @@ The Admin API has its own, unrelated limiter: `security.MemoryRateLimiter` at 5 
 Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
 - Inoreader ingestion silently stopped for 65 hours → a non-atomic write during disk exhaustion truncated `oauth2_token.env` to 0 bytes; auth-token-manager returned 404 and the circuit breaker flapped OPEN↔HALF_OPEN forever. Token persistence must be tmpfile + rename + fsync → PM-2026-043.
-- Health check reported `token_manager_available: true` throughout that outage → "process is up" and "responses are correct" are separate responsibilities; opaque string errors block both tests and alerts — use typed sentinels (`ErrTokenUnavailable`) and expose functional health (`/admin/health` with `ingestion_silent`) → PM-2026-043.
+- Health check reported `token_manager_available: true` throughout that outage → "process is up" and "responses are correct" are separate responsibilities; opaque string errors block both tests and alerts — use typed sentinels (`ErrTokenUnavailable`) and expose functional health (`/admin/health` with `ingestion_silent`) → PM-2026-043, [[000895]].
 - Duplicate feeds reappeared after a dedupe fix → zero-trust URL normalization was applied at `RegisterFeeds` but not on the sidecar ingestion route; normalization must run at save time on every write path → [[000049]] [[000052]].
 - Long TTD is structural for this service → the sidecar is a supplemental, low-frequency path, so failures surface only via user reports; staleness metrics (e.g. `last_sync` age) are required, not optional ("unused features rot") → PM-2026-043.
 

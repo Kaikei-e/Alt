@@ -101,33 +101,13 @@ docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator --tail=2
 
 **When to use:** Run failed but checkpoint is valid.
 
-1. **Identify the run:**
-   ```bash
-   export RUN_ID="<failed-run-id>"
-   ```
-
-2. **Verify checkpoint exists:**
+1. **Verify checkpoint exists for the thread:**
    ```bash
    docker exec -it acolyte-db psql -U acolyte_user -d acolyte -c \
-     "SELECT COUNT(*) FROM checkpoints WHERE thread_id = 'acolyte-run:$RUN_ID';"
+     "SELECT COUNT(*) FROM checkpoints WHERE thread_id = 'acolyte-run:<run-id>';"
    ```
 
-3. **Execute resume.** `scripts/` is not part of the acolyte-orchestrator
-   image (the Dockerfile COPYs only `main.py` and `acolyte/`) -- run this on
-   the host from `acolyte-orchestrator/`:
-   ```bash
-   cd acolyte-orchestrator
-   export ACOLYTE_DB_DSN="postgresql://acolyte_user:$(cat ../secrets/acolyte_db_password.txt)@localhost:5439/acolyte"
-   export NEWS_CREATOR_URL="http://localhost:11434"
-   export SEARCH_INDEXER_URL="http://localhost:9300"
-   export CHECKPOINT_ENABLED=true
-   uv run python scripts/resume_run.py --run-id $RUN_ID
-   ```
-
-4. **Monitor progress:**
-   ```bash
-   docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator -f | grep $RUN_ID
-   ```
+2. For the detailed step-by-step resume procedure, constraints, and failure pattern handling, see [[acolyte-checkpoint-resume]].
 
 ### Procedure B: Mark Run as Failed and Restart
 

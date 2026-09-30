@@ -5,9 +5,13 @@ _Last reviewed: September 5, 2026_
 **Location:** `recap-evaluator`
 
 ## Role
-- RecapJob 精度評価マイクロサービス
+- RecapJob 精度評価マイクロサービス (Python 3.14+ / FastAPI)
+- **Port:** 8085 (host `8085:8080`), **Health:** `/health`
 - 3-day Recap の品質を多角的に評価 (7-day 自動バッチは廃止済み [[000184]])
 - 多次元要約品質評価: G-Eval (Ollama), ROUGE, BERTScore, Faithfulness (NLI)
+- **設計原則**:
+  - **eval-first**: スコアリングを通してから本番に commit する
+  - 評価スコア・指標の定義変更は ADR を必要とする
 
 ## Architecture & Flow
 

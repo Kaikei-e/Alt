@@ -243,10 +243,9 @@ Run `altctl list --services` for the live, derived service lists per stack.
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Dependency Resolution**: Stacks auto-start their dependencies
-3. **Feature Warnings**: `core` requires `workers` for search
-4. **Structured Output**: Support table and JSON formats
+1. **Dependency Resolution**: Stacks auto-start their dependencies
+2. **Feature Warnings**: `core` requires `workers` for search
+3. **Structured Output**: Support table and JSON formats
 
 ## `altctl doctor` (read-only diagnosis)
 

@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: search-indexer e2e ジョブが reclaim_network_pool の self-poisoning と libnetwork race の合成で連続失敗"
+date: 2026-05-29
+tags:
+  - postmortem
+  - search-indexer
+  - ci
+  - docker-network
+---
+
 # ポストモーテム: search-indexer e2e ジョブが reclaim_network_pool の self-poisoning と libnetwork race の合成で連続失敗
 
 ## メタデータ

@@ -69,8 +69,7 @@ deno check main.ts
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **NEVER Log Secrets**: Use sanitized logger for tokens
-3. **Restore Stubs**: ALWAYS restore mocked functions in `finally` blocks
-4. **BDD Style**: Organize tests with `describe/it` blocks
-5. **Clean Architecture**: No import from inner layers to outer layers
+1. **NEVER Log Secrets**: Use sanitized logger for tokens
+2. **Restore Stubs**: ALWAYS restore mocked functions in `finally` blocks
+3. **BDD Style**: Organize tests with `describe/it` blocks
+4. **Clean Architecture**: No import from inner layers to outer layers

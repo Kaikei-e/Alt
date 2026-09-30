@@ -676,7 +676,7 @@ bun run check
 ## 16. Startup Configuration Fail-Fast
 
 - **Missing required env (auth tokens, secrets, upstream URLs) must throw at startup** — never fall back to "run without auth" or a silent no-op. A token endpoint that serves credentials unauthenticated because `INTERNAL_AUTH_TOKEN` was unset is the worst-case outcome of warn-and-limp (CLAUDE.md Rule 8 / ADR-000928)
-- Validate all env in one place with a Zod schema at module load; export the parsed, typed config
+- Validate all env in one place with a schema at module load (e.g. Valibot in `alt-frontend-sv`, Zod in `e2e/playwright` suites); export the parsed, typed config
 
 ```typescript
 // ✅ fail-fast, typed config
@@ -684,10 +684,10 @@ const Env = z.object({
   INTERNAL_AUTH_TOKEN: z.string().min(32),
   UPSTREAM_URL: z.string().url(),
 });
-export const env = Env.parse(Deno.env.toObject()); // throws with a precise message
+export const env = Env.parse(process.env); // throws with a precise message
 
 // ❌ warn-and-limp — misconfig indistinguishable from intentional
-const token = Deno.env.get("INTERNAL_AUTH_TOKEN");
+const token = process.env.INTERNAL_AUTH_TOKEN;
 if (!token) console.warn("auth disabled"); // service now serves tokens unauthenticated
 ```
 
@@ -784,7 +784,7 @@ const items = body.items ?? [];
 
 - Force field coverage in DTO mappers with types — a manually maintained mapper dropped a field so the CSR path broke while SSR kept working (ADR-000309). Give mappers an explicit, fully-required return type so a dropped field is a compile error
 - Keep **one** canonical mapper per DTO — duplicated mapping logic per code path (SSR vs CSR) is where fields go missing
-- Never redeclare the same payload shape on producer and consumer sides — struct re-declaration is a wire-drift factory. Import the canonical schema (generated proto types, or a shared Zod schema) on both sides (ADR-000867, PM-2026-041)
+- Never redeclare the same payload shape on producer and consumer sides — struct re-declaration is a wire-drift factory. Import the canonical schema (generated proto types, or a shared Valibot schema in `alt-frontend-sv`) on both sides (ADR-000867, PM-2026-041)
 - Self round-trip tests (marshal your own type, unmarshal it back) do not validate the wire — build contract tests from raw JSON exactly as the other side sends it (ADR-000867, PM-2026-041)
 
 ```typescript

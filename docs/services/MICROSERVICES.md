@@ -4,7 +4,7 @@ _Last reviewed: September 5, 2026_
 
 ## Overview
 
-Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームです。Docker Compose がオーケストレーションの source of truth です。AI / Recap / RAG / Acolyte / Sovereign / logging / observability / PKI / Pact はすべて本番 `include:` チェーン（`compose/compose.yaml`）に入っている。profiled-only は `alt-perf` / `k6`（profile `perf`）と `docker-socket-proxy` / `restic-backup`（profile `backup`）の **4** 本で、include チェーンの中で `profiles:` を宣言しているのはこの 4 本だけ。本番 include チェーンは **77 declared / 63 long-running**（ephemeral 10 + profiled 4）。accidental OSU cap は **16**（`*-logs` のみ）。会計の正本は [[ops-surface-budget]] / [[000979]]。
+Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームです。Docker Compose がオーケストレーションの source of truth です。AI / Recap / RAG / Acolyte / Sovereign / logging / observability / PKI / Pact はすべて本番 `include:` チェーン（`compose/compose.yaml`）に入っている。profiled-only は `alt-perf` / `k6`（profile `perf`）と `docker-socket-proxy` / `restic-backup`（profile `backup`）の **4** 本で、include チェーンの中で `profiles:` を宣言しているのはこの 4 本だけ。本番 include チェーンは **78 declared / 64 long-running**（ephemeral 10 + profiled 4、最新の構成は `compose/compose.yaml` の include チェーンおよび [[000979]] 参照）。accidental OSU cap は **16**（`*-logs` のみ）。会計の正本は [[ops-surface-budget]] / [[000979]]。
 
 > **インシデント対応・障害パターンの入口**: 症状起点の調査は [[runbooks/README|runbooks 索引]] (症状 → runbook 対応表)、横断的な障害パターン知識は [[runbooks/crystallized-knowledge]] (ADR 940 本 / PM 46 本の結晶化) から入る。
 
@@ -24,9 +24,9 @@ all interfaces and are out of scope here.
 
 | Service | Language | Host Port(s) | Compose File | Health Endpoint | Notes |
 |---------|----------|--------------|--------------|-----------------|-------|
-| plecto-proxy | Rust (PlectoProxy 0.11.1) | 80 → 8443, 8080 | core.yaml | `plecto healthz` / admin `/healthz` `/readyz` (:8080) | Edge/ingress; replaced nginx. Routes in `plecto/manifest.toml`。upstream は alt-frontend-sv / alt-backend / kratos / dashboard の 4 本 |
-| alt-frontend-sv | TypeScript (SvelteKit 2.x, Bun) | 4173 | core.yaml | `/health` | Knowledge Home admin at `/admin/knowledge-home` |
-| alt-backend | Go 1.26.6 (Echo) | 9000, 9101, 9102 | core.yaml | `/v1/health` (:9000), `/health` `/health/deep` (:9110) | User-facing API。Knowledge Home の admin / reproject API は持つが projector 本体は knowledge-sovereign 側 |
+| plecto-proxy | Rust (PlectoProxy 0.11.1) | 80 → 8443, 8080 | core.yaml | `plecto healthz` / admin `/healthz` `/readyz` (:8080) | Edge/ingress; replaced nginx. Routes in `plecto/manifest.toml`。upstream は alt-frontend-sv / alt-backend / kratos の 3 本 |
+| alt-frontend-sv | TypeScript (SvelteKit 2.x, Bun) | 4173 | core.yaml | `/health` | メイン FE。`/home`（Knowledge Home、今日の入口）/ `/knowledge/trail`（resume surface）/ `/feeds`（フィード一覧・購読管理）/ `/admin/knowledge-home`（Knowledge Home admin） |
+| alt-backend | Go 1.26.6 (Echo) | 9000, 9101, 9102 | core.yaml | `/v1/health` (:9000), `/health` `/health/deep` (:9110) | User-facing API。Knowledge Home の admin / reproject API は持つが projector 本体は knowledge-sovereign 側。rag-orchestrator hop へ `X-Alt-Tenant-Id` を forward ([[000905]]) |
 | alt-harvester | Go 1.26.6 | なし | core.yaml | `/health` (:9110) | 7 定期ジョブ専用。業務リスナーなし |
 | alt-notifier | Go 1.26.6 | なし | core.yaml | `/health` (:9110) | `push_deliveries` を drain して Web Push を送る。VAPID 秘密鍵はこのコンテナのみ。API を持たない |
 | alt-data-hub | Go 1.26.6 | なし | core.yaml | `/health` (:9110)、`/health/deep` は mTLS `:9443` 側 | alt-db の唯一のオーナー。業務面は mTLS `:9443` のみ |
@@ -178,7 +178,7 @@ Knowledge Home / Knowledge Trail の projector はこのサービスが持つ
 | meilisearch | Meilisearch v1.27.0 | 7700 | db.yaml | `/health` |
 | clickhouse | ClickHouse 25.9 | 8123, 9009 → 9000 | db.yaml | `/ping` |
 | redis-streams | Redis 8.4.5-alpine | 6380 → 6379 | mq.yaml | `redis-cli ping` |
-| redis-cache | Redis 8.0.2-alpine | なし | ai.yaml | `redis-cli ping` |
+| redis-cache | Redis 8.4.5-alpine | なし | ai.yaml | `redis-cli ping` |
 
 DB の所有関係は 1 サービス 1 DB ではない。`db`（alt-db）だけが alt-data-hub 専有で、
 `recap-db` / `rag-db` / `acolyte-db` / `kratos-db` / `knowledge-sovereign-db` /
@@ -187,6 +187,7 @@ DB の所有関係は 1 サービス 1 DB ではない。`db`（alt-db）だけ�
 ### Observability Services
 | Service | Language / Image | Host Port(s) | Compose File | Health Endpoint |
 |---------|------------------|--------------|--------------|-----------------|
+| docker-socket-proxy-ro | tecnativa/docker-socket-proxy:v0.4.2 | なし | logging.yaml | `wget -q --spider http://127.0.0.1:2375/version` |
 | rask-log-aggregator | Rust (Axum) | なし（:9600, :4317, :4318 は内部のみ） | logging.yaml | `/rask-log-aggregator healthcheck` |
 | rask-log-forwarder (16x) | Rust | なし | logging.yaml | `/rask-log-forwarder healthcheck` |
 | prometheus | prom/prometheus v3.1.0 | 9090 | observability.yaml | `/-/healthy` |
@@ -243,7 +244,7 @@ forwarder は 16 本ちょうどで、これが accidental OSU cap そのもの�
 | Name | 状態 |
 |------|------|
 | nginx | plecto-proxy に置換済み。`nginx/` のコンフィグは読み込まれていない。include チェーンに `nginx` サービスは存在しない（`nginx-logs` は forwarder の名前が残っているだけ） |
-| alt-frontend | Next.js 版フロントエンド。削除済み。[docs/alt-frontend.md](./alt-frontend.md) は歴史記録 |
+| alt-frontend | Next.js 版フロントエンド。削除済み（実体なし、歴史記録） |
 | pki-agent サイドカー | 14 本すべて退役（[[000978]]）。親プロセスの in-process enrollment に置換 |
 | sidecar-proxy | `alt-backend/sidecar-proxy` にコードと Dockerfile はあるが、compose ワークロードとしては宣言されていない |
 | genre-classifier | ソースなし（`.venv` の残骸のみ）。compose 参照ゼロ |
@@ -273,7 +274,7 @@ forwarder は 16 本ちょうどで、これが accidental OSU cap そのもの�
 | acolyte.yaml | acolyte-db, acolyte-db-migrator, acolyte-orchestrator | - |
 | sovereign.yaml | knowledge-sovereign-db, knowledge-sovereign-db-migrator, knowledge-sovereign | - |
 | pki.yaml | step-ca, step-ca-bootstrap（workload pki-agent sidecar は 0。enrollment は親 in-process） | - |
-| logging.yaml | rask-log-aggregator, 16x rask-log-forwarder | - |
+| logging.yaml | docker-socket-proxy-ro, rask-log-aggregator, 16x rask-log-forwarder | - |
 | observability.yaml | prometheus, alertmanager, grafana, cadvisor | - |
 | pact.yaml | pact-db, pact-broker | - |
 | perf.yaml | alt-perf, k6 | `perf` |
@@ -373,8 +374,8 @@ flowchart TB
         redis-cache[(Redis cache)]
     end
 
-    %% Request flow (plecto upstreams: alt-frontend-sv, alt-backend, kratos, dashboard)
-    plecto-proxy --> alt-frontend-sv & alt-backend & kratos & dashboard
+    %% Request flow (plecto upstreams: alt-frontend-sv, alt-backend, kratos)
+    plecto-proxy --> alt-frontend-sv & alt-backend & kratos
     alt-frontend-sv --> alt-butterfly-facade --> alt-backend
     alt-backend --> mq-hub & auth-hub
     auth-hub --> kratos --> kratos-db
@@ -734,7 +735,6 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 | alt-harvester | [docs/alt-backend.md](./alt-backend.md) (同一モジュール。分割の根拠は [[000954]]) |
 | alt-notifier | [docs/alt-backend.md](./alt-backend.md) (同一モジュール。4 本目のバイナリ) |
 | alt-data-hub | [docs/alt-backend.md](./alt-backend.md) (同一モジュール。分割の根拠は [[000954]]) |
-| alt-frontend | [docs/alt-frontend.md](./alt-frontend.md) (removed — 歴史記録) |
 | alt-frontend-sv | [docs/alt-frontend-sv.md](./alt-frontend-sv.md) |
 | alt-butterfly-facade | [docs/alt-butterfly-facade.md](./alt-butterfly-facade.md) |
 | pre-processor | [docs/pre-processor.md](./pre-processor.md) |
@@ -754,7 +754,7 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 | rag-db | [docs/rag-db.md](./rag-db.md) |
 | acolyte-orchestrator | [docs/acolyte-orchestrator.md](./acolyte-orchestrator.md) |
 | acolyte-db | [docs/acolyte-db.md](./acolyte-db.md) |
-| knowledge-sovereign | [[wiki/services/knowledge-sovereign]]（docs/services 側のページはまだない） |
+| knowledge-sovereign | [docs/knowledge-sovereign.md](./knowledge-sovereign.md) |
 | rask-log-aggregator | [docs/rask-log-aggregator.md](./rask-log-aggregator.md) |
 | rask-log-forwarder | [docs/rask-log-forwarder.md](./rask-log-forwarder.md) |
 | rask-logging-architecture | [docs/rask-logging-architecture.md](./rask-logging-architecture.md) |
@@ -764,11 +764,18 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 | alt-perf | [docs/alt-perf.md](./alt-perf.md) |
 | metrics | [docs/metrics.md](./metrics.md) |
 | sidecar-proxy | [docs/sidecar-proxy.md](./sidecar-proxy.md)（compose ワークロードではない） |
+| clickhouse | [docs/clickhouse.md](./clickhouse.md) |
+| kratos | [docs/kratos.md](./kratos.md) |
+| kratos-db | [docs/kratos-db.md](./kratos-db.md) |
+| meilisearch | [docs/meilisearch.md](./meilisearch.md) |
+| pre-processor-db | [docs/pre-processor-db.md](./pre-processor-db.md) |
+| redis-cache | [docs/redis-cache.md](./redis-cache.md) |
+| redis-streams | [docs/redis-streams.md](./redis-streams.md) |
 
-`plecto-proxy` / `alt-notifier` / `rerank-local` / `knowledge-embedder-local` /
+`plecto-proxy` / `rerank-local` / `knowledge-embedder-local` /
 `prometheus` / `alertmanager` / `grafana` / `cadvisor` / `pgbouncer` / `pact-broker`
 には専用のサービスページがまだない。plecto のルーティングは
-`plecto/manifest.toml` と [[wiki/services/nginx]]（歴史記録）を参照。
+`plecto/manifest.toml` を参照。
 
 ---
 
@@ -782,7 +789,7 @@ docker compose -f compose/compose.yaml -p alt exec kratos \
 - **alt-db 以外の DB は各サービス直結**。recap-db は recap-worker / recap-subworker / dashboard / recap-evaluator、rag-db は rag-orchestrator、acolyte-db は acolyte-orchestrator、kratos-db は kratos（pgbouncer-kratos 経由）、knowledge-sovereign-db は knowledge-sovereign、pre-processor-db は pre-processor / pre-processor-sidecar が持つ
 - GPU requirements: news-creator-backend, knowledge-embedder-local, recap-subworker（NVIDIA）。dashboard は `utility` capability で GPU を予約するが監視用途。rerank-local は CPU。knowledge-augur / knowledge-embedder は standalone overlay 側で AMD / Vulkan
 - Log aggregation: rask-log-forwarder (16x) → rask-log-aggregator → ClickHouse (`rask_logs`)
-- Metrics: prometheus → alertmanager / grafana。4 バイナリはそれぞれ独立した scrape job
+- Metrics: prometheus → alertmanager / grafana。4 バイナリはそれぞれ独立した scrape job。Prometheus は multi-window burn-rate SLO alert の実体 ([[000980]])
 - **mTLS leaf ライフサイクル**: 14 親が in-process enrollment を所有する。pki-agent は compose ワークロードではない（[[000978]]）。ホスト cutover の前提は 14 JWK ファイル + subject-scoped provisioner + 新イメージ（runbook [[pki-agent-recovery]]）。本カタログはデプロイ済みを主張しない
 - Tag Verse (3D tag cloud): alt-backend `alt.articles.v2` `FetchTagCloud` RPC → Barnes-Hut O(n log n) server-side layout → alt-frontend-sv (Three.js/Threlte v8 WebGPU); tag co-occurrence data は alt-data-hub の `services.datahub.v1` `FetchTagCloud` capability 経由（`feed_tags` × `article_tags` CTE query）、alt-backend 側で 30 min TTL キャッシュ。usecase は `shared/usecase/fetch_tag_cloud_usecase`。定期ジョブ `tag-cloud-cache-warmer` は [[000954]] Wave 1 で廃止され、初回リクエスト時の遅延ウォームに置き換わっている（プロセス内キャッシュを別プロセスから温めても効かないため）
-- **Knowledge Home / Knowledge Trail は knowledge-sovereign-db が持つ**。alt-db 側の `knowledge_events` / `knowledge_home_items` / `knowledge_user_events` / `knowledge_projection_checkpoints` / `knowledge_backfill_jobs` / `knowledge_projection_versions` / `knowledge_lenses` / `knowledge_reproject_runs` / `knowledge_projection_audits` は `20260323100000_drop_sovereign_tables.sql` で、`knowledge_trail_footprints` / `knowledge_trail_branches` は `20260611000002_drop_misplaced_trail_tables.sql` で DROP 済み。projector 本体（`knowledge_home_projector` / `knowledge_trail_projector`）は knowledge-sovereign にある。alt-backend が持つのは admin / reproject の API 面（`KnowledgeHomeAdminService`、loopback オペレータリスナー `:9102`）で、実処理は Connect-RPC で knowledge-sovereign に委譲する。altctl は `home reproject` / `home slo` を持ち、フロントの admin 画面は `/admin/knowledge-home`
+- **Knowledge Home / Knowledge Trail は knowledge-sovereign-db が持つ**。alt-db 側の `knowledge_events` / `knowledge_home_items` / `knowledge_user_events` / `knowledge_projection_checkpoints` / `knowledge_backfill_jobs` / `knowledge_projection_versions` / `knowledge_lenses` / `knowledge_reproject_runs` / `knowledge_projection_audits` は `20260323100000_drop_sovereign_tables.sql` で、`knowledge_trail_footprints` / `knowledge_trail_branches` は `20260611000002_drop_misplaced_trail_tables.sql` で DROP 済み。projector 本体（`knowledge_home_projector` / `knowledge_trail_projector`）は knowledge-sovereign にある。旧 Knowledge Loop 向けの projector・read model は [[000940]] で DROP 済み。alt-backend が持つのは admin / reproject の API 面（`KnowledgeHomeAdminService`、loopback オペレータリスナー `:9102`）で、実処理は Connect-RPC で knowledge-sovereign に委譲する。altctl は `home reproject` / `home slo` を持ち、フロントの admin 画面は `/admin/knowledge-home`

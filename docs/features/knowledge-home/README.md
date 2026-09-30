@@ -2,7 +2,7 @@
 
 Knowledge Home is Alt's central knowledge discovery surface. It transforms raw RSS articles into a personalized, explainable feed where every item tells you *why* it appeared. Built on an **immutable, event-sourced CQRS architecture**, Knowledge Home treats events as the source of truth and read models as disposable projections that can be rebuilt at any time.
 
-The system spans multiple services: **alt-backend** hosts the projectors and API handlers, **knowledge-sovereign** owns all durable state via a dedicated database, and **alt-frontend-sv** renders the UI through a BFF layer. External services like **pre-processor** (summaries) and **tag-generator** (tags) feed events into the pipeline.
+The system spans multiple services: **alt-backend** hosts the API handlers and usecases, **knowledge-sovereign** owns all durable state, the event log, and the projectors (ADR 000944) via a dedicated database, and **alt-frontend-sv** renders the UI through a BFF layer. External services like **pre-processor** (summaries) and **tag-generator** (tags) feed events into the pipeline.
 
 ```mermaid
 graph LR
@@ -15,13 +15,11 @@ graph LR
   subgraph "alt-backend"
     API["Connect-RPC<br/>Handlers"]
     UC["Usecases"]
-    KP["Knowledge<br/>Projector"]
-    RP["Recall<br/>Projector"]
-    BF["Backfill<br/>Job"]
   end
 
   subgraph "knowledge-sovereign"
     EV["knowledge_events"]
+    KP["Knowledge<br/>Projector"]
     HI["knowledge_home_items"]
     TD["today_digest_view"]
     RC["recall_candidate_view"]
@@ -35,16 +33,16 @@ graph LR
   RSS --> API
   PP -->|SaveArticleSummary| API
   TG -->|SaveArticleTags| API
-  API --> UC --> EV
+  API --> UC
+  UC -->|AppendKnowledgeEvent| EV
   KP -->|consume events| EV
   KP -->|write| HI
   KP -->|write| TD
-  RP -->|write| RC
-  BF -->|synthetic events| EV
+  KP -->|write| RC
   FE --> BFF --> API
-  API -->|read| HI
-  API -->|read| TD
-  API -->|read| RC
+  API -->|read via Connect-RPC| HI
+  API -->|read via Connect-RPC| TD
+  API -->|read via Connect-RPC| RC
 ```
 
 ## Reading Order
@@ -78,18 +76,18 @@ graph LR
 | Area | Path |
 |------|------|
 | Domain models | `alt-backend/app/domain/knowledge_event.go`, `knowledge_home_item.go`, `today_digest.go`, `recall_candidate.go`, `recall_signal.go` |
-| Projectors | `alt-backend/app/job/knowledge_projector.go`, `recall_projector.go` |
-| Projector runner | `alt-backend/app/job/knowledge_projector_runner.go` |
-| API handler | `alt-backend/app/connect/v2/knowledge_home/handler.go` |
-| Admin handler | `alt-backend/app/connect/v2/knowledge_home_admin/handler.go` |
-| Port interfaces | `alt-backend/app/port/knowledge_home_port/`, `today_digest_port/`, `recall_candidate_port/`, `recall_signal_port/`, `knowledge_event_port/` |
+| Projectors | `knowledge-sovereign/app/usecase/knowledge_home_projector/` |
+| Projector runner / workers | `knowledge-sovereign/app/main_workers.go` |
+| API handler | `alt-backend/app/orchestrator/connect/v2/knowledge_home/handler.go` |
+| Admin handler | `alt-backend/app/orchestrator/connect/v2/knowledge_home_admin/handler.go` |
+| Port interfaces | `alt-backend/app/orchestrator/port/knowledge_home_port/`, `today_digest_port/`, `recall_candidate_port/`, `recall_signal_port/`, `alt-backend/app/shared/port/knowledge_event_port/` |
 | Sovereign service | `knowledge-sovereign/app/main.go`, `knowledge-sovereign/app/handler/` |
-| Sovereign client | `alt-backend/app/driver/sovereign_client/` (8 files: `client.go`, `read_client.go`, `write_ports.go`, `watch_client.go`, `signal_client.go`, `backfill_client.go`, `lens_client.go`, `reproject_client.go`) |
-| Sovereign proto | `proto/services/sovereign/v1/sovereign.proto` (43 RPCs) |
+| Sovereign client | `alt-backend/app/shared/driver/sovereign_client/` |
+| Sovereign proto | `proto/services/sovereign/v1/sovereign.proto` |
 | Public API proto | `proto/alt/knowledge_home/v1/knowledge_home.proto` |
 | Admin API proto | `proto/alt/knowledge_home/v1/knowledge_home_admin.proto` |
-| Feature flags | `alt-backend/app/domain/feature_flag.go`, `alt-backend/app/gateway/feature_flag_gateway/gateway.go` |
-| Migrations | `knowledge-sovereign/migrations/` (5 migrations) |
+| Feature flags | `alt-backend/app/domain/feature_flag.go`, `alt-backend/app/orchestrator/gateway/feature_flag_gateway/gateway.go` |
+| Migrations | `knowledge-sovereign/migrations/` |
 | Frontend hooks | `alt-frontend-sv/src/lib/hooks/useKnowledgeHome.svelte.ts`, `useRecallRail.svelte.ts`, `useLens.svelte.ts`, `useStreamUpdates.svelte.ts` |
 | Frontend components | `alt-frontend-sv/src/lib/components/knowledge-home/` |
 | BFF routing | `alt-butterfly-facade/internal/handler/proxy_handler.go`, `admin_proxy_handler.go` |

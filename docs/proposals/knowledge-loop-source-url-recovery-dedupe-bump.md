@@ -1,7 +1,7 @@
 ---
 title: Knowledge Loop の act_targets[].source_url を全レガシー entry に充填するため article-url-backfill dedupe namespace を bump して再 emit する
 date: 2026-05-02
-status: proposed
+status: historical
 tags:
   - knowledge-loop
   - knowledge-home
@@ -13,6 +13,8 @@ aliases:
 ---
 
 # Knowledge Loop ActTarget.source_url 充填のための dedupe namespace bump 提案
+
+> Historical record — Knowledge Loop was retired ([[000940]]) and superseded by Knowledge Trail. Not a current contract.
 
 ## Status
 
