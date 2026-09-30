@@ -164,7 +164,7 @@ golangci-lint rule that only runs in CI.
 | Go | `go.mod` | `go test ./...` | `*_test.go`, same package | `driver/contract/` or `internal/adapter/contract/` |
 | Python | `pyproject.toml` | `uv run pytest` | `tests/test_*.py` | `tests/contract/` |
 | Rust | `Cargo.toml` | `cargo test` | `#[cfg(test)]` or `tests/*.rs` | `src/clients/*_contract.rs` (`#[ignore]`) |
-| TypeScript | `bun.lockb` | `bun test` | `*.test.ts` / `*.spec.ts` | `src/test/contracts/` |
+| TypeScript | `bun.lock` | `bun run test` | `*.test.ts` / `*.spec.ts` | `src/test/contracts/` |
 | Deno | `deno.json` | `deno test` | `tests/*_test.ts` | — |
 
 Go CDC tests need `CGO_ENABLED=1 go test -tags=contract`; Rust needs `-- --ignored`. E2E runner

@@ -6,11 +6,12 @@ Alt のスタックに合わせた言語別の危険パターン集。各項目�
 公式 URL は項目末に添える。
 
 ## Contents
-- Go 1.26+
-- Rust 1.94+
-- Python 3.14+
-- TypeScript / Svelte / Bun
-- Deno 2.x
+- [Go 1.26+](#go-126)
+- [Rust 1.94+](#rust-194)
+- [Python 3.14+](#python-314)
+- [TypeScript / Svelte / Bun](#typescript--svelte--bun)
+- [Deno 2.x](#deno-2x)
+- [使い方](#使い方)
 
 ---
 

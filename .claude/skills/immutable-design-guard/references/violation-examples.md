@@ -152,7 +152,7 @@ NULL に戻り、`current - 1` で counter が負数になりうる。
 これを忘れると、稀に発生する race で負数や missing が出続け、
 原因特定が極めて遅くなる。
 
-> 関連: memory `feedback_merge_safe_upsert.md`
+> 一次出典: `docs/ADR/000870.md` §D-4 (UpsertKnowledgeHomeItem の merge-safe 整流), `docs/ADR/000886.md` §Context Bug B, §Decision 2 (today_digest_view の merge-safe upsert)
 
 ---
 

@@ -1,21 +1,21 @@
 # OWASP Top 10:2025 — Review Reference
 
-公式出典: https://owasp.org/Top10/2025/ （2026 年 1 月公開、Web Application 向け最新版）
+公式出典: https://owasp.org/Top10/2025/ （2026 年 1 月公開）
 
 **注意:** これは 2021 版からの更新であり、Web App 全体向けの「2026 版」は存在しない。
 一方、agentic / LLM コードには別建ての `agentic-top10-2026.md` を併用する。
 
 ## Contents
-- A01:2025 Broken Access Control
-- A02:2025 Security Misconfiguration
-- A03:2025 Software Supply Chain Failures (new)
-- A04:2025 Cryptographic Failures
-- A05:2025 Injection
-- A06:2025 Insecure Design
-- A07:2025 Authentication Failures
-- A08:2025 Software or Data Integrity Failures
-- A09:2025 Security Logging and Alerting Failures
-- A10:2025 Mishandling of Exceptional Conditions (new)
+- [A01:2025 Broken Access Control](#a012025-broken-access-control)
+- [A02:2025 Security Misconfiguration](#a022025-security-misconfiguration)
+- [A03:2025 Software Supply Chain Failures (new)](#a032025-software-supply-chain-failures新規)
+- [A04:2025 Cryptographic Failures](#a042025-cryptographic-failures)
+- [A05:2025 Injection](#a052025-injection)
+- [A06:2025 Insecure Design](#a062025-insecure-design)
+- [A07:2025 Authentication Failures](#a072025-authentication-failures)
+- [A08:2025 Software or Data Integrity Failures](#a082025-software-or-data-integrity-failures)
+- [A09:2025 Security Logging and Alerting Failures](#a092025-security-logging-and-alerting-failures)
+- [A10:2025 Mishandling of Exceptional Conditions (new)](#a102025-mishandling-of-exceptional-conditions新規)
 
 ---
 

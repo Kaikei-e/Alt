@@ -1,7 +1,7 @@
 # TypeScript — Alt の規約
 
-詳細な根拠とコード例は `docs/best_practices/typescript.md`（857 行）の該当セクションだけを Read する。
-セクション: Strict Configuration, Type Safety, Discriminated Unions, Error Handling, Async Patterns, Zod Validation, Module Design
+詳細な根拠とコード例は `docs/best_practices/typescript.md` の該当セクションだけを Read する。
+セクション: TypeScript Strict Configuration, Type Safety Fundamentals, Discriminated Unions & Exhaustiveness, Branded Types & Nominal Typing, Enum Alternatives, Error Handling, Import Organization, Generics Best Practices, Svelte 5 Runes — State Management, Svelte 5 Component Patterns, SvelteKit Routing & Data Loading, API Client Patterns, Testing with Vitest, Performance & Bundle, Biome Linting & Formatting, Startup Configuration Fail-Fast, String & URL Handling Pitfalls, Connect-RPC (connect-es) Pitfalls, DTO Mapping & Wire Contracts, Client-Side Throttling & Periodic Tasks
 
 `alt-frontend-sv` のコンポーネント / load 関数を触るときは `references/svelte.md` も併せて適用する。
 
@@ -13,8 +13,8 @@
 4. **satisfies でリテラル推論保持**: `Record<string, string>` 等で型チェックしつつリテラル型を維持
 5. **verbatimModuleSyntax**: `import type { T }` で型のみインポートを明示
 6. **判別共用体 + exhaustiveness**: tagged union + `satisfies never` で網羅性チェック
-7. **Zod でランタイムバリデーション**: API 境界は Zod スキーマで型とバリデーションを一元管理
-8. **起動時 env 検証で fail-fast**: 必須 env（認証トークン等）欠落は Zod で throw。「認証なしで動き続ける」フォールバック禁止（→ `.claude/rules/di-wiring.md`）
+7. **Valibot でランタイムバリデーション**: API 境界は Valibot スキーマ（`v.object({...})` / `v.parse` / `v.safeParse`）で型とバリデーションを一元管理（alt-frontend-sv は Zod ではなく Valibot を採用、`package.json` 参照）
+8. **起動時 env 検証で fail-fast**: 必須 env（認証トークン等）欠落は起動時に throw（alt-frontend-sv は Valibot スキーマで検証）。「認証なしで動き続ける」フォールバック禁止（→ [.claude/rules/di-wiring.md](../../../rules/di-wiring.md)）
 9. **redirect パラメータは URL パースで検証**: 文字列先頭チェックは `//evil.com` で破られる
 10. **connect-es エラーは numeric enum + ラップ前提**: `ConnectError.code` は数値 enum（string 比較は全エラーが default 行き）。native AbortError は ConnectError にラップされ `err.name` では捕まらない。エラーマッピングのテストは real ConnectError で書く
 11. **wire スキーマは canonical 一本**: producer/consumer での型再宣言は wire drift の温床。生成型 / 共有スキーマを両側で import。protojson は zero-value field を JSON から省略するので受信側は default 前提で読む

@@ -9,6 +9,16 @@ argument-hint: "[決定の対象] [--only-docs]"
 
 **§1 実装確認 → §2 ADR 執筆** の順に実行する。このスキルはデプロイをしない（§4）。
 
+### ワークフロー
+
+- [ ] 1. 実装確認: 対象サービスのテスト実行（green を確認、または `--only-docs` でスキップ）
+- [ ] 2. 採番: `docdag new "<ADR タイトル>" --dry-run --format json` で空き番号とパスを取得
+- [ ] 3. 執筆: `docs/ADR/template.md` の見出し順に従い `docs/ADR/NNNNNN.md` を作成
+- [ ] 4. 検証: `docdag validate --touching docs/ADR/NNNNNN.md`（エラーが出たら修正して再検証）
+- [ ] 5. 旧 ADR 更新: `supersedes` 対象があれば、その旧 ADR の `status` を `superseded` に更新
+- [ ] 6. コミット: コードと ADR を同一コミットに記録（英語 1 行メッセージ、push はしない）
+- [ ] 7. 完了報告: パス、タイトル、テスト結果、validate 結果を報告
+
 ## §1. 実装確認
 
 ADR は「動いた状態」を固定する記録なので、先に最低限のテストを green にする。
@@ -16,10 +26,11 @@ ADR は「動いた状態」を固定する記録なので、先に最低限の�
 
 | 変更の種類 | 回すコマンド |
 |---|---|
-| Go service | `go test ./...`（alt-backend / harvester / datahub は `alt-backend/app` で一括） |
+| Go service | `cd alt-backend/app && go test ./...`（alt-backend / harvester / notifier / datahub 一括）または各サービスディレクトリで `go test ./...` |
 | Rust service | `cargo test` |
-| TypeScript / Svelte (alt-frontend-sv) | `bun run check && bun test` |
-| Python (news-creator 等) | `uv run pytest` |
+| TypeScript / Svelte (alt-frontend-sv) | `cd alt-frontend-sv && bun run check && bun run test` |
+| Python (news-creator) | `cd news-creator/app && uv run pytest` |
+| Python (tag-generator) | `cd tag-generator/app && uv run pytest` |
 | ドキュメント・scripts のみ | 該当テストだけ（例: `bash tests/scripts/run.sh`） |
 
 テストが落ちていたら ADR は書かず、原因を報告して止まる。ADR は動いた実装の決定記録であり、
@@ -67,7 +78,7 @@ Write する（勝手に増減しない）。**`docdag new` に実際にファ�
 ### 2.3 本文ルール
 
 - **日本語で書く。** サービス名 / コマンド / ライブラリ名 / ファイルパスは英語のまま
-- **`## Status` → `## Context` → `## Decision` → `## Consequences` の4見出しは `docdag.yaml` の
+- **`## Status` → `## Context` → `## Decision` → `## Consequences` の 4 見出しは `docdag.yaml` の
   `sections:` で強制されている**（`missing_section` / `section_order` エラー）。改名・翻訳・
   順序変更・省略はしない。Consequences 配下の Pros / Cons/Tradeoffs、Related ADRs 等その他の
   見出しは任意で、`template.md` の並びを尊重する
@@ -91,9 +102,16 @@ bugfix, monitoring, logging, ai, rag, recap, nats, queue, 3d-graphics
 
 ### 2.5 情報衛生
 
-Alt は OSS として公開されている。本番 IP / 本番ドメイン / 秘匿ポート、資格情報・API キー・
-シークレット、社内・個人的なサーバー名、個人名・組織名（公開コントリビューターを除く）は
-含めない。`localhost:XXXX` と compose サービス名は OK。
+Alt は OSS として公開されている。以下を含めない:
+- 本番 IP / 本番ドメイン / 秘匿ポート
+- 資格情報・API キー・シークレット類
+- プライベートリポジトリの内部識別子（デプロイ workflow 名 / job 名 / 変数名 / ゲート条件等、`docs/CLAUDE.md` §ルール「このリポジトリは public」参照）
+- 社内・個人的なサーバー名
+- ハードウェア構成・GPU モデル名・VRAM 容量（`docs/CLAUDE.md` §ルール「このリポジトリは public」参照）
+- 個人名・組織名（公開コントリビューターを除く）
+
+`localhost:XXXX` と compose サービス名は OK。
+振る舞い（何が起きるか、運用者が何をすべきか、`docs/CLAUDE.md` §ルール「このリポジトリは public」参照）で記述する。
 
 ### 2.6 書き込みと検証
 
@@ -105,14 +123,16 @@ Write ツールで `docs/ADR/NNNNNN.md` を作る（heredoc や `cat > ...` は�
 docdag validate --touching docs/ADR/NNNNNN.md
 ```
 
+**validate → fix → repeat ループ:**
+`docdag validate --touching docs/ADR/NNNNNN.md` を実行し、findings があれば修正して再検証を繰り返す。
 `--touching` はコーパス全体を検査したうえで、そのファイルと、そこから典型 edge 1 ホップで
 つながる文書に関する findings だけを表示する。終了コードはコーパス全体で判定されるので、
 絞り込んでも壊れたリポジトリが緑になることはない。検出されるのは循環（`supersedes` と
 `depends-on` の和集合をまたぐ循環も含む）・dangling 参照・`empty_edge`（`supersedes:` /
-`depends-on:` と書いて中身が空）・status ドリフト・`missing_section` / `section_order`（4見出し
+`depends-on:` と書いて中身が空）・status ドリフト・`missing_section` / `section_order`（4 見出し
 の欠落・順序違い）・`unmanaged_file`（`docs/ADR/` 直下の野良 Markdown）・`superseded_orphan`
 （誰も置き換えていない文書の `status: superseded`）・本文の壊れた `[[000NNN]]` リンク。この
-リポジトリでは上記すべて warning ではなく error。非ゼロ終了なら frontmatter を直す。
+リポジトリでは上記すべて warning ではなく error。非ゼロ終了なら frontmatter や見出しを直す。
 
 DocDag プラグインの `PostToolUse` フックが入っていれば、`docs/ADR/` 配下への Write のたびに
 同じチェックが自動で走る。fail-closed 設計なので、docdag が想定外の終了コードを返すと
@@ -147,4 +167,5 @@ DB マイグレーションが絡む場合は必ず `migrate → deploy` の順 
 - `docs/ADR/template.md` — セクションと frontmatter のソース。§2.1 で必ず Read する
 - `docs/runbooks/deploy.md` ([[deploy]]) — §4 でデプロイを指示されたときだけ読む
 - `docs/runbooks/pact-broker-ops.md` ([[pact-broker-ops]]) — Broker 運用が ADR の対象になったとき
-- `docs/CLAUDE.md` — vault 全体の編集ルール。許可タグを増やすときに更新する
+- `docs/CLAUDE.md` — vault 全体の編集ルール
+- `docdag.yaml` — ADR DAG 検証設定（セクション順序、不変条件、edge ルール）

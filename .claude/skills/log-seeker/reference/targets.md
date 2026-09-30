@@ -3,15 +3,15 @@
 What to inspect and exactly how to reach it. Everything here is **read-only**.
 
 ## Contents
-- Log pipeline topology
-- General rules (secrets, env, masking)
-- Container logs (`docker compose logs`)
-- PostgreSQL databases (matrix + connect recipe)
-- Key tables (alt-db / knowledge-sovereign-db / others)
-- ClickHouse (`rask_logs`) — tables + connect recipe
-- pgbouncer (connection pools)
-- Redis Streams (mq-hub queue)
-- Meilisearch
+- [Log pipeline topology](#log-pipeline-topology)
+- [General rules](#general-rules)
+- [Container logs](#container-logs)
+- [PostgreSQL databases](#postgresql-databases)
+- [Key tables](#key-tables)
+- [ClickHouse (`rask_logs`)](#clickhouse-rask_logs)
+- [pgbouncer (connection pools)](#pgbouncer-connection-pools)
+- [Redis Streams (mq-hub queue)](#redis-streams-mq-hub-queue)
+- [Meilisearch](#meilisearch)
 
 ## Log pipeline topology
 
@@ -26,11 +26,12 @@ container stdout/stderr
 ```
 
 Forwarder services (all `ghcr.io/<owner>/alt-rask-log-forwarder`, in `compose/logging.yaml`):
-`nginx-logs`, `alt-backend-logs`, `auth-hub-logs`, `tag-generator-logs`, `pre-processor-logs`,
-`search-indexer-logs`, `news-creator-logs`, `news-creator-backend-logs`, `recap-worker-logs`,
-`recap-subworker-logs`, `recap-evaluator-logs`, `dashboard-logs`, `rag-orchestrator-logs`,
-`mq-hub-logs`. The aggregator (`rask-log-aggregator`) only exposes `/v1/health`, `/v1/aggregate`,
-and OTLP `/v1/logs` + `/v1/traces` — there is **no log query API**; go to ClickHouse.
+`nginx-logs`, `alt-backend-logs`, `alt-harvester-logs`, `alt-data-hub-logs`, `auth-hub-logs`,
+`tag-generator-logs`, `pre-processor-logs`, `search-indexer-logs`, `news-creator-logs`,
+`news-creator-backend-logs`, `recap-worker-logs`, `recap-subworker-logs`, `recap-evaluator-logs`,
+`dashboard-logs`, `rag-orchestrator-logs`, `mq-hub-logs`. The aggregator (`rask-log-aggregator`)
+only exposes `/v1/health`, `/v1/aggregate`, and OTLP `/v1/logs` + `/v1/traces` — there is
+**no log query API**; go to ClickHouse.
 
 ## General rules
 
@@ -42,7 +43,7 @@ and OTLP `/v1/logs` + `/v1/traces` — there is **no log query API**; go to Clic
   works inside the container with no password and no `-h`.
 - Mask production hostnames/domains in any quoted output.
 - Compose handle used everywhere: `docker compose -f compose/compose.yaml -p alt …`
-  (the repo also exposes profiles `db|auth|core|workers|ai|rag|recap|logging|observability`).
+  (stacks are composed via `compose/compose.yaml` `include:` directives, not root-level `--profile` flags).
 
 ## Container logs
 
@@ -60,13 +61,13 @@ docker inspect --format '{{.RestartCount}} OOM={{.State.OOMKilled}} exit={{.Stat
 | Service / container | Port (host) | DB name var (default) | User var (default) | Password secret | Migrations dir | Owns |
 |---|---|---|---|---|---|---|
 | `db` / `alt-db` | 5432 | `$POSTGRES_DB` | `$POSTGRES_USER` (`alt_db_user`) | `postgres_password` | `migrations-atlas/migrations/` | RSS working set + summaries + reports + outbox |
-| `knowledge-sovereign-db` | 5438 | `$POSTGRES_DB` (`knowledge_sovereign`) | `$POSTGRES_USER` (`sovereign`) | `postgres_password` | `knowledge-sovereign/migrations/` | **the immutable knowledge model** (events, projections, OODA loop) |
+| `knowledge-sovereign-db` | 5438 | `$POSTGRES_DB` (`knowledge_sovereign`) | `$POSTGRES_USER` (`sovereign`) | `sovereign_db_password` | `knowledge-sovereign/migrations/` | **the immutable knowledge model** (events, projections, OODA loop) |
 | `pre-processor-db` | 5437 | `$POSTGRES_DB` (`pre_processor`) | `$POSTGRES_USER` (`pp_user`) | `pp_db_password` | `pre-processor-migration-atlas/migrations/` | pre-processor working set |
 | `recap-db` | 5435 | `$POSTGRES_DB` (`recap`) | `$POSTGRES_USER` (`recap_user`) | `recap_db_password` | `recap-migration-atlas/migrations/` | 3-day recap artefacts |
 | `rag-db` | 5436 | `$POSTGRES_DB` (`rag_db`) | `$POSTGRES_USER` (`rag_user`) | `rag_db_password` | `rag-migration-atlas/migrations/` | RAG / embeddings |
 | `acolyte-db` | 5439 | `$POSTGRES_DB` (`acolyte`) | `$POSTGRES_USER` (`acolyte_user`) | `acolyte_db_password` | `acolyte-migration-atlas/migrations/` | Acolyte reports/checkpoints |
 | `kratos-db` | 5434 | `$POSTGRES_DB` (`kratos`) | `$POSTGRES_USER` (`kratos_user`) | `kratos_db_password` | `kratos-db/init/` | identities (Ory Kratos); pooled via `pgbouncer-kratos` |
-| `pact-db` (`compose/pact.yaml`) | — | `pact` | — | — | — | Pact Broker (CI only) |
+| `pact-db` | — | `$POSTGRES_DB` (`pact`) | `$POSTGRES_USER` (`pact`) | `pact_db_password` | — | Pact Broker state (always-on stack via `compose/pact.yaml`) |
 
 Every one of these is a stock `postgres` image, so inside the container `$POSTGRES_USER`/`$POSTGRES_DB`
 hold the right values — the connect recipe below is identical for all of them.

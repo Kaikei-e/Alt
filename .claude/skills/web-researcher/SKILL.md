@@ -8,7 +8,7 @@ description: |
   error, migration guide or breaking change, or when the answer needs information newer than training
   data. Prefer plan-context-loader when the material lives in this repo's Obsidian vault rather than
   on the web, and the claude-api skill for Claude/Anthropic model, pricing and SDK questions.
-allowed-tools: WebSearch, WebFetch, Read, Write, Agent
+allowed-tools: WebSearch, WebFetch, Read, Agent
 argument-hint: <research topic or question> [--depth=shallow|deep] [--lang=en|ja]
 ---
 
@@ -26,6 +26,18 @@ argument-hint: <research topic or question> [--depth=shallow|deep] [--lang=en|ja
 
 `$ARGUMENTS` から調査対象・調査目的・深さ（`--depth=shallow` なら Phase 2 で打ち切り、
 既定は deep）・言語（`--lang=ja` なら日本語ソースも積極的に探す。既定は英語優先）を確定する。
+
+## Workflow
+
+Copy this checklist into your reply and tick items as you go:
+
+```
+web-researcher progress
+- [ ] Phase 1: 公式ドキュメント (Official docs)
+- [ ] Phase 2: 広範な文献 (Broader literature & tiering)
+- [ ] Phase 3: 深掘り (Edge cases & gotchas, deep only)
+- [ ] Phase 4: レポート (Structured report)
+```
 
 ## Phase 1: 公式ドキュメント
 

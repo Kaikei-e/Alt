@@ -9,7 +9,7 @@ description: |
   secrets, logging, error handling, dependency updates, or LLM/agent/RAG paths. Prefer the bundled
   /security-review for a quick pass over the current branch's pending diff, and the security-reviewer
   subagent when only the findings should come back and the file reads would flood the conversation.
-allowed-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, Agent
+allowed-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 argument-hint: <target path or PR> [--mode=baseline|diff] [--depth=shallow|deep]
 ---
 
@@ -78,7 +78,7 @@ Security Audit Progress:
 ### Step 1: Entry points and trust boundaries
 
 HTTP handler / gRPC endpoint / message consumer / CLI entry point を洗い出し、外部入力がどの信頼境界を
-跨いで到達するかを追う。
+跨いで到達するかを追う。リポジトリの境界不変条件は `.claude/rules/security-boundaries.md`（識別ヘッダ検証・SSRF allowlist・認証 fail-fast・SvelteKit XSS サニタイズ）を準拠規範とすること。
 
 ```bash
 grep -rn "func.*Handler\|func.*ServeHTTP\|e.GET\|e.POST" --include='*.go'      # Go
@@ -106,14 +106,14 @@ Failures / A09 Security Logging and Alerting Failures / A10 Mishandling of Excep
 ### Step 5: Supply chain (A03)
 
 ```bash
-cd <service>/app && go list -m -u all                    # Go
-cd <service>/app && cargo tree && cargo audit            # Rust
-cd <service>/app && uv pip list --outdated               # Python (uv)
-cd <service> && bun pm ls && bun audit                   # TypeScript (bun)
+cd <service>/app && go list -m -u all                    # Go (or service root for auth-hub, altctl, rag-orchestrator, alt-butterfly-facade, pki-agent)
+cd <crate-root> && cargo tree && cargo audit             # Rust (recap-worker/recap-worker, rask-*/app, plecto)
+cd <service>/app && uv pip list --outdated               # Python (uv; or service root for recap-subworker, metrics, recap-evaluator, acolyte-orchestrator)
+cd alt-frontend-sv && bun pm ls && bun audit             # TypeScript (bun; lockfile: alt-frontend-sv/bun.lock)
 ```
 
 観点: version pinning の振れ幅（`^` / `~`）、post-install script、最近追加された未知の package や
-GitHub URL 直指定、lockfile の drift。
+GitHub URL 直指定、lockfile の drift（`alt-frontend-sv/bun.lock` など）。
 
 ### Step 6: Agentic / LLM paths（該当時のみ）
 
