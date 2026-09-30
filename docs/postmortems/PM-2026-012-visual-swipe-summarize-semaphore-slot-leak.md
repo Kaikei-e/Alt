@@ -1,3 +1,13 @@
+---
+title: "PM-2026-012: Visual Swipe UI StreamSummarize タイムアウト — HybridPrioritySemaphore スロットリーク"
+date: 2026-03-27
+tags:
+  - postmortem
+  - news-creator
+  - semaphore
+  - slot-leak
+---
+
 # PM-2026-012: Visual Swipe UI StreamSummarize タイムアウト — HybridPrioritySemaphore スロットリーク
 
 ## メタデータ

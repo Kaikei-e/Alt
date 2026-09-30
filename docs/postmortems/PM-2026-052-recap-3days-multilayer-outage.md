@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: recap（window_days=3）の依存更新起点による多層障害と長期機能停止"
+date: 2026-07-08
+tags:
+  - postmortem
+  - recap-subworker
+  - recap-worker
+  - scikit-learn
+---
+
 # ポストモーテム: recap（window_days=3）の依存更新起点による多層障害と長期機能停止
 
 ## メタデータ

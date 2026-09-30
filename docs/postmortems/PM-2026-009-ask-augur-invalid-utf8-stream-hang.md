@@ -1,3 +1,13 @@
+---
+title: "PM-2026-009: Ask Augur チャットストリームが日本語テキストの不正 UTF-8 でフロントエンドに到達せず途中停止"
+date: 2026-03-26
+tags:
+  - postmortem
+  - rag-orchestrator
+  - ask-augur
+  - protobuf
+---
+
 # PM-2026-009: Ask Augur チャットストリームが日本語テキストの不正 UTF-8 でフロントエンドに到達せず途中停止
 
 ## メタデータ

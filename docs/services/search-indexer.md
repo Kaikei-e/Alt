@@ -10,6 +10,11 @@ _Last reviewed: September 5, 2026_
 - recap-worker のジャンルも同じデュアルフェーズパターンで `recaps` インデックスへ別途インデックス (`RECAP_WORKER_URL` 設定時のみ有効)
 - Clean Architecture レイヤーと共通トークナイザーを使用
 - OpenTelemetry (トレース・メトリクス・ログ) による可観測性
+- **設計原則 & 不変条件**:
+  - **alt-db データ所有権**: alt-db の所有権は alt-data-hub にあり ([[000954]])、search-indexer は Connect-RPC (mTLS) 経由で記事を取得する (DB 直接接続禁止)。
+  - **イベントペイロード最小化**: `alt:events:articles` の consumer として `article_id` のみを参照する ([[000953]] 段階 3)。
+  - **Disposable Index**: Meilisearch のインデックスは disposable であり、記事イベントログから常に再構築可能である。
+- **Secrets**: `meili_master_key`, `meili_search_key`
 
 ## Architecture & Flow
 
@@ -107,7 +112,7 @@ recap-worker のジャンルを `recaps` インデックスへポーリングイ
 thin 化は 2026-07-31 の ADR-000953 の段階3にあたり、この consumer 側は完了している。**ただし
 producer 側 (alt-data-hub) は段階4 (payload から `content`/`tags` を削除する) が未実施で、今も
 本文を同梱したまま publish している** — search-indexer 側はそれを単に読まないだけであり、
-ストリームの 1 件あたりバイト量自体はまだ縮んでいない (詳細: [[wiki/services/mq-hub]])。
+ストリームの 1 件あたりバイト量自体はまだ縮んでいない (詳細: [[mq-hub]])。
 
 ## Meilisearch Indices & Settings
 

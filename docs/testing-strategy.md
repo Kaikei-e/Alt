@@ -179,25 +179,49 @@ Consumer（呼び出し側）が期待するリクエスト/レスポンス形�
 
 #### テスト対象ペア
 
-| Consumer | Provider | プロトコル | テスト数 | テストファイル |
-|----------|----------|-----------|---------|--------------|
-| alt-backend | pre-processor | Connect-RPC (JSON) | 3 | `alt-backend/app/driver/preprocessor_connect/contract/consumer_test.go` |
-| pre-processor | news-creator | HTTP/REST | 3 | `pre-processor/app/driver/contract/news_creator_consumer_test.go` |
-| rag-orchestrator | news-creator | HTTP/REST (/api/chat) | 2 | `rag-orchestrator/internal/adapter/contract/news_creator_chat_consumer_test.go` |
-| recap-worker | news-creator | HTTP/REST | 3 | `recap-worker/recap-worker/src/clients/news_creator/contract.rs` |
-| recap-worker | recap-subworker | HTTP/REST | 4 | `recap-worker/recap-worker/src/clients/subworker_contract.rs` |
-| recap-worker | alt-backend | HTTP/REST | 1 | `recap-worker/recap-worker/src/clients/alt_backend_contract.rs` |
-| recap-worker | tag-generator | HTTP/REST | 2 | `recap-worker/recap-worker/src/clients/tag_generator_contract.rs` |
-| search-indexer | alt-backend | Connect-RPC | 2 | `search-indexer/app/driver/contract/backend_consumer_test.go` |
-| search-indexer | recap-worker | HTTP/REST | 1 | `search-indexer/app/driver/contract/recap_consumer_test.go` |
-| recap-evaluator | recap-worker | HTTP/REST | 3 | `recap-evaluator/tests/contract/test_recap_worker_consumer.py` |
-| mq-hub ↔ search-indexer | Redis Streams | Pact Message | — | `mq-hub/app/driver/contract/`, `search-indexer/app/driver/contract/` |
-| — | news-creator (Provider) | — | 2 | `news-creator/app/tests/contract/test_provider_verification.py` |
-| — | recap-subworker (Provider) | — | — | `recap-subworker/tests/contract/test_provider_verification.py` |
-| — | tag-generator (Provider) | — | — | `tag-generator/app/tests/contract/test_provider_verification.py` |
-| alt-butterfly-facade | alt-backend | Connect-RPC (h2c proxy) | 3 | `alt-butterfly-facade/internal/handler/contract/backend_consumer_test.go` |
-| auth-hub | kratos | HTTP/REST | 3 | `auth-hub/internal/adapter/gateway/contract/kratos_consumer_test.go` |
-| — | alt-backend (Provider) | — | — | `alt-backend/app/driver/contract/provider_test.go` |
+| Consumer | Provider | プロトコル | テストファイル |
+|----------|----------|-----------|--------------|
+| alt-backend | pre-processor | Connect-RPC (JSON) | `alt-backend/app/orchestrator/driver/preprocessor_connect/contract/` |
+| alt-backend | knowledge-sovereign | Connect-RPC | `alt-backend/app/shared/driver/sovereign_client/contract/` |
+| alt-backend | rag-orchestrator | HTTP/REST | `alt-backend/app/orchestrator/gateway/rag_gateway/contract/` |
+| alt-backend | recap-worker | HTTP/REST | `alt-backend/app/orchestrator/gateway/recap_gateway/contract/` |
+| alt-backend | search-indexer | Connect-RPC | `alt-backend/app/orchestrator/driver/search_indexer_connect/` |
+| alt-backend | alt-data-hub | Connect-RPC | `alt-backend/app/shared/gateway/datahub_gateway/contract/` |
+| alt-harvester | alt-data-hub | Connect-RPC | `alt-backend/app/shared/gateway/datahub_gateway/contract/` |
+| pre-processor | alt-backend | Connect-RPC | `pre-processor/app/driver/contract/` |
+| pre-processor | news-creator | HTTP/REST | `pre-processor/app/driver/contract/` |
+| pre-processor | mq-hub | Redis Streams (Message) | `pre-processor/app/driver/contract/` |
+| rag-orchestrator | alt-data-hub | Connect-RPC | `rag-orchestrator/internal/adapter/contract/` |
+| rag-orchestrator | knowledge-sovereign | Connect-RPC | `rag-orchestrator/internal/adapter/contract/` |
+| rag-orchestrator | news-creator | HTTP/REST (/api/chat) | `rag-orchestrator/internal/adapter/contract/` |
+| rag-orchestrator | recap-worker | HTTP/REST | `rag-orchestrator/internal/adapter/contract/` |
+| rag-orchestrator | search-indexer | Connect-RPC | `rag-orchestrator/internal/adapter/contract/` |
+| recap-worker | alt-backend | HTTP/REST | `recap-worker/recap-worker/src/clients/` |
+| recap-worker | alt-data-hub | Connect-RPC / REST | `recap-worker/recap-worker/src/clients/` |
+| recap-worker | knowledge-sovereign | Connect-RPC | `recap-worker/recap-worker/src/clients/` |
+| recap-worker | news-creator | HTTP/REST | `recap-worker/recap-worker/src/clients/` |
+| recap-worker | recap-subworker | HTTP/REST | `recap-worker/recap-worker/src/clients/` |
+| recap-worker | tag-generator | HTTP/REST | `recap-worker/recap-worker/src/clients/` |
+| search-indexer | alt-backend | Connect-RPC | `search-indexer/app/driver/contract/` |
+| search-indexer | recap-worker | HTTP/REST | `search-indexer/app/driver/contract/` |
+| search-indexer | mq-hub | Redis Streams (Message) | `search-indexer/app/driver/contract/` |
+| tag-generator | alt-backend | Connect-RPC | `tag-generator/app/tests/contract/` |
+| tag-generator | mq-hub | Redis Streams (Message) | `tag-generator/app/tests/contract/` |
+| recap-evaluator | recap-worker | HTTP/REST | `recap-evaluator/tests/contract/` |
+| acolyte-orchestrator | news-creator | HTTP/REST | `acolyte-orchestrator/tests/contract/` |
+| acolyte-orchestrator | search-indexer | Connect-RPC | `acolyte-orchestrator/tests/contract/` |
+| alt-butterfly-facade | alt-backend | Connect-RPC (h2c proxy) | `alt-butterfly-facade/internal/handler/contract/` |
+| altctl | knowledge-sovereign | Connect-RPC | `altctl/internal/sovereignclient/contract/` |
+| — | alt-backend / alt-data-hub (Provider) | Connect-RPC / REST | `alt-backend/app/dataplane/driver/contract/provider_test.go` |
+| — | news-creator (Provider) | HTTP/REST | `news-creator/app/tests/contract/` |
+| — | recap-subworker (Provider) | HTTP/REST | `recap-subworker/tests/contract/` |
+| — | tag-generator (Provider) | HTTP/REST | `tag-generator/app/tests/contract/` |
+| — | search-indexer (Provider) | Connect-RPC | `search-indexer/app/driver/contract/provider_test.go` |
+| — | pre-processor (Provider) | Connect-RPC | `pre-processor/app/driver/contract/provider_test.go` |
+| — | mq-hub (Provider) | Redis Streams (Message) | `mq-hub/app/driver/contract/` |
+| — | knowledge-sovereign (Provider) | Connect-RPC | `knowledge-sovereign/app/driver/contract/provider_test.go` |
+| — | rag-orchestrator (Provider) | HTTP/REST | `rag-orchestrator/internal/adapter/contract/provider_test.go` |
+| — | recap-worker (Provider) | HTTP/REST | `recap-worker/recap-worker/tests/` |
 
 #### Pact Consumer テスト（Go）
 
@@ -205,7 +229,7 @@ CDC の Consumer テストは `//go:build contract` ビルドタグで通常の 
 
 ```bash
 # Consumer テスト実行（pact JSON を生成）
-cd alt-backend/app && go test -tags=contract ./driver/preprocessor_connect/contract/ -v
+cd alt-backend/app && go test -tags=contract ./orchestrator/driver/preprocessor_connect/contract/ -v
 cd pre-processor/app && go test -tags=contract ./driver/contract/ -v
 cd rag-orchestrator && go test -tags=contract ./internal/adapter/contract/ -v
 cd search-indexer/app && go test -tags=contract ./driver/contract/ -v
@@ -245,10 +269,47 @@ Provider state に応じて mock の挙動を切り替える:
 
 #### 生成される Pact 契約ファイル
 
+リポジトリ内の以下のディレクトリに合計31個の Pact 契約ファイルが生成・配置される:
+
 ```
-alt-backend/pacts/alt-backend-pre-processor.json
+# pacts/ (19 files)
+pacts/acolyte-orchestrator-news-creator.json
+pacts/acolyte-orchestrator-search-indexer.json
+pacts/alt-backend-recap-worker.json
+pacts/alt-butterfly-facade-alt-backend.json
+pacts/pre-processor-alt-backend.json
+pacts/pre-processor-mq-hub.json
 pacts/pre-processor-news-creator.json
+pacts/recap-evaluator-recap-worker.json
+pacts/recap-worker-alt-backend.json
+pacts/recap-worker-alt-data-hub.json
+pacts/recap-worker-knowledge-sovereign.json
+pacts/recap-worker-news-creator.json
+pacts/recap-worker-recap-subworker.json
+pacts/recap-worker-tag-generator.json
+pacts/search-indexer-alt-backend.json
+pacts/search-indexer-mq-hub.json
+pacts/search-indexer-recap-worker.json
+pacts/tag-generator-alt-backend.json
+pacts/tag-generator-mq-hub.json
+
+# alt-backend/pacts/ (6 files)
+alt-backend/pacts/alt-backend-alt-data-hub.json
+alt-backend/pacts/alt-backend-knowledge-sovereign.json
+alt-backend/pacts/alt-backend-pre-processor.json
+alt-backend/pacts/alt-backend-rag-orchestrator.json
+alt-backend/pacts/alt-backend-search-indexer.json
+alt-backend/pacts/alt-harvester-alt-data-hub.json
+
+# rag-orchestrator/pacts/ (5 files)
+rag-orchestrator/pacts/rag-orchestrator-alt-data-hub.json
+rag-orchestrator/pacts/rag-orchestrator-knowledge-sovereign.json
 rag-orchestrator/pacts/rag-orchestrator-news-creator.json
+rag-orchestrator/pacts/rag-orchestrator-recap-worker.json
+rag-orchestrator/pacts/rag-orchestrator-search-indexer.json
+
+# altctl/pacts/ (1 file)
+altctl/pacts/altctl-knowledge-sovereign.json
 ```
 
 #### 検証内容の例

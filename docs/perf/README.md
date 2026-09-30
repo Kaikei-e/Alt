@@ -26,6 +26,10 @@ Multi-flow user simulation with SvelteKit and Connect-RPC across 4 weighted user
 
 Baseline health audit of a 28-service microservice platform combining Prometheus metrics, HTTP access logs, OpenTelemetry structured logs, and container runtime statistics to identify error hotspots and resource bottlenecks.
 
+### 6. [RAG-Orchestrator Streaming Performance Analysis](rag-orchestrator-performance-analysis-20251231.md)
+
+Latency breakdown and phase analysis of streaming RAG responses (TTFB, retrieval, query expansion, LLM generation) based on log reconciliation.
+
 ## Tech Stack
 
 - **Load Testing**: k6

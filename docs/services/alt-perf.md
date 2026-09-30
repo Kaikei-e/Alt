@@ -357,6 +357,11 @@ Lessons from Alt's load-testing campaigns (the 3000VU series and later) that gov
 | K6 endpoint safety | Never add external-API-calling endpoints to `k6/helpers/endpoints.js` |
 | K6 auth issues | Verify `K6_BACKEND_TOKEN_SECRET` matches alt-backend's `BACKEND_TOKEN_SECRET` |
 
+## Operational Reality & Cost of Breaking
+
+- **手動実行ツールであり CI ゲートではない**: PR の CI では `deno test` (ユニットテストのみ) が実行され、実ブラウザによる Web Vitals 計測スキャンは組み込まれていない。週次の performance smoke テストも cron 実行であり、k6 の失敗でビルドを落とさない設計になっている。UI 性能の回帰を防ぐには、開発者や運用者が定期的に手動実行 (`deno task perf:scan` または `docker compose -f compose/perf.yaml run --rm alt-perf scan`) してレビューする必要がある。
+- **しきい値緩和のコスト**: しきい値 (`thresholds`) を安易に緩和すると、「動くが著しく低速」という性能劣化がサイレントに見逃される。
+
 ## References
 
 ### Official Documentation

@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: Go toolchain パッチ更新により h2c ストリーミングが接続 10 秒で全滅した障害"
+date: 2026-08-15
+tags:
+  - postmortem
+  - alt-backend
+  - go
+  - h2c
+---
+
 # ポストモーテム: Go toolchain パッチ更新により h2c ストリーミングが接続 10 秒で全滅した障害
 
 ## メタデータ

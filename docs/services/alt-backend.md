@@ -50,7 +50,7 @@ _Split note added: July 31, 2026_
 > - **Knowledge Home / Trail / Recall の実データは alt-db から退去済み。**
 >   `knowledge_events` 系・`knowledge_trail_*` 系・`recall_*` 系のテーブルは
 >   2026年3月〜6月の migration で alt-db から DROP され、`knowledge-sovereign-db`
->   （別サービス [[wiki/services/knowledge-sovereign]]）に一本化された。
+>   （別サービス [[knowledge-sovereign]]）に一本化された。
 >   Connect-RPC の `KnowledgeHomeService` / `KnowledgeTrailService` は alt-backend に残るが、
 >   projector・backfill・reproject の実行主体とストレージは knowledge-sovereign 側にある。
 >
@@ -68,8 +68,10 @@ _Split note added: July 31, 2026_
 - Domain entities live in `domain/`, infrastructure helpers in `utils/`, dependency wiring in `di/`, and `cmd/backend/main.go` bootstraps the backend's components, starts the REST server (port 9000), the browser-facing Connect-RPC server (port 9101), the loopback operator Connect-RPC server (port 9102), and the shared ops listener (port 9110). It starts no background jobs — those run only inside `cmd/harvester` / `cmd/notifier`.
 
 ### Listener Architecture
-- `cmd/backend` exposes four listeners: a REST/Echo server on port 9000 for browser clients, a Connect-RPC server on port 9101 carrying the JWT-guarded user-facing services, a loopback operator Connect-RPC server on port 9102 carrying the unauthenticated admin services (`KnowledgeHomeAdminService`, and `AdminMonitorService` when `ADMIN_MONITOR_ENABLED=true`), and an ops listener on port 9110 serving `/health` and `/metrics` on all four binaries, plus `/health/deep` on `cmd/backend` only (it probes alt-data-hub reachability; `internal/bootstrap/ops.go`'s `WithDeepHealth`). alt-data-hub also exposes `/health/deep`, but on its mTLS `:9443` listener rather than on :9110 — `cmd/harvester` and `cmd/notifier` mount neither route on :9110. Only 9000 and 9101 are meant to be reachable beyond the container; 9102 defaults to a loopback bind and reaches only as far as compose's port publish widens it, and 9110 is scraped over the internal network. `BackendInternalService` and `/v1/internal/*` no longer exist anywhere in this binary.
+- `cmd/backend` exposes four listeners: a REST/Echo server on port 9000 for browser clients, a Connect-RPC server on port 9101 carrying the JWT-guarded user-facing services, a loopback operator Connect-RPC server on port 9102 carrying the unauthenticated admin services (`KnowledgeHomeAdminService`, and `AdminMonitorService` when `ADMIN_MONITOR_ENABLED=true`), and an ops listener on port 9110 serving `/health` and `/metrics` on all four binaries, plus `/health/deep` on `cmd/backend` only (it probes alt-data-hub reachability; `internal/bootstrap/ops.go`'s `WithDeepHealth`). alt-data-hub also exposes `/health/deep`, but on its mTLS `:9443` listener rather than on :9110 — `cmd/harvester` and `cmd/notifier` mount neither route on :9110. Only 9000 and 9101 are meant to be reachable beyond the container; 9102 defaults to a loopback bind and reaches only as far as compose's port publish widens it, and 9110 is scraped over the internal network. Admin API access from the web client routes through `alt-butterfly-facade` (`BACKEND_INTERNAL_CONNECT_URL=http://alt-backend:9102`), where JWT + admin role validation is enforced at the BFF boundary. `BackendInternalService` and `/v1/internal/*` no longer exist anywhere in this binary.
 - Connect-RPC server wiring lives in `connect/v2/server.go`; the individual service handlers live under `orchestrator/connect/v2/<service>/` and share the same usecases, gateways, and drivers as the REST layer via `di/container.go`.
+- `X-Alt-Tenant-Id` header propagation: JWT claims extract `tenant_id`, which is propagated downstream to the `rag-orchestrator` hop via Augur (Connect-RPC) ([[000905]]).
+- Tag Verse: Barnes-Hut O(n log n) server-side graph layout with a 30-minute in-memory TTL cache (co-occurrence analysis queries are executed on `alt-data-hub`).
 - All four of `cmd/backend`'s servers (REST, browser Connect-RPC, operator Connect-RPC, ops) start under one supervisor in `cmd/backend/main.go` with graceful shutdown handling.
 
 ### Request Pipeline
@@ -159,7 +161,7 @@ All scheduled jobs run inside **`cmd/harvester`** (and one inside `cmd/notifier`
 - **outbox-worker** (ticks every 5s, 5min timeout) — `OutboxWorkerJob` (`orchestrator/job/outbox_worker.go`) claims `outbox_events` rows and upserts `ARTICLE_UPSERT` payloads to the RAG Orchestrator, reporting outcomes back through `SovereignClient`.
 - **og-image-retention** (6h) — `OgImageRetentionJob` purges expired OG image cache entries.
 - **outbox-prune** (24h) — `OutboxPruneJob` deletes processed `outbox_events` rows.
-- **today-entrance-notifier** — registered unconditionally; ticks every 10 minutes but only fires once per UTC day (at a fixed trigger hour), calling `TodayEntranceNotificationJob` via `SovereignClient` and `PushDeliveryGateway` to enqueue the "today's entrance is ready" push notification. It is not the only enqueuer of `push_deliveries`: knowledge-sovereign (`recall_echo_ready` / `trail_branch_proposed` notifications) and acolyte-orchestrator (relaying its own `notification_outbox`) enqueue there too, through `services.datahub.v1.DataHubService` directly rather than through this binary — see `docs/services/alt-db.md`.
+- **today-entrance-notifier** — registered unconditionally; ticks every 10 minutes but only fires once per UTC day (at a fixed trigger hour), calling `TodayEntranceNotificationJob` via `SovereignClient` and `PushDeliveryGateway` to enqueue the "today's entrance is ready" push notification. It is not the only enqueuer of `push_deliveries`: acolyte-orchestrator (relaying its own `notification_outbox`) enqueues there too, through `services.datahub.v1.DataHubService` directly rather than through this binary — see `docs/services/alt-db.md` (knowledge-sovereign notifications were planned in [[000970]] but not implemented).
 - **ogp-image-warmer** (1h) — registered only when `IMAGE_PROXY_ENABLED=true`; if the image proxy is disabled the harvester logs `harvester.image_jobs_disabled` and registers neither this job nor the OGP pipeline it warms.
 - **tag-cloud-cache-warmer** is deliberately **not registered** any more (`logTagCloudWarmerDisabled`): the tag-cloud cache is process-local, so warming it from the harvester could never reach the readers in `cmd/backend`. The lazy warm-on-first-read inside `FetchTagCloudUsecase` is unchanged.
 
@@ -264,6 +266,11 @@ Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowle
 - Wrong summary shown after fast article navigation → async streaming callbacks lacked a stale-response guard and two read queries lacked `user_id` scope; capture-and-compare IDs, and keep read-query scope aligned with UNIQUE constraints → PM-2026-003, [[000552]].
 - Feature "implemented" but no data flows, everything healthy → unwired optional DI dependency swallowed by `if x == nil { return nil }`; wiring state must surface via loud `*_enabled`/`*_disabled` startup logs and panic in business paths (Critical Rule 8), and producer wiring PRs need Pact CDC RED first (Critical Rule 7) → PM-2026-045, [[000928]].
 - Projector output differs between live and replay → `time.Now()` or latest-state reads in projector code make reproject non-deterministic; business time comes from `event.OccurredAt` only, pinned by a "two clocks, byte-identical" invariants test → [[000919]] [[000924]] [[000933]].
+- Operational runbooks for Knowledge Home recovery and degradation:
+  - Reproject & projection recovery: [[runbooks/knowledge-home-projection-recovery]], [[runbooks/knowledge-home-reproject-operations]]
+  - Malformed or empty `why` investigation: [[runbooks/knowledge-home-malformed-why-spike]], [[runbooks/knowledge-home-empty-spike]]
+  - Contract breakages & stream disconnect surges: [[runbooks/knowledge-home-contract-break]], [[runbooks/knowledge-home-stream-disconnect-surge]]
+  - Degraded mode & Gameday checklist: [[runbooks/knowledge-home-degraded-mode]], [[runbooks/knowledge-home-gameday-checklist]]
 
 ## Diagram
 

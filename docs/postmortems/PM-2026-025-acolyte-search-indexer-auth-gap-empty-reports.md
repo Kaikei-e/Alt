@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: Acolyte レポートが search-indexer 認証化により空セクションになった問題"
+date: 2026-04-14
+tags:
+  - postmortem
+  - acolyte-orchestrator
+  - search-indexer
+  - auth
+---
+
 # ポストモーテム: Acolyte レポートが search-indexer 認証化により空セクションになった問題
 
 ## メタデータ

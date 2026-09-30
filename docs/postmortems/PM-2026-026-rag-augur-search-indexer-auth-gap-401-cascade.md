@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: RAG / Augur が search-indexer 認証化により 401 カスケードで機能停止した問題"
+date: 2026-04-14
+tags:
+  - postmortem
+  - rag-orchestrator
+  - search-indexer
+  - auth
+---
+
 # ポストモーテム: RAG / Augur が search-indexer 認証化により 401 カスケードで機能停止した問題
 
 ## メタデータ

@@ -1,3 +1,13 @@
+---
+title: "PM-2026-018: 生 HTML チャンク混入による RAG 検索品質劣化"
+date: 2026-04-03
+tags:
+  - postmortem
+  - rag-orchestrator
+  - rag
+  - data-quality
+---
+
 # PM-2026-018: 生 HTML チャンク混入による RAG 検索品質劣化
 
 ## メタデータ

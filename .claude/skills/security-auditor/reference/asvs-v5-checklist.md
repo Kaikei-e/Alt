@@ -1,31 +1,32 @@
 # OWASP ASVS 5.0 — Deep Check Reference
 
-公式出典: https://github.com/OWASP/ASVS （5.0.0, 2025-05 リリース、現行最新）
+公式出典: https://github.com/OWASP/ASVS (5.0.0)
 
 **使い方:** OWASP Top 10 sweep で hit したカテゴリの精度を上げるために使う。
 Finding には対応する ASVS 要件 ID（例: `V6.2.3`）を必ず付与する。
 
 **取り扱い:** 本書は **要約抜粋**。正確な要件文・Level 1/2/3 の区分は上記 GitHub の
-最新版 ASVS 本体（英語 PDF / CSV）を `WebFetch` して参照すること。
+ASVS 5.0 本体（英語 PDF / CSV）を `WebFetch` して参照すること。
 
 ## Contents
-- V1 Architecture, Design and Threat Modeling
-- V2 Authentication
-- V3 Session Management
-- V4 Access Control
-- V5 Validation, Sanitization and Encoding
-- V6 Stored Cryptography
-- V7 Error Handling and Logging
-- V8 Data Protection
-- V9 Communication
-- V10 Malicious Code
-- V11 Business Logic
-- V12 Files and Resources
-- V13 API and Web Service
-- V14 Configuration
-- V15 Secure Coding and Architecture
-- V16 Security Logging and Error Handling
-- V17 WebRTC（5.0 で新設）
+- [V1 Architecture, Design, Threat Modeling](#v1-architecture-design-threat-modeling)
+- [V2 Authentication](#v2-authentication)
+- [V3 Session Management](#v3-session-management)
+- [V4 Access Control](#v4-access-control)
+- [V5 Validation, Sanitization, Encoding](#v5-validation-sanitization-encoding)
+- [V6 Stored Cryptography](#v6-stored-cryptography)
+- [V7 Error Handling and Logging](#v7-error-handling-and-logging旧-asvs-asvs-50-では-v16-に統合)
+- [V8 Data Protection](#v8-data-protection)
+- [V9 Communication](#v9-communication)
+- [V10 Malicious Code](#v10-malicious-code)
+- [V11 Business Logic](#v11-business-logic)
+- [V12 Files and Resources](#v12-files-and-resources)
+- [V13 API and Web Service](#v13-api-and-web-service)
+- [V14 Configuration](#v14-configuration)
+- [V15 Secure Coding and Architecture](#v15-secure-coding-and-architecture)
+- [V16 Security Logging and Error Handling](#v16-security-logging-and-error-handlingasvs-50)
+- [V17 WebRTC](#v17-webrtcasvs-50-新設)
+- [使い方の流れ](#使い方の流れ)
 
 ---
 

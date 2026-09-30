@@ -1,3 +1,13 @@
+---
+title: "PM-2026-016: Ask Augur チャットストリームのモデル名不一致による即時 EOF 障害"
+date: 2026-04-03
+tags:
+  - postmortem
+  - rag-orchestrator
+  - ask-augur
+  - model-mismatch
+---
+
 # PM-2026-016: Ask Augur チャットストリームのモデル名不一致による即時 EOF 障害
 
 ## メタデータ

@@ -1,7 +1,7 @@
 ---
 title: Knowledge Loop Projector Event Matrix
 date: 2026-04-27
-status: accepted
+status: historical
 tags:
   - knowledge-loop
   - projector
@@ -12,6 +12,8 @@ aliases:
 ---
 
 # Knowledge Loop Projector Event Matrix
+
+> Historical record — Knowledge Loop was retired ([[000940]]) and superseded by Knowledge Trail. Not a current contract.
 
 This document is the canonical mapping between knowledge_event types and the
 projector's read-model writes. It is bound to the source code by a

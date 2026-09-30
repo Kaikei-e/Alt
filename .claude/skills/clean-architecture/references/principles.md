@@ -131,7 +131,7 @@ Source: [Package Principles](https://en.wikipedia.org/wiki/Package_principles) (
 
 ## 8. Fitness-Function Tools (Future Evolution)
 
-To continuously automate architectural integrity as Alt expands, fitness-function tools can be adopted to formalize rules currently checked by `scripts/check_layers.sh`:
+To continuously automate architectural integrity as Alt expands, fitness-function tools can be adopted to formalize rules checked by `scripts/check_layers.sh`:
 
 - **Go**:
   - `go-arch-lint` (`github.com/fe3dback/go-arch-lint`): Declarative YAML rules defining layer boundaries and allowed imports per package.

@@ -12,6 +12,13 @@ _Last reviewed: September 5, 2026_
 - **Claim-Based Writing**: Structured paragraph generation with citation tracking
 - **Critic Loop**: Quality assurance via revision feedback (max 3 iterations)
 
+## Design Invariants & Product Constraints
+
+- **Settings-driven configuration**: 設定値はハードコードせず環境変数・Pydantic settings 経由で注入可能にする。
+- **Checkpoint resume self-check**: LangGraph チェックポイントからの復帰可能性を常に設計上意識し、冪等性を担保する ([[runbooks/acolyte-checkpoint-resume]])。
+- **一覧画面に再生ボタンを置かない**: レポート一覧画面に再生（再生成）ボタンを配置しない（Acolyte プロダクト制約）。意図しない大量再生成やリソース枯渇を防ぐ。
+- **2本線 UI**: Acolyte 固有の視覚要素として保持。
+
 ## Architecture Overview
 
 ```mermaid
@@ -433,4 +440,10 @@ Cross-cutting incident knowledge lives in [[runbooks/crystallized-knowledge]]; s
 - **Resume after crash re-runs a long node from its start** → the LangGraph checkpointer persists only at super-step (node) boundaries; resume is a replay from the node head, never mid-loop. Split multi-item loops into per-item self-loop super-steps, use `durability="sync"`, and keep node side effects idempotent → [[000673]], [[000679]], [[000690]], [[acolyte-checkpoint-resume]].
 - **Crashed run turns zombie or is resumed by the wrong pipeline** → in-flight job rows from a dead process are orphans by definition. The current fix (superseding the `trigger_source`-discriminator/age-window design from [[000708]], [[000709]]) is simpler: `ReconcileOrphanedRunsUsecase` unconditionally fails every `pending`/`running` run at boot (`orphaned_after_restart`) and there is no automatic resume at all — an operator resumes a specific run explicitly via `scripts/resume_run.py --run-id <uuid>` → PM-2026-024, [[acolyte-pipeline-recovery]].
 - **Truncated or invalid JSON from structured LLM calls** → three known Gemma4/Ollama bugs: thinking tokens consume `num_predict`, `think=false` + `format` ignores the format, and `/api/generate` ignores `think`. Design around them with a deterministic main path (LLM as secondary), micro-generation, and tiny schemas → [[000665]], [[000671]], [[000675]], [[acolyte-llm-timeout]].
-- **mTLS handshake failures although certs on disk are fresh** → inbound TLS now terminates in the parent; a leftover nginx / pki-agent sidecar is a dual writer or a stale historical fact (PM-2026-029). Recreate **`acolyte-orchestrator`**, then verify the **served** cert on the parent (`INBOUND_MTLS` / `:9443`), not only the files on disk → [[pki-agent-recovery]] / [[000978]].
+- **mTLS handshake failures although certs on disk are fresh** → inbound TLS now terminates in the parent; a leftover nginx / pki-agent sidecar is a dual writer or a stale historical fact (PM-2026-029). Recreate **`acolyte-orchestrator`**, then verify the **served** cert on the parent (`INBOUND_MTLS` / `:9443`), not only the files on disk → [[runbooks/pki-agent-recovery]] / [[000978]].
+- **Degraded mode and manual recovery**:
+  - LLM timeout / latency spike: [[runbooks/acolyte-llm-timeout]]
+  - Pipeline recovery & stuck job cleanup: [[runbooks/acolyte-pipeline-recovery]]
+  - Checkpoint resume operations: [[runbooks/acolyte-checkpoint-resume]]
+  - Degraded mode operation: [[runbooks/acolyte-degraded-mode]]
+  - Manual report regeneration: [[runbooks/acolyte-manual-regeneration]]

@@ -11,7 +11,7 @@ When you need to track a new kind of state change in Knowledge Home:
    const EventMyNewEvent = "MyNewEvent"
    ```
 
-2. **Define the payload struct** in `alt-backend/app/job/knowledge_projector.go`:
+2. **Define the payload struct** in `knowledge-sovereign/app/usecase/knowledge_home_projector/wire_types.go`:
    ```go
    type myNewEventPayload struct {
        ArticleID string `json:"article_id"`
@@ -19,24 +19,20 @@ When you need to track a new kind of state change in Knowledge Home:
    }
    ```
 
-3. **Add a projection function** in the same file:
+3. **Add a projection fold function** in `knowledge-sovereign/app/usecase/knowledge_home_projector/` (e.g. `folds_article.go`):
    ```go
-   func projectMyNewEvent(ctx context.Context, event domain.KnowledgeEvent, ...) error {
-       var payload myNewEventPayload
-       if err := json.Unmarshal(event.Payload, &payload); err != nil {
-           return fmt.Errorf("unmarshal MyNewEvent payload: %w", err)
-       }
-       // ... project to read model
+   func (p *Projector) foldMyNewEvent(ctx context.Context, evt sovereign_db.KnowledgeEvent, version int) error {
+       // ... fold into read model
    }
    ```
 
-4. **Add the case to `projectEvent()`** switch:
+4. **Add the case to `foldEvent()`** switch in `knowledge-sovereign/app/usecase/knowledge_home_projector/projector.go`:
    ```go
-   case domain.EventMyNewEvent:
-       return projectMyNewEvent(ctx, event, ...)
+   case "MyNewEvent":
+       return p.foldMyNewEvent(ctx, evt, version)
    ```
 
-5. **Write tests first** (TDD) in `knowledge_projector_test.go`: create a mock event with your payload, call the projector, and assert the projected read model state.
+5. **Write tests first** (TDD) in `knowledge-sovereign/app/usecase/knowledge_home_projector/projector_test.go`: create a mock event with your payload, call the projector, and assert the projected read model state.
 
 6. **Emit the event** from the appropriate usecase by calling `AppendKnowledgeEvent` on the event port. Use a deterministic `dedupe_key` pattern (e.g., `MyNewEvent:{aggregate_id}:{content_hash}`).
 
@@ -77,24 +73,11 @@ When you discover a new user interaction pattern that should influence recall sc
    const ReasonMyNewReason = "my_new_reason"
    ```
 
-3. **Add the weight constant** in `alt-backend/app/job/recall_projector.go`:
-   ```go
-   const weightMyNewSignal = 0.20 // tune based on expected signal strength
-   ```
+3. **Add recall fold and scoring logic** in `knowledge-sovereign/app/usecase/knowledge_home_projector/folds_recall.go`.
 
-4. **Add the scoring case** in `scoreRecallCandidatesWithSovereign()`:
-   ```go
-   case domain.SignalMyNewSignal:
-       reasons = append(reasons, domain.RecallReason{
-           Type:        domain.ReasonMyNewReason,
-           Description: "Human-readable explanation",
-       })
-       score += weightMyNewSignal
-   ```
+4. **Emit the signal** from the appropriate usecase or handler by calling `AppendRecallSignal` via the sovereign client (`alt-backend/app/shared/driver/sovereign_client/`).
 
-5. **Emit the signal** from the appropriate usecase or handler by inserting into `recall_signals` via the `AppendRecallSignalPort`.
-
-6. **Write tests** in `recall_projector_test.go`: create mock signals, run the projector, assert candidate scores and reasons.
+5. **Write tests** in `knowledge-sovereign/app/usecase/knowledge_home_projector/folds_recall_test.go`: create mock signals, run the projector fold, assert candidate scores and reasons.
 
 ## Adding a New Read Model (Projection Table)
 
@@ -121,21 +104,21 @@ When you need a new optimized view of the event data:
    }
    ```
 
-3. **Define the port interface** in `alt-backend/app/port/my_new_view_port/`:
+3. **Define the port interface** in `alt-backend/app/orchestrator/port/my_new_view_port/`:
    ```go
    type UpsertMyNewViewPort interface {
        UpsertMyNewView(ctx context.Context, view domain.MyNewView) error
    }
    ```
 
-4. **Implement the driver** in `alt-backend/app/driver/sovereign_client/`:
+4. **Implement the driver** in `alt-backend/app/shared/driver/sovereign_client/`:
    - Add a write method that marshals the domain object and calls `ApplyProjectionMutation` with a new mutation type.
 
 5. **Add sovereign handler** for the new mutation type in `knowledge-sovereign/app/handler/`.
 
-6. **Wire the projector** to populate the new view by adding projection logic to the event dispatch.
+6. **Wire the projector** in `knowledge-sovereign/app/usecase/knowledge_home_projector/` to populate the new view by adding projection logic to the event dispatch.
 
-7. **Wire DI** in `alt-backend/app/di/container.go` (see lines ~522-586 for existing sovereign client wiring).
+7. **Wire DI** in `alt-backend/app/di/container.go` / `knowledge_module.go`.
 
 ## Operational Recipes
 
@@ -238,7 +221,7 @@ func TestProjectArticleCreated(t *testing.T) {
 }
 ```
 
-See `alt-backend/app/job/knowledge_projector_test.go` for the full test suite.
+See `knowledge-sovereign/app/usecase/knowledge_home_projector/projector_test.go` for the full test suite.
 
 ### Usecase Tests
 
@@ -283,12 +266,9 @@ func TestGetKnowledgeHomeHandler(t *testing.T) {
 ### Running Tests
 
 ```bash
-# All Knowledge Home tests
-cd alt-backend/app && go test ./job/... ./usecase/... ./connect/v2/knowledge_home/... ./connect/v2/knowledge_home_admin/... -v
+# All Knowledge Home backend tests
+cd alt-backend/app && go test ./orchestrator/usecase/get_knowledge_home_usecase/... ./orchestrator/connect/v2/knowledge_home/... ./orchestrator/connect/v2/knowledge_home_admin/... -v
 
-# Projector tests only
-cd alt-backend/app && go test ./job/... -run TestKnowledgeProjector -v
-
-# Recall projector tests
-cd alt-backend/app && go test ./job/... -run TestRecallProjector -v
+# Projector tests
+cd knowledge-sovereign/app && go test ./usecase/knowledge_home_projector/... -v
 ```

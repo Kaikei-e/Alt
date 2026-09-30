@@ -2,7 +2,15 @@
 
 _Last reviewed: September 5, 2026_
 
-**Location:** `rag-db`, `rag-migration-atlas`
+**Location:** `rag-db`, `rag-migration-atlas`  
+**Port:** 5436 (host `127.0.0.1:5436:5432`)  
+**Volume:** `rag_db_data:/var/lib/postgresql`  
+**Secrets:** `rag_db_password`  
+
+## Purpose & Scope
+Dedicated PostgreSQL 18.6 database with pgvector for storing RAG documents, chunk embeddings, and Ask Augur conversation history (`augur_conversations`, `augur_messages`).
+- **pgvector Extension Invariant**: The pgvector extension must be explicitly enabled via Atlas migration.
+- **Embedding Dimension Invariant**: Embedding dimension changes require an explicit ADR to prevent model/index drift. Widened in 2026-08 from `embeddinggemma` (768-dim) to `bge-m3` (1024-dim) via `20260802120000_widen_embedding_to_bge_m3.sql`, with legacy vectors discarded for re-indexing ([[000987]], [[000951]]). The current production model is `bge-m3`.
 
 ## Directory Structure
 
@@ -653,7 +661,7 @@ ALTER TABLE augur_messages
 
 ### migrations/20260802120000_widen_embedding_to_bge_m3.sql
 
-Widens `rag_chunks.embedding` from `vector(768)` (`embeddinggemma`) to `vector(1024)` (`bge-m3`, the current `EMBEDDING_MODEL` — see `docs/services/rag-orchestrator.md`). This is the migration referenced by the "embedding dimension change needs a separate ADR" caution in `docs/wiki/services/rag-db.md`.
+Widens `rag_chunks.embedding` from `vector(768)` (`embeddinggemma`) to `vector(1024)` (`bge-m3`, the current `EMBEDDING_MODEL` — see `docs/services/rag-orchestrator.md`). This is the migration referenced by the "embedding dimension change needs a separate ADR" caution.
 
 ```sql
 -- The stored vectors are discarded rather than converted: a 768-dim

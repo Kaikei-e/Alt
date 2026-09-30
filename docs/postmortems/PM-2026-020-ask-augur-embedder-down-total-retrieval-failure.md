@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: Ask Augur embedder 停止によるリトリーバル全面障害"
+date: 2026-04-11
+tags:
+  - postmortem
+  - rag-orchestrator
+  - ask-augur
+  - embedder
+---
+
 # ポストモーテム: Ask Augur embedder 停止によるリトリーバル全面障害
 
 ## メタデータ

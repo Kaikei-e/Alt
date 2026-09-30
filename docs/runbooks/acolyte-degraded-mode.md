@@ -84,7 +84,8 @@ docker exec -it acolyte-db pg_isready -U acolyte_user
 # itself, published separately at 127.0.0.1:11435.
 curl -s http://localhost:11434/health
 
-# Check search-indexer
+# Check search-indexer (port 9300) and Meilisearch (port 7700)
+curl -s http://localhost:9300/health
 curl -s http://localhost:7700/health
 ```
 
@@ -178,7 +179,12 @@ docker compose -f compose/compose.yaml -p alt logs acolyte-orchestrator --tail=1
 
 3. **Verify search works:**
    ```bash
-   curl "http://localhost:7700/v1/search?q=test"
+   # Probe search-indexer health and deep Meilisearch connectivity:
+   curl -s http://localhost:9300/health
+   curl -s http://localhost:9300/health/deep
+
+   # Or query search-indexer REST API on port 9300 (user_id is mandatory):
+   curl -s "http://localhost:9300/v1/search?q=test&user_id=00000000-0000-0000-0000-000000000000"
    ```
 
 4. **Failed runs must be restarted** (Gatherer failures are not resumable via checkpoint)

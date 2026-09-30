@@ -103,7 +103,7 @@ Different languages and frameworks across Alt use localized directory naming con
   2. Usecase (`usecase/summarize/`): `pre-processor/app/usecase/summarize/on_demand.go` (`OnDemandService.Summarize`, coordinating with `service/article_summarizer.go`)
   3. Port (`repository/interfaces.go`): `pre-processor/app/repository/interfaces.go` (`ExternalAPIRepository.SummarizeArticle`)
   4. Gateway (`repository/`): `pre-processor/app/repository/external_api_repository.go` (`externalAPIRepository.SummarizeArticle`)
-  5. Driver (`driver/`): `pre-processor/app/driver/summarizer_api.go` (`ArticleSummarizerAPIClient.SummarizeArticle`) *(Note: `summarizer_api.go` currently imports `pre-processor/domain`; Driver importing Domain is a violation—Driver should accept raw payloads and Gateway should map Domain ↔ Driver types)*
+  5. Driver (`driver/`): `pre-processor/app/driver/summarizer_api.go` (`ArticleSummarizerAPIClient.SummarizeArticle`) *(Note: `summarizer_api.go` imports `pre-processor/domain`; Driver importing Domain is a violation—Driver should accept raw payloads and Gateway should map Domain ↔ Driver types)*
 
 ---
 

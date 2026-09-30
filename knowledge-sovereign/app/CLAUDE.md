@@ -26,7 +26,6 @@ There is no separate `port/`/`gateway/` layer in this service — both `handler/
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Append-first**: knowledge_events は INSERT-only
-3. **Reproject-safe**: Projector はイベントペイロードのみを使う
-4. **No shared DB access**: producer は API/event 経由でのみ接続
+1. **Append-first**: knowledge_events は INSERT-only
+2. **Reproject-safe**: Projector はイベントペイロードのみを使う
+3. **No shared DB access**: producer は API/event 経由でのみ接続

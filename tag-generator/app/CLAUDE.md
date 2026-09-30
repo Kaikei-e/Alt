@@ -37,7 +37,6 @@ uv run python auth_service.py
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Type Safety**: Use Python type hints throughout
-3. **Memory Management**: Manual GC after batch processing
-4. **Batch Processing**: Use optimal batch sizes (75 default)
+1. **Type Safety**: Use Python type hints throughout
+2. **Memory Management**: Manual GC after batch processing
+3. **Batch Processing**: Use optimal batch sizes (75 default)

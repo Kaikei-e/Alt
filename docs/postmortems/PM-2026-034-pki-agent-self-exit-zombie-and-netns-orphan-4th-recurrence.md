@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: pki-agent self-exit zombie と netns 孤立 4 度目発火で Acolyte 502 が再発"
+date: 2026-04-19
+tags:
+  - postmortem
+  - pki-agent
+  - docker-compose
+  - netns-orphan
+---
+
 # ポストモーテム: pki-agent self-exit zombie と netns 孤立 4 度目発火で Acolyte 502 が再発
 
 ## メタデータ

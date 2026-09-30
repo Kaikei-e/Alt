@@ -5,16 +5,16 @@ handle `C` below is `docker compose -f compose/compose.yaml -p alt`. ClickHouse 
 connect recipes (env + secrets) are in [targets.md](targets.md).
 
 ## Contents
-- Service throwing errors / 5xx
-- Slow / high latency
-- Container restarting / crash-looping / OOM
-- Knowledge Home empty or malformed `why`
-- Projector lag / stuck OODA loop
-- DB connection exhaustion / pool saturation
-- Queue stuck (mq-hub / Redis Streams)
-- Trace one request end-to-end
-- Recap / Acolyte degradation
-- Existing scripts to reuse
+- [Service throwing errors / 5xx](#service-throwing-errors--5xx)
+- [Slow / high latency](#slow--high-latency)
+- [Container restarting / crash-looping / OOM](#container-restarting--crash-looping--oom)
+- [Knowledge Home empty or malformed why](#knowledge-home-empty-or-malformed-why)
+- [Projector lag / stuck OODA loop](#projector-lag--stuck-ooda-loop)
+- [DB connection exhaustion / pool saturation](#db-connection-exhaustion--pool-saturation)
+- [Queue stuck (mq-hub / Redis Streams)](#queue-stuck-mq-hub--redis-streams)
+- [Trace one request end-to-end](#trace-one-request-end-to-end)
+- [Recap / Acolyte degradation](#recap--acolyte-degradation)
+- [Existing scripts to reuse](#existing-scripts-to-reuse)
 
 ## Service throwing errors / 5xx
 
@@ -125,7 +125,7 @@ $C exec -T redis-streams redis-cli XINFO STREAM <stream-key>
 $C exec -T redis-streams redis-cli XLEN <stream-key>
 $C exec -T redis-streams redis-cli XPENDING <stream-key> <group>
 ```
-Cross-check the queue-saturation notes (3-layer fix from 2026-02) before recommending a knob change.
+Cross-check the queue-saturation notes before recommending a knob change.
 
 ## Trace one request end-to-end
 

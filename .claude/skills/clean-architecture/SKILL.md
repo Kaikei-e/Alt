@@ -1,6 +1,11 @@
 ---
 name: clean-architecture
 description: Alt の Clean Architecture（REST → Usecase → Port → Gateway → Driver + Domain）の境界配置を決定し、層越境・逆依存を実装前に防ぐ。エンドポイントや RPC の追加、新規 usecase 実装、DB・HTTP・LLM 呼び出しの追加、「どこに書くべきか」の迷い、層をまたぐリファクタリングや差分レビュー時に、ユーザが「Clean Architecture」や「層」と言及しなくても起動する。リポジトリ全体の事後走査には layer-checker サブエージェント、追記型イベント・投影不変条件には immutable-design-guard、テスト駆動開発の順序付けには tdd-workflow を使用する。
+allowed-tools:
+  - "Bash(bash ${CLAUDE_SKILL_DIR}/scripts/check_layers.sh *)"
+  - Read
+  - Grep
+  - Glob
 ---
 
 # Clean Architecture (Alt Model)
@@ -11,6 +16,7 @@ Alt の全サービスは 5 つのレイヤー（REST, Usecase, Port, Gateway, D
 - [references/principles.md](references/principles.md) — Uncle Bob / Cockburn / Fowler らの基礎理論と Alt での具現化
 - [references/service-map.md](references/service-map.md) — サービス別の実ディレクトリ名・リクエスト追跡パス・命名対応表
 - [references/anti-patterns.md](references/anti-patterns.md) — 実際に観測されたアンチパターン、理由、解消例
+- [scripts/check_layers.sh](scripts/check_layers.sh) — レイヤー境界検証スクリプト（実行用: `bash ${CLAUDE_SKILL_DIR}/scripts/check_layers.sh <service-dir>`）
 
 ## 1. レイヤー構造と依存モデル
 
@@ -45,9 +51,6 @@ Composition Root → すべて（配線専用）
 Dependency Rule 上は内向きだが、Alt では Driver は自前の row 型だけを持ち、Domain との写像は Gateway が一手に担う（Driver が Domain 型を返すと Gateway の腐敗防止層（ACL）の責務が I/O コードに混入し、スキーマや API 変更が Domain 語彙へ直接漏洩するため、Alt では推奨ではなく違反として強制される）。
 
 全層を import して具象を配線できる唯一の場所は Composition Root（`cmd/main`, `di/`, `bootstrap/`, `infra/container.py`）である。配線規則は [.claude/rules/di-wiring.md](../../rules/di-wiring.md)（ローカル専用ファイル: オプション依存は起動時に `*_enabled/*_disabled` をログし、未配線ブランチ突入時は panic すること。`if x == nil { return nil }` による握り潰しは禁止）を参照する。
-
-**なぜ制御フローと import 依存が逆転するのか（Dependency Inversion）**:
-実行時の制御は Usecase から外界（Driver）へ向かうが、Usecase が Driver に依存すると外部技術（DB ドライバや外部 API 変更）の都合で業務ロジックが変更を強いられる。そこで Usecase 側に Port（抽象）を定義し、Gateway がその Port を実装して Driver を呼び出す。これによりソース依存は外側から内側の Port へ向かい、コア業務ロジックが外部技術の変更から保護される。
 
 ## 2. 配置判断フロー
 
@@ -112,16 +115,24 @@ Alt では 3 つのモデルを明確に分離する:
 - **レイヤーの縮退・省略**: サービスの `CLAUDE.md` や ADR に明記されている場合にのみ許容される（例: `knowledge-sovereign/app/CLAUDE.md` は handler/ と usecase/ が driver/sovereign_db を直接 import する構成を明記している（Port/Gateway なし、Handler→Driver 直結もある））。こうした形状は文書化が必須であり、外から内への依存原則および Driver から Usecase への逆 import 禁止規則は依然として有効である。
 - **過剰な抽象化の回避**: 単一の単純な読み取りで将来の拡張予定がない処理に、推測で多重の抽象や未使用インターフェースを導入しない。
 
-## 9. 完了前チェックリスト
+## 9. 検証・修正ループ（Run → Fix → Re-run）
 
-変更を終える前に以下を確認する:
+変更完了前に以下のチェックリストを実行する:
 
-1. [ ] 新規ロジックが [2. 配置判断フロー](#2-配置判断フロー) の適切な層に置かれているか。
-2. [ ] Driver やインフラの型（`sql.DB`, `httpx`, `otel` 等）が Usecase や Domain に漏れていないか。
-3. [ ] Domain モデルに `json:` や `db:` タグを付けていないか。
-4. [ ] Port は論理的に Usecase 側で狭く定義され、Composition Root で配線されているか（[.claude/rules/di-wiring.md](../../rules/di-wiring.md)）。
-5. [ ] レイヤー検証スクリプトを実行し、VIOLATION がゼロであることを確認したか（Go および Python のみ対応。Rust / TS の変更は layer-checker サブエージェントを使用する。WARN 行（usecase の otel import のみ。driver→domain は VIOLATION）はレビューのための注意喚起であり失敗ではない）:
+1. [ ] **配置と境界の確認**:
+   - 新規ロジックが [2. 配置判断フロー](#2-配置判断フロー) の適切な層に置かれているか。
+   - Driver やインフラの型（`sql.DB`, `httpx`, `otel` 等）が Usecase や Domain に漏れていないか。
+   - Domain モデルに `json:` や `db:` タグを付けていないか。
+   - Port は論理的に Usecase 側で狭く定義され、Composition Root で配線されているか（[.claude/rules/di-wiring.md](../../rules/di-wiring.md)）。
+2. [ ] **レイヤー自動検証（Validate / Run）**:
+   対象サービスディレクトリに対して検証スクリプトを実行する（Go および Python のみ対応。Rust / TS の変更は `layer-checker` サブエージェントを使用）:
    ```bash
-   bash .claude/skills/clean-architecture/scripts/check_layers.sh <service-dir>
+   bash ${CLAUDE_SKILL_DIR}/scripts/check_layers.sh <service-dir>
    ```
-6. [ ] 複数層にまたがる変更やリファクタリングでは、走査用サブエージェント `layer-checker` を実行したか。
+3. [ ] **修正（Fix）**:
+   - 出力に `VIOLATION` がある場合、逆 import や層越境を解消する（Driver → Domain の直接 import、REST → Gateway/Driver の直接呼出等）。
+   - `WARN`（Usecase の otel import のみ。driver→domain は VIOLATION）はレビューのための注意喚起であり失敗ではない。
+4. [ ] **再検証（Repeat / Re-run）**:
+   - 再び `bash ${CLAUDE_SKILL_DIR}/scripts/check_layers.sh <service-dir>` を実行し、VIOLATION が 0 件になるまで修正・再実行を繰り返す。
+5. [ ] **横断走査**:
+   - 複数層にまたがる大規模変更やリファクタリング時は、走査用サブエージェント `layer-checker` を実行する。

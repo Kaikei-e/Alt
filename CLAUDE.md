@@ -39,7 +39,7 @@ Compose stacks are wired via **`include:`**, not Compose profiles — see [`comp
 ### Verifying changes
 
 ```bash
-curl http://localhost/health             # Frontend (via nginx)
+curl http://localhost/health             # Frontend (via plecto-proxy)
 curl http://localhost:9000/v1/health    # Backend
 curl http://localhost:9250/health       # BFF
 curl http://localhost:7700/health       # Meilisearch
@@ -69,7 +69,7 @@ to recursively delegate work or launch this MCP server.
 
 ## Planning
 
-Obsidian vault (`docs/`) — 466+ ADRs, plans, runbooks, reviews. Run `/plan-context-loader`
+Obsidian vault (`docs/`) — ADRs (see `docs/ADR/`), plans, runbooks, reviews. Run `/plan-context-loader`
 before designing; it loads the canonical contracts and searches `docs/ADR/` directly.
 
 ## Immutable Data Model Invariants

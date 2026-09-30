@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: east-west mTLS 証明書期限切れによる Knowledge Home 停止"
+date: 2026-04-15
+tags:
+  - postmortem
+  - pki-agent
+  - mtls
+  - certificate-expiry
+---
+
 # ポストモーテム: east-west mTLS 証明書期限切れによる Knowledge Home 停止
 
 ## メタデータ

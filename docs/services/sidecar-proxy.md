@@ -5,17 +5,17 @@ _Last reviewed: September 5, 2026_
 **Location:** `alt-backend/sidecar-proxy/` (its own Go module, `github.com/alt-rss/alt-backend/sidecar-proxy` — not part of the `alt-backend/app` module)
 
 > [!IMPORTANT]
-> **This service is not referenced by any file under `compose/` today.** It is not built or run as
-> part of the current Alt stack — not alongside alt-backend, not as an independent service. It is
-> still actively maintained (dependency and security-finding fixes as recently as August 2026), and
-> its own doc comments and defaults (`ENVOY_UPSTREAM` default `localhost:10000`, "within Pod")
-> describe a sidecar deployed next to an Envoy proxy in a pod — a shape that predates or is
-> unrelated to Alt's current Compose-first, no-K8s architecture. Treat the description below as
-> "what this code does if run", not as a description of a running component of the deployed stack.
+> **Docker Compose does not run this service.** It is not referenced by any file under `compose/`,
+> and is not built or run as part of the current Alt Compose stack — neither alongside alt-backend
+> nor as an independent container. It is still maintained in the codebase (dependency and
+> security-finding fixes as recently as August 2026), and its doc comments and defaults
+> (`ENVOY_UPSTREAM` default `localhost:10000`, "within Pod") describe a sidecar deployed next to an
+> Envoy proxy in a pod — a shape from earlier infrastructure that is not part of Alt's Compose-first
+> stack. Treat the description below as "what this code does if run", not as a running component.
 
 ## Purpose
 
-A standalone Go HTTP proxy that sits in front of an Envoy upstream (`ENVOY_UPSTREAM`) and solves one specific problem: transforming a request whose visible upstream is an internal IP (e.g. `10.96.32.212:8080`) into one Envoy/the origin server sees as a normal `Host`/SNI for a real domain (e.g. `zenn.dev:443`), so RSS-feed and image fetches reach real TLS-terminating origins through an internal hop. It also converts `CONNECT` tunnel requests (from clients that speak plain HTTP CONNECT, historically news-creator/Ollama) into the same `/proxy/https://...` path convention used by the rest of the proxy.
+A standalone Go HTTP proxy that sits in front of an Envoy upstream (`ENVOY_UPSTREAM`) and solves one specific problem: transforming a request whose visible upstream is an internal service endpoint into one Envoy/the origin server sees as a normal `Host`/SNI for a real domain (e.g. `zenn.dev:443`), so RSS-feed and image fetches reach real TLS-terminating origins through an internal hop. It also converts `CONNECT` tunnel requests (from clients that speak plain HTTP CONNECT, historically news-creator/Ollama) into the same `/proxy/https://...` path convention used by the rest of the proxy.
 
 ## Core Responsibilities
 

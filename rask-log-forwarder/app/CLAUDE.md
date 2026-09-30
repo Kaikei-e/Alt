@@ -29,8 +29,7 @@ cargo run --release
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Rust 2024 Edition**: Use native async traits
-3. **No `static mut`**: Use `OnceCell` or `Mutex`
-4. **Zero-Copy**: Use `bytes::Bytes` throughout pipeline
-5. **Mock Docker API**: NEVER make real Docker calls in unit tests
+1. **Rust 2024 Edition**: Use native async traits
+2. **No `static mut`**: Use `OnceCell` or `Mutex`
+3. **Zero-Copy**: Use `bytes::Bytes` throughout pipeline
+4. **Mock Docker API**: NEVER make real Docker calls in unit tests

@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: recap-subworker の learning_machine artifacts 欠落で 3days Recap が 948 件分 classification 失敗"
+date: 2026-04-20
+tags:
+  - postmortem
+  - recap-subworker
+  - classification
+  - artifacts-missing
+---
+
 # ポストモーテム: recap-subworker の learning_machine artifacts 欠落で 3days Recap が 948 件分 classification 失敗
 
 ## メタデータ

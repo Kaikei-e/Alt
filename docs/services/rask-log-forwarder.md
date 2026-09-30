@@ -6,8 +6,9 @@ _Last reviewed: September 5, 2026_
 
 ## Role
 - Rust 1.94+ (2024 Edition) サイドカーで Docker ログを収集し rask-log-aggregator に転送
+- `compose/logging.yaml` にて主要 16 サービスに対応する 16 インスタンスが常駐配置
 - `bollard` で Docker ログを tail、SIMD パーサーで高速処理 (>4 GB/s)
-- ロックフリーバッファリング、バックプレッシャー対応
+- ロックフリーバッファリング、バックプレッシャー対応、at-least-once 配信保証
 - aggregator 不可用時のディスクフォールバック (バッチ単位のファイル永続化、`bincode` + 任意 gzip 圧縮。組み込み DB は使っていない)
 - デフォルトは legacy NDJSON (`/v1/aggregate`) だが、`PROTOCOL=otlp` で OTLP HTTP protobuf 送信 (`/v1/logs`) に切り替え可能 (`otlp` Cargo feature、本番イメージはこの feature 付きでビルドされる)
 

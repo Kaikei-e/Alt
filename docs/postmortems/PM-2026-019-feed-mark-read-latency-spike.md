@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: フィード既読操作の間欠的レイテンシスパイク"
+date: 2026-04-06
+tags:
+  - postmortem
+  - alt-backend
+  - latency-spike
+  - pgbouncer
+---
+
 # ポストモーテム: フィード既読操作の間欠的レイテンシスパイク
 
 ## メタデータ

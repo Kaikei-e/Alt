@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: nginx TLS sidecar の cert メモリ固定による Acolyte 停止"
+date: 2026-04-16
+tags:
+  - postmortem
+  - nginx
+  - mtls
+  - stale-cert
+---
+
 # ポストモーテム: nginx TLS sidecar の cert メモリ固定による Acolyte 停止
 
 ## メタデータ

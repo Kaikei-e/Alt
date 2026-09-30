@@ -1,3 +1,13 @@
+---
+title: "PM-2026-007: recap-subworker の Numba threading デッドロックおよび BE 要約モデルミスマッチ"
+date: 2026-03-25
+tags:
+  - postmortem
+  - recap-subworker
+  - deadlock
+  - numba
+---
+
 # PM-2026-007: recap-subworker の Numba threading デッドロックおよび BE 要約モデルミスマッチ
 
 ## メタデータ

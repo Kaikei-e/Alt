@@ -1,3 +1,13 @@
+---
+title: "PM-2026-042: ステージング slice の Knowledge Projector content-type ループによる Docker host ディスク逼迫（near-miss）"
+date: 2026-05-04
+tags:
+  - postmortem
+  - alt-backend
+  - connect-rpc
+  - disk-fill
+---
+
 # PM-2026-042: ステージング slice の Knowledge Projector content-type ループによる Docker host ディスク逼迫（near-miss）
 
 ## メタデータ

@@ -3,8 +3,7 @@
 公式出典: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
 
 **重要:** これは Web App 全体向けの OWASP Top 10 の「2026 版」ではない。**OWASP Top 10 の Web App
-向け最新版は依然として 2025**（`owasp-top10-2025.md`）。本書は **別建ての agentic / LLM 専用リスト**
-で、2025 年末〜2026 年初に公開された。
+向けは 2025 版**（`owasp-top10-2025.md`）。本書は **別建ての agentic / LLM 専用リスト**。
 
 **適用対象:** 以下のいずれかを含むコードだけに併用する。
 
@@ -25,16 +24,17 @@ Alt で該当しやすい箇所:
 - MCP 連携（Obsidian / Drive 等）
 
 ## Contents
-- ASI01 Agent Goal Hijack
-- ASI02 Tool Misuse and Exploitation
-- ASI03 Identity and Privilege Abuse
-- ASI04 Agentic Supply Chain Vulnerabilities
-- ASI05 Code Execution Abuse
-- ASI06 Memory / Context Poisoning
-- ASI07 Inter-Agent Communication Exploits
-- ASI08 Cascading Failures / Loss of Control
-- ASI09 Inadequate Audit / Traceability
-- ASI10 Insecure Autonomy / Missing Human Oversight
+- [ASI01 Agent Goal Hijack](#asi01-agent-goal-hijack)
+- [ASI02 Tool Misuse and Exploitation](#asi02-tool-misuse-and-exploitation)
+- [ASI03 Identity and Privilege Abuse](#asi03-identity-and-privilege-abuse)
+- [ASI04 Agentic Supply Chain Vulnerabilities](#asi04-agentic-supply-chain-vulnerabilities)
+- [ASI05 Code Execution Abuse](#asi05-code-execution-abuse)
+- [ASI06 Memory / Context Poisoning](#asi06-memory--context-poisoning)
+- [ASI07 Inter-Agent Communication Exploits](#asi07-inter-agent-communication-exploits)
+- [ASI08 Cascading Failures / Loss of Control](#asi08-cascading-failures--loss-of-control)
+- [ASI09 Inadequate Audit / Traceability](#asi09-inadequate-audit--traceability)
+- [ASI10 Insecure Autonomy / Missing Human Oversight](#asi10-insecure-autonomy--missing-human-oversight)
+- [レポートでの扱い](#レポートでの扱い)
 
 各項目は公式ドキュメントをベースとした概要。詳細は上記 URL を `WebFetch` して参照すること。
 

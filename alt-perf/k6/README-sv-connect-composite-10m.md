@@ -1,14 +1,15 @@
 # SV Connect-RPC Composite 10m Load Test
 
-`alt-frontend-sv` の実運用経路に合わせて、`/sv/api/v2/*` の Connect-RPC を 10 分間まとめて叩く複合負荷試験です。
+`alt-frontend-sv` の実運用経路に合わせて、`/api/v2/*` の Connect-RPC を 10 分間まとめて叩く複合負荷試験です（旧パス `/sv/api/v2/*` はリバースプロキシの歴史的構成）。
 
-- 対象経路: browser 相当の `nginx -> /sv/api/v2 -> SvelteKit proxy -> alt-backend`
+- 対象経路: browser 相当の `plecto-proxy -> /api/v2 -> SvelteKit proxy -> alt-backend`
+  - 注: `scenarios/sv-connect-composite-10m.js` はデフォルトで `http://nginx/sv/api/v2` を参照します。`plecto-proxy` の `/api/v2` 経路に向ける場合は `K6_APP_BASE_URL`（例: `K6_APP_BASE_URL="http://localhost/api/v2"` やコンテナ内 `http://plecto-proxy/api/v2`）を設定してください。
 - 外部HTTP: **mock-rss-server のみ**
 - 目的: 「何 sessions/sec まで閾値内でさばけるか」を測り、そこから同時ユーザー数を推定する
 
 ## なぜこのモデルか
 
-- SV フロントの本番入口である `/sv/api/v2` を通すので、SvelteKit proxy・`hooks.server.ts`・auth-hub のコストも含めて測れる
+- SV フロントの本番入口である `/api/v2` を通すので、SvelteKit proxy・`hooks.server.ts`・auth-hub のコストも含めて測れる
 - k6 は `ramping-arrival-rate` を使う open model
   - セッション開始レートを固定できる
   - サーバーが遅くなっても発火レートが下がらず、処理限界を見つけやすい
@@ -34,7 +35,7 @@
 - `FetchArticleContent`
   - mock article HTML を取得
 
-mock サーバーは [`alt-perf/k6/mock-rss-server/main.go`](/home/koko/Documents/dev/Alt/alt-perf/k6/mock-rss-server/main.go) で、RSS/記事HTML/OG画像を返します。遅延は環境変数で調整できます。
+mock サーバーは [`alt-perf/k6/mock-rss-server/main.go`](./mock-rss-server/main.go) で、RSS/記事HTML/OG画像を返します。遅延は環境変数で調整できます。
 
 ## インフラ設定のオーバーライド
 
@@ -54,7 +55,7 @@ mock サーバーは [`alt-perf/k6/mock-rss-server/main.go`](/home/koko/Document
 ### リクエストフロー
 
 ```text
-k6 VU → nginx (/sv/api/v2/*) → alt-frontend-sv (SvelteKit proxy)
+k6 VU → plecto-proxy (/api/v2/*) → alt-frontend-sv (SvelteKit proxy)
   → Kratos toSession()                            ... セッション検証
   → auth-hub /session (JWT backend token 取得)     ← SESSION_RATE_LIMIT
   → alt-backend:9101 (Connect-RPC)                ← DOS_PROTECTION_*
@@ -66,8 +67,8 @@ k6 VU → nginx (/sv/api/v2/*) → alt-frontend-sv (SvelteKit proxy)
 1. **FEED_ALLOWED_HOSTS**: alt-backend は SSRF 防止のため、外部 HTTP リクエスト先を `FEED_ALLOWED_HOSTS` でホワイトリスト管理している。mock-rss-server のホスト名 `mock-rss-001` を許可しないと `RegisterRSSFeed` / `FetchArticleContent` が失敗する
 2. **DOS_PROTECTION**: デフォルトは 100 req/min。数十 VU が各セッションで 3〜6 回の RPC を叩くと瞬時に超過する。5000 に緩和することで負荷試験中の誤ブロックを防ぐ
 3. **RATE_LIMIT_EXTERNAL_API**: `FetchArticleContent` が `HostRateLimiter` (`golang.org/x/time/rate` の token bucket) でホスト単位に制御される。`rate.Every(interval)` が定常レートを決め、`burst` は初期トークン数。デフォルト 10s 間隔（0.1 req/s）・バースト 3 では全 VU が `mock-rss-001` に集中するため即座にタイムアウトする。高負荷試験では interval=10ms（100 req/s）・burst=500 に緩和。**interval < 1s にはバリデーションの 1 秒最小値ガードがあるため、`RATE_LIMIT_EXTERNAL_API_UNSAFE_FAST=true` が必須**
-4. **VALIDATE_RATE_LIMIT**: 旧 Next.js パス (`/api/backend/*`) は nginx `auth_request` → auth-hub `/validate` を通過する。デフォルト ~1.67 req/s では負荷試験時に詰まるため緩和
-5. **SESSION_RATE_LIMIT**: SV パス (`/sv/api/v2/*`) は SvelteKit `hooks.server.ts` → auth-hub `/session` で JWT を取得する。デフォルト 0.5 req/s (30 req/min) では 2 VU でも即座に 429 が返るため 1000 req/s に緩和
+4. **VALIDATE_RATE_LIMIT**: 旧 Next.js パス (`/api/backend/*`) はエッジプロキシ `auth_request` → auth-hub `/validate` を通過していた。デフォルト ~1.67 req/s では負荷試験時に詰まるため緩和
+5. **SESSION_RATE_LIMIT**: フロントエンドパス (`/api/v2/*`) は SvelteKit `hooks.server.ts` → auth-hub `/session` で JWT を取得する。デフォルト 0.5 req/s (30 req/min) では 2 VU でも即座に 429 が返るため 1000 req/s に緩和
 
 ### SSRF バリデータについて
 
@@ -200,6 +201,7 @@ git checkout -- alt-backend/app/config/config.go alt-backend/app/config/validati
 
 調整用の主な env:
 
+- `K6_APP_BASE_URL`（デフォルト: `http://nginx/sv/api/v2`。plecto-proxy 経路を指定する場合は `http://localhost/api/v2` 等）
 - `SESSION_RATE_BASE`
 - `SESSION_RATE_TARGET`
 - `SESSION_RATE_PEAK`
@@ -327,7 +329,7 @@ PPROF_ENABLED=false ./alt-perf/scripts/run-sv-connect-composite-test.sh
 
 - 直接 `alt-backend:9101` を叩く既存シナリオより重く出るのは正常です
   - この試験は `alt-frontend-sv` と auth 周辺も含むため
-  - 1 RPC あたり nginx → SvelteKit proxy → auth-hub `/validate` → alt-backend の 4 hop を経由する
+  - 1 RPC あたり plecto-proxy → SvelteKit proxy → auth-hub `/session` → alt-backend の 4 hop を経由する
 - 外部依存を real site に向けないため、`FetchArticleContent` も `RegisterRSSFeed` も mock URL のみ使います
 - 生成オーバーライド (`compose/sv-connect-load-test-generated.yaml`) はスクリプト終了時に自動削除されます
 - 設定オーバーライドの詳細は「インフラ設定のオーバーライド」セクションを参照してください

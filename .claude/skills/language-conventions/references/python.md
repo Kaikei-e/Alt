@@ -1,6 +1,6 @@
 # Python 3.14+ — Alt の規約
 
-詳細な根拠とコード例は `docs/best_practices/python.md`（13 セクション・444 行）の該当セクションだけを Read する。
+詳細な根拠とコード例は `docs/best_practices/python.md` の該当セクションだけを Read する。
 セクション: Project Structure, Type Hints & Static Analysis, Error Handling, Clean Architecture, Pydantic & Dataclass, Async Patterns, Resource Management, Logging, Testing, Tooling, Security, ML Runtime & Process Pools
 
 ## 重要原則
@@ -13,7 +13,7 @@
 6. **context manager で資源管理**: `with` / `async with` で確実に close。async 並行は `asyncio.TaskGroup` / `async with`。裸 `open()` 禁止
 7. **pytest + TDD**: RED → GREEN → REFACTOR。FastAPI のモジュールレベル `APIRouter()` はテスト分離を壊す → `importlib.reload()` で毎テスト再構築
 8. **同期推論をイベントループで実行しない**: `async def` 内の同期 ML 推論・psutil はループ全停止。`anyio.to_thread.run_sync` + `CapacityLimiter`、持続的 CPU-bound は process pool / 専用 worker
-9. **無言フォールバック禁止**: import 失敗・env 未設定で anonymous / no-op に差し替えない。起動時 raise（→ `.claude/rules/di-wiring.md`）
+9. **無言フォールバック禁止**: import 失敗・env 未設定で anonymous / no-op に差し替えない。起動時 raise（→ [.claude/rules/di-wiring.md](../../../rules/di-wiring.md)）
 10. **Python バージョン全経路固定**: `.python-version` + CI parity。3.14 構文は 3.11 ツールチェーンで解析不能
 11. **async リソースは多層防御で回収**: async generator の `finally` は実行保証なし（PEP 525）→ `contextlib.aclosing` で包む。セマフォは `slot_id` / `home_pool` の所有権追跡 + release パス invariant + `CancelledError` ハンドラで取得済みリソースを棚卸し（ADR-000243, ADR-000606, ADR-000612）
 12. **プロセスプールは spawn + メモリ見積り**: CUDA は fork 子プロセスで再初期化不能 → spawn context 必須。spawn プールは「ワーカー数 × モデルサイズ」でメモリ線形増、子の OOM kill は親 `.get()` の無症状ハング → timeout 必須（ADR-000048, ADR-000550）

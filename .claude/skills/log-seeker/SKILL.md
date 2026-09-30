@@ -11,7 +11,11 @@ description: >-
   failing/crashing/slow", "investigate this incident", or right after an outage or alert.
   Prefer postmortem-writer once the cause is already known and the user wants the write-up
   rather than the investigation.
-allowed-tools: Bash, Read, Grep, Glob
+allowed-tools:
+  - Bash
+  - Read
+  - Grep
+  - Glob
 argument-hint: "[service-or-symptom] [--since=30m] [--deep]"
 ---
 
@@ -62,7 +66,7 @@ log-seeker progress
 2. **Snapshot.** `docker compose -f compose/compose.yaml -p alt ps`, then run the bundler from the
    repo root:
    ```bash
-   bash .claude/skills/log-seeker/scripts/seek.sh --since <window> <service...>
+   bash ${CLAUDE_SKILL_DIR}/scripts/seek.sh --since <window> <service...>
    ```
    It prints a summary and writes a bundle to `/tmp/log-seeker-<ts>/`. Read `SUMMARY.txt` first, then
    open `error-summary.txt`, `logs/<svc>.log`, `clickhouse-errors.txt`, `pg-health.txt`,

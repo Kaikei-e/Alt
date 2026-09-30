@@ -2,6 +2,8 @@
 
 Alt platform orchestration CLI - Docker Compose stacks management with automatic dependency resolution.
 
+Reference documentation: [docs/services/altctl.md](../docs/services/altctl.md).
+
 ## Installation
 
 ```bash

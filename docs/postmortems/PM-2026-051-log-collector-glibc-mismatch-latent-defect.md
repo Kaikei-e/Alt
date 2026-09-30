@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: ログ収集系イメージのビルダー/ランタイムglibc不整合による潜伏欠陥の発火"
+date: 2026-07-18
+tags:
+  - postmortem
+  - rask-log-forwarder
+  - rask-log-aggregator
+  - glibc
+---
+
 # ポストモーテム: ログ収集系イメージのビルダー/ランタイムglibc不整合による潜伏欠陥の発火
 
 ## メタデータ

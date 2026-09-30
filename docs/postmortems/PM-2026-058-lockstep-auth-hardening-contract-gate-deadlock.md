@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: 4 サービス同時の認証強化が契約ゲートを鶏卵構造で塞ぎ、リリースが約 12 時間停滞して acolyte-orchestrator が約 14 分停止した障害"
+date: 2026-09-21
+tags:
+  - postmortem
+  - release-pipeline
+  - pact
+  - deadlock
+---
+
 # ポストモーテム: 4 サービス同時の認証強化が契約ゲートを鶏卵構造で塞ぎ、リリースが約 12 時間停滞して acolyte-orchestrator が約 14 分停止した障害
 
 ## メタデータ

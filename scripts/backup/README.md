@@ -112,8 +112,9 @@ Install the systemd timers for automated backups:
 sudo cp scripts/backup/systemd/*.service /etc/systemd/system/
 sudo cp scripts/backup/systemd/*.timer /etc/systemd/system/
 
-# Update paths in service files if needed
-sudo sed -i 's|/home/koko/Documents/dev/Alt|YOUR_PATH|g' /etc/systemd/system/alt-backup*.service
+# Update paths in service and timer files: templates ship with the /path/to/Alt placeholder, replace with your own Alt checkout path
+TARGET_PATH="/path/to/your/Alt/checkout"
+sudo sed -i "s|/path/to/Alt|${TARGET_PATH}|g" /etc/systemd/system/alt-backup*.service /etc/systemd/system/alt-backup*.timer
 
 # Reload systemd
 sudo systemctl daemon-reload

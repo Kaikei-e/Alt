@@ -10,7 +10,9 @@ PostgreSQL 17 database serving as the central data store for RSS feeds, articles
 |----------|-------|
 | Image | PostgreSQL 17 |
 | Port | 5432 |
-| Migration Tool | Atlas |
+| Volume | `db_data_17` |
+| Secrets | `postgres_password`, `db_password` (canonical in PgBouncer `userlist.txt`) |
+| Migration Tool | Atlas (Atlas only, commit `atlas.sum`) |
 | Migration Directory | `migrations-atlas/` |
 
 ## Services Accessing This Database
@@ -134,14 +136,6 @@ erDiagram
         varchar domain
     }
 
-    summarize_job_queue {
-        serial id PK
-        uuid job_id UK
-        text article_id
-        varchar status
-        int retry_count
-    }
-
     outbox_events {
         uuid id PK
         text event_type
@@ -152,7 +146,7 @@ erDiagram
 
 ### Knowledge Home / Trail tables have moved out
 
-alt-db held the Knowledge Home event-sourcing/CQRS tables (`knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_lens_versions`, `knowledge_current_lens`, `knowledge_reproject_runs`, `knowledge_projection_audits`), the recall tables (`recall_signals`, `recall_candidate_view`), `today_digest_view`, and (briefly) the Knowledge Trail tables (`knowledge_trail_footprints`, `knowledge_trail_branches`). All of them were `DROP TABLE`'d from alt-db — `20260323100000_drop_sovereign_tables.sql` and `20260611000002_drop_misplaced_trail_tables.sql` — and now live exclusively in `knowledge-sovereign-db`, owned by the separate [[wiki/services/knowledge-sovereign]] service. No process reads or writes these tables in alt-db any more; alt-backend's Connect-RPC `KnowledgeHomeService`/`KnowledgeTrailService` reach them through `SovereignClient`, not through alt-data-hub.
+alt-db held the Knowledge Home event-sourcing/CQRS tables (`knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_lens_versions`, `knowledge_current_lens`, `knowledge_reproject_runs`, `knowledge_projection_audits`), the recall tables (`recall_signals`, `recall_candidate_view`), `today_digest_view`, and (briefly) the Knowledge Trail tables (`knowledge_trail_footprints`, `knowledge_trail_branches`). All of them were `DROP TABLE`'d from alt-db — `20260323100000_drop_sovereign_tables.sql` and `20260611000002_drop_misplaced_trail_tables.sql` — and now live exclusively in `knowledge-sovereign-db`, owned by the separate [[knowledge-sovereign]] service. No process reads or writes these tables in alt-db any more; alt-backend's Connect-RPC `KnowledgeHomeService`/`KnowledgeTrailService` reach them through `SovereignClient`, not through alt-data-hub.
 
 ## Table Categories
 
@@ -162,13 +156,19 @@ alt-db held the Knowledge Home event-sourcing/CQRS tables (`knowledge_events`, `
 | Tags | `feed_tags`, `article_tags` | Tag system (M:N relationship) |
 | User Status | `read_status`, `user_reading_status`, `favorite_feeds`, `user_feed_subscriptions` | User reading state and subscription tracking |
 | Domain | `scraping_domains`, `declined_domains` | Domain management and scraping policy |
-| Jobs | `summarize_job_queue`, `outbox_events` (now with a lease column), `feed_link_availability` | Async job queues |
+| Jobs | `outbox_events` (now with a lease column), `feed_link_availability` | Async job queues |
 | Images | `feed_og_images`, `image_proxy_cache` | OG-image / image-proxy caching for the Visual Preview and image-proxy pipelines |
 | Versioned artifacts | `summary_versions`, `tag_set_versions` | Append-first versioned summaries/tag-sets (immutable data model) |
-| Push | `push_subscriptions`, `push_deliveries` | Web Push device registrations and `cmd/notifier`'s delivery queue. `push_deliveries` has more than one enqueuer: alt-harvester's `today-entrance-notifier` job, knowledge-sovereign (`recall_echo_ready` / `trail_branch_proposed` notifications — [[000970]] [[000973]] [[000974]] [[000977]]), and acolyte-orchestrator (relaying its own `notification_outbox` — see [[wiki/services/acolyte-db]]), all through `services.datahub.v1.DataHubService` |
-| Acolyte reports (unused) | `reports`, `report_versions`, `report_change_items`, `report_jobs`, `report_runs`, `report_sections`, `report_section_versions` | Created by `20260409000000_create_acolyte_tables.sql` and never dropped, but dead: Acolyte's live report storage is `acolyte-db` (its own Atlas directory, `acolyte-migration-atlas/` — see [[wiki/services/acolyte-db]]), and no alt-data-hub capability reads or writes this alt-db copy |
+| Push | `push_subscriptions`, `push_deliveries` | Web Push device registrations and `cmd/notifier`'s delivery queue. `push_deliveries` has more than one enqueuer: alt-harvester's `today-entrance-notifier` job and acolyte-orchestrator (relaying its own `notification_outbox` — see [[acolyte-db]]), both through `services.datahub.v1.DataHubService` (knowledge-sovereign `recall_echo_ready` notifications were planned in [[000970]] but not implemented) |
+| Legacy / Orphan (unused) | `summarize_job_queue`, `reports`, `report_versions`, `report_change_items`, `report_jobs`, `report_runs`, `report_sections`, `report_section_versions` | Orphan tables in alt-db scheduled for DROP per ADR [[000960]]. See Table Ownership below |
 
 Inoreader sync tables and every Knowledge Home / Trail / Recall table have been removed from alt-db entirely — see the notes above and in the ER diagrams.
+
+### Table Ownership & Orphan Tables ([[000246]], [[000653]], [[000960]])
+
+- **`summarize_job_queue`**: 正当な所有者は `pre-processor-db` (`pre-processor-migration-atlas/migrations/20260215000001_initial.sql`)。`alt-db` に残存する同名テーブルは [[000246]] Phase 5 の抽出漏れ（[[000397]] の取りこぼし）による孤児テーブルであり、235 行の残滓データが存在するが書き込み実績はゼロである。ADR [[000960]] により drop マイグレーションが策定されている。
+- **Acolyte レポートテーブル群 (`reports`, `report_*`)**: 正当な所有者は `acolyte-db` (`acolyte-migration-atlas/`)。[[000653]] で専用 DB が決定された後も `alt-db` 側に古いスナップショットが残された孤児テーブルであり、書き込み実績はゼロ。ADR [[000960]] により drop マイグレーションが策定されている。
+- **Knowledge Home / Trail / Recall テーブル群**: `20260323100000_drop_sovereign_tables.sql` および `20260611000002_drop_misplaced_trail_tables.sql` により `alt-db` から DROP 済み。`knowledge-sovereign-db` ([[knowledge-sovereign]]) が専有する。
 
 ## Table Details
 
@@ -326,25 +326,6 @@ Domains explicitly declined by users.
 
 ### Job Queue Tables
 
-#### summarize_job_queue
-Async article summarization job queue.
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | SERIAL | PK | Auto-increment ID |
-| job_id | UUID | UNIQUE, NOT NULL, DEFAULT gen_random_uuid() | Job identifier |
-| article_id | TEXT | NOT NULL | Target article ID |
-| status | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Job status |
-| summary | TEXT | | Generated summary |
-| error_message | TEXT | | Error details |
-| retry_count | INTEGER | NOT NULL, DEFAULT 0 | Retry attempts |
-| max_retries | INTEGER | NOT NULL, DEFAULT 3 | Max retry limit |
-| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Creation time |
-| started_at | TIMESTAMPTZ | | Processing start |
-| completed_at | TIMESTAMPTZ | | Processing end |
-
-**Status Values:** `pending`, `running`, `completed`, `failed`
-
 #### outbox_events
 Event outbox for reliable event publishing.
 
@@ -369,6 +350,11 @@ Feed URL health monitoring.
 | consecutive_failures | INTEGER | NOT NULL, DEFAULT 0 | Failure count |
 | last_failure_at | TIMESTAMP | | Last failure time |
 | last_failure_reason | TEXT | | Failure reason |
+
+### Legacy & Orphan Tables
+
+#### summarize_job_queue (Orphan in alt-db; active in pre-processor-db)
+Async article summarization job queue. Legitimate live owner is `pre-processor-db` (`pre-processor-migration-atlas/migrations/20260215000001_initial.sql`). In `alt-db`, this table is an orphan remnant from before the pre-processor database extraction ([[000246]]). When `migrations-atlas/migrations/20260317000000_drop_pre_processor_legacy_tables.sql` dropped 4 legacy tables, `summarize_job_queue` was unintentionally omitted ([[000397]]). It holds 235 frozen rows with 0 writes, and is scheduled to be dropped per ADR [[000960]].
 
 ## Key Relationships
 
@@ -406,6 +392,14 @@ Key performance indexes (see individual migration files for complete list):
 
 The `feeds`-table indexes that used to be named `idx_feeds_link*` / `unique_feeds_link` were renamed to `idx_feeds_website_url*` / `unique_feeds_website_url` alongside the `link` → `website_url` column rename.
 
+## Migrations
+
+- **Atlas only**: マイグレーションは `migrations-atlas/` 配下の SQL ファイルで管理し、`atlas.sum` のコミットが必須。
+- **Drift 修復**: 開発環境等でのスキーマドリフトは `atlas migrate set` で修復する。
+- **View 列追加**: PostgreSQL の仕様上、既存ビューへの列追加は必ず末尾に行う (`CREATE OR REPLACE VIEW` では途中に列を挿入できない)。
+- **Projection の UPSERT**: プロジェクション更新時は `COALESCE` を用いて既存の nullable カラム値を保護する。
+- **ワンショット適用**: `docker compose -f compose/core.yaml run --rm migrate`
+
 ## Known failure patterns
 
 Distilled from the ADR / postmortem corpus (see `docs/runbooks/crystallized-knowledge.md`). Most services reach this database through PgBouncer (transaction pooling), which is the root of several patterns below.
@@ -422,7 +416,6 @@ Distilled from the ADR / postmortem corpus (see `docs/runbooks/crystallized-know
 
 ## Related Documentation
 
-- [Database Patterns Analysis](../review/03-database-patterns.md)
 - [Microservices Reference](./MICROSERVICES.md)
 - [Pre-processor DB](./MICROSERVICES.md) — Separate PostgreSQL 17 instance (port 5437) for pre-processor feed data
 - [Migration README](../../migrations-atlas/README.md)

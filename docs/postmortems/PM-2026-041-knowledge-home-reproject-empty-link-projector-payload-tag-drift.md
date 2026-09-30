@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: Knowledge Home Reproject swap 後に knowledge_home_items.link が全行空となり article カードから記事を開けなくなった潜伏バグ"
+date: 2026-04-28
+tags:
+  - postmortem
+  - alt-backend
+  - knowledge-sovereign
+  - payload-drift
+---
+
 # ポストモーテム: Knowledge Home Reproject swap 後に knowledge_home_items.link が全行空となり article カードから記事を開けなくなった潜伏バグ
 
 ## メタデータ

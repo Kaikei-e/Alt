@@ -10,7 +10,7 @@ description: >-
   「このプランを詰めて」「設計を叩いて」「ADR と矛盾してないか見て」 — even if they never mention
   the docs. Prefer plan-context-loader when the user has no plan yet and just needs the vault
   context gathered before designing.
-allowed-tools: Read, Grep, Glob, Bash, Agent
+allowed-tools: Bash, Read, Glob, Grep
 ---
 
 <what-to-do>
@@ -33,22 +33,20 @@ Alt has no root `CONTEXT.md` and no glossary file — the documented model is th
 | Authority | Where |
 |---|---|
 | Accepted decisions | `docs/ADR/` (6-digit files, `status: accepted`, no inbound `supersedes`) |
-| Canonical contracts | `docs/plan/` — e.g. `knowledge-trail-core-concept.md` |
+| Canonical contracts | `docs/plan/` — e.g. `knowledge-trail-core-concept.md`, `knowledge-home-value-position-plan.md` |
 | Architecture invariants | `docs/wiki/architecture/`, `docs/wiki/HOME.md` |
-| Known gaps / remediation | `docs/review/` |
-| Operational constraints | `docs/runbooks/` |
+| Service boundaries & invariants | `docs/services/<name>.md`, `docs/services/MICROSERVICES.md` |
+| Known gaps / remediation | `docs/review/` (`docs/review/README.md`) |
+| Operational constraints | `docs/runbooks/` (`docs/runbooks/README.md`) |
+| Incident postmortems | `docs/postmortems/` (`docs/postmortems/README.md`) |
+| Design evolution / case studies | `docs/case-studies/` |
 
-`docdag resolve <id>` returns the current successor of an ADR, so you challenge the live decision
-rather than a superseded one — but it stops at a successor that is not yet binding (e.g.
-`status: proposed`), reporting it as `note: X supersedes Y but is proposed; not yet binding` on
-stderr (or a `pending` array in JSON) instead of silently walking past it; treat that successor as
-not yet decided. `docdag context <id>` goes further: it prints that decision, what it resolves to,
-and its neighbourhood over typed edges — both `supersedes` and `depends-on` — each entry quoting the
-opening of its own `Decision` section — one command in place of a fan-out of file reads. `depends-on`
-edges mean "what does this decision rest on" is answered by `docdag query <id>` (the default,
-forward direction, now traversing `depends-on` as well as `supersedes`), not by grepping for "builds
-on" or "presupposes" in prose; `docdag query <id> --ancestors` gives the reverse — what depends on or
-supersedes this decision, i.e. where a challenge to it would ripple.
+DocDag commands for traversing decisions:
+
+- `docdag context <id>`: prints the decision, its resolution, and typed edge neighbourhood (`supersedes` and `depends-on`) with Decision section excerpts.
+- `docdag resolve <id>`: returns the current binding successor of an ADR. Stops at a non-binding successor (e.g. `status: proposed`), reporting it as `note: X supersedes Y but is proposed; not yet binding` on stderr (or a `pending` array in JSON) instead of silently walking past it; treat that successor as not yet decided.
+- `docdag query <id>`: traverses outgoing edges (`depends-on` and `supersedes`) to answer "what does this decision rest on" (prerequisites are traced with `docdag query <id>`, not by grepping for "builds on" or "presupposes" in prose).
+- `docdag query <id> --ancestors`: traverses incoming edges to see what depends on or supersedes this decision (blast radius of a challenge).
 
 ## During the session
 

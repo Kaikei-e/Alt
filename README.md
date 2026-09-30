@@ -117,13 +117,13 @@ flowchart TB
     end
 
     subgraph DataStoreLayer["Data Stores & Infrastructure"]
-        db[(PostgreSQL 17)]
-        kratos-db[(Kratos DB)]
-        recap-db[(Recap DB)]
-        rag-db[(RAG pgvector)]
-        acolyte-db[(Acolyte DB)]
-        pre-processor-db[(Pre-processor DB)]
-        knowledge-sovereign-db[(Sovereign DB)]
+        db[(alt-db / PostgreSQL 17)]
+        kratos-db[(Kratos DB / PostgreSQL 16)]
+        recap-db[(Recap DB / PostgreSQL 18)]
+        rag-db[(RAG pgvector / PostgreSQL 18)]
+        acolyte-db[(Acolyte DB / PostgreSQL 18)]
+        pre-processor-db[(Pre-processor DB / PostgreSQL 17)]
+        knowledge-sovereign-db[(Sovereign DB / PostgreSQL 16)]
         meilisearch[(Meilisearch)]
         clickhouse[(ClickHouse)]
         redis-streams[(Redis Streams)]
@@ -164,7 +164,7 @@ flowchart TB
     rask-log-forwarder --> rask-log-aggregator --> clickhouse
 ```
 
-Six layers: **Edge & Auth** (plecto-proxy, auth-hub, Kratos) · **Product Surface** (SvelteKit frontend, BFF) · **Core Platform** (alt-backend, alt-data-hub, alt-harvester, alt-notifier, mq-hub, knowledge-sovereign) · **Ingestion & Enrichment** (pre-processor, news-creator, tag-generator, search-indexer) · **Intelligence** (rag-orchestrator, acolyte-orchestrator, recap-worker) · **Observability & Data** (PostgreSQL x7, Meilisearch, ClickHouse, Redis x2, Grafana, Prometheus)
+Six layers: **Edge & Auth** (plecto-proxy, auth-hub, Kratos) · **Product Surface** (SvelteKit frontend, BFF) · **Core Platform** (alt-backend, alt-data-hub, alt-harvester, alt-notifier, mq-hub, knowledge-sovereign) · **Ingestion & Enrichment** (pre-processor, news-creator, tag-generator, search-indexer) · **Intelligence** (rag-orchestrator, acolyte-orchestrator, recap-worker) · **Observability & Data** (PostgreSQL 16/17/18 x7, Meilisearch, ClickHouse, Redis x2, Grafana, Prometheus)
 
 Services communicate via REST, Connect-RPC (Protobuf), and Redis Streams. For the full service reference with ports, health endpoints, and dependency graph, see [`docs/services/MICROSERVICES.md`](./docs/services/MICROSERVICES.md).
 
@@ -183,8 +183,8 @@ publish nothing at all. For the host-side mapping see
 ### Product Surface & Edge Gateways
 | Directory | Technology | Port (in-container) | Primary Responsibility |
 | :--- | :--- | :--- | :--- |
-| [`plecto/`](./plecto) | Rust / WASM Component (PlectoProxy manifest + filter) | `8443` / `8080` (admin) | Edge/ingress config: routing manifest and the `security-headers` WASM filter run by the `plecto-proxy` container. |
-| [`alt-frontend-sv/`](./alt-frontend-sv) | TypeScript / SvelteKit 2 + Svelte 5 Runes + Tailwind v4 + Threlte | `4173` | Core UI dashboard. Implements type-safe API queries and Threlte WebGPU tag visualization under `/sv`. |
+| [`plecto/`](./plecto) | Rust / WASM Component (PlectoProxy manifest + filter) | `8443` / `8080` (admin) | Edge/ingress config: routing manifest and the `stale-chunk-heal` WASM filter run by the `plecto-proxy` container. |
+| [`alt-frontend-sv/`](./alt-frontend-sv) | TypeScript / SvelteKit 2 + Svelte 5 Runes + Tailwind v4 + Threlte | `4173` | Core UI dashboard. Implements type-safe API queries and Threlte WebGPU tag visualization served at `/`. |
 | [`alt-butterfly-facade/`](./alt-butterfly-facade) | Go 1.26+ / Connect-RPC | `9250` | Aggregation API gateway and Connect-RPC reverse proxy mapping requests. |
 | [`auth-hub/`](./auth-hub) | Go 1.26+ / Echo | `8888` (no host port) | Identity session validation bridge. Validates Ory Kratos public cookies and exchanges keys. |
 | [`auth-token-manager/`](./auth-token-manager) | Deno 2.x | `9201` | Safe OAuth2 client refreshing and serializing external Inoreader platform credentials. |
@@ -192,11 +192,11 @@ publish nothing at all. For the host-side mapping see
 ### Core & Ingestion Framework
 | Directory | Technology | Port (in-container) | Primary Responsibility |
 | :--- | :--- | :--- | :--- |
-| [`alt-backend/`](./alt-backend) | Go 1.26+ / Clean Architecture | `9000` / `9101` | Primary SQL driver owner. Computes event outboxes, manages feed storage, and serves backfills. |
+| [`alt-backend/`](./alt-backend) | Go 1.26+ / Clean Architecture | `9000` / `9101` | User-facing API (REST / Connect-RPC). Built from `alt-backend/app`, which also builds `alt-harvester`, `alt-notifier`, and `alt-data-hub` (sole owner of `alt-db`). |
 | [`knowledge-sovereign/`](./knowledge-sovereign) | Go 1.26+ | `9500` / `9501` (host `9510` / `9511`) | Append-only transaction ledger validating and saving structured projection runs. |
 | [`mq-hub/`](./mq-hub) | Go 1.26+ / Redis Streams | `9500` | Stream message distributor routing payload packets throughout parallel workers. |
-| [`pre-processor/`](./pre-processor) | Go 1.26+ | `9200` / `9202` | Feed enrichment worker incorporating `go-circuitbreaker` boundaries for third-party requests. |
-| [`pre-processor-sidecar/`](./pre-processor-sidecar) | Go 1.26+ | - | Inoreader collection cron scheduler executing tasks via singleflight caches. |
+| [`pre-processor/`](./pre-processor) | Go 1.26+ | `9200` / `9202` | Summarization and article enrichment worker using exponential backoff retries (`RetryPolicy`) for upstream requests. |
+| [`pre-processor-sidecar/`](./pre-processor-sidecar) | Go 1.26+ | - | Inoreader ingestion scheduler service executing tasks via singleflight caches. |
 | [`search-indexer/`](./search-indexer) | Go 1.26+ | `9300` / `9301` | Index builder packaging upsert requests to Meilisearch in batches of 200 items. |
 | [`tag-generator/`](./tag-generator) | Python 3.14+ / FastAPI | `9400` | PyTorch NLP model extracting article entities and tagging categorizations. |
 | [`news-creator/`](./news-creator) | Python 3.14+ / FastAPI | `11434` | Inference gateway handling local summarization workloads via GPU-bound Ollama APIs. |
@@ -279,12 +279,15 @@ Alt is configured for Test-Driven Development (TDD) and rigid data ownership inv
 
 ## Documentation Index
 
-Explore the Obsidian knowledge base located within the [`docs/`](./docs) folder to learn more about technical designs and architecture choices:
+Explore the documentation located within the [`docs/`](./docs) folder to learn more about technical designs and architecture choices:
 
 *   [`docs/services/MICROSERVICES.md`](./docs/services/MICROSERVICES.md): Full microservice registry, ports, and internal configurations.
+*   [`docs/runbooks/README.md`](./docs/runbooks/README.md): Operational runbooks, recovery workflows, and maintenance guides.
+*   [`docs/postmortems/README.md`](./docs/postmortems/README.md): Postmortem records and incident analyses.
+*   [`docs/case-studies/README.md`](./docs/case-studies/README.md): Case studies and architectural evolution records.
 *   [`CLAUDE.md`](./CLAUDE.md): Detailed development commands, coding rules, and common developer pitfalls.
 *   [`altctl/README.md`](./altctl/README.md): Comprehensive CLI reference including projection replay instructions.
-*   [`docs/ADR/`](./docs/ADR): More than 460 Architecture Decision Records tracing the evolution of Alt's systems.
+*   [`docs/ADR/`](./docs/ADR): Architecture Decision Records tracing the evolution of Alt's systems.
 
 ---
 

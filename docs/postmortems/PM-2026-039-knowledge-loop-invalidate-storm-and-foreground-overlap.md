@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: Knowledge Loop の invalidateAll 暴走による fetch-storm と foreground カード重なり"
+date: 2026-04-26
+tags:
+  - postmortem
+  - alt-frontend-sv
+  - knowledge-loop
+  - sveltekit
+---
+
 # ポストモーテム: Knowledge Loop の invalidateAll 暴走による fetch-storm と foreground カード重なり
 
 ## メタデータ

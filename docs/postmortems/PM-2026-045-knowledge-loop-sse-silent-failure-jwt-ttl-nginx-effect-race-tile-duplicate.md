@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: Knowledge Loop SSE silent failure (JWT TTL × nginx × effect race × tile duplicate)"
+date: 2026-05-27
+tags:
+  - postmortem
+  - alt-frontend-sv
+  - alt-backend
+  - sse
+---
+
 # ポストモーテム: Knowledge Loop SSE silent failure (JWT TTL × nginx × effect race × tile duplicate)
 
 ## メタデータ

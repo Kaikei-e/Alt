@@ -4,8 +4,7 @@ Alt monorepo で append-only event store を持つすべてのサブシステム
 SKILL.md のコア原則 1 行リストの拡張定義で、各項目は **何を言っているか / 典型的な違反 /
 満たす実装パターン** の 3 節。今回の変更に効くものだけ読む。
 
-> 一次出典: `docs/plan/knowledge-loop-canonical-contract.md` §3 (Canonical
-> invariants)。Knowledge Loop のテーブル名で書かれているが、原則は領域非依存。
+> 一次出典: Knowledge Trail / Home 正準契約 (`docs/plan/knowledge-trail-core-concept.md`, `docs/plan/knowledge-trail-implementation-plan.md`, `docs/plan/knowledge-home-value-position-plan.md`) および ADR-000940 / ADR-000870 / ADR-000886（旧 Knowledge Loop 文書群は ADR-000940 により歴史的記録のみ）。原則は領域非依存。
 
 ## Contents
 
@@ -201,18 +200,22 @@ event / projection に保持する。「なぜそれが選ばれたか」を後�
 
 ---
 
-## 不変条件と Knowledge Home / Knowledge Loop の対応 (参考)
+## 不変条件と Knowledge Trail / Knowledge Home の対応 (参考)
 
-| Invariant | Knowledge Loop での具体形 |
-|---|---|
-| Append-first | `knowledge_events` (INSERT only) |
-| Event-time purity | `freshness_at = MAX(occurred_at)`, `projected_at` debug only |
-| Reproject-safe | `summary_version_id` 経由で stable read |
-| Versioned artifacts | `summary_versions`, `tag_set_versions`, `lens_versions` |
-| Merge-safe upsert | `GREATEST(0, …)` + `seq_hiwater` guard |
-| Single emission | `client_transition_id` (UUIDv7) |
-| Dedupe ingest-only | `knowledge_loop_transition_dedupes` |
-| Why as first-class | `WhyPayload { kind, text, evidence_refs }` |
+> **注記（歴史的経緯と現行 read model）**:
+> `knowledge_loop_*` 系の投影テーブル群（`knowledge_loop_entries`, `knowledge_loop_transition_dedupes`, `knowledge_loop_surfaces`, `knowledge_loop_macro_state`, `knowledge_loop_evidence` 等）は、ADR-000940 に従い `knowledge-sovereign/migrations/00028_drop_knowledge_loop_projections.sql` で DROP された使い捨て投影（disposable projection）である。
+> 不変イベントログ `knowledge_events`（INSERT only）は永久保存されており、現行システムでは Knowledge Trail（`knowledge_trail_footprints`, `knowledge_trail_branches`, `knowledge_trail_act_outcomes`）および Knowledge Home（`knowledge_home_items`, `today_digest_view`）が正規の live read model として機能する。
+
+| Invariant | 現行 (Knowledge Home / Trail) | 旧 Knowledge Loop (00028 で DROP) |
+|---|---|---|
+| Append-first | `knowledge_events` (INSERT only) | `knowledge_events` (INSERT only) |
+| Event-time purity | `knowledge_home_items.freshness_at` | `freshness_at = MAX(occurred_at)`, `projected_at` debug only |
+| Reproject-safe | - | `summary_version_id` 経由で stable read |
+| Versioned artifacts | - | `summary_versions`, `tag_set_versions`, `lens_versions` |
+| Merge-safe upsert | `COALESCE(NULLIF(...))` merge-safe upsert ([[000870]] D-4, [[000886]] Decision 2), `GREATEST(0, ...)` (knowledge-sovereign `mutation_today_digest.go`) | `GREATEST(0, …)` + `seq_hiwater` guard |
+| Single emission | - | `client_transition_id` (UUIDv7) |
+| Dedupe ingest-only | `knowledge_event_dedupes` | `knowledge_loop_transition_dedupes` |
+| Why as first-class | `knowledge_trail_branches` の 4 つの NOT NULL 列 (`relation_kind`, `why`, `evidence_refs_json`, `confidence`; migration 00027) | `WhyPayload { kind, text, evidence_refs }` |
 
 固有テーブル名 / 許可コードの詳細は
 [violation-examples.md](violation-examples.md) のケーススタディを参照。

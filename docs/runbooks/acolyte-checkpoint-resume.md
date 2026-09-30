@@ -66,6 +66,10 @@ docker compose -f compose/compose.yaml -p alt ps acolyte-db
 # checkpoint テーブルの存在確認
 docker exec -it acolyte-db psql -U acolyte_user -d acolyte -c \
   "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'checkpoint%';"
+
+# 対象 run の checkpoint 存在確認 (1 以上の行が返れば checkpoint から resume 可能)
+docker exec -it acolyte-db psql -U acolyte_user -d acolyte -c \
+  "SELECT COUNT(*) FROM checkpoints WHERE thread_id = 'acolyte-run:<run_id>';"
 ```
 
 ### 3. resume 実行

@@ -10,6 +10,9 @@ _Last reviewed: September 5, 2026_
 - ONNX / SentenceTransformer + KeyBERT によるタグ抽出
 - メモリ使用量を一定に保つ最適化設計
 - Hybrid 処理戦略による効率的なバックフィル・フォワード処理
+- **設計原則 & データ境界**:
+  - `alt-db` への直接書き込みは禁止。書き込みは `alt-data-hub` の `UpsertArticleTags` / `BatchUpsertArticleTags` Connect-RPC (mTLS :9443) を経由して `feed_tags` と `article_tags` に upsert する (`ON CONFLICT` 更新)。
+  - append-only な `tag_set_versions` テーブルは `alt-data-hub` の別 RPC `CreateTagSetVersion` が管理し、`tag-generator` はこれを呼び出さない。
 
 ## Architecture & Flow
 
@@ -506,6 +509,16 @@ uv run bandit -r . -x tests
 - `TagGeneratorService` がサイクル統計をログ出力
 - `MAX_CONSECUTIVE_EMPTY_CYCLES` (20) 超過で診断ログ + カーソルポイズニング警告
 - 将来タイムスタンプ (>1時間) or >365日古いカーソルで recovery クエリ発動
+
+## Input Sanitization
+
+`InputSanitizer` (`tag_extractor/input_sanitizer.py`) validates and cleanses article payloads before passing them to the ML extraction pipeline:
+- **Prompt Injection Defense**: Evaluates inputs against 15+ prompt-injection pattern heuristics (e.g. `ignore previous instructions`, `system: you are now`, `jailbreak`, `act as if you were`).
+- **Length Limits**: Managed via `SanitizationConfig` (title: 1–1000 characters, content: 1–100,000 characters, URL: up to 2048 characters).
+- **HTML Sanitization**: Utilizes `nh3` to strip unsafe markup, malicious script tags, and unapproved attributes.
+- **Control Character Stripping**: Strips null bytes (`\x00`) and disallows non-whitespace control characters to prevent parser corruption.
+- **Unicode Normalization**: Normalizes incoming text to Unicode NFC format.
+- **Early Rejection**: Yields a `SanitizationResult`; invalid inputs return early with violation details, preventing wasteful ML inference.
 
 ## LLM Notes
 

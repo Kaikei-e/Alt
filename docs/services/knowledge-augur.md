@@ -7,7 +7,7 @@ _Last reviewed: September 5, 2026_
 
 ## Role
 
-`knowledge-augur` is a standalone Ollama container built for AMD GPU (Vulkan) hardware. It runs under its own `compose.augur.yaml` at the repo root, which is **not** part of the production `include:` chain in `compose/compose.yaml` (`docs/services/MICROSERVICES.md` lists it as an "optional overlay"). It is **not** the default RAG generation backend: `rag-orchestrator`'s `AUGUR_EXTERNAL` defaults to `http://news-creator-backend:11435` in code and in `.env.template`, but compose/rag.yaml's fallback (`http://news-creator:11434`, which wins because `.env` intentionally omits `AUGUR_EXTERNAL`) routes it through news-creator's FastAPI priority-queue proxy, which itself fronts news-creator-backend's Ollama on :11435 (see `docs/services/rag-orchestrator.md`). Either way, news-creator is where generation actually runs in the current topology ([[000951]], [[000943]] — the ADR-000943 hardware map records the equivalent remote-Mac Augur route as a "dormant hook"). This file documents `knowledge-augur` as it exists in the repo (image, Modelfiles, entrypoint) for whoever needs to stand it up as an alternate generation host; it does not describe the service `rag-orchestrator` talks to by default.
+`knowledge-augur` is a standalone Ollama container built for AMD GPU (Vulkan) hardware. It runs under its own `compose.augur.yaml` at the repo root, which is **not** part of the production `include:` chain in `compose/compose.yaml` (`docs/services/MICROSERVICES.md` lists it as an "optional overlay"). It is **not** the default RAG generation backend: `rag-orchestrator`'s `AUGUR_EXTERNAL` defaults to `http://news-creator-backend:11435` in code and in `.env.template`, but compose/rag.yaml's fallback (`http://news-creator:11434`, which wins because `.env` intentionally omits `AUGUR_EXTERNAL`) routes it through news-creator's FastAPI priority-queue proxy, which itself fronts news-creator-backend's Ollama on :11435 (see `docs/services/rag-orchestrator.md`). Either way, news-creator is where generation actually runs in the current topology ([[000951]], [[000943]] — the ADR-000943 hardware map records the equivalent external runner Augur route as a "dormant hook"). This file documents `knowledge-augur` as it exists in the repo (image, Modelfiles, entrypoint) for whoever needs to stand it up as an alternate generation host; it does not describe the service `rag-orchestrator` talks to by default.
 
 - **RAG LLM Service**: An Ollama-based LLM service that can provide text generation for the RAG pipeline when `AUGUR_EXTERNAL` is pointed at it.
 - **Answer Generation**: Would generate grounded answers with citations based on retrieved context chunks from rag-orchestrator, if wired as the active backend.
@@ -56,7 +56,7 @@ flowchart LR
 | `repeat_penalty` | 1.15 | Repetition penalty |
 | `stop` | `<end_of_turn>` | Gemma 3 stop token |
 
-The comment in the Modelfile notes it targets response speed on an M4 Mac Mini deployment specifically, not the AMD Vulkan container this file otherwise documents.
+The comment in the Modelfile notes it targets response speed on a dedicated hardware runner specifically, not the AMD Vulkan container this file otherwise documents.
 
 ### Other Models (available, not preloaded by default)
 
@@ -276,6 +276,11 @@ logging:
 - **Model migration needs a template/parameter checklist**: gpt-oss → qwen3 required `think:false` (else `<think>` blocks leak into output) and `num_predict` 4096→512 → verify chat-template token differences against primary sources before switching → [[000155]] [[000640]]. gpt-oss variants also emit literal `\n` (double-escaped), needing post-processing → [[000066]].
 - **iGPU render GID is unstable across hosts**: GPU not detected despite correct device mappings → the host render GID varies, so the entrypoint must stat-detect the GID dynamically and drop privileges via gosu → [[000025]].
 - **Model switch without profiling wastes effort**: identify the dominant bottleneck first — once retrieval is optimized, the model weight itself is next; keep quality requirements while moving to a lighter same-family variant → [[000428]].
+
+## Cost of Breaking & Operational Invariants
+
+- **Unload policy & VRAM exhaustion**: Models kept resident indefinitely (`OLLAMA_KEEP_ALIVE=-1`) consume significant VRAM. Running alongside other inference workloads without memory separation risks VRAM starvation and OOM (which motivated isolating embedding/rerank into separate role-specific instances per [[000951]]).
+- **Port 11435 host collision**: The collision is on host port 11435 — `knowledge-augur` publishes `11435:11434` (`compose.augur.yaml`) and `news-creator-backend` publishes `127.0.0.1:11435:11435` (`compose/ai.yaml`). Running both simultaneously without adjusting host port mappings results in a bind collision.
 
 ## Development
 

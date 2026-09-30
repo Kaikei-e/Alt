@@ -271,6 +271,13 @@ For cases where rich HTML must be rendered via Svelte's `{@html}` directive (e.g
 
 **Usage**: The `sanitizeHtml()` function is called in `RenderFeedDetails.svelte` (mobile) before passing article content to `{@html}`. Both layers are covered by unit tests (`sanitize.test.ts`, `sanitizeHtml.test.ts`).
 
+## Design Principles & Invariants
+
+- **Alt-Paper Theme**: Newspaper-style design language tailored for text readability. UI text is written in English.
+- **Flat Text Invariant**: Text elements are treated as flat interface elements; visual depth is expressed strictly through tiles, containers, and micro-transitions, never through text shadows or 3D text styling.
+- **Reduced Motion Support**: When `prefers-reduced-motion` is active, depth simulations, parallax effects, and animated blurs are disabled or replaced with dissolve transitions, highlight fades, or color shifts.
+- **Acolyte Product Constraints**: No play/regeneration buttons on the report list view (`/acolyte`); generation is triggered only from detailed review contexts. Two-line UI element is maintained as an Acolyte design feature.
+
 ## Known failure patterns
 
 - Self-refiring `$effect` fetch loop (30 fetches/s) → `$effect` tracks every reactive read across the whole call stack, so a guard flag read inside a called function re-triggers the effect. Gate with `untrack()` / `$derived` value-equality; write guard conditions directly in the effect condition. → [[000320]] [[000441]] PM-2026-039

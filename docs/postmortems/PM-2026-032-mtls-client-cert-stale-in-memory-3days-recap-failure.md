@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: recap-worker の mTLS クライアント証明書が in-memory に固定され 3days Recap が CertificateExpired で停止"
+date: 2026-04-18
+tags:
+  - postmortem
+  - recap-worker
+  - mtls
+  - certificate-expired
+---
+
 # ポストモーテム: recap-worker の mTLS クライアント証明書が in-memory に固定され 3days Recap が CertificateExpired で停止
 
 ## メタデータ
