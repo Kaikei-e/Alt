@@ -237,6 +237,37 @@ def test_invalid_log_level(dummy_api_key_file: Path) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("env_val", "expected"),
+    [
+        ("info", "INFO"),
+        ("Warning", "WARNING"),
+    ],
+)
+def test_log_level_case_insensitive(
+    dummy_api_key_file: Path, monkeypatch: pytest.MonkeyPatch, env_val: str, expected: str
+) -> None:
+    monkeypatch.setenv("IRODORI_BASE_URL", "http://localhost:8000")
+    monkeypatch.setenv("IRODORI_API_KEY_FILE", str(dummy_api_key_file))
+    monkeypatch.setenv("TTS_VOICE_ID", "speaker_01")
+    monkeypatch.setenv("PEER_IDENTITY_STRICT", "false")
+    monkeypatch.setenv("LOG_LEVEL", env_val)
+
+    settings = Settings()
+    assert settings.log_level == expected
+
+
+def test_log_level_invalid_verbose_env(dummy_api_key_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IRODORI_BASE_URL", "http://localhost:8000")
+    monkeypatch.setenv("IRODORI_API_KEY_FILE", str(dummy_api_key_file))
+    monkeypatch.setenv("TTS_VOICE_ID", "speaker_01")
+    monkeypatch.setenv("PEER_IDENTITY_STRICT", "false")
+    monkeypatch.setenv("LOG_LEVEL", "verbose")
+
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 @pytest.mark.parametrize("timeout", [0.0, -1.0])
 def test_invalid_queue_timeout(dummy_api_key_file: Path, timeout: float) -> None:
     with pytest.raises(ValidationError):
