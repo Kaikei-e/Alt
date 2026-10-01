@@ -1,4 +1,5 @@
 # sidecar-proxy/CLAUDE.md
+> Historical record — compose does not run this proxy. Not maintained.
 
 ## Overview
 
@@ -22,8 +23,6 @@ curl http://localhost:8080/ready
 
 ## TDD Workflow
 
-**IMPORTANT**: Write failing tests BEFORE implementation.
-
 This code does not use `httputil.ReverseProxy`. Tests are per-package unit tests, one file per
 package (`pkg/config`, `pkg/dns`, `pkg/autolearn`, `pkg/proxy`): construct the real type and call
 its methods/functions directly, asserting on returned values and errors. `httptest.NewRequest` /
@@ -32,7 +31,6 @@ its methods/functions directly, asserting on returned values and errors. `httpte
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **No real network calls**: unit tests MUST be isolated; use `httptest` for the upstream when one is needed
-3. **Domain allowlist stays anchored**: any new allowlist-matching code must compile patterns as `^...$`, never a substring match (SSRF class, [[000077]] [[000310]])
-4. **Logging**: this package uses a plain `log.Logger`, not `log/slog`; match the existing style rather than introducing a second logging convention
+1. **No real network calls**: unit tests MUST be isolated; use `httptest` for the upstream when one is needed
+2. **Domain allowlist stays anchored**: any new allowlist-matching code must compile patterns as `^...$`, never a substring match (SSRF class, [[000077]] [[000310]])
+3. **Logging**: this package uses a plain `log.Logger`, not `log/slog`; match the existing style rather than introducing a second logging convention

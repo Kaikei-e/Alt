@@ -9,7 +9,7 @@ tags:
   - streaming
   - connect-rpc
   - alt-backend
-  - nginx
+  - plecto
   - auth-hub
 related:
   - "[[000874]]"
@@ -19,7 +19,7 @@ related:
 
 # Connect-RPC streaming service checklist
 
-PM-2026-045 で 4 週間 silent failure を生んだ「auth TTL × stream stale window × nginx location × client cursor × UI emit ownership」5 軸の不整合を、新規 Connect-RPC streaming service 追加時と既存 service の review 時に **必ず** 通すための checklist。
+PM-2026-045 で 4 週間 silent failure を生んだ「auth TTL × stream stale window × nginx location (now the plecto-proxy route) × client cursor × UI emit ownership」5 軸の不整合を、新規 Connect-RPC streaming service 追加時と既存 service の review 時に **必ず** 通すための checklist。
 
 5 軸のどれか 1 つの不整合では大きな症状が出ないが、複数が揃うと UI が完全に動かなくなる「合成 silent failure」を生む。**1 行でも違反していたら新規 service は landing しない**。
 
@@ -28,24 +28,24 @@ PM-2026-045 で 4 週間 silent failure を生んだ「auth TTL × stream stale 
 | # | 軸 | What | Where |
 |---|---|---|---|
 | 1 | **auth TTL** | `BACKEND_TOKEN_TTL` (auth-hub) ≥ alt-backend handler のストリーム stale タイマー (例: knowledge_home の `staleTimer`)。両者が同じ wall-clock を見るため、TTL がストリーム生存時間より短いと 5 分間隔で reconnect storm が起きる | `compose/auth.yaml`、`compose/compose.staging.yaml`、`alt-backend/app/orchestrator/connect/v2/<service>/` |
-| 2 | **nginx SSE location** | `/api/v2/alt\.<service>\.v[0-9]+\..+/Stream` 専用 location が、`proxy_buffering off` + `proxy_request_buffering off` + `proxy_cache off` + `X-Accel-Buffering: no` + `proxy_send_timeout >= streamStaleTimeout` + `proxy_read_timeout >= streamStaleTimeout` を持つ。汎用 `^/api/.*(stream\|sse)` location (`default.conf:263`) は `proxy_buffering off` / `proxy_cache off` は持つが `proxy_request_buffering off` と `X-Accel-Buffering: no` を欠くので、update frame がバッファされる (`default.conf:394-396` のコメントに同じ記述あり)。専用 location の `proxy_send/read_timeout` は knowledge_home で 2400s (`default.conf:458-459`) — knowledge_home の 30 分 `staleTimer` (`alt-backend/app/orchestrator/connect/v2/knowledge_home/home_query.go:281`) に対して汎用 location の 1h より長く張ってある | `nginx/conf.d/default.conf` |
+| 2 | **Plecto edge route** | 専用 route が `plecto/manifest.toml` に定義されていること。Plecto には正規表現の汎用 fallback がないため新規 streaming RPC は明示的な `path_prefix` 定義が必須。Plecto の `request_timeout_ms` は per-try（1 回の試行ごと）の response headers 到達までの制限 (デフォルト 30000ms は upstream 継承、到達後は body が無期限ストリーム) のため、ハンドラは `request_timeout_ms` 内にヘッダー/初回フレームを即時送信すること (または route で `request_timeout_ms = 0` を明示)。トランザクション全体を打ち切る `overall_timeout_ms` は streaming route に絶対に設定しないこと | `plecto/manifest.toml` |
 | 3 | **client cursor persist** | FE hook が `(resumeFromSeq, lastSeqHiwater)` を `sessionStorage` に永続化し、SvelteKit invalidateAll / SPA 遷移で hook が remount されても resume seq が 0 に戻らない。`stream_expired` 受領時のみ cursor を破棄する | `alt-frontend-sv/src/lib/hooks/use<Service>Stream.svelte.ts` |
 | 4 | **UI emit ownership** | 同一ユーザー意図 (ASK / OPEN / TRANSITION 等) に対し emit する箇所が **1 か所だけ**。tile / page / hook の 3 階層で重複しないよう source-spec test で機械的に gate する | `alt-frontend-sv/src/lib/components/.../*.source.spec.ts`, `alt-frontend-sv/src/routes/(app)/<service>/+page.svelte` |
 | 5 | **dedupe key** | server-side で `(user_id, client_transition_id)` を dedupe。UUIDv7 必須、`+5min future / -48h past` をはみ出したら拒否。TTL 48h の dedupe 行で fast-path、TTL 越えは `knowledge_events.dedupe_key` unique index で slow-path 拒否 | `alt-backend/app/usecase/<service>_usecase/*.go`、proto の RPC 定義 |
 
 ## 既存 service inventory (2026-05-29 時点、2026-09-05 に未掲載の streaming RPC 3 件を追加)
 
-| Service | nginx location | auth TTL 一致 | client cursor persist | single emit | dedupe key |
+| Service | Plecto route (manifest.toml) | auth TTL 一致 | client cursor persist | single emit | dedupe key |
 |---|---|---|---|---|---|
-| `alt.knowledge.loop.v1` (StreamKnowledgeLoopUpdates) | ⚠️ retired — nginx location `default.conf:401` is now dead routing; backend handler and `useKnowledgeLoopStream.svelte.ts` were removed 2026-06-10 when Knowledge Loop retired to Knowledge Trail (ADR [[000940]]) | N/A | N/A | N/A | N/A |
-| `alt.knowledge_home.v1` (StreamKnowledgeHome*) | ✅ `default.conf:432` | ✅ 30m / 30m | ⚠️ Recheck recommended (`useKnowledgeHome.svelte.ts` is non-stream pull; the stream hook is the stream side — verify cursor persistence) | ✅ Single emit per kind | ✅ |
-| `alt.augur.v2` / `alt.morning_letter.v2` / `alt.feeds.v2` (Stream*) | ✅ `default.conf:362` (shared location) | ⚠️ Verify per-service stale timer | ⚠️ Per-hook verify | ⚠️ Per-feature verify | ✅ |
-| `alt.admin_monitor.v1` (Watch / Catalog / Snapshot) | ✅ `default.conf:466` (whole service) | ✅ 30m | ⚠️ Watch 経路は FE 自動 rotate (15 分) のため cursor 永続化不要 | N/A (admin 用) | N/A |
-| `alt.articles.v2` (StreamArticleTags) | ⚠️ no dedicated location — falls through to the generic `^/api/.*(stream\|sse)` block at `default.conf:263`, which lacks `proxy_request_buffering off` and `X-Accel-Buffering: no` (the PM-2026-045 shape) | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify |
-| `alt.recap.v2` (StreamJobProgress) | ⚠️ no dedicated location — same generic-block fallthrough as above | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify |
-| `alt.acolyte.v1` (StreamRunProgress) | ⚠️ no dedicated location — same generic-block fallthrough as above | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify |
+| `alt.knowledge.loop.v1` (StreamKnowledgeLoopUpdates) | (Historical / Retired) — Knowledge Loop was retired to Knowledge Trail (ADR [[000940]]). `manifest.toml` の route は退役済みサービスの残置ルート (削除候補) | N/A | N/A | N/A | N/A |
+| `alt.knowledge_home.v1` (StreamKnowledgeHome*) | ✅ route 7 (`path_prefix = "/api/v2/alt.knowledge_home.v1."`) | ✅ 30m / 30m | ⚠️ Recheck recommended (`useKnowledgeHome.svelte.ts` is non-stream pull; the stream hook is the stream side — verify cursor persistence) | ✅ Single emit per kind | ✅ |
+| `alt.augur.v2` / `alt.morning_letter.v2` / `alt.feeds.v2` (Stream*) | ✅ route 7 (dedicated `path_prefix` per service) | ⚠️ Verify per-service stale timer | ⚠️ Per-hook verify | ⚠️ Per-feature verify | ✅ |
+| `alt.admin_monitor.v1` (Watch / Catalog / Snapshot) | ✅ route 7 (`path_prefix = "/api/v2/alt.admin_monitor.v1."`) | ✅ 30m | ⚠️ Watch 経路は FE 自動 rotate (15 分) のため cursor 永続化不要 | N/A (admin 用) | N/A |
+| `alt.articles.v2` (StreamArticleTags) | ⚠️ no dedicated route — falls through to route 8 `/api/` catch-all (Plecto lacks regex fallback) | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify |
+| `alt.recap.v2` (StreamJobProgress) | ⚠️ no dedicated route — falls through to route 8 `/api/` catch-all | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify |
+| `alt.acolyte.v1` (StreamRunProgress) | ⚠️ no dedicated route — falls through to route 8 `/api/` catch-all | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify | ⚠️ Verify |
 
-`alt.articles.v2` の StreamArticleTags は上記 3 つの中で唯一 **確認済みの live FE caller** を持つ (`alt-frontend-sv/src/lib/connect/articles.ts` の `streamArticleTags`、呼び出し元は `TagTrailScreen.svelte` と `DesktopTagTrailScreen.svelte`)。専用 nginx location を追加するなら (`default.conf:432-460` の knowledge_home ブロックがモデル)、この 3 つの中で最優先。
+`alt.articles.v2` の StreamArticleTags は上記 3 つの中で唯一 **確認済みの live FE caller** を持つ (`alt-frontend-sv/src/lib/connect/articles.ts` の `streamArticleTags`、呼び出し元は `TagTrailScreen.svelte` と `DesktopTagTrailScreen.svelte`)。専用 Plecto route を追加するなら (`plecto/manifest.toml` の `alt.knowledge_home.v1.` ブロックがモデル)、この 3 つの中で最優先。
 
 ⚠️ 印は **次の adjacent PR で verify** する宿題。新 streaming service が landing する前に必ず ✅ に上げる。
 
@@ -55,7 +55,7 @@ PM-2026-045 で 4 週間 silent failure を生んだ「auth TTL × stream stale 
 
 - **alert** — `observability/prometheus/rules/knowledge-loop-rules.yml` の `KnowledgeLoopStreamJwtExpiredRate` (TTL 不整合) / `KnowledgeLoopStreamReconnectStorm` (catch-race / nginx 回帰) が発火したら本 checklist の row 1-4 を再点検する
 - **dashboard** — `observability/grafana/dashboards/knowledge-loop-projector.json` の "SSE stream lifecycle" / "Stream JWT-expired ratio" / "Stream upstream fetch failures" panels がベースライン乖離なら同じく row 1-4
-- **structured logs** — 各 streaming service は `alt.<service>.stream_started` / `stream_ended` 等を構造化ログで出し、対応する OTel counter (`alt-backend/app/utils/otel/<service>_metrics.go`、例 `StreamConnectionsTotal` / `StreamDeliveriesTotal` / `StreamDisconnectsTotal`) の 2 段で出る。knowledge_loop 自体は 2026-06-10 に retire 済 (Knowledge Trail へ移行、ADR [[000940]])。参照実装は `alt-backend/app/orchestrator/connect/v2/knowledge_home/home_query.go` の `alt.knowledge_home.stream_started`
+- **structured logs** — 各 streaming service は `alt.<service>.stream_started` / `stream_ended` 等を構造化ログで出し、対応する OTel counter (`alt-backend/app/utils/otel/<service>_metrics.go`、例 `StreamConnectionsTotal` / `StreamDeliveriesTotal` / `StreamDisconnectsTotal`) の 2 段で出る。knowledge_loop 自体は 2026-06-10 に retire 済 (Knowledge Trail へ移行、ADR [[000940]])。参照実装は `alt-backend/app/orchestrator/connect/v2/knowledge_home/home_stream.go` の `alt.knowledge_home.stream_started`
 
 新 streaming service を追加する PR は、上記 3 つすべてに新 service 名のシリーズが現れることを確認する。出ていなければ instrumentation 漏れ。
 
@@ -71,10 +71,12 @@ PM-2026-045 で 4 週間 silent failure を生んだ「auth TTL × stream stale 
    - `compose/auth.yaml` と `compose/compose.staging.yaml` の `BACKEND_TOKEN_TTL` が新 handler の `streamStaleTimeout` 以上であることを verify
    - 短ければ TTL を伸ばすか、`streamStaleTimeout` を短くする (前者が default)
 
-3. **nginx location 追加**
-   - `nginx/conf.d/default.conf` に `^/api/v2/alt\.<service>\.v<N>\..+/Stream` 専用 location を追加
-   - 5b'. / 5b. ブロックをコピペ元として使う (knowledge_loop / knowledge_home)
-   - 必須 directive: `proxy_buffering off`、`proxy_request_buffering off`、`proxy_cache off`、`gzip off`、`add_header X-Accel-Buffering no always`、`proxy_send_timeout >= streamStaleTimeout`、`proxy_read_timeout >= streamStaleTimeout`
+3. **Plecto route 追加**
+   - `plecto/manifest.toml` に専用 `[[route]]` を追加 (Plecto には正規表現の汎用 fallback がないため、新規 streaming RPC は明示的な prefix 定義が必須)
+   - `upstream = "alt-frontend-sv"`
+   - `path_prefix = "/api/v2/alt.<service>.v<N>."`
+   - `[route.headers]` に baseline security headers を設定 (例: `x-frame-options`, `x-content-type-options`, `strict-transport-security` 等)
+   - タイムアウト設計: Plecto の `request_timeout_ms` は response headers 到達までの制限 (デフォルト 30000ms を upstream から継承)。streaming handler はこの時間内にヘッダー/初回フレーム (heartbeat 等) を必ず送出すること (または route に `request_timeout_ms = 0` を指定して opt-out)。トランザクション全体を打ち切る `overall_timeout_ms` は streaming route に絶対に設定しない (default 0 のまま維持)
 
 4. **FE hook の cursor persist**
    - `use<Service>Stream.svelte.ts` を新設し、`cursorPersistKey` opt を取り `sessionStorage` キー `<service>-stream:resume:<key>` に `lastSeqHiwater` を読み書き
@@ -100,23 +102,28 @@ PM-2026-045 が「ログは出ていたが SLI / alert が無く 4 週間放置�
 
 ```bash
 # 1. 直近 30 日の HAR 取得 (ユーザフロー再現)
-#    Chrome DevTools → /loop / /knowledge-home / augur conversation 開く →
+#    Chrome DevTools → /home (alt-frontend-sv/src/routes/(app)/home) / augur conversation 開く →
 #    Network tab Save all as HAR → tmp/<date>.har
 
 # 2. SSE body size が heartbeat 以上か (PM-2026-045 で body 42 byte = heartbeat のみ)
 jq -r '.log.entries[] | select(.request.url | test("/Stream")) | "\(.response.bodySize)\t\(.request.url)"' tmp/<date>.har | sort -n | head -20
 
-# 3. 同一ユーザの stream_started を 1 分 buckets で集計
-docker compose -f compose/compose.yaml -p alt logs alt-backend --since 30d \
-  | grep alt.knowledge_loop.stream_started \
-  | awk '{print substr($0,1,16)}' | sort | uniq -c | sort -rn | head -20
+# 3. 同一ユーザの stream_started を 1 分 buckets で集計 (例: knowledge_home)
+docker compose -f compose/compose.yaml -p alt logs --timestamps alt-backend --since 30d \
+  | grep alt.knowledge_home.stream_started \
+  | awk '{print substr($3,1,16)}' | sort | uniq -c | sort -rn | head -20
 
-# 4. stream_jwt_expired の頻度 (BACKEND_TOKEN_TTL=30m なら 0 が期待値)
+# 4. stream_expired と stream_started の比率確認 (30 分タイマーによる自然切断)
+#    knowledge_home ハンドラは JWT expiry イベントを出力しない (stream_expired は
+#    30 分の staleTimer による通知)。接続生存 30 分ごとに約 1 回の stream_expired
+#    発生が正常。started に対する expired の極端な偏りや storm がないか確認:
 docker compose -f compose/compose.yaml -p alt logs alt-backend --since 30d \
-  | grep -c alt.knowledge_loop.stream_jwt_expired
+  | grep -c alt.knowledge_home.stream_expired
+docker compose -f compose/compose.yaml -p alt logs alt-backend --since 30d \
+  | grep -c alt.knowledge_home.stream_started
 
-# 5. Grafana board の "SSE stream lifecycle" / "Stream JWT-expired ratio" を目視
-#    過去 30 日でベースライン (started ≈ ended{ctx_done}, jwt_expired ≈ 0) から
+# 5. Grafana board の "SSE stream lifecycle" 目視
+#    過去 30 日でベースライン (started ≈ ended + expired) から
 #    逸脱があれば該当 service の 5 軸 checklist を再点検
 
 # 6. inventory table の ⚠️ 列を 1 つでも ✅ に上げる作業を 1 PR で進める
@@ -132,8 +139,8 @@ audit 結果 (異常の有無 / 直した内容) は `docs/daily/<date>.md` に 
 - [[000940]] Knowledge Loop retire (2026-06-10) — 上記 ADR/PM が対象にした
   `alt.knowledge.loop.v1` の backend handler・FE hook は削除済。以下の
   citation は copy template として Knowledge Home 側に更新済
-- `nginx/conf.d/default.conf:432-460` — Knowledge Home SSE canonical location (copy template)
-- `alt-backend/app/orchestrator/connect/v2/knowledge_home/home_query.go` — handler の staleTimer / stream_started ログ / counter increment 配線
+- `plecto/manifest.toml:178-184` — Knowledge Home streaming route (copy template)
+- `alt-backend/app/orchestrator/connect/v2/knowledge_home/home_stream.go` — handler の staleTimer / stream_started ログ / counter increment 配線
 - `alt-frontend-sv/src/lib/hooks/useStreamUpdates.svelte.ts` は Knowledge Home
   の stream 側 hook だが `sessionStorage` cursor persist は未実装 — 上の
   inventory table の ⚠️ 印どおり、現時点で cursorPersistKey パターンの生きた

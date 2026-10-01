@@ -1,3 +1,13 @@
+---
+title: "PM-2026-013: Ask Augur follow-up クエリのタイムアウト — planner 過剰 clarification + handler event ドロップ + セマフォスロットリーク"
+date: 2026-03-28
+tags:
+  - postmortem
+  - rag-orchestrator
+  - ask-augur
+  - semaphore
+---
+
 # PM-2026-013: Ask Augur follow-up クエリのタイムアウト — planner 過剰 clarification + handler event ドロップ + セマフォスロットリーク
 
 ## メタデータ

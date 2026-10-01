@@ -1032,6 +1032,29 @@ class Settings(BaseSettings):
             "RECAP_LEARNING_MACHINE_TAXONOMY_PATH", "RECAP_SUBWORKER_LEARNING_MACHINE_TAXONOMY_PATH"
         ),
     )
+    loop_watchdog_timeout_seconds: int = Field(
+        360,
+        ge=30,
+        le=900,
+        description="Event-loop watchdog timeout in seconds (30..900); process aborts if loop freezes",
+        validation_alias=AliasChoices(
+            "RECAP_SUBWORKER_LOOP_WATCHDOG_TIMEOUT_SECONDS",
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_watchdog_vs_hdbscan_timeout(self) -> Settings:
+        """Refuse to boot when loop watchdog timeout is <= HDBSCAN timeout.
+
+        The watchdog must not preempt the HDBSCAN timeout fallback.
+        """
+        if self.loop_watchdog_timeout_seconds <= self.hdbscan_timeout_seconds:
+            raise ValueError(
+                f"loop_watchdog_timeout_seconds ({self.loop_watchdog_timeout_seconds}) "
+                f"must be greater than hdbscan_timeout_seconds ({self.hdbscan_timeout_seconds}): "
+                "the watchdog must not preempt the HDBSCAN timeout fallback."
+            )
+        return self
 
     @property
     def genre_dedup_thresholds_dict(self) -> dict[str, float]:

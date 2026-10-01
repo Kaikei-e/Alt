@@ -1,3 +1,13 @@
+---
+title: "PM-2026-002: 要約不可記事の無限再エンキューループ"
+date: 2026-03-19
+tags:
+  - postmortem
+  - pre-processor
+  - summarize-job-queue
+  - infinite-loop
+---
+
 # PM-2026-002: 要約不可記事の無限再エンキューループ
 
 ## メタデータ

@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: Meilisearch 検索キー不整合によるデプロイ経路の全文検索全滅"
+date: 2026-07-22
+tags:
+  - postmortem
+  - meilisearch
+  - search-indexer
+  - secrets
+---
+
 # ポストモーテム: Meilisearch 検索キー不整合によるデプロイ経路の全文検索全滅
 
 ## メタデータ

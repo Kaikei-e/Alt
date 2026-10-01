@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: Acolyte レポート生成のサイレントフォールバックによる空洞版の無警告永続化"
+date: 2026-07-22
+tags:
+  - postmortem
+  - acolyte-orchestrator
+  - silent-fallback
+  - data-quality
+---
+
 # ポストモーテム: Acolyte レポート生成のサイレントフォールバックによる空洞版の無警告永続化
 
 ## メタデータ

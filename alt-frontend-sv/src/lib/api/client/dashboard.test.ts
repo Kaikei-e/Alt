@@ -7,15 +7,15 @@ vi.mock("./core", () => ({
 	getClientCSRFToken: () => getClientCSRFToken(),
 }));
 
-import { triggerRecapCardsJob } from "./dashboard";
+import { triggerTopicCardsJob } from "./dashboard";
 
-describe("triggerRecapCardsJob", () => {
+describe("triggerTopicCardsJob", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		getClientCSRFToken.mockResolvedValue("mock-csrf-token");
 	});
 
-	it("sends POST to /api/v1/generate/recaps/3days/cards with CSRF header and returns response", async () => {
+	it("sends POST to /api/v1/generate/topic-cards with CSRF header and returns response", async () => {
 		const mockResponse = {
 			job_id: "cards-job-123",
 			genres: [],
@@ -27,11 +27,11 @@ describe("triggerRecapCardsJob", () => {
 			json: async () => mockResponse,
 		});
 
-		const result = await triggerRecapCardsJob(mockFetch);
+		const result = await triggerTopicCardsJob(mockFetch);
 
 		expect(mockFetch).toHaveBeenCalledTimes(1);
 		const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-		expect(url).toBe("/api/v1/generate/recaps/3days/cards");
+		expect(url).toBe("/api/v1/generate/topic-cards");
 		expect(init?.method).toBe("POST");
 		expect(init?.headers).toEqual({
 			"Content-Type": "application/json",
@@ -49,7 +49,7 @@ describe("triggerRecapCardsJob", () => {
 				JSON.stringify({ error: "Cards recap job already running" }),
 		});
 
-		await expect(triggerRecapCardsJob(mockFetch)).rejects.toMatchObject({
+		await expect(triggerTopicCardsJob(mockFetch)).rejects.toMatchObject({
 			status: 409,
 		});
 	});
@@ -61,7 +61,7 @@ describe("triggerRecapCardsJob", () => {
 			text: async () => JSON.stringify({ error: "Cards user not configured" }),
 		});
 
-		await expect(triggerRecapCardsJob(mockFetch)).rejects.toMatchObject({
+		await expect(triggerTopicCardsJob(mockFetch)).rejects.toMatchObject({
 			status: 503,
 		});
 	});

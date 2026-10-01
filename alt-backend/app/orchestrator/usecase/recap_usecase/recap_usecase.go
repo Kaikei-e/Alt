@@ -28,8 +28,8 @@ func (u *RecapUsecase) GetThreeDayRecap(ctx context.Context) (*domain.RecapSumma
 	return u.recapPort.GetThreeDayRecap(ctx)
 }
 
-func (u *RecapUsecase) GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
-	return u.recapPort.GetThreeDayRecapCards(ctx)
+func (u *RecapUsecase) GetTopicCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
+	return u.recapPort.GetTopicCards(ctx)
 }
 
 func (u *RecapUsecase) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {

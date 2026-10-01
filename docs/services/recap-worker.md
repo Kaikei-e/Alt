@@ -149,7 +149,7 @@ Key construction flow in `ComponentRegistry::build()`:
 
 ## Pipeline Flow
 
-The 7-Day Recap Pipeline (`src/pipeline.rs`) follows these stages:
+The 7-Day Recap Pipeline (`src/pipeline.rs`) follows these stages. For detailed stage transitions, payload schemas, and dispatch flowcharts, see [recap-worker/PIPELINE_FLOW.md](../../recap-worker/PIPELINE_FLOW.md).
 
 ```mermaid
 flowchart TB
@@ -324,9 +324,46 @@ Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides
 *   `RECAP_GENRE_REFINE_ROLLOUT_PERCENT`: Gradual rollout control for refinement (default: 100).
 *   `RECAP_MIN_DOCUMENTS_PER_GENRE`: Minimum articles required to generate a recap for a genre (default: 3).
 
+#### Database & Connection Pool
+*   `RECAP_DB_DSN`: PostgreSQL connection string (constructed from `RECAP_DB_HOST`, `RECAP_DB_PORT`, `RECAP_DB_USER`, `RECAP_DB_PASSWORD_FILE`, `RECAP_DB_NAME` in Compose).
+*   `RECAP_DB_MAX_CONNECTIONS`: Max connections in pool (default 50; sized for multi-worker scaling within DB limit).
+*   `RECAP_DB_MIN_CONNECTIONS`: Min idle connections in pool (default 5).
+*   `RECAP_DB_ACQUIRE_TIMEOUT_SECS`: Connection acquire timeout (default 60s).
+*   `RECAP_DB_IDLE_TIMEOUT_SECS`: Max connection idle time before recycling (default 600s).
+*   `RECAP_DB_MAX_LIFETIME_SECS`: Max connection lifetime before recycling (default 1800s).
+
+#### External Services & Client Timeouts
+*   `NEWS_CREATOR_BASE_URL`: Base URL for news-creator LLM summarizer (`https://news-creator:9443` in Compose via mTLS).
+*   `SUBWORKER_BASE_URL`: Base URL for recap-subworker clustering service (`https://recap-subworker:9443` in Compose via mTLS).
+*   `ALT_BACKEND_MTLS_URL`: Base URL for article reads (`https://alt-data-hub:9443` in Compose; reads moved to `alt-data-hub` via ADR-000954).
+*   `TAG_GENERATOR_MTLS_URL`: Base URL for tag generator (`https://tag-generator:9443` in Compose).
+*   `ALT_BACKEND_BASE_URL`: Base URL for plaintext fallback / legacy endpoint.
+*   `ALT_BACKEND_CONNECT_TIMEOUT_MS`: Connection timeout for alt-backend / datahub calls (default: 3000ms).
+*   `ALT_BACKEND_READ_TIMEOUT_MS`: Read timeout for article fetch calls (default: 20000ms).
+*   `ALT_BACKEND_TOTAL_TIMEOUT_MS`: Total timeout for article fetch calls (default: 30000ms).
+*   `TAG_GENERATOR_BASE_URL`: Base URL for tag-generator service (`http://tag-generator:9400`).
+*   `TAG_GENERATOR_CONNECT_TIMEOUT_MS`: Connect timeout for tag-generator (default: 3000ms).
+*   `TAG_GENERATOR_TOTAL_TIMEOUT_MS`: Total timeout for tag-generator (default: 30000ms).
+*   `TAG_GENERATOR_ENABLED`: Enable/disable tag-generator calls (default: true).
+*   `RECAP_SUBWORKER_COARSE_CLASSIFY_TIMEOUT_SECS`: Per-call timeout for `POST /v1/classify/coarse` (default: 30s; bounds single slow calls before per-article fallback).
+
 #### LLM Configuration
-*   `LLM_SUMMARY_TIMEOUT_SECS`: Timeout for LLM summarization requests (default: 600).
-*   `RECAP_BATCH_SUMMARY_CHUNK_SIZE`: Batch size for summary processing (default: 25).
+*   `LLM_MAX_CONCURRENCY`: Max concurrent clustering jobs (default: 1; summary generation is sequential).
+*   `LLM_PROMPT_VERSION`: Prompt blueprint version sent to news-creator (default: `recap-ja-v2`).
+*   `LLM_SUMMARY_TIMEOUT_SECS`: Timeout for a single genre's summary generation (default: 900s in Compose `compose/recap.yaml`, 600s in code `config.rs`; increased for hierarchical Map-Reduce).
+*   `RECAP_BATCH_SUMMARY_CHUNK_SIZE`: Number of summary requests per batch call (default: 3; reduced from 25→10→3 to avoid batch HTTP timeouts).
+*   `RECAP_MAX_DEGRADED_GENRE_RATIO`: Maximum tolerated ratio of failed genres before marking the job `failed` instead of `completed` (default: 0.5).
+
+#### HTTP Retry & Backpressure
+*   `HTTP_MAX_RETRIES`: Max retry attempts for HTTP client calls (default: 3).
+*   `HTTP_BACKOFF_BASE_MS`: Initial exponential backoff delay in ms (default: 250ms).
+*   `HTTP_BACKOFF_CAP_MS`: Upper bound on backoff delay in ms (default: 10000ms).
+
+#### Knowledge Sovereign Event Emit
+*   `RECAP_KNOWLEDGE_EMIT`: Emits `recap.topic_snapshotted.v1` into `knowledge-sovereign` upon reaching the persist stage (default: enabled in Compose). Emits under **warn-and-continue** semantics ([[000905]]) so failure to notify does not fail the recap job.
+*   `RECAP_KNOWLEDGE_SOVEREIGN_URL`: Endpoint for event emission (`http://knowledge-sovereign:9500`).
+*   `RECAP_KNOWLEDGE_OWNER_USER_ID` / `RECAP_KNOWLEDGE_OWNER_TENANT_ID`: User/tenant identification for event owner.
+*   `RECAP_KNOWLEDGE_SOVEREIGN_TOKEN_FILE`: Bearer token path (`/run/secrets/sovereign_event_token`).
 
 #### Classification Queue
 *   `CLASSIFICATION_QUEUE_CONCURRENCY`: Number of concurrent classification workers (default: 8).
@@ -438,13 +475,14 @@ curl http://localhost:9005/health/ready
 
 - Cascading OOM across recap-worker / recap-db / recap-subworker halted 3-day generation for ~2h → undersized `mem_limit` plus glibc malloc fragmentation around libtorch; jemalloc as global allocator is mandatory and limits must be sized from measured peaks → PM-2026-001, [[000547]].
 - Empty recap persisted as a successful job → `Ok(_)` treated as success without inspecting the result payload; job outcome must check `PersistResult` contents (e.g. `genres_stored`) via the `JobOutcome` enum → [[000149]], [[000547]].
-- Genres collapsed into 2 buckets for 2 days while jobs stayed `completed` → rust-bert model cache was moved to an unpopulated host bind mount and embedder init failure degraded silently to keyword-only; `RECAP_WORKER_EMBEDDING_REQUIRED=true` now bails at startup, cache is populated via alt-deploy → PM-2026-038, [[3days-recap-artefact-recovery]].
+- Genres collapsed into 2 buckets for 2 days while jobs stayed `completed` → rust-bert model cache was moved to an unpopulated host bind mount and embedder init failure degraded silently to keyword-only; `RECAP_WORKER_EMBEDDING_REQUIRED=true` now bails at startup, cache is populated via alt-deploy → PM-2026-038, [[runbooks/3days-recap-artefact-recovery]].
 - `CertificateExpired` on outbound mTLS after cert rotation → reqwest baked the client cert in memory at startup; certs must be re-resolved per connection (certReloader semantics) → PM-2026-032.
 - `classification returned 0 results` accumulating for ~5 days → `https_only(true)` refused the plain-HTTP recap-subworker before sending; outbound `MTLS_ENFORCE` and callee server-side TLS must change as a symmetric pair — assert URL schemes at startup → PM-2026-033.
 - 3-day recap 404 for 4 consecutive days → mTLS listener :9443 served Connect-RPC only and the REST route was never registered after cutover; the root cause sat in `recap_job_status_history.reason` the whole time — start investigations from DB state tables, not logs → PM-2026-031.
 - Retryable upstream errors (429) never retried → `anyhow::bail!` stringified errors so `downcast_ref`-based retry classification lost the status code; propagate typed errors (thiserror) that preserve it → [[000390]].
 - Dashboard showed a permanent recap backlog → morning-update leaked ~48 `pending` rows/day into `recap_jobs`; high-frequency background jobs need their own terminal status (`morning_completed`) → [[000897]].
 - Embedding init failure invisible for 3 days → `EmbeddingService::new().ok()` swallowed the error, leaving only a one-line "unavailable"; never `.ok()` infrastructure init, and log successful init at INFO too → PM-2026-014, [[000611]].
+- **Citation grounding failures**: citations dropped or hallucinatory URLs produced → citation reconciler guards against raw text matches, enforces UUID validation, and allows joined/concurrent UUID + host resolution; paired with news-creator sanitizer UUID enforcement and subworker bge-m3 embed timeout 120s with exponential backoff retries → [[000899]].
 
 ## Dependencies
 

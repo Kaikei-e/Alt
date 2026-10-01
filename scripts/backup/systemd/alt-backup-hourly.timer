@@ -1,6 +1,6 @@
 [Unit]
 Description=Alt Platform Hourly PostgreSQL Backup Timer
-Documentation=file:///home/koko/Documents/dev/Alt/docs/runbooks/backup-restore.md
+Documentation=file:///path/to/Alt/docs/runbooks/backup-restore.md
 
 [Timer]
 # Run every hour at minute 0

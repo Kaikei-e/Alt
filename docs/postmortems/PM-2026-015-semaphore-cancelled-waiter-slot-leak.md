@@ -1,3 +1,13 @@
+---
+title: "PM-2026-015: HybridPrioritySemaphore CancelledError 時スロット消失 — オンザフライ要約 551秒キュー待ち"
+date: 2026-03-29
+tags:
+  - postmortem
+  - news-creator
+  - semaphore
+  - slot-leak
+---
+
 # PM-2026-015: HybridPrioritySemaphore CancelledError 時スロット消失 — オンザフライ要約 551秒キュー待ち
 
 ## メタデータ

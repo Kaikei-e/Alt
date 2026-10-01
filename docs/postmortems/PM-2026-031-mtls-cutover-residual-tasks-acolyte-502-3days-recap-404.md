@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: mTLS cutover の残タスクが招いた Acolyte 502 再発と 3days Recap 4日連続 404"
+date: 2026-04-14
+tags:
+  - postmortem
+  - mtls
+  - pki-agent
+  - recap-worker
+---
+
 # ポストモーテム: mTLS cutover の残タスクが招いた Acolyte 502 再発と 3days Recap 4日連続 404
 
 ## メタデータ

@@ -1,3 +1,13 @@
+---
+title: "PM-2026-010: Knowledge Home V3 Reproject チェックポイントギャップによる summary_state 不整合"
+date: 2026-03-23
+tags:
+  - postmortem
+  - knowledge-sovereign
+  - alt-backend
+  - reproject
+---
+
 # PM-2026-010: Knowledge Home V3 Reproject チェックポイントギャップによる summary_state 不整合
 
 ## メタデータ

@@ -4,7 +4,7 @@ Knowledge Home exposes two Connect-RPC services: a **public API** for user-facin
 
 ## Public API: KnowledgeHomeService
 
-**Handler:** `alt-backend/app/connect/v2/knowledge_home/handler.go`
+**Handler:** `alt-backend/app/orchestrator/connect/v2/knowledge_home/handler.go`
 
 | RPC | Request | Response | Description |
 |-----|---------|----------|-------------|
@@ -63,7 +63,7 @@ Dismiss uses soft-delete (sets `dismissed_at` on `recall_candidate_view`) to pre
 
 ## Admin API: KnowledgeHomeAdminService
 
-**Handler:** `alt-backend/app/connect/v2/knowledge_home_admin/handler.go`
+**Handler:** `alt-backend/app/orchestrator/connect/v2/knowledge_home_admin/handler.go`
 
 Requires service-token authentication (no user JWT).
 
@@ -108,7 +108,7 @@ The core domain object for a single item in the Knowledge Home feed.
 | `last_interacted_at` | timestamp | Projector | Last user interaction time |
 | `projection_version` | int | Projector | Which projection version created this |
 | `supersede_info` | SupersedeInfo | Projector | Supersede state, wrapped as a sub-message in proto (see below) |
-| `link` | string | Event payload | Original article URL |
+| `url` | string | Event payload | Original article URL |
 | `dismissed_at` | timestamp | Projector | Soft-delete timestamp (excluded from feed queries) |
 
 ### WhyReason

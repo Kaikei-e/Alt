@@ -1,6 +1,6 @@
 # Go — Alt の規約
 
-詳細な根拠とコード例は `docs/best_practices/go.md`（17 セクション・725 行）の該当セクションだけを Read する。
+詳細な根拠とコード例は `docs/best_practices/go.md` の該当セクションだけを Read する。
 セクション: Project Structure, Error Handling, Concurrency, Context, Logging, Testing, Database, HTTP/API, Configuration
 
 ## 重要原則
@@ -14,9 +14,9 @@
 7. **internal/ パッケージ**: 公開 API でないものは `internal/` に配置
 8. **エラー分岐は errors.Is/As**: `err.Error()` の文字列比較禁止
 9. **http.Server は 4 タイムアウト明示**: `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout`/`IdleTimeout`。裸の `ListenAndServe` 禁止
-10. **Redis Streams**: XACK は durable 書き込み後のみ。XREADGROUP には XAUTOCLAIM 回収ループが必須ペア（→ `.claude/rules/event-stream-consumer.md`）
+10. **Redis Streams**: XACK は durable 書き込み後のみ。XREADGROUP には XAUTOCLAIM 回収ループが必須ペア（→ [.claude/rules/event-stream-consumer.md](../../../rules/event-stream-consumer.md)）
 11. **retry 中の裸 time.Sleep 禁止**: `select` + `ctx.Done()` + jitter 付き backoff
-12. **fail-fast 設定**: 必須 config 欠落は起動失敗。無言 no-op / nil-guard フォールバック禁止（→ `.claude/rules/di-wiring.md`）
+12. **fail-fast 設定**: 必須 config 欠落は起動失敗。無言 no-op / nil-guard フォールバック禁止（→ [.claude/rules/di-wiring.md](../../../rules/di-wiring.md)）
 13. **DB 書き込みの silent success 禁止**: トランザクションは無条件 `defer tx.Rollback(ctx)`。行の存在を前提とする UPDATE は `rows_affected == 0` をエラーに
 14. **time.Duration に untyped int 禁止**: `15 * 1000` は 15µs（ナノ秒解釈）。必ず `15 * time.Second` の単位定数を掛ける
 15. **streaming はタイムアウト例外 + Accept-Encoding 手動設定禁止**: streaming server は `WriteTimeout: 0`、streaming client は `http.Client.Timeout: 0` + context deadline。`Accept-Encoding` を手動設定すると透過 gzip 解凍が無効化される

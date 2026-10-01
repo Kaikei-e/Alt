@@ -1,0 +1,42 @@
+# Prometheus alerting rules for recap pipeline (recap-subworker).
+#
+# Context:
+# On 2026-09-25 the recap-subworker process froze for 5.5 days with no alert:
+# Prometheus scraped it on port 8002 (observability/prometheus/prometheus.yml)
+# but no rule fired on it.
+#
+# Scrape targets & metrics:
+#   - up{job="recap-subworker"} — Python/FastAPI clustering/classification subworker (:8002)
+#
+# Delivery routing:
+#   - severity: warning -> Alertmanager pushover-ticket receiver (Normal priority 0, quiet hours respected)
+
+groups:
+  - name: recap_alerts
+    interval: 30s
+    rules:
+      # WARNING: recap-subworker is down, crashed, or its Python event loop is frozen.
+      #
+      # A frozen event loop times out the Prometheus scrape, producing up=0.
+      # `or absent(...)` ensures that if the scrape job is removed or fails to
+      # be registered, the target absence is caught rather than remaining
+      # silently unmonitored.
+      # Severity is warning (normal priority, respects quiet hours) because
+      # recap-subworker affects nightly batch jobs rather than real-time user requests.
+      - alert: RecapSubworkerDown
+        expr: up{job="recap-subworker"} == 0 or absent(up{job="recap-subworker"})
+        for: 5m
+        labels:
+          severity: warning
+          service: recap-subworker
+          stack: recap
+        annotations:
+          summary: "recap-subworker is not answering Prometheus scrapes"
+          description: |
+            up{job="recap-subworker"} is 0, or the target has gone from the
+            scrape config entirely. A frozen Python event loop times out the
+            scrape, so this covers both a crashed and a frozen process.
+            Recap and topic-cards jobs cannot classify or cluster without it.
+            Check: docker compose -f compose/compose.yaml -p alt logs recap-subworker
+            Runbook: docs/runbooks/3days-recap-artefact-recovery.md
+          runbook_url: "docs/runbooks/3days-recap-artefact-recovery.md"

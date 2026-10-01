@@ -51,13 +51,14 @@ go run ./cmd/auth-hub
 # Build
 go build -o auth-hub ./cmd/auth-hub
 
-# Health check
+# Health check (local process)
 curl http://localhost:8888/health
+
+# Health check (Compose container — port 8888 is not published to the host)
+docker compose -f compose/compose.yaml -p alt exec auth-hub /auth-hub healthcheck
 ```
 
 ## TDD Workflow
-
-**IMPORTANT**: Write failing tests BEFORE implementation.
 
 - **Unit**: Mock domain interfaces (SessionValidator, SessionCache, TokenIssuer)
 - **Integration**: Real Kratos instance
@@ -65,11 +66,10 @@ curl http://localhost:8888/health
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Cache TTL**: 5 minutes (configurable via `CACHE_TTL`)
-3. **NEVER Log Secrets**: Session tokens MUST NOT appear in logs
-4. **Logging**: Use `log/slog` with JSON format
-5. **Error Wrapping**: Use `fmt.Errorf("context: %w", err)` with domain sentinel errors
-6. **Domain Errors**: Use `errors.Is()` with `internal/domain/errors.go` sentinels, not string matching
-7. **Timing Safety**: Use `crypto/subtle.ConstantTimeCompare` for secret comparisons
-8. **Rate Limiting**: All endpoints have IP-based rate limits via middleware
+1. **Cache TTL**: 5 minutes (configurable via `CACHE_TTL`)
+2. **NEVER Log Secrets**: Session tokens MUST NOT appear in logs
+3. **Logging**: Use `log/slog` with JSON format
+4. **Error Wrapping with Domain Sentinels**: Use `fmt.Errorf("context: %w", err)` with domain sentinel errors
+5. **Domain Errors**: Use `errors.Is()` with `internal/domain/errors.go` sentinels, not string matching
+6. **Timing Safety**: Use `crypto/subtle.ConstantTimeCompare` for secret comparisons
+7. **Rate Limiting**: All endpoints have IP-based rate limits via middleware

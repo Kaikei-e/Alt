@@ -6,10 +6,14 @@ _Last reviewed: September 5, 2026_
 
 ## Role
 - Rust 1.94+ (2024 Edition) Axum API でログバッチを集約
-- rask-log-forwarder から newline-delimited JSON ログを受信し ClickHouse に書き込み
+- rask-log-forwarder から newline-delimited JSON ログを受信し ClickHouse (`rask_logs` DB) に書き込み
+- **集約ログが source of truth**。各コンテナの stdout は ephemeral として扱う
 - OTLP (OpenTelemetry Protocol) HTTP エンドポイント提供 (gRPC は未実装)
 - デュアルサーバー構成: Main Server (:9600) + OTLP Server (:4318)
 - 拡張可能な `LogExporter` / `OTelExporter` trait によるエクスポーター抽象化
+- 主要テーブル (`rask_logs`): `logs` (legacy NDJSON), `otel_logs`, `http_logs` (MergeTree, `http_logs_mv` 経由), `otel_traces`, `otel_http_requests` (MergeTree, `otel_http_requests_mv` 経由), `otel_error_logs` (MergeTree, `otel_error_logs_mv` 経由), `sli_metrics` (MergeTree, `sli_*_mv` 経由)
+- Secrets: `clickhouse_password` (`CLICKHOUSE_PASSWORD_FILE`)
+- Health check: `/rask-log-aggregator healthcheck` (CLI) / `GET /v1/health` (:9600)
 
 ## Architecture & Flow
 
@@ -202,17 +206,17 @@ pub trait OTelExporter: Send + Sync {
 
 Schema は Atlas ではなく `clickhouse/migrations/*.sql` の生 SQL ファイル群で管理する。各ファイルは `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` 等で冪等に書かれており、`clickhouse` コンテナ起動時に毎回全ファイルを順番に再実行する (`clickhouse/entrypoint-wrapper.sh`)。デプロイ時はコンテナ再作成を経由しない `clickhouse-migrator` ワンショットサービスが同じスクリプトを `apply` モードで実行する。全テーブルで `ttl_only_drop_parts=1`。`sli_metrics` を除く全テーブルの TTL は 1 日 (2026-01 の retention 見直しで 2〜14 日から短縮)。
 
-`rask_logs` DB には以下の 7 テーブルが存在する:
+`rask_logs` DB には以下の 7 テーブルが存在する (いずれも `MergeTree` エンジン。`http_logs`, `otel_http_requests`, `otel_error_logs`, `sli_metrics` はそれぞれの `*_mv` マテリアライズドビューにより抽出・集計されたデータを格納する):
 
-| テーブル | 用途 | TTL |
-|---|---|---|
-| `logs` | rask-log-forwarder からの legacy NDJSON ログ | 1 日 |
-| `http_logs` | `logs` から MV (`http_logs_mv`) で抽出した HTTP アクセスログ | 1 日 |
-| `otel_logs` | OTLP 経由の構造化ログ (OTel Log Data Model 準拠) | 1 日 |
-| `otel_traces` | OTLP 経由の distributed trace (OTel Span Data Model 準拠) | 1 日 |
-| `otel_http_requests` | `otel_logs` から MV (`otel_http_requests_mv`) で抽出した HTTP リクエスト分析用テーブル | 1 日 |
-| `otel_error_logs` | `otel_logs` から MV (`otel_error_logs_mv`, `SeverityNumber >= 17`) で抽出したエラーログ | 1 日 |
-| `sli_metrics` | `otel_logs` から MV (`sli_error_rate_mv`, `sli_log_throughput_mv`) で 1 分粒度集計した SLI (error_rate, log_throughput) | 90 日 |
+| テーブル | タイプ | 用途 | TTL |
+|---|---|---|---|
+| `logs` | MergeTree | rask-log-forwarder からの legacy NDJSON ログ | 1 日 |
+| `http_logs` | MergeTree | `logs` から MV (`http_logs_mv`) で抽出した HTTP アクセスログ | 1 日 |
+| `otel_logs` | MergeTree | OTLP 経由の構造化ログ (OTel Log Data Model 準拠) | 1 日 |
+| `otel_traces` | MergeTree | OTLP 経由の distributed trace (OTel Span Data Model 準拠) | 1 日 |
+| `otel_http_requests` | MergeTree | `otel_logs` から MV (`otel_http_requests_mv`) で抽出した HTTP リクエスト分析用テーブル | 1 日 |
+| `otel_error_logs` | MergeTree | `otel_logs` から MV (`otel_error_logs_mv`, `SeverityNumber >= 17`) で抽出したエラーログ | 1 日 |
+| `sli_metrics` | MergeTree | `otel_logs` から MV (`sli_error_rate_mv`, `sli_log_throughput_mv`) で 1 分粒度集計した SLI (error_rate, log_throughput) | 90 日 |
 
 ### logs テーブル (legacy)
 

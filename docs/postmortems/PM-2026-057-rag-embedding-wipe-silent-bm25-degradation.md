@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: rag-db の migration が全 embedding を消去し、backfill 不在のまま Ask Augur が約 1 ヶ月無検知で BM25 単独に縮退した障害"
+date: 2026-08-02
+tags:
+  - postmortem
+  - rag-db
+  - rag-orchestrator
+  - embedding
+---
+
 # ポストモーテム: rag-db の migration が全 embedding を消去し、backfill 不在のまま Ask Augur が約 1 ヶ月無検知で BM25 単独に縮退した障害
 
 ## メタデータ

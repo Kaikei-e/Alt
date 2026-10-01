@@ -32,8 +32,7 @@ go run main.go
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Rate Limiting**: YOU MUST enforce 5-second minimum for external APIs (`utils.HostRateLimiter` / `utils.DefaultHostRateLimiter`)
-3. **Retries**: Use `utils/errors.RetryPolicy` + `RetryExecutor.Execute`'s exponential backoff for external calls — there is no circuit-breaker library in this service
-4. **Context**: Pass `context.Context` with timeouts
-5. **Error Wrapping**: Use `fmt.Errorf("context: %w", err)`
+1. **Rate Limiting**: YOU MUST enforce 5-second minimum for external APIs (`utils.HostRateLimiter` / `utils.DefaultHostRateLimiter`)
+2. **Retries**: Use `utils/errors.RetryPolicy` + `RetryExecutor.Execute`'s exponential backoff for external calls — there is no circuit-breaker library in this service
+3. **Context**: Pass `context.Context` with timeouts
+4. **Error Wrapping**: Use `fmt.Errorf("context: %w", err)`

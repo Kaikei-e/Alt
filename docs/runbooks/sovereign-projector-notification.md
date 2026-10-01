@@ -1,6 +1,7 @@
 ---
 title: Sovereign Projector Notification — Troubleshooting & Design Record
 date: 2026-04-11
+status: historical
 tags:
   - runbook
   - knowledge-sovereign
@@ -10,20 +11,8 @@ tags:
 
 # Sovereign Projector Notification — Troubleshooting & Design Record
 
-> **Design record, not the live path.** `sovereign_client.Client.ConnectProjectorWatch`
-> and the `WatchProjectorEvents` RPC this doc describes still exist in code
-> (`alt-backend/app/shared/driver/sovereign_client/watch_client.go`,
-> `knowledge-sovereign/app/handler/rpc_watch.go`) but have no caller anywhere
-> in the codebase today (verified 2026-09-05) — the backend-side streaming
-> bridge is unused. The knowledge_home and knowledge_trail projectors now run
-> **in-process inside knowledge-sovereign** against its own DB, driven by a
-> plain `time.NewTicker(cfg.ProjectorTickInterval)` loop
-> (`knowledge-sovereign/app/main.go`, `usecase/knowledge_home_projector/projector.go`,
-> `usecase/knowledge_trail_projector/projector.go`) — no cross-service
-> notification is involved. The design pitfalls below (HTTP client timeout on
-> long-lived streams, heartbeat-vs-poll-interval mismatch) remain valid general
-> Connect-RPC streaming knowledge; the Diagnostic Commands / Recovery sections
-> at the bottom have been updated to match the current in-process path.
+> Historical record — backend-side streaming watch bridge was replaced by in-process tickers. Not a current contract.
+> `sovereign_client.Client.ConnectProjectorWatch` and the `WatchProjectorEvents` RPC this doc describes still exist in code (`alt-backend/app/shared/driver/sovereign_client/watch_client.go`, `knowledge-sovereign/app/handler/rpc_watch.go`) but have no caller in the codebase — the backend-side streaming bridge is unused. The knowledge_home and knowledge_trail projectors run in-process inside `knowledge-sovereign` against its own DB, driven by a plain `time.NewTicker(cfg.ProjectorTickInterval)` loop (`knowledge-sovereign/app/main_workers.go`, `usecase/knowledge_home_projector/projector.go`, `usecase/knowledge_trail_projector/projector.go`) — no cross-service notification is involved. The design pitfalls below remain valid general Connect-RPC streaming knowledge; diagnostic and recovery sections at the bottom reflect the in-process path.
 
 ## Background
 

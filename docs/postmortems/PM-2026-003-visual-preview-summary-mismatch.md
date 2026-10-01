@@ -1,3 +1,13 @@
+---
+title: "PM-2026-003: Visual Preview 要約不一致（記事と無関係なサマリー表示）"
+date: 2026-03-23
+tags:
+  - postmortem
+  - alt-frontend-sv
+  - visual-preview
+  - race-condition
+---
+
 # PM-2026-003: Visual Preview 要約不一致（記事と無関係なサマリー表示）
 
 ## メタデータ

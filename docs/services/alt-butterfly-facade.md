@@ -5,9 +5,12 @@ _Last reviewed: September 5, 2026_
 **Location:** `alt-butterfly-facade`
 
 ## Role
-- Backend for Frontend (BFF) サービス。`alt-frontend-sv` と `alt-backend` / `acolyte-orchestrator` 間の透過的プロキシ
+- Backend for Frontend (BFF) サービス。`alt-frontend-sv` と `alt-backend` / `acolyte-orchestrator` 間の透過的プロキシ。「FE → backend 直結禁止」を強制する単一の集約点
 - HTTP/2 (h2c) を使用した Connect-RPC リクエストの中継。REST (`/v1/*`) はホワイトリスト化した prefix のみ HTTP/1.1 で別クライアントとして中継
 - JWT トークン検証による認証ゲートウェイ (ブラウザ向け)。east-west (BFF → alt-backend / acolyte-orchestrator) は mTLS peer identity 側で担保する設計へ移行済みだが、`MTLS_ENFORCE` はデフォルト無効 (下記 Configuration 参照)
+- Knowledge Home Admin API (`/alt.knowledge_home.v1.KnowledgeHomeAdminService/*`) および AdminMonitorService (`/alt.admin_monitor.v1.AdminMonitorService/*`) のルーティング。alt-backend の内部オペレーターリスナー (`BACKEND_INTERNAL_CONNECT_URL`, デフォルト `:9102`) 宛で、呼び出し元 JWT の admin role check を BFF 境界で完結
+- `X-Alt-Tenant-Id` ヘッダーを後段 (alt-backend → rag-orchestrator hop) に中継する経路としてヘッダーを落とさず透過 ([[000905]])
+- backend 向け mTLS トランスポート生成失敗時は fail-closed でプロセスを停止する (`main.go`) 一方、Acolyte 向けトランスポートは `ACOLYTE_CONNECT_URL` が `http://` の場合に警告ログを出力して plaintext (`http.DefaultTransport`) へダウングレードする (`internal/server/server.go`)
 - レスポンスキャッシュ、リクエスト重複排除、依存クラス別サーキットブレーカー、エラー正規化
 - in-process な PKI enrollment (`internal/pki/`): step-ca からリーフ証明書を自前で取得・更新する
 
@@ -257,7 +260,7 @@ go build -o alt-butterfly-facade .
 
 Cross-cutting incident patterns are catalogued in [[runbooks/crystallized-knowledge]].
 
-- Streaming stalled even after nginx/heartbeat fixes (nginx was the edge at the time; it is now Plecto, [[wiki/services/nginx]]) → BFF `io.ReadAll` buffered whole responses ("the final boss"); streaming RPCs must bypass cache, dedup, and circuit breaker, detected by `application/connect+` content-type prefix match → PM-2026-004, [[000295]] [[000554]].
+- Streaming stalled even after nginx/heartbeat fixes (nginx was the edge at the time; it is now Plecto) → BFF `io.ReadAll` buffered whole responses ("the final boss"); streaming RPCs must bypass cache, dedup, and circuit breaker, detected by `application/connect+` content-type prefix match → PM-2026-004, [[000295]] [[000554]].
 - Downstream JSON parse errors on proxied responses → forwarding the client's `Accept-Encoding` disables Go transport auto-decompression, so gzip bytes flow raw to the backend/frontend; never forward that header from a proxy → [[000084]].
 - Streams still died at a fixed timeout after the edge proxy's timeout was extended → `http.Client.Timeout` caps the whole stream lifetime (body read included); streaming clients need `Timeout: 0` with context-deadline management, keep unary abuse-guard and streaming cap as separate timeouts, and flush explicitly via `http.Flusher` without a context timeout → [[000478]] [[000704]].
 - A newly added streaming RPC silently breaks (buffered or timed out) → the streaming-procedure list here (`proxy_handler.go`'s `streamingProcedures` map) and the edge proxy's streaming route declarations are both hardcoded per procedure; adding a streaming service requires updating both, guarded by config-verification tests → [[000555]], checklist: [[connect-rpc-streaming-checklist]]. The edge was nginx's regex `location` block when this was written; it is now Plecto's per-service `path_prefix` routes in `plecto/manifest.toml` (Plecto has no regex catch-all, so each new streaming service needs its own explicit route there too).

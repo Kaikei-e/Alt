@@ -156,7 +156,9 @@ func TestRecapGateway_GetEveningPulse(t *testing.T) {
 	t.Run("server error - returns error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("internal server error"))
+			if _, err := w.Write([]byte("internal server error")); err != nil {
+				t.Fatalf("write response failed: %v", err)
+			}
 		}))
 		defer server.Close()
 
@@ -207,8 +209,8 @@ func TestRecapGateway_GetEveningPulse(t *testing.T) {
 	})
 }
 
-func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
-	t.Run("success - returns job and cards", func(t *testing.T) {
+func TestRecapGateway_GetTopicCards(t *testing.T) {
+	t.Run("success - returns job, cards, and completed latest_run", func(t *testing.T) {
 		continuesCardID := "44444444-4444-4444-4444-444444444444"
 		whyJa := "日本語処理の効率化が期待される。[1]"
 		genre := "Technology"
@@ -246,10 +248,16 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 					"created_at": "2026-09-22T17:05:00Z",
 				},
 			},
+			"latest_run": map[string]any{
+				"job_id":     "11111111-1111-1111-1111-111111111111",
+				"status":     "completed",
+				"kicked_at":  "2026-09-22T17:00:00Z",
+				"updated_at": "2026-09-22T17:05:00Z",
+			},
 		}
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, "/v1/recaps/3days/cards", r.URL.Path)
+			assert.Equal(t, "/v1/topic-cards", r.URL.Path)
 			assert.Equal(t, http.MethodGet, r.Method)
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(mockData); err != nil {
@@ -259,7 +267,7 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 		defer server.Close()
 
 		gw := newRecapGatewayWithURL(server.URL)
-		result, err := gw.GetThreeDayRecapCards(context.Background())
+		result, err := gw.GetTopicCards(context.Background())
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
@@ -283,16 +291,22 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 		assert.Equal(t, "example.com", card.Sources[0].Host)
 		require.NotNil(t, card.Sources[0].PubDate)
 		assert.Equal(t, pubDate, *card.Sources[0].PubDate)
+		require.NotNil(t, result.LatestRun)
+		assert.Equal(t, "11111111-1111-1111-1111-111111111111", result.LatestRun.JobID)
+		assert.Equal(t, "completed", result.LatestRun.Status)
+		assert.Equal(t, "2026-09-22T17:00:00Z", result.LatestRun.KickedAt)
+		assert.Equal(t, "2026-09-22T17:05:00Z", result.LatestRun.UpdatedAt)
 	})
 
-	t.Run("success - empty when no completed cards job exists", func(t *testing.T) {
+	t.Run("success - empty when no completed cards job exists and latest_run is null", func(t *testing.T) {
 		mockData := map[string]any{
-			"job":   nil,
-			"cards": []any{},
+			"job":        nil,
+			"cards":      []any{},
+			"latest_run": nil,
 		}
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, "/v1/recaps/3days/cards", r.URL.Path)
+			assert.Equal(t, "/v1/topic-cards", r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(mockData); err != nil {
 				t.Fatalf("encode mock data failed: %v", err)
@@ -301,12 +315,56 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 		defer server.Close()
 
 		gw := newRecapGatewayWithURL(server.URL)
-		result, err := gw.GetThreeDayRecapCards(context.Background())
+		result, err := gw.GetTopicCards(context.Background())
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.Nil(t, result.Job)
 		assert.Empty(t, result.Cards)
+		assert.Nil(t, result.LatestRun)
+	})
+
+	t.Run("success - returns job and failed latest_run", func(t *testing.T) {
+		mockData := map[string]any{
+			"job": map[string]any{
+				"job_id":         "11111111-1111-1111-1111-111111111111",
+				"kicked_at":      "2026-09-22T17:00:00Z",
+				"from":           "2026-09-19T17:00:00Z",
+				"to":             "2026-09-22T17:00:00Z",
+				"params_version": "cards-v0.2",
+				"cards_selected": 0,
+				"degraded":       false,
+			},
+			"cards": []any{},
+			"latest_run": map[string]any{
+				"job_id":     "99999999-9999-9999-9999-999999999999",
+				"status":     "failed",
+				"kicked_at":  "2026-09-22T18:00:00Z",
+				"updated_at": "2026-09-22T18:02:00Z",
+			},
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/v1/topic-cards", r.URL.Path)
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(mockData); err != nil {
+				t.Fatalf("encode mock data failed: %v", err)
+			}
+		}))
+		defer server.Close()
+
+		gw := newRecapGatewayWithURL(server.URL)
+		result, err := gw.GetTopicCards(context.Background())
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Job)
+		assert.Equal(t, "11111111-1111-1111-1111-111111111111", result.Job.JobID)
+		require.NotNil(t, result.LatestRun)
+		assert.Equal(t, "99999999-9999-9999-9999-999999999999", result.LatestRun.JobID)
+		assert.Equal(t, "failed", result.LatestRun.Status)
+		assert.Equal(t, "2026-09-22T18:00:00Z", result.LatestRun.KickedAt)
+		assert.Equal(t, "2026-09-22T18:02:00Z", result.LatestRun.UpdatedAt)
 	})
 
 	t.Run("non-200 status error", func(t *testing.T) {
@@ -319,7 +377,7 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 		defer server.Close()
 
 		gw := newRecapGatewayWithURL(server.URL)
-		result, err := gw.GetThreeDayRecapCards(context.Background())
+		result, err := gw.GetTopicCards(context.Background())
 
 		require.Error(t, err)
 		assert.Nil(t, result)
@@ -337,7 +395,7 @@ func TestRecapGateway_GetThreeDayRecapCards(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err := gw.GetThreeDayRecapCards(ctx)
+		_, err := gw.GetTopicCards(ctx)
 		require.Error(t, err)
 	})
 }

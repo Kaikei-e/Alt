@@ -1,3 +1,13 @@
+---
+title: "PM-2026-011: Knowledge Home Open ボタンがサイレントに no-op になりナビゲーションしない"
+date: 2026-03-26
+tags:
+  - postmortem
+  - knowledge-home
+  - alt-frontend-sv
+  - silent-failure
+---
+
 # PM-2026-011: Knowledge Home Open ボタンがサイレントに no-op になりナビゲーションしない
 
 ## メタデータ

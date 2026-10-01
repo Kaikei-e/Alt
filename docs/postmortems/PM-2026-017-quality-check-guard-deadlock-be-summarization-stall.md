@@ -1,3 +1,13 @@
+---
+title: "PM-2026-017: 品質チェック削除後の recent_success ガードデッドロックによる BE 要約停滞"
+date: 2026-04-02
+tags:
+  - postmortem
+  - pre-processor
+  - quality-check
+  - deadlock
+---
+
 # PM-2026-017: 品質チェック削除後の recent_success ガードデッドロックによる BE 要約停滞
 
 ## メタデータ

@@ -1,6 +1,6 @@
 [Unit]
 Description=Alt Platform Daily Full Backup Timer
-Documentation=file:///home/koko/Documents/dev/Alt/docs/runbooks/backup-restore.md
+Documentation=file:///path/to/Alt/docs/runbooks/backup-restore.md
 
 [Timer]
 # Run daily at 3:00 AM

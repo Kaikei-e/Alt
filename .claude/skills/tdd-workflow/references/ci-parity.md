@@ -12,17 +12,17 @@ Update this file when CI changes.
 
 ## Go
 
-Services: alt-backend, search-indexer, pre-processor, mq-hub, auth-hub, rag-orchestrator, alt-butterfly-facade.
+Services: alt-backend, search-indexer, pre-processor, pre-processor-sidecar, mq-hub, auth-hub, rag-orchestrator, alt-butterfly-facade, altctl, pki-agent, knowledge-sovereign.
 
 ```bash
-cd <service>/app      # or the service root for rag-orchestrator / auth-hub
+cd <service>/app      # or the service root for rag-orchestrator / auth-hub / alt-butterfly-facade / altctl / pki-agent
 gofmt -l . | grep -v '^gen/' | grep -v '^$'   # must print nothing
 go vet ./...
-# golangci-lint v2.1 (CI uses golangci-lint-action@v8); install locally with:
+# golangci-lint v2.1 (CI uses golangci-lint-action@v9); install locally with:
 #   go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.0
 golangci-lint run ./...
 go test ./... -race                           # CI uses CGO_ENABLED=1
-CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v    # if any CDC changed
+CGO_ENABLED=1 go test -tags=contract ./...    # if any CDC changed
 ```
 
 ## Python
@@ -30,7 +30,7 @@ CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v    # if any CDC chang
 Services: acolyte-orchestrator, news-creator, tag-generator, recap-subworker, metrics, recap-evaluator.
 
 ```bash
-cd <service>/app      # or the service root
+cd <service>/app      # or the service root for acolyte-orchestrator / recap-subworker / metrics / recap-evaluator
 uv sync --all-extras --dev
 uv run ruff check .
 uv run ruff format --check .
@@ -46,7 +46,7 @@ uv run pytest tests/contract/ -v --no-cov     # if any CDC changed
 Services: rask-log-aggregator, rask-log-forwarder, recap-worker.
 
 ```bash
-cd <service>
+cd <crate-root>       # recap-worker/recap-worker, rask-log-aggregator/app, rask-log-forwarder/app
 cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
@@ -58,12 +58,13 @@ cargo test --lib contract -- --ignored        # if any CDC changed (recap-worker
 
 ```bash
 cd alt-frontend-sv
-bun install --frozen-lockfile
-bun run check                  # svelte-check + tsc
-bun run lint                   # eslint / prettier --check
-bun test                       # vitest unit + contract tests
-bun test src/test/contracts/   # if any CDC changed
-bun run test:e2e:integration   # Playwright, if UI was touched
+bun install --frozen-lockfile                 # lockfile: bun.lock
+bun run check                                 # svelte-check + tsc
+bun run lint                                  # Biome lint (modifies files: runs `biome lint --write`; check-only: bunx biome lint .)
+bun run format                                # Biome format (modifies files: runs `biome format --write`; check-only: bunx biome format .)
+bun run test                                  # vitest unit tests (server project)
+bun run test:client                           # vitest browser/component tests (run in CI: alt-frontend-sv-unit-test.yaml)
+bun run test:e2e:integration                  # Playwright, if UI was touched
 ```
 
 ## Deno

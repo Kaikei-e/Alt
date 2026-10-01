@@ -190,9 +190,19 @@ fn maybe_spawn_cards_batch_daemon(
             user_id,
         } => {
             info!(utc_hour, utc_minute, %user_id, "cards_job_enabled");
+            if config.cards_catchup_enabled() {
+                info!("cards_catchup_enabled");
+            } else {
+                info!("cards_catchup_disabled");
+            }
             Some(recap_worker::scheduler::daemon::spawn_cards_batch_daemon(
                 registry.cards_runner(),
                 registry.cards_run_in_flight(),
+                std::sync::Arc::new(registry.pool().clone()),
+                config.cards_window_days(),
+                config.cards_retry_delay_minutes(),
+                config.cards_max_attempts(),
+                config.cards_catchup_enabled(),
                 *utc_hour,
                 *utc_minute,
                 shutdown_token,

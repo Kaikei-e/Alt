@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: ディスク掃除に pki-agent を刈り取られた mTLS 証明書期限切れ障害"
+date: 2026-08-10
+tags:
+  - postmortem
+  - pki-agent
+  - mtls
+  - certificate-expiry
+---
+
 # ポストモーテム: ディスク掃除に pki-agent を刈り取られた mTLS 証明書期限切れ障害
 
 ## メタデータ

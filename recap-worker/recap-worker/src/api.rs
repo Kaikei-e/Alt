@@ -44,11 +44,11 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/v1/recaps/7days", get(fetch::get_7days_recap))
         .route("/v1/generate/recaps/3days", post(generate::trigger_3days))
         .route(
-            "/v1/generate/recaps/3days/cards",
-            post(generate::trigger_3days_cards),
+            "/v1/generate/topic-cards",
+            post(generate::trigger_topic_cards),
         )
         .route("/v1/recaps/3days", get(fetch::get_3days_recap))
-        .route("/v1/recaps/3days/cards", get(cards::get_3days_cards))
+        .route("/v1/topic-cards", get(cards::get_topic_cards))
         .route("/v1/recaps/search", get(fetch::search_recaps))
         .route(
             "/v1/recaps/genres/indexable",
@@ -214,6 +214,97 @@ mod tests {
             response.status(),
             StatusCode::UNAUTHORIZED,
             "/health/ready must not require the admin bearer"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn topic_cards_routes_registered_and_old_routes_return_404() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18021/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18022/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19020/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_GENRES", Some("ai,space")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        let app = router(AppState::new(registry));
+
+        for (method, path) in [
+            (Method::GET, "/v1/recaps/3days/cards"),
+            (Method::POST, "/v1/generate/recaps/3days/cards"),
+        ] {
+            let request = Request::builder()
+                .method(method)
+                .uri(path)
+                .body(Body::empty())
+                .expect("request builds");
+            let response = app
+                .clone()
+                .oneshot(request)
+                .await
+                .expect("request succeeds");
+            assert_eq!(
+                response.status(),
+                StatusCode::NOT_FOUND,
+                "old route {path} must return 404"
+            );
+        }
+
+        let get_req = Request::builder()
+            .method(Method::GET)
+            .uri("/v1/topic-cards")
+            .body(Body::empty())
+            .expect("request builds");
+        let get_resp = app
+            .clone()
+            .oneshot(get_req)
+            .await
+            .expect("request succeeds");
+        assert_ne!(
+            get_resp.status(),
+            StatusCode::NOT_FOUND,
+            "/v1/topic-cards must be registered"
+        );
+
+        let post_req = Request::builder()
+            .method(Method::POST)
+            .uri("/v1/generate/topic-cards")
+            .body(Body::empty())
+            .expect("request builds");
+        let post_resp = app
+            .clone()
+            .oneshot(post_req)
+            .await
+            .expect("request succeeds");
+        assert_ne!(
+            post_resp.status(),
+            StatusCode::NOT_FOUND,
+            "/v1/generate/topic-cards must be registered"
         );
     }
 }

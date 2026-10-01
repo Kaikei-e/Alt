@@ -8,7 +8,9 @@ _Last reviewed: September 5, 2026_
 
 ## Purpose
 
-Alt system health analyzer. This is a CLI tool (not an HTTP service) that analyzes logs and trace data accumulated in ClickHouse, generating Japanese Markdown reports.
+Alt system health analyzer. This is a CLI tool (not an HTTP service) that analyzes logs and trace data accumulated in ClickHouse (`rask_logs` database: `logs`, `otel_logs`, `otel_traces`, `otel_http_requests`, `otel_error_logs`, `sli_metrics`), generating Japanese Markdown reports on demand.
+
+It does **not** provide a `/metrics` scrape endpoint or aggregate Prometheus targets — real-time metric scraping and alerting are handled by the Prometheus/Grafana/Alertmanager stack in `observability/`.
 
 ## Directory Structure
 
@@ -142,6 +144,11 @@ Patterns from postmortems that shape what this analyzer must surface; see [[runb
 - **Log volume is a first-class health metric**: a retry storm generated 148GB of logs in 48-72h, nearly filling the shared host, and the resulting disk-full zeroed an OAuth token file (65h silent ingestion stop) → PM-2026-042/043.
 - **Per-service log formats differ in ClickHouse**: Rust tracing puts the message in `fields.message`, Python structlog in `event` → collectors need explicit per-service mapping; auto-detection is non-deterministic → [[000315]].
 - **"No Data" triage order for ClickHouse-backed views**: (1) table actually exists (migration applied), (2) datasource provisioning, (3) `OTEL_EXPORTER_OTLP_ENDPOINT` env, (4) writer type vs CH schema (RowBinary is strict: `FixedString(N)` needs exact bytes, `Enum8` as i8, `DateTime64` as i64) → [[000074]].
+
+## Cost of Breaking & Operational Invariants
+
+- **On-demand CLI vs Daemon**: This tool is an on-demand CLI executed by humans or scheduled scripts, not an ongoing daemon. If it is not run and actively reviewed, latent errors and degradations residing in ClickHouse logs remain undiscovered until user impact occurs.
+- **Alerting Separation**: Real-time alerting and active incident paging are the responsibility of Prometheus / Alertmanager in `observability/`, not this CLI. A failure or misconfiguration of `metrics` does not silence real-time Prometheus alert rules.
 
 ## References
 

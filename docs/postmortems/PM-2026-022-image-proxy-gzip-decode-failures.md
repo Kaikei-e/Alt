@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: 画像プロキシが gzip 圧縮された JPEG を復号できず 502 を返していた問題"
+date: 2026-04-12
+tags:
+  - postmortem
+  - alt-backend
+  - image-proxy
+  - gzip
+---
+
 # ポストモーテム: 画像プロキシが gzip 圧縮された JPEG を復号できず 502 を返していた問題
 
 ## メタデータ

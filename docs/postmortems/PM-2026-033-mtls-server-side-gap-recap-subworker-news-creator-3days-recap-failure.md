@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: recap-subworker / news-creator の mTLS サーバ側未対応で 3days Recap が 5 日連続失敗"
+date: 2026-04-14
+tags:
+  - postmortem
+  - recap-worker
+  - recap-subworker
+  - mtls
+---
+
 # ポストモーテム: recap-subworker / news-creator の mTLS サーバ側未対応で 3days Recap が 5 日連続失敗
 
 ## メタデータ

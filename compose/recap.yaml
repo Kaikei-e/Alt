@@ -190,6 +190,10 @@ services:
       - RECAP_CARDS_JOB=${RECAP_CARDS_JOB:-enabled}
       - RECAP_CARDS_JOB_UTC_TIME=${RECAP_CARDS_JOB_UTC_TIME:-17:30}
       - RECAP_CARDS_USER_ID=${RECAP_CARDS_USER_ID:-}
+      - RECAP_CARDS_WINDOW_DAYS=${RECAP_CARDS_WINDOW_DAYS:-3}
+      - RECAP_CARDS_MAX_ATTEMPTS=${RECAP_CARDS_MAX_ATTEMPTS:-3}
+      - RECAP_CARDS_RETRY_DELAY_MINUTES=${RECAP_CARDS_RETRY_DELAY_MINUTES:-15}
+      - RECAP_CARDS_CATCHUP=${RECAP_CARDS_CATCHUP:-enabled}
     secrets:
       - recap_db_password
       - hugging_face_token
@@ -287,6 +291,9 @@ services:
       - RECAP_SUBWORKER_CLASSIFICATION_DEVICE=cpu
       # Numba threading: TBB is thread-safe, workqueue/omp are not
       - NUMBA_THREADING_LAYER=tbb
+      - NUMBA_NUM_THREADS=1
+      # WHY: Must exceed RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS (300s) so the watchdog does not preempt the HDBSCAN timeout fallback
+      - RECAP_SUBWORKER_LOOP_WATCHDOG_TIMEOUT_SECONDS=360
       - LD_LIBRARY_PATH=/app/.venv/lib
       # Wave 4: inbound TLS is in-process. Identity comes from the verified
       # client cert on :9443; never from a caller-supplied header.

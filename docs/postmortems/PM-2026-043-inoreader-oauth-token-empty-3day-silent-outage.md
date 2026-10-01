@@ -1,3 +1,13 @@
+---
+title: "PM-2026-043: Inoreader OAuth token volume の空ファイル化による 3 日サイレント停止（PM-2026-042 二次被害 / near-miss）"
+date: 2026-05-06
+tags:
+  - postmortem
+  - pre-processor-sidecar
+  - auth-token-manager
+  - oauth
+---
+
 # PM-2026-043: Inoreader OAuth token volume の空ファイル化による 3 日サイレント停止（PM-2026-042 二次被害 / near-miss）
 
 ## メタデータ

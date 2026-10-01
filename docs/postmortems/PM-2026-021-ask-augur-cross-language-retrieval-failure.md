@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: Ask Augur 日本語クエリから英語記事への言語横断検索失敗"
+date: 2026-04-11
+tags:
+  - postmortem
+  - rag-orchestrator
+  - ask-augur
+  - cross-language
+---
+
 # ポストモーテム: Ask Augur 日本語クエリから英語記事への言語横断検索失敗
 
 ## メタデータ

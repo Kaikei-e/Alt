@@ -39,8 +39,8 @@ class ClassificationRunner:
             idle_timeout_seconds=settings.classification_pool_idle_timeout_seconds,
         )
 
-    def _ensure_pool(self) -> multiprocessing.pool.Pool:
-        """Ensure the worker pool is initialized, creating it if necessary."""
+    def _ensure_pool_locked(self) -> multiprocessing.pool.Pool:
+        """Ensure the worker pool is initialized, creating it if necessary (must be called with self._lock held)."""
         import structlog
 
         # Lazy import to avoid importing torch in master process before fork
@@ -49,32 +49,45 @@ class ClassificationRunner:
 
         logger = structlog.get_logger(__name__)
 
-        with self._lock:
-            if self._pool is not None:
-                return self._pool
-
-            if self._shutting_down:
-                raise RuntimeError("ClassificationRunner is shutting down")
-
-            logger.info(
-                "initializing classification worker pool",
-                processes=self._settings.classification_worker_processes,
-                max_tasks_per_child=self._settings.classification_worker_max_tasks_per_child,
-            )
-
-            ctx = multiprocessing.get_context("spawn")
-            self._pool = ctx.Pool(
-                processes=self._settings.classification_worker_processes,
-                initializer=classification_worker.initialize,
-                initargs=(self._settings.model_dump(mode="json"),),
-                maxtasksperchild=self._settings.classification_worker_max_tasks_per_child,
-            )
-
-            # Verify worker initialization with timeout
-            self._verify_worker_initialization()
-
-            logger.info("classification worker pool initialized successfully")
+        if self._pool is not None:
             return self._pool
+
+        if self._shutting_down:
+            raise RuntimeError("ClassificationRunner is shutting down")
+
+        logger.info(
+            "initializing classification worker pool",
+            processes=self._settings.classification_worker_processes,
+            max_tasks_per_child=self._settings.classification_worker_max_tasks_per_child,
+        )
+
+        ctx = multiprocessing.get_context("spawn")
+        self._pool = ctx.Pool(
+            processes=self._settings.classification_worker_processes,
+            initializer=classification_worker.initialize,
+            initargs=(self._settings.model_dump(mode="json"),),
+            maxtasksperchild=self._settings.classification_worker_max_tasks_per_child,
+        )
+
+        # Verify worker initialization with timeout
+        self._verify_worker_initialization()
+
+        logger.info("classification worker pool initialized successfully")
+        return self._pool
+
+    def _ensure_pool(self) -> multiprocessing.pool.Pool:
+        """Ensure the worker pool is initialized, creating it if necessary."""
+        with self._lock:
+            return self._ensure_pool_locked()
+
+    def _acquire_pool(self) -> multiprocessing.pool.Pool:
+        """Ensure the pool, cancel idle timer, increment active tasks under a single lock hold."""
+        with self._lock:
+            pool = self._ensure_pool_locked()
+            self._cancel_idle_timer_locked()
+            self._active_tasks += 1
+            self._last_task_time = time.time()
+            return pool
 
     def _verify_worker_initialization(self) -> None:
         """Verify that worker processes are initialized correctly with a timeout."""
@@ -116,12 +129,16 @@ class ClassificationRunner:
                 f"Failed to initialize classification worker pool within {timeout}s"
             ) from exc
 
+    def _cancel_idle_timer_locked(self) -> None:
+        """Cancel the idle shutdown timer if it's running (must be called with self._lock held)."""
+        if self._idle_timer is not None:
+            self._idle_timer.cancel()
+            self._idle_timer = None
+
     def _cancel_idle_timer(self) -> None:
         """Cancel the idle shutdown timer if it's running."""
         with self._lock:
-            if self._idle_timer is not None:
-                self._idle_timer.cancel()
-                self._idle_timer = None
+            self._cancel_idle_timer_locked()
 
     def _schedule_idle_shutdown(self) -> None:
         """Schedule shutdown of the pool after idle timeout."""
@@ -131,8 +148,7 @@ class ClassificationRunner:
 
         with self._lock:
             # Cancel existing timer if any
-            if self._idle_timer is not None:
-                self._idle_timer.cancel()
+            self._cancel_idle_timer_locked()
 
             # Only schedule shutdown if pool exists and no active tasks
             if self._pool is None or self._active_tasks > 0:
@@ -167,9 +183,7 @@ class ClassificationRunner:
             return
 
         # Cancel idle timer
-        if self._idle_timer is not None:
-            self._idle_timer.cancel()
-            self._idle_timer = None
+        self._cancel_idle_timer_locked()
 
         try:
             # Close the pool to prevent new tasks
@@ -219,6 +233,20 @@ class ClassificationRunner:
         finally:
             self._pool = None
 
+    def _start_task(self) -> None:
+        """Cancel idle timer and increment active task counter under lock."""
+        with self._lock:
+            self._cancel_idle_timer_locked()
+            self._active_tasks += 1
+            self._last_task_time = time.time()
+
+    def _finish_task(self) -> None:
+        """Decrement active task counter and schedule idle shutdown."""
+        with self._lock:
+            self._active_tasks -= 1
+            self._last_task_time = time.time()
+        self._schedule_idle_shutdown()
+
     async def predict_batch(self, texts: list[str]) -> list[dict[str, Any]]:
         """Execute classification in a worker process.
 
@@ -226,16 +254,17 @@ class ClassificationRunner:
         """
         from . import classification_worker  # Lazy import
 
-        # Ensure pool is initialized
-        pool = self._ensure_pool()
+        acquire_fut = asyncio.ensure_future(asyncio.to_thread(self._acquire_pool))
+        try:
+            pool = await asyncio.shield(acquire_fut)
+        except asyncio.CancelledError:
 
-        # Cancel idle shutdown timer since we have active work
-        self._cancel_idle_timer()
+            def _release_task(fut: asyncio.Future) -> None:
+                if not fut.cancelled() and fut.exception() is None:
+                    threading.Thread(target=self._finish_task, daemon=True).start()
 
-        # Increment active task counter
-        with self._lock:
-            self._active_tasks += 1
-            self._last_task_time = time.time()
+            acquire_fut.add_done_callback(_release_task)
+            raise
 
         try:
             # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
@@ -244,19 +273,13 @@ class ClassificationRunner:
             # A timeout on .get() itself (not just on the awaiting future) is required
             # so the executor thread is released instead of blocking forever if the
             # worker hangs.
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                None, async_result.get, self._settings.run_execution_timeout_seconds
+            result = await asyncio.to_thread(
+                async_result.get, self._settings.run_execution_timeout_seconds
             )
             return result
         finally:
-            # Decrement active task counter
-            with self._lock:
-                self._active_tasks -= 1
-                self._last_task_time = time.time()
-
-            # Schedule idle shutdown if no more active tasks
-            self._schedule_idle_shutdown()
+            # Decrement active task counter and schedule idle shutdown off the event loop
+            await asyncio.to_thread(self._finish_task)
 
     def shutdown(self) -> None:
         """Shutdown the process pool, waiting for running tasks to complete.
@@ -270,7 +293,7 @@ class ClassificationRunner:
 
         with self._lock:
             self._shutting_down = True
-            self._cancel_idle_timer()
+            self._cancel_idle_timer_locked()
             self._shutdown_pool_internal()
 
         logger.info("ClassificationRunner shutdown complete")

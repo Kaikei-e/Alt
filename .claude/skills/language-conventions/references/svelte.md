@@ -1,6 +1,6 @@
 # Svelte 5 / SvelteKit — Alt の規約
 
-詳細な根拠とコード例は `docs/best_practices/svelte.md`（1221 行）の該当セクションだけを Read する。
+詳細な根拠とコード例は `docs/best_practices/svelte.md` の該当セクションだけを Read する。
 セクション: Svelte 5 Runes, Component Design, SvelteKit Routing, Data Loading, Form Actions, Styling, Testing
 
 `.ts` を触るときは `references/typescript.md` も併せて適用する。

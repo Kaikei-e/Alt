@@ -54,8 +54,8 @@ func (g *RecapGateway) GetThreeDayRecap(ctx context.Context) (*domain.RecapSumma
 	return g.getRecapByWindow(ctx, 3)
 }
 
-func (g *RecapGateway) GetThreeDayRecapCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
-	url := fmt.Sprintf("%s/v1/recaps/3days/cards", g.recapWorkerURL)
+func (g *RecapGateway) GetTopicCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
+	url := fmt.Sprintf("%s/v1/topic-cards", g.recapWorkerURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -64,7 +64,7 @@ func (g *RecapGateway) GetThreeDayRecapCards(ctx context.Context) (*domain.Recap
 
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch recap cards from recap-worker: %w", err)
+		return nil, fmt.Errorf("failed to fetch topic cards from recap-worker: %w", err)
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -79,7 +79,7 @@ func (g *RecapGateway) GetThreeDayRecapCards(ctx context.Context) (*domain.Recap
 
 	var cardsResp domain.RecapCardsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cardsResp); err != nil {
-		return nil, fmt.Errorf("failed to decode recap cards response: %w", err)
+		return nil, fmt.Errorf("failed to decode topic cards response: %w", err)
 	}
 
 	return &cardsResp, nil

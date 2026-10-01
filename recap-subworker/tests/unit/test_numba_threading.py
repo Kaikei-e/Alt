@@ -14,6 +14,12 @@ class TestNumbaThreadingLayer:
 
         assert os.environ.get("NUMBA_THREADING_LAYER") == "tbb"
 
+    def test_numba_num_threads_set_to_one(self):
+        """NUMBA_NUM_THREADS should be set to '1' by default to avoid host core exhaustion."""
+        from recap_subworker.app import main  # noqa: F401
+
+        assert os.environ.get("NUMBA_NUM_THREADS") == "1"
+
     def test_tbb_shared_library_exists(self):
         """libtbb.so must exist in the venv for Numba to use TBB threading."""
         venv_lib = os.path.join(sys.prefix, "lib")

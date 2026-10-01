@@ -9,16 +9,23 @@ import { RecapTopicCard } from "$lib/components/recap";
 import { Button } from "$lib/components/ui/button";
 import {
 	createClientTransport,
-	getThreeDayRecapCards,
-	type ThreeDayRecapCardsResponse,
+	getTopicCards,
+	type TopicCardsResponse,
 } from "$lib/connect";
 import { getLoadingStore } from "$lib/stores/loading.svelte";
 import { isDesktop } from "$lib/stores/viewport.svelte";
-import { determineCardsPageState, formatJobWindow } from "./cards-state";
+import {
+	computeWindowLabel,
+	determineCardsPageState,
+	formatCardTimestamp,
+	formatJobWindow,
+	getCardsEmptyMessage,
+	getTopicCardsNotice,
+} from "./cards-state";
 
 const loadingStore = getLoadingStore();
 
-let recapCardsData = $state<ThreeDayRecapCardsResponse | null>(null);
+let recapCardsData = $state<TopicCardsResponse | null>(null);
 let isLoading = $state(true);
 let error = $state<Error | null>(null);
 let isRetrying = $state(false);
@@ -37,6 +44,20 @@ const sortedCards = $derived(
 		: [],
 );
 
+const windowLabel = $derived(
+	recapCardsData?.job
+		? computeWindowLabel(recapCardsData.job.from, recapCardsData.job.to)
+		: "",
+);
+
+const statusNotice = $derived(
+	getTopicCardsNotice({
+		job: recapCardsData?.job,
+		cards: recapCardsData?.cards,
+		latestRun: recapCardsData?.latestRun,
+	}),
+);
+
 async function fetchCards() {
 	try {
 		isLoading = true;
@@ -47,7 +68,7 @@ async function fetchCards() {
 		}
 
 		const transport = createClientTransport();
-		recapCardsData = await getThreeDayRecapCards(transport);
+		recapCardsData = await getTopicCards(transport);
 	} catch (err) {
 		if (err instanceof ConnectError) {
 			if (err.code === Code.Unauthenticated) {
@@ -88,7 +109,7 @@ onMount(() => {
 </script>
 
 <svelte:head>
-	<title>Topic Cards (3-Day) - Alt</title>
+	<title>Topic Cards - Alt</title>
 </svelte:head>
 
 <div class="cards-page-container min-h-[calc(100dvh-5rem)] pb-12">
@@ -96,7 +117,7 @@ onMount(() => {
 		<!-- Desktop Header -->
 		<PageHeader
 			title="Topic Cards"
-			description="Ranked three-day topic summaries and evidence sources"
+			description="Daily cross-source topic cards"
 		>
 			{#snippet actions()}
 				<div class="flex items-center gap-2">
@@ -119,7 +140,7 @@ onMount(() => {
 						Topic Cards
 					</h1>
 					<p class="text-xs text-[var(--text-secondary)] mt-0.5">
-						3-day window recap
+						Daily cross-source topic cards
 					</p>
 				</div>
 				<a
@@ -132,6 +153,23 @@ onMount(() => {
 			</div>
 		</header>
 	{/if}
+
+	{#snippet statusBanner()}
+		{#if statusNotice}
+			<div
+				data-testid="recap-cards-status-notice"
+				class="flex items-start gap-3 rounded-lg border {statusNotice.tone === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300' : 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300'} p-3.5 text-xs sm:text-sm"
+				role={statusNotice.tone === 'error' ? 'alert' : 'status'}
+			>
+				{#if statusNotice.tone === 'error'}
+					<AlertTriangle class="h-4 w-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+				{:else}
+					<RefreshCw class="h-4 w-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400 animate-spin" />
+				{/if}
+				<p class="leading-relaxed">{statusNotice.text}</p>
+			</div>
+		{/if}
+	{/snippet}
 
 	<!-- Content State Machine -->
 	{#if pageState === "loading"}
@@ -182,35 +220,53 @@ onMount(() => {
 			</Button>
 		</div>
 	{:else if pageState === "empty"}
-		<!-- Empty State -->
-		<div
-			data-testid="recap-cards-empty"
-			class="flex flex-col items-center justify-center py-20 px-4 text-center max-w-lg mx-auto"
-		>
-			<div class="rounded-full bg-[var(--surface-hover)] p-4 mb-4 border border-[var(--surface-border)] text-[var(--text-muted)]">
-				<Calendar class="h-8 w-8" />
-			</div>
-			<h2 class="text-xl font-bold text-[var(--text-primary)] mb-2">
-				No topic cards yet
-			</h2>
-			<p class="text-sm text-[var(--text-secondary)] leading-relaxed">
-				Three-day topic recap cards will appear here once generated.
-			</p>
+		<!-- Empty / Notice State -->
+		<div class="space-y-6 max-w-3xl">
+			{#if statusNotice}
+				{@render statusBanner()}
+			{:else}
+				<div
+					data-testid="recap-cards-empty"
+					class="flex flex-col items-center justify-center py-20 px-4 text-center max-w-lg mx-auto"
+				>
+					<div class="rounded-full bg-[var(--surface-hover)] p-4 mb-4 border border-[var(--surface-border)] text-[var(--text-muted)]">
+						<Calendar class="h-8 w-8" />
+					</div>
+					<h2 class="text-xl font-bold text-[var(--text-primary)] mb-2">
+						No topic cards yet
+					</h2>
+					<p class="text-sm text-[var(--text-secondary)] leading-relaxed">
+						{getCardsEmptyMessage(Boolean(recapCardsData?.job))}
+					</p>
+				</div>
+			{/if}
 		</div>
 	{:else}
 		<!-- Populated / Degraded States -->
 		<div class="space-y-6 max-w-3xl">
+			{@render statusBanner()}
+
 			<!-- Window metadata header -->
 			{#if recapCardsData?.job}
 				<div class="flex items-center justify-between gap-3 flex-wrap">
 					<div
 						data-testid="recap-cards-window"
-						class="text-xs sm:text-sm font-medium text-[var(--text-secondary)] flex items-center gap-2"
+						class="text-xs sm:text-sm font-medium text-[var(--text-secondary)] flex items-center gap-2 flex-wrap"
 					>
 						<span class="inline-block w-2 h-2 rounded-full bg-[var(--interactive-text)]"></span>
+						{#if windowLabel}
+							<span>{windowLabel}</span>
+							<span class="text-[var(--text-muted)]">&middot;</span>
+						{/if}
 						<span>{formatJobWindow(recapCardsData.job.from, recapCardsData.job.to)}</span>
 						<span class="text-[var(--text-muted)]">&middot;</span>
 						<span>{sortedCards.length} topic{sortedCards.length !== 1 ? 's' : ''}</span>
+					</div>
+					<div
+						data-testid="recap-cards-freshness"
+						class="text-xs sm:text-sm text-[var(--text-muted)]"
+					>
+						Updated {formatCardTimestamp(recapCardsData.job.kickedAt)}
 					</div>
 				</div>
 

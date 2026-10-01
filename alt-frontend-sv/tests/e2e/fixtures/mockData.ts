@@ -523,10 +523,9 @@ export const CONNECT_RPC_PATHS = {
 	// Recap service
 	getSevenDayRecap: "**/alt.recap.v2.RecapService/GetSevenDayRecap",
 	getThreeDayRecap: "**/alt.recap.v2.RecapService/GetThreeDayRecap",
-	getThreeDayRecapCards: "**/alt.recap.v2.RecapService/GetThreeDayRecapCards",
+	getTopicCards: "**/alt.recap.v2.RecapService/GetTopicCards",
 	// TTS service
 	ttsSynthesizeStream: "**/alt.tts.v1.TTSService/SynthesizeStream",
-	synthesizeSpeechStream: "**/alt.tts.v1.TTSService/SynthesizeStream",
 };
 
 // Connect-RPC Article Content response
@@ -998,7 +997,7 @@ export const JOB_DASHBOARD_PATHS = {
 	jobProgress: "**/api/v1/dashboard/job-progress*",
 	jobStats: "**/api/v1/dashboard/job-stats",
 	triggerJob: "**/api/v1/generate/recaps/7days",
-	trigger3DaysCardsJob: "**/api/v1/generate/recaps/3days/cards",
+	triggerTopicCardsJob: "**/api/v1/generate/topic-cards",
 };
 
 // =============================================================================

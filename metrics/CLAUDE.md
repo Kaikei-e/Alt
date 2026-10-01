@@ -37,7 +37,6 @@ uv run pytest -v --cov=alt_metrics
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Pydantic Models**: Use for type-safe data models
-3. **Structlog**: Use for structured logging
-4. **Custom Exceptions**: `CollectorError`, `ConfigurationError`, etc.
+1. **Pydantic Models**: Use for type-safe data models
+2. **Structlog**: Use for structured logging
+3. **Custom Exceptions**: `CollectorError`, `ConfigurationError`, etc.

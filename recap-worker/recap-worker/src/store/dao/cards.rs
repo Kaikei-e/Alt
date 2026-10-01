@@ -1,4 +1,4 @@
-//! Topic cards and evaluation DAO for 3-day recap redesign.
+//! Topic cards and evaluation DAO for topic cards routine.
 //!
 //! All tables are INSERT-only: snapshots, candidates, cards, job_stats,
 //! eval_windows, story_judgments, and card_ratings.
@@ -171,6 +171,15 @@ pub struct PreviousCardsJob {
     pub to_ts: DateTime<Utc>,
     pub params_version: String,
     pub cards: Vec<PreviousCardSummary>,
+}
+
+/// Most recent topic cards run in recap_jobs of any status ('cards_replay' excluded).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LatestCardsRun {
+    pub job_id: Uuid,
+    pub status: String,
+    pub kicked_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// Pure validation helper for judgment decisions.
@@ -735,6 +744,58 @@ impl CardsDaoOps {
             to_ts: job_row.try_get("to_ts")?,
             params_version: job_row.try_get("params_version")?,
         }))
+    }
+
+    /// Retrieve the most recent topic cards run of any status ('cards_replay' excluded).
+    pub async fn get_latest_cards_run(pool: &PgPool) -> Result<Option<LatestCardsRun>> {
+        let row = sqlx::query(
+            r"
+            SELECT job_id, status, kicked_at, updated_at
+            FROM recap_jobs
+            WHERE trigger_source = 'cards'
+            ORDER BY kicked_at DESC
+            LIMIT 1
+            ",
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to get latest cards run: {e}")))?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        Ok(Some(LatestCardsRun {
+            job_id: row.try_get("job_id")?,
+            status: row.try_get("status")?,
+            kicked_at: row.try_get("kicked_at")?,
+            updated_at: row.try_get("updated_at")?,
+        }))
+    }
+
+    /// Check if a completed cards job exists with kicked_at >= slot.
+    pub async fn has_completed_cards_job_since(pool: &PgPool, slot: DateTime<Utc>) -> Result<bool> {
+        let row = sqlx::query(
+            r"
+            SELECT EXISTS (
+                SELECT 1 FROM recap_jobs
+                WHERE trigger_source = 'cards'
+                  AND status = 'completed'
+                  AND kicked_at >= $1
+            ) AS exists
+            ",
+        )
+        .bind(slot)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            RecapError::Db(format!(
+                "failed to check completed cards job since slot: {e}"
+            ))
+        })?;
+
+        let exists: bool = row.try_get("exists")?;
+        Ok(exists)
     }
 
     /// Retrieve the latest completed cards job and its card centroids for novelty comparison.

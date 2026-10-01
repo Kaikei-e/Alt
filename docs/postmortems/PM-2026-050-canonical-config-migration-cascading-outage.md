@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: 正準設定移行に伴う本番スタック多段障害"
+date: 2026-07-24
+tags:
+  - postmortem
+  - deploy
+  - configuration
+  - cascading-outage
+---
+
 # ポストモーテム: 正準設定移行に伴う本番スタック多段障害
 
 ## メタデータ

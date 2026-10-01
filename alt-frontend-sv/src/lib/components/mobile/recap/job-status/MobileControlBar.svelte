@@ -38,7 +38,7 @@ const startButtonTooltip = $derived.by(() => {
 const cardsButtonTooltip = $derived.by(() => {
 	if (justStartedJobId) return "Job is starting…";
 	if (hasRunningJob) return "A job is already running";
-	return "Generate three-day topic cards";
+	return "Generate topic cards";
 });
 </script>
 

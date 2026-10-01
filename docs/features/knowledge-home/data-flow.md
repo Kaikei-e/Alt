@@ -8,7 +8,7 @@ All events are appended to the `knowledge_events` table with a unique `dedupe_ke
 
 | Event Type | Producer | Payload | Projector Action |
 |------------|----------|---------|-----------------|
-| `ArticleCreated` | `CreateArticle` usecase | `article_id`, `title`, `published_at`, `tenant_id`, `link` | Creates home item (score=freshness), increments digest |
+| `ArticleCreated` | `CreateArticle` usecase | `article_id`, `title`, `published_at`, `tenant_id`, `url` | Creates home item (score=freshness), increments digest |
 | `ArticleUpdated` | Article update path | `article_id`, updated fields | Updates home item metadata |
 | `SummaryVersionCreated` | `SaveArticleSummary` usecase | `summary_version_id`, `article_id` | Sets excerpt, `summary_state=ready`, score=0.8 |
 | `TagSetVersionCreated` | `SaveArticleTags` usecase | `tag_set_version_id`, `article_id` | Sets tags, score=0.7. `tag_hotspot` why-reason added conditionally by usecase-level trending detection (7-day vs 30-day surge analysis) |
@@ -35,47 +35,39 @@ sequenceDiagram
   participant KS as knowledge-sovereign
   participant PP as pre-processor
   participant TG as tag-generator
-  participant KP as KnowledgeProjector
-  participant RP as RecallProjector
   participant FE as Frontend
 
   RSS->>AB: New article arrives
-  AB->>KS: AppendEvent(ArticleCreated)
+  AB->>KS: AppendKnowledgeEvent(ArticleCreated)
   Note over KS: dedupe_key prevents duplicates
-
-  KS-->>KP: NOTIFY knowledge_projector_channel
-  KP->>KS: ListEventsSince(checkpoint)
-  KP->>KS: UpsertHomeItem(score=freshness, why=new_unread)
-  KP->>KS: UpsertTodayDigest(new_articles++)
+  Note over KS: KnowledgeProjector folds in-process
+  Note over KS: UpsertHomeItem(score=freshness, why=new_unread)
+  Note over KS: UpsertTodayDigest(new_articles++)
 
   PP->>AB: SaveArticleSummary(article_id, text)
-  AB->>KS: Insert summary_versions
-  AB->>KS: AppendEvent(SummaryVersionCreated)
-  KP->>KS: UpsertHomeItem(excerpt, summary_state=ready, score=0.8)
+  AB->>KS: AppendKnowledgeEvent(SummaryVersionCreated)
+  Note over KS: KnowledgeProjector folds in-process
+  Note over KS: UpsertHomeItem(excerpt, summary_state=ready, score=0.8)
 
   TG->>AB: SaveArticleTags(article_id, tags)
-  AB->>KS: Insert tag_set_versions
-  AB->>KS: AppendEvent(TagSetVersionCreated)
-  KP->>KS: UpsertHomeItem(tags, score=0.7)
-  Note over KP: tag_hotspot added conditionally<br/>by trending detection (7d vs 30d surge)
+  AB->>KS: AppendKnowledgeEvent(TagSetVersionCreated)
+  Note over KS: KnowledgeProjector folds in-process
+  Note over KS: UpsertHomeItem(tags, score=0.7)
 
   FE->>AB: GetKnowledgeHome(lens_id, cursor)
   AB->>KS: Query knowledge_home_items + today_digest
   AB->>FE: items[], digest, recall[]
 
   FE->>AB: TrackHomeAction(item_key, open)
-  AB->>KS: AppendEvent(HomeItemOpened)
-  KP->>KS: UpsertHomeItem(score=0.1, last_interacted_at)
-  KP->>KS: UpsertRecallCandidate(eligible after 24h)
-
-  Note over RP: Runs periodically
-  RP->>KS: ListRecallSignals(user, 7 days)
-  RP->>KS: UpsertRecallCandidate(scored)
+  AB->>KS: AppendKnowledgeEvent(HomeItemOpened)
+  Note over KS: KnowledgeProjector folds in-process
+  Note over KS: UpsertHomeItem(score=0.1, last_interacted_at)
+  Note over KS: UpsertRecallCandidate(eligible after 24h)
 ```
 
 ## Projector Mechanics
 
-The **KnowledgeProjector** (`alt-backend/app/job/knowledge_projector.go`) is the core engine that transforms events into read models.
+The **KnowledgeProjector** (`knowledge-sovereign/app/usecase/knowledge_home_projector/projector.go`) is the core engine in knowledge-sovereign (ADR 000944) that transforms events into read models.
 
 ### Processing Loop
 
@@ -140,9 +132,9 @@ Items are ranked by `score` (descending) in the Home feed. Scores are assigned d
 
 Scores are written via merge-safe UPSERT, so later events override earlier scores for the same item.
 
-## Recall Projector
+## Recall Scoring
 
-The **RecallProjector** (`alt-backend/app/job/recall_projector.go`) scores recall candidates from user interaction signals.
+Recall candidates are scored and projected in knowledge-sovereign (`knowledge-sovereign/app/usecase/knowledge_home_projector/folds_recall.go`) from user interaction signals.
 
 ### Signal Types and Weights
 
@@ -181,12 +173,12 @@ The `previous_ref_json` field preserves the old excerpt or tags for optional his
 
 ## Backfill
 
-The backfill job (`alt-backend/app/job/knowledge_backfill_job.go`) retroactively generates events for existing articles:
+The backfill job lifecycle is orchestrated by `alt-backend/app/orchestrator/usecase/knowledge_backfill_usecase/` and backed by knowledge-sovereign's `BackfillJob` RPCs (`CreateBackfillJob`, `GetBackfillJob`, `ListBackfillJobs`, `UpdateBackfillJob` defined in `proto/services/sovereign/v1/sovereign.proto`). It retroactively generates events for existing articles:
 
-1. Admin triggers backfill via `TriggerBackfill` RPC with a target projection version
+1. Admin initiates backfill via `CreateBackfillJob` RPC with a target projection version
 2. The job iterates through articles in batches of 100, ordered by `published_at`
 3. For each article, it generates a synthetic `ArticleCreated` event with `actor_type=service, actor_id=backfill`
 4. Dedupe key `article-created:{article_id}` ensures idempotency
 5. The KnowledgeProjector picks up these events normally
 
-Backfill is a bootstrap mechanism, not a daily process. Once the constant article flow is established (articles automatically append `ArticleCreated` events on creation), backfill is only needed for disaster recovery.
+Backfill is a bootstrap mechanism, not a daily process. Once the constant article flow is established (articles automatically append `ArticleCreated` events on creation), backfill is only needed for disaster recovery. Note that `knowledge_backfill_usecase` requires an executor to be explicitly wired via `WithExecutor`; if no executor is wired, `StartBackfill` returns `ErrNoBackfillExecutor` (ADR-000944).

@@ -25,13 +25,13 @@
 ## Repository Map
 - `alt-frontend-sv/` – SvelteKit 2 + Svelte 5 Runes client (TailwindCSS v4, Vitest, Playwright).
 - `alt-backend/app/` – Go 1.26 HTTP API in Clean Architecture layers.
-- `alt-backend/sidecar-proxy/` – Go egress proxy enforcing outbound policy.
-- `pre-processor/app/` – Go feed and summarization worker with circuit breakers.
-- `pre-processor-sidecar/app/` – Go scheduler for Inoreader ingestion (CronJob/deployment).
+- `alt-backend/sidecar-proxy/` – Go egress proxy (historical; not run by compose).
+- `pre-processor/app/` – Go feed and summarization worker with exponential-backoff retries.
+- `pre-processor-sidecar/app/` – Go scheduler service for Inoreader ingestion.
 - `news-creator/app/` – FastAPI LLM service using Ollama via Clean Architecture.
 - `tag-generator/app/` – FastAPI + Python 3.14 tag pipeline with ML components.
 - `search-indexer/app/` – Go Meilisearch indexer and search API.
-- `auth-hub/` – Go IAP service bridging Nginx and Ory Kratos.
+- `auth-hub/` – Go session validator and backend token issuer for Ory Kratos.
 - `auth-token-manager/` – Deno OAuth2 token refresher for Inoreader.
 - `knowledge-sovereign/` – Go durable knowledge state owner (Trail / event log / projectors).
 - `rask-log-forwarder/` & `rask-log-aggregator/` – Rust log pipeline (forwarder + ClickHouse aggregator).
@@ -53,19 +53,19 @@
   - Formatting: `gofmt`, linting via `go vet`
   - Mock generation: `make generate-mocks`
 - **Python services (news-creator, tag-generator)**
-  - Tests: `SERVICE_SECRET=test-secret pytest` (news-creator), `uv run pytest` (tag-generator)
-  - Type/lint: `uv run mypy`, `uv run ruff check`, `uv run ruff format`
+  - Tests: `cd news-creator/app && uv run pytest`, `cd tag-generator/app && uv run pytest`
+  - Type/lint: `uv run pyrefly check`, `uv run ruff check`, `uv run ruff format`
 - **Rust services (rask-*)**
   - Unit/integration: `cargo test`
   - Benchmarks: `cargo bench` (when explicitly required)
 - **Deno (auth-token-manager)**
   - Tests: `deno test`
 - **Health checks**
-  - Frontend (via nginx): `curl http://localhost/health`
+  - Frontend (via plecto-proxy): `curl http://localhost/health`
   - Backend: `curl http://localhost:9000/v1/health`
   - BFF: `curl http://localhost:9250/health`
   - Meilisearch: `curl http://localhost:7700/health`
-  - Auth Hub: `curl http://localhost:8888/health`
+  - Auth Hub (in-container, port 8888 not published to host): `docker compose -f compose/compose.yaml -p alt exec auth-hub /auth-hub healthcheck`
 
 ## Language Playbooks
 - **Go 1.26** – Enforce Clean Architecture boundaries, use `log/slog`, wrap errors with context, propagate `context.Context`, throttle external calls (≥5 s between repeat host hits), prefer table-driven tests and GoMock fakes.
@@ -77,10 +77,10 @@
 ## Service Capsules
 - **alt-frontend-sv** – SvelteKit App Router at `/`, Alt-Paper theme, Runes-only. Tests via Vitest; Playwright E2E uses page objects. Lint/format (`biome`) before hand-off.
 - **alt-backend** – Echo handlers → Usecase → Port → Gateway → Driver. Respect rate limiting (5 s external API gap). Use `log/slog` and structured error wrapping.
-- **Sidecar Proxy** – Go reverse proxy enforcing outbound allowlists, shared timeouts, header normalization. Test with `net/http/httptest` triad (client → proxy → mock backend).
+- **Sidecar Proxy** – Go reverse proxy (historical; compose does not run it). Outbound allowlists, timeouts, header normalization.
 - **auth-hub** – Kratos session validator with 5-minute TTL cache. Exposes `/validate` and `/health`; ensure identity headers (`X-Alt-*`) are authoritative.
-- **pre-processor** – Feed processing, summarization, quality gates. Uses circuit breakers (`mercari/go-circuitbreaker`), rate limits, structured logging per operation.
-- **pre-processor-sidecar** – Scheduler for Inoreader OAuth2 ingestion. Runs as CronJob (Forbid concurrency). Uses `singleflight` for token refresh and pluggable clocks for testing.
+- **pre-processor** – Feed processing, summarization, quality gates. Uses exponential-backoff retries (RetryPolicy), rate limits, structured logging per operation.
+- **pre-processor-sidecar** – Scheduler for Inoreader OAuth2 ingestion. Runs as a Compose daemon service. Uses `singleflight` for token refresh and pluggable clocks for testing.
 - **news-creator** – FastAPI LLM orchestrator with Clean Architecture layers. Summaries produced via Ollama gateway. Tests mock ports, evaluate prompts via golden datasets and `DeepEval` where applicable.
 - **tag-generator** – FastAPI ML service generating article tags. Emphasizes batch processing, memory hygiene, ML quality checks, and bias detection tests.
 - **search-indexer** – Go service indexing to Meilisearch. Batch size 200, configures searchable/filterable attributes on startup. Integration tests require real Meilisearch.
@@ -95,7 +95,7 @@
 - Frontend E2E – `cd alt-frontend-sv && bun run test:e2e` (requires stack)
 - Backend Go suites – `cd alt-backend/app && go test ./...`
 - Go side services – `go test ./...` in respective directories (add `-tags=integration` when noted)
-- Python services – `pytest` (with required env), `uv run pytest`, `uv run mypy`, `uv run ruff check`
+- Python services – `cd <service>/app && uv run pytest`, `uv run pyrefly check`, `uv run ruff check`
 - Rust services – `cargo test` (optionally `cargo bench`/`criterion`)
 - Deno service – `deno test`
 

@@ -55,8 +55,7 @@ bun run check && bun run build   # svelte-check (tsc). --tsgo は使用不可 �
 
 ## Critical Rules
 
-1. **TDD First**: No implementation without failing tests
-2. **Runes Only**: Use `$state`, `$derived`, `$effect`, `$props` - NEVER legacy syntax
-3. **Root Path**: App runs at `/` - use relative paths or `$app/paths`
-4. **TailwindCSS v4**: CSS-first config in `src/app.css` - no `tailwind.config.js`
-5. **Biome**: Run `bun run lint && bun run format` before commits
+1. **Runes Only**: Use `$state`, `$derived`, `$effect`, `$props` - NEVER legacy syntax
+2. **Root Path**: App runs at `/` - use relative paths or `$app/paths`
+3. **TailwindCSS v4**: CSS-first config in `src/app.css` - no `tailwind.config.js`
+4. **Biome**: Run `bun run lint && bun run format` before commits

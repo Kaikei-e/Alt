@@ -1,3 +1,13 @@
+---
+title: "PM-2026-014: news-creator 要約遅延と Recap 生成数激減 — セマフォスロットリーク・COLD_START・クラスタリング失敗の複合障害"
+date: 2026-03-28
+tags:
+  - postmortem
+  - news-creator
+  - pre-processor
+  - recap-worker
+---
+
 # PM-2026-014: news-creator 要約遅延と Recap 生成数激減 — セマフォスロットリーク・COLD_START・クラスタリング失敗の複合障害
 
 ## メタデータ

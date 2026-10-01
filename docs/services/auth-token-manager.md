@@ -3,6 +3,8 @@
 _Last reviewed: September 5, 2026_
 
 **Location:** `auth-token-manager`
+**Port:** 127.0.0.1:9201:9201 (internal HTTP server for token API and OAuth callback)
+**Volume:** `oauth_token_data` (mounts to `/app/secrets`, initialized by `oauth-token-init`)
 
 ## Role
 - Deno 2.x CLI that keeps Inoreader OAuth2 credentials refreshed, validates configuration, and persists tokens to a `.env` secret file (`TOKEN_STORAGE_PATH`).
@@ -88,3 +90,4 @@ _Last reviewed: September 5, 2026_
 ## Testing & tooling
 - `deno test` runs `tests/unit/**` (gateway, handler, usecase, infra) plus `tests/security/logger_security_test.ts`, which stubs console APIs to verify that sanitized logs never leak tokens or secrets.
 - `deno fmt` and `deno lint` keep the codebase consistent before commits.
+- Docker: `docker compose -f compose/workers.yaml up --build -d auth-token-manager`

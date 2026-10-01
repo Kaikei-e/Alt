@@ -32,7 +32,7 @@
 - **Why it hurts**: Leaks infrastructural dependencies into pure business logic. Prevents testing Usecase in memory and forces business rules to change when HTTP clients or database libraries are updated.
 - **Fix**: Define a narrow Port interface in `port/` (Usecase-owned) representing the capability (e.g. `LLMClient`, `ArticleFetcher`). Implement the Port in Gateway using the Driver.
 - **Example in Alt**:
-  - `acolyte-orchestrator/acolyte/usecase/graph/llm_parse.py:18` and `acolyte/usecase/graph/nodes/gatherer_node.py:20` directly run `import httpx` inside Usecase execution graphs.
+  - `acolyte-orchestrator/acolyte/usecase/graph/llm_parse.py:18` and `acolyte-orchestrator/acolyte/usecase/graph/nodes/gatherer_node.py:20` directly run `import httpx` inside Usecase execution graphs.
   - `alt-backend/app/orchestrator/usecase/global_search_usecase/usecase.go:12-13` imports `"go.opentelemetry.io/otel/trace"`. Lines 15-18 document that this is intentional to accept an injected `trace.Tracer` port rather than the global registry, but it still leaks external telemetry types into Usecase (triggering a `WARN` in `check_layers.sh`).
 
 ---

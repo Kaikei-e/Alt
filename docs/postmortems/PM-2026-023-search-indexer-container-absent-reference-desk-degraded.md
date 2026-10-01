@@ -1,3 +1,13 @@
+---
+title: "ポストモーテム: search-indexer コンテナが消失し Reference Desk の articles / recaps が約 36 時間 silent degradation していた問題"
+date: 2026-04-12
+tags:
+  - postmortem
+  - search-indexer
+  - alt-backend
+  - silent-failure
+---
+
 # ポストモーテム: search-indexer コンテナが消失し Reference Desk の articles / recaps が約 36 時間 silent degradation していた問題
 
 ## メタデータ

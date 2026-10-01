@@ -90,6 +90,10 @@ edge proxy (`plecto-proxy`, `plecto/manifest.toml`) には auth-hub 向けの up
 - `X-Alt-Backend-Token` レスポンスヘッダーに JWT を含む
 - BFF (alt-butterfly-facade) がバックエンドへのリクエスト時に使用
 
+### /csrf
+- CSRF トークン生成 (HMAC-SHA256)
+- CSRF token を HMAC-SHA256 で**発行**するのは auth-hub、実際の検証 (double-submit cookie 比較) は alt-frontend-sv の `verifyCsrfToken` (V-004)。`HMACCSRFGenerator.Validate` は auth-hub 側に実装されているが直接の呼び出し元はなく dead code
+
 ### /internal/system-user
 - 内部サービス間通信用エンドポイント
 - `INTERNAL_AUTH_SECRET` (必須) を `X-Internal-Auth` ヘッダーで提示する。未設定なら auth-hub は起動時に exit 1 するので、認証が無効な状態は存在しない
@@ -100,6 +104,7 @@ edge proxy (`plecto-proxy`, `plecto/manifest.toml`) には auth-hub 向けの up
 - `X-Alt-User-Id` / `X-Alt-Tenant-Id` / `X-Alt-User-Email`: `/validate` のレスポンスヘッダーとしてのみ設定される (`/validate` 自体がライブ経路から呼ばれないため現状未使用、上記参照)。edge proxy (`plecto/manifest.toml`) は auth-hub への route を持たず、これらのヘッダーを中継する仕組みもない。`/session` はこれらを JSON body (`user.id`/`user.tenantId`/`user.email`) で返す
 - `X-Alt-Tenant-Id` はシングルテナント運用では UserID と同値
 - `X-Alt-Backend-Token`: バックエンドトークン (JWT) -- `/validate` と `/session` の両方のレスポンスヘッダーに設定される
+- **Header Injection 対策**: Identity は必ず JWT (`X-Alt-Backend-Token`) 経由でのみ信頼し、外部から注入された生の `X-Alt-User-Id` / `X-Alt-Tenant-Id` ヘッダーは alt-backend 側で injection 試行として検知・拒否される (V-005, `hasAuthHeaders`)
 
 ## JWT Token Generation
 
@@ -255,6 +260,10 @@ curl -i http://localhost:8888/health
 - Silent degradation of static shared secrets → replaced by short-lived JWTs; originally captured via nginx `auth_request_set` ([[000375]]), though that nginx wiring later went dead (alt-frontend-sv fetches the JWT from `/session` directly instead, and alt-backend/BFF verify it in-process). The same structural weakness later retired X-Service-Token in favor of mTLS. Never host-expose the Kratos admin port (4434). → [[000375]] [[000717]] [[000743]]
 - Missing secret warn-and-limp → required secrets must abort startup (min 32 chars, no defaults), internal endpoints need app-layer auth with constant-time compare even when "protected by network policy", and an empty secret must fail closed (all requests 500), never silently succeed. → [[000197]] [[000200]] [[000719]] [[000720]]
 - Auth bolted onto SSE → browser `EventSource` cannot send custom headers; use Connect-RPC streaming where interceptors apply auth transparently instead of retrofitting SSE. → [[000718]]
+- CSRF mismatch → auth-hub の HMAC トークンは呼び出しごとに新しい timestamp を埋め込むため、guard 時に `/csrf` を再取得すると必ず不一致になる。alt-frontend-sv は `issueCsrfCookie` で発行直後の値を httpOnly cookie に固定し、`verifyCsrfToken` はその cookie とダブルサブミット値を比較するだけで auth-hub を再呼び出ししない。
+- Token resign 失敗 → `backend_token_secret` のローテーション後、古い秘密で署名されたトークンを新サービスが拒否する。`backend_token_secret` を共有する全サービス (`auth-hub`, `alt-backend`, `alt-data-hub`, `alt-butterfly-facade`, `acolyte-orchestrator`) を同時に再起動しないと一時的に 401 が発生する。
+- Kratos backplane unreachable → fail-closed 設計のため「ログインできるが全 API が 401」状態になる。障害時は `auth-hub → kratos:4434` の導通・health を確認する。
+- 生の X-Alt-* header injection 試行 → edge proxy (`plecto-proxy`) は auth-hub への route を持たず、これらのヘッダーを中継しない。identity は必ず JWT (`X-Alt-Backend-Token`) 経由でのみ信頼し、外部から直接持ち込まれた生の `X-Alt-User-Id` 等は alt-backend 側で injection 試行として検知される (V-005, `hasAuthHeaders`)。
 
 ## LLM Notes
 - 主要ファイル: `internal/adapter/handler/*.go`, `internal/usecase/*.go`, `internal/adapter/gateway/kratos.go`, `internal/infrastructure/**/*.go`

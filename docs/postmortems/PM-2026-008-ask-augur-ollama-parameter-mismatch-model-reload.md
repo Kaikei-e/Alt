@@ -1,3 +1,13 @@
+---
+title: "PM-2026-008: Ask Augur チャットストリームの Ollama パラメータ不一致によるモデルリロード遅延"
+date: 2026-03-25
+tags:
+  - postmortem
+  - news-creator
+  - ask-augur
+  - ollama
+---
+
 # PM-2026-008: Ask Augur チャットストリームの Ollama パラメータ不一致によるモデルリロード遅延
 
 ## メタデータ

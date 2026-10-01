@@ -11,7 +11,7 @@ GPU 推論ワークロード (要約 / embedding / rerank / Acolyte) を **ど�
 ### Core
 
 **Primary Host (主機)**:
-Alt の全 critical path が単体で成立しなければならないマシン (現在は koko-b)。
+Alt の全 critical path が単体で成立しなければならないマシン。
 ingress・DB・auth・コアサービス・観測系は Primary Host の外に出ない。
 _Avoid_: 本番マシン (曖昧)
 

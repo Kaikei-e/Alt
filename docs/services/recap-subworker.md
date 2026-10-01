@@ -2,7 +2,10 @@
 
 _Last reviewed: September 5, 2026_
 
-**Location:** `recap-subworker/`
+**Location:** `recap-subworker/`  
+**Port:** 8002  
+**Key Dependencies:** `recap-db`, upstream `recap-worker`  
+**Hardware:** NVIDIA GPU enabled (`count: 1` in `compose/recap.yaml`)  
 
 ## Role
 Recap Subworker is a specialized ML/ETL microservice responsible for heavy text processing tasks that support the Recap Worker. It primarily executes:
@@ -14,6 +17,11 @@ Recap Subworker is a specialized ML/ETL microservice responsible for heavy text 
 It runs as a **FastAPI** application on Uvicorn (single-process mode to avoid CUDA fork issues), optimized for high-concurrency CPU-bound operations. Gunicorn is available but disabled by default.
 
 **Python Version**: 3.14+
+
+### Design Principles & Invariants
+- **Step Idempotency**: All processing steps must be strictly idempotent to allow safe retry and replay.
+- **GPU Resilience**: Resilient against OOM via backoff and checkpoint resume orchestrated by `recap-worker`.
+- **BGE-M3 Embed Configuration ([[000899]])**: `ollama_embed_timeout` is configured to 120s (expanded from 30s) and `_call_embed_api` implements exponential backoff retries (1s, 2s, up to 3 attempts) to prevent timeout failures during bulk embedding.
 
 ## Architecture
 

@@ -3,6 +3,7 @@
 _Last reviewed: September 5, 2026_
 
 **Location:** `acolyte-migration-atlas/`
+**Compose File:** `compose/acolyte.yaml` (acolyte-db is defined solely here, not in `compose/db.yaml`)
 **Port:** 5439 (host, bound to `127.0.0.1`) → 5432 (container)
 
 ## Role
@@ -10,7 +11,7 @@ _Last reviewed: September 5, 2026_
 - **Versioned Report Storage**: Mutable current state + immutable version snapshots
 - **Change Tracking**: Field-level change items per version
 - **Job Queue**: Row-level locking with `FOR UPDATE SKIP LOCKED`
-- **Notification Outbox**: Transactional outbox for report-ready push notifications, relayed to `alt-data-hub` by `acolyte-orchestrator`
+- **Notification Outbox**: Transactional outbox for report-ready push notifications, relayed to `alt-data-hub` by `acolyte-orchestrator` (active when `NOTIFICATIONS_ENABLED=true`)
 
 ## Architecture Overview
 
@@ -238,7 +239,7 @@ Job queue with row-level locking.
 
 ### notification_outbox
 
-Transactional outbox for report-ready push notifications. Lives in `acolyte-db` (not `alt-db`) so the outbox row commits in the same local transaction as the `report_jobs` state change it announces; a relay in `acolyte-orchestrator` forwards rows to `alt-data-hub` over mTLS.
+Transactional outbox for report-ready push notifications. Lives in `acolyte-db` (not `alt-db`) so the outbox row commits in the same local transaction as the `report_jobs` state change it announces; a relay in `acolyte-orchestrator` forwards rows to `alt-data-hub` over mTLS (enabled when `NOTIFICATIONS_ENABLED=true`).
 
 | Column | Type | Description |
 |--------|------|-------------|

@@ -1,11 +1,13 @@
 # Tag Generator
 
-Tag Generator is Alt's Python 3.14 tagging service. It combines Connect-RPC calls to `alt-backend`, Redis Streams consumers, and ML-based extraction to attach tags to articles and serve authenticated tag extraction endpoints for other services.
+Tag Generator is Alt's Python 3.14 tagging service. It combines Connect-RPC calls to `alt-data-hub` (DataHubService over mTLS), Redis Streams consumers, and ML-based extraction to attach tags to articles and serve authenticated tag extraction endpoints for other services.
+
+Reference architecture, contracts, models, and environment variables are documented in [docs/services/tag-generator.md](../../docs/services/tag-generator.md).
 
 ## Modes
 
-- `main.py`: long-running worker that consumes streams and runs batch tagging cycles
-- `auth_service.py`: FastAPI service exposing authenticated HTTP endpoints such as `/api/v1/extract-tags` and `/health`
+- `auth_service.py`: FastAPI service exposing authenticated HTTP endpoints (`/api/v1/extract-tags`, `/health`). This is the container entrypoint.
+- `main.py`: standalone worker that consumes Redis streams and runs batch tagging cycles.
 
 ## Getting Started
 
@@ -13,54 +15,59 @@ Tag Generator is Alt's Python 3.14 tagging service. It combines Connect-RPC call
 
 - Python 3.14
 - `uv`
-- `SERVICE_SECRET`
-- `BACKEND_API_URL`
-- Optional ML dependencies if you want the full local extraction stack
+- `BACKEND_API_MTLS_URL` (pointing to `https://alt-data-hub:9443`)
+- Optional ML dependencies for local extraction stack
 
-### Install dependencies
+### Install Dependencies
 
 ```bash
 cd tag-generator/app
+
+# Base dependencies
 uv sync
-```
 
-To install the heavier ML toolchain used in development and production images:
-
-```bash
+# Heavier ML toolchain used in development and production images
 uv sync --group ml
 ```
 
-### Run the worker
+### Run the Service
 
 ```bash
 cd tag-generator/app
+
+# Run HTTP API (container entrypoint, default port 9400)
+uv run python auth_service.py
+
+# Or run the standalone stream consumer
 uv run python main.py
 ```
 
-### Run the HTTP API
+## Testing & Quality
 
 ```bash
 cd tag-generator/app
-uv run python auth_service.py
-```
 
-The authenticated API listens on `PORT` with a default of `9400`.
-
-## Common Commands
-
-```bash
-cd tag-generator/app
+# Run tests
 uv run pytest
-uv run ruff check
-uv run pyrefly .
+
+# Run with coverage
+uv run pytest --cov=tag_generator
+
+# Lint
+uv run ruff check && uv run ruff format --check
+
+# Type check
+uv run pyrefly check
 ```
 
 ## Notes
 
-- The service no longer supports the old direct database mode; it expects backend API access.
-- Redis Streams consumers are enabled through environment configuration.
+- The service connects to `alt-data-hub` via Connect-RPC over mTLS (`BACKEND_API_MTLS_URL`); direct database access has been removed.
+- Redis Streams consumers are enabled through environment configuration (`CONSUMER_ENABLED=true`).
 - Model assets under `tag-generator/models/onnx/` are mounted into the Compose service.
 
-## License
+## Related Documentation
 
-Licensed under the Apache License 2.0. See the project root [LICENSE](../../LICENSE).
+- [Workflow Guidelines](CLAUDE.md)
+- [Architecture Details](../../docs/services/tag-generator.md)
+- [Project CLAUDE.md](../../CLAUDE.md)

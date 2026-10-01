@@ -1,3 +1,13 @@
+---
+title: "PM-2026-044: Archive Desk /feeds/search の Svelte each_key_duplicate クラッシュと「20 件しか表示されない」現象（hybrid pagination boundary）"
+date: 2026-05-24
+tags:
+  - postmortem
+  - alt-frontend-sv
+  - meilisearch
+  - svelte
+---
+
 # PM-2026-044: Archive Desk /feeds/search の Svelte each_key_duplicate クラッシュと「20 件しか表示されない」現象（hybrid pagination boundary）
 
 ## メタデータ

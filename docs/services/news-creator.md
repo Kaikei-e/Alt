@@ -9,6 +9,10 @@ _Last reviewed: September 5, 2026_
 - FastAPI service (Python 3.14+) that synthesizes article summaries and recap blurbs via an Ollama LLM while preserving Clean Architecture boundaries.
 - Keeps handlers thin and testable; orchestrates summarization, recap summary generation, query expansion, and cross-encoder re-ranking.
 - Defined in `compose/ai.yaml` (wired via Compose `include:`, not a Compose profile), wired into the recap-worker pipeline and callable by pre-processor, acolyte-orchestrator, rag-orchestrator and recap-evaluator over the plaintext `:11434`, and by recap-worker over the mTLS `:9443` (`NEWS_CREATOR_BASE_URL=https://news-creator:9443`). `MTLS_ALLOWED_PEERS` lists recap-worker/acolyte-orchestrator/rag-orchestrator/recap-evaluator and does not include pre-processor.
+- **Invariants & Routing**:
+  - The summarization endpoint (`/api/v1/summarize`) is called exclusively by `pre-processor`: both FE on-demand requests (forwarded via `alt-backend`, `priority=high`) and background queue requests (`pre-processor` queue worker, `priority=low`) route through `pre-processor`. `alt-backend` checks `article_summaries` first to avoid duplicate inference.
+  - On-demand summaries are cached in `article_summaries` (`article_id, user_id` UPSERT, non-versioned). The versioned `summary_versions` table belongs to the Knowledge Home/Trail pipeline and is not written here.
+  - Base Ollama options (`temperature`, `top_p`, `num_ctx`) are unified across callers via `config.get_llm_options()` rather than customized per service, preventing GPU model reload ping-pong.
 - **Key Capabilities**:
   - Automatic handling of large inputs via **Map-Reduce** hierarchical summarization with recursive reduce
   - **Model Bucket Routing** (8K/60K) for VRAM optimization
@@ -342,3 +346,7 @@ Distilled from postmortems and ADRs; see [[runbooks/crystallized-knowledge]] §8
 - **Queue saturation needs all 3 layers**: retries re-entered the queue and waited 3500s+ → downstream 429 + Retry-After, `hold_slot()` during retry loops, and upstream exponential backoff exist because each alone was insufficient → [[000185]]. Degenerate output (whitespace-only) must be classified non-retryable or GPU time is burned forever → [[000203]] [[000214]].
 - **`.env` drift silently overrides compose defaults**: stale `OLLAMA_NUM_PARALLEL` / old model names in `.env` negated fixes shipped via compose → audit `.env` vs compose defaults after wiring changes → PM-2026-013/014, [[000609]].
 - **Outbound mTLS enforcement vs plain-HTTP listener asymmetry**: recap-worker with `https_only(true)` failed before sending because news-creator's listener was plain HTTP → pair `MTLS_ENFORCE` changes with server-side mTLS on every callee; assert URL schemes at startup → PM-2026-033.
+- **"TCP OK + `{"models":[]}`"**: symptom of another process occupying the port without models loaded or Docker restart failing to rebind the host port (`docker compose restart` does not rebind host ports) → requires full recreation via `docker compose up -d --force-recreate news-creator`.
+- **FE requests slow / triage priority**: inspect `GET /queue/status` (`rt_queue`, `be_queue`, `accepting`) first; BE backlog saturating the semaphore is the primary driver.
+- **BE summarization apparent delay under RT load**: when RT requests arrive, `HybridPrioritySemaphore` preempts the oldest BE request with `PreemptedException` to free slots. The `pre-processor` queue worker retries it so the job is not lost, but it manifests as perceived latency in the background queue.
+

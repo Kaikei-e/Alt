@@ -16,7 +16,7 @@ allowed-tools: Bash, Read, Glob, Grep
 # Immutable Design Guard
 
 Append-only event store とそこから派生する projection / read model を持つ任意のサブシステムを
-監査する。特定サービスに縛られない — Knowledge Home / Knowledge Loop / Acolyte パイプライン等に
+監査する。特定サービスに縛られない — Knowledge Home / Knowledge Trail / Acolyte パイプライン等に
 同じ語彙で適用し、固有テーブル名はリファレンスにケーススタディとして閉じ込める。
 
 ## コア原則

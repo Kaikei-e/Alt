@@ -1,5 +1,5 @@
 /**
- * Factory for 3-day topic recap cards mock data.
+ * Factory for topic cards mock data.
  * Produces synthetic cards using example.com and example.jp hosts only.
  */
 
@@ -35,9 +35,18 @@ export interface MockRecapCardsJob {
 	degraded: boolean;
 }
 
+export interface MockRecapCardsRun {
+	jobId: string;
+	/** Known values: "pending" | "running" | "completed" | "failed" */
+	status: string;
+	kickedAt: string;
+	updatedAt: string;
+}
+
 export interface MockRecapCardsResponse {
 	job: MockRecapCardsJob | null;
 	cards: MockRecapCard[];
+	latestRun?: MockRecapCardsRun | null;
 }
 
 export function buildMockRecapCardSource(
@@ -148,10 +157,13 @@ export function buildMockRecapCardsResponse(
 	};
 }
 
-export function buildMockEmptyRecapCardsResponse(): MockRecapCardsResponse {
+export function buildMockEmptyRecapCardsResponse(
+	overrides: Partial<MockRecapCardsResponse> = {},
+): MockRecapCardsResponse {
 	return {
 		job: null,
 		cards: [],
+		...overrides,
 	};
 }
 

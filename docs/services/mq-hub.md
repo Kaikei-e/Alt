@@ -8,6 +8,7 @@ _Last reviewed: September 5, 2026_
 - Alt プラットフォームのメッセージキューハブサービス
 - Redis 8.4 Streams を使用したイベントソーシング
 - Connect-RPC によるイベント発行 API
+- **非責務境界 (要約キャンセル)**: summarization のキャンセル伝播は mq-hub の責務ではない。二重計算回避は alt-backend の `article_summaries` キャッシュ照合と news-creator ⇄ pre-processor 間で完結する
 
 ## Architecture & Flow
 
@@ -217,7 +218,7 @@ curl http://localhost:9500/health
 - Contract: Pact CDC (`driver/contract/`)、consumer 側の期待をピン留め
 
 ## Operational Runbook
-1. `docker compose -f compose/mq.yaml up -d` でサービス起動
+1. `docker compose -f compose/mq.yaml up -d` でサービス起動 (コード変更時は `--build`)
 2. `curl http://localhost:9500/health` でヘルスチェック
 3. Redis Streams 確認: `docker compose exec redis-streams redis-cli`
 4. ストリーム一覧: `XINFO STREAMS`
@@ -233,6 +234,7 @@ curl http://localhost:9500/health
   - `mqhub_batch_size` (histogram): バッチサイズ分布 (labels: stream)
   - `mqhub_errors_total` (counter): エラー合計 (labels: operation, error_type)
   - `mqhub_redis_connection_status` (gauge): Redis 接続状態 (1=接続, 0=切断)
+- **SLI 監視**: 各ストリームの queue depth / backlog (`XLEN` および consumer group lag) を Prometheus/Grafana で監視し、遅延や滞留を早期検知する
 
 ## Known failure patterns
 

@@ -80,7 +80,7 @@ The Streamlit app queries `recap-db` for pipeline metrics stored in `recap_syste
 | **System Monitor** | CPU %, memory %, GPU utilization/temperature, hanging processes, top processes | SSE stream (real-time, 2s interval) |
 | **Log Analysis** | Error counts by type, critical error watchlist (DB duplicate key, LLM 422, GPU OOM) | `log_errors` |
 | **Admin Jobs** | Running/succeeded/failed counts, job duration | `admin_jobs` |
-| **Recap Jobs** | Running/completed/failed counts, last stage tracking | `recap_jobs` |
+| **Recap Jobs** | Running/completed/failed counts, last stage tracking, `morning_completed` status ([[000897]]) | `recap_jobs` |
 
 ## SSE Server
 
@@ -99,7 +99,7 @@ The SSE server (`sse_server.py`) is a `ThreadingHTTPServer` that streams system 
 {
   "memory": { "total": 67252326400, "used": 18317783040, "available": 48067821568, "percent": 27.2 },
   "cpu": { "percent": 15.3 },
-  "gpu": { "available": true, "gpus": [{ "index": "0", "utilization": 45.0, "memory_used": 4096.0, "memory_total": 24576.0, "temperature": 62, "name": "NVIDIA RTX 4090", "memory_percent": 16.7 }] },
+  "gpu": { "available": true, "gpus": [{ "index": "0", "utilization": 45.0, "memory_used": 4096.0, "memory_total": 16384.0, "temperature": 62, "name": "GPU 0", "memory_percent": 25.0 }] },
   "hanging_count": 0,
   "top_processes": [{ "pid": "1234", "name": "python app.py", "cpu_percent": 12.5, "memory_mb": 512.3 }]
 }
@@ -263,6 +263,11 @@ curl http://localhost:8502/health            # SSE server (host port 8502 -> con
 - Log Analysis by message equality misleads → identical error strings do not imply the same root cause: `classification returned 0 results` matched four different root causes in four consecutive incidents. Aggregate `log_errors` with discriminating fields, not message text. → PM-2026-033 PM-2026-035 PM-2026-036 PM-2026-037, [[runbooks/crystallized-knowledge]] §14
 - SSE stream dead behind the proxy → the SSE route is defined in `plecto/manifest.toml` (`path_prefix = "/sse/dashboard/"`, upstream `dashboard`), not nginx; adding a new streaming path requires adding a route to the manifest (the nginx-era `proxy_buffering off` / `X-Accel-Buffering: no` equivalent is Plecto's own responsibility). → [[000555]] [[000929]]
 - Nothing on the dashboard noticed 148GB of logs → log volume and disk usage are first-class health metrics; a retry storm nearly took down the shared host before manual `df` caught it. → PM-2026-042
+
+## Cost of Breaking & Operational Invariants
+
+- **Disposable read-only state invariant**: The dashboard is strictly a read-only Streamlit view into `recap-db`. It must never hold persistent state. Introducing state breaks disposability; if the dashboard attempts to act as a source of truth, it causes state desynchronization with `recap-db`.
+- **Internal tooling only**: The dashboard is intended strictly for developer and staging pipeline inspection. It must never be exposed on public or end-user routes.
 
 ## Observability
 
