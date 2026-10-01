@@ -22,7 +22,7 @@ services:
     build:
       context: ../irodori-tts
     env_file:
-      - ../irodori-tts/configs/${IRODORI_CONFIG:-C1}.env
+      - ../irodori-tts/configs/${IRODORI_CONFIG:-C3}.env
     environment:
       - IRODORI_MODEL_DEVICE=cuda
       - IRODORI_CODEC_DEVICE=cuda

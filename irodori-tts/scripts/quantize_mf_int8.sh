@@ -21,13 +21,16 @@ fi
 
 # The models directory must be writable by uid 1000 for this step.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+if ! docker image inspect alt-irodori-tts:local >/dev/null 2>&1; then
+  echo "alt-irodori-tts:local not found; build it with: docker compose -f compose/compose.yaml -p alt --profile tts build irodori-tts" >&2
+  exit 1
+fi
 
 echo "==> Quantizing MeanFlow checkpoint to int8 using CPU..."
-docker compose -f "${REPO_ROOT}/compose/compose.yaml" -p alt --profile tts run --rm --no-deps \
-  -v "${MODELS_DIR}:/models:rw" \
-  irodori-tts \
+docker run --rm \
+  -v "${MODELS_DIR}:/models" \
+  -e HF_HUB_OFFLINE=1 \
+  alt-irodori-tts:local \
   python /opt/irodori-tts/quantize_checkpoint.py \
   /models/v4.1-Small-MF/model.safetensors \
   --output /models/v4.1-Small-MF-int8/model.safetensors \

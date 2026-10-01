@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# WHY: the service mounts /voices read-only, so registration uses a separate writable run; the directory must be readable by uid 1000.
+# WHY: registration uses a separate writable container because the service mounts /voices read-only; the directory must be readable by uid 1000.
 
 if [[ $# -ne 2 ]]; then
   echo "Usage: $0 <reference.wav> <voice-id>" >&2
@@ -10,6 +10,16 @@ fi
 
 REF_WAV="$1"
 VOICE_ID="$2"
+
+if [[ -z "${IRODORI_MODELS_HOST_PATH:-}" ]]; then
+  echo "Error: IRODORI_MODELS_HOST_PATH environment variable is required." >&2
+  exit 1
+fi
+
+if [[ ! -d "${IRODORI_MODELS_HOST_PATH}" ]]; then
+  echo "Error: models directory '${IRODORI_MODELS_HOST_PATH}' does not exist." >&2
+  exit 1
+fi
 
 if [[ -z "${IRODORI_VOICES_HOST_PATH:-}" ]]; then
   echo "Error: IRODORI_VOICES_HOST_PATH environment variable is required." >&2
@@ -33,13 +43,16 @@ REF_WAV_DIR="$(cd "$(dirname "${REF_WAV}")" && pwd)"
 REF_WAV_BASE="$(basename "${REF_WAV}")"
 REF_WAV_ABS="${REF_WAV_DIR}/${REF_WAV_BASE}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+if ! docker image inspect alt-irodori-tts:local >/dev/null 2>&1; then
+  echo "alt-irodori-tts:local not found; build it with: docker compose -f compose/compose.yaml -p alt --profile tts build irodori-tts" >&2
+  exit 1
+fi
 
-cd "${REPO_ROOT}"
-
-docker compose -f compose/compose.yaml -p alt --profile tts run --rm --no-deps \
-  -v "${VOICES_DIR}:/voices:rw" \
+docker run --rm \
+  -v "${IRODORI_MODELS_HOST_PATH}:/models:ro" \
+  -v "${VOICES_DIR}:/voices" \
   -v "${REF_WAV_ABS}:/in/ref.wav:ro" \
-  irodori-tts \
+  -e IRODORI_CODEC_REPO=/models/codec/weights.pth \
+  -e HF_HUB_OFFLINE=1 \
+  alt-irodori-tts:local \
   python -m alt_irodori.encode_latent /in/ref.wav "/voices/${VOICE_ID}.pt" --device cpu
