@@ -1,6 +1,7 @@
 """Usecase for synthesizing speech from text."""
 
 import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from tts_speaker.domain.chunker import split_into_chunks
@@ -8,6 +9,15 @@ from tts_speaker.domain.errors import EmptyTextError, SynthesisBusyError, TextTo
 from tts_speaker.domain.text_normalizer import normalize_for_tts
 from tts_speaker.domain.wav import concat_wav, wav_duration_seconds
 from tts_speaker.port.speech_synthesizer_port import SpeechSynthesizerPort
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkAudio:
+    """Synthesized audio chunk."""
+
+    wav: bytes
+    sample_rate: int
+    duration_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,3 +89,9 @@ class SynthesizeUsecase:
             )
         finally:
             self._lock.release()
+
+    async def stream(self, text: str, speed: float | None = None) -> AsyncIterator[ChunkAudio]:
+        """Synthesize input text into streamed speech audio chunks."""
+        raise NotImplementedError
+        if False:
+            yield

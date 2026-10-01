@@ -38,6 +38,8 @@ type Config struct {
 	Audience           string
 	RequestTimeout     time.Duration
 	StreamingTimeout   time.Duration
+	TTSProxy           string
+	TTSConnectURL      string
 	AcolyteConnectURL  string
 	// BackendOperatorToken is the bearer token sent to alt-backend's internal listener (:9102)
 	BackendOperatorToken string
@@ -355,6 +357,35 @@ func NewServerWithTransports(
 		// Acolyte is reached over plaintext :8090 with MTLS_ENFORCE off; identity is
 		// the forwarded signed X-Alt-Backend-Token verified by acolyte.
 		mux.Handle("/alt.acolyte.v1.AcolyteService/", acolyteProxy)
+	}
+
+	// TTS service routing (before catch-all).
+	// Enabled: transparent streaming proxy using the streaming timeout.
+	// Disabled: Connect error failed_precondition ("tts is disabled").
+	if cfg.TTSProxy != "" {
+		ttsTransport := transport
+		if ttsTransport == nil || strings.HasPrefix(cfg.TTSConnectURL, "http://") {
+			ttsTransport = http.DefaultTransport
+		}
+		var ttsClient *client.BackendClient
+		if cfg.TTSConnectURL != "" {
+			ttsClient = client.NewBackendClientWithTransport(
+				cfg.TTSConnectURL,
+				cfg.StreamingTimeout,
+				cfg.StreamingTimeout,
+				ttsTransport,
+			)
+		}
+		ttsHandler := handler.NewTTSHandler(
+			cfg.TTSProxy == "enabled",
+			ttsClient,
+			cfg.Secret,
+			cfg.Issuer,
+			cfg.Audience,
+			logger,
+			cfg.StreamingTimeout,
+		)
+		mux.Handle("/alt.tts.v1.TTSService/", ttsHandler)
 	}
 
 	// Register proxy handler for all other paths.

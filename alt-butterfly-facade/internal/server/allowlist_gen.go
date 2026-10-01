@@ -21,6 +21,7 @@ var PublicServices = map[string]struct{}{
 	"alt.rss.v2.RSSService":                          {},
 	"alt.search.v2.GlobalSearchService":              {},
 	"alt.search.v2.SearchService":                    {},
+	"alt.tts.v1.TTSService":                          {},
 }
 
 // AdminServices are forwardable only through dedicated gated routes that

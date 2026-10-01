@@ -149,7 +149,8 @@ func main() {
 	logBFFFeatureWiring(ctx, cfg)
 
 	// Create server configuration
-	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, acolyteURL, secret, operatorToken)
+	ttsURL := resolveTTSURL(cfg)
+	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, ttsURL, acolyteURL, secret, operatorToken)
 
 	// Connect-RPC uses the mTLS transport when enforcement is on; REST
 	// proxies always stay on the default plaintext transport so that

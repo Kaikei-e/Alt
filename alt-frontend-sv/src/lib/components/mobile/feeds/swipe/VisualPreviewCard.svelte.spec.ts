@@ -761,4 +761,41 @@ describe("VisualPreviewCard", () => {
 				.toBeInTheDocument();
 		});
 	});
+
+	describe("AI summary speech button", () => {
+		it("does not render the speech button while the summary is actively streaming", async () => {
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
+				() => new AbortController(),
+			);
+
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await page.getByRole("button", { name: /summary/i }).click();
+
+			await expect
+				.element(page.getByTestId("ai-summary-section"))
+				.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("summary-speech-button"))
+				.not.toBeInTheDocument();
+		});
+
+		it("renders speech button with 'Play summary' once summary stream has completed", async () => {
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await page.getByRole("button", { name: /summary/i }).click();
+
+			await expect
+				.element(page.getByTestId("ai-summary-section"))
+				.toBeInTheDocument();
+			const speechBtn = page.getByTestId("summary-speech-button");
+			await expect.element(speechBtn).toBeInTheDocument();
+			await expect.element(speechBtn).toHaveTextContent("Play summary");
+		});
+	});
 });

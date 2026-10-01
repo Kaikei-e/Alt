@@ -1,0 +1,9 @@
+{
+	"extends": "../tsconfig.base.json",
+	"include": [
+		"playwright.config.ts",
+		"src/**/*.ts",
+		"tests/**/*.ts",
+		"../_shared/**/*.ts"
+	]
+}

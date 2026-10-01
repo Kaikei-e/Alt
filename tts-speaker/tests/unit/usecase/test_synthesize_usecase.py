@@ -1,4 +1,4 @@
-"""Unit tests for SynthesizeUsecase."""
+"""Unit tests for SynthesizeUsecase streaming API."""
 
 import asyncio
 from unittest.mock import AsyncMock, call
@@ -11,8 +11,9 @@ from tts_speaker.domain.errors import (
     TextTooLongError,
     UpstreamUnavailableError,
 )
+from tts_speaker.domain.wav import wav_duration_seconds
 from tts_speaker.port.speech_synthesizer_port import SpeechSynthesizerPort
-from tts_speaker.usecase.synthesize_usecase import SynthesisResult, SynthesizeUsecase
+from tts_speaker.usecase.synthesize_usecase import ChunkAudio, SynthesizeUsecase
 
 
 async def test_empty_text_raises_error(mock_synthesizer: AsyncMock) -> None:
@@ -25,13 +26,16 @@ async def test_empty_text_raises_error(mock_synthesizer: AsyncMock) -> None:
         default_speed=1.25,
     )
     with pytest.raises(EmptyTextError):
-        await usecase.execute("")
+        async for _ in usecase.stream(""):
+            pass
 
     with pytest.raises(EmptyTextError):
-        await usecase.execute("   \n\t  ")
+        async for _ in usecase.stream("   \n\t  "):
+            pass
 
     with pytest.raises(EmptyTextError):
-        await usecase.execute("。。。\n！？")
+        async for _ in usecase.stream("。。。\n！？"):
+            pass
 
 
 async def test_text_too_long_raises_error(mock_synthesizer: AsyncMock) -> None:
@@ -44,7 +48,8 @@ async def test_text_too_long_raises_error(mock_synthesizer: AsyncMock) -> None:
         default_speed=1.25,
     )
     with pytest.raises(TextTooLongError):
-        await usecase.execute("This is longer than 10 characters")
+        async for _ in usecase.stream("This is longer than 10 characters"):
+            pass
 
 
 async def test_successful_synthesis_single_chunk(mock_synthesizer: AsyncMock, sample_wav_bytes: bytes) -> None:
@@ -57,11 +62,13 @@ async def test_successful_synthesis_single_chunk(mock_synthesizer: AsyncMock, sa
         queue_timeout_seconds=600.0,
         default_speed=1.25,
     )
-    result = await usecase.execute("こんにちは", speed=1.2)
-    assert isinstance(result, SynthesisResult)
-    assert result.chunk_count == 1
-    assert result.duration_seconds > 0
-    assert result.wav == sample_wav_bytes
+    chunks = [chunk async for chunk in usecase.stream("こんにちは", speed=1.2)]
+    assert len(chunks) == 1
+    chunk = chunks[0]
+    assert isinstance(chunk, ChunkAudio)
+    assert chunk.wav == sample_wav_bytes
+    assert chunk.sample_rate == 48000
+    assert pytest.approx(chunk.duration_seconds, abs=0.01) == 0.1
     mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=1.2)
 
 
@@ -79,13 +86,38 @@ async def test_successful_synthesis_multiple_chunks_in_order(
     )
     text = "吾輩は猫である。名前はまだ無い。"
     speed = 1.3
-    result = await usecase.execute(text, speed=speed)
-    assert isinstance(result, SynthesisResult)
-    assert result.chunk_count == 2
+    chunks = [chunk async for chunk in usecase.stream(text, speed=speed)]
+    assert len(chunks) == 2
+    assert all(isinstance(c, ChunkAudio) for c in chunks)
     assert mock_synthesizer.synthesize_chunk.call_args_list == [
         call("吾輩は猫である。", speed=speed),
         call("名前はまだ無い。", speed=speed),
     ]
+
+
+async def test_trailing_silence_appended_to_all_except_last_chunk(
+    mock_synthesizer: AsyncMock, sample_wav_bytes: bytes
+) -> None:
+    mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
+    usecase = SynthesizeUsecase(
+        synthesizer=mock_synthesizer,
+        max_chunk_chars=10,
+        max_text_chars=5000,
+        chunk_gap_ms=200,
+        queue_timeout_seconds=600.0,
+        default_speed=1.25,
+    )
+    text = "吾輩は猫である。名前はまだ無い。"
+    chunks = [chunk async for chunk in usecase.stream(text, speed=1.0)]
+    assert len(chunks) == 2
+
+    # Chunk 0 (not last) should have 200ms silence appended -> 0.1 + 0.2 = 0.3s
+    assert pytest.approx(wav_duration_seconds(chunks[0].wav), abs=0.01) == 0.3
+    assert pytest.approx(chunks[0].duration_seconds, abs=0.01) == 0.3
+
+    # Chunk 1 (last) should NOT have trailing silence -> 0.1s
+    assert pytest.approx(wav_duration_seconds(chunks[1].wav), abs=0.01) == 0.1
+    assert pytest.approx(chunks[1].duration_seconds, abs=0.01) == 0.1
 
 
 async def test_lock_wait_timeout_raises_synthesis_busy_error(mock_synthesizer: AsyncMock) -> None:
@@ -100,7 +132,8 @@ async def test_lock_wait_timeout_raises_synthesis_busy_error(mock_synthesizer: A
     await usecase._lock.acquire()
     try:
         with pytest.raises(SynthesisBusyError):
-            await usecase.execute("こんにちは")
+            async for _ in usecase.stream("こんにちは"):
+                pass
     finally:
         usecase._lock.release()
 
@@ -116,11 +149,12 @@ async def test_port_error_propagates(mock_synthesizer: AsyncMock) -> None:
         default_speed=1.25,
     )
     with pytest.raises(UpstreamUnavailableError, match="upstream down"):
-        await usecase.execute("こんにちは")
+        async for _ in usecase.stream("こんにちは"):
+            pass
 
 
-async def test_concurrent_requests_do_not_interleave(sample_wav_bytes: bytes) -> None:
-    """Test that two concurrent execute requests are serialized by the lock and do not interleave chunks."""
+async def test_concurrent_streams_do_not_interleave(sample_wav_bytes: bytes) -> None:
+    """Test that two concurrent stream requests are serialized by the lock and do not interleave chunks."""
     call_log: list[str] = []
 
     class SlowSynthesizer(SpeechSynthesizerPort):
@@ -141,20 +175,19 @@ async def test_concurrent_requests_do_not_interleave(sample_wav_bytes: bytes) ->
         default_speed=1.25,
     )
 
-    # Each text has 2 sentences that split into separate chunks
     req_a = "reqA:文1。reqA:文2。"
     req_b = "reqB:文1。reqB:文2。"
 
-    task_a = asyncio.create_task(usecase.execute(req_a))
-    task_b = asyncio.create_task(usecase.execute(req_b))
+    async def consume(text: str) -> list[ChunkAudio]:
+        return [c async for c in usecase.stream(text)]
+
+    task_a = asyncio.create_task(consume(req_a))
+    task_b = asyncio.create_task(consume(req_b))
     await asyncio.gather(task_a, task_b)
 
-    # The calls for reqA should be grouped together, and reqB grouped together
-    # No interleaving of A and B calls
     first_prefix = call_log[0].split("-")[0]
     other_prefix = "reqB" if first_prefix == "reqA" else "reqA"
 
-    # All calls for the first request must complete before any call of the second request
     first_req_calls = [x for x in call_log if x.startswith(first_prefix)]
     other_req_calls = [x for x in call_log if x.startswith(other_prefix)]
 
@@ -174,8 +207,8 @@ async def test_default_speed_used_when_speed_is_none(mock_synthesizer: AsyncMock
         queue_timeout_seconds=600.0,
         default_speed=1.25,
     )
-    result = await usecase.execute("こんにちは", speed=None)
-    assert isinstance(result, SynthesisResult)
+    chunks = [c async for c in usecase.stream("こんにちは", speed=None)]
+    assert len(chunks) == 1
     mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=1.25)
 
 
@@ -189,8 +222,8 @@ async def test_default_speed_used_when_speed_omitted(mock_synthesizer: AsyncMock
         queue_timeout_seconds=600.0,
         default_speed=1.25,
     )
-    result = await usecase.execute("こんにちは")
-    assert isinstance(result, SynthesisResult)
+    chunks = [c async for c in usecase.stream("こんにちは")]
+    assert len(chunks) == 1
     mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=1.25)
 
 
@@ -205,8 +238,8 @@ async def test_default_speed_forwarded_to_all_chunks(mock_synthesizer: AsyncMock
         default_speed=1.25,
     )
     text = "吾輩は猫である。名前はまだ無い。"
-    result = await usecase.execute(text, speed=None)
-    assert isinstance(result, SynthesisResult)
+    chunks = [c async for c in usecase.stream(text, speed=None)]
+    assert len(chunks) == 2
     assert mock_synthesizer.synthesize_chunk.call_args_list == [
         call("吾輩は猫である。", speed=1.25),
         call("名前はまだ無い。", speed=1.25),
@@ -223,6 +256,6 @@ async def test_explicit_speed_overrides_default_speed(mock_synthesizer: AsyncMoc
         queue_timeout_seconds=600.0,
         default_speed=1.25,
     )
-    result = await usecase.execute("こんにちは", speed=0.8)
-    assert isinstance(result, SynthesisResult)
+    chunks = [c async for c in usecase.stream("こんにちは", speed=0.8)]
+    assert len(chunks) == 1
     mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=0.8)

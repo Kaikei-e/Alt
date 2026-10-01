@@ -22,9 +22,16 @@ import (
 // server.Config.BFFConfig, or server.go's feature switch
 // (internal/server/server.go) silently falls back to the legacy
 // ProxyHandler regardless of the configured flags. See
-// TestBuildServerConfig_WiresBFFConfigFromAppConfig and
-// TestBuildServerConfig_ResultingServer_UsesBFFHandler in main_test.go.
-func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, acolyteURL string, secret []byte, operatorToken string) server.Config {
+// resolveTTSURL resolves the target URL for the TTS service.
+// In the TDD RED phase, this is a minimal stub that does not apply the MTLS override.
+func resolveTTSURL(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.TTSConnectURL
+}
+
+func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, ttsURL, acolyteURL string, secret []byte, operatorToken string) server.Config {
 	return server.Config{
 		BackendURL:           backendURL,
 		BackendInternalURL:   internalBackendURL,
@@ -35,6 +42,8 @@ func buildServerConfig(cfg *config.Config, backendURL, internalBackendURL, acoly
 		Audience:             cfg.BackendTokenAudience,
 		RequestTimeout:       cfg.RequestTimeout,
 		StreamingTimeout:     cfg.StreamingTimeout,
+		TTSProxy:             cfg.TTSProxy,
+		TTSConnectURL:        ttsURL,
 		AcolyteConnectURL:    acolyteURL,
 		BFFConfig: handler.BFFConfig{
 			EnableCache:              cfg.EnableCache,

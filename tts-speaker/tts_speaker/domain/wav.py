@@ -81,3 +81,8 @@ def wav_duration_seconds(data: bytes) -> float:
     if framerate <= 0:
         raise AudioFormatError("Invalid framerate in WAV")
     return nframes / float(framerate)
+
+
+def append_silence(wav: bytes, ms: int) -> bytes:
+    """Append trailing silence to a 16-bit PCM WAV audio segment."""
+    raise NotImplementedError

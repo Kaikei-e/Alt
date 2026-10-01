@@ -524,6 +524,9 @@ export const CONNECT_RPC_PATHS = {
 	getSevenDayRecap: "**/alt.recap.v2.RecapService/GetSevenDayRecap",
 	getThreeDayRecap: "**/alt.recap.v2.RecapService/GetThreeDayRecap",
 	getThreeDayRecapCards: "**/alt.recap.v2.RecapService/GetThreeDayRecapCards",
+	// TTS service
+	ttsSynthesizeStream: "**/alt.tts.v1.TTSService/SynthesizeStream",
+	synthesizeSpeechStream: "**/alt.tts.v1.TTSService/SynthesizeStream",
 };
 
 // Connect-RPC Article Content response
